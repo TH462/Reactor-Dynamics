@@ -1,5 +1,8 @@
 /*
- * verify_board_scroll.js — the PWR board's diagram wrapper must never pan (#717).
+ * verify_board_scroll.js — nothing in the shell wears `overflow: hidden` as an unclamped
+ * scrollport (#717 the board; #723 the three siblings a follow-up sweep found).
+ *
+ * ══════════════════════════════ PART 1 — THE BOARD (#717) ══════════════════════════════
  *
  * THE DEFECT. `.pwr-board-wrap` shipped with `overflow: hidden`, which clips visually but
  * still makes the element a live, unclamped SCROLLPORT. `.pwr-board-stage` is the full
@@ -19,7 +22,9 @@
  * `scrollLeft` directly — and asserts the INVARIANT the fix produces rather than the
  * trigger: the wrap's scroll offset is unconditionally zero, however it was moved. That is
  * the stronger claim anyway; it holds for the wheel, for touch, for a descendant
- * scrollIntoView and for any future path, none of which this file has to enumerate.
+ * scrollIntoView and for any future path, none of which this file has to enumerate. THE
+ * SAME LIMIT AND THE SAME ANSWER APPLY TO EVERY PANEL BELOW — none of Part 2 drives a wheel
+ * either, for the same reason.
  *
  * IT WOULD OTHERWISE BE HOLLOW, so each viewport asserts its own PRECONDITION first: the
  * stage's rendered box really is larger than the wrap. Without that, a layout change that
@@ -39,6 +44,63 @@
  * scrollbar. There is no in-app fullscreen mode — the shell's help text offers F11, the
  * browser's own, which is just a larger viewport.
  *
+ * ══════════════════════ PART 2 — THE THREE #723 SIBLINGS ═══════════════════════════════
+ *
+ * #723 was a DOM-walk sweep of the loaded shell finding every other `overflow: hidden`
+ * element that (a) genuinely overflows and (b) accepts and keeps a scroll write. It found
+ * three, and named per element whether scrolling it is ever legitimate — none of them is,
+ * so all three are CLAMPED like the board, not made to scroll honestly:
+ *
+ *   1. `.scanline-body` (shell.css) — the System Scanner's one-line ellipsis text. The
+ *      `overflow: hidden` is doing real work (it is what makes `text-overflow: ellipsis`
+ *      clip the line), and the "overflow" is a ~2px line-box rounding remainder, not
+ *      content — MEASURED 12px client / 14px scroll, both viewports. `overflow: clip`
+ *      keeps the ellipsis identical (verified by screenshot diff against `overflow: hidden`
+ *      in a throwaway harness) and refuses the scroll write.
+ *
+ *   2. `.tab-body.instr-mode` / `.tab-body.ckl-mode` (shell.css) — the tab body's OWN
+ *      comment already says scrolling is not this element's job ("THE INSTRUCTOR PANE OWNS
+ *      ITS HEIGHT, and the LOG is what scrolls — not .tab-body"). It was still panned 42px
+ *      in the control-room grid's stacked row because that row's track was `auto` (content-
+ *      sized) while `.tools.expanded { flex: 1 1 0 }` reports ~0 as its CONTENT contribution
+ *      to that auto-sizing pass — MEASURED (2026-09-12, before any fix): client 20px /
+ *      scroll 62px at BOTH 1100 and 800px wide (the squeeze is the <=1200px control-room
+ *      grid stacking, not the 860px page-stack breakpoint the #723 sweep happened to
+ *      sample). FIX, two parts: (a) `grid-template-rows: 78vh minmax(260px, 22vh)` gives
+ *      that row a real floor, which alone fixes it back to client===scroll (67/67) with
+ *      REAL content at every width — this is the root cause, and PROVED RED BY INJECTION
+ *      below. (b) `overflow: clip` as the same defensive backstop as the board, because the
+ *      element's own comment already forbids scrolling it under ANY cause, not just this one.
+ *
+ *   3. `#laneStack.lane-stack` (ui/test_panel/lane_reference.html) — a pixel-exact fixed
+ *      list; the whole point of the artifact is that nothing in it scrolls. MEASURED 7px of
+ *      overflow, traced to `.lane.form-num`'s 18px row holding a value+unit pair stacked in
+ *      a column (needs ~22.5px) — the numeric row's own supposed advantage (compact) was
+ *      defeated by stacking two lines in it. FIX: lay the value+unit out on one line
+ *      (`flex-direction: row`) so the row's real content fits its own 18px, THEN
+ *      `overflow: clip` as the backstop.
+ *
+ * ANTI-HOLLOW, PART 2's OWN VERSION. Fixing the instr-mode squeeze and the lane-stack
+ * mismatch means neither element overflows its box under normal content any more — so
+ * "write scrollTop, read back 0" would be true of any non-overflowing element regardless of
+ * `overflow: clip`, and prove nothing about the CLAMP specifically. Each clamp check below
+ * therefore FORCES a genuine overflow first (an oversized `.persona`, a capped
+ * `.lane-stack` `max-height`, a capped `.scanline-body` `max-height`) and only then writes
+ * scrollTop — so the check is exercising the clamp, not the absence of a defect to clamp.
+ * The row-height fix gets its OWN separate check with NO forcing, because "does the pane
+ * still need forcing to overflow" is exactly the claim that fix makes.
+ *
+ * PROVED RED BY INJECTION (2026-09-12), each in isolation:
+ *   - `.scanline-body` `overflow: clip` -> `overflow: hidden` (single decl removed): the
+ *     forced-overflow scanline clamp check fails (reads back 6, the forced max-height).
+ *   - `.tab-body.instr-mode` / `.tab-body.ckl-mode` clip removed: both forced-overflow
+ *     clamp checks fail the same way.
+ *   - `grid-template-rows: 78vh auto` (the pre-fix value): the NO-FORCING "pane fits its
+ *     own box" check fails at 1100/800 (client 20 vs scroll 62 again).
+ *   - `.lane.form-num .lane-val` row reverted to the shared column layout, `overflow: clip`
+ *     left in place: the no-forcing lane-stack fit check fails (234 vs 241); with the clip
+ *     also reverted, the forced-overflow clamp check fails too (reads back 300).
+ *
  * Run: node test/verify_board_scroll.js
  */
 'use strict';
@@ -57,7 +119,9 @@ var VIEWPORTS = [
 ];
 
 var fail = 0;
+var total = 0;
 function ck(name, ok, detail) {
+  total++;
   if (!ok) fail++;
   console.log((ok ? C.green + 'PASS' : C.red + 'FAIL') + C.off + '  ' + name +
     (ok || detail == null ? '' : C.dim + '   -> ' + detail + C.off));
@@ -143,13 +207,149 @@ function ck(name, ok, detail) {
       after.vesselInside,
       'vessel ' + JSON.stringify(after.vessel) + ' vs wrap ' + JSON.stringify(after.wrapRect));
 
+    /* ────────────────────── #723 sibling 1: .scanline-body ────────────────────── */
+    var scan = await page.evaluate(function () {
+      var el = document.querySelector('.scanline-body');
+      if (!el) return { missing: true };
+      var natural = { client: el.clientHeight, scroll: el.scrollHeight };
+      el.scrollTop = 300;
+      var naturalClamp = el.scrollTop;
+      /* FORCE a larger, unambiguous overflow so the clamp check below cannot be hollow
+       * ("nothing to scroll to" reading back 0 proves nothing) even if the default hint
+       * text is ever shortened past the natural ~2px line-box remainder. */
+      el.style.maxHeight = '6px';
+      var forced = { client: el.clientHeight, scroll: el.scrollHeight };
+      el.scrollTop = 300;
+      var forcedClamp = el.scrollTop;
+      el.style.maxHeight = '';
+      return { natural: natural, naturalClamp: naturalClamp, forced: forced, forcedClamp: forcedClamp };
+    });
+    if (scan.missing) {
+      ck(tag + ': .scanline-body present', false, 'selector missing');
+    } else {
+      ck(tag + ': .scanline-body has its natural line-box overflow (the defect ingredient)',
+        scan.natural.scroll > scan.natural.client,
+        'client/scroll = ' + scan.natural.client + '/' + scan.natural.scroll + '; if these are equal ' +
+        'the natural-overflow check below is a no-op');
+      ck(tag + ': .scanline-body refuses the natural-overflow scroll write',
+        scan.naturalClamp === 0, 'scrollTop read back ' + scan.naturalClamp);
+      ck(tag + ': .scanline-body refuses a FORCED, larger scroll write too',
+        scan.forcedClamp === 0,
+        'scrollTop read back ' + scan.forcedClamp + ' after forcing client/scroll = ' +
+        scan.forced.client + '/' + scan.forced.scroll);
+    }
+
+    /* ─────────────── #723 sibling 2a: .tab-body.instr-mode (Instructor tab) ─────────────── */
+    await page.evaluate(function () {
+      var btn = document.querySelector('[data-tab="instructor"]');
+      if (btn) btn.click();
+    });
+    await page.waitForTimeout(300);
+    var instr = await page.evaluate(function () {
+      var el = document.querySelector('.tab-body.instr-mode');
+      if (!el) return { missing: true };
+      /* NO forcing here on purpose: this is the row-height fix's OWN claim — that the pane
+       * fits its real content at every layout state without ever needing to scroll. */
+      var natural = { client: el.clientHeight, scroll: el.scrollHeight };
+      /* THEN force a genuine overflow (an oversized persona header) to exercise the CLAMP
+       * itself, since the fix above means a plain scrollTop write has nothing to scroll. */
+      var persona = document.querySelector('.persona');
+      var saved = persona ? persona.style.minHeight : null;
+      if (persona) persona.style.minHeight = '2000px';
+      var forced = { client: el.clientHeight, scroll: el.scrollHeight };
+      el.scrollTop = 300;
+      var forcedClamp = el.scrollTop;
+      if (persona) persona.style.minHeight = saved || '';
+      return { natural: natural, forced: forced, forcedClamp: forcedClamp };
+    });
+    if (instr.missing) {
+      ck(tag + ': .tab-body.instr-mode present', false, 'selector missing (Instructor tab did not activate?)');
+    } else {
+      ck(tag + ': .tab-body.instr-mode fits its own content with no forcing (the row-height fix)',
+        instr.natural.client === instr.natural.scroll,
+        'client/scroll = ' + instr.natural.client + '/' + instr.natural.scroll +
+        ' — a mismatch means the pane is squeezed and needs to scroll to show itself, ' +
+        'the pre-fix state (measured 20/62 at 1100 and 800px wide)');
+      ck(tag + ': .tab-body.instr-mode refuses a FORCED scroll write (the clamp)',
+        instr.forcedClamp === 0,
+        'scrollTop read back ' + instr.forcedClamp + ' after forcing client/scroll = ' +
+        instr.forced.client + '/' + instr.forced.scroll);
+    }
+
+    /* ─────────────── #723 sibling 2b: .tab-body.ckl-mode (Walkthroughs tab) ─────────────── */
+    await page.evaluate(function () {
+      var btn = document.querySelector('[data-tab="checklists"]');
+      if (btn) btn.click();
+    });
+    await page.waitForTimeout(300);
+    var ckl = await page.evaluate(function () {
+      var el = document.querySelector('.tab-body.ckl-mode');
+      if (!el) return { missing: true };
+      el.scrollTop = 300;
+      var naturalClamp = el.scrollTop;
+      el.style.maxHeight = '10px';
+      var forced = { client: el.clientHeight, scroll: el.scrollHeight };
+      el.scrollTop = 300;
+      var forcedClamp = el.scrollTop;
+      el.style.maxHeight = '';
+      return { naturalClamp: naturalClamp, forced: forced, forcedClamp: forcedClamp };
+    });
+    if (ckl.missing) {
+      ck(tag + ': .tab-body.ckl-mode present', false, 'selector missing (Walkthroughs tab did not activate?)');
+    } else {
+      ck(tag + ': .tab-body.ckl-mode refuses the scroll write',
+        ckl.naturalClamp === 0, 'scrollTop read back ' + ckl.naturalClamp);
+      ck(tag + ': .tab-body.ckl-mode refuses a FORCED scroll write too',
+        ckl.forcedClamp === 0,
+        'scrollTop read back ' + ckl.forcedClamp + ' after forcing client/scroll = ' +
+        ckl.forced.client + '/' + ckl.forced.scroll);
+    }
+
     await ctx.close();
   }
+
+  /* ─────────────── #723 sibling 3: #laneStack (ui/test_panel/lane_reference.html) ─────────────── */
+  var LANE = 'file:///' + path.join(ROOT, 'ui', 'test_panel', 'lane_reference.html').replace(/\\/g, '/');
+  var lctx = await browser.newContext({ viewport: { width: 700, height: 500 } });
+  var lpage = await lctx.newPage();
+  await lpage.goto(LANE);
+  await lpage.waitForTimeout(300);
+  var lane = await lpage.evaluate(function () {
+    var el = document.getElementById('laneStack');
+    if (!el) return { missing: true };
+    /* NO forcing: this is the .form-num inline-layout fix's own claim. */
+    var natural = { client: el.clientHeight, scroll: el.scrollHeight };
+    el.scrollTop = 300;
+    var naturalClamp = el.scrollTop;
+    /* THEN force a genuine overflow (a capped max-height) to exercise the clamp itself. */
+    el.style.maxHeight = '100px';
+    var forced = { client: el.clientHeight, scroll: el.scrollHeight };
+    el.scrollTop = 300;
+    var forcedClamp = el.scrollTop;
+    el.style.maxHeight = '';
+    return { natural: natural, naturalClamp: naturalClamp, forced: forced, forcedClamp: forcedClamp };
+  });
+  console.log(C.bold + 'lane_reference.html' + C.off + C.dim + '  (#440/#509 golden artifact, fixed-size page)' + C.off);
+  if (lane.missing) {
+    ck('lane_reference.html: #laneStack present', false, 'selector missing');
+  } else {
+    ck('#laneStack fits its own content with no forcing (the form-num inline-layout fix)',
+      lane.natural.client === lane.natural.scroll,
+      'client/scroll = ' + lane.natural.client + '/' + lane.natural.scroll +
+      ' — pre-fix this was 234/241, the 7px traced to .lane.form-num');
+    ck('#laneStack refuses the natural scroll write',
+      lane.naturalClamp === 0, 'scrollTop read back ' + lane.naturalClamp);
+    ck('#laneStack refuses a FORCED scroll write too',
+      lane.forcedClamp === 0,
+      'scrollTop read back ' + lane.forcedClamp + ' after forcing client/scroll = ' +
+      lane.forced.client + '/' + lane.forced.scroll);
+  }
+  await lctx.close();
 
   await browser.close();
 
   console.log('\n' + C.bold + '──────────────────────────────────────────' + C.off);
   console.log(C.bold + (fail ? C.red + 'BOARD SCROLL: FAIL' : C.green + 'BOARD SCROLL: PASS') + C.off +
-    '   ' + (VIEWPORTS.length * 4 - fail) + '/' + (VIEWPORTS.length * 4) + ' checks');
+    '   ' + (total - fail) + '/' + total + ' checks');
   process.exit(fail ? 1 : 0);
 })().catch(function (e) { console.error(e); process.exit(2); });

@@ -249,7 +249,7 @@ body {
   .app.pwr-synoptic {
     height: auto; min-height: 100vh;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 78vh auto;
+    grid-template-rows: 78vh minmax(260px, 22vh);
     grid-template-areas: "diagram" "simcol";
   }
   .app.pwr-synoptic.sim-hidden {
@@ -1458,7 +1458,13 @@ html[data-channel="dev"] .logo-test {
 }
 .scanline-body {
   flex: 1 1 auto; min-width: 0;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; overflow: hidden; overflow: clip; text-overflow: ellipsis;
+  /* `overflow: hidden` here is doing real work — it is what makes the ellipsis happen — but
+     it still made this a live SCROLLPORT (#723, sibling of #717): a single nowrap line's
+     content box runs ~2px taller than its own line-height (font-metric rounding, not real
+     content), and that 2px was a `scrollTop` an operator could set. `overflow: clip` keeps
+     the ellipsis (verified: identical rendering, both compute to the same clipped glyph) and
+     refuses the scroll write outright, same backstop shape as `.pwr-board-wrap`. */
 }
 /* EXPANDED: the line grows in place to show the whole description — no second box
    *(OWNER DIRECTIVE, 2026-08-11)* — and while expanded it is PINNED TO ONE HEIGHT
@@ -2629,15 +2635,20 @@ select.num-input { width: auto; }
 /* The pane fills the tab body and scrolls INSIDE the log, not as a whole — the persona
    header and the walkthrough nav have to stay put while the messages move under them. */
 /* THE INSTRUCTOR PANE OWNS ITS HEIGHT, and the LOG is what scrolls — not .tab-body.
-   
+
    .tab-body is `overflow-y: auto` and .tabpane.on is `display: block`, so every other pane
    is content-sized and the tab body scrolls it. That is right for a list of failures and
    wrong for a transcript: a `flex: 1 1 0` log inside a content-sized parent resolves to
    ZERO height and every message overflows an invisible box. Measured: log clientHeight 0
    against scrollHeight 1270, four messages in the DOM and one visible.
-   
-   `.instr-mode` is set on .tab-body by selectTab so this does not depend on :has(). */
-.tab-body.instr-mode { overflow: hidden; display: flex; flex-direction: column; }
+
+   `.instr-mode` is set on .tab-body by selectTab so this does not depend on :has(). Since
+   `overflow: hidden` still makes this a live, unclamped SCROLLPORT (#723, sibling of #717):
+   in the control-room grid's stacked row (`.app.pwr-synoptic` at <=1200px, see the
+   `grid-template-rows` fix below) this wrapper used to be squeezed to ~20px against ~62px
+   of content and could be PANNED the other 42px with no way back. `overflow: clip` is the
+   same #717 backstop — it never scrolls by design, so clip costs nothing real. */
+.tab-body.instr-mode { overflow: hidden; overflow: clip; display: flex; flex-direction: column; }
 .tabpane.instructor { display: none; flex-direction: column; min-height: 0; }
 .tabpane.instructor.on { display: flex; flex: 1 1 auto; min-height: 0; }
 .tabpane.instructor .instr-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
@@ -2661,8 +2672,9 @@ select.num-input { width: auto; }
 
    Giving the pane the height makes `.ckl-log` the ONLY scroller and lets it reach the bottom of
    the column, which is one fix for both reports. `.ckl-mode` is set on .tab-body by selectTab,
-   exactly as `.instr-mode` is, so this does not depend on :has(). */
-.tab-body.ckl-mode { overflow: hidden; display: flex; flex-direction: column; }
+   exactly as `.instr-mode` is, so this does not depend on :has(). The identical construct is the
+   identical scrollport risk (#723) — clamp it too. */
+.tab-body.ckl-mode { overflow: hidden; overflow: clip; display: flex; flex-direction: column; }
 .tabpane[data-pane="checklists"] { flex-direction: column; min-height: 0; }
 .tabpane[data-pane="checklists"].on { display: flex; flex: 1 1 auto; min-height: 0; }
 .tabpane[data-pane="checklists"] #cklRun { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }

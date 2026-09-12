@@ -29,6 +29,105 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-12-workbench-g (#723 — the three siblings #717's sweep counted, closed)
+
+**Scope.** #717's own follow-up sweep found three more `overflow: hidden` elements sharing the
+board's unclamped-scrollport shape: `.scanline-body`, `.tab-body.instr-mode` and
+`#laneStack.lane-stack` (`ui/test_panel/lane_reference.html`). Filed as #723, deliberately left
+unfixed at the time. This session fixes all three, re-verifying each rather than trusting the
+sweep's numbers, and made a PER-PANEL judgement (clamp vs. honest scroll) rather than a blanket
+`overflow: clip`.
+
+**The judgement, per panel — all three are CLAMPED, none needed honest scrolling:**
+
+1. **`.scanline-body`** (`shell.css:1459`) — the System Scanner's one-line ellipsis text.
+   Re-measured: client 12px / scroll 14px at every viewport, both before and after. The 2px is a
+   line-box rounding remainder from font metrics, not content — `white-space: nowrap` plus
+   `text-overflow: ellipsis` already do the real truncation work. **Verdict: clamp.** Confirmed
+   `overflow: clip` renders byte-identical to `overflow: hidden` with ellipsis active (screenshot
+   diff in a throwaway harness, both compute to the same clipped glyph).
+
+2. **`.tab-body.instr-mode` / `.tab-body.ckl-mode`** (`shell.css:2640`/`2670`) — the Instructor and
+   Walkthroughs tab bodies. The CSS's OWN comment already rules out scrolling this element ("THE
+   INSTRUCTOR PANE OWNS ITS HEIGHT, and the LOG is what scrolls — not `.tab-body`"), so this was
+   never a candidate for honest scrolling. **Verdict: clamp — but the squeeze that made it
+   pannable was a real, separate bug, fixed at its root too.**
+
+   Root cause, measured: the control-room grid's stacked row (`.app.pwr-synoptic` at `<=1200px`)
+   sized its "simcol" track `auto` (content-sized). `.tools.expanded { flex: 1 1 0 }` reports
+   ~0 as its content contribution to that auto-sizing pass (flex-basis 0 plus `min-height: 0`),
+   so the row — and the pane inside it — collapsed to client **20px** against **62px** of real
+   content, **at both 1100 and 800px wide** (not only below the 860px page-stack breakpoint the
+   #723 sweep happened to sample — the control-room grid stacks at 1200px, a different
+   breakpoint from the generic flex stacking). That 42px was exactly what could be panned.
+
+   Fix: `grid-template-rows: 78vh minmax(260px, 22vh)` gives the row a real floor instead of
+   `auto`, which alone restores `client === scroll` (67/67) with real content, at every width.
+   `overflow: clip` is layered on top as the same defensive backstop as the board — the comment
+   already forbids scrolling this element under any cause, not just this one. `.tab-body.ckl-mode`
+   shares the identical construct (its own comment says "same treatment, same reason") and got the
+   same clamp; a forced-overflow probe found it still has real overflow at narrow widths (the "no
+   checklist running" launcher content vs. its 20px-ish box) even after the grid-row fix — clamped
+   safely, but the underlying content-fit gap there is a separate, smaller finding, not fixed here.
+
+3. **`#laneStack.lane-stack`** (`ui/test_panel/lane_reference.html:32`) — the #440/#509 golden
+   reference for the control-room chart lanes, explicitly a pixel-exact fixed list ("no card
+   wrappers... four lanes plus axis and ribbon fit ~220px"). Scrolling it would defeat the whole
+   premise. **Verdict: clamp — but the 7px mismatch was also a real, separate bug.**
+
+   Root cause, measured: `.lane.form-num` is an 18px row, and the shared `.lane-val` stacks value
+   over unit in a column (~22.5px needed) — a numeric row's whole point is to be the *compact*
+   form, and stacking two lines defeated that. Fix: `.lane.form-num .lane-val { flex-direction:
+   row }` puts value and unit on one line ("616 ppm"), which fits the 18px row with room to
+   spare and restores `client === scroll` (234/234) with the artifact's real content. `overflow:
+   clip` layered on top as the backstop.
+
+**None of the three turned out to be a non-defect** — all three genuinely accepted and kept a
+`scrollTop` write before the fix, confirmed by direct injection.
+
+**Anti-hollow, and how each assertion was proved red.** Fixing the squeeze and the form-num
+mismatch means `.tab-body.instr-mode` and `#laneStack` no longer overflow under NORMAL content —
+so "write scrollTop, read back 0" would be true of any non-overflowing element regardless of
+`overflow: clip`, proving nothing about the clamp specifically. Each clamp check therefore FORCES
+a genuine overflow first (an oversized `.persona`, a capped `max-height`) and only then writes
+scrollTop. The row-height and form-num fixes each get their own separate, unforced "fits its own
+content" check — that IS the claim those two fixes make. Proved red one change at a time,
+reverting each in isolation and restoring it before testing the next:
+
+| reverted | result |
+|---|---|
+| (nothing — full fix) | **47/47** |
+| `.scanline-body` `overflow: clip` removed | 39/47 — the 8 scanline checks (natural + forced, all 4 viewports) |
+| `.tab-body.instr-mode` `overflow: clip` removed | 43/47 — the 4 forced-clamp checks |
+| `.tab-body.ckl-mode` `overflow: clip` removed | 41/47 — 2 natural + 4 forced-clamp checks (ckl-mode has real overflow even at 1400px wide, unlike instr-mode) |
+| `grid-template-rows` reverted to `78vh auto` | 45/47 — the 2 no-forcing "fits its own content" checks at 1100/800, reads back **client/scroll = 20/62**, the exact pre-fix measurement |
+| `.lane.form-num .lane-val` row reverted to the shared column | 46/47 — the no-forcing lane-stack fit check, reads back **234/241**, the exact pre-fix measurement |
+| `#laneStack` `overflow: clip` also removed | 46/47 — the forced-overflow lane-stack clamp check, reads back 136 |
+
+**Gate: `test/verify_board_scroll.js` extended in place (one gate for all four scrollports, per
+the assignment) — 16/16 -> 47/47, NEW baseline in `test/run_all.js`.** Reused the board's
+technique throughout: direct `scrollTop`/`scrollLeft` injection (the wheel trigger is **not**
+drivable headlessly for the same reason as #717 — Chromium suppresses wheel-scroll on hidden
+overflow, no Firefox installed for Playwright here — stated in the gate header, unverified in
+automation exactly as #717 left it). Tested at the board's four layout states (1400x900 pinned;
+1250/1100 straddling the 1200px control-room breakpoint; 800 below the 860px page-stack one) for
+the three shell.html panels, plus a standalone check of `lane_reference.html` (a fixed-size dev
+page with no breakpoints of its own).
+
+**Gates run:** `verify_board_scroll` 47/47 (new baseline) · `verify_e2e_ui` PASS, 4 screenshots ·
+`verify_flags_ui` 52/52 · `verify_board_check` 256 checks · `run_style` 11 checks, 0 failed — all
+via `node test/run_all.js --only verify_board_scroll,verify_e2e_ui,verify_flags_ui,verify_board_check,run_style`.
+**The aggregate (`run_all.js` with no `--only`) was NOT run** — per this session's instructions,
+that runs once, by the coordinator, immediately before the lane merges. This work is committed to
+`workbench`, unmerged.
+
+**Not verified:** the wheel trigger itself (same limitation #717 documented, not re-litigated
+here); `.tab-body.ckl-mode`'s own remaining content-fit gap at narrow widths (safely clamped, but
+its "no checklist running" launcher content still doesn't all fit in the available row — a
+smaller, separate finding, not a scrollport).
+
+---
+
 ## Session log — 2026-09-12-workbench-f (#711 — the walkthrough hold survived Reset, a plant switch, and a new checklist)
 
 **What was wrong.** `render()`'s own `.paused` check takes `pauseSim('walkthrough')` the instant
