@@ -1449,6 +1449,56 @@ async function testMainMenuButton(page) {
              btn: { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) } };
   });
   if (tour.err) throw new Error('#689: could not drive the quick tour — ' + tour.err);
+
+  /* #720 — THE TOUR MUST WALK EVERY STEP IT DECLARES, and this is the general form of the
+   * defect, not a check pinned to one step.
+   *
+   * renderTour()'s skip branch ("Skip missing targets rather than stalling the tour") costs a
+   * whole step and, until #720, printed nothing: `#tourProg` simply jumped. Measured on the
+   * shipped board before the fix — 1/11, then 3/11 — because step 2 pointed at `#gaugeStrip`,
+   * which is `display: none` on the PWR, so `tourElVisible()` rejected it. Ten of eleven steps
+   * ran and the tour read as complete. Nothing in the suite could see it: every existing
+   * assertion was about a step that DID render.
+   *
+   * The claim is the whole sequence, taken off `#tourProg`'s own denominator so it cannot go
+   * stale when a step is added or removed: the walk must report 1/N, 2/N … N/N with no gap.
+   * Any step whose selector is absent, hidden or zero-sized reds here by name.
+   *
+   * PROVED RED BY INJECTION (2026-09-12), at BOTH shapes, because "absent" and "present but
+   * invisible" reach tourElVisible() by different routes. Pointing the Alarms step (3 of 11) at
+   * `#rd720InjectionAbsent`, which matches nothing, and then at `#gaugeStrip`, which exists with
+   * six children and is display:none, each gave: "walked 10 of 11 and the progress readout went
+   * 1 -> 2 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10 -> 11. Never rendered: 3 / 11". Selector restored,
+   * green at 11 of 11. */
+  var walk = (tour.steps || []).map(function (s) {
+    var m = /^(\d+)\s*\/\s*(\d+)$/.exec(s.prog || '');
+    return m ? { i: +m[1], n: +m[2] } : null;
+  });
+  if (walk.some(function (w) { return !w; })) {
+    throw new Error('#720: a tour step reported no readable progress — #tourProg values were ' +
+      JSON.stringify(tour.steps.map(function (s) { return s.prog; })));
+  }
+  var total = walk[0].n;
+  if (walk.some(function (w) { return w.n !== total; })) {
+    throw new Error('#720: the tour changed its own step total mid-walk — ' +
+      JSON.stringify(walk.map(function (w) { return w.i + '/' + w.n; })));
+  }
+  var missing = [];
+  for (var wi = 1; wi <= total; wi++) {
+    if (!walk.some(function (w) { return w.i === wi; })) missing.push(wi + ' / ' + total);
+  }
+  if (missing.length || walk.length !== total) {
+    throw new Error('#720: the quick tour SILENTLY SKIPPED ' + missing.length + ' of its ' +
+      total + ' steps — it walked ' + walk.length + ' of ' + total + ' and the progress ' +
+      'readout went ' + walk.map(function (w) { return w.i; }).join(' -> ') + '. Never ' +
+      'rendered: ' + (missing.join(', ') || '(none — the walk repeated a step instead)') +
+      '. renderTour() skips a step whose `sel`/`sels` resolve to nothing visible and says ' +
+      'nothing, so a step pointing at an element that is absent, hidden or display:none on ' +
+      'this plant costs the player the whole step. Fix the selector — do NOT relax this check.');
+  }
+  log.push('quick tour walks every declared step: ' + walk.map(function (w) { return w.i; }).join(', ') +
+           ' of ' + total + ', titles ' + JSON.stringify(tour.steps.map(function (s) { return s.title; })));
+
   var named = (tour.steps || []).filter(function (s) { return /main menu/i.test(s.title || ''); });
   if (!named.length) {
     throw new Error('#689: the quick tour walked ' + tour.steps.length + ' steps and none is ' +

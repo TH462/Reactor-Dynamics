@@ -30,6 +30,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — the quick tour's Vital gauges step (#720, 2026-09-12)
+
+*(OWNER RULING, 2026-09-12: "A" — retarget the step at the board's own vital indications and
+reword it, rather than giving it a fallback or deleting it.)*
+
+- **The quick tour ran 10 of its 11 steps, silently.** Step 2 pointed at `#gaugeStrip` — the
+  vital-gauge row the *other* plants mount above their schematic, which the PWR board
+  `display: none`s. `tourElVisible()` rejected the 0x0 box and `renderTour()`'s "skip missing
+  targets" branch dropped the step without a word: measured in headless Chromium on
+  `ui/shell.html?engine=pwr2`, `#tourProg` went **1/11 → 3/11** and the tour read as complete.
+  The step is the one that tells a first-time player which readings to watch, and it had been
+  describing a surface this plant does not have for as long as the board has been the PWR's
+  display. It now points at the six Indicator Panel tiles across the top of the board — REACTOR
+  POWER, AVG COOLANT TEMPERATURE, SUBCOOLING MARGIN, PRIMARY PRESSURE, PRESSURIZER LEVEL, STEAM
+  GENERATOR LEVEL — and the copy names them and says what their colours mean. Measured after:
+  **11 of 11 steps**, spotlight 1078 x 104 px over the strip.
+- **A tour step may now name a GROUP of elements** (`sels`), and the spotlight is the union of
+  what resolves. No single element carries the six tiles: they are absolutely-positioned
+  `.bd-tile` divs parented directly by `.pwr-board-stage` alongside the other 212, and the
+  smallest element enclosing all six is the whole board — which step 1 already spotlights. The
+  alternative was an empty wrapper in the board doc existing only to give the tour a target.
+- **A skipped step is no longer silent** — `renderTour()` warns to the console with the step
+  number, title and the selector that failed.
+- **Gate: `verify_e2e_ui` now asserts the tour walks every step it declares**, taken off
+  `#tourProg`'s own denominator so it does not go stale when a step is added or removed. It is
+  the general form of the defect, not a check pinned to step 2. Proved red by injection at both
+  shapes — an absent selector and a present-but-`display:none` one — each reporting "walked 10
+  of 11 … never rendered: 3 / 11"; green at 11 of 11 restored.
+
 ### Fixed — quality pass over the #656/#687/#688/#689/#690 bundle (2026-09-11)
 
 *(OWNER DIRECTIVE, 2026-09-11: "Upon completing your work, spawn a subagent to do a full and

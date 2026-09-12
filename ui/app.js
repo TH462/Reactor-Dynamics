@@ -8842,11 +8842,38 @@
         'feed, and the turbine here — not in a separate menu.</p>'
     },
     {
-      sel: '#gaugeStrip',
+      /* RETARGETED FROM '#gaugeStrip' (#720, OWNER RULING 2026-09-12: "A").
+       *
+       * `#gaugeStrip` is the OTHER plants' vital strip — a row of six gauges above the
+       * schematic. The PWR mounts the learning board instead and `display: none`s the strip,
+       * so the step's selector resolved to a 0x0 box, `tourElVisible()` rejected it and
+       * `renderTour()` skipped the step IN SILENCE: the tour ran 10 of its 11 steps and
+       * `#tourProg` jumped 1/11 -> 3/11. It had been describing a surface this plant does
+       * not have for as long as the board has been the PWR's display.
+       *
+       * SIX SELECTORS, NOT ONE, because no single element carries the group. Measured on the
+       * shipped board: the six Indicator Panel tiles are absolutely-positioned `.bd-tile`
+       * divs parented DIRECTLY by `.pwr-board-stage`, alongside the other 212 tiles — the
+       * smallest element that encloses all six is `.pwr-board-wrap`, i.e. the whole board,
+       * which is what step 1 already spotlights. Rather than add an empty wrapper to the
+       * board doc purely to give the tour something to point at, the tour takes the UNION of
+       * a step's `sels` (see tourResolveEls / tourUnionRect). The tiles abut exactly — 220 px
+       * pitch at 220 px wide, all at top 70 — so the union IS the strip: measured 1066 x 92 px
+       * at (32, 46) on a 1500x950 viewport.
+       *
+       * The ids are the board doc's own item ids, the same addressing pwr_board_wiring.js
+       * drives every one of these tiles by; they are as stable as the wiring table. No
+       * `fallback:` on purpose — option B ("fall back to #viewArea") was declined because two
+       * steps on one box reads as a bug, and the gate below now reds on a silent skip. */
+      sels: ['[data-item="imrzl4b7g9m"]', '[data-item="ims2immk7ks"]', '[data-item="ims2immxl2s"]',
+             '[data-item="ims2immsvn6"]', '[data-item="ims2immon9z"]', '[data-item="ims2imn1nny"]'],
       place: 'bottom',
-      title: 'Vital gauges',
-      body: '<p>Power, temperature, subcooling, pressure, and levels — the ' +
-        'readings you watch first. They turn amber/red when something is off.</p>'
+      title: 'Vital indications',
+      body: '<p>Six tiles across the top of the board: <b>REACTOR POWER</b>, <b>AVG COOLANT ' +
+        'TEMPERATURE</b>, <b>SUBCOOLING MARGIN</b>, <b>PRIMARY PRESSURE</b>, <b>PRESSURIZER ' +
+        'LEVEL</b> and <b>STEAM GENERATOR LEVEL</b> — the readings you watch first. Each one ' +
+        'draws the last three minutes beside the number, and the number turns amber as the ' +
+        'reading reaches an alarm setpoint and red at a trip setpoint.</p>'
     },
     {
       sel: '.alarm-panel',
@@ -8935,7 +8962,7 @@
     }
   ];
   var tourIdx = 0;
-  var tourLiveEl = null;
+  var tourLiveEls = [];
   var tourOn = false;
 
   function tourElVisible(el) {
@@ -8950,12 +8977,40 @@
     if (!tourElVisible(el) && step.fallback) el = document.querySelector(step.fallback);
     return tourElVisible(el) ? el : null;
   }
+  /* A step may name a GROUP of elements (`sels`) instead of one (`sel`) — #720. The
+   * spotlight is then the union of what actually resolved, and EVERY member gets the live
+   * class, so a group of tiles glows as the strip it is. A `sels` step is satisfied by any
+   * one of its members resolving: losing one tile should narrow the spotlight, not delete
+   * the step. `sel`/`fallback` still work exactly as before when `sels` is absent. */
+  function tourResolveEls(step) {
+    if (!step) return [];
+    if (step.sels && step.sels.length) {
+      var out = [];
+      step.sels.forEach(function (s) {
+        var e = document.querySelector(s);
+        if (tourElVisible(e)) out.push(e);
+      });
+      if (out.length) return out;
+      if (!step.sel && !step.fallback) return [];
+    }
+    var one = tourResolveEl(step);
+    return one ? [one] : [];
+  }
+  function tourUnionRect(els) {
+    var L = Infinity, T = Infinity, R = -Infinity, B = -Infinity;
+    els.forEach(function (e) {
+      var r = e.getBoundingClientRect();
+      if (r.left < L) L = r.left;
+      if (r.top < T) T = r.top;
+      if (r.right > R) R = r.right;
+      if (r.bottom > B) B = r.bottom;
+    });
+    return { top: T, left: L, right: R, bottom: B, width: R - L, height: B - T };
+  }
 
   function tourClearLive() {
-    if (tourLiveEl) {
-      tourLiveEl.classList.remove('tour-target-live');
-      tourLiveEl = null;
-    }
+    tourLiveEls.forEach(function (e) { e.classList.remove('tour-target-live'); });
+    tourLiveEls = [];
   }
 
   function openTour(i) {
@@ -8972,11 +9027,12 @@
     if ($('tourRoot')) $('tourRoot').hidden = true;
     document.body.classList.remove('tour-active');
   }
-  function placeTourTip(target, place) {
+  /* `r` is a RECT, not an element, since #720 — a group step's spotlight is the union of its
+   * members and there is no element whose box that is. */
+  function placeTourTip(r, place) {
     var tip = $('tourTip'), spot = $('tourSpot');
     if (!tip || !spot) return;
     var pad = 6;
-    var r = target.getBoundingClientRect();
     var tw = Math.min(320, window.innerWidth - 24);
     var th = tip.offsetHeight || 160;
     // Spotlight box
@@ -9026,16 +9082,24 @@
     // Allow layout (expand card / show checklist) to settle before measuring.
     requestAnimationFrame(function () {
       if (!tourOn) return;
-      var el = tourResolveEl(step);
-      if (!el) {
-        // Skip missing targets rather than stalling the tour.
+      var els = tourResolveEls(step);
+      if (!els.length) {
+        /* Skip missing targets rather than stalling the tour — but SAY SO. This branch cost
+         * the tour a whole step for months and printed nothing (#720). verify_e2e_ui now
+         * reds on the skip itself; the warning is for whoever is looking at a live board. */
+        try {
+          console.warn('[tour] step ' + (tourIdx + 1) + '/' + TOUR_STEPS.length + ' "' +
+            step.title + '" SKIPPED — no visible target for ' +
+            (step.sels ? step.sels.join(', ') : step.sel) +
+            (step.fallback ? ' (fallback ' + step.fallback + ')' : ''));
+        } catch (eW) {}
         if (tourIdx < TOUR_STEPS.length - 1) { tourIdx++; renderTour(); }
         else closeTour();
         return;
       }
-      try { el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); } catch (e2) {}
-      el.classList.add('tour-target-live');
-      tourLiveEl = el;
+      try { els[0].scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); } catch (e2) {}
+      els.forEach(function (e) { e.classList.add('tour-target-live'); });
+      tourLiveEls = els;
       if ($('tourTitle')) $('tourTitle').textContent = step.title;
       if ($('tourBody')) $('tourBody').innerHTML = step.body;
       if ($('tourProg')) $('tourProg').textContent = (tourIdx + 1) + ' / ' + TOUR_STEPS.length;
@@ -9044,8 +9108,8 @@
       if (next) next.textContent = tourIdx >= TOUR_STEPS.length - 1 ? 'Done' : 'Next →';
       // Second frame: after scroll/expand, tip height is known.
       requestAnimationFrame(function () {
-        if (!tourOn || !tourLiveEl) return;
-        placeTourTip(tourLiveEl, step.place);
+        if (!tourOn || !tourLiveEls.length) return;
+        placeTourTip(tourUnionRect(tourLiveEls), step.place);
       });
     });
   }
