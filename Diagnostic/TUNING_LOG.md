@@ -29,6 +29,44 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-12-workbench-h (lane maintenance: merge `develop`, re-gate)
+
+**What.** Brought `workbench` (tip `6af6c9f1`, 1 ahead / 24 behind) up to date with `develop`
+via `git merge develop` — the ff-only attempt refused as expected, the real merge landed as
+`319585a1`. **Zero conflict markers** — `git` (`ort` strategy) auto-merged every touched file,
+including the four files the task briefing predicted as guaranteed conflicts
+(`CHANGELOG.md`, `TUNING_LOG.md`) and the two BASELINES/manual files it flagged as
+higher-risk. `Blueprint/BUILD_DECISIONS.md` and `Manuals/00_REVISION_HISTORY.md` were untouched
+by this lane's one unmerged commit (`6af6c9f1`), so there was nothing to conflict there.
+
+**Verified, not assumed:**
+- `Manuals/12` §12.22, the #698 boron-simplification-table row, **survived intact**.
+- `Manuals/00_REVISION_HISTORY.md` row 19 (pending) closes correctly at the author cell
+  (`| Claude |`), items in the Description column — not the author-cell splice this lane hit
+  before.
+- The four files this lane's last commits touched (`ui/shell.css`,
+  `ui/test_panel/lane_reference.html`, `test/verify_board_scroll.js`, `ui/app.js`) show **zero
+  diff** between `6af6c9f1` and the merge commit — develop never touched them differently, so
+  nothing of this lane's work was overwritten. `ui/app.js` re-checked with `node --check`: valid
+  syntax post-merge.
+- `test/run_all.js`'s `BASELINES.run_hardrules.js` merged mechanically (develop's history
+  already read 542; this lane's single commit didn't add an HR11 citation site) — **left as-is
+  per instructions**, not re-derived; the coordinator's aggregate run is the actual authority.
+- No leftover `<<<<<<<`/`=======`/`>>>>>>>` markers anywhere in the tree (`git grep` swept clean).
+- `node test/run_doc_budget.js`: 4/4, CLAUDE.md at 14,986 words (14 words of headroom).
+
+**Targeted gates** (per instructions — bare aggregate deferred to the coordinator):
+`node test/run_all.js --only run_style,verify_board_scroll,verify_e2e_ui,verify_flags_ui,verify_board_check`
+→ **5/5 at baseline**: run_style 11/11, verify_board_check 256 checks, verify_board_scroll
+47/47, verify_flags_ui 54/54 (up from this lane's pre-merge 52/52 — develop's #722 walkthrough
+flag flip adds two `public`-stage entries), verify_e2e_ui 4 screenshots.
+
+**Not verified** — the full aggregate (`run_all.js` bare) was deliberately not run; no PWR
+engine/scenario/campaign/procedures runner was touched, since none of the merged files reach
+those layers.
+
+---
+
 ## Session log — 2026-09-12-workbench-g (#723 — the three siblings #717's sweep counted, closed)
 
 **Scope.** #717's own follow-up sweep found three more `overflow: hidden` elements sharing the
