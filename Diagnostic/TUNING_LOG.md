@@ -29,6 +29,66 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-12-workbench-j (#712 — caption/readout text overflow gate)
+
+**What.** #684 gated board ART overflowing its highlight box; nothing gated CAPTION TEXT
+overflowing its own tile, so #700 (RHR caption relabel) and #705 (INJ FLOW relabel) had zero
+regression protection. Extended `test/verify_board_scroll.js` (chosen over `board_check.html`'s
+#684 halo section and `verify_e2e_ui.js`'s 1/M dock geometry check, since it already loads
+`shell.html` at the four/five layout-state viewports the task named — 1200px control-room and
+860px page-scroll — and neither of the other two tests more than one viewport) with a new PART 3.
+
+**Measured first** (`inbox/712/measure_overflow*.js`, local, gitignored): swept every element
+carrying its own direct text, board and shell, at 5 viewports (1600/1250/1100/900/800) x 3 tab
+states (default/Instructor/Walkthroughs) = 15 combinations. **Zero genuine overflows.** Three
+apparent hits from a naive `scrollWidth>clientWidth` sweep — a "TRIP BLOCKS" button (84 vs 78) and
+two header buttons (Feedback 64/61, Main Menu 70/67) — were FALSE POSITIVES: `scrollWidth` is
+unreliable on wrapping/`display:block` content, and the real painted line rects (`Range.
+getClientRects()`) sat 6px clear of the box on every side. Six Indicator Panel value spans read
+3-5px of `scrollHeight` over `clientHeight` at every viewport, identical regardless of the
+displayed digit count (drove five different readings through, delta never moved) and confirmed
+harmless by screenshot — a `lineHeight:0.9` font-metric remainder, the same class of noise #723
+already named for `.scanline-body`, not a caption escaping its box.
+
+**Two techniques, chosen per element** (documented in the file's own PART 3 header):
+`scrollWidth>clientWidth+1` for `white-space:nowrap/pre` elements (141 found — `.bd-value`,
+`.bd-readout .bd-ro-label/.bd-ro-read`, `.bd-box-title`, `.bd-num-unit`; reliable, same idiom
+`verify_e2e_ui.js`'s 1/M dock geometry check already uses), and an ENCLOSING-PANEL check for
+`.bd-text` tiles (40 found — #700's "HX SPLIT" and #705's "INJ FLOW" are both this kind), which
+carry no authored `width` of their own (`tileBase(it,'nohgt')`) so a naive "fits its own tile"
+assertion is hollow by construction — **proved by injection**: bumping `ims3xtrobbq`'s (#700)
+fontSize 13->20 left the first design's checks all PASSING (the tile just grew to match). Replaced
+with the real constraint #700's own hand-measurement used: the caption sits inside a titled CARD
+(a `kind:'box'` panel elsewhere on the board, found by smallest-area spatial containment of the
+caption's authored left/top) and must not push past that card's right edge. Re-injected: FAIL at
+all 15 combinations, `over:28px`, `rightEdge:1178` vs `panelRight:1150` — matches #700's own
+"1.3px outside the card border" shape. Also injection-proved the nowrap path by shrinking
+`bdRhrCooldownRate`'s authored width 90->40 (FAIL, `dw:40`). Both reverted; `git diff` on
+`pwr_board_wiring.js` empty before landing.
+
+Named pins (not just aggregate coverage): `ims3xtrobbq`/`bdRhrCooldownRate` (#700),
+`ims3w19984s` (#705). VIEWPORTS gained a 5th entry (900px) so the set actually straddles the
+860px breakpoint — the prior 1100/800 pair jumped clean over it. `.bd-btn` labels were swept and
+found clean but are NOT gated: `pwr_board.css` says some are authored to wrap onto two lines
+("TRIP BLOCKS still wraps — it is authored to"), `scrollWidth` reads a false positive on all of
+them, and a real per-button check needs the line-rect technique plus per-button wrap intent — a
+separate piece of work, filed as a note here rather than smuggled in.
+
+**Gates:** `verify_board_scroll.js` 47/47 -> 143/143 (BASELINES updated). `verify_board_check.js`
+256, `verify_flags_ui.js` 54/54, `run_style.js` 11/11, `verify_e2e_ui.js` 4 screenshots — all
+unchanged, run to confirm no regression from the touched files (`test/verify_board_scroll.js`,
+`test/run_all.js` only — no engine/board/wiring source changed; both injections were reverted).
+**`node test/run_all.js` (the full aggregate) was NOT run** *(OWNER DIRECTIVE, 2026-09-12: subagent
+gates only, not the aggregate)* — owed at merge time, on `develop` after `develop` gates in its own
+tree. Not verified: `.bd-btn` label overflow (deliberately out of scope, see above); shell states
+other than default/Instructor/Walkthroughs tabs (Plant & Mission dialog, 1/M panel — the 1/M dock's
+own overflow is `verify_e2e_ui.js`'s job, unaffected here); RBMK/BWR (on hold, untouched).
+
+Issue: `#712`, `status-work-complete`, `Claude` label. Lane: `workbench`, commit follows this
+entry, **UNMERGED into develop**.
+
+---
+
 ## Session log — 2026-09-12-workbench-i (#718 — the reactivity done-when named no tile)
 
 **What.** `pwr_heatup` step 16's done-when grades `reactivity_pcm` (`< -300 pcm`); the label at
