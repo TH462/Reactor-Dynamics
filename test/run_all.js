@@ -1129,7 +1129,16 @@ var BASELINES = {
   // the x-lines, not 3x the pressure lines. The worst point was 6 degC water, BELOW Layer 0's
   // declared 20 degC liquid floor, where its correlations clamp. The table was being blamed for
   // reproducing a clamp faithfully. Probing outside a declared envelope manufactures defects.
-  'run_pwr2_vtable.js':    { code: 0, score: '24passed 0failed 24checks', secs: 14 },
+  'run_pwr2_vtable.js':    { code: 0, score: '24passed 0failed 24checks', secs: 14,
+    note: 'CONTENTION-SENSITIVE AT TWO CHECKS: the two WALL-CLOCK RATIO assertions (the vtable ' +
+          'path must be at least 100x faster than the direct one). Measured 2026-09-12 on a ' +
+          'loaded machine: 22/24, both reds being that ratio at 99x -- 372 ns against 36,984 ns, ' +
+          'i.e. the assertion missed by 1 %. RE-RUN THIS RUNNER ALONE, in the same tree, before ' +
+          'adjudicating a red on either as real: it came back 24/24 with 13/13 mutations caught, ' +
+          'no code changed. Same treatment as the testPauseResumeSpeed note on verify_e2e_ui.js ' +
+          'and the cross-lane races in run_ci_shards.js -- never widen the ratio to paper over ' +
+          'contention, because the ratio IS the gate (#514 shipped a 51x-class slowdown that ' +
+          'nothing could see, and the absolutes are REPORTED only for exactly this reason).' },
   // NEW 2026-08-25 (#514): the END-TO-END step-cost gate. The engine shipped at 1,090 us/step —
   // 51x the old engine, 68x its own D1 §26 budget, compute-bound above ~18x fast-forward — and
   // no gate could see it: run_pwr2_vtable times property calls, not the step. #514 wired the
