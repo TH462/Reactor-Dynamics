@@ -30,6 +30,32 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (the TRIP BLOCKS popover had no click-away — #690)
+
+Owner playtest #675 §A, verbatim: "Trip block popup should disappear when clicking anywhere
+outside that popup." The panel had two dismissals, both inside the driver — a second press on the
+TRIP BLOCKS button, and the board's own mount/remount. First click-away in the product, so there
+was no pattern to copy.
+
+`armPopAway(btn)` attaches ONE `pointerdown` listener when the panel opens; `closePop` removes it,
+and `onMount` already calls `closePop()`, so a board rebuild cannot strand a listener on a detached
+stage. Three load-bearing choices: **the host is the board wrap, never `document`** (a document
+listener fires on the walkthrough panel, the menus and the chart, which is not what "outside that
+popup" means for a panel that lives on the board — and the wrap, not the stage, so the letterbox
+margin counts as outside); **pointerdown in the CAPTURE phase** (a handler that starts calling
+`stopPropagation` cannot strand it open); and **the TRIP BLOCKS button is exempt**, which is what
+keeps the panel usable — the button toggles on `click`, this listener runs on `pointerdown`, which
+fires FIRST, so without the exemption a press on the button closes the panel here and the click
+that follows RE-OPENS it. The panel would be dismissible by every press except the one an operator
+would try.
+
+Gated by `testTripBlockPopoverDismissesOnOutsideClick` (verify_e2e_ui): five REAL `page.mouse`
+presses, never `element.click()` — `HTMLElement.click` dispatches no pointer event at all, so a
+`.click()`-driven check passes on a board with no listener whatsoever. The outside point is
+HIT-TESTED (first point on a 17 px grid where `elementFromPoint` returns the stage itself), so the
+press cannot issue a plant command as a side effect. Injection-verified three ways, each red for
+its own reason: listener never armed, `pop.contains` guard dropped, button exemption dropped.
+
 ### Changed (one door to the Plant & Mission window, and a NEW badge on Walkthroughs — #688, #689)
 
 Owner playtest sheet #675 §A, three sentences of it.
@@ -1237,7 +1263,7 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc15] — 2026-09-11
+## [Alpha 1.7.4-rc16] — 2026-09-11
 
 ### Fixed (the Tavg program's no-load anchor had two stale copies left over from an earlier re-anchor — #647)
 
