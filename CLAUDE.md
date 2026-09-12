@@ -626,10 +626,10 @@ not a changelog.**
 **Layers** — engines PWR/RBMK/BWR ✅ (all with full balance-of-plant), control (M4) ✅,
 service (M5, +rewind) ✅, instructor (M6) ✅, test runner (M7) ✅. The PWR models a **Mode 5
 initial condition** and the **full Mode 5 ↔ Mode 1 on integrated physics**. **UI (M8):
-functional alpha, PWR only** 🟦 — M8 and the M4 control surface are not extended to RBMK/BWR.
+functional alpha, PWR only** 🟦.
 
 **Known open work** (details in `Diagnostic/` + `Manuals/ISSUES_AND_FINDINGS.md` +
-`BUILD_DECISIONS.md` Open Flags) — the RBMK/BWR items are ON HOLD. **ECCS card UI layout**
+`BUILD_DECISIONS.md` Open Flags) — PWR only. **ECCS card UI layout**
 (contract in `Blueprint/pwr_synoptic_prerequisites.md`), and two Mode-5 nice-to-haves: a
 `plant_mode` text indicator and an explicit `eccs_mode` readout.
 
