@@ -72,15 +72,24 @@
       desc: 'Instructor-led situations, one lesson each (Plant & Mission → Scenarios).',
       soon: 'Instructor-led scenarios are in final review — each one is being played through before it ships. Free Play and the operator\'s manual are open in the meantime.',
     },
+    /* PUBLIC since 2026-09-12 *(OWNER RULING, 2026-09-12: "A", on #722)*. The walkthroughs are
+     * the headline of Alpha 1.7.4 and its changelog.html entry already describes them, so the
+     * pair either ships or the entry comes out — CLAUDE.md's "a flag-gated feature is not
+     * released and gets no changelog.html entry" cuts both ways and the owner chose to ship.
+     *
+     * The `soon` sentences STAY. They are not dead: ?flags=-walkthroughs and the Features
+     * panel's own switch still resolve these to off, and verify_flags_ui drives exactly that
+     * route ("only walkthroughs off (everything else on): the tab still says COMING SOON").
+     * Deleting them would leave those paths on the generic fallback, which explains nothing. */
     walkthroughs: {
       label: 'Procedure walkthroughs',
-      stage: 'preview',
+      stage: 'public',
       desc: 'Follow-in-Instructor: a real procedure, step-gated off the instruments.',
       soon: 'Guided procedure walkthroughs are in final review. The procedures themselves are readable now in the operator\'s manual.',
     },
     checklists: {
       label: 'Live checklists',
-      stage: 'preview',
+      stage: 'public',
       desc: 'The passive 📋 checklist: a procedure ticked off against the plant as it sits.',
       soon: 'Live checklists are in final review. The procedures themselves are readable now in the operator\'s manual.',
     },
@@ -124,14 +133,31 @@
     'scenario:pwr_tmi2_p3': 'preview',
     'scenario:pwr_qualify': 'preview',
     // ---- PWR procedures (walkthrough + checklist) ----
-    'procedure:pwr_heatup': 'preview',
-    'procedure:pwr_startup': 'preview',
-    'procedure:pwr_raise_power': 'preview',
-    'procedure:pwr_lower_power': 'preview',
-    'procedure:pwr_pressure_control': 'preview',
-    'procedure:pwr_sg_level': 'preview',
-    'procedure:pwr_shutdown': 'preview',
-    'procedure:pwr_cooldown': 'preview',
+    /* THE SIX OPERATING-CYCLE LEGS ARE PUBLIC *(OWNER RULING, 2026-09-12: "A", on #722)*.
+     *
+     * ENUMERATED FROM THE BUILT POOL, not from a list: RD.MANUAL_PROCEDURES.pwr2 holds seven
+     * non-narrative entries, and `run_checklist_pwr2` names the split — the six below are the
+     * operating cycle, chained Mode 5 → full power → Mode 5 through `next`, and the seventh
+     * (pwr_tmi2_incident) is a historical reconstruction that chains to nothing and stays
+     * preview by plan R4's ruling. Measured on the pool before flipping: every step of all six
+     * carries an acceptance (17/17, 18/18, 10/10, 5/5, 3/3, 15/15), each leg carries purpose,
+     * outcome, prerequisites and cautions, and `run_checklist_pwr2` drives all six end to end.
+     *
+     * THESE IDS ARE SHARED WITH THE RETIRED `pwr` POOL, which authors the same six names plus
+     * eleven more. That is inert on the public channel and deliberately so: #523 strips the
+     * retired engine from a published build and ui/app.js's boot falls back to `pwr2` when a
+     * constructor is absent, so nothing public can reach the retired pool's copy. On preview
+     * and dev every id is on anyway. The eleven ids that exist ONLY in the retired pool stay
+     * preview below — flipping one would offer a walkthrough for a plant the site no longer
+     * runs. */
+    'procedure:pwr_heatup': 'public',
+    'procedure:pwr_startup': 'public',
+    'procedure:pwr_raise_power': 'public',
+    'procedure:pwr_lower_power': 'public',
+    'procedure:pwr_pressure_control': 'preview',   // retired pool only — no pwr2 leg
+    'procedure:pwr_sg_level': 'preview',           // retired pool only — no pwr2 leg
+    'procedure:pwr_shutdown': 'public',
+    'procedure:pwr_cooldown': 'public',
     'procedure:pwr_post_trip': 'preview',
     'procedure:pwr_loss_of_feedwater': 'preview',
     'procedure:pwr_rcp_trip': 'preview',

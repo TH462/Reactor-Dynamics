@@ -164,8 +164,31 @@
           <button class="btn text-btn" id="fbHeaderBtn" title="Report a problem or send feedback" data-scanner-hint="Feedback — report a bug or send a suggestion. A recording of this session can be attached so what you saw can be replayed.">Feedback</button>
           <button class="btn text-btn" id="settingsBtn" title="Settings — units, fast-forward dropout, save/load" data-scanner-hint="Settings — units, fast-forward dropout, save and load. It pauses the plant while it is open, because none of it is operating."
               data-scanner-detail="The chart's own controls are NOT here — they have a window of their own, behind the ⚙ on the strip chart, which lists every channel you can plot with its current reading. This one covers the things that are true of the whole simulator: units, the fast-forward dropout, and saving or loading a run.">Settings</button>
+          <!-- MAIN MENU, TO THE RIGHT OF SETTINGS *(OWNER, 2026-09-09, #675 section A / #689:
+               "Add a Main Menu button to the right of settings. Change the SELECT PLANT,
+               MISSION & RESET menu to this button and get rid of the old button.")*. It
+               REPLACES the full-width .sim-status bar that used to sit under the speed
+               controls — one entry point, and it sits with the other chrome buttons instead of
+               being mixed in with the simulation controls. ⛶ stays the row's end-cap: it is an
+               icon toggle rather than a named tool, and "to the right of settings" is where
+               this one was asked for. -->
+          <button class="btn text-btn" id="mainMenuBtn" title="Main Menu — select plant, mission and reset" data-scanner-hint="Main Menu — click to change what you are running or restart the plant from a clean initial condition."
+              data-scanner-detail="One window covers both choices: free play (with a starting plant condition) or a guided walkthrough. Starting either one restarts the simulation from a fresh initial condition, and Reset is in the same window.">Main Menu</button>
           <button class="btn demo-btn" id="demoBtn" title="Board focus — hide the side panel and enlarge the plant diagram" data-scanner-hint="Board focus — hides the simulator panel on the right and moves the time controls atop the alarms/graph column, giving the plant diagram more room. Click again to bring the panel back.">⛶</button>
         </div>
+        <!-- Points at the button that reopens the Plant &amp; Mission window, for a few
+             seconds after it is closed *(OWNER DIRECTIVE, 2026-08-11)*. It supersedes the
+             persistent unvisited dot the spec asked for on this one control: the window is
+             now UP on load, so the first close is the moment the player needs to be told
+             where it went, and a marker that waits for curiosity is answering a question
+             they are no longer asking.
+             DIRECTLY UNDER .sim-tools since #689 — the ▲ has to point at the button that
+             reopens the window, and that button moved up into the tools row.
+             AND THE ▲ IS NOW AIMED, not centred (quality pass, 2026-09-11). The bubble spans
+             the whole 338 px tools row while Main Menu sits at its right end, so a centred
+             glyph measured 128 px to the LEFT of the button it names — see the note in
+             shell.css and aimMainMenuTip() in app.js. -->
+        <div class="mm-tip" id="mainMenuTip" hidden><span class="mm-arrow" aria-hidden="true">▲</span>Reopen it here any time</div>
         <div class="sim-row">
           <button class="play paused attention" id="playBtn" data-scanner-hint="Play / Pause — starts or stops the simulation. Separate from the speed selector."
               data-scanner-detail="Paused, the plant is frozen but the board stays live and controls still queue commands. Pausing clears the lit speed button — a stopped plant is not accelerating at any rate — and pressing play again always resumes at 1×, never the speed that was showing when you paused (#691).">▶</button>
@@ -187,24 +210,15 @@
 
         </div>
         <div class="warp-info mono" id="warpInfo" aria-live="polite"></div>
-        <!-- What's running now — the always-visible mission entry point -->
-        <button class="sim-status" id="simStatus" data-scanner-hint="Select Plant, Mission &amp; Reset — click to switch reactors, change what you are running, or restart the plant from a clean initial condition."
-              data-scanner-detail="One window covers both choices: which reactor, and whether you are in free play (with a starting plant condition) or running guided content. Switching either one restarts the simulation from a fresh initial condition.">
-          <!-- The label NAMES ALL THREE THINGS THE WINDOW DOES (#516 item 3, owner playtest
-               2026-08-29: "The plant and mission button isn't obvious what it does. it should say
-               something like select plant and mission and reset."). It read "Plant &amp; Mission",
-               which names the window rather than the action, and RESET — the one irreversible
-               thing behind it — was not on the button at all. -->
-          <span class="ss-lbl">Select Plant, Mission &amp; Reset</span>
-          <span class="ss-txt" id="simStatusText">—</span><span class="ss-chev">›</span>
-        </button>
-        <!-- Points at the button that reopens the Plant &amp; Mission window, for a few
-             seconds after it is closed *(OWNER DIRECTIVE, 2026-08-11)*. It supersedes the
-             persistent unvisited dot the spec asked for on this one control: the window is
-             now UP on load, so the first close is the moment the player needs to be told
-             where it went, and a marker that waits for curiosity is answering a question
-             they are no longer asking. -->
-        <div class="ss-tip" id="simStatusTip" hidden>▲ Reopen it here any time</div>
+        <!-- THE .sim-status BAR THAT STOOD HERE IS GONE (#689, owner 2026-09-09: "Change the
+             SELECT PLANT, MISSION & RESET menu to this button and get rid of the old button.").
+             It was a full-width button reading "SELECT PLANT, MISSION & RESET" plus a live
+             "plant · mode" readout in #simStatusText; #mainMenuBtn in .sim-tools above replaces
+             it, and the readout was DROPPED (option A of the three #689 costed). Two reasons,
+             the second measured: the walkthrough card already names the leg it is running, and
+             the readout HAD ALREADY BEEN DEAD — updateSimSummary() returned on its first line
+             because #simPlantLbl left with the old Settings panel, so the button showed a
+             literal "—" on every load. -->
       </div>
 
       <div class="panel tools expanded" id="toolsCard">
@@ -253,6 +267,16 @@
                  panel rather than a flash on the header (#439, spec §4). The message is
                  already on screen; flashing for it would spend the signal on nothing. -->
             <button class="instr-newbelow" id="instrNewBelow" hidden>▾ New message below</button>
+            <!-- END WALKTHROUGH / NEXT LEG, AT THE FOOT OF THE WHOLE PANEL (#687 item 2,
+                 OWNER 2026-09-09: "Put 'End Walkthrough' at the very bottom of the space").
+                 It was the last thing inside #cklRun, which is only the FIRST child of
+                 .instr-body — #instrLog sits below it, so "last in its card" was two blocks
+                 short of the bottom of the space. Rendered by renderChecklist into here
+                 instead, as the last child of .instr-body: #instrLog above it is the flex-GROWING
+                 child, so it takes the free space and this row is what is left at the panel floor.
+                 (`margin-top: auto` is on it as a fallback and measures INERT today — computed
+                 marginTop is 0px at every viewport height. See the note in shell.css.) -->
+            <div class="ckl-btns" id="cklBtns" hidden></div>
           </div>
           <!-- Walkthrough (follow) nav — shown only while following a procedure -->
           <div class="instr-nav" id="instrNav" hidden>
@@ -497,8 +521,13 @@
             <div class="mission-title">Plant &amp; Mission</div>
             <button class="btn" id="missionClose" aria-label="Close">✕ Close</button>
           </div>
-          <div class="mission-body">
-            <div class="mp-plants" id="mpPlants"></div>
+          <!-- NO PLANT COLUMN *(OWNER, 2026-09-09, #675 section A / #688: "Remove the plant
+               selection column from the plant and mission menu.")*. It held one selectable
+               card and three greyed COMING SOON placards; on a published build the retired
+               PWR card is not even built, so the column offered exactly one choice. `mp-body`
+               collapses .mission-body's 260px|1fr grid to one track — the grid default stays
+               as it is because the chart-settings window reuses it with a real left column. -->
+          <div class="mission-body mp-body">
             <div class="mp-right">
               <div class="mp-modes" id="mpModes"></div>
               <div class="mp-content" id="mpContent"></div>

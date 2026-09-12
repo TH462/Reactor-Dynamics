@@ -30,6 +30,243 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the walkthroughs are OFFERED on the public channel (#722, 2026-09-12)
+
+*(OWNER RULING, 2026-09-12: "A" — flip the flags, rather than stripping the walkthrough
+material out of the `changelog.html` entry or shipping the headline invisible.)*
+
+- **`walkthroughs` and `checklists` are `stage: 'public'` in `site/flags.js`, and so are the six
+  operating-cycle walkthrough legs** — `pwr_heatup`, `pwr_startup`, `pwr_raise_power`,
+  `pwr_lower_power`, `pwr_shutdown`, `pwr_cooldown`. The registry goes **2 public / 69 preview →
+  10 / 61**. MEASURED in headless Chromium with the channel pinned to `public`,
+  `ui/shell.html?engine=pwr2` — before: the Plant & Mission window's Walkthroughs tab drew
+  "COMING SOON — Guided procedure walkthroughs are in final review", **0 Start buttons**, no NEW
+  badge (0x0 px), no checklist picker in the Instructor pane and no 📋 button in the manual.
+  After: **6 Start buttons**, the green NEW badge painting **33 x 14 px in rgb(121, 210, 151)**
+  over a live list, the picker on screen and 6 📋 buttons on the manual's Procedures section.
+  `Alpha 1.7.4`'s release note spends its headline on the walkthroughs; the flags and the entry
+  now agree.
+- **The TMI-2 incident walkthrough stays preview-only**, by the #670 plan-R4 ruling, and is
+  measured for absence on the shipped public page rather than behind a `?flags=` override.
+- **The six were enumerated from the BUILT pool, not from a list.** `RD.MANUAL_PROCEDURES.pwr2`
+  holds seven non-narrative entries; six chain Mode 5 → full power → Mode 5 through `next` and
+  the seventh chains to nothing. Every step of all six carries an acceptance (17/17, 18/18,
+  10/10, 5/5, 3/3, 15/15), each leg carries purpose, outcome, prerequisites and cautions, and
+  `run_checklist_pwr2` drives all six end to end.
+- **Two `verify_flags_ui` checks were HOLLOW, and the flip is what exposed them.** "public: the
+  checklist picker is not on screen" read `#instrCklRow` with the *Instructor* tab active — the
+  row lives in the checklists pane, so it was off screen whatever the flag said (measured
+  `false` with `?flags=all`). "public: manual has no Follow / Checklist buttons" queried
+  `#manualContent` the instant the manual opened, which is the `readme` document, not the
+  Procedures section (measured 0 on open, **17** on Procedures). Both now click through and
+  assert the shipped answer; the `flags=all,-checklists` probe gained the same missing click.
+- **`?flags=+campaign` on the public channel now lists four campaign missions** — they are
+  `kind: procedure` on ids the ruling flipped. Not reachable by a visitor (`campaign` is still
+  preview, and on PWR2 the Free-Play-only note precedes the flag), and the check that used to
+  assert COMING SOON there now asserts the claim directly: of 35 missions the tab lists only the
+  ones whose own entry resolves on, and strictly fewer than all of them.
+- **`run_channel` kept the gated set as a hand-written list and went red on a correct build.**
+  `GATED = ['campaign', 'scenarios', 'checklists', 'walkthroughs']` is a second copy of
+  `site/flags.js`, and the copy is what rots — three deployment rows reported a healthy public
+  build as leaking. The set is read off the registry now, and the run gained the positive control
+  a derived set needs: an empty `GATED` would make "offers none of them" vacuously true, so each
+  row also asserts every *public*-stage area IS on. Injection-proven — neutering `stage ===
+  'public'` in the resolver reds the three public rows with "vetted areas withheld: free_play,
+  manual, walkthroughs, checklists (0/4)", a state the old list-based check passed.
+- Gates: `run_flags` **343/343** (345 → 343 — the well-formed sweep only asks a *gated* area for
+  its coming-soon sentence, so a flip to public removes one check per area), `verify_flags_ui`
+  **54/54** (four checks rewritten, injection-proven red four ways), `run_channel` 25/0,
+  `run_site_build` 41/0, `run_release` 29/0, `verify_e2e_ui` PASS, `run_all --fast` **106 of 108
+  at baseline**. A public *build* is byte-for-byte unchanged in what it CONTAINS —
+  `site/flags.js` is copied verbatim and is not on the #523 strip list.
+
+### Fixed — the quick tour's Vital gauges step (#720, 2026-09-12)
+
+*(OWNER RULING, 2026-09-12: "A" — retarget the step at the board's own vital indications and
+reword it, rather than giving it a fallback or deleting it.)*
+
+- **The quick tour ran 10 of its 11 steps, silently.** Step 2 pointed at `#gaugeStrip` — the
+  vital-gauge row the *other* plants mount above their schematic, which the PWR board
+  `display: none`s. `tourElVisible()` rejected the 0x0 box and `renderTour()`'s "skip missing
+  targets" branch dropped the step without a word: measured in headless Chromium on
+  `ui/shell.html?engine=pwr2`, `#tourProg` went **1/11 → 3/11** and the tour read as complete.
+  The step is the one that tells a first-time player which readings to watch, and it had been
+  describing a surface this plant does not have for as long as the board has been the PWR's
+  display. It now points at the six Indicator Panel tiles across the top of the board — REACTOR
+  POWER, AVG COOLANT TEMPERATURE, SUBCOOLING MARGIN, PRIMARY PRESSURE, PRESSURIZER LEVEL, STEAM
+  GENERATOR LEVEL — and the copy names them and says what their colours mean. Measured after:
+  **11 of 11 steps**, spotlight 1078 x 104 px over the strip.
+- **A tour step may now name a GROUP of elements** (`sels`), and the spotlight is the union of
+  what resolves. No single element carries the six tiles: they are absolutely-positioned
+  `.bd-tile` divs parented directly by `.pwr-board-stage` alongside the other 212, and the
+  smallest element enclosing all six is the whole board — which step 1 already spotlights. The
+  alternative was an empty wrapper in the board doc existing only to give the tour a target.
+- **A skipped step is no longer silent** — `renderTour()` warns to the console with the step
+  number, title and the selector that failed.
+- **Gate: `verify_e2e_ui` now asserts the tour walks every step it declares**, taken off
+  `#tourProg`'s own denominator so it does not go stale when a step is added or removed. It is
+  the general form of the defect, not a check pinned to step 2. Proved red by injection at both
+  shapes — an absent selector and a present-but-`display:none` one — each reporting "walked 10
+  of 11 … never rendered: 3 / 11"; green at 11 of 11 restored.
+
+### Fixed — quality pass over the #656/#687/#688/#689/#690 bundle (2026-09-11)
+
+*(OWNER DIRECTIVE, 2026-09-11: "Upon completing your work, spawn a subagent to do a full and
+thorough quality pass through it for any remaining bugs, issues or QoL improvements.")* Scope
+was exactly those five commits. Four defects their own gates could not see, two of them hollow
+checks. No engine, no control layer; everything measured in a real browser.
+
+- **The green NEW badge no longer paints on the public site over a COMING SOON panel** (#688).
+  MEASURED with the channel pinned to `public`: the Walkthroughs tab read "Walkthroughs NEW",
+  badge painted 33 x 14 px in rgb(121, 210, 151), directly above "COMING SOON. Guided procedure
+  walkthroughs are in final review." `walkthroughs` is `stage: 'preview'` in `site/flags.js`, and
+  the badge was a literal `true` while the panel asks the flag registry — two answers to one
+  question, disagreeing on the only channel a visitor sees. `walkthroughsOffered()` is now the one
+  authority for both. Gated in `verify_flags_ui` on the painted rect and computed colour, never the
+  class name, with both channels asserted on one URL because either half alone is hollow (52 -> 54).
+- **The Main Menu coach tip's arrow points at the Main Menu button** (#689). MEASURED at a 1500 px
+  viewport: the arrow's glyph centre sat at x 1252.7 against a button box of 1380.2-1449.0 — 128 px
+  out, over the middle of the speed bar. #689 moved the bubble to the right ROW and left it
+  centre-aligned, which was correct under the full-width bar it used to follow and wrong under a
+  six-button row. The glyph is aimed from the button's measured position now (x 1416), not centred.
+- **The header clock's "running" colour is now asserted, not just the absence of its old fade**
+  (#687). PROVED HOLLOW: deleting `.clock.running`'s colour left the new check green with the running
+  clock reading the same grey as a stopped one — the plant's only remaining cue on that readout could
+  have gone silently.
+- **`margin-top: auto` was credited for the End-walkthrough row's position in four places and
+  measures inert** (#687). Computed marginTop is `0px` at viewport heights 950 / 1200 / 760 / 640;
+  `.instr-log`'s `flex: 1 1 0` is what pushes the row to the panel floor. The declaration stays — it
+  is a working fallback if the log ever stops growing (96 / 282 / 14 px) — but the comments and the
+  gate's error message no longer name a mechanism they cannot observe.
+- **The layman-playthrough harness can see the End walkthrough and Next-leg buttons again** (#687).
+  Moving that row out of `#cklRun` put it outside `driver.js`'s `ckl()` extract, which is the entire
+  view a fresh-context reviewer has of the panel — measured, the extract ended at "Continue" and
+  carried no "End walkthrough" while the button was on screen. #653's trap, firing again: nothing
+  gates `driver.js`, so the move reddened nothing.
+- Three comments in `ui/app.js` still named the plant column #688 deleted as a live consumer of
+  `ctorPresent()`; corrected.
+
+Filed, not fixed: **#721** — the TRIP BLOCKS popover has no Escape dismissal, does not return focus
+to its opener, and presses on shell chrome leave it open (the last is a ruling, with the measurements
+and a recommendation on the issue).
+
+### Fixed (the TRIP BLOCKS popover had no click-away — #690)
+
+Owner playtest #675 §A, verbatim: "Trip block popup should disappear when clicking anywhere
+outside that popup." The panel had two dismissals, both inside the driver — a second press on the
+TRIP BLOCKS button, and the board's own mount/remount. First click-away in the product, so there
+was no pattern to copy.
+
+`armPopAway(btn)` attaches ONE `pointerdown` listener when the panel opens; `closePop` removes it,
+and `onMount` already calls `closePop()`, so a board rebuild cannot strand a listener on a detached
+stage. Three load-bearing choices: **the host is the board wrap, never `document`** (a document
+listener fires on the walkthrough panel, the menus and the chart, which is not what "outside that
+popup" means for a panel that lives on the board — and the wrap, not the stage, so the letterbox
+margin counts as outside); **pointerdown in the CAPTURE phase** (a handler that starts calling
+`stopPropagation` cannot strand it open); and **the TRIP BLOCKS button is exempt**, which is what
+keeps the panel usable — the button toggles on `click`, this listener runs on `pointerdown`, which
+fires FIRST, so without the exemption a press on the button closes the panel here and the click
+that follows RE-OPENS it. The panel would be dismissible by every press except the one an operator
+would try.
+
+Gated by `testTripBlockPopoverDismissesOnOutsideClick` (verify_e2e_ui): five REAL `page.mouse`
+presses, never `element.click()` — `HTMLElement.click` dispatches no pointer event at all, so a
+`.click()`-driven check passes on a board with no listener whatsoever. The outside point is
+HIT-TESTED (first point on a 17 px grid where `elementFromPoint` returns the stage itself), so the
+press cannot issue a plant command as a side effect. Injection-verified three ways, each red for
+its own reason: listener never armed, `pop.contains` guard dropped, button exemption dropped.
+
+### Changed (one door to the Plant & Mission window, and a NEW badge on Walkthroughs — #688, #689)
+
+Owner playtest sheet #675 §A, three sentences of it.
+
+**A green NEW badge on the Walkthroughs tab** (#688) — a third slot on the mode tuple in
+`renderMissionSelect()`, so any tab can carry one. **Permanent by design**: no expiry, no
+`markSeen()`. It is meant to be seen by everyone who opens the window, not only by whoever has
+not opened it before, and it comes off by deleting one `true`.
+
+**The plant-selection column is gone** (#688). Measured on a dev build first: five cards, of
+which the retired `pwr` engine and `pwr2` were selectable and rbmk_pre / rbmk_post / bwr were
+greyed COMING SOON placards. A published build does not contain the retired engine at all
+(#523), so the column offered **one** choice and three things you cannot click. Only the
+rendering went — `msel.engine` still carries the in-session plant for all four content builders
+and the Start button; it is now seeded only from `ui.engineKey`. The consequence, stated rather
+than discovered later: those placards were the one place in the product that said RBMK and BWR
+are planned. Both are on hold; that belongs on the site.
+
+**"Main Menu", in the tools row beside Settings** (#689), replacing the full-width
+`SELECT PLANT, MISSION & RESET` bar under the speed controls. Its live "plant · mode" readout was
+**dropped, not moved** — and it had already been dead: `updateSimSummary()` returned on its first
+line because `#simPlantLbl` left with the old Settings summary, so the bar showed a literal `—`
+on every load, measured in headless Chromium. That function and its four per-broadcast call sites
+are deleted. Six controls in a 338 px row wrapped at the shipped padding (402 px of buttons), so
+`.sim-tools` tightens its own gap and padding and nothing else does: 299 px of buttons, one row.
+The "reopen it here" pointer moved up under the tools row with the button, so its ▲ still points
+at the control it names.
+
+Two gate checks in `verify_e2e_ui`, both read off the rendered DOM: `testMissionMenuShape`
+(no plant card reaches the screen, the body stops reserving the 260 px track, the badge's
+**computed colour** and painted rect, every tab still builds, Free Play still boots `pwr2`) and
+`testMainMenuButton` (the button reads "Main Menu" and paints beside Settings, the old bar is
+gone in all three of id/class/readout, it opens the window, **the quick tour's step spotlights
+it**, and the coach dot reaches it and retires on first press). Those last two are the ones
+nothing else can see: `renderTour()` skips a step whose selector resolves to nothing and
+`applyCoachMarks()` skips a missing node — both in silence. Nine injections between them.
+
+### Fixed (the walkthrough panel's chrome, and the clock that never stopped fading — #687, #656)
+
+Owner playtest sheet #675 §A. Four complaints in one panel, and the one with a filed mechanism
+did not have that mechanism.
+
+**The flicker.** #687 predicted a branch fall-through in `renderInstructorInner` — a broadcast
+arriving without `s.instructor.checklist` dropping to a later branch, taking the "Walkthrough"
+heading and the step clock down together. Measured in headless Edge on the shipped `pwr2` shell
+with step advances, five speed changes and pause/resume cycles: `s.instructor.checklist` was
+non-null on **308 of 308 broadcasts**, `#instrRole` read `Walkthrough` on all **1108** sampled
+animation frames, and its opacity, visibility and box never moved. The fall-through never fires.
+What the same sweep did find:
+
+- `setInstrRole` assigned `roleEl.textContent` unguarded, and `renderInstructorInner` calls it
+  once per broadcast — **207 MutationObserver records against 208 broadcasts**, i.e. the text
+  node the owner reports blinking was destroyed and recreated 10 times a second (20 on the
+  transient cadence) while its string never changed. Change-guarded now, the same idiom
+  `syncWarpInfo` / `syncPacingUI` / `instrLogTick` already use: **0 records over 21 broadcasts**.
+- **"The time" is the header clock, not the step clock.** `.clock.running` carried
+  `animation: pulse 2s ease-in-out infinite` (opacity 1.0 ↔ 0.6) for as long as the plant ran:
+  **576 opacity transitions over a 50 s ride**, sampled per animation frame, with no
+  `prefers-reduced-motion` escape. Replaced by a steady `color: var(--running)`; `.accel`'s amber
+  still wins by source order.
+
+**The other three.** The `Walkthrough` heading is gone and the persona row goes with it, rather
+than leaving an empty 32 px strip (`#instructorCard.wt-headerless`). *End walkthrough* moved out
+of `#cklRun` — which is only the first child of `.instr-body`, with the transcript below it —
+into a new `#cklBtns` pinned to the panel floor by `margin-top: auto`: measured bottom 921 px
+against a 931 px floor. Rewind step and Continue are built where they were but emitted after the
+detail block, so a step now reads instruction → criteria → why → buttons; the step-advance
+auto-scroll still brings the row into view (6 of 6 consecutive advances). The `why` label itself
+landed at #692 and is now pinned by a check rather than re-implemented.
+
+**#656 does not reproduce, and the reason is dated.** Swept every step of three legs in the
+browser (48 steps), including the six steps in the `pwr2` pool with no acceptance predicate at
+all: `[data-ckl-check]` is drawn 86×23 px on every one, outside any collapsible block, before
+anything is expanded. The report is 2026-09-07; #660 items 17-18 landed 2026-09-08 and made
+Rewind + Continue unconditional on every active step, where the card previously drew the
+acknowledge row only while `ck.awaiting_ack`.
+
+**Gate coverage.** `testWalkthroughPanelChrome` and `testObservationStepAckButton` in
+`test/verify_e2e_ui.js`, plus a shared `startWalkthrough` helper that clicks the menu entry
+through the page — a leg whose preconditions are unmet is `.ckl-gated` and hidden, and
+Playwright's actionability wait times out on it. Every assertion proved by injection (seven,
+each applied to the fixed tree and reverted). **One of them mattered**: the role-node churn
+assertion was first written inside the running walkthrough, which is where it was measured — but
+removing the heading takes that branch off `setInstrRole` entirely, so with the guard reverted
+the check stayed green at 0 mutations. A check beside its own fix, made unfailable by that fix.
+It now measures on the follow branch, with a positive control that the header names the
+procedure. Gates: `verify_e2e_ui` PASS, `verify_ckl_relevance` 21/21, `verify_flags_ui` 52/52,
+`run_checklist_pwr2` 195/195 — all at baseline, no `BASELINES` change (the e2e score is a
+screenshot count).
+
+
 ### Docs (a token-efficiency directive added to CLAUDE.md, and the closed-Cloudflare-actions line retired)
 
 *(OWNER DIRECTIVE, 2026-09-11: "Be token efficient but do not sacrifice quality in any way")*,
@@ -1146,7 +1383,7 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc15] — 2026-09-11
+## [Alpha 1.7.4-rc16] — 2026-09-11
 
 ### Fixed (the Tavg program's no-load anchor had two stale copies left over from an earlier re-anchor — #647)
 

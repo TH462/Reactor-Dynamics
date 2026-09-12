@@ -670,6 +670,138 @@ async function testTripBlockPopoverStaysOffTheBoard(page) {
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
 }
 
+/* THE TRIP BLOCKS POPOVER MUST GO AWAY ON A PRESS OUTSIDE IT (#690; owner playtest #675
+ * section A, verbatim: "Trip block popup should disappear when clicking anywhere outside that
+ * popup.").
+ *
+ * EVERY PRESS HERE IS A REAL POINTER PRESS (`page.mouse.click`), never `element.click()`.
+ * That is not tidiness — it is the only way this check can see the mechanism at all: the
+ * dismissal rides `pointerdown`, and `HTMLElement.click()` dispatches a bare `click` with no
+ * pointer event in front of it, so a .click()-driven version of this check would pass on a
+ * board that had no listener whatsoever.
+ *
+ * FIVE PRESSES, and the middle three are the ones that catch the two ways this can be built
+ * wrong. A listener scoped too broadly (or without the `pop.contains` guard) eats press 2 and
+ * the panel cannot be used at all; one that forgets the TRIP BLOCKS button is exempt closes on
+ * press 3's pointerdown and then the button's own 'click' RE-OPENS it, so the panel becomes
+ * un-closable from the very control an operator would reach for. Press 4 is the mirror: a
+ * dismissal that swallows the button press leaves a panel that can never be opened a second
+ * time. Only press 5 is the feature the owner asked for, and it is the easy one.
+ *
+ * The outside point is found by hit-test, not authored: the check walks the stage on a 17 px
+ * grid and takes the first point where `elementFromPoint` returns the STAGE ITSELF, so the
+ * press cannot land on a plant control and issue a command as a side effect.
+ *
+ * INJECTION-VERIFIED — see the note in run_all.js's BASELINES entry. */
+async function testTripBlockPopoverDismissesOnOutsideClick(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page);
+
+  var btnPt = await page.evaluate(function () {
+    var btn = null, w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), n;
+    while ((n = w.nextNode())) {
+      if ((n.nodeValue || '').trim() === 'TRIP BLOCKS' && n.parentElement.matches('button')) {
+        btn = n.parentElement; break;
+      }
+    }
+    if (!btn) return { missing: 'the TRIP BLOCKS button' };
+    var b = btn.getBoundingClientRect();
+    return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) };
+  });
+  if (btnPt.missing) {
+    console.error('FAIL: the trip-block dismissal fixture is gone (' + btnPt.missing +
+      ') — re-point this check');
+    process.exitCode = 1;
+    return 'trip-block-dismiss: FIXTURE MISSING — ' + btnPt.missing + String.fromCharCode(10);
+  }
+  var isOpen = function () {
+    return page.evaluate(function () { return !!document.querySelector('.bd-pop'); });
+  };
+
+  // press 1 — open it
+  await page.mouse.click(btnPt.x, btnPt.y);
+  var openedAtAll = await isOpen();
+  if (!openedAtAll) {
+    console.error('FAIL: the trip-block dismissal fixture is gone (the popover did not open on ' +
+      'a real pointer press) — re-point this check');
+    process.exitCode = 1;
+    return 'trip-block-dismiss: FIXTURE MISSING — popover would not open' + String.fromCharCode(10);
+  }
+
+  var pts = await page.evaluate(function () {
+    var pop = document.querySelector('.bd-pop');
+    var stage = document.querySelector('.pwr-board-stage');
+    if (!pop || !stage) return { missing: pop ? 'the board stage' : 'the popover' };
+    var head = pop.querySelector('h4') || pop;
+    var hb = head.getBoundingClientRect();
+    var sb = stage.getBoundingClientRect(), pb = pop.getBoundingClientRect();
+    var out = null;
+    for (var y = sb.top + 8; y < sb.bottom - 8 && !out; y += 17) {
+      for (var x = sb.left + 8; x < sb.right - 8; x += 17) {
+        if (x > pb.left - 6 && x < pb.right + 6 && y > pb.top - 6 && y < pb.bottom + 6) continue;
+        if (document.elementFromPoint(x, y) !== stage) continue;   // bare board, no control under it
+        out = { x: Math.round(x), y: Math.round(y) };
+        break;
+      }
+    }
+    if (!out) return { missing: 'a bare point on the board stage outside the popover' };
+    return { inside: { x: Math.round(hb.x + hb.width / 2), y: Math.round(hb.y + hb.height / 2) },
+             outside: out,
+             pop: { x: +pb.x.toFixed(1), right: +pb.right.toFixed(1),
+                    y: +pb.y.toFixed(1), bottom: +pb.bottom.toFixed(1) } };
+  });
+  if (pts.missing) {
+    console.error('FAIL: the trip-block dismissal fixture is gone (' + pts.missing +
+      ') — re-point this check');
+    process.exitCode = 1;
+    return 'trip-block-dismiss: FIXTURE MISSING — ' + pts.missing + String.fromCharCode(10);
+  }
+  log.push('popover x ' + pts.pop.x + '–' + pts.pop.right + ', y ' + pts.pop.y + '–' + pts.pop.bottom);
+  log.push('press points: button ' + btnPt.x + ',' + btnPt.y + ' · inside ' + pts.inside.x + ',' +
+           pts.inside.y + ' · outside (bare stage) ' + pts.outside.x + ',' + pts.outside.y);
+
+  // press 2 — INSIDE the panel: it must stay up, or the panel cannot be used
+  await page.mouse.click(pts.inside.x, pts.inside.y);
+  var afterInside = await isOpen();
+  // press 3 — the TRIP BLOCKS button while it is up: the button's own toggle must still shut it
+  await page.mouse.click(btnPt.x, btnPt.y);
+  var afterButtonWhileOpen = await isOpen();
+  // press 4 — the button again: it must re-open (the dismissal must not swallow the press)
+  await page.mouse.click(btnPt.x, btnPt.y);
+  var afterReopen = await isOpen();
+  // press 5 — OUTSIDE it, on bare board: the feature
+  await page.mouse.click(pts.outside.x, pts.outside.y);
+  var afterOutside = await isOpen();
+  await page.evaluate(function () {   // hand the board back the way we found it
+    var pop = document.querySelector('.bd-pop');
+    if (pop && pop.parentNode) pop.parentNode.removeChild(pop);
+  });
+
+  log.push('open ' + openedAtAll + ' → press inside ' + afterInside + ' → press button ' +
+           afterButtonWhileOpen + ' → press button ' + afterReopen + ' → press outside ' + afterOutside);
+  var bad = [];
+  if (!afterInside) bad.push('a press INSIDE the popover (on its own TRIP BLOCKS heading) closed it — ' +
+    'the listener is missing its `pop.contains(e.target)` guard, so the panel cannot be used at all');
+  if (afterButtonWhileOpen) bad.push('a press on the TRIP BLOCKS button while the popover was up ' +
+    'left it OPEN — the dismissal closed it on pointerdown and the button’s own click re-opened it, ' +
+    'so the panel is un-closable from the control that opens it');
+  if (!afterReopen) bad.push('the popover would not re-open on a press of the TRIP BLOCKS button — ' +
+    'the dismissal is swallowing the opening press');
+  if (afterOutside) bad.push('a press OUTSIDE the popover, on bare board at ' + pts.outside.x + ',' +
+    pts.outside.y + ', left it open — that is the #690 defect itself');
+  if (bad.length) {
+    console.error('FAIL: trip-block popover outside-click dismissal (#690): ' + bad.join('; '));
+    process.exitCode = 1;
+  } else {
+    console.log('  trip-block popover dismisses on an outside press and still toggles from its ' +
+      'own button (#690)');
+  }
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
 async function testEsfArmButtons(page) {
   var log = [];
   /* pwr disables NOTHING; pwr2 disables the DELIBERATE set: the HPI AUTO re-arm (#503),
@@ -1112,6 +1244,448 @@ async function testMonitorList(page) {
   return log.join('\n') + '\n';
 }
 
+/* THE MISSION DOOR IS "MAIN MENU", BESIDE SETTINGS (#689, owner playtest #675 section A,
+ * 2026-09-09: "Add a Main Menu button to the right of settings. Change the SELECT PLANT,
+ * MISSION & RESET menu to this button and get rid of the old button.")
+ *
+ * FOUR CLAIMS, and the last two are the ones nothing else in the tree can see.
+ *
+ *  1. The button exists, reads "Main Menu", and sits in .sim-tools IMMEDIATELY AFTER Settings.
+ *     "To the right of settings" is a position, not "somewhere in the row" — and ⛶ (board
+ *     focus) was already the row's last child, so "append it" and "put it where he asked" are
+ *     different answers. The check reads DOM order inside .sim-tools.
+ *  2. The old full-width .sim-status bar is gone — the id, the class and #simStatusText.
+ *  3. IT ACTUALLY OPENS THE WINDOW, and the window's own ✕ still closes it. A renamed id with
+ *     the listener left on the old one is a button that looks right and does nothing.
+ *  4. NOTHING POINTS AT A NODE THAT NO LONGER EXISTS. Two consumers named #simStatus by
+ *     string: the COACH map (`session`) and the quick tour's step list. BOTH FAIL SILENTLY —
+ *     applyCoachMarks() does `if (el)` and skips, and a tour step with a dead selector just
+ *     highlights empty space. So the tour is DRIVEN to the Main Menu step and its highlight
+ *     rect is measured on the button, and the coach dot is forced on by clearing its
+ *     localStorage key and read off the rendered ::after. A source scan cannot do either. */
+async function testMainMenuButton(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await page.waitForSelector('#mainMenuBtn', { timeout: 8000 }).catch(function () {
+    throw new Error('#689: there is no #mainMenuBtn on the page — the owner asked for a Main ' +
+      'Menu button to the right of Settings and nothing answers to that id');
+  });
+
+  var row = await page.evaluate(function () {
+    var b = document.getElementById('mainMenuBtn');
+    var tools = document.querySelector('.sim-tools');
+    var kids = tools ? Array.prototype.slice.call(tools.children) : [];
+    var r = b.getBoundingClientRect(), sr = null;
+    var st = document.getElementById('settingsBtn');
+    if (st) sr = st.getBoundingClientRect();
+    return {
+      order: kids.map(function (k) { return k.id || k.tagName.toLowerCase(); }),
+      inTools: !!(tools && tools.contains(b)),
+      text: (b.textContent || '').trim(),
+      w: Math.round(r.width), h: Math.round(r.height),
+      leftOfMe: sr ? Math.round(r.left - sr.right) : null,
+      sameRow: sr ? Math.abs(r.top - sr.top) < 4 : false,
+      oldBar: !!document.getElementById('simStatus'),
+      oldBarClass: document.querySelectorAll('.sim-status').length,
+      oldReadout: !!document.getElementById('simStatusText')
+    };
+  });
+  if (!row.inTools) throw new Error('#689: #mainMenuBtn is not inside .sim-tools — order was ' + row.order.join(' , '));
+  if (row.text !== 'Main Menu') throw new Error('#689: the button reads "' + row.text + '", not "Main Menu"');
+  if (row.w < 20 || row.h < 10) throw new Error('#689: #mainMenuBtn paints ' + row.w + 'x' + row.h + ' px');
+  var iS = row.order.indexOf('settingsBtn'), iM = row.order.indexOf('mainMenuBtn');
+  if (iS < 0 || iM !== iS + 1) {
+    throw new Error('#689: Main Menu is not immediately to the RIGHT of Settings — .sim-tools ' +
+      'order is [' + row.order.join(', ') + ']. Appending it to the row puts the ⛶ board-focus ' +
+      'toggle between the two, which is not where the owner asked for it.');
+  }
+  if (!row.sameRow || !(row.leftOfMe >= 0 && row.leftOfMe < 40)) {
+    throw new Error('#689: Main Menu is in DOM order but not painted beside Settings — same row: ' +
+      row.sameRow + ', gap: ' + row.leftOfMe + ' px');
+  }
+  /* THE WHOLE ROW MUST BE ONE LINE, not just Main Menu's half of it (quality pass, 2026-09-11).
+   * #689 tightened .sim-tools to fit six controls in 338 px with 19 px of headroom and its comment
+   * promises that "a seventh named tool wraps it again, and verify_e2e_ui's testMainMenuButton reds
+   * on the PAINTED row and gap rather than letting it go quiet."
+   *
+   * IT DID NOT. PROVED by injection: adding a seventh `.btn.text-btn` to the row took .sim-tools
+   * from 27 px to 55 px on TWO lines — [manual, help, feedback, settings, mainMenu] at y 45 and
+   * [the new tool, demoBtn] at y 75 — and this check stayed GREEN. `flex-wrap` pushes the OVERFLOW
+   * to the end, and Main Menu is fifth of six, so the two assertions above (same row as Settings,
+   * 4 px gap) are both still satisfied while the ⛶ board-focus toggle silently drops below the row
+   * it is supposed to end. The measurement nobody had taken is the one the comment described.
+   *
+   * The row's painted height against its tallest child is the claim, and it reds for whichever
+   * control wraps. Measured one-line: 27 px row, 27 px tallest child. */
+  var wrap = await page.evaluate(function () {
+    var t = document.querySelector('.sim-tools');
+    var kids = Array.prototype.slice.call(t.children);
+    var tallest = 0, lines = {};
+    kids.forEach(function (k) {
+      var r = k.getBoundingClientRect();
+      if (r.height > tallest) tallest = r.height;
+      var band = Math.round(r.top / 5) * 5;
+      (lines[band] = lines[band] || []).push(k.id || k.tagName.toLowerCase());
+    });
+    return { rowH: Math.round(t.getBoundingClientRect().height), tallest: Math.round(tallest),
+             nLines: Object.keys(lines).length, lines: lines };
+  });
+  if (wrap.rowH > wrap.tallest + 6) {
+    throw new Error('#689: the .sim-tools row has WRAPPED — it paints ' + wrap.rowH + ' px against a ' +
+      'tallest control of ' + wrap.tallest + ' px, on ' + wrap.nLines + ' lines: ' +
+      JSON.stringify(wrap.lines) + '. Six controls fit 338 px with 19 px of headroom; a seventh ' +
+      'named tool does not, and the control that drops is whichever is last in the row rather than ' +
+      'the one you added. Either shorten the row or retune .sim-tools deliberately.');
+  }
+  log.push('.sim-tools is one line: ' + wrap.rowH + ' px row, ' + wrap.tallest + ' px tallest control');
+  if (row.oldBar || row.oldBarClass || row.oldReadout) {
+    throw new Error('#689: the old SELECT PLANT, MISSION & RESET bar is still there — #simStatus ' +
+      row.oldBar + ', .sim-status x' + row.oldBarClass + ', #simStatusText ' + row.oldReadout +
+      '. "Get rid of the old button" is half the item.');
+  }
+  log.push('.sim-tools order: ' + row.order.join(' , '));
+  log.push('Main Menu ' + row.w + 'x' + row.h + ' px, ' + row.leftOfMe + ' px right of Settings; ' +
+           'no #simStatus, no .sim-status, no #simStatusText');
+
+  // 3 — it opens the window, and ✕ still closes it.
+  /* THE FIRST CLOSE IS ALSO THE ONE THAT FIRES THE COACH TIP, so the ▲ is measured here and
+   * nowhere else: `missionTipArmed` is set once by boot and spent by this press, which is the
+   * player's own route (#689 moved the bubble up under .sim-tools for exactly this reason).
+   *
+   * THE AIM IS THE ASSERTION, not the presence. #689 moved the bubble to the right ROW and left
+   * it centre-aligned, which put its ▲ 128 px to the LEFT of the button it names — over the
+   * middle of the speed bar — because the bubble spans the whole panel row while Main Menu sits
+   * at the right end of it. A presence check passes on that; so does a class check. The arrow's
+   * painted centre has to land inside the button's painted box, and the glyph's rect is taken
+   * with a Range over the text node rather than from the span's layout box, because an absolutely
+   * positioned inline span can report a box while painting off-target. */
+  await dismissMission(page);
+  await page.waitForTimeout(250);
+  var aim = await page.evaluate(function () {
+    var t = document.getElementById('mainMenuTip'), b = document.getElementById('mainMenuBtn');
+    if (!t || !b) return { missing: !t ? '#mainMenuTip' : '#mainMenuBtn' };
+    var a = t.querySelector('.mm-arrow');
+    if (!a || !a.firstChild) return { noArrow: true, hidden: t.hidden, html: t.innerHTML.slice(0, 60) };
+    var rg = document.createRange(); rg.setStart(a.firstChild, 0); rg.setEnd(a.firstChild, 1);
+    var ar = rg.getBoundingClientRect(), br = b.getBoundingClientRect(), tr = t.getBoundingClientRect();
+    return { hidden: t.hidden, glyph: (a.textContent || '').trim(),
+             ax: +((ar.left + ar.right) / 2).toFixed(1), ay: +((ar.top + ar.bottom) / 2).toFixed(1),
+             bl: +br.left.toFixed(1), br: +br.right.toFixed(1), bb: +br.bottom.toFixed(1),
+             tipL: +tr.left.toFixed(1), tipR: +tr.right.toFixed(1), tipTop: +tr.top.toFixed(1) };
+  });
+  if (aim.missing) throw new Error('#689: the coach tip fixture is gone — no ' + aim.missing);
+  if (aim.noArrow) {
+    throw new Error('#689: #mainMenuTip carries no .mm-arrow glyph to aim — ' + JSON.stringify(aim) +
+      '. The ▲ has to be its own node, or it cannot be positioned independently of the centred text.');
+  }
+  if (aim.hidden) {
+    throw new Error('#689 control: the coach tip did not appear on the first close of the Plant & ' +
+      'Mission window, so its aim cannot be measured — missionTipArmed never fired');
+  }
+  if (!(aim.ax >= aim.bl && aim.ax <= aim.br)) {
+    throw new Error('#689: #mainMenuTip\'s ▲ points ' + Math.round(Math.min(Math.abs(aim.ax - aim.bl),
+      Math.abs(aim.ax - aim.br))) + ' px away from the Main Menu button it names — arrow centre x ' +
+      aim.ax + ', button box ' + aim.bl + '–' + aim.br + ', bubble ' + aim.tipL + '–' + aim.tipR +
+      '. The bubble spans the whole tools row and the button sits at its right end, so a CENTRED ' +
+      'arrow lands over the speed bar; aimMainMenuTip() has to set --mm-arrow-x from the button.');
+  }
+  if (aim.ay < aim.bb) {
+    throw new Error('#689: the tip\'s ▲ (y ' + aim.ay + ') is drawn ABOVE the button\'s bottom edge (' +
+      aim.bb + ') — the bubble is not below the row it points at');
+  }
+  log.push('coach tip ▲ at x ' + aim.ax + ', inside the Main Menu box ' + aim.bl + '–' + aim.br +
+           ' (bubble ' + aim.tipL + '–' + aim.tipR + ')');
+  await page.evaluate(function () { var t = document.getElementById('mainMenuTip'); if (t) t.hidden = true; });
+  if (await page.isVisible('#missionOverlay')) throw new Error('#689: could not get the window shut to start from');
+  await page.click('#mainMenuBtn');
+  await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 4000 })
+    .catch(function () { /* the throw below carries the message */ });
+  if (!(await page.isVisible('#missionOverlay'))) {
+    throw new Error('#689: pressing Main Menu did not open the Plant & Mission window — the ' +
+      'openMissionSelect listener is still bound to the deleted #simStatus');
+  }
+  log.push('Main Menu opens the window');
+
+  // 4a — the quick tour's step for this button lands ON the button.
+  await page.click('#missionClose');
+  await page.waitForTimeout(300);
+  /* renderTour() SKIPS a step whose selector resolves to nothing ("Skip missing targets rather
+   * than stalling the tour") and moves straight to the next one — so a dead selector costs a
+   * whole step and raises nothing. The probe therefore walks the tour to its end and demands
+   * that a step titled "Main Menu" both EXISTS and lands its spotlight on the button: a
+   * missing step and a mis-aimed one are different defects and both are invisible otherwise. */
+  var tour = await page.evaluate(async function () {
+    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    var help = document.getElementById('helpBtn');
+    var starter = document.getElementById('helpTourBtn');
+    if (!help || !starter) return { err: 'no #helpBtn / #helpTourBtn to start the tour from' };
+    help.click();
+    await sleep(250);
+    starter.click();
+    await sleep(400);
+    var root = document.getElementById('tourRoot');
+    if (!root || root.hidden) return { err: 'the tour did not open (#tourRoot still hidden)' };
+    var seen = [], guard = 0;
+    while (guard++ < 40) {
+      var title = (document.getElementById('tourTitle') || {}).textContent || '';
+      var spot = document.getElementById('tourSpot');
+      var live = document.querySelector('.tour-target-live');
+      var sr = spot ? spot.getBoundingClientRect() : null;
+      seen.push({
+        title: title.trim(),
+        prog: ((document.getElementById('tourProg') || {}).textContent || '').trim(),
+        liveId: live ? (live.id || live.className) : null,
+        spot: sr ? { x: Math.round(sr.x), y: Math.round(sr.y), w: Math.round(sr.width), h: Math.round(sr.height) } : null
+      });
+      var next = document.getElementById('tourNext');
+      if (!next || /done/i.test(next.textContent || '')) break;
+      next.click();
+      await sleep(260);
+    }
+    var b = document.getElementById('mainMenuBtn').getBoundingClientRect();
+    var close = document.getElementById('tourSkip'); if (close) close.click();
+    return { steps: seen,
+             btn: { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) } };
+  });
+  if (tour.err) throw new Error('#689: could not drive the quick tour — ' + tour.err);
+
+  /* #720 — THE TOUR MUST WALK EVERY STEP IT DECLARES, and this is the general form of the
+   * defect, not a check pinned to one step.
+   *
+   * renderTour()'s skip branch ("Skip missing targets rather than stalling the tour") costs a
+   * whole step and, until #720, printed nothing: `#tourProg` simply jumped. Measured on the
+   * shipped board before the fix — 1/11, then 3/11 — because step 2 pointed at `#gaugeStrip`,
+   * which is `display: none` on the PWR, so `tourElVisible()` rejected it. Ten of eleven steps
+   * ran and the tour read as complete. Nothing in the suite could see it: every existing
+   * assertion was about a step that DID render.
+   *
+   * The claim is the whole sequence, taken off `#tourProg`'s own denominator so it cannot go
+   * stale when a step is added or removed: the walk must report 1/N, 2/N … N/N with no gap.
+   * Any step whose selector is absent, hidden or zero-sized reds here by name.
+   *
+   * PROVED RED BY INJECTION (2026-09-12), at BOTH shapes, because "absent" and "present but
+   * invisible" reach tourElVisible() by different routes. Pointing the Alarms step (3 of 11) at
+   * `#rd720InjectionAbsent`, which matches nothing, and then at `#gaugeStrip`, which exists with
+   * six children and is display:none, each gave: "walked 10 of 11 and the progress readout went
+   * 1 -> 2 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10 -> 11. Never rendered: 3 / 11". Selector restored,
+   * green at 11 of 11. */
+  var walk = (tour.steps || []).map(function (s) {
+    var m = /^(\d+)\s*\/\s*(\d+)$/.exec(s.prog || '');
+    return m ? { i: +m[1], n: +m[2] } : null;
+  });
+  if (walk.some(function (w) { return !w; })) {
+    throw new Error('#720: a tour step reported no readable progress — #tourProg values were ' +
+      JSON.stringify(tour.steps.map(function (s) { return s.prog; })));
+  }
+  var total = walk[0].n;
+  if (walk.some(function (w) { return w.n !== total; })) {
+    throw new Error('#720: the tour changed its own step total mid-walk — ' +
+      JSON.stringify(walk.map(function (w) { return w.i + '/' + w.n; })));
+  }
+  var missing = [];
+  for (var wi = 1; wi <= total; wi++) {
+    if (!walk.some(function (w) { return w.i === wi; })) missing.push(wi + ' / ' + total);
+  }
+  if (missing.length || walk.length !== total) {
+    throw new Error('#720: the quick tour SILENTLY SKIPPED ' + missing.length + ' of its ' +
+      total + ' steps — it walked ' + walk.length + ' of ' + total + ' and the progress ' +
+      'readout went ' + walk.map(function (w) { return w.i; }).join(' -> ') + '. Never ' +
+      'rendered: ' + (missing.join(', ') || '(none — the walk repeated a step instead)') +
+      '. renderTour() skips a step whose `sel`/`sels` resolve to nothing visible and says ' +
+      'nothing, so a step pointing at an element that is absent, hidden or display:none on ' +
+      'this plant costs the player the whole step. Fix the selector — do NOT relax this check.');
+  }
+  log.push('quick tour walks every declared step: ' + walk.map(function (w) { return w.i; }).join(', ') +
+           ' of ' + total + ', titles ' + JSON.stringify(tour.steps.map(function (s) { return s.title; })));
+
+  var named = (tour.steps || []).filter(function (s) { return /main menu/i.test(s.title || ''); });
+  if (!named.length) {
+    throw new Error('#689: the quick tour walked ' + tour.steps.length + ' steps and none is ' +
+      'titled "Main Menu" — titles were ' +
+      JSON.stringify(tour.steps.map(function (s) { return s.title; })) + '. renderTour() SKIPS a ' +
+      'step whose selector resolves to nothing, so a stale sel is exactly this shape.');
+  }
+  var st = named[0];
+  if (st.liveId !== 'mainMenuBtn') {
+    throw new Error('#689: the tour\'s Main Menu step highlighted "' + st.liveId + '", not ' +
+      '#mainMenuBtn — its `sel` points somewhere else');
+  }
+  var cx = st.spot ? st.spot.x + st.spot.w / 2 : -1, cy = st.spot ? st.spot.y + st.spot.h / 2 : -1;
+  var inside = cx >= tour.btn.x - 12 && cx <= tour.btn.x + tour.btn.w + 12 &&
+               cy >= tour.btn.y - 12 && cy <= tour.btn.y + tour.btn.h + 12;
+  if (!inside) {
+    throw new Error('#689: the tour\'s Main Menu spotlight is not over the button — spotlight ' +
+      JSON.stringify(st.spot) + ', button ' + JSON.stringify(tour.btn));
+  }
+  log.push('quick tour: ' + tour.steps.length + ' steps; the "' + st.title + '" step (' + st.prog +
+           ') spotlights #' + st.liveId + ' at ' + JSON.stringify(st.spot));
+
+  // 4b — the coach dot resolves to this button. Forced on by clearing its seen key.
+  await page.evaluate(function () {
+    try { localStorage.removeItem('rd_seen_session'); } catch (e) { /* private mode */ }
+  });
+  await page.reload({ waitUntil: 'networkidle', timeout: 90000 });
+  await page.waitForSelector('#mainMenuBtn', { timeout: 8000 });
+  var dot = await page.evaluate(function () {
+    var b = document.getElementById('mainMenuBtn');
+    var after = getComputedStyle(b, '::after');
+    return { marked: b.classList.contains('unvisited'),
+             w: after.width, h: after.height, pos: after.position,
+             anyElse: Array.prototype.map.call(document.querySelectorAll('.unvisited'),
+               function (e) { return e.id || e.className; }) };
+  });
+  if (!dot.marked) {
+    throw new Error('#689: the coach dot does not reach the Main Menu button — COACH.session ' +
+      'still names a deleted element, and applyCoachMarks() skips a missing node in silence. ' +
+      'Elements carrying .unvisited: ' + JSON.stringify(dot.anyElse));
+  }
+  if (dot.pos !== 'absolute' || parseFloat(dot.w) < 4 || parseFloat(dot.h) < 4) {
+    throw new Error('#689: #mainMenuBtn carries .unvisited but the dot paints nothing — ' +
+      '::after is ' + dot.w + ' x ' + dot.h + ' at position ' + dot.pos +
+      ' (.unvisited::after needs a positioned parent)');
+  }
+  log.push('coach dot reaches Main Menu: ::after ' + dot.w + ' x ' + dot.h);
+
+  // …and it retires on first use, on the new element.
+  await dismissMission(page);
+  await page.waitForTimeout(250);
+  await page.click('#mainMenuBtn');
+  await page.waitForTimeout(350);
+  var gone = await page.evaluate(function () {
+    return document.getElementById('mainMenuBtn').classList.contains('unvisited');
+  });
+  if (gone) throw new Error('#689: the coach dot did not retire when Main Menu was pressed — ' +
+    "markSeen('session') is still bound to the deleted #simStatus");
+  log.push('coach dot retires on first press');
+  await page.click('#missionClose');
+  await page.waitForTimeout(300);
+  return log.join('\n') + '\n';
+}
+
+/* THE PLANT & MISSION WINDOW'S SHAPE (#688, owner playtest #675 section A, 2026-09-09:
+ * "Put a green [NEW] next to the Walkthroughs tab in the plant and mission menu. Remove the
+ * plant selection column from the plant and mission menu.")
+ *
+ * TWO CLAIMS, AND BOTH ARE READ OFF THE RENDERED DOM rather than the source, because a
+ * source scan for a rendered string cannot tell you the string is reachable (#485). The
+ * column was BUILT IN JS into #mpPlants, so "the div left shell.html" is not the claim — the
+ * claim is that no plant card reaches the screen and the body no longer reserves the 260 px
+ * track one would have sat in. Measured on a dev build before the change: five cards, `pwr`
+ * and `pwr2` selectable and three greyed COMING SOON, in a 260px|678px grid.
+ *
+ * The badge is asserted on its COMPUTED COLOUR and its painted rect, never on the class name.
+ * "Green" is the owner's word for it and it is the half a class-name check cannot see: a
+ * badge whose .mp-new rule never loaded still carries the class and still reads NEW.
+ *
+ * The third assertion is the one that makes the removal safe. All four content builders read
+ * `msel.engine`, which the deleted [data-mplant] handler used to write; it is now only ever
+ * seeded from ui.engineKey in openMissionSelect(), and a tab that renders empty is how a
+ * broken seed would surface. Driven through the dev door (?mmode=) so campaign and scenarios
+ * are swept as well — the player's window offers only the first two tabs (#660 item 19).
+ * `dev=1` arms RD.__dev so the last assertion can name the engine the Start button actually
+ * constructed; it does NOT move the flags channel, which site/flags.js reads from
+ * `channel=`/`flags=`/RD_CHANNEL, so the tab list under test is still the dev-door one. */
+async function testMissionMenuShape(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&mmode=free&dev=1',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 8000 });
+
+  var shape = await page.evaluate(function () {
+    var body = document.querySelector('#missionOverlay .mission-body');
+    var cols = getComputedStyle(body).gridTemplateColumns;
+    return {
+      column: !!document.getElementById('mpPlants'),
+      cards: document.querySelectorAll('[data-mplant]').length,
+      cols: cols,
+      tracks: cols.trim().split(/\s+/).length
+    };
+  });
+  if (shape.column || shape.cards) {
+    throw new Error('#688: the plant selection column is still on screen — #mpPlants ' +
+      (shape.column ? 'exists' : 'gone') + ', ' + shape.cards + ' [data-mplant] card(s) rendered');
+  }
+  if (shape.tracks !== 1) {
+    throw new Error('#688: the plant column is gone but .mission-body still reserves its track — ' +
+      'grid-template-columns is "' + shape.cols + '". The Plant & Mission body needs .mp-body; ' +
+      'the 260px|1fr default stays because the chart-settings window reuses this class with a ' +
+      'real left column.');
+  }
+  log.push('no plant column: 0 cards, body is one ' + shape.cols + ' track');
+
+  var badge = await page.evaluate(function () {
+    var out = { badges: [], walkthroughTab: null };
+    var btns = document.querySelectorAll('#mpModes [data-mmode]');
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i], s = b.querySelector('.mp-new');
+      if (b.getAttribute('data-mmode') === 'walkthroughs') out.walkthroughTab = (b.textContent || '').trim();
+      if (!s) continue;
+      var r = s.getBoundingClientRect(), c = getComputedStyle(s);
+      out.badges.push({ tab: b.getAttribute('data-mmode'), text: (s.textContent || '').trim(),
+                        color: c.color, w: Math.round(r.width), h: Math.round(r.height) });
+    }
+    return out;
+  });
+  if (badge.badges.length !== 1 || badge.badges[0].tab !== 'walkthroughs') {
+    throw new Error('#688: expected exactly one NEW badge and it belongs on the Walkthroughs ' +
+      'tab — got ' + JSON.stringify(badge.badges) + ' (the Walkthroughs tab reads "' +
+      badge.walkthroughTab + '")');
+  }
+  var nb = badge.badges[0];
+  if (!/^NEW$/.test(nb.text)) throw new Error('#688: the badge reads "' + nb.text + '", not NEW');
+  if (nb.w < 4 || nb.h < 4) {
+    throw new Error('#688: the NEW badge is in the DOM but paints ' + nb.w + 'x' + nb.h + ' px');
+  }
+  var rgb = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(nb.color);
+  if (!rgb) throw new Error('#688: could not read the badge colour ("' + nb.color + '")');
+  var R = +rgb[1], G = +rgb[2], B = +rgb[3];
+  if (!(G > R + 30 && G > B + 30)) {
+    throw new Error('#688: the badge is not GREEN — computed colour ' + nb.color + '. The owner ' +
+      'asked for a green [NEW], and the colour is the half a class-name check cannot see.');
+  }
+  log.push('NEW badge on Walkthroughs only: ' + nb.w + 'x' + nb.h + ' px, ' + nb.color);
+
+  var tabs = await page.$$eval('#mpModes [data-mmode]', function (els) {
+    return els.map(function (e) { return e.getAttribute('data-mmode'); });
+  });
+  var thin = [];
+  for (var i = 0; i < tabs.length; i++) {
+    await page.click('[data-mmode="' + tabs[i] + '"]');
+    await page.waitForTimeout(250);
+    var chars = await page.evaluate(function () {
+      var c = document.getElementById('mpContent');
+      return ((c && c.textContent) || '').trim().length;
+    });
+    log.push('tab ' + tabs[i] + ': ' + chars + ' chars of content');
+    if (chars < 40) thin.push(tabs[i] + '=' + chars);
+  }
+  if (thin.length) {
+    throw new Error('#688: a mode tab built (nearly) nothing once the plant column was ' +
+      'removed — ' + thin.join(', ') + '. All four builders read msel.engine, which the ' +
+      'deleted [data-mplant] handler used to write.');
+  }
+
+  // …and Start still boots the plant, with no plant card left to have selected it.
+  await page.click('[data-mmode="free"]');
+  await page.waitForTimeout(200);
+  await page.click('[data-mfree]');
+  await waitBoardLive(page, 20000);
+  var boot = await page.evaluate(function () {
+    var pid = null;
+    try { pid = RD.__dev.service().activePlantId; } catch (e) { pid = null; }
+    return { hidden: !!document.getElementById('missionOverlay').hidden,
+             paused: document.getElementById('playBtn').classList.contains('paused'),
+             plant: pid, clock: (document.getElementById('clock').textContent || '').trim() };
+  });
+  if (!boot.hidden || boot.paused || boot.plant !== 'pwr2') {
+    throw new Error('#688: Free Play no longer boots the plant after the column was removed — ' +
+      JSON.stringify(boot));
+  }
+  log.push('Free Play starts: plant_id=' + boot.plant + ', running at ' + boot.clock);
+  return log.join('\n') + '\n';
+}
+
 /* CLOSING PLANT & MISSION LEAVES THE PLANT RUNNING *(OWNER, 2026-08-11: "When i close the
  * plant menu after starting the sim the sim should start playing. it currently starts
  * paused. it should start running after closing the plant & mission menu.")*.
@@ -1143,7 +1717,7 @@ async function testMissionCloseResumes(page) {
   log.push('✕ Close: plant runs');
 
   // The reported path: pick a starting condition and press Free Play.
-  await page.click('#simStatus');
+  await page.click('#mainMenuBtn');
   await page.waitForTimeout(400);
   if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission');
   await page.click('[data-mfree]');
@@ -1168,7 +1742,7 @@ async function testMissionCloseResumes(page) {
   await page.click('#playBtn');
   await page.waitForTimeout(300);
   if (await running()) throw new Error('⏸ did not stop the plant');
-  await page.click('#simStatus');
+  await page.click('#mainMenuBtn');
   await page.waitForTimeout(400);
   if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission (2nd)');
   await page.click('[data-mfree]');
@@ -2236,7 +2810,7 @@ async function testWalkthroughHoldReleasedOnExit(page) {
 
   // ---- gap 1: Session Reset (doReset, ui/app.js ~9423) --------------------------------
   await armPausedWalkthrough();
-  await page.click('#simStatus');
+  await page.click('#mainMenuBtn');
   await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 5000 });
   await page.click('[data-mreset]');   // arm
   await page.click('[data-mreset]');   // confirm -> doReset(true)
@@ -2246,7 +2820,7 @@ async function testWalkthroughHoldReleasedOnExit(page) {
 
   // ---- gap 2: a plant switch (switchEngine, ui/app.js ~9362, via Free Play) -----------
   await armPausedWalkthrough();
-  await page.click('#simStatus');
+  await page.click('#mainMenuBtn');
   await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 5000 });
   await page.click('[data-mfree]');
   await page.waitForTimeout(500);
@@ -3247,7 +3821,7 @@ async function testRodLimitMarginIndicationRange(page) {
     return { was: was, now: R.max_steps };
   }, 2.5);
   await page.waitForTimeout(1500);      // >= one broadcast, so `latest` carries the moved bank
-  await page.click('#simStatus');
+  await page.click('#mainMenuBtn');
   await page.waitForTimeout(400);
   if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission to reset the plant');
   await page.click('[data-mfree]');
@@ -3325,6 +3899,348 @@ async function testCssTransitions(page) {
       counts.join(',') + '; targets ' + top.join(' | ') +
       '. Something is transitioning a value rewritten every broadcast.');
   }
+  return log.join('\n') + '\n';
+}
+
+/* START A WALKTHROUGH AND LAND ON ITS CARD — the three-step dance every walkthrough check in
+ * this file repeats. `start_checklist` alone is not enough: the run card is drawn behind
+ * `cklState.view === 'run'`, a UI-local flag only `startChecklist()` sets, so the Walkthroughs
+ * tab's own entry has to be clicked. It is clicked THROUGH THE PAGE rather than by
+ * `page.click`, because a leg whose preconditions are unmet wears `.ckl-gated` and is HIDDEN —
+ * Playwright's actionability check waits for visibility and times out, while the delegated
+ * `data-ckl-start` listener at document.body does not care (measured: pwr_startup, 26 polls
+ * against a hidden button). */
+async function startWalkthrough(page, procId) {
+  var started = await page.evaluate(function (p) {
+    try {
+      var svc = globalThis.RD.__dev.service();
+      svc.attentionStops = false;
+      svc.handleCommand({ action: 'stop_checklist' });
+      var r = svc.handleCommand({ action: 'start_checklist', procedure_id: p });
+      return { ok: !(r && r.type === 'error'), msg: r && r.message };
+    } catch (e) { return { ok: false, msg: String(e) }; }
+  }, procId);
+  if (!started.ok) throw new Error('fixture: start_checklist ' + procId + ' failed — ' + started.msg);
+  await page.click('#tabbar [data-tab="checklists"]');
+  await page.waitForSelector('[data-ckl-start="' + procId + '"]', { timeout: 15000, state: 'attached' });
+  await page.evaluate(function (p) { document.querySelector('[data-ckl-start="' + p + '"]').click(); }, procId);
+  await page.waitForFunction(function () {
+    var b = document.querySelector('#tabbar button.on');
+    return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step.ckl-active');
+  }, { timeout: 20000, polling: 200 });
+}
+
+/* #687 — THE WALKTHROUGH PANEL'S CHROME. Four owner complaints (2026-09-09 playtest sheet §A),
+ * every one of them a claim about what is DRAWN and WHERE, so every one of them invisible to
+ * every Node runner in this repo.
+ *
+ * ON THE FLICKER, SAID PLAINLY: the filed mechanism — `renderInstructorInner` falling through to
+ * a later branch on a broadcast with no `s.instructor.checklist` — DID NOT REPRODUCE.
+ * `s.instructor.checklist` was non-null on 308 of 308 broadcasts across a full ride (step
+ * advances, five speed changes, pause/resume cycles) and `#instrRole` read "Walkthrough" on all
+ * 1108 sampled frames with its opacity, visibility and box unmoved. What the same sweep DID
+ * measure is below, and both halves are pinned here:
+ *
+ *   - `#instrRole`'s TEXT NODE was destroyed and recreated on EVERY broadcast — 207 records
+ *     against 208 broadcasts — because `setInstrRole` assigned `textContent` unguarded. That is
+ *     a 10 Hz (20 Hz on the transient cadence) rebuild of the exact node the owner reports
+ *     blinking, and it is the only per-broadcast writer in that header. Change-guarded now.
+ *   - `#clock` carried `animation: pulse 2s infinite` (opacity 1.0 <-> 0.6) for as long as the
+ *     plant ran: 576 opacity transitions over 50 s, sampled per animation frame. THAT is "other
+ *     UI elements like the time keep doing the same", and it is not a walkthrough defect at all.
+ *
+ * A source scan cannot settle any of this: the heading's absence is a computed `display`, the
+ * button order is two rectangles, and an animation is a resolved `animationName`. */
+async function testWalkthroughPanelChrome(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  /* THE CLOCK FIRST, BEFORE ANY WALKTHROUGH — it is a free-play defect and pinning it inside a
+   * walkthrough would let a future change hide it behind the checklist branch. */
+  var clk = await page.evaluate(function () {
+    var c = document.getElementById('clock');
+    var out = { running: c.classList.contains('running'), accel: c.classList.contains('accel'),
+                anim: getComputedStyle(c).animationName, opacity: getComputedStyle(c).opacity,
+                color: getComputedStyle(c).color };
+    /* the SAME element with `running` taken off, so "the running clock is coloured" is a
+     * difference rather than a reading of whatever the clock is coloured anyway */
+    c.classList.remove('running');
+    out.offColor = getComputedStyle(c).color;
+    if (out.running) c.classList.add('running');
+    /* --running resolved through the cascade, so the assertion names the token the fix chose
+     * rather than a hex literal copied into a test */
+    var probe = document.createElement('span');
+    probe.style.color = 'var(--running)';
+    document.body.appendChild(probe);
+    out.runningToken = getComputedStyle(probe).color;
+    probe.remove();
+    return out;
+  });
+  if (!clk.running) throw new Error('#687 control: the clock is not marked running, so this check would pass on a stopped plant');
+  if (clk.anim !== 'none') {
+    throw new Error('#687: the running clock is animating ("' + clk.anim + '") — an indefinite ' +
+      'opacity fade on a always-on readout is the "the time keeps appearing and disappearing" report');
+  }
+  /* AND THE THING THAT REPLACED THE FADE IS ASSERTED, not just the fade's absence (quality pass,
+   * 2026-09-11). PROVED HOLLOW by injection: with only the `animationName !== 'none'` test above,
+   * deleting `.clock.running { color: var(--running) }` left this check GREEN — so the running
+   * plant's only remaining cue on the clock could go silently and the gate would agree. #687's
+   * own argument for removing the animation is that "a steady colour carries the same fact with
+   * no motion"; that colour is half the fix and it now reds if it goes. `.accel` legitimately
+   * wins by source order, so the token is only demanded when the clock is not accelerated —
+   * either way the running clock must not read the same as a stopped one. */
+  if (clk.color === clk.offColor) {
+    throw new Error('#687: the running clock is not distinguished from a stopped one — both read ' +
+      clk.color + '. The pulse animation was removed in favour of a steady colour; with the colour ' +
+      'gone too there is no running cue on the clock at all.');
+  }
+  if (!clk.accel && clk.color !== clk.runningToken) {
+    throw new Error('#687: the running clock reads ' + clk.color + ', not the board\'s --running ' +
+      'green (' + clk.runningToken + ') — .clock.running lost the colour that replaced the fade');
+  }
+  log.push('clock: running, animationName ' + clk.anim + ', opacity ' + clk.opacity +
+           ', colour ' + clk.color + ' (--running ' + clk.runningToken + '; stopped reads ' + clk.offColor + ')');
+
+  /* ---- setInstrRole's change guard, MEASURED WHERE THE FUNCTION IS ACTUALLY CALLED --------
+   *
+   * Not during the walkthrough, and that is the whole point: the walkthrough branch no longer
+   * calls setInstrRole at all (it goes headerless), so a churn assertion taken there is HOLLOW —
+   * PROVED by injection, 2026-09-11: reverting the guard to the unconditional write left this
+   * check GREEN at 0 mutations, because nothing was writing. The FOLLOW branch
+   * (`setInstrRole(prF.title)`) runs once per broadcast for as long as a procedure is followed,
+   * which is the state the unguarded write was measured in (207 records / 208 broadcasts). */
+  var followed = await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    svc.attentionStops = false;
+    var r = svc.handleCommand({ action: 'start_follow', procedure_id: 'pwr_startup' });
+    return { ok: !(r && r.type === 'error'), msg: r && r.message };
+  });
+  if (!followed.ok) throw new Error('#687 fixture: start_follow pwr_startup failed — ' + followed.msg);
+  await page.waitForTimeout(700);
+  await page.evaluate(function () {
+    var W = globalThis.__wtChrome = { mut: 0, bc: 0, role: null };
+    var r = document.getElementById('instrRole');
+    W.role = r.textContent;
+    new MutationObserver(function (recs) { W.mut += recs.length; })
+      .observe(r, { childList: true, characterData: true, subtree: true });
+    globalThis.RD.__dev.service().subscribe(function () { W.bc++; });
+  });
+  await page.waitForTimeout(2200);
+  var churn = await page.evaluate(function () { return globalThis.__wtChrome; });
+  if (churn.bc < 8) {
+    throw new Error('#687 control: only ' + churn.bc + ' broadcasts landed in 2.2 s — the plant is ' +
+      'not ticking, so the churn check could not fail');
+  }
+  if (!churn.role || churn.role === 'Instructor') {
+    throw new Error('#687 control: the follow branch did not name the procedure in the header ' +
+      '("' + churn.role + '"), so setInstrRole is not the per-broadcast writer this measures');
+  }
+  if (churn.mut > 2) {
+    throw new Error('#687: the persona role node was rewritten ' + churn.mut + ' times over ' +
+      churn.bc + ' broadcasts (ceiling 2) — setInstrRole is writing textContent unguarded');
+  }
+  log.push('role node under follow ("' + churn.role + '"): ' + churn.mut + ' mutations over ' +
+           churn.bc + ' broadcasts');
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_follow' }); });
+  await page.waitForTimeout(400);
+
+  await startWalkthrough(page, 'pwr_heatup');
+  await page.waitForTimeout(900);
+
+  var r = await page.evaluate(function () {
+    function box(sel) {
+      var el = document.querySelector(sel); if (!el) return null;
+      var rc = el.getBoundingClientRect();
+      return { top: Math.round(rc.top), bottom: Math.round(rc.bottom), h: Math.round(rc.height),
+               text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40) };
+    }
+    var persona = document.querySelector('#instructorCard .persona');
+    return {
+      role: (document.getElementById('instrRole') || {}).textContent,
+      personaDisplay: persona ? getComputedStyle(persona).display : null,
+      instrBody: box('#instructorCard .instr-body'),
+      instrLog: box('#instrLog'),
+      cklBtns: box('#cklBtns'),
+      stopInBtns: !!document.querySelector('#cklBtns [data-ckl-stop]'),
+      stopInCard: !!document.querySelector('#cklRun [data-ckl-stop]'),
+      why: box('.ckl-active .ckl-why'),
+      whyLbl: box('.ckl-active .ckl-why-lbl'),
+      ackRow: box('.ckl-active .ckl-ack-row'),
+      stepTxt: box('.ckl-active .ckl-txt'),
+    };
+  });
+  /* positive control: the card really is drawn, with a why on the active step — without this
+   * every "is A below B" test below passes vacuously on a panel that rendered nothing */
+  if (!r.stepTxt || !r.why || !r.ackRow || !r.instrBody) {
+    throw new Error('#687 control: the active walkthrough step did not render its text/why/buttons — ' +
+                    JSON.stringify(r));
+  }
+
+  /* ---- item 1a: no "Walkthrough" heading, and no empty strip left behind ---------------- */
+  if (/walkthrough/i.test(r.role || '') || r.personaDisplay !== 'none') {
+    throw new Error('#687 item 1: the persona header is still drawn during a walkthrough — role "' +
+      r.role + '", display ' + r.personaDisplay);
+  }
+  log.push('header: persona display ' + r.personaDisplay + ' (role text parked at "' + r.role + '")');
+
+  /* ---- item 2: End walkthrough at the bottom of the SPACE, not of the card -------------- */
+  if (!r.cklBtns || !r.stopInBtns || r.stopInCard) {
+    throw new Error('#687 item 2: the End-walkthrough row is not in #cklBtns — ' +
+      'inBtns=' + r.stopInBtns + ' inCard=' + r.stopInCard);
+  }
+  if (r.cklBtns.top < r.instrLog.bottom) {
+    throw new Error('#687 item 2: the End-walkthrough row (top ' + r.cklBtns.top + ') is ABOVE the ' +
+      'transcript (bottom ' + r.instrLog.bottom + ') — it is at the bottom of the card, not of the space');
+  }
+  /* THE EFFECT IS THE ASSERTION, AND TWO MECHANISMS CAN DELIVER IT (quality pass, 2026-09-11).
+   * This test is right and stays; only its error message was wrong, because it blamed
+   * `margin-top: auto` — which it cannot see.
+   *
+   * MEASURED THREE WAYS, each restored:
+   *   - `margin-top: auto` deleted            -> GREEN, IDENTICAL numbers (921 / 931 / 889). The
+   *     row is at the floor because `.instr-log` is `flex: 1 1 0` and eats every free pixel; auto
+   *     margins only take what flex-grow left over, and computed marginTop is `0px` at viewport
+   *     heights 950, 1200, 760 and 640.
+   *   - `.instr-log` dropped to `flex: 0 0 auto` -> GREEN. Now the auto margin DOES absorb the
+   *     free space (96 / 282 / 14 px at those heights) and holds the row down on its own.
+   *   - BOTH removed                          -> RED, "floats 97 px above the panel floor".
+   *
+   * So this reds when NEITHER reaches the row, which is the right bar: the owner asked for the
+   * button at the bottom of the space, not for a particular declaration. Do not narrow it to one
+   * mechanism — that is how a check starts pinning a stylesheet instead of a layout. */
+  if (r.instrBody.bottom - r.cklBtns.bottom > 24) {
+    throw new Error('#687 item 2: the End-walkthrough row floats ' +
+      (r.instrBody.bottom - r.cklBtns.bottom) + ' px above the panel floor (ceiling 24) — ' +
+      'nothing is pushing it down any more: #instrLog above it has stopped being the growing ' +
+      'child of .instr-body AND the row is not absorbing the free space with margin-top:auto ' +
+      '(either one alone holds it at the floor; measured, both do)');
+  }
+  log.push('End walkthrough: bottom ' + r.cklBtns.bottom + ' vs panel floor ' + r.instrBody.bottom +
+           ', below the transcript (' + r.instrLog.bottom + ')');
+
+  /* ---- item 3: Rewind + Continue BELOW the why, not above it ---------------------------- */
+  if (r.ackRow.top < r.why.bottom) {
+    throw new Error('#687 item 3: Rewind/Continue (top ' + r.ackRow.top + ') is drawn ABOVE the ' +
+      'why block (bottom ' + r.why.bottom + ')');
+  }
+  if (r.ackRow.top < r.stepTxt.bottom) {
+    throw new Error('#687 item 3: Rewind/Continue is drawn above the numbered step text');
+  }
+  log.push('buttons: step text ends ' + r.stepTxt.bottom + ' -> why ends ' + r.why.bottom +
+           ' -> Rewind/Continue at ' + r.ackRow.top);
+
+  /* ---- item 4: the why is LABELLED (landed at #692; pinned here so it cannot silently go) */
+  if (!r.whyLbl || !r.whyLbl.text) {
+    throw new Error('#687 item 4: the why block carries no visible label — it reads as another step');
+  }
+  log.push('why label: "' + r.whyLbl.text + '"');
+
+  /* ---- the header comes back, and the row goes, when the run ends ----------------------- */
+  await page.evaluate(function () { document.querySelector('#cklBtns [data-ckl-stop]').click(); });
+  await page.waitForTimeout(700);
+  var after = await page.evaluate(function () {
+    var b = document.getElementById('cklBtns'), p = document.querySelector('#instructorCard .persona');
+    return { personaDisplay: p ? getComputedStyle(p).display : null,
+             role: (document.getElementById('instrRole') || {}).textContent,
+             btnsH: b ? Math.round(b.getBoundingClientRect().height) : null,
+             btnsHtml: b ? b.innerHTML.length : null };
+  });
+  if (after.personaDisplay === 'none' || !after.role) {
+    throw new Error('#687 item 1: the persona header did not come back when the walkthrough ended — ' +
+      JSON.stringify(after));
+  }
+  if (after.btnsH !== 0 || after.btnsHtml !== 0) {
+    throw new Error('#687 item 2: the End-walkthrough row outlived the run (' + after.btnsH + ' px, ' +
+      after.btnsHtml + ' chars) — it is a sibling of the card now and has to be torn down by name');
+  }
+  log.push('teardown: header back as "' + after.role + '", button row emptied');
+  return log.join('\n') + '\n';
+}
+
+/* #656 — THE ACKNOWLEDGE BUTTON ON A STEP WITH NO PREDICATE.
+ *
+ * Reported from the third layman playthrough (2026-09-07): an observation step that completes on
+ * its dwell showed no done-when line, no Acknowledge and no Next, and `[data-ckl-check]` returned
+ * ZERO until the player pressed "Show all details" — an unrelated button. From the player's seat
+ * the leg could not be finished.
+ *
+ * IT DOES NOT REPRODUCE ON THIS TREE, and the reason is dated: #660 items 17-18 (2026-09-08, the
+ * day after the report) made Rewind + Continue unconditional on every active step, where the card
+ * used to draw the acknowledge row only while `ck.awaiting_ack`. Swept 2026-09-11 in headless
+ * Edge over 53 steps of three legs (pwr_raise_power, pwr_startup, pwr_tmi2_incident), including
+ * the six steps in the pwr2 pool that carry NO acceptance predicate at all: the button is drawn
+ * 86x23 on every one of them, outside any collapsible block.
+ *
+ * So this check exists to keep it that way, and it is deliberately written against the WORST
+ * case the report names rather than against a convenient step: a step whose acceptance list is
+ * empty, read with the details at their default state, before anything is expanded. The
+ * pre-#660 conditional is what turns it red. */
+async function testObservationStepAckButton(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await startWalkthrough(page, 'pwr_tmi2_incident');
+
+  /* Find the step the report is about — NO predicate, so nothing can grade it and the only way
+   * off it is the button. Derived from the running pool, never a hand-written index: the legs
+   * are re-authored constantly (#692 rewrote this one), and a pinned index would quietly drift
+   * onto a step with an acceptance and stop testing the class. */
+  var target = await page.evaluate(function () {
+    var steps = globalThis.RD.__dev.service().instructor.checklist.proc.steps;
+    for (var i = 0; i < steps.length; i++) {
+      var st = steps[i];
+      if (!st.acc && !(st.accs && st.accs.length)) return { i: i, text: String(st.text).slice(0, 60) };
+    }
+    return null;
+  });
+  if (!target) {
+    throw new Error('#656 control: pwr_tmi2_incident carries no predicate-free step any more — ' +
+      'repoint this check at a leg that does, or the class is untested');
+  }
+  log.push('target: step ' + (target.i + 1) + ' (no acceptance predicate) — "' + target.text + '"');
+
+  await page.evaluate(function (i) {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    c.idx = i;
+    for (var k = 0; k < c.done.length; k++) c.done[k] = k < i;
+  }, target.i);
+  await page.waitForTimeout(800);
+
+  var r = await page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    var mk = document.querySelector('.ckl-step.ckl-active [data-ckl-check]');
+    var rc = mk ? mk.getBoundingClientRect() : null;
+    return {
+      idx: c.idx,
+      anyCheck: document.querySelectorAll('[data-ckl-check]').length,
+      inActive: !!mk,
+      w: rc ? Math.round(rc.width) : 0, h: rc ? Math.round(rc.height) : 0,
+      disp: mk ? getComputedStyle(mk).display : null,
+      inCollapsible: !!(mk && mk.closest('details')),
+      text: mk ? mk.textContent.trim() : null,
+    };
+  });
+  if (r.idx !== target.i) {
+    throw new Error('#656 control: the card is not on the target step (' + r.idx + ' vs ' + target.i + ')');
+  }
+  if (!r.inActive || r.w <= 0 || r.h <= 0 || r.disp === 'none') {
+    throw new Error('#656: a step with no acceptance predicate drew NO usable Acknowledge/Continue ' +
+      'button before any details were expanded — ' + JSON.stringify(r) +
+      ' (this is "from a player\'s seat the leg had no way to finish")');
+  }
+  if (r.inCollapsible) {
+    throw new Error('#656: the Acknowledge/Continue button is inside a collapsible details block — ' +
+      'it is only reachable once the player expands something unrelated');
+  }
+  log.push('drawn on first paint: "' + r.text + '" ' + r.w + 'x' + r.h + ', ' + r.anyCheck +
+           ' check target(s) in the DOM, not inside a collapsible');
+
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
   return log.join('\n') + '\n';
 }
 
@@ -3573,6 +4489,10 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'chart-settings.log'), csLog);
     var mlLog = await testMonitorList(page);
     fs.writeFileSync(path.join(SCRATCH, 'monitor-list.log'), mlLog);
+    var mbLog = await testMainMenuButton(page);
+    fs.writeFileSync(path.join(SCRATCH, 'main-menu-button.log'), mbLog);
+    var msLog = await testMissionMenuShape(page);
+    fs.writeFileSync(path.join(SCRATCH, 'mission-menu-shape.log'), msLog);
     var mcLog = await testMissionCloseResumes(page);
     fs.writeFileSync(path.join(SCRATCH, 'mission-close-resumes.log'), mcLog);
     var rsLog = await testRunStartMark(page);
@@ -3585,6 +4505,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'refusal-scanner.log'), rfLog);
     var tbLog = await testTripBlockPopoverStaysOffTheBoard(page);
     fs.writeFileSync(path.join(SCRATCH, 'trip-block-overlay.log'), tbLog);
+    var tdLog = await testTripBlockPopoverDismissesOnOutsideClick(page);
+    fs.writeFileSync(path.join(SCRATCH, 'trip-block-dismiss.log'), tdLog);
     var dbLog = await testDiagBundle(page);
     fs.writeFileSync(path.join(SCRATCH, 'diag-bundle.log'), dbLog);
     var hpLog = await testHeldPlantDialog(page);
@@ -3617,6 +4539,10 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'rod-lane-bank-scale.log'), rlLog);
     var rmLog = await testRodLimitMarginIndicationRange(page);
     fs.writeFileSync(path.join(SCRATCH, 'rod-limit-margin-indication-range.log'), rmLog);
+    var wcLog = await testWalkthroughPanelChrome(page);
+    fs.writeFileSync(path.join(SCRATCH, 'walkthrough-panel-chrome.log'), wcLog);
+    var oaLog = await testObservationStepAckButton(page);
+    fs.writeFileSync(path.join(SCRATCH, 'observation-step-ack-button.log'), oaLog);
     var oomLog = await testOneOverMDockedGeometry(page);
     fs.writeFileSync(path.join(SCRATCH, 'one-over-m-docked-geometry.log'), oomLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
@@ -3637,6 +4563,8 @@ if (require.main !== module) {
   module.exports = { startServer: startServer, dismissMission: dismissMission,
                      testChartSettings: testChartSettings, testMonitorList: testMonitorList,
                      testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark,
+                     testMissionMenuShape: testMissionMenuShape,
+                     testMainMenuButton: testMainMenuButton,
                      testHeldPlantDialog: testHeldPlantDialog, testHeldSpeedClick: testHeldSpeedClick,
                      testSaveLoadRefusal: testSaveLoadRefusal, testCssTransitions: testCssTransitions,
                      testPzrGaugeFollowsProgram: testPzrGaugeFollowsProgram,
@@ -3644,7 +4572,12 @@ if (require.main !== module) {
                      testTavgGaugeDeviationCaution: testTavgGaugeDeviationCaution,
                      testRodLaneBankScale: testRodLaneBankScale,
                      testRodLimitMarginIndicationRange: testRodLimitMarginIndicationRange,
+                     testWalkthroughPanelChrome: testWalkthroughPanelChrome,
+                     testObservationStepAckButton: testObservationStepAckButton,
+                     startWalkthrough: startWalkthrough,
                      testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
+                     testTripBlockPopoverDismissesOnOutsideClick: testTripBlockPopoverDismissesOnOutsideClick,
+                     waitBoardLive: waitBoardLive,
                      testWalkthroughHoldReleasedOnExit: testWalkthroughHoldReleasedOnExit,
                      testHeldNotePauseResume: testHeldNotePauseResume,
                      testOneOverMDockedGeometry: testOneOverMDockedGeometry,

@@ -875,7 +875,18 @@ html[data-channel="dev"] .logo-test {
   font-size: 9px; font-weight: 700; letter-spacing: 1.2px; white-space: nowrap;
 }
 .clock { font-size: 15px; font-weight: 600; }
-.clock.running { animation: pulse 2s ease-in-out infinite; }
+/* THE RUNNING CLOCK DOES NOT FADE (#687 item 1, OWNER 2026-09-09: "Other UI elements like the
+   time keep doing the same [appearing and disappearing]"). It carried
+   `animation: pulse 2s ease-in-out infinite`, i.e. opacity 1.0 -> 0.6 -> 1.0 for ever while the
+   plant ran — MEASURED in headless Edge over a 50 s walkthrough ride: 576 opacity transitions on
+   #clock, cycling 1.00 / 0.87 / 0.84 / 0.81 / 0.77 / 0.75 / 0.73 / 0.70 and back. That is an
+   element appearing and disappearing, permanently, in peripheral vision — the exact thing this
+   file's own instrAttnPulse note calls out as "fatiguing over an hour and stops being noticed",
+   and it had no prefers-reduced-motion escape either.
+   A steady colour carries the same fact with no motion: green is already the board's "running"
+   (.play uses var(--running)), and .accel's amber still wins below by source order. The digits
+   advancing are the primary cue and always were. */
+.clock.running { color: var(--running); }
 .clock.accel { color: var(--caution); }
 @keyframes pulse { 50% { opacity: .6; } }
 .sim-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -901,7 +912,24 @@ html[data-channel="dev"] .logo-test {
 .speed button { flex: 1 1 0; background: var(--bg-right); color: var(--text-2); border: none; border-right: 1px solid var(--border);
   padding: 4px 0; font-size: 11px; cursor: pointer; }
 .speed button:last-child { border-right: none; }
-.sim-tools { justify-content: flex-end; }
+/* SIX CONTROLS IN A 338 px ROW SINCE #689 ADDED MAIN MENU, and .sim-row wraps — so this is a
+   measurement, not a taste. At the shipped padding the six came to 402 px of buttons plus 40 px
+   of gaps against 338 px: the row WRAPPED and Main Menu dropped to a second line beside ⛶,
+   which is "to the right of settings" in DOM order only. Tightened here and here ONLY (every
+   other .btn in the app keeps 5px 9px / 12px) the six measure 299 px of buttons plus 20 px of
+   gaps = 319 px, one row 27 px tall, 19 px of headroom.
+   A SEVENTH NAMED TOOL WRAPS IT AGAIN — MEASURED (quality pass, 2026-09-11): adding one takes this
+   row from 27 px to 55 px on TWO lines, [manual, help, feedback, settings, mainMenu] then [the new
+   tool, demoBtn]. Note WHICH control drops: `flex-wrap` pushes the OVERFLOW to the end, so the ⛶
+   end-cap goes below the row and the tool you added goes with it — never the one in the middle.
+   That is also why the row-and-gap assertions this comment used to credit did NOT catch it: they
+   ask whether Main Menu is beside Settings, and at seven controls it still is. `testMainMenuButton`
+   now asserts the ROW's painted height against its tallest control, which reds for whichever
+   control wraps; the original two still red on reverting the padding here (Main Menu itself drops,
+   gap -120 px). Both injection-proven. */
+.sim-tools { justify-content: flex-end; gap: 4px; }
+.sim-tools .btn { padding: 5px 5px; font-size: 11px; }
+.sim-tools .text-btn { padding: 4px 5px; font-size: 11px; }
 /* the status strip (#686): the active checklist step's own wait + recommended rung, or the
    one exception that persists across clicks — the accumulator hold ("held at real time").
    Empty and hidden otherwise; min-height keeps the speed bar from reflowing when it is. */
@@ -946,32 +974,37 @@ html[data-channel="dev"] .logo-test {
 .text-btn { flex: 0 0 auto; padding: 4px 10px; font-size: 12px; font-weight: 600; }
 .demo-btn { flex: 0 0 auto; min-width: 28px; padding: 4px 8px; }
 
-/* What's running now — the always-visible mission entry point (click → Plant & Mission) */
-.sim-status {
-  display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 8px;
-  padding: 5px 8px; background: var(--bg-elevated); border: 1px solid var(--border);
-  border-radius: 6px; color: var(--text-2); font-size: 11px; cursor: pointer; text-align: left;
-}
-.sim-status:hover { color: var(--text); border-color: var(--normal); }
-.sim-status .ss-txt { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sim-status .ss-chev { flex: 0 0 auto; color: var(--muted); font-size: 13px; }
-/* THE BUTTON SAYS WHAT IT OPENS *(OWNER DIRECTIVE, 2026-08-11: "The button should be
-   clearly labeled.")*. It used to read only its own state — "PWR · Free Play — 50 % Power"
-   — which says where you are and not that pressing it takes you somewhere. */
-.sim-status .ss-lbl {
-  flex: 0 0 auto; font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--normal); border-right: 1px solid var(--border); padding-right: 6px;
-}
-/* The pointer back to that button, for a few seconds after the window is closed. */
-.ss-tip {
-  position: relative; margin-top: 4px; padding: 4px 8px;
+/* THE .sim-status BAR IS GONE (#689, owner 2026-09-09: "Add a Main Menu button to the right of
+   settings. Change the SELECT PLANT, MISSION & RESET menu to this button and get rid of the old
+   button."). It was a full-width bar under the speed controls with a 9 px .ss-lbl, a live
+   .ss-txt readout and a .ss-chev; #mainMenuBtn wears the plain .btn .text-btn of the tools row
+   it now sits in, so it needs no rules of its own, and the readout was dropped (option A). */
+/* The pointer back to that button, for a few seconds after the window is closed. Was .ss-tip;
+   renamed with the button at #689, and it now sits directly under .sim-tools so its ▲ points
+   at the control it names instead of three rows past it.
+   THE VERTICAL MOVE WAS ONLY HALF OF IT (quality pass, 2026-09-11). The bubble is full-row
+   width and the old ▲ was the first glyph of a CENTRE-ALIGNED line, which was right under the
+   full-width .sim-status bar it used to sit below and is wrong under a six-button row: MEASURED
+   at a 1500 px viewport, arrow centre x 1252.7 against a Main Menu box of 1380.2–1449.0 — 128 px
+   off, pointing at the middle of the speed bar. So the glyph leaves the text flow and is aimed
+   from --mm-arrow-x, which aimMainMenuTip() sets from the button's own measured centre each time
+   the tip is shown. Aimed rather than hard-coded because the row is not fixed: ⛶ is the end-cap,
+   and #689's own note says a seventh named tool re-lays the row out.
+   Its own strip above the text (padding-top 13px) rather than inline, so the arrow can never
+   land on top of the centred sentence at a narrow panel width. */
+.mm-tip {
+  position: relative; margin: 2px 0 4px; padding: 13px 8px 4px;
   background: rgba(91, 179, 196, .12); border: 1px solid var(--normal); border-radius: 5px;
   color: var(--text); font-size: 11px; line-height: 1.35; text-align: center;
-  animation: ssTipIn .18s ease-out;
+  animation: mmTipIn .18s ease-out;
 }
-.ss-tip[hidden] { display: none; }
-@keyframes ssTipIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .ss-tip { animation: none; } }
+.mm-tip .mm-arrow {
+  position: absolute; top: 1px; left: var(--mm-arrow-x, 50%); transform: translateX(-50%);
+  font-size: 10px; line-height: 1; color: var(--normal);
+}
+.mm-tip[hidden] { display: none; }
+@keyframes mmTipIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .mm-tip { animation: none; } }
 
 /* Help / tour — reuses the mission-modal chrome, narrower and content-sized */
 .help-modal { width: min(560px, 96vw); height: auto; max-height: min(84vh, 760px); }
@@ -2343,31 +2376,11 @@ select.num-input { width: auto; }
 }
 .mission-title { font-weight: 700; font-size: 14px; color: var(--text); }
 .mission-body { flex: 1; display: grid; grid-template-columns: 260px 1fr; min-height: 0; }
-/* step 1 — plant column */
-.mp-plants {
-  border-right: 1px solid var(--border); overflow-y: auto;
-  padding: 10px; display: flex; flex-direction: column; gap: 8px;
-}
-/* NB: not ".plant-card" — that class belongs to the PWR synoptic (positioned) */
-.mplant-card {
-  border: 1px solid var(--border); border-radius: 6px; padding: 10px;
-  cursor: pointer; background: var(--bg-elevated);
-}
-.mplant-card:hover { border-color: rgba(122, 176, 255, 0.4); }
-.mplant-card.on { border-color: rgba(122, 176, 255, 0.7); background: rgba(122, 176, 255, 0.08); }
-.mplant-name { font-weight: 700; font-size: 13px; color: var(--text); }
-.mplant-live { font-size: 10px; color: #79d297; font-weight: 400; }
-.mplant-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
-.mplant-desc { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
-/* Engine complete, control room not built yet: visible so the roadmap reads,
-   but muted and inert so it doesn't look broken when clicking does nothing. */
-.mplant-card.soon { opacity: 0.45; cursor: default; }
-.mplant-card.soon:hover { border-color: var(--border); }
-.mplant-soon {
-  margin-top: 8px; align-self: flex-start; display: inline-block;
-  border: 1px solid var(--caution); color: var(--caution); border-radius: 4px;
-  padding: 1px 6px; font-size: 9px; font-weight: 700; letter-spacing: 1px;
-}
+/* THE PLANT COLUMN IS GONE (#688, owner 2026-09-09) — .mp-plants and the whole .mplant-*
+   family went with it. The 260px|1fr default above STAYS: the chart-settings window (#454)
+   reuses .mission-body wholesale and needs that left track, as does .fl-body's override
+   below by counter-example. The Plant & Mission window collapses to one column here. */
+.mission-body.mp-body { grid-template-columns: 1fr; }
 /* The clock carries the halt for as long as it stands (#520). Dismissing the dialog
    must not lose the fact that the model has stopped — that IS the defect #520 is
    about — and the clock is the right home because a held plant's clock is the one
@@ -2407,11 +2420,8 @@ select.num-input { width: auto; }
    read as "danger, do not press", and pressing it is the way out. */
 .halt-go { border-color: var(--accent); color: var(--accent); font-weight: 700; }
 
-/* ---- selection screen (#443, spec §9) --------------------------------------
-   Reuses .mission-overlay / .mplant-card so the front door and the Plant &
-   Mission window read as one family; only the frame and the activity rows are
-   new. z-index sits above the mission overlay because the start screen can hand
-   off to it. */
+/* The "selection screen (#443)" header that stood here described .mplant-card, deleted with
+   the plant column (#688); its own rules had already gone with the start screen. */
 /* Settings and the Scanner's long form: modal class, so they pause (#439, spec §1).
    Narrower than the Plant & Mission window — both are a column of rows, not a picker. */
 .set-modal { height: auto; max-height: min(84vh, 700px); width: min(560px, 96vw); }
@@ -2510,13 +2520,23 @@ select.num-input { width: auto; }
 }
 .mp-modes button:hover { color: var(--text); }
 .mp-modes button.on { color: var(--text); border-bottom-color: rgba(122, 176, 255, 0.85); }
+/* THE GREEN [NEW] ON THE WALKTHROUGHS TAB (#688, owner 2026-09-09). #79d297 is the same
+   green the deleted plant column used for its ● active mark — brighter than --running
+   (#46A35E), which is sized for a filled board tile and reads dim at 9 px. Deliberately NOT
+   the caution amber of the COMING SOON badge below: this one says "here now". */
+.mp-modes .mp-new {
+  margin-left: 6px; display: inline-block; vertical-align: 1px;
+  border: 1px solid #79d297; color: #79d297; background: rgba(121, 210, 151, .10);
+  border-radius: 3px; padding: 0 4px;
+  font-size: 9px; font-weight: 700; letter-spacing: .08em;
+}
 .mp-content { flex: 1; overflow-y: auto; padding: 12px 14px; }
 /* campaign mission rows in the wide window: pin the Start button to the title
    row (the teaches line spans beneath it), instead of wrapping to its own row */
 .mp-content .camp-mission > .btn { grid-column: 3; grid-row: 1; white-space: nowrap; }
 /* Coming-soon panel — an area whose content this channel does not offer yet
-   (site/flags.js, #241). Deliberately the same amber COMING SOON badge the
-   not-yet-built plant cards use: "being finished", not "broken". */
+   (site/flags.js, #241). Amber, and it says "being finished", not "broken". It used to share
+   its badge with the plant column's not-yet-built cards; that column went at #688. */
 .mp-soon {
   border: 1px dashed var(--border); border-radius: 6px;
   padding: 18px 16px; text-align: center; background: var(--bg-elevated);
@@ -2652,6 +2672,28 @@ select.num-input { width: auto; }
 .tabpane.instructor { display: none; flex-direction: column; min-height: 0; }
 .tabpane.instructor.on { display: flex; flex: 1 1 auto; min-height: 0; }
 .tabpane.instructor .instr-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* NO PERSONA HEADER WHILE A WALKTHROUGH RUNS (#687 item 1, OWNER 2026-09-09: "Remove this
+   Walkthrough text, its not needed"). The class is set by instrHeaderless() on the walkthrough
+   branch of renderInstructorInner and cleared by setInstrRole, so every other panel state keeps
+   its header. Removing the word alone would have left a 32 px bordered strip carrying nothing;
+   the row goes with it, and the walkthrough card gets the height back. */
+#instructorCard.wt-headerless .persona { display: none; }
+/* END WALKTHROUGH AT THE FOOT OF THE PANEL (#687 item 2). What puts it at the bottom of the
+   SPACE rather than the bottom of the card is `.instr-log { flex: 1 1 0 }` above: the log is the
+   growing child, it eats every pixel of free space in this column, and this row is what is left
+   at the bottom. MEASURED at 1500x950: row bottom 921, panel floor 931, transcript bottom 889.
+
+   `margin-top: auto` IS A FALLBACK AND IS INERT TODAY — say it plainly rather than crediting it,
+   because #687 named it as the mechanism in three places. Auto margins only take free space that
+   flex-grow left over, and the log leaves none: MEASURED at viewport heights 950 / 1200 / 760 /
+   640, `getComputedStyle(#cklBtns).marginTop` resolves to `0px` at every one, and setting it to
+   0 moves the row 0 px. It earns its keep only if the log ever stops growing (#612 is about that
+   column) — forced to `flex: 0 0 auto`, the same measurement has it absorb 96 / 282 / 14 px. Keep
+   it; do not cite it — and note the pair is REDUNDANT BY DESIGN, which verify_e2e_ui measures:
+   with the log's grow removed the auto margin holds the row down on its own (96 / 282 / 14 px at
+   those heights), and only removing BOTH floats the row 97 px off the floor. */
+.tabpane.instructor .instr-body > #cklBtns { flex: 0 0 auto; margin-top: auto; padding-top: 8px; }
+.tabpane.instructor .instr-body > #cklBtns[hidden] { display: none; }
 
 /* THE CHECKLISTS PANE, same treatment, same reason (#612, owner playtest 2026-09-03: "the
    checklist scroll window keeps bouncing to the top and back to the step" and "the right column

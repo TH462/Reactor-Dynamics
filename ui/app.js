@@ -367,18 +367,20 @@
   // ====================================================================== engines
   // Selector key → plant + design_version + default initial state, plus the
   // display copy for the Plant & Mission window's plant cards.
-  // `soon: true` = the physics engine is complete but the M8 board / M4 control
-  // surface is not extended to it yet, so the card is shown greyed and is not
-  // selectable. The ?engine= dev override still reaches them deliberately.
+  // `soon: true` = the physics engine is complete but the M8 board / M4 control surface is not
+  // extended to it yet. IT RENDERS NOWHERE SINCE #688 deleted the plant column (2026-09-09), and
+  // nor do `sub` / `desc`; they are kept as the plants' own data, not as a live flag. The
+  // ?engine= dev override still reaches those plants deliberately.
   //
   // WHICH CONSTRUCTORS ACTUALLY LOADED — measured, never declared (2026-08-26). A published
   // build carries PWR2 only: site/build_site.js deletes the retired engine's <script> tags
   // from ui/shell.html on the `public` channel, and tools/make_portable.js deletes them from
   // the offline download unconditionally. So this file cannot hold a list of what is
-  // available; it has to LOOK. Every consumer — the boot override, the fallback and the plant
-  // column — reads this one probe, which is what keeps the menu from offering a card whose
-  // constructor is not in the page. Same shape as #514's greyed RBMK/BWR cards, except
-  // derived rather than written down, because for the PWR the answer differs per build.
+  // available; it has to LOOK. Both remaining consumers — the boot override and the fallback —
+  // read this one probe. The THIRD one, the plant column that kept the menu from offering a card
+  // whose constructor is not in the page, went at #688 with the column itself; there is no menu
+  // left to offer a missing plant, so the probe's job is now purely the boot decision. Derived
+  // rather than written down, because for the PWR the answer differs per build.
   // Deliberately a function, not a snapshot: it is called after all <script>s have run.
   function ctorPresent(key) {
     switch (key) {
@@ -395,8 +397,9 @@
     // preset")* — there is somewhere to go in both directions from it. `ui.initState` above
     // carries the same value for the first render.
     // THE RETIRED ENGINE (2026-08-26). PWR2 replaced it *(OWNER RULING, 2026-08-26: "Flip
-    // now, track the gaps")*, and a published build does not contain it at all — so this
-    // card only ever appears on a dev or preview build, where ctorPresent('pwr') is true.
+    // now, track the gaps")*, and a published build does not contain it at all. It has had no
+    // CARD anywhere since #688 deleted the plant column; it is reached only by ?engine=pwr on a
+    // dev or preview build, where ctorPresent('pwr') is true.
     // It is kept reachable, not deleted, for two live reasons: it is the A/B reference
     // test/measure_pwr2_ab.js diffs against, and it is the only engine the campaign, the
     // scenarios and the walkthroughs are authored for, so it is where that content is
@@ -2449,34 +2452,22 @@
     advFailed[id] = mode; renderAdvActive();
   }
 
-  // What's running now (plant + free-play/scenario/walkthrough) — shown in the
-  // Sim tab summary AND the always-visible status line under the sim controls
-  // (the main-screen entry point to the Plant & Mission window). Called every
-  // instructor render, so it's guarded to touch the DOM only on change.
-  var lastSimSummary = null;
-  function updateSimSummary() {
-    var lbl = $('simPlantLbl'); if (!lbl) return;
-    var e = ENGINES[ui.engineKey] || {};
-    var plant = e.label || ui.engineKey;
-    var mode;
-    if (ui.scenario) {
-      var sc = (RD.SCENARIOS || {})[ui.scenario];
-      mode = 'Scenario — ' + ((sc && sc.title) || ui.scenario);
-    } else if (ui.follow) {
-      var pr = curFollowProc();
-      mode = 'Walkthrough — ' + ((pr && pr.title) || ui.follow.id);
-    } else {
-      var st = (prof().initStates.filter(function (s) { return s[0] === ui.initState; })[0] || [])[1] || ui.initState;
-      mode = 'Free Play — ' + st;
-    }
-    var key = plant + '|' + mode;
-    if (key === lastSimSummary) return;
-    lastSimSummary = key;
-    lbl.textContent = plant;
-    $('simModeLbl').textContent = mode;
-    var st2 = $('simStatusText'); if (st2) st2.textContent = plant + ' · ' + mode;
-  }
-
+  /* updateSimSummary() IS GONE (#689). It wrote "plant · mode" into three places: #simPlantLbl
+   * and #simModeLbl in the Sim tab's summary, and #simStatusText in the status bar under the
+   * speed controls.
+   *
+   * IT HAD ALREADY BEEN DEAD, and that is the measurement that let #689's option A be taken
+   * without argument. Its first line was `var lbl = $('simPlantLbl'); if (!lbl) return;` — and
+   * #simPlantLbl / #simModeLbl left shell.html with the old Settings-panel summary, so the
+   * function returned before the #simStatusText write on EVERY call. Measured in headless
+   * Chromium on 2026-09-11 against the tree before this change: the bar read a literal "—".
+   * Four render sites called it every broadcast for nothing.
+   *
+   * The dropped readout is not lost information: the walkthrough card names the leg it is
+   * running at the top of the card, and a published build is always PWR2 (#523). If it is ever
+   * wanted back, the honest home is the mission modal's own header, where it is read on open
+   * (option C of the three costed on #689) — not on the Main Menu button, which the owner asked
+   * for to make this corner SMALLER. */
   // ============================================================ display damping
   // RETIRED 2026-07-26 (#217). This applied a per-FRAME EMA to every instrument and
   // replaced s.instruments wholesale, so the whole board read damped values. Three
@@ -2663,7 +2654,6 @@
     applyUiPolicy(s);
     renderGauges(s);
     renderAlarms(s); renderInstructor(s); renderFailures(s);
-    updateSimSummary();
     // alarm tint on the CSF gauge strip while anything is unacknowledged
     $('gaugeStrip').classList.toggle('alarm-tint', s.alarms.some(function (a) { return a.state === 'active_unacknowledged'; }));
     // auto-switch to Diagram the moment a scram fires (legacy views only).
@@ -3027,7 +3017,7 @@
   // resolved to `#alarmStack` — which carries no `[data-ack]` — and was silently DROPPED.
   // That last one is the "delay when clicking controls" half of the report, and it was a
   // LOST input rather than a slow one.
-  // Same idiom as renderChecklist and updateSimSummary.
+  // Same idiom as renderChecklist.
   var lastAlarmKey = null;
   function alarmClock(t) {
     t = Math.max(0, Math.floor(t));
@@ -3402,9 +3392,36 @@
   }
   // Multi-use panel title: Instructor (default free play), Checklist, Procedure,
   // scenario title, or a speaking role when the content carries one.
+  /* CHANGE-GUARDED, AND IT SHOWS THE HEADER (#687 item 1). It used to assign
+   * `roleEl.textContent` unconditionally, which DESTROYS AND RECREATES the text node on every
+   * call — and `renderInstructorInner` calls it once per broadcast. MEASURED in headless Edge
+   * on a running walkthrough: 207 MutationObserver records against 208 broadcasts, i.e. the
+   * very node the owner reports blinking was being rebuilt 10 times a second (20 on the
+   * transient cadence) while its string never once changed. The guard is the house idiom —
+   * `syncWarpInfo`, `syncPacingUI` and `instrLogTick` all compare before writing — and this
+   * was the one per-broadcast writer in the persona header that did not.
+   *
+   * WHAT IT IS NOT: the branch fall-through this issue proposed. `s.instructor.checklist` was
+   * non-null on 308 of 308 broadcasts across a full ride (step advances, five speed changes,
+   * pause/resume cycles), the role read "Walkthrough" on every one of 1108 sampled frames, and
+   * its opacity/visibility/geometry never moved. Said plainly on the issue: the heading's
+   * disappearance is NOT reproduced headless; the 10 Hz node churn is the only measurable
+   * defect at that node, and this removes it. */
   function setInstrRole(title) {
     var roleEl = $('instrRole') || document.querySelector('#instructorCard .persona .role');
-    if (roleEl) roleEl.textContent = title || 'Instructor';
+    var want = title || 'Instructor';
+    if (roleEl && roleEl.textContent !== want) roleEl.textContent = want;
+    instrHeaderless(false);
+  }
+  /* NO PERSONA HEADER AT ALL WHILE A WALKTHROUGH RUNS *(OWNER, 2026-09-09, #687: "Remove this
+   * Walkthrough text, its not needed.")*. Blanking the string alone would leave a 32 px bordered
+   * strip with nothing in it, so the row goes with the word. Every other branch of
+   * renderInstructorInner names a role, and setInstrRole above clears the class, so the header
+   * comes back on its own the moment the panel is anything but a walkthrough — there is no
+   * second place that has to remember to restore it. */
+  function instrHeaderless(on) {
+    var card = $('instructorCard');
+    if (card) card.classList.toggle('wt-headerless', !!on);
   }
   var IDLE_INSTR_HTML =
     '<div class="instr-idle">' +
@@ -3480,7 +3497,6 @@
     syncSpeedUI(s);
     syncPacingUI(s);
     renderHighlight(s);
-    updateSimSummary();   // status line follows scenario/walkthrough transitions (change-guarded)
     instrGateOpen(s);     // a step that blocks progress opens the card, once per beat (#439)
     // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
     // is just a synced mirror. This survives start_follow's internal plant reset,
@@ -3500,6 +3516,10 @@
       if (showList) toggleCklMenu();
     }
     if (cklRun) cklRun.hidden = !runningCkl;   // in the Instructor pane, up whenever a walkthrough runs
+    /* #687 item 2 — the End-walkthrough row is a sibling of the card now, so it needs the same
+     * per-broadcast gate; without it the row survives every path that hides #cklRun. */
+    var cklBtnsEl = $('cklBtns');
+    if (cklBtnsEl && !runningCkl) { cklBtnsEl.hidden = true; cklBtnsEl.innerHTML = ''; }
     /* THE CHECKLIST TEARDOWN MUST HAPPEN BEFORE ANY EARLY RETURN (#598 item 12). This
      * used to sit ~25 lines below, under three of them — the follow branch, the chat
      * branch and the checklist branch. The instructor layer clears the checklist when a
@@ -3530,7 +3550,7 @@
        * instructor's own line (check-offs, overtaken notes) as plain text beneath it. */
       renderChecklist(s, ckb);
       syncInstrNav('idle');
-      setInstrRole('Walkthrough');
+      instrHeaderless(true);   /* #687 item 1 — no "Walkthrough" heading, and no empty strip */
       var curW = $('instrCurrent');
       if (curW) {
         curW.classList.remove('instr-standby');
@@ -3881,6 +3901,9 @@
     if (!cklState.key) return;
     cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null, cautionsOpen: null };
     var run = $('cklRun'); if (run) { run.hidden = true; run.innerHTML = ''; }
+    /* the End-walkthrough row lives OUTSIDE #cklRun since #687 item 2, so blanking the card no
+     * longer takes it with it — it has to be torn down by name or it outlives the run */
+    var btns = $('cklBtns'); if (btns) { btns.hidden = true; btns.innerHTML = ''; }
     var row = $('instrCklRow'); if (row) row.hidden = !flagOn('checklists');
     clearCklStepGlow();
     clearCklWatchGlow();                      /* #685 — the watch ring has the same owner */
@@ -4101,6 +4124,7 @@
       return;
     }
     cur.hidden = cklState.view !== 'run';
+    var btnsEl0 = $('cklBtns'); if (btnsEl0) btnsEl0.hidden = cklState.view !== 'run';   /* #687 item 2 */
     // Precondition verdicts join the render key (#392's lesson: a banner outside
     // the key never repaints). Observed values are keyed ROUNDED so the banner
     // tracks a dilution at ~whole-unit granularity instead of rebuilding the DOM
@@ -4269,6 +4293,7 @@
        * step would still read true on the next and silently suppress its wait line. Reset here,
        * at the top of every step. */
       var waitLineShown = false;
+      var ackRow = '';   /* same reason — #687 item 3 builds it above and emits it below the why */
       h += '<div class="ckl-step ' + cls + hoverable + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
       /* THE NUMBERED INSTRUCTION IS THE HEAD OF THE STACK, ON EVERY STEP *(OWNER, 2026-09-04,
        * #628: "move the numbered step to always be the first part of the stack. then the rest of
@@ -4420,7 +4445,14 @@
          * have just gone green, so the eye goes criterion → met → press. (It used to be
          * described as "directly above the step text it belongs to"; #628 moved the step text
          * to the head of the card, so the button is now the foot of the block rather than the
-         * hinge between two. The reading order it was placed for is unchanged.) */
+         * hinge between two. The reading order it was placed for is unchanged.)
+         *
+         * SINCE #687 item 3 IT IS ALSO BELOW THE `why` *(OWNER, 2026-09-09: "The walkthrough
+         * rewind step and continue buttons should be under the text not above the why text.")*.
+         * It is BUILT here, beside the criteria it reads from, and APPENDED after the detail
+         * block below — so the row leaves `.ckl-act` and becomes the last thing in the step. The
+         * active step's details are force-open (#660), so nothing can land it under a collapsed
+         * stub. */
         /* REWIND + CONTINUE, ON EVERY STEP *(OWNER, 2026-09-08, #660 items 17-18)*. Continue is
          * always drawn and lights (`ready`) when the instructor reports the step satisfied —
          * every step waits for it now, not only the observations. Rewind takes plant and
@@ -4430,7 +4462,7 @@
          * items 17-18): a loaded save restores the walkthrough's progress but clears the ring,
          * which used to leave the button lit over a command the service refuses. */
         var wtRw = ck.step_index > 0 && ck.rewind_ready;
-        h += '<div class="ckl-ack-row">' +
+        ackRow = '<div class="ckl-ack-row">' +
           '<button class="btn wt-rewind" data-wt-rewind="1"' + (wtRw ? '' : ' disabled') +
             ' title="' + (wtRw
               ? 'Back one step — the plant and the walkthrough return to the start of the previous step'
@@ -4478,6 +4510,10 @@
         var detOpen = active || cklState.whyAll || (cklState.whyOpen && cklState.whyOpen[i]);
         if (detOpen) h += det;
       }
+      /* #687 item 3: Rewind step + Continue, LAST — under the instruction, the criteria and the
+       * labelled `why`, which is where the owner asked for them. Built in the active block above
+       * (it reads `awaiting_ack` / `rewind_ready` beside the lamps those flags light). */
+      h += ackRow;
       h += '</div></div>';
     }
     if (ck.complete) {
@@ -4501,10 +4537,26 @@
     var nextPr = ck.complete && pr.next
       ? ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === pr.next; })[0]
       : null;
-    h += '<div class="ckl-btns">' +
-      (nextPr ? '<button class="btn ckl-next" data-ckl-start="' + mesc(nextPr.id) + '">Next: ' +
-                mesc(nextPr.title) + ' ▸</button>' : '') +
-      '<button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : 'End walkthrough') + '</button></div>';
+    /* THE BUTTON ROW IS RENDERED OUTSIDE THIS CARD (#687 item 2, OWNER 2026-09-09: "Put 'End
+     * Walkthrough' at the very bottom of the space"). It used to be appended to `h` and so ended
+     * up the last child of `#cklRun` — which is only the FIRST child of `.instr-body`, with
+     * `#instrPrev` and `#instrLog` below it. "Last in its card" was not "the bottom of the
+     * space", and the transcript sat under the button that ends the run.
+     *
+     * `#cklBtns` (shell.html) is the last child of `.instr-body`, and what pins it to the panel
+     * floor is `.instr-log`'s `flex: 1 1 0` above it taking all the free space in that column —
+     * NOT the `margin-top: auto` this comment used to credit, which measures inert (shell.css has
+     * the four-viewport measurement). Both buttons are delegated at `document.body`
+     * (`data-ckl-start` / `data-ckl-stop`), so
+     * moving the row out of the card changes nothing about the wiring — the same reason the
+     * launcher could live in two places since #443. */
+    var btnsEl = $('cklBtns');
+    if (btnsEl) {
+      var bh = (nextPr ? '<button class="btn ckl-next" data-ckl-start="' + mesc(nextPr.id) + '">Next: ' +
+                         mesc(nextPr.title) + ' ▸</button>' : '') +
+        '<button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : 'End walkthrough') + '</button>';
+      if (btnsEl.innerHTML !== bh) btnsEl.innerHTML = bh;   /* `hidden` is set once, above */
+    }
     /* KEEP THE READER'S PLACE ACROSS THE REBUILD (#605, owner playtest 2026-09-02: "The
      * checklist keeps auto scrolling. Happens when fast forwarding. To the top then back down.
      * When mouse over it, it keeps jumping up to the top making it unusable.").
@@ -5080,12 +5132,31 @@
    * Armed only by the on-load open, so it fires once per session and never interrupts a
    * player who opened the window deliberately and knows where it is. */
   var missionTipArmed = false, missionTipT = null;
+  /* AIM THE ▲ AT THE BUTTON IT NAMES (quality pass, 2026-09-11). #689 moved this bubble up to
+   * sit under .sim-tools, which fixed the vertical half and left the horizontal half wrong: the
+   * bubble is the full width of the panel row and Main Menu is at its RIGHT end, so a centred
+   * glyph lands nowhere near it — MEASURED at a 1500 px viewport, arrow centre x 1252.7 against
+   * a button box of 1380.2–1449.0, i.e. 128 px out, over the middle of the speed bar. Under the
+   * full-width .sim-status bar this tip used to follow, centred was correct; it stopped being
+   * correct the moment the target became one button in a six-button row.
+   *
+   * MEASURED, not computed from constants: ⛶ is the row's end-cap, the labels differ per build,
+   * and #689's own note says a seventh named tool re-lays the row out — so a hard-coded
+   * padding-right would be a number that rots. Read AFTER `hidden = false`, or the rects are all
+   * zero. Silently does nothing if either node is missing; the CSS falls back to 50 %. */
+  function aimMainMenuTip(tip) {
+    var b = $('mainMenuBtn'); if (!b || !tip) return;
+    var bb = b.getBoundingClientRect(), tb = tip.getBoundingClientRect();
+    if (!bb.width || !tb.width) return;
+    tip.style.setProperty('--mm-arrow-x', Math.round(bb.left + bb.width / 2 - tb.left) + 'px');
+  }
   function closeMissionSelect() {
     closeModal('missionOverlay');
     if (!missionTipArmed) return;
     missionTipArmed = false;
-    var tip = $('simStatusTip'); if (!tip) return;
+    var tip = $('mainMenuTip'); if (!tip) return;
     tip.hidden = false;
+    aimMainMenuTip(tip);
     clearTimeout(missionTipT);
     missionTipT = setTimeout(function () { tip.hidden = true; }, 6000);
     markSeen('session');
@@ -5123,35 +5194,46 @@
       '<div class="m-note">' + mesc(RD.Flags ? RD.Flags.soon(area) : '') + '</div></div>';
   }
   function renderMissionSelect() {
-    // Step 1 — the plant column
-    $('mpPlants').innerHTML = Object.keys(ENGINES).filter(function (k) {
-      if (ENGINES[k].hidden) return false;     /* general gate; nothing hidden today */
-      /* A card whose constructor is not in the page is not a card. On a published build that
-       * is the retired PWR engine, whose tags site/build_site.js deleted; RBMK/BWR keep their
-       * greyed `soon` cards deliberately (#514) and are exempt, because a plant on hold is a
-       * roadmap statement, not a missing file. Without this the menu would offer a plant the
-       * service cannot construct — engineCtor() returns undefined and selectPlant throws. */
-      if (!ENGINES[k].soon && !ctorPresent(k)) return false;
-      return true;
-    }).map(function (k) {
-      var e = ENGINES[k];
-      return '<div class="mplant-card' + (k === msel.engine ? ' on' : '') + (e.soon ? ' soon' : '') + '"' +
-        ' data-mplant="' + k + '"' + (e.soon ? ' aria-disabled="true" title="Control room under construction"' : '') + '>' +
-        '<div class="mplant-name">' + mesc(e.label) + (k === ui.engineKey ? ' <span class="mplant-live">● active</span>' : '') + '</div>' +
-        '<div class="mplant-sub">' + mesc(e.sub) + '</div>' +
-        '<div class="mplant-desc">' + mesc(e.desc) + '</div>' +
-        (e.soon ? '<div class="mplant-soon">COMING SOON</div>' : '') + '</div>';
-    }).join('');
+    /* STEP 1, THE PLANT COLUMN, IS GONE *(OWNER, 2026-09-09, #675 section A / #688: "Remove
+     * the plant selection column from the plant and mission menu.")*. Measured on a dev build
+     * before removing it: five cards, of which `pwr` (retired) and `pwr2` were selectable and
+     * rbmk_pre / rbmk_post / bwr were greyed COMING SOON placards. On a PUBLISHED build the
+     * retired engine's script tags are gone (#523), so the column offered ONE choice and three
+     * things you cannot click — the orphan-control shape DESIGN_CRITERIA Q3 vetoes.
+     *
+     * `msel.engine` STAYS. It is seeded from ui.engineKey in openMissionSelect() and read by
+     * all four content builders and by the Start button's switchEngine() — it is simply no
+     * longer re-pointed from inside this window; ?engine= and the fallback in boot() decide it.
+     * ENGINES keeps its `soon` / `sub` / `desc` fields: nothing renders them today, and the
+     * consequence to accept is that the sim no longer states anywhere that RBMK and BWR are
+     * planned. Those plants are on hold; the roadmap belongs on the site, not in this window. */
     // Step 2 — the mode tabs
     /* TWO TABS *(OWNER, 2026-09-08, #660 item 19: "In the opening plant and missions screen get rid
      * of the Campaign and Scenarios tabs.")*. The campaign and scenario content and their gates
      * are untouched; the tabs are simply not offered. `?mmode=campaign|scenarios` still routes
      * for screenshots and the flags gate. */
-    var modes = [['free', 'Free Play'], ['walkthroughs', 'Walkthroughs']];
+    /* A GREEN [NEW] ON WALKTHROUGHS *(OWNER, 2026-09-09, #675 section A / #688: "Put a green
+     * [NEW] next to the Walkthroughs tab in the plant and mission menu.")*. Third tuple slot,
+     * so any tab can carry it and none carries it by accident.
+     *
+     * PERMANENT, deliberately — there is no expiry and no markSeen() on it. The walkthroughs
+     * are the headline of the next release and the badge is meant to be seen by everyone who
+     * opens this window, not only by whoever has not opened it before. It comes off by
+     * pointing the third slot at `false` when the next release stops being about them.
+     *
+     * BUT IT IS GATED ON THE TAB ACTUALLY HAVING THE CONTENT, not written `true` (quality pass,
+     * 2026-09-11). MEASURED on the PUBLIC channel before this line existed: the tab read
+     * "Walkthroughs NEW" — badge painted 33x14 px, rgb(121, 210, 151) — above a panel reading
+     * "COMING SOON. Guided procedure walkthroughs are in final review." `walkthroughs` is
+     * stage:'preview' in site/flags.js, so a public visitor gets a green "here now" over a
+     * locked door. Same rule as CLAUDE.md's "a flag-gated feature is not released and gets no
+     * changelog.html entry": the badge is an announcement and must not outrun the flag. */
+    var modes = [['free', 'Free Play'], ['walkthroughs', 'Walkthroughs', walkthroughsOffered()]];
     if (/[?&]mmode=/.test(location.search || '')) modes.push(['campaign', 'Campaign'], ['scenarios', 'Scenarios']);
     else if (msel.mode === 'campaign' || msel.mode === 'scenarios') msel.mode = 'free';
     $('mpModes').innerHTML = modes.map(function (m) {
-      return '<button class="' + (msel.mode === m[0] ? 'on' : '') + '" data-mmode="' + m[0] + '">' + m[1] + '</button>';
+      return '<button class="' + (msel.mode === m[0] ? 'on' : '') + '" data-mmode="' + m[0] + '">' + m[1] +
+        (m[2] ? '<span class="mp-new">NEW</span>' : '') + '</button>';
     }).join('');
     // Step 3 — the mode's content
     $('mpContent').innerHTML =
@@ -5219,17 +5301,36 @@
           : '<button class="btn" data-trstart="' + id + '">▶ Start</button>') + '</div></div>';
     }).join('') : '<div class="m-note">No scenarios for this plant yet.</div>');
   }
+  /* DOES THE WALKTHROUGHS TAB HAVE ANYTHING BEHIND IT ON THIS CHANNEL, FOR THIS PLANT?
+   *
+   * ONE AUTHORITY, TWO CONSUMERS: mpWalkthroughs() below decides whether to draw the list or a
+   * COMING SOON panel, and renderMissionSelect's mode tuple decides whether to draw the green
+   * NEW badge. Those were two independent answers until the quality pass on 2026-09-11, and they
+   * disagreed on the channel that matters: the badge was the literal `true`, so the PUBLIC site
+   * painted "Walkthroughs NEW" over "COMING SOON — in final review". Duplicate authority is the
+   * shape DESIGN_CRITERIA Q4 vetoes, so the two gates the panel used to test inline live here and
+   * both callers ask the same function. verify_flags_ui pins the pair on both channels.
+   *
+   * The freePlayOnly fence stays OUTSIDE this, in mpWalkthroughs: it is a different sentence to
+   * the player (content authored for the retired engine, not content in review) and the badge
+   * treats both the same way — nothing offered, nothing announced. */
+  function walkthroughsOffered() {
+    var e = ENGINES[msel.engine] || {};
+    if (e.freePlayOnly && !(RD.MANUAL_PROCEDURES || {})[msel.engine]) return false;
+    if (!flagOn('walkthroughs')) return false;
+    var all = procsFor(msel.engine);
+    return !(all.length && !all.filter(function (x) { return flagOn('procedure:' + x.id); }).length);
+  }
   function mpWalkthroughs() {
     /* #244/#526 (owner-ruled 2026-08-31): walkthroughs run the validated procedure artifact
      * itself, and the pwr2 pool is authored and gated ON this plant — so an engine with its
      * own MANUAL_PROCEDURES pool is exempt from the freePlayOnly fence here. Campaign and
      * scenarios keep the fence until the #525 compatibility pass. */
     if (ENGINES[msel.engine].freePlayOnly && !(RD.MANUAL_PROCEDURES || {})[msel.engine]) return freeOnlyPanel();
-    if (!flagOn('walkthroughs')) return soonPanel('walkthroughs');
+    if (!walkthroughsOffered()) return soonPanel('walkthroughs');
     var p = progress();
     var all = procsFor(msel.engine);
     var procs = all.filter(function (x) { return flagOn('procedure:' + x.id); });
-    if (all.length && !procs.length) return soonPanel('walkthroughs');
     var doneP = p.completed_procedures || [];
     /* WALKTHROUGHS *(OWNER, 2026-09-08, #660 items 21-22)*: the list is the plant's checklist
      * pool; picking one loads its starting condition (`from`) and starts it in the Instructor
@@ -5256,7 +5357,10 @@
    * A tooltip that fades gets dismissed by the click the user was already making
    * and is then gone for ever; a dot waits until they are curious and retires
    * itself the first time they open the thing. Exactly three, by ruling: the
-   * session bar, Checklists, and Feedback. */
+   * mission door, Checklists, and Feedback. The `session` key still names the first
+   * of those; its ELEMENT moved from the retired #simStatus bar to #mainMenuBtn at
+   * #689, and the localStorage key is untouched so a returning player keeps the
+   * dot they already retired. */
   /* Panel state across sessions (#439, spec §14-7 — OWNER SELECTION 2026-08-10 from the
    * options presented: "Persist panel state"). Which tab was open and whether the
    * Instructor was folded are the player's arrangement of their own control room, and
@@ -5330,7 +5434,7 @@
   var SEEN_KEY = 'rd_seen_';
   // The Checklists mark points at the LIST now — its open button is gone, because the
   // list is always on screen (owner, 2026-08-11).
-  var COACH = { session: 'simStatus', checklists: 'cklMenu', feedback: 'fbHeaderBtn' };
+  var COACH = { session: 'mainMenuBtn', checklists: 'cklMenu', feedback: 'fbHeaderBtn' };
   function seenCoach(k) {
     try { return localStorage.getItem(SEEN_KEY + k) === '1'; } catch (e) { return true; }
   }
@@ -8111,11 +8215,13 @@
         cklState.key = null; render(latest);
       }
     });
-    // Plant & Mission window: plant / mode / start-condition picks re-render in
-    // place; the start buttons close the window and launch.
-    // The session bar is now the ONLY entry point (#439/#443) — the Operate tab that
-    // carried a "Plant & Mission…" button is dissolved.
-    $('simStatus').addEventListener('click', openMissionSelect);
+    // Plant & Mission window: mode / start-condition picks re-render in place; the start
+    // buttons close the window and launch.
+    // #mainMenuBtn — "Main Menu", in the tools row beside Settings — is the ONLY entry point
+    // (#689, owner 2026-09-09). It replaced the full-width .sim-status bar under the speed
+    // controls, which had itself replaced the Operate tab's "Plant & Mission…" button
+    // (#439/#443). One door, and it now lives with the other chrome.
+    $('mainMenuBtn').addEventListener('click', openMissionSelect);
     $('missionClose').addEventListener('click', closeMissionSelect);
     /* #520 — the halt dialog. Two ways out, and they are different decisions: reset rebuilds
      * the plant (the ONLY recovery — the latch cannot be cleared in place), while dismiss
@@ -8329,7 +8435,7 @@
       });
     })();
     // Coach marks retire on first use of the thing they point at (#443).
-    $('simStatus').addEventListener('click', function () { markSeen('session'); });
+    $('mainMenuBtn').addEventListener('click', function () { markSeen('session'); });
     $('fbHeaderBtn').addEventListener('click', function () { markSeen('feedback'); });
     $('cklMenu').addEventListener('click', function () { markSeen('checklists'); });
 
@@ -8352,14 +8458,8 @@
         }
         return;
       }
-      var pc = e.target.closest('[data-mplant]');
-      if (pc) {
-        // Plants whose control room isn't built yet are shown but not selectable.
-        if (ENGINES[pc.getAttribute('data-mplant')].soon) return;
-        msel.engine = pc.getAttribute('data-mplant');
-        msel.init = ENGINES[msel.engine].init;
-        renderMissionSelect(); return;
-      }
+      /* the [data-mplant] branch went with the plant column (#688) — nothing emits that
+       * attribute any more, so a handler for it would be a dark wire. */
       var mm = e.target.closest('[data-mmode]');
       if (mm) { msel.mode = mm.getAttribute('data-mmode'); renderMissionSelect(); return; }
       var ir = e.target.closest('[data-minit]');
@@ -8790,11 +8890,38 @@
         'feed, and the turbine here — not in a separate menu.</p>'
     },
     {
-      sel: '#gaugeStrip',
+      /* RETARGETED FROM '#gaugeStrip' (#720, OWNER RULING 2026-09-12: "A").
+       *
+       * `#gaugeStrip` is the OTHER plants' vital strip — a row of six gauges above the
+       * schematic. The PWR mounts the learning board instead and `display: none`s the strip,
+       * so the step's selector resolved to a 0x0 box, `tourElVisible()` rejected it and
+       * `renderTour()` skipped the step IN SILENCE: the tour ran 10 of its 11 steps and
+       * `#tourProg` jumped 1/11 -> 3/11. It had been describing a surface this plant does
+       * not have for as long as the board has been the PWR's display.
+       *
+       * SIX SELECTORS, NOT ONE, because no single element carries the group. Measured on the
+       * shipped board: the six Indicator Panel tiles are absolutely-positioned `.bd-tile`
+       * divs parented DIRECTLY by `.pwr-board-stage`, alongside the other 212 tiles — the
+       * smallest element that encloses all six is `.pwr-board-wrap`, i.e. the whole board,
+       * which is what step 1 already spotlights. Rather than add an empty wrapper to the
+       * board doc purely to give the tour something to point at, the tour takes the UNION of
+       * a step's `sels` (see tourResolveEls / tourUnionRect). The tiles abut exactly — 220 px
+       * pitch at 220 px wide, all at top 70 — so the union IS the strip: measured 1066 x 92 px
+       * at (32, 46) on a 1500x950 viewport.
+       *
+       * The ids are the board doc's own item ids, the same addressing pwr_board_wiring.js
+       * drives every one of these tiles by; they are as stable as the wiring table. No
+       * `fallback:` on purpose — option B ("fall back to #viewArea") was declined because two
+       * steps on one box reads as a bug, and the gate below now reds on a silent skip. */
+      sels: ['[data-item="imrzl4b7g9m"]', '[data-item="ims2immk7ks"]', '[data-item="ims2immxl2s"]',
+             '[data-item="ims2immsvn6"]', '[data-item="ims2immon9z"]', '[data-item="ims2imn1nny"]'],
       place: 'bottom',
-      title: 'Vital gauges',
-      body: '<p>Power, temperature, subcooling, pressure, and levels — the ' +
-        'readings you watch first. They turn amber/red when something is off.</p>'
+      title: 'Vital indications',
+      body: '<p>Six tiles across the top of the board: <b>REACTOR POWER</b>, <b>AVG COOLANT ' +
+        'TEMPERATURE</b>, <b>SUBCOOLING MARGIN</b>, <b>PRIMARY PRESSURE</b>, <b>PRESSURIZER ' +
+        'LEVEL</b> and <b>STEAM GENERATOR LEVEL</b> — the readings you watch first. Each one ' +
+        'draws the last three minutes beside the number, and the number turns amber as the ' +
+        'reading reaches an alarm setpoint and red at a trip setpoint.</p>'
     },
     {
       sel: '.alarm-panel',
@@ -8859,11 +8986,13 @@
         'Same plant you are sitting.</p>'
     },
     {
-      sel: '#simStatus',
+      /* moved from '#simStatus' with the button itself (#689) — a tour step whose selector
+       * resolves to nothing is SILENT: the step just points at empty space. */
+      sel: '#mainMenuBtn',
       place: 'bottom',
-      title: 'Plant &amp; Mission',
-      body: '<p>Starting condition and guided content. Switching restarts the plant ' +
-        'from a clean initial state.</p>'
+      title: 'Main Menu',
+      body: '<p>Starting condition, guided walkthroughs, and Reset. Starting any of them ' +
+        'restarts the plant from a clean initial state.</p>'
     },
     {
       sel: '#scannerPanel',
@@ -8881,7 +9010,7 @@
     }
   ];
   var tourIdx = 0;
-  var tourLiveEl = null;
+  var tourLiveEls = [];
   var tourOn = false;
 
   function tourElVisible(el) {
@@ -8896,12 +9025,40 @@
     if (!tourElVisible(el) && step.fallback) el = document.querySelector(step.fallback);
     return tourElVisible(el) ? el : null;
   }
+  /* A step may name a GROUP of elements (`sels`) instead of one (`sel`) — #720. The
+   * spotlight is then the union of what actually resolved, and EVERY member gets the live
+   * class, so a group of tiles glows as the strip it is. A `sels` step is satisfied by any
+   * one of its members resolving: losing one tile should narrow the spotlight, not delete
+   * the step. `sel`/`fallback` still work exactly as before when `sels` is absent. */
+  function tourResolveEls(step) {
+    if (!step) return [];
+    if (step.sels && step.sels.length) {
+      var out = [];
+      step.sels.forEach(function (s) {
+        var e = document.querySelector(s);
+        if (tourElVisible(e)) out.push(e);
+      });
+      if (out.length) return out;
+      if (!step.sel && !step.fallback) return [];
+    }
+    var one = tourResolveEl(step);
+    return one ? [one] : [];
+  }
+  function tourUnionRect(els) {
+    var L = Infinity, T = Infinity, R = -Infinity, B = -Infinity;
+    els.forEach(function (e) {
+      var r = e.getBoundingClientRect();
+      if (r.left < L) L = r.left;
+      if (r.top < T) T = r.top;
+      if (r.right > R) R = r.right;
+      if (r.bottom > B) B = r.bottom;
+    });
+    return { top: T, left: L, right: R, bottom: B, width: R - L, height: B - T };
+  }
 
   function tourClearLive() {
-    if (tourLiveEl) {
-      tourLiveEl.classList.remove('tour-target-live');
-      tourLiveEl = null;
-    }
+    tourLiveEls.forEach(function (e) { e.classList.remove('tour-target-live'); });
+    tourLiveEls = [];
   }
 
   function openTour(i) {
@@ -8918,11 +9075,12 @@
     if ($('tourRoot')) $('tourRoot').hidden = true;
     document.body.classList.remove('tour-active');
   }
-  function placeTourTip(target, place) {
+  /* `r` is a RECT, not an element, since #720 — a group step's spotlight is the union of its
+   * members and there is no element whose box that is. */
+  function placeTourTip(r, place) {
     var tip = $('tourTip'), spot = $('tourSpot');
     if (!tip || !spot) return;
     var pad = 6;
-    var r = target.getBoundingClientRect();
     var tw = Math.min(320, window.innerWidth - 24);
     var th = tip.offsetHeight || 160;
     // Spotlight box
@@ -8972,16 +9130,24 @@
     // Allow layout (expand card / show checklist) to settle before measuring.
     requestAnimationFrame(function () {
       if (!tourOn) return;
-      var el = tourResolveEl(step);
-      if (!el) {
-        // Skip missing targets rather than stalling the tour.
+      var els = tourResolveEls(step);
+      if (!els.length) {
+        /* Skip missing targets rather than stalling the tour — but SAY SO. This branch cost
+         * the tour a whole step for months and printed nothing (#720). verify_e2e_ui now
+         * reds on the skip itself; the warning is for whoever is looking at a live board. */
+        try {
+          console.warn('[tour] step ' + (tourIdx + 1) + '/' + TOUR_STEPS.length + ' "' +
+            step.title + '" SKIPPED — no visible target for ' +
+            (step.sels ? step.sels.join(', ') : step.sel) +
+            (step.fallback ? ' (fallback ' + step.fallback + ')' : ''));
+        } catch (eW) {}
         if (tourIdx < TOUR_STEPS.length - 1) { tourIdx++; renderTour(); }
         else closeTour();
         return;
       }
-      try { el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); } catch (e2) {}
-      el.classList.add('tour-target-live');
-      tourLiveEl = el;
+      try { els[0].scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); } catch (e2) {}
+      els.forEach(function (e) { e.classList.add('tour-target-live'); });
+      tourLiveEls = els;
       if ($('tourTitle')) $('tourTitle').textContent = step.title;
       if ($('tourBody')) $('tourBody').innerHTML = step.body;
       if ($('tourProg')) $('tourProg').textContent = (tourIdx + 1) + ' / ' + TOUR_STEPS.length;
@@ -8990,8 +9156,8 @@
       if (next) next.textContent = tourIdx >= TOUR_STEPS.length - 1 ? 'Done' : 'Next →';
       // Second frame: after scroll/expand, tip height is known.
       requestAnimationFrame(function () {
-        if (!tourOn || !tourLiveEl) return;
-        placeTourTip(tourLiveEl, step.place);
+        if (!tourOn || !tourLiveEls.length) return;
+        placeTourTip(tourUnionRect(tourLiveEls), step.place);
       });
     });
   }
@@ -9402,7 +9568,7 @@
     // list, so a leaked row writes one plant's numbers under another's names.
     pendingFine = null; pendingTiles = null; pendingDiagFine = null; RD.ChartFine = null;
     syncUnitsScope();
-    buildGauges(); buildIndications(); buildPhysics(); updateSimSummary(); buildFailures();
+    buildGauges(); buildIndications(); buildPhysics(); buildFailures();
     // The control layer already reset its channels and engaged the plant's
     // normal lineup (M5 selectPlant → engageDefaults); the tab just rebuilds.
     buildAutomate();
@@ -9978,7 +10144,7 @@
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     buildSeriesIndex();   // must precede the first chartSample — see rebuildPlantUI
     syncUnitsScope();
-    buildGauges(); buildIndications(); buildPhysics(); updateSimSummary();
+    buildGauges(); buildIndications(); buildPhysics();
     buildPlantDisplay();
     service.selectPlant(engId(startKey), ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)
     diagReset('init', { engine_key: startKey, initial_state: ui.initState });

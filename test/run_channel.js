@@ -15,7 +15,9 @@
  * host — it read VERCEL_ENV and nothing else — which meant a move to Cloudflare
  * Pages (CF_PAGES_BRANCH, no VERCEL_ENV) would have stamped the PUBLIC site 'dev'
  * and turned on all four areas the owner had declared placeholders (#241). Measured
- * before the fix: campaign, scenarios, checklists and walkthroughs all `on`.
+ * before the fix: campaign, scenarios, checklists and walkthroughs all `on`. (Two of
+ * those four have since been vetted and shipped — #722, 2026-09-12 — which is why the
+ * gated set below is read off the registry rather than written out here.)
  *
  * Nothing would have failed. No gate reddened, the pages rendered, the deploy was
  * green — the site would simply have started offering unvetted content, on a host
@@ -56,10 +58,28 @@ function check(rule, where, text, why) {
   return f;
 }
 
-// The four areas that are built but held back until each is played end to end
-// (#241). They are the payload of every decision in this file: if a channel is
-// wrong, these are what leaks.
-var GATED = ['campaign', 'scenarios', 'checklists', 'walkthroughs'];
+/* The areas that are built but held back until each is played end to end (#241). They are
+ * the payload of every decision in this file: if a channel is wrong, these are what leaks.
+ *
+ * DERIVED FROM THE REGISTRY, NOT WRITTEN DOWN (#722, 2026-09-12). It was the hand-kept list
+ * `['campaign', 'scenarios', 'checklists', 'walkthroughs']`, and the owner's ruling flipping
+ * `walkthroughs` and `checklists` to stage:'public' turned this runner red on three rows —
+ * reporting a correct public build as leaking. A list that names the gated set is a second
+ * copy of site/flags.js, and the one that rots is always the copy: CLAUDE.md's "a gate that
+ * iterates a hand-maintained MAP tests the map". The CLAIM never depended on which areas
+ * those are — it is "a public channel offers only what has been played through" — so the set
+ * is read off the registry and the claim is unchanged.
+ *
+ * SHIPPED is the positive control, and it is not decoration. A derived GATED shrinks as areas
+ * are vetted, and an empty one would make `allOff` vacuously true on every row — the public
+ * check would then pass against a build that offers nothing at all, which is the state this
+ * whole file exists to distinguish from a healthy one. So each row asserts BOTH: the gated
+ * areas behave as that channel requires, AND every public-stage area is on, on every channel.
+ * Injection-checked 2026-09-12: making stage() return 'preview' for everything reds the four
+ * `offers: true` rows on the SHIPPED half while the gated half still passes. */
+var AREA_IDS = Flags.ids().filter(function (id) { return Flags.entry(id).kind === 'area'; });
+var GATED = AREA_IDS.filter(function (id) { return Flags.stage(id) !== 'public'; });
+var SHIPPED = AREA_IDS.filter(function (id) { return Flags.stage(id) === 'public'; });
 
 // ---------------------------------------------------------------- A. the host matrix
 // Each row is a real deployment situation, named as one. `expect` is the channel;
@@ -112,11 +132,14 @@ CASES.forEach(function (c) {
   globalThis.RD_CHANNEL = r.channel;
   var offered = GATED.filter(function (id) { return Flags.on(id); });
   var allOn = offered.length === GATED.length, allOff = offered.length === 0;
+  var shipOff = SHIPPED.filter(function (id) { return !Flags.on(id); });
 
   check('OFFERS', c.name,
     'unvetted areas offered: ' + (offered.length ? offered.join(', ') : '<none>') +
-    '  (' + offered.length + '/' + GATED.length + ')',
-    (c.offers ? allOn : allOff)
+    '  (' + offered.length + '/' + GATED.length + ')' +
+    ' · vetted areas withheld: ' + (shipOff.length ? shipOff.join(', ') : '<none>') +
+    '  (' + (SHIPPED.length - shipOff.length) + '/' + SHIPPED.length + ')',
+    (c.offers ? allOn : allOff) && GATED.length > 0 && SHIPPED.length > 0 && !shipOff.length
       ? (c.offers ? 'a tester sees the work in progress, which is the point'
                   : 'the released site offers only what has been played through')
       : null);

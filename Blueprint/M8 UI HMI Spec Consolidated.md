@@ -135,8 +135,19 @@ Visually continuous with the gauge strip (same height band), slightly lighter ba
   colors, **the couplings to watch for** — the Tier A dynamics this plant is *for*
   (`DESIGN_CRITERIA.md` §6.3) — instrument lag and failure, where the missions live, keyboard
   shortcuts).
-- **Mission status line** *(as built)* — an always-visible "what's running now" strip under the sim
-  controls (`#simStatus`: plant · mode); clicking it opens the Plant & Mission window (§10.7).
+- ~~**Mission status line**~~ **RETIRED 2026-09-11 (#689)** *(OWNER, 2026-09-09, #675 section A:
+  "Add a Main Menu button to the right of settings. Change the SELECT PLANT, MISSION & RESET menu
+  to this button and get rid of the old button.")*. The full-width `#simStatus` strip under the sim
+  controls is replaced by **`#mainMenuBtn` ("Main Menu")**, in the tools row immediately right of
+  Settings. Its live "plant · mode" readout is DROPPED, not moved — and it had already been dead:
+  `updateSimSummary()` returned on `$('simPlantLbl')`, an element that left with the old Settings
+  summary, so the strip showed a literal "—". The window's own entry point is now that button.
+  Its coach pointer (`#mainMenuTip`, shown for six seconds on the first close of the window) moved
+  up with it, and its **▲ is AIMED at the button rather than centred in the bubble** — corrected
+  2026-09-11 by the quality pass, which measured the centred glyph 128 px to the left of the
+  button, over the middle of the speed bar: the bubble is the full width of the tools row while
+  the button sits at its right end. `aimMainMenuTip()` sets `--mm-arrow-x` from the button's
+  measured centre each time the tip is shown, so a change to the row's contents cannot un-aim it.
 
 ---
 
@@ -624,8 +635,10 @@ get right:
 Speed is **not** here — the top-bar selector (§3) is the single, always-visible speed control. This tab
 carries the mission status and the full state operations.
 
-- **Current plant / mode:** plant and mode readouts, plus the **⚛️ Plant & Mission…** button opening
-  the mission window (§10.7).
+- ~~**Current plant / mode:**~~ **GONE.** The `#simPlantLbl` / `#simModeLbl` readouts and the
+  **⚛️ Plant & Mission…** button left with this tab's rework; `updateSimSummary()`, which wrote
+  them, was deleted at #689 once the last consumer went. The window opens from **Main Menu**
+  (`#mainMenuBtn`, §3).
 - **State operations:** Reset, Save State (download JSON), Load State (file picker → `load_state`).
   *(as built)* There is **no "Export Run History"** — data export lives elsewhere: CSV of the plotted
   parameters in the **Graph** tab (§10.2), the diagnosis JSON bundle in the **Dev** tab (§10.6).
@@ -678,14 +691,26 @@ under Node. The true-state overlay, by contrast, ships — it is a learning feat
 ### 10.7 Plant & Mission window *(as built — replaces the Training tab)*
 
 The Training tab's role moved to a full-screen **Plant & Mission window** (`openMissionSelect`,
-`ui/app.js`), opened from the Sim tab's **⚛️ Plant & Mission…** button, the mission status line (§3),
-or `?missions=1` (the retired `?tab=training` deep link redirects here). Selection order — nothing
+`ui/app.js`), opened from the **Main Menu** button in the tools row (`#mainMenuBtn`, #689 — it
+replaced the Sim tab's **⚛️ Plant & Mission…** button and then the §3 mission status line), or
+`?missions=1` (the retired `?tab=training` deep link redirects here). Selection order — nothing
 changes in the running sim until a start button is pressed:
 
-1. **Plant** — left-column cards (PWR · RBMK pre/post · BWR), the active plant marked.
-2. **Mode** — **Free Play** (starting-condition picker), **Campaign** (the guided mission path with
-   completion marks), **Scenarios** (instructor-led situations for the plant), **Walkthroughs**
-   (procedure follows).
+1. ~~**Plant** — left-column cards~~ **REMOVED 2026-09-11 (#688)** *(OWNER, 2026-09-09, #675
+   section A: "Remove the plant selection column from the plant and mission menu.")*. The
+   column held one selectable card and three greyed COMING SOON placards; a published build
+   does not contain the retired engine at all (#523), so it offered a single choice. The plant
+   is now decided by `?engine=` and the boot fallback; `msel.engine` survives as the
+   in-session value every content builder and the Start button read.
+2. **Mode** — **Free Play** (starting-condition picker) and **Walkthroughs** (procedure
+   follows, carrying a green **NEW** badge since #688). **The badge is GATED on the tab having
+   content, not permanent** — corrected 2026-09-11 by the quality pass, which measured it painting
+   33 x 14 px in rgb(121, 210, 151) on the **public** channel directly above that tab's COMING SOON
+   panel, because `walkthroughs` is `stage: 'preview'` in `site/flags.js`. `walkthroughsOffered()`
+   is the single authority for both the badge and the panel's COMING SOON decision; a badge is an
+   announcement and must not outrun the flag. **Campaign** (the guided mission path with completion
+   marks) and **Scenarios** (instructor-led situations) are built and gated but not offered as
+   tabs — `?mmode=` reaches them (#660 item 19).
 3. **The specific start** — initial state, mission, scenario, or procedure.
 
 ### 10.8 URL parameters — deep links and dev conveniences *(as built)*
