@@ -216,3 +216,66 @@ looks exactly like a clean audit.
 it had been printing a plant defect by name into contexts the exclusion had just cleaned (#383).
 Hooks fire regardless of `claudeMdExcludes`, so that was the one priming channel no settings file
 could close.
+
+---
+
+## 9. Scratch worktrees — one per agent, for parallel work
+
+*(OWNER DIRECTIVE, 2026-09-12: "Do the worktree experiment", after "Can we find a faster way to
+get work done? It can take forever to complete some simple changes.")*
+
+The three named lanes are for **sessions**. This section is about something different and much
+cheaper: giving each **subagent** its own throwaway worktree so two agents can work the same file
+at the same time. It is not a new lane and it never gets a lane tag.
+
+**Why.** Two agents in one tree serialize on every browser gate and clobber each other's
+uncommitted work. Both happened on 2026-09-12: `#688`/`#689` waited ~40 min behind `#687` purely
+for file contention, and an agent ran `git checkout -- ui/app.js` over another's finished,
+measured `#720` fix — which survived only because that agent still held a copy in its scratchpad.
+`git status` read clean the whole time.
+
+**Measured that day, so it is not a guess:**
+
+| | |
+|---|---|
+| `git worktree add` | **1 s** |
+| `node_modules` junction | **0 s** |
+| disk per worktree | **24 MB** (`.git` is shared, and it is 229 MB) |
+| two `verify_e2e_ui` runs, one per tree, **concurrent** | both **PASS**, 4 m 27.5 s and 4 m 28.0 s — a 0.5 s spread, no port or profile collision |
+| two agents editing **different regions** of `ui/app.js`, then merging | clean auto-merge, both edits present |
+| two agents editing the **same line** | **CONFLICT, loudly** — the correct outcome, and the opposite of the silent clobber above |
+
+**Setup** (from the primary tree; the branch name is throwaway):
+
+```
+git worktree add -b exp/<task> C:/grok_build/RD_<task> develop
+powershell -c "New-Item -ItemType Junction -Path C:\grok_build\RD_<task>\node_modules -Target C:\grok_build\Reactor_Dynamics\node_modules"
+mkdir C:/grok_build/RD_<task>/inbox
+```
+
+**`mklink /J` through Git Bash fails on the path escaping** — use the PowerShell form above.
+Without the junction every browser gate in that tree dies, which is the only way this setup
+goes wrong.
+
+**Teardown**, once the work is merged:
+
+```
+git worktree remove --force C:/grok_build/RD_<task>
+git branch -D exp/<task>
+```
+
+**Four rules.**
+
+1. **A scratch worktree is NOT a lane.** No lane tag, no `status-wip-*`, and it is invisible to
+   `tools/hook_lane_status.js` — so it must never outlive the task. A stale one is a tree nobody
+   is watching.
+2. **Never push it**, same as the named lanes (§5), and never merge it into `develop` yourself —
+   the coordinator merges it into the lane the work belongs to.
+3. **Sources stay in the primary tree.** A temp tree has no `inbox/sources`, and anything written
+   there dies at teardown. `tools/find_source.js` searches the three named lanes only.
+4. **Merge conflicts are the POINT.** A conflict means two agents genuinely touched one line and a
+   human has to choose. In a shared tree that same collision is silent and one side simply loses.
+
+**When it is worth it:** two or more agents whose work touches the same file, or any agent whose
+task will run a browser gate while another is working. **When it is not:** a single agent, or
+tasks in genuinely separate files — the primary tree is simpler and the merge step is real work.

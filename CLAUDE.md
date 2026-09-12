@@ -189,6 +189,8 @@ docs.
 >   bare — `test/run_session_labels.js` gates it; `LANES.md` §7 for why.
 > - A new tree comes from `git worktree add <path> <branch>`, and needs `node_modules` junctioned
 >   from the primary tree plus an `inbox/` directory. Commit to **your own branch**.
+> - **Two SUBAGENTS at once? Give each a scratch worktree — `LANES.md` §9.** 1 s to make; sharing
+>   a tree serializes their gates and lets one `git checkout --` the other's work, silently.
 
 > **Four questions decide whether a feature or change goes in — `Blueprint/DESIGN_CRITERIA.md`
 > is BINDING** *(OWNER DIRECTIVE, 2026-08-02: "I think there are a few important criteria on
