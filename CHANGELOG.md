@@ -30,6 +30,47 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — quality pass over the #656/#687/#688/#689/#690 bundle (2026-09-11)
+
+*(OWNER DIRECTIVE, 2026-09-11: "Upon completing your work, spawn a subagent to do a full and
+thorough quality pass through it for any remaining bugs, issues or QoL improvements.")* Scope
+was exactly those five commits. Four defects their own gates could not see, two of them hollow
+checks. No engine, no control layer; everything measured in a real browser.
+
+- **The green NEW badge no longer paints on the public site over a COMING SOON panel** (#688).
+  MEASURED with the channel pinned to `public`: the Walkthroughs tab read "Walkthroughs NEW",
+  badge painted 33 x 14 px in rgb(121, 210, 151), directly above "COMING SOON. Guided procedure
+  walkthroughs are in final review." `walkthroughs` is `stage: 'preview'` in `site/flags.js`, and
+  the badge was a literal `true` while the panel asks the flag registry — two answers to one
+  question, disagreeing on the only channel a visitor sees. `walkthroughsOffered()` is now the one
+  authority for both. Gated in `verify_flags_ui` on the painted rect and computed colour, never the
+  class name, with both channels asserted on one URL because either half alone is hollow (52 -> 54).
+- **The Main Menu coach tip's arrow points at the Main Menu button** (#689). MEASURED at a 1500 px
+  viewport: the arrow's glyph centre sat at x 1252.7 against a button box of 1380.2-1449.0 — 128 px
+  out, over the middle of the speed bar. #689 moved the bubble to the right ROW and left it
+  centre-aligned, which was correct under the full-width bar it used to follow and wrong under a
+  six-button row. The glyph is aimed from the button's measured position now (x 1416), not centred.
+- **The header clock's "running" colour is now asserted, not just the absence of its old fade**
+  (#687). PROVED HOLLOW: deleting `.clock.running`'s colour left the new check green with the running
+  clock reading the same grey as a stopped one — the plant's only remaining cue on that readout could
+  have gone silently.
+- **`margin-top: auto` was credited for the End-walkthrough row's position in four places and
+  measures inert** (#687). Computed marginTop is `0px` at viewport heights 950 / 1200 / 760 / 640;
+  `.instr-log`'s `flex: 1 1 0` is what pushes the row to the panel floor. The declaration stays — it
+  is a working fallback if the log ever stops growing (96 / 282 / 14 px) — but the comments and the
+  gate's error message no longer name a mechanism they cannot observe.
+- **The layman-playthrough harness can see the End walkthrough and Next-leg buttons again** (#687).
+  Moving that row out of `#cklRun` put it outside `driver.js`'s `ckl()` extract, which is the entire
+  view a fresh-context reviewer has of the panel — measured, the extract ended at "Continue" and
+  carried no "End walkthrough" while the button was on screen. #653's trap, firing again: nothing
+  gates `driver.js`, so the move reddened nothing.
+- Three comments in `ui/app.js` still named the plant column #688 deleted as a live consumer of
+  `ctorPresent()`; corrected.
+
+Filed, not fixed: **#721** — the TRIP BLOCKS popover has no Escape dismissal, does not return focus
+to its opener, and presses on shell chrome leave it open (the last is a ruling, with the measurements
+and a recommendation on the issue).
+
 ### Fixed (the TRIP BLOCKS popover had no click-away — #690)
 
 Owner playtest #675 §A, verbatim: "Trip block popup should disappear when clicking anywhere

@@ -29,6 +29,190 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-11-develop-d (the QUALITY PASS over the #656/#687/#688/#689/#690 bundle — four defects the bundle's own gates could not see, two of them hollow checks)
+
+*(OWNER DIRECTIVE, 2026-09-11: "Upon completing your work, spawn a subagent to do a full and
+thorough quality pass through it for any remaining bugs, issues or QoL improvements.")* Scope was
+exactly `8240e453..HEAD` — five commits, 11 files, +1383/−185 — and the brief was to find what the
+three agents left, not to re-litigate anything ruled. Six commits, all `develop`. No engine, no
+control layer. Verified in headless Chromium throughout, because every one of the three agents
+before me had a source-read diagnosis refuted by measurement.
+
+**The two findings worth carrying forward are a matched pair, and both are about what a NEW CHECK
+READS.** The bundle added +758 lines to `verify_e2e_ui.js` with injection proofs for eleven claims,
+and it was still true that **two of the new assertions could not fail on the mechanism they named.**
+Injection proof beside your own fix tells you the check reds when the fix is reverted; it does not
+tell you the check covers the fix's OTHER half, or that the thing you named is the thing doing the
+work.
+
+### 1. The green NEW badge painted on the PUBLIC channel, over a COMING SOON panel (#688)
+
+MEASURED before touching anything, `?engine=pwr2` with the channel pinned to `public`: the
+Walkthroughs tab read **"Walkthroughs NEW"** — badge painted **33 × 14 px in rgb(121, 210, 151)** —
+directly above a panel reading **"COMING SOON. Guided procedure walkthroughs are in final review."**
+
+`walkthroughs` is `stage: 'preview'` in `site/flags.js`. The badge was the literal `true` in
+`renderMissionSelect`'s mode tuple while the panel asks the flag registry: **two independent answers
+to one question, disagreeing on the only channel a visitor sees.** Same rule as CLAUDE.md's "a
+flag-gated feature is not released and gets no `changelog.html` entry" — a badge is an announcement
+and must not outrun the flag.
+
+`walkthroughsOffered()` is the one authority now; the badge and `mpWalkthroughs()`'s COMING SOON
+decision both ask it (the two gates the panel tested inline moved into it). The `freePlayOnly` fence
+stays outside it — different sentence to the player — and the badge treats both refusals the same.
+
+Gate: two checks in `verify_flags_ui.js` **on one URL**, because either alone is hollow — the public
+half passes on a badge that never renders anywhere, the dev half on a badge that renders everywhere.
+Asserted on the **painted rect and computed colour**, never the class name. Injection-proven three
+ways: the literal `true` restored reds the public half; `false` reds the dev half; renaming the
+`.mp-new` rule so the class survives but never paints reds the dev half on colour
+`rgb(228, 233, 238)` — the case a class-name check would have passed. **52/52 → 54/54.**
+
+### 2. #689 moved the coach tip to the right ROW and left its arrow aimed at nothing
+
+MEASURED, 1500 px viewport: `#mainMenuTip`'s ▲ glyph centre at **x 1252.7** against a Main Menu
+button box of **1380.2–1449.0** — **128 px out, pointing at the middle of the speed bar.**
+
+The bubble spans the whole 338 px tools row and the arrow was the first glyph of a CENTRE-ALIGNED
+line. **Centred was correct under the full-width `.sim-status` bar this tip used to follow** — it
+stopped being correct the moment the target became one button at the right end of a six-button row,
+and #689's own comment claims the move made the ▲ "point at the control it names". Nothing read it:
+the #689 check never touches `#mainMenuTip`.
+
+The glyph is its own node, out of the text flow, positioned from `--mm-arrow-x`, which
+`aimMainMenuTip()` sets from the button's **measured** centre each time the tip is shown — measured
+rather than a hard-coded padding because ⛶ is the end-cap and #689's own note says a seventh named
+tool re-lays the row out. Own strip above the text so it can never overlap the sentence. After:
+**x 1416, inside 1380.2–1449.**
+
+Gate: measured at the ONE moment it is visible — the first close of the Plant & Mission window,
+which is the press that spends `missionTipArmed` and is the player's own route. The arrow's rect
+comes from a **Range over its text node**, not the span's layout box: an absolutely positioned
+inline span can report a box while painting off-target. Injection-proven three ways; dropping
+`.mm-arrow`'s positioning reproduces the shipped defect at **126 px off**.
+
+### 3. HOLLOW: the clock check forbade the fade and never asserted what replaced it (#687)
+
+#687 removed `.clock.running { animation: pulse 2s infinite }` — 576 opacity transitions over 50 s,
+correctly diagnosed — and replaced it with `.clock.running { color: var(--running) }`, on the
+argument that *"a steady colour carries the same fact with no motion."* The new check tested
+`animationName !== 'none'` and nothing else.
+
+**Deleting the replacement colour left the check GREEN,** with the running clock reading the same
+`rgb(228, 233, 238)` as a stopped one. The running plant's only remaining cue on the header clock
+could go silently and the gate would agree.
+
+Now read three ways so none restates another: the running clock's colour, the SAME element's colour
+with `running` taken off (so "the running clock is coloured" is a difference, not a reading of
+whatever the clock is coloured anyway), and `--running` resolved through the cascade via a throwaway
+probe span — which names the token the fix chose instead of copying a hex literal into a test.
+`.accel` legitimately wins by source order, so the token is demanded only when not accelerated; the
+running-vs-stopped difference is demanded either way. Green: `rgb(70, 163, 94)` against a stopped
+`rgb(228, 233, 238)`.
+
+### 4. `margin-top: auto` was credited in FOUR places and measures INERT (#687)
+
+#687 item 2 named `margin-top: auto` as what pins the End-walkthrough row to the panel floor, in
+`shell.css`, `shell.html`, `renderChecklist`'s comment and the gate's own error message.
+
+MEASURED at viewport heights **950 / 1200 / 760 / 640** with a walkthrough running:
+`getComputedStyle(#cklBtns).marginTop` resolves to **`0px` at every one**, and setting it to 0 moves
+the row **0 px**. Auto margins only take the free space flex-grow left over, and `.instr-log` is
+`flex: 1 1 0` — it eats all of it. **Deleting the declaration leaves the check GREEN with identical
+numbers (921 / 931 / 889).** That is how a wrong mechanism claim reached four documents and a gate
+message unchallenged.
+
+**The declaration stays — measured, it is a working fallback:** with the log dropped to
+`flex: 0 0 auto` the auto margin absorbs the free space itself (**96 / 282 / 14 px** at those
+heights) and holds the row down alone. Only removing BOTH floats the row **97 px** off the floor,
+and that is what the gate reds on. **The assertion itself was always right, because it measures the
+EFFECT** — the row's bottom against the panel floor — rather than a stylesheet, which is why it
+survived a wrong explanation without letting anything break. Do not narrow it to either mechanism.
+
+### 5. The layman-playthrough harness stopped being able to see End walkthrough (#687)
+
+#687 item 2 moved the End walkthrough / "Next: `<leg>` ▸" row OUT of `#cklRun`, where it is now a
+SIBLING. `driver.js`'s `ckl()` — the **entire view a fresh-context reviewer agent has of the
+walkthrough panel** — reads `#cklRun`'s innerText and was not updated. The commit did update
+`SKILL.md` for #689's `#simStatus` → `#mainMenuBtn`, so the file was open; this half was missed.
+
+MEASURED by running the **shipped** `driver.js` expression rather than a copy: the extract ended at
+`"…⏪ Rewind step / Continue ▶"` and contained no "End walkthrough" anywhere, while the button was on
+screen 32 px tall at the panel floor. The chain button the skill explicitly tells its agent to press
+— *"each finished leg offers the next"* — is emitted into that same row by the same expression.
+
+**This is #653's trap firing again**: a fresh-reader review reports what the renderer shows AND what
+your extract left out, and an extract that drops a control makes the reviewer report the control as
+missing. It produced a wrong "30 of 67 steps have no acceptance" once already. **Nothing gates
+`driver.js`, which is why the move reddened nothing.** `ckl()` appends `#cklBtns` when on screen;
+measured after — free play unchanged, walkthrough tail reads "…Continue ▶ / End walkthrough", and the
+row drops back out when the run ends.
+
+### 6. Three comments naming the deleted plant column as a live consumer (#688)
+
+`ctorPresent()`'s header claimed *"Every consumer — the boot override, the fallback and the plant
+column — reads this one probe"* and named keeping a card out of the menu as the probe's purpose;
+`soon: true`'s definition still said the plant "is shown greyed and is not selectable"; the retired
+PWR entry still described "this card" on dev and preview builds. #688 correctly updated the M8 spec
+and left these. Corrected — a stale specification is the copy nothing can catch, and a module header
+is an inherited claim.
+
+## WHAT THE BUNDLE GOT RIGHT, established by driving it rather than by reading it
+
+Said plainly because a quality pass that only lists faults is not a measurement:
+
+- **#690's popover listener is clean.** Instrumented `addEventListener`/`removeEventListener` for
+  capture-phase `pointerdown` from before boot: **exactly 1 live listener while a panel is up, 0
+  otherwise**, host **always `pwr-board-wrap`** and never `document`, across five open/close cycles.
+  It survives a board REMOUNT (plant restart through the mission window: add 4 / rem 4, net 0), and
+  re-arms correctly afterwards — the outside press still dismisses at 28,32 after the remount. It
+  never fires on the walkthrough panel, the tab bar, the time controls or the alarms strip.
+- **`.sim-tools` does not wrap.** Swept 1920 / 1600 / 1500 / 1440 / 1366 / 1280 / 1152 / 1024 / 900 /
+  820 / 768: **one 27 px row at every width**, 298.9 px of buttons, headroom 19.1 px at the 338 px
+  panel and more everywhere else. No button's label changes with units or settings state (the
+  widths are byte-identical across the sweep), and board-focus mode moves the whole `.sim-controls`
+  block into a 420 px strip, still one row.
+- **The chart-settings window (#454) is undisturbed** — `.mission-body` still computes
+  `260px 1fr` with `cs-opts` / `cs-right`; only `.mp-body` collapses to `1fr`. No empty track
+  anywhere; `.fl-body` was already `1fr`.
+- **The NEW badge IS announced to a screen reader**, and correctly: Chromium's accessibility tree
+  gives the tab the name **"Walkthroughs NEW"** (with the space), not "WalkthroughsNEW" as its
+  `textContent` suggests. Nothing to fix — measured because the run-on textContent looked wrong.
+- **The persona header restores on every real route.** Three start/End cycles plus a tab-away and
+  back: headerless while running (`display: none`, persona height 0), header back as "Instructor" at
+  32 px within one tick of End walkthrough, `#cklBtns` hidden and emptied each time.
+- **Main Menu is keyboard-reachable and works**: `<button>`, tabIndex 0, Enter opens the window,
+  Escape closes it.
+
+## One thing NOT filed and NOT fixed, deliberately
+
+`wt-headerless` is cleared **only** by `setInstrRole`, while the sibling `#cklBtns` got a
+per-broadcast `!runningCkl` gate in `renderInstructorInner` for exactly the reason the comment
+gives — *"the row survives every path that hides #cklRun"*. The class has the same shape and no such
+gate, and the free-play tail of `renderInstructorInner` has a path that calls neither (`msg`
+non-null and unchanged, queue empty, dwell met — neither the `if` nor the `else if` fires).
+
+**It did not reproduce.** Three start/End cycles, a tab switch and a 2.5 s settle all restored the
+header. So it stays an observation: HR12 binds, and a one-line guard justified by a state I could not
+produce is the unmeasured claim this log exists to keep out. Written down here so the next agent who
+touches that branch knows where the asymmetry is.
+
+## Filed
+
+**#721** — the TRIP BLOCKS popover has no Escape dismissal, does not return focus to its opener, and
+presses on shell chrome (the Instructor tab, the time controls, the alarms/chart strip) leave it
+open. The last of those is a **ruling** I did not take: the owner's words were "clicking anywhere
+outside that popup" and #690 deliberately reads that as *outside the popup, on the board*, with the
+reasoning written into the code. Measurements and a costed recommendation (widen the host to
+`document`) are on the issue. Nothing blocking.
+
+## Gates
+
+`verify_e2e_ui` **PASS (4 screenshots)** · `verify_board_check` **256** · `verify_flags_ui`
+**54/54** (52 → 54, the only BASELINES move) · `verify_ckl_relevance` **21/21** ·
+`run_checklist_pwr2`, `verify_manual_follow` and the static set at baseline · `run_all --fast` at
+baseline. CPU was contended throughout by the workbench lane's own `run_all`.
+
 ## Session log — 2026-09-11-develop-c (#688 and #689 — one door to the Plant & Mission window; a readout that had been DEAD for weeks, and two consumers that fail in silence)
 
 Owner playtest sheet #675 §A, three sentences of it. Touches `ui/app.js`, `ui/shell.html`,
