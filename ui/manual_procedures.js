@@ -1613,10 +1613,17 @@
          * plant-hours, never stopping. Setting the target alone delivers the dose and stops (at
          * 788, not 719 — the totalizer's own defect, filed separately). The four boron steps in the
          * chain now say to press ON only if it is not lit. */
+        /* "UPDATES ONLY AFTER A SAMPLE" WENT STALE THE DAY #698 REMOVED THE SAMPLE BUTTON
+         * (owner playtest 2026-09-12, #714: "mode 3> mode 1 step 2 walkthrough is broken.
+         * its looking for a chemistry sample but that feature has been removed there is no
+         * sample button any more."). `acc` here grades true `boron_ppm`, never a sample, so the
+         * step was never mechanically blocked — the REPLAY (section 1) drove it to completion
+         * every time. What was broken was this prose: it told the player to expect a delay and
+         * a control that no longer exist. BORON CHEM is a live channel now (#698); say so. */
         { text: 'Wash boron out of the water: on the BORON card set 719 and press Enter.',
           why: 'Boron dissolved in the water soaks up neutrons. At 918 ppm the control bank cannot make the reactor critical at all; at 719 ppm it goes critical about 230 of 627 steps out.',
-          note: 'ON is normally already lit; press it only if it is not. BORON STATUS reads DILUTING while the dose runs and stops by itself; BORON CHEM updates only after a SAMPLE. From the Hot Standby preset boron already reads 719 and this step ticks at once.',
-          control: 'Boron control', target: 'BORON box 719; BORON STATUS counting down; BORON CHEM updates only after a sample',
+          note: 'ON is normally already lit; press it only if it is not. BORON STATUS reads DILUTING while the dose runs and stops by itself; BORON CHEM is a live channel and tracks the loop as it falls. From the Hot Standby preset boron already reads 719 and this step ticks at once.',
+          control: 'Boron control', target: 'BORON box 719; BORON STATUS counting down; BORON CHEM tracking live',
           wait_hint: 'From 918 ppm this takes about 65 plant-minutes. Use the speed buttons at the top.',
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 }, hold: 60,
           acc: { p: 'boron_ppm', op: '~', v: 719, tol: 40 },

@@ -932,6 +932,58 @@ if (!only) {
          vRed === null, vRed === null ? '(row absent, as expected pre-#696)' : JSON.stringify(vRed));
     }
   })();
+
+  /* 2q. THE #698 SWEEP GAP — REMOVING A CONTROL LEAVES STALE PROSE BEHIND, AND NOTHING READS
+   * PROSE (#714, owner live playtest 2026-09-12: "mode 3> mode 1 step 2 walkthrough is broken.
+   * its looking for a chemistry sample but that feature has been removed there is no sample
+   * button any more.").
+   *
+   * `pwr2:pwr_startup` step 2's `acc` has always graded true `boron_ppm`, never a
+   * `take_boron_sample` command — so 2n's sweep above (pure CMD-KIND entries, #697/#698's own
+   * shape) correctly never flagged it, and the REPLAY (section 1) drove it to completion on
+   * every run: 195/195 straight through the regression. What broke is the `note`/`target`
+   * PROSE, which told the player to expect a SAMPLE control and a lab delay #698 deleted from
+   * the board the same day. Neither this runner's replay nor 2n reads `note`, `target`, `text`,
+   * `why`, `story`, or `cautions` at all — the acceptance-shape gate and the prose are two
+   * different things, and only the first is gated. Same hole CLAUDE.md already records for
+   * `Manuals/*.md` ("nothing gates manual prose"); it turns out to reach this file's own free
+   * text too.
+   *
+   * Fixed by REWORDING (#714) — no acceptance changed. This sweep is the gate: every pwr2
+   * procedure and step, scanned whole-object for "sample". Zero is the measured, corrected
+   * count (one hit, `pwr_startup` step 2, before the fix). Proven red by injection: the exact
+   * stale phrase is reinstated into the step's `note`, the sweep must catch it, then it is
+   * restored. Not a general prose-linter — narrow to the one word this regression turned on,
+   * per the "narrow and silent beats broad and noisy" rule this file already states for 2n. */
+  (function () {
+    var STALE_RE = /sample/i;
+    function sweep() {
+      var hits = [];
+      POOL.forEach(function (proc) {
+        ['title', 'purpose', 'outcome'].forEach(function (k) {
+          if (typeof proc[k] === 'string' && STALE_RE.test(proc[k])) hits.push(proc.id + '.' + k);
+        });
+        (proc.prereq || []).forEach(function (t, i) { if (STALE_RE.test(t)) hits.push(proc.id + '.prereq[' + i + ']'); });
+        (proc.cautions || []).forEach(function (t, i) { if (STALE_RE.test(t)) hits.push(proc.id + '.cautions[' + i + ']'); });
+        (proc.steps || []).forEach(function (st, idx) {
+          if (STALE_RE.test(JSON.stringify(st))) hits.push(proc.id + ' step ' + (idx + 1));
+        });
+      });
+      return hits;
+    }
+
+    ck('no pwr2 checklist text (title/purpose/prereq/cautions/outcome/step) mentions SAMPLE (#714)',
+       sweep().length === 0, sweep().join(', ') || 'clean');
+
+    var proc = POOL.filter(function (p) { return p.id === 'pwr_startup'; })[0];
+    var step = proc.steps[1];
+    var saved = step.note;
+    step.note = saved + ' BORON CHEM updates only after a SAMPLE.';
+    var redHits = sweep();
+    step.note = saved;
+    ck('...RED BY INJECTION: reinstating the stale SAMPLE phrase in step 2\'s note is caught',
+       redHits.indexOf('pwr_startup step 2') !== -1, redHits.join(', '));
+  })();
 }
 
 console.log('\n' + '='.repeat(74));

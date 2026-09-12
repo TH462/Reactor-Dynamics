@@ -29,6 +29,54 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-12-workbench-a (#714 — pwr_startup step 2 still told the player to SAMPLE)
+
+**Owner live playtest, 2026-09-12**: "mode 3> mode 1 step 2 walkthrough is broken. its looking for
+a chemistry sample but that feature has been removed there is no sample button any more."
+
+**Cause.** #698 (`eef4683e`, 2026-09-11) removed the SAMPLE button and made BORON CHEM a live
+reading. It correctly deleted the one step whose *acceptance* required `take_boron_sample`
+(`pwr2:pwr_raise_power`) — the #641/#697 command-kind-check-off shape. It missed a second,
+different-shaped site: `pwr2:pwr_startup` step 2's `note`/`target` still read "BORON CHEM updates
+only after a SAMPLE". This step's `acc` has always graded true `boron_ppm`, never the sample
+command — **the step was never mechanically blocked.** The prose sent the player looking for a
+control that no longer exists, which reads exactly as "the walkthrough is broken."
+
+**Why `run_checklist_pwr2` did not catch it (the important part).** #697/#698's own sweep
+(section 2n) classifies `accs` entries by ACCEPTANCE SHAPE — pure cmd-kind with no predicate. It
+never reads `note`/`text`/`target`/`why`/`cautions`. The REPLAY (section 1) drives every step's
+`cmd`/`acc`/`accs` and asserts them; it does not read prose either. So the step passed 195/195
+straight through the regression — nothing in the gate list reads player-facing strings against
+the board's current control vocabulary. Same hole CLAUDE.md already records for `Manuals/*.md`
+prose ("nothing gates manual prose"); it reaches `ui/manual_procedures.js`'s own free text too.
+
+**Sweep.** Built-object scan (`RD.MANUAL_PROCEDURES`, all five pools: pwr, pwr2, rbmk_pre,
+rbmk_post, bwr) for any string field containing "sample": **exactly one hit**, `pwr2:pwr_startup`
+step 2. `pwr_raise_power` (the leg #698 edited) carries zero — that deletion was clean. No mirror
+defect: no live step grades on `boron_analyzer`/`take_boron_sample`, so nothing is now satisfied
+instantly by the live reading that used to wait on a 30-minute lab result.
+
+**Fix.** Reworded step 2's `note`/`target` (`ui/manual_procedures.js`) to describe the live BORON
+CHEM channel; no acceptance changed. First draft of the wording itself still contained the word
+"sample" ("no sample needed") — caught by the new gate below on its first run, refitted.
+
+**Gate added.** `run_checklist_pwr2.js` section 2q: static sweep of every pwr2 procedure/step's
+text fields for "sample", asserting zero (measured, corrected count), proven red by injection
+(reinstate the stale phrase into step 2's `note`, sweep catches it, restore). 195 -> **197/197**.
+BASELINES updated in `test/run_all.js`.
+
+**Not touched.** The Manuals content pass (`03`, `04`, `10`, `WIRING_REFERENCE.md` line 107) that
+still teaches the sampling workflow is already tracked under #698, `status-owner-review`, OPEN,
+explicitly deferred pending the owner's one-line confirmation — a separate, larger scope (revision
+row, `stamp_manual_revision.js`, `pack_manuals.js`), not re-litigated here.
+
+Filed **#714**, cross-linked to #698/#697/#641/#675. Gates run individually: `run_checklist_pwr2`
+197/197, `run_style` 11/11, `run_manual_controls` 646/646, `run_manual_commands` 8/8,
+`run_checklist` 90/90, `verify_ckl_relevance` 21/21, `verify_manual_follow` 225 checks — all at
+current baseline, none needed a BASELINES change except `run_checklist_pwr2` itself.
+`node test/run_all.js`: **111/111 runners at baseline**, `run_checklist_pwr2.js` confirmed
+197/197 in the full run, `run_ops.js` untouched at the tracked, ruled 59/70.
+
 ## Session log — 2026-09-11-workbench-e (lane maintenance: merge `develop`, re-gate)
 
 Merged `develop` (`9774a679`) into `workbench` (`ec432d2a`) — sanctioned lane maintenance, not a
