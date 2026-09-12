@@ -3418,6 +3418,90 @@ async function testWalkthroughPanelChrome(page) {
   return log.join('\n') + '\n';
 }
 
+/* #656 — THE ACKNOWLEDGE BUTTON ON A STEP WITH NO PREDICATE.
+ *
+ * Reported from the third layman playthrough (2026-09-07): an observation step that completes on
+ * its dwell showed no done-when line, no Acknowledge and no Next, and `[data-ckl-check]` returned
+ * ZERO until the player pressed "Show all details" — an unrelated button. From the player's seat
+ * the leg could not be finished.
+ *
+ * IT DOES NOT REPRODUCE ON THIS TREE, and the reason is dated: #660 items 17-18 (2026-09-08, the
+ * day after the report) made Rewind + Continue unconditional on every active step, where the card
+ * used to draw the acknowledge row only while `ck.awaiting_ack`. Swept 2026-09-11 in headless
+ * Edge over 53 steps of three legs (pwr_raise_power, pwr_startup, pwr_tmi2_incident), including
+ * the six steps in the pwr2 pool that carry NO acceptance predicate at all: the button is drawn
+ * 86x23 on every one of them, outside any collapsible block.
+ *
+ * So this check exists to keep it that way, and it is deliberately written against the WORST
+ * case the report names rather than against a convenient step: a step whose acceptance list is
+ * empty, read with the details at their default state, before anything is expanded. The
+ * pre-#660 conditional is what turns it red. */
+async function testObservationStepAckButton(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await startWalkthrough(page, 'pwr_tmi2_incident');
+
+  /* Find the step the report is about — NO predicate, so nothing can grade it and the only way
+   * off it is the button. Derived from the running pool, never a hand-written index: the legs
+   * are re-authored constantly (#692 rewrote this one), and a pinned index would quietly drift
+   * onto a step with an acceptance and stop testing the class. */
+  var target = await page.evaluate(function () {
+    var steps = globalThis.RD.__dev.service().instructor.checklist.proc.steps;
+    for (var i = 0; i < steps.length; i++) {
+      var st = steps[i];
+      if (!st.acc && !(st.accs && st.accs.length)) return { i: i, text: String(st.text).slice(0, 60) };
+    }
+    return null;
+  });
+  if (!target) {
+    throw new Error('#656 control: pwr_tmi2_incident carries no predicate-free step any more — ' +
+      'repoint this check at a leg that does, or the class is untested');
+  }
+  log.push('target: step ' + (target.i + 1) + ' (no acceptance predicate) — "' + target.text + '"');
+
+  await page.evaluate(function (i) {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    c.idx = i;
+    for (var k = 0; k < c.done.length; k++) c.done[k] = k < i;
+  }, target.i);
+  await page.waitForTimeout(800);
+
+  var r = await page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    var mk = document.querySelector('.ckl-step.ckl-active [data-ckl-check]');
+    var rc = mk ? mk.getBoundingClientRect() : null;
+    return {
+      idx: c.idx,
+      anyCheck: document.querySelectorAll('[data-ckl-check]').length,
+      inActive: !!mk,
+      w: rc ? Math.round(rc.width) : 0, h: rc ? Math.round(rc.height) : 0,
+      disp: mk ? getComputedStyle(mk).display : null,
+      inCollapsible: !!(mk && mk.closest('details')),
+      text: mk ? mk.textContent.trim() : null,
+    };
+  });
+  if (r.idx !== target.i) {
+    throw new Error('#656 control: the card is not on the target step (' + r.idx + ' vs ' + target.i + ')');
+  }
+  if (!r.inActive || r.w <= 0 || r.h <= 0 || r.disp === 'none') {
+    throw new Error('#656: a step with no acceptance predicate drew NO usable Acknowledge/Continue ' +
+      'button before any details were expanded — ' + JSON.stringify(r) +
+      ' (this is "from a player\'s seat the leg had no way to finish")');
+  }
+  if (r.inCollapsible) {
+    throw new Error('#656: the Acknowledge/Continue button is inside a collapsible details block — ' +
+      'it is only reachable once the player expands something unrelated');
+  }
+  log.push('drawn on first paint: "' + r.text + '" ' + r.w + 'x' + r.h + ', ' + r.anyCheck +
+           ' check target(s) in the DOM, not inside a collapsible');
+
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  return log.join('\n') + '\n';
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -3493,6 +3577,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'rod-limit-margin-indication-range.log'), rmLog);
     var wcLog = await testWalkthroughPanelChrome(page);
     fs.writeFileSync(path.join(SCRATCH, 'walkthrough-panel-chrome.log'), wcLog);
+    var oaLog = await testObservationStepAckButton(page);
+    fs.writeFileSync(path.join(SCRATCH, 'observation-step-ack-button.log'), oaLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -3519,6 +3605,7 @@ if (require.main !== module) {
                      testRodLaneBankScale: testRodLaneBankScale,
                      testRodLimitMarginIndicationRange: testRodLimitMarginIndicationRange,
                      testWalkthroughPanelChrome: testWalkthroughPanelChrome,
+                     testObservationStepAckButton: testObservationStepAckButton,
                      startWalkthrough: startWalkthrough,
                      testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
                      testTripBlockPopoverDismissesOnOutsideClick: testTripBlockPopoverDismissesOnOutsideClick,
