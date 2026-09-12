@@ -30,6 +30,33 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (a walkthrough done-when graded a quantity with no board tile — #718)
+
+`pwr_heatup` step 16 ("verify the reactor stayed shut down") grades `reactivity_pcm < -300`, and
+`fmtPredicate` renders that criterion under the step from `PRED_DISPLAY` (`ui/app.js:3939`), where
+it is labelled correctly and **off-board on purpose** — Net reactivity has an Indications-tab row
+and no board tile. The step text named two OTHER gauges (SOURCE RANGE, STARTUP RATE), so the player
+had no pointer to the number being graded. One `note`, ten words: *"Net reactivity reads on the
+Indications tab, not the board."* No tile added, no acceptance, predicate or step count changed.
+Proven by driving the live checklist in headless Chromium to step 16 and reading `#cklRun`'s
+rendered DOM for the string — the `note` render path at `ui/app.js:4479` — rather than a source
+scan (HR10).
+
+**The sweep behind it closes the CLASS, and its result is a negative worth keeping.** Every unique
+predicate field used in any `acc`/`accs`/`precond` across the whole built PWR2 pool — six
+operating-cycle legs plus the TMI-2 walkthrough — was extracted from the built object and checked
+against the board: **33 distinct fields, and `reactivity_pcm` was the only one with no tile.**
+`plant_mode` already carries its own live-value note (`modeLiveNote`, #653); every other field names
+a literal tile or lamp, cross-checked against `ui/diagram/board/pwr_board_wiring.js` /
+`pwr_board_data.js`. `guard.never` predicates were excluded deliberately — they are a
+`test/procedures_harness.js` background invariant (`gNever`) the live renderer never reads, so a
+player never sees one as a done-when. Step prose (`text`/`note`/`why`) was also grepped for
+off-board quantities carrying no formal predicate (xenon, fuel temperature, decay heat, core
+inventory): all appear only as explanatory narrative pointing at board-visible proxies, never as a
+"go check this" instruction. **Nothing is cited that exists on no tab at all** — so this was pure
+wayfinding, not the more serious "nowhere" case, and there is no second instance to find. The
+retired PWR pool's identical step (`ui/manual_procedures.js:217`) is untouched, on hold.
+
 ### Fixed (three #717-sibling scrollports — and the two content-fit bugs a clamp alone would have hidden — #723)
 
 `.scanline-body`, `.tab-body.instr-mode`/`.tab-body.ckl-mode` and `#laneStack` each accepted AND
@@ -1622,7 +1649,7 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc17] — 2026-09-12
+## [Alpha 1.7.4-rc18] — 2026-09-12
 
 ### Fixed (the Tavg program's no-load anchor had two stale copies left over from an earlier re-anchor — #647)
 
