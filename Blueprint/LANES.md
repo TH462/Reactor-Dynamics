@@ -299,6 +299,14 @@ the situation the junction created. With no junction in the worktree there is no
 anyone has to remember** — and a rule that depends on remembering an order fails exactly when
 someone is tired or in a hurry, which is when that command gets typed.
 
+> **OMITTING `:ro` REPRODUCES THE HAZARD, and this is a worked failure, not a caution.** Hours
+> after the read-only argument was made in the abstract on 2026-09-12, another lane's container run
+> mounted `node_modules` **writable** and **wrote through the bind mount, breaking that tree's
+> install** — the same damage the junction did, by a different route, on the same day, to a session
+> that had already agreed with the reasoning. Caught immediately and restored, gates re-verified.
+> **The mount being read-only is not a tidiness preference; it is the whole of what makes the
+> technique safe.**
+
 **Measured, not merely plausible** (2026-09-12, the #713 CI investigation): a detached worktree at
 another lane's commit, this mount instead of a junction, `git worktree remove --force` afterwards
 — and the primary tree's `node_modules/playwright` **verified intact** after that deliberate force
