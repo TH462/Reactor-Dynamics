@@ -505,8 +505,13 @@
             <div class="mission-title">Plant &amp; Mission</div>
             <button class="btn" id="missionClose" aria-label="Close">✕ Close</button>
           </div>
-          <div class="mission-body">
-            <div class="mp-plants" id="mpPlants"></div>
+          <!-- NO PLANT COLUMN *(OWNER, 2026-09-09, #675 section A / #688: "Remove the plant
+               selection column from the plant and mission menu.")*. It held one selectable
+               card and three greyed COMING SOON placards; on a published build the retired
+               PWR card is not even built, so the column offered exactly one choice. `mp-body`
+               collapses .mission-body's 260px|1fr grid to one track — the grid default stays
+               as it is because the chart-settings window reuses it with a real left column. -->
+          <div class="mission-body mp-body">
             <div class="mp-right">
               <div class="mp-modes" id="mpModes"></div>
               <div class="mp-content" id="mpContent"></div>

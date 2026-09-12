@@ -1244,6 +1244,129 @@ async function testMonitorList(page) {
   return log.join('\n') + '\n';
 }
 
+/* THE PLANT & MISSION WINDOW'S SHAPE (#688, owner playtest #675 section A, 2026-09-09:
+ * "Put a green [NEW] next to the Walkthroughs tab in the plant and mission menu. Remove the
+ * plant selection column from the plant and mission menu.")
+ *
+ * TWO CLAIMS, AND BOTH ARE READ OFF THE RENDERED DOM rather than the source, because a
+ * source scan for a rendered string cannot tell you the string is reachable (#485). The
+ * column was BUILT IN JS into #mpPlants, so "the div left shell.html" is not the claim — the
+ * claim is that no plant card reaches the screen and the body no longer reserves the 260 px
+ * track one would have sat in. Measured on a dev build before the change: five cards, `pwr`
+ * and `pwr2` selectable and three greyed COMING SOON, in a 260px|678px grid.
+ *
+ * The badge is asserted on its COMPUTED COLOUR and its painted rect, never on the class name.
+ * "Green" is the owner's word for it and it is the half a class-name check cannot see: a
+ * badge whose .mp-new rule never loaded still carries the class and still reads NEW.
+ *
+ * The third assertion is the one that makes the removal safe. All four content builders read
+ * `msel.engine`, which the deleted [data-mplant] handler used to write; it is now only ever
+ * seeded from ui.engineKey in openMissionSelect(), and a tab that renders empty is how a
+ * broken seed would surface. Driven through the dev door (?mmode=) so campaign and scenarios
+ * are swept as well — the player's window offers only the first two tabs (#660 item 19).
+ * `dev=1` arms RD.__dev so the last assertion can name the engine the Start button actually
+ * constructed; it does NOT move the flags channel, which site/flags.js reads from
+ * `channel=`/`flags=`/RD_CHANNEL, so the tab list under test is still the dev-door one. */
+async function testMissionMenuShape(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&mmode=free&dev=1',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 8000 });
+
+  var shape = await page.evaluate(function () {
+    var body = document.querySelector('#missionOverlay .mission-body');
+    var cols = getComputedStyle(body).gridTemplateColumns;
+    return {
+      column: !!document.getElementById('mpPlants'),
+      cards: document.querySelectorAll('[data-mplant]').length,
+      cols: cols,
+      tracks: cols.trim().split(/\s+/).length
+    };
+  });
+  if (shape.column || shape.cards) {
+    throw new Error('#688: the plant selection column is still on screen — #mpPlants ' +
+      (shape.column ? 'exists' : 'gone') + ', ' + shape.cards + ' [data-mplant] card(s) rendered');
+  }
+  if (shape.tracks !== 1) {
+    throw new Error('#688: the plant column is gone but .mission-body still reserves its track — ' +
+      'grid-template-columns is "' + shape.cols + '". The Plant & Mission body needs .mp-body; ' +
+      'the 260px|1fr default stays because the chart-settings window reuses this class with a ' +
+      'real left column.');
+  }
+  log.push('no plant column: 0 cards, body is one ' + shape.cols + ' track');
+
+  var badge = await page.evaluate(function () {
+    var out = { badges: [], walkthroughTab: null };
+    var btns = document.querySelectorAll('#mpModes [data-mmode]');
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i], s = b.querySelector('.mp-new');
+      if (b.getAttribute('data-mmode') === 'walkthroughs') out.walkthroughTab = (b.textContent || '').trim();
+      if (!s) continue;
+      var r = s.getBoundingClientRect(), c = getComputedStyle(s);
+      out.badges.push({ tab: b.getAttribute('data-mmode'), text: (s.textContent || '').trim(),
+                        color: c.color, w: Math.round(r.width), h: Math.round(r.height) });
+    }
+    return out;
+  });
+  if (badge.badges.length !== 1 || badge.badges[0].tab !== 'walkthroughs') {
+    throw new Error('#688: expected exactly one NEW badge and it belongs on the Walkthroughs ' +
+      'tab — got ' + JSON.stringify(badge.badges) + ' (the Walkthroughs tab reads "' +
+      badge.walkthroughTab + '")');
+  }
+  var nb = badge.badges[0];
+  if (!/^NEW$/.test(nb.text)) throw new Error('#688: the badge reads "' + nb.text + '", not NEW');
+  if (nb.w < 4 || nb.h < 4) {
+    throw new Error('#688: the NEW badge is in the DOM but paints ' + nb.w + 'x' + nb.h + ' px');
+  }
+  var rgb = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(nb.color);
+  if (!rgb) throw new Error('#688: could not read the badge colour ("' + nb.color + '")');
+  var R = +rgb[1], G = +rgb[2], B = +rgb[3];
+  if (!(G > R + 30 && G > B + 30)) {
+    throw new Error('#688: the badge is not GREEN — computed colour ' + nb.color + '. The owner ' +
+      'asked for a green [NEW], and the colour is the half a class-name check cannot see.');
+  }
+  log.push('NEW badge on Walkthroughs only: ' + nb.w + 'x' + nb.h + ' px, ' + nb.color);
+
+  var tabs = await page.$$eval('#mpModes [data-mmode]', function (els) {
+    return els.map(function (e) { return e.getAttribute('data-mmode'); });
+  });
+  var thin = [];
+  for (var i = 0; i < tabs.length; i++) {
+    await page.click('[data-mmode="' + tabs[i] + '"]');
+    await page.waitForTimeout(250);
+    var chars = await page.evaluate(function () {
+      var c = document.getElementById('mpContent');
+      return ((c && c.textContent) || '').trim().length;
+    });
+    log.push('tab ' + tabs[i] + ': ' + chars + ' chars of content');
+    if (chars < 40) thin.push(tabs[i] + '=' + chars);
+  }
+  if (thin.length) {
+    throw new Error('#688: a mode tab built (nearly) nothing once the plant column was ' +
+      'removed — ' + thin.join(', ') + '. All four builders read msel.engine, which the ' +
+      'deleted [data-mplant] handler used to write.');
+  }
+
+  // …and Start still boots the plant, with no plant card left to have selected it.
+  await page.click('[data-mmode="free"]');
+  await page.waitForTimeout(200);
+  await page.click('[data-mfree]');
+  await waitBoardLive(page, 20000);
+  var boot = await page.evaluate(function () {
+    var pid = null;
+    try { pid = RD.__dev.service().activePlantId; } catch (e) { pid = null; }
+    return { hidden: !!document.getElementById('missionOverlay').hidden,
+             paused: document.getElementById('playBtn').classList.contains('paused'),
+             plant: pid, clock: (document.getElementById('clock').textContent || '').trim() };
+  });
+  if (!boot.hidden || boot.paused || boot.plant !== 'pwr2') {
+    throw new Error('#688: Free Play no longer boots the plant after the column was removed — ' +
+      JSON.stringify(boot));
+  }
+  log.push('Free Play starts: plant_id=' + boot.plant + ', running at ' + boot.clock);
+  return log.join('\n') + '\n';
+}
+
 /* CLOSING PLANT & MISSION LEAVES THE PLANT RUNNING *(OWNER, 2026-08-11: "When i close the
  * plant menu after starting the sim the sim should start playing. it currently starts
  * paused. it should start running after closing the plant & mission menu.")*.
@@ -3533,6 +3656,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'chart-settings.log'), csLog);
     var mlLog = await testMonitorList(page);
     fs.writeFileSync(path.join(SCRATCH, 'monitor-list.log'), mlLog);
+    var msLog = await testMissionMenuShape(page);
+    fs.writeFileSync(path.join(SCRATCH, 'mission-menu-shape.log'), msLog);
     var mcLog = await testMissionCloseResumes(page);
     fs.writeFileSync(path.join(SCRATCH, 'mission-close-resumes.log'), mcLog);
     var rsLog = await testRunStartMark(page);
@@ -3597,6 +3722,7 @@ if (require.main !== module) {
   module.exports = { startServer: startServer, dismissMission: dismissMission,
                      testChartSettings: testChartSettings, testMonitorList: testMonitorList,
                      testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark,
+                     testMissionMenuShape: testMissionMenuShape,
                      testHeldPlantDialog: testHeldPlantDialog, testHeldSpeedClick: testHeldSpeedClick,
                      testSaveLoadRefusal: testSaveLoadRefusal, testCssTransitions: testCssTransitions,
                      testPzrGaugeFollowsProgram: testPzrGaugeFollowsProgram,

@@ -2309,31 +2309,11 @@ select.num-input { width: auto; }
 }
 .mission-title { font-weight: 700; font-size: 14px; color: var(--text); }
 .mission-body { flex: 1; display: grid; grid-template-columns: 260px 1fr; min-height: 0; }
-/* step 1 — plant column */
-.mp-plants {
-  border-right: 1px solid var(--border); overflow-y: auto;
-  padding: 10px; display: flex; flex-direction: column; gap: 8px;
-}
-/* NB: not ".plant-card" — that class belongs to the PWR synoptic (positioned) */
-.mplant-card {
-  border: 1px solid var(--border); border-radius: 6px; padding: 10px;
-  cursor: pointer; background: var(--bg-elevated);
-}
-.mplant-card:hover { border-color: rgba(122, 176, 255, 0.4); }
-.mplant-card.on { border-color: rgba(122, 176, 255, 0.7); background: rgba(122, 176, 255, 0.08); }
-.mplant-name { font-weight: 700; font-size: 13px; color: var(--text); }
-.mplant-live { font-size: 10px; color: #79d297; font-weight: 400; }
-.mplant-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
-.mplant-desc { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
-/* Engine complete, control room not built yet: visible so the roadmap reads,
-   but muted and inert so it doesn't look broken when clicking does nothing. */
-.mplant-card.soon { opacity: 0.45; cursor: default; }
-.mplant-card.soon:hover { border-color: var(--border); }
-.mplant-soon {
-  margin-top: 8px; align-self: flex-start; display: inline-block;
-  border: 1px solid var(--caution); color: var(--caution); border-radius: 4px;
-  padding: 1px 6px; font-size: 9px; font-weight: 700; letter-spacing: 1px;
-}
+/* THE PLANT COLUMN IS GONE (#688, owner 2026-09-09) — .mp-plants and the whole .mplant-*
+   family went with it. The 260px|1fr default above STAYS: the chart-settings window (#454)
+   reuses .mission-body wholesale and needs that left track, as does .fl-body's override
+   below by counter-example. The Plant & Mission window collapses to one column here. */
+.mission-body.mp-body { grid-template-columns: 1fr; }
 /* The clock carries the halt for as long as it stands (#520). Dismissing the dialog
    must not lose the fact that the model has stopped — that IS the defect #520 is
    about — and the clock is the right home because a held plant's clock is the one
@@ -2373,11 +2353,8 @@ select.num-input { width: auto; }
    read as "danger, do not press", and pressing it is the way out. */
 .halt-go { border-color: var(--accent); color: var(--accent); font-weight: 700; }
 
-/* ---- selection screen (#443, spec §9) --------------------------------------
-   Reuses .mission-overlay / .mplant-card so the front door and the Plant &
-   Mission window read as one family; only the frame and the activity rows are
-   new. z-index sits above the mission overlay because the start screen can hand
-   off to it. */
+/* The "selection screen (#443)" header that stood here described .mplant-card, deleted with
+   the plant column (#688); its own rules had already gone with the start screen. */
 /* Settings and the Scanner's long form: modal class, so they pause (#439, spec §1).
    Narrower than the Plant & Mission window — both are a column of rows, not a picker. */
 .set-modal { height: auto; max-height: min(84vh, 700px); width: min(560px, 96vw); }
@@ -2476,13 +2453,23 @@ select.num-input { width: auto; }
 }
 .mp-modes button:hover { color: var(--text); }
 .mp-modes button.on { color: var(--text); border-bottom-color: rgba(122, 176, 255, 0.85); }
+/* THE GREEN [NEW] ON THE WALKTHROUGHS TAB (#688, owner 2026-09-09). #79d297 is the same
+   green the deleted plant column used for its ● active mark — brighter than --running
+   (#46A35E), which is sized for a filled board tile and reads dim at 9 px. Deliberately NOT
+   the caution amber of the COMING SOON badge below: this one says "here now". */
+.mp-modes .mp-new {
+  margin-left: 6px; display: inline-block; vertical-align: 1px;
+  border: 1px solid #79d297; color: #79d297; background: rgba(121, 210, 151, .10);
+  border-radius: 3px; padding: 0 4px;
+  font-size: 9px; font-weight: 700; letter-spacing: .08em;
+}
 .mp-content { flex: 1; overflow-y: auto; padding: 12px 14px; }
 /* campaign mission rows in the wide window: pin the Start button to the title
    row (the teaches line spans beneath it), instead of wrapping to its own row */
 .mp-content .camp-mission > .btn { grid-column: 3; grid-row: 1; white-space: nowrap; }
 /* Coming-soon panel — an area whose content this channel does not offer yet
-   (site/flags.js, #241). Deliberately the same amber COMING SOON badge the
-   not-yet-built plant cards use: "being finished", not "broken". */
+   (site/flags.js, #241). Amber, and it says "being finished", not "broken". It used to share
+   its badge with the plant column's not-yet-built cards; that column went at #688. */
 .mp-soon {
   border: 1px dashed var(--border); border-radius: 6px;
   padding: 18px 16px; text-align: center; background: var(--bg-elevated);

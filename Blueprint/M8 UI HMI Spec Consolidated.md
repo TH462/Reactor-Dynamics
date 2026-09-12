@@ -682,10 +682,16 @@ The Training tab's role moved to a full-screen **Plant & Mission window** (`open
 or `?missions=1` (the retired `?tab=training` deep link redirects here). Selection order — nothing
 changes in the running sim until a start button is pressed:
 
-1. **Plant** — left-column cards (PWR · RBMK pre/post · BWR), the active plant marked.
-2. **Mode** — **Free Play** (starting-condition picker), **Campaign** (the guided mission path with
-   completion marks), **Scenarios** (instructor-led situations for the plant), **Walkthroughs**
-   (procedure follows).
+1. ~~**Plant** — left-column cards~~ **REMOVED 2026-09-11 (#688)** *(OWNER, 2026-09-09, #675
+   section A: "Remove the plant selection column from the plant and mission menu.")*. The
+   column held one selectable card and three greyed COMING SOON placards; a published build
+   does not contain the retired engine at all (#523), so it offered a single choice. The plant
+   is now decided by `?engine=` and the boot fallback; `msel.engine` survives as the
+   in-session value every content builder and the Start button read.
+2. **Mode** — **Free Play** (starting-condition picker) and **Walkthroughs** (procedure
+   follows, carrying a permanent green **NEW** badge since #688). **Campaign** (the guided
+   mission path with completion marks) and **Scenarios** (instructor-led situations) are built
+   and gated but not offered as tabs — `?mmode=` reaches them (#660 item 19).
 3. **The specific start** — initial state, mission, scenario, or procedure.
 
 ### 10.8 URL parameters — deep links and dev conveniences *(as built)*

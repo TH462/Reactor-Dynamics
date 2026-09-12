@@ -5143,35 +5143,38 @@
       '<div class="m-note">' + mesc(RD.Flags ? RD.Flags.soon(area) : '') + '</div></div>';
   }
   function renderMissionSelect() {
-    // Step 1 — the plant column
-    $('mpPlants').innerHTML = Object.keys(ENGINES).filter(function (k) {
-      if (ENGINES[k].hidden) return false;     /* general gate; nothing hidden today */
-      /* A card whose constructor is not in the page is not a card. On a published build that
-       * is the retired PWR engine, whose tags site/build_site.js deleted; RBMK/BWR keep their
-       * greyed `soon` cards deliberately (#514) and are exempt, because a plant on hold is a
-       * roadmap statement, not a missing file. Without this the menu would offer a plant the
-       * service cannot construct — engineCtor() returns undefined and selectPlant throws. */
-      if (!ENGINES[k].soon && !ctorPresent(k)) return false;
-      return true;
-    }).map(function (k) {
-      var e = ENGINES[k];
-      return '<div class="mplant-card' + (k === msel.engine ? ' on' : '') + (e.soon ? ' soon' : '') + '"' +
-        ' data-mplant="' + k + '"' + (e.soon ? ' aria-disabled="true" title="Control room under construction"' : '') + '>' +
-        '<div class="mplant-name">' + mesc(e.label) + (k === ui.engineKey ? ' <span class="mplant-live">● active</span>' : '') + '</div>' +
-        '<div class="mplant-sub">' + mesc(e.sub) + '</div>' +
-        '<div class="mplant-desc">' + mesc(e.desc) + '</div>' +
-        (e.soon ? '<div class="mplant-soon">COMING SOON</div>' : '') + '</div>';
-    }).join('');
+    /* STEP 1, THE PLANT COLUMN, IS GONE *(OWNER, 2026-09-09, #675 section A / #688: "Remove
+     * the plant selection column from the plant and mission menu.")*. Measured on a dev build
+     * before removing it: five cards, of which `pwr` (retired) and `pwr2` were selectable and
+     * rbmk_pre / rbmk_post / bwr were greyed COMING SOON placards. On a PUBLISHED build the
+     * retired engine's script tags are gone (#523), so the column offered ONE choice and three
+     * things you cannot click — the orphan-control shape DESIGN_CRITERIA Q3 vetoes.
+     *
+     * `msel.engine` STAYS. It is seeded from ui.engineKey in openMissionSelect() and read by
+     * all four content builders and by the Start button's switchEngine() — it is simply no
+     * longer re-pointed from inside this window; ?engine= and the fallback in boot() decide it.
+     * ENGINES keeps its `soon` / `sub` / `desc` fields: nothing renders them today, and the
+     * consequence to accept is that the sim no longer states anywhere that RBMK and BWR are
+     * planned. Those plants are on hold; the roadmap belongs on the site, not in this window. */
     // Step 2 — the mode tabs
     /* TWO TABS *(OWNER, 2026-09-08, #660 item 19: "In the opening plant and missions screen get rid
      * of the Campaign and Scenarios tabs.")*. The campaign and scenario content and their gates
      * are untouched; the tabs are simply not offered. `?mmode=campaign|scenarios` still routes
      * for screenshots and the flags gate. */
-    var modes = [['free', 'Free Play'], ['walkthroughs', 'Walkthroughs']];
+    /* A GREEN [NEW] ON WALKTHROUGHS *(OWNER, 2026-09-09, #675 section A / #688: "Put a green
+     * [NEW] next to the Walkthroughs tab in the plant and mission menu.")*. Third tuple slot,
+     * so any tab can carry it and none carries it by accident.
+     *
+     * PERMANENT, deliberately — there is no expiry and no markSeen() on it. The walkthroughs
+     * are the headline of the next release and the badge is meant to be seen by everyone who
+     * opens this window, not only by whoever has not opened it before. It comes off by
+     * deleting the `true` below when the next release stops being about them. */
+    var modes = [['free', 'Free Play'], ['walkthroughs', 'Walkthroughs', true]];
     if (/[?&]mmode=/.test(location.search || '')) modes.push(['campaign', 'Campaign'], ['scenarios', 'Scenarios']);
     else if (msel.mode === 'campaign' || msel.mode === 'scenarios') msel.mode = 'free';
     $('mpModes').innerHTML = modes.map(function (m) {
-      return '<button class="' + (msel.mode === m[0] ? 'on' : '') + '" data-mmode="' + m[0] + '">' + m[1] + '</button>';
+      return '<button class="' + (msel.mode === m[0] ? 'on' : '') + '" data-mmode="' + m[0] + '">' + m[1] +
+        (m[2] ? '<span class="mp-new">NEW</span>' : '') + '</button>';
     }).join('');
     // Step 3 — the mode's content
     $('mpContent').innerHTML =
@@ -8365,14 +8368,8 @@
         }
         return;
       }
-      var pc = e.target.closest('[data-mplant]');
-      if (pc) {
-        // Plants whose control room isn't built yet are shown but not selectable.
-        if (ENGINES[pc.getAttribute('data-mplant')].soon) return;
-        msel.engine = pc.getAttribute('data-mplant');
-        msel.init = ENGINES[msel.engine].init;
-        renderMissionSelect(); return;
-      }
+      /* the [data-mplant] branch went with the plant column (#688) — nothing emits that
+       * attribute any more, so a handler for it would be a dark wire. */
       var mm = e.target.closest('[data-mmode]');
       if (mm) { msel.mode = mm.getAttribute('data-mmode'); renderMissionSelect(); return; }
       var ir = e.target.closest('[data-minit]');
