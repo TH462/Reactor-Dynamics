@@ -1649,7 +1649,66 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc18] — 2026-09-12
+## [Alpha 1.7.4-rc19] — 2026-09-12
+
+### Fixed (`verify_e2e_ui` had been RED on CI since the 1/M dock widened — the bound was derived on Windows and CI gates on Linux — #713 pass 3)
+
+`#713 pass 2: 1 of 18 live alarm tiles overflow their box at a 392px alarm panel, worst "Reactor
+Trip — Overtemperature Delta-T (OTΔT)" by 11px` — green on every local run, red on three
+consecutive CI runs. Pass 2's alarm-panel content floor (**377.7 px**) was measured under Segoe
+UI; CI's fontconfig resolves DejaVu Sans, **15.1 % wider** on the binding label's min-content
+(206.4 px vs 179.3 px, measured pair), and the real Linux floor is **412 px**. The container
+matters: `mcr.microsoft.com/playwright` and a bare `ubuntu:24.04` + `playwright install-deps` both
+resolve **WenQuanYi Zen Hei** (narrower than Segoe UI — a false "reproduced, still green");
+`apt-get install fonts-dejavu-core` is what flips `fc-match sans-serif` to CI's font.
+
+- **`.oom-win.oom-docked` flex-basis 420 → 370 px**, landing the alarm panel at **422.63 px,
+  10.63 px clear of the 412 px floor**, confirmed on the container at every dock width ≤ 386
+  (`organic` overflow list empty). The plot's data rect (`.oom-frame`) falls **291.3×155.6 →
+  242×155 px**, still +14 % on width over pass 1's 212.4×144.5 and well over pass 0's ~199×141.
+  CSS flex geometry is font-independent here — the Windows and Linux sweeps matched to 0.01 px at
+  every dock width 360–420.
+- **The check was catching the CI red BY ACCIDENT.** The board composes the `reactor_trip` tile as
+  `label + ' — ' + tripCauseLabel(reason)`, a string that is not a member of
+  `RD.PWR_PROTECTION.alarms`, so the registry sweep could never generate it; it only reddened
+  because a *different* raw label ("Overtemperature Limit Approaching") happens to share the same
+  widest word. The sweep now composes `label + ' — ' + cause` for all 46 pairs (23 causes × 2
+  registers) off the board's own map through a new `RD.__dev.tripCauses()` hook (`?dev=1`), not a
+  hand-copy, plus an `nComposed > 0` guard so a renamed hook cannot fall back to raw labels
+  silently. Both injection-verified: a lengthened cause reds it; a hook returning `{}` reds the
+  guard.
+- **Five board captions were at zero real margin on the platform that gates** — SOURCE RANGE,
+  STARTUP RATE, SHUTDOWN ROD, CONDENSATE and RCP FLOW all measured `over === 1` under DejaVu,
+  exactly at `verify_board_scroll`'s `over > 1` line (Windows: `over === 0`, i.e. the tolerance was
+  standing in for the platform gap). `fontSize` 14 → 13 (already one of the board's used sizes)
+  buys 5–6 px of real clearance. Trap: three of the five ids already carry a `{top,left}` patch in
+  the NIS-card row-layout block, so a second same-id key in `DOC_PATCHES.items` **replaces** rather
+  than merges — it bit the first attempt.
+- The geometry check's own frame-width floor moves **250 → 220 px**: below pass 3's real 242 px,
+  still above pass 1's 212 px, so a regression to the un-adaptive viewBox still reddens.
+
+`verify_board_scroll` 143 → **158/158** (+1 per sweep call): the population floor now applies to
+the **testable** nowrap subset (measured **99 of 141** — 42 are inline elements with spec-zero
+`clientWidth` and could never fail) separately from the raw population.
+
+### Added (a gate for caption/readout text overflow on the board — #712)
+
+`#684` gated board ART against its highlight box; #700/#705's caption fixes had no regression
+protection at all. `verify_board_scroll` gains PART 3, **47 → 143 checks**: every own-text element
+across board + shell, 5 viewports (900 px added so the set straddles the 860 px breakpoint) × 3 tab
+states. Measured first — **zero genuine overflows** on the shipped board; three apparent hits were
+`scrollWidth` false positives on wrapping/block content and six Indicator Panel spans' 3–5 px
+`scrollHeight` remainder is a `lineHeight: 0.9` metric artifact, constant regardless of the digits
+displayed. Two techniques: `scrollWidth > clientWidth` for nowrap elements (141), and a
+**card-containment** check for `.bd-text` tiles (40) — those carry no authored width, so "fits its
+own tile" is hollow by construction, proved by injection (bumping #700's HX SPLIT caption to 20 px
+passed every check under the first design; the enclosing panel's right edge is the constraint
+#700's own hand-measurement used). `ims3xtrobbq`, `bdRhrCooldownRate` and `ims3w19984s` are named
+pins, not just aggregate members.
+
+**Verified cross-platform before merging**: 143/143 inside the CI-faithful Linux container **and**
+143/143 on Windows, with sensitivity proved by injection on the Linux side — letter-spacing 0.3 px
+passes, 1.0 px reds 138/143, 3.0 px names the #700/#705 captions.
 
 ### Fixed (the Tavg program's no-load anchor had two stale copies left over from an earlier re-anchor — #647)
 

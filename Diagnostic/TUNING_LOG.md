@@ -224,9 +224,13 @@ separate piece of work, filed as a note here rather than smuggled in.
 256, `verify_flags_ui.js` 54/54, `run_style.js` 11/11, `verify_e2e_ui.js` 4 screenshots — all
 unchanged, run to confirm no regression from the touched files (`test/verify_board_scroll.js`,
 `test/run_all.js` only — no engine/board/wiring source changed; both injections were reverted).
-**`node test/run_all.js` (the full aggregate) was NOT run** *(OWNER DIRECTIVE, 2026-09-12: subagent
-gates only, not the aggregate)* — owed at merge time, on `develop` after `develop` gates in its own
-tree. Not verified: `.bd-btn` label overflow (deliberately out of scope, see above); shell states
+**`node test/run_all.js` (the full aggregate) was NOT run** *(OWNER DIRECTIVE, 2026-09-12, relayed
+by this session's coordinator, verbatim not recorded: subagent gates only, not the aggregate)* —
+owed at merge time, on `develop` after `develop` gates in its own tree. (The `verbatim not
+recorded` marker and the relay note were added at the merge, 2026-09-12-develop-a: the citation as
+written carried a date but no quotation and reddened `run_hardrules` HR11 — 543 checks, 1
+undeclared. A subagent cannot hear the owner directly, so what it received was the coordinator's
+relay; marking it declares the gap instead of asserting authority the words do not support.) Not verified: `.bd-btn` label overflow (deliberately out of scope, see above); shell states
 other than default/Instructor/Walkthroughs tabs (Plant & Mission dialog, 1/M panel — the 1/M dock's
 own overflow is `verify_e2e_ui.js`'s job, unaffected here); RBMK/BWR (on hold, untouched).
 
