@@ -49,9 +49,22 @@ for (const d of [CMD, OUT, SHOT]) if (!fs.existsSync(d)) fs.mkdirSync(d, { recur
   const shot = async (name) => { const p = path.join(SHOT, name + '.png'); await page.screenshot({ path: p }); return p; };
   // The running walkthrough is drawn in the Instructor tab under #cklRun (#660); #cklLog is
   // the log element inside it and is what older passes read.
+  //
+  // #cklBtns IS READ TOO, and that is not tidiness. #687 item 2 moved the End walkthrough /
+  // "Next: <leg> ▸" row OUT of #cklRun to the foot of the whole panel, where it is a SIBLING.
+  // MEASURED 2026-09-11 on a running pwr_heatup: with #cklRun alone this extract ended at
+  // "Continue ▶" and carried no "End walkthrough" anywhere, while the button was on screen and
+  // 32 px tall — and on a finished leg the chain button this skill tells its agent to press
+  // ("each finished leg offers the next") is emitted into that same row by the same expression.
+  // A reviewer who cannot see a control reports that the control is missing: that is exactly how
+  // #653's "30 of 67 steps have no acceptance" was produced, by an extract that dropped what the
+  // renderer shows. Skipped when hidden (offsetParent null) so free play reads unchanged.
   const ckl = async () => page.evaluate(() => {
     const e = document.querySelector('#cklRun') || document.querySelector('#cklLog');
-    return e ? e.innerText : '(#cklRun missing)';
+    const b = document.querySelector('#cklBtns');
+    const main = e ? e.innerText : '(#cklRun missing)';
+    const row = (b && b.offsetParent && (b.innerText || '').trim()) ? '\n' + b.innerText : '';
+    return main + row;
   });
   const body = async () => page.evaluate(() => document.body.innerText);
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));

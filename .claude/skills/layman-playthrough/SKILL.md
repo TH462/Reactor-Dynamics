@@ -85,7 +85,7 @@ Inside a command file, the body is an async function with these in scope:
 |---|---|
 | `page`, `browser` | the live Playwright page |
 | `shot(name)` | screenshot to `shots/<name>.png`, returns the path |
-| `ckl()` | innerText of `#cklRun` (the running walkthrough, in the Instructor tab) |
+| `ckl()` | innerText of `#cklRun` **plus `#cklBtns`** — the running walkthrough card in the Instructor tab, and the End walkthrough / Next-leg row at the panel floor, which is a sibling of the card since #687 and would otherwise be invisible to the agent |
 | `body()` | innerText of the whole page |
 | `sleep(ms)` | wall-clock wait |
 | `fs`, `path`, `ROOT`, `REPO` | scratch dir and repo dir |
