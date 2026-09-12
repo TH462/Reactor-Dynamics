@@ -514,3 +514,14 @@ budget stops the loop and credits only what it stepped. What the bullet said, ve
   Measured before designing anything: PWR2 at a **0.5 s** step stays inside instrument noise over
   2 h in three regimes (~2,700×); at **1.0 s** the quiet plant trips itself. Kinetics is exact and
   the loop sub-steps, so the "simplified physics tier" needed no physics. `run_warp_tier`.
+
+- **A FIGURE ARRIVED AT BY ARITHMETIC OVER TWO MEASUREMENTS IS NOT A MEASUREMENT** (2026-09-12,
+  #713 changelog copy). The 1/M dock grew **58 %** in pass 1 and **a further 48 %** in pass 2, and
+  compounding them into a tidy **~134 %** would have published a number nobody measured and no
+  viewport reproduces: pass 1 was taken at 1600 px against the original box, pass 2 at 1500 px
+  against a re-measured pass-1 rect — different baselines, different viewports, different rects.
+  Two honest numbers with their own provenance beat one impressive number with none. **Same class
+  as a `BASELINES` score derived by adding one side's delta to the other's map instead of reading
+  the merged tree's own gate output** — which two lanes each hit once on the same day. Hard Rule 12
+  says *step the plant and quote the number*; a number you computed from two other numbers has not
+  been stepped. **If you cannot name the single run that produced a figure, do not publish it.**
