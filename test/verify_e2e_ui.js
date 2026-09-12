@@ -670,6 +670,138 @@ async function testTripBlockPopoverStaysOffTheBoard(page) {
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
 }
 
+/* THE TRIP BLOCKS POPOVER MUST GO AWAY ON A PRESS OUTSIDE IT (#690; owner playtest #675
+ * section A, verbatim: "Trip block popup should disappear when clicking anywhere outside that
+ * popup.").
+ *
+ * EVERY PRESS HERE IS A REAL POINTER PRESS (`page.mouse.click`), never `element.click()`.
+ * That is not tidiness — it is the only way this check can see the mechanism at all: the
+ * dismissal rides `pointerdown`, and `HTMLElement.click()` dispatches a bare `click` with no
+ * pointer event in front of it, so a .click()-driven version of this check would pass on a
+ * board that had no listener whatsoever.
+ *
+ * FIVE PRESSES, and the middle three are the ones that catch the two ways this can be built
+ * wrong. A listener scoped too broadly (or without the `pop.contains` guard) eats press 2 and
+ * the panel cannot be used at all; one that forgets the TRIP BLOCKS button is exempt closes on
+ * press 3's pointerdown and then the button's own 'click' RE-OPENS it, so the panel becomes
+ * un-closable from the very control an operator would reach for. Press 4 is the mirror: a
+ * dismissal that swallows the button press leaves a panel that can never be opened a second
+ * time. Only press 5 is the feature the owner asked for, and it is the easy one.
+ *
+ * The outside point is found by hit-test, not authored: the check walks the stage on a 17 px
+ * grid and takes the first point where `elementFromPoint` returns the STAGE ITSELF, so the
+ * press cannot land on a plant control and issue a command as a side effect.
+ *
+ * INJECTION-VERIFIED — see the note in run_all.js's BASELINES entry. */
+async function testTripBlockPopoverDismissesOnOutsideClick(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page);
+
+  var btnPt = await page.evaluate(function () {
+    var btn = null, w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), n;
+    while ((n = w.nextNode())) {
+      if ((n.nodeValue || '').trim() === 'TRIP BLOCKS' && n.parentElement.matches('button')) {
+        btn = n.parentElement; break;
+      }
+    }
+    if (!btn) return { missing: 'the TRIP BLOCKS button' };
+    var b = btn.getBoundingClientRect();
+    return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) };
+  });
+  if (btnPt.missing) {
+    console.error('FAIL: the trip-block dismissal fixture is gone (' + btnPt.missing +
+      ') — re-point this check');
+    process.exitCode = 1;
+    return 'trip-block-dismiss: FIXTURE MISSING — ' + btnPt.missing + String.fromCharCode(10);
+  }
+  var isOpen = function () {
+    return page.evaluate(function () { return !!document.querySelector('.bd-pop'); });
+  };
+
+  // press 1 — open it
+  await page.mouse.click(btnPt.x, btnPt.y);
+  var openedAtAll = await isOpen();
+  if (!openedAtAll) {
+    console.error('FAIL: the trip-block dismissal fixture is gone (the popover did not open on ' +
+      'a real pointer press) — re-point this check');
+    process.exitCode = 1;
+    return 'trip-block-dismiss: FIXTURE MISSING — popover would not open' + String.fromCharCode(10);
+  }
+
+  var pts = await page.evaluate(function () {
+    var pop = document.querySelector('.bd-pop');
+    var stage = document.querySelector('.pwr-board-stage');
+    if (!pop || !stage) return { missing: pop ? 'the board stage' : 'the popover' };
+    var head = pop.querySelector('h4') || pop;
+    var hb = head.getBoundingClientRect();
+    var sb = stage.getBoundingClientRect(), pb = pop.getBoundingClientRect();
+    var out = null;
+    for (var y = sb.top + 8; y < sb.bottom - 8 && !out; y += 17) {
+      for (var x = sb.left + 8; x < sb.right - 8; x += 17) {
+        if (x > pb.left - 6 && x < pb.right + 6 && y > pb.top - 6 && y < pb.bottom + 6) continue;
+        if (document.elementFromPoint(x, y) !== stage) continue;   // bare board, no control under it
+        out = { x: Math.round(x), y: Math.round(y) };
+        break;
+      }
+    }
+    if (!out) return { missing: 'a bare point on the board stage outside the popover' };
+    return { inside: { x: Math.round(hb.x + hb.width / 2), y: Math.round(hb.y + hb.height / 2) },
+             outside: out,
+             pop: { x: +pb.x.toFixed(1), right: +pb.right.toFixed(1),
+                    y: +pb.y.toFixed(1), bottom: +pb.bottom.toFixed(1) } };
+  });
+  if (pts.missing) {
+    console.error('FAIL: the trip-block dismissal fixture is gone (' + pts.missing +
+      ') — re-point this check');
+    process.exitCode = 1;
+    return 'trip-block-dismiss: FIXTURE MISSING — ' + pts.missing + String.fromCharCode(10);
+  }
+  log.push('popover x ' + pts.pop.x + '–' + pts.pop.right + ', y ' + pts.pop.y + '–' + pts.pop.bottom);
+  log.push('press points: button ' + btnPt.x + ',' + btnPt.y + ' · inside ' + pts.inside.x + ',' +
+           pts.inside.y + ' · outside (bare stage) ' + pts.outside.x + ',' + pts.outside.y);
+
+  // press 2 — INSIDE the panel: it must stay up, or the panel cannot be used
+  await page.mouse.click(pts.inside.x, pts.inside.y);
+  var afterInside = await isOpen();
+  // press 3 — the TRIP BLOCKS button while it is up: the button's own toggle must still shut it
+  await page.mouse.click(btnPt.x, btnPt.y);
+  var afterButtonWhileOpen = await isOpen();
+  // press 4 — the button again: it must re-open (the dismissal must not swallow the press)
+  await page.mouse.click(btnPt.x, btnPt.y);
+  var afterReopen = await isOpen();
+  // press 5 — OUTSIDE it, on bare board: the feature
+  await page.mouse.click(pts.outside.x, pts.outside.y);
+  var afterOutside = await isOpen();
+  await page.evaluate(function () {   // hand the board back the way we found it
+    var pop = document.querySelector('.bd-pop');
+    if (pop && pop.parentNode) pop.parentNode.removeChild(pop);
+  });
+
+  log.push('open ' + openedAtAll + ' → press inside ' + afterInside + ' → press button ' +
+           afterButtonWhileOpen + ' → press button ' + afterReopen + ' → press outside ' + afterOutside);
+  var bad = [];
+  if (!afterInside) bad.push('a press INSIDE the popover (on its own TRIP BLOCKS heading) closed it — ' +
+    'the listener is missing its `pop.contains(e.target)` guard, so the panel cannot be used at all');
+  if (afterButtonWhileOpen) bad.push('a press on the TRIP BLOCKS button while the popover was up ' +
+    'left it OPEN — the dismissal closed it on pointerdown and the button’s own click re-opened it, ' +
+    'so the panel is un-closable from the control that opens it');
+  if (!afterReopen) bad.push('the popover would not re-open on a press of the TRIP BLOCKS button — ' +
+    'the dismissal is swallowing the opening press');
+  if (afterOutside) bad.push('a press OUTSIDE the popover, on bare board at ' + pts.outside.x + ',' +
+    pts.outside.y + ', left it open — that is the #690 defect itself');
+  if (bad.length) {
+    console.error('FAIL: trip-block popover outside-click dismissal (#690): ' + bad.join('; '));
+    process.exitCode = 1;
+  } else {
+    console.log('  trip-block popover dismisses on an outside press and still toggles from its ' +
+      'own button (#690)');
+  }
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
 async function testEsfArmButtons(page) {
   var log = [];
   /* pwr disables NOTHING; pwr2 disables the DELIBERATE set: the HPI AUTO re-arm (#503),
@@ -3121,6 +3253,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'refusal-scanner.log'), rfLog);
     var tbLog = await testTripBlockPopoverStaysOffTheBoard(page);
     fs.writeFileSync(path.join(SCRATCH, 'trip-block-overlay.log'), tbLog);
+    var tdLog = await testTripBlockPopoverDismissesOnOutsideClick(page);
+    fs.writeFileSync(path.join(SCRATCH, 'trip-block-dismiss.log'), tdLog);
     var dbLog = await testDiagBundle(page);
     fs.writeFileSync(path.join(SCRATCH, 'diag-bundle.log'), dbLog);
     var hpLog = await testHeldPlantDialog(page);
@@ -3175,6 +3309,8 @@ if (require.main !== module) {
                      testRodLaneBankScale: testRodLaneBankScale,
                      testRodLimitMarginIndicationRange: testRodLimitMarginIndicationRange,
                      testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
+                     testTripBlockPopoverDismissesOnOutsideClick: testTripBlockPopoverDismissesOnOutsideClick,
+                     waitBoardLive: waitBoardLive,
                      port: function () { return PORT; } };
 } else {
   main().catch(function (e) {

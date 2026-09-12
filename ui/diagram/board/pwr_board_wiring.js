@@ -3051,7 +3051,50 @@
       } }
   ];
 
-  function closePop() { if (pop && pop.parentNode) pop.parentNode.removeChild(pop); pop = null; }
+  /* OUTSIDE-CLICK DISMISSAL FOR THE TRIP BLOCKS POPOVER (#690; owner playtest #675 section A,
+   * verbatim: "Trip block popup should disappear when clicking anywhere outside that popup.").
+   * This is the first click-away in the product — there was no pattern here to copy, so the
+   * three choices below are the whole design and each one is load-bearing.
+   *
+   *  1. THE LISTENER LIVES WITH THE POPOVER, NOT WITH THE BOARD. It is armed in
+   *     `toggleTripBlocks` when the panel opens and torn down in `closePop`, so there is exactly
+   *     one while a panel is up and none otherwise. That is also the unmount/remount teardown:
+   *     `onMount` already calls `closePop()`, so a board rebuild cannot leave a listener behind
+   *     on a detached stage. Nothing else has to remember to clean up.
+   *  2. THE HOST IS THE BOARD, NEVER `document`. A document-level listener fires on every piece
+   *     of chrome — the walkthrough panel, the menus, the chart — which is not what "outside
+   *     that popup" means for a panel that lives on the board. It is attached to the wrap rather
+   *     than the stage so the letterbox margin around the scaled canvas counts as outside too.
+   *  3. THE TRIP BLOCKS BUTTON IS EXEMPT, and that guard is what makes the panel openable at
+   *     all. The button toggles on 'click'; this listener runs on 'pointerdown', which fires
+   *     FIRST. Without the exemption a press on the button while the panel is up would close it
+   *     here and then the click would re-open it, so the button could never shut it — the panel
+   *     would be dismissible by every press except the one an operator would try. A press inside
+   *     the panel is exempt for the obvious reason: the rows are buttons.
+   *
+   * pointerdown rather than click so the panel goes away on the press, and in the CAPTURE phase
+   * so a handler that ever starts calling stopPropagation cannot strand it open. */
+  var popAway = null;                // { host, fn } while a popover is up, else null
+
+  function closePop() {
+    if (popAway) { popAway.host.removeEventListener('pointerdown', popAway.fn, true); popAway = null; }
+    if (pop && pop.parentNode) pop.parentNode.removeChild(pop); pop = null;
+  }
+
+  function armPopAway(btn) {
+    var host = refs && (refs.wrap || refs.stage);
+    if (!host) return;
+    var fn = function (e) {
+      var t = e.target;
+      if (!t) return;
+      if (pop && pop.contains(t)) return;                                    // inside the panel
+      if (btn && btn.contains && btn.contains(t)) return;                    // the button's own toggle
+      if (t.closest && t.closest('[data-item="imrsk4xz2dm"]')) return;       // …and its tile
+      closePop();
+    };
+    host.addEventListener('pointerdown', fn, true);
+    popAway = { host: host, fn: fn };
+  }
 
   /* The per-row "press again to confirm" arm (#598 item 15). Reset whenever the popover opens,
    * so it cannot survive the operator looking away and coming back. */
@@ -3103,6 +3146,7 @@
     });
     stage.appendChild(pop);
     refreshTripBlocks(snap);
+    armPopAway(btn);                 // #690 — see the block above closePop
   }
 
   function isBlocked(s, id) { var tb = (s && s.rps_state && s.rps_state.trip_blocks) || {}; return !!tb[id]; }
