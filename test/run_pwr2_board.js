@@ -311,6 +311,23 @@ function runSuite(quietRec) {
     Math.abs(pz.alarmLo - (progAtPower + lowSp.setpoint)) < 0.51,
     pz && ('alarmLo ' + pz.alarmLo + ' vs program ' +
       (progAtPower == null ? '?' : progAtPower.toFixed(1)) + ' + ' + lowSp.setpoint));
+  /* THE HIGH EDGE, same claim mirrored (#706). It was a fixed 75 % — the absolute PZR LVL HI,
+   * which is LIVE (forcing the channel to 76 % lights it) but fifty points above a plant running
+   * genuinely high on a 25 % program. The shipped Mode 5 -> Mode 3 heatup ran +20.4 points above
+   * program for 11.6 of its 13.4 plant-hours inside that gap. The edge is now the same
+   * program-relative construction as the low one, capped by the absolute row so it can never
+   * arrive after PZR LVL HI. Asserted as MOVEMENT, not a number, for the #500 reason: a fixed
+   * setpoint satisfies a number by existing. The Mode 5 case below is the discriminator. */
+  var devHiSp = (w.svc.layer.config.alarms.filter(function (a) {
+    return a.id === 'pzr_level_dev_high'; })[0] || {});
+  var absHiSp = (w.svc.layer.config.alarms.filter(function (a) {
+    return a.id === 'pzr_level_high'; })[0] || {});
+  q('the high ALARM edge is the PROGRAM plus its own deviation setpoint, capped by the absolute rung',
+    pz && devHiSp.instrument === 'pzr_level_dev' && absHiSp.instrument === 'pzr_level' &&
+    progAtPower != null &&
+    Math.abs(pz.alarmHi - Math.min(absHiSp.setpoint, progAtPower + devHiSp.setpoint)) < 0.51,
+    pz && ('alarmHi ' + pz.alarmHi + ' vs min(' + absHiSp.setpoint + ', program ' +
+      (progAtPower == null ? '?' : progAtPower.toFixed(1)) + ' + ' + devHiSp.setpoint + ')'));
   /* AND THE NORMAL BAND MOVES WITH THE PROGRAM TOO (#598 item 11). The authored band is a flat
    * 40-70 %, a FULL-POWER band applied to every mode — so a Mode 3 or Mode 5 plant whose level
    * program is 25 % drew its perfectly-on-program level 15 points BELOW "normal", and the owner
@@ -341,6 +358,16 @@ function runSuite(quietRec) {
     pzC && ('Mode 5: level ' + (lvlCold == null ? '?' : lvlCold.toFixed(1)) + ' %, program ' +
       (progCold == null ? '?' : progCold.toFixed(1)) + ' %, band ' + pzC.normLo + '..' +
       pzC.normHi + ' (authored was 40..70)'));
+  /* …and the same discriminator for the HIGH ALARM edge (#706). The shipped edge is a fixed 75,
+   * which is ALSO what the capped rule returns at any program above 65 — so full power alone
+   * cannot tell the two apart once the program is near its ceiling. Mode 5 can: program 25 puts
+   * the edge at 35, forty points below the absolute row, and no fixed number reads both. */
+  q('and the high alarm edge moves with it — Mode 5 program 25 % puts it at 35, not 75',
+    pzC && progCold != null && devHiSp.setpoint != null &&
+    Math.abs(pzC.alarmHi - (progCold + devHiSp.setpoint)) < 0.51 && pzC.alarmHi < 40,
+    pzC && ('Mode 5: alarmHi ' + pzC.alarmHi + ' against a program of ' +
+      (progCold == null ? '?' : progCold.toFixed(1)) + ' % (the absolute rung is ' +
+      absHiSp.setpoint + ')'));
 
   /* PRIMARY PRESSURE TILE (#576c). run_pwr2_board's only band assertion used to be the power
    * tile's, so nothing in the tree ever checked this one against a PWR2 plant — and the half

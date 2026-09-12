@@ -30,6 +30,154 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Docs (a token-efficiency directive added to CLAUDE.md, and the closed-Cloudflare-actions line retired)
+
+*(OWNER DIRECTIVE, 2026-09-11: "Be token efficient but do not sacrifice quality in any way")*,
+folded into the existing "Be brief" blockquote. Paid for by cutting the "Two OWNER actions
+are still owed on the finished Cloudflare migration" bullet — both actions are done ("Vercel
+has been deleted and revoked"). `run_doc_budget.js`: 14,914 / 15,000 words.
+
+### Fixed (the trend chart plotted the rod banks on the retired engine's 912-step scale — #707)
+
+Found while working #704 and deliberately kept out of it. `ui/app.js` declared three chart lanes
+— **Control Rod Steps**, **Shutdown Rod Steps** and **Rod Limit Margin** — with a full scale of
+**912 steps**: the RETIRED engine's fine drive (`RD.PWR_CONFIG.rods.max_steps`). This plant's bank
+is **627** (`RD.pwr2.kinetics.RODS.max_steps` — the sourced four-bank 131-step overlap program,
+Westinghouse Technology Systems Manual chapter 8.1 §8.1.5.4, ADAMS ML11223A252). Measured on the
+drawn lane, at power with the shutdown bank on its stop: the lane was fitted **550–700 steps**, so
+a bank reading 627 of 627 sat at **69 %** of a lane whose top does not exist on this plant, and the
+control bank at its design point (606 of 627, #704) sat at 66 %. Same for `Rod Limit Margin`, which
+reads the whole bank wherever the insertion limit does not apply.
+
+**The fix reads the scale; it does not retype it** *(OWNER RULING, 2026-09-11: "All as
+recommended")*. Hard-coding 627 is exactly how 912 got there — the fifth instance in one evening of
+the inherited-by-reference class the #534 sweep named (#557, #556, #561, #676). A lane whose full
+scale is a plant parameter now authors `range` as a **function**, resolved per render by the new
+`serRange()`, and `bankScale()` takes the number from **the snapshot's own rod group**: both engines
+publish `max_steps` inside every `control_state.rod_groups[]` record, so the scale travels with the
+data and a replayed recording is drawn on the scale of the engine that produced it. Two fallbacks
+for a render before the first snapshot, both still live reads of a published table (the pwr2
+kinetics object, then the retired engine's config); the last-ditch 912 fires only if no plant module
+loaded at all. All five `.range` consumers in `ui/app.js` go through `serRange()` — reading
+`ser.range[0]` directly is what turns a function form into a silent `undefined`. `logSer` is the one
+declared exception and says why (its floor is read once per sample in the bucketing loop).
+
+**Gated by injection, not by reading — `verify_e2e_ui.js` gains `testRodLaneBankScale`**, which reads
+the DRAWN lane chrome and types no bank number: a channel parked on its stop must reach its lane
+top; no lane top may exceed the published bank; and **the scale must follow the bank moved under the
+running chart**. Both reds were replayed before the fix went back in:
+
+| variant | result |
+|---|---|
+| the shipped 912 literal | **RED** — shutdown lane drawn to **700** against a 627-step bank |
+| 627 **captured** at parse time | **RED on check 3 only** — passes 1, 2 and 4; lane stayed at 627 while the plant's own `max_steps` went 627 → 1568 |
+| the fix (live read) | **GREEN** — lane top 627 = bank 627; follows 627 → 1568 by redrawing to 800 |
+
+That second row is the point of the mechanism and the reason check 3 pokes the bank **upward**:
+`holdRange`'s clamp is a preference that must never beat the data, so shrinking the bank under a
+trace already at 627 leaves the band where it is and a captured value would pass — a check sampling
+the side of the mechanism the defect cannot reach. `pwr2_engine.js`'s `BANK()` is a function for
+exactly this reason, and its comment says so.
+
+**Still carrying the same stale 912: the manual's own indicating range for `rod_limit_margin`**
+(`Manuals/` → `ui/manual_data.js`), which the Indications tab and the gauge detail both print.
+Out of #707's declared scope and left for a manual-revision change.
+
+Gates at baseline: `verify_e2e_ui` PASS (4 screenshots, +1 check function), `run_pwr2_board` 84/84,
+`run_inspect` 11/11 62/62, `run_hardrules` 523, `verify_board_check` 256, `run_chart_math` 8/8,
+`run_flags` 19/19 345/345, `run_portable` 145, `run_diag_bundle` 70, `run_manual_units` 0 failed.
+
+### Fixed (the fourth stale 912, closing out #707)
+
+`ui/manual_data.js`'s generated `rod_limit_margin` indication is the RETIRED engine's own reference
+stub (`tools/gen_manual_reference.js` ← `RD.PWREngine`) and is correctly **912** for that engine —
+but the board's Indications-tab row and gauge-detail popover both printed it as this plant's own
+indicating range, right beside the chart lane #707 already fixed. This plant's bank is 627 and can
+move (#704).
+
+Same mechanism as #707, not a hand-typed 627: `indicationFacts()` in `ui/app.js` now overrides the
+displayed range for `rod_limit_margin` with `bankScale(latest, 'control_rods')` — the same live
+snapshot read the chart lanes use — instead of the generated reference's static figure. Nothing
+else prints the retired engine's 912 to a PWR2 player; the Manuals `*.md` set does not document
+this channel at all, so there is no revision-history row or repack to do.
+
+Verified by injection (no existing gate covers this string): with the fix reverted, the Indications
+row's `data-scanner-detail` read "Indicating range 0 steps to 912 steps."; with it applied, "…0
+steps to 627 steps."
+
+Gates at baseline: `run_hardrules`, `run_manual_units`, `run_manual_setpoints`, `run_inspect`,
+`run_all` (111 runners; tracked red `run_ops` 59/70 only).
+
+**The probe above is now a committed gate.** `verify_e2e_ui.js` gains
+`testRodLimitMarginIndicationRange`, reading the row's rendered `data-scanner-detail` string, not
+source. Two checks, and the second is the one that matters — #707's own ruling was read-not-capture,
+so "it says 627" alone is not enough: (1) not the retired 912 literal, (2) the string FOLLOWS
+`RD.pwr2.kinetics.RODS.max_steps` moved under the running plant through a real Free Play reset.
+Injection-verified: the retired `ind.range` reds check 1 ("…0 steps to 912 steps"); a captured
+literal 627 passes check 1 and reds check 2 (627 → 1568 under the moved bank, string stuck at 627).
+
+`verify_e2e_ui.js` is also CONTENTION-SENSITIVE at one check (#691's pause/speed-button timing
+assertion) — measured red under concurrent cross-lane gate load, green alone, no code changed
+between runs. `BASELINES` (`test/run_all.js`) now carries a note: re-run that runner alone before
+treating a red there as real.
+
+Gates at baseline: `run_hardrules` 524, `run_flags` 345/345, `run_all` (111 runners; tracked red
+`run_ops` 59/70 only).
+
+
+### Added (the board had no cue for a pressurizer running above its program — #706)
+
+**#706 measured the shipped Mode 5 → Mode 3 heatup running pressurizer level 20.4 points above
+its 25.00 % program (peak 45.37 %) for 11.6 of the leg's 13.4 plant-hours, with the player given
+no board cue of any kind.** The gap is real and it is a SHAPE, not a missing alarm.
+
+**`pzr_level_high` is NOT a dark wire — proved by injection, and #706's body is wrong about it.**
+Forcing the `pzr_level` instrument channel to 76 % on a live pwr2 service lights **PZR LVL HI**
+`active_unacknowledged`; 74 % leaves it clear. What it is, is FIXED at an absolute 75 %, and the
+level program runs 25 % at no load to 61.5 % at full power — so at the cold end of the span the
+alarm sits fifty points away and an excursion can run a whole heatup without touching it. The
+same collision #500 fixed on the low side.
+
+**It is not converted the way `pzr_level_low` was, because it cannot be.** `pzr_hi_level`
+(97 %, scram — the going-solid backstop) reads the absolute channel, and `layers/test_runner.js`
+requires every instrument-based trip to carry a less-extreme alarm on the SAME instrument. So the
+high side gets the two-channel ladder the low side already has: **`pzr_level_dev_high`, +10 points
+on the `pzr_level_dev` deviation channel, caution, panel A (PZR LVL DEV HI)**, beside the absolute
+75 % rung that guards the trip. Documented as **`Manuals/06` PWR-A44** and in `Manuals/09` §4.0.
+
+**+10 is measured, not chosen for symmetry** (full stack, `svc.tick()` driven, ACCEL=10,
+SEC_PER_TICK 1.0 s, seed 7). Worst LEGITIMATE upward deviation: every shipped checklist leg that
+is not the fault — `pwr_startup` **+2.46**, `pwr_lower_power` **+4.16**, `pwr_raise_power`
+**+7.53** (momentary; the leg spends **0.0 %** of itself above +8); steady state at all four
+free-play initial conditions **+1.07..+1.17** over 2 plant-hours each; a 100 → 90 → 100 MWe load
+change **+5.98 / +2.45**; ±15 ppm boration and dilution at power **+1.62 / +1.30**. Against the
+faults: `pwr_heatup` **+21.34** (this tree; #706 measured +20.37 on its own), `pwr_shutdown`
+**+21.19**, `pwr_cooldown` **+43.07**, and the TMI-2 leg **+75.00** — level pegged at 100 %
+against a 25 % program while the reactor coolant system empties. **Nothing measured sits between
++7.53 and +21.19.** It is also the plant's own next rung: `LEVEL.backup_above_program_pct` is 5,
+so at +5 the backup heaters come on by themselves with no lamp, at +10 the board says so, at 75 %
+absolute it says so again, at 97 % it trips.
+
+**The vital-few PRESSURIZER LEVEL gauge gets the matching high edge**, built the #676/#703 way —
+`pzrGaugeCautionHi` reads the new rung LIVE through `liveAlarm()` and never retypes a number,
+capped at the plant's own absolute PZR LVL HI so the gauge can never go amber later than the
+annunciator. (The cap is inert on this plant by arithmetic: `levelProgram` clamps at 61.5 %, so
+program + 10 tops out at 71.5 %.) No high-side `danger` band, deliberately — its absolute partner
+would be the 97 % trip, and that bistable is `atPower` (P-7 gated), so a red band at it would
+promise a trip that does not exist through the whole of the heatup this cue was built for.
+
+**Duty cycle, before and after** (full stack, the real `gaugeState()` latch and its 5-point
+release deadband): gauge amber **0.0 %** of the time at all four free-play initial conditions and
+across the 100 → 90 → 100 MWe load change, before and after alike; on a reconstructed excursion
+(level driven to 61.6 % against a 25.0 % program) **0.0 % before, 75.3 % after**, with the new
+annunciator in for 73.8 % of the same window. Before, there was no high edge on the gauge to
+cross at all.
+
+`verify_e2e_ui` gains `testPzrGaugeHighLevelCaution` — three initial conditions sampled for the
+CLASS, the RULE called through `RD.PwrGaugeBands.pzrLevelCautionHi` with the discriminator that
+the edge MOVES (35.0 % in Mode 5, 71.5 % at power), and a live fault leg that also asserts the
+amber arrived while level was still below 75 %, so the authored literal cannot be what produced
+it. `run_contract` 178 → 179 (+1 alarm row, the same shape as #500's).
 ### Added (a second highlight kind — "watch this indication", distinct from "press this" — #685)
 
 **`hl` was one flat list, rendered identically for the control you press and the gauge you
@@ -998,7 +1146,30 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc13] — 2026-09-11
+## [Alpha 1.7.4-rc15] — 2026-09-11
+
+### Fixed (the Tavg program's no-load anchor had two stale copies left over from an earlier re-anchor — #647)
+
+An evidence pass against Ginna UFSAR chapter 15 (ML20339A101) Table 15.0-3 found a complete,
+self-consistent single-plant Tavg program (no-load 547 °F, full-power 576.0 °F, pressurizer
+level program 20 % → 60 %, notes d and f) that this build does not fully match, and two
+documentation sites still quoting a **566.6 °F (297 °C)** no-load anchor two re-anchors out of
+date — it predates even #508's superseded 557 °F figure. `Manuals/06`'s PWR-A29 (LO TAVG / P-12)
+alarm-response setpoint now reads **532.4 °F (278 °C)**, matching the shipped `caution_lo`
+fallback and the already-correct §9 setpoints table. `Manuals/04` §3.0's quick-reference Tavg row
+now reads **547.0 – 580.1 °F**, the plant's actual program span.
+
+**The full-power anchor itself (304.5 °C / 580.1 °F) was NOT moved.** It is this plant's own
+rated heat-balance design point — load-bearing in `ratedU()` (steam generator sizing),
+`pwr2_kinetics`'s Doppler/moderator reference temperatures, and `pwr2_protection`'s
+overtemperature-ΔT T′ setpoint — not a free-standing Tavg-program constant, so adopting Ginna's
+576.0 °F wholesale is a new heat-balance derivation on the scale of #479, not an anchor re-fit,
+and it directly conflicts with the dated *(OWNER RULING, 2026-09-06: "A")* that kept 580.1 °F as
+this plant's own identity. Reported to #647 for a ruling rather than chosen. `Manuals/09` §7.5
+and `Manuals/12`'s reactivity-coefficient tables still key their hottest column off the same
+stale 566.6 °F point and want their own re-measurement pass — flagged, not touched here. No
+engine constant moved; `run_manual_units`, `run_manual_setpoints`, `run_manual_rev` and
+`run_hardrules` all re-verified green at baseline.
 
 ### Fixed (the CVCS charging/letdown volume scale mixed two bases — #679)
 
@@ -1871,6 +2042,31 @@ refitted one.
   offset* that the re-anchor removed — so it went red on a change that made the plant more correct.
   Replaced with an operator-reachable stimulus, asserted on demand **and** delivered flow, and
   measured at both anchors so it passes on the old plant too.
+
+### Fixed (player-facing copy taught the retired engine's 55 % at-power pressurizer level — #677)
+
+Nine sites still quoted the retired engine's own `pzr_level_nominal` (55 %, one at 58 %, one
+Mode 4 boot level at 30 %) as if it described the shipped plant. Corrected to PWR2's sourced
+level program — **61.5 % full power / 25 % no load** (Westinghouse Technology Systems Manual
+§10.3, ML11223A290; confirmed not moving by #647's evidence pass): `Manuals/01` §2.0,
+`Manuals/02` §5.3 (`hot_shutdown` boot level, 30 → 25 %), `Manuals/03` §5.4, `Manuals/04`
+(three: the HFP-approach table, the inventory-control procedure, the §3.0 quick reference),
+`Manuals/05` Phase E, `Manuals/ISSUES_AND_FINDINGS.md` §7, and three board inspect cards
+(`ui/diagram/board/pwr_board_inspect.js`, two at 55 %, one at 58 %).
+
+**The classic board's green-band tile needed no change.** `pzrLevelBand()`
+(`ui/diagram/board/pwr_board_wiring.js`) already reads `control_state.pzr_level_program_pct`
+live (#556/#598 item 11) — the **56.5–66.5 %** band a fresh reader sees is `program ± 5`
+at the current 61.5 % program, the correct reading, not a fourth instance of the defect.
+
+**A tenth site found beyond the issue's list**: `Manuals/12_SIM_PHYSICS.md` §7.3 documents the
+**retired engine's** own inventory node (`pzr_mass_frac`, `level_per_mass` 776, `level_per_void`
+375.33) as if it were PWR2's — a bigger, pre-existing staleness the issue's original pass had not
+found. Flagged in place with a stale-content banner (a correct rewrite needs its own HR12
+measurement pass against PWR2's level program and PI controller); follow-up filed **#708**.
+
+`Manuals/00_REVISION_HISTORY.md` Rev 19 extended (item (tt)); `stamp_manual_revision.js` and
+`pack_manuals.js` re-run; `run_manual_setpoints` unaffected at 18/18 (chapter 09 was not touched).
 
 
 ## [Alpha 1.7.3] — 2026-09-05

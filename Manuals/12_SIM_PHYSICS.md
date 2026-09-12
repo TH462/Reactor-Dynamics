@@ -530,6 +530,18 @@ The consequence for the operator is the important part: **in the saturated regim
 
 ### 7.3 Level is the pressurizer's own inventory node
 
+> **THIS SUBSECTION IS STALE — it describes the RETIRED engine's inventory node
+> (`pzr_mass_frac`, `level_per_mass` 776, `level_per_void` 375.33, `level_per_tavg`), not the
+> shipped plant's** *(flagged 2026-09-11, #677 — the same "55 %" anchor this section still
+> quotes at the Thermal expansion row is the retired engine's own full-power level, corrected
+> everywhere else in this chapter and manual set to the shipped plant's sourced **61.5 %**)*.
+> PWR2 tracks level through a **charging-driven level program** (25 % no load → 61.5 % full
+> power, WTSM 10.3, §6.3 above) inside the two-region pressure balance of §7.1, a different
+> mechanism with different numbers throughout. The load-ramp figures, the TMI void-deception
+> arithmetic and the surge-line split below are the retired engine's own and have not been
+> re-measured against PWR2. Until they are, read **§6.3** and **§7.1** as authoritative for the
+> current plant and this subsection as engineering history. Follow-up filed: **#708**.
+
 Since Rev 14 the pressurizer carries its **own liquid inventory** (`pzr_mass_frac` — its
 share of the RCS mass ledger), and the level gauge is that node on the 0–100 span. The node
 is filled and drained **through the surge line**:

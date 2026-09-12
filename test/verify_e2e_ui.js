@@ -2581,6 +2581,168 @@ async function testPzrGaugeFollowsProgram(page) {
   return log.join('\n') + '\n';
 }
 
+/* THE VITAL-FEW PRESSURIZER GAUGE MUST CAUTION WHEN LEVEL RUNS ABOVE ITS PROGRAM (#706) — the
+ * same gap as #703's, on the other end of the same gauge. The strip carried NO high-side band at
+ * all, so a player watching the board through the shipped Mode 5 -> Mode 3 heatup got no cue of
+ * any kind while level ran **+20.4 points above a 25.00 % program (peak 45.37 %) for 11.6 of the
+ * leg's 13.4 plant-hours** (#706's measurement). The plant's own absolute PZR LVL HI sits at 75 %,
+ * thirty points away, and never fired.
+ *
+ * MEASURED (full stack, svc.tick() driven, ACCEL=10, seed 7): the worst LEGITIMATE upward
+ * deviation of pzr_level above its program is +7.53 points, a momentary spike on the power
+ * ascension (pwr_raise_power spends 0.0 % of the leg above +8). Steady state at all four
+ * free-play initial conditions is +1.07..+1.17; a 100 -> 90 -> 100 MWe load change +5.98/+2.45;
+ * +-15 ppm boration/dilution +1.62/+1.30. Against the faults: pwr_heatup +21.34, pwr_shutdown
+ * +21.19, pwr_cooldown +43.07, the TMI-2 leg +75.00. The chosen edge, program + 10 points, is
+ * the mirror of the `pzr_level_dev_low` rung that already exists, and NOTHING measured sits
+ * between +7.53 and +21.19.
+ *
+ * TWO HALVES PLUS A FAULT LEG, same reasons as the two tests above: ui/app.js does not load
+ * headless and the vital strip publishes no thresholds, only the class they produce.
+ *   1. THE CLASS, sampled on the live plant at the three reachable on-program initial
+ *      conditions. A gauge that banded here would be a false warn on a healthy plant.
+ *   2. THE RULE, through `RD.PwrGaugeBands.pzrLevelCautionHi` — that it is the plant's own
+ *      min(PZR LVL HI, program + PZR LVL DEV HI) read live rather than a retyped number, that a
+ *      snapshot with no program keeps the authored 75, and the DISCRIMINATOR that the edge MOVES
+ *      between Mode 5 and full power (35.0 -> 71.5 %). A fixed absolute edge — the shipped bug,
+ *      or any naive replacement — reads the same in both.
+ *   3. THE FAULT LEG: drive level far above a 25 % program on the live plant (charging out of
+ *      AUTO at 9 gpm) and confirm the gauge actually goes amber — AND that it did so while level
+ *      was still BELOW the absolute 75 % fallback, which is what makes it the program-relative
+ *      edge rather than the old literal doing the work.
+ *
+ * PROVED BY INJECTION, 2026-09-11: reverting the gauge to its shipped form (no `caution` key,
+ * autorange returning only `caution_lo`) leaves the fault leg at 0/40 warn where the fix reads
+ * 40/40, and a FIXED absolute edge (a literal 75, or `caution: 75` with no autorange) fails the
+ * discriminator and the fault leg both. */
+async function testPzrGaugeHighLevelCaution(page) {
+  var log = [];
+  var ICS = [['cold_shutdown', 'Mode 5, Cold Shutdown'],
+             ['hot_zero_power', 'Mode 3, Hot Standby'],
+             ['hot_full_power', 'Mode 1, At Power']];
+  var edges = {};
+  for (var i = 0; i < ICS.length; i++) {
+    var ic = ICS[i][0], name = ICS[i][1];
+    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=' + ic +
+                    '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+    await dismissMission(page);
+    await waitBoardLive(page, 20000);
+    if (await page.$('#speed [data-speed="10"]')) await page.click('#speed [data-speed="10"]');
+    await page.waitForTimeout(1200);
+    var r = await page.evaluate(async function () {
+      function sleep(ms) { return new Promise(function (f) { setTimeout(f, ms); }); }
+      var g = document.getElementById('gauge-pzr'), warn = 0, alarm = 0, n = 0, i;
+      for (i = 0; i < 40; i++) {
+        if (g.classList.contains('alarm')) alarm++;
+        else if (g.classList.contains('warn')) warn++;
+        n++;
+        await sleep(100);
+      }
+      var svc = window.RD.__dev.service();
+      var prog = svc.engine.getControlState().pzr_level_program_pct;
+      var rows = (svc.layer && svc.layer.config && svc.layer.config.alarms) || [];
+      function sp(id) { for (var k = 0; k < rows.length; k++) if (rows[k].id === id) return rows[k]; return null; }
+      var dev = sp('pzr_level_dev_high'), hi = sp('pzr_level_high');
+      return {
+        warn: warn, alarm: alarm, n: n,
+        val: (document.querySelector('#gauge-pzr [data-val]') || {}).textContent,
+        program: prog, devSp: dev && dev.setpoint, devInstr: dev && dev.instrument, hiSp: hi && hi.setpoint,
+        edge: window.RD.PwrGaugeBands.pzrLevelCautionHi({ control_state: { pzr_level_program_pct: prog } }, 75),
+        noProgram: window.RD.PwrGaugeBands.pzrLevelCautionHi({ control_state: {} }, 75),
+        nullProgram: window.RD.PwrGaugeBands.pzrLevelCautionHi({ control_state: { pzr_level_program_pct: null } }, 75)
+      };
+    });
+    edges[ic] = r;
+    log.push(name + ': program ' + r.program.toFixed(1) + ' %, gauge reads ' + r.val +
+             ', high caution edge ' + r.edge.toFixed(1) + ' % — ' + r.warn + ' warn / ' + r.alarm +
+             ' alarm of ' + r.n + ' samples');
+    if (r.warn || r.alarm) {
+      throw new Error('pzr gauge banded on an on-program plant at ' + name + ': ' + r.warn +
+                      ' warn / ' + r.alarm + ' alarm of ' + r.n + ' samples, program ' +
+                      r.program.toFixed(1) + ' %, gauge ' + r.val);
+    }
+    /* The green must be EARNED — the rung has to be in the RUNNING config, on the DEVIATION
+     * channel, or this leg is asserting nothing. */
+    if (r.devSp == null || r.hiSp == null) throw new Error('pzr level high ladder missing from the running config at ' + name);
+    if (r.devInstr !== 'pzr_level_dev') throw new Error('pzr_level_dev_high is on ' + r.devInstr + ', not the deviation channel');
+    var want = Math.min(r.hiSp, r.program + r.devSp);
+    if (Math.abs(r.edge - want) > 1e-9) {
+      throw new Error('pzr high caution edge at ' + name + ' is ' + r.edge + ', not the plant\'s own ' +
+                      'min(' + r.hiSp + ', program ' + r.program.toFixed(1) + ' + ' + r.devSp + ') = ' + want);
+    }
+    if (r.noProgram !== 75 || r.nullProgram !== 75) {
+      throw new Error('a snapshot with no level program must keep the authored 75 %, got ' +
+                      r.noProgram + ' / ' + r.nullProgram);
+    }
+  }
+  /* THE DISCRIMINATOR. An absolute edge — the shipped state's 75, or any fixed replacement —
+   * gives the SAME number in Mode 5 and at power. The program spans 25 -> 61.5 %, so these
+   * must not. */
+  var cold = edges.cold_shutdown.edge, hot = edges.hot_full_power.edge;
+  if (!(hot - cold > 20)) {
+    throw new Error('the pzr high caution edge did not follow the program: Mode 5 ' + cold +
+                    ' %, Mode 1 ' + hot + ' % — an absolute edge reads the same in both');
+  }
+  log.push('edge follows the program: Mode 5 ' + cold.toFixed(1) + ' % -> Mode 1 ' + hot.toFixed(1) +
+           ' % (program + 10 in each; the 75 % absolute cap never binds, because the program ' +
+           'clamps at 61.5 %)');
+
+  /* THE FAULT LEG. Reconstruct the #706 shape on the live plant: a 25 % program with level far
+   * above it. Charging out of AUTO at 9 gpm at Mode 3 reaches program + 30 or so inside an hour
+   * and a half of plant time, which WARP covers in a few wall-seconds. */
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_zero_power' +
+                  '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await page.evaluate(function () {
+    var svc = window.RD.__dev.service();
+    svc.handleCommand({ action: 'set_cvcs_auto', active: false });
+    svc.handleCommand({ action: 'set_charging_flow', normalized: 9 / 450000 });
+  });
+  if (await page.$('#speed [data-speed="600"]')) await page.click('#speed [data-speed="600"]');
+  /* 6.5 s of wall at 600x is a bit over an hour of plant time, which takes the deviation to about
+   * +36 points. The settle is deliberately SHORT of the 75 % absolute alarm — 61.5 % on three
+   * consecutive runs, 13.5 points clear — because the check below asserts that the amber came from
+   * the program-relative edge and not from the authored literal, and that assertion is only
+   * available while level stays under 75. */
+  await page.waitForTimeout(6500);
+  var faultR = await page.evaluate(async function () {
+    function sleep(ms) { return new Promise(function (f) { setTimeout(f, ms); }); }
+    var g = document.getElementById('gauge-pzr'), warn = 0, n = 0, i;
+    for (i = 0; i < 40; i++) {
+      if (g.classList.contains('warn') || g.classList.contains('alarm')) warn++;
+      n++;
+      await sleep(100);
+    }
+    var svc = window.RD.__dev.service();
+    var snap = svc.assembleSnapshot();
+    var prog = snap.control_state.pzr_level_program_pct;
+    var lit = (snap.alarms || []).filter(function (a) { return a.id === 'pzr_level_dev_high'; })[0];
+    return { warn: warn, n: n, lvl: snap.instruments.pzr_level, program: prog,
+             annunciator: lit ? lit.state : '(absent)' };
+  });
+  log.push('fault leg (charging MANUAL 9 gpm at Mode 3, WARP settle): level ' +
+           faultR.lvl.toFixed(1) + ' % against a ' + faultR.program.toFixed(1) + ' % program (+' +
+           (faultR.lvl - faultR.program).toFixed(1) + ' points) — ' + faultR.warn + ' warn of ' +
+           faultR.n + ' samples, PZR LVL DEV HI ' + faultR.annunciator);
+  if (!faultR.warn) {
+    throw new Error('pzr gauge never banded on the reconstructed high-level excursion: level ' +
+                    faultR.lvl.toFixed(1) + ' % against a ' + faultR.program.toFixed(1) + ' % program');
+  }
+  /* …and it has to be the PROGRAM-RELATIVE edge that did it. Amber at a level ABOVE 75 % would
+   * be satisfied by the authored literal alone, which is the state this whole fix replaces. */
+  if (!(faultR.lvl < 75)) {
+    throw new Error('the fault leg ran past the 75 % absolute alarm (' + faultR.lvl.toFixed(1) +
+                    ' %), so the amber proves nothing about the program-relative edge — the ' +
+                    'excursion is too large, shorten the WARP settle');
+  }
+  if (faultR.annunciator === 'clear' || faultR.annunciator === '(absent)') {
+    throw new Error('the gauge banded but PZR LVL DEV HI did not: ' + faultR.annunciator +
+                    ' at level ' + faultR.lvl.toFixed(1) + ' % against program ' + faultR.program.toFixed(1) + ' %');
+  }
+  return log.join('\n') + '\n';
+}
+
 /* THE VITAL-FEW Tavg GAUGE MUST CAUTION ON A COLD-AT-POWER PLANT AND STAY SILENT ON ONE
  * TRACKING ITS PROGRAM (#703) — the opposite gap from #676's: the strip carried NO low edge
  * on Tavg at all, so a plant running 105 °F (58.3 °C) cold at 96.5 % power had no vital-few
@@ -2695,6 +2857,295 @@ async function testTavgGaugeDeviationCaution(page) {
     throw new Error('tavg gauge never cautioned on the reconstructed cold-at-power fault: Tavg ' +
                     faultR.tavgC.toFixed(1) + ' degC, power ' + faultR.power.toFixed(1) + ' %');
   }
+  return log.join('\n') + '\n';
+}
+
+/* THE ROD LANES ARE DRAWN TO THE ENGINE'S OWN BANK, AND THE SCALE IS READ LIVE (#707).
+ *
+ * THE DEFECT. `ui/app.js` declared three chart lanes — Control Rod Steps, Shutdown Rod Steps
+ * and Rod Limit Margin — with a full scale of 912 steps: the RETIRED engine's fine drive
+ * (`RD.PWR_CONFIG.rods.max_steps`). The shipped plant's bank is 627
+ * (`RD.pwr2.kinetics.RODS.max_steps`, the sourced four-bank 131-step overlap program —
+ * Westinghouse Technology Systems Manual chapter 8.1 section 8.1.5.4, ADAMS ML11223A252), so a
+ * bank sitting ON ITS STOP drew at 69 % of its lane: "fully withdrawn" was a height the chart
+ * could not reach, and the same was true of the rod-limit margin's own full-scale reading.
+ *
+ * AN AXIS IS A RENDERING CLAIM, so this reads the DRAWN lane chrome (`.lane-rng`, the text the
+ * player sees beside each lane's name) rather than the literal in the profile table. Four
+ * checks, and NO bank number is typed here — every bound is read back out of the page:
+ *
+ *   1. A CHANNEL PARKED ON THE STOP REACHES THE TOP OF ITS LANE. The shutdown bank is parked
+ *      fully out at power, so its lane's fitted top must land exactly ON the bank the plant
+ *      publishes. On the defect it lands at 700 — holdRange's minSpan is a tenth of full
+ *      scale, so the 912 lane fits a flat 627 into a 50-step ladder band 550–700 and the 912
+ *      clamp never binds. On the fix it lands at 627, which is the clamp.
+ *   2. NO LANE'S TOP MAY EXCEED THE BANK THE PLANT PUBLISHES — the general form of 1, applied
+ *      to the control bank, which sits at its at-power design point (606 of 627, #704) rather
+ *      than on the stop.
+ *   3. THE SCALE FOLLOWS A CHANGE. `pwr2_engine.js`'s BANK() accessor is a function precisely
+ *      because "a consumer that captures the value at load cannot follow a change", so a
+ *      parse-time capture of 627 would satisfy 1 and 2 and still be the wrong mechanism. The
+ *      bank is moved UNDER the running chart and the drawn top has to move with it.
+ *   4. THE ROD-LIMIT MARGIN, at the one initial condition where its top is a claim about the
+ *      bank at all — see below.
+ *
+ * Check 3 is why the poke is UPWARD. holdRange's clamp is a preference that must never beat
+ * the data (chart_math.js), so shrinking the bank under a trace already at 627 would leave the
+ * band where it is and the check would pass on a captured value too — it would be sampling the
+ * side of the mechanism the defect cannot reach. Raising it widens minSpan, the flat trace then
+ * sits well inside its band, and the shrink dwell (CHART_SHRINK_FRAMES, 40 frames) re-fits.
+ *
+ * Check 4 needs its OWN initial condition: the margin only reads full scale where the insertion
+ * limit does not apply (below 5 % power the engine publishes BANK() outright), so at power it
+ * sits near 167 steps and no clamp binds at either scale.
+ */
+async function testRodLaneBankScale(page) {
+  var log = [];
+
+  /* Put exactly the wanted channels in the lane stack. Everything else has to come OFF: the
+   * stack demotes the overflow to numeric rows, which carry a value and no range, so a lane
+   * left in the crowd would report `null` rather than a wrong bound. */
+  async function pinLanes(ids) {
+    await page.click('#chartOptsBtn');
+    await page.waitForTimeout(400);
+    await page.evaluate(function (want) {
+      var boxes = Array.prototype.slice.call(document.querySelectorAll('.cs-row input[data-cs-side]'));
+      boxes.forEach(function (b) { if (b.checked && !b.disabled) b.click(); });
+      want.forEach(function (id) {
+        var row = document.querySelector('.cs-row[data-cs="' + id + '"]');
+        if (!row) throw new Error('no chart-settings row for series "' + id + '"');
+        var box = row.querySelector('input[data-cs-side]:not([disabled])');
+        if (!box) throw new Error('series "' + id + '" has no selectable side');
+        if (!box.checked) box.click();
+      });
+    }, ids);
+    await page.click('#chartOptsClose');
+    await page.waitForTimeout(1500);
+  }
+
+  /* The DRAWN range, parsed out of the lane's own chrome. A channel demoted to a numeric row
+   * has no `.lane-rng` at all and comes back null, which every caller treats as a failure
+   * rather than as an absent bound. */
+  function readLanes() {
+    return page.evaluate(function () {
+      var out = {};
+      Array.prototype.slice.call(document.querySelectorAll('#chartFloats .lane-chrome')).forEach(function (c) {
+        var rng = c.querySelector('.lane-rng'), t = rng ? (rng.textContent || '') : '';
+        var nums = t.match(/-?[\d.]+/g);
+        out[c.getAttribute('data-ser')] = (nums && nums.length >= 2)
+          ? { lo: parseFloat(nums[0]), hi: parseFloat(nums[1]), text: t } : null;
+      });
+      var snap = window.RD.__dev.service().assembleSnapshot();
+      var gs = (snap.control_state || {}).rod_groups || [], banks = {};
+      gs.forEach(function (g) { banks[g.id] = { steps: g.steps, max_steps: g.max_steps }; });
+      return {
+        lanes: out, banks: banks,
+        margin: snap.instruments.rod_limit_margin,
+        power: snap.instruments.power_range,
+        /* BOTH published scales, so "the lane is not on the retired bank" is a comparison
+         * between two numbers the page itself supplies, not against a literal in this file. */
+        shipped: ((((window.RD.pwr2 || {}).kinetics || {}).RODS) || {}).max_steps,
+        retired: (((window.RD.PWR_CONFIG || {}).rods) || {}).max_steps
+      };
+    });
+  }
+
+  // ---- leg A: the two bank lanes at power -----------------------------------------------
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power' +
+                  '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await pinLanes(['rod_steps', 'sd_steps']);
+  var a = await readLanes();
+
+  var bank = (a.banks.shutdown_rods || {}).max_steps;
+  if (!(bank > 0)) throw new Error('the plant published no shutdown-bank max_steps to draw against');
+  if (!(a.retired > 0) || a.retired === bank) {
+    throw new Error('this check cannot discriminate: the retired engine bank (' + a.retired +
+      ') and the shipped one (' + bank + ') are the same number, so a stale literal would pass');
+  }
+  if (a.shipped !== bank) {
+    throw new Error('the snapshot rod group (' + bank + ') disagrees with RD.pwr2.kinetics.RODS.max_steps (' +
+      a.shipped + ') — the two published copies of the bank have drifted');
+  }
+  log.push('banks: shipped ' + bank + ' steps, retired engine ' + a.retired + ' steps');
+
+  var sd = a.lanes.sd_steps, ctl = a.lanes.rod_steps;
+  if (!sd || !ctl) throw new Error('the rod lanes did not draw as LANES (sd=' + JSON.stringify(sd) +
+    ', ctl=' + JSON.stringify(ctl) + ') — demoted to numeric rows?');
+  var sdSteps = (a.banks.shutdown_rods || {}).steps;
+  if (sdSteps !== bank) {
+    throw new Error('precondition: the shutdown bank is meant to be parked on its stop at power, ' +
+      'and reads ' + sdSteps + ' of ' + bank + ' — check 1 asserts a lane top against a channel ' +
+      'sitting at full scale and cannot be run against a bank somewhere else');
+  }
+  log.push('at power: control bank ' + (a.banks.control_rods || {}).steps + '/' + bank +
+           ', shutdown bank ' + sdSteps + '/' + bank + ', lanes "' + ctl.text + '" / "' + sd.text + '"');
+
+  if (sd.hi !== bank) {
+    throw new Error('a bank parked ON ITS STOP does not reach the top of its lane: Shutdown Rod ' +
+      'Steps reads ' + sdSteps + ' of ' + bank + ' and its lane is drawn to ' + sd.hi +
+      '. (#707 — the lane was declared to the RETIRED engine ' + a.retired + '-step bank, so ' +
+      'full scale was a height this plant cannot produce.)');
+  }
+  if (ctl.hi > bank) {
+    throw new Error('the Control Rod Steps lane is drawn to ' + ctl.hi + ' steps on a plant whose ' +
+      'bank stops at ' + bank + ' — the top of that lane does not exist (#707)');
+  }
+  log.push('check 1+2: the stop IS full scale (shutdown lane top ' + sd.hi + ' = bank ' + bank +
+           '), control lane top ' + ctl.hi + ' <= ' + bank);
+
+  // ---- leg A, check 3: the scale FOLLOWS the bank ---------------------------------------
+  /* Raise the one place the bank is defined and let the chart's own shrink dwell re-fit. The
+   * shell republishes max_steps off it every broadcast (bankSteps()), so this is the same path
+   * a retune takes — and it is the half a parse-time capture cannot follow. */
+  var moved = await page.evaluate(function (factor) {
+    var R = window.RD.pwr2.kinetics.RODS, was = R.max_steps;
+    R.max_steps = Math.round(was * factor);
+    return { was: was, now: R.max_steps };
+  }, 2.5);
+  await page.waitForTimeout(9000);      /* > CHART_SHRINK_FRAMES (40 frames) */
+  var b = await readLanes();
+  var sd2 = b.lanes.sd_steps;
+  if (!sd2) throw new Error('the shutdown-bank lane stopped drawing after the bank moved');
+  log.push('check 3: bank ' + moved.was + ' -> ' + moved.now + ' steps under the running chart; ' +
+           'shutdown lane "' + sd.text + '" -> "' + sd2.text + '", published max_steps ' +
+           (b.banks.shutdown_rods || {}).max_steps);
+  if ((b.banks.shutdown_rods || {}).max_steps !== moved.now) {
+    throw new Error('the shell did not republish the moved bank (' +
+      (b.banks.shutdown_rods || {}).max_steps + ' vs ' + moved.now + ') — check 3 cannot run');
+  }
+  if (sd2.hi === sd.hi) {
+    throw new Error('the rod lane full scale did NOT follow the bank: it stayed at ' + sd.hi +
+      ' while the plant own max_steps went ' + moved.was + ' -> ' + moved.now +
+      '. That is a scale CAPTURED once, which is the mechanism #707 forbids — pwr2_engine.js ' +
+      'BANK() is a function for this exact reason.');
+  }
+  if (sd2.hi > moved.now) {
+    throw new Error('the rod lane followed the bank past it: top ' + sd2.hi + ' on a ' +
+      moved.now + '-step bank');
+  }
+
+  // ---- leg B: the rod-limit margin, where its full scale is a claim ----------------------
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_zero_power' +
+                  '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await pinLanes(['rod_margin']);
+  var c = await readLanes();
+  var bankB = (c.banks.control_rods || {}).max_steps;
+  var mar = c.lanes.rod_margin;
+  if (!mar) throw new Error('the Rod Limit Margin lane did not draw as a LANE');
+  log.push('Hot Standby: power ' + c.power.toFixed(3) + ' %, margin ' + c.margin.toFixed(1) +
+           ' steps of a ' + bankB + '-step bank, lane "' + mar.text + '"');
+  if (Math.abs(c.margin - bankB) > 0.5) {
+    throw new Error('precondition: below the 5 % applicability floor the engine publishes the ' +
+      'margin as the whole bank, and it reads ' + c.margin + ' against ' + bankB +
+      ' — this leg asserts a lane top against a channel at full scale');
+  }
+  if (mar.hi !== bankB) {
+    throw new Error('Rod Limit Margin reads its full scale (' + c.margin.toFixed(1) + ' of ' +
+      bankB + ') and its lane is drawn to ' + mar.hi + ' — the reading cannot reach the top of ' +
+      'its own lane (#707; the lane was declared to the retired ' + c.retired + '-step bank)');
+  }
+  log.push('check 4: margin at full scale reaches the lane top (' + mar.hi + ' = bank ' + bankB + ')');
+
+  return log.join('\n') + '\n';
+}
+
+/* THE ROD LIMIT MARGIN INDICATIONS-TAB ROW MUST READ THE ENGINE'S OWN BANK, LIVE (#707) — the
+ * same fix as testRodLaneBankScale's, on a DIFFERENT rendering path. That check reads the rod
+ * TREND-CHART lane's drawn top; this one reads the Rod Limit Margin ROW's own scanner-detail
+ * prose in the Indications tab ("Indicating range 0 steps to 627 steps."), built by
+ * indicationFacts() (ui/app.js) through bankScale() rather than the generated manual
+ * reference's static [0, 912] (ui/manual_data.js — the RETIRED engine's 912-fine-step drive).
+ * A one-off Playwright probe proved the fix at the time — reading the row's
+ * data-scanner-detail attribute, "0 steps to 912 steps" before, "0 steps to 627 steps" after —
+ * but was never committed, so nothing gates this string and it can regress silently: the same
+ * `/\(partial\)/` shape CLAUDE.md records, where a source scan cannot prove a rendered string
+ * is reachable.
+ *
+ * TWO CHECKS, and #707's own ruling makes the SECOND the one that matters — hard-coding the
+ * new literal is exactly how the old one got here, so "it says 627" is not enough:
+ *   1. NOT the retired engine's 912-step literal.
+ *   2. THE STRING FOLLOWS THE ENGINE. `RD.pwr2.kinetics.RODS.max_steps` is moved under the
+ *      running plant (the same poke testRodLaneBankScale's check 3 uses), then a Free Play
+ *      reset re-triggers buildIndications() — the row's text is built once per plant rebuild,
+ *      not per broadcast, so the poke alone changes nothing on screen until the plant rebuilds.
+ *      A captured 627 passes check 1 and fails this one.
+ *
+ * PROVED BY INJECTION, 2026-09-11: pointing indicationFacts() at `ind.range` (the generated
+ * static [0, 912]) instead of bankScale() reds check 1, reading "0 steps to 912 steps"; a
+ * literal 627 in bankScale()'s place passes check 1 and reds check 2 — the string never moves
+ * when the bank does.
+ */
+async function testRodLimitMarginIndicationRange(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power' +
+                  '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await page.click('[data-tab="indications"]');
+  await page.waitForTimeout(600);
+
+  function readDetail() {
+    return page.evaluate(function () {
+      var row = document.querySelector('#indicationsList .num-line[data-ser="rod_margin"]');
+      return row ? row.getAttribute('data-scanner-detail') : null;
+    });
+  }
+
+  var before = await readDetail();
+  if (!before) {
+    throw new Error('no Rod Limit Margin row (data-ser="rod_margin") in the Indications tab, or it carries no data-scanner-detail');
+  }
+  if (/\b912\b/.test(before)) {
+    throw new Error('Rod Limit Margin\'s indicating range still reads the retired engine\'s 912-step literal: "' + before + '"');
+  }
+  var m = /Indicating range 0 steps to (\d+) steps/.exec(before);
+  if (!m) {
+    throw new Error('Rod Limit Margin\'s scanner detail carries no "Indicating range 0 steps to N steps." sentence: "' + before + '"');
+  }
+  var shipped = parseFloat(m[1]);
+  if (!(shipped > 0)) throw new Error('parsed a non-positive bank (' + shipped + ') from: "' + before + '"');
+  log.push('shipped: "' + before + '" (bank ' + shipped + ' steps)');
+
+  /* ---- the discriminator: move the ONE place the bank is defined, let a broadcast publish
+   * it (indicationFacts() reads `latest`, not a live function, so the row text will not move
+   * until the NEXT rebuild sees a `latest` that already carries the moved bank), then rebuild
+   * the tab through a real Free Play reset — the path a player's own Reset takes, not a
+   * synthetic hook. */
+  var moved = await page.evaluate(function (factor) {
+    var R = window.RD.pwr2.kinetics.RODS, was = R.max_steps;
+    R.max_steps = Math.round(was * factor);
+    return { was: was, now: R.max_steps };
+  }, 2.5);
+  await page.waitForTimeout(1500);      // >= one broadcast, so `latest` carries the moved bank
+  await page.click('#simStatus');
+  await page.waitForTimeout(400);
+  if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission to reset the plant');
+  await page.click('[data-mfree]');
+  await waitBoardLive(page, 20000);
+  await page.click('[data-tab="indications"]');
+  await page.waitForTimeout(600);
+
+  var after = await readDetail();
+  log.push('bank ' + moved.was + ' -> ' + moved.now + ' steps, plant reset through Free Play: "' + after + '"');
+  var m2 = /Indicating range 0 steps to (\d+) steps/.exec(after || '');
+  if (!m2) {
+    throw new Error('Rod Limit Margin lost its indicating-range sentence after the bank moved: "' + after + '"');
+  }
+  var movedRead = parseFloat(m2[1]);
+  if (movedRead === shipped) {
+    throw new Error('the indicating range did NOT follow the bank: it stayed at ' + shipped +
+      ' steps while RD.pwr2.kinetics.RODS.max_steps went ' + moved.was + ' -> ' + moved.now +
+      '. That is a range CAPTURED once (a hard-coded 627), the exact mechanism #707 forbids.');
+  }
+  if (movedRead !== moved.now) {
+    throw new Error('the indicating range followed the bank to the wrong number: row reads ' +
+      movedRead + ', plant published ' + moved.now);
+  }
+  log.push('range follows the engine: ' + shipped + ' -> ' + movedRead + ' steps, matching the moved bank exactly');
   return log.join('\n') + '\n';
 }
 
@@ -2816,8 +3267,14 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'css-transitions.log'), ctLog);
     var pgLog = await testPzrGaugeFollowsProgram(page);
     fs.writeFileSync(path.join(SCRATCH, 'pzr-gauge-program.log'), pgLog);
+    var phLog = await testPzrGaugeHighLevelCaution(page);
+    fs.writeFileSync(path.join(SCRATCH, 'pzr-gauge-high-level.log'), phLog);
     var tgLog = await testTavgGaugeDeviationCaution(page);
     fs.writeFileSync(path.join(SCRATCH, 'tavg-gauge-deviation.log'), tgLog);
+    var rlLog = await testRodLaneBankScale(page);
+    fs.writeFileSync(path.join(SCRATCH, 'rod-lane-bank-scale.log'), rlLog);
+    var rmLog = await testRodLimitMarginIndicationRange(page);
+    fs.writeFileSync(path.join(SCRATCH, 'rod-limit-margin-indication-range.log'), rmLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -2839,7 +3296,10 @@ if (require.main !== module) {
                      testHeldPlantDialog: testHeldPlantDialog, testHeldSpeedClick: testHeldSpeedClick,
                      testSaveLoadRefusal: testSaveLoadRefusal, testCssTransitions: testCssTransitions,
                      testPzrGaugeFollowsProgram: testPzrGaugeFollowsProgram,
+                     testPzrGaugeHighLevelCaution: testPzrGaugeHighLevelCaution,
                      testTavgGaugeDeviationCaution: testTavgGaugeDeviationCaution,
+                     testRodLaneBankScale: testRodLaneBankScale,
+                     testRodLimitMarginIndicationRange: testRodLimitMarginIndicationRange,
                      testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
                      testHeldNotePauseResume: testHeldNotePauseResume,
                      port: function () { return PORT; } };

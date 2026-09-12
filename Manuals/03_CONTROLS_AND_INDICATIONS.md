@@ -326,7 +326,7 @@ AUTO at **PWR-N01 step 5b**, after the pumps are started at step 2.
 
 ### 5.4 PZR Level
 
-- Normal ≈ **55 %** at HFP.  
+- Normal ≈ **61.5 %** at HFP; **25 %** at no load — the program rides the Tavg span (**09** §11.0).  
 - Controlled primarily by **CVCS** charging/letdown.  
 - **TMI trap:** level can **rise** while total inventory **falls** (void surge).  
 

@@ -29,6 +29,26 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-11-workbench-e (lane maintenance: merge `develop`, re-gate)
+
+Merged `develop` (`9774a679`) into `workbench` (`ec432d2a`) — sanctioned lane maintenance, not a
+merge into `develop`. One real conflict: `test/run_all.js`'s `verify_e2e_ui.js` BASELINES entry —
+both lanes had appended check-function comments (`workbench` #710, `develop`/other-lane #707);
+combined all comment text and kept `develop`'s `note:` field (the `testPauseResumeSpeed`
+contention-sensitivity warning, #691). `run_hardrules.js`'s BASELINES entry had ALREADY been
+pre-resolved on `develop`'s side to 535 (its own comment records a prior develop+backshop+
+workbench prediction of "524 or 531 -> actual 535"); re-ran the gate directly against the merged
+tree rather than trusting the comment — **535 checks, 0 failed**, exact match, no correction
+needed. `merge_audit.js` flagged the known `## [Alpha 1.7.4-rc13]` false positive (renamed to
+rc15 in place on `develop`) — not chased. `Manuals/00_REVISION_HISTORY.md` row 19's #698 items
+land in the Description column, closing cleanly at `| Claude |` (the earlier author-cell splicing
+did not recur). `Manuals/12_SIM_PHYSICS.md` §12.22 (the boron live-reading declared departure)
+survived intact.
+
+`node test/run_all.js`: **111/111 runners at baseline**, zero deviations beyond the tracked
+`run_ops.js` 59/70 (ruled #330, expected). No BASELINES entries needed correcting past what
+`develop` already carried in — every number the gate reported matched what was already staged.
+
 ## Session log — 2026-09-11-workbench-d (#710 — resume-from-pause cleared the held-at-real-time message, UNMERGED on `workbench`)
 
 Filed by the #686 agent, out of scope there — pre-existing #691 code that #686 (landed at
