@@ -624,9 +624,7 @@ what a GATE already catches**, keep what nothing can tell you.
   THERE; the log says what they have already DONE. Four #357 items were worked against a
   convention #350 had already inverted.
 **The full history lives in `Diagnostic/TUNING_LOG.md` (newest first)** — it is the
-session-continuity record and a strict superset of what this section used to duplicate. This
-section used to carry fifteen stacked historical entries, ~280 lines, every one of them a
-second copy of a TUNING_LOG entry, in the first file every agent reads. Cut 2026-07-27
+session-continuity record and a strict superset of what this section used to duplicate. Cut 2026-07-27
 *(OWNER RULING, 2026-07-27: "Execute the cut.")*. **Keep it short: current state and pointers,
 not a changelog.**
 
@@ -637,8 +635,7 @@ not a changelog.**
   PWR models a **Cold Shutdown (Mode 5) initial condition** and the **full Mode 5 ↔
   Mode 1 heatup/cooldown on integrated physics** — see `CHANGELOG.md`.
 - **Stack complete** — Control (M4) ✅, Simulation Service (M5, +rewind) ✅,
-  Instructor (M6) ✅ (beat engine, Path-2 follow, TMI flagship, rewind, highlights,
-  Hook + Training), Test Runner (M7) ✅.
+  Instructor (M6) ✅, Test Runner (M7) ✅.
 - **UI (M8): functional alpha, PWR only** 🟦 — M8 and the M4 control UI are not yet
   extended to RBMK/BWR.
 
@@ -868,6 +865,14 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
   the merge gives two events for one SHA, which is how the production build went missing. From
   outside, a missing deploy and a slow one are indistinguishable for ever, so waiting is never the
   answer. Full step: `release-to-main` skill §5b.
+
+> **THEN HAND IT TO A FRESH AGENT FOR A QUALITY PASS** *(OWNER DIRECTIVE, 2026-09-11: "Upon
+> completing your work, spawn a subagent to do a full and thorough quality pass through it for any
+> remaining bugs, issues or QoL improvements.")*. Once the work is done and the gates it touches are
+> green, THEN spawn a reviewer: hand it the diff, the issue and what you already know is open — a
+> reviewer guessing the scope reviews the wrong thing. **It reviews; it does not re-litigate a
+> ruling or replace a gate.** Report every finding and what you did about it; one you declined is
+> one you report, with the reason.
 
 ---
 
