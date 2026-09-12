@@ -65,11 +65,20 @@ material out of the `changelog.html` entry or shipping the headline invisible.)*
   preview, and on PWR2 the Free-Play-only note precedes the flag), and the check that used to
   assert COMING SOON there now asserts the claim directly: of 35 missions the tab lists only the
   ones whose own entry resolves on, and strictly fewer than all of them.
+- **`run_channel` kept the gated set as a hand-written list and went red on a correct build.**
+  `GATED = ['campaign', 'scenarios', 'checklists', 'walkthroughs']` is a second copy of
+  `site/flags.js`, and the copy is what rots — three deployment rows reported a healthy public
+  build as leaking. The set is read off the registry now, and the run gained the positive control
+  a derived set needs: an empty `GATED` would make "offers none of them" vacuously true, so each
+  row also asserts every *public*-stage area IS on. Injection-proven — neutering `stage ===
+  'public'` in the resolver reds the three public rows with "vetted areas withheld: free_play,
+  manual, walkthroughs, checklists (0/4)", a state the old list-based check passed.
 - Gates: `run_flags` **343/343** (345 → 343 — the well-formed sweep only asks a *gated* area for
   its coming-soon sentence, so a flip to public removes one check per area), `verify_flags_ui`
-  **54/54** (four checks rewritten, injection-proven red four ways), `run_site_build` 41/0,
-  `run_release` 29/0, `verify_e2e_ui` PASS. A public *build* is byte-for-byte unchanged in what
-  it CONTAINS — `site/flags.js` is copied verbatim and is not on the #523 strip list.
+  **54/54** (four checks rewritten, injection-proven red four ways), `run_channel` 25/0,
+  `run_site_build` 41/0, `run_release` 29/0, `verify_e2e_ui` PASS, `run_all --fast` **106 of 108
+  at baseline**. A public *build* is byte-for-byte unchanged in what it CONTAINS —
+  `site/flags.js` is copied verbatim and is not on the #523 strip list.
 
 ### Fixed — the quick tour's Vital gauges step (#720, 2026-09-12)
 
