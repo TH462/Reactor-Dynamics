@@ -3627,15 +3627,47 @@ async function testWalkthroughPanelChrome(page) {
    * walkthrough would let a future change hide it behind the checklist branch. */
   var clk = await page.evaluate(function () {
     var c = document.getElementById('clock');
-    var cs = getComputedStyle(c);
-    return { running: c.classList.contains('running'), anim: cs.animationName, opacity: cs.opacity };
+    var out = { running: c.classList.contains('running'), accel: c.classList.contains('accel'),
+                anim: getComputedStyle(c).animationName, opacity: getComputedStyle(c).opacity,
+                color: getComputedStyle(c).color };
+    /* the SAME element with `running` taken off, so "the running clock is coloured" is a
+     * difference rather than a reading of whatever the clock is coloured anyway */
+    c.classList.remove('running');
+    out.offColor = getComputedStyle(c).color;
+    if (out.running) c.classList.add('running');
+    /* --running resolved through the cascade, so the assertion names the token the fix chose
+     * rather than a hex literal copied into a test */
+    var probe = document.createElement('span');
+    probe.style.color = 'var(--running)';
+    document.body.appendChild(probe);
+    out.runningToken = getComputedStyle(probe).color;
+    probe.remove();
+    return out;
   });
   if (!clk.running) throw new Error('#687 control: the clock is not marked running, so this check would pass on a stopped plant');
   if (clk.anim !== 'none') {
     throw new Error('#687: the running clock is animating ("' + clk.anim + '") — an indefinite ' +
       'opacity fade on a always-on readout is the "the time keeps appearing and disappearing" report');
   }
-  log.push('clock: running, animationName ' + clk.anim + ', opacity ' + clk.opacity);
+  /* AND THE THING THAT REPLACED THE FADE IS ASSERTED, not just the fade's absence (quality pass,
+   * 2026-09-11). PROVED HOLLOW by injection: with only the `animationName !== 'none'` test above,
+   * deleting `.clock.running { color: var(--running) }` left this check GREEN — so the running
+   * plant's only remaining cue on the clock could go silently and the gate would agree. #687's
+   * own argument for removing the animation is that "a steady colour carries the same fact with
+   * no motion"; that colour is half the fix and it now reds if it goes. `.accel` legitimately
+   * wins by source order, so the token is only demanded when the clock is not accelerated —
+   * either way the running clock must not read the same as a stopped one. */
+  if (clk.color === clk.offColor) {
+    throw new Error('#687: the running clock is not distinguished from a stopped one — both read ' +
+      clk.color + '. The pulse animation was removed in favour of a steady colour; with the colour ' +
+      'gone too there is no running cue on the clock at all.');
+  }
+  if (!clk.accel && clk.color !== clk.runningToken) {
+    throw new Error('#687: the running clock reads ' + clk.color + ', not the board\'s --running ' +
+      'green (' + clk.runningToken + ') — .clock.running lost the colour that replaced the fade');
+  }
+  log.push('clock: running, animationName ' + clk.anim + ', opacity ' + clk.opacity +
+           ', colour ' + clk.color + ' (--running ' + clk.runningToken + '; stopped reads ' + clk.offColor + ')');
 
   /* ---- setInstrRole's change guard, MEASURED WHERE THE FUNCTION IS ACTUALLY CALLED --------
    *
