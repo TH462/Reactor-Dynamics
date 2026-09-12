@@ -2174,22 +2174,40 @@
           why: 'The reactor follows the turbine: less steam drawn means the heat has nowhere to go, the water warms, and warmer water walks power down by itself. But it settles hot until rods take the extra reactivity out.',
           control: 'Turbine Load', target: 'OUTPUT 75 MWe; AVG COOLANT TEMPERATURE inside its band',
           cmd: { action: 'set_load_target', mwe: 75 }, hold: 900,
+          /* THE STEP THAT COMPLETES ON A SCRAM (#715). `power_pct < 90` and `tavg_c < 305` are
+           * both one-sided: a real scram between the raise-power leg and this one satisfies
+           * both for free (measured, hot_full_power -> scram -> 20 s: power_pct 5.7 %, tavg_c
+           * falling toward the 286.1 degC no-load knot), so all five predicates across this
+           * leg's four load-drop steps passed on a dead plant and the checklist reported
+           * complete. The pair below is `mwe_output`, not a blanket `turbine_tripped` guard:
+           * this leg's own claim is "the reactor follows LOAD down", and the turbine still
+           * carrying load IS that claim's second half — a scram is a load-following failure by
+           * definition, not a side fact bolted on. MEASURED, genuine run (full stack, this leg's
+           * own `from`, ACCEL 60): mwe_output settles to 75.00 by the end of this step's 900 s
+           * hold, 5 clear of the 70 floor; a scrammed plant reads 0. */
           accs: [{ p: 'power_pct', op: '<', v: 90, label: 'Reactor following down' },
-                 { p: 'tavg_c', op: '<', v: 305, label: 'AVG COOLANT TEMPERATURE below 581 °F' }],
+                 { p: 'tavg_c', op: '<', v: 305, label: 'AVG COOLANT TEMPERATURE below 581 °F' },
+                 { p: 'mwe_output', op: '>', v: 70, label: 'Generator still carrying about 75 MWe' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
         { text: 'Set LOAD to 50 MWe, let power follow, then hold INSERT until AVG COOLANT TEMPERATURE is back in its band.',
           note: 'About 20 steps at MED.',
           why: 'Same order: LOAD first, then rods, so the temperature does not sit hot above its band. STEAM GENERATOR LEVEL dips before it recovers on each drop; that is normal, and SG FEED in AUTO handles it.',
           control: 'Turbine Load', target: 'OUTPUT 50 MWe; AVG COOLANT TEMPERATURE inside its band',
           cmd: { action: 'set_load_target', mwe: 50 }, hold: 720,
-          accs: [{ p: 'power_pct', op: '<', v: 70, label: 'Reactor following through 70 %' }],
+          /* PAIRED, SAME FIX AS THE STEP ABOVE (#715). MEASURED: mwe_output settles to 50.00 by
+           * the end of this step's hold; 0 on a scrammed plant. */
+          accs: [{ p: 'power_pct', op: '<', v: 70, label: 'Reactor following through 70 %' },
+                 { p: 'mwe_output', op: '>', v: 45, label: 'Generator still carrying about 50 MWe' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
         { text: 'Set LOAD to 30 MWe, let power follow, then hold INSERT until AVG COOLANT TEMPERATURE is back in its band.',
           note: 'About 10 steps at MED.',
           why: 'Lower power needs smaller rod moves. The band is walking back down toward 547 °F. A plant left hot at low load sends the difference to the condenser through the steam dump.',
           control: 'Turbine Load', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE inside its band',
           cmd: { action: 'set_load_target', mwe: 30 }, hold: 600,
-          accs: [{ p: 'power_pct', op: '<', v: 45, label: 'Reactor following through 45 %' }],
+          /* PAIRED, SAME FIX (#715). MEASURED: mwe_output settles to 30.00 by the end of this
+           * step's hold; 0 on a scrammed plant. */
+          accs: [{ p: 'power_pct', op: '<', v: 45, label: 'Reactor following through 45 %' },
+                 { p: 'mwe_output', op: '>', v: 25, label: 'Generator still carrying about 30 MWe' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
         { text: 'Set LOAD to 15 MWe, let power follow, then hold INSERT until AVG COOLANT TEMPERATURE is back in its band.',
           note: 'About 6 steps at MED. Stop here; the shutdown checklist takes over.',
@@ -2217,11 +2235,24 @@
            *   put Tavg on program and the dumps hold 62.66 % indefinitely. The trim sizing predates
            *   #508 and was ALREADY short; the re-anchor widened the gap by 2.5 degF. Re-deriving
            *   the trims is content work, not a threshold edit. */
-          accs: [{ p: 'power_pct', op: '<', v: 40, label: 'Reactor below 40 % and falling as the boration finishes (rod trims take it to about 15 %)' }],
+          /* PAIRED, SAME FIX (#715). MEASURED: mwe_output settles to 15.00 by the end of this
+           * step's hold; 0 on a scrammed plant. This is also the leg's LAST step, so it is the
+           * one a scram would have left checked off with the completion banner still claiming
+           * "15 MWe" — see `outcome_guard` below, the second, independent half of the fix. */
+          accs: [{ p: 'power_pct', op: '<', v: 40, label: 'Reactor below 40 % and falling as the boration finishes (rod trims take it to about 15 %)' },
+                 { p: 'mwe_output', op: '>', v: 10, label: 'Generator still carrying about 15 MWe' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
       outcome: 'Plant stable near 15 % and 15 MWe, AVG COOLANT TEMPERATURE in its band. The shutdown checklist takes it to Mode 3.',
+      /* THE BANNER'S OWN CHECK (#715, second cause). `outcome` above is an authored plant-state
+       * claim ("15 MWe") that nothing verified before this — instructor_layer.js's
+       * `_gradeOutcomeGuard` re-grades this array against the LIVE plant for as long as the
+       * completion card is shown, and the client swaps in a neutral note when it fails. Kept to
+       * the two instruments the claim actually names, not a blanket trip guard: a plant that
+       * completes this leg with the turbine off line or making zero MWe does not match "15 MWe"
+       * regardless of why. */
+      outcome_guard: [{ p: 'turbine_tripped', op: '<', v: 1 }, { p: 'mwe_output', op: '>', v: 10 }],
     },
     {
       id: 'pwr_shutdown', category: 'shutdown', manual_ref: 'PWR-N14', next: 'pwr_cooldown',

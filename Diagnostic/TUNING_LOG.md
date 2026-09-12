@@ -29,6 +29,87 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-12-workbench-b (#715 — `pwr_lower_power` completed on a scrammed plant)
+
+**Filed from an operator playthrough**: a real scram occurred between `pwr_raise_power` and
+`pwr_lower_power`; the checklist never noticed and reported all five steps complete with a
+banner reading "stable near 15 %, 15 MWe" while the board read 0.1 % power, rods at 0, turbine
+tripped.
+
+**Two independent causes.**
+
+1. **The five acceptances were all unpaired one-sided thresholds** — `power_pct` below
+   90/70/45/40 and `tavg_c` below 305, across the leg's four load-drop steps. A scram satisfies
+   every one of them for free. `pwr_raise_power`/`pwr_startup` pair each one-sided check with a
+   sibling a scram would fail; `pwr_lower_power` was the only leg with none.
+2. **The completion banner was authored, not computed** — `f.proc.outcome` / `pr.outcome`
+   rendered unconditionally on completion, in both the Path 2 follow-mode banner
+   (`instructor_layer.js` `_completeFollow`) and the Path 3 checklist banner actually used by the
+   live PWR2 walkthroughs (`ui/app.js` `renderChecklist`, `pr.outcome` at what is now line 4479).
+
+**Fix 1 — pairing.** Each of the leg's four stages (75/50/30/15 MWe) gains a paired
+`mwe_output` floor: the step's own claim is "the reactor follows LOAD down", and the turbine
+still carrying load IS that claim's second half — a scram is a load-following failure by
+definition, not a bolted-on guard. Chosen over a blanket `turbine_tripped` check on every step
+because the per-step floor is the more honest assertion and a scram already zeroes
+`mwe_output`, so the blanket form would add nothing a targeted one does not already catch.
+MEASURED (full stack, genuine run, `inbox/715/measure.js`): mwe_output settles to exactly
+75.00 / 50.00 / 30.00 / 15.00 by the end of each stage's hold; 0 on a scram. Floors set 5-10
+below target (70/45/25/10) for margin.
+
+**Fix 2 — the banner.** New optional per-leg field `outcome_guard` (array of
+`{p, op, v[, tol]}`, same shape as `precond`/`accs`), re-graded against the LIVE snapshot for as
+long as the completion card is shown (`instructor_layer.js` `_gradeOutcomeGuard`, wired into
+both `_completeFollow` and `_stepChecklist`'s post-complete tick; `getSnapshotBlock` exposes
+`checklist.outcome_verified`). `ui/app.js`'s checklist banner and `_completeFollow`'s own text
+now swap in a neutral "read the board, not this note" string when the guard fails. Chosen over
+"stop asserting a state at all" because the authored text is otherwise good pedagogical copy
+(explains what's next) and the guard is cheap to author per leg; chosen over re-deriving it from
+the leg's own last-step accs because that is exactly what cause 1's fix already is — a truly
+independent check should not share the same, possibly-still-imperfect predicates. Authored on
+`pwr_lower_power` only (`{turbine_tripped < 1, mwe_output > 10}`); every other leg is
+unaffected — no guard authored means `_gradeOutcomeGuard` returns true, identical to the old
+unconditional behaviour. **Other legs' outcome strings also assert plant state** (checked all
+six: heatup/startup/raise_power/shutdown/cooldown all name a Mode, a temperature or a boron
+figure) — none proven exploitable the way this leg was (their step accs are paired or
+intentional), so none were touched; worth a future pass if a similar per-leg gap turns up.
+
+**Proof.**
+- Exact filed repro (`inbox/715/repro_after.js`, mirrors the issue's own
+  `inbox/scram/repro_s1.js`): scram at `hot_full_power`, 20 s settle, grade
+  `pwr_lower_power`'s steps against the snapshot — before: all 5 predicates MET; after: every
+  load-drop step now fails at least one predicate (`mwe_output > X` reads 0).
+- `outcome_guard` proven red (scrammed snapshot), green (healthy 15 MWe snapshot), and
+  red-by-injection (temporarily stripping the guard makes the SAME scrammed snapshot read
+  verified — proves the guard, not a tautology, is doing the work).
+- **The honest gate** (`run_checklist_pwr2.js` new sections 2r/2s): drives the ACTUAL scenario
+  through the live service — scram before `pwr_lower_power` starts, issue the (unrelated) boron
+  command, tick and acknowledge exactly as a player would, issuing no `set_load_target` — and
+  asserts the checklist does **not** complete. Before the fix this would have reported
+  `complete: true`; after, it sticks at step 2/5 forever. A second section proves the driver
+  actually reached the vulnerable steps (not just stuck on step 1's real boron-command gate).
+- **Pool-wide count re-derived** (`inbox/715/pool_count.js`, boot each of the six chain legs at
+  its own `from` IC, scram immediately, settle 20 s, count one-sided predicates whose WHOLE step
+  is satisfied): `pwr_lower_power` 5 → 0 vulnerable, matching the issue's own count exactly. The
+  other five legs are numerically unchanged by this fix (I only touched `pwr_lower_power`). Note
+  this mechanical methodology (immediate scram at leg entry) differs from the issue's own
+  (a scram at a specific leg-to-leg boundary) and is NOT directly comparable in absolute terms —
+  under it, `pwr_startup` (2) and `pwr_cooldown` (1) also show individually-trivial one-sided
+  hits, but each sits behind a real, sequential command gate deep in a longer leg (not
+  `pwr_lower_power`'s clean four-in-a-row), so I did not treat them as the same defect or file
+  a new issue; reported on #715 for a human read.
+
+**Gates.** `run_checklist_pwr2` 197 → **209/209** (+4 replay accs, +8 new sections 2r/2s), all
+proven red by injection above. `BASELINES` updated in `test/run_all.js` with the derivation.
+Individually confirmed at baseline: `run_style` 11/11, `run_m6` 18/18 (117 checks), `run_checklist`
+90/90, `verify_ckl_relevance` 21/21, `verify_manual_follow` 225 checks, `run_procedures` 29/29
+(141/141, pwr2 pool not in scope for that runner — confirmed by source read, `run_procedures_stack`/
+`run_procedures_chain` explicitly skip `pwr2`). `node test/run_all.js`: see the run following this
+entry for the full tally.
+
+Filed on **#715**, cross-linked to #675. Comment posted with mechanism, before/after counts, gate
+tallies and SHA. Lane: `workbench`, **UNMERGED**.
+
 ## Session log — 2026-09-12-workbench-a (#714 — pwr_startup step 2 still told the player to SAMPLE)
 
 **Owner live playtest, 2026-09-12**: "mode 3> mode 1 step 2 walkthrough is broken. its looking for

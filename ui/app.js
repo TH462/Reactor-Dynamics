@@ -4467,8 +4467,19 @@
       h += '</div></div>';
     }
     if (ck.complete) {
+      /* #715 — `pr.outcome` is an AUTHORED plant-state claim ("stable near 15 %, 15 MWe"),
+       * and the checklist's own steps can be satisfied for free (a scram, in the leg this
+       * was filed for). `outcome_verified` is the server's re-grade of the leg's optional
+       * `outcome_guard` against the LIVE plant (instructor_layer.js `_gradeOutcomeGuard`) —
+       * `false` only when a guard is authored AND fails; `null`/`true` draw the claim as
+       * before, so every leg without one is unaffected. */
+      var outcomeOk = ck.outcome_verified !== false;
       h += '<div class="ckl-complete"><b>Walkthrough complete</b>' +
-        (pr.outcome ? '<div class="m-note">' + mesc(pr.outcome) + '</div>' : '') + '</div>';
+        (pr.outcome
+          ? (outcomeOk ? '<div class="m-note">' + mesc(pr.outcome) + '</div>'
+                       : '<div class="m-note">Steps checked off, but the board does not match ' +
+                         'this leg\'s expected finish. Read the board, not this note.</div>')
+          : '') + '</div>';
     }
     h += '</div>';
     // Chain handoff (#244, the Mode 5 → full power → Mode 5 round trip): a finished leg

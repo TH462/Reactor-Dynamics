@@ -984,6 +984,90 @@ if (!only) {
     ck('...RED BY INJECTION: reinstating the stale SAMPLE phrase in step 2\'s note is caught',
        redHits.indexOf('pwr_startup step 2') !== -1, redHits.join(', '));
   })();
+
+  /* 2r. THE HONEST GATE FOR #715 — "a leg completes on a scrammed plant and tells the player
+   * it succeeded." A gate that only re-checks the acceptance STRINGS changed is hollow (this
+   * file caught exactly that shape hours before this issue was filed) — this one reproduces
+   * the filed scenario end to end: scram BEFORE `pwr_lower_power` starts (the operator
+   * playthrough's own sequence — a real scram between `pwr_raise_power` and this leg), then
+   * drive the checklist the way a player would and read its OWN `complete`/`outcome_verified`
+   * fields, never re-deriving them.
+   *
+   * BEFORE THE FIX: all four load-drop steps' accs were satisfied by the scram snapshot alone
+   * (power_pct and tavg_c both one-sided, no `set_load_target` ever issued — measured,
+   * `inbox/scram/repro_s1.js`) and the checklist ran to `complete: true` with the banner still
+   * reading "15 MWe". AFTER: each step now also requires `mwe_output` near its own commanded
+   * load (#715 cause 1), which a scrammed turbine cannot supply, so the checklist sticks —
+   * and even if it did not, `outcome_guard` (#715 cause 2, sub-block below) keeps the banner
+   * from repeating the claim. */
+  (function () {
+    var svc = mkSvc('hot_full_power');
+    svc.handleCommand({ action: 'scram' });
+    for (var i = 0; i < 20; i++) svc.tick();   // same 20 s settle as the filed repro (10x accel)
+    var pre = svc.tick();
+    ck('#715 setup: plant is actually scrammed before the leg starts',
+       pre.true_state.turbine_tripped === true && pre.true_state.mwe_output === 0,
+       'turbine_tripped=' + pre.true_state.turbine_tripped + ' mwe_output=' + pre.true_state.mwe_output +
+       ' power_pct=' + pre.true_state.power_pct.toFixed(2));
+    var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_lower_power' });
+    ck('#715 setup: start_checklist accepted on the scrammed plant (Path 3 does not reset it)',
+       !(r && r.type === 'error'), r && r.message);
+    // step 1 (boron) is unrelated to the defect and gates on a real command — issue it, same
+    // as any operator would, so the driver actually reaches the vulnerable steps 2-5.
+    svc.handleCommand({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 });
+    var s = null, maxStepSeen = 0;
+    for (var k = 0; k < 400; k++) {
+      s = svc.tick();
+      var cs = s.instructor && s.instructor.checklist;
+      if (cs) maxStepSeen = Math.max(maxStepSeen, cs.step_index);
+      if (cs && cs.awaiting_ack && !cs.complete) svc.handleCommand({ action: 'checklist_check', index: cs.step_index });
+    }
+    var ckst = s.instructor && s.instructor.checklist;
+    ck('#715 — pwr_lower_power does NOT complete on a plant scrammed before it started (no set_load_target ever issued)',
+       !!ckst && ckst.complete !== true,
+       ckst ? ('complete=' + ckst.complete + ', stuck at step ' + (ckst.step_index + 1) + '/' + ckst.step_total +
+               ' (reached step ' + (maxStepSeen + 1) + '), mwe_output=' + s.true_state.mwe_output) : 'no checklist');
+    ck('#715 — the checklist reached the vulnerable steps (2-5), not stuck on step 1\'s boron gate',
+       maxStepSeen >= 1, 'furthest step index reached: ' + maxStepSeen);
+  })();
+
+  /* 2s. THE BANNER'S OWN CHECK, DIRECTLY (#715 cause 2, defense in depth). `outcome_guard` must
+   * keep the completion note from claiming a state the plant does not hold EVEN IF a future
+   * edit reopens a hole in cause 1's per-step pairing — proven by injection on the mechanism
+   * itself, not inferred from 2r's outcome. */
+  (function () {
+    var IL = RD.InstructorLayer;
+    var il = new IL(null);
+    var proc = POOL.filter(function (p) { return p.id === 'pwr_lower_power'; })[0];
+    ck('pwr_lower_power authors an outcome_guard (#715) — not vacuous',
+       Array.isArray(proc.outcome_guard) && proc.outcome_guard.length > 0, JSON.stringify(proc.outcome_guard));
+
+    var svc = mkSvc('hot_full_power');
+    svc.handleCommand({ action: 'scram' });
+    var scrammed = null; for (var i = 0; i < 20; i++) scrammed = svc.tick();
+    il.step(scrammed, scrammed.metadata.sim_time);
+    ck('outcome_guard reads FALSE against the scrammed snapshot',
+       il._gradeOutcomeGuard(proc) === false,
+       'turbine_tripped=' + scrammed.true_state.turbine_tripped + ' mwe_output=' + scrammed.true_state.mwe_output);
+
+    var svc2 = mkSvc('hot_full_power');
+    svc2.handleCommand({ action: 'set_load_target', mwe: 15 });
+    var healthy = null; for (var j = 0; j < 40; j++) healthy = svc2.tick();
+    il.step(healthy, healthy.metadata.sim_time);
+    ck('outcome_guard reads TRUE against a healthy plant still carrying load',
+       il._gradeOutcomeGuard(proc) === true,
+       'turbine_tripped=' + healthy.true_state.turbine_tripped + ' mwe_output=' + healthy.true_state.mwe_output.toFixed(1));
+
+    // RED BY INJECTION: strip the guard and confirm the same scrammed snapshot now reads
+    // verified — proves the TRUE case above is testing the guard, not a tautology.
+    il.step(scrammed, scrammed.metadata.sim_time);
+    var saved = proc.outcome_guard;
+    proc.outcome_guard = null;
+    var noGuardResult = il._gradeOutcomeGuard(proc);
+    proc.outcome_guard = saved;
+    ck('...RED BY INJECTION: with the guard removed, the same scrammed snapshot reads verified (true) — the guard is load-bearing',
+       noGuardResult === true, 'result with no guard authored: ' + noGuardResult);
+  })();
 }
 
 console.log('\n' + '='.repeat(74));
