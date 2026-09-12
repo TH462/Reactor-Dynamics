@@ -254,15 +254,32 @@ mkdir C:/grok_build/RD_<task>/inbox
 ```
 
 **`mklink /J` through Git Bash fails on the path escaping** — use the PowerShell form above.
-Without the junction every browser gate in that tree dies, which is the only way this setup
-goes wrong.
+Without the junction every browser gate in that tree dies. **The junction is also the one thing
+here that can damage the PRIMARY tree — see the teardown warning below.**
 
-**Teardown**, once the work is merged:
+**Teardown**, once the work is merged. **THE ORDER IS NOT OPTIONAL:**
 
 ```
+cmd /c rmdir "C:\grok_build\RD_<task>\node_modules"     <-- the JUNCTION first, and no /S
 git worktree remove --force C:/grok_build/RD_<task>
 git branch -D exp/<task>
 ```
+
+> **`git worktree remove --force` DELETES THROUGH A JUNCTION AND EMPTIES ITS TARGET.** This is not
+> a theory: it happened on 2026-09-12, minutes after the section above was written, and it emptied
+> `C:\grok_build\Reactor_Dynamics\node_modules` — the shared playwright install every lane's
+> browser gates resolve through. Reproduced twice with a decoy target, and both halves measured:
+> `git worktree remove --force` over a junction leaves the target **empty**; `rmdir` on the
+> junction first, then the same command, leaves it **intact**. `rm -rf` on the same tree does NOT
+> follow the junction — so the hazard is git's own removal code, not the shell, and it will not
+> show up if you test the teardown with `rm`.
+>
+> **The damage is silent and it does not look like itself.** Nothing in `git status` changes;
+> the next browser gate throws at `require('playwright')` (`verify_e2e_ui.js` requires it bare,
+> with no skip path) and reports as a runner off baseline — which reads exactly like a code
+> regression in the diff you happen to be holding. **A browser gate that fails in a way that makes
+> no sense against the diff: check `node -e "require.resolve('playwright')"` BEFORE adjudicating
+> the code.**
 
 **Four rules.**
 
