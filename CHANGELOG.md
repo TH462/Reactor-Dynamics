@@ -30,6 +30,47 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the walkthroughs are OFFERED on the public channel (#722, 2026-09-12)
+
+*(OWNER RULING, 2026-09-12: "A" — flip the flags, rather than stripping the walkthrough
+material out of the `changelog.html` entry or shipping the headline invisible.)*
+
+- **`walkthroughs` and `checklists` are `stage: 'public'` in `site/flags.js`, and so are the six
+  operating-cycle walkthrough legs** — `pwr_heatup`, `pwr_startup`, `pwr_raise_power`,
+  `pwr_lower_power`, `pwr_shutdown`, `pwr_cooldown`. The registry goes **2 public / 69 preview →
+  10 / 61**. MEASURED in headless Chromium with the channel pinned to `public`,
+  `ui/shell.html?engine=pwr2` — before: the Plant & Mission window's Walkthroughs tab drew
+  "COMING SOON — Guided procedure walkthroughs are in final review", **0 Start buttons**, no NEW
+  badge (0x0 px), no checklist picker in the Instructor pane and no 📋 button in the manual.
+  After: **6 Start buttons**, the green NEW badge painting **33 x 14 px in rgb(121, 210, 151)**
+  over a live list, the picker on screen and 6 📋 buttons on the manual's Procedures section.
+  `Alpha 1.7.4`'s release note spends its headline on the walkthroughs; the flags and the entry
+  now agree.
+- **The TMI-2 incident walkthrough stays preview-only**, by the #670 plan-R4 ruling, and is
+  measured for absence on the shipped public page rather than behind a `?flags=` override.
+- **The six were enumerated from the BUILT pool, not from a list.** `RD.MANUAL_PROCEDURES.pwr2`
+  holds seven non-narrative entries; six chain Mode 5 → full power → Mode 5 through `next` and
+  the seventh chains to nothing. Every step of all six carries an acceptance (17/17, 18/18,
+  10/10, 5/5, 3/3, 15/15), each leg carries purpose, outcome, prerequisites and cautions, and
+  `run_checklist_pwr2` drives all six end to end.
+- **Two `verify_flags_ui` checks were HOLLOW, and the flip is what exposed them.** "public: the
+  checklist picker is not on screen" read `#instrCklRow` with the *Instructor* tab active — the
+  row lives in the checklists pane, so it was off screen whatever the flag said (measured
+  `false` with `?flags=all`). "public: manual has no Follow / Checklist buttons" queried
+  `#manualContent` the instant the manual opened, which is the `readme` document, not the
+  Procedures section (measured 0 on open, **17** on Procedures). Both now click through and
+  assert the shipped answer; the `flags=all,-checklists` probe gained the same missing click.
+- **`?flags=+campaign` on the public channel now lists four campaign missions** — they are
+  `kind: procedure` on ids the ruling flipped. Not reachable by a visitor (`campaign` is still
+  preview, and on PWR2 the Free-Play-only note precedes the flag), and the check that used to
+  assert COMING SOON there now asserts the claim directly: of 35 missions the tab lists only the
+  ones whose own entry resolves on, and strictly fewer than all of them.
+- Gates: `run_flags` **343/343** (345 → 343 — the well-formed sweep only asks a *gated* area for
+  its coming-soon sentence, so a flip to public removes one check per area), `verify_flags_ui`
+  **54/54** (four checks rewritten, injection-proven red four ways), `run_site_build` 41/0,
+  `run_release` 29/0, `verify_e2e_ui` PASS. A public *build* is byte-for-byte unchanged in what
+  it CONTAINS — `site/flags.js` is copied verbatim and is not on the #523 strip list.
+
 ### Fixed — the quick tour's Vital gauges step (#720, 2026-09-12)
 
 *(OWNER RULING, 2026-09-12: "A" — retarget the step at the board's own vital indications and

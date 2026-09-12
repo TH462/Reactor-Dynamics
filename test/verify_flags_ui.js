@@ -439,22 +439,65 @@ function pinChannel(ch) {
   await openSettings(b.page);
   ck('public: Features row is not on screen', !(await b.page.isVisible('#featureRow')));
   await closeSettings(b.page);
-  ck('public: the checklist picker is not on screen', !(await b.page.isVisible('#instrCklRow')));
+  /* THE PICKER IS ON SCREEN NOW *(OWNER RULING, 2026-09-12: "A", on #722 — `checklists` and
+   * `walkthroughs` are stage:'public')*, and the check that used to assert its ABSENCE here
+   * was HOLLOW, which the flip is what exposed. It read `isVisible('#instrCklRow')` with the
+   * INSTRUCTOR tab active — the row lives in the checklists pane, so it is off screen on that
+   * tab whatever the flag says. MEASURED both ways before rewriting it: `?flags=all` on the
+   * public channel, no tab click, still `false`. It could never have failed.
+   *
+   * So it clicks the tab a player clicks, and asserts the shipped answer. Its negative half is
+   * NOT deleted — it is the `flags=all,-checklists` probe further down, which now clicks the
+   * same tab and was hollow in the same way. One flag, two channels of it, both non-vacuous. */
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  ck('public: the checklist picker IS on screen (#722)', await b.page.isVisible('#instrCklRow'));
   var help = await b.page.textContent('#helpOverlay');
   ck('public: free play is still offered', /Start Free Play/.test(await openMission(b.page, 'free')));
-  var tabs = ['campaign', 'scenarios', 'walkthroughs'];
+  var tabs = ['campaign', 'scenarios'];
   for (var i = 0; i < tabs.length; i++) {
     var t = await openMission(b.page, tabs[i]);
     ck('public: ' + tabs[i] + ' says COMING SOON', /COMING SOON/.test(t), t.slice(0, 70));
     ck('public: ' + tabs[i] + ' offers nothing to start',
       (await b.page.$$('#mpContent .btn, #mpContent [data-camp-start], #mpContent [data-trstart]')).length === 0);
   }
+  /* …AND WALKTHROUGHS IS NO LONGER ONE OF THEM (#722). It was the third entry in that loop
+   * until the ruling; keeping it there and relaxing the pattern would have left the loop
+   * asserting nothing about the one area whose state changed. It gets its own check instead —
+   * the tab LISTS rather than saying COMING SOON. WHICH legs it lists is asserted further
+   * down, on `?engine=pwr2`, because THIS url boots the retired engine (see the header) and
+   * its pool authors the same six ids plus eleven more; a content assertion here would be
+   * reading the wrong plant's pool for the right answer. */
+  var pubList = await openMission(b.page, 'walkthroughs');
+  var pubIds = await b.page.$$eval('#mpContent [data-wtstart]',
+    function (els) { return els.map(function (e) { return e.getAttribute('data-wtstart'); }); });
+  ck('public: walkthroughs LIST rather than saying COMING SOON (#722)',
+    !/COMING SOON/.test(pubList) && pubIds.length > 0, pubIds.join(',') || pubList.slice(0, 70));
   // The manual keeps its PROSE — only the instructed experiences are gated.
   await b.page.click('#missionClose');
   await b.page.click('#manualBtn');
   ck('public: the manual still opens', await b.page.isVisible('#manualOverlay'));
-  ck('public: manual has no Follow / Checklist buttons',
-    (await b.page.$$('#manualContent [data-follow], #manualContent [data-checklist]')).length === 0);
+  /* HOLLOW IN THE SAME WAY, and found by the same flip: this queried #manualContent the
+   * instant the manual opened, which is the `readme` DOCUMENT — the 📋 buttons are drawn by
+   * mProcedures() on the "Procedures (live)" section, which nothing here had selected.
+   * MEASURED: 0 on open with `?flags=all`, 17 on the Procedures section of the same page.
+   * It now navigates there and asserts the SHIPPED SET rather than an absence — a count of
+   * zero is also what a page that failed to render produces. Three claims, and NONE of them
+   * is a written list, so the check holds on either engine's pool: every button that IS drawn
+   * names a procedure the resolver says is offered; at least one is drawn; and there are more
+   * procedure CARDS than buttons, which is what proves the gate is still withholding rather
+   * than the page simply drawing everything. [data-follow] stays an absence — that button is
+   * retired (#660 item 14), so its subject is gone rather than gated. */
+  await b.page.click('#manualNav [data-msec="procedures"]');
+  var mIds = await b.page.$$eval('#manualContent [data-checklist]',
+    function (els) { return els.map(function (e) { return e.getAttribute('data-checklist'); }); });
+  var mCards = (await b.page.$$('#manualContent .m-card')).length;
+  var mAllOffered = await b.page.evaluate(function (ids) {
+    return ids.every(function (id) { return RD.Flags.on('procedure:' + id) === true; });
+  }, mIds);
+  ck('public: a 📋 Checklist button appears on the offered procedures and no others (#722)',
+    mIds.length > 0 && mAllOffered && mCards > mIds.length &&
+    (await b.page.$$('#manualContent [data-follow]')).length === 0,
+    mIds.length + ' buttons on ' + mCards + ' cards: ' + mIds.join(','));
   ck('public: manual prose is still there',
     ((await b.page.textContent('#manualContent')) || '').length > 200);
   await b.ctx.close();
@@ -475,12 +518,20 @@ function pinChannel(ch) {
    * site/flags.js, and `walkthroughs` is stage:'preview' there — so the public site advertised
    * a locked door in the colour that means "here now".
    *
-   * BOTH HALVES, ONE URL, because either alone is hollow. The public half alone passes on a
-   * badge that never renders anywhere; the dev half alone passes on a badge that renders
-   * everywhere. Asserted on the PAINTED RECT and the COMPUTED COLOUR, never the class name — a
-   * badge whose .mp-new rule never loaded still carries the class and still reads NEW (#485).
-   * The COMING SOON / list text is read in the same breath so the pair can never agree for the
-   * wrong reason: if the panel and the badge ever disagree again, one of these two reds. */
+   * BOTH HALVES, ONE URL, because either alone is hollow. The half where nothing is offered
+   * alone passes on a badge that never renders anywhere; the half where it is offered alone
+   * passes on a badge that renders everywhere. Asserted on the PAINTED RECT and the COMPUTED
+   * COLOUR, never the class name — a badge whose .mp-new rule never loaded still carries the
+   * class and still reads NEW (#485). The COMING SOON / list text is read in the same breath so
+   * the pair can never agree for the wrong reason: if the panel and the badge ever disagree
+   * again, one of these two reds.
+   *
+   * THE PAIR IS NO LONGER public-vs-dev *(OWNER RULING, 2026-09-12: "A", on #722)*. `walkthroughs`
+   * is stage:'public' now, so BOTH channels list and both must paint the badge — a channel split
+   * would assert nothing. The split that still separates the two outcomes is the flag itself:
+   * the shipped public page (offered → badge + list), and the same public page with
+   * `?flags=-walkthroughs` (withheld → no badge + COMING SOON). Same claim, same two directions,
+   * measured where they still differ. The dev half stays as its own row underneath. */
   async function wtBadge(page) {
     return page.evaluate(function () {
       var t = document.querySelector('#mpModes [data-mmode="walkthroughs"]');
@@ -492,12 +543,21 @@ function pinChannel(ch) {
                flag: RD.Flags.on('walkthroughs') };
     });
   }
-  b = await build('public', WT2);
+  b = await build('public', WT2 + '&flags=-walkthroughs');
   var pubBadgeTxt = await openMission(b.page, 'walkthroughs');
   var pubBadge = await wtBadge(b.page);
-  ck('public: the Walkthroughs tab carries NO green NEW badge over its COMING SOON panel',
+  ck('public + ?flags=-walkthroughs: the tab carries NO green NEW badge over its COMING SOON panel',
     pubBadge.tab && !pubBadge.painted && pubBadge.flag === false && /COMING SOON/.test(pubBadgeTxt),
     JSON.stringify(pubBadge) + ' | ' + pubBadgeTxt.replace(/\s+/g, ' ').slice(0, 60));
+  await b.ctx.close();
+
+  b = await build('public', WT2);
+  var pubOnTxt = await openMission(b.page, 'walkthroughs');
+  var pubOnBadge = await wtBadge(b.page);
+  ck('public (as shipped): the Walkthroughs tab DOES carry the green NEW badge over its live list (#722)',
+    pubOnBadge.painted && pubOnBadge.color === 'rgb(121, 210, 151)' && pubOnBadge.flag === true &&
+    !/COMING SOON/.test(pubOnTxt) && (await b.page.$$('[data-wtstart]')).length > 0,
+    JSON.stringify(pubOnBadge) + ' | ' + pubOnTxt.replace(/\s+/g, ' ').slice(0, 60));
   await b.ctx.close();
 
   b = await build('dev', WT2);
@@ -509,22 +569,51 @@ function pinChannel(ch) {
     JSON.stringify(devBadge) + ' | ' + devBadgeTxt.replace(/\s+/g, ' ').slice(0, 60));
   await b.ctx.close();
 
-  /* …and the same page on the public channel with the walkthroughs AREA forced on, so the
-   * absence cannot be the whole tab saying COMING SOON. Non-vacuous by construction: the dev
-   * check above lists the row off this identical URL. */
-  b = await build('public', WT2 + '&flags=%2Bwalkthroughs');
-  var pubWalk = await openMission(b.page, 'walkthroughs');
-  ck('public + ?flags=+walkthroughs: the incident walkthrough is still NOT offered (#670 preview-only)',
-    (await b.page.$$('[data-wtstart="pwr_tmi2_incident"]')).length === 0 &&
+  /* …and the same SHIPPED public page, which now lists — so the incident leg's absence is
+   * measured against a live list rather than against a closed tab. The `?flags=+walkthroughs`
+   * override this used to carry is gone with the ruling: forcing an area that is already
+   * stage:'public' adds nothing, and it hid the fact that the list is now the public answer.
+   * Non-vacuous by construction — the same selector finds the row one build up, on dev. */
+  b = await build('public', WT2);
+  await openMission(b.page, 'walkthroughs');
+  var pubWalkIds = await b.page.$$eval('#mpContent [data-wtstart]',
+    function (els) { return els.map(function (e) { return e.getAttribute('data-wtstart'); }); });
+  ck('public: the six operating-cycle legs are offered and the incident walkthrough is NOT (#670 R4 / #722)',
+    pubWalkIds.join(',') === 'pwr_heatup,pwr_startup,pwr_raise_power,pwr_lower_power,pwr_shutdown,pwr_cooldown' &&
     (await b.page.evaluate(function () { return RD.Flags.on('procedure:pwr_tmi2_incident'); })) === false,
-    pubWalk.slice(0, 70));
+    pubWalkIds.join(','));
   await b.ctx.close();
 
   b = await build('public', SHELL + '&flags=%2Bcampaign');
-  // Area and item flags are independent by design: opening the area alone offers
-  // nothing, because every mission inside it is still gated on its own entry.
-  ck('public + ?flags=+campaign: the area alone offers no gated mission',
-    /COMING SOON/.test(await openMission(b.page, 'campaign')));
+  /* Area and item flags are independent by design: opening the AREA alone does not open a
+   * mission that is still gated on its own entry.
+   *
+   * IT USED TO ASSERT COMING SOON, and #722 voided that premise rather than breaking the check:
+   * four campaign missions are `kind: procedure` on ids the ruling flipped public
+   * (pwr_startup, pwr_raise_power, pwr_lower_power, pwr_shutdown), so the area forced on now
+   * lists those four and campaignHtml no longer falls through to soonPanel. THE CLAIM IS
+   * UNCHANGED and is now asserted directly, which is stronger than the proxy it replaces: of
+   * the plant's 35 campaign missions the tab lists ONLY the ones whose own entry resolves on,
+   * it lists strictly fewer than all of them, and the ones it withholds are still gated.
+   *
+   * NOT A LEAK, and worth writing down because the shape is the one #241 exists to prevent: no
+   * visitor reaches this. `campaign` is stage:'preview', and on pwr2 — the plant the site runs —
+   * mpCampaign() returns the Free-Play-only note before any flag is consulted. This URL forces
+   * the area AND boots the retired engine, which a published build does not carry (#523). */
+  var campTxt = await openMission(b.page, 'campaign');
+  var campShown = await b.page.$$eval('#mpContent [data-camp-start]',
+    function (els) { return els.map(function (e) { return e.getAttribute('data-camp-start'); }); });
+  var campSplit = await b.page.evaluate(function () {
+    var c = (RD.CAMPAIGNS || {}).pwr, all = [];
+    (c.acts || []).forEach(function (a) { (a.missions || []).forEach(function (m) { all.push(m.kind + ':' + m.id); }); });
+    (c.bonus || []).forEach(function (m) { all.push(m.kind + ':' + m.id); });
+    return { total: all.length, on: all.filter(function (id) { return RD.Flags.on(id); }) };
+  });
+  ck('public + ?flags=+campaign: the area alone offers only missions whose OWN entry is public',
+    campShown.length > 0 && campShown.length < campSplit.total &&
+    campShown.slice().sort().join(',') === campSplit.on.slice().sort().join(',') &&
+    !/COMING SOON/.test(campTxt),
+    campShown.length + ' of ' + campSplit.total + ': ' + campShown.join(','));
   await b.ctx.close();
 
   b = await build('public', SHELL + '&flags=all');
@@ -557,6 +646,12 @@ function pinChannel(ch) {
   ck('only checklists off: walkthroughs still list with Start buttons',
     /Start/.test(wt) && !/COMING SOON/.test(wt) && (await b.page.$$('#mpContent [data-wtstart]')).length > 0);
   await b.page.click('#missionClose');
+  /* THE TAB CLICK IS LOAD-BEARING and was missing (#722). Without it this read #instrCklRow
+   * with the Instructor tab active, where the row is off screen whatever the flag says —
+   * measured `false` on the public channel with `?flags=all`, i.e. the check could not fail.
+   * It is the negative half of "public: the checklist picker IS on screen" above, which
+   * clicks the same tab; the pair only means something if both of them do. */
+  await b.page.click('#tabbar [data-tab="checklists"]');
   ck('only checklists off: the instructor picker is gone', !(await b.page.isVisible('#instrCklRow')));
   await b.ctx.close();
 
