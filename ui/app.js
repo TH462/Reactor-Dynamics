@@ -3372,9 +3372,36 @@
   }
   // Multi-use panel title: Instructor (default free play), Checklist, Procedure,
   // scenario title, or a speaking role when the content carries one.
+  /* CHANGE-GUARDED, AND IT SHOWS THE HEADER (#687 item 1). It used to assign
+   * `roleEl.textContent` unconditionally, which DESTROYS AND RECREATES the text node on every
+   * call — and `renderInstructorInner` calls it once per broadcast. MEASURED in headless Edge
+   * on a running walkthrough: 207 MutationObserver records against 208 broadcasts, i.e. the
+   * very node the owner reports blinking was being rebuilt 10 times a second (20 on the
+   * transient cadence) while its string never once changed. The guard is the house idiom —
+   * `syncWarpInfo`, `syncPacingUI` and `instrLogTick` all compare before writing — and this
+   * was the one per-broadcast writer in the persona header that did not.
+   *
+   * WHAT IT IS NOT: the branch fall-through this issue proposed. `s.instructor.checklist` was
+   * non-null on 308 of 308 broadcasts across a full ride (step advances, five speed changes,
+   * pause/resume cycles), the role read "Walkthrough" on every one of 1108 sampled frames, and
+   * its opacity/visibility/geometry never moved. Said plainly on the issue: the heading's
+   * disappearance is NOT reproduced headless; the 10 Hz node churn is the only measurable
+   * defect at that node, and this removes it. */
   function setInstrRole(title) {
     var roleEl = $('instrRole') || document.querySelector('#instructorCard .persona .role');
-    if (roleEl) roleEl.textContent = title || 'Instructor';
+    var want = title || 'Instructor';
+    if (roleEl && roleEl.textContent !== want) roleEl.textContent = want;
+    instrHeaderless(false);
+  }
+  /* NO PERSONA HEADER AT ALL WHILE A WALKTHROUGH RUNS *(OWNER, 2026-09-09, #687: "Remove this
+   * Walkthrough text, its not needed.")*. Blanking the string alone would leave a 32 px bordered
+   * strip with nothing in it, so the row goes with the word. Every other branch of
+   * renderInstructorInner names a role, and setInstrRole above clears the class, so the header
+   * comes back on its own the moment the panel is anything but a walkthrough — there is no
+   * second place that has to remember to restore it. */
+  function instrHeaderless(on) {
+    var card = $('instructorCard');
+    if (card) card.classList.toggle('wt-headerless', !!on);
   }
   var IDLE_INSTR_HTML =
     '<div class="instr-idle">' +
@@ -3470,6 +3497,10 @@
       if (showList) toggleCklMenu();
     }
     if (cklRun) cklRun.hidden = !runningCkl;   // in the Instructor pane, up whenever a walkthrough runs
+    /* #687 item 2 — the End-walkthrough row is a sibling of the card now, so it needs the same
+     * per-broadcast gate; without it the row survives every path that hides #cklRun. */
+    var cklBtnsEl = $('cklBtns');
+    if (cklBtnsEl && !runningCkl) { cklBtnsEl.hidden = true; cklBtnsEl.innerHTML = ''; }
     /* THE CHECKLIST TEARDOWN MUST HAPPEN BEFORE ANY EARLY RETURN (#598 item 12). This
      * used to sit ~25 lines below, under three of them — the follow branch, the chat
      * branch and the checklist branch. The instructor layer clears the checklist when a
@@ -3500,7 +3531,7 @@
        * instructor's own line (check-offs, overtaken notes) as plain text beneath it. */
       renderChecklist(s, ckb);
       syncInstrNav('idle');
-      setInstrRole('Walkthrough');
+      instrHeaderless(true);   /* #687 item 1 — no "Walkthrough" heading, and no empty strip */
       var curW = $('instrCurrent');
       if (curW) {
         curW.classList.remove('instr-standby');
@@ -3851,6 +3882,9 @@
     if (!cklState.key) return;
     cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null, cautionsOpen: null };
     var run = $('cklRun'); if (run) { run.hidden = true; run.innerHTML = ''; }
+    /* the End-walkthrough row lives OUTSIDE #cklRun since #687 item 2, so blanking the card no
+     * longer takes it with it — it has to be torn down by name or it outlives the run */
+    var btns = $('cklBtns'); if (btns) { btns.hidden = true; btns.innerHTML = ''; }
     var row = $('instrCklRow'); if (row) row.hidden = !flagOn('checklists');
     clearCklStepGlow();
     clearCklWatchGlow();                      /* #685 — the watch ring has the same owner */
@@ -4071,6 +4105,7 @@
       return;
     }
     cur.hidden = cklState.view !== 'run';
+    var btnsEl0 = $('cklBtns'); if (btnsEl0) btnsEl0.hidden = cklState.view !== 'run';   /* #687 item 2 */
     // Precondition verdicts join the render key (#392's lesson: a banner outside
     // the key never repaints). Observed values are keyed ROUNDED so the banner
     // tracks a dilution at ~whole-unit granularity instead of rebuilding the DOM
@@ -4239,6 +4274,7 @@
        * step would still read true on the next and silently suppress its wait line. Reset here,
        * at the top of every step. */
       var waitLineShown = false;
+      var ackRow = '';   /* same reason — #687 item 3 builds it above and emits it below the why */
       h += '<div class="ckl-step ' + cls + hoverable + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
       /* THE NUMBERED INSTRUCTION IS THE HEAD OF THE STACK, ON EVERY STEP *(OWNER, 2026-09-04,
        * #628: "move the numbered step to always be the first part of the stack. then the rest of
@@ -4390,7 +4426,14 @@
          * have just gone green, so the eye goes criterion → met → press. (It used to be
          * described as "directly above the step text it belongs to"; #628 moved the step text
          * to the head of the card, so the button is now the foot of the block rather than the
-         * hinge between two. The reading order it was placed for is unchanged.) */
+         * hinge between two. The reading order it was placed for is unchanged.)
+         *
+         * SINCE #687 item 3 IT IS ALSO BELOW THE `why` *(OWNER, 2026-09-09: "The walkthrough
+         * rewind step and continue buttons should be under the text not above the why text.")*.
+         * It is BUILT here, beside the criteria it reads from, and APPENDED after the detail
+         * block below — so the row leaves `.ckl-act` and becomes the last thing in the step. The
+         * active step's details are force-open (#660), so nothing can land it under a collapsed
+         * stub. */
         /* REWIND + CONTINUE, ON EVERY STEP *(OWNER, 2026-09-08, #660 items 17-18)*. Continue is
          * always drawn and lights (`ready`) when the instructor reports the step satisfied —
          * every step waits for it now, not only the observations. Rewind takes plant and
@@ -4400,7 +4443,7 @@
          * items 17-18): a loaded save restores the walkthrough's progress but clears the ring,
          * which used to leave the button lit over a command the service refuses. */
         var wtRw = ck.step_index > 0 && ck.rewind_ready;
-        h += '<div class="ckl-ack-row">' +
+        ackRow = '<div class="ckl-ack-row">' +
           '<button class="btn wt-rewind" data-wt-rewind="1"' + (wtRw ? '' : ' disabled') +
             ' title="' + (wtRw
               ? 'Back one step — the plant and the walkthrough return to the start of the previous step'
@@ -4448,6 +4491,10 @@
         var detOpen = active || cklState.whyAll || (cklState.whyOpen && cklState.whyOpen[i]);
         if (detOpen) h += det;
       }
+      /* #687 item 3: Rewind step + Continue, LAST — under the instruction, the criteria and the
+       * labelled `why`, which is where the owner asked for them. Built in the active block above
+       * (it reads `awaiting_ack` / `rewind_ready` beside the lamps those flags light). */
+      h += ackRow;
       h += '</div></div>';
     }
     if (ck.complete) {
@@ -4460,10 +4507,24 @@
     var nextPr = ck.complete && pr.next
       ? ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === pr.next; })[0]
       : null;
-    h += '<div class="ckl-btns">' +
-      (nextPr ? '<button class="btn ckl-next" data-ckl-start="' + mesc(nextPr.id) + '">Next: ' +
-                mesc(nextPr.title) + ' ▸</button>' : '') +
-      '<button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : 'End walkthrough') + '</button></div>';
+    /* THE BUTTON ROW IS RENDERED OUTSIDE THIS CARD (#687 item 2, OWNER 2026-09-09: "Put 'End
+     * Walkthrough' at the very bottom of the space"). It used to be appended to `h` and so ended
+     * up the last child of `#cklRun` — which is only the FIRST child of `.instr-body`, with
+     * `#instrPrev` and `#instrLog` below it. "Last in its card" was not "the bottom of the
+     * space", and the transcript sat under the button that ends the run.
+     *
+     * `#cklBtns` (shell.html) is the last child of `.instr-body` and carries `margin-top: auto`
+     * in that flex column, so it is pinned to the floor whether or not the content above fills
+     * it. Both buttons are delegated at `document.body` (`data-ckl-start` / `data-ckl-stop`), so
+     * moving the row out of the card changes nothing about the wiring — the same reason the
+     * launcher could live in two places since #443. */
+    var btnsEl = $('cklBtns');
+    if (btnsEl) {
+      var bh = (nextPr ? '<button class="btn ckl-next" data-ckl-start="' + mesc(nextPr.id) + '">Next: ' +
+                         mesc(nextPr.title) + ' ▸</button>' : '') +
+        '<button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : 'End walkthrough') + '</button>';
+      if (btnsEl.innerHTML !== bh) btnsEl.innerHTML = bh;   /* `hidden` is set once, above */
+    }
     /* KEEP THE READER'S PLACE ACROSS THE REBUILD (#605, owner playtest 2026-09-02: "The
      * checklist keeps auto scrolling. Happens when fast forwarding. To the top then back down.
      * When mouse over it, it keeps jumping up to the top making it unusable.").

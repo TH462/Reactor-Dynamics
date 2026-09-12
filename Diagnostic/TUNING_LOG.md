@@ -29,6 +29,118 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-11-develop-b (#687 and #656 — the walkthrough panel's chrome; the filed flicker mechanism REFUTED and the real one measured)
+
+Owner playtest sheet #675 §A, four complaints in one panel (#687), plus the #653 pass-3 report
+that an observation step drew no Acknowledge button (#656). Touches `ui/app.js`, `ui/shell.css`,
+`ui/shell.html`, `test/verify_e2e_ui.js`. No engine, no control layer, no board.
+
+### The flicker: what the issue predicted, and what the browser actually says
+
+The issue's investigation named one mechanism — `renderInstructorInner` falling through to a
+later branch (`setInstrRole('Instructor')` + `resetCkl()`) on a broadcast that arrives without
+`s.instructor.checklist`, taking the heading and the step clock down together — and handed over
+two candidate triggers. **It did not reproduce.** Measured in headless Edge on the shipped
+`pwr2` shell, walkthrough running, with step advances, five speed changes (600/60/10/600/3600)
+and pause/resume cycles driven through the real controls:
+
+| measurement | value |
+|---|---|
+| broadcasts carrying `s.instructor.checklist` | **308 of 308** |
+| `#instrRole` text over 1108 sampled animation frames | `"Walkthrough"` on every frame |
+| `#instrRole` computed opacity / visibility / box | unmoved (1.00 / visible / 75x15 px) |
+| `#cklRun.hidden` transitions | 0 |
+
+So neither candidate fires, and the heading does not blink in any way a headless browser can
+see. **Two things the same sweep DID measure, and both are fixed here:**
+
+1. **`setInstrRole` rebuilt its text node on every broadcast** — **207 MutationObserver records
+   against 208 broadcasts** — because it assigned `roleEl.textContent` unguarded. Assigning
+   `textContent` destroys and recreates the child text node whether or not the string changed,
+   so the one node the owner reports blinking was being rebuilt 10 times a second (20 on the
+   transient cadence). It is now change-guarded, which is the house idiom this function was the
+   last per-broadcast writer in the persona header to be missing (`syncWarpInfo`, `syncPacingUI`
+   and `instrLogTick` all compare first). Re-measured after: **0 records over 21 broadcasts.**
+2. **"The time" is `#clock`, and it was the one thing genuinely appearing and disappearing.**
+   `.clock.running { animation: pulse 2s ease-in-out infinite; }` over
+   `@keyframes pulse { 50% { opacity: .6 } }` — an indefinite opacity fade for as long as the
+   plant runs. Sampled per animation frame over a 50 s walkthrough ride: **576 opacity
+   transitions on `#clock`**, cycling 1.00 / 0.87 / 0.84 / 0.81 / 0.77 / 0.75 / 0.73 / 0.70 and
+   back. It had no `prefers-reduced-motion` escape either, unlike every other animation in the
+   file. Replaced by a steady `color: var(--running)`; `.accel`'s amber still wins by source
+   order and the advancing digits were always the primary cue.
+
+The issue read "the time" as the step counter's historical clock (`story.clock`, TMI-2 only).
+That reading cannot be right for a general walkthrough complaint — no other leg authors one —
+and the header clock is a better match for "other UI elements **like the time**".
+
+### The other three, and what each one actually was
+
+- **Item 2, End walkthrough at the bottom of the space.** It was the last child of `#cklRun`,
+  which is only the FIRST child of `.instr-body`; `#instrPrev` and `#instrLog` sit below it, so
+  the button that ends the run had the transcript underneath it. Rendered into a new `#cklBtns`,
+  the last child of `.instr-body`, with `margin-top: auto`. Measured after: row bottom **921 px**
+  against a panel floor of **931**, top **889** = the transcript's bottom.
+- **Item 3, the buttons under the why.** `.ckl-ack-row` was emitted inside `.ckl-act`, four
+  blocks above `det`. It is now built there and appended after the detail block, so the step
+  reads instruction → criteria → why → buttons. Measured: step text ends 545, why ends 732,
+  Rewind/Continue at 737. The existing step-advance auto-scroll still brings the row into view —
+  checked on six consecutive advances, in view 6/6 — which matters because the row is now lower
+  in a log capped at 48vh.
+- **Item 4, the labelled why.** Already landed at **#692** (`.ckl-why-lbl`, "Why this step").
+  Verified rendering, and pinned by a check rather than re-implemented.
+
+### #656 — the missing Acknowledge button does NOT reproduce, and the reason is dated
+
+Swept every step of three legs in the browser (`pwr_raise_power` 10, `pwr_startup` 18,
+`pwr_tmi2_incident` 20 — 48 steps), jumping the checklist index and reading the DOM before
+anything was expanded. `[data-ckl-check]` is drawn **86x23 px on every step**, outside any
+collapsible block, including the **six steps in the `pwr2` pool that carry no acceptance
+predicate at all** (`pwr_startup` 16/17, `pwr_lower_power` 1, `pwr_tmi2_incident` 2/3/6) — which
+is exactly the class the report describes. The report is dated **2026-09-07**; **#660 items
+17-18 landed 2026-09-08** and made Rewind + Continue unconditional on every active step, where
+the card previously drew the acknowledge row only while `ck.awaiting_ack`. Filed as fixed by
+#660, with a check so it cannot come back.
+
+### Gate coverage, and every check proved by injection
+
+Two new functions in `test/verify_e2e_ui.js` (`testWalkthroughPanelChrome`,
+`testObservationStepAckButton`) plus a shared `startWalkthrough` helper. The helper clicks the
+menu entry THROUGH THE PAGE rather than with `page.click`: a leg whose preconditions are unmet
+wears `.ckl-gated` and is hidden, and Playwright's actionability wait times out on it (measured:
+26 polls against a hidden `pwr_startup`) while the `document.body` delegation does not care.
+
+Seven injections, each applied to the fixed tree and reverted:
+
+| # | injection | result |
+|---|---|---|
+| i1 | `setInstrRole('Walkthrough')` restored on the checklist branch | RED — *persona header still drawn, role "Walkthrough", display flex* |
+| i2 | `setInstrRole`'s change guard removed | RED — *role node rewritten 21 times over 21 broadcasts* |
+| i3 | `.clock.running { animation: pulse ... }` restored | RED — *the running clock is animating ("pulse")* |
+| i4 | ack row emitted in place, above the why | RED — *Rewind/Continue (top 553) drawn ABOVE the why (bottom 749)* |
+| i5 | button row appended back into `#cklRun` | RED — *not in #cklBtns — inBtns=false inCard=true* |
+| i6 | `.ckl-why-lbl` span dropped | RED — *the why block carries no visible label* |
+| i7 | pre-#660 `if (ck.awaiting_ack)` guard on the ack row | RED — *no usable Acknowledge/Continue before any details were expanded* |
+
+**THE TRAP, and i2 is the only reason it is not shipping hollow.** The churn assertion was first
+written inside the running walkthrough — the state it was MEASURED in. But item 1's own fix takes
+the walkthrough branch OFF `setInstrRole` entirely (it goes headerless), so with the guard
+reverted the check stayed **GREEN at 0 mutations**: nothing was writing, so nothing could churn.
+A check placed beside its own fix had been made unfailable BY that fix. It now measures on the
+FOLLOW branch (`setInstrRole(prF.title)`, once per broadcast for as long as a procedure is
+followed), with a positive control asserting the header actually names the procedure — otherwise
+the same hole reopens the moment that branch changes.
+
+### Gates
+
+`verify_e2e_ui` **PASS** (4 screenshots — the score is a screenshot count, so two new check
+functions do not move it; no `BASELINES` change). `verify_ckl_relevance` **21 passed / 21**, at
+baseline — it reads `#cklRun`'s innerText for the no-SI check and clicks `[data-ckl-stop]`, both
+of which the `#cklBtns` move touches. `verify_flags_ui` **52/52**, at baseline.
+`run_checklist_pwr2` **195 passed / 0 failed / 195 checks**, at baseline.
+
+---
+
 ## Session log — 2026-09-11-workbench-c (#686 — the warp status line replaced, UNMERGED on `workbench`)
 
 Three rulings stack on #686: *(OWNER RULING, 2026-09-09: "Warp line as you recommend." —

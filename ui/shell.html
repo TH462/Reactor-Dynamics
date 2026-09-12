@@ -253,6 +253,14 @@
                  panel rather than a flash on the header (#439, spec §4). The message is
                  already on screen; flashing for it would spend the signal on nothing. -->
             <button class="instr-newbelow" id="instrNewBelow" hidden>▾ New message below</button>
+            <!-- END WALKTHROUGH / NEXT LEG, AT THE FOOT OF THE WHOLE PANEL (#687 item 2,
+                 OWNER 2026-09-09: "Put 'End Walkthrough' at the very bottom of the space").
+                 It was the last thing inside #cklRun, which is only the FIRST child of
+                 .instr-body — #instrLog sits below it, so "last in its card" was two blocks
+                 short of the bottom of the space. Rendered by renderChecklist into here
+                 instead; `margin-top: auto` in the flex column is what pins it to the floor
+                 when the content above does not fill the column. -->
+            <div class="ckl-btns" id="cklBtns" hidden></div>
           </div>
           <!-- Walkthrough (follow) nav — shown only while following a procedure -->
           <div class="instr-nav" id="instrNav" hidden>

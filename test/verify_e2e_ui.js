@@ -3210,6 +3210,214 @@ async function testCssTransitions(page) {
   return log.join('\n') + '\n';
 }
 
+/* START A WALKTHROUGH AND LAND ON ITS CARD — the three-step dance every walkthrough check in
+ * this file repeats. `start_checklist` alone is not enough: the run card is drawn behind
+ * `cklState.view === 'run'`, a UI-local flag only `startChecklist()` sets, so the Walkthroughs
+ * tab's own entry has to be clicked. It is clicked THROUGH THE PAGE rather than by
+ * `page.click`, because a leg whose preconditions are unmet wears `.ckl-gated` and is HIDDEN —
+ * Playwright's actionability check waits for visibility and times out, while the delegated
+ * `data-ckl-start` listener at document.body does not care (measured: pwr_startup, 26 polls
+ * against a hidden button). */
+async function startWalkthrough(page, procId) {
+  var started = await page.evaluate(function (p) {
+    try {
+      var svc = globalThis.RD.__dev.service();
+      svc.attentionStops = false;
+      svc.handleCommand({ action: 'stop_checklist' });
+      var r = svc.handleCommand({ action: 'start_checklist', procedure_id: p });
+      return { ok: !(r && r.type === 'error'), msg: r && r.message };
+    } catch (e) { return { ok: false, msg: String(e) }; }
+  }, procId);
+  if (!started.ok) throw new Error('fixture: start_checklist ' + procId + ' failed — ' + started.msg);
+  await page.click('#tabbar [data-tab="checklists"]');
+  await page.waitForSelector('[data-ckl-start="' + procId + '"]', { timeout: 15000, state: 'attached' });
+  await page.evaluate(function (p) { document.querySelector('[data-ckl-start="' + p + '"]').click(); }, procId);
+  await page.waitForFunction(function () {
+    var b = document.querySelector('#tabbar button.on');
+    return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step.ckl-active');
+  }, { timeout: 20000, polling: 200 });
+}
+
+/* #687 — THE WALKTHROUGH PANEL'S CHROME. Four owner complaints (2026-09-09 playtest sheet §A),
+ * every one of them a claim about what is DRAWN and WHERE, so every one of them invisible to
+ * every Node runner in this repo.
+ *
+ * ON THE FLICKER, SAID PLAINLY: the filed mechanism — `renderInstructorInner` falling through to
+ * a later branch on a broadcast with no `s.instructor.checklist` — DID NOT REPRODUCE.
+ * `s.instructor.checklist` was non-null on 308 of 308 broadcasts across a full ride (step
+ * advances, five speed changes, pause/resume cycles) and `#instrRole` read "Walkthrough" on all
+ * 1108 sampled frames with its opacity, visibility and box unmoved. What the same sweep DID
+ * measure is below, and both halves are pinned here:
+ *
+ *   - `#instrRole`'s TEXT NODE was destroyed and recreated on EVERY broadcast — 207 records
+ *     against 208 broadcasts — because `setInstrRole` assigned `textContent` unguarded. That is
+ *     a 10 Hz (20 Hz on the transient cadence) rebuild of the exact node the owner reports
+ *     blinking, and it is the only per-broadcast writer in that header. Change-guarded now.
+ *   - `#clock` carried `animation: pulse 2s infinite` (opacity 1.0 <-> 0.6) for as long as the
+ *     plant ran: 576 opacity transitions over 50 s, sampled per animation frame. THAT is "other
+ *     UI elements like the time keep doing the same", and it is not a walkthrough defect at all.
+ *
+ * A source scan cannot settle any of this: the heading's absence is a computed `display`, the
+ * button order is two rectangles, and an animation is a resolved `animationName`. */
+async function testWalkthroughPanelChrome(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  /* THE CLOCK FIRST, BEFORE ANY WALKTHROUGH — it is a free-play defect and pinning it inside a
+   * walkthrough would let a future change hide it behind the checklist branch. */
+  var clk = await page.evaluate(function () {
+    var c = document.getElementById('clock');
+    var cs = getComputedStyle(c);
+    return { running: c.classList.contains('running'), anim: cs.animationName, opacity: cs.opacity };
+  });
+  if (!clk.running) throw new Error('#687 control: the clock is not marked running, so this check would pass on a stopped plant');
+  if (clk.anim !== 'none') {
+    throw new Error('#687: the running clock is animating ("' + clk.anim + '") — an indefinite ' +
+      'opacity fade on a always-on readout is the "the time keeps appearing and disappearing" report');
+  }
+  log.push('clock: running, animationName ' + clk.anim + ', opacity ' + clk.opacity);
+
+  /* ---- setInstrRole's change guard, MEASURED WHERE THE FUNCTION IS ACTUALLY CALLED --------
+   *
+   * Not during the walkthrough, and that is the whole point: the walkthrough branch no longer
+   * calls setInstrRole at all (it goes headerless), so a churn assertion taken there is HOLLOW —
+   * PROVED by injection, 2026-09-11: reverting the guard to the unconditional write left this
+   * check GREEN at 0 mutations, because nothing was writing. The FOLLOW branch
+   * (`setInstrRole(prF.title)`) runs once per broadcast for as long as a procedure is followed,
+   * which is the state the unguarded write was measured in (207 records / 208 broadcasts). */
+  var followed = await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    svc.attentionStops = false;
+    var r = svc.handleCommand({ action: 'start_follow', procedure_id: 'pwr_startup' });
+    return { ok: !(r && r.type === 'error'), msg: r && r.message };
+  });
+  if (!followed.ok) throw new Error('#687 fixture: start_follow pwr_startup failed — ' + followed.msg);
+  await page.waitForTimeout(700);
+  await page.evaluate(function () {
+    var W = globalThis.__wtChrome = { mut: 0, bc: 0, role: null };
+    var r = document.getElementById('instrRole');
+    W.role = r.textContent;
+    new MutationObserver(function (recs) { W.mut += recs.length; })
+      .observe(r, { childList: true, characterData: true, subtree: true });
+    globalThis.RD.__dev.service().subscribe(function () { W.bc++; });
+  });
+  await page.waitForTimeout(2200);
+  var churn = await page.evaluate(function () { return globalThis.__wtChrome; });
+  if (churn.bc < 8) {
+    throw new Error('#687 control: only ' + churn.bc + ' broadcasts landed in 2.2 s — the plant is ' +
+      'not ticking, so the churn check could not fail');
+  }
+  if (!churn.role || churn.role === 'Instructor') {
+    throw new Error('#687 control: the follow branch did not name the procedure in the header ' +
+      '("' + churn.role + '"), so setInstrRole is not the per-broadcast writer this measures');
+  }
+  if (churn.mut > 2) {
+    throw new Error('#687: the persona role node was rewritten ' + churn.mut + ' times over ' +
+      churn.bc + ' broadcasts (ceiling 2) — setInstrRole is writing textContent unguarded');
+  }
+  log.push('role node under follow ("' + churn.role + '"): ' + churn.mut + ' mutations over ' +
+           churn.bc + ' broadcasts');
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_follow' }); });
+  await page.waitForTimeout(400);
+
+  await startWalkthrough(page, 'pwr_heatup');
+  await page.waitForTimeout(900);
+
+  var r = await page.evaluate(function () {
+    function box(sel) {
+      var el = document.querySelector(sel); if (!el) return null;
+      var rc = el.getBoundingClientRect();
+      return { top: Math.round(rc.top), bottom: Math.round(rc.bottom), h: Math.round(rc.height),
+               text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40) };
+    }
+    var persona = document.querySelector('#instructorCard .persona');
+    return {
+      role: (document.getElementById('instrRole') || {}).textContent,
+      personaDisplay: persona ? getComputedStyle(persona).display : null,
+      instrBody: box('#instructorCard .instr-body'),
+      instrLog: box('#instrLog'),
+      cklBtns: box('#cklBtns'),
+      stopInBtns: !!document.querySelector('#cklBtns [data-ckl-stop]'),
+      stopInCard: !!document.querySelector('#cklRun [data-ckl-stop]'),
+      why: box('.ckl-active .ckl-why'),
+      whyLbl: box('.ckl-active .ckl-why-lbl'),
+      ackRow: box('.ckl-active .ckl-ack-row'),
+      stepTxt: box('.ckl-active .ckl-txt'),
+    };
+  });
+  /* positive control: the card really is drawn, with a why on the active step — without this
+   * every "is A below B" test below passes vacuously on a panel that rendered nothing */
+  if (!r.stepTxt || !r.why || !r.ackRow || !r.instrBody) {
+    throw new Error('#687 control: the active walkthrough step did not render its text/why/buttons — ' +
+                    JSON.stringify(r));
+  }
+
+  /* ---- item 1a: no "Walkthrough" heading, and no empty strip left behind ---------------- */
+  if (/walkthrough/i.test(r.role || '') || r.personaDisplay !== 'none') {
+    throw new Error('#687 item 1: the persona header is still drawn during a walkthrough — role "' +
+      r.role + '", display ' + r.personaDisplay);
+  }
+  log.push('header: persona display ' + r.personaDisplay + ' (role text parked at "' + r.role + '")');
+
+  /* ---- item 2: End walkthrough at the bottom of the SPACE, not of the card -------------- */
+  if (!r.cklBtns || !r.stopInBtns || r.stopInCard) {
+    throw new Error('#687 item 2: the End-walkthrough row is not in #cklBtns — ' +
+      'inBtns=' + r.stopInBtns + ' inCard=' + r.stopInCard);
+  }
+  if (r.cklBtns.top < r.instrLog.bottom) {
+    throw new Error('#687 item 2: the End-walkthrough row (top ' + r.cklBtns.top + ') is ABOVE the ' +
+      'transcript (bottom ' + r.instrLog.bottom + ') — it is at the bottom of the card, not of the space');
+  }
+  if (r.instrBody.bottom - r.cklBtns.bottom > 24) {
+    throw new Error('#687 item 2: the End-walkthrough row floats ' +
+      (r.instrBody.bottom - r.cklBtns.bottom) + ' px above the panel floor (ceiling 24) — ' +
+      'margin-top:auto is not reaching it');
+  }
+  log.push('End walkthrough: bottom ' + r.cklBtns.bottom + ' vs panel floor ' + r.instrBody.bottom +
+           ', below the transcript (' + r.instrLog.bottom + ')');
+
+  /* ---- item 3: Rewind + Continue BELOW the why, not above it ---------------------------- */
+  if (r.ackRow.top < r.why.bottom) {
+    throw new Error('#687 item 3: Rewind/Continue (top ' + r.ackRow.top + ') is drawn ABOVE the ' +
+      'why block (bottom ' + r.why.bottom + ')');
+  }
+  if (r.ackRow.top < r.stepTxt.bottom) {
+    throw new Error('#687 item 3: Rewind/Continue is drawn above the numbered step text');
+  }
+  log.push('buttons: step text ends ' + r.stepTxt.bottom + ' -> why ends ' + r.why.bottom +
+           ' -> Rewind/Continue at ' + r.ackRow.top);
+
+  /* ---- item 4: the why is LABELLED (landed at #692; pinned here so it cannot silently go) */
+  if (!r.whyLbl || !r.whyLbl.text) {
+    throw new Error('#687 item 4: the why block carries no visible label — it reads as another step');
+  }
+  log.push('why label: "' + r.whyLbl.text + '"');
+
+  /* ---- the header comes back, and the row goes, when the run ends ----------------------- */
+  await page.evaluate(function () { document.querySelector('#cklBtns [data-ckl-stop]').click(); });
+  await page.waitForTimeout(700);
+  var after = await page.evaluate(function () {
+    var b = document.getElementById('cklBtns'), p = document.querySelector('#instructorCard .persona');
+    return { personaDisplay: p ? getComputedStyle(p).display : null,
+             role: (document.getElementById('instrRole') || {}).textContent,
+             btnsH: b ? Math.round(b.getBoundingClientRect().height) : null,
+             btnsHtml: b ? b.innerHTML.length : null };
+  });
+  if (after.personaDisplay === 'none' || !after.role) {
+    throw new Error('#687 item 1: the persona header did not come back when the walkthrough ended — ' +
+      JSON.stringify(after));
+  }
+  if (after.btnsH !== 0 || after.btnsHtml !== 0) {
+    throw new Error('#687 item 2: the End-walkthrough row outlived the run (' + after.btnsH + ' px, ' +
+      after.btnsHtml + ' chars) — it is a sibling of the card now and has to be torn down by name');
+  }
+  log.push('teardown: header back as "' + after.role + '", button row emptied');
+  return log.join('\n') + '\n';
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -3283,6 +3491,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'rod-lane-bank-scale.log'), rlLog);
     var rmLog = await testRodLimitMarginIndicationRange(page);
     fs.writeFileSync(path.join(SCRATCH, 'rod-limit-margin-indication-range.log'), rmLog);
+    var wcLog = await testWalkthroughPanelChrome(page);
+    fs.writeFileSync(path.join(SCRATCH, 'walkthrough-panel-chrome.log'), wcLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -3308,6 +3518,8 @@ if (require.main !== module) {
                      testTavgGaugeDeviationCaution: testTavgGaugeDeviationCaution,
                      testRodLaneBankScale: testRodLaneBankScale,
                      testRodLimitMarginIndicationRange: testRodLimitMarginIndicationRange,
+                     testWalkthroughPanelChrome: testWalkthroughPanelChrome,
+                     startWalkthrough: startWalkthrough,
                      testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
                      testTripBlockPopoverDismissesOnOutsideClick: testTripBlockPopoverDismissesOnOutsideClick,
                      waitBoardLive: waitBoardLive,

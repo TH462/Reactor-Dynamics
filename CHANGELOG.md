@@ -30,6 +30,60 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (the walkthrough panel's chrome, and the clock that never stopped fading — #687, #656)
+
+Owner playtest sheet #675 §A. Four complaints in one panel, and the one with a filed mechanism
+did not have that mechanism.
+
+**The flicker.** #687 predicted a branch fall-through in `renderInstructorInner` — a broadcast
+arriving without `s.instructor.checklist` dropping to a later branch, taking the "Walkthrough"
+heading and the step clock down together. Measured in headless Edge on the shipped `pwr2` shell
+with step advances, five speed changes and pause/resume cycles: `s.instructor.checklist` was
+non-null on **308 of 308 broadcasts**, `#instrRole` read `Walkthrough` on all **1108** sampled
+animation frames, and its opacity, visibility and box never moved. The fall-through never fires.
+What the same sweep did find:
+
+- `setInstrRole` assigned `roleEl.textContent` unguarded, and `renderInstructorInner` calls it
+  once per broadcast — **207 MutationObserver records against 208 broadcasts**, i.e. the text
+  node the owner reports blinking was destroyed and recreated 10 times a second (20 on the
+  transient cadence) while its string never changed. Change-guarded now, the same idiom
+  `syncWarpInfo` / `syncPacingUI` / `instrLogTick` already use: **0 records over 21 broadcasts**.
+- **"The time" is the header clock, not the step clock.** `.clock.running` carried
+  `animation: pulse 2s ease-in-out infinite` (opacity 1.0 ↔ 0.6) for as long as the plant ran:
+  **576 opacity transitions over a 50 s ride**, sampled per animation frame, with no
+  `prefers-reduced-motion` escape. Replaced by a steady `color: var(--running)`; `.accel`'s amber
+  still wins by source order.
+
+**The other three.** The `Walkthrough` heading is gone and the persona row goes with it, rather
+than leaving an empty 32 px strip (`#instructorCard.wt-headerless`). *End walkthrough* moved out
+of `#cklRun` — which is only the first child of `.instr-body`, with the transcript below it —
+into a new `#cklBtns` pinned to the panel floor by `margin-top: auto`: measured bottom 921 px
+against a 931 px floor. Rewind step and Continue are built where they were but emitted after the
+detail block, so a step now reads instruction → criteria → why → buttons; the step-advance
+auto-scroll still brings the row into view (6 of 6 consecutive advances). The `why` label itself
+landed at #692 and is now pinned by a check rather than re-implemented.
+
+**#656 does not reproduce, and the reason is dated.** Swept every step of three legs in the
+browser (48 steps), including the six steps in the `pwr2` pool with no acceptance predicate at
+all: `[data-ckl-check]` is drawn 86×23 px on every one, outside any collapsible block, before
+anything is expanded. The report is 2026-09-07; #660 items 17-18 landed 2026-09-08 and made
+Rewind + Continue unconditional on every active step, where the card previously drew the
+acknowledge row only while `ck.awaiting_ack`.
+
+**Gate coverage.** `testWalkthroughPanelChrome` and `testObservationStepAckButton` in
+`test/verify_e2e_ui.js`, plus a shared `startWalkthrough` helper that clicks the menu entry
+through the page — a leg whose preconditions are unmet is `.ckl-gated` and hidden, and
+Playwright's actionability wait times out on it. Every assertion proved by injection (seven,
+each applied to the fixed tree and reverted). **One of them mattered**: the role-node churn
+assertion was first written inside the running walkthrough, which is where it was measured — but
+removing the heading takes that branch off `setInstrRole` entirely, so with the guard reverted
+the check stayed green at 0 mutations. A check beside its own fix, made unfailable by that fix.
+It now measures on the follow branch, with a positive control that the header names the
+procedure. Gates: `verify_e2e_ui` PASS, `verify_ckl_relevance` 21/21, `verify_flags_ui` 52/52,
+`run_checklist_pwr2` 195/195 — all at baseline, no `BASELINES` change (the e2e score is a
+screenshot count).
+
+
 ### Docs (a token-efficiency directive added to CLAUDE.md, and the closed-Cloudflare-actions line retired)
 
 *(OWNER DIRECTIVE, 2026-09-11: "Be token efficient but do not sacrifice quality in any way")*,

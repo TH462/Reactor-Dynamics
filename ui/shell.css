@@ -836,7 +836,18 @@ html[data-channel="dev"] .logo-test {
   font-size: 9px; font-weight: 700; letter-spacing: 1.2px; white-space: nowrap;
 }
 .clock { font-size: 15px; font-weight: 600; }
-.clock.running { animation: pulse 2s ease-in-out infinite; }
+/* THE RUNNING CLOCK DOES NOT FADE (#687 item 1, OWNER 2026-09-09: "Other UI elements like the
+   time keep doing the same [appearing and disappearing]"). It carried
+   `animation: pulse 2s ease-in-out infinite`, i.e. opacity 1.0 -> 0.6 -> 1.0 for ever while the
+   plant ran — MEASURED in headless Edge over a 50 s walkthrough ride: 576 opacity transitions on
+   #clock, cycling 1.00 / 0.87 / 0.84 / 0.81 / 0.77 / 0.75 / 0.73 / 0.70 and back. That is an
+   element appearing and disappearing, permanently, in peripheral vision — the exact thing this
+   file's own instrAttnPulse note calls out as "fatiguing over an hour and stops being noticed",
+   and it had no prefers-reduced-motion escape either.
+   A steady colour carries the same fact with no motion: green is already the board's "running"
+   (.play uses var(--running)), and .accel's amber still wins below by source order. The digits
+   advancing are the primary cue and always were. */
+.clock.running { color: var(--running); }
 .clock.accel { color: var(--caution); }
 @keyframes pulse { 50% { opacity: .6; } }
 .sim-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -2602,6 +2613,17 @@ select.num-input { width: auto; }
 .tabpane.instructor { display: none; flex-direction: column; min-height: 0; }
 .tabpane.instructor.on { display: flex; flex: 1 1 auto; min-height: 0; }
 .tabpane.instructor .instr-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* NO PERSONA HEADER WHILE A WALKTHROUGH RUNS (#687 item 1, OWNER 2026-09-09: "Remove this
+   Walkthrough text, its not needed"). The class is set by instrHeaderless() on the walkthrough
+   branch of renderInstructorInner and cleared by setInstrRole, so every other panel state keeps
+   its header. Removing the word alone would have left a 32 px bordered strip carrying nothing;
+   the row goes with it, and the walkthrough card gets the height back. */
+#instructorCard.wt-headerless .persona { display: none; }
+/* END WALKTHROUGH AT THE FOOT OF THE PANEL (#687 item 2). `margin-top: auto` in this flex
+   column is what puts it at the bottom of the SPACE rather than the bottom of the card — see
+   the note in shell.html and renderChecklist. */
+.tabpane.instructor .instr-body > #cklBtns { flex: 0 0 auto; margin-top: auto; padding-top: 8px; }
+.tabpane.instructor .instr-body > #cklBtns[hidden] { display: none; }
 
 /* THE CHECKLISTS PANE, same treatment, same reason (#612, owner playtest 2026-09-03: "the
    checklist scroll window keeps bouncing to the top and back to the step" and "the right column
