@@ -29,6 +29,67 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-12-workbench-f (#711 — the walkthrough hold survived Reset, a plant switch, and a new checklist)
+
+**What was wrong.** `render()`'s own `.paused` check takes `pauseSim('walkthrough')` the instant
+a checklist step's `pause` fires (#694). The take was edge-armed off `checklist.paused`, but
+nothing was symmetric: Reset (`doReset`, `ui/app.js`), a plant switch (`switchEngine`) and
+picking a different walkthrough (`startChecklist`) all end or replace the running checklist
+without ever naming `'walkthrough'` to `releaseHold` — only the checklist's own Continue,
+Rewind and Stop buttons did. The plant then loaded frozen with no on-screen reason, self-healing
+only because `resumeSim()` (▶) unconditionally clears every hold — a quality papercut, not data
+loss, filed from a quality pass over this lane's own #694/#710 work.
+
+**Shape chosen: the #710 precedent, not three new `releaseHold` calls.** `doReset` and
+`switchEngine` both end in `selectPlant()` -> `instructor.unload()` (clears the checklist
+entirely); `startChecklist` replaces it with a fresh one whose `paused` starts `false`
+(`instructor_layer.js` `loadChecklist`). Either way, the very next `render()` sees
+`checklist.paused` read false while the hold is still standing — so the fix is one more line in
+the same block that takes the hold, run backwards:
+
+```js
+var _cklWt = s && s.instructor && s.instructor.checklist;
+if (_cklWt && _cklWt.paused) { if (!pausedFor('walkthrough')) pauseSim('walkthrough'); }
+else if (pausedFor('walkthrough')) releaseHold('walkthrough');
+```
+
+One check covers all three named gaps and any future exit path nobody has written yet, the same
+way the take already does — no site-by-site enumeration to keep in sync. The three existing
+explicit `releaseHold('walkthrough')` calls (Continue/Rewind/Stop, `ui/app.js` ~8065/8086/8091)
+were left in place: they are still correct, cost nothing extra (`clearPause` on an absent key is
+a no-op), and give the resume an extra tick of latency headroom on the paths that already had it
+right.
+
+**Gate: `test/verify_e2e_ui.js` (browser-only — same reason as #694).**
+`SimulationService.advanceCycles` forces `running = true` around its own loop, so no Node harness
+can see a service-level pause fail to lift; only the real setTimeout loop in a browser can.
+Added `testWalkthroughHoldReleasedOnExit`: arms the same benign `porv_indicator_stuck_closed`
+fixture #694 uses on a `pause` step of `pwr_heatup`, confirms the freeze, then drives each of the
+three gaps through the real UI — Session menu Reset (`[data-mreset]` arm+confirm), Free Play
+(`[data-mfree]`), and starting `pwr_startup` from the Checklists tab (`[data-ckl-start]`) — and
+reads `sim_time` TWICE with a wait between after each, requiring it to have genuinely advanced
+(not just `service.running === true` once, which a stale read could pass by accident). **Proved
+red by injection**: removing the `else if` line reddens all three sections — `.bd-frozen` stays
+set and `sim_time` never moves past the fixture's pause through Reset, the plant switch, or the
+new checklist; restored, all three go green, `269.2 s` total for the file's now-17 checks
+(`4screenshots`, `code 0` — the `BASELINES` score is unchanged, `secs` is a scheduling hint only
+per this file's own convention). The negative half — a fix that over-corrected into clearing the
+*whole* hold map — is guarded by a DIFFERENT existing test: `testMissionCloseResumes` already
+pins `user` surviving a plant switch, and this fix touches no reason but `'walkthrough'`; a
+dedicated two-hold (`user` + `walkthrough` stacked) probe was considered and skipped as
+unreachable — the ⏸ button's own handler routes to `resumeSim()` (clears everything) whenever
+`service.running` is already false, so `user` and `walkthrough` can never both be armed
+live to test the combination.
+
+**Not run:** the aggregate (`test/run_all.js`) — per the 2026-09-12 batching change, that is
+owed once at merge time, not per change. Only `verify_e2e_ui.js` was run (green, 4 screenshots +
+new checks, `269.2 s`).
+
+**Files:** `ui/app.js` (`render()`, ~line 2588), `test/verify_e2e_ui.js`
+(`testWalkthroughHoldReleasedOnExit`, registered in `main()` and the `module.exports` block).
+
+---
+
 ## Session log — 2026-09-12-workbench-e (#717 — the reactor diagram was a live scrollport wearing `overflow: hidden`)
 
 **The mechanism, measured before anything moved.** `.pwr-board-wrap` had `overflow: hidden`.

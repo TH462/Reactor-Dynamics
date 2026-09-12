@@ -2140,6 +2140,132 @@ async function testWalkthroughEventPause(page) {
   return log.join('\n') + '\n';
 }
 
+/* #711 — THE WALKTHROUGH HOLD SURVIVES RESET, A PLANT SWITCH, AND A NEW CHECKLIST.
+ *
+ * `render()`'s own `.paused` check above (the #694 take) never had a matching release: Reset
+ * (`doReset`), a plant switch (`switchEngine`) and picking a different walkthrough
+ * (`startChecklist`) all end or replace the running checklist without ever naming
+ * `'walkthrough'` to `releaseHold`, so the next plant loaded FROZEN with no caution on screen —
+ * silently fixed only by the player happening to press ▶ (`resumeSim` clears every hold).
+ *
+ * THE FIX IS THE SAME LIVE CHECK RUN BACKWARDS, not three new `releaseHold` calls (the #710
+ * shape): `render()` now also lets go the instant `checklist.paused` reads false while the hold
+ * is still standing, which is true whether the checklist was cleared entirely (Reset, a plant
+ * switch — both go through `simulation_service.js` `selectPlant` -> `instructor.unload()`) or
+ * replaced by a fresh one (`instructor_layer.js` `loadChecklist` always starts `paused: false`).
+ *
+ * WHY A BROWSER GATE: same reason as #694 immediately above — `SimulationService.advanceCycles`
+ * forces `running = true` around its own loop, so a Node harness can never see a service-level
+ * pause fail to lift.
+ *
+ * THE PROOF IS BEHAVIOURAL, NOT A FLAG READ. Each of the three exits is driven through the
+ * real UI (the Session menu's Reset, its Free Play button, the Checklists tab's own start
+ * button) and then the CLOCK is read twice with a wait between — not just `service.running`
+ * once, which a stale read or a one-tick flicker could pass by accident — to prove sim_time is
+ * genuinely advancing again, the same standard #694's own positive control holds itself to. A
+ * fix that left the hold PINNED (never lifted at all) fails every one of these; a fix that
+ * over-corrected into clearing the whole map would still pass here — that half is `deliberate`
+ * (a `user` hold surviving a plant switch is `testMissionCloseResumes`'s own regression pin
+ * immediately above in this file, for `plant_change`; this fix touches no other reason).
+ *
+ * PROVED RED BY INJECTION, 2026-09-12: with the `else if (pausedFor('walkthrough'))
+ * releaseHold('walkthrough')` line removed (i.e. back to the #694-only take with no release),
+ * all three sections below fail — the plant stays `.bd-frozen` and `sim_time` never advances
+ * past the fixture's pause, through Reset, the plant switch, and the new checklist alike.
+ * Restored before this file was committed. */
+async function testWalkthroughHoldReleasedOnExit(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+
+  // Load a fresh plant, start `pwr_heatup`, and arm the same benign fixture #694 uses
+  // (an instrument-only failure so arming it cannot itself trip the plant) on a `pause`
+  // step — then confirm the freeze actually landed before touching any exit.
+  async function armPausedWalkthrough() {
+    await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+    await dismissMission(page);
+    await waitBoardLive(page, 20000);
+    var started = await page.evaluate(function () {
+      try {
+        var svc = globalThis.RD.__dev.service();
+        svc.attentionStops = false;
+        var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+        return { ok: !(r && r.type === 'error'), msg: r && r.message };
+      } catch (e) { return { ok: false, msg: String(e) }; }
+    });
+    if (!started.ok) throw new Error('#711 fixture: start_checklist failed — ' + started.msg);
+    await page.evaluate(function () {
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      var st = c.proc.steps[c.idx];
+      st.inject = [{ failure: 'porv_indicator_stuck_closed' }];
+      st.pause = true;
+    });
+    await page.waitForTimeout(900);   // the fire+pause lands within one broadcast (#694)
+    var f = await read();
+    if (f.running || !f.frozen || !f.playPaused) {
+      throw new Error('#711 fixture: pwr_heatup never froze the plant before the exit was tried — ' + JSON.stringify(f));
+    }
+  }
+
+  async function read() {
+    return await page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service();
+      return {
+        running: svc.running,
+        simTime: svc.simTime,
+        frozen: !!document.querySelector('.pwr-board-stage.bd-frozen'),
+        playPaused: !!(document.getElementById('playBtn') && document.getElementById('playBtn').classList.contains('paused')),
+      };
+    });
+  }
+
+  // Read twice with a wait between and require sim_time to have actually moved — the
+  // behavioural proof the comment above calls for, not a one-shot flag read.
+  async function assertGenuinelyRunning(tag) {
+    var a = await read();
+    await page.waitForTimeout(600);
+    var b = await read();
+    if (a.frozen || b.frozen || a.playPaused || b.playPaused || !a.running || !b.running) {
+      throw new Error('#711: ' + tag + ' left the walkthrough hold standing — ' + JSON.stringify(a) + ' / ' + JSON.stringify(b));
+    }
+    if (!(b.simTime > a.simTime)) {
+      throw new Error('#711: ' + tag + ' reported running but sim_time never advanced (' +
+        a.simTime + ' -> ' + b.simTime + ') — the release did not actually resume ticking');
+    }
+    return b;
+  }
+
+  // ---- gap 1: Session Reset (doReset, ui/app.js ~9423) --------------------------------
+  await armPausedWalkthrough();
+  await page.click('#simStatus');
+  await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 5000 });
+  await page.click('[data-mreset]');   // arm
+  await page.click('[data-mreset]');   // confirm -> doReset(true)
+  await page.waitForTimeout(500);
+  var r1 = await assertGenuinelyRunning('Session Reset out of a paused walkthrough');
+  log.push('Reset: plant runs again, sim_time advancing past ' + r1.simTime.toFixed(2) + ', .bd-frozen cleared');
+
+  // ---- gap 2: a plant switch (switchEngine, ui/app.js ~9362, via Free Play) -----------
+  await armPausedWalkthrough();
+  await page.click('#simStatus');
+  await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 5000 });
+  await page.click('[data-mfree]');
+  await page.waitForTimeout(500);
+  var r2 = await assertGenuinelyRunning('a plant switch out of a paused walkthrough');
+  log.push('Plant switch: plant runs again, sim_time advancing past ' + r2.simTime.toFixed(2) + ', .bd-frozen cleared');
+
+  // ---- gap 3: picking a DIFFERENT walkthrough (startChecklist, ui/app.js ~4805) -------
+  await armPausedWalkthrough();
+  await page.click('#tabbar [data-tab="checklists"]');
+  await page.waitForSelector('[data-ckl-start="pwr_startup"]', { timeout: 10000 });
+  await page.click('[data-ckl-start="pwr_startup"]');
+  await page.waitForTimeout(500);
+  var r3 = await assertGenuinelyRunning('starting a different walkthrough over a paused one');
+  log.push('New walkthrough: plant runs again, sim_time advancing past ' + r3.simTime.toFixed(2) + ', .bd-frozen cleared');
+
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  return log.join('\n') + '\n';
+}
+
 /* #685 — THE "WATCH THIS" GLOW, PROVED TO REACH THE BOARD FROM A REAL STEP'S `hl_watch`.
  *
  * WHY A BROWSER GATE AND NOT A SOURCE SCAN. `run_manual_controls` checks that every `hl_watch`
@@ -3471,6 +3597,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'held-speed-click.log'), hsLog);
     var wpLog = await testWalkthroughEventPause(page);
     fs.writeFileSync(path.join(SCRATCH, 'walkthrough-event-pause.log'), wpLog);
+    var whLog = await testWalkthroughHoldReleasedOnExit(page);
+    fs.writeFileSync(path.join(SCRATCH, 'walkthrough-hold-released-on-exit.log'), whLog);
     var wgLog = await testWatchGlowRendered(page);
     fs.writeFileSync(path.join(SCRATCH, 'watch-glow-rendered.log'), wgLog);
     var prLog = await testPauseResumeSpeed(page);
@@ -3517,6 +3645,7 @@ if (require.main !== module) {
                      testRodLaneBankScale: testRodLaneBankScale,
                      testRodLimitMarginIndicationRange: testRodLimitMarginIndicationRange,
                      testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
+                     testWalkthroughHoldReleasedOnExit: testWalkthroughHoldReleasedOnExit,
                      testHeldNotePauseResume: testHeldNotePauseResume,
                      testOneOverMDockedGeometry: testOneOverMDockedGeometry,
                      port: function () { return PORT; } };

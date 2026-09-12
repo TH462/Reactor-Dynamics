@@ -2571,9 +2571,23 @@
      * the pre-pause `true` into `s.metadata.running`, and the board's own renderer trusts
      * that field (`pwr_board.js` `setRunning(!(s.metadata.running === false))`) — so it would
      * un-freeze itself on the very next queued render, reproducing the exact "queued broadcast
-     * still in flight" trap the comment below is about, one line down from its own fix. */
+     * still in flight" trap the comment below is about, one line down from its own fix.
+     *
+     * THE RELEASE IS THE SAME LIVE CHECK, RUN BACKWARDS (#711). The take above is edge-armed
+     * off `checklist.paused`; three of the four ways to end the running checklist — Reset,
+     * a plant switch, and picking a different walkthrough from the list — never call
+     * `releaseHold('walkthrough')` (only the checklist's own Continue/Rewind/Stop did, #694),
+     * so the hold outlived the checklist that asked for it and the next plant loaded frozen
+     * with no caution on screen. The #710 precedent is the shape to copy: don't enumerate the
+     * hold at every place that might end it, ask whether the reason is STILL TRUE. Reset and a
+     * plant switch both clear the instructor (`simulation_service.js` `selectPlant` ->
+     * `instructor.unload()`), so `_cklWt` itself goes away; starting a different checklist loads
+     * a fresh one with `paused: false` (`instructor_layer.js` `loadChecklist`). Either way this
+     * same block sees `paused` no longer holding and lets go — one test covers the three named
+     * gaps and any future exit nobody has written yet, the same way the take already does. */
     var _cklWt = s && s.instructor && s.instructor.checklist;
-    if (_cklWt && _cklWt.paused && !pausedFor('walkthrough')) pauseSim('walkthrough');
+    if (_cklWt && _cklWt.paused) { if (!pausedFor('walkthrough')) pauseSim('walkthrough'); }
+    else if (pausedFor('walkthrough')) releaseHold('walkthrough');
     /* THE SNAPSHOT'S `running` FLAG IS STAMPED AT ASSEMBLY AND CAN BE STALE BY THE TIME IT
      * IS DRAWN. Re-stamp it from the live service here, which is the one place every
      * renderer downstream reads it from.
