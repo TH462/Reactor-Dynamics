@@ -448,7 +448,10 @@ what a GATE already catches**, keep what nothing can tell you.
   picks the branch — green here, red on CI. **Assert the invariant the defect violated.**
   **It also reads as a one-platform defect** (#588: **+1 ulp reproduced the other platform's
   branch**, Math bit-identical). Move the FIXTURE off the cliff, not the budget; **sweep five ulps
-  before trusting a blowdown check**. `mcr.microsoft.com/playwright:v1.61.1-noble` reproduces CI.
+  before trusting a blowdown check**. `playwright:v1.61.1-noble` reproduces CI's MATH, **not its
+  FONTS** (no DejaVu): CI is `ubuntu:24.04` + `install-deps chromium`. **A geometry bound from a
+  local render dates your FONT STACK** — 179.34 px on Windows is **206.38** there, eating a
+  14.5 px margin (2026-09-12, #713).
 - **A pre-declared reject criterion can outlive its measurement** (rescued from the #394
   limit-cycle bullet on eviction, 2026-08-10): #378's was void the next day. Re-measure the
   criterion, not just the result, before you let it reject anything. **So does a FIXTURE BUILT AT
@@ -679,8 +682,7 @@ for a 2026-07-22 owner request for a drain-rate feel target, and re-banding a ta
 plant moves retires it instead of reporting against it. Both options are costed in the probe's
 own comment (`test/ops_pwr.js`).
 
-`verify_e2e_ui` carries **1 strict xfail** pinning the manual's missing unit conversion (#111) —
-it errors if the manual ever starts converting.
+`verify_e2e_ui` carries **1 strict xfail** for #111's missing unit conversion.
 ---
 
 ## Running it
@@ -1185,6 +1187,4 @@ their own OAuth. A credential found there is a defect — move it and revoke the
 
 Dual-licensed, © 2026 Timothy Holt: **code → AGPL-3.0** (`LICENSE`), **manuals &
 training prose → CC BY 4.0** (`LICENSE-CONTENT`). Public terms/disclaimer at
-`legal.html`. When the repo goes public, fill the AGPL §13 source-repo URL in
-`legal.html` §5 and `README.md` (placeholders are in place). See the
-`licensing-and-go-public-prep` memory for the full checklist.
+`legal.html`, whose AGPL §13 source-repo URL is filled and live.
