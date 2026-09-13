@@ -211,6 +211,8 @@
       // here: load has no snapshot. null = no `precond` authored or not yet graded.
       precond: null,
       precondMsg: false,   // an unmet-precondition instructor comment is standing
+      precondSaid: false,  // #732 — it has been said ONCE for this run and will not be said again
+                           //   (restored by loadState too: a REWIND is not a new run)
       catchUp: true,       // first _stepChecklist tick walks past already-done steps (#607)
       // Behind-the-scenes failures fired on the CURRENT step (#670): `fired` is the once-per-
       // entry keys, `injected` the failure ids the snapshot publishes. Both reset per step.
@@ -666,11 +668,31 @@
        * the banner vanished before it could be read. This is the message channel, and it fires
        * on the SAME tick the condition is first seen — before any advance — so the entry window
        * is real rather than a race. */
+      /* ONCE PER RUN, NOT ONCE PER CROSSING (#732, owner playtest #724 item 15: "it gave me a
+       * flickering warning that prerequisites for this checklist are not met").
+       *
+       * The raise was guarded by `!cklMoving`; the CLEAR below was not, so `precondMsg` fell
+       * back to false the moment every row recovered and the next crossing raised the comment
+       * again. A precondition predicate sitting ON its threshold therefore chatters: the
+       * checklist is still on step 0 (`cklMoving` false) for as long as its first step is
+       * ungraded, so the guard above does nothing while the flicker is happening.
+       *
+       * MEASURED BY BACKSHOP, INHERITED HERE (#732, #724 item 15): `power_pct` on the
+       * `low_power` initial condition runs 9.222-10.061 %, a span of 0.840 points, and crosses
+       * `pwr_raise_power`'s authored `> 10 %` row twice in 10 plant-minutes. Their half of the
+       * fix moves that threshold; this half is the mechanism, so the next oscillating predicate
+       * cannot do it again.
+       *
+       * `precondSaid` is never cleared for the life of the run. THE CLEAR STILL CLEARS — a
+       * genuinely recovered precondition still takes the standing comment down on the tick it
+       * recovers, which is what `precondMsg` is for; a latch that never clears is the same
+       * defect facing the other way. */
       var cklMoving = c.idx > 0;
-      if (anyUnmet && !c.precondMsg && !cklMoving) {
+      if (anyUnmet && !c.precondMsg && !c.precondSaid && !cklMoving) {
         // One register-aware comment per unmet episode — the checklist banner
         // carries the row-by-row detail, this just points the operator at it.
         c.precondMsg = true;
+        c.precondSaid = true;
         this.pendingMessage = {
           learning: 'Before you lean on this checklist: the plant does not match one or more of its prerequisites — the checklist panel lists each one with what the plant actually reads. Nothing is blocked; the steps simply may not verify until the plant is where the procedure assumes.',
           industry: 'CHECKLIST PRECONDITIONS NOT MET — see the checklist panel for the failed items.',
@@ -995,6 +1017,37 @@
    * selected, and mode is control_state — true_state carries the heater's kW and the spray's
    * delivered flow, both of which read the same in AUTO and in a MANUAL demand that happens to
    * match. Grading on kW would tick the step for a player who never touched the card. */
+  /* THE OPERATOR'S TRIP BLOCKS (#731, owner playtest #724 item 13). A manual trip block is a
+   * LINEUP the player sets and the board draws as a lit row on the TRIP BLOCKS panel; it lives
+   * in `rps_state.trip_blocks`, not in true_state and not on any instrument, so a step that
+   * wanted "is this trip blocked?" had nothing to grade on and was authored on the COMMAND
+   * instead. That is the defect: a command-graded step cannot see a block a previous step
+   * already placed, and — until `_cmdEvidence` below learned the sense — an UNBLOCK satisfied
+   * it. Measured on the shipped plant (pwr_startup, hot_zero_power, full stack): entering step
+   * 17 with pr_low_setpoint already blocked left the step unmet for 402 s of plant time, and
+   * issuing the unblock lit its Continue button 6 s later with the trip live at 9.9 % power.
+   *
+   * A block is not the negation of a trip: it is permissive-gated and AUTO-REINSTATES below
+   * P-10, so this must be read live every tick rather than latched once — which is exactly what
+   * grading on state (and not on a command that happened once) gives. Boolean on the wire;
+   * normalised to 1/0 here so the ordinary `{op:'>', v:0}` predicate vocabulary applies. */
+  /* The engine publishes fields of its own called `ir_high_blocked` and `lo_press_blocked`
+   * (pwr2_protection.js) and these param names shadow them in `paramValue`. Traced at the
+   * quality pass: both come from the SAME source — `pwr2_shell.js` builds `trip_blocks` out of
+   * the very flags those fields report — so there is no second copy of the truth here. */
+  var RPS_BLOCK_PARAMS = {
+    ir_high_blocked:         'ir_high',
+    pr_low_setpoint_blocked: 'pr_low_setpoint',
+    lo_press_blocked:        'lo_press',
+    si_trip_blocked:         'si_trip'
+  };
+  function rpsBlockParam(snapshot, p) {
+    var id = RPS_BLOCK_PARAMS[p];
+    if (!id) return undefined;
+    var tb = snapshot && snapshot.rps_state && snapshot.rps_state.trip_blocks;
+    if (!tb) return undefined;
+    return tb[id] ? 1 : 0;
+  }
   var CTL_PARAMS = { feed_coupled: 1, steam_dump_setpoint: 1,
                      letdown_orifice_a: 1, letdown_orifice_b: 1,
                      heater_auto: 1, spray_auto: 1,
@@ -1022,6 +1075,7 @@
    * now, so a param added here reaches the gate and the live runtime together. */
   InstructorLayer.paramValue = function (snapshot, p) {
     if (ROD_PARAMS[p]) return rodParam(snapshot, p);
+    if (RPS_BLOCK_PARAMS[p]) return rpsBlockParam(snapshot, p);
     if (CTL_PARAMS[p]) {
       var cv = snapshot && snapshot.control_state ? snapshot.control_state[p] : undefined;
       if (cv == null || (typeof cv === 'number' && isNaN(cv))) return undefined;
@@ -1031,6 +1085,10 @@
   };
 
   InstructorLayer.prototype._grade = function (snapshot, pred) {
+    if (RPS_BLOCK_PARAMS[pred.p]) {
+      var bv = rpsBlockParam(snapshot, pred.p);
+      return { met: this._predMet(bv, pred), graded_by: 'rps_state', value: bv };
+    }
     if (ROD_PARAMS[pred.p]) {
       var rv = rodParam(snapshot, pred.p);
       return { met: this._predMet(rv, pred), graded_by: 'control_state', value: rv };
@@ -1251,7 +1309,16 @@
     if (!stepCmd || !command || !command.action) return false;
     if (!this._sameFamily(stepCmd.action, command.action)) return false;
     if (stepCmd.action === 'inject_failure') return stepCmd.failure_id === command.failure_id;
-    if (stepCmd.action === 'set_trip_block') return stepCmd.trip_id === command.trip_id;
+    /* THE SENSE, NOT JUST THE ROW (#731, owner playtest #724 item 13: "When i unblocked the
+     * trip the step thought i had blocked it and checked off the step. this would have left me
+     * in a condition where the trip would have fired and ended my playthrough."). `trip_id`
+     * alone made `set_trip_block {blocked:false}` evidence for a step that asks for a BLOCK —
+     * the one direction that is unsafe. `blocked !== false` is the shell's own convention
+     * (pwr2_shell.js set_trip_block): an absent flag means block. */
+    if (stepCmd.action === 'set_trip_block') {
+      return stepCmd.trip_id === command.trip_id &&
+             (stepCmd.blocked !== false) === (command.blocked !== false);
+    }
     return true;
   };
 
@@ -1505,6 +1572,11 @@
          * injection and the step fires it again" true rather than an assumption. */
         fired: (this.checklist.fired || []).slice(),
         injected: (this.checklist.injected || []).slice(),
+        /* #732 — the once-per-run precondition latch rides with them, for the same reason. The
+         * REWIND button is a loadState of a checkpoint, so without this every rewind re-armed the
+         * comment and the flicker came back one press at a time. Absent in an old save reads as
+         * false, which is exactly the pre-#732 behaviour. */
+        precond_said: !!this.checklist.precondSaid,
       } : null,
     };
   };
@@ -1534,11 +1606,17 @@
           accsState: cs.accs_met ? cs.accs_met.map(function (m) {
             return { streak: 0, met: !!m, obs: null, graded_by: null };
           }) : null,
-          // Precondition verdicts are DERIVED state — never saved; the first
-          // step() tick after a restore regrades them against the live plant
-          // (and re-raises the comment if rows are still unmet, which is right:
-          // a fresh session deserves the warning again).
-          precond: null, precondMsg: false,
+          // Precondition VERDICTS are DERIVED state — never saved; the first step() tick
+          // after a restore regrades them against the live plant.
+          //
+          // THE LATCH IS NOT DERIVED AND IS RESTORED (#732, quality pass 2026-09-12). The
+          // comment above used to argue that re-raising is right because "a fresh session
+          // deserves the warning again" — true of a file load, and WRONG of the path this
+          // actually is most of the time: the walkthrough's own Rewind button goes through
+          // loadState (simulation_service.js `_restoreCheckpoint`), so an undefined flag meant
+          // every rewind re-armed the comment and handed the player the flicker back one press
+          // at a time. A save written before this field restores false, i.e. unchanged.
+          precond: null, precondMsg: false, precondSaid: !!cs.precond_said,
           // #670 — restored, not re-derived: a save written before this field is an empty set,
           // which is exactly what it used to behave as.
           fired: (cs.fired || []).slice(), injected: (cs.injected || []).slice(),

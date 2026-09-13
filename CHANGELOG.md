@@ -118,6 +118,103 @@ deliberate operator evolution but **no acceleration rate anywhere in the corpus*
 was changed. 351 steps / 660 ppm / 579 °F at full power is the no-xenon end of the curve, not too
 low; this plant's settled 100 % point is 606 of 627 steps at 612.3 ppm and 580.31 °F.
 
+### Fixed (the trip-block acceptance graded INVERTED, and it was the only way out of a step it also could not see — #731)
+
+`pwr_startup` steps 16 and 17 — BLOCK the intermediate-range high-flux trip, then BLOCK the
+power-range high-flux trip on its low setpoint — carried a bare `cmd` and no acceptance, so the
+live checklist graded them on **seeing the command descend while that step was active**, and
+`InstructorLayer._cmdEvidence` discriminated `set_trip_block` on `trip_id` alone. Two failures,
+compounding: a block placed while step 16 was up was invisible to step 17, which then waited for
+ever; and the player's only escape — pressing the row again, which UNBLOCKS it — was accepted as
+evidence for a step that asks for a block.
+
+MEASURED, full stack, `hot_zero_power`, the real leg driven step by step, against a scratch
+worktree at the parent commit: entering step 17 with `pr_low_setpoint` already blocked left it
+unmet for **402 s** of plant time; issuing the unblock lit its Continue button **6 s** later with
+the 35 %-power trip live at **9.91 % power**, on a leg that hands straight over to the power
+ascension. After the fix: met **18 s** after entry on the standing block, still unmet **126 s**
+after an unblock, met **30 s** after the block is replaced.
+
+A trip block is a standing operator lineup the board draws as a lit row — it is on no instrument
+and in no `true_state` field, which is why these steps were authored on the command in the first
+place. New `RPS_BLOCK_PARAMS` resolver reads it out of `rps_state.trip_blocks`, wired into both
+the live path (`_grade`) and the replay path (`InstructorLayer.paramValue`) so the gate and the
+runtime cannot diverge, and read live every tick so the auto-reinstatement below P-10 is reflected
+rather than latched. `_cmdEvidence` now matches the SENSE as well as the row, which speaks for
+`pwr_cooldown`'s two `set_trip_block` steps as well. Proven red/green by injection in both
+directions, on the real leg, in `run_checklist_pwr2` section 2t.
+
+### Fixed (the walkthrough glowed the container, not the control — 21 of 88 steps — #735)
+
+`RD.PwrBoard.revealControl` resolves a label to a **board tile only**, and the 1/M window is a
+shell panel, not a board item — so `1/M Plot Tool` and `Plot point` both resolved to `bdOneOverM`,
+the little board button that *opens* the plot, and every plot step glowed the opener instead of
+the button it was telling the player to press. `RD.Highlight.resolve()` now tries a shell-target
+map first; `Plot point` is `#oomWin [data-oom="plot"]` — the button's own attribute, never a
+position, because the 1/M relocation turns its button bar from a side column into a row above the
+plot and moves the window's parent as well.
+
+Swept on the built pool: **21 of 88 steps name a board button the highlight does not point at.**
+Six are cleared here — five rod-speed and plot-point misses in `pwr_startup` plus one that the
+rampdown split absorbed — and of the rest, `pwr_raise_power`'s five belong to another change and
+every remaining flag in these legs is the deliberate exclusion below (a step that continues at a
+speed already selected, or prose that merely names a speed it is not asking for). Rod-speed buttons (SLOW/MED/FAST) now glow on every step whose text says to **press**
+one, and deliberately not on a step that merely continues at a speed already selected. The
+time-compression speed bar glows the rung the card's own "set the speed control to N x" sentence
+names, keyed off that sentence's own condition rather than a second copy of it.
+`Control Rod Position` — the control-bank step readout, and the number the 1/M panel's prediction
+is expressed *in* — had no entry in the board's highlight vocabulary at all; it does now, and the
+startup leg watches it from the first rod move onward.
+
+Source-range targets now read the way the meter writes them everywhere on the card:
+`7.0e2 (700 counts per second)` in the check-off labels and in the rendered done-when, where the
+step's own target line had said `7.0e2` and the two lines under it said `700 cps`.
+
+### Fixed (the rampdown step checked itself off on a scrammed plant — #736)
+
+`pwr_lower_power` step 2 asks for a load drop *then* a rod trim, and `_gradeAccs` **latches** every
+multi-check-off entry except a two-sided band. The leg starts at `hot_full_power`, so two of the
+step's three boxes were ticked on its first tick — 580.3 degF against a 581 degF bound, 100.00 MWe
+against a 70 MWe floor — and stayed ticked. MEASURED: a player who does the step's second half and
+not its first (borate, insert 40 rod steps, never touch LOAD) takes a **steam generator low-low
+level scram at t = 2256 s**, and the step **checks itself off 21 s later** on 1.37 % power and
+**0.00 MWe**. The #715 floor catches a plant that was already dead when the leg started; it cannot
+catch one that dies during the step.
+
+Step 2 is now two steps — lower load, then insert rods to follow — which is the "timing control"
+the report asks for, since grading is sequential and the trim is ungradable until the drop has
+checked off. Every load stage's pairing is two-sided (`~ 75 / 50 / 30 / 15 MWe`), so it is false at
+the stage's own entry as well as false on a scram, and cannot latch.
+
+The temperature excursion in the report was measured and is **not** what it looked like: dropping
+LOAD 100 -> 75 MWe with no rod insertion peaks AVG COOLANT TEMPERATURE at **584.0 degF (306.7 degC)
+at t = 84 s**, a rise of **3.7 degF (2.1 degC)**, and settles **9.4 degF (5.2 degC) above the
+tile's green band**. No protection setpoint is approached and the plant does not scram. Out of
+band, not dangerous — the dangerous part was the check-off.
+
+### Fixed (the prerequisite warning flickered once per threshold crossing — #732, this half)
+
+`_stepChecklist` guarded the precondition comment's RAISE with "the checklist has not started
+moving" and left its CLEAR unguarded, so the standing flag fell back the moment every row
+recovered and the next crossing raised the comment again — and a checklist sits on step 0 for as
+long as its first step is ungraded, which is the whole of the window in which the flicker happens.
+Said once per RUN now. The clear is untouched: a genuinely recovered precondition still takes the
+comment down on the tick it recovers. Proven by injection against a scratch worktree at the parent
+commit — six crossings raised it six times there and once here, while a genuine recover-once case
+reads 1 raise / 1 clear on both trees.
+
+### Changed (two walkthrough steps that told the player to do something already done)
+
+`pwr_heatup` step 5 said "Press AUTO on the SG FEED card" unconditionally. The report that it is
+already in AUTO **did not reproduce from the leg's own initial condition** — measured at that
+step's entry (t = 549 s from `cold_shutdown`), feed is not coupled, the pumps read 0 % and the SG
+FEED corner reads OFF — but a player can arrive with it already set, and the acceptance already
+grades the lamp rather than the press. Reworded to "Check SG FEED reads AUTO. If it does not,
+press AUTO.", the same shape the sibling step in `pwr_startup` already uses. `pwr_startup` step 10
+now says that SOURCE RANGE will secure part way through it: measured on the authored route, the
+channel de-energizes **276 s inside that step**, at t = 777 s with the bank at 223 of 627 and
+REACTOR POWER still reading 0.000 %, and the only text that mentioned it was the *next* step's
+note.
 
 ### Fixed (a walkthrough done-when graded a quantity with no board tile — #718)
 

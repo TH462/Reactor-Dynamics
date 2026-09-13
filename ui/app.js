@@ -3907,6 +3907,7 @@
     var row = $('instrCklRow'); if (row) row.hidden = !flagOn('checklists');
     clearCklStepGlow();
     clearCklWatchGlow();                      /* #685 — the watch ring has the same owner */
+    clearCklSpeedGlow();                      /* #735 — and so does the speed rung */
     var card = $('instructorCard'); if (card) card.classList.remove('chat-mode');
     var cur = $('instrCurrent'); if (cur) cur.textContent = '';
   }
@@ -3934,7 +3935,9 @@
     steam_pressure_mpa:     { label: 'STEAM PRESS', dim: 'pressure' },
     subcooling_c:           { label: 'SUBCOOLING MARGIN', dim: 'tempdiff' },
     tavg_rate_c_per_hr:     { label: 'Heatup/cooldown rate', dim: 'tempdiff', suffix: '/hr' },
-    sr_counts_cps:          { label: 'SOURCE RANGE', u: 'cps' },
+    /* #735 / #724 item 6 — the count rate renders the way the meter writes it: "7.0e2
+     * (700 counts per second)". See `sci` in fmtPredValue. */
+    sr_counts_cps:          { label: 'SOURCE RANGE', u: 'counts per second', sci: true },
     startup_rate_dpm:       { label: 'STARTUP RATE', u: 'DPM' },
     reactivity_pcm:         { label: 'Net reactivity', u: 'pcm' },
     boron_ppm:              { label: 'Boron in the loop (BORON CHEM after a sample)', u: 'ppm' },
@@ -3954,6 +3957,14 @@
     shutdown_bank_pct:      { label: 'SHUTDOWN ROD POSITION', u: '%' },
     shutdown_bank_steps:    { label: 'SHUTDOWN ROD POSITION', u: 'steps' },
     feed_coupled:           { bool: 'SG FEED is in AUTO' },
+    /* THE TRIP BLOCKS (#731). Resolved out of `rps_state.trip_blocks` by the instructor layer
+     * (RPS_BLOCK_PARAMS there) — an operator lineup the board draws as a lit row, not an
+     * instrument. The labels are the panel's own row captions, so the done-when line names what
+     * the player is looking at. */
+    ir_high_blocked:         { bool: 'IR HIGH FLUX is blocked on the TRIP BLOCKS panel' },
+    pr_low_setpoint_blocked: { bool: 'PR HIGH (LOW SETPT) is blocked on the TRIP BLOCKS panel' },
+    lo_press_blocked:        { bool: 'PZR PRESS LO-LO is blocked on the TRIP BLOCKS panel' },
+    si_trip_blocked:         { bool: 'SI REACTOR TRIP is blocked on the TRIP BLOCKS panel' },
     steam_dump_setpoint:    { label: 'DUMP SETPOINT', dim: 'pressure' },
     accumulator_volume_pct: { label: 'ACCUMULATORS', u: '%' },
     steam_dump_valve_pct:   { label: 'STEAM DUMP opening', u: '%' },
@@ -4042,6 +4053,26 @@
      * conversion for the checklist's own criteria line, declared on the entry rather than
      * hidden in a branch. */
     var vv = (pd && pd.scale) ? +v * pd.scale : +v;
+    /* THE METER'S OWN NOTATION (#735) *(OWNER, #724 item 6: "Whenever the SOURCE RANGE is
+     * referenced it should be in the format of 7.0e2 not 700cps. this is not consistant. it can
+     * still have '7.0e2 (700 counts per second)', this is acceptable.")*. The source range is a
+     * LOG channel and the board prints its exponent (`logSer`); the checklist's step text has
+     * said 7.0e2 since #619 item 19, and this line still said "700 cps" — the same number in
+     * two notations on one card, which is the inconsistency he is naming. `sci` renders the
+     * board's form with the plain number in brackets, which is the form he called acceptable. */
+    if (pd && pd.sci) {
+      /* ⚠ GUARD FIRST (quality pass, 2026-09-12): the normalising loops below never terminate
+       * for +/-Infinity, and `isFinite(null)` is TRUE in this codebase's standing trap — hence
+       * the `typeof` half. Not reachable from the shipped pool (no precondition names
+       * `sr_counts_cps`, so the only values here are the authored literals), but this formatter
+       * also renders a precondition's OBSERVED value, where a dead channel could arrive. */
+      if (typeof vv !== 'number' || !isFinite(vv) || vv === 0) return String(v);
+      var mant = vv, exp = 0;
+      while (Math.abs(mant) >= 10) { mant /= 10; exp++; }
+      while (mant !== 0 && Math.abs(mant) < 1) { mant *= 10; exp--; }
+      return mant.toFixed(1) + 'e' + exp + ' (' + Math.round(vv).toLocaleString('en-US') +
+             (pd.u ? ' ' + pd.u : '') + ')';
+    }
     var n = Math.abs(vv) >= 100 ? Math.round(vv) : Math.round(vv * 10) / 10;
     return n + (pd && pd.u ? ' ' + pd.u : '');
   }
@@ -4582,6 +4613,7 @@
     var actSt = !ck.complete && pr.steps[ck.step_index] ? pr.steps[ck.step_index] : null;
     applyCklStepGlow(actSt ? stepHlLabels(actSt) : null);
     applyCklWatchGlow(actSt ? stepWatchLabels(actSt) : null);   /* #685 */
+    applyCklSpeedGlow(actSt);                                   /* #735 — #724 item 2 */
     // Step hover → glow the controls/indications the step names (its `hl` list) on
     // the plant display, reusing the Instructor highlight vocabulary (revealControl).
     Array.prototype.forEach.call(cur.querySelectorAll('.ckl-step'), function (el) {
@@ -4687,12 +4719,26 @@
   // Hover-preview glow for checklist steps: glow every control/indication label a
   // step names. Separate class from the Instructor beat glow (.instr-glow) so a
   // transient hover never wipes an active beat highlight.
+  /* THE ONE LABEL RESOLVER for the checklist's three glows (#735, owner playtest #724 items
+   * 4 and 5). A glow target is not always a BOARD item: the 1/M plot-point button lives in the
+   * 1/M panel and the time-compression rungs live in the shell's speed bar, and
+   * `revealControl` can only ever answer with a board element — so `Plot point` resolved to
+   * `bdOneOverM`, the little button that OPENS the plot, and the step asking for the plot press
+   * glowed the opener. `RD.Highlight.resolve` tries the shell overrides first and falls back to
+   * the board map, keyed on the element's own identity rather than its position so #713's
+   * relocation of the 1/M panel cannot break it. Falls back to the old lookup if the highlight
+   * bus is not loaded (a bare page, a fixture). */
+  function hlTarget(lab) {
+    if (ui.plant !== 'pwr') return findPdControl(lab);
+    if (RD.Highlight && RD.Highlight.resolve) return RD.Highlight.resolve(lab);
+    var board = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
+    return board ? board.revealControl(lab) : null;
+  }
   function glowLabels(labels) {
     clearHoverGlow();
     if (!labels || !labels.length) return;
-    var board = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
     labels.forEach(function (lab) {
-      var el = ui.plant === 'pwr' ? (board ? board.revealControl(lab) : null) : findPdControl(lab);
+      var el = hlTarget(lab);
       if (el) el.classList.add('ckl-glow');
     });
   }
@@ -4708,9 +4754,8 @@
   function applyCklStepGlow(labels) {
     clearCklStepGlow();
     if (!labels || !labels.length) return;
-    var board = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
     labels.forEach(function (lab) {
-      var el = ui.plant === 'pwr' ? (board ? board.revealControl(lab) : null) : findPdControl(lab);
+      var el = hlTarget(lab);
       if (el) el.classList.add('ckl-step-glow');
     });
   }
@@ -4726,14 +4771,59 @@
   function applyCklWatchGlow(labels) {
     clearCklWatchGlow();
     if (!labels || !labels.length) return;
-    var board = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
     labels.forEach(function (lab) {
-      var el = ui.plant === 'pwr' ? (board ? board.revealControl(lab) : null) : findPdControl(lab);
+      var el = hlTarget(lab);
       if (el && !el.classList.contains('ckl-step-glow')) el.classList.add('ckl-watch-glow');
     });
   }
   function clearCklWatchGlow() {
     document.querySelectorAll('.ckl-watch-glow').forEach(function (el) { el.classList.remove('ckl-watch-glow'); });
+  }
+  /* THE SPEED BAR GLOWS WHEN THE STEP RECOMMENDS A SPEED (#735, owner playtest #724 item 2:
+   * "when a speed control is recommended the speed control button should glow").
+   *
+   * NOT AUTHORED PER STEP, on purpose. The recommendation already exists as a computed fact —
+   * `syncWarpInfo` prints "set the speed control to N x" under exactly one condition, the
+   * active step's own `hold >= 180` with `wait_hint !== false` — so a hand-written `hl` entry
+   * on each long step would be a SECOND copy of that condition, free to drift from the sentence
+   * the player is reading. One condition, two surfaces: the words and the ring.
+   *
+   * ⚠ IT GLOWS THE BAR, NOT THE RUNG, AND THAT IS A CSS CONSTRAINT RATHER THAN A CHOICE
+   * (quality pass, 2026-09-12). `.speed` is `display: inline-flex` with `overflow: hidden`
+   * (ui/shell.css:918) and `.ckl-step-glow`'s only visual is an OUTER box-shadow — an outer
+   * shadow on a child is clipped by the ancestor's overflow, and `position: relative` plus a
+   * z-index does not escape a clip. So a ring on `button[data-speed="600"]` would barely show
+   * while the whole-bar fallback showed properly, which is the worst of both. `#speed` itself
+   * sits in `.sim-row`, which has no clip, so the bar's own ring is drawn in full. The rung
+   * still gets a marker class so a per-rung treatment is one CSS rule away — that rule belongs
+   * in `ui/shell.css`, which this lane does not own; reported rather than written.
+   *
+   * NOT WHILE THE CLOCK IS HELD. `syncWarpInfo` has a HIGHER-priority branch: while
+   * `true_state.speed_hold` stands (the accumulator arming window) it prints that note INSTEAD
+   * of "set the speed control to N x", and the service refuses speed changes for as long as it
+   * does. Glowing through that window would ring a button that will refuse the press, which is
+   * owner item 3's complaint in reverse.
+   *
+   * Uses the step-glow class (the pulse, "act on this") since this IS an action the step asks
+   * for; it is applied after the step/watch glows and never fights them — they live on the
+   * board, this lives in the shell. */
+  function applyCklSpeedGlow(st) {
+    clearCklSpeedGlow();
+    var holdS = st ? (+st.hold || 0) : 0;
+    if (!st || holdS < 180 || st.wait_hint === false) return;
+    if (warpNote && warpNote.reason === 'hold') return;   // the clock is held; the press would refuse
+    var bar = document.getElementById('speed');
+    if (!bar) return;
+    var rung = (RD.CklSpeedHint ? RD.CklSpeedHint(holdS) : null);
+    var el = (rung && rung.speed != null) ? bar.querySelector('[data-speed="' + rung.speed + '"]') : null;
+    if (el) el.classList.add('ckl-speed-rung');            // marker only — no rule for it yet
+    bar.classList.add('ckl-speed-glow', 'ckl-step-glow');
+  }
+  function clearCklSpeedGlow() {
+    document.querySelectorAll('.ckl-speed-glow').forEach(function (el) {
+      el.classList.remove('ckl-speed-glow'); el.classList.remove('ckl-step-glow');
+    });
+    document.querySelectorAll('.ckl-speed-rung').forEach(function (el) { el.classList.remove('ckl-speed-rung'); });
   }
   // Picker menu (free-play instructor card): every non-narrative procedure for
   // the active plant can run as a checklist.

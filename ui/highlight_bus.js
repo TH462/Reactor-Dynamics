@@ -77,6 +77,48 @@
     charging: ['Charging Pump (CVCS)'], letdown: ['Letdown Orifices (CVCS)']
   };
 
+  /* ============================================== TARGETS THAT ARE NOT BOARD ITEMS (#735)
+   * *(OWNER, #724 items 4 and 5: "the plot point in the 1/5 plot window should be glowing
+   * since the step asks the user to press it"; "the 1/m plot button that opens the plot
+   * should not be glowing, the plot point button on the plot window should be glowing.")*
+   *
+   * `revealControl` can only return a BOARD item, and the board's 1/M entry (`bdOneOverM`) is
+   * the little button that OPENS the plot — both `1/M Plot Tool` and `Plot point` resolved to
+   * it, so a step asking for the plot-point press glowed the opener, which is the owner's
+   * report verbatim. The button he means lives in the 1/M PANEL, which is shell chrome, and so
+   * does the time-compression speed bar.
+   *
+   * KEYED ON IDENTITY, NEVER ON POSITION. The 1/M panel is being relocated (#713) and its
+   * buttons moved above the plot; `[data-oom="plot"]` is the button's own handle — the same
+   * attribute `ui/panels/one_over_m.js` dispatches its click on — so it survives the move.
+   * NOT a child index and NOT `.oom-foot > .btn:first-child`: the button bar was a side COLUMN
+   * and is now a ROW above the plot, so sibling order and geometry both moved (workbench,
+   * #713 — INHERITED, not measured here). Nor is the window's PARENT stable: `#oomWin` docks
+   * at the foot of `.right-col` above 1200 px and FLOATS on `document.body` at 1200 px and
+   * below, so the selector is rooted at the window's own id and nothing above it.
+   * A selector that matches nothing (panel closed, feature off) resolves to null and glows
+   * nothing, exactly as an unknown board label does.
+   *
+   * A SHELL TARGET WINS OVER THE BOARD MAP for the same label, and FALLS BACK TO IT when the
+   * selector matches nothing. That combination is the whole behaviour for `Plot point`: the
+   * board label stays in CONTROL_LABEL_MAP (deleting it would red `run_manual_controls` for
+   * every step that names it), so with the 1/M window OPEN the ring lands on the plot-point
+   * button and with it CLOSED it lands on `bdOneOverM` — the button you have to press to open
+   * the window, which is the right target in that state. Not a fallback that glows nothing. */
+  /* ONE ENTRY ON PURPOSE. `Speed control` was here and is DELETED (quality pass, 2026-09-12):
+   * nothing resolved it — the speed-bar glow is COMPUTED in ui/app.js from the active step's own
+   * hold, not authored as an `hl` label — and a step that did name it would red
+   * `run_manual_controls`, because the label is not in the board's CONTROL_LABEL_MAP. A shell
+   * target only belongs here if a step can name it. */
+  var SHELL_TARGETS = {
+    'Plot point': '#oomWin [data-oom="plot"]'
+  };
+  function shellTarget(label) {
+    var sel = SHELL_TARGETS[label];
+    if (!sel || typeof document === 'undefined') return null;
+    return document.querySelector(sel);
+  }
+
   function Bus() {
     this.pinned = null;      // { labels: [...] } or null
     this.hover = null;
@@ -94,10 +136,10 @@
    * from "the map is wrong" — the difference matters because the second is a defect and the
    * first is ordinary. */
   Bus.prototype.paint = function (labels, cls) {
-    var b = board(); if (!b || !b.revealControl) return 0;
+    var b = board();
     var n = 0;
     (labels || []).forEach(function (lab) {
-      var el = b.revealControl(lab);
+      var el = shellTarget(lab) || ((b && b.revealControl) ? b.revealControl(lab) : null);
       if (el) { el.classList.add(cls); n++; }
     });
     return n;
@@ -144,6 +186,14 @@
 
   RD.Highlight = new Bus();
   RD.Highlight.SERIES_ITEMS = SERIES_ITEMS;
+  /* ONE RESOLVER for every surface that glows a label (#735): the checklist's three appliers
+   * in ui/app.js call this so the board map and the shell overrides cannot disagree about
+   * where a label points. */
+  RD.Highlight.SHELL_TARGETS = SHELL_TARGETS;
+  RD.Highlight.resolve = function (label) {
+    var b = board();
+    return shellTarget(label) || ((b && b.revealControl) ? b.revealControl(label) : null);
+  };
   RD.Highlight.CLS = CLS;
   RD.Highlight.CLS_PIN = CLS_PIN;
 }(typeof globalThis !== 'undefined' ? globalThis : this));
