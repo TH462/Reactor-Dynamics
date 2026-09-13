@@ -148,6 +148,20 @@ after editing it."* So the gate now compares each stylesheet's **source top-leve
 the CSSOM's** — two seconds, and it catches the whole class: a stray brace, an unclosed block, a
 swallowed rule. It would have caught the `.bd-info` bug this cycle keeps citing, too.
 
+**IT LIVES IN ITS OWN RUNNER, `test/verify_stylesheets.js`, and the placement is the point.** It was
+written inside `verify_reduced_motion.js`, where it had nothing to do with that runner's subject and
+where the next person to reorganise the file would have deleted the repo's only parse check without
+knowing what it was. A general invariant does not belong in a subject-specific gate. It also asserts
+each sheet is LOADED before comparing counts — a comparison on an absent stylesheet is `0 === 0`,
+which is the hollow shape this cycle keeps meeting. Red by injection: the brace back gives
+`stray 1 (line 128)` and `1 RULE(S) SWALLOWED`.
+
+**AND THE INJECTION LESSON IS NOW IN `Blueprint/TRAPS.md`: read the red, not the count.** Four times
+this cycle an injection meant to prove a check reported zero reds because the INJECTION had missed —
+it patched a comment instead of the list, named an anchor a refactor had moved, settled a plant above
+the permissive so the block never took hold, or removed more than a real edit would. An injection
+that does not land is indistinguishable from a robust check: both print `0 failed`.
+
 **AND I DID NOT RESTORE THE KEYFRAME, I REWROTE IT.** The pre-image carried `inset 0 0 18px
 rgba(0,0,0,.55)` in both stops; my version dropped it, so the armed SCRAM button lost its inset
 depth shading while pulsing. Three documents said "restored". Put back byte-for-byte.
