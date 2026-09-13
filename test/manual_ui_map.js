@@ -207,18 +207,31 @@ var STEP_UI = {
     { i: 2, view: 'board', control: 'Trip Blocks' },
     { i: 3, view: 'board', control: 'Dump SP' },
     { i: 4, view: 'board', control: 'Pressure SP' },
-    /* the heater-off is its own step since #653 pass 3 (graded on the lamp, not on a press
-     * the player may have made before the step was active); everything after it shifts +1 */
+    /* THE HEATER-OFF AND THE SPRAY ARE ONE STEP AGAIN (owner ruling 2026-09-13) — the
+     * pressure-control handover, merged as one mechanical beat. Its `control` is the HEATER card
+     * (the first action); the spray is covered by `hl` and the board vocabulary, because a step
+     * owns exactly one row here.
+     * ⚠ THE ROW BELOW IT WAS DELETED AND THE REST RENUMBERED BY HAND, -1 each: 7->6, 9->8,
+     * 10->9, 11->10, 12->11. RENUMBER, DO NOT RE-DERIVE — this table has been broken five times
+     * by re-reading the array after a change, and the signature is always the same, a "pill X !=
+     * STEP_UI Y" cascade plus one unmapped tail step. A DELETION is the safe direction only if
+     * you resist closing the gap by re-deriving; the numbers below were shifted, not rebuilt.
+     * The gap at what is now i:7 is the observation step and it is still a gap. ⚠ NOT because that
+     * step has no `control` — it carries `'(observe)'`, which is TRUTHY. `run_manual_controls`
+     * skips it on the `/^\(observe/` test in the forward loop, while its REVERSE check keys on
+     * `!!st.control`. So a row that lands on i:7 by an off-by-one is invisible to that gate:
+     * measured, moving the i:8 row to i:7 reds exactly one check (coverage 147/148) and never
+     * names the misdirected row. Renumbering by hand is what keeps this honest. */
     { i: 5, view: 'board', control: 'Pressurizer Heaters (PZR)' },
-    { i: 6, view: 'board', control: 'Pressurizer Spray (PZR)' },
-    { i: 7, view: 'board', control: 'Accumulator valve' },
-    { i: 9, view: 'board', control: 'Residual Heat Removal (RHR)' },
-    { i: 10, view: 'board', control: 'RCP ON/OFF' },
-    { i: 11, view: 'board', control: 'Residual Heat Removal (RHR)' },
+    { i: 6, view: 'board', control: 'Accumulator valve' },
+    { i: 8, view: 'board', control: 'Residual Heat Removal (RHR)' },
+    { i: 9, view: 'board', control: 'RCP ON/OFF' },
+    { i: 10, view: 'board', control: 'Residual Heat Removal (RHR)' },
     /* the spray-off moved OUT of step 11 and became its own step at the END of the cooldown
      * (#729): shutting it beside the RCPs repressurized the plant on the pressurizer shell's
-     * stored heat and cost the leg its RHR. Appended, so every index above is untouched. */
-    { i: 12, view: 'board', control: 'Pressurizer Spray (PZR)' },
+     * stored heat and cost the leg its RHR. It is still the last step; its index came down by
+     * one with everything else when the handover merged, 12 -> 11. */
+    { i: 11, view: 'board', control: 'Pressurizer Spray (PZR)' },
   ],
   /* THE TMI-2 INCIDENT WALKTHROUGH (#670 Phase 2). Its own block, appended — the six cycle
    * legs above are untouched, because this table is POSITIONAL and the four historical

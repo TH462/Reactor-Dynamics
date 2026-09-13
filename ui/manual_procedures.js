@@ -2782,22 +2782,43 @@
          * 100 % replay passed at 228 psi / 65 % from a 27 % start — the player started at 48 %
          * after the fast dump walk, and went solid. Accepted at 1615 psi, where the accumulator
          * valve regains power — the next step's own window. */
-        /* TWO STEPS, GRADED ON STATE (#653 pass 3, S-5). The heater-off was a cmd-kind entry on
-         * the spray step, and the evidence matcher latches only while the step is ACTIVE — the
-         * player pressed OFF while the setpoint step was still ticking, the board showed OFF lit
-         * and HTR PWR 0 %, and "○ Heaters OFF" stayed open until AUTO-then-OFF re-issued the
-         * command inside the step. One action per step, the lamp as the acceptance. */
-        { text: 'On the PRESSURIZER (PZR) card press OFF under HEATER.',
-          why: 'The heaters go off before the spray comes on, or they boil water as fast as the spray condenses it and pressure goes nowhere. From here the setpoint box has nothing to hold; pressure comes down by hand.',
-          control: 'Pressurizer Heaters (PZR)', target: 'OFF lit under HEATER',
-          cmd: { action: 'set_heater', power_pct: 0 }, hold: 10,
-          acc: { p: 'heater_auto', op: '<', v: 1 },
-          hl: ['Pressurizer Heaters (PZR)'] },
-        { text: 'Press MANUAL under SPRAY and set its box to 50 %, not more.',
-          note: 'Spray water goes into the pressurizer and PRESSURIZER LEVEL climbs as pressure falls. At 100 % a pressurizer that starts high fills completely, after which the spray shuts itself off. At 50 % pressure falls about 3 psi a second with room to spare.',
-          why: 'Spray condenses steam in the pressurizer and pressure falls. SUBCOOLING MARGIN is how far the reactor water is below boiling; lowering pressure spends it, and it has to stay positive.',
-          control: 'Pressurizer Spray (PZR)', target: 'SPRAY MANUAL at 50 %; PRIMARY PRESSURE below 1615 psi',
-          cmd: { action: 'set_spray', open: true, pct: 50 }, hold: 240,
+        /* ONE STEP AGAIN — THE PRESSURE-CONTROL HANDOVER *(OWNER RULING, 2026-09-13: "1:A, 2:A,
+         * 3:a now. I will playtest after you make these changes.")*, option A being this run only.
+         * Heaters off and spray to 50 % are one mechanical handover and the owner's principle for
+         * merging is "fewer beats for mechanical work".
+         *
+         * ⚠ THIS IS THE PAIR #653 PASS 3 S-5 DELIBERATELY SPLIT, AND THE MERGE DOES NOT PUT THE
+         * DEFECT BACK. Read the old note before touching this again: "The heater-off was a
+         * CMD-KIND ENTRY on the spray step, and the evidence matcher latches only while the step
+         * is ACTIVE — the player pressed OFF while the setpoint step was still ticking, the board
+         * showed OFF lit and HTR PWR 0 %, and '○ Heaters OFF' stayed open until AUTO-then-OFF
+         * re-issued the command inside the step." The failure was the CMD-KIND grading, not the
+         * pairing: a press that happened before the step went active could never be seen.
+         * So the heater half is graded on STATE here (`heater_auto`, the lamp), which is true
+         * whenever the plant is in it and cannot care when the button was pushed — the same
+         * "grade the lineup, not the press" rule #731 settled for trip blocks. Merging it back as
+         * a cmd entry would revert #653 S-5; that is the one thing this step must never become.
+         *
+         * COMMAND ORDER SURVIVES THE MERGE. `st.cmd` is issued before any `accs[].cmd`
+         * (procedures_harness), so heaters-off lands first and the spray second, which is the
+         * order the text states and the order the plant needs.
+         * ⚠ NOT a #729 coupling — an earlier draft of this comment said so and sent the reader to
+         * the wrong measurement. #729's order lesson is several steps later and is about shutting
+         * the SPRAY before the RHR align. Heaters-before-spray predates it and was authored in the
+         * split's own `why`.
+         * ⚠ AND THE ORDER IS NO LONGER ENFORCED BY THE CARD. Split, the spray instruction was not
+         * drawn until the heaters were off; merged, both rows are live at once and the lettered
+         * rows deliberately imply no sequence. MEASURED cost of getting it wrong (spray to 50 %
+         * with the heaters left in AUTO): the manual demand is zeroed, pressure reverses and
+         * climbs from 962 to 1666 psia over ~60 plant-minutes while the selector still reads
+         * MANUAL. The step does NOT complete — the heater row stays unmet, so it is recoverable
+         * and not a soft lock — but nothing on the card explained why, which is what the first
+         * sentence of the `note` is now for. */
+        { text: 'Press OFF under HEATER, then MANUAL under SPRAY with its box at 50 %, not more.',
+          note: 'Heaters first: with them still in AUTO the spray will not hold and pressure climbs back instead of falling. Spray water goes into the pressurizer and PRESSURIZER LEVEL climbs as pressure falls. At 100 % a pressurizer that starts high fills completely, after which the spray shuts itself off. At 50 % pressure falls about 3 psi a second with room to spare.',
+          why: 'The heaters go off first, or they boil water as fast as the spray condenses it and pressure goes nowhere. Spray condenses steam in the pressurizer and pressure falls; the setpoint box has nothing left to hold. Lowering pressure spends SUBCOOLING MARGIN, how far the reactor water is below boiling, and that has to stay positive.',
+          control: 'Pressurizer Heaters (PZR)', target: 'OFF lit under HEATER; SPRAY MANUAL at 50 %; PRIMARY PRESSURE below 1615 psi',
+          cmd: { action: 'set_heater', power_pct: 0 }, hold: 240,
           /* THE 50 % IS GRADED NOW (#739, 2026-09-13). The step warned in its own `note` that a
            * player at 100 % fills the pressurizer solid, and then ticked on PRIMARY PRESSURE
            * alone — which 100 % satisfies FASTER. `spray_flow_pct` is the DELIVERED flow (true
@@ -2809,9 +2830,18 @@
            * The pressure `acc` had to become an `accs` ENTRY, not sit beside one — `accs`
            * REPLACES `acc` in `_gradeAccs`, which is exactly the dead field #739 filed against
            * `pwr_heatup` step 15. Both halves are entries; neither is silent. */
-          accs: [{ p: 'pressure_mpa', op: '<', v: 11.14, label: 'PRIMARY PRESSURE below 1615 psi' },
-                 { p: 'spray_flow_pct', op: '~', v: 50, tol: 5, label: 'PZR SPRAY at 50 %' }],
-          hl: ['Pressurizer Spray (PZR)', 'Pressurizer Heaters (PZR)'], hl_watch: ['Primary Pressure'] },
+          /* THREE ROWS, IN THE ORDER THE PLAYER ACTS (#741 lettered substeps). The heater lamp is
+           * first because the heaters go off first; the spray carries the step's SECOND command
+           * and its own state; the pressure row is the consequence and carries no `ask`, because
+           * a row reading "6c. Press PRIMARY PRESSURE below 1615 psi" would be an instruction the
+           * player cannot follow. */
+          accs: [{ p: 'heater_auto', op: '<', v: 1,
+                   ask: 'Press OFF under HEATER.', label: 'OFF lit under HEATER' },
+                 { cmd: { action: 'set_spray', open: true, pct: 50 },
+                   p: 'spray_flow_pct', op: '~', v: 50, tol: 5,
+                   ask: 'Press MANUAL under SPRAY and set its box to 50 %.', label: 'PZR SPRAY at 50 %' },
+                 { p: 'pressure_mpa', op: '<', v: 11.14, label: 'PRIMARY PRESSURE below 1615 psi' }],
+          hl: ['Pressurizer Heaters (PZR)', 'Pressurizer Spray (PZR)'], hl_watch: ['Primary Pressure'] },
         { text: 'Close the accumulator valve: click the valve symbol in the green ring while PRIMARY PRESSURE is 1615 to 665 psi.',
           note: 'The symbol sits above and right of the ACCUMULATORS tile, beside ECCS FLOW. At 50 % spray the window is about 5 plant-minutes wide.',
           why: 'The same window as the heatup, in reverse. Above 1615 psi the valve has no power; below 665 psi the nitrogen in the tanks pushes their water into the plant. Close it in between and the tanks stay full for the next heatup.',

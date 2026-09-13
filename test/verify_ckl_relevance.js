@@ -523,6 +523,115 @@ function sig(rows) {
                      : (si.bad.length ? si.bad.length + ' offending line(s): ' + si.bad.join(' | ').slice(0, 200)
                                       : 'clean over ' + si.len + ' chars' + (si.hasBanner ? ', precondition banner drawn' : ', NO banner — fixture may have stopped covering the banner path')));
 
+    /* ---- 6. THE LETTERED SUBSTEP ROWS, ON THE RENDERED PANEL (#741) --------------------
+     * *(OWNER RULING, 2026-09-13: "1:A, 2:A, 3:a now." — option A being: extend the browser gate
+     * to assert the rows actually draw.)*
+     *
+     * THIS WAS THE ONE PIECE OF NEW PLAYER-FACING UI WITH NOTHING BEHIND IT. #741 shipped the
+     * prefixes and the two-line row asserted only on the AUTHORING side; nothing read the panel.
+     *
+     * WHY THE OBVIOUS ROUTE DOES NOT WORK, so the next person does not spend the afternoon I did.
+     * Two attempts at driving a real leg deep enough to reach a multi-row step both failed:
+     *   - NO LEG HAS ONE EARLY. Measured on all seven pwr2 legs: every first step draws zero or
+     *     one row, so the panel at load never exercises this.
+     *   - PRESSING CONTINUE IS NOT DRIVING. Continue lights only when the step's acceptance is
+     *     MET, and those acceptances want the plant operated (load set, rods pulled). A loop that
+     *     only clicks Continue stalls on step 2 for ever.
+     *   - and Playwright's default 30 s click timeout turns each miss in such a loop into half a
+     *     minute, which is what made the second attempt look like a hang rather than a stall.
+     *
+     * SO THE FIXTURE IS A SYNTHETIC LEG, pushed into the live pool before it is started — the
+     * idiom `run_checklist.js` already uses for `zz_pause_probe`. The subject here is the
+     * RENDERER, not the content: what has to be true is that `renderChecklist` honours `hidden`,
+     * draws one row per visible entry with a letter off the STEP's number, carries each row's own
+     * met state, and draws the `ask` above its done-when. A hand-built step exercises every one of
+     * those in a single paint, on the first step of the leg, deterministically.
+     *
+     * IT READS THE RENDERED DOM, never a hook that recomputes a row — the trap that let a single
+     * production line be deleted elsewhere in this repo with every check still green. */
+    await (async function () {
+      async function paint(mutate) {
+        await page.goto(url, { waitUntil: 'load' });
+        await page.waitForTimeout(1200);
+        await page.evaluate(function (mode) {
+          var P = window.RD.MANUAL_PROCEDURES.pwr2;
+          P = P.filter(function (x) { return x.id !== 'zz_row_probe'; });
+          window.RD.MANUAL_PROCEDURES.pwr2 = P;
+          /* met-at-boot / hidden / unmet-with-ask / unmet-plain — one of each shape the
+           * renderer branches on. `power_pct > -1` is true on any plant; `< -1` never is. */
+          var accs = [
+            { p: 'power_pct', op: '>', v: -1, label: 'This one is already met' },
+            { cmd: { action: 'set_spray', open: true, pct: 50 }, label: 'Hidden twin', hidden: true },
+            { p: 'power_pct', op: '<', v: -1, ask: 'Do the first thing.', label: 'The first done-when' },
+            { p: 'power_pct', op: '<', v: -1, label: 'The second done-when' }
+          ];
+          if (mode === 'unhide') delete accs[1].hidden;
+          if (mode === 'single') accs = [accs[0]];
+          if (mode === 'noask') delete accs[2].ask;
+          P.push({ id: 'zz_row_probe', category: 'control', manual_ref: 'ZZ-01',
+                   title: 'Row probe', purpose: 'Render fixture.', from: 'hot_full_power',
+                   steps: [{ text: 'A step with several rows.', why: 'Fixture.',
+                             control: '(observe)', accs: accs }] });
+        }, mutate);
+        await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
+        await page.waitForTimeout(200);
+        await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+        await page.waitForTimeout(2600);
+        await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
+        await page.waitForTimeout(700);
+        await page.click('button[data-ckl-start="zz_row_probe"]', { timeout: 4000 });
+        await page.waitForTimeout(2200);
+        return page.evaluate(function () {
+          var card = document.querySelector('.ckl-step.ckl-active');
+          if (!card) return null;
+          return [].map.call(card.querySelectorAll('.ckl-crit'), function (r) {
+            var n = r.querySelector('.ckl-crit-n'), when = r.querySelector('.ckl-crit-when');
+            return { tag: n ? n.textContent.trim() : null,
+                     when: when ? when.textContent.trim() : null,
+                     met: r.classList.contains('ckl-crit-met'),
+                     text: r.textContent.replace(/\s+/g, ' ').trim() };
+          });
+        });
+      }
+
+      var base = await paint(null);
+      ck('#741 render: one row per VISIBLE entry — the hidden twin is graded but not drawn',
+         !!base && base.length === 3 && !base.some(function (r) { return /Hidden twin/.test(r.text); }),
+         base ? base.length + ' rows: ' + base.map(function (r) { return JSON.stringify(r.text.slice(0, 28)); }).join(', ')
+              : 'the probe leg did not render');
+      ck('...lettered a/b/c off the STEP number, in order, counting visible rows not array slots',
+         !!base && base.length === 3 && base[0].tag === '1a' && base[1].tag === '1b' && base[2].tag === '1c',
+         base ? 'tags ' + JSON.stringify(base.map(function (r) { return r.tag; })) : 'no rows');
+      ck('...each row carries its OWN met state, not the step\'s',
+         !!base && base[0].met === true && base[1].met === false && base[2].met === false &&
+         /✓/.test(base[0].text) && /○/.test(base[1].text),
+         base ? 'met flags ' + JSON.stringify(base.map(function (r) { return r.met; })) : 'no rows');
+      ck('...and a row with an `ask` draws the instruction AND its done-when, two lines',
+         !!base && base[1].when === 'The first done-when' && /Do the first thing\./.test(base[1].text) &&
+         base[0].when === null && base[2].when === null,
+         base ? 'row 1b when=' + JSON.stringify(base[1].when) : 'no rows');
+
+      /* THREE FIXTURE VARIANTS, each against a different renderer branch: `hidden`, the
+       * `visN > 1` suppression, and the `ask` second line. They are titled VARIANT and not
+       * "red by injection" on purpose — they mutate the POOL, so they prove the renderer honours
+       * each branch, not that these checks can fail. THAT proof is against the PRODUCTION
+       * renderer and is recorded in run_all's BASELINES entry: deleting the prefix span reds 2,
+       * dropping the `if (en.hidden) continue` reds 4, forcing `ckl-crit-met` on reds 1. Rerun
+       * those three if you touch the loop in ui/app.js. */
+      var unhid = await paint('unhide');
+      ck('...VARIANT: un-hiding the twin draws a fourth row and re-letters to d',
+         !!unhid && unhid.length === 4 && unhid[3].tag === '1d',
+         unhid ? unhid.length + ' rows, tags ' + JSON.stringify(unhid.map(function (r) { return r.tag; })) : 'no rows');
+      var single = await paint('single');
+      ck('...VARIANT: a ONE-row step draws no letter at all (the visN > 1 suppression)',
+         !!single && single.length === 1 && single[0].tag === null,
+         single ? single.length + ' row, tag ' + JSON.stringify(single[0].tag) : 'no rows');
+      var noask = await paint('noask');
+      ck('...VARIANT: dropping the `ask` drops the second line and leaves the done-when',
+         !!noask && noask.length === 3 && noask[1].when === null && /The first done-when/.test(noask[1].text),
+         noask ? 'row 1b when=' + JSON.stringify(noask[1].when) + ', text ' + JSON.stringify(noask[1].text.slice(0, 40)) : 'no rows');
+    })();
+
   } catch (err) {
     ck('the gate ran to completion', false, String((err && err.message) || err).slice(0, 160));
   }

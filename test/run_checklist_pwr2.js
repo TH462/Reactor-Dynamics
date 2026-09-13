@@ -1509,14 +1509,25 @@ if (!only) {
     })();
 
     var cd = POOL.filter(function (p) { return p.id === 'pwr_cooldown'; })[0];
-    var spraySt = (cd ? cd.steps : []).filter(function (st) {
-      return st.cmd && st.cmd.action === 'set_spray' && st.cmd.pct != null && st.accs;
-    })[0];
-    var sprayEn = spraySt && spraySt.accs.filter(function (e) { return e.p === 'spray_flow_pct'; })[0];
+    /* THE COMMAND IS FOUND WHEREVER IT LIVES, on the step or on one of its entries (2026-09-13).
+     * It was looked up as `st.cmd.action === 'set_spray'`, which stopped finding it the moment
+     * the pressure-control handover merged and the spray command moved onto `accs[1].cmd`: the
+     * check went red reporting "NO spray_flow_pct acceptance on the set_spray step" while the
+     * acceptance sat right beside the command. The TIE was fine and the FINDER was too narrow —
+     * a merge is precisely when an authored command changes which object carries it. */
+    var sprayCmd = null, sprayEn = null;
+    (cd ? cd.steps : []).forEach(function (st) {
+      [st.cmd].concat((st.accs || []).map(function (e) { return e.cmd; })).forEach(function (c) {
+        if (c && c.action === 'set_spray' && c.pct != null && !sprayCmd) {
+          sprayCmd = c;
+          sprayEn = (st.accs || []).filter(function (e) { return e.p === 'spray_flow_pct'; })[0];
+        }
+      });
+    });
     ck('pwr_cooldown: the SPRAY acceptance grades the per cent the step\'s own command sends (#739)',
-       !!sprayEn && sprayEn.v === spraySt.cmd.pct,
-       sprayEn ? 'acceptance ' + sprayEn.v + ' % vs command ' + spraySt.cmd.pct + ' %'
-               : 'NO spray_flow_pct acceptance on the set_spray step');
+       !!sprayEn && !!sprayCmd && sprayEn.v === sprayCmd.pct,
+       sprayEn && sprayCmd ? 'acceptance ' + sprayEn.v + ' % vs command ' + sprayCmd.pct + ' %'
+               : 'NO spray_flow_pct acceptance beside a set_spray command');
 
     var hxEn = null, hxCmd = null;
     (cd ? cd.steps : []).forEach(function (st) {
