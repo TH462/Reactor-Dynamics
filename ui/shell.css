@@ -2607,24 +2607,58 @@ select.num-input { width: auto; }
 .mp-start { display: block; width: 100%; margin-top: 12px; padding: 10px; font-weight: 700; }
 
 /* ---- 1/M startup plot (draggable window — ui/panels/one_over_m.js) ---- */
+/* ONE FORM, FLOATING AND DRAGGABLE *(OWNER RULING, 2026-09-13: "let's make the card floating and
+   dragable like it was originally")*. This supersedes #724 item 7's docked layout, which lived for
+   one day in `.right-col` and before that (#660 item 13) in `.bottom-row`. Every `.oom-docked` rule
+   is deleted; nothing keys on a host any more.
+
+   WHAT THE OWNER WAS COMPLAINING ABOUT SURVIVES THE RULING, because the dock was only the means.
+   Item 7's other two sentences — "The 1/m plot is too small" and "make the predicted criticality
+   text large enough to read and obvious" — are answered here, and floating answers the first one
+   BETTER: the plotted-data rect measures 308x220 px floating against 321x160 docked, 68,000 px^2
+   against 51,000, because a floating window's height is its own rather than a share of somebody
+   else's column.
+
+   A GRID, NOT THE FLEX COLUMN THIS WAS, and for exactly one reason: the buttons go ABOVE the plot
+   (the owner, item 7) while the DOM order stays head, svg, foot, pred, msg, help. Grid areas move
+   the visual slot without touching one_over_m.js's markup — the same trick the retired dock used,
+   kept because the requirement it serves was not what got overruled. Rows are all `auto`: the svg
+   has `width: 100%` and no height, so its height follows the viewBox aspect and a longer readout
+   makes the WINDOW taller instead of the plot shorter. (That is why the dock needed a
+   ResizeObserver on the readout and this does not — see one_over_m.js.)
+
+   THE WIDTH IS CLAMPED AT EVERY WIDTH, not just narrow ones. `right: 340px; width: 356px` is a
+   position measured from a 1500 px control room, and it was latent for as long as narrow layouts
+   had a dock to fall back on: MEASURED at a 400 px viewport it put the window's left edge at
+   -296 px, most of it off the left of the screen. With the dock gone this is the only form there
+   is, so the guard is load-bearing everywhere. */
 .oom-win {
-  position: fixed; top: 90px; right: 340px; width: 356px; z-index: 250;
+  position: fixed; top: 90px; z-index: 250;
+  /* `right: 340px` alone is a position measured from a 1500px control room, and it was a
+     defect at every narrow width: MEASURED at a 400px viewport it put the window's left edge
+     at -296px, most of it off the screen with the plot unreachable. It was LATENT while
+     narrow layouts had a dock to fall back on and became live the moment they did not.
+     `max(12px, min(340px, 100vw - 380px))` keeps the 340px gutter wherever there is room for
+     it, pulls the window back toward the right edge when there is not, and never lets it
+     leave the viewport at all — 340px at 1500px and 1920px wide, 20px at 400px, 12px at
+     300px. One rule rather than a breakpoint, because a breakpoint is a claim about which
+     widths are narrow and this is arithmetic that holds at all of them. */
+  right: max(12px, min(340px, calc(100vw - 380px)));
+  width: min(356px, calc(100vw - 24px));
   background: var(--bg-elevated); border: 1px solid var(--border);
   border-radius: 8px; box-shadow: 0 12px 48px rgba(0,0,0,0.6);
   font-size: 12px; color: var(--text);
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "head" "foot" "svg" "pred" "msg" "help";
 }
-/* THE FLOATING WINDOW HAS TO FIT A NARROW WINDOW, because below 1201px the floating window is
-   the ONLY form (one_over_m.js placeWindow / DOCK_MIN_W). `right: 340px` + `width: 356px` is a
-   position measured from a 1500px-wide control room: MEASURED at a 400px viewport it put the
-   window's left edge at **-296px**, i.e. 296px off the left of the screen with the plot area
-   entirely unreachable. It was latent before #724 item 7 — the old dock target (`.bottom-row`)
-   exists at every width, so narrow layouts never took the floating branch — and reachable the
-   moment the narrow layouts started using it. Anchored LEFT here rather than centred with a
-   transform: makeDraggable writes inline `left`/`top`, and a translate would offset every drag
-   by half the window's width. */
-@media (max-width: 1200px) {
-  .oom-win { right: auto; left: 12px; top: 70px; width: min(356px, calc(100vw - 24px)); }
-}
+.oom-win[hidden] { display: none; }   /* the grid display above must not beat [hidden] */
+.oom-win > .oom-head { grid-area: head; }
+.oom-win > .oom-svg  { grid-area: svg; }
+.oom-win > .oom-foot { grid-area: foot; }
+.oom-win > .oom-pred { grid-area: pred; }
+.oom-win > .oom-msg  { grid-area: msg; }
+.oom-win > .oom-help { grid-area: help; }
+
 .oom-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 6px 10px; border-bottom: 1px solid var(--border);
@@ -2632,16 +2666,31 @@ select.num-input { width: auto; }
 }
 .oom-x { padding: 0 8px; line-height: 20px; }
 .oom-svg { display: block; width: 100%; background: var(--bg-plant); }
-.oom-foot { display: flex; gap: 8px; align-items: center; padding: 8px 10px 4px; }
-/* The floating window's readout. A BLOCK since #724 item 7 moved it out of the button bar — its
-   own line in the flex column here, its own grid row when docked (.oom-docked .oom-pred below).
-   Sized up and coloured `--caution` for the same reason as the docked one (the owner: "make the
-   predicted criticality text large enough to read and obvious") and in the same hue the plot
-   draws its critical marker in; 13px rather than 15 because this window is narrower than the
-   right-hand column and the string is the longest in the panel. */
+/* The button bar, ABOVE the plot (owner, #724 item 7 — the one part of that item the 2026-09-13
+   ruling leaves standing). Equal widths so it reads as one control group rather than three sizes,
+   and a rule under it separating the controls from the drawing. */
+.oom-foot {
+  display: flex; gap: 6px; align-items: center;
+  padding: 6px 10px; border-bottom: 1px solid var(--border);
+}
+.oom-foot .btn { flex: 1 1 0; min-width: 0; padding: 5px 4px; white-space: nowrap; }
+/* THE PREDICTION, LARGE AND OBVIOUS *(OWNER, #724 item 7: "make the predicted criticality text
+   large enough to read and obvious")*. That sentence is untouched by the 2026-09-13 ruling, which
+   moved the window and nothing else, so the readout keeps the size the dock gave it: 15 px, 600,
+   and in `--caution`, the SAME colour the plot draws its own critical marker and label in
+   (.oom-crit / .oom-critlab below), so the readout and the line on the plot read as one fact. It
+   was 11 px / 400 / --text-2 at the tail of the button bar — the smallest type in the panel, for
+   the one number the tool exists to produce.
+
+   IT WRAPS RATHER THAN OVERFLOWS. The string is the longest in this panel
+   ("predicted criticality ~ step 1234 (12.3% withdrawn)") and #712 is open precisely because no
+   gate stops a readout overflowing its box. `white-space: normal` on an auto-height grid row means
+   a wider font stack (CI's DejaVu is ~15 % wider than Segoe UI on this kind of label) costs a
+   second line, which the row absorbs — it cannot push text out of the panel. */
 .oom-pred {
-  color: var(--caution); font-size: 13px; font-weight: 600; line-height: 1.3;
-  padding: 2px 10px 4px; white-space: normal;
+  padding: 7px 10px 3px;
+  font-size: 15px; font-weight: 600; line-height: 1.25; text-align: center;
+  color: var(--caution); white-space: normal;
 }
 .oom-pred:empty { display: none; }
 .oom-msg { min-height: 16px; padding: 0 10px 8px; color: var(--muted); font-size: 11px; }
@@ -2889,85 +2938,9 @@ select.num-input { width: auto; }
 .wt-continue:not(.ready):hover { background: transparent; }
 .wt-rewind[disabled] { opacity: 0.45; cursor: default; }
 
-/* ============================ the 1/M plot, docked at the foot of the right-hand column
-   *(OWNER, #724 item 7, verbatim: "The 1/m plot is too small where it is next to the alarm
-   panel. lets put it below the right hand column in the corner. I know its far from the rod
-   control buttons but theres not many good places to put it where it wont obsure other things.
-   We can put the plot buttons above the plot. make the predicted criticality text large enough
-   to read and obvious.")*  #713.
-
-   `.oom-win` WITHOUT `.oom-docked` is still the floating window — RBMK/BWR and the non-synoptic
-   shell never match the dock selector in one_over_m.js and are untouched by everything here.
-
-   WHY THE MOVE ENDS AN ARGUMENT RATHER THAN CONTINUING ONE. Docked in the bottom row (#660 item
-   13) the plot was a third panel in a row sized for two, and three passes of #713 spent
-   themselves trading width between the plot, the strip chart and the alarm panel — 300 -> 380 ->
-   420 -> 370 px — with pass 3 giving 50 px back because the alarm panel's content floor is 34 px
-   higher under CI's fonts than under Windows'. In this column the plot is not competing with
-   anything for WIDTH: it gets the column, which is wider than anything the row could ever have
-   spared it.
-
-   IT COSTS HEIGHT IN #toolsCard, and only while it is open. `[hidden]` removes it from the flex
-   flow entirely, so the walkthrough panel has the full column whenever the tool is closed — which
-   is every leg except the approach to criticality.
-
-   THE BUTTONS ARE A ROW ABOVE THE PLOT, per the owner, superseding #713's side-mounted column
-   (that was my proposal; his instruction outranks it). One consequence worth stating because it
-   is the opposite of the bottom-row dock's: the bar now costs HEIGHT and costs no width — see
-   syncViewBox() in ui/panels/one_over_m.js, which had to move the subtraction between axes.
-
-   THE FLEX-BASIS IS A clamp(), not a fixed height. 32vh tracks the window, and the bounds are the
-   two ways this goes wrong: below ~220 px the plot area stops being worth having (the x-axis
-   label alone is 120 units wide), and above ~320 px it starts eating the walkthrough card, which
-   is the panel the player is reading WHILE using this one. */
-.oom-win.oom-docked {
-  position: static; order: 9;
-  flex: 0 0 clamp(220px, 32vh, 320px);
-  min-width: 0; min-height: 0; height: auto;
-  display: grid; overflow: hidden; z-index: auto;
-  box-shadow: none; border-radius: var(--radius);
-  grid-template-columns: minmax(0, 1fr);
-  /* minmax(0, 1fr) on the svg row, NOT a bare 1fr: a bare 1fr has an AUTO minimum, so the row
-     refuses to shrink below its content and the dock overflows itself with the bottom of the
-     plot behind a scrollbar. That was #713 pass 2's bug in the old grid and the same trap
-     applies here. */
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto auto;
-  grid-template-areas: "head" "foot" "svg" "pred" "msg" "help";
-}
-.oom-docked .oom-head { cursor: default; grid-area: head; }
-/* The button bar: a ROW above the plot (owner, #724 item 7). Equal-width buttons so the bar
-   reads as one control group rather than three sizes, and `nowrap` because at three buttons
-   across a 360 px column there is room for the labels — the wrapping the side column needed was
-   a symptom of its 94 px width. */
-.oom-docked .oom-foot {
-  grid-area: foot; flex-direction: row; align-items: center;
-  padding: 6px 8px 2px; gap: 6px; border-bottom: 1px solid var(--border);
-}
-.oom-docked .oom-foot .btn { flex: 1 1 0; min-width: 0; padding: 5px 4px; white-space: nowrap; }
-.oom-docked .oom-svg { grid-area: svg; min-width: 0; min-height: 0; width: 100%; height: 100%; }
-/* THE PREDICTION, LARGE AND OBVIOUS *(the owner's third sentence: "make the predicted criticality
-   text large enough to read and obvious")*. It was an 11 px span at the tail of the button bar —
-   the smallest type in the panel, for the one number the tool exists to produce. 15 px, 600, and
-   in `--caution`, which is the SAME colour the plot draws its own critical marker and label in
-   (.oom-crit / .oom-critlab below), so the readout and the line on the plot are visibly one fact.
-
-   IT WRAPS RATHER THAN OVERFLOWS. The string is the longest in this panel
-   ("predicted criticality ~ step 1234 (12.3% withdrawn)") and #712 is open precisely because no
-   gate stops a readout overflowing its box. `white-space: normal` on an auto-height grid row
-   means a wider font stack (CI's DejaVu is ~15% wider than Segoe UI on this kind of label) costs
-   a second line, which the row absorbs — it cannot push text out of the panel. */
-.oom-docked .oom-pred {
-  grid-area: pred; width: auto; padding: 7px 10px 3px;
-  font-size: 15px; font-weight: 600; line-height: 1.25; text-align: center;
-  color: var(--caution); white-space: normal;
-}
-.oom-docked .oom-pred:empty { display: none; }
-.oom-docked .oom-msg { grid-area: msg; }
-.oom-docked .oom-help { grid-area: help; overflow: auto; }
-.oom-win.oom-docked[hidden] { display: none; }   /* the grid display above must not beat [hidden] */
-/* NO DOCK BELOW 1201px — one_over_m.js's placeWindow() keeps the FLOATING window there, and
-   these rules are never reached in that band. The reason is measured, not stylistic: at
-   1100x900 the stacked simulator column is a 260px grid track carrying the 159px time controls
-   plus #toolsCard, and a 200px dock left #toolsCard measuring 2px — the walkthrough card
-   reduced to a hairline by the panel opened to help work that walkthrough. `DOCK_MIN_W` in
-   one_over_m.js names the same 1201px boundary; change one, change the other. */
+/* (The 1/M plot's DOCK lived here and is gone — OWNER RULING, 2026-09-13: "let's make the card
+   floating and dragable like it was originally". It docked into `.right-col` for one day under
+   #724 item 7, and into `.bottom-row` before that under #660 item 13. Everything the dock was
+   carrying that the ruling did NOT overrule — the buttons above the plot, the 15 px prediction
+   readout — moved up into the base `.oom-win` rules; `git log ui/shell.css` has the rest.
+   Do not re-add a dock without a newer ruling than this one. #713.) */

@@ -30,11 +30,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-### Changed (the 1/M startup plot moves to the foot of the right-hand column — #713 / #724 item 7)
+### Changed (the 1/M startup plot is a bigger, floating, draggable window — #713 / #724 item 7)
 
-*(OWNER, #724 item 7: "The 1/m plot is too small where it is next to the alarm panel. lets put it
-below the right hand column in the corner… We can put the plot buttons above the plot. make the
-predicted criticality text large enough to read and obvious.")*
+*(OWNER RULING, 2026-09-13: "let's make the card floating and dragable like it was originally",
+settling #724 item 7: "The 1/m plot is too small where it is next to the alarm panel… We can put
+the plot buttons above the plot. make the predicted criticality text large enough to read and
+obvious.")*
+
+**It is a floating window again, and that is also the biggest it has ever been.** The plotted-data
+rectangle measures **308 × 220 px** against **242 × 155 px** before any of this work — **+80 % of
+area** — because a floating window's height is its own rather than a share of a column somebody
+else is using. Buttons are a row **above** the plot and the predicted-criticality readout is
+**15 px, weight 600**, in the same amber the plot draws its critical marker in.
+
+**The strip chart and alarm panel keep the whole bottom row.** The alarm panel measures **652 px**
+at a 1500 px viewport, against 392 px while the plot was docked beside it.
 
 The plot leaves `.bottom-row`, which ends the three-way width argument #713 passes 1–3 were having
 (300 → 380 → 420 → 370 px, with pass 3 handing 50 px back because the alarm panel's two-column

@@ -4244,7 +4244,7 @@ async function testObservationStepAckButton(page) {
   return log.join('\n') + '\n';
 }
 
-/* #713/#712: the 1/M plot's geometry in its dock — the letterbox, the axis gutters, and #712's
+/* #713/#712: the 1/M plot's geometry — the letterbox, the axis gutters, and #712's
  * general risk that this repo has no gate for, a caption or readout overflowing its own box. The
  * panel's longest string is the prediction readout, so that is the one to stress.
  *
@@ -4264,7 +4264,7 @@ async function testObservationStepAckButton(page) {
  *
  * `hot_zero_power`, not `hot_full_power`: above ~1e5 cps the source range secures itself and the
  * panel refuses to plot (#641), so the old initial condition could never have produced a point. */
-async function testOneOverMDockedGeometry(page) {
+async function testOneOverMGeometry(page) {
   var log = [];
   var url = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_zero_power&dev=1';
   await page.goto(url, { waitUntil: 'networkidle', timeout: 90000 });
@@ -4306,7 +4306,10 @@ async function testOneOverMDockedGeometry(page) {
     });
     var svgEl = document.querySelector('.oom-svg');
     return {
-      docked: !!document.querySelector('.oom-win.oom-docked'),
+      floating: !document.querySelector('.oom-win.oom-docked') &&
+                (document.getElementById('oomWin') || {}).parentNode === document.body &&
+                getComputedStyle(document.getElementById('oomWin')).position === 'fixed',
+      headCursor: getComputedStyle(document.querySelector('.oom-head')).cursor,
       svg: rect('.oom-svg'),
       /* The plotted-DATA rectangle, in CSS px: .oom-frame is the rect render() draws at
        * (L, T, W-L-R, H-T-B), so measuring it measures the letterbox and the axis gutters
@@ -4316,13 +4319,30 @@ async function testOneOverMDockedGeometry(page) {
       pred: overflowOf('#oomPred'),
       predText: (document.querySelector('#oomPred') || {}).textContent || '',
       predRect: rect('#oomPred'),
-      win: overflowOf('.oom-win.oom-docked'),
+      win: overflowOf('.oom-win'),
       btnOverflow: btnOverflow,
     };
   });
 
   if (geo.error) throw new Error('#713: ' + geo.error);
-  if (!geo.docked) throw new Error('#713: the 1/M panel did not dock into the right-hand column (#724 item 7 moved it there from the bottom row)');
+  /* FLOATING AND DRAGGABLE, ALWAYS *(OWNER RULING, 2026-09-13: "let's make the card floating and
+   * dragable like it was originally")*. This assertion used to require the OPPOSITE — that the
+   * panel had docked — under #724 item 7, and before that #660 item 13 docked it into the bottom
+   * row. Both are superseded. It is asserted three ways because "not docked" alone would pass on a
+   * panel that had simply failed to mount: parented to <body>, position:fixed, and a title bar
+   * whose cursor still says `move`. THE CURSOR IS THE HALF THE OWNER NAMED — "dragable" — and it is
+   * the half a re-dock would silently take away, because the dock's own rule set
+   * `.oom-head { cursor: default }` and its pointerdown handler returned early. */
+  if (!geo.floating) {
+    throw new Error('#713: the 1/M panel is not a floating window — it must be parented to <body> ' +
+      'with position:fixed and no dock class (OWNER RULING 2026-09-13: "let\'s make the card ' +
+      'floating and dragable like it was originally"). Do not re-add a dock without a newer ruling.');
+  }
+  if (geo.headCursor !== 'move') {
+    throw new Error('#713: the 1/M title bar reads cursor:' + geo.headCursor + ', not `move` — the ' +
+      'window is not advertising that it can be dragged, which is the half of the ruling the owner ' +
+      'named explicitly. The retired dock set `cursor: default` here; check nothing has re-added it.');
+  }
 
   /* THE PRECONDITION, AND IT IS THE POINT (#724 quality pass, finding 1). Every check below reads
    * a panel whose readout is supposed to be the longest string it draws. When the readout is
@@ -4339,18 +4359,18 @@ async function testOneOverMDockedGeometry(page) {
       'that the plot button was accepted; do NOT satisfy this by writing #oomPred directly, which ' +
       'is the no-op this assertion exists to prevent (render() rewrites it from the live fit).');
   }
-  log.push('oom-svg (docked) box: ' + Math.round(geo.svg.w) + 'x' + Math.round(geo.svg.h) +
+  log.push('oom-svg box: ' + Math.round(geo.svg.w) + 'x' + Math.round(geo.svg.h) +
            ', readout "' + geo.predText + '" ' + Math.round(geo.predRect.h) + 'px tall');
 
   geo.btnOverflow.forEach(function (b) {
-    if (b.over) throw new Error('#713/#712: button "' + b.text + '" overflows its box in the docked 1/M panel');
+    if (b.over) throw new Error('#713/#712: button "' + b.text + '" overflows its box in the 1/M panel');
   });
   if (geo.pred && geo.pred.scrollW > geo.pred.clientW + 1) {
     throw new Error('#713/#712: the prediction readout overflows its box horizontally: scrollWidth ' +
       geo.pred.scrollW + ' > clientWidth ' + geo.pred.clientW);
   }
   if (geo.win && geo.win.scrollW > geo.win.clientW + 1) {
-    throw new Error('#713/#712: the docked 1/M panel overflows its own box horizontally: scrollWidth ' +
+    throw new Error('#713/#712: the 1/M panel overflows its own box horizontally: scrollWidth ' +
       geo.win.scrollW + ' > clientWidth ' + geo.win.clientW);
   }
 
@@ -4358,15 +4378,16 @@ async function testOneOverMDockedGeometry(page) {
   // ~141px before it (300px-wide dock, buttons in a footer below the svg). Set well below
   // the measurement so ordinary tuning doesn't retrip it.
   if (geo.svg.h < 160) {
-    throw new Error('#713: the docked 1/M plot is only ' + Math.round(geo.svg.h) + 'px tall at the default row ' +
+    throw new Error('#713: the 1/M plot is only ' + Math.round(geo.svg.h) + 'px tall ' +
       'height — expected >= 160px (measured 177px after #713; ~141px before it)');
   }
-  log.push('no overflow in the docked 1/M panel; plot height ' + Math.round(geo.svg.h) + 'px >= 160px floor');
+  log.push('no overflow in the 1/M panel; plot height ' + Math.round(geo.svg.h) + 'px >= 160px floor');
 
   /* PASS 2 (#713). Two things pass 1 left on the table, and one invariant each.
    *
-   * (a) THE LETTERBOX. The docked svg is stretched into a grid cell whose aspect ratio is the
-   * dock's and the row height's, and preserveAspectRatio then pads whatever the viewBox does
+   * (a) THE LETTERBOX. Kept, though the mechanism that caused it is retired: the DOCKED svg was
+   * stretched into a grid cell of the column's aspect, and preserveAspectRatio then padded whatever
+   * the viewBox did
    * not match: 33.2px of dead width at the default row height before this, and the waste SWAPS
    * AXIS as the operator drags (96.5px of dead HEIGHT at --bottomrow-h 350px). So the viewBox
    * now follows the cell (one_over_m.js syncViewBox) and the assertion is on the waste itself,
@@ -4378,7 +4399,7 @@ async function testOneOverMDockedGeometry(page) {
    * reported a clean pass over nothing. */
   var vb = (geo.viewBox || '').trim().split(/\s+/).map(Number);
   if (!geo.svg || vb.length !== 4 || !vb.every(isFinite)) {
-    throw new Error('#713 pass 2: the docked 1/M svg has no usable viewBox (' + geo.viewBox + ') — ' +
+    throw new Error('#713 pass 2: the 1/M svg has no usable viewBox (' + geo.viewBox + ') — ' +
       'the letterbox check cannot run, which is not the same as passing.');
   }
   if (!geo.frame || !(geo.frame.w > 0)) {
@@ -4389,7 +4410,7 @@ async function testOneOverMDockedGeometry(page) {
     var scale = Math.min(geo.svg.w / vb[2], geo.svg.h / vb[3]);
     var waste = { x: geo.svg.w - vb[2] * scale, y: geo.svg.h - vb[3] * scale };
     if (waste.x > 24 || waste.y > 24) {
-      throw new Error('#713 pass 2: the docked 1/M plot is letterboxed inside its own box — ' +
+      throw new Error('#713 pass 2: the 1/M plot is letterboxed inside its own box — ' +
         Math.round(waste.x) + 'px of dead width and ' + Math.round(waste.y) + 'px of dead height ' +
         '(svg box ' + Math.round(geo.svg.w) + 'x' + Math.round(geo.svg.h) + ', viewBox ' + geo.viewBox +
         '). The viewBox must follow the cell aspect; ceiling 24px, measured 0.2x0.0 after the fix ' +
@@ -4412,7 +4433,7 @@ async function testOneOverMDockedGeometry(page) {
    * without the SAME Linux-metrics alarm-panel measurement pass 3 did — that is the whole
    * reason it moved. */
   if (geo.frame.w < 220) {
-    throw new Error('#713 pass 3: the docked 1/M plot draws its data in only ' + Math.round(geo.frame.w) +
+    throw new Error('#713 pass 3: the 1/M plot draws its data in only ' + Math.round(geo.frame.w) +
       'px of width at the default row height — expected >= 220px (measured 243px after #713 pass 3; ' +
       '291px after pass 2; 212px after pass 1). Check the letterbox AND the L/R gutters in one_over_m.js, ' +
       'or ui/shell.css\'s .oom-win.oom-docked dock width if the alarm panel needs it back.');
@@ -4448,17 +4469,17 @@ async function testOneOverMDockedGeometry(page) {
   await page.goto(url + '&inject=large_loca&ff=300&run=1', { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
   await waitBoardLive(page, 20000);
-  /* RE-OPEN THE DOCK. The navigation resets it, and without it the alarm panel gets the 1/M
-   * dock's width too — measured 652px against the 392px it actually lives at, which is a check
-   * of a layout no player sees and the one this pass narrowed. */
-  await page.evaluate(function () { if (window.RD && RD.OneOverM) RD.OneOverM.open(); });
+  /* NO DOCK TO RE-OPEN ANY MORE, and the alarm panel is the better for it. This leg used to have
+   * to open the 1/M dock before measuring, because the dock took 370px out of this row and an
+   * alarm panel measured without it was 652px against the 392px a player actually got. The
+   * 2026-09-13 ruling made the plot a floating window, so it takes nothing from this row at any
+   * time and the panel measured here is the only width there is. */
   await page.waitForFunction(function () {
-    return document.querySelectorAll('.alarm-tile').length >= 8 &&
-      !!document.querySelector('.oom-win.oom-docked');
+    return document.querySelectorAll('.alarm-tile').length >= 8;
   }, { timeout: 20000, polling: 200 }).catch(function () { /* the throws below carry the state */ });
-  if (!(await page.evaluate(function () { return !!document.querySelector('.oom-win.oom-docked'); }))) {
-    throw new Error('#713 pass 2: the 1/M panel did not re-dock on the alarms-active leg — the alarm ' +
-      'panel width measured below is not the one the player gets.');
+  if (await page.evaluate(function () { return !!document.querySelector('.oom-win.oom-docked'); })) {
+    throw new Error('#713: something re-docked the 1/M panel — it is a floating window by owner ' +
+      'ruling (2026-09-13) and must never take width from the alarm row again.');
   }
 
   var al = await page.evaluate(function () {
@@ -4633,8 +4654,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'walkthrough-panel-chrome.log'), wcLog);
     var oaLog = await testObservationStepAckButton(page);
     fs.writeFileSync(path.join(SCRATCH, 'observation-step-ack-button.log'), oaLog);
-    var oomLog = await testOneOverMDockedGeometry(page);
-    fs.writeFileSync(path.join(SCRATCH, 'one-over-m-docked-geometry.log'), oomLog);
+    var oomLog = await testOneOverMGeometry(page);
+    fs.writeFileSync(path.join(SCRATCH, 'one-over-m-geometry.log'), oomLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {

@@ -29,6 +29,91 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-13-workbench-a (#713 — the 1/M dock is retired by ruling; the window that replaces it is bigger than the dock ever was)
+
+**The ruling** *(OWNER RULING, 2026-09-13: "let's make the card floating and dragable like it was
+originally")*. Presented with two options on the dock's height threshold, the owner took neither and
+retired the dock. `.oom-docked` is gone from `ui/shell.css`, and `dockTarget`, `placeWindow`,
+`DOCK_MIN_W`, `DOCK_MIN_H`, `syncViewBox`, `AR_MIN`/`AR_MAX` and the readout ResizeObserver are gone
+from `ui/panels/one_over_m.js`.
+
+**THE COMPLAINT AND THE MEANS ARE DIFFERENT THINGS, and only the means was overruled.** #724 item 7
+said three things: the plot is too small, put it in the corner of the right-hand column, and make
+the criticality text readable. The middle one was the instruction; the other two were the problem.
+So the buttons stay a ROW ABOVE the plot and the readout keeps 15 px / 600 / `--caution`. Getting
+this wrong in the other direction — reverting the panel wholesale to its pre-#713 form — would have
+handed back both complaints while satisfying the ruling to the letter.
+
+**FLOATING IS BIGGER THAN DOCKED, which was not obvious and is the number that settles it.**
+MEASURED, plotted-data rect (`.oom-frame`), the gate's own probe at its own 1500x950 viewport:
+
+| form | rect | area |
+|---|---|---|
+| bottom-row dock, before #713 | 242 x 155 px | 37,510 px^2 |
+| right-column dock (#724 item 7, one day) | 321 x 160 px | 51,360 px^2 |
+| **floating (this)** | **308 x 220 px** | **67,760 px^2** |
+
+**+80 % on where this started, and +32 % on the dock it replaces.** A docked panel's height is a
+share of somebody else's column; a floating one's height is its own. The lesson is worth more than
+the instance: three passes of #713 fought for width in a row that could not spare it, and the
+dimension that was actually free the whole time was HEIGHT, outside any column.
+
+**AND THE ALARM PANEL GETS ITS WIDTH BACK: 392 px -> 652 px** at 1500x950 (the gate's own
+measurement, 18 live alarms on a large LOCA). #713 passes 1-3 spent themselves trading that width
+away and pass 3 had to hand 50 px back because the panel's content floor is 412 px under CI's fonts
+against 377.7 px under Windows'. None of that argument exists any more.
+
+**THREE SIMPLIFICATIONS FELL OUT, and each is a piece of machinery that only existed to serve the
+dock.** Deleting them is the point, not a tidy-up:
+- **The adaptive viewBox.** W followed the docked cell's aspect so "meet" had nothing to letterbox.
+  A floating svg has `width: 100%` and no height, so its height follows the viewBox — nothing to
+  match, nothing to letterbox, W is a constant again.
+- **The readout ResizeObserver.** Docked, the svg sat between two `auto` grid rows, so every line
+  the prediction gained came OUT OF THE PLOT — at its worst 77 px of dead width, a fifth of the
+  plot, with no window event to hang a listener on. Floating, a longer readout makes the WINDOW
+  taller. The hazard is gone, so the mechanism goes with it.
+- **`placeWindow` / `dockTarget` / the two breakpoints.** `build()` appends to `document.body` once
+  and the window stays there.
+
+**WHAT REPLACED THE OBSERVER IS A GUARD FOR A DIFFERENT HAZARD, and it needed its own measurement.**
+A floating window keeps the position the player dragged it to, in viewport coordinates, and a
+viewport can shrink out from under it. First cut reused makeDraggable's own bound (keep 80 px on
+screen) and MEASURED: dragged to left 504 on a 1500 px screen, narrowed to 700 px, the window sat at
+504..860 with 160 px including a third of the plot off the right edge. **A resize is not a choice
+the way a drag is**, so the resize clamp is the stricter `innerWidth - width`: 344..700, fully
+visible. The two bounds are deliberately different and the comment says why.
+
+**THE POSITION RULE IS ARITHMETIC NOW, NOT A BREAKPOINT.** `right: 340px` is a position measured
+from a 1500 px control room and put the window's left edge at **-296 px** at a 400 px viewport — a
+defect that was LATENT only while narrow layouts had a dock to fall back on. A media query would
+have been a claim about which widths are narrow; `max(12px, min(340px, 100vw - 380px))` holds at all
+of them. MEASURED on-screen at 1920, 1500, 1280, 400 **and 300** px (where the window narrows to
+276 px and the plot rect is still 238 x 170, above the gate's 220 px floor).
+
+**DRAGGABILITY IS HALF THE RULING, so it is measured rather than assumed.** Dragged to 504,330 at
+1500x950 and still at 504,330 after: a synthetic `resize`, a REAL splitter drag on the board, board
+focus in, board focus out, and a checklist start. The `cursor: move` on the title bar is asserted by
+the gate too — the dock set `cursor: default` there and its pointerdown handler returned early, so a
+re-dock would take away exactly the half the owner named.
+
+**One defect retired by construction rather than by a fix.** The #724 quality pass found that board
+focus hid the docked plot (the ⛶ button hides `.right-col`, and the plot was IN it): open, press ⛶,
+0x0 with `hidden` still false, and the board's own 1/M button a silent no-op. A window parented to
+`document.body` cannot be hidden by a rule about a column. Re-measured: 356x339.9 and visible in
+board focus, and the board button reopens it there.
+
+**A GATE THAT ASSERTED THE OPPOSITE had to be flipped, not deleted.** `verify_e2e_ui` required the
+panel to have DOCKED. It now requires floating, and asserts it THREE ways — parented to `<body>`,
+`position: fixed`, and the title bar's `cursor: move` — because "not docked" alone would pass on a
+panel that had simply failed to mount.
+
+**HR11 FORMAT TRAP, cost one red.** `run_hardrules` counts every OWNER RULING in tracked markdown
+and wants the DATE inside the citation. `**RULED, 2026-09-13** *(OWNER RULING: "...")*` FAILS —
+the date is outside the window it reads from the token — while `*(OWNER RULING, 2026-09-13: "...")*`
+passes. Same words, same date, one comma's worth of placement. BASELINES 542 -> 543.
+
+---
+
 ## Session log — 2026-09-12-workbench-l (#724 items 7/8/9/12/14 — the 1/M plot leaves the bottom row, and three things that were invisible because they were conditional)
 
 **The order.** #724 is the owner's RC19 playtest, triaged by the develop lane across three trees;
@@ -73,7 +158,7 @@ All-points would have said 224-232.
 minutes.** The instruction was clear and the reasoning behind it was explicit and wrong, and the
 only thing that separated those was running the route.
 
-**RULED, 2026-09-13** *(OWNER RULING: "725 leave as is", on the measurement above and a
+**RULED** *(OWNER RULING, 2026-09-13: "725 leave as is" — on the measurement above and a
 recommendation to keep the trailing fit)*. `FIT_WINDOW` stays 3 and no code changed — the
 measurement was taken before anything was touched, which is why there was nothing to revert. The
 table, the true critical of step 208, the per-step slopes and the owner's own corroborating 216-step
