@@ -1295,6 +1295,14 @@ if (!only) {
       });
       return n;
     }
+    /* ⚠ THE PROBE MUST BE IN THE POOL FOR THE RESTORE HALF, and this was WRONG on the first
+     * attempt — `loadState` looks the procedure up by id in the pool it is handed and DROPS the
+     * checklist when it cannot find it. The "after a rewind it says nothing" check then passed
+     * for the wrong reason: there was no checklist left to say anything. The gate caught it (the
+     * old-save check reddened beside it, and `loadState` logged the drop), which is the whole
+     * argument for asserting BOTH directions rather than only the one you expect to pass.
+     * Same push/pop idiom as `__accs_probe__` in section 2c. */
+    RD.MANUAL_PROCEDURES.pwr2.push(PROBE);
     var cycle = [9, 9, 9, 20, 20, 9, 9, 9];
     var ilA = new RD.InstructorLayer(null);
     ilA.engineKey = 'pwr2';
@@ -1315,7 +1323,14 @@ if (!only) {
     ilC.engineKey = 'pwr2';
     ilC.loadState(oldSave, RD.MANUAL_PROCEDURES);
     ck('...and a save written before the field reads false — unchanged behaviour, not a migration break',
-       raisesOver(ilC, cycle, 200) === 1);
+       raisesOver(ilC, cycle, 200) === 1 && !!ilC.checklist,
+       ilC.checklist ? 'checklist restored, precondSaid ' + ilC.checklist.precondSaid
+                     : 'CHECKLIST WAS DROPPED — the probe is not in the pool');
+    /* and the restore half is only meaningful if the checklist SURVIVED the load */
+    ck('...both restores actually rebuilt the checklist (guards the wrong-reason pass above)',
+       !!ilB.checklist && !!ilC.checklist,
+       'B ' + !!ilB.checklist + ', C ' + !!ilC.checklist);
+    RD.MANUAL_PROCEDURES.pwr2.pop();
   })();
 }
 
