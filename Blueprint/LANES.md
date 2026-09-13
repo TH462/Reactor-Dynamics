@@ -316,6 +316,23 @@ removal. That verification is the whole reason this is in the record rather than
 machine still needs real module resolution in its own tree, so the setup above stands for that
 case with its teardown order. Scope the choice to how the run executes, not to which you read first.
 
+### `taskkill /F /IM node.exe` REACHES ALL THREE TREES
+
+Same shape as `worktree remove --force` following a junction: **a command that looks local and is
+not.** Killing by image name has no way to express "mine" — it takes every `node` on the machine,
+so a lane mid-aggregate dies silently and reports as a crashed runner in a diff that did not cause
+it. It happened on 2026-09-12 clearing a stray; no lane was running and nothing was lost, which is
+luck rather than design.
+
+**Match on the TREE PATH in the command line and kill by PID:**
+
+```
+powershell -c "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*RD_<task>*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
+```
+
+The same `Where-Object` form is how you *wait* for your own gate without polling a file — count the
+matches until they reach zero.
+
 **Four rules.**
 
 1. **A scratch worktree is NOT a lane.** No lane tag, no `status-wip-*`, and it is invisible to
