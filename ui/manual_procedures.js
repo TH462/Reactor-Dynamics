@@ -2086,7 +2086,12 @@
                   * nothing, it closes the open end. Checked against the untrimmed replay's own
                   * measured landings (569.7 / 575.8 / 579.0 / 578.8 degF): all four sit inside. */
                  { p: 'tavg_c', op: '~', v: 294.75, tol: 7.25, label: 'AVG COOLANT TEMPERATURE between 550 and 576 °F (the band is near 556)' }],
-          hl: ['Withdraw', 'Turbine Load'], hl_watch: ['Tavg'] },
+          /* + `Rod Speed — Normal` (#735, develop's item 5 sweep): the text says "at MED" and this
+           * is the leg's FIRST rod move. The player arrives from `pwr_startup` step 14, which says
+           * "Press SLOW", so the selector IS at SLOW and nothing before this step changes it —
+           * steps 1-3 touch boron and the turbine only. The press is genuinely required here, and
+           * only here: steps 5, 6 and 8 CONTINUE at the speed this step selects and get no ring. */
+          hl: ['Withdraw', 'Rod Speed — Normal', 'Turbine Load'], hl_watch: ['Tavg'] },
         { text: 'Hold WITHDRAW at MED about 32 steps, set LOAD to 50 MWe, then trim AVG COOLANT TEMPERATURE into its band.',
           note: 'The band is near 562 °F at this load.',
           why: 'Same order as the last stage: rods, then LOAD, then trim. Halfway up, xenon is starting to build in the fuel. Boron takes care of that over the coming hours; rods take care of the next few minutes.',
@@ -2115,7 +2120,10 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 90 }, label: 'Load target set to 90 MWe' },
                  { p: 'mwe_output', op: '>', v: 86, label: 'Generator at 90 MWe' },
                  { p: 'tavg_c', op: '~', v: 301.5, tol: 6, label: 'AVG COOLANT TEMPERATURE between 564 and 585 °F (the band is near 575)' }],
-          hl: ['Withdraw', 'Turbine Load'], hl_watch: ['Tavg'] },
+          /* + `Insert` (#735): this step's note carries a contingency — "If LOAD changes by itself,
+           * the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG
+           * COOLANT TEMPERATURE is back in its band" — and `hl` offered no INSERT target. */
+          hl: ['Withdraw', 'Insert', 'Turbine Load'], hl_watch: ['Tavg'] },
         { text: 'Hold WITHDRAW at MED about 9 steps, set LOAD to 100 MWe, then trim AVG COOLANT TEMPERATURE onto 578 °F.',
           why: 'A small pull, then the last 10 MWe of LOAD, then the trim. REACTOR POWER settles near 101 %. The control bank ends part-way out, because boron carried most of the reactivity the climb cost.',
           control: 'Control Bank', target: 'OUTPUT 100 MWe; AVG COOLANT TEMPERATURE 578 °F',
@@ -2588,8 +2596,30 @@
           why: 'To the automatic protection, a cooldown looks exactly like a leak: pressure falling on a hot plant. Left on, the first cooling stage would trip the reactor and start the emergency injection pumps, flooding the plant with cold water you did not ask for. STOP on the ECCS card takes the injection pump out of standby as well.',
           control: 'Trip Blocks', target: 'PZR PRESS LO-LO and SI REACTOR TRIP lit on the TRIP BLOCKS panel; ECCS STOP lit',
           cmd: { action: 'set_trip_block', trip_id: 'lo_press', blocked: true }, hold: 30,
-          accs: [{ cmd: { action: 'set_trip_block', trip_id: 'lo_press', blocked: true }, label: 'Low-pressure trip blocked' },
-                 { cmd: { action: 'set_trip_block', trip_id: 'si_trip', blocked: true }, label: 'SI actuation blocked' }],
+          /* GRADED ON THE LINEUP, NOT ON THE PRESS (#731, 2026-09-13). These two were `cmd`-kind
+           * entries, so they asked "did a set_trip_block go past while this step was active".
+           * Develop measured the dangerous half of that on `pwr_startup` and fixed the sense;
+           * the other half stood here — a block placed EARLIER (the player opened TRIP BLOCKS
+           * on the way down, or a previous leg left it set) never satisfies the step, so the
+           * walkthrough stalls on a plant that is already correctly lined up.
+           *
+           * `lo_press_blocked` / `si_trip_blocked` read `rps_state.trip_blocks` live every tick
+           * (`instructor_layer` RPS_BLOCK_PARAMS), which is what a permissive-gated block needs:
+           * it AUTO-REINSTATES below P-10, and a latched command-sighting cannot see that.
+           *
+           * ⚠ THE `cmd` HALVES STAY. A first cut dropped them for pure `p` entries and broke the
+           * leg: the REPLAY issues `accs[].cmd`, so with them gone the SI block was never placed,
+           * safety injection actuated on the way down, the injection pumps then REFUSED the RHR
+           * align at step 10 (the #458 lineup rule) and the plant scrammed on overtemperature at
+           * step 12 — 10 failed checks from one deletion. An entry may carry BOTH, which is what
+           * step 4 next door already does: `_gradeAccs` grades the `p` half whatever else is on
+           * the entry, and `_accsCmdWatch` latches the `cmd` half. Both #731 halves are then
+           * covered — a block placed EARLIER satisfies through state, and an UNBLOCK cannot
+           * satisfy through the command because develop fixed `_cmdEvidence` to match the sense. */
+          accs: [{ cmd: { action: 'set_trip_block', trip_id: 'lo_press', blocked: true },
+                   p: 'lo_press_blocked', op: '>', v: 0, label: 'PZR PRESS LO-LO blocked' },
+                 { cmd: { action: 'set_trip_block', trip_id: 'si_trip', blocked: true },
+                   p: 'si_trip_blocked', op: '>', v: 0, label: 'SI REACTOR TRIP blocked' }],
           hl: ['Trip Blocks', 'ECCS'] },
         /* THE DUMP MUST BE IN PRESSURE MODE, AND THE CHAIN DOES NOT LEAVE IT THERE (layman playtest
          * 2026-09-07, #653 S2). `set_steam_dump auto` maps to 'pressure' only when the turbine is
@@ -3103,7 +3133,13 @@
             knew: 'Level and pressure were saying opposite things, and level was the gauge they trusted.',
             did: 'They took the automatic injection out of service before touching a valve.' },
           hold: 70,
-          accs: [{ cmd: { action: 'set_trip_block', trip_id: 'si_trip', blocked: true }, label: 'SI actuation blocked' }],
+          /* GRADED ON THE LINEUP TOO (#731, 2026-09-13) — the last command-graded trip block in
+           * the pool. The `cmd` half stays (the replay issues it, and dropping it is what broke
+           * `pwr_cooldown` for ten checks); the `p` half means a player who blocked SI before
+           * reaching this step is not left waiting on a press the plant no longer needs. Taken
+           * with develop's agreement — this leg is unowned in the #724 split. */
+          accs: [{ cmd: { action: 'set_trip_block', trip_id: 'si_trip', blocked: true },
+                   p: 'si_trip_blocked', op: '>', v: 0, label: 'SI actuation blocked' }],
           overtaken: { p: 'pressure_mpa', op: '>', v: 13.596,   /* 1972 psi exactly — U2: the
            * same figure the step text, the note and the cooldown leg's own block step all use */
             label: 'too late to block: PRIMARY PRESSURE is back above 1972 psi',

@@ -185,7 +185,7 @@ Verify the unit is correctly lined up in **Mode 3, Hot Standby** before any appr
 | 6 | Confirm control bank fully inserted | Rod control | Position at bottom |
 | 7 | **Confirm shutdown bank parked withdrawn.** It should already be out — **PWR-N01 step 2a** withdrew it during the heatup. If it is **in** (you arrived here by trip rather than by heatup, and the trip dropped it), verify shutdown margin and withdraw it **now**, before any control-bank motion. It is worth **3676 pcm** and PWR-N03 cannot reach criticality with it inserted | Shutdown bank | Fully out, 627 / 627 |
 | 8 | **Sample boron and record it** — there is no live meter, and the number depends on how you reached Mode 3. Two normal arrivals: **~857 ppm** from a **PWR-N01** heatup (cold-shutdown boron, undiluted), **~705 ppm** on a plant already lined up at Hot Standby | CHEM SAMPLE | Result logged; it is the **E** input to the ECC (**09 §7.5.2**) |
-| 9 | Confirm Source Range energized and counting | SR | SR On; hundreds of cps class |
+| 9 | Confirm Source Range energized and counting | SR | SR On; hundreds of counts per second |
 | 10 | Confirm Intermediate Range available for handoff | IR | IR on scale or ready as power rises |
 | 11 | Confirm SG heat sink | SG level | ~65 %; not LO-LO |
 | 12 | Confirm turbine off line / 0 MWe | Turbine | Disconnected or zero load |
@@ -257,7 +257,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 | Step | Action | Control | Acceptance |
 |------|--------|---------|------------|
 | 1 | Confirm Mode 3: subcritical, Tavg ≈ 546.8 °F (286 °C), P ≈ 2235 psi (15.41 MPa), RCPs on | (observe) | ρ < 0; Mode 3 |
-| 2 | Confirm SR counting; IR ready | NIS | SR > ~100 cps |
+| 2 | Confirm SR counting; IR ready | NIS | SR > ~1.0e2 (100 counts per second) |
 | 3 | Engage Feed AUTO at ~65 % if not already | Feed Pumps | AUTO engaged |
 | 4 | Capture 1/M baseline (plot point 1) **before** any rod motion | 1/M Plot | Baseline logged |
 | 5 | Withdraw Control Bank in **decreasing** bursts; settle; plot after each (points 2–6) | Control Bank + 1/M | Count rate rising; prediction walks down |
@@ -275,11 +275,11 @@ rather than reading it as the plant's burst pattern.
 
 | Burst | Steps (Norm) | Settle to | Lands near | Role |
 |-------|--------------|-----------|-----------|------|
-| 1 | 94 | > 700 cps | 94 | First overestimate |
-| 2 | 63 | > 1,400 cps | 157 | Still late |
-| 3 | 31 | > 3,000 cps | 188 | Entering steep worth |
-| 4 | 14 | > 7,000 cps | 202 | Inside ~12 steps |
-| 5 | 9 | > 20,000 cps | 211 | Working prediction |
+| 1 | 94 | > 7.0e2 (700 counts per second) | 94 | First overestimate |
+| 2 | 63 | > 1.4e3 (1,400 counts per second) | 157 | Still late |
+| 3 | 31 | > 3.0e3 (3,000 counts per second) | 188 | Entering steep worth |
+| 4 | 14 | > 7.0e3 (7,000 counts per second) | 202 | Inside ~12 steps |
+| 5 | 9 | > 2.0e4 (20,000 counts per second) | 211 | Working prediction |
 | Creep | ~15 Slow | SUR positive, rods stopped | 226 | To critical, then a small excess for a gentle rise toward ~1 % |
 
 ### Outcome
