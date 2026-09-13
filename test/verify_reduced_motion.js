@@ -27,6 +27,13 @@
  * same element under `no-preference`, where it MUST animate. A one-sided version of this file would
  * have gone green on a stylesheet with the animations simply removed.
  *
+ * ⚠ READ THE RED, NOT THE COUNT. Four separate times in this cycle an injection meant to prove a
+ * check reported ZERO reds because the injection itself had missed — it patched a comment instead
+ * of the list, named an anchor a refactor had moved, or settled a plant above the permissive so the
+ * precondition never held. AN INJECTION THAT DOES NOT LAND IS INDISTINGUISHABLE FROM A ROBUST
+ * CHECK: both print "0 failed". Always read WHICH check went red and confirm it is the one the
+ * injection was aimed at.
+ *
  * Run: node test/verify_reduced_motion.js
  */
 'use strict';
@@ -197,7 +204,19 @@ function probeAll() {
       : Object.keys(sig).length + ' distinct shapes for ' + keys.length + ' competing signals (' +
         HUE_ONLY_BY_DESIGN.length + ' value/retired signals excluded by design, see above)');
 
-  /* DISTINCTNESS IS NOT ENOUGH, AND THE FIRST VERSION OF THIS FILE ONLY ASSERTED DISTINCTNESS.
+  /* ⚠ PAIRWISE DISTINCTNESS DOES NOT CARRY PRESENCE — HARD RULE 10 IN ONE PARAGRAPH, and the first
+   * version of this file got it wrong. The claim being made is "the fallback is not hue-only". A
+   * check that asserts the signals' geometry tuples are all DIFFERENT does not establish that,
+   * because a signal whose geometry is DELETED still has a unique tuple as long as the others
+   * differ. So the check looked like it proved the claim and proved nothing of the kind.
+   *
+   * It survived its own injections because all four of them removed a WHOLE override, animation
+   * included — which is not what a real future edit looks like. A real edit trims an outline and
+   * leaves the `animation: none`. That case was never probed, and each of the five signals could
+   * have reverted to hue-only with this runner green. THE PROPERTY ASSERTED WAS NOT THE PROPERTY
+   * THE DEFECT VIOLATES.
+   *
+   * DISTINCTNESS IS NOT ENOUGH, AND THE FIRST VERSION OF THIS FILE ONLY ASSERTED DISTINCTNESS.
    * The claim is "the fallback is not hue-only". Pairwise uniqueness does not carry it: a signal
    * whose geometry is DELETED still has a unique tuple as long as the others differ, so any one
    * signal could silently revert to hue-only with this gate green. MEASURED (#740 quality pass):
@@ -265,50 +284,12 @@ function probeAll() {
   ck('every keyframe the board names still EXISTS in the CSSOM (a named animation with no keyframe is silent)',
     kf.length === 0, kf.length ? 'MISSING: ' + kf.join(', ') : '6 keyframes present');
 
-  /* THE STYLESHEETS PARSE — and this is here because of what this very change shipped.
-   *
-   * A729beac restored `@keyframes bdScramPulse` with ONE EXTRA `}`. A stray top-level brace is not
-   * skipped: per CSS error recovery it opens a qualified rule whose prelude runs to the next `{`,
-   * so it SWALLOWS THE FOLLOWING RULE. The victim was `.bd-num-frame`, and MEASURED on the live
-   * board: 11 number-input tiles lost `display:flex`, their border and their radius, and the input
-   * rendered 169.6 px wide inside an 80.8 px frame — overhanging the tile and painting over the
-   * neighbouring control. Those are the setpoint boxes with two filed issues about being unusable
-   * (#605, #615).
-   *
-   * EVERY GATE IN THE REPO WAS GREEN ON IT, this runner included. The lesson the commit filed was
-   * "rules that must win go last"; the lesson available was "nobody parsed the file after editing
-   * it". Comparing the source's own top-level rule count against the CSSOM's catches the whole
-   * class — a swallowed rule, an unclosed block, a stray brace — for two seconds. */
-  var sheetCounts = await pMotion.evaluate(function () {
-    var out = {};
-    for (var i = 0; i < document.styleSheets.length; i++) {
-      var sh = document.styleSheets[i], rules;
-      try { rules = sh.cssRules; } catch (e) { continue; }
-      var href = (sh.href || '').split('/').pop();
-      if (href) out[href] = rules.length;
-    }
-    return out;
-  });
-  /* Count top-level rules in the SOURCE: strip comments and strings, then track brace depth. */
-  function sourceRuleCount(file) {
-    var t = fs.readFileSync(path.join(ROOT, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-    var depth = 0, n = 0, stray = 0;
-    for (var i = 0; i < t.length; i++) {
-      var ch = t[i];
-      if (ch === '"' || ch === "'") { var q = ch; i++; while (i < t.length && t[i] !== q) { if (t[i] === '\\') i++; i++; } continue; }
-      if (ch === '{') depth++;
-      else if (ch === '}') { depth--; if (depth === 0) n++; else if (depth < 0) { stray++; depth = 0; } }
-    }
-    return { rules: n, stray: stray, unclosed: depth };
-  }
-  [['ui/shell.css', 'shell.css'], ['ui/diagram/board/pwr_board.css', 'pwr_board.css']].forEach(function (pair) {
-    var src = sourceRuleCount(pair[0]);
-    var dom = sheetCounts[pair[1]];
-    ck('the stylesheet PARSES — ' + pair[1] + ': every top-level rule the source declares reaches the CSSOM',
-      src.stray === 0 && src.unclosed === 0 && dom === src.rules,
-      'source ' + src.rules + ' rules (stray } ' + src.stray + ', unclosed ' + src.unclosed +
-      ') vs CSSOM ' + dom);
-  });
+  /* ⚰ THE STYLESHEET PARSE CHECK WAS HERE AND HAS MOVED to `test/verify_stylesheets.js`.
+   * It caught a stray `}` that this change itself shipped — one that silently swallowed the next
+   * rule and broke eleven number-input tiles on the live board with every gate in the repo green —
+   * but it is a GENERAL stylesheet invariant and has nothing to do with reduced motion. Left here,
+   * the next person to reorganise this runner would have deleted the repo's only parse check
+   * without knowing what it was. Do not re-add it here. */
 
   var armedMotion = await scramArmed(pMotion);
   var armedReduce = await scramArmed(pReduce);

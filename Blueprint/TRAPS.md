@@ -525,3 +525,28 @@ budget stops the loop and credits only what it stepped. What the bullet said, ve
   the merged tree's own gate output** — which two lanes each hit once on the same day. Hard Rule 12
   says *step the plant and quote the number*; a number you computed from two other numbers has not
   been stepped. **If you cannot name the single run that produced a figure, do not publish it.**
+
+- **READ THE RED, NOT THE COUNT — an injection that does not land is indistinguishable from a robust
+  check.** Both print `0 failed`. FOUR TIMES IN ONE CYCLE (2026-09-12/13) an injection meant to prove
+  a check reported zero reds because the INJECTION had missed: it patched a comment instead of the
+  list it meant to edit; it named a source anchor a refactor had moved (`run_pwr2_board` said
+  `ANCHOR MISS` and failed the gate, which is the only reason that one was visible); it settled a
+  plant ABOVE the permissive so the block under test never took hold and 3,000 ticks of zero proved
+  nothing; and it removed a WHOLE override when the defect it needed to simulate removes only part
+  of one. **Always name which check went red and confirm it is the one you aimed at.** The
+  neighbouring rule: an injection that removes more than a real edit would is not a proof — four
+  injections that each deleted an entire CSS override left a gate green against the geometry-only
+  deletion that a real future edit actually looks like.
+
+- **A STRAY `}` IN CSS DELETES THE NEXT RULE, SILENTLY, AND NO GATE HERE SAW IT UNTIL #740.** Error
+  recovery does not skip a top-level `}` — it opens a qualified rule whose prelude runs to the next
+  `{`, swallowing the rule that follows. MEASURED: one extra brace in `pwr_board.css` removed
+  `.bd-num-frame` (72 rules parsed instead of 73), eleven number-input tiles lost `display:flex` and
+  their border, and the `<input>` rendered **169.6 px wide inside an 80.8 px frame**, painting over
+  its neighbour. `verify_board_check`, `run_glow_stacking`, `run_style`, `run_hardrules` and the
+  accessibility runner shipped in the same commit were ALL green. `test/verify_stylesheets.js` now
+  compares each sheet's source top-level rule count against the CSSOM's. **The general lesson is
+  bigger than CSS: that commit spent ninety lines on a cascade trap it had caught, and shipped a
+  one-character error ten lines away. The lesson filed was "rules that must win go last"; the lesson
+  available was "nobody parsed the file after editing it."**
+
