@@ -29,6 +29,117 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-13-workbench-b (#738/#716 — the trip-block message: what counts as one, measured four ways before anything was built)
+
+**The ruling** *(OWNER RULING, 2026-09-13: "I don't want to add new UI elements to the main board.
+What if we flash the permissive button amber when there's a message and put the permissive messages
+and status inside the popup permissive card? When the user opens the card and then closes it the
+permissive card opening button stops flashing.")*. No new board real estate — that is a constraint,
+not a preference. Everything lives on the TRIP BLOCKS button and inside its card.
+
+### THE DESIGN QUESTION WAS DECIDED BY COUNTING, NOT BY ARGUING
+
+Four candidate rules for "a message". The coordinator's instruction was to measure incidence before
+choosing, and it is the right instruction: a rule that fires 30 times on a normal startup is the
+wrong rule whatever its logic says. Driven end to end across four legs (`inbox/738/incidence.js`):
+
+| candidate | startup | raise | lower | cooldown |
+|---|---|---|---|---|
+| (a) a block dropped with NO player command | 0 | 0 | 0 | 0 |
+| (b) blocked while its permissive is gone | 0 | 0 | 0 | 0 |
+| (c) the player released it | 0 | 0 | 0 | 0 |
+| **(d) a block became AVAILABLE** | **38** | 0 | 0 | **14** |
+
+**(d) is the one that looks reasonable and is not.** 38 flashes on a single startup, every one of
+them the plant wandering across a permissive — power at 7.68 / 7.87 / 8.04 %, pressure at 1976 /
+1974 / 1974 psia (13.62 / 13.61 / 13.61 MPa). Rebuilt alarm fatigue, from a rule nobody would have
+suspected without counting it.
+
+**(b) is unreachable by construction.** The engine revokes a block the instant its permissive is
+lost (the #295/#507 anti-defeat law), so the state cannot persist past the tick that clears it.
+
+**(a) ships, and the deviation case is what earns it** (`inbox/738/deviation.js`): zero on every
+authored route — which is what an exception annunciator SHOULD score on the happy path — and
+exactly 2 drops, one per row, on each real deviation. **AND IT CANNOT CHATTER**: parked ON the P-11
+boundary with a block that had actually taken hold, 1 drop and 0 regains over 3000 broadcasts,
+because the revoke law only ever CLEARS and never re-places. That is the structural difference from
+(d), which is an availability edge and chatters by nature.
+
+**(c) becomes standing status in the card and never flashes.** The player did it a second ago. But
+#738's harm is precisely a release the player made and then FORGOT, with the walkthrough step still
+green, so it must not vanish either.
+
+### THREE HOLLOW RESULTS, ALL MINE, ALL CAUGHT BEFORE THEY WERE REPORTED
+
+This is the part worth keeping. Every one of them would have shipped a number that meant nothing.
+
+1. **The first incidence harness stalled and counted nothing.** It waited on the checklist runtime
+   to grade each step before issuing the next; three of four legs stopped early and **`pwr_startup`
+   reached step 3 of 18, never reaching either of its trip-block steps.** Its "0 events" was a
+   measurement of a leg that never happened. Re-driven through `RD.ProceduresHarness.runProcedure`,
+   which issues every step's command and holds for its authored dwell.
+2. **The chatter test settled ABOVE the permissive.** 3000 ticks, zero drops, and the block had been
+   revoked at placement and was false the whole time — a chatter test on a block that never took
+   hold. The precondition is now asserted before the count is believed.
+3. **I RE-DERIVED A LAW AND IT WAS WRONG WITHIN THE HOUR.** Candidate (b)'s 16 "events" on
+   `pwr_raise_power` came from my harness computing P-10 as "power >= 10 %" against this plant's
+   SOURCED 8 % (`P10.frac = 0.08`, Ginna TS Bases B 3.3.1, ML20339A221). **That is now a design rule
+   written into the shipped code**: nothing in the board compares a pressure or a power to anything;
+   the permissive arrives on the snapshot.
+
+### THE PERMISSIVE WAS COMPUTED AND THEN THROWN AWAY
+
+`pwr2_protection` publishes `p10_met` / `p11_permit` internally; `pwr2_shell` folded them into
+`can_block` as `!blocked && permissive` and discarded the rest. **For any row that IS blocked,
+`can_block` is false by construction** — so "the interlock still permits this" was unreachable from
+a snapshot, and the card could not answer the question #716 is really about. `permissive` is now
+published per row, EXPOSED and never recomputed. No `run_contract` obligation: that gate guards §6.3
+`true_state` only, and this is a shell payload under `rps_state` whose CONTEXT.md entry does not
+enumerate `trip_block_status` at all — confirmed against the runner, not assumed.
+
+### #716's TITLE IS WRONG ABOUT THE PLANT, AND THE CORRECTION IS FILED
+
+MEASURED after a revoke, back inside the permissive: `can_block` true, the command NOT refused, the
+row re-blocks. **The player was never stuck; they were never told.** A filed root cause repeated and
+never re-measured is a standing trap here and this was one.
+
+### FOUR DEVIATING ROUTES, AND THE ONE THE DESIGN ITSELF CREATES
+
+`inbox/738/probe_routes.js`. Scram mid-block: the block SURVIVES, no message (correct — a scram does
+not touch blocks, which independently confirms this issue's own "the reset button is innocent"
+finding). Reset with blocks standing: survives, no message. Save/load across a revoke: the message
+and the acknowledge are BOTH cleared, and that is the honest answer rather than a gap — a message is
+a TRANSITION and transitions are not in snapshots, so after a load there is nothing to detect and
+nothing false is raised either. **What the card says is derived from STATE and is correct
+immediately**: measured after a load past a revoke, `blocked false / permissive true / can_block
+true`, and the row genuinely re-blocks. The flash is a live annunciator; the card is the record.
+
+### TWO DEFECTS THE NODE GATE COULD NOT SEE, FOUND BY A BROWSER PROBE AFTER IT WENT GREEN
+
+Both are shapes this repo keeps meeting, and both are now checked in `verify_board_check` and
+re-injected red:
+
+1. **TWO WRITERS TO ONE NODE.** The message was written into the row's `.sub` in its own block, and
+   the caption writer below it overwrote the text on the same pass. The CLASS survived and the TEXT
+   did not — the row went amber saying nothing.
+2. **THE CASCADE.** `.bd-msg` and `.bd-info` have equal specificity and the message rule was written
+   ABOVE bd-info, so the button flashed in bd-info's GREY: `animation: bdMsgFlash` with
+   `color: rgb(184, 196, 205)`. A pulsing button that never turned amber.
+
+Also recorded because it is a real property rather than a wart: **the flash lands one broadcast
+after the event** — the detector runs in `afterRender`, the last thing a render does, so the
+button's classes were computed before the event. 100 ms in production.
+
+### THE ORPHAN
+
+`verify_flags_ui`'s "the expander is labelled Details, not Why" read `.ckl-step.ckl-active
+.ckl-why-btn` and passed on `folded === null`. **No file in `ui/` has ever emitted that class** — it
+went green at the injection meant to break it AND at the deletion of the feature it described.
+Deleted rather than repaired: the card has no expander at all now, and its real concern is asserted
+by the live check immediately above it. 54 → 53.
+
+---
+
 ## Session log — 2026-09-13-workbench-a (#713 — the 1/M dock is retired by ruling; the window that replaces it is bigger than the dock ever was)
 
 **The ruling** *(OWNER RULING, 2026-09-13: "let's make the card floating and dragable like it was

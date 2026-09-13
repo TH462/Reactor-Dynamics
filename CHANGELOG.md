@@ -30,6 +30,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added (the board tells you when the plant takes a trip block away — #738 / #716)
+
+*(OWNER RULING, 2026-09-13: "I don't want to add new UI elements to the main board. What if we flash
+the permissive button amber when there's a message and put the permissive messages and status inside
+the popup permissive card? When the user opens the card and then closes it the permissive card
+opening button stops flashing.")*
+
+A trip block the plant revokes on its own used to disappear in silence — no alarm, no tile, no
+caption anywhere, with a walkthrough step still ticked green over a trip that had gone live again.
+**The TRIP BLOCKS button now flashes amber when that happens**, and the card behind it carries the
+lineup: how much of it is blocked, what is waiting on its permissive, and which trip the plant
+released. Opening the card and closing it stops the flash; the button stays amber while the trip is
+still live.
+
+**Exactly one thing flashes, and the rule was chosen by counting.** Four candidates were measured
+across the startup, ascension, rampdown and cooldown walkthroughs before anything was built. The
+obvious-looking one — "a block became available" — would have flashed **38 times on a single
+startup**, all of it the plant drifting across a permissive. What ships fires **zero times on every
+authored route** and exactly once per real event, and cannot repeat itself while you sit on the
+boundary.
+
+**The card names the condition, not the number** — "released — pressure rose above the shutdown
+permissive" — because the revoke reads true pressure while you read the board, and the two differ by
+about seven psi at the moment it fires.
+
+**And it now says whether you can put the block back**, which the board previously had no way to
+know: a blocked row's "can I block this" is false by definition, so the interlock's real state was
+never published. It is now.
+
 ### Changed (the 1/M startup plot is a bigger, floating, draggable window — #713 / #724 item 7)
 
 *(OWNER RULING, 2026-09-13: "let's make the card floating and dragable like it was originally",

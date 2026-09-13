@@ -170,12 +170,48 @@
    pulse. The colour still says everything the flash does; only the attention-grab is dropped. */
 @media (prefers-reduced-motion: reduce) {
   .bd-btn.bd-actuated { animation: none; }
+  /* Same answer as bd-actuated's and the highlight bus's: a standing cue rather than a pulse. The
+     amber still says there is a message; only the attention-grab is dropped. */
+  .bd-btn.bd-msg.bd-unack { animation: none; box-shadow: 0 0 0 2px #ffd166; }
 }
 /* Informational/neutral state (grey) — a non-alarm condition the operator has deliberately
    set, e.g. reactor trips intentionally BLOCKED as part of a startup/shutdown lineup. Grey
    keeps it OFF the green(normal)/yellow(attention)/red(alarm) severity scale — it's a
    standing lineup note, not something wrong. */
 .bd-btn.bd-info { background: #1b2229; border-color: #7c8b98; color: #b8c4cd; }
+/* A MESSAGE IS WAITING IN THIS BUTTON'S CARD (#738/#716) *(OWNER RULING, 2026-09-13: "flash the
+   permissive button amber when there's a message and put the permissive messages and status inside
+   the popup permissive card. When the user opens the card and then closes it the permissive card
+   opening button stops flashing.")*.
+
+   THE GRAMMAR IS THE ALARM PANEL'S, DELIBERATELY. `ui/shell.css` already rules that only UNACKED
+   tiles flash and acked ones stay solid, so this is the same split rather than a second
+   convention: `.bd-msg` is the amber and it persists for as long as the message does;
+   `.bd-unack` is the motion and it stops the moment the player closes the card. A board with two
+   different meanings for "flashing" is a board nobody can read.
+
+   AMBER, NOT RED, and not `bd-actuated`'s orange. This is "the plant changed your lineup and you
+   should know", which is the caution scale — `bd-warn`'s exact yellow, reused so the colour keeps
+   meaning one thing. bd-actuated's orange is reserved for "a protection latch is holding this
+   system", a different and louder fact.
+
+   OPACITY IS WHAT PULSES, for the reason the bd-actuated note above gives at length: #596 measured
+   this board render-bound with ~100 elements animating properties that never composite. opacity
+   composites. This is one element, so it would not have mattered — but the property choice costs
+   nothing and settles the question.
+
+   IT MUST BEAT bd-info, AND IT DID NOT ON THE FIRST CUT. The TRIP BLOCKS button is grey
+   (`bd-info`) whenever any trip is blocked, which is exactly when a message is most likely. These
+   two rules have the SAME specificity, so the later one wins — and this block was written above
+   bd-info, which left the button flashing in bd-info's grey: MEASURED in the browser,
+   `animation: bdMsgFlash` with `color: rgb(184, 196, 205)`, a pulsing button that never turned
+   amber. It now sits immediately after bd-info. DO NOT SORT THESE RULES ALPHABETICALLY OR BY
+   NAME; their order is the cascade and the cascade is the behaviour. */
+.bd-btn.bd-msg { background: #3a2408; border-color: #ffd166; color: #ffd166; }
+.bd-btn.bd-msg.bd-unack { animation: bdMsgFlash 1.0s ease-in-out infinite; }
+@keyframes bdMsgFlash { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+
 /* Count badge on a button (e.g. number of trips blocked). */
 .bd-btn { position: relative; }
 .bd-badge {
@@ -290,6 +326,22 @@
 }
 .bd-pop .bd-pop-row .lbl { color: #9fb3c4; font-size: 11px; white-space: nowrap; }
 .bd-pop .bd-pop-row .sub { color: #6b8598; font-size: 9px; }
+/* THE CARD'S STATUS BLOCK (#738/#716) — "put the permissive messages and status inside the popup
+   permissive card". It sits under the title and above the rows, because it answers the question
+   the player opened the card WITH ("what is my lineup, and can I put back what I lost") before
+   they start reading four rows to work it out. Amber only when the plant has released something;
+   otherwise it is ordinary caption grey, so a normal lineup does not read as a warning. */
+.bd-pop .bd-pop-status {
+  color: #9fb3c4; font-size: 9px; letter-spacing: 0.04em; line-height: 1.45;
+  padding: 0 0 6px; margin: -4px 0 4px; border-bottom: 1px solid #22323c;
+}
+.bd-pop .bd-pop-status:empty { display: none; }
+.bd-pop .bd-pop-status.bd-pop-status-msg { color: #ffd166; }
+/* A row carrying a message the PLANT raised. The standing note for a release the player made
+   keeps the ordinary grey — they know, and colouring it would make their own action look like a
+   fault. */
+.bd-pop .bd-pop-row .sub.bd-sub-msg { color: #ffd166; }
+
 .bd-pop button {
   background: #10161d; border: 1px solid #2a3a46; color: #6b8598; border-radius: 4px;
   font-family: inherit; font-size: 10px; letter-spacing: 0.1em; padding: 3px 10px; cursor: pointer;
