@@ -224,8 +224,11 @@ separate piece of work, filed as a note here rather than smuggled in.
 256, `verify_flags_ui.js` 54/54, `run_style.js` 11/11, `verify_e2e_ui.js` 4 screenshots — all
 unchanged, run to confirm no regression from the touched files (`test/verify_board_scroll.js`,
 `test/run_all.js` only — no engine/board/wiring source changed; both injections were reverted).
-**`node test/run_all.js` (the full aggregate) was NOT run** *(OWNER DIRECTIVE, 2026-09-12, relayed
-by this session's coordinator, verbatim not recorded: subagent gates only, not the aggregate)* —
+**`node test/run_all.js` (the full aggregate) was NOT run** *(OWNER DIRECTIVE, 2026-09-12: "Can we
+save the gate until just before pushing instead of doing it after every change?"; and to the
+workbench coordinator: "Develop worktree has a new time saving protocol I would like you to
+follow." The "a subagent never runs the aggregate" clause is the codified form of that, not his
+words)* —
 owed at merge time, on `develop` after `develop` gates in its own tree. (The `verbatim not
 recorded` marker and the relay note were added at the merge, 2026-09-12-develop-a: the citation as
 written carried a date but no quotation and reddened `run_hardrules` HR11 — 543 checks, 1
