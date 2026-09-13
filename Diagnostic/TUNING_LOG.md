@@ -29,6 +29,180 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-13-workbench-b (#738/#716 — the trip-block message: what counts as one, measured four ways before anything was built)
+
+**The ruling** *(OWNER RULING, 2026-09-13: "I don't want to add new UI elements to the main board.
+What if we flash the permissive button amber when there's a message and put the permissive messages
+and status inside the popup permissive card? When the user opens the card and then closes it the
+permissive card opening button stops flashing.")*. No new board real estate — that is a constraint,
+not a preference. Everything lives on the TRIP BLOCKS button and inside its card.
+
+### THE DESIGN QUESTION WAS DECIDED BY COUNTING, NOT BY ARGUING
+
+Four candidate rules for "a message". The coordinator's instruction was to measure incidence before
+choosing, and it is the right instruction: a rule that fires 30 times on a normal startup is the
+wrong rule whatever its logic says. Driven end to end across four legs (`inbox/738/incidence.js`):
+
+| candidate | startup | raise | lower | cooldown |
+|---|---|---|---|---|
+| (a) a block dropped with NO player command | 0 | 0 | 0 | 0 |
+| (b) blocked while its permissive is gone | 0 | 0 | 0 | 0 |
+| (c) the player released it | 0 | 0 | 0 | 0 |
+| **(d) a block became AVAILABLE** | **38** | 0 | 0 | **14** |
+
+**(d) is the one that looks reasonable and is not.** 38 flashes on a single startup, every one of
+them the plant wandering across a permissive — power at 7.68 / 7.87 / 8.04 %, pressure at 1976 /
+1974 / 1974 psia (13.62 / 13.61 / 13.61 MPa). Rebuilt alarm fatigue, from a rule nobody would have
+suspected without counting it.
+
+**(b) is unreachable by construction.** The engine revokes a block the instant its permissive is
+lost (the #295/#507 anti-defeat law), so the state cannot persist past the tick that clears it.
+
+**(a) ships, and the deviation case is what earns it** (`inbox/738/deviation.js`): zero on every
+authored route — which is what an exception annunciator SHOULD score on the happy path — and
+exactly 2 drops, one per row, on each real deviation. **AND IT CANNOT CHATTER**: parked ON the P-11
+boundary with a block that had actually taken hold, 1 drop and 0 regains over 3000 broadcasts,
+because the revoke law only ever CLEARS and never re-places. That is the structural difference from
+(d), which is an availability edge and chatters by nature.
+
+**(c) becomes standing status in the card and never flashes.** The player did it a second ago. But
+#738's harm is precisely a release the player made and then FORGOT, with the walkthrough step still
+green, so it must not vanish either.
+
+### THREE HOLLOW RESULTS, ALL MINE, ALL CAUGHT BEFORE THEY WERE REPORTED
+
+This is the part worth keeping. Every one of them would have shipped a number that meant nothing.
+
+1. **The first incidence harness stalled and counted nothing.** It waited on the checklist runtime
+   to grade each step before issuing the next; three of four legs stopped early and **`pwr_startup`
+   reached step 3 of 18, never reaching either of its trip-block steps.** Its "0 events" was a
+   measurement of a leg that never happened. Re-driven through `RD.ProceduresHarness.runProcedure`,
+   which issues every step's command and holds for its authored dwell.
+2. **The chatter test settled ABOVE the permissive.** 3000 ticks, zero drops, and the block had been
+   revoked at placement and was false the whole time — a chatter test on a block that never took
+   hold. The precondition is now asserted before the count is believed.
+3. **I RE-DERIVED A LAW AND IT WAS WRONG WITHIN THE HOUR.** Candidate (b)'s 16 "events" on
+   `pwr_raise_power` came from my harness computing P-10 as "power >= 10 %" against this plant's
+   SOURCED 8 % (`P10.frac = 0.08`, Ginna TS Bases B 3.3.1, ML20339A221). **That is now a design rule
+   written into the shipped code**: nothing in the board compares a pressure or a power to anything;
+   the permissive arrives on the snapshot.
+
+### THE PERMISSIVE WAS COMPUTED AND THEN THROWN AWAY
+
+`pwr2_protection` publishes `p10_met` / `p11_permit` internally; `pwr2_shell` folded them into
+`can_block` as `!blocked && permissive` and discarded the rest. **For any row that IS blocked,
+`can_block` is false by construction** — so "the interlock still permits this" was unreachable from
+a snapshot, and the card could not answer the question #716 is really about. `permissive` is now
+published per row, EXPOSED and never recomputed. No `run_contract` obligation: that gate guards §6.3
+`true_state` only, and this is a shell payload under `rps_state` whose CONTEXT.md entry does not
+enumerate `trip_block_status` at all — confirmed against the runner, not assumed.
+
+### #716's TITLE IS WRONG ABOUT THE PLANT, AND THE CORRECTION IS FILED
+
+MEASURED after a revoke, back inside the permissive: `can_block` true, the command NOT refused, the
+row re-blocks. **The player was never stuck; they were never told.** A filed root cause repeated and
+never re-measured is a standing trap here and this was one.
+
+### FOUR DEVIATING ROUTES, AND THE ONE THE DESIGN ITSELF CREATES
+
+`inbox/738/probe_routes.js`. Scram mid-block: the block SURVIVES, no message (correct — a scram does
+not touch blocks, which independently confirms this issue's own "the reset button is innocent"
+finding). Reset with blocks standing: survives, no message. Save/load across a revoke: the message
+and the acknowledge are BOTH cleared, and that is the honest answer rather than a gap — a message is
+a TRANSITION and transitions are not in snapshots, so after a load there is nothing to detect and
+nothing false is raised either. **What the card says is derived from STATE and is correct
+immediately**: measured after a load past a revoke, `blocked false / permissive true / can_block
+true`, and the row genuinely re-blocks. The flash is a live annunciator; the card is the record.
+
+### TWO DEFECTS THE NODE GATE COULD NOT SEE, FOUND BY A BROWSER PROBE AFTER IT WENT GREEN
+
+Both are shapes this repo keeps meeting, and both are now checked in `verify_board_check` and
+re-injected red:
+
+1. **TWO WRITERS TO ONE NODE.** The message was written into the row's `.sub` in its own block, and
+   the caption writer below it overwrote the text on the same pass. The CLASS survived and the TEXT
+   did not — the row went amber saying nothing.
+2. **THE CASCADE.** `.bd-msg` and `.bd-info` have equal specificity and the message rule was written
+   ABOVE bd-info, so the button flashed in bd-info's GREY: `animation: bdMsgFlash` with
+   `color: rgb(184, 196, 205)`. A pulsing button that never turned amber.
+
+Also recorded because it is a real property rather than a wart: **the flash lands one broadcast
+after the event** — the detector runs in `afterRender`, the last thing a render does, so the
+button's classes were computed before the event. 100 ms in production.
+
+### THE QUALITY PASS FOUND TWO THINGS I WOULD NOT HAVE SHIPPED, AND ONE CLAIM THAT WAS WRONG
+
+Re-measured independently before acting on any of it.
+
+**1. A DARK WIRE IN THE ONLY LINE THAT MAKES THE FEATURE WORK.** `tbSelf[t.id] = 3` in the row's
+click handler is the ONLY production code separating "the plant took your block" from "you released
+it". Delete it and `run_pwr2_board` stayed **96/96 with 33/33 mutations caught** and
+`verify_board_check` **272/272** — both gates fully green while every player release flashed
+"RELEASED BY THE PLANT", which is the defect this whole change exists to prevent. **The cause is
+worth more than the instance: the test accessor `__markTripBlockSelf` RE-IMPLEMENTED the assignment
+instead of calling it**, so the checks tested the accessor and the production line was unwatched.
+Both now route through one `tbMarkSelf`, and a new `board_check` leg presses a row through the real
+click handler — deleting the line now reds 2 checks.
+
+**2. THE MESSAGE STATE WAS NEVER DROPPED WHEN THE WORLD WAS REPLACED.** MEASURED: a board on
+`cold_shutdown` (pressure pair blocked), switched to `hot_full_power`, one render — **two false
+"RELEASED BY THE PLANT" messages, unacknowledged**, so the button flashed amber on a brand-new
+plant for an event that never happened. Reachable from the RESET button and from any plant or
+engine switch. The in-repo precedent was sitting there: `ui/panels/one_over_m.js` self-clears its
+points on plant change and reset for exactly this reason. `tbReset()` now runs at `onMount`.
+
+**Why the incidence study missed it, which is the transferable part:** `inbox/738/incidence.js`
+drives four PROCEDURE REPLAYS, and a replay never crosses a session seam. Its zeroes are true for
+what they measured and say nothing about that path. A measurement's population is part of its
+claim.
+
+**3. A MECHANISM CLAIM IN MY OWN COMMENT WAS WRONG, AND IT WAS LOAD-BEARING.** The header said a
+load raises nothing "because after a load there is no previous broadcast, so there is nothing to
+detect". `tbPrev` is module state and SURVIVES a load. The zero measured in route 3 came from
+somewhere else entirely: the save happened to hold the row BLOCKED, so the load re-blocked it and
+the re-block branch cleared the message. **Save it unblocked and the same code raises a false one.**
+The explicit reset is what makes the claim true; the argument never did. Corrected in place.
+
+**4. THE `tbSelf` WINDOW WAS WALL CLOCK.** A broadcast is 100 ms of wall time, so a 3-broadcast
+window is 0.3 s of plant time at 1x and **180 s at 600x** — a player who blocks the low-pressure
+trip and then runs at 600x would have had a genuine P-11 revoke inside the next three plant-minutes
+attributed to themselves, which is #716's own scenario annunciated as "released by you". Now a
+DIRECTED, SINGLE-USE expectation: it absorbs only the transition the player asked for and is
+consumed by it, so a second change on that row is the plant's however fast the clock runs.
+
+**5. THE REDUCED-MOTION OVERRIDE WAS DEAD — the same cascade trap, one rule later.** A media query
+adds no specificity, so `@media (prefers-reduced-motion) { … animation: none }` placed ABOVE the
+rule that sets the animation loses outright, and the button went on pulsing for a player who asked
+it not to. `.bd-actuated` gets it right only because its animation happens to be declared above the
+media block. **Nothing gates it**: `prefers-reduced-motion` appears in no test in this repo.
+
+**6. THE MUTATION INSTRUMENT WAS LEAKING STATE.** The self-test calls `runSuite()` once per mutant
+and the module-level message state outlived the call, so **10 of 33 mutations carried a spurious
+red** from a leftover lineup. None was falsely "caught" — but three were down to a single genuine
+red each, so the next refactor blinding that one would have been reported as caught. Same reset
+fixes it.
+
+**AND THE HARNESS CAUGHT ITS OWN STALE ANCHOR.** The `tbSelf` refactor moved the line the
+discriminator mutation named, and the self-test reported `ANCHOR MISS` and failed the gate rather
+than silently testing nothing — the "a mutation goes blind when a refactor moves the line its
+anchor names" trap, working as designed.
+
+**Two fixture defects of mine on the way, both caught by preconditions I had written for exactly
+that reason.** `Object.keys(trip_blocks).length` is **always 4** — the shell publishes all four ids
+as booleans, so a key count counts nothing; and a count of TRUTHY values is **2 on both plants**,
+because cold_shutdown holds the PRESSURE pair and hot_full_power the FLUX pair. The requirement was
+never a count: it is a row that was blocked and is not, asserted as a set difference.
+
+### THE ORPHAN
+
+`verify_flags_ui`'s "the expander is labelled Details, not Why" read `.ckl-step.ckl-active
+.ckl-why-btn` and passed on `folded === null`. **No file in `ui/` has ever emitted that class** — it
+went green at the injection meant to break it AND at the deletion of the feature it described.
+Deleted rather than repaired: the card has no expander at all now, and its real concern is asserted
+by the live check immediately above it. 54 → 53.
+
+---
+
 ## Session log — 2026-09-13-workbench-a (#713 — the 1/M dock is retired by ruling; the window that replaces it is bigger than the dock ever was)
 
 **The ruling** *(OWNER RULING, 2026-09-13: "let's make the card floating and dragable like it was

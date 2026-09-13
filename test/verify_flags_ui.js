@@ -199,12 +199,19 @@ function pinChannel(ch) {
       JSON.stringify(seen.control) + ' target=' + JSON.stringify(seen.target) +
       ' — expected ' + (wantLine ? 'a line naming it' : 'NO line') +
       ', got ' + (seen.line === null ? 'none' : '"' + seen.line.slice(0, 70) + '"'));
-    var folded = await b.page.evaluate(function () {
-      var d = document.querySelector('.ckl-step.ckl-active .ckl-why-btn');
-      return d ? (d.textContent || '').trim() : null;
-    });
-    ck('dev: and the expander is labelled Details, not Why (#598 item 13)',
-      folded === null || /Details/i.test(folded), folded === null ? '(no expander on this step)' : folded);
+    /* ⚰ "the expander is labelled Details, not Why" (#598 item 13) WAS HERE AND COULD NEVER FAIL.
+     * It read `.ckl-step.ckl-active .ckl-why-btn` and asserted `folded === null || /Details/i`. No
+     * file in `ui/` has ever emitted `.ckl-why-btn` — the class exists only in shell.css and in the
+     * handler #737 deleted (see the headstone at ui/app.js:8344) — so the query returned null on
+     * every run and the first clause passed unconditionally. It went green at the injection that
+     * was supposed to break it AND at the deletion of the feature it described, which is the whole
+     * signature of a hollow check.
+     *
+     * DELETED RATHER THAN REPAIRED, because there is nothing left to point it at: the card has no
+     * expander at all now — the active step's detail block is always open. Its real concern, that
+     * the step names its control OUTSIDE the fold, is asserted by the LIVE check immediately above
+     * this comment, so nothing is lost by removing it. Do not re-add a check here without an
+     * element to read; that is how this one came to exist. (#738 orphan sweep.) */
 
     /* ---- #628 item 1: THE NUMBERED INSTRUCTION IS THE HEAD OF EVERY CARD -------------------
      * *(OWNER, 2026-09-04: "move the numbered step to always be the first part of the stack.

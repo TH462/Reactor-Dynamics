@@ -1614,9 +1614,31 @@
       trip_blocks: { pr_low_setpoint: blocked, ir_high: irB, lo_press: loB, si_trip: siB },
       trip_setpoints: tripSetpoints,
       trip_setpoint_instruments: ['pzr_level'],   /* what the list above SPEAKS FOR — see comment */
+      /* `permissive` IS PUBLISHED SEPARATELY FROM `can_block`, AND THE REASON IS THAT
+       * `can_block` CANNOT ANSWER IT (#716/#738, 2026-09-13).
+       *
+       * `can_block` is `!blocked && permissive`. For any row that IS blocked it is therefore
+       * false BY CONSTRUCTION, whatever the permissive is doing — so a consumer holding a block
+       * could not tell "the interlock still permits this" from "the interlock has gone" and had
+       * no way to say either. The TRIP BLOCKS card needs exactly that distinction: #716 is a
+       * player losing a block to the P-11 revoke and being told nothing about whether they may
+       * put it back. Do NOT "simplify" this away by deriving it from can_block again; the two
+       * are different questions and one of them is unanswerable from the other.
+       *
+       * IT IS EXPOSED, NOT RECOMPUTED. `rp.p10_met` / `rp.p11_permit` are the protection
+       * module's own (pwr2_protection.js:945-946) and are the same values `can_block` folds in
+       * two lines below. A SECOND COPY OF A PERMISSIVE IS WRONG WITHIN THE HOUR — measured
+       * 2026-09-13: a harness that re-derived P-10 as "power >= 10 %" against this plant's
+       * sourced 8 % (P10.frac = 0.08, Ginna TS Bases B 3.3.1, ML20339A221) manufactured 16
+       * phantom events on one leg before the constant was checked.
+       *
+       * No `run_contract` obligation: that gate guards §6.3 `true_state` only, and this is a
+       * shell payload under `rps_state`, whose CONTEXT.md §6.2 entry does not enumerate
+       * `trip_block_status` at all. Confirmed against test/run_contract.js, not assumed. */
       trip_block_status: {
         pr_low_setpoint: {
           blocked: blocked, asserted: asserted,
+          permissive: rp.p10_met === true,
           can_block: !blocked && rp.p10_met === true,
           can_clear: blocked,
           setpoint: sp
@@ -1625,13 +1647,14 @@
          * request. The board id is the pwr1 board's `ir_high`, like every other row here. */
         ir_high: {
           blocked: irB, asserted: irAsserted,
+          permissive: rp.p10_met === true,
           can_block: !irB && rp.p10_met === true,
           can_clear: irB,
           setpoint: spIr
         },
-        lo_press: { blocked: loB, asserted: loAsserted,
+        lo_press: { blocked: loB, asserted: loAsserted, permissive: p11,
                     can_block: !loB && p11, can_clear: loB, setpoint: spLo },
-        si_trip:  { blocked: siB, asserted: siAsserted,
+        si_trip:  { blocked: siB, asserted: siAsserted, permissive: p11,
                     can_block: !siB && p11, can_clear: siB, setpoint: spSi }
       }
     };

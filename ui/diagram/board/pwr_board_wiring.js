@@ -3074,9 +3074,211 @@
    *
    * pointerdown rather than click so the panel goes away on the press, and in the CAPTURE phase
    * so a handler that ever starts calling stopPropagation cannot strand it open. */
+  /* ==================== THE TRIP-BLOCK MESSAGE STATE (#738, #716) ====================
+   * *(OWNER RULING, 2026-09-13: "I don't want to add new UI elements to the main board. What if
+   * we flash the permissive button amber when there's a message and put the permissive messages
+   * and status inside the popup permissive card? When the user opens the card and then closes it
+   * the permissive card opening button stops flashing.")*
+   *
+   * NO NEW BOARD REAL ESTATE. That is the constraint, not a preference — a permissive lamp row on
+   * the board was refused. Everything lives on the TRIP BLOCKS button and inside its card.
+   *
+   * ------------------------------------------------------------------ WHAT COUNTS AS A MESSAGE
+   * ONE rule flashes: A BLOCK WENT AWAY AND THE PLAYER DID NOT DO IT. Three other candidates were
+   * measured across `pwr_startup`, `pwr_raise_power`, `pwr_lower_power` and `pwr_cooldown` driven
+   * end to end (inbox/738/incidence.js) and each is excluded on evidence, not taste:
+   *
+   *   flashes per leg                       startup  raise  lower  cooldown
+   *   (a) block dropped, no player command        0      0      0      0    <- SHIPPED
+   *   (b) blocked while its permissive gone       0      0      0      0    <- unreachable
+   *   (c) the player released it                  0      0      0      0    <- status, never a flash
+   *   (d) a block became AVAILABLE               38      0      0     14    <- DISQUALIFIED
+   *
+   * (d) IS THE ONE THAT LOOKS REASONABLE AND IS NOT. 38 flashes on a single startup, all of them
+   * the plant wandering across a permissive — power at 7.68 / 7.87 / 8.04 %, pressure at 1976 /
+   * 1974 / 1974 psia (13.62 / 13.61 / 13.61 MPa), over and over. That is rebuilt alarm fatigue.
+   *
+   * (b) CANNOT HAPPEN: the engine REVOKES a block the instant its permissive is lost
+   * (pwr2_protection.js:623-639, the #295/#507 anti-defeat law), so "blocked while the permissive
+   * is gone" cannot persist past the tick that clears it.
+   *
+   * (a) IS ZERO ON EVERY AUTHORED ROUTE — which is what an exception annunciator SHOULD score on
+   * the happy path — and fires exactly once per real event when a player deviates: MEASURED
+   * (inbox/738/deviation.js), blocking below P-11 and driving pressure back up gives exactly one
+   * drop PER ROW — two rows lose their block, so two messages, one each; blocking above P-10 and
+   * inserting the bank gives the same shape. AND IT CANNOT
+   * CHATTER: parked ON the P-11 boundary with a block that had actually taken hold, 1 drop and 0
+   * regains over 3000 broadcasts, because the revoke law only ever CLEARS and never re-places.
+   * That is the structural difference from (d), which is an availability edge and chatters by
+   * nature.
+   *
+   * ------------------------------------------------------- THIS CODE MUST NOT RE-DERIVE A LAW
+   * A DESIGN RULE FOR THIS CHANGE, and it is written here because it was learned here. The
+   * incidence harness re-derived P-10 as "power >= 10 %" against this plant's SOURCED 8 %
+   * (P10.frac = 0.08, Ginna TS Bases B 3.3.1, ML20339A221) and manufactured 16 phantom events on
+   * one leg before the constant was checked. So nothing below compares a pressure or a power to
+   * anything: the permissive arrives on the snapshot as `trip_block_status[id].permissive`, which
+   * pwr2_shell publishes from the protection module's own p10_met / p11_permit for exactly this
+   * consumer. If you find yourself typing a setpoint into this file, stop.
+   *
+   * ------------------------------------------------------------------ ACKNOWLEDGE SEMANTICS
+   * CLOSING the card acknowledges, not opening — the owner's gesture is open-then-close, and
+   * acknowledging on open would clear a message the player has not read yet. A teardown close
+   * (`onMount`) does NOT acknowledge; only a close the player performed.
+   *
+   * IT CLEARS ALL OUTSTANDING MESSAGES, not one. The card shows every row at once, so closing it
+   * means "I have seen the lineup"; clearing row by row would need per-row controls inside the
+   * card, which is the new UI the ruling refused.
+   *
+   * A NEW MESSAGE AFTER AN ACKNOWLEDGE FLASHES AGAIN, and that is a SEQUENCE, not a time window.
+   * Every event takes the next `tbSeq`; acknowledging records the highest seq seen. A later event
+   * has a higher seq and is therefore unacknowledged by construction. A timestamp comparison
+   * would have been a window, and windows rot.
+   *
+   * ------------------------------------------------------------------ WHAT SURVIVES A RELOAD
+   * THE FLASH DOES NOT, AND THAT IS DELIBERATE. `tbReset` drops the message state whenever the
+   * world is replaced — a load, a reset, a plant switch — so nothing is carried across a seam and
+   * nothing false is raised at one.
+   *
+   * ⚠ AN EARLIER VERSION OF THIS NOTE GAVE THE WRONG REASON, AND THE WRONG REASON WAS LOAD-BEARING.
+   * It said a load raises nothing "because after a load there is no previous broadcast, so there is
+   * nothing to detect". `tbPrev` is module state and SURVIVES a load; the zero that was measured
+   * came from something else entirely — the save happened to hold the row BLOCKED, so the load
+   * re-blocked it and the re-block branch cleared the message. Save it UNBLOCKED and the same code
+   * raised a false one. The explicit reset is what makes the claim true; the argument never did.
+   *
+   * What the CARD says is derived from STATE instead (blocked / permissive, read fresh every
+   * broadcast), so the lineup and the permissive status are correct immediately after a load. The
+   * split is deliberate: the flash is a live annunciator, the card is the record. */
+  var TB_IDS = ['lo_press', 'ir_high', 'pr_low_setpoint', 'si_trip'];
+  var tbSeq = 0, tbAck = 0;
+  var tbPrev = null;      // last broadcast's per-row {blocked, permissive}, null before the first
+  var tbMsg = {};         // id -> { seq, text } — an outstanding "you did not do this" message
+  var tbNote = {};        // id -> standing status text for a release the PLAYER made (case (c))
+  /* id -> { want: <the blocked state the player asked for>, n: <broadcasts left> }.
+   *
+   * A DIRECTED, SINGLE-USE EXPECTATION — not a blind "the board touched this row recently" window,
+   * which is what shipped first and was wrong at speed. A broadcast is 100 ms of WALL time, so a
+   * 3-broadcast window is 0.3 s of plant time at 1x and **180 s at 600x** (the speed ladder goes to
+   * 3600x). A player who blocks the low-pressure trip during a heatup, then runs at 600x, would
+   * have had a genuine P-11 revoke inside the next three plant-MINUTES silently attributed to
+   * themselves — which is #716's own scenario, annunciated as "released by you".
+   *
+   * Directed and single-use fixes both ends of that. It absorbs only the transition the player
+   * actually asked for, and is CONSUMED by it, so a second change on the same row is the plant's
+   * however fast the clock is running. The broadcast count stays as the unit because the question
+   * it answers is "has my command been reflected yet", which is command latency and therefore wall
+   * time — 2 is one more than the synchronous path needs (`set_trip_block` reaches the engine
+   * inside handleCommand, so the next render already shows it). */
+  var tbSelf = {};
+
+  /* ONE ASSIGNMENT, TWO CALLERS, AND THAT IS THE POINT. The row's click handler and the test
+   * accessor must not each write this — a test accessor that RE-IMPLEMENTS what it is standing in
+   * for turns the production line into a dark wire, and this one did: deleting the click handler's
+   * assignment left `run_pwr2_board` 96/96 with 33/33 mutations caught and `verify_board_check`
+   * 272/272, both green, while every player release started flashing "RELEASED BY THE PLANT".
+   * Found by the #738 quality pass. */
+  function tbMarkSelf(id, want) { tbSelf[id] = { want: want, n: 2 }; }
+
+  /* THE WHOLE MESSAGE STATE IS SESSION STATE OVER ONE WORLD, and it has to be dropped when the
+   * world is replaced. MEASURED before this existed (#738 quality pass, reproduced independently):
+   * a board sitting on `cold_shutdown` with all four trips blocked, then a plant switch to
+   * `hot_full_power` and one render, raised TWO false messages — "RELEASED BY THE PLANT — pressure
+   * rose above the shutdown permissive (P-11)", unacknowledged, so the button flashed amber on a
+   * brand-new plant for an event that never happened. The mount render compares the new lineup
+   * against the PREVIOUS world's `tbPrev`.
+   *
+   * Reachable in production by the RESET button and by a plant/engine switch (both `ui/app.js`
+   * paths go reset -> rebuildPlantUI -> render), and by loading a save. The in-repo precedent is
+   * `ui/panels/one_over_m.js`, which self-clears its points on plant change, reset and rewind for
+   * exactly this reason — a scratchpad about a world that no longer exists.
+   *
+   * NOTE WHY THE INCIDENCE STUDY DID NOT CATCH IT: inbox/738/incidence.js drives four PROCEDURE
+   * REPLAYS, and a replay never crosses a session seam. Its zero is true for what it measured. */
+  function tbReset() {
+    tbSeq = 0; tbAck = 0; tbPrev = null; tbMsg = {}; tbNote = {}; tbSelf = {};
+  }
+
+  /* THE CONDITION, NEVER THE NUMBER *(the owner's card text, and HR1 the right way round)*.
+   * MEASURED instrument-vs-truth gap at both revokes: P-11 fired at 1965 psia (13.55 MPa)
+   * INDICATED against a 1972 psia (13.60 MPa) setpoint, and P-10 at 8.65 % indicated against a
+   * sourced 8.0 %. The revoke reads TRUE pressure; the player reads the board. Printing the
+   * setpoint would teach a number their own gauge contradicts — they would watch it pass with the
+   * block still on and lose it seven psi later. Name the condition and the interlock instead. */
+  function tbCause(id) {
+    return (id === 'ir_high' || id === 'pr_low_setpoint')
+      ? 'reactor power fell below the startup permissive (P-10)'
+      : 'pressure rose above the shutdown permissive (P-11)';
+  }
+
+  /* Per-broadcast, whether or not the card is open — which is the entire point. Called from
+   * `afterRender`, so it sees every broadcast the board does. */
+  function noteTripBlockEvents(s) {
+    var st = (s && s.rps_state && s.rps_state.trip_block_status) || null;
+    if (!st) return;
+    var now = {};
+    TB_IDS.forEach(function (id) {
+      var r = st[id];
+      if (!r) return;
+      now[id] = { blocked: r.blocked === true, permissive: r.permissive === true };
+      var p = tbPrev && tbPrev[id];
+      if (p && p.blocked === true && now[id].blocked === false) {
+        var mine = !!(tbSelf[id] && tbSelf[id].want === false);
+        if (mine) delete tbSelf[id];          // single-use: the next change on this row is the plant's
+        if (mine) {
+          /* (c) THE PLAYER RELEASED IT. No flash — they did it a moment ago. But it must not
+           * vanish either: #738's harm is precisely a release the player made and then forgot,
+           * with the walkthrough step still green. It becomes standing status in the card. */
+          tbNote[id] = 'released by you — this trip is LIVE again';
+          delete tbMsg[id];
+        } else {
+          /* (a) THE PLANT TOOK IT. This is the message. */
+          tbSeq++;
+          tbMsg[id] = { seq: tbSeq, text: 'RELEASED BY THE PLANT — ' + tbCause(id) };
+          delete tbNote[id];
+        }
+      }
+      /* Re-blocking clears whatever the row was saying: the lineup is what the player asked for
+       * again, so there is nothing outstanding about it. */
+      if (p && p.blocked === false && now[id].blocked === true) {
+        delete tbMsg[id]; delete tbNote[id];
+        if (tbSelf[id] && tbSelf[id].want === true) delete tbSelf[id];
+      }
+    });
+    tbPrev = now;
+    /* Expire anything the plant never delivered, so a refused or lost command cannot leave a
+     * standing "this row is mine" that mis-attributes a revoke minutes later. */
+    TB_IDS.forEach(function (id) {
+      if (tbSelf[id] && --tbSelf[id].n <= 0) delete tbSelf[id];
+    });
+  }
+
+  /* Is anything outstanding that the player has not closed the card on since? */
+  function tbUnacked() {
+    for (var i = 0; i < TB_IDS.length; i++) {
+      var m = tbMsg[TB_IDS[i]];
+      if (m && m.seq > tbAck) return true;
+    }
+    return false;
+  }
+  /* Exposed for the gate — the flash is a CLAIM about state, and a check that can only read a
+   * class off a button is testing the renderer, not the rule (#727's lesson, applied up front). */
+  function tbMessages() {
+    return TB_IDS.map(function (id) {
+      return { id: id, msg: tbMsg[id] ? tbMsg[id].text : null, note: tbNote[id] || null,
+               unacked: !!(tbMsg[id] && tbMsg[id].seq > tbAck) };
+    }).filter(function (r) { return r.msg || r.note; });
+  }
+
   var popAway = null;                // { host, fn } while a popover is up, else null
 
-  function closePop() {
+  /* `ack` IS THE PLAYER'S CLOSE, NOT EVERY CLOSE (#738). Acknowledging here is what stops the
+   * button flashing, so a TEARDOWN close must not do it: `onMount` calls closePop() on every board
+   * rebuild, and a rebuild silently clearing a message the player never saw is the opposite of the
+   * feature. Only the two player-initiated paths pass true — the button's own toggle and the
+   * outside-press dismissal. */
+  function closePop(ack) {
+    if (ack) tbAck = tbSeq;
     if (popAway) { popAway.host.removeEventListener('pointerdown', popAway.fn, true); popAway = null; }
     if (pop && pop.parentNode) pop.parentNode.removeChild(pop); pop = null;
   }
@@ -3090,7 +3292,7 @@
       if (pop && pop.contains(t)) return;                                    // inside the panel
       if (btn && btn.contains && btn.contains(t)) return;                    // the button's own toggle
       if (t.closest && t.closest('[data-item="imrsk4xz2dm"]')) return;       // …and its tile
-      closePop();
+      closePop(true);            // the player dismissed it — that is the acknowledge (#738)
     };
     host.addEventListener('pointerdown', fn, true);
     popAway = { host: host, fn: fn };
@@ -3100,7 +3302,7 @@
    * so it cannot survive the operator looking away and coming back. */
   var tripArm = {};
   function toggleTripBlocks(btn) {
-    if (pop) { closePop(); return; }
+    if (pop) { closePop(true); return; }   // the player closed it — acknowledge (#738)
     tripArm = {};
     var stage = refs && refs.stage;
     if (!stage) return;
@@ -3133,6 +3335,11 @@
       pop.style.top = (item.top + (item.height || 30) + 8) + 'px';
     }
     pop.appendChild(mk('h4', null, 'TRIP BLOCKS'));
+    /* THE STATUS REGION (#738/#716) — "put the permissive messages and status inside the popup
+     * permissive card". Created empty and filled by refreshTripBlocks, for the #600 reason: a
+     * caption that exists only as a DOM write at open time is a caption no gate can read and one
+     * that cannot follow the plant while the card is up. */
+    pop.appendChild(mk('div', 'bd-pop-status'));
     var snap = RD.PwrBoard.lastSnapshot ? RD.PwrBoard.lastSnapshot() : null;
     var rowsAtOpen = {};
     tripBlockRows(snap).forEach(function (r) { rowsAtOpen[r.id] = r; });
@@ -3160,6 +3367,12 @@
           return;
         }
         tripArm[t.id] = false;
+        /* MARK IT AS OURS BEFORE IT LANDS (#738). This is the only thing that separates "the
+         * plant took your block" from "you released it", and it has to be a countdown rather than
+         * a same-tick flag: the command lands between broadcasts and its effect shows on the NEXT
+         * snapshot, sometimes the one after. 3 is comfortably over that and comfortably under any
+         * plausible gap between a press and an unrelated revoke. */
+        tbMarkSelf(t.id, !blocked);
         cmd({ action: 'set_trip_block', trip_id: t.id, blocked: !blocked });
       });
       row.appendChild(txt);
@@ -3485,12 +3698,72 @@
       /* A row this plant does not carry goes DARK AND SAYS SO — an inert button with no reason
        * is the dead-button class wearing a different coat, and the operator should not have to
        * press it to find out (the same argument as the SCRAM reset caption). */
-      if (r.sub) {
+      /* THE SUB LINE IS COMPOSED ONCE, HERE, and that is a correction rather than a preference.
+       * The first cut wrote the message into `.sub` in its own block ABOVE this one — and this
+       * block then overwrote it with the plain caption on the very same pass. The class survived
+       * and the text did not, so the row went amber while saying nothing: MEASURED in the browser,
+       * `subMsg=true` with the sub reading only "REACTOR TRIP · 1775 psi (P-11 PERMISSIVE)". Two
+       * writers to one node, and the later one wins silently.
+       *
+       * APPENDED, NOT SUBSTITUTED. The caption already says what the row IS and what its
+       * permissive is; the message says what HAPPENED to it. A message that replaced the caption
+       * would answer "why did I lose this" while hiding "may I put it back", which is the half
+       * #716 is actually about. */
+      var m = tbMsg[r.id], note2 = tbNote[r.id], extra = m ? m.text : (note2 || null);
+      if (r.sub || extra) {
         var subEl = btns[i].previousSibling && btns[i].previousSibling.querySelector
                     ? btns[i].previousSibling.querySelector('.sub') : null;
-        if (subEl) subEl.textContent = r.sub;
+        if (subEl) {
+          subEl.textContent = (r.sub || '') + (r.sub && extra ? ' · ' : '') + (extra || '');
+          subEl.classList.toggle('bd-sub-msg', !!m);
+        }
       }
     }
+    renderTripBlockStatus(s, rows);
+  }
+
+  /* THE CARD'S OWN STATUS BLOCK (#738/#716). Two things the board could not say before, and
+   * neither is a new board element — both live inside the card the owner asked for.
+   *
+   * 1. WHAT THE LINEUP IS. A one-line summary of how many of the blockable trips are blocked, so
+   *    the card answers "what is my protection lineup" without the player reading four rows.
+   * 2. WHETHER A RELEASED BLOCK CAN BE PUT BACK. This is the half #716 is really about and the
+   *    half `can_block` could never answer: `can_block` is `!blocked && permissive`, false by
+   *    construction for a held block, so "the interlock still permits this" was unreachable until
+   *    pwr2_shell started publishing `permissive` separately. #716's title says the blocks "never
+   *    re-arm"; MEASURED, that is wrong about the PLANT and right about the INDICATION — back
+   *    inside the permissive `can_block` is true, the command is not refused, and the row
+   *    re-blocks. The player was never stuck. They were never told.
+   *
+   * DERIVED FROM THE SNAPSHOT EVERY REFRESH, never from the message state, which is why it is
+   * correct immediately after a save/load while the flash (a transition, and transitions are not
+   * in snapshots) is not. */
+  function renderTripBlockStatus(s, rows) {
+    var host = pop && pop.querySelector('.bd-pop-status');
+    if (!host) return;
+    var st = (s && s.rps_state && s.rps_state.trip_block_status) || {};
+    var live = rows.filter(function (r) { return r.supported; });
+    var blockedN = live.filter(function (r) { return r.blocked; }).length;
+    /* A row is RESTORABLE when it is not blocked and its interlock permits it. Read, never
+     * recomputed — see the design rule at the top of this section. */
+    var restorable = live.filter(function (r) {
+      return !r.blocked && st[r.id] && st[r.id].permissive === true;
+    }).length;
+    var waiting = live.filter(function (r) {
+      return !r.blocked && st[r.id] && st[r.id].permissive === false;
+    }).length;
+    var lines = [
+      blockedN + ' of ' + live.length + ' BLOCKED'
+        + (restorable ? ' · ' + restorable + ' AVAILABLE TO BLOCK NOW' : '')
+        + (waiting ? ' · ' + waiting + ' WAITING ON ITS PERMISSIVE' : '')
+    ];
+    var outstanding = tbMessages().filter(function (r) { return r.msg; });
+    if (outstanding.length) {
+      lines.push(outstanding.length + ' TRIP' + (outstanding.length === 1 ? '' : 'S')
+        + ' RELEASED BY THE PLANT — see the row' + (outstanding.length === 1 ? '' : 's') + ' below');
+    }
+    host.textContent = lines.join('  ·  ');
+    host.classList.toggle('bd-pop-status-msg', outstanding.length > 0);
   }
 
   function mk(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -4167,6 +4440,7 @@
   RD.PwrBoardDriver = {
     onMount: function (doc, ctx, r) {
       ctxRef = ctx; refs = r; closePop();
+      tbReset();      // a new world — see tbReset (#738 quality pass: 2 false messages on a plant switch)
     },
     onButton: function (item, btn) {
       var b = BUTTONS[item.id];
@@ -4300,6 +4574,25 @@
      * popover will draw without rendering one. Three rows shipped permanently enabled and
      * permanently throwing precisely because this was DOM-only. */
     tripBlockRows: function (s) { return tripBlockRows(s); },
+    /* The message state as DATA (#738). The flash is a claim about state; a check that can only
+     * read a class off a button is testing the renderer rather than the rule, which is how the
+     * #727 row glow shipped with no gate at all. */
+    tripBlockMessages: function () { return tbMessages(); },
+    tripBlockUnacked: function () { return tbUnacked(); },
+    /* The acknowledge as a FUNCTION, so it is testable without a rendered popover. `closePop(true)`
+     * is the only production caller path and this is the same assignment it makes — a harness with
+     * no stage cannot open the card, and a check that skipped the acknowledge for that reason
+     * would be testing half the feature. Read-accessor category, like ports()/lastSnapshot(). */
+    __ackTripBlocks: function () { tbAck = tbSeq; },
+    /* Drop the whole message state. Production calls `tbReset` from onMount; a gate calls this so
+     * its own section starts from a known state — and so the mutation self-test stops carrying
+     * state between mutants (10 of 33 mutations were reporting a spurious red from a leftover
+     * lineup, measured by the #738 quality pass). */
+    __resetTripBlocks: function () { tbReset(); },
+    /* Mark a row as one the BOARD just commanded, so a harness can exercise the (c) branch — the
+     * player's own release — without a rendered popover to click. Same assignment the row's click
+     * handler makes; see `tbSelf` at the top of this section for why it is a countdown. */
+    __markTripBlockSelf: function (id, want) { tbMarkSelf(id, want === undefined ? false : want); },
     scramResetNote: function (s) {
       var rps = (s && s.rps_state) || {};
       if (!rps.scrammed) return null;
@@ -4368,6 +4661,23 @@
     // a standing lineup note, not an alarm (green/yellow/red is reserved for real severity).
     buttonInfo: function (item, s) {
       return item.id === 'imrsk4xz2dm' && blockedTripCount(s) > 0;
+    },
+    /* THE FLASH *(OWNER RULING, 2026-09-13: "flash the permissive button amber when there's a
+     * message … When the user opens the card and then closes it the permissive card opening
+     * button stops flashing")*. #738/#716.
+     *
+     * TWO CLASSES, NOT ONE, and they mirror the alarm panel's grammar exactly: the STATE class
+     * gives the colour and the `unack` class gives the motion (`ui/shell.css`: "Only unacked
+     * critical tiles flash"). A second flashing convention on one board is a defect, so this one
+     * is the same one — amber for "there is a message", motion only until the player has looked.
+     * The message SURVIVES the acknowledge (the row still says the trip is live); only the
+     * flashing stops, which is what the owner asked for and is also what an acknowledge means
+     * everywhere else on this board. */
+    buttonMsg: function (item, s) {
+      return item.id === 'imrsk4xz2dm' && tbMessages().some(function (r) { return !!r.msg; });
+    },
+    buttonUnack: function (item, s) {
+      return item.id === 'imrsk4xz2dm' && tbUnacked();
     },
     // Count badge: how many trips are currently blocked, on the TRIP BLOCKS button.
     buttonBadge: function (item, s) {
@@ -4458,6 +4768,10 @@
     afterRender: function (s) {
       // Boron target-seeking now lives in the control/automation layer (the
       // 'boron_conc' channel) — the ON/OFF buttons and target number engage and set it.
+      /* BEFORE refreshTripBlocks, and OUTSIDE it: refreshTripBlocks returns immediately when the
+       * card is closed, and a message that only exists while the player is already looking at the
+       * card is not an annunciator. This is the every-broadcast half (#738). */
+      noteTripBlockEvents(s);
       refreshTripBlocks(s);
       clearLatchIfDone(s);
     },

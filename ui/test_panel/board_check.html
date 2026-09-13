@@ -1061,6 +1061,151 @@
         RD.PwrBoard.render(svc.assembleSnapshot());
       })();
 
+      /* --- THE TRIP-BLOCK MESSAGE, AS THE PLAYER SEES IT (#738/#716) ---
+       * `run_pwr2_board` asserts the RULE — when a message exists, whether it is acknowledged,
+       * what it says. It runs against a DOM shim with no layout and no cascade, and it cannot see
+       * either of the two defects this section exists for. Both were real and both were found by
+       * a browser probe AFTER the Node gate was green:
+       *
+       *   1. TWO WRITERS TO ONE NODE. The message was written into `.sub` in its own block, and
+       *      the caption writer below it overwrote the text on the same pass. The CLASS survived
+       *      and the TEXT did not, so the row went amber saying nothing — measured, `subMsg true`
+       *      with the sub reading only "REACTOR TRIP · 1775 psi (P-11 PERMISSIVE)".
+       *   2. THE CASCADE. `.bd-msg` and `.bd-info` have the same specificity, and the message rule
+       *      was written ABOVE bd-info — so the button flashed in bd-info's GREY. Measured,
+       *      `animation: bdMsgFlash` with `color: rgb(184, 196, 205)`.
+       *
+       * So this asserts the COMPUTED colour and the RENDERED text, which is the only place either
+       * defect is visible. Assert the effect, never the write. */
+      (function () {
+        var D3 = RD.PwrBoardDriver;
+        /* the kernel's own answer, read without stepping — the same trick the trip-block
+         * section above uses so an assertion never costs the plant a scram. */
+        function isBlocked7(id) {
+          var tb = (svc.assembleSnapshot().rps_state || {}).trip_blocks || {};
+          return !!tb[id];
+        }
+        var btn3 = document.querySelector('[data-item="imrsk4xz2dm"] button');
+        var base = svc.assembleSnapshot();
+        function feed(blocks) {
+          var c = JSON.parse(JSON.stringify(base));
+          Object.keys(blocks).forEach(function (id) {
+            if (c.rps_state.trip_block_status[id]) c.rps_state.trip_block_status[id].blocked = blocks[id];
+            if (blocks[id]) c.rps_state.trip_blocks[id] = true; else delete c.rps_state.trip_blocks[id];
+          });
+          RD.PwrBoard.render(c);
+        }
+        /* `lo_press` because it is UNBLOCKED at this harness's initial condition. A row the plant
+         * holds blocked would be re-blocked by the next render and the message correctly cleared,
+         * which is the rule working and would look like the check failing. */
+        /* THE PREVIOUS SECTION LEAVES THE POPOVER OPEN. `clickBtn` is a TOGGLE, so opening it
+         * below would have closed it instead — measured on the first run: "no status block" on
+         * every card check. Close it first and start from a known state. */
+        if (document.querySelector('.bd-pop')) clickBtn('imrsk4xz2dm');
+        D3.__ackTripBlocks();
+        feed({ lo_press: true }); feed({ lo_press: true });
+        var quietColor = getComputedStyle(btn3).color;
+        feed({ lo_press: false });                      // the plant took it
+        ck('msg: the fixture actually raised a message (a colour check on no message proves nothing)',
+          D3.tripBlockMessages().some(function (r) { return r.id === 'lo_press' && r.msg; }),
+          JSON.stringify(D3.tripBlockMessages()));
+        /* ONE MORE RENDER, AND THE REASON IS A REAL PROPERTY OF THE FEATURE, not a fixture wart.
+         * The detector runs in `afterRender`, which is the LAST thing a render does — the button's
+         * classes were computed earlier in that same pass, from the state before the event. So the
+         * flash appears on the NEXT broadcast: 100 ms in production, which no player perceives, and
+         * exactly one render here. Measured on the first run of this check: message raised, button
+         * still `rgb(184, 196, 205)` with `animation: none`. */
+        RD.PwrBoard.render(svc.assembleSnapshot());
+
+        var cs3 = getComputedStyle(btn3);
+        /* THE CLASS AND THE COLOUR, AND THE FACT THAT THE QUIET STATE IS NOT THE SAME COLOUR.
+         * `.bd-warn` produces this exact amber too, so a colour-only assertion would go green on a
+         * dead `.bd-msg` the day that button gains a warn state — and a colour-only assertion that
+         * never compares against the quiet state cannot tell "turned amber" from "was always
+         * amber". Both halves are cheap and both close a way this check could rot. */
+        ck('msg: the TRIP BLOCKS button takes the message class when the plant releases a block',
+          btn3.classList.contains('bd-msg'), btn3.className);
+        ck('msg: the TRIP BLOCKS button turns AMBER when the plant releases a block (not bd-info grey — the cascade)',
+          cs3.color.replace(/\s/g, '') === 'rgb(255,209,102)' &&
+          quietColor.replace(/\s/g, '') !== 'rgb(255,209,102)',
+          'color ' + cs3.color + ' (quiet was ' + quietColor + ')');
+        ck('msg: …and it FLASHES while unacknowledged',
+          /bdMsgFlash/.test(cs3.animationName || ''), 'animation ' + cs3.animationName);
+
+        /* the card, opened the way a player opens it */
+        clickBtn('imrsk4xz2dm');
+        var pop3 = document.querySelector('.bd-pop');
+        var st3 = pop3 && pop3.querySelector('.bd-pop-status');
+        ck('msg: the card carries a STATUS line saying how much of the lineup is blocked (#716 — the card is the record)',
+          !!(st3 && /\d+ of \d+ BLOCKED/.test(st3.textContent)), st3 ? st3.textContent : 'no status block');
+        ck('msg: …and it names the released trip without quoting a setpoint the gauge will contradict',
+          !!(st3 && /RELEASED BY THE PLANT/.test(st3.textContent) && !/\d{3,}/.test(st3.textContent)),
+          st3 ? st3.textContent : 'no status block');
+        var subRow = pop3 && pop3.querySelector('.bd-pop-row .sub.bd-sub-msg');
+        ck('msg: the released ROW carries BOTH its permissive caption and the message (two writers, one node)',
+          !!(subRow && /P-11 PERMISSIVE/.test(subRow.textContent) &&
+             /RELEASED BY THE PLANT/.test(subRow.textContent)),
+          subRow ? subRow.textContent : 'no row carries the message class');
+
+        /* closing the card is the acknowledge — the flash stops, the amber stays */
+        clickBtn('imrsk4xz2dm');
+        RD.PwrBoard.render(svc.assembleSnapshot());
+        var cs4 = getComputedStyle(btn3);
+        ck('msg: closing the card stops the FLASH',
+          !/bdMsgFlash/.test(cs4.animationName || ''), 'animation ' + cs4.animationName);
+        ck('msg: …and leaves the button AMBER — the trip is still live and the button still says so',
+          cs4.color.replace(/\s/g, '') === 'rgb(255,209,102)', 'color ' + cs4.color);
+        /* THE PLAYER'S OWN RELEASE, THROUGH THE REAL CLICK HANDLER — the one path no other check
+         * exercises. `run_pwr2_board`'s equivalent drives `__markTripBlockSelf`, and an accessor
+         * standing in for a production line is not that line: with the click handler's own
+         * `tbMarkSelf` call deleted, both gates stayed fully green while every player release began
+         * flashing "RELEASED BY THE PLANT" (measured, #738 quality pass). This is what makes that
+         * line matter.
+         *
+         * NO `ticks()` ANYWHERE IN HERE, and that is load-bearing rather than tidy. At this point
+         * the only pressable rows are `ir_high` and `pr_low_setpoint`, both BLOCKED with
+         * `will_trip` true — the trip condition is standing and the block is the only thing holding
+         * it off, so releasing one scrams the plant on the spot and every check below this line
+         * would run on a dead reactor. That is the exact defect this file's own trip-block section
+         * records at length. The detector runs in `render()`, which does not step the plant, so the
+         * whole leg is press -> render -> assert -> restore with protection never evaluating.
+         *
+         * TWO PRESSES TO RELEASE, because `will_trip` rows arm first and confirm second (#598
+         * item 15) — the first press is deliberately inert. */
+        D3.__resetTripBlocks();
+        RD.PwrBoard.render(svc.assembleSnapshot());
+        var rows7 = RD.PwrBoardDriver.tripBlockRows(svc.assembleSnapshot());
+        var blockedRow = rows7.filter(function (r) { return r.supported && r.blocked && !r.disabled; })[0];
+        ck('msg: the harness has a blocked, pressable row to release (a press check on no row proves nothing)',
+          !!blockedRow, blockedRow ? (blockedRow.id + ' willTrip=' + blockedRow.will_trip)
+            : 'none: ' + JSON.stringify(rows7.map(function (r) {
+                return r.id + ' blocked=' + r.blocked + ' disabled=' + r.disabled; })));
+        if (blockedRow) {
+          clickBtn('imrsk4xz2dm');                                   // open the card
+          function press() {
+            var b = document.querySelector('.bd-pop button[data-trip="' + blockedRow.id + '"]');
+            if (b) b.click();
+          }
+          press();                                                   // arms, if the row warns
+          if (isBlocked7(blockedRow.id)) press();                     // confirms the release
+          RD.PwrBoard.render(svc.assembleSnapshot());                 // NO tick — see above
+          ck('msg: the press actually released the block (the checks below need the transition)',
+            !isBlocked7(blockedRow.id), 'blocked=' + isBlocked7(blockedRow.id));
+          var mine = D3.tripBlockMessages().filter(function (r) { return r.id === blockedRow.id; })[0];
+          ck('msg: a row the PLAYER releases from the card raises NO message and does not flash',
+            !!(mine && !mine.msg) && D3.tripBlockUnacked() === false,
+            mine ? JSON.stringify(mine) : 'no row state — the press never reached the detector');
+          ck('msg: …and it leaves standing status saying the trip is live again',
+            !!(mine && mine.note && /live again/i.test(mine.note)), mine ? mine.note : 'no note');
+          press();                                                   // re-block: one click, no arm
+          ck('msg: the block is RESTORED before the plant is stepped (this row would scram on release)',
+            isBlocked7(blockedRow.id), 'blocked=' + isBlocked7(blockedRow.id));
+          if (document.querySelector('.bd-pop')) clickBtn('imrsk4xz2dm');
+        }
+        D3.__resetTripBlocks();
+        RD.PwrBoard.render(svc.assembleSnapshot());
+      })();
+
       // --- ESF AUTO/ON/OFF triad: AUTO re-arms; the AUTO tile lights when armed ---
       function esfState(id) { return (svc.assembleSnapshot().automation.esf || {})[id]; }
       function tileActive(id) { var b = document.querySelector('[data-item="' + id + '"] button'); return !!b && b.classList.contains('bd-active'); }

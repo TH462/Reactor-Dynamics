@@ -1406,6 +1406,16 @@
         // TRIP BLOCKS: grey (with a count badge) while trips are intentionally blocked.
         var info = d.buttonInfo ? !!d.buttonInfo(it, s) : false;
         btn.classList.toggle('bd-info', info);
+        /* MESSAGE (amber) + UNACKNOWLEDGED (the motion) — two classes, the alarm panel's grammar
+         * (#738/#716, owner ruling 2026-09-13: "flash the permissive button amber when there's a
+         * message … When the user opens the card and then closes it the … button stops
+         * flashing"). The state class carries the colour and survives the acknowledge; only
+         * `bd-unack` carries the animation, exactly as `.alarm-tile.unack.crit` does in
+         * shell.css. Splitting them is what lets an acknowledged message keep saying there IS a
+         * message while no longer demanding attention. */
+        var msg = d.buttonMsg ? !!d.buttonMsg(it, s) : false;
+        btn.classList.toggle('bd-msg', msg);
+        btn.classList.toggle('bd-unack', msg && (d.buttonUnack ? !!d.buttonUnack(it, s) : false));
         // Actuated (amber) state (#512, owner design) — a PROTECTION latch is holding this
         // system: distinct from bd-warn ("needs attention") and bd-active (a selection).
         // The panel's own securing click is the unlatch, refused while the signal is live.
