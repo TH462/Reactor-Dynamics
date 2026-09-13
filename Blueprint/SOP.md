@@ -258,6 +258,26 @@ organically"** offered as coverage when the set never produced the binding strin
 cancels the re-measurement pass. *Organic is not the same as representative* — a close cousin of the
 standing trap that a term which is an identity in the regime you test in is a term nothing tests.
 
+**And the missing half: a correction chases everyone holding the number, not whoever is in front of
+you.** Marking a figure MEASURED or INHERITED says how good it was *when given*. Nothing in that
+makes a retraction travel.
+
+**The worked case, from the commit that landed this section.** A coordinator estimated the evictable
+prose in `CLAUDE.md` at **~2,400 words** by eyeballing "roughly half" a 4,808-word section, and
+stated it as fact to the owner and to the other lane. Measured, it was **821**. The correction went
+to the owner — *"my estimate was wrong by a factor of three"* — **and never to the other lane**,
+which went on holding the retired number, used it as a premise, and built an argument on it: seeing
+821 and 753 in one commit, it reported "two numbers disagreed by 3.2×" and named it a MEASURED/
+INHERITED failure. **Both of those figures were right** — 821 gross, 68 words of replacement
+pointer, **753 net** — and the contradiction was manufactured out of a gross-versus-net difference
+neither side had checked. The only wrong number in the episode was the one already retracted in a
+conversation the other lane could not see.
+
+**So: when a number you have given turns out wrong, send the correction to every holder.** A
+retraction that reaches one of them is indistinguishable from no retraction — and worse than none,
+because you will reason as though it landed. The cost is one message; the failure mode is a peer
+defending your dead figure against your live one.
+
 ### 6.4 One WRITER per file per TREE — and why the obvious rule was wrong
 
 The first draft said *one agent per file*. It was measured and it is too strong: two agents editing
