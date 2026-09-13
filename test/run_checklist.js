@@ -179,7 +179,30 @@ ck('fixing the plant clears the row live', pcv(c, 1).met === true, 'obs ' + pcv(
 ck('all rows met → the comment comes down', !(snap.instructor && snap.instructor.message), snap.instructor && String(snap.instructor.message));
 svc3.handleCommand({ action: 'set_hpi', active: false });
 snap = run(svc3, 2);
-ck('re-breaking the condition re-raises the comment AT ENTRY (new episode)', !!(snap.instructor && snap.instructor.message), 'raised');
+/* ONCE PER RUN, SUPERSEDING "ONCE PER EPISODE" (#732, owner playtest #724 item 15:
+ * "Walkthrough leaving mode 3>1 checklist and going into mode 1, power ascension it gave me a
+ * flickering warning that prerequisites for this checklist are not met since i think the reactor
+ * power was on the line for these prerequisites").
+ *
+ * ⚠ THIS CHECK ASSERTED THE OPPOSITE and is changed deliberately, not refitted around a
+ * regression. It pinned a per-EPISODE latch — re-breaking a precondition raised the comment again
+ * — which is exactly the flicker: a predicate sitting ON its threshold makes an episode per
+ * crossing, and the `!cklMoving` guard below cannot help because a checklist stays on step 0 for
+ * as long as its first step is ungraded. MEASURED BY BACKSHOP, INHERITED: `power_pct` on the
+ * `low_power` initial condition runs 9.222-10.061 %, crossing `pwr_raise_power`'s `> 10 %` row
+ * twice in ten plant-minutes.
+ *
+ * The episode granularity was an agent's choice, never a ruling, and BOTH owner inputs on this
+ * message push the same way — #619 item 3 was "probably just remove it" (scoped to entry-only
+ * rather than deleted) and #724 item 15 is "stop it flickering". Once per run is strictly closer
+ * to both than once per episode.
+ *
+ * The CLEAR is untouched and still asserted above ('all rows met -> the comment comes down'):
+ * a latch that never clears is the same defect facing the other way. Proven red by injection on
+ * a scratch worktree at the parent commit — this line reads `raised` there — and the count-based
+ * proof across six crossings is `run_checklist_pwr2` section 2u. */
+ck('re-breaking the condition does NOT re-raise the comment — once per RUN, not once per crossing (#732)',
+  !(snap.instructor && snap.instructor.message), snap.instructor ? String(snap.instructor.message).slice(0, 50) : 'silent');
 
 /* ENTRY ONLY, ONCE THE RUN IS MOVING (#619 item 3, owner: "The instructor block gets a 'before
  * you...' in the middle of mode 5>3 checklist. it doesnt make sense.").

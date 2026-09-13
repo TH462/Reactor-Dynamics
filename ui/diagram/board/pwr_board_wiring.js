@@ -3249,6 +3249,14 @@
      * and `run_manual_controls` both fail on a label that is MISSING, never on one nothing
      * names yet. */
     'Reactor Power': 'imrzl4b7g9m',
+    /* THE ROD-POSITION READOUT (#735) — the same hole as 'Reactor Power' above, found the same
+     * way *(OWNER, #724 item 10: "this step isnt obvious which number the 1./m plot is referring
+     * to. we should highlight the CONTROL ROD POSITION")*. `imrpk4pjcpd` is the control-bank
+     * step-count readout on the ROD CONTROL card (inspect name "Control Rod Position"), and it
+     * had no key here at all — so the one indication the 1/M panel's prediction is a number ON
+     * could not be pointed at by any step. 'Control Bank' is the CARD and glowing it does not
+     * answer "which number"; this is the number. Adding a key only widens the vocabulary. */
+    'Control Rod Position': 'imrpk4pjcpd',
     // Aliases for the `control` strings the checklist steps use (so the step-hover
     // fallback in ui/app.js resolves without authoring an explicit `hl` on each).
     /* THE CARD, NOT THE PUMP GRAPHIC *(#607 item 1)*. Both names used to point at

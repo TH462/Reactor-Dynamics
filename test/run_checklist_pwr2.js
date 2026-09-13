@@ -1068,6 +1068,217 @@ if (!only) {
     ck('...RED BY INJECTION: with the guard removed, the same scrammed snapshot reads verified (true) — the guard is load-bearing',
        noGuardResult === true, 'result with no guard authored: ' + noGuardResult);
   })();
+
+  /* 2t. A TRIP BLOCK IS GRADED ON THE LINEUP, AND THE SENSE IS NOT REVERSIBLE (#731, owner
+   * playtest #724 item 13: "i blocked both trips on step 16 but when i got to step 17 it didnt
+   * automatically detect the PR HIGH trip block was blocked. When i unblocked the trip the step
+   * thought i had blocked it and checked off the step. this would have left me in a condition
+   * where the trip would have fired and ended my playthrough.").
+   *
+   * Two defects in one step, and the second is the dangerous one. `pwr_startup` steps 16 and 17
+   * carried a bare `cmd`, so the live checklist graded them on SEEING `set_trip_block` descend
+   * while the step was active — and `_cmdEvidence` discriminated on `trip_id` alone, so
+   * `{blocked: false}` was evidence for a step that asks for a BLOCK.
+   *
+   * MEASURED ON THE PRE-FIX TREE (`inbox/724/repro13.js`, `invert13.js`, run against a scratch
+   * worktree at the parent commit): entering step 17 with pr_low_setpoint ALREADY blocked left
+   * the step unmet for 402 s of plant time, and issuing the UNBLOCK lit its Continue button 6 s
+   * later with the trip live at 9.91 % power. After the fix: met 18 s after entry on the
+   * standing block, still unmet 126 s after an unblock, met 30 s after the block is replaced.
+   *
+   * DRIVEN ON THE REAL LEG, not a synthetic probe: the whole point is that a block placed by a
+   * PREVIOUS step is seen, which only a run that reaches step 17 through step 16 can show.
+   * ~30 s of wall time for the two drives. */
+  (function () {
+    var proc = POOL.filter(function (p) { return p.id === 'pwr_startup'; })[0];
+    var i16 = -1, i17 = -1;
+    (proc.steps || []).forEach(function (st, k) {
+      if (!st.cmd || st.cmd.action !== 'set_trip_block') return;
+      if (st.cmd.trip_id === 'ir_high') i16 = k;
+      if (st.cmd.trip_id === 'pr_low_setpoint') i17 = k;
+    });
+    ck('pwr_startup carries both trip-block steps and BOTH grade on the lineup, not on the press (#731)',
+       i16 >= 0 && i17 >= 0 && i16 < i17 &&
+       !!(proc.steps[i16].acc && proc.steps[i16].acc.p === 'ir_high_blocked') &&
+       !!(proc.steps[i17].acc && proc.steps[i17].acc.p === 'pr_low_setpoint_blocked'),
+       'steps ' + (i16 + 1) + '/' + (i17 + 1) + ' acc ' +
+       JSON.stringify(proc.steps[i16] && proc.steps[i16].acc) + ' / ' +
+       JSON.stringify(proc.steps[i17] && proc.steps[i17].acc));
+
+    /* the SENSE, on the mechanism itself — cheap, and it speaks for every leg rather than only
+     * this one (`pwr_cooldown` authors two more set_trip_block steps) */
+    var il = new RD.InstructorLayer(null);
+    var askBlock = { action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: true };
+    ck('_cmdEvidence: an UNBLOCK is NOT evidence for a step that asks for a block (#731 — it was)',
+       il._cmdEvidence(askBlock, { action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: false }) === false);
+    ck('..._cmdEvidence: the matching BLOCK still is, and a different row still is not',
+       il._cmdEvidence(askBlock, { action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: true }) === true &&
+       il._cmdEvidence(askBlock, { action: 'set_trip_block', trip_id: 'ir_high', blocked: true }) === false);
+
+    /* THE LIVE LEG. A player who blocks BOTH rows while step 16 is up must find step 17 already
+     * satisfied when it comes up. */
+    var svc = mkSvc('hot_zero_power');
+    svc.timeAcceleration = 60;
+    var s = null; for (var i = 0; i < 3; i++) s = svc.tick();
+    svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
+    var pressed = {}, t17 = null, metOnEntry = null, cs = null;
+    for (var n = 0; n < 6000; n++) {
+      s = svc.tick();
+      cs = s.instructor && s.instructor.checklist;
+      if (!cs || cs.complete) break;
+      var idx = cs.step_index, st = proc.steps[idx];
+      if (!pressed[idx]) {
+        pressed[idx] = true;
+        if (idx === i16) {
+          // the owner's action: BOTH rows blocked while step 16 is the active step
+          svc.handleCommand({ action: 'set_trip_block', trip_id: 'ir_high', blocked: true });
+          svc.handleCommand({ action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: true });
+        } else if (idx === i17) {
+          t17 = s.metadata.sim_time;
+        } else {
+          if (st.cmd) svc.handleCommand(st.cmd);
+          (st.accs || []).forEach(function (e) {
+            if (e.cmd) svc.handleCommand(typeof e.cmd === 'string' ? { action: e.cmd } : e.cmd);
+          });
+        }
+      }
+      if (idx === i17) {
+        var d = s.metadata.sim_time - t17;
+        if (metOnEntry === null && cs.awaiting_ack) { metOnEntry = d; break; }
+        if (d > 200) break;
+        continue;
+      }
+      if (idx > i17) break;
+      if (cs.awaiting_ack) svc.handleCommand({ action: 'checklist_check', index: idx });
+    }
+    ck('a block placed on step 16 checks step 17 off ON ENTRY (#731 — it waited for ever before)',
+       metOnEntry !== null && metOnEntry <= 60,
+       metOnEntry === null ? 'step ' + (i17 + 1) + ' never met; index ' + (cs && cs.step_index) +
+                             ', pr blocked=' + !!(s.rps_state && s.rps_state.trip_blocks.pr_low_setpoint)
+                           : 'met ' + metOnEntry.toFixed(0) + ' s after entry at ' +
+                             s.true_state.power_pct.toFixed(1) + ' % power');
+
+    /* THE UNSAFE DIRECTION, on the live leg: enter step 17 with the row UNBLOCKED (block only
+     * ir_high on step 16), issue the unblock, and the step must stay open. */
+    var svc2 = mkSvc('hot_zero_power');
+    svc2.timeAcceleration = 60;
+    var s2 = null; for (var i2 = 0; i2 < 3; i2++) s2 = svc2.tick();
+    svc2.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
+    var pressed2 = {}, t17b = null, metUnblocked = null, metBlocked = null, blockedAt = null, cs2 = null;
+    for (var n2 = 0; n2 < 6000; n2++) {
+      s2 = svc2.tick();
+      cs2 = s2.instructor && s2.instructor.checklist;
+      if (!cs2 || cs2.complete) break;
+      var j = cs2.step_index, st2 = proc.steps[j];
+      if (!pressed2[j]) {
+        pressed2[j] = true;
+        if (j === i16) svc2.handleCommand({ action: 'set_trip_block', trip_id: 'ir_high', blocked: true });
+        else if (j === i17) {
+          t17b = s2.metadata.sim_time;
+          svc2.handleCommand({ action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: false });
+        } else {
+          if (st2.cmd) svc2.handleCommand(st2.cmd);
+          (st2.accs || []).forEach(function (e) {
+            if (e.cmd) svc2.handleCommand(typeof e.cmd === 'string' ? { action: e.cmd } : e.cmd);
+          });
+        }
+      }
+      if (j === i17) {
+        var d2 = s2.metadata.sim_time - t17b;
+        if (blockedAt === null) {
+          if (cs2.awaiting_ack && metUnblocked === null) metUnblocked = d2;
+          if (d2 > 120) {
+            blockedAt = d2;
+            svc2.handleCommand({ action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: true });
+          }
+        } else if (metBlocked === null && cs2.awaiting_ack) { metBlocked = d2 - blockedAt; break; }
+        if (d2 > 320) break;
+        continue;
+      }
+      if (j > i17) break;
+      if (cs2.awaiting_ack) svc2.handleCommand({ action: 'checklist_check', index: j });
+    }
+    ck('UNBLOCKING the trip does NOT check the step off (#731 — it did, leaving a live trip)',
+       metUnblocked === null && t17b !== null,
+       t17b === null ? 'never reached step ' + (i17 + 1)
+                     : 'held open ' + (blockedAt === null ? '(no hold window)' : blockedAt.toFixed(0) + ' s') +
+                       ' with pr_low_setpoint unblocked at ' + s2.true_state.power_pct.toFixed(1) + ' % power');
+    ck('...and BLOCKING it then does — the check is not simply dead',
+       metBlocked !== null && metBlocked <= 60,
+       metBlocked === null ? 'still unmet after the block; pr blocked=' +
+                             !!(s2.rps_state && s2.rps_state.trip_blocks.pr_low_setpoint)
+                           : 'met ' + metBlocked.toFixed(0) + ' s after the block');
+  })();
+
+  /* 2u. THE PRECONDITION COMMENT IS SAID ONCE PER RUN, NOT ONCE PER CROSSING (#732, owner
+   * playtest #724 item 15: "Walkthrough leaving mode 3>1 checklist and going into mode 1, power
+   * ascension it gave me a flickering warning that prerequisites for this checklist are not met
+   * since i think the reactor power was on the line for these prerequisites").
+   *
+   * `_stepChecklist` guarded the RAISE with `!cklMoving` and left the CLEAR unguarded, so
+   * `precondMsg` fell back to false the moment every row recovered and the next crossing raised
+   * the comment again. A checklist sits on step 0 for as long as its first step is ungraded, so
+   * `cklMoving` is false for the whole of the window in which the flicker happens.
+   *
+   * MEASURED BY BACKSHOP, INHERITED HERE: `power_pct` on the `low_power` initial condition runs
+   * 9.222-10.061 %, a span of 0.840 points, and crosses `pwr_raise_power`'s authored `> 10 %`
+   * row twice in ten plant-minutes. The threshold half of that fix is theirs; this is the
+   * mechanism half.
+   *
+   * THE COUNT IS THE ASSERTION, NOT THE STATE AT ONE INSTANT (#627's trap: a condition
+   * re-decided every step chatters, and a gate that samples one crossing passes anyway).
+   * PROVEN RED BY INJECTION against a scratch worktree at the parent commit
+   * (`inbox/724/precond_flicker.js`): six crossings raised the comment SIX times there and once
+   * here, while the heal case reads 1 raise / 1 clear on BOTH trees — so the latch is not
+   * bought by breaking the clear. */
+  (function () {
+    var PROBE = {
+      id: '__precond_flicker__', category: 'control', title: 'flicker probe', from: 'hot_full_power',
+      precond: [{ p: 'power_pct', op: '>', v: 10, text: 'Reactor at power: REACTOR POWER above 10 %' }],
+      steps: [{ text: 'never satisfied', acc: { p: 'power_pct', op: '>', v: 999 } }]
+    };
+    function snap(power, t) {
+      return { metadata: { sim_time: t, plant_id: 'pwr2' }, true_state: { power_pct: power },
+               instruments: {}, control_state: {}, rps_state: { trip_blocks: {} } };
+    }
+    function run(series) {
+      var il = new RD.InstructorLayer(null);
+      il.engineKey = 'pwr2';
+      il.loadChecklist(PROBE, { procedure_id: PROBE.id, profile_key: 'pwr2' });
+      var raises = 0, clears = 0, standing = false, t = 0;
+      series.forEach(function (pw) {
+        t += 0.1;
+        il.pendingMessage = null;
+        il.step(snap(pw, t), t);
+        var m = il.pendingMessage;
+        if (m && /prerequisites|PRECONDITIONS/i.test(m.industry || m.learning || '')) raises++;
+        var now = !!(il.checklist && il.checklist.precondMsg);
+        if (standing && !now) clears++;
+        standing = now;
+      });
+      return { raises: raises, clears: clears, standing: standing };
+    }
+    var osc = [];
+    for (var k = 0; k < 6; k++) {
+      for (var i = 0; i < 5; i++) osc.push(9.222);
+      for (var j = 0; j < 5; j++) osc.push(10.061);
+    }
+    var r1 = run(osc);
+    ck('a precondition predicate crossing its threshold six times raises the comment ONCE (#732 — it raised it six times)',
+       r1.raises === 1, 'raises ' + r1.raises + ', clears ' + r1.clears + ' over 60 ticks');
+
+    var heal = [];
+    for (var a = 0; a < 10; a++) heal.push(9.0);
+    for (var c = 0; c < 10; c++) heal.push(20.0);
+    var r2 = run(heal);
+    ck('...and a precondition that genuinely recovers still takes the standing comment DOWN (a latch that never clears is the same defect facing the other way)',
+       r2.raises === 1 && r2.clears === 1 && r2.standing === false,
+       'raises ' + r2.raises + ', clears ' + r2.clears + ', standing ' + r2.standing);
+
+    var fine = []; for (var d = 0; d < 20; d++) fine.push(20.0);
+    ck('...and a plant that never breaks the precondition says nothing at all',
+       run(fine).raises === 0);
+  })();
 }
 
 console.log('\n' + '='.repeat(74));

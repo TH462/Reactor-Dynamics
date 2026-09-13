@@ -181,12 +181,17 @@ var STEP_UI = {
     { i: 8, view: 'board', control: 'Boron control' },    // the verify step, now boron-bounded (#683)
     { i: 9, view: 'board', control: 'Boron control' },    // the closing trim to 626 ppm, now commanded (#683)
   ],
+  /* #736 — the 75 MWe stage is TWO steps now (lower load, then trim rods), so every later
+   * index shifted by one. This table is `verify_manual_follow`'s COVERAGE LIST and it iterates
+   * the table, not the pool: an entry left behind does not merely go stale, it silently moves
+   * the gate's attention onto a step it was never written for. */
   'pwr2:pwr_lower_power': [
     { i: 0, view: 'board', control: 'Boron control' },
     { i: 1, view: 'board', control: 'Turbine Load' },
-    { i: 2, view: 'board', control: 'Turbine Load' },
+    { i: 2, view: 'board', control: 'Rod Speed' },      // #736 — the rod trim, split off from the load drop
     { i: 3, view: 'board', control: 'Turbine Load' },
     { i: 4, view: 'board', control: 'Turbine Load' },
+    { i: 5, view: 'board', control: 'Turbine Load' },
   ],
   'pwr2:pwr_shutdown': [
     { i: 0, view: 'board', control: 'Turbine Load' },

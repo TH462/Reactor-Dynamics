@@ -1236,7 +1236,13 @@
            * "Verify all shutdown banks are fully withdrawn within 15 minutes of withdrawing control
            * banks." There is no instrument that tells you a bank is all the way out. */
           acc: { p: 'shutdown_bank_pct', op: '>=', v: 98 },
-          hl: ['Shutdown Bank — Withdraw'] },
+          /* THE SPEED BUTTON IS PART OF THE PRESS (#735, owner playtest #724 item 1: "it should
+           * glow the FAST button on the rod control panel since it has the user click it").
+           * The step names two presses and glowed one. Every step in the pool that tells the
+           * player to press SLOW / MED / FAST now names that button; a step that merely CONTINUES
+           * at a speed already selected does not, or the ring would point at a button there is
+           * nothing to do to — which is #724 item 3's complaint in reverse. */
+          hl: ['Rod Speed — Fast', 'Shutdown Bank — Withdraw'] },
         /* A VERIFICATION HOLDS FOR THE PLAYER (#660 item 4, owner playtest 2026-09-08: "skipped and
          * didn't have an acknowledge button"). With a `cmd` on it the step ticked itself on the
          * already-tripped turbine and advanced; without one it satisfies and waits, like the
@@ -1248,8 +1254,24 @@
           hold: 10,
           acc: { p: 'turbine_tripped', op: '>', v: 0 },
           hl: ['Turbine Load', 'Main Breaker'] },
-        { text: 'Press AUTO on the SG FEED card.',
-          note: 'This starts the feed pumps and holds the STEAM GENERATOR LEVEL tile near 65 %.',
+        /* CONFIRM, THEN ACT *(OWNER, #724 item 3: "Walkthrough mode 5>3 step 5, the SG FEED AUTO
+         * button is already [in AUTO]")*. Same shape as #619 item 16, which reworded the sibling
+         * step in `pwr_startup`.
+         *
+         * THE FILED PREMISE DID NOT REPRODUCE FROM THIS LEG'S OWN INITIAL CONDITION, and that is
+         * recorded here rather than acted on. MEASURED (full stack, `cold_shutdown`, driven step
+         * by step to this step's entry at t = 549 s): `control_state.feed_coupled` reads FALSE,
+         * feed pump speed 0 %, no `feed_sg` kernel channel on this plant at all — so the board's
+         * SG FEED corner reads OFF and the AUTO lamp is dark. The instruction is correct on the
+         * plant the leg boots.
+         *
+         * A player can still arrive with it already in AUTO (re-entering the leg, or coming round
+         * the chain), and the acceptance already grades the LAMP rather than the press, so the
+         * step self-ticks in that case. What was wrong was only the prose: it stated a press as
+         * unconditional. Reworded so it is right either way — which costs nothing and removes the
+         * one thing the report is unambiguously about. */
+        { text: 'Check SG FEED reads AUTO. If it does not, press AUTO.',
+          note: 'From the cold shutdown lineup it normally reads OFF and you press it; pressing AUTO starts the feed pumps and holds the STEAM GENERATOR LEVEL tile near 65 %. If the lamp is already lit there is nothing to press.',
           why: 'The steam generator is the boiler: reactor water heats it on one side and steam comes off the other. Nothing is boiling yet, so the feed pumps start out stopped. Putting level control in AUTO now, while the plant is quiet, means it is already holding level when the water starts to boil later in the heatup.',
           control: 'Feed Pumps', target: 'SG FEED reads AUTO, STEAM GENERATOR LEVEL near 65 %',
           cmd: { action: 'set_feed_coupled', active: true }, hold: 5,
@@ -1672,7 +1694,15 @@
           note: 'This first point is the baseline. Every count target on this checklist is the SOURCE RANGE reading, printed in shorthand: 7.0e2 is 700 counts a second, 1.4e3 is 1,400, 2.0e4 is 20,000.',
           accs: [{ cmd: 'plot_1m_point', label: 'Baseline point plotted' }],
           overtaken: SR_OVERTAKEN,
-          hl: ['1/M Plot Tool'], hl_watch: ['Source Range'] },
+          /* GLOW THE BUTTON, NOT THE BOX THAT OPENS IT (#735, owner playtest #724 items 4 and 5:
+           * "the plot point in the 1/5 plot window should be glowing since the step asks the
+           * user to press it"; "the 1/m plot button that opens the plot should not be glowing,
+           * the plot point button on the plot window should be glowing"). Both labels used to
+           * resolve to `bdOneOverM`, the board button that OPENS the plot — so every plot step
+           * glowed the opener. `Plot point` now resolves to the panel's own button
+           * (`[data-oom="plot"]`, ui/highlight_bus.js SHELL_TARGETS). THIS step is the one that
+           * legitimately names both, because it is the one that opens the panel. */
+          hl: ['1/M Plot Tool', 'Plot point'], hl_watch: ['Source Range'] },
         /* BURST SIZE, NOT BANK POSITION *(OWNER RULING, 2026-09-03, #619 item 20: "The mode 3>1
          * CLs should tell the user about how many steps to pull the rods for startup instead of
          * a 'long burst'. i have no idea how long a 'long burst' is." — scoped in the same
@@ -1685,46 +1715,61 @@
           why: 'The first two points always predict too high: near the bottom the rods are worth little per step, so the line they draw crosses zero far past the real critical position. That is expected. While the reactor is shut down, SOURCE RANGE counts are the only thing that tells you how close you are; the rod position does not.',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e2 (700 counts a second); point 2 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 94, speed: 'normal' }, hold: 150,
-          accs: [{ p: 'sr_counts_cps', op: '>', v: 700, label: 'Counts settled above 700 cps' },
+          /* THE COUNT IS WRITTEN THE WAY THE METER WRITES IT *(OWNER, #724 item 6: "Whenever the
+           * SOURCE RANGE is referenced it should be in the format of 7.0e2 not 700cps. this is
+           * not consistant. it can still have '7.0e2 (700 counts per second)', this is
+           * acceptable.")*. The step's `target` line already said 7.0e2; the CHECK-OFF line said
+           * "700 cps", so the one number the player is hunting for appeared in two notations on
+           * one card. `PRED_DISPLAY.sr_counts_cps` renders the done-when in the same form
+           * (ui/app.js, the `sci` flag), which is the third place it was written differently. */
+          accs: [{ p: 'sr_counts_cps', op: '>', v: 700, label: 'Counts settled above 7.0e2 (700 counts per second)' },
                  { cmd: 'plot_1m_point', label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
-          hl: ['Withdraw', '1/M Plot Tool', 'Source Range', 'Startup Rate'] },
+          /* CONTROL ROD POSITION IS WHAT THE 1/M PANEL'S PREDICTION IS A NUMBER ON (#735, owner
+           * playtest #724 item 10: "we should probably highlight CONTROL ROD POSITION in the
+           * step the first time we mvoe the rods as well"). This is that first move. */
+          hl: ['Rod Speed — Normal', 'Withdraw', 'Plot point', 'Source Range', 'Startup Rate'],
+          hl_watch: ['Control Rod Position'] },
         { text: 'Hold WITHDRAW at MED until SOURCE RANGE settles above 1.4e3. Settle, press Plot point, then read the 1/M prediction.',
           note: 'About 150 to 175 steps at MED.',
           why: 'Each new point is taken closer to critical, where a step is worth more, so the line steepens and the predicted crossing walks toward you. The panel prints "predicted criticality ≈ step N" with a marker on the plot. Treat it as too high for now; it improves with every point.',
           control: 'Control Bank', target: 'SOURCE RANGE above 1.4e3 (1,400 counts a second); point 3 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 63, speed: 'normal' }, hold: 150,
-          accs: [{ p: 'sr_counts_cps', op: '>', v: 1400, label: 'Counts settled above 1,400 cps' },
+          accs: [{ p: 'sr_counts_cps', op: '>', v: 1400, label: 'Counts settled above 1.4e3 (1,400 counts per second)' },
                  { cmd: 'plot_1m_point', label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
-          hl: ['Withdraw', '1/M Plot Tool', 'Source Range', 'Startup Rate'] },
+          hl: ['Withdraw', 'Plot point', 'Source Range', 'Startup Rate'],
+          hl_watch: ['Control Rod Position'] },
         { text: 'Hold WITHDRAW at MED until SOURCE RANGE settles above 3.0e3. Settle, press Plot point, read the prediction again.',
           note: 'About 180 to 205 steps at MED.',
           why: 'Each step now buys more reactivity than the last, so the pulls get smaller from here. The prediction is starting to be useful. Keep waiting for STARTUP RATE to settle before each point.',
           control: 'Control Bank', target: 'SOURCE RANGE above 3.0e3 (3,000 counts a second); point 4 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 31, speed: 'normal' }, hold: 150,
-          accs: [{ p: 'sr_counts_cps', op: '>', v: 3000, label: 'Counts settled above 3,000 cps' },
+          accs: [{ p: 'sr_counts_cps', op: '>', v: 3000, label: 'Counts settled above 3.0e3 (3,000 counts per second)' },
                  { cmd: 'plot_1m_point', label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
-          hl: ['Withdraw', '1/M Plot Tool', 'Source Range', 'Startup Rate'] },
+          hl: ['Withdraw', 'Plot point', 'Source Range', 'Startup Rate'],
+          hl_watch: ['Control Rod Position'] },
         { text: 'Hold WITHDRAW at MED until SOURCE RANGE settles above 7.0e3. Settle, press Plot point. Keep STARTUP RATE under 1.0.',
           note: 'About 195 to 220 steps at MED.',
           why: 'STARTUP RATE is the speedometer: 1.0 means power is multiplying by ten every minute. A positive reading means reactivity is above zero and the chain reaction is growing; zero means it is holding; negative, dying away. Under 1.0 is a comfortable climb; above it you are outrunning the plot, and nothing in the plant slows the rise for you yet.',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e3 (7,000 counts a second); point 5 plotted; STARTUP RATE under 1.0',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 14, speed: 'normal' }, hold: 150,
-          accs: [{ p: 'sr_counts_cps', op: '>', v: 7000, label: 'Counts settled above 7,000 cps' },
+          accs: [{ p: 'sr_counts_cps', op: '>', v: 7000, label: 'Counts settled above 7.0e3 (7,000 counts per second)' },
                  { cmd: 'plot_1m_point', label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
-          hl: ['Withdraw', '1/M Plot Tool', 'Source Range', 'Startup Rate'] },
+          hl: ['Withdraw', 'Plot point', 'Source Range', 'Startup Rate'],
+          hl_watch: ['Control Rod Position'] },
         { text: 'Hold WITHDRAW at MED until SOURCE RANGE settles above 2.0e4. Settle, press Plot point. This is the last point.',
           note: 'About 205 to 225 steps at MED. Write down the position the panel predicts.',
           why: 'From here the remaining distance is short enough that creeping up in single steps beats trusting one more fitted number. Criticality arrives a little before the predicted position, on this plant between about 226 and 238 of 627.',
           control: 'Control Bank', target: 'SOURCE RANGE above 2.0e4 (20,000 counts a second); point 6 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 9, speed: 'normal' }, hold: 150,
-          accs: [{ p: 'sr_counts_cps', op: '>', v: 20000, label: 'Counts settled above 20,000 cps' },
+          accs: [{ p: 'sr_counts_cps', op: '>', v: 20000, label: 'Counts settled above 2.0e4 (20,000 counts per second)' },
                  { cmd: 'plot_1m_point', label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
-          hl: ['Withdraw', '1/M Plot Tool', 'Source Range', 'Startup Rate'] },
+          hl: ['Withdraw', 'Plot point', 'Source Range', 'Startup Rate'],
+          hl_watch: ['Control Rod Position'] },
         /* SPELL IT OUT *(OWNER, 2026-09-03, #619 item 21: "uses acronym (SUR) without spelling
          * it out, ie. STARTUP RATE (SUR)")*. The pool now expands it at its first appearance in
          * a visible line (the 7,000-count step) and says "startup rate" in full everywhere else;
@@ -1745,7 +1790,7 @@
          * the target is now the plot's, which is the plot's whole point. The replay's commands
          * (15 slow steps from 211) are unchanged; the acceptance is unchanged. */
         { text: 'Press SLOW and hold WITHDRAW to the position the 1/M panel predicts, then tap one step at a time.',
-          note: 'Wait after each tap. Critical is when the counts keep climbing and STARTUP RATE stays positive with the rods still. The prediction reads about ten steps low at the end of the approach, so the reactor is not yet critical at that position. Stay at 1× from here until power settles near 1 %: at 60× the reactor can run from 0 to 10 % between two glances. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.',
+          note: 'The 1/M panel predicts a CONTROL ROD POSITION, in steps — that is the number on the ROD CONTROL card. Wait after each tap. Critical is when the counts keep climbing and STARTUP RATE stays positive with the rods still. The prediction reads about ten steps low at the end of the approach, so the reactor is not yet critical at that position. SOURCE RANGE will switch itself off part way through this step, above 1.0e5 (100,000 counts per second); that is normal and there is no button for it. The two detectors overlap on purpose — the source-range counters would wear out at power, so the plant secures them once INTER RANGE has a reading, and losing the counts is the plant telling you the approach worked. From that moment INTER RANGE and STARTUP RATE are what you steer on, and the 1/M plot is finished. Stay at 1× from here until power settles near 1 %: at 60× the reactor can run from 0 to 10 % between two glances. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.',
           why: 'Critical means the chain reaction sustains itself: power keeps rising with nothing pushing it. A positive STARTUP RATE with the rods still is the sign; it is made on the meters, not on the rod position. No single step is dramatic, but ten of them are; expect STARTUP RATE to peak near 0.9.',
           control: 'Control Bank', target: 'STARTUP RATE positive and steady with the rods stopped, at or under 1.0',
           wait_hint: false,
@@ -1754,7 +1799,23 @@
            * Reactor power ≥ 0 %" beside a tile reading 0.0 — true of every plant, unmet for four
            * minutes (layman playtest pass 2, #653 S-5). 0.1 is the first digit the tile shows. */
           acc: { p: 'power_pct', op: '>', v: 0.1 },
-          hl: ['Withdraw', 'Rod Speed — Slow', 'Startup Rate', 'Source Range'] },
+          /* THE HAND-OFF IS INSIDE THIS STEP, AND THE STEP DID NOT SAY SO (#735, owner playtest
+           * #724 item 10: "In this step the SOURCE RANGE will shut off and the step doesnt address
+           * it. We need a better handoff from SOURCE RANGE to INTER RANGE. users will be confuesd
+           * in this step when their SOURCE RANGE indication shuts off and not know what they
+           * should watch.").
+           *
+           * MEASURED on the authored route (full stack, `hot_zero_power`, every step driven as
+           * written): the channel secures at t = 777 s with the control bank at 223 of 627 and
+           * REACTOR POWER still reading 0.000 % — step 10 is up from t = 690 s and step 11 does
+           * not start until t = 1053 s. So the death of the instrument happens 276 s INSIDE this
+           * step, and the only text that mentioned it was step 11's note, one step too late.
+           * INTER RANGE joins `hl_watch` here so the instrument that takes over is glowing while
+           * the one being lost goes dark. CONTROL ROD POSITION joins it because that is the
+           * number the 1/M panel's prediction is expressed in, which is the other half of the
+           * same report. */
+          hl: ['Withdraw', 'Rod Speed — Slow', 'Startup Rate', 'Source Range'],
+          hl_watch: ['Control Rod Position', 'Intermediate Range'] },
         /* INSTRUMENTS, NOT TAPS *(OWNER, 2026-09-08, #660 item 11: "Tapping withdraw 2 more times is
          * not always the best approach. The user will usually overshoot at this point. These steps
          * should take an instruments based approach. Usually waiting is best here if startup rate
@@ -1768,7 +1829,7 @@
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 2, speed: 'slow' }, hold: 900,
           saw: { p: 'startup_rate_dpm', op: '>', v: 0 },
           acc: { p: 'power_pct', op: '>', v: 0.5 },
-          hl: ['Withdraw'], hl_watch: ['Startup Rate', 'Intermediate Range'] },
+          hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
         obs('Verify SOURCE RANGE has switched itself off and INTER RANGE is reading. Close the 1/M PLOT window.',
           { p: 'sr_energized', op: '<', v: 1 },
           'Close it with the ✕ in its corner; its work is done.', null,
@@ -1781,14 +1842,14 @@
           wait_hint: false,
           cmd: { action: 'rod_nudge', group_id: 'control', steps: -14, speed: 'normal' }, hold: 240,
           acc: { p: 'power_pct', op: '<', v: 5 },
-          hl: ['Insert'], hl_watch: ['Startup Rate', 'Intermediate Range'] },
+          hl: ['Rod Speed — Normal', 'Insert'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
         { text: 'Press SLOW, then hold WITHDRAW until REACTOR POWER passes 5 %, about 13 steps. That is Mode 1, At Power.',
           why: 'Mode 1 begins at 5 % power. Above about 1 % the warming water starts to hold power back, so from here the reactor settles instead of running away. The turbine is still off; the next step puts it on line so the heat has somewhere to go.',
           control: 'Control Bank', target: 'REACTOR POWER above 5 %, settling near 8 %',
           wait_hint: false,
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 13, speed: 'slow' }, hold: 400,
           acc: { p: 'power_pct', op: '>', v: 5 },
-          hl: ['Withdraw'], hl_watch: ['Startup Rate', 'Intermediate Range'] },
+          hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
         { text: 'Press LATCH on the TURBINE-GENERATOR card, then set LOAD to 10 MWe.',
           why: 'LATCH resets the turbine so it can take steam; LOAD is how much electricity you ask the generator for. As the generator picks up load, the reactor follows it up to about 10 % by itself: more steam drawn cools the water, and cooler water raises power. The reactor following the turbine is the central idea of this whole plant.',
           control: 'Turbine Load', target: 'OUTPUT near 10 MWe',
@@ -1801,12 +1862,22 @@
           why: 'Two automatic shutdowns exist only to protect a startup, one at 25 % power and one at 35 %. Above 8 % they are no longer needed and would trip the reactor on the way up, so you switch them off one at a time. This one also clears a rod stop at 20 %; drop below 8 % and the plant switches them back on by itself.',
           control: 'Trip Blocks', target: 'IR HIGH FLUX lit on the TRIP BLOCKS panel',
           cmd: { action: 'set_trip_block', trip_id: 'ir_high', blocked: true }, hold: 10,
+          /* GRADED ON THE LINEUP, NOT ON THE PRESS (#731, owner playtest #724 item 13). These two
+           * steps carried a bare `cmd`, so the live checklist graded them on SEEING the command
+           * descend while the step was active. Two ways that goes wrong, both measured on the
+           * shipped plant: a player who blocks BOTH rows while step 16 is up leaves step 17
+           * standing for ever (402 s of plant time, block already true), and an UNBLOCK ticked
+           * the step off with the trip live at 9.9 % power. A block is a standing lineup the
+           * board draws; grade it as one. `cmd` stays — it is the replay's action and the
+           * follow-mode family. */
+          acc: { p: 'ir_high_blocked', op: '>', v: 0 },
           hl: ['Trip Blocks'] },
         { text: 'On the TRIP BLOCKS panel press BLOCK on the PR HIGH (LOW SETPT) row, then close the panel.',
           note: 'This switches off the second startup shutdown, at 35 %. Close the panel with TRIP BLOCKS again: it covers the rod buttons.',
           why: 'Miss this one and the climb trips at 35 % instead of 25 %. Above 8 % the shutdown at 118 % power takes over the job of catching a runaway. Two separate presses on purpose: on a real board switching one off never quietly switches off the other.',
           control: 'Trip Blocks', target: 'PR HIGH (LOW SETPT) lit on the TRIP BLOCKS panel',
           cmd: { action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: true }, hold: 10,
+          acc: { p: 'pr_low_setpoint_blocked', op: '>', v: 0 },   /* see step 16 — #731 */
           hl: ['Trip Blocks'] },
         obs('Verify Mode 1: REACTOR POWER 10 %, OUTPUT 10 MWe, IR HIGH FLUX and PR HIGH (LOW SETPT) both lit.',
           { p: 'plant_mode', op: '~', v: 1, tol: 0.1 },
@@ -2178,45 +2249,86 @@
           wait_hint: 'The boration takes about half a plant-hour. Start it first and take the stages while it works.',
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 }, hold: 30,
           hl: ['Boron', 'Boron control'] },
-        { text: 'Set LOAD to 75 MWe, let power follow, then hold INSERT until AVG COOLANT TEMPERATURE is back in its band.',
-          note: 'About 40 steps at MED, the middle rod speed on the ROD CONTROL card. The green band on the tile is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw.',
-          why: 'The reactor follows the turbine: less steam drawn means the heat has nowhere to go, the water warms, and warmer water walks power down by itself. But it settles hot until rods take the extra reactivity out.',
-          control: 'Turbine Load', target: 'OUTPUT 75 MWe; AVG COOLANT TEMPERATURE inside its band',
-          cmd: { action: 'set_load_target', mwe: 75 }, hold: 900,
-          /* THE STEP THAT COMPLETES ON A SCRAM (#715). `power_pct < 90` and `tavg_c < 305` are
-           * both one-sided: a real scram between the raise-power leg and this one satisfies
-           * both for free (measured, hot_full_power -> scram -> 20 s: power_pct 5.7 %, tavg_c
-           * falling toward the 286.1 degC no-load knot), so all five predicates across this
-           * leg's four load-drop steps passed on a dead plant and the checklist reported
-           * complete. The pair below is `mwe_output`, not a blanket `turbine_tripped` guard:
-           * this leg's own claim is "the reactor follows LOAD down", and the turbine still
-           * carrying load IS that claim's second half — a scram is a load-following failure by
-           * definition, not a side fact bolted on. MEASURED, genuine run (full stack, this leg's
-           * own `from`, ACCEL 60): mwe_output settles to 75.00 by the end of this step's 900 s
-           * hold, 5 clear of the 70 floor; a scrammed plant reads 0. */
-          accs: [{ p: 'power_pct', op: '<', v: 90, label: 'Reactor following down' },
-                 { p: 'tavg_c', op: '<', v: 305, label: 'AVG COOLANT TEMPERATURE below 581 °F' },
-                 { p: 'mwe_output', op: '>', v: 70, label: 'Generator still carrying about 75 MWe' }],
-          hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
+        /* ================= TWO STEPS, BECAUSE THE ORDER IS THE LESSON (#736) ==================
+         * *(OWNER, #724 item 18: "this step has yuou put rods in after lowering turbine output to
+         * 75%. the problem is that it doesnt mater what order you do things it will end up
+         * checking off in the wrong order so it looks like im good but the temperature gets to
+         * dangerous levels when lowering tubine output since it checks off the temperature and
+         * reactor following down steps befgore you even lower turbine load. this should probably
+         * be two steps, 1. lower tubeine load, 2. insert rods to follow. could we add timing
+         * controls to the checkoffs so that it wont check off temperature until turbine load is
+         * down?")*
+         *
+         * THE SPLIT IS THE TIMING CONTROL. Grading is sequential per step, so putting the load
+         * drop and the rod trim in two steps makes the trim ungradable until the drop is checked
+         * off — no new mechanism needed, and it is what the owner asked for in the same sentence.
+         *
+         * AND THE ENTRIES ARE TWO-SIDED WHERE THE PLANT'S ENTRY STATE SATISFIES A FLOOR.
+         * `_gradeAccs` LATCHES every entry except a `~` band, and this leg starts at 100 MWe, so
+         * #715's `mwe_output > 70` floor was MET on the first tick of the step and latched there.
+         * MEASURED (full stack, this leg's own `from`, 60x, `inbox/724/item18d.js`): a player who
+         * does the step's SECOND half and not its first — borate, insert 40 steps, never touch
+         * LOAD — drives the plant to a STEAM GENERATOR LOW-LOW LEVEL scram at t = 2256 s, and
+         * 21 s later this step CHECKED ITSELF OFF on 1.37 % power and 0.00 MWe. #715's floor
+         * catches a plant that was already dead when the leg started; it cannot catch one that
+         * dies during the step. A `~` band re-grades for ever and cannot.
+         *
+         * THE TEMPERATURE EXCURSION THE REPORT NAMES IS REAL BUT SMALL, and that is recorded
+         * rather than acted on. MEASURED (`inbox/724/item18_split.js`): dropping LOAD 100 -> 75
+         * MWe with no rod motion peaks AVG COOLANT TEMPERATURE at 584.0 degF at t = 84 s, a rise
+         * of 3.7 degF, and at 300 s it sits 9.4 degF ABOVE the tile's green band (581.2 degF
+         * against a 571.8 degF programme). It reaches no protection setpoint and does not scram.
+         * Out of band, not dangerous — the dangerous part was the check-off. */
+        { text: 'Set LOAD to 75 MWe and let the reactor follow it down. Leave the rods alone for now.',
+          note: 'Power walks down on its own over about five plant-minutes. AVG COOLANT TEMPERATURE rises out of the green band on its tile while it does — that is expected, and the next step is what brings it back.',
+          why: 'The reactor follows the turbine: less steam drawn means the heat has nowhere to go, the water warms, and warmer water walks power down by itself. Load first, rods second, every time — insert first and you take reactivity out of a reactor still being asked for full steam, which walks the steam generator down instead.',
+          control: 'Turbine Load', target: 'OUTPUT 75 MWe',
+          cmd: { action: 'set_load_target', mwe: 75 }, hold: 300,
+          /* MEASURED at the end of this hold: OUTPUT 75.00 MWe, REACTOR POWER 85.79 %. Both
+           * entries are FALSE at the step's own entry (100.00 MWe, 98.91 %), so neither can be
+           * had for free, and the OUTPUT band is two-sided so it cannot latch. */
+          accs: [{ p: 'mwe_output', op: '~', v: 75, tol: 5, label: 'OUTPUT settled near 75 MWe' },
+                 { p: 'power_pct', op: '<', v: 95, label: 'Reactor following the load down' }],
+          hl: ['Turbine Load'], hl_watch: ['Tavg', 'Reactor Power'] },
+        { text: 'Now hold INSERT at MED until AVG COOLANT TEMPERATURE is back inside the green band on its tile.',
+          note: 'About 40 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down.',
+          why: 'The load drop left the reactor hot: it settles above its programme until rods take the extra reactivity out. This is the half of the evolution the plant cannot do for you, and it is why the order matters — the turbine leads, the rods follow.',
+          control: 'Rod Speed', target: 'AVG COOLANT TEMPERATURE back inside the band; OUTPUT still 75 MWe',
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: -40, speed: 'normal' }, hold: 300,
+          /* MEASURED at the end of this hold (40 steps in, 300 s): Tavg 570.7 degF (299.28 degC)
+           * against a 571.8 degF programme — 1.1 degF inside a band whose half width is
+           * 5.0 degF (`tavg_c < 302.7` is the band's own top edge: pwr_board_wiring `tavgBand`
+           * draws ref +/- 3.5 x the 0.8 degC rod lockup band). At this step's ENTRY Tavg is
+           * 305.11 degC and power 85.79 %, so both one-sided entries are FALSE until the trim is
+           * actually made. The OUTPUT band is the anti-latch pair: a scram during the trim (the
+           * measured failure mode) breaks it. The upper bound is one-sided ON PURPOSE — the
+           * boration keeps cooling and a two-sided band would fall out from under a player
+           * reading at 1x about 130 s after it went green. */
+          accs: [{ p: 'tavg_c', op: '<', v: 302.7, label: 'AVG COOLANT TEMPERATURE back below 577 °F, inside its band' },
+                 { p: 'power_pct', op: '<', v: 80, label: 'Reactor followed down to about 73 %' },
+                 { p: 'mwe_output', op: '~', v: 75, tol: 5, label: 'Generator still carrying about 75 MWe' }],
+          hl: ['Rod Speed — Normal', 'Insert'], hl_watch: ['Tavg', 'Turbine Load'] },
         { text: 'Set LOAD to 50 MWe, let power follow, then hold INSERT until AVG COOLANT TEMPERATURE is back in its band.',
           note: 'About 20 steps at MED.',
           why: 'Same order: LOAD first, then rods, so the temperature does not sit hot above its band. STEAM GENERATOR LEVEL dips before it recovers on each drop; that is normal, and SG FEED in AUTO handles it.',
           control: 'Turbine Load', target: 'OUTPUT 50 MWe; AVG COOLANT TEMPERATURE inside its band',
           cmd: { action: 'set_load_target', mwe: 50 }, hold: 720,
-          /* PAIRED, SAME FIX AS THE STEP ABOVE (#715). MEASURED: mwe_output settles to 50.00 by
-           * the end of this step's hold; 0 on a scrammed plant. */
+          /* PAIRED (#715), AND THE PAIR IS TWO-SIDED (#736). MEASURED: mwe_output settles to
+           * 50.00 by the end of this step's hold, reads 75.00 at its entry and 0 on a scram — so
+           * the band is false at entry AND false on the failure, where the old `> 45` floor was
+           * true at entry and latched there for the rest of the step. */
           accs: [{ p: 'power_pct', op: '<', v: 70, label: 'Reactor following through 70 %' },
-                 { p: 'mwe_output', op: '>', v: 45, label: 'Generator still carrying about 50 MWe' }],
+                 { p: 'mwe_output', op: '~', v: 50, tol: 5, label: 'Generator settled near 50 MWe' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
         { text: 'Set LOAD to 30 MWe, let power follow, then hold INSERT until AVG COOLANT TEMPERATURE is back in its band.',
           note: 'About 10 steps at MED.',
           why: 'Lower power needs smaller rod moves. The band is walking back down toward 547 °F. A plant left hot at low load sends the difference to the condenser through the steam dump.',
           control: 'Turbine Load', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE inside its band',
           cmd: { action: 'set_load_target', mwe: 30 }, hold: 600,
-          /* PAIRED, SAME FIX (#715). MEASURED: mwe_output settles to 30.00 by the end of this
-           * step's hold; 0 on a scrammed plant. */
+          /* PAIRED (#715), TWO-SIDED (#736). MEASURED: 30.00 at the end of this hold, 50.00 at
+           * its entry, 0 on a scram. */
           accs: [{ p: 'power_pct', op: '<', v: 45, label: 'Reactor following through 45 %' },
-                 { p: 'mwe_output', op: '>', v: 25, label: 'Generator still carrying about 30 MWe' }],
+                 { p: 'mwe_output', op: '~', v: 30, tol: 5, label: 'Generator settled near 30 MWe' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
         { text: 'Set LOAD to 15 MWe, let power follow, then hold INSERT until AVG COOLANT TEMPERATURE is back in its band.',
           note: 'About 6 steps at MED. Stop here; the shutdown checklist takes over.',
@@ -2249,7 +2361,10 @@
            * one a scram would have left checked off with the completion banner still claiming
            * "15 MWe" — see `outcome_guard` below, the second, independent half of the fix. */
           accs: [{ p: 'power_pct', op: '<', v: 40, label: 'Reactor below 40 % and falling as the boration finishes (rod trims take it to about 15 %)' },
-                 { p: 'mwe_output', op: '>', v: 10, label: 'Generator still carrying about 15 MWe' }],
+                 /* TWO-SIDED (#736): 15.00 at the end of this hold, 30.00 at its entry, 0 on a
+                  * scram — and this is the leg's LAST step, the one whose latched floor let the
+                  * completion banner fire on a dead plant. */
+                 { p: 'mwe_output', op: '~', v: 15, tol: 5, label: 'Generator settled near 15 MWe' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
