@@ -113,7 +113,7 @@ expands.
 
 ### Removed (the walkthrough card's click-to-expand, inert given the one-step card — #737)
 
-*(OWNER RULING, 2026-09-13: delete — chosen from delete / comment-out / leave.)* `whyAll` /
+*(OWNER RULING, 2026-09-13: "2:a." — his whole answer, option (a) DELETE of a numbered delete / comment-out / leave, put to him as decision 2 of five. Paraphrasing it as "delete" read as a ruling and was not his words; HR11 caught it.)* `whyAll` /
 `whyOpen`, their two render-key components, the `detOpen` branch and **both handlers** (the
 `[data-ckl-why-all]` toggle and the `.ckl-step` card click) are gone from `ui/app.js`.
 
