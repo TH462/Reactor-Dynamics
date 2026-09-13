@@ -65,6 +65,12 @@
   <script src="../diagram/board/pwr_board_inspect.js"></script>
   <script src="../diagram/board/pwr_board_wiring.js"></script>
   <script src="../diagram/board/pwr_board.js"></script>
+  <!-- The live walkthrough pool. Loaded for the trip-block row-glow checks (#727): the glow
+       resolves the active step out of RD.MANUAL_PROCEDURES by the checklist's `profile_key`,
+       so without the pool `stepTripWants` returns {} and the feature cannot be exercised at
+       all — a check written against the missing pool would have passed on a dead wire. It
+       attaches one global and changes no rendering. -->
+  <script src="../manual_procedures.js"></script>
 
   <script>
   (function () {
@@ -691,12 +697,29 @@
             if (ch.nodeType === 3 && /\S/.test(ch.nodeValue)) return true;
           return false;
         }
+        /* `.bd-badge` JOINS `.bd-halo` IN THE SKIP LIST (#727; owner #724 item 12, verbatim:
+         * "the glow around TRIP BLOCKS is not correctly around the button").
+         *
+         * THIS IS A CHANGE OF CLAIM, NOT A SILENCED CHECK, and it is worth being explicit
+         * because the two look identical from the diff. #684's claim was "the ring covers every
+         * bit of ink the tile puts on the board", and by that claim the count badge belongs
+         * inside the ring — it is ink, it is inside the tile, it overhangs. The claim is now
+         * narrower and truer: the ring covers the CONTROL, and a badge pinned to a control's
+         * corner (`position:absolute; top:-6px; right:-6px`) is chrome ABOUT the control, not
+         * part of it. MEASURED on TRIP BLOCKS with two trips blocked: button 64.62x24.23, halo
+         * 68.66x28.27 — 4.04 px proud at the top and 4.04 px proud at the right and flush on the
+         * other two sides, which is what reads as a ring that is not around the button.
+         *
+         * THE NARROWING IS NOT FREE, so it is pinned from the other side: the check immediately
+         * below asserts that a badge's overhang is actually LEFT OUT of the halo. Without that,
+         * this skip would also make the check green on a renderer that had stopped drawing halos
+         * altogether for badged tiles. */
         function artBox(tile) {
           var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
           var kids = tile.querySelectorAll('*');
           for (var i = 0; i < kids.length; i++) {
             var k = kids[i];
-            if (k.classList && k.classList.contains('bd-halo')) continue;
+            if (k.classList && (k.classList.contains('bd-halo') || k.classList.contains('bd-badge'))) continue;
             var r = k.getBoundingClientRect();
             if ((!r.width && !r.height) || !paints(k, tile)) continue;
             if (r.left < x0) x0 = r.left;
@@ -737,6 +760,61 @@
           '  worst ' + worst.toFixed(2) + ' px on ' + (worstId || '(none)'));
         ck('halo: no tile’s glow box is SMALLER than its authored tile box',
           shrunk.length === 0, shrunk.length + ' shrunk: ' + shrunk.slice(0, 8).join(' '));
+
+        /* THE OTHER SIDE OF THE BADGE EXCLUSION (#727). artBox above stops COUNTING badges; this
+         * asserts the renderer stops COVERING them — the positive claim, so that removing the
+         * skip in pwr_board.js reddens something instead of quietly re-inflating every badged
+         * ring back to where #724 item 12 found it.
+         *
+         * It measures the badge's own overhang past the tile and requires the halo not to reach
+         * it. Tiles whose badge sits INSIDE the tile box are skipped: there is nothing to cover,
+         * so they would pass on a fully broken renderer and are not evidence.
+         *
+         * A POPULATION FLOOR, because the badge is conditional. `.bd-badge` exists only while
+         * the control has something to count — TRIP BLOCKS carries one whenever a trip is
+         * blocked, which is true of this harness's initial condition. If the IC ever stops
+         * blocking a trip at boot this check would sweep ZERO tiles and pass on nothing, which
+         * is the hollow-check class. The floor makes that a red. */
+        var badged = 0, covered = [];
+        for (var bi = 0; bi < tilesEls.length; bi++) {
+          var btile = tilesEls[bi], bid = btile.getAttribute('data-item');
+          var badge = btile.querySelector('.bd-badge');
+          if (!badge) continue;
+          var br = badge.getBoundingClientRect();
+          if (!br.width || !br.height || !paints(badge, btile)) continue;
+          var btr = btile.getBoundingClientRect();
+          var out = Math.max(btr.left - br.left, btr.top - br.top,
+                             br.right - btr.right, br.bottom - btr.bottom);
+          if (out <= TOL) continue;                 // nothing hanging out — proves nothing
+          var bh = RD.PwrBoard.haloElement(bid);
+          if (!bh) continue;
+          badged++;
+          var bg = bh.getBoundingClientRect();
+          /* THE CLAIM IS "THE BADGE ADDS NOTHING", NOT "THE HALO NEVER LEAVES THE TILE".
+           * The first draft of this check asserted the second, and it would have been a false
+           * red waiting to happen: #684's whole premise is that a halo LEGITIMATELY exceeds the
+           * tile box wherever the art does (the PORV by 45 % of its width, the pressurizer by
+           * 80 px). It was green only because `.bd-badge` currently appears on TRIP BLOCKS
+           * alone, which has no art overhang — and `setBadge` is a generic driver hook, so the
+           * first badge on a tile with real art outside its box would have reddened this for
+           * doing exactly the right thing.
+           *
+           * So compare the halo against what the NON-BADGE art needs. `artBox` already excludes
+           * the badge, so its overhang past the tile is the halo's whole legitimate budget. */
+          var ab2 = artBox(btile);
+          var expect = ab2 ? Math.max(0, btr.left - ab2.left, btr.top - ab2.top,
+                                         ab2.right - btr.right, ab2.bottom - btr.bottom) : 0;
+          var reach = Math.max(0, btr.left - bg.left, btr.top - bg.top,
+                                  bg.right - btr.right, bg.bottom - btr.bottom);
+          if (reach > expect + TOL) {
+            covered.push(bid + '(halo reaches ' + reach.toFixed(1) +
+                         'px past the tile; non-badge art needs ' + expect.toFixed(1) + 'px)');
+          }
+        }
+        ck('halo: at least one tile carries a corner badge that hangs outside it (the check below has something to check)',
+          badged >= 1, badged + ' badged tiles with an overhanging badge');
+        ck('halo: a corner COUNT BADGE never inflates the glow box (#727 — the ring is on the control, not its chrome)',
+          covered.length === 0, covered.length + ' inflated: ' + covered.slice(0, 8).join(' '));
 
         /* The two the owner and the measurement named, pinned by NUMBER so a regression
          * says which one moved. Pre-fix: the PORV ring was 28.3 px wide against 63.5 px of
@@ -909,6 +987,79 @@
       ck('func: …and the plant is still LIVE — unblocking at power would have scrammed it',
         svc.assembleSnapshot().instruments.rps_scrammed === false);
       RD.PwrBoard.render(svc.assembleSnapshot());
+
+      /* --- THE TRIP-BLOCK ROW GLOW FOLLOWS THE ACTIVE WALKTHROUGH STEP (#727; owner #724
+       * item 12: "When trip blocks is opened, it should highlight the buttons needed to press in
+       * this menu (this should be changed for any time we toggle trip blocks)").
+       *
+       * The popover is still open from the block/unblock sequence above, which is why this sits
+       * here rather than in its own section.
+       *
+       * WHY THE POSITIVE CASE IS AN *UNBLOCK* ASK. At hot_full_power there is no row that is both
+       * enabled and unblocked: `ir_high` and `pr_low_setpoint` are the at-power startup net and
+       * are BLOCKED, `lo_press` and `si_trip` are disabled (no P-11 at power). So the only ask
+       * that is outstanding on this plant is one to RELEASE a block — which is also the direction
+       * no authored step currently takes, and therefore the half of the generalisation nothing
+       * else would ever exercise. A synthetic one-step procedure supplies it; the NEGATIVE case
+       * immediately below uses the real `pwr_startup` step out of the real pool, so the
+       * profile_key lookup is proven against shipped content and not only against the fixture. */
+      (function () {
+        var pop0 = document.querySelector('.bd-pop');
+        function glowing() {
+          if (!pop0) return null;
+          return Array.prototype.map.call(pop0.querySelectorAll('button[data-trip]'), function (b) {
+            return b.parentNode.classList.contains('ckl-step-glow') ? b.getAttribute('data-trip') : null;
+          }).filter(Boolean).join(',');
+        }
+        function renderWithChecklist(ck) {
+          var s = svc.assembleSnapshot();
+          var instr = {};
+          for (var k in (s.instructor || {})) instr[k] = s.instructor[k];
+          instr.checklist = ck;
+          s.instructor = instr;
+          RD.PwrBoard.render(s);
+        }
+        RD.MANUAL_PROCEDURES.__bcprobe = [{ id: 'bcprobe', steps: [
+          { text: 'release the IR HIGH FLUX block', cmd: { action: 'set_trip_block', trip_id: 'ir_high', blocked: false } },
+          { text: 'block a row the plant refuses', cmd: { action: 'set_trip_block', trip_id: 'si_trip', blocked: true } },
+        ] }];
+        function probeStep(i) {
+          renderWithChecklist({ procedure_id: 'bcprobe', profile_key: '__bcprobe', step_index: i, complete: false });
+        }
+
+        ck('glow: the popover is open with all four blockable rows drawn (the checks below have something to look at)',
+          !!pop0 && pop0.querySelectorAll('button[data-trip]').length === 4,
+          pop0 ? pop0.querySelectorAll('button[data-trip]').length + ' rows' : 'no popover');
+
+        probeStep(0);
+        ck('glow: the row the active step asks for GLOWS while its ask is outstanding (#727)',
+          glowing() === 'ir_high', 'glowing: [' + glowing() + ']');
+
+        probeStep(1);
+        ck('glow: a row the PLANT is refusing never glows — a pulse on a button that cannot be pressed is the dead-button trap',
+          glowing() === '', 'glowing: [' + glowing() + ']');
+
+        /* The real pool, the real step, and an ask that is ALREADY SATISFIED. This is the one
+         * that would catch a glow keyed on "the step mentions this row" rather than on the
+         * plant's live state — `ir_high` is blocked here, so the step has nothing left to ask. */
+        var real = (RD.MANUAL_PROCEDURES.pwr2 || []).filter(function (p) { return p.id === 'pwr_startup'; })[0];
+        var realIdx = -1;
+        if (real) real.steps.forEach(function (st, k) {
+          if (st.cmd && st.cmd.action === 'set_trip_block' && st.cmd.trip_id === 'ir_high') realIdx = k;
+        });
+        ck('glow: the shipped pwr_startup leg still carries an ir_high trip-block step (the fixture below is real)',
+          realIdx >= 0, 'step index ' + realIdx);
+        renderWithChecklist({ procedure_id: 'pwr_startup', profile_key: 'pwr2', step_index: realIdx, complete: false });
+        ck('glow: a row whose ask is ALREADY SATISFIED stops glowing — the panel never points at work already done',
+          glowing() === '', 'glowing: [' + glowing() + ']');
+
+        renderWithChecklist(null);
+        ck('glow: with no walkthrough running, nothing in the panel glows',
+          glowing() === '', 'glowing: [' + glowing() + ']');
+
+        delete RD.MANUAL_PROCEDURES.__bcprobe;
+        RD.PwrBoard.render(svc.assembleSnapshot());
+      })();
 
       // --- ESF AUTO/ON/OFF triad: AUTO re-arms; the AUTO tile lights when armed ---
       function esfState(id) { return (svc.assembleSnapshot().automation.esf || {})[id]; }

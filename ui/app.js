@@ -3920,6 +3920,18 @@
     }
     return $('cklLog');
   }
+  /* ⚰ `selectionInside(el)` WAS HERE (#726) and went in the merge, not in a decision. It
+   * guarded the checklist card's click-to-expand against a drag-select ending in a click that
+   * re-rendered the card and destroyed the selection (44 characters selected during the drag,
+   * ZERO after mouseup). #737 then DELETED that handler outright (owner-ruled 2026-09-13), so
+   * the guard lost its only caller: with no click handler there is no re-render for a selection
+   * to be destroyed by, and owner #724 item 9 is satisfied more completely than the guard ever
+   * satisfied it. The other half of the item 9 fix is NOT here and is still live -- the
+   * `cursor: pointer` narrowing in `ui/shell.css`, which is what made the card look unselectable.
+   *
+   * TWO CORRECT CHANGES FROM TWO LANES CAN CANCEL: workbench added this against the handler while
+   * develop was deleting the handler. Neither diff is wrong and the conflict named only the
+   * handler, so the orphan would have merged in silently and read as live code. */
   function resetCkl() {
     if (!cklState.key) return;
     cklState = { key: null, step: null, view: 'list', userScrolled: false, preconHtml: null, cautionsOpen: null };
@@ -8546,6 +8558,16 @@
           rightColEl.insertBefore(simControls, rightColEl.firstChild);      // time controls → back atop the right panel
           demoBtn.classList.remove('on');
           demoBtn.title = 'Board focus — hide the side panel and enlarge the plant diagram';
+        }
+        /* ⛶ IS A RELAYOUT, AND ANYTHING LIVING IN THE RIGHT COLUMN HAS TO HEAR ABOUT IT
+         * (#713 / #724 quality pass, finding 2). Hiding the column is a bigger layout change
+         * than a splitter drag, and `pwr_board.js` already announces those with exactly this
+         * event (beginDrag / resetSplit). Nothing announced this one, so the 1/M plot — which
+         * now docks INTO that column — went to 0x0 while still believing itself open, and its
+         * board button became a silent no-op. The panel re-homes itself to a floating window on
+         * this event; the board's own refit is idempotent. */
+        if (typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
+          window.dispatchEvent(new Event('resize'));
         }
       });
     })();

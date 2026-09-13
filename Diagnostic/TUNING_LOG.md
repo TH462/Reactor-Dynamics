@@ -29,6 +29,330 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-13-workbench-a (#713 — the 1/M dock is retired by ruling; the window that replaces it is bigger than the dock ever was)
+
+**The ruling** *(OWNER RULING, 2026-09-13: "let's make the card floating and dragable like it was
+originally")*. Presented with two options on the dock's height threshold, the owner took neither and
+retired the dock. `.oom-docked` is gone from `ui/shell.css`, and `dockTarget`, `placeWindow`,
+`DOCK_MIN_W`, `DOCK_MIN_H`, `syncViewBox`, `AR_MIN`/`AR_MAX` and the readout ResizeObserver are gone
+from `ui/panels/one_over_m.js`.
+
+**THE COMPLAINT AND THE MEANS ARE DIFFERENT THINGS, and only the means was overruled.** #724 item 7
+said three things: the plot is too small, put it in the corner of the right-hand column, and make
+the criticality text readable. The middle one was the instruction; the other two were the problem.
+So the buttons stay a ROW ABOVE the plot and the readout keeps 15 px / 600 / `--caution`. Getting
+this wrong in the other direction — reverting the panel wholesale to its pre-#713 form — would have
+handed back both complaints while satisfying the ruling to the letter.
+
+**FLOATING IS BIGGER THAN DOCKED, which was not obvious and is the number that settles it.**
+MEASURED, plotted-data rect (`.oom-frame`), the gate's own probe at its own 1500x950 viewport:
+
+| form | rect | area |
+|---|---|---|
+| bottom-row dock, before #713 | 242 x 155 px | 37,510 px^2 |
+| right-column dock (#724 item 7, one day) | 321 x 160 px | 51,360 px^2 |
+| **floating (this)** | **308 x 220 px** | **67,760 px^2** |
+
+**+80 % on where this started, and +32 % on the dock it replaces.** A docked panel's height is a
+share of somebody else's column; a floating one's height is its own. The lesson is worth more than
+the instance: three passes of #713 fought for width in a row that could not spare it, and the
+dimension that was actually free the whole time was HEIGHT, outside any column.
+
+**AND THE ALARM PANEL GETS ITS WIDTH BACK: 392 px -> 652 px** at 1500x950 (the gate's own
+measurement, 18 live alarms on a large LOCA). #713 passes 1-3 spent themselves trading that width
+away and pass 3 had to hand 50 px back because the panel's content floor is 412 px under CI's fonts
+against 377.7 px under Windows'. None of that argument exists any more.
+
+**THREE SIMPLIFICATIONS FELL OUT, and each is a piece of machinery that only existed to serve the
+dock.** Deleting them is the point, not a tidy-up:
+- **The adaptive viewBox.** W followed the docked cell's aspect so "meet" had nothing to letterbox.
+  A floating svg has `width: 100%` and no height, so its height follows the viewBox — nothing to
+  match, nothing to letterbox, W is a constant again.
+- **The readout ResizeObserver.** Docked, the svg sat between two `auto` grid rows, so every line
+  the prediction gained came OUT OF THE PLOT — at its worst 77 px of dead width, a fifth of the
+  plot, with no window event to hang a listener on. Floating, a longer readout makes the WINDOW
+  taller. The hazard is gone, so the mechanism goes with it.
+- **`placeWindow` / `dockTarget` / the two breakpoints.** `build()` appends to `document.body` once
+  and the window stays there.
+
+**WHAT REPLACED THE OBSERVER IS A GUARD FOR A DIFFERENT HAZARD, and it needed its own measurement.**
+A floating window keeps the position the player dragged it to, in viewport coordinates, and a
+viewport can shrink out from under it. First cut reused makeDraggable's own bound (keep 80 px on
+screen) and MEASURED: dragged to left 504 on a 1500 px screen, narrowed to 700 px, the window sat at
+504..860 with 160 px including a third of the plot off the right edge. **A resize is not a choice
+the way a drag is**, so the resize clamp is the stricter `innerWidth - width`: 344..700, fully
+visible. The two bounds are deliberately different and the comment says why.
+
+**THE POSITION RULE IS ARITHMETIC NOW, NOT A BREAKPOINT.** `right: 340px` is a position measured
+from a 1500 px control room and put the window's left edge at **-296 px** at a 400 px viewport — a
+defect that was LATENT only while narrow layouts had a dock to fall back on. A media query would
+have been a claim about which widths are narrow; `max(12px, min(340px, 100vw - 380px))` holds at all
+of them. MEASURED on-screen at 1920, 1500, 1280, 400 **and 300** px (where the window narrows to
+276 px and the plot rect is still 238 x 170, above the gate's 220 px floor).
+
+**DRAGGABILITY IS HALF THE RULING, so it is measured rather than assumed.** Dragged to 504,330 at
+1500x950 and still at 504,330 after: a synthetic `resize`, a REAL splitter drag on the board, board
+focus in, board focus out, and a checklist start. The `cursor: move` on the title bar is asserted by
+the gate too — the dock set `cursor: default` there and its pointerdown handler returned early, so a
+re-dock would take away exactly the half the owner named.
+
+**One defect retired by construction rather than by a fix.** The #724 quality pass found that board
+focus hid the docked plot (the ⛶ button hides `.right-col`, and the plot was IN it): open, press ⛶,
+0x0 with `hidden` still false, and the board's own 1/M button a silent no-op. A window parented to
+`document.body` cannot be hidden by a rule about a column. Re-measured: 356x339.9 and visible in
+board focus, and the board button reopens it there.
+
+**A GATE THAT ASSERTED THE OPPOSITE had to be flipped, not deleted.** `verify_e2e_ui` required the
+panel to have DOCKED. It now requires floating, and asserts it THREE ways — parented to `<body>`,
+`position: fixed`, and the title bar's `cursor: move` — because "not docked" alone would pass on a
+panel that had simply failed to mount.
+
+**HR11 FORMAT TRAP, cost one red.** `run_hardrules` counts every OWNER RULING in tracked markdown
+and wants the DATE inside the citation. `**RULED, 2026-09-13** *(OWNER RULING: "...")*` FAILS —
+the date is outside the window it reads from the token — while `*(OWNER RULING, 2026-09-13: "...")*`
+passes. Same words, same date, one comma's worth of placement. BASELINES 542 -> 543.
+
+---
+
+## Session log — 2026-09-12-workbench-l (#724 items 7/8/9/12/14 — the 1/M plot leaves the bottom row, and three things that were invisible because they were conditional)
+
+**The order.** #724 is the owner's RC19 playtest, triaged by the develop lane across three trees;
+this lane took items 7, 8, 9, 12 and 14 — the 1/M startup plot and the board chrome that covers or
+mis-frames things. Filed as #725 (item 8, a ruling), #726 (9), #727 (12), #728 (14); item 7 worked
+on the already-open #713 rather than re-filed.
+
+### Item 8 — the premise was measurable, and it is false. STOPPED, not shipped.
+
+The owner asked for the 1/M best-fit line to use ALL points rather than the trailing three, on the
+premise that "the points were curved but with the current streight line we can use all points".
+The trailing-3 fit was itself an owner ruling, made because the all-points fit overstates margin to
+criticality on a curved source range — so the work order's stop condition was: measure first, and
+if the all-points fit predicts criticality further out anywhere on the authored route, report
+before changing anything.
+
+**It does, everywhere the two differ.** `inbox/724/item8_fit.js` drives the full stack (PWR2,
+`hot_zero_power`, seed 7, 10x) through `pwr_startup`'s own authored bursts — 94 / 63 / 31 / 14 / 9
+steps, each plotted after its authored `hold` — and runs both fits over the same points:
+
+| pt | rod step | SOURCE RANGE | 1/M | trailing-3 | all-points |
+|---|---|---|---|---|---|
+| 1 | 0 | 503.1 cps | 1.0000 | — | — |
+| 2 | 94 | 733.9 | 0.6855 | 298.9 | 298.9 |
+| 3 | 157 | 1,422.6 | 0.3537 | 251.2 | 251.2 |
+| 4 | 188 | 3,435.0 | 0.1465 | 216.1 | **231.9** |
+| 5 | 202 | 8,660.4 | 0.0581 | 210.6 | **224.2** |
+| 6 | 211 | 31,838.2 | 0.0158 | 213.1 | **220.9** |
+
+TRUE critical **step 208** (first tick with `true_state.reactivity_pcm >= 0`, +5.6 pcm, t = 784 s).
+Errors: trailing-3 +8.1 / +2.6 / +5.1 steps at points 4-6; all-points **+23.9 / +16.2 / +12.9**.
+
+**The toe is still flat**, which is the whole mechanism. Per-step slope of 1/M along the route:
+-0.00334 (pt1-2), -0.00527 (2-3), -0.00668 (3-4), -0.00631 (4-5), -0.00470 (5-6). The first segment
+is HALF the slope of the steepest, so a straight line through the lot is dragged outward.
+
+**The owner's own number corroborates the trailing fit** — #724 item 10, his measurement: "the
+position the 1/m plot tells me to (216 steps)". Trailing-3 reads 210.6-216.1 over points 4-6.
+All-points would have said 224-232.
+
+**Lesson worth keeping: a superseding instruction can rest on a premise that is checkable in ten
+minutes.** The instruction was clear and the reasoning behind it was explicit and wrong, and the
+only thing that separated those was running the route.
+
+**RULED** *(OWNER RULING, 2026-09-13: "725 leave as is" — on the measurement above and a
+recommendation to keep the trailing fit)*. `FIT_WINDOW` stays 3 and no code changed — the
+measurement was taken before anything was touched, which is why there was nothing to revert. The
+table, the true critical of step 208, the per-step slopes and the owner's own corroborating 216-step
+observation are now recorded at `FIT_WINDOW` in `ui/panels/one_over_m.js`, beside the constant they
+govern rather than only in an issue: an agent reading the 2026-09-12 request alone would find a
+clear instruction with no sign its premise had ever been tested, which is exactly how this comes
+back.
+
+### Item 7 — the move, and two ways the plot was silently losing width
+
+Docked at the foot of `.right-col` instead of joining `.bottom-row`. That ends the argument passes
+1-3 of #713 were having: three passes traded width between the plot, the strip chart and the alarm
+panel (300 -> 380 -> 420 -> 370 px) and pass 3 gave 50 px back because the alarm panel's content
+floor is 412 px on CI's DejaVu against 377.7 px on Windows' Segoe UI. The row was never going to
+fit three panels. `.oom-frame` measured by the gate's own probe at its own 1500x950 viewport,
+with a real prediction on screen: **243 -> 321 x 160 px**, letterbox waste **0.0 x 0.3 px**.
+Prediction readout **11 px/400 `--text-2` -> 15 px/600 `--caution`**, its own grid row, wrapping
+rather than overflowing.
+
+**THE FIRST NUMBER I PUBLISHED FOR THIS WAS THE EMPTY-READOUT ONE — 314 x 192 — and the way it got
+there is the lesson.** The gate forced its "longest string" fixture by writing `#oomPred` directly;
+my own new ResizeObserver then fired, called render(), and render() REWRITES the readout from the
+live fit, which on a plant with no plotted points is the empty string. So the gate measured a panel
+with no readout row at all: `#oomPred` empty, `display:none`, height 0 — which also made its
+overflow check compare `0 > 0 + 1`, false for ever. **A fixture can be erased by the very mechanism
+the change added, and the check then passes on a state nobody is testing.** The gate now plots two
+REAL points (baseline, withdraw 140 steps, plot again, on `hot_zero_power` because the source range
+secures itself above 1e5 cps) and ASSERTS the readout is non-empty before measuring anything —
+proven red by injection, suppressing both plot presses gives `the 1/M readout is empty ("", height
+0)`. Found by the post-work quality pass, not by me.
+
+**TRAP 1 — the readout was written AFTER the geometry was measured.** Harmless while it shared the
+button row; not harmless once it owns an `auto` grid row that is `display:none` while empty. Order
+was: measure (readout empty, svg row ~29 px taller than it is about to be) -> compute viewBox ->
+draw -> write the readout -> the row appears, the svg row shrinks, `preserveAspectRatio`
+letterboxes the difference off the WIDTH. **MEASURED: viewBox 403x240 into a 354 px cell, plot rect
+272.62x160.23; with the write first, 315.54x160.16 — 43 px thrown away.** Nothing throws, nothing
+looks broken.
+
+**TRAP 2 — the readout's height moves on its own, and a `resize` listener cannot see it.** Empty ->
+one line -> TWO when the string wraps, which at 15 px in a 354 px column is what the longest form
+does. The window has not resized, so the existing handler never fires. `verify_e2e_ui` reproduced
+it exactly by writing the element directly to force the longest string: **svg box 354x171 against a
+viewBox of 390x240 — 77 px of dead width, a fifth of the plot.** Fixed with a ResizeObserver on the
+readout and the message line (the file's header explains why the DOCK itself deliberately has no
+observer — the splitter already dispatches `resize`; this is the case that argument does not
+cover). **The gate was ALSO racing the layout it had just changed** — open, overwrite and measure
+in one synchronous `evaluate()`; split into write -> 250 ms -> measure, claim and thresholds
+unchanged.
+
+**A latent defect became reachable the moment narrow layouts started using the floating window.**
+At 1100x900 the stacked simulator column is a 260 px track carrying the 159 px time controls plus
+`#toolsCard`, and a 200 px dock left **`#toolsCard` measuring 2 px** — the walkthrough card reduced
+to a hairline by the panel opened to help work that walkthrough. So the dock is above 1200 px only.
+But `.oom-win`'s floating position is `right: 340px; width: 356px`, a position measured from a
+1500 px control room: **at a 400 px viewport that puts its left edge at -296 px.** It had never been
+reachable because the OLD dock target (`.bottom-row`) exists at every width, so narrow layouts never
+took the floating branch. **Moving a fallback's trigger can expose a fallback nobody has ever
+rendered.**
+
+### Item 12 — a conditional element made the defect conditional, which is why no gate saw it
+
+The TRIP BLOCKS halo measured **4.04 px proud at the top and 4.04 px proud at the right, flush at
+the left and bottom** — asymmetric, which is what reads as "not around the button"; a ring 4 px
+larger on all four sides would have looked deliberate. The cause is the COUNT BADGE: `.bd-badge`,
+`position:absolute; top:-6px; right:-6px`, 12.12x12.12 px, painting ink, so #684's union of
+tile-box and visible-art pulled the ring out to cover it.
+
+**The badge exists only while trips are blocked, and the halo box is measured ONCE at mount — so
+the ring's size depended on how many trips happened to be blocked at mount time.** Same shape as
+the standing trap about a check that samples the defect: here the DEFECT itself was intermittent
+on a property of the initial condition.
+
+`.bd-badge` joins `.bd-halo` in the skip list — **in both implementations**, because
+`board_check`'s `artBox` computes "visible art" independently of the renderer by design, and
+`verify_board_check` went red on the first attempt and said so. **That red was the gate working:
+the claim changed** (from "the ring covers every bit of ink in the tile" to "the ring covers the
+CONTROL, and corner chrome is not the control"), so both copies of the claim had to move.
+
+**Pinned from both sides, 256 -> 258 checks.** A skip alone would also go green on a renderer that
+stopped haloing badged tiles altogether, so one new check asserts the badge's overhang is actually
+LEFT OUT (red by injection: restoring the skip gives `1 inflated: imrsk4xz2dm(4.7px)`), and the
+other is its POPULATION FLOOR, because a future IC blocking no trip at boot would sweep zero tiles
+and pass on nothing (red by injection: `0 badged tiles`).
+
+**Part 2 — the rows glow.** The step already names its row: every trip-block step carries
+`cmd: {action:'set_trip_block', trip_id, blocked}` while its `hl` says only `'Trip Blocks'`, which
+is exactly why the button glowed and nothing in the panel did. `refreshTripBlocks` reads the active
+step out of the snapshot (`s.instructor.checklist` carries `procedure_id`/`step_index`; the pool is
+a global), so the whole feature lives in the file that owns the panel and follows the active step
+live. **The IC ships with `ir_high` already blocked, so a green result on the shipped state would
+have proved nothing** — the probe clears the block first. Measured at three viewports: the target
+row glows, a satisfied row does not, a disabled row does not, and no checklist means nothing glows.
+
+### Item 14 — the panel was covering the instruments the leg is about
+
+MEASURED before: 21 board items, led by the NUC INSTR (NIS) card at **19,136 px^2** of overlap,
+ROD CONTROL 13,509, the SCRAM button 5,139, and the SOURCE RANGE / INTER RANGE / STARTUP RATE /
+delta TEMP AVG captions at ~1,300-1,400 each. On the approach to criticality — the one leg where
+this panel is opened twice — it hid both count channels and the scram.
+
+Re-anchored downward over the BORON card and the vessel. NIS overlap **0** and SCRAM overlap **0**
+at 1500x950, 1280x800 and 1920x1080; boron+vessel 21,890-54,435 px^2; 0 px off the stage.
+
+**Anchored by its TOP edge on purpose.** The panel's height is content-driven and therefore a
+font-metric measurement — larger under CI's fonts than Windows'. A top anchor makes every extra
+line grow the panel DOWNWARD, away from the NIS card, so the clearance above cannot be eaten by a
+font. A bottom anchor or a centred one would have made that clearance font-dependent, which is the
+#713 pass 3 trap.
+
+### Item 9 — the visible symptom and the cause were in different files
+
+Owner: "the walkthrough text has the mouse pointer finger and i cant select the text to copy it."
+Two defects, and **`user-select` was not one of them** — it measured `auto` on every text block.
+`.ckl-hoverable` puts `cursor: pointer` on the whole card (measured `pointer` on `.ckl-txt`,
+`.ckl-why`, `.ckl-sub`, `.ckl-crit`); and the click-to-expand handler (`ui/app.js`) toggles the
+why-fold on any card click and re-renders, so a drag-select ends in a click that replaces the very
+nodes the selection points at. **MEASURED with a real mouse drag: 44 characters selected during the
+drag, ZERO after mouseup.** After: 44 and 44. **A CSS-only fix would have changed the cursor and
+left the copy still impossible.**
+
+A/B against HEAD confirmed click-to-expand is byte-identical — and incidentally that it produces no
+visible change on EITHER build, because only the active step is drawn and its why block is always
+open. Not chased; noted on #726.
+
+
+### The quality pass found three defects in my own work, and one of them was a lying gate
+
+A fresh subagent reviewed the diff (CLAUDE.md's post-work rule). I re-measured every finding before
+acting on it; all four below reproduced.
+
+**1. THE GATE'S FIXTURE WAS ERASED BY THE THING THE COMMIT ADDED.** Covered above — the 314 x 192
+correction. The general shape is worth more than the instance: `verify_e2e_ui` forced its
+longest-string fixture by writing `#oomPred` directly, and the ResizeObserver I had just added
+answered by calling render(), which rewrites that element from the live fit. **The observer's own
+comment claimed it served exactly that caller.** It cannot: its response destroys what the caller
+wrote. Two checks were then passing on a panel with no readout row — the overflow one comparing
+`0 > 0 + 1`. Fixed in the gate (plot two real points) plus a precondition that asserts the readout
+is non-empty, so the hollow state reds instead of passing.
+
+**2. BOARD FOCUS MADE THE OPEN PLOT VANISH, AND ITS BUTTON A SILENT NO-OP.** `⛶` adds `.sim-hidden`
+and `shell.css` answers with `.app.pwr-synoptic.sim-hidden > .right-col { display: none }` — which,
+once the plot lives IN that column, takes the plot with it. MEASURED: open (356x304), press ⛶,
+window measures **0x0 with `win.hidden` still false** — invisible but believing itself open. The
+board's own 1/M PLOT tile stays fully reachable in board focus, so pressing it called `open()`,
+re-appended into the hidden column, and did nothing at all. Recoverable only by leaving board focus.
+**Moving a panel into a container someone else is allowed to hide is a new failure mode the old
+host did not have** — the bottom row is never hidden. `dockTarget()` now requires the column to be
+laid out (`offsetParent !== null`), and `ui/app.js` dispatches `resize` when ⛶ toggles, which is the
+idiom `pwr_board.js` already uses for splitter drags. After: 356x338.88, floating, visible.
+
+**3. ONE SPLITTER DRAG THREW AWAY THE PLAYER'S OWN WINDOW PLACEMENT.** `placeWindow()` cleared the
+inline `left/top` on every undocked call, and it now runs on every `resize` — and `pwr_board.js`
+dispatches a synthetic `resize` on every splitter **pointermove**. MEASURED at 1100x900: dragged to
+left 212 / top 190, one resize later left 12 / top 70. Now cleared only on the dock -> float
+TRANSITION, which is the case it was written for. **A cleanup that is correct for a transition
+becomes destructive the moment its function starts being called for other reasons.**
+
+**4. THE HEIGHT AXIS WAS NEVER TESTED.** The 1201 px dock rule was justified by a 1100x900
+measurement — a WIDTH. MEASURED `#toolsCard` closed -> open with the dock at its 220 px floor:
+1500x950 767 -> 455; 1280x800 617 -> 353; **1366x660 477 -> 249; 1250x540 357 -> 129.** 1366x768 is
+an ordinary laptop panel. Added `DOCK_MIN_H = 760`: below it the floating window, which costs the
+column nothing. After, at 1366x660 and 1250x540 `#toolsCard` is untouched (477 -> 477, 357 -> 357).
+
+**5. MY NEW BADGE CHECK ASSERTED MORE THAN ITS CLAIM.** It required the halo never to exceed the
+TILE box in any direction — which contradicts #684's whole premise that a halo legitimately exceeds
+the tile wherever the art does (the PORV by 45 % of its width, the pressurizer by 80 px). Green only
+because `.bd-badge` currently appears on TRIP BLOCKS alone, a tile with no art overhang; `setBadge`
+is a generic driver hook, so the first badge on an overhanging tile would have reddened it for doing
+the right thing. It now compares the halo against what the NON-badge art needs. **A check written
+against the one instance that exists can encode a rule the codebase does not hold.**
+
+**6. THE ROW GLOW SHIPPED WITH NO COMMITTED GATE — the repo's own dark-wire class, in my own diff.**
+The only test changes in the commit were a BASELINES line and a harness timing split; the TUNING_LOG
+sentence "measured at three viewports" described a scratch probe that is not in the tree. Six checks
+added to `board_check`, 258 -> 264. **The harness had to LOAD `ui/manual_procedures.js` first, and
+without that the checks could not have failed**: the glow resolves the active step out of
+`RD.MANUAL_PROCEDURES` by `profile_key`, so with no pool loaded `stepTripWants` returns `{}` and any
+check would have passed on a severed wire. The POSITIVE case is an UNBLOCK ask, which is not an
+accident: at `hot_full_power` no row is both enabled and unblocked (`ir_high` and `pr_low_setpoint`
+are the at-power startup net; `lo_press` and `si_trip` have no P-11), so the only outstanding ask
+this plant can carry is a release — the direction no authored step takes, and the half of the
+generalisation nothing else would ever exercise. Two injections, each caught by a different check.
+
+**7. THE POOL WAS KEYED BY `plant_id`, NOT `profile_key`.** Every other consumer uses `profile_key`,
+which the same snapshot carries and which `instructor_layer`'s own restore path uses. The pool's keys
+are `{pwr, pwr2, rbmk_pre, rbmk_post, bwr}` — they agree for the PWR and diverge for the RBMK, so it
+would have failed silently, with no glow and no error, the day it mattered.
+
+**Also corrected: several comments in the diff described the retired bottom-row dock in the present
+tense**, and one in `ui/app.js` gave an inverted justification for a correct guard (the overshoot
+case it cited is handled upstream by `closest()` returning null, not by range containment). Stale
+prose in a comment block is the same failure as a stale claim in an issue — it is read as current.
+
 ## Session log — 2026-09-12-develop-b (#724 RC19 playtest, the develop share: #731, #735, #736, #732 half)
 
 **The one that could end a playthrough (#731, item 13).** `pwr_startup` steps 16 and 17 carried a
