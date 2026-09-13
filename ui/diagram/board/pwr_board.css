@@ -169,7 +169,12 @@
 /* The board's reduced-motion answer, same as the highlight bus's: a standing cue rather than a
    pulse. The colour still says everything the flash does; only the attention-grab is dropped. */
 @media (prefers-reduced-motion: reduce) {
-  .bd-btn.bd-actuated { animation: none; }
+  /* SOLID, 2px, offset out — the middle weight of the three (#740, owner ruling option A). Not
+     merely `animation: none`, which is what this was: with the pulse gone, an ACTUATED button and a
+     MESSAGE button differed only by hue (orange against amber), and those two are a pair a
+     red/green deficiency compresses. Geometry is the difference now; see the vocabulary note in
+     ui/shell.css's reduced-motion block. */
+  .bd-btn.bd-actuated { animation: none; outline: 2px solid #ff9e57; outline-offset: 2px; }
 }
 /* Informational/neutral state (grey) — a non-alarm condition the operator has deliberately
    set, e.g. reactor trips intentionally BLOCKED as part of a startup/shutdown lineup. Grey
@@ -220,7 +225,25 @@
    block. Found by the #738 quality pass. NOTHING GATES IT: `prefers-reduced-motion` appears in no
    test in this repo, so the ordering is held by this comment and by review. */
 @media (prefers-reduced-motion: reduce) {
-  .bd-btn.bd-msg.bd-unack { animation: none; box-shadow: 0 0 0 2px #ffd166; }
+  /* DOTTED — and the first cut of this was DASHED, which would have collided (#740).
+     A box-shadow ring, which is what this was, is the same GEOMETRY as bd-actuated's fallback and
+     differed from it only in hue. But dashed was no better: `.ckl-watch-glow` is ALREADY
+     `1px dashed` at `outline-offset: 3px` — all but identical — and it means something else
+     entirely ("your current step wants you watching this"). Both land on board tiles through
+     `revealControl`, so under reduced motion one dash pattern would have meant two things. No step
+     names TRIP BLOCKS in an `hl_watch` list today, but 59 steps use one, and adjacency on the same
+     board is enough for the vocabulary to blur.
+
+     The board's static vocabulary is therefore FOUR distinct line styles, not three:
+       double  3px  — critical alarm            (ui/shell.css)
+       solid   2px  — a protection latch is holding this system
+       dotted  2px  — there is a message in this control's card   <- this rule
+       dashed  1/3px — the walkthrough is pointing at this (watch it / act on it)
+     Four styles, no hue needed to tell any pair apart. */
+  .bd-btn.bd-msg.bd-unack {
+    animation: none; box-shadow: none;
+    outline: 2px dotted #ffd166; outline-offset: 3px;
+  }
 }
 
 
@@ -245,9 +268,19 @@
   box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.55);
 }
 .bd-scram:active { transform: translateY(1px); }
+/* THE SCRAM BUTTON'S ARMED PULSE. ⚠ ITS ONLY CALLER IS JAVASCRIPT — `pwr_board.js` sets
+   `rec.btn.style.animation = 'bdScramPulse …'` as an INLINE style when the button is armed. A grep
+   for `animation:.*bdScramPulse` across the stylesheets therefore finds nothing and this reads as
+   an orphan keyframe; it was deleted on exactly that reasoning at #740 and restored the same hour.
+   DO NOT DELETE IT ON A CSS-ONLY SEARCH.
+
+   The same fact is why its reduced-motion answer is in the JS and not in a media query here: an
+   inline style beats any stylesheet rule, so `@media (prefers-reduced-motion) { … animation: none }`
+   could never have stopped it. See buildScram in pwr_board.js. */
 @keyframes bdScramPulse {
-  0%, 100% { box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.55), 0 0 0 0 rgba(255, 180, 0, 0.55); }
-  50%      { box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.55), 0 0 14px 3px rgba(255, 180, 0, 0.35); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 180, 0, 0.55); }
+  50%      { box-shadow: 0 0 0 7px rgba(255, 180, 0, 0); }
+}
 }
 
 /* ---- number inputs ---- */

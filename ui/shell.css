@@ -2988,3 +2988,91 @@ select.num-input { width: auto; }
    carrying that the ruling did NOT overrule — the buttons above the plot, the 15 px prediction
    readout — moved up into the base `.oom-win` rules; `git log ui/shell.css` has the rest.
    Do not re-add a dock without a newer ruling than this one. #713.) */
+
+/* ===================================================================================
+   REDUCED MOTION, IN ONE PLACE AND AT THE END OF THE FILE (#740)
+   *(OWNER RULING, 2026-09-13: "1:A, 2:A, 3:a now. I will playtest after you make these changes."
+   — item 2 was #740, and option A was "distinct static geometry per signal under reduced motion,
+   matching the convention the board already uses".)*
+
+   MEASURED BEFORE THIS EXISTED (inbox/738/rm_browser.js, a real browser with
+   `emulateMedia({ reducedMotion })`, reading computed `animationName` off live elements): SIX
+   animations went on running for a player who had asked them not to — `gauge-alarm-flash`,
+   `pulse` on `button.armed`, `scram-flash`, `status-flash`, `cklGlow` and `instrGlow`. Four others
+   already stopped correctly.
+
+   ⚠ WHY THEY ARE ALL HERE, AT THE BOTTOM, RATHER THAN NEXT TO THE RULES THEY OVERRIDE. A MEDIA
+   QUERY ADDS NO SPECIFICITY. `@media (prefers-reduced-motion) { .x { animation: none } }` placed
+   ABOVE `.x { animation: flash … }` loses outright, and both forms read as correct. That cost this
+   repo three separate defects in one cycle — the `.bd-info` cascade in #738's parent, my own
+   `bdMsgFlash` override one rule later, and these six. Rules that must WIN go last; keeping them
+   together is what makes that checkable at a glance instead of per-rule.
+
+   THE EXISTING PER-RULE OVERRIDES ARE LEFT WHERE THEY ARE. They work (their animations are
+   declared above them) and moving correct code to prove a point risks more than it buys; the ones
+   below are the ones that were broken. */
+@media (prefers-reduced-motion: reduce) {
+  .gauge.alarm .g-value,
+  .pd-row.subcool .pv.alarm,
+  .sys-slot.state-alarm .slot-dot,
+  .sys-slot.state-alarm .slot-badge,
+  .pd-scram.fired { animation: none; }
+
+  /* `button.armed` IS A BUTTON, so it gets a ring like the other button-shaped signals rather than
+     just losing its pulse. RIDGE, which is the fifth distinct line style on the board and reads as
+     "raised" — apt for a control waiting on a confirming second press. */
+  button.armed {
+    animation: none;
+    outline: 3px ridge #a13a3a;
+    outline-offset: 2px;
+  }
+
+  /* THE FALLBACK IS WHERE THE BOARD LEANS HARDEST ON HUE, so these do not merely stop.
+     Stopping the six was option D and the owner did not take it: take the motion away and a HUE
+     becomes the only difference between "critical alarm", "a protection latch is holding this" and
+     "there is a message" — the pairs a red/green or blue/yellow deficiency compresses. So each
+     signal gets a distinct OUTLINE STYLE, which is geometry and survives both greyscale and any
+     hue collapse.
+
+     THE VOCABULARY IS THE BOARD'S OWN, not a fourth one: the highlight bus is a halo,
+     `.ckl-watch-glow` is a dashed offset outline, and `#playBtn.paused`'s own fallback below is
+     already `outline: 2px solid`. DOUBLE is the loudest and belongs to the critical alarm; SOLID is
+     the protection latch (see pwr_board.css); DASHED is a message, which borrows
+     `.ckl-watch-glow`'s "watch this" sense deliberately — a message wants reading, not acting. */
+  .alarm-tile.unack.crit {
+    animation: none;
+    /* 5px, NOT 3px, AND THE DIFFERENCE IS VISIBLE RATHER THAN THEORETICAL. A `double` outline
+       splits its width three ways, so 3px is 1px-1px-1px and the two lines merge into one thin
+       stroke at button size — rendered and looked at (inbox/740/grey/), 3px came out FAINTER than
+       the protection latch's 2px solid, which is backwards for the loudest signal on the board.
+       5px gives 2px-1px-2px and reads as two lines. Do not trim this without re-rendering it. */
+    outline: 5px double var(--critical);
+    outline-offset: -5px;
+    box-shadow: none;
+  }
+
+  /* THE WALKTHROUGH'S OWN TWO GLOWS KEEP THE DASHED FAMILY, and differ within it by WIDTH.
+     `.ckl-watch-glow` is already `1px dashed` and is NOT animated, so it needs nothing here; it is
+     named only to say why `.ckl-step-glow` is 3px and not some fourth style. The pair means one
+     thing — "the walkthrough is pointing at this" — in two strengths: watch it, or act on it.
+     Splitting them across unrelated styles would have thrown away a distinction the board already
+     teaches.
+
+     ⚠ `.ckl-step-glow` IS A BOARD-SURFACE CLASS WEARING A CHECKLIST PREFIX. It is applied through
+     `revealControl` to board TILES, and since #727 to the trip-block popover rows as well — it is
+     not part of the walkthrough panel's own `.ckl-*` styling. Do not re-split it on the prefix. */
+  .ckl-step-glow {
+    animation: none;
+    outline: 3px dashed rgba(120, 210, 150, 0.95);
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+
+  /* The highlight bus. It is a HALO by design (see its own note above — cyan, never a fill, so a
+     haloed component in alarm still reads as in alarm), and the halo is already geometry; only the
+     pulse goes. */
+  .instr-glow {
+    animation: none;
+    box-shadow: 0 0 0 2px rgba(122, 176, 255, 0.9);
+  }
+}

@@ -29,6 +29,104 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-13-workbench-c (#740 — the board keeps its meaning without the movement, and two of my own findings were wrong)
+
+**The ruling** *(OWNER, 2026-09-13: "1:A, 2:A, 3:a now. I will playtest after you make these
+changes." — item 2 was #740, and option A was "distinct static geometry per signal under reduced
+motion, matching the convention the board already uses")*.
+
+**HE DID NOT TAKE OPTION D, AND D WAS THE TRAP.** "Just stop the six animations" looks complete and
+is precisely what CREATES the hue-only fallback: with the motion gone, a HUE was the only thing
+separating "critical alarm", "a protection latch is holding this" and "there is a message" — the
+pairs a red/green or blue/yellow deficiency compresses. The fallback was part of the change, not a
+follow-up.
+
+### TWO OF MY OWN #740 FINDINGS WERE WRONG, AND THE SECOND ONE NEARLY BROKE THE SCRAM BUTTON
+
+1. **`tabAttn` was never a gap.** `#tabbar button.tab-attn` sets it at shell.css:2881 and the
+   override is at :2895, correctly after. My probe attached `button.tab-attn` with no `#tabbar`
+   ancestor, so the rule never matched and I reported working code as broken. **The probe was the
+   defect.**
+
+2. **`bdScramPulse` was NOT an orphan keyframe, and I deleted it before finding out.** My grep was
+   `animation:.*bdScramPulse` across the stylesheets. Its only caller is JAVASCRIPT —
+   `pwr_board.js` sets `rec.btn.style.animation = 'bdScramPulse …'` as an INLINE style when the
+   SCRAM button is armed. A CSS-only search cannot see it. Restored within the hour, with a comment
+   at the keyframe saying so, because the next person will run the same grep.
+
+   **AND IT IS THE HARDEST CASE IN THE WHOLE ISSUE**: an inline style beats every stylesheet rule,
+   so no `@media (prefers-reduced-motion)` block could ever have stopped it. Its fix is in the JS,
+   reading `matchMedia` before it writes. It was invisible to the audit twice over — invisible to
+   the CSS grep, and invisible to the class-probe that measured the other ten signals, because
+   nothing sets a class here.
+
+   The coordinating lane told me to widen the grep before deleting. That instruction is the only
+   reason this was caught rather than shipped.
+
+### THE CASCADE TRAP, FOR THE FOURTH TIME IN ONE CYCLE
+
+A media query adds NO specificity. All six broken overrides, my own `bdMsgFlash` one, and #738's
+parent `.bd-info` bug are the same shape: a rule that must WIN placed above the rule it must beat.
+The six fixes therefore live in ONE block at the END of each stylesheet rather than next to what
+they override — not tidiness, but the only arrangement where "does this win?" is answerable at a
+glance. Correct existing overrides were left where they are.
+
+### THE VOCABULARY, AND A COLLISION CAUGHT BEFORE IT SHIPPED
+
+My first cut gave the message signal **dashed**, "matching `.ckl-watch-glow`'s watch-this sense".
+`.ckl-watch-glow` is ALREADY `1px dashed` at `outline-offset: 3px` — all but identical to what I
+proposed — and it means something else entirely. Both land on board tiles through `revealControl`.
+No step names TRIP BLOCKS in an `hl_watch` list today, but **59 steps use one**, and adjacency on
+one board is enough to blur a vocabulary. Caught by the coordinating lane's review, not by me.
+
+Five distinct line styles now, none needing a hue to tell apart:
+
+| signal | static geometry |
+|---|---|
+| critical alarm | `5px double`, inset |
+| protection latch (ACTUATED) | `2px solid`, offset 2 |
+| trip-block message | `2px dotted`, offset 3 |
+| walkthrough: act on this | `3px dashed`, offset 2 |
+| walkthrough: watch this *(existing)* | `1px dashed`, offset 3 |
+| armed button | `3px ridge`, offset 2 |
+| highlight bus | halo, no outline |
+
+**`5px double`, NOT 3px, AND THAT IS A RENDER NOT A PREFERENCE.** A `double` outline splits its
+width three ways, so 3px is 1px-1px-1px and the two lines merge into one thin stroke. Rendered at
+the board's real button size and looked at (`inbox/740/grey/`), 3px came out **fainter than the
+protection latch's 2px solid** — backwards for the loudest signal on the board. The coordinating
+lane predicted exactly this before I rendered it.
+
+### HOW DISTINGUISHABILITY WAS ESTABLISHED, since a colour-vision claim is an unmeasured claim
+
+Two ways, and the second is the one that changed a decision. **Structural:** the gate asserts the
+signals carry pairwise-distinct `(outline-style, width, offset, box-shadow-shape)` tuples, with the
+colour stripped out of the shadow string first — a comparison that never reads a hue.
+**Rendered:** each signal drawn at the board's own 96x34 button size on the board's ground with
+`filter: grayscale(1)`, screenshotted and compared (`inbox/740/greyscale.js`). All six differ; the
+closest pair by file size (latch 2585 bytes, message 2563) was looked at directly and reads as solid
+ring vs dotted ring.
+
+### THREE SIGNALS REMAIN HUE-ONLY AND THAT IS STATED, NOT HIDDEN
+
+`gauge alarm value` and `system slot alarm dot` are a NUMBER and a DOT going into alarm — an outline
+round a digit is not this board's idiom and nobody asked for one; they say "this reading is bad",
+are never confused with each other, and are read in place rather than compared. `retired-board
+scram` is the retired surface, out of scope by direction. They stop animating; they stay hue-only.
+The gate carries the exclusion as a NAMED LIST with a comment saying it is the easiest thing in the
+file to abuse.
+
+### THE GATE
+
+`verify_reduced_motion.js`, new, 14 checks. A separate runner because `emulateMedia` is per-PAGE and
+global while `verify_board_check` asserts the opposite (#738 needs `bdMsgFlash` RUNNING) — one page
+cannot hold both claims. **Every "does not animate" check is PAIRED with the same element under
+`no-preference` where it MUST animate**: a one-sided version would go green on a stylesheet with the
+animations simply deleted. Four injections, all caught — an override removed (2 red), two signals
+sharing geometry (1), the JS scram guard removed (1), the critical alarm's double trimmed to 3px (1).
+
+---
+
 ## Session log — 2026-09-13-workbench-b (#738/#716 — the trip-block message: what counts as one, measured four ways before anything was built)
 
 **The ruling** *(OWNER RULING, 2026-09-13: "I don't want to add new UI elements to the main board.
