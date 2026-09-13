@@ -55,6 +55,12 @@
       steam_pressure_mpa: 'steam_pressure', boron_ppm: 'boron_analyzer',
       startup_rate_dpm: 'startup_rate', pump_flow_pct: 'rcs_flow',
       mwe_output: 'mwe_output', fw_flow_normalized: 'fw_flow',
+      /* PRESSURIZER SPRAY FLOW (#729, added 2026-09-13). `pwr_cooldown` grades the spray on
+       * DELIVERED flow, not on the AUTO lamp — the leg puts the spray in MANUAL at 50 %, so no
+       * lamp is lit and `spray_auto` has nothing to say. It was grading `true_state`; the board
+       * shows the operator `pzr_spray_flow` (pwr_instruments, 1.0 s lag, noise 0), so HR1 says
+       * grade what they can see. The divergence is one second, which is why nothing caught it. */
+      spray_flow_pct: 'pzr_spray_flow',
       /* the atmospheric dump valve (#629) — the heatup's Mode 3 confirmation asserts it is
        * SHUT, which is a claim about the heat sink the plant is riding on. Graded on the
        * board's own channel, per HR1: the player sees `adv_valve`, not `adv_valve_pct`. */
