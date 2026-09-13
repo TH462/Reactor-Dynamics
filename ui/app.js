@@ -4595,16 +4595,27 @@
        * contingencies the player does have to act on. A label is what separates "read this to
        * act" from "read this to understand".
        *
-       * "Why this step" and not "Learn more": the field's whole contract (CHECKLIST_WRITING_GUIDE
-       * F2) is one causal chain answering why the step is here, and a label that names the
-       * question is what lets a player who does not want it skip the block in one glance.
+       * "Background - not an action" *(OWNER RULING, 2026-09-13: "Info-box label - a", choosing
+       * it over "Why this step - background, not an action")*, settling his own instruction of
+       * the same day: "I also want to make the informational text block more obvious that it's
+       * not a work step but just there for education. Put it in its own box, move it slightly
+       * away from the work steps and label it so it's obvious what it is."
+       *
+       * IT NAMES THE CATEGORY AND STATES THE NEGATIVE, which is the half a question-shaped
+       * label cannot do. "Why this step" named the field's contract (CHECKLIST_WRITING_GUIDE
+       * F2 - one causal chain answering why the step is here) but a player scanning for what
+       * to press still has to read it to learn it is not for them. The rejected candidate kept
+       * both halves and ran long for a 10 px upper-case legend.
+       *
+       * THE GUIDE STILL CALLS THE FIELD "why" and F2 still governs what goes in it - this is
+       * the LEGEND the player reads, not a rename of the authoring key.
        *
        * The legend borrows `.ckl-story-l > span`'s idiom — small, upper case, muted — because
        * the story block is the OTHER always-drawn supplementary field on this card, and two
        * supplementary blocks that look like two different kinds of thing is the confusion this
        * is fixing. */
       if (st.why) {
-        det += '<div class="ckl-why"><span class="ckl-why-lbl">Why this step</span>' +
+        det += '<div class="ckl-why"><span class="ckl-why-lbl">Background — not an action</span>' +
           mesc(st.why) + '</div>';
       }
       if (det) {
