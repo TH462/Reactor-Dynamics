@@ -1060,7 +1060,13 @@
                      /* the operator's SELECTION, not the valve (#629) — a dump controller in
                       * service at its setpoint carries 0 % on a plant already on programme,
                       * so the valve position cannot tell AUTO from CLOSED */
-                     steam_dump_auto: 1 };
+                     steam_dump_auto: 1,
+                     /* HX SPLIT (#739) — the cooldown throttle. `getControlState()` is the only
+                      * place it is published (`pwr2_shell.js` :1843, from `e.rh.hx_fraction`);
+                      * `true_state` does not carry it, so without this line `paramValue` returns
+                      * undefined and `pwr_cooldown` step 10's acceptance could never grade. It is
+                      * a FRACTION here (0.07) and per cent on the card. */
+                     rhr_hx_fraction: 1 };
   function rodParam(snapshot, p) {
     var spec = ROD_PARAMS[p];
     if (!spec) return undefined;

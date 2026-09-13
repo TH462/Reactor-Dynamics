@@ -1570,8 +1570,19 @@
          * full heatup. The mode it selects is the shell's to prove. */
         { text: 'Verify Hot Standby: AVG COOLANT TEMPERATURE 547 °F, PRIMARY PRESSURE 2235 psi, CONTROL ROD POSITION still 0.',
           why: 'Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. The control bank never moved: the pumps did all the heating. STEAM PRESS holding near 1020 psi with the ATMOS DUMP shut says the steam dump is carrying the heat, not the sky.',
-          acc: { p: 'plant_mode', op: '~', v: 3, tol: 0.1 },
+          /* THE MODE CONFIRMATION WAS A DEAD FIELD (#739, 2026-09-13). This step carried BOTH an
+           * `acc` and an `accs`, and `instructor_layer.js` `_gradeStep` is
+           * `if (st.accs && st.accs.length) {...} else if (st.acc) {...}` — the `accs` branch wins,
+           * so the heatup leg's ONLY Mode 3, Hot Standby confirmation never graded and the step
+           * ticked on the atmospheric dump valve and steam pressure alone.
+           * FOLDED, not taught to the grader. Swept all five pools (248 steps, 34 of them `accs`):
+           * this was the ONLY step carrying both, so making `_gradeStep` honour both would change
+           * the live grading of exactly one step while widening a schema whose own header says
+           * "When `accs` is present it REPLACES `acc` (author one or the other)". The data fix is
+           * local and the schema stays one-form; the class of defect is closed instead by
+           * `run_checklist_pwr2` §2r, which now reddens on ANY step authoring both. */
           accs: [
+            { p: 'plant_mode', op: '~', v: 3, tol: 0.1, label: 'Plant in Mode 3, Hot Standby' },
             { p: 'adv_valve_pct', op: '<', v: 1, label: 'ATMOS DUMP shut' },
             { p: 'steam_pressure_mpa', op: '~', v: 7.03, tol: 0.15, label: 'STEAM PRESS near 1020 psi' },
           ],
@@ -2395,9 +2406,24 @@
           /* PAIRED (#715), AND THE PAIR IS TWO-SIDED (#736). MEASURED: mwe_output settles to
            * 50.00 by the end of this step's hold, reads 75.00 at its entry and 0 on a scram — so
            * the band is false at entry AND false on the failure, where the old `> 45` floor was
-           * true at entry and latched there for the rest of the step. */
+           * true at entry and latched there for the rest of the step.
+           *
+           * THE ROD TRIM IS GRADED HERE NOW (#739). This step and the two below it instruct a
+           * rod insertion and graded only the LOAD half, so the step ticked whether or not the
+           * player touched a rod — the defect #739 filed. The entry is step 3's own shape: the
+           * band's TOP EDGE at THIS step's load, `trefProgram(load) + 3.5 x the 0.8 degC rod
+           * lockup band` (pwr_board_wiring `tavgBand`), which at load 0.50 is 298.08 degC —
+           * authored 298.1, 569 degF.
+           * IT DISCRIMINATES, MEASURED on the replay three ways (seed 42, from hot_full_power):
+           *   authored route (step 3's trim made, boration running)  295.76 degC  564.4 degF  PASS
+           *   step 3's trim removed, boration still running          299.53 degC  571.2 degF  FAIL
+           *   neither trim nor boration                              310.01 degC  590.0 degF  FAIL
+           * so a player who skips the trim reds this step and steps 5 and 6 with it. One-sided
+           * for step 3's reason: the boration keeps walking Tavg down and a two-sided band would
+           * fall out from under a player reading at 1x. */
           accs: [{ p: 'power_pct', op: '<', v: 70, label: 'Reactor following through 70 %' },
-                 { p: 'mwe_output', op: '~', v: 50, tol: 5, label: 'Generator settled near 50 MWe' }],
+                 { p: 'mwe_output', op: '~', v: 50, tol: 5, label: 'Generator settled near 50 MWe' },
+                 { p: 'tavg_c', op: '<', v: 298.1, label: 'AVG COOLANT TEMPERATURE back below 569 °F, inside its band' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
         { text: 'Set LOAD to 30 MWe, let power follow, then hold INSERT until AVG COOLANT TEMPERATURE is back in its band.',
           note: 'About 10 steps at MED.',
@@ -2405,9 +2431,14 @@
           control: 'Turbine Load', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE inside its band',
           cmd: { action: 'set_load_target', mwe: 30 }, hold: 600,
           /* PAIRED (#715), TWO-SIDED (#736). MEASURED: 30.00 at the end of this hold, 50.00 at
-           * its entry, 0 on a scram. */
+           * its entry, 0 on a scram.
+           * ROD TRIM GRADED (#739) — see the step above for the derivation and the three-way
+           * discrimination run. Band top at load 0.30 is 294.38 degC; authored 294.4, 562 degF.
+           * MEASURED at the end of this hold: authored route 290.44 degC (554.8 degF) PASS,
+           * step 3's trim removed 295.36 degC (563.6 degF) FAIL. */
           accs: [{ p: 'power_pct', op: '<', v: 45, label: 'Reactor following through 45 %' },
-                 { p: 'mwe_output', op: '~', v: 30, tol: 5, label: 'Generator settled near 30 MWe' }],
+                 { p: 'mwe_output', op: '~', v: 30, tol: 5, label: 'Generator settled near 30 MWe' },
+                 { p: 'tavg_c', op: '<', v: 294.4, label: 'AVG COOLANT TEMPERATURE back below 562 °F, inside its band' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
         { text: 'Set LOAD to 15 MWe, let power follow, then hold INSERT until AVG COOLANT TEMPERATURE is back in its band.',
           note: 'About 6 steps at MED. Stop here; the shutdown checklist takes over.',
@@ -2434,7 +2465,16 @@
            *   program (it was 9.4 degF above the old one), so 'about 6 steps' of rod trim does not
            *   put Tavg on program and the dumps hold 62.66 % indefinitely. The trim sizing predates
            *   #508 and was ALREADY short; the re-anchor widened the gap by 2.5 degF. Re-deriving
-           *   the trims is content work, not a threshold edit. */
+           *   the trims is content work, not a threshold edit.
+           *   ⚠ THAT PARAGRAPH IS STALE AND THE PLANT HAS MOVED UNDER IT (#739, 2026-09-13).
+           *   RE-MEASURED at the end of this step on develop @ 415471b9, same fixture, seed 42:
+           *     steam flow 0.1495 -> programme 288.80 degC (551.8 degF), band 546.8..556.9 degF
+           *     Tavg 285.06 degC (545.1 degF)  =  6.7 degF BELOW programme, not 11.9 degF above
+           *     STEAM DUMP 0.00 %, ATMOS DUMP 0.00 %   (not "the dumps hold 62.66 %")
+           *     REACTOR POWER 12.95 %                  (not 33.94 %)
+           *   The `power_pct < 40` band below is unaffected and still clears by 27 points. Left
+           *   as a correction rather than a deletion because the #508 table is the record of the
+           *   re-anchor; what is retired is its forward-looking "NOT FIXED HERE" claim. */
           /* PAIRED, SAME FIX (#715). MEASURED: mwe_output settles to 15.00 by the end of this
            * step's hold; 0 on a scrammed plant. This is also the leg's LAST step, so it is the
            * one a scram would have left checked off with the completion banner still claiming
@@ -2443,7 +2483,17 @@
                  /* TWO-SIDED (#736): 15.00 at the end of this hold, 30.00 at its entry, 0 on a
                   * scram — and this is the leg's LAST step, the one whose latched floor let the
                   * completion banner fire on a dead plant. */
-                 { p: 'mwe_output', op: '~', v: 15, tol: 5, label: 'Generator settled near 15 MWe' }],
+                 { p: 'mwe_output', op: '~', v: 15, tol: 5, label: 'Generator settled near 15 MWe' },
+                 /* ROD TRIM GRADED (#739) — see step 4 for the derivation and the three-way
+                  * discrimination run. Band top at the measured 0.1495 steam flow is 291.60 degC;
+                  * authored 291.6, 557 degF. MEASURED at the end of this hold: authored route
+                  * 285.06 degC (545.1 degF) PASS by 11.8 degF, step 3's trim removed 292.22 degC
+                  * (558.0 degF) FAIL by 1.1 degF. ⚠ THAT 1.1 degF IS THE THINNEST OF THE THREE —
+                  * this step is 900 s downstream of the trim and the boration has had the longest
+                  * to close the gap on its own, so it is the weakest of the three as a detector.
+                  * ONE-SIDED IS NOT COSMETIC HERE: the authored route ends 6.7 degF BELOW the band
+                  * (see the re-measurement above), so a two-sided band would red the shipping leg. */
+                 { p: 'tavg_c', op: '<', v: 291.6, label: 'AVG COOLANT TEMPERATURE back below 557 °F, inside its band' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
@@ -2616,10 +2666,45 @@
            * the entry, and `_accsCmdWatch` latches the `cmd` half. Both #731 halves are then
            * covered — a block placed EARLIER satisfies through state, and an UNBLOCK cannot
            * satisfy through the command because develop fixed `_cmdEvidence` to match the sense. */
+          /* …AND THE THIRD ACTION THE TEXT ASKS FOR IS GRADED NOW (#739, 2026-09-13). "Then press
+           * STOP on ECCS" had NO entry at all — the step's own `target` names it ("ECCS STOP lit")
+           * and the step ticked on the two trip blocks alone.
+           *
+           * IT IS A PURE `cmd` ENTRY, AND THAT IS THE HONEST FORM, NOT A SHORTCUT. MEASURED at
+           * this leg's own `hot_zero_power` boot, before and after `set_hpi {active:false}` (30
+           * ticks each side): `eccs_mode` "standby" -> "standby", `hpi_active` false -> false,
+           * `si_actuated` false -> false, command accepted {ok:true}. There is no SI to reset and
+           * no pump running to stop, so securing an idle pump moves NOTHING a predicate could
+           * read — a `p: 'hpi_active', op: '<', v: 1` sibling would be true at boot and would be
+           * the pinned NON-EVENT this repo's own trap list names. The evidence is the press, so
+           * the entry says so.
+           * ⚠ §2n DOES NOT CLASSIFY IT AS ONE, and that is the sweep's shape rather than a
+           * disagreement: it computes "has a state sibling" over the WHOLE step, and this
+           * entry's two neighbours (the trip blocks) carry `p` — siblings that belong to
+           * different actions and say nothing about whether the ECCS press is observable. So it
+           * lands in CANDIDATES and passes there. Adding the step to `NO_STATE_EXPECTED` was
+           * tried first and reddens the check; that runner's comment carries the detail.
+           * ⚠ AND THE LAMP IS NO BETTER — the `target` above says "ECCS STOP lit", which sounds
+           * gradeable and is not. It is `!esfAuto(s,'hpi') && !hpi_active` (pwr_board_wiring
+           * :603), and this plant publishes NO `hpi` ESF arm at all (measured through the leg:
+           * `automation.esf` is `{"afw":"auto"}` and nothing else), so the lamp is LIT AT BOOT,
+           * lit at this step, and lit after the press — three samples, no change. Grading it
+           * would be the pinned non-event one level further out.
+           * SOFT-LOCK WINDOW, MEASURED rather than argued (guide R7 asks for it): `eccsStop`
+           * refuses only when safety injection is LATCHED and either the 45-60 s reset relay is
+           * still running or P-4 is not made. Driven to this step through the leg's own route
+           * (borate, setpoint to 1900 psi, 2000 ticks) the plant sits at 1923 psi with
+           * `si_actuated` false and the command returns {ok:true} — and it is re-issuable after a
+           * Rewind from the same state, which is the other half of R7. No `overtaken` is
+           * authorable: `overtaken` fires for the whole STEP, and the only candidate predicate
+           * (`hpi_active < 1`) is true at boot, so it would skip the two trip blocks as well.
+           * ORDER MATTERS: third in the array, so the replay issues it AFTER both blocks, which
+           * is the order the text reads and the order the plant wants. */
           accs: [{ cmd: { action: 'set_trip_block', trip_id: 'lo_press', blocked: true },
                    p: 'lo_press_blocked', op: '>', v: 0, label: 'PZR PRESS LO-LO blocked' },
                  { cmd: { action: 'set_trip_block', trip_id: 'si_trip', blocked: true },
-                   p: 'si_trip_blocked', op: '>', v: 0, label: 'SI REACTOR TRIP blocked' }],
+                   p: 'si_trip_blocked', op: '>', v: 0, label: 'SI REACTOR TRIP blocked' },
+                 { cmd: { action: 'set_hpi', active: false }, label: 'STOP pressed on the ECCS card' }],
           hl: ['Trip Blocks', 'ECCS'] },
         /* THE DUMP MUST BE IN PRESSURE MODE, AND THE CHAIN DOES NOT LEAVE IT THERE (layman playtest
          * 2026-09-07, #653 S2). `set_steam_dump auto` maps to 'pressure' only when the turbine is
@@ -2693,7 +2778,19 @@
           why: 'Spray condenses steam in the pressurizer and pressure falls. SUBCOOLING MARGIN is how far the reactor water is below boiling; lowering pressure spends it, and it has to stay positive.',
           control: 'Pressurizer Spray (PZR)', target: 'SPRAY MANUAL at 50 %; PRIMARY PRESSURE below 1615 psi',
           cmd: { action: 'set_spray', open: true, pct: 50 }, hold: 240,
-          acc: { p: 'pressure_mpa', op: '<', v: 11.14 },
+          /* THE 50 % IS GRADED NOW (#739, 2026-09-13). The step warned in its own `note` that a
+           * player at 100 % fills the pressurizer solid, and then ticked on PRIMARY PRESSURE
+           * alone — which 100 % satisfies FASTER. `spray_flow_pct` is the DELIVERED flow (true
+           * state), and it tracks the demand exactly: MEASURED 50.000 at the end of this step and
+           * at the end of every step through step 12, down to 0.076 MPa, so the band is not a
+           * high-pressure-only artefact. tol 5 is 45..55 %, which the note's own failure mode
+           * (100 %) misses by nine tolerances; `~` two-sided also catches a player who set it too
+           * LOW and is watching a cooldown that will not finish.
+           * The pressure `acc` had to become an `accs` ENTRY, not sit beside one — `accs`
+           * REPLACES `acc` in `_gradeAccs`, which is exactly the dead field #739 filed against
+           * `pwr_heatup` step 15. Both halves are entries; neither is silent. */
+          accs: [{ p: 'pressure_mpa', op: '<', v: 11.14, label: 'PRIMARY PRESSURE below 1615 psi' },
+                 { p: 'spray_flow_pct', op: '~', v: 50, tol: 5, label: 'PZR SPRAY at 50 %' }],
           hl: ['Pressurizer Spray (PZR)', 'Pressurizer Heaters (PZR)'], hl_watch: ['Primary Pressure'] },
         { text: 'Close the accumulator valve: click the valve symbol in the green ring while PRIMARY PRESSURE is 1615 to 665 psi.',
           note: 'The symbol sits above and right of the ACCUMULATORS tile, beside ECCS FLOW. At 50 % spray the window is about 5 plant-minutes wide.',
@@ -2713,7 +2810,22 @@
           why: 'RHR is the low-pressure cooling loop that carries heat out of a shut-down plant. ALIGN opens its suction valve, which the plant only allows below 440 psi. HX SPLIT is how much of that loop goes through the heat exchanger; from here it is the cooldown throttle, 7 % is a gentle start, and COOLDOWN RATE beside it shows what that choice is doing.',
           control: 'Residual Heat Removal (RHR)', target: 'ALIGN lit on the RHR card; HX SPLIT 7 %',
           cmd: { action: 'set_rhr', active: true }, hold: 60,
-          acc: { p: 'rhr_valve_open', op: '>', v: 0 },
+          /* HX SPLIT IS GRADED NOW (#739, 2026-09-13), AND #739's OWN REASON FOR IT WAS WRONG.
+           * The issue argued the check is not vacuous because `pwr2_engine.js:707` initialises
+           * `hx_fraction = 0`. That line is inside `if (ic.cold)` and this leg starts from
+           * `hot_zero_power`, which is NOT cold: MEASURED at this leg's boot,
+           * `control_state.rhr_hx_fraction = 1`. So the player is THROTTLING 100 % -> 7 %, not
+           * opening 0 % -> 7 %. The conclusion survives — it is a real action with a real effect
+           * on the cooldown rate, and it was ungraded — but for the opposite reason, and the
+           * before-value is the one a fresh reader needs.
+           * ONE ENTRY CARRYING BOTH HALVES, step 3's shape: `cmd` so the replay performs the
+           * action the player is told to perform (nothing else in this leg sets the split before
+           * step 12's ramp, so a bare predicate would simply red), and `p` so a plant already
+           * throttled there ticks the box. `rhr_hx_fraction` is a FRACTION on the wire and 7 %
+           * on the card; tol 0.02 is +/- 2 points. */
+          accs: [{ p: 'rhr_valve_open', op: '>', v: 0, label: 'ALIGN lit on the RHR card' },
+                 { cmd: { action: 'set_rhr_hx', pct: 7 },
+                   p: 'rhr_hx_fraction', op: '~', v: 0.07, tol: 0.02, label: 'HX SPLIT at 7 %' }],
           hl: ['Residual Heat Removal (RHR)'], hl_watch: ['Primary Pressure'] },
         /* ⚠ THE SPRAY STAYS ON HERE. THIS STEP USED TO SHUT IT AND THAT WAS THE #729 BLOCKER
          * (owner playtest #724 item 19, 2026-09-12: "the RHR put itself into ISOLOATE and now i

@@ -781,6 +781,26 @@ if (!only) {
      * `pwr_tmi2_incident:10` took the same fix and was never in this set (single entry, and it
      * now has a state sibling too). `pwr_raise_power:3` is unchanged and remains the documented
      * judgement call. */
+    /* ⚠ `pwr_cooldown:3` DOES NOT JOIN THIS SET, AND THAT IS A PROPERTY OF THE SWEEP, NOT OF THE
+     * STEP (#739, 2026-09-13). Its new "STOP pressed on the ECCS card" entry IS a pure cmd-kind
+     * acceptance with nothing observable behind it — measured at the leg's own `hot_zero_power`
+     * boot, 30 ticks either side of `set_hpi {active:false}`: `eccs_mode` "standby" ->
+     * "standby", `hpi_active` false -> false, `si_actuated` false -> false, command accepted;
+     * and the board's STOP lamp (`!esfAuto(s,'hpi') && !hpi_active`, pwr_board_wiring :603) is
+     * lit at boot, at the step and after the press, because this plant publishes no `hpi` ESF
+     * arm at all. So it is exactly the shape this allowlist describes.
+     * The sweep classifies it as a CANDIDATE instead, because `sibs` is computed over the WHOLE
+     * step and the entry's two NEIGHBOURS — the trip blocks — carry `p`. Those siblings belong
+     * to different actions, so they say nothing about whether the ECCS press is observable; the
+     * sweep is asking a per-step question of a per-entry property. Adding the step here was
+     * tried first and REDDENS this check (an allowlist key with no matching entry), which is how
+     * the gap was found.
+     * NOT WIDENED HERE. Making `sibs` per-entry would reclassify entries across the whole pool
+     * and this change is not the place to re-adjudicate them; the consequence is recorded on the
+     * step itself and in #739 instead. The residual risk is small and named: a player who
+     * pressed STOP before reaching step 3 has nothing to re-press against, and `eccsStop`
+     * refuses only with safety injection latched, which the leg reaches this step without
+     * (1923 psi, `si_actuated` false, measured). */
     var NO_STATE_EXPECTED = { 'pwr_raise_power:3': 1 };
     var noStateTally = {};
     NO_STATE.forEach(function (r) { var k = r.proc + ':' + r.step; noStateTally[k] = (noStateTally[k] || 0) + 1; });
@@ -834,6 +854,14 @@ if (!only) {
         if (c.step_index === 2 && !didTripBlocks) {
           svc.handleCommand({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true });
           svc.handleCommand({ action: 'set_trip_block', trip_id: 'si_trip', blocked: true });
+          /* …AND THE THIRD ACTION THE STEP ASKS FOR (#739). The step's text has ALWAYS ended
+           * "Then press STOP on ECCS"; this driver issued the two blocks and not the press,
+           * which did not matter while the press was ungraded. It is graded now, so the driver
+           * sticks at step 3 without it — MEASURED when the entry first landed: this probe
+           * reached step_index 2 and stopped, tavg 286.2 degC. That is the check working, not
+           * the driver being wrong to model a player: the fix is for the stand-in operator to
+           * perform the whole step, the same way it already presses both trip blocks. */
+          svc.handleCommand({ action: 'set_hpi', active: false });
           didTripBlocks = true;
         }
         // step 4 (index 3): drive the dump setpoint ramp; NEVER press set_steam_dump auto.
@@ -1342,6 +1370,214 @@ if (!only) {
        !!ilB.checklist && !!ilC.checklist,
        'B ' + !!ilB.checklist + ', C ' + !!ilC.checklist);
     RD.MANUAL_PROCEDURES.pwr2.pop();
+  })();
+
+  /* 2v. A STEP MAY NOT AUTHOR BOTH `acc` AND `accs` — THE DEAD-FIELD GATE (#739, 2026-09-13).
+   *
+   * `instructor_layer.js` `_gradeStep` is `if (st.accs && st.accs.length) {...} else if (st.acc)
+   * {...}`. An author who writes both gets NO error and NO warning: the `accs` branch wins and
+   * the `acc` is simply never read. `pwr_heatup` step 15 shipped that way — its `plant_mode ~ 3`
+   * was the heatup leg's ONLY Mode 3, Hot Standby confirmation and it never graded once, while
+   * the step ticked on the atmospheric dump valve and steam pressure alone.
+   *
+   * WHY A GATE AND NOT A GRADER CHANGE. Teaching `_gradeStep` to honour both would have changed
+   * exactly ONE step's live grading (this sweep is how that was measured: 248 steps across all
+   * five pools, 34 with `accs`, 1 with both) and would contradict the schema header in
+   * `ui/manual_procedures.js` — "When `accs` is present it REPLACES `acc`". The field was folded
+   * into the `accs` list instead; this makes the silent case loud for the next author.
+   *
+   * ALL FIVE POOLS, not just pwr2 — the trap is in the shared grader, so a pwr/rbmk/bwr step
+   * would be just as dead. PROVEN RED BY INJECTION below: an `acc` is put back on the step it
+   * was removed from, the sweep must name it, then it is removed again. */
+  (function () {
+    var POOLS = RD.MANUAL_PROCEDURES;
+    function sweep() {
+      var hits = [];
+      Object.keys(POOLS).forEach(function (key) {
+        (POOLS[key] || []).forEach(function (proc) {
+          (proc.steps || []).forEach(function (st, i) {
+            if (st.acc && st.accs && st.accs.length) hits.push(key + ':' + proc.id + ' step ' + (i + 1));
+          });
+        });
+      });
+      return hits;
+    }
+    var hits = sweep();
+    ck('no step authors both `acc` and `accs` — the `accs` branch wins and the `acc` is dead (#739)',
+       hits.length === 0, hits.join(', ') || 'clean across all ' + Object.keys(POOLS).length + ' pools');
+
+    /* THE INJECTION TARGET IS FOUND BY CONTENT, NOT BY INDEX (#739). `steps[14]` would be a
+     * sixth entry in this repo's collection of array-index couplings, and the merge proposal
+     * under discussion moves exactly these steps. It is the heatup step whose `accs` carries the
+     * Mode 3 confirmation — which is the thing the check is about. */
+    var victim = (POOLS.pwr2 || []).filter(function (p) { return p.id === 'pwr_heatup'; })[0];
+    var vIdx = victim ? victim.steps.findIndex(function (s) {
+      return (s.accs || []).some(function (e) { return e.p === 'plant_mode'; });
+    }) : -1;
+    var step = vIdx >= 0 ? victim.steps[vIdx] : null;
+    if (step) {
+      step.acc = { p: 'plant_mode', op: '~', v: 3, tol: 0.1 };
+      var red = sweep();
+      delete step.acc;
+      ck('...RED BY INJECTION: restoring the dead `acc` on the heatup\'s Mode 3 step is caught',
+         red.indexOf('pwr2:pwr_heatup step ' + (vIdx + 1)) !== -1, red.join(', ') || 'NOT CAUGHT');
+      ck('...and the injection was cleaned up (the sweep is green again)', sweep().length === 0, '');
+    } else {
+      ck('...RED BY INJECTION: the injection target exists', false,
+         'no pwr_heatup step carries a plant_mode acceptance entry');
+    }
+  })();
+
+  /* 2w. AN AUTHORED ACCEPTANCE NUMBER IS PINNED TO THE SOURCE THAT PUBLISHES IT (#739).
+   *
+   * The `{p,op,v}` schema takes a LITERAL — there is no expression form and this does not add
+   * one. What it adds is the tie: every literal below is re-derived here from the module that
+   * owns it, so a retune of the Tavg programme or a re-authored command reddens a gate instead
+   * of silently invalidating the acceptance that was derived from it. `pwr_lower_power`'s band
+   * tops were derived twice before, at #419 wave 3 and #508, and both times the acceptance
+   * literals were re-typed by hand.
+   *
+   * (a) THE TAVG BAND TOPS. `tavgBand` in `ui/diagram/board/pwr_board_wiring.js` draws the
+   *     tile's green band as `trefProgram(load) +/- 3.5 x TAVG_DEADBAND_C`, and an acceptance
+   *     that says "back inside the band" is that band's TOP edge. `trefProgram`,
+   *     `TAVG_DEADBAND_C` and `identity.mwe_rated` are all published; the 3.5 is a literal in
+   *     the board file and is the ONE number here that is not, so it is named as such rather
+   *     than quietly re-typed. The load for each step is taken from the step's OWN
+   *     `mwe_output` entry, not from a hand-kept table — a step that changes its commanded load
+   *     moves its own band with it.
+   * (b) THE SPRAY SETTING. `pwr_cooldown`'s spray entry must equal the per cent the SAME step's
+   *     `cmd` sends (`set_spray {pct}`), or the card grades a number the step never asked for.
+   * (c) THE HX SPLIT. Same shape one entry down, and the wire form is a FRACTION against a
+   *     command in per cent — exactly the units slip this pins. */
+  (function () {
+    var CTL = RD.PWR_CONTROL || {};
+    var RATED = ((RD.PWR_CONFIG || {}).identity || {}).mwe_rated;
+    /* the board's own multiple of the rod lockup band — pwr_board_wiring.js `tavgBand`, which
+     * is a browser file this runner does not load. Change it there, change it here. */
+    var BAND_HALF_MULT = 3.5;
+    ck('2w preconditions: trefProgram, TAVG_DEADBAND_C and identity.mwe_rated are all published',
+       typeof CTL.trefProgram === 'function' && CTL.TAVG_DEADBAND_C > 0 && RATED > 0,
+       'trefProgram=' + typeof CTL.trefProgram + ' deadband=' + CTL.TAVG_DEADBAND_C + ' rated=' + RATED);
+
+    var half = BAND_HALF_MULT * (CTL.TAVG_DEADBAND_C || 0);
+    var lp = POOL.filter(function (p) { return p.id === 'pwr_lower_power'; })[0];
+    var bad = [], checked = 0;
+    (lp ? lp.steps : []).forEach(function (st, i) {
+      if (!st.accs) return;
+      var tav = st.accs.filter(function (e) { return e.p === 'tavg_c'; })[0];
+      var mwe = st.accs.filter(function (e) { return e.p === 'mwe_output'; })[0];
+      if (!tav || !mwe) return;
+      checked++;
+      var want = Math.round((CTL.trefProgram(mwe.v / RATED) + half) * 10) / 10;
+      if (Math.abs(tav.v - want) > 0.051) {
+        bad.push('step ' + (i + 1) + ' authored ' + tav.v + ' degC, programme top at ' +
+                 (mwe.v / RATED).toFixed(2) + ' load is ' + want + ' degC');
+      }
+    });
+    ck('pwr_lower_power: every tavg_c acceptance IS the Tavg programme band top at that step\'s own commanded load (#739)',
+       checked >= 4 && bad.length === 0,
+       bad.length ? bad.join('; ') : checked + ' step(s) re-derived, all matching');
+    /* RED BY INJECTION — move the programme's no-load anchor and every band top must go stale.
+     * This is the failure the check exists for: a Tavg retune that leaves four acceptances
+     * describing a band the plant no longer has. */
+    (function () {
+      var real = CTL.trefProgram;
+      CTL.trefProgram = function (l) { return real(l) + 2; };
+      var red = [];
+      (lp ? lp.steps : []).forEach(function (st, i) {
+        if (!st.accs) return;
+        var tav = st.accs.filter(function (e) { return e.p === 'tavg_c'; })[0];
+        var mwe = st.accs.filter(function (e) { return e.p === 'mwe_output'; })[0];
+        if (!tav || !mwe) return;
+        var want = Math.round((CTL.trefProgram(mwe.v / RATED) + half) * 10) / 10;
+        if (Math.abs(tav.v - want) > 0.051) red.push(i + 1);
+      });
+      CTL.trefProgram = real;
+      ck('...RED BY INJECTION: a 2 degC shift in the Tavg programme staleness-reds every one of them',
+         red.length === checked && checked > 0, 'reddened steps ' + red.join(',') + ' of ' + checked);
+    })();
+
+    var cd = POOL.filter(function (p) { return p.id === 'pwr_cooldown'; })[0];
+    var spraySt = (cd ? cd.steps : []).filter(function (st) {
+      return st.cmd && st.cmd.action === 'set_spray' && st.cmd.pct != null && st.accs;
+    })[0];
+    var sprayEn = spraySt && spraySt.accs.filter(function (e) { return e.p === 'spray_flow_pct'; })[0];
+    ck('pwr_cooldown: the SPRAY acceptance grades the per cent the step\'s own command sends (#739)',
+       !!sprayEn && sprayEn.v === spraySt.cmd.pct,
+       sprayEn ? 'acceptance ' + sprayEn.v + ' % vs command ' + spraySt.cmd.pct + ' %'
+               : 'NO spray_flow_pct acceptance on the set_spray step');
+
+    var hxEn = null, hxCmd = null;
+    (cd ? cd.steps : []).forEach(function (st) {
+      (st.accs || []).forEach(function (e) {
+        if (e.p === 'rhr_hx_fraction' && e.cmd && e.cmd.action === 'set_rhr_hx') { hxEn = e; hxCmd = e.cmd; }
+      });
+    });
+    ck('pwr_cooldown: the HX SPLIT acceptance is its own command\'s per cent, as a fraction (#739)',
+       !!hxEn && Math.abs(hxEn.v * 100 - hxCmd.pct) < 1e-9,
+       hxEn ? 'acceptance ' + hxEn.v + ' (fraction) vs command ' + hxCmd.pct + ' %'
+            : 'NO rhr_hx_fraction acceptance carrying a set_rhr_hx command');
+  })();
+
+  /* 2x. THE SESSION SEAMS A REPLAY CANNOT REACH (#739).
+   *
+   * Everything else about these acceptances was measured on a REPLAY, and A REPLAY NEVER CROSSES
+   * A SESSION SEAM: it boots one plant, drives it, and stops. Reset, plant switch and save/load
+   * are outside that population, so a green replay says nothing about them — and #739 adds a
+   * param (`rhr_hx_fraction`) that is GRADED STATE the player sets once and the step then holds,
+   * which is exactly the shape a world replacement strands. A save taken mid-cooldown that came
+   * back with the split at its boot value would take step 10 from met to unmet under the player
+   * with nothing on the board to explain it.
+   *
+   * Measured rather than reasoned: `rh` is carried whole in `getState` (pwr2_shell :2083), so the
+   * expectation was that it survives — this asserts it, and asserts the RESET direction too,
+   * where re-initialising is the CORRECT behaviour and stranding the old 7 % would be the defect.
+   * The third check is the plain one the other two assume: the params resolve at all, on every
+   * initial condition the pool boots from. */
+  (function () {
+    var PV = RD.InstructorLayer.paramValue;
+    function tick(s, n) { var x = null; for (var i = 0; i < n; i++) x = s.tick(); return x; }
+
+    var a = mkSvc('hot_zero_power'); tick(a, 30);
+    a.handleCommand({ action: 'set_rhr_hx', pct: 7 });
+    a.handleCommand({ action: 'set_spray', open: true, pct: 50 });
+    var sa = tick(a, 30);
+    var blob = JSON.parse(JSON.stringify(a.saveState()));
+    var b = new RD.SimulationService({ seed: 7 });
+    b.loadState(blob); b.running = true; b.timeAcceleration = 10; b.attentionStops = false;
+    var sb = tick(b, 5);
+    ck('a SAVE/LOAD carries the HX SPLIT the cooldown\'s step 10 grades (#739)',
+       Math.abs(PV(sa, 'rhr_hx_fraction') - 0.07) < 1e-9 && Math.abs(PV(sb, 'rhr_hx_fraction') - 0.07) < 1e-9,
+       'before ' + PV(sa, 'rhr_hx_fraction') + ' -> after ' + PV(sb, 'rhr_hx_fraction'));
+    ck('...and the SPRAY per cent its step 7 grades',
+       Math.abs(PV(sb, 'spray_flow_pct') - 50) < 5, 'after load: ' + (+PV(sb, 'spray_flow_pct')).toFixed(2) + ' %');
+
+    var c = mkSvc('hot_zero_power'); tick(c, 10);
+    c.handleCommand({ action: 'set_rhr_hx', pct: 7 });
+    var before = PV(tick(c, 10), 'rhr_hx_fraction');
+    c.selectPlant('pwr2', 'cold_shutdown', null, undefined);
+    var afterCold = PV(tick(c, 10), 'rhr_hx_fraction');
+    c.selectPlant('pwr2', 'hot_full_power', null, undefined);
+    var afterHot = PV(tick(c, 10), 'rhr_hx_fraction');
+    /* AND THIS IS THE #739 CORRECTION, PINNED: the issue argued the check is not vacuous because
+     * `pwr2_engine.js:707` sets `hx_fraction = 0`. That line is inside `if (ic.cold)`. A cold boot
+     * really is 0; `pwr_cooldown`'s own `hot_zero_power` boot is 1, so the player THROTTLES down
+     * to 7 % rather than opening up to it. If either number ever moves, this reddens. */
+    ck('a RESET re-initialises the HX SPLIT per IC and strands nothing — cold boots 0, hot boots 1 (#739)',
+       Math.abs(before - 0.07) < 1e-9 && afterCold === 0 && afterHot === 1,
+       '7 % -> cold_shutdown ' + afterCold + ' -> hot_full_power ' + afterHot);
+
+    var ics = {}; POOL.forEach(function (p) { if (p.from) ics[p.from] = 1; });
+    var miss = [];
+    Object.keys(ics).forEach(function (ic) {
+      var s = mkSvc(ic), sx = tick(s, 20);
+      ['rhr_hx_fraction', 'spray_flow_pct', 'tavg_c', 'plant_mode'].forEach(function (p) {
+        var v = PV(sx, p);
+        if (v == null || (typeof v === 'number' && isNaN(v))) miss.push(ic + '.' + p);
+      });
+    });
+    ck('every param the #739 acceptances grade resolves on every IC the pool boots from',
+       miss.length === 0, miss.length ? ('UNRESOLVED: ' + miss.join(', ')) : Object.keys(ics).join(', '));
   })();
 }
 

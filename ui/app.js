@@ -4024,6 +4024,10 @@
     afw_active:             { bool: 'auxiliary feedwater is running' },
     rhr_active:             { bool: 'ALIGN is lit on the RHR card' },
     rhr_valve_open:         { bool: 'ALIGN is lit on the RHR card' },
+    /* HX SPLIT (#739) — the cooldown throttle on the RHR card. Published as a FRACTION
+     * (`control_state.rhr_hx_fraction`, 0..1) and drawn as a per cent, so it takes the same
+     * `scale` the CVCS flows take rather than a branch: 0.07 renders "7 %". */
+    rhr_hx_fraction:        { label: 'HX SPLIT', u: '%', scale: 100 },
     accumulator_valve_open: { bool: 'the accumulator valve is open (the ACCUMULATORS tile no longer reads ISOLATED)' },
     /* the letdown pair (#624 items 14/25): the SELECTOR is control_state, the FLOW is
      * true_state, and the heatup's transfer step needs both — one is what you pressed, the
