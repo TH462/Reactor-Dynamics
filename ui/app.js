@@ -3900,10 +3900,12 @@
   /* IS THERE A LIVE TEXT SELECTION INSIDE `el`? (#726 — see the call site in the checklist click
    * handler for what this is guarding and the measurement behind it.)
    *
-   * RANGE CONTAINMENT, NOT `anchorNode` — a drag can end with the anchor outside the element it
-   * started in (the player overshoots the card), and an anchor test would then let the re-render
-   * through on exactly the drags that selected the most text. `commonAncestorContainer` is often
-   * a TEXT node; `Node.contains` accepts one.
+   * RANGE CONTAINMENT, NOT `anchorNode`, and the honest reason is narrower than it first looks.
+   * The overshoot case — a drag that leaves the card — is already handled upstream: the `click`
+   * then lands on a common ancestor, so `e.target.closest('.ckl-step')` is null and this branch
+   * never runs. What containment buys is the ordinary case done RIGHT: any of the several ranges
+   * a selection may hold, anchored or focused either way round, counts. `commonAncestorContainer`
+   * is often a TEXT node; `Node.contains` accepts one.
    *
    * EVERY READ IS OPTIONAL. `getSelection` is absent in a headless DOM shim, and a caller that
    * throws here would take the whole checklist panel's click handling down; no selection means
@@ -8465,6 +8467,16 @@
           rightColEl.insertBefore(simControls, rightColEl.firstChild);      // time controls → back atop the right panel
           demoBtn.classList.remove('on');
           demoBtn.title = 'Board focus — hide the side panel and enlarge the plant diagram';
+        }
+        /* ⛶ IS A RELAYOUT, AND ANYTHING LIVING IN THE RIGHT COLUMN HAS TO HEAR ABOUT IT
+         * (#713 / #724 quality pass, finding 2). Hiding the column is a bigger layout change
+         * than a splitter drag, and `pwr_board.js` already announces those with exactly this
+         * event (beginDrag / resetSplit). Nothing announced this one, so the 1/M plot — which
+         * now docks INTO that column — went to 0x0 while still believing itself open, and its
+         * board button became a silent no-op. The panel re-homes itself to a floating window on
+         * this event; the board's own refit is idempotent. */
+        if (typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
+          window.dispatchEvent(new Event('resize'));
         }
       });
     })();

@@ -65,6 +65,12 @@
   <script src="../diagram/board/pwr_board_inspect.js"></script>
   <script src="../diagram/board/pwr_board_wiring.js"></script>
   <script src="../diagram/board/pwr_board.js"></script>
+  <!-- The live walkthrough pool. Loaded for the trip-block row-glow checks (#727): the glow
+       resolves the active step out of RD.MANUAL_PROCEDURES by the checklist's `profile_key`,
+       so without the pool `stepTripWants` returns {} and the feature cannot be exercised at
+       all — a check written against the missing pool would have passed on a dead wire. It
+       attaches one global and changes no rendering. -->
+  <script src="../manual_procedures.js"></script>
 
   <script>
   (function () {
@@ -784,9 +790,26 @@
           if (!bh) continue;
           badged++;
           var bg = bh.getBoundingClientRect();
-          var reach = Math.max(btr.left - bg.left, btr.top - bg.top,
-                               bg.right - btr.right, bg.bottom - btr.bottom);
-          if (reach > TOL) covered.push(bid + '(' + reach.toFixed(1) + 'px)');
+          /* THE CLAIM IS "THE BADGE ADDS NOTHING", NOT "THE HALO NEVER LEAVES THE TILE".
+           * The first draft of this check asserted the second, and it would have been a false
+           * red waiting to happen: #684's whole premise is that a halo LEGITIMATELY exceeds the
+           * tile box wherever the art does (the PORV by 45 % of its width, the pressurizer by
+           * 80 px). It was green only because `.bd-badge` currently appears on TRIP BLOCKS
+           * alone, which has no art overhang — and `setBadge` is a generic driver hook, so the
+           * first badge on a tile with real art outside its box would have reddened this for
+           * doing exactly the right thing.
+           *
+           * So compare the halo against what the NON-BADGE art needs. `artBox` already excludes
+           * the badge, so its overhang past the tile is the halo's whole legitimate budget. */
+          var ab2 = artBox(btile);
+          var expect = ab2 ? Math.max(0, btr.left - ab2.left, btr.top - ab2.top,
+                                         ab2.right - btr.right, ab2.bottom - btr.bottom) : 0;
+          var reach = Math.max(0, btr.left - bg.left, btr.top - bg.top,
+                                  bg.right - btr.right, bg.bottom - btr.bottom);
+          if (reach > expect + TOL) {
+            covered.push(bid + '(halo reaches ' + reach.toFixed(1) +
+                         'px past the tile; non-badge art needs ' + expect.toFixed(1) + 'px)');
+          }
         }
         ck('halo: at least one tile carries a corner badge that hangs outside it (the check below has something to check)',
           badged >= 1, badged + ' badged tiles with an overhanging badge');
@@ -964,6 +987,79 @@
       ck('func: …and the plant is still LIVE — unblocking at power would have scrammed it',
         svc.assembleSnapshot().instruments.rps_scrammed === false);
       RD.PwrBoard.render(svc.assembleSnapshot());
+
+      /* --- THE TRIP-BLOCK ROW GLOW FOLLOWS THE ACTIVE WALKTHROUGH STEP (#727; owner #724
+       * item 12: "When trip blocks is opened, it should highlight the buttons needed to press in
+       * this menu (this should be changed for any time we toggle trip blocks)").
+       *
+       * The popover is still open from the block/unblock sequence above, which is why this sits
+       * here rather than in its own section.
+       *
+       * WHY THE POSITIVE CASE IS AN *UNBLOCK* ASK. At hot_full_power there is no row that is both
+       * enabled and unblocked: `ir_high` and `pr_low_setpoint` are the at-power startup net and
+       * are BLOCKED, `lo_press` and `si_trip` are disabled (no P-11 at power). So the only ask
+       * that is outstanding on this plant is one to RELEASE a block — which is also the direction
+       * no authored step currently takes, and therefore the half of the generalisation nothing
+       * else would ever exercise. A synthetic one-step procedure supplies it; the NEGATIVE case
+       * immediately below uses the real `pwr_startup` step out of the real pool, so the
+       * profile_key lookup is proven against shipped content and not only against the fixture. */
+      (function () {
+        var pop0 = document.querySelector('.bd-pop');
+        function glowing() {
+          if (!pop0) return null;
+          return Array.prototype.map.call(pop0.querySelectorAll('button[data-trip]'), function (b) {
+            return b.parentNode.classList.contains('ckl-step-glow') ? b.getAttribute('data-trip') : null;
+          }).filter(Boolean).join(',');
+        }
+        function renderWithChecklist(ck) {
+          var s = svc.assembleSnapshot();
+          var instr = {};
+          for (var k in (s.instructor || {})) instr[k] = s.instructor[k];
+          instr.checklist = ck;
+          s.instructor = instr;
+          RD.PwrBoard.render(s);
+        }
+        RD.MANUAL_PROCEDURES.__bcprobe = [{ id: 'bcprobe', steps: [
+          { text: 'release the IR HIGH FLUX block', cmd: { action: 'set_trip_block', trip_id: 'ir_high', blocked: false } },
+          { text: 'block a row the plant refuses', cmd: { action: 'set_trip_block', trip_id: 'si_trip', blocked: true } },
+        ] }];
+        function probeStep(i) {
+          renderWithChecklist({ procedure_id: 'bcprobe', profile_key: '__bcprobe', step_index: i, complete: false });
+        }
+
+        ck('glow: the popover is open with all four blockable rows drawn (the checks below have something to look at)',
+          !!pop0 && pop0.querySelectorAll('button[data-trip]').length === 4,
+          pop0 ? pop0.querySelectorAll('button[data-trip]').length + ' rows' : 'no popover');
+
+        probeStep(0);
+        ck('glow: the row the active step asks for GLOWS while its ask is outstanding (#727)',
+          glowing() === 'ir_high', 'glowing: [' + glowing() + ']');
+
+        probeStep(1);
+        ck('glow: a row the PLANT is refusing never glows — a pulse on a button that cannot be pressed is the dead-button trap',
+          glowing() === '', 'glowing: [' + glowing() + ']');
+
+        /* The real pool, the real step, and an ask that is ALREADY SATISFIED. This is the one
+         * that would catch a glow keyed on "the step mentions this row" rather than on the
+         * plant's live state — `ir_high` is blocked here, so the step has nothing left to ask. */
+        var real = (RD.MANUAL_PROCEDURES.pwr2 || []).filter(function (p) { return p.id === 'pwr_startup'; })[0];
+        var realIdx = -1;
+        if (real) real.steps.forEach(function (st, k) {
+          if (st.cmd && st.cmd.action === 'set_trip_block' && st.cmd.trip_id === 'ir_high') realIdx = k;
+        });
+        ck('glow: the shipped pwr_startup leg still carries an ir_high trip-block step (the fixture below is real)',
+          realIdx >= 0, 'step index ' + realIdx);
+        renderWithChecklist({ procedure_id: 'pwr_startup', profile_key: 'pwr2', step_index: realIdx, complete: false });
+        ck('glow: a row whose ask is ALREADY SATISFIED stops glowing — the panel never points at work already done',
+          glowing() === '', 'glowing: [' + glowing() + ']');
+
+        renderWithChecklist(null);
+        ck('glow: with no walkthrough running, nothing in the panel glows',
+          glowing() === '', 'glowing: [' + glowing() + ']');
+
+        delete RD.MANUAL_PROCEDURES.__bcprobe;
+        RD.PwrBoard.render(svc.assembleSnapshot());
+      })();
 
       // --- ESF AUTO/ON/OFF triad: AUTO re-arms; the AUTO tile lights when armed ---
       function esfState(id) { return (svc.assembleSnapshot().automation.esf || {})[id]; }

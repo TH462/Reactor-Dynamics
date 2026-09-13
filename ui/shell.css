@@ -2940,7 +2940,7 @@ select.num-input { width: auto; }
    across a 360 px column there is room for the labels — the wrapping the side column needed was
    a symptom of its 94 px width. */
 .oom-docked .oom-foot {
-  grid-area: foot; flex-direction: row; align-items: center; justify-content: stretch;
+  grid-area: foot; flex-direction: row; align-items: center;
   padding: 6px 8px 2px; gap: 6px; border-bottom: 1px solid var(--border);
 }
 .oom-docked .oom-foot .btn { flex: 1 1 0; min-width: 0; padding: 5px 4px; white-space: nowrap; }

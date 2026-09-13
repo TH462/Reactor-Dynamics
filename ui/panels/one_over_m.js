@@ -31,7 +31,7 @@
     handle.style.cursor = 'move';
     handle.addEventListener('pointerdown', function (e) {
       if (e.target.closest('button')) return;   // titlebar buttons still click
-      if (win.classList.contains('oom-docked')) return;   // docked in the bottom row: not a floating window
+      if (win.classList.contains('oom-docked')) return;   // docked in the right-hand column: not a floating window
       dragging = true;
       var r = win.getBoundingClientRect();
       ox = r.left; oy = r.top; sx = e.clientX; sy = e.clientY;
@@ -86,43 +86,43 @@
   var W = W_BASE;
   /* Aspect clamp for the adaptive viewBox. The low end is where the x-axis label (120.68
    * units wide, measured) stops fitting the plot area: 0.80 -> W 192 -> 148 units of plot.
-   * The high end covers the 150px --bottomrow-h floor, where the cell measures 324 x 97 (3.34)
-   * and a tighter clamp would put back the letterbox this exists to remove. */
+   * The high end was set for the bottom-row dock at its 150px floor, where the cell measured
+   * 324 x 97 (3.34) and a tighter clamp would have put back the letterbox this exists to remove.
+   * THAT ROW IS NO LONGER WHERE THE PLOT LIVES (#724 item 7) and neither clamp binds any more:
+   * measured in the right-column dock, the cell's aspect runs ~1.62 at 1500x950 to ~2.64 at
+   * 1250x540. Both bounds are kept as the guard they were — the floating window and any future
+   * host can still reach them — but do not read either number as describing today's geometry. */
   var AR_MIN = 0.80, AR_MAX = 3.60;
   function px(x) { return L + x * (W - L - R); }               // x: 0..1 fraction withdrawn
   function py(y) { return T + (1.1 - y) / 1.1 * (H - T - B); } // y: 0..1.1 (C0/C)
 
-  /* THE LETTERBOX (#713 pass 2). The docked form puts the svg in a CSS grid cell and stretches
-   * it (width/height 100%), so the cell's aspect ratio is the ROW HEIGHT's and the dock's — it
-   * has nothing to do with the viewBox's. With the default preserveAspectRatio ("xMidYMid
-   * meet") the browser then fits a 340x240 (1.417) drawing into whatever shape that is and
-   * pads the rest: measured 33.2px of dead width at the default --bottomrow-h of 230px, and
-   * 96.5px of dead HEIGHT at 350px — the binding dimension FLIPS as the operator drags. That
-   * is also why pass 1's extra dock width did not all reach the plot, and why simply widening
-   * the dock again would not either.
+  /* THE LETTERBOX (#713 pass 2; the host changed at #724 item 7, the mechanism did not).
+   * The docked form puts the svg in a CSS grid cell and stretches it (width/height 100%), so the
+   * cell's aspect ratio is its container's and has nothing to do with the viewBox's. With the
+   * default preserveAspectRatio ("xMidYMid meet") the browser then fits a 340x240 (1.417) drawing
+   * into whatever shape that is and pads the rest. Measured in the RETIRED bottom-row dock, where
+   * the operator could drag the row's height: 33.2px of dead width at --bottomrow-h 230px and
+   * 96.5px of dead HEIGHT at 350px — the binding dimension FLIPPED as they dragged. In today's
+   * right-column dock the cell's height follows the viewport rather than a splitter, but the
+   * failure is the same one and it is still live: see the ResizeObserver in build(), which exists
+   * because the READOUT's own height moves the cell underneath this calculation.
    *
    * So the viewBox follows the cell instead: H fixed, W = H x the cell's aspect. Then "meet"
    * has nothing to letterbox and the drawing fills the box at every row height.
    *
-   * DO NOT MEASURE THE SVG'S OWN BOX — THAT ONE REALLY DOES FEED BACK. The first cut of this
-   * read svg.clientWidth/clientHeight, on the reasoning that a viewBox cannot change the box
-   * the CSS grid gives it. True only while that box is DEFINITE. At --bottomrow-h 150px the
-   * dock's content is taller than the dock (head + msg + plot = 205px in a 148px box), so the
-   * `1fr` svg track stops resolving to a length and content-sizes instead — and an svg with
-   * `height:100%` against an indefinite height falls back to its INTRINSIC size, which is the
-   * viewBox aspect. W then determines the measurement that determines W: every value is a
-   * fixed point, and it froze wherever it happened to drift. Measured at row-150: viewBox
-   * 748x240 for a cell whose real aspect was 2.105.
+   * DO NOT MEASURE THE SVG'S OWN BOX — THAT ONE REALLY DOES FEED BACK, and this warning still
+   * binds in the new host. The first cut read svg.clientWidth/clientHeight, on the reasoning that
+   * a viewBox cannot change the box the CSS grid gives it. True only while that box is DEFINITE.
+   * Squeeze the dock and its content becomes taller than the dock, so the `1fr` svg track stops
+   * resolving to a length and content-sizes instead — and an svg with `height:100%` against an
+   * indefinite height falls back to its INTRINSIC size, which is the viewBox aspect. W then
+   * determines the measurement that determines W: every value is a fixed point, and it froze
+   * wherever it happened to drift. Measured in the retired bottom-row dock at its 150px floor:
+   * viewBox 748x240 for a cell whose real aspect was 2.105.
    *
-   * So it measures the DOCK, whose width is its flex-basis and whose height is the row's, both
-   * definite at every row height, and subtracts the sibling tracks (the button column, the
-   * head/msg/help rows) — all of them ordinary boxes whose size owes nothing to the viewBox.
-   * A side effect worth having: the plot is now sized to the space that EXISTS at the 150px
-   * floor rather than overflowing the dock into a scrollbar, which is what it did before.
-   *
-   * No observer is added; render() already runs on open/plot/clear, and the one new trigger is
-   * the `resize` event the splitter drag ALREADY dispatches (pwr_board.js beginDrag /
-   * resetSplit).
+   * So it measures the DOCK, whose width and height are both definite (the column's width, and
+   * this panel's own flex-basis), and subtracts its SIBLING ROWS — head, button bar, prediction,
+   * message, help — all ordinary boxes whose size owes nothing to the viewBox.
    *
    * FLOATING KEEPS W_BASE, deliberately. That window has `width:100%` and no height, so its
    * height is DERIVED from the viewBox aspect — there is no letterbox there to remove, and
@@ -190,24 +190,63 @@
    * classList and a `document.querySelector` that returns null. No matchMedia means no dock,
    * which is the floating window the shim already expects. */
   var DOCK_MIN_W = 1201;      // keep in step with shell.css's @media (max-width: 1200px)
+  /* AND A HEIGHT CONDITION, because the squeeze is on the VERTICAL axis and the width rule above
+   * never tested it. The right column is a fixed 159 px of time controls plus whatever is left,
+   * and the dock takes its share out of the WALKTHROUGH CARD — the panel the player is reading
+   * while they use this one. MEASURED, `#toolsCard` height closed -> open with the dock at its
+   * 220 px floor:
+   *     1500x950   767 -> 455      comfortable
+   *     1280x800   617 -> 353      comfortable
+   *     1366x660   477 -> 249      marginal
+   *     1250x540   357 -> 129      unusable
+   * 1366x768 is an ordinary laptop panel and leaves roughly 660 px of viewport after browser
+   * chrome, so the marginal row is not a corner case. 760 px is the threshold: at 800 the card
+   * keeps 353 px, and below it the floating window — which costs the column nothing and can be
+   * dragged clear — is the better answer. This EXTENDS the owner's instruction to the axis it
+   * did not speak to; it does not soften it, because at every width and height he plays the
+   * control room at, the plot is where he asked for it. */
+  var DOCK_MIN_H = 760;
   function dockTarget() {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return null;
     if (!window.matchMedia('(min-width: ' + DOCK_MIN_W + 'px)').matches) return null;
-    return document.querySelector('.app.pwr-synoptic > .right-col');
+    if (!window.matchMedia('(min-height: ' + DOCK_MIN_H + 'px)').matches) return null;
+    var col = document.querySelector('.app.pwr-synoptic > .right-col');
+    /* THE COLUMN HAS TO BE ON SCREEN, NOT MERELY PRESENT (#724 quality pass, finding 2). The ⛶
+     * board-focus button adds `.sim-hidden`, and `ui/shell.css` answers that with
+     * `.app.pwr-synoptic.sim-hidden > .right-col { display: none }` — which, once the plot lives
+     * IN that column, takes the plot with it. MEASURED before this guard: open the plot (356x304),
+     * press ⛶, and the window measures 0x0 with `win.hidden` still false — invisible but believing
+     * itself open. Worse, the board's own 1/M PLOT tile stays fully reachable in board focus, so
+     * pressing it called open(), which re-appended into the hidden column and did nothing at all:
+     * a dead button with no explanation, recoverable only by leaving board focus.
+     *
+     * `offsetParent` is the cheap, exact test for "an ancestor is display:none" on a statically
+     * positioned element, and it is null in that state. Guarded because the Node shim has no
+     * layout: `offsetParent` is undefined there, which `=== null` correctly does not match, so the
+     * shim keeps its existing no-dock path through the matchMedia check above. */
+    if (col && col.offsetParent === null) return null;
+    return col;
   }
   function placeWindow() {
     if (!win) return;
     var col = dockTarget();
+    var wasDocked = !!(win.classList && typeof win.classList.contains === 'function' &&
+      win.classList.contains('oom-docked'));
     var host = col || (document.body || null);
     if (host && win.parentNode !== host) host.appendChild(win);
     if (win.classList && typeof win.classList.add === 'function') {
       if (col) win.classList.add('oom-docked'); else win.classList.remove('oom-docked');
     }
-    /* Undocking has to clear the inline left/top a drag left behind, or the floating window
-     * comes back pinned wherever it was last dragged — which after a dock/undock cycle is
-     * wherever the DOCK happened to sit, i.e. off in a corner with no memory of being put
-     * there. Docked, the inline values are inert (`position: static`). */
-    if (!col && win.style) { win.style.left = ''; win.style.top = ''; win.style.right = ''; win.style.bottom = ''; }
+    /* Clearing the inline left/top is for the DOCK -> FLOAT TRANSITION only (#724 quality pass,
+     * finding 3). It has to happen then, or the window comes back pinned wherever the DOCK
+     * happened to sit — a corner it was never dragged to. It must NOT happen on every float-path
+     * call, which is what shipped: placeWindow() now runs on every `resize`, and `pwr_board.js`
+     * dispatches a synthetic `resize` on every splitter pointermove, so one splitter drag threw
+     * away the player's own placement. MEASURED: dragged to left 212 / top 190 at 1100x900, one
+     * resize event later, left 12 / top 70 with the inline styles emptied. */
+    if (!col && wasDocked && win.style) {
+      win.style.left = ''; win.style.top = ''; win.style.right = ''; win.style.bottom = '';
+    }
   }
 
   function controlGroup(s) {
@@ -441,15 +480,27 @@
     svg = win.querySelector('svg');
     msgEl = win.querySelector('#oomMsg');
     makeDraggable(win, win.querySelector('.oom-head'));
-    /* Re-fit the viewBox when the docked cell changes shape (#713 pass 2). NOT a
-     * ResizeObserver: `resize` is the event pwr_board.js's splitter drag already dispatches
-     * on every pointermove and on a double-click reset (beginDrag/resetSplit), which is
-     * exactly when --bottomrow-h moves; a real window resize fires it too. Coalesced onto one
-     * animation frame so a drag redraws ~20 svg nodes once per frame rather than per event,
-     * and skipped entirely when the panel is closed. render() dispatches nothing, so this
-     * cannot re-enter. It runs for the FLOATING window too — not because that one letterboxes
-     * (it cannot), but so a window that was docked and is no longer gets W_BASE back rather
-     * than keeping the last cell's aspect. */
+    /* TWO LISTENERS, WATCHING TWO DIFFERENT THINGS. Read them together — the older comment here
+     * said "NOT a ResizeObserver", and there is now one thirty lines below, which reads as a
+     * contradiction until you see that they answer different questions.
+     *
+     *   `resize` (here)            — the WINDOW changed, so the column, the breakpoint or the
+     *                                board's splitter did. It is the event pwr_board.js already
+     *                                dispatches on every splitter pointermove and reset
+     *                                (beginDrag/resetSplit), and that ui/app.js now dispatches
+     *                                when ⛶ hides the column. A ResizeObserver would not be
+     *                                wrong here, merely redundant.
+     *   `ResizeObserver` (below)   — the WINDOW did not change and the plot's cell moved anyway,
+     *                                because a SIBLING ROW grew a line. No window event exists
+     *                                for that, which is the whole reason it is there.
+     *
+     * Both coalesce onto one animation frame, so a drag redraws ~20 svg nodes once per frame
+     * rather than once per event, and both skip entirely when the panel is closed. render()
+     * dispatches nothing, so neither can re-enter.
+     *
+     * The `resize` handler runs for the FLOATING window too — not because that one letterboxes
+     * (it cannot), but so a window that was docked and is no longer gets W_BASE back rather than
+     * keeping the last cell's aspect, and so it re-homes across the dock/float boundary. */
     var rafPending = 0;
     /* THE READOUT'S HEIGHT IS A SECOND INPUT TO THE PLOT'S BOX, AND IT MOVES ON ITS OWN
      * (#713 / #724 item 7). The prediction and the message sit in `auto` grid rows above and
@@ -459,12 +510,20 @@
      * 15 px in a 354 px column is what the longest form does, and the message line does the same
      * on a refusal.
      *
-     * render() writes the readout BEFORE it measures, so the panel's own path is consistent. An
-     * observer is for the changes render() is not the author of: a wrap that happens because the
-     * step count grew a digit, a font that loads late, and a caller writing the element directly
-     * (verify_e2e_ui does exactly that, to force the longest string render() can emit). MEASURED
-     * with neither guard: svg box 354x171 against a viewBox of 390x240 — 77 px of dead width,
-     * a fifth of the plot, silently.
+     * render() writes the readout BEFORE it measures, so the panel's own path is consistent.
+     * The observer is for the height changes render() does not itself cause — a wrap because the
+     * step count grew a digit, a late-loading font, the message line changing on a refusal.
+     * MEASURED with neither guard: svg box 354x171 against a viewBox of 390x240 — 77 px of dead
+     * width, a fifth of the plot, silently.
+     *
+     * IT DOES NOT SERVE A CALLER THAT WRITES `#oomPred` DIRECTLY, and an earlier draft of this
+     * comment claimed it did. The observer's response is render(), and render() REWRITES the
+     * readout from the live fit — so a string poked in from outside is erased rather than fitted
+     * around. `verify_e2e_ui` was doing exactly that to force the longest string, and measuring
+     * one frame later found `#oomPred` empty, `display:none`, and the plot fitted to the EMPTY
+     * cell. Not a product defect (no player writes this element) but it made that gate's fixture
+     * a no-op, and the fix is in the gate: see testOneOverMDockedGeometry, which now plots real
+     * points so the readout is the panel's own.
      *
      * A `resize` listener cannot see this: the window has not resized. That is why it is an
      * observer here and NOT one for the dock itself, where the header's note explains that the

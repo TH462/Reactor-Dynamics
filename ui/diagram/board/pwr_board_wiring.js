@@ -3426,7 +3426,16 @@
     var want = {};
     var cs = s && s.instructor && s.instructor.checklist;
     if (!cs || cs.complete || typeof cs.step_index !== 'number') return want;
-    var pool = (RD.MANUAL_PROCEDURES || {})[(s.metadata && s.metadata.plant_id) || ''] || [];
+    /* `profile_key`, NOT `plant_id` (#724 quality pass, finding 7). The broadcast carries
+     * `profile_key` on the checklist for exactly this purpose — instructor_layer's own comment
+     * says the UI reads step content from RD.MANUAL_PROCEDURES with it, and its restore path
+     * (`_load`) resolves the procedure the same way. The pool is keyed
+     * {pwr, pwr2, rbmk_pre, rbmk_post, bwr}, and `plant_id` agrees with those keys for the PWR
+     * and diverges for the RBMK, so keying on the plant would have failed silently — no glow, no
+     * error — the day it mattered. `plant_id` stays only as a fallback for a snapshot old enough
+     * to predate the field. */
+    var cs_key = cs.profile_key || (s.metadata && s.metadata.plant_id) || '';
+    var pool = (RD.MANUAL_PROCEDURES || {})[cs_key] || [];
     var proc = null;
     for (var i = 0; i < pool.length; i++) if (pool[i].id === cs.procedure_id) proc = pool[i];
     var st = proc && proc.steps && proc.steps[cs.step_index];

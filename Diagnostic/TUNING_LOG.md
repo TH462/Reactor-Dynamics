@@ -80,9 +80,22 @@ Docked at the foot of `.right-col` instead of joining `.bottom-row`. That ends t
 1-3 of #713 were having: three passes traded width between the plot, the strip chart and the alarm
 panel (300 -> 380 -> 420 -> 370 px) and pass 3 gave 50 px back because the alarm panel's content
 floor is 412 px on CI's DejaVu against 377.7 px on Windows' Segoe UI. The row was never going to
-fit three panels. `.oom-frame` measured by the gate's own probe at its own 1500x950 viewport:
-**243 -> 314 x 192 px**, letterbox waste **0.0 x 0.2 px**. Prediction readout **11 px/400
-`--text-2` -> 15 px/600 `--caution`**, its own grid row, wrapping rather than overflowing.
+fit three panels. `.oom-frame` measured by the gate's own probe at its own 1500x950 viewport,
+with a real prediction on screen: **243 -> 321 x 160 px**, letterbox waste **0.0 x 0.3 px**.
+Prediction readout **11 px/400 `--text-2` -> 15 px/600 `--caution`**, its own grid row, wrapping
+rather than overflowing.
+
+**THE FIRST NUMBER I PUBLISHED FOR THIS WAS THE EMPTY-READOUT ONE — 314 x 192 — and the way it got
+there is the lesson.** The gate forced its "longest string" fixture by writing `#oomPred` directly;
+my own new ResizeObserver then fired, called render(), and render() REWRITES the readout from the
+live fit, which on a plant with no plotted points is the empty string. So the gate measured a panel
+with no readout row at all: `#oomPred` empty, `display:none`, height 0 — which also made its
+overflow check compare `0 > 0 + 1`, false for ever. **A fixture can be erased by the very mechanism
+the change added, and the check then passes on a state nobody is testing.** The gate now plots two
+REAL points (baseline, withdraw 140 steps, plot again, on `hot_zero_power` because the source range
+secures itself above 1e5 cps) and ASSERTS the readout is non-empty before measuring anything —
+proven red by injection, suppressing both plot presses gives `the 1/M readout is empty ("", height
+0)`. Found by the post-work quality pass, not by me.
 
 **TRAP 1 — the readout was written AFTER the geometry was measured.** Harmless while it shared the
 button row; not harmless once it owns an `auto` grid row that is `display:none` while empty. Order
@@ -177,6 +190,75 @@ left the copy still impossible.**
 A/B against HEAD confirmed click-to-expand is byte-identical — and incidentally that it produces no
 visible change on EITHER build, because only the active step is drawn and its why block is always
 open. Not chased; noted on #726.
+
+
+### The quality pass found three defects in my own work, and one of them was a lying gate
+
+A fresh subagent reviewed the diff (CLAUDE.md's post-work rule). I re-measured every finding before
+acting on it; all four below reproduced.
+
+**1. THE GATE'S FIXTURE WAS ERASED BY THE THING THE COMMIT ADDED.** Covered above — the 314 x 192
+correction. The general shape is worth more than the instance: `verify_e2e_ui` forced its
+longest-string fixture by writing `#oomPred` directly, and the ResizeObserver I had just added
+answered by calling render(), which rewrites that element from the live fit. **The observer's own
+comment claimed it served exactly that caller.** It cannot: its response destroys what the caller
+wrote. Two checks were then passing on a panel with no readout row — the overflow one comparing
+`0 > 0 + 1`. Fixed in the gate (plot two real points) plus a precondition that asserts the readout
+is non-empty, so the hollow state reds instead of passing.
+
+**2. BOARD FOCUS MADE THE OPEN PLOT VANISH, AND ITS BUTTON A SILENT NO-OP.** `⛶` adds `.sim-hidden`
+and `shell.css` answers with `.app.pwr-synoptic.sim-hidden > .right-col { display: none }` — which,
+once the plot lives IN that column, takes the plot with it. MEASURED: open (356x304), press ⛶,
+window measures **0x0 with `win.hidden` still false** — invisible but believing itself open. The
+board's own 1/M PLOT tile stays fully reachable in board focus, so pressing it called `open()`,
+re-appended into the hidden column, and did nothing at all. Recoverable only by leaving board focus.
+**Moving a panel into a container someone else is allowed to hide is a new failure mode the old
+host did not have** — the bottom row is never hidden. `dockTarget()` now requires the column to be
+laid out (`offsetParent !== null`), and `ui/app.js` dispatches `resize` when ⛶ toggles, which is the
+idiom `pwr_board.js` already uses for splitter drags. After: 356x338.88, floating, visible.
+
+**3. ONE SPLITTER DRAG THREW AWAY THE PLAYER'S OWN WINDOW PLACEMENT.** `placeWindow()` cleared the
+inline `left/top` on every undocked call, and it now runs on every `resize` — and `pwr_board.js`
+dispatches a synthetic `resize` on every splitter **pointermove**. MEASURED at 1100x900: dragged to
+left 212 / top 190, one resize later left 12 / top 70. Now cleared only on the dock -> float
+TRANSITION, which is the case it was written for. **A cleanup that is correct for a transition
+becomes destructive the moment its function starts being called for other reasons.**
+
+**4. THE HEIGHT AXIS WAS NEVER TESTED.** The 1201 px dock rule was justified by a 1100x900
+measurement — a WIDTH. MEASURED `#toolsCard` closed -> open with the dock at its 220 px floor:
+1500x950 767 -> 455; 1280x800 617 -> 353; **1366x660 477 -> 249; 1250x540 357 -> 129.** 1366x768 is
+an ordinary laptop panel. Added `DOCK_MIN_H = 760`: below it the floating window, which costs the
+column nothing. After, at 1366x660 and 1250x540 `#toolsCard` is untouched (477 -> 477, 357 -> 357).
+
+**5. MY NEW BADGE CHECK ASSERTED MORE THAN ITS CLAIM.** It required the halo never to exceed the
+TILE box in any direction — which contradicts #684's whole premise that a halo legitimately exceeds
+the tile wherever the art does (the PORV by 45 % of its width, the pressurizer by 80 px). Green only
+because `.bd-badge` currently appears on TRIP BLOCKS alone, a tile with no art overhang; `setBadge`
+is a generic driver hook, so the first badge on an overhanging tile would have reddened it for doing
+the right thing. It now compares the halo against what the NON-badge art needs. **A check written
+against the one instance that exists can encode a rule the codebase does not hold.**
+
+**6. THE ROW GLOW SHIPPED WITH NO COMMITTED GATE — the repo's own dark-wire class, in my own diff.**
+The only test changes in the commit were a BASELINES line and a harness timing split; the TUNING_LOG
+sentence "measured at three viewports" described a scratch probe that is not in the tree. Six checks
+added to `board_check`, 258 -> 264. **The harness had to LOAD `ui/manual_procedures.js` first, and
+without that the checks could not have failed**: the glow resolves the active step out of
+`RD.MANUAL_PROCEDURES` by `profile_key`, so with no pool loaded `stepTripWants` returns `{}` and any
+check would have passed on a severed wire. The POSITIVE case is an UNBLOCK ask, which is not an
+accident: at `hot_full_power` no row is both enabled and unblocked (`ir_high` and `pr_low_setpoint`
+are the at-power startup net; `lo_press` and `si_trip` have no P-11), so the only outstanding ask
+this plant can carry is a release — the direction no authored step takes, and the half of the
+generalisation nothing else would ever exercise. Two injections, each caught by a different check.
+
+**7. THE POOL WAS KEYED BY `plant_id`, NOT `profile_key`.** Every other consumer uses `profile_key`,
+which the same snapshot carries and which `instructor_layer`'s own restore path uses. The pool's keys
+are `{pwr, pwr2, rbmk_pre, rbmk_post, bwr}` — they agree for the PWR and diverge for the RBMK, so it
+would have failed silently, with no glow and no error, the day it mattered.
+
+**Also corrected: several comments in the diff described the retired bottom-row dock in the present
+tense**, and one in `ui/app.js` gave an inverted justification for a correct guard (the overshoot
+case it cited is handled upstream by `closest()` returning null, not by range containment). Stale
+prose in a comment block is the same failure as a stale claim in an issue — it is read as current.
 
 ---
 

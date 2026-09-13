@@ -4244,44 +4244,49 @@ async function testObservationStepAckButton(page) {
   return log.join('\n') + '\n';
 }
 
-/* #713/#712: the 1/M plot's buttons moved from a footer under the plot to a narrow column
- * beside it, and the dock widened 300px -> 380px so that height (the letterbox's binding
- * dimension) stayed the binding one after the footer's height was handed to the plot. #712
- * named the general risk this repo has no gate for — a caption/readout overflowing its own
- * box — and a narrow side column is exactly where the panel's longest string (the prediction
- * readout) is most likely to hit it. This is deliberately cheap: it opens the real docked
- * panel, forces the longest string render() ever emits into the readout, and checks
- * scrollWidth/scrollHeight against clientWidth/clientHeight — plus a floor on the plot's own
- * height so a future change that puts the footer back under the plot, or shrinks the dock a
- * lot, reddens here instead of needing another hand pixel-measurement. */
+/* #713/#712: the 1/M plot's geometry in its dock — the letterbox, the axis gutters, and #712's
+ * general risk that this repo has no gate for, a caption or readout overflowing its own box. The
+ * panel's longest string is the prediction readout, so that is the one to stress.
+ *
+ * THE FIXTURE HAS TO BE THE PANEL'S OWN READOUT, NOT A STRING POKED INTO `#oomPred` (#724
+ * quality pass, finding 1). It used to be the latter, and after #724 item 7 that silently stopped
+ * testing anything: the panel now re-renders when a sibling row's height moves, and render()
+ * REWRITES the readout from the live fit — which, on a plant with no plotted points, is the empty
+ * string. MEASURED at the old fixture's own measurement moment: `#oomPred` empty, `display:none`,
+ * height 0, so the overflow check compared `0 > 0 + 1` (false for ever) and the letterbox check
+ * measured the geometry of a panel with NO readout at all. Both green, neither looking at the
+ * state they were written for.
+ *
+ * So this boots a SUBCRITICAL plant and plots two real points with a rod withdrawal between them,
+ * which is the only way to make the panel author a prediction itself. Everything downstream then
+ * measures the panel a player actually gets. The readout being non-empty is asserted, not assumed
+ * — that is the specific way this check went hollow, and it must not do it again quietly.
+ *
+ * `hot_zero_power`, not `hot_full_power`: above ~1e5 cps the source range secures itself and the
+ * panel refuses to plot (#641), so the old initial condition could never have produced a point. */
 async function testOneOverMDockedGeometry(page) {
   var log = [];
-  var url = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power&dev=1';
+  var url = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_zero_power&dev=1';
   await page.goto(url, { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
   await waitBoardLive(page, 20000);
 
-  /* OPEN AND FORCE THE STRING IN ONE PASS, MEASURE IN THE NEXT (#724 item 7).
-   *
-   * This used to open the panel, overwrite the readout and measure the result inside ONE
-   * synchronous evaluate(). That made the check race the layout it had just changed: writing the
-   * longest string grows the readout's row, which takes height out of the plot's row, and the
-   * measurement ran before anything could respond to that. The gate then reported a letterbox
-   * that was the harness's own doing — 77 px of dead width — on a panel that settles correctly
-   * one frame later.
-   *
-   * THE CLAIM AND THE THRESHOLDS BELOW ARE UNCHANGED; only the moment of measurement moved. The
-   * panel's answer to the same problem is a ResizeObserver on the readout (ui/panels/one_over_m.js),
-   * so a wrap the PLAYER causes re-fits the plot — and that observer is precisely what this
-   * evaluate() gave no frame to run. Keep the two calls separate: merging them back re-creates a
-   * red that looks exactly like a real regression. */
+  /* Two real points: baseline, withdraw, settle, plot again. The withdrawal is what makes the
+   * count rate move, and without a moving count rate the second point lands on top of the first
+   * and no fit exists. */
   await page.evaluate(function () {
     if (!(window.RD && RD.OneOverM)) return;
     RD.OneOverM.open();
-    var predEl = document.querySelector('#oomPred');
-    if (predEl) predEl.textContent = 'predicted criticality ≈ step 9999 (99.9% withdrawn)';
+    var b = document.querySelector('[data-oom="plot"]');
+    if (b) b.click();
+    RD.__dev.service().handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 140, speed: 'fast' });
   });
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(3000);
+  await page.evaluate(function () {
+    var b = document.querySelector('[data-oom="plot"]');
+    if (b) b.click();
+  });
+  await page.waitForTimeout(600);
 
   var geo = await page.evaluate(function () {
     function rect(sel) {
@@ -4309,6 +4314,8 @@ async function testOneOverMDockedGeometry(page) {
       frame: rect('.oom-frame'),
       viewBox: svgEl ? svgEl.getAttribute('viewBox') : null,
       pred: overflowOf('#oomPred'),
+      predText: (document.querySelector('#oomPred') || {}).textContent || '',
+      predRect: rect('#oomPred'),
       win: overflowOf('.oom-win.oom-docked'),
       btnOverflow: btnOverflow,
     };
@@ -4316,7 +4323,24 @@ async function testOneOverMDockedGeometry(page) {
 
   if (geo.error) throw new Error('#713: ' + geo.error);
   if (!geo.docked) throw new Error('#713: the 1/M panel did not dock into the right-hand column (#724 item 7 moved it there from the bottom row)');
-  log.push('oom-svg (docked) box: ' + Math.round(geo.svg.w) + 'x' + Math.round(geo.svg.h));
+
+  /* THE PRECONDITION, AND IT IS THE POINT (#724 quality pass, finding 1). Every check below reads
+   * a panel whose readout is supposed to be the longest string it draws. When the readout is
+   * EMPTY it is `display:none` with a zero box, and each of those checks then passes on a state
+   * it was not written for — the overflow test compares 0 against 0, and the letterbox test
+   * measures a cell 47 px taller than the one a player with a prediction on screen is looking at.
+   * That is exactly how this check went hollow once. Assert it rather than hoping. */
+  if (!/predicted criticality|insufficient trend/.test(geo.predText) ||
+      !(geo.predRect && geo.predRect.h > 0)) {
+    throw new Error('#713/#712: the 1/M readout is empty (' + JSON.stringify(geo.predText) +
+      ', height ' + (geo.predRect ? Math.round(geo.predRect.h) : 'null') + ') — the two points this ' +
+      'fixture plots did not produce one, so every geometry check below would be measuring a panel ' +
+      'with NO readout row. Check that the rod withdrawal moved the source-range count rate and ' +
+      'that the plot button was accepted; do NOT satisfy this by writing #oomPred directly, which ' +
+      'is the no-op this assertion exists to prevent (render() rewrites it from the live fit).');
+  }
+  log.push('oom-svg (docked) box: ' + Math.round(geo.svg.w) + 'x' + Math.round(geo.svg.h) +
+           ', readout "' + geo.predText + '" ' + Math.round(geo.predRect.h) + 'px tall');
 
   geo.btnOverflow.forEach(function (b) {
     if (b.over) throw new Error('#713/#712: button "' + b.text + '" overflows its box in the docked 1/M panel');

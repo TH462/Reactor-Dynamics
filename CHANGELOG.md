@@ -41,7 +41,8 @@ The plot leaves `.bottom-row`, which ends the three-way width argument #713 pass
 content floor is 412 px under CI's DejaVu Sans against 377.7 px under Windows' Segoe UI). The strip
 chart and the alarm panel take the whole row back. Buttons are a row **above** the plot, per the
 owner, superseding #713's side-mounted column. Plotted-data rectangle, measured by the gate's own
-probe at its own 1500×950 viewport: **243 → 314 × 192 px**, letterbox waste **0.0 × 0.2 px**.
+probe at its own 1500×950 viewport, with a real prediction on screen: **243 → 321 × 160 px**,
+letterbox waste **0.0 × 0.3 px**.
 Prediction readout **11 px/400 `--text-2` → 15 px/600 `--caution`** — the hue the plot already draws
 its critical marker in — on its own row, wrapping rather than overflowing (#712's class).
 
