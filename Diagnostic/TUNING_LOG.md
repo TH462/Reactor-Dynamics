@@ -29,6 +29,174 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-13-workbench-c (#740 — the board keeps its meaning without the movement, and two of my own findings were wrong)
+
+**The ruling** *(OWNER, 2026-09-13: "1:A, 2:A, 3:a now. I will playtest after you make these
+changes." — item 2 was #740, and option A was "distinct static geometry per signal under reduced
+motion, matching the convention the board already uses")*.
+
+**HE DID NOT TAKE OPTION D, AND D WAS THE TRAP.** "Just stop the six animations" looks complete and
+is precisely what CREATES the hue-only fallback: with the motion gone, a HUE was the only thing
+separating "critical alarm", "a protection latch is holding this" and "there is a message" — the
+pairs a red/green or blue/yellow deficiency compresses. The fallback was part of the change, not a
+follow-up.
+
+### TWO OF MY OWN #740 FINDINGS WERE WRONG, AND THE SECOND ONE NEARLY BROKE THE SCRAM BUTTON
+
+1. **`tabAttn` was never a gap.** `#tabbar button.tab-attn` sets it at shell.css:2881 and the
+   override is at :2895, correctly after. My probe attached `button.tab-attn` with no `#tabbar`
+   ancestor, so the rule never matched and I reported working code as broken. **The probe was the
+   defect.**
+
+2. **`bdScramPulse` was NOT an orphan keyframe, and I deleted it before finding out.** My grep was
+   `animation:.*bdScramPulse` across the stylesheets. Its only caller is JAVASCRIPT —
+   `pwr_board.js` sets `rec.btn.style.animation = 'bdScramPulse …'` as an INLINE style when the
+   SCRAM button is armed. A CSS-only search cannot see it. Restored within the hour, with a comment
+   at the keyframe saying so, because the next person will run the same grep.
+
+   **AND IT IS THE HARDEST CASE IN THE WHOLE ISSUE**: an inline style beats every stylesheet rule,
+   so no `@media (prefers-reduced-motion)` block could ever have stopped it. Its fix is in the JS,
+   reading `matchMedia` before it writes. It was invisible to the audit twice over — invisible to
+   the CSS grep, and invisible to the class-probe that measured the other ten signals, because
+   nothing sets a class here.
+
+   The coordinating lane told me to widen the grep before deleting. That instruction is the only
+   reason this was caught rather than shipped.
+
+### THE CASCADE TRAP, FOR THE FOURTH TIME IN ONE CYCLE
+
+A media query adds NO specificity. All six broken overrides, my own `bdMsgFlash` one, and #738's
+parent `.bd-info` bug are the same shape: a rule that must WIN placed above the rule it must beat.
+The six fixes therefore live in ONE block at the END of each stylesheet rather than next to what
+they override — not tidiness, but the only arrangement where "does this win?" is answerable at a
+glance. Correct existing overrides were left where they are.
+
+### THE VOCABULARY, AND A COLLISION CAUGHT BEFORE IT SHIPPED
+
+My first cut gave the message signal **dashed**, "matching `.ckl-watch-glow`'s watch-this sense".
+`.ckl-watch-glow` is ALREADY `1px dashed` at `outline-offset: 3px` — all but identical to what I
+proposed — and it means something else entirely. Both land on board tiles through `revealControl`.
+No step names TRIP BLOCKS in an `hl_watch` list today, but **59 steps use one**, and adjacency on
+one board is enough to blur a vocabulary. Caught by the coordinating lane's review, not by me.
+
+Five distinct line styles now, none needing a hue to tell apart:
+
+| signal | static geometry |
+|---|---|
+| critical alarm | `5px double`, inset |
+| protection latch (ACTUATED) | `2px solid`, offset 2 |
+| trip-block message | `2px dotted`, offset 3 |
+| walkthrough: act on this | `3px dashed`, offset 2 |
+| walkthrough: watch this *(existing)* | `1px dashed`, offset 3 |
+| armed button | `3px ridge`, offset 2 |
+| highlight bus | halo, no outline |
+
+**`5px double`, NOT 3px, AND THAT IS A RENDER NOT A PREFERENCE.** A `double` outline splits its
+width three ways, so 3px is 1px-1px-1px and the two lines merge into one thin stroke. Rendered at
+the board's real button size and looked at (`inbox/740/grey/`), 3px came out **fainter than the
+protection latch's 2px solid** — backwards for the loudest signal on the board. The coordinating
+lane predicted exactly this before I rendered it.
+
+### HOW DISTINGUISHABILITY WAS ESTABLISHED, since a colour-vision claim is an unmeasured claim
+
+Two ways, and the second is the one that changed a decision. **Structural:** the gate asserts the
+signals carry pairwise-distinct `(outline-style, width, offset, box-shadow-shape)` tuples, with the
+colour stripped out of the shadow string first — a comparison that never reads a hue.
+**Rendered:** each signal drawn at the board's own 96x34 button size on the board's ground with
+`filter: grayscale(1)`, screenshotted and compared (`inbox/740/greyscale.js`). All six differ; the
+closest pair by file size (latch 2585 bytes, message 2563) was looked at directly and reads as solid
+ring vs dotted ring.
+
+### THREE SIGNALS REMAIN HUE-ONLY AND THAT IS STATED, NOT HIDDEN
+
+`gauge alarm value` and `system slot alarm dot` are a NUMBER and a DOT going into alarm — an outline
+round a digit is not this board's idiom and nobody asked for one; they say "this reading is bad",
+are never confused with each other, and are read in place rather than compared. `retired-board
+scram` is the retired surface, out of scope by direction. They stop animating; they stay hue-only.
+The gate carries the exclusion as a NAMED LIST with a comment saying it is the easiest thing in the
+file to abuse.
+
+### THE GATE
+
+`verify_reduced_motion.js`, new, 14 checks. A separate runner because `emulateMedia` is per-PAGE and
+global while `verify_board_check` asserts the opposite (#738 needs `bdMsgFlash` RUNNING) — one page
+cannot hold both claims. **Every "does not animate" check is PAIRED with the same element under
+`no-preference` where it MUST animate**: a one-sided version would go green on a stylesheet with the
+animations simply deleted. Four injections, all caught — an override removed (2 red), two signals
+sharing geometry (1), the JS scram guard removed (1), the critical alarm's double trimmed to 3px (1).
+
+
+### THE QUALITY PASS FOUND A SHIPPING REGRESSION THAT HAD NOTHING TO DO WITH ACCESSIBILITY
+
+**A STRAY `}`.** The `bdScramPulse` keyframe was put back with one extra closing brace. A top-level
+`}` is not skipped: per CSS error recovery it opens a qualified rule whose prelude runs to the next
+`{`, so it **swallows the following rule**. The victim was `.bd-num-frame`, ten lines below.
+
+MEASURED on the live board, reproduced independently before acting: **73 CSS rules parsed → 72**,
+and eleven number-input tiles lost `display: flex`, their border and their radius — the `<input>`
+rendering **169.6 px wide inside an 80.8 px frame**, overhanging the tile and painting over the
+neighbouring control, the frame 57.4 px tall instead of 24.2. Those are the setpoint boxes with two
+filed issues about being unusable (#605, #615).
+
+**EVERY GATE IN THE REPO WAS GREEN ON IT** — `verify_board_check` 278, `run_glow_stacking` 20/20,
+`run_style` 11, `run_hardrules` 550, and this change's own new `verify_reduced_motion` 14/14.
+
+The reviewer's closing line is the one to keep: *the commit spends ninety lines on a cascade trap it
+caught, and shipped a one-character brace error that silently deleted a rule ten lines away. The
+lesson filed was "rules that must win go last"; the lesson available was "nobody parsed the file
+after editing it."* So the gate now compares each stylesheet's **source top-level rule count against
+the CSSOM's** — two seconds, and it catches the whole class: a stray brace, an unclosed block, a
+swallowed rule. It would have caught the `.bd-info` bug this cycle keeps citing, too.
+
+**IT LIVES IN ITS OWN RUNNER, `test/verify_stylesheets.js`, and the placement is the point.** It was
+written inside `verify_reduced_motion.js`, where it had nothing to do with that runner's subject and
+where the next person to reorganise the file would have deleted the repo's only parse check without
+knowing what it was. A general invariant does not belong in a subject-specific gate. It also asserts
+each sheet is LOADED before comparing counts — a comparison on an absent stylesheet is `0 === 0`,
+which is the hollow shape this cycle keeps meeting. Red by injection: the brace back gives
+`stray 1 (line 128)` and `1 RULE(S) SWALLOWED`.
+
+**AND THE INJECTION LESSON IS NOW IN `Blueprint/TRAPS.md`: read the red, not the count.** Four times
+this cycle an injection meant to prove a check reported zero reds because the INJECTION had missed —
+it patched a comment instead of the list, named an anchor a refactor had moved, settled a plant above
+the permissive so the block never took hold, or removed more than a real edit would. An injection
+that does not land is indistinguishable from a robust check: both print `0 failed`.
+
+**AND I DID NOT RESTORE THE KEYFRAME, I REWROTE IT.** The pre-image carried `inset 0 0 18px
+rgba(0,0,0,.55)` in both stops; my version dropped it, so the armed SCRAM button lost its inset
+depth shading while pulsing. Three documents said "restored". Put back byte-for-byte.
+
+### THREE BLIND SPOTS IN THE GATE I HAD JUST WRITTEN
+
+1. **It asserted DISTINCTNESS but not PRESENCE.** The claim is "the fallback is not hue-only";
+   pairwise uniqueness does not carry it, because a signal whose geometry is DELETED still has a
+   unique tuple as long as the others differ. Measured: dropping the outline from `button.armed`,
+   `.ckl-step-glow`, `.bd-msg.bd-unack` or `.bd-actuated`, or the box-shadow from `.instr-glow`,
+   each left the gate at 14/14. **The four injections I cited in the commit all removed a WHOLE
+   override, animation included** — the geometry-only case, which is what a real future edit looks
+   like, was never probed. Hard Rule 10 exactly: the property asserted was not the property the
+   defect violates.
+2. **`none` counted as a line style.** `new Set(['double','none','dotted']).size === 3` is true.
+3. **The keyframe-existence check did not exist.** Check 13 regex-tests the inline `animation`
+   string, so deleting `@keyframes bdScramPulse` outright left the gate green — the exact regression
+   the headline lesson is about, on the keyframe that had already been wrongly deleted once.
+
+14 → 19 checks. All four new ones proven red by injection. **My first attempt at the exclusion-key
+injection patched a comment rather than the list and reported zero reds** — the fourth time this
+cycle an injection of mine has missed its target, which is its own argument for always reading the
+red rather than the count.
+
+### AND FOUR COMMENTS THAT ARGUED FOR THE DESIGN WE REJECTED
+
+`shell.css` still said *"DASHED is a message, which borrows `.ckl-watch-glow`'s watch-this sense"* —
+the pre-fix prose, left in place, arguing for exactly the collision the commit's own headline section
+is about rejecting. `pwr_board.css`'s vocabulary table said `double 3px` when "5px NOT 3px" is one of
+the three headline findings, 55 lines from the note saying not to trim it. A third said *"NOTHING
+GATES IT"* about a thing this change gates. The superseded `.alarm-tile.unack.crit` override was left
+three lines from a comment insisting that placement is what matters. All corrected.
+
+---
+
 ## Session log — 2026-09-13-workbench-b (#738/#716 — the trip-block message: what counts as one, measured four ways before anything was built)
 
 **The ruling** *(OWNER RULING, 2026-09-13: "I don't want to add new UI elements to the main board.

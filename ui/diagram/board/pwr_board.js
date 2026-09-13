@@ -452,7 +452,20 @@
     rec.btn.style.background = fired ? '#3a0e0e' : (armed ? '#5a1408' : '#0a2417');
     rec.btn.style.border = '3px solid ' + (fired ? '#ff5a4d' : (armed ? '#ffb400' : '#3d7a58'));
     rec.btn.style.color = fired ? '#ff7a6a' : (armed ? '#ffd166' : '#5a9575');
-    rec.btn.style.animation = armed ? 'bdScramPulse 0.8s ease-in-out infinite' : 'none';
+    /* THE ARMED PULSE HONOURS prefers-reduced-motion, AND IT HAS TO BE DONE HERE (#740).
+     * This is an INLINE style, so it beats every stylesheet rule — the `@media
+     * (prefers-reduced-motion: reduce)` blocks that stop the board's other animations cannot touch
+     * it. It was also invisible to the #740 audit twice over: a CSS-only grep finds no user for the
+     * keyframe (so it read as dead code and was briefly deleted), and the class-probe that measured
+     * the other ten signals never reached it because nothing sets a class here.
+     *
+     * The static fallback is a SOLID ring in the armed amber — the same "geometry, not hue"
+     * substitution the stylesheets make for the other three signals, and distinct from them by
+     * being on the SCRAM control, which is the one button on the board nothing else looks like. */
+    var reduceMotion = typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false;
+    rec.btn.style.animation = (armed && !reduceMotion) ? 'bdScramPulse 0.8s ease-in-out infinite' : 'none';
+    rec.btn.style.boxShadow = (armed && reduceMotion) ? '0 0 0 4px rgba(255, 180, 0, 0.85)' : '';
     // A blocked reset is dimmed rather than hidden — the operator can still press it and
     // get the full reason in the scanner bar, which is how they learn what to wait for.
     rec.subEl.style.opacity = (note && !note.ready) ? '0.6' : '0.85';

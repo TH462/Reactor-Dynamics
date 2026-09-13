@@ -30,6 +30,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (the board no longer moves for players who ask it not to — and still means what it meant — #740)
+
+*(OWNER RULING, 2026-09-13: "1:A, 2:A, 3:a now. I will playtest after you make these changes." —
+item 2 was #740, and option A was distinct static geometry per signal rather than simply stopping
+the animations.)*
+
+Six of the board's attention signals ignored the system "reduce motion" setting entirely — the gauge
+alarm value, armed buttons, the scram flash, the system-slot alarm dot, the walkthrough's step glow
+and the highlight bus all went on flashing. They stop now.
+
+**Stopping them was the easy half and would have made the board worse.** Without the movement, a
+colour was the only thing left separating *critical alarm*, *a protection latch is holding this
+system* and *there is a message waiting* — three different meanings a red/green or blue/yellow
+colour-vision deficiency can flatten into one. So each signal now carries its own static shape
+instead: a heavy double ring for a critical alarm, a solid ring for a protection latch, a dotted
+ring for a message, dashes for the walkthrough pointing something out. Eight signals, eight shapes, none
+of which needs colour to tell apart — checked by rendering them in greyscale, not by argument.
+
+The SCRAM button's armed pulse is fixed too. It was set from code rather than the stylesheet, so it
+was the one signal no stylesheet rule could have stopped.
+
 ### Added (the board tells you when the plant takes a trip block away — #738 / #716)
 
 *(OWNER RULING, 2026-09-13: "I don't want to add new UI elements to the main board. What if we flash
