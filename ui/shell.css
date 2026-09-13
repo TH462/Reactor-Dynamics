@@ -2296,9 +2296,13 @@ select.num-input { width: auto; }
 .ckl-crit-met { color: var(--running); }
 /* THE LETTERED SUBSTEP PREFIX (#741) — `3a`, `3b`. A quiet fixed-width gutter, not a second
    headline: the row's own text is the thing to read and the letter only says "this is part of
-   step 3". Muted rather than the row's cobalt so it does not compete with the ✓/○, and it goes
-   grey->green with the row because it inherits nothing (.ckl-crit-met sets `color` on the
-   parent, which this overrides). Drawn only when a step has more than one visible row. */
+   step 3". Muted rather than the row's cobalt so it does not compete with the ✓/○.
+   IT STAYS MUTED WHEN THE ROW GOES GREEN, and that is the behaviour rather than an oversight: a
+   direct declaration on the child beats the parent's inherited colour, so .ckl-crit-met's
+   var(--running) never reaches it. The tick and the row text carry the met state; the letter is a
+   gutter label and reads the same either way. (An earlier draft of this comment claimed the
+   opposite AND contradicted itself in one sentence — #741 quality pass.)
+   Drawn only when a step has more than one visible row. */
 .ckl-crit-n {
   display: inline-block; min-width: 20px; color: var(--muted);
   font-weight: 600; font-variant-numeric: tabular-nums;

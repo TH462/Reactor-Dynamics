@@ -1311,6 +1311,12 @@
     }
   };
 
+  /* ON/OFF ACTUATIONS whose whole payload is the sense — see `_cmdEvidence` below. Each drives a
+   * START/STOP or ON/OFF pair on one card, so a family match alone lets either button stand as
+   * evidence for a step that asked for the other. `active !== false` is the shells' own
+   * convention throughout (an absent flag means ON). */
+  var SENSE_ACTIONS = { set_hpi: 1, set_lpi: 1, set_afw: 1, set_rcp: 1, set_rhr: 1,
+                        set_feed_coupled: 1, set_charging_pump: 1 };
   // Does `command` count as having performed the step whose authored command is
   // `stepCmd`? Family match, plus a discriminator for the actions where the family
   // alone is too coarse: several DIFFERENT steps can share one action and would
@@ -1330,6 +1336,27 @@
     if (stepCmd.action === 'set_trip_block') {
       return stepCmd.trip_id === command.trip_id &&
              (stepCmd.blocked !== false) === (command.blocked !== false);
+    }
+    /* …AND THE SAME RULE FOR EVERY ON/OFF ACTUATION (#741 quality pass, 2026-09-13). #731 fixed
+     * the sense for trip blocks and left the identical hole one card over: these actions each
+     * drive a pair of buttons that sit side by side, and a family match alone made the WRONG
+     * button evidence for the step.
+     *
+     * FOUND BY REPRODUCTION, not by reading: #739 gave `pwr_cooldown` step 3 a pure `cmd` entry
+     * for `set_hpi {active:false}` ("press STOP on ECCS"), and pressing START — `set_hpi
+     * {active:true}`, the button immediately above it on the same card (pwr_board_wiring :602 /
+     * :603) — ticked the entry green. Worse than #731's case, because that entry deliberately
+     * carries NO predicate sibling (there is nothing observable behind securing an idle pump),
+     * so nothing could contradict the false tick: the player got a green step AND high-pressure
+     * injection running into a cooldown.
+     *
+     * `set_rhr` is in the list for the same reason and `set_spray` is not: spray carries a `pct`
+     * as well as an open/shut sense, and `set_spray {open:true, pct:50}` vs `{open:false}` is
+     * already discriminated by the predicate entries the spray steps carry. Keep this list to
+     * actions whose ONLY payload is the sense — adding one whose payload matters would make the
+     * check narrower than the step and reintroduce the soft-lock #697 is about. */
+    if (SENSE_ACTIONS[stepCmd.action]) {
+      return (stepCmd.active !== false) === (command.active !== false);
     }
     return true;
   };

@@ -1591,12 +1591,13 @@
            * `if (st.accs && st.accs.length) {...} else if (st.acc) {...}` — the `accs` branch wins,
            * so the heatup leg's ONLY Mode 3, Hot Standby confirmation never graded and the step
            * ticked on the atmospheric dump valve and steam pressure alone.
-           * FOLDED, not taught to the grader. Swept all five pools (248 steps, 34 of them `accs`):
+           * FOLDED, not taught to the grader. Swept all five pools when the decision was taken (248 steps, 34 of them `accs`; 36 after this
+           * change converted `pwr_cooldown` 7 and 10 from `acc`):
            * this was the ONLY step carrying both, so making `_gradeStep` honour both would change
            * the live grading of exactly one step while widening a schema whose own header says
            * "When `accs` is present it REPLACES `acc` (author one or the other)". The data fix is
            * local and the schema stays one-form; the class of defect is closed instead by
-           * `run_checklist_pwr2` §2r, which now reddens on ANY step authoring both. */
+           * `run_checklist_pwr2` §2v, which now reddens on ANY step authoring both. */
           accs: [
             { p: 'plant_mode', op: '~', v: 3, tol: 0.1, label: 'Plant in Mode 3, Hot Standby' },
             { p: 'adv_valve_pct', op: '<', v: 1, label: 'ATMOS DUMP shut' },
@@ -2439,7 +2440,7 @@
            * fall out from under a player reading at 1x. */
           accs: [{ p: 'power_pct', op: '<', v: 70, label: 'Reactor following through 70 %' },
                  { p: 'mwe_output', op: '~', v: 50, tol: 5, ask: 'Set LOAD to 50 MWe.', label: 'Generator settled near 50 MWe' },
-                 { p: 'tavg_c', op: '<', v: 298.1, ask: 'Hold INSERT at MED until AVG COOLANT TEMPERATURE is back in its band.', label: 'AVG COOLANT TEMPERATURE back below 569 °F, inside its band' }],
+                 { p: 'tavg_c', op: '<', v: 298.1, ask: 'Hold INSERT at MED until AVG COOLANT TEMPERATURE is back in its band.', label: 'AVG COOLANT TEMPERATURE back below 568 °F, inside its band' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
         { text: 'Set LOAD to 30 MWe, let power follow, then hold INSERT until AVG COOLANT TEMPERATURE is back in its band.',
           note: 'About 10 steps at MED.',
@@ -2507,8 +2508,11 @@
                   * (558.0 degF) FAIL by 1.1 degF. ⚠ THAT 1.1 degF IS THE THINNEST OF THE THREE —
                   * this step is 900 s downstream of the trim and the boration has had the longest
                   * to close the gap on its own, so it is the weakest of the three as a detector.
-                  * ONE-SIDED IS NOT COSMETIC HERE: the authored route ends 6.7 degF BELOW the band
-                  * (see the re-measurement above), so a two-sided band would red the shipping leg. */
+                  * ONE-SIDED IS NOT COSMETIC HERE: the authored route ends 545.1 degF, which is 6.7 degF
+                  * below the PROGRAMME (551.8) and 1.7 degF below the BAND's floor (546.8) — the smaller
+                  * of the two is the one that matters, and a two-sided band would still red the
+                  * shipping leg. Said as "below the band" in an earlier draft, which overstated the
+                  * margin fourfold (#741 quality pass). */
                  { p: 'tavg_c', op: '<', v: 291.6, ask: 'Hold INSERT at MED until AVG COOLANT TEMPERATURE is back in its band.', label: 'AVG COOLANT TEMPERATURE back below 557 °F, inside its band' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
       ],
@@ -2798,7 +2802,7 @@
            * player at 100 % fills the pressurizer solid, and then ticked on PRIMARY PRESSURE
            * alone — which 100 % satisfies FASTER. `spray_flow_pct` is the DELIVERED flow (true
            * state), and it tracks the demand exactly: MEASURED 50.000 at the end of this step and
-           * at the end of every step through step 12, down to 0.076 MPa, so the band is not a
+           * at the end of every step through step 12, down to 11.0 psi (0.076 MPa), so the band is not a
            * high-pressure-only artefact. tol 5 is 45..55 %, which the note's own failure mode
            * (100 %) misses by nine tolerances; `~` two-sided also catches a player who set it too
            * LOW and is watching a cooldown that will not finish.

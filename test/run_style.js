@@ -312,7 +312,16 @@ var CHECKS = [
       });
       return hits;
     },
-    inject: function (d) { d.steps[0].step.target = 'PRIMARY PRESSURE 2235 psi (15.41 MPa)'; },
+    /* THE INJECTION PLANTS THE SI IN AN `ask` (#741 quality pass). It used to plant it in
+     * `target`, which meant the harvest line for the NEW key was not covered by the check's own
+     * self-test: the `ask` line could be deleted outright and `--self-test` still reported
+     * "CAN FAIL", because `target` alone kept it able to fail. Proven: with the ask harvest
+     * removed, the old inject still self-tested green. A per-field harvest needs a per-field
+     * injection or the newest field is the one nothing proves. */
+    inject: function (d) {
+      d.steps[0].step.accs = [{ label: 'Load target set to 50 MWe',
+                                ask: 'Set LOAD to 50 MWe at 11.14 MPa.' }];
+    },
   },
   /* THE NARRATIVE BLOCK IS FOUR LINES, NOT FOUR PARAGRAPHS (#670 Phase 1).
    *

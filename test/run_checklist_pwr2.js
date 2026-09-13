@@ -907,7 +907,7 @@ if (!only) {
     var cdFixed = driveCooldownStep4(6000);
     ck('pwr_cooldown step 4 completes with the fix, AUTO never pressed (#697)',
        cdFixed.done === false && cdFixed.step >= 4,
-       'tavg reached ' + (cdFixed.tavg_c != null ? cdFixed.tavg_c.toFixed(1) : '?') + ' degC, advanced to step_index ' + cdFixed.step);
+       'tavg reached ' + (cdFixed.tavg_c != null ? (cdFixed.tavg_c * 9 / 5 + 32).toFixed(1) + ' degF (' + cdFixed.tavg_c.toFixed(1) + ' degC)' : '?') + ', advanced to step_index ' + cdFixed.step);
     var cdRed = withReverted('pwr_cooldown', 3, function () { return driveCooldownStep4(6000); });
     ck('...RED BY INJECTION: the pre-#697 shape soft-locks step 4 forever (siblings already true)',
        cdRed.done === false && cdRed.step === 3 && cdRed.accs && cdRed.accs[0].met === false && cdRed.accs[1].met === true,
@@ -1382,7 +1382,8 @@ if (!only) {
    *
    * WHY A GATE AND NOT A GRADER CHANGE. Teaching `_gradeStep` to honour both would have changed
    * exactly ONE step's live grading (this sweep is how that was measured: 248 steps across all
-   * five pools, 34 with `accs`, 1 with both) and would contradict the schema header in
+   * five pools, 34 with `accs` when the decision was taken — 36 once this same change converted
+   * `pwr_cooldown` 7 and 10 — and exactly 1 with both) and would contradict the schema header in
    * `ui/manual_procedures.js` — "When `accs` is present it REPLACES `acc`". The field was folded
    * into the `accs` list instead; this makes the silent case loud for the next author.
    *
@@ -1452,9 +1453,19 @@ if (!only) {
   (function () {
     var CTL = RD.PWR_CONTROL || {};
     var RATED = ((RD.PWR_CONFIG || {}).identity || {}).mwe_rated;
-    /* the board's own multiple of the rod lockup band — pwr_board_wiring.js `tavgBand`, which
-     * is a browser file this runner does not load. Change it there, change it here. */
-    var BAND_HALF_MULT = 3.5;
+    /* THE BOARD'S OWN MULTIPLE OF THE ROD LOCKUP BAND — `tavgBand` in pwr_board_wiring.js, a
+     * browser file this runner does not load. It is the ONE number in this section that is not
+     * published, so it is READ OUT OF THE BOARD FILE rather than re-typed: a copy here would go
+     * stale the moment someone widened the band, the four acceptances would still "match" this
+     * gate's own arithmetic, and the thing §2w exists to prevent would happen under a green run
+     * (#741 quality pass — the section claimed to close exactly this and did not). */
+    var wiringSrc = fs.readFileSync(path.join(ROOT, 'ui', 'diagram', 'board', 'pwr_board_wiring.js'), 'utf8');
+    var multM = /TAVG_DEADBAND_C\s*\|\|\s*0\.8\)\s*\*\s*([0-9.]+)/.exec(wiringSrc);
+    var BAND_HALF_MULT = multM ? parseFloat(multM[1]) : NaN;
+    ck('2w reads the band half-width multiple out of the BOARD, not a copy of it (#741)',
+       !!multM && BAND_HALF_MULT > 0,
+       multM ? 'pwr_board_wiring tavgBand uses x' + BAND_HALF_MULT + ' of the rod lockup band'
+             : 'COULD NOT FIND the multiplier in pwr_board_wiring.js — the tie is broken');
     ck('2w preconditions: trefProgram, TAVG_DEADBAND_C and identity.mwe_rated are all published',
        typeof CTL.trefProgram === 'function' && CTL.TAVG_DEADBAND_C > 0 && RATED > 0,
        'trefProgram=' + typeof CTL.trefProgram + ' deadband=' + CTL.TAVG_DEADBAND_C + ' rated=' + RATED);
@@ -1601,31 +1612,63 @@ if (!only) {
    * removing the clause goes green. A new authoring key the harvester does not know about ships
    * ungated, which is how the panel came to print "(116 degC)" under a green check at #670. */
   (function () {
-    var noLabel = [], echoes = [], tooLong = [], onSingles = [], total = 0;
-    POOL.forEach(function (proc) {
-      (proc.steps || []).forEach(function (st, i) {
-        if (!st.accs || !st.accs.length) return;
-        var vis = st.accs.filter(function (e) { return !e.hidden; });
-        st.accs.forEach(function (en) {
-          if (!en.ask) return;
-          total++;
-          var where = proc.id + ' step ' + (i + 1);
-          if (!en.label) noLabel.push(where);
-          if (en.label && en.ask.replace(/[.\s]/g, '').toLowerCase() ===
-                          en.label.replace(/[.\s]/g, '').toLowerCase()) echoes.push(where);
-          if (en.ask.trim().split(/\s+/).length > 14) tooLong.push(where + ' (' + en.ask.trim().split(/\s+/).length + ' words)');
-          if (vis.length < 2) onSingles.push(where);
+    /* ALL FIVE POOLS, not just pwr2 (#741 quality pass). `accs[].ask` is a key on the SHARED step
+     * schema and the renderer draws whatever pool is loaded, so an ask authored in the pwr, rbmk
+     * or bwr pool would ship unchecked. Zero there today; this is what keeps it so. */
+    function askSweep() {
+      var r = { noLabel: [], echoes: [], tooLong: [], onSingles: [], notString: [], total: 0 };
+      Object.keys(RD.MANUAL_PROCEDURES).forEach(function (key) {
+        (RD.MANUAL_PROCEDURES[key] || []).forEach(function (proc) {
+          (proc.steps || []).forEach(function (st, i) {
+            if (!st.accs || !st.accs.length) return;
+            var vis = st.accs.filter(function (e) { return !e.hidden; });
+            st.accs.forEach(function (en) {
+              if (en.ask === undefined || en.ask === null) return;
+              r.total++;
+              var where = key + ':' + proc.id + ' step ' + (i + 1);
+              /* a non-string ask crashes the word count below and is skipped by run_style's
+               * harvester, so it would ship un-SI-scanned: caught here rather than thrown */
+              if (typeof en.ask !== 'string') { r.notString.push(where); return; }
+              if (!en.label) r.noLabel.push(where);
+              if (en.label && en.ask.replace(/[.\s]/g, '').toLowerCase() ===
+                              en.label.replace(/[.\s]/g, '').toLowerCase()) r.echoes.push(where);
+              var w = en.ask.trim().split(/\s+/).length;
+              if (w > 14) r.tooLong.push(where + ' (' + w + ' words)');
+              if (vis.length < 2) r.onSingles.push(where);
+            });
+          });
+        });
+      });
+      return r;
+    }
+    var sw = askSweep();
+    ck('every accs[].ask keeps its label — the ask REPLACES the done-when on the card otherwise (#741)',
+       sw.noLabel.length === 0, sw.noLabel.join(', ') || sw.total + ' ask(s) authored, all with a label');
+    ck('...and no ask merely echoes its own done-when (the same sentence twice on one row)',
+       sw.echoes.length === 0, sw.echoes.join(', ') || 'none');
+    ck('...and every ask is an instruction, not a paragraph (at most 14 words), and is a string',
+       sw.tooLong.length === 0 && sw.notString.length === 0,
+       sw.tooLong.concat(sw.notString).join(', ') || 'longest is within the cap, all strings');
+    ck('...and asks sit only on steps that draw more than one row, where the letters mean something',
+       sw.onSingles.length === 0, sw.onSingles.join(', ') || 'none on single-row steps');
+
+    /* AND EVERY acceptance ENTRY CARRIES A LABEL, ask or no ask (#741 quality pass). The card's
+     * fallback for a labelless entry is `mesc(en.cmd || '')`, and `en.cmd` is an OBJECT on the
+     * cmd-kind entries #739 introduced — so such a row would draw the string "[object Object]".
+     * Unreachable today because every entry in every pool has a label; this is what keeps it
+     * unreachable, since 2y's other rules only require a label when an `ask` is present. */
+    var unlabelled = [];
+    Object.keys(RD.MANUAL_PROCEDURES).forEach(function (key) {
+      (RD.MANUAL_PROCEDURES[key] || []).forEach(function (proc) {
+        (proc.steps || []).forEach(function (st, i) {
+          (st.accs || []).forEach(function (en, k) {
+            if (en && !en.hidden && !en.label) unlabelled.push(key + ':' + proc.id + ' step ' + (i + 1) + ' accs[' + k + ']');
+          });
         });
       });
     });
-    ck('every accs[].ask keeps its label — the ask REPLACES the done-when on the card otherwise (#741)',
-       noLabel.length === 0, noLabel.join(', ') || total + ' ask(s) authored, all with a label');
-    ck('...and no ask merely echoes its own done-when (the same sentence twice on one row)',
-       echoes.length === 0, echoes.join(', ') || 'none');
-    ck('...and every ask is an instruction, not a paragraph (at most 14 words)',
-       tooLong.length === 0, tooLong.join(', ') || 'longest is within the cap');
-    ck('...and asks sit only on steps that draw more than one row, where the letters mean something',
-       onSingles.length === 0, onSingles.join(', ') || 'none on single-row steps');
+    ck('every drawn acceptance entry has a label — the fallback renders "[object Object]" (#741)',
+       unlabelled.length === 0, unlabelled.join(', ') || 'all labelled');
 
     /* RED BY INJECTION, all four, in place. */
     var lp = POOL.filter(function (p) { return p.id === 'pwr_lower_power'; })[0];
@@ -1634,31 +1677,83 @@ if (!only) {
       (st.accs || []).forEach(function (e) { if (e.ask && !probe) probe = e; });
     });
     if (probe) {
+      /* THE INJECTION DRIVES THE SHIPPED SWEEP (#741 quality pass). An earlier version defined a
+       * parallel `sweepOne()` with the same four conditions re-implemented — which proves only
+       * that the COPY discriminates, and would have stayed green through a bug in the sweep the
+       * gate actually ships. `askSweep()` above is now a named function and this calls it. */
       var savedLabel = probe.label, savedAsk = probe.ask;
-      function sweepOne(f) {
-        var hits = { noLabel: 0, echo: 0, long: 0 };
-        POOL.forEach(function (proc) { (proc.steps || []).forEach(function (st) {
-          (st.accs || []).forEach(function (en) {
-            if (!en.ask) return;
-            if (!en.label) hits.noLabel++;
-            else if (en.ask.replace(/[.\s]/g, '').toLowerCase() === en.label.replace(/[.\s]/g, '').toLowerCase()) hits.echo++;
-            if (en.ask.trim().split(/\s+/).length > 14) hits.long++;
-          });
-        }); });
-        return hits;
-      }
-      delete probe.label; var r1 = sweepOne(); probe.label = savedLabel;
-      probe.ask = savedLabel;  var r2 = sweepOne(); probe.ask = savedAsk;
+      function counts() { var r = askSweep(); return { noLabel: r.noLabel.length, echo: r.echoes.length,
+                                                       long: r.tooLong.length, single: r.onSingles.length }; }
+      delete probe.label; var r1 = counts(); probe.label = savedLabel;
+      probe.ask = savedLabel;  var r2 = counts(); probe.ask = savedAsk;
       probe.ask = 'One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen.';
-      var r3 = sweepOne(); probe.ask = savedAsk;
-      ck('...RED BY INJECTION: dropping a label, echoing it, and a 15-word ask are each caught',
-         r1.noLabel === 1 && r2.echo === 1 && r3.long === 1,
-         'noLabel ' + r1.noLabel + ', echo ' + r2.echo + ', long ' + r3.long);
-      ck('...and all three injections were cleaned up', !!probe.label && probe.ask === savedAsk,
-         'label restored, ask restored');
+      var r3 = counts(); probe.ask = savedAsk;
+      /* the fourth rule had NO injection at all: three of four were proven and one was not */
+      var single = null;
+      POOL.forEach(function (proc) { (proc.steps || []).forEach(function (st) {
+        if (!single && st.accs && st.accs.filter(function (e) { return !e.hidden; }).length === 1) single = st.accs[0];
+      }); });
+      var r4 = { single: 0 };
+      if (single) { single.ask = 'Press the thing.'; r4 = counts(); delete single.ask; }
+      ck('...RED BY INJECTION: a dropped label, an echo, a 15-word ask and an ask on a one-row step are each caught',
+         r1.noLabel === 1 && r2.echo === 1 && r3.long === 1 && r4.single === 1,
+         'noLabel ' + r1.noLabel + ', echo ' + r2.echo + ', long ' + r3.long + ', single ' + r4.single);
+      var clean = counts();
+      ck('...and every injection was cleaned up (the sweep is green again)',
+         !!probe.label && probe.ask === savedAsk && !clean.noLabel && !clean.echo && !clean.long && !clean.single,
+         'label restored, ask restored, sweep ' + JSON.stringify(clean));
     } else {
       ck('...RED BY INJECTION: an ask exists to mutate', false, 'no accs[].ask authored anywhere');
     }
+  })();
+
+  /* 2z. THE WRONG BUTTON IS NOT EVIDENCE FOR THE RIGHT ONE (#741 quality pass, 2026-09-13).
+   *
+   * #731 was the owner's own playtest report — *"When i unblocked the trip the step thought i had
+   * blocked it and checked off the step"* (#724 item 13) — and it was fixed for `set_trip_block`
+   * alone. The identical hole sat one card over: `_cmdEvidence` matched a cmd-kind acceptance on
+   * the command FAMILY, so for every action that drives a START/STOP pair, either button was
+   * evidence for a step that asked for the other.
+   *
+   * #739 walked straight into it. `pwr_cooldown` step 3's "press STOP on ECCS" entry is a pure
+   * `cmd` with no predicate sibling — deliberately, because securing an idle pump moves nothing
+   * observable — so nothing could contradict a false tick. Measured before the fix: pressing
+   * START (`set_hpi {active:true}`) left the entry `met: true`, i.e. a green step AND
+   * high-pressure injection running into a cooldown.
+   *
+   * THIS ASSERTS THE RULE, NOT THE ONE STEP. Every pure-`cmd` acceptance in every pool whose
+   * action carries a reversible sense is driven with the OPPOSITE sense and must not latch, and
+   * with its OWN sense and must latch. Driving both directions is the point: a `_cmdEvidence`
+   * that returned false for everything would satisfy the first half alone. */
+  (function () {
+    var il = Object.create(RD.InstructorLayer.prototype);
+    var cases = [], seen = {};
+    Object.keys(RD.MANUAL_PROCEDURES).forEach(function (key) {
+      (RD.MANUAL_PROCEDURES[key] || []).forEach(function (proc) {
+        (proc.steps || []).forEach(function (st, i) {
+          (st.accs || []).forEach(function (en) {
+            if (!en || !en.cmd || typeof en.cmd === 'string') return;
+            if (en.cmd.active === undefined) return;          // no sense to reverse
+            cases.push({ where: key + ':' + proc.id + ' step ' + (i + 1), cmd: en.cmd });
+            seen[en.cmd.action] = 1;
+          });
+        });
+      });
+    });
+    var wrongLatched = [], rightRefused = [];
+    cases.forEach(function (c) {
+      var opposite = {}; for (var k in c.cmd) opposite[k] = c.cmd[k];
+      opposite.active = !(c.cmd.active !== false);
+      if (il._cmdEvidence(c.cmd, opposite)) wrongLatched.push(c.where + ' (' + c.cmd.action + ')');
+      if (!il._cmdEvidence(c.cmd, c.cmd)) rightRefused.push(c.where + ' (' + c.cmd.action + ')');
+    });
+    ck('the OPPOSITE button is never evidence for a cmd-kind acceptance (#741; #731 one card over)',
+       cases.length > 0 && wrongLatched.length === 0,
+       cases.length ? (wrongLatched.join(', ') || cases.length + ' sense-carrying entr(ies) checked: ' +
+                       Object.keys(seen).join(', '))
+                    : 'NO sense-carrying cmd acceptance found — the check has no population');
+    ck('...and the RIGHT button still is (the rule did not just refuse everything)',
+       rightRefused.length === 0, rightRefused.join(', ') || 'all latch on their own sense');
   })();
 }
 
