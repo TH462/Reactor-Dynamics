@@ -1798,18 +1798,33 @@
      * only documented escape is to OPEN the accumulators, which at 684 psia would dump the tanks
      * into the plant. That is the exact trap this hold exists to prevent, built by the hold.
      *
-     * THE DISCRIMINATOR IS THE VALVE'S HISTORY, NOT THE PRESSURE'S DIRECTION. The window is a
-     * trap only for a player who has NOT YET ARMED the accumulators — the heatup, which boots
-     * `cold_shutdown` with `ec.acc.valve_open = false` and must open the valve before the 1600
-     * psig lock. Every other initial condition boots with the valve OPEN (`pwr2_eccs` default),
-     * so on a cooldown the accumulators have been armed since t=0 and shutting them is the
-     * procedure, not a missed step. `_accEverOpened` says which case this is in one bit, and it
-     * cannot be spoofed by a pressure excursion. `run_checklist_pwr2` 2i/2j pin the heatup half. */
+     * THE DISCRIMINATOR IS WHETHER THE TANKS HAVE BEEN ARMED **ON THIS ASCENT**. The window is a
+     * trap only for a player who has not yet opened the valve on the way up — the heatup, which
+     * boots `cold_shutdown` (and `hot_shutdown`; both are `ic.cold`) with
+     * `ec.acc.valve_open = false` and must open it before the 1600 psig lock. The four at-power
+     * initial conditions boot with the valve OPEN (`pwr2_eccs` default), so on a cooldown the
+     * tanks were armed at t=0 and shutting them is the procedure, not a missed step.
+     *
+     * ⚠ "EVER OPENED THIS RUN" WAS TOO COARSE AND THE QUALITY PASS CAUGHT IT. Measured: on
+     * `cold_shutdown` at 363 psia, `open_accumulator_valve` then `close_accumulator_valve` — two
+     * presses the board permits — set the bit permanently, and the heatup then ran the rest of
+     * the session with the trap silently disarmed. So the bit is RE-DERIVED: shut, and below the
+     * cover gas, means the tanks are not armed and the next climb through the window is a fresh
+     * trap. `accWinLo` is the same constant the window itself uses.
+     *
+     * THIS DELIBERATELY LETS THE HOLD FIRE AGAIN ON A PLANT THAT REPRESSURIZES THROUGH THE
+     * WINDOW WITH THE TANKS SHUT — the #729 symptom. That is now acceptable and was not before,
+     * because #729's real defect was that the window had NO ESCAPE: heaters off, Pressure SP
+     * floored, spray shut by the checklist itself. The cooldown keeps its spray now, so a player
+     * who ends up here can bring pressure down and clear the hold. A trap with an exit is a
+     * lesson; the one without an exit was the blocker. `run_checklist_pwr2` 2i/2j pin the heatup
+     * half. */
     var accWinLo = EC.ACC.p0_mpa;                                  // EC = RD.eccs, this file's alias
     var accWinHi = (EC.ACC.admin_lock_psig + 14.7) / 145.0377;
     var accP = ts.pressure_mpa;
     var accShut = ts.accumulator_valve_open !== true;
     if (!accShut) eng._accEverOpened = true;
+    else if (accP < accWinLo) eng._accEverOpened = false;   /* shut and cold — not armed for the next climb */
     var accInWin = accP >= accWinLo && accP <= accWinHi;
     var accRising = eng._prevAccP != null && accP > eng._prevAccP;
     eng._prevAccP = accP;

@@ -3992,8 +3992,10 @@
     /* …and the DELIVERED flow, which the cooldown grades (#729). The two above read the AUTO
      * lamp; this reads what the valve is actually passing, which is what `pwr_cooldown` needs
      * — it puts the spray in MANUAL at 50 %, so no AUTO lamp is lit and there is nothing for
-     * `spray_auto` to say. Named for the board's own tile (PZR SPRAY FLOW, `ui/app.js:762`). */
-    spray_flow_pct:         { label: 'PZR SPRAY FLOW', u: '%' },
+     * `spray_auto` to say. Labelled with the BOARD's caption (PZR SPRAY, item imsgt6tl11c in
+     * `pwr_board_data.js`) — `ui/app.js:762` is the Indications tab's row, a different surface,
+     * and citing it is how the wrong string got here in the first place. */
+    spray_flow_pct:         { label: 'PZR SPRAY', u: '%' },
     letdown_flow_actual:    { label: 'LETDOWN', u: 'gpm', scale: 450000 },
     sr_energized:           { bool: 'SOURCE RANGE is switched on' },
     sg_safety_open:         { bool: 'an SG code safety is open' },

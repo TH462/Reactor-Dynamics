@@ -264,11 +264,14 @@
       'nothing like enough for power operation.', CI, '4.1'),
     imsgt6qmdgx: e('Pressurizer Spray Flow',
       'Spray water actually reaching the pressurizer, as a percentage of maximum spray flow.',
-      'Different from the spray valve demand in the box above it, and the difference is the lesson. ' +
-      'Spray is taken off the cold leg downstream of a Reactor Coolant Pump (RCP), so the pumps are ' +
-      'what push it: with them stopped the valve can be wide open and almost nothing flows. It also ' +
-      'tapers off as pressure approaches saturation at the core-exit temperature, because below that ' +
-      'the core exit flashes and boiling, not spray, sets pressure.', CI, '4.4'),
+      'Different from the spray valve demand in the box above it. Spray is taken off the cold leg ' +
+      'downstream of a Reactor Coolant Pump (RCP), so on a real plant the pumps are what push it and ' +
+      'stopping them takes the spray away. THIS SIMULATOR KEEPS IT WORKING with the pumps stopped, ' +
+      'standing in for the auxiliary spray line it has no separate control for (a declared departure, ' +
+      'Manuals 03 §7.2) — which is why the cooldown can still bring pressure down after the pumps are ' +
+      'secured, and why the walkthrough tells you to leave it running until the plant is cold. Flow ' +
+      'also tapers off as pressure approaches saturation at the core-exit temperature, because below ' +
+      'that the core exit flashes and boiling, not spray, sets pressure.', CI, '4.4'),
     bdOneOverM: e('1/M PLOT',
       'Opens the inverse-count-rate plot — the standard approach-to-criticality tool.',
       'Plot the inverse of source-range count rate against rod position: as the core approaches ' +
@@ -321,9 +324,12 @@
     imro8ymb0jw: e('Pressurizer Spray',
       'Cold-leg water sprayed into the steam space — the way you LOWER primary pressure.',
       'AUTO sprays when pressure is above the setpoint band; MANUAL opens the valve to the percentage ' +
-      'you set; OFF shuts it. Spray needs Reactor Coolant Pump (RCP) flow to work — the driving head comes from the pump, so ' +
-      'with the pumps stopped the spray does nothing. A spray valve stuck open depressurizes ' +
-      'continuously.', CI, '5.3'),
+      'you set; OFF shuts it. On a real plant the driving head comes from a Reactor Coolant Pump (RCP), ' +
+      'so stopping the pumps takes the spray away. THIS SIMULATOR KEEPS IT WORKING with the pumps ' +
+      'stopped, standing in for the auxiliary spray line it has no separate control for (a declared ' +
+      'departure, Manuals 03 §7.2) — so after the pumps are secured on a cooldown this box is still ' +
+      'your pressure control, and the only one: the heaters are off and the SET PZR PRESSURE box stops ' +
+      'reaching at 1700 psi. A spray valve stuck open depressurizes continuously.', CI, '5.3'),
     imro8zestdm: e('AUTO (spray)',
       'Spray follows the pressure controller — opens above the setpoint band.',
       'The normal lineup at power, and the half of pressure control that fights a pressure rise. ' +
@@ -339,8 +345,10 @@
       'pressure is falling with no obvious leak.', CI, '5.3'),
     imro929i738: e('Spray valve %',
       'Spray valve position demand, 0–100 %. Typing here takes spray to MANUAL.',
-      'Spray flow is proportional to this only while the Reactor Coolant Pumps (RCPs) are running. With no forced flow the ' +
-      'valve opens and nothing happens — a genuine trap on a natural-circulation plant.', CI, '5.3'),
+      'On a real plant spray flow is proportional to this only while the Reactor Coolant Pumps (RCPs) ' +
+      'are running, and with no forced flow the valve opens and nothing happens — a genuine trap. THIS ' +
+      'SIMULATOR DOES NOT ENFORCE THAT GATE: the spray keeps working with the pumps stopped, standing ' +
+      'in for the auxiliary spray line (a declared departure, Manuals 03 §7.2).', CI, '5.3'),
 
     pressurizer: e('Pressurizer',
       'The steam bubble that sets primary pressure. Water below, steam above, heaters and spray inside.',
