@@ -691,12 +691,29 @@
             if (ch.nodeType === 3 && /\S/.test(ch.nodeValue)) return true;
           return false;
         }
+        /* `.bd-badge` JOINS `.bd-halo` IN THE SKIP LIST (#727; owner #724 item 12, verbatim:
+         * "the glow around TRIP BLOCKS is not correctly around the button").
+         *
+         * THIS IS A CHANGE OF CLAIM, NOT A SILENCED CHECK, and it is worth being explicit
+         * because the two look identical from the diff. #684's claim was "the ring covers every
+         * bit of ink the tile puts on the board", and by that claim the count badge belongs
+         * inside the ring — it is ink, it is inside the tile, it overhangs. The claim is now
+         * narrower and truer: the ring covers the CONTROL, and a badge pinned to a control's
+         * corner (`position:absolute; top:-6px; right:-6px`) is chrome ABOUT the control, not
+         * part of it. MEASURED on TRIP BLOCKS with two trips blocked: button 64.62x24.23, halo
+         * 68.66x28.27 — 4.04 px proud at the top and 4.04 px proud at the right and flush on the
+         * other two sides, which is what reads as a ring that is not around the button.
+         *
+         * THE NARROWING IS NOT FREE, so it is pinned from the other side: the check immediately
+         * below asserts that a badge's overhang is actually LEFT OUT of the halo. Without that,
+         * this skip would also make the check green on a renderer that had stopped drawing halos
+         * altogether for badged tiles. */
         function artBox(tile) {
           var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
           var kids = tile.querySelectorAll('*');
           for (var i = 0; i < kids.length; i++) {
             var k = kids[i];
-            if (k.classList && k.classList.contains('bd-halo')) continue;
+            if (k.classList && (k.classList.contains('bd-halo') || k.classList.contains('bd-badge'))) continue;
             var r = k.getBoundingClientRect();
             if ((!r.width && !r.height) || !paints(k, tile)) continue;
             if (r.left < x0) x0 = r.left;
@@ -737,6 +754,44 @@
           '  worst ' + worst.toFixed(2) + ' px on ' + (worstId || '(none)'));
         ck('halo: no tile’s glow box is SMALLER than its authored tile box',
           shrunk.length === 0, shrunk.length + ' shrunk: ' + shrunk.slice(0, 8).join(' '));
+
+        /* THE OTHER SIDE OF THE BADGE EXCLUSION (#727). artBox above stops COUNTING badges; this
+         * asserts the renderer stops COVERING them — the positive claim, so that removing the
+         * skip in pwr_board.js reddens something instead of quietly re-inflating every badged
+         * ring back to where #724 item 12 found it.
+         *
+         * It measures the badge's own overhang past the tile and requires the halo not to reach
+         * it. Tiles whose badge sits INSIDE the tile box are skipped: there is nothing to cover,
+         * so they would pass on a fully broken renderer and are not evidence.
+         *
+         * A POPULATION FLOOR, because the badge is conditional. `.bd-badge` exists only while
+         * the control has something to count — TRIP BLOCKS carries one whenever a trip is
+         * blocked, which is true of this harness's initial condition. If the IC ever stops
+         * blocking a trip at boot this check would sweep ZERO tiles and pass on nothing, which
+         * is the hollow-check class. The floor makes that a red. */
+        var badged = 0, covered = [];
+        for (var bi = 0; bi < tilesEls.length; bi++) {
+          var btile = tilesEls[bi], bid = btile.getAttribute('data-item');
+          var badge = btile.querySelector('.bd-badge');
+          if (!badge) continue;
+          var br = badge.getBoundingClientRect();
+          if (!br.width || !br.height || !paints(badge, btile)) continue;
+          var btr = btile.getBoundingClientRect();
+          var out = Math.max(btr.left - br.left, btr.top - br.top,
+                             br.right - btr.right, br.bottom - btr.bottom);
+          if (out <= TOL) continue;                 // nothing hanging out — proves nothing
+          var bh = RD.PwrBoard.haloElement(bid);
+          if (!bh) continue;
+          badged++;
+          var bg = bh.getBoundingClientRect();
+          var reach = Math.max(btr.left - bg.left, btr.top - bg.top,
+                               bg.right - btr.right, bg.bottom - btr.bottom);
+          if (reach > TOL) covered.push(bid + '(' + reach.toFixed(1) + 'px)');
+        }
+        ck('halo: at least one tile carries a corner badge that hangs outside it (the check below has something to check)',
+          badged >= 1, badged + ' badged tiles with an overhanging badge');
+        ck('halo: a corner COUNT BADGE never inflates the glow box (#727 — the ring is on the control, not its chrome)',
+          covered.length === 0, covered.length + ' inflated: ' + covered.slice(0, 8).join(' '));
 
         /* The two the owner and the measurement named, pinned by NUMBER so a regression
          * says which one moved. Pre-fix: the PORV ring was 28.3 px wide against 63.5 px of

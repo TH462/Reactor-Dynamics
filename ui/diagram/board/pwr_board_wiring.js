@@ -3106,10 +3106,32 @@
     if (!stage) return;
     pop = document.createElement('div');
     pop.className = 'bd-pop bd-mono';
-    // position just above the button within the stage (canvas coords)
+    /* IT OPENS DOWNWARD, OVER THE BORON CARD AND THE VESSEL — NOT UPWARD OVER THE NUCLEAR
+     * INSTRUMENTATION *(OWNER, #724 item 14, verbatim: "THe trip block card blocks vital
+     * instruments, it should pop up lower and block the boron card and reactor diagram. these
+     * are not as critical as the NIS.")*. #728.
+     *
+     * WHAT IT USED TO COVER, MEASURED, not argued (inbox/724/measure.js, 1500x950, panel open):
+     * 21 board items, led by the NUC INSTR (NIS) card (19,136 px^2 of overlap), the ROD CONTROL
+     * card (13,509), the SCRAM button (5,139), and the SOURCE RANGE / INTER RANGE / STARTUP RATE
+     * / delta TEMP AVG captions (1,357 / 1,402 / 1,358 / 1,284). On the approach to criticality —
+     * the one leg where this panel is opened twice — it hid both count channels and the scram.
+     *
+     * ANCHORED BY ITS TOP EDGE, DELIBERATELY. The panel's height is content-driven (four rows of
+     * text, and `.sub` wraps), so it is a font-metric measurement and it is LARGER under CI's
+     * DejaVu than under Segoe UI. Anchoring the top means every extra line grows the panel
+     * DOWNWARD, away from the NIS card — the clearance above cannot be eaten by a font. Anchoring
+     * the bottom, or centring it, would make that clearance depend on the font stack, which is
+     * the #713 pass-3 trap.
+     *
+     * The left edge is the BORON card's own (canvas 330), so the card it is meant to cover is
+     * covered squarely rather than by 15 px less than all of it. */
     var item = null;
     (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) { if (it.id === 'imrsk4xz2dm') item = it; });
-    if (item) { pop.style.left = (item.left - 90) + 'px'; pop.style.top = (item.top - 250) + 'px'; }
+    if (item) {
+      pop.style.left = (item.left - 105) + 'px';
+      pop.style.top = (item.top + (item.height || 30) + 8) + 'px';
+    }
     pop.appendChild(mk('h4', null, 'TRIP BLOCKS'));
     var snap = RD.PwrBoard.lastSnapshot ? RD.PwrBoard.lastSnapshot() : null;
     var rowsAtOpen = {};
@@ -3380,10 +3402,44 @@
       };
     });
   }
+  /* WHICH ROWS THE ACTIVE WALKTHROUGH STEP IS ASKING FOR, and what it wants them set TO
+   * *(OWNER, #724 item 12: "When trip blocks is opened, it should highlight the buttons needed
+   * to press in this menu (this should be changed for any time we toggle trip blocks)")*. #727.
+   *
+   * THE STEP ALREADY SAYS WHICH ROW — NOTHING NEW IS AUTHORED. Every trip-block step in the pool
+   * carries `cmd: { action: 'set_trip_block', trip_id: '<id>', blocked: <bool> }`, and its `hl`
+   * list says only 'Trip Blocks', which is why the button glowed and nothing inside the panel
+   * did. Reading the step's own `cmd` is what makes this general, in the owner's words, to "any
+   * time we toggle trip blocks": a step added tomorrow highlights its row with no new wiring,
+   * and an UNBLOCK step highlights correctly too because the desired state comes from the same
+   * command rather than being assumed to be `true`.
+   *
+   * RESOLVED FROM THE SNAPSHOT, NOT PUSHED FROM ui/app.js. `s.instructor.checklist` carries
+   * `procedure_id` and `step_index`, and the pool is a global — so the whole feature lives in
+   * the file that owns the panel, with no new cross-layer call to keep in step. It also means it
+   * follows the active step live, because `afterRender` already calls refreshTripBlocks every
+   * broadcast.
+   *
+   * HR5 is untouched: this reads state and adds a class. It issues no command and grades
+   * nothing — the trip-block ACCEPTANCE is #724 item 13 and belongs to another lane. */
+  function stepTripWants(s) {
+    var want = {};
+    var cs = s && s.instructor && s.instructor.checklist;
+    if (!cs || cs.complete || typeof cs.step_index !== 'number') return want;
+    var pool = (RD.MANUAL_PROCEDURES || {})[(s.metadata && s.metadata.plant_id) || ''] || [];
+    var proc = null;
+    for (var i = 0; i < pool.length; i++) if (pool[i].id === cs.procedure_id) proc = pool[i];
+    var st = proc && proc.steps && proc.steps[cs.step_index];
+    var c = st && st.cmd;
+    if (c && c.action === 'set_trip_block' && c.trip_id) want[c.trip_id] = c.blocked !== false;
+    return want;
+  }
+
   function refreshTripBlocks(s) {
     if (!pop || !s) return;
     var rows = tripBlockRows(s), byId = {};
     rows.forEach(function (r) { byId[r.id] = r; });
+    var want = stepTripWants(s);
     var btns = pop.querySelectorAll('button[data-trip]');
     for (var i = 0; i < btns.length; i++) {
       var r = byId[btns[i].getAttribute('data-trip')];
@@ -3393,6 +3449,22 @@
       btns[i].className = armed ? 'bd-blocked bd-confirm'
                         : (r.will_trip ? 'bd-blocked bd-willtrip' : (r.blocked ? 'bd-blocked' : ''));
       btns[i].disabled = r.disabled;
+      /* THE ROW GLOWS WHILE THE STEP'S ASK IS OUTSTANDING (#727). `.ckl-step-glow` is the SAME
+       * class the active step's board targets already pulse with — one copy of the glow, one
+       * meaning ("the step you are on wants this"), and nothing new for run_glow_stacking's two
+       * lists to disagree about.
+       *
+       * IT STOPS WHEN THE ASK IS SATISFIED, not when the panel closes: `r.blocked` is the live
+       * state, so the pulse dies the instant the operator's press lands and the panel stops
+       * pointing at work already done. A DISABLED row never pulses — the plant is refusing the
+       * press (wrong permissive), the `.sub` line says why, and a glow around a button that
+       * cannot be pressed is the dead-button trap this panel already refuses elsewhere. */
+      var rowEl = btns[i].parentNode;
+      if (rowEl && rowEl.classList) {
+        var wants = Object.prototype.hasOwnProperty.call(want, r.id);
+        rowEl.classList.toggle('ckl-step-glow',
+          wants && !r.disabled && r.blocked !== want[r.id]);
+      }
       /* A row this plant does not carry goes DARK AND SAYS SO — an inert button with no reason
        * is the dead-button class wearing a different coat, and the operator should not have to
        * press it to find out (the same argument as the SCRAM reset caption). */

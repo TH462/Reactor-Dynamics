@@ -1079,7 +1079,30 @@
       var kids = el.querySelectorAll('*');
       for (var i = 0; i < kids.length; i++) {
         var k = kids[i];
-        if (k.classList && k.classList.contains('bd-halo')) continue;
+        /* CHROME THE BOARD DELIBERATELY HANGS OUTSIDE A CONTROL IS NOT THAT CONTROL'S ART
+         * (#727; owner #724 item 12, verbatim: "the glow around TRIP BLOCKS is not correctly
+         * around the button").
+         *
+         * `.bd-halo` was skipped from the start for the obvious reason — the ring cannot size
+         * itself off itself. `.bd-badge` is the same category and was not: it is the count
+         * badge, `position:absolute; top:-6px; right:-6px`, pinned OUTSIDE the button on
+         * purpose, and it paints ink, so #684's union pulled the ring out to cover it.
+         *
+         * MEASURED on TRIP BLOCKS with two trips blocked (inbox/724/probe_halo.js, 1500x950):
+         * button 116.36,302.98 64.62x24.23 · halo 116.36,298.94 68.66x28.27 — 4.04 px proud at
+         * the TOP and 4.04 px proud at the RIGHT, flush at the left and bottom. An asymmetric
+         * ring, and asymmetric is what reads as "not around the button": a ring 4 px larger on
+         * all four sides would have looked deliberate.
+         *
+         * IT ALSO CAME AND WENT WITH THE PLANT, which is why no gate saw it. The badge only
+         * exists while trips are blocked, and the halo box is measured ONCE at mount — so the
+         * ring's size depended on how many trips happened to be blocked at mount time.
+         *
+         * Scoped to `.bd-badge` alone, not to "absolutely positioned children": the PORV's art,
+         * the pressurizer vessel and the eighteen other overhangs #684 exists for are ordinary
+         * art that the tile box simply fails to contain, and excluding them by position would
+         * put all twenty defects back. */
+        if (k.classList && (k.classList.contains('bd-halo') || k.classList.contains('bd-badge'))) continue;
         var kr = k.getBoundingClientRect();
         if (!kr.width && !kr.height) continue;
         var ol = tr.left - kr.left, ot = tr.top - kr.top,

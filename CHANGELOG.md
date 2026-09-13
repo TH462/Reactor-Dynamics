@@ -30,6 +30,76 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (the 1/M startup plot moves to the foot of the right-hand column — #713 / #724 item 7)
+
+*(OWNER, #724 item 7: "The 1/m plot is too small where it is next to the alarm panel. lets put it
+below the right hand column in the corner… We can put the plot buttons above the plot. make the
+predicted criticality text large enough to read and obvious.")*
+
+The plot leaves `.bottom-row`, which ends the three-way width argument #713 passes 1–3 were having
+(300 → 380 → 420 → 370 px, with pass 3 handing 50 px back because the alarm panel's two-column
+content floor is 412 px under CI's DejaVu Sans against 377.7 px under Windows' Segoe UI). The strip
+chart and the alarm panel take the whole row back. Buttons are a row **above** the plot, per the
+owner, superseding #713's side-mounted column. Plotted-data rectangle, measured by the gate's own
+probe at its own 1500×950 viewport: **243 → 314 × 192 px**, letterbox waste **0.0 × 0.2 px**.
+Prediction readout **11 px/400 `--text-2` → 15 px/600 `--caution`** — the hue the plot already draws
+its critical marker in — on its own row, wrapping rather than overflowing (#712's class).
+
+**Two ways the plot was losing width silently, both fixed.** (1) The readout was written *after* the
+geometry was measured, so the empty-readout cell was what the viewBox was computed for and
+`preserveAspectRatio` letterboxed the difference off the width — measured, viewBox 403×240 into a
+354 px cell, plot rect 272.62×160.23; with the write first, 315.54×160.16. (2) The readout's height
+moves on its own when the string wraps, and a `resize` listener cannot see that because the window
+has not resized — measured, svg box 354×171 against a viewBox of 390×240, **77 px of dead width**.
+A `ResizeObserver` on the readout and message rows now re-fits the plot, and only when the measured
+aspect actually moves.
+
+**Below 1201 px the plot stays a floating window.** Measured at 1100×900: the stacked simulator
+column is a 260 px track carrying the 159 px time controls plus the walkthrough card, and a 200 px
+dock left that card measuring **2 px**. That exposed a latent defect in the floating window's own
+position (`right: 340px; width: 356px`, measured from a 1500 px control room) which put its left
+edge at **−296 px** at a 400 px viewport; it is left-anchored and width-clamped now.
+
+### Fixed (the TRIP BLOCKS glow was 4 px off the button, and the popover covered the instruments — #727 / #728, #724 items 12 and 14)
+
+The step highlight on TRIP BLOCKS measured **4.04 px proud at the top and 4.04 px proud at the
+right, flush at the left and bottom** — asymmetric, which is what reads as a ring that is not around
+the button. The cause is the **count badge**: `position:absolute; top:-6px; right:-6px`, deliberately
+hung outside the control and painting ink, so #684's union of tile box and visible art pulled the
+ring out to cover it. Because the badge exists only while trips are blocked, the ring's size
+depended on how many trips happened to be blocked when the board mounted. Corner badge chrome is now
+excluded from the halo box — in the renderer **and** in `board_check`'s independently-computed art
+box, which is what caught it. `verify_board_check` **256 → 258**: the extra two pin the narrowing
+from the other side (the badge's overhang must actually be left out, and the check must have a
+badged tile to look at), both proven red by injection.
+
+The TRIP BLOCKS popover opened **upward over the nuclear instrumentation**. Measured: 21 board items
+covered, led by the NUC INSTR (NIS) card at 19,136 px², ROD CONTROL at 13,509, the SCRAM button at
+5,139, and the SOURCE RANGE / INTER RANGE captions — on the one leg where the panel is opened twice.
+It now opens downward over the BORON card and the reactor vessel *(OWNER: "these are not as critical
+as the NIS")*: **zero** overlap with the NIS card, its captions and the SCRAM button at 1500×950,
+1280×800 and 1920×1080. Anchored by its top edge on purpose, so a wider font stack grows the panel
+away from the instruments rather than into them.
+
+**And the rows a step asks for now glow inside the panel** *(OWNER: "this should be changed for any
+time we toggle trip blocks")*. Each trip-block step already names its row in its own
+`set_trip_block` command, so no step needed re-authoring and a step added later highlights its row
+with no new wiring — including an *unblock* step, because the target state comes from the same
+command. The pulse stops the moment the press lands, and a row the plant is refusing never pulses.
+
+### Fixed (walkthrough step text could not be selected or copied — #726 / #724 item 9)
+
+*(OWNER: "the walkthrough text has the mouse pointer finger and i cant select the text to copy it.")*
+
+Two defects, and `user-select` was not one of them — it measured `auto` throughout. The step card
+carries `cursor: pointer` whenever it names a highlight target, which is most steps, so the pointer
+finger was drawn over every word; body text now takes a text cursor while the buttons and the row's
+own hit area keep theirs. The blocker itself was the **click-to-expand handler**: a drag-select ends
+in a click on the card, which toggled the why-fold and re-rendered, replacing the very nodes the
+selection pointed at. Measured with a real mouse drag: **44 characters selected during the drag,
+zero after mouseup** — now 44 and 44. A drag is no longer treated as a click; a plain click still
+expands.
+
 ### Fixed (a walkthrough done-when graded a quantity with no board tile — #718)
 
 `pwr_heatup` step 16 ("verify the reactor stayed shut down") grades `reactivity_pcm < -300`, and

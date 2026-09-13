@@ -139,11 +139,22 @@
       var foot = win.querySelector('.oom-foot');
       var head = win.querySelector('.oom-head');
       var msg = win.querySelector('.oom-msg');
+      var pred = win.querySelector('.oom-pred');
       var help = win.querySelector('.oom-help');
-      function boxW(el) { return el && isFinite(el.offsetWidth) ? el.offsetWidth : 0; }
       function boxH(el) { return el && isFinite(el.offsetHeight) ? el.offsetHeight : 0; }
-      var cw = (isFinite(win.clientWidth) ? win.clientWidth : 0) - boxW(foot);
-      var ch = (isFinite(win.clientHeight) ? win.clientHeight : 0) - boxH(head) - boxH(msg) -
+      /* EVERY SIBLING IS NOW A ROW (#713 / #724 item 7). In the bottom-row dock the button bar
+       * was a side COLUMN, so its width came off `cw` and its height off nothing. In the right
+       * column the buttons sit ABOVE the plot (the owner's layout), so the bar costs HEIGHT and
+       * costs no width at all, and the prediction readout is a row of its own besides.
+       *
+       * Get this wrong in the obvious direction — leave the foot subtracted from the width —
+       * and nothing throws and nothing looks broken: the viewBox simply comes out ~94 units
+       * narrower than the cell, "meet" letterboxes the difference, and the plot quietly gives
+       * back a quarter of the width this move was made to win. That is the same silent failure
+       * the header's letterbox note is about, arriving through the other axis. */
+      var cw = (isFinite(win.clientWidth) ? win.clientWidth : 0);
+      var ch = (isFinite(win.clientHeight) ? win.clientHeight : 0) -
+        boxH(head) - boxH(foot) - boxH(pred) - boxH(msg) -
         (help && !help.hidden ? boxH(help) : 0);
       if (cw > 0 && ch > 0) {
         var ar = Math.max(AR_MIN, Math.min(AR_MAX, cw / Math.max(60, ch)));
@@ -156,6 +167,47 @@
     if (svg && svg.getAttribute('viewBox') !== '0 0 ' + W + ' ' + H) {
       svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
     }
+  }
+
+  /* WHERE THE WINDOW LIVES — resolved on every open AND on every resize, not once (#713 /
+   * #724 item 7).
+   *
+   * DOCKED at the foot of the right-hand column on the wide PWR control-room layout, and
+   * FLOATING everywhere else. "Everywhere else" now includes the STACKED layout below 1201 px,
+   * and that is a measurement, not a preference: at 1100x900 the stacked simulator column is a
+   * 260 px grid track holding the 159 px time controls plus #toolsCard, so a 200 px dock left
+   * #toolsCard measuring **2 px** — the walkthrough card, reduced to a hairline, by a panel the
+   * player opened to help them work that walkthrough. The floating window costs the column
+   * nothing and the player can drag it clear of whatever it covers.
+   *
+   * 1201 px is the shell's own stacking breakpoint (`@media (max-width: 1200px)` in shell.css);
+   * duplicating the number is deliberate — CSS cannot move a node between parents and JS cannot
+   * read a media query it was not told about, so the two halves of one layout decision have to
+   * name the same boundary. Change one, change the other.
+   *
+   * EVERY DOM AND WINDOW READ IS OPTIONAL, for the same reason syncViewBox's are: run_oneoverm
+   * drives this module through a hand-rolled shim with no matchMedia, no `contains` on
+   * classList and a `document.querySelector` that returns null. No matchMedia means no dock,
+   * which is the floating window the shim already expects. */
+  var DOCK_MIN_W = 1201;      // keep in step with shell.css's @media (max-width: 1200px)
+  function dockTarget() {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return null;
+    if (!window.matchMedia('(min-width: ' + DOCK_MIN_W + 'px)').matches) return null;
+    return document.querySelector('.app.pwr-synoptic > .right-col');
+  }
+  function placeWindow() {
+    if (!win) return;
+    var col = dockTarget();
+    var host = col || (document.body || null);
+    if (host && win.parentNode !== host) host.appendChild(win);
+    if (win.classList && typeof win.classList.add === 'function') {
+      if (col) win.classList.add('oom-docked'); else win.classList.remove('oom-docked');
+    }
+    /* Undocking has to clear the inline left/top a drag left behind, or the floating window
+     * comes back pinned wherever it was last dragged — which after a dock/undock cycle is
+     * wherever the DOCK happened to sit, i.e. off in a corner with no memory of being put
+     * there. Docked, the inline values are inert (`position: static`). */
+    if (!col && win.style) { win.style.left = ''; win.style.top = ''; win.style.right = ''; win.style.bottom = ''; }
   }
 
   function controlGroup(s) {
@@ -209,6 +261,37 @@
   // ------------------------------------------------------------------ render
   function render() {
     if (!svg) return;
+
+    /* THE READOUT IS WRITTEN BEFORE THE GEOMETRY IS MEASURED (#713 / #724 item 7).
+     *
+     * It used to be the LAST thing render() did, after `svg.innerHTML = h`. That was harmless
+     * while the readout shared a row with the buttons; it is not harmless now that it owns a
+     * grid row of its own that is `auto`-height and `display:none` while empty. The order was:
+     * measure the cell (readout empty, so the svg row is ~29 px TALLER than it is about to be)
+     * -> compute W from that cell -> draw -> write the readout -> the row appears, the svg row
+     * shrinks, and `preserveAspectRatio` letterboxes the difference off the WIDTH. Nothing
+     * throws; the plot is simply narrower than its cell for ever after.
+     *
+     * MEASURED at 1500x950 with the write last: viewBox 403x240 into a 354 px-wide cell, plot
+     * rect 272.62x160.23. With the write first: 315.54x160.16 — 43 px of width the old order
+     * threw away, on the axis this whole relocation was made to win.
+     *
+     * The fit is pure arithmetic on `points` and owes the layout nothing, so there is no
+     * circularity in computing it first — which is exactly why it can be hoisted and the cell
+     * measurement cannot. */
+    var f = fit(), pred = null, xc = null;
+    if (f && f.b < -1e-6) {
+      xc = -f.a / f.b;
+      if (xc > points[points.length - 1].x - 1e-9 && xc <= 1.2) pred = xc;
+    }
+    var predEl = win && win.querySelector ? win.querySelector('#oomPred') : null;
+    if (predEl) {
+      predEl.textContent = pred != null
+        ? 'predicted criticality ≈ step ' + Math.round(pred * maxSteps) +
+          ' (' + (pred * 100).toFixed(1) + '% withdrawn)'
+        : (points.length >= 2 ? 'insufficient trend — keep plotting' : '');
+    }
+
     syncViewBox();          // W may move with the docked cell's aspect — do it before px()
     var h = '';
     // frame + gridlines
@@ -228,18 +311,13 @@
     h += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 3) + '" class="oom-lab" text-anchor="middle">rod position (steps withdrawn)</text>';
     h += '<text x="10" y="' + ((T + H - B) / 2) + '" class="oom-lab" text-anchor="middle" transform="rotate(-90 10 ' + ((T + H - B) / 2) + ')">1/M  (C₀/C)</text>';
 
-    // fit line, extrapolated to y=0
-    var f = fit(), pred = null;
+    // fit line, extrapolated to y=0 (`f`/`xc`/`pred` computed above, before the measurement)
     if (f && f.b < -1e-6) {
-      var xc = -f.a / f.b;
       var xEnd = Math.min(Math.max(xc, points[points.length - 1].x), 1.0);
       h += '<line x1="' + px(f.x0) + '" y1="' + py(f.a + f.b * f.x0) + '" x2="' + px(xEnd) + '" y2="' + py(f.a + f.b * xEnd) + '" class="oom-fit"/>';
-      if (xc > points[points.length - 1].x - 1e-9 && xc <= 1.2) {
-        pred = xc;
-        if (xc <= 1.0) {
-          h += '<line x1="' + px(xc) + '" y1="' + T + '" x2="' + px(xc) + '" y2="' + (H - B) + '" class="oom-crit"/>';
-          h += '<text x="' + px(Math.min(xc, 0.88)) + '" y="' + (T + 10) + '" class="oom-critlab" text-anchor="middle">critical ' + Math.round(xc * maxSteps) + '</text>';
-        }
+      if (pred != null && xc <= 1.0) {
+        h += '<line x1="' + px(xc) + '" y1="' + T + '" x2="' + px(xc) + '" y2="' + (H - B) + '" class="oom-crit"/>';
+        h += '<text x="' + px(Math.min(xc, 0.88)) + '" y="' + (T + 10) + '" class="oom-critlab" text-anchor="middle">critical ' + Math.round(xc * maxSteps) + '</text>';
       }
     }
     // points (baseline square, later captures circles)
@@ -249,17 +327,6 @@
         : '<circle cx="' + px(p.x) + '" cy="' + py(p.y) + '" r="3.2" class="oom-pt"/>';
     });
     svg.innerHTML = h;
-
-    // prediction readout
-    var predEl = win.querySelector('#oomPred');
-    if (predEl) {
-      if (pred != null) {
-        var steps = Math.round(pred * maxSteps);
-        predEl.textContent = 'predicted criticality ≈ step ' + steps + ' (' + (pred * 100).toFixed(1) + '% withdrawn)';
-      } else {
-        predEl.textContent = points.length >= 2 ? 'insufficient trend — keep plotting' : '';
-      }
-    }
   }
 
   // ------------------------------------------------------------------ actions
@@ -348,7 +415,7 @@
     win.className = 'oom-win';
     win.hidden = true;
     win.innerHTML =
-      '<div class="oom-head" data-scanner-hint="1/M startup plot, docked beside the alarms. Plot inverse count-rate points against rod position; the line’s zero crossing predicts the critical rod position.">' +
+      '<div class="oom-head" data-scanner-hint="1/M startup plot, docked at the foot of the right-hand column. Plot inverse count-rate points against rod position; the line’s zero crossing predicts the critical rod position.">' +
       '<span>1/M Startup Plot</span><button class="btn oom-x" data-oom="close" title="Close">✕</button></div>' +
       '<svg viewBox="0 0 ' + W + ' ' + H + '" class="oom-svg"></svg>' +
       '<div class="oom-foot">' +
@@ -356,7 +423,19 @@
       '<button class="btn" data-oom="clear" data-scanner-hint="Clear all plotted points (new baseline on the next plot).">Clear</button>' +
       '<button class="btn oom-help-btn" data-oom="help" aria-expanded="false" ' +
         'data-scanner-hint="What 1/M is and how to read this plot.">Help</button>' +
-      '<span class="oom-pred" id="oomPred"></span></div>' +
+      '</div>' +
+      /* THE PREDICTION IS ITS OWN LINE, NOT A TAIL ON THE BUTTON BAR *(OWNER, #724 item 7:
+       * "make the predicted criticality text large enough to read and obvious")*. It was an
+       * 11 px span sharing a row with three buttons, which is both the smallest type in the
+       * panel and the least prominent slot in it — for the one number the whole tool exists to
+       * produce. As a sibling it gets a row of its own in the docked grid and can be sized and
+       * wrapped independently of the bar. #713.
+       *
+       * THE WORDING IS UNCHANGED on purpose: `run_oneoverm.js` asserts
+       * /predicted criticality|insufficient trend/ against this element's textContent, and this
+       * is a move plus a type size, not a rewrite — a reworded readout would have made the gate
+       * agree with whatever I typed instead of with what it was written to check. */
+      '<div class="oom-pred" id="oomPred"></div>' +
       '<div class="oom-msg" id="oomMsg"></div>' + HELP_HTML;
     document.body.appendChild(win);
     svg = win.querySelector('svg');
@@ -372,10 +451,51 @@
      * (it cannot), but so a window that was docked and is no longer gets W_BASE back rather
      * than keeping the last cell's aspect. */
     var rafPending = 0;
+    /* THE READOUT'S HEIGHT IS A SECOND INPUT TO THE PLOT'S BOX, AND IT MOVES ON ITS OWN
+     * (#713 / #724 item 7). The prediction and the message sit in `auto` grid rows above and
+     * below the `1fr` svg row, so every line either of them gains comes straight out of the
+     * plot — and both change length while the panel is open: the readout goes from empty
+     * (`:empty { display:none }`, zero rows) to one line to TWO when the string wraps, which at
+     * 15 px in a 354 px column is what the longest form does, and the message line does the same
+     * on a refusal.
+     *
+     * render() writes the readout BEFORE it measures, so the panel's own path is consistent. An
+     * observer is for the changes render() is not the author of: a wrap that happens because the
+     * step count grew a digit, a font that loads late, and a caller writing the element directly
+     * (verify_e2e_ui does exactly that, to force the longest string render() can emit). MEASURED
+     * with neither guard: svg box 354x171 against a viewBox of 390x240 — 77 px of dead width,
+     * a fifth of the plot, silently.
+     *
+     * A `resize` listener cannot see this: the window has not resized. That is why it is an
+     * observer here and NOT one for the dock itself, where the header's note explains that the
+     * splitter already dispatches `resize`.
+     *
+     * IT CANNOT LOOP. The callback re-renders ONLY when the measured aspect actually moves W,
+     * and a re-render writes the readout the same text it already holds — so the second pass
+     * changes no box and the observer does not fire again. */
+    var roPending = 0;
+    if (typeof ResizeObserver === 'function' && typeof requestAnimationFrame === 'function') {
+      var ro = new ResizeObserver(function () {
+        if (roPending || !win || win.hidden) return;
+        roPending = requestAnimationFrame(function () {
+          roPending = 0;
+          var before = W;
+          syncViewBox();
+          if (W !== before) render();
+        });
+      });
+      [win.querySelector('.oom-pred'), win.querySelector('.oom-msg')].forEach(function (el) {
+        if (el && el.getBoundingClientRect) { try { ro.observe(el); } catch (e) { /* shim */ } }
+      });
+    }
     if (typeof window.addEventListener === 'function' && typeof requestAnimationFrame === 'function') {
       window.addEventListener('resize', function () {
         if (rafPending || !win || win.hidden) return;
-        rafPending = requestAnimationFrame(function () { rafPending = 0; render(); });
+        /* placeWindow() FIRST (#724 item 7): a resize can cross the 1201 px stacking
+         * breakpoint, and the window has to change parent before its new cell is measured —
+         * measuring the old parent and then moving is how it would end up sized for a box it
+         * is no longer in. */
+        rafPending = requestAnimationFrame(function () { rafPending = 0; placeWindow(); render(); });
       });
     }
     win.addEventListener('click', function (e) {
@@ -399,12 +519,25 @@
     init: function (opts) { getSnap = opts.getSnap; sendCmd = opts.cmd || null; if (!win) build(); },
     open: function () {
       if (!win) build();
-      /* DOCKED, NOT FLOATING *(OWNER playtest notes, 2026-09-08, #660 item 13: "1/M plot docked
-       * right of alarm panel shrinking alarm/chart panels")*. On the PWR board the plot joins
-       * the bottom row as its last flex child; the strip chart and the alarm panel (flex 1 1 0)
-       * give up the width. Any other layout keeps the floating window. */
-      var row = document.querySelector('.app.pwr-synoptic .plant-area > .bottom-row');
-      if (row && win.parentNode !== row) { row.appendChild(win); win.classList.add('oom-docked'); }
+      /* DOCKED AT THE FOOT OF THE RIGHT-HAND COLUMN *(OWNER, #724 item 7, verbatim: "The 1/m
+       * plot is too small where it is next to the alarm panel. lets put it below the right hand
+       * column in the corner. I know its far from the rod control buttons but theres not many
+       * good places to put it where it wont obsure other things.")*. #713.
+       *
+       * IT USED TO JOIN THE BOTTOM ROW (#660 item 13), and three passes of #713 went into
+       * widening it there — 300 -> 380 -> 420 -> 370 px — each one taken out of the strip chart
+       * or the alarm panel, and pass 3 had to give 50 px back because the alarm panel's content
+       * floor is 412 px under CI's fonts and only 378 px under Windows'. THE ROW WAS NEVER GOING
+       * TO FIT THREE PANELS; the owner's call ends that argument by moving the plot out of the
+       * row entirely, and the strip chart and alarm panel get the whole row back (see the
+       * flex-grow note in shell.css).
+       *
+       * THE OWNER NAMED THE COST HIMSELF — it is far from the rod buttons. That is the trade,
+       * not an oversight, and it is why this is a layout instruction rather than a proposal.
+       *
+       * Any other layout (RBMK/BWR, the non-synoptic shell) keeps the floating window: the
+       * selector fails, nothing is appended, and `oom-docked` is never added. */
+      placeWindow();
       win.hidden = false;
       render();
     },

@@ -29,6 +29,157 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-12-workbench-l (#724 items 7/8/9/12/14 — the 1/M plot leaves the bottom row, and three things that were invisible because they were conditional)
+
+**The order.** #724 is the owner's RC19 playtest, triaged by the develop lane across three trees;
+this lane took items 7, 8, 9, 12 and 14 — the 1/M startup plot and the board chrome that covers or
+mis-frames things. Filed as #725 (item 8, a ruling), #726 (9), #727 (12), #728 (14); item 7 worked
+on the already-open #713 rather than re-filed.
+
+### Item 8 — the premise was measurable, and it is false. STOPPED, not shipped.
+
+The owner asked for the 1/M best-fit line to use ALL points rather than the trailing three, on the
+premise that "the points were curved but with the current streight line we can use all points".
+The trailing-3 fit was itself an owner ruling, made because the all-points fit overstates margin to
+criticality on a curved source range — so the work order's stop condition was: measure first, and
+if the all-points fit predicts criticality further out anywhere on the authored route, report
+before changing anything.
+
+**It does, everywhere the two differ.** `inbox/724/item8_fit.js` drives the full stack (PWR2,
+`hot_zero_power`, seed 7, 10x) through `pwr_startup`'s own authored bursts — 94 / 63 / 31 / 14 / 9
+steps, each plotted after its authored `hold` — and runs both fits over the same points:
+
+| pt | rod step | SOURCE RANGE | 1/M | trailing-3 | all-points |
+|---|---|---|---|---|---|
+| 1 | 0 | 503.1 cps | 1.0000 | — | — |
+| 2 | 94 | 733.9 | 0.6855 | 298.9 | 298.9 |
+| 3 | 157 | 1,422.6 | 0.3537 | 251.2 | 251.2 |
+| 4 | 188 | 3,435.0 | 0.1465 | 216.1 | **231.9** |
+| 5 | 202 | 8,660.4 | 0.0581 | 210.6 | **224.2** |
+| 6 | 211 | 31,838.2 | 0.0158 | 213.1 | **220.9** |
+
+TRUE critical **step 208** (first tick with `true_state.reactivity_pcm >= 0`, +5.6 pcm, t = 784 s).
+Errors: trailing-3 +8.1 / +2.6 / +5.1 steps at points 4-6; all-points **+23.9 / +16.2 / +12.9**.
+
+**The toe is still flat**, which is the whole mechanism. Per-step slope of 1/M along the route:
+-0.00334 (pt1-2), -0.00527 (2-3), -0.00668 (3-4), -0.00631 (4-5), -0.00470 (5-6). The first segment
+is HALF the slope of the steepest, so a straight line through the lot is dragged outward.
+
+**The owner's own number corroborates the trailing fit** — #724 item 10, his measurement: "the
+position the 1/m plot tells me to (216 steps)". Trailing-3 reads 210.6-216.1 over points 4-6.
+All-points would have said 224-232.
+
+**Lesson worth keeping: a superseding instruction can rest on a premise that is checkable in ten
+minutes.** The instruction was clear and the reasoning behind it was explicit and wrong, and the
+only thing that separated those was running the route. Awaiting the owner's ruling on #725; nothing
+in the fit was touched.
+
+### Item 7 — the move, and two ways the plot was silently losing width
+
+Docked at the foot of `.right-col` instead of joining `.bottom-row`. That ends the argument passes
+1-3 of #713 were having: three passes traded width between the plot, the strip chart and the alarm
+panel (300 -> 380 -> 420 -> 370 px) and pass 3 gave 50 px back because the alarm panel's content
+floor is 412 px on CI's DejaVu against 377.7 px on Windows' Segoe UI. The row was never going to
+fit three panels. `.oom-frame` measured by the gate's own probe at its own 1500x950 viewport:
+**243 -> 314 x 192 px**, letterbox waste **0.0 x 0.2 px**. Prediction readout **11 px/400
+`--text-2` -> 15 px/600 `--caution`**, its own grid row, wrapping rather than overflowing.
+
+**TRAP 1 — the readout was written AFTER the geometry was measured.** Harmless while it shared the
+button row; not harmless once it owns an `auto` grid row that is `display:none` while empty. Order
+was: measure (readout empty, svg row ~29 px taller than it is about to be) -> compute viewBox ->
+draw -> write the readout -> the row appears, the svg row shrinks, `preserveAspectRatio`
+letterboxes the difference off the WIDTH. **MEASURED: viewBox 403x240 into a 354 px cell, plot rect
+272.62x160.23; with the write first, 315.54x160.16 — 43 px thrown away.** Nothing throws, nothing
+looks broken.
+
+**TRAP 2 — the readout's height moves on its own, and a `resize` listener cannot see it.** Empty ->
+one line -> TWO when the string wraps, which at 15 px in a 354 px column is what the longest form
+does. The window has not resized, so the existing handler never fires. `verify_e2e_ui` reproduced
+it exactly by writing the element directly to force the longest string: **svg box 354x171 against a
+viewBox of 390x240 — 77 px of dead width, a fifth of the plot.** Fixed with a ResizeObserver on the
+readout and the message line (the file's header explains why the DOCK itself deliberately has no
+observer — the splitter already dispatches `resize`; this is the case that argument does not
+cover). **The gate was ALSO racing the layout it had just changed** — open, overwrite and measure
+in one synchronous `evaluate()`; split into write -> 250 ms -> measure, claim and thresholds
+unchanged.
+
+**A latent defect became reachable the moment narrow layouts started using the floating window.**
+At 1100x900 the stacked simulator column is a 260 px track carrying the 159 px time controls plus
+`#toolsCard`, and a 200 px dock left **`#toolsCard` measuring 2 px** — the walkthrough card reduced
+to a hairline by the panel opened to help work that walkthrough. So the dock is above 1200 px only.
+But `.oom-win`'s floating position is `right: 340px; width: 356px`, a position measured from a
+1500 px control room: **at a 400 px viewport that puts its left edge at -296 px.** It had never been
+reachable because the OLD dock target (`.bottom-row`) exists at every width, so narrow layouts never
+took the floating branch. **Moving a fallback's trigger can expose a fallback nobody has ever
+rendered.**
+
+### Item 12 — a conditional element made the defect conditional, which is why no gate saw it
+
+The TRIP BLOCKS halo measured **4.04 px proud at the top and 4.04 px proud at the right, flush at
+the left and bottom** — asymmetric, which is what reads as "not around the button"; a ring 4 px
+larger on all four sides would have looked deliberate. The cause is the COUNT BADGE: `.bd-badge`,
+`position:absolute; top:-6px; right:-6px`, 12.12x12.12 px, painting ink, so #684's union of
+tile-box and visible-art pulled the ring out to cover it.
+
+**The badge exists only while trips are blocked, and the halo box is measured ONCE at mount — so
+the ring's size depended on how many trips happened to be blocked at mount time.** Same shape as
+the standing trap about a check that samples the defect: here the DEFECT itself was intermittent
+on a property of the initial condition.
+
+`.bd-badge` joins `.bd-halo` in the skip list — **in both implementations**, because
+`board_check`'s `artBox` computes "visible art" independently of the renderer by design, and
+`verify_board_check` went red on the first attempt and said so. **That red was the gate working:
+the claim changed** (from "the ring covers every bit of ink in the tile" to "the ring covers the
+CONTROL, and corner chrome is not the control"), so both copies of the claim had to move.
+
+**Pinned from both sides, 256 -> 258 checks.** A skip alone would also go green on a renderer that
+stopped haloing badged tiles altogether, so one new check asserts the badge's overhang is actually
+LEFT OUT (red by injection: restoring the skip gives `1 inflated: imrsk4xz2dm(4.7px)`), and the
+other is its POPULATION FLOOR, because a future IC blocking no trip at boot would sweep zero tiles
+and pass on nothing (red by injection: `0 badged tiles`).
+
+**Part 2 — the rows glow.** The step already names its row: every trip-block step carries
+`cmd: {action:'set_trip_block', trip_id, blocked}` while its `hl` says only `'Trip Blocks'`, which
+is exactly why the button glowed and nothing in the panel did. `refreshTripBlocks` reads the active
+step out of the snapshot (`s.instructor.checklist` carries `procedure_id`/`step_index`; the pool is
+a global), so the whole feature lives in the file that owns the panel and follows the active step
+live. **The IC ships with `ir_high` already blocked, so a green result on the shipped state would
+have proved nothing** — the probe clears the block first. Measured at three viewports: the target
+row glows, a satisfied row does not, a disabled row does not, and no checklist means nothing glows.
+
+### Item 14 — the panel was covering the instruments the leg is about
+
+MEASURED before: 21 board items, led by the NUC INSTR (NIS) card at **19,136 px^2** of overlap,
+ROD CONTROL 13,509, the SCRAM button 5,139, and the SOURCE RANGE / INTER RANGE / STARTUP RATE /
+delta TEMP AVG captions at ~1,300-1,400 each. On the approach to criticality — the one leg where
+this panel is opened twice — it hid both count channels and the scram.
+
+Re-anchored downward over the BORON card and the vessel. NIS overlap **0** and SCRAM overlap **0**
+at 1500x950, 1280x800 and 1920x1080; boron+vessel 21,890-54,435 px^2; 0 px off the stage.
+
+**Anchored by its TOP edge on purpose.** The panel's height is content-driven and therefore a
+font-metric measurement — larger under CI's fonts than Windows'. A top anchor makes every extra
+line grow the panel DOWNWARD, away from the NIS card, so the clearance above cannot be eaten by a
+font. A bottom anchor or a centred one would have made that clearance font-dependent, which is the
+#713 pass 3 trap.
+
+### Item 9 — the visible symptom and the cause were in different files
+
+Owner: "the walkthrough text has the mouse pointer finger and i cant select the text to copy it."
+Two defects, and **`user-select` was not one of them** — it measured `auto` on every text block.
+`.ckl-hoverable` puts `cursor: pointer` on the whole card (measured `pointer` on `.ckl-txt`,
+`.ckl-why`, `.ckl-sub`, `.ckl-crit`); and the click-to-expand handler (`ui/app.js`) toggles the
+why-fold on any card click and re-renders, so a drag-select ends in a click that replaces the very
+nodes the selection points at. **MEASURED with a real mouse drag: 44 characters selected during the
+drag, ZERO after mouseup.** After: 44 and 44. **A CSS-only fix would have changed the cursor and
+left the copy still impossible.**
+
+A/B against HEAD confirmed click-to-expand is byte-identical — and incidentally that it produces no
+visible change on EITHER build, because only the active step is drawn and its why block is always
+open. Not chased; noted on #726.
+
+---
+
 ## Session log — 2026-09-12-workbench-k (#713 pass 3 — the alarm panel, and its check, were sized to the wrong platform)
 
 **What broke.** Pass 2 (`-d`, below) took 29.5 px from the alarm panel (421.7 -> 392.23 px) to

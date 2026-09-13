@@ -4261,6 +4261,28 @@ async function testOneOverMDockedGeometry(page) {
   await dismissMission(page);
   await waitBoardLive(page, 20000);
 
+  /* OPEN AND FORCE THE STRING IN ONE PASS, MEASURE IN THE NEXT (#724 item 7).
+   *
+   * This used to open the panel, overwrite the readout and measure the result inside ONE
+   * synchronous evaluate(). That made the check race the layout it had just changed: writing the
+   * longest string grows the readout's row, which takes height out of the plot's row, and the
+   * measurement ran before anything could respond to that. The gate then reported a letterbox
+   * that was the harness's own doing — 77 px of dead width — on a panel that settles correctly
+   * one frame later.
+   *
+   * THE CLAIM AND THE THRESHOLDS BELOW ARE UNCHANGED; only the moment of measurement moved. The
+   * panel's answer to the same problem is a ResizeObserver on the readout (ui/panels/one_over_m.js),
+   * so a wrap the PLAYER causes re-fits the plot — and that observer is precisely what this
+   * evaluate() gave no frame to run. Keep the two calls separate: merging them back re-creates a
+   * red that looks exactly like a real regression. */
+  await page.evaluate(function () {
+    if (!(window.RD && RD.OneOverM)) return;
+    RD.OneOverM.open();
+    var predEl = document.querySelector('#oomPred');
+    if (predEl) predEl.textContent = 'predicted criticality ≈ step 9999 (99.9% withdrawn)';
+  });
+  await page.waitForTimeout(250);
+
   var geo = await page.evaluate(function () {
     function rect(sel) {
       var el = document.querySelector(sel);
@@ -4269,9 +4291,6 @@ async function testOneOverMDockedGeometry(page) {
       return { w: r.width, h: r.height };
     }
     if (!(window.RD && RD.OneOverM)) return { error: 'RD.OneOverM missing' };
-    RD.OneOverM.open();
-    var predEl = document.querySelector('#oomPred');
-    if (predEl) predEl.textContent = 'predicted criticality ≈ step 9999 (99.9% withdrawn)';
     function overflowOf(sel) {
       var el = document.querySelector(sel);
       if (!el) return null;
@@ -4296,7 +4315,7 @@ async function testOneOverMDockedGeometry(page) {
   });
 
   if (geo.error) throw new Error('#713: ' + geo.error);
-  if (!geo.docked) throw new Error('#713: the 1/M panel did not dock into the bottom row');
+  if (!geo.docked) throw new Error('#713: the 1/M panel did not dock into the right-hand column (#724 item 7 moved it there from the bottom row)');
   log.push('oom-svg (docked) box: ' + Math.round(geo.svg.w) + 'x' + Math.round(geo.svg.h));
 
   geo.btnOverflow.forEach(function (b) {

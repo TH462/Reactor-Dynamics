@@ -3897,6 +3897,28 @@
     }
     return $('cklLog');
   }
+  /* IS THERE A LIVE TEXT SELECTION INSIDE `el`? (#726 — see the call site in the checklist click
+   * handler for what this is guarding and the measurement behind it.)
+   *
+   * RANGE CONTAINMENT, NOT `anchorNode` — a drag can end with the anchor outside the element it
+   * started in (the player overshoots the card), and an anchor test would then let the re-render
+   * through on exactly the drags that selected the most text. `commonAncestorContainer` is often
+   * a TEXT node; `Node.contains` accepts one.
+   *
+   * EVERY READ IS OPTIONAL. `getSelection` is absent in a headless DOM shim, and a caller that
+   * throws here would take the whole checklist panel's click handling down; no selection means
+   * the click is a click, which is the pre-#726 behaviour. */
+  function selectionInside(el) {
+    if (!el) return false;
+    var sel;
+    try { sel = window.getSelection && window.getSelection(); } catch (e) { return false; }
+    if (!sel || sel.isCollapsed || !String(sel).length) return false;
+    for (var i = 0; i < sel.rangeCount; i++) {
+      var r = sel.getRangeAt(i);
+      if (r && r.commonAncestorContainer && el.contains(r.commonAncestorContainer)) return true;
+    }
+    return false;
+  }
   function resetCkl() {
     if (!cklState.key) return;
     cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null, cautionsOpen: null };
@@ -8208,8 +8230,20 @@
       if (wa) { cklState.whyAll = !cklState.whyAll; cklState.key = null; render(latest); return; }
       if (e.target.closest('[data-ckl-stop]')) { releaseHold('walkthrough'); cmd({ action: 'stop_checklist' }); return; }
       /* Click the step card to expand (#607 item 2). Skip clicks on inner buttons. */
+      /* AND SKIP A CLICK THAT ENDED A TEXT SELECTION (#726; owner #724 item 9: "the
+       * walkthrough text has the mouse pointer finger and i cant select the text to copy it").
+       *
+       * THE CURSOR WAS THE VISIBLE HALF AND THIS IS THE ONE THAT ACTUALLY BLOCKED THE COPY.
+       * `user-select` measured `auto` on every text block in the card, so the text selects
+       * normally — and then dies. A drag-select ends in a `click` on the common ancestor, this
+       * branch toggles the why-fold, and `render()` rebuilds the card's innerHTML, replacing the
+       * very nodes the selection points at. MEASURED with a real mouse drag across the active
+       * step's instruction (inbox/724/probe_select.js): 44 characters selected during the drag,
+       * ZERO after mouseup. A CSS-only fix would have changed the cursor and nothing else.
+       *
+       * A drag is not a click. A plain click still toggles, because the selection is collapsed. */
       var stepEl = e.target.closest('.ckl-step');
-      if (stepEl && !e.target.closest('button')) {
+      if (stepEl && !e.target.closest('button') && !selectionInside(stepEl)) {
         var wi = stepEl.getAttribute('data-ckl-step');
         if (cklState.whyOpen[wi]) delete cklState.whyOpen[wi]; else cklState.whyOpen[wi] = 1;
         cklState.key = null; render(latest);
