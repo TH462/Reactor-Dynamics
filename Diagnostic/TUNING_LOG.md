@@ -29,6 +29,152 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-12-develop-b (#724 RC19 playtest, the develop share: #731, #735, #736, #732 half)
+
+**The one that could end a playthrough (#731, item 13).** `pwr_startup` steps 16 and 17 carried a
+bare `cmd` and no acceptance. The live checklist's `met` ladder is
+`accs || acc → saw → cmd → dwell`, so a `cmd`-only step grades on **seeing the command descend
+while that step is active** — and `InstructorLayer._cmdEvidence` discriminated `set_trip_block` on
+`trip_id` alone. Both halves of the owner's report fall straight out of that, and they compound:
+a block placed while step 16 is up (which the popover invites — both rows are on it) is invisible
+to step 17, and the only escape is to press the row again, which UNBLOCKS it and was accepted as
+evidence for a step that asks for a BLOCK.
+
+MEASURED, full stack, `hot_zero_power`, the real leg driven step by step
+(`inbox/724/repro13.js`, `invert13.js`), against a scratch worktree at the parent commit:
+
+| | before | after |
+|---|---|---|
+| step 17 entered with PR HIGH already blocked | **unmet after 402 s** of plant time | met **18 s** after entry |
+| the player then UNBLOCKS | Continue lit **6 s** later, trip live, **9.91 % power** | still unmet **126 s** later |
+| the player BLOCKS | met | met **30 s** later |
+
+Fix in three places, and the middle one is the general half: `RPS_BLOCK_PARAMS`
+(`ir_high_blocked` / `pr_low_setpoint_blocked` / `lo_press_blocked` / `si_trip_blocked`) reads the
+LINEUP out of `rps_state.trip_blocks`, wired into `_grade` **and** `InstructorLayer.paramValue` so
+the live runtime and the replay gate cannot diverge; `_cmdEvidence` now matches the SENSE
+(`(stepCmd.blocked !== false) === (command.blocked !== false)`), which speaks for `pwr_cooldown`'s
+two `set_trip_block` steps as well; and the two steps gain state acceptances. Four `PRED_DISPLAY`
+rows so the done-when reads "IR HIGH FLUX is blocked on the TRIP BLOCKS panel".
+
+**THE TRAP: a state that is neither an instrument nor a `true_state` field gets authored on the
+COMMAND, and a command-graded step cannot see history.** There was no predicate vocabulary for a
+trip block, so the author reached for the only evidence the schema offered. The general rule is the
+one already in this file for `plot_1m_point` (#641) turned round: a `cmd`-kind acceptance is only
+honest while the thing it grades has no standing state to read. If the plant publishes the state,
+grade the state — `cmd` stays as the replay's action.
+
+---
+
+**The highlight resolver could only return a board element (#735, items 1/2/4/5/6/10).**
+`RD.PwrBoard.revealControl(label)` resolves `CONTROL_LABEL_MAP` to a BOARD TILE, full stop. The
+1/M window is a shell panel appended to `.right-col` (or to `document.body` when it floats), so
+**both** `1/M Plot Tool` and `Plot point` resolved to `bdOneOverM` — the board button that OPENS
+the plot. That is the owner's item 5 exactly, and it is not a mis-authored `hl` string: no label
+could have named the button. (Board-side identification MEASURED by workbench, INHERITED here.)
+
+Swept the built pool (`inbox/724/sweep_hl.js`): **21 of 88 steps name a board button their
+highlight does not point at** — `pwr_heatup` 1, `pwr_startup` 11, `pwr_lower_power` 4,
+`pwr_raise_power` 5 (backshop's leg, reported not fixed).
+
+`RD.Highlight.resolve()` tries a `SHELL_TARGETS` map before the board map; `Plot point` is
+`#oomWin [data-oom="plot"]`, the attribute the panel itself delegates its click on, because #713
+turns the button bar from a side COLUMN into a ROW above the plot and the window's PARENT changes
+with the viewport width — so sibling order, geometry and ancestry all move and the attribute does
+not. `ui/app.js`'s three glow appliers now share one `hlTarget()` instead of three copies of the
+board-only lookup.
+
+The speed bar (item 2's time-compression reading) is glowed off **the same condition
+`syncWarpInfo` already prints its sentence from** — the active step's `hold >= 180` with
+`wait_hint !== false` — rather than a per-step `hl` entry, which would be a second copy of that
+condition free to drift from the words the player is reading. It glows the RUNG the sentence
+names, not the bar.
+
+Item 2 is genuinely ambiguous — "when a speed control is recommended" reads as the ROD SPEED
+buttons (item 1 is exactly that, and item 2 follows it as the general rule) or as the speed bar.
+Both are built; if only one was meant the other is one line out.
+
+**Item 6 was three notations for one number on one card.** The step `target` already said `7.0e2`
+(#619 item 19); the check-off LABEL said "700 cps" and the rendered done-when said "SOURCE RANGE >
+700 cps". `PRED_DISPLAY.sr_counts_cps` grows a `sci` flag; the five plot-step labels now carry the
+same form.
+
+---
+
+**A one-sided entry MET at the step's own entry LATCHES there (#736, item 18).** `_gradeAccs`
+latches every multi-check-off entry except a two-sided `~` band (`holds = en.op === '~'`).
+`pwr_lower_power` boots at `hot_full_power`, so on step 2's first tick `tavg_c < 305` reads
+580.3 degF and `mwe_output > 70` reads 100.00 MWe — both MET, both latched, before the player does
+anything. **#715's floor catches a plant that was already scrammed when the leg started; it cannot
+catch one that scrams during the step**, because the floor latched while the plant was healthy.
+
+MEASURED (`inbox/724/item18d.js`, full stack, 60x): borate to 719 ppm, insert 40 rod steps, never
+touch LOAD → **steam generator LOW-LOW level scram at t = 2256 s** (turbine tripped, 4.39 % power,
+471.2 degF) and **step 2 checks itself off at t = 2277 s** on 1.37 % power, 0.00 MWe, 476.6 degF.
+
+Split into two steps per the owner's own words — the split IS the timing control, since grading is
+sequential and the trim is ungradable until the drop checks off — and every stage's `mwe_output`
+pairing became a two-sided band. Numbers from `inbox/724/item18_split.js`: load step ends
+75.00 MWe / 85.79 %; rod step ends 570.7 degF (1.1 degF inside a band 5.0 degF wide) / 73.04 % /
+75.00 MWe; at the rod step's ENTRY, 581.2 degF and 85.79 %, so both one-sided entries are false
+until the trim is made.
+
+**The filed symptom was not the defect.** "the temperature gets to dangerous levels" measures as a
+**3.7 degF peak rise (584.0 degF at t = 84 s)** and a settle **9.4 degF above the tile's green
+band**, with no scram and no protection setpoint approached. Out of band, not dangerous. The
+dangerous thing was the check-off, which nobody filed.
+
+**Separate, NOT fixed:** the leg does not settle in band at all — the 75 MWe stage ends 19.4 degF
+BELOW programme, 50 MWe 17.7 below, 30 MWe 21.3 below, because step 1's 719 ppm boration keeps
+working long after the load change. Mirror image of the gap #508 recorded at 15 MWe. Physics/trim,
+not acceptances.
+
+---
+
+**The precondition comment was said once per CROSSING (#732, the mechanism half).** The RAISE was
+guarded by `!cklMoving`, the CLEAR was not — so `precondMsg` fell back the instant every row
+recovered and the next crossing raised it again. `cklMoving` cannot help: a checklist sits on
+step 0 for as long as its first step is ungraded, which is the whole flicker window.
+`precondSaid`, never cleared for the life of the run. Backshop MEASURED the driver (`power_pct`
+9.222-10.061 % on `low_power`, two crossings of a `> 10 %` row in ten plant-minutes); INHERITED
+here.
+
+**This superseded a check that asserted the opposite**, and that is declared rather than quietly
+refitted: `run_checklist` line 182 pinned a per-EPISODE latch ("re-breaking the condition re-raises
+the comment AT ENTRY"). The episode granularity was an agent's choice, never a ruling, and both
+owner inputs on this message push the same way — #619 item 3 was *"probably just remove it"* and
+#724 item 15 is *"stop it flickering"*. The COUNT is asserted across six crossings rather than the
+state at one instant (#627's trap), in `run_checklist_pwr2` section 2u, and proven red on a scratch
+worktree at the parent commit: **six raises there, one here**, with the heal case reading 1 raise /
+1 clear on BOTH trees so the latch is not bought by breaking the clear.
+
+---
+
+**Item 3 did not reproduce, and that is the finding.** "SG FEED AUTO is already in AUTO" at
+`pwr_heatup` step 5: MEASURED at that step's entry (t = 549 s from `cold_shutdown`, driven step by
+step) `control_state.feed_coupled` is FALSE, feed pump speed 0 %, and there is **no `feed_sg`
+kernel channel on this plant at all** — so `feedAutoOn` falls through to `feed_coupled` and the SG
+FEED corner reads OFF. The instruction is correct on the plant the leg boots. Reworded anyway to
+the sibling leg's "Check … If it does not, press AUTO" form, which is right in both cases and costs
+nothing.
+
+**Item 10's hand-off is real and the step said nothing.** MEASURED on the authored route, the
+source range secures at **t = 777 s — 276 s INSIDE step 10** — with the bank at 223 of 627 and
+REACTOR POWER still reading 0.000 %. Step 11's note mentioned it; step 10 did not.
+
+**The owner's "216 steps settles around 4.6 % power" did NOT reproduce.** Park the control bank at
+216 and issue no further rod command: the plant goes critical (the source range secures at
+t = 813 s, so 216 is above critical, consistent with workbench's MEASURED true-critical of 208 and
+the shipped trailing-3 fit's 210.6-216.1 — both INHERITED), the leg reaches step 14 at t = 1851 s
+on 0.944 %, and then **stalls at 0.53 % for the next 20 plant-hours**. `pwr_startup` step 14 wants
+REACTOR POWER above 5 % and it never arrives. **Caveat, and it matters:** this probe also withheld
+steps 13 and 14's own rod commands and never reached the turbine latch, so it does not test the
+route the owner actually flew. Recommendation to the coordinator was **no change to the rod
+targets** — the authored route's extra ~11 steps to 227 are what buys the 5 % that step 14 needs,
+and item 16 is backshop's on the same question at 100 %.
+
+---
+
 ## Session log — 2026-09-12-workbench-k (#713 pass 3 — the alarm panel, and its check, were sized to the wrong platform)
 
 **What broke.** Pass 2 (`-d`, below) took 29.5 px from the alarm panel (421.7 -> 392.23 px) to
