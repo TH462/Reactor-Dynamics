@@ -1937,7 +1937,7 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc19] — 2026-09-12
+## [Alpha 1.7.4-rc20] — 2026-09-13
 
 ### Fixed (`verify_e2e_ui` had been RED on CI since the 1/M dock widened — the bound was derived on Windows and CI gates on Linux — #713 pass 3)
 
