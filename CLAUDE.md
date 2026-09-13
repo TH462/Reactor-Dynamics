@@ -343,6 +343,7 @@ _Last updated: **2026-09-09**._
 per-issue prose that told you not to trust it — measured twice (2026-08-10, 2026-08-28), whole
 bullets called issues open that were closed. Cut *(OWNER DIRECTIVE, 2026-09-12: "Implement the
 ruleset and Claude.md cuts as recommended.")*. **Run the query; read the sections.**
+
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
 2026-08-06: "The revision number only matters during a release to the website. Revision numbers
 should never go up until a release happens.")*. **Read the top row of
