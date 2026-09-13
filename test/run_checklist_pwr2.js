@@ -770,7 +770,18 @@ if (!only) {
      * ruling, so the step went with it rather than becoming a soft lock — the #641 half of the
      * pair this sweep's own header describes. The allowlist SHRINKS; nothing was reclassified.
      * The sweep caught it the turn the step was deleted, which is what pinning the set is for. */
-    var NO_STATE_EXPECTED = { 'pwr_raise_power:3': 1, 'pwr_cooldown:3': 2 };
+    /* `pwr_cooldown:3` LEFT THIS SET BY BEING FIXED (#731, 2026-09-13) — the other way out, and
+     * the first time this allowlist has shrunk for that reason. Its two entries blocked the
+     * low-pressure and safety-injection reactor trips and were graded on the PRESS, so a block
+     * placed EARLIER never satisfied the step. They now carry `p: 'lo_press_blocked'` /
+     * `p: 'si_trip_blocked'` ALONGSIDE their `cmd` halves, which is why they no longer count as
+     * no-observable-state: the sweep looks for a command entry with no state sibling.
+     * The `cmd` halves had to STAY — the replay ISSUES `accs[].cmd`, and deleting them took the
+     * leg from 31/0 to 23 passed / 10 failed by never placing the safety-injection block at all.
+     * `pwr_tmi2_incident:10` took the same fix and was never in this set (single entry, and it
+     * now has a state sibling too). `pwr_raise_power:3` is unchanged and remains the documented
+     * judgement call. */
+    var NO_STATE_EXPECTED = { 'pwr_raise_power:3': 1 };
     var noStateTally = {};
     NO_STATE.forEach(function (r) { var k = r.proc + ':' + r.step; noStateTally[k] = (noStateTally[k] || 0) + 1; });
     var noStateKeys = Object.keys(noStateTally), expectedKeys = Object.keys(NO_STATE_EXPECTED);

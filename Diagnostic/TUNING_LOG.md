@@ -353,6 +353,112 @@ tense**, and one in `ui/app.js` gave an inverted justification for a correct gua
 case it cited is handled upstream by `closest()` returning null, not by range containment). Stale
 prose in a comment block is the same failure as a stale claim in an issue — it is read as current.
 
+
+## Session log — 2026-09-12-backshop-a (#724 items 19, 11, 15, 16, 17 — the cooldown blocker was a checklist step shutting the plant's only pressure control)
+
+**The blocker (#729, item 19).** `pwr_cooldown` step 12: RHR self-isolates at 273 °F (134 °C),
+fast-forward pins at 1×, and ALIGN is refused. Reproduced full stack on the **player's route**
+(advance on acceptance, not the replay's fixed holds — `inbox/724/m19*.js`, seed 42, 600×). The
+shipped replay passes; that is what hid it.
+
+**Root cause, and it is not the interlock band.** Step 11 told the player to shut the pressurizer
+spray, on the stated reason *"the spray is driven by the pumps, so it does nothing once they
+stop."* `pwr2_pressurizer.js` SPRAY has `needs_rcp: true` **and `rcp_gate_enforced: false`** — a
+declared departure — so the spray keeps working with the pumps secured and is the **only** pressure
+control left (heaters off from step 6, Pressure SP floors at 1700 psi, the aux-spray tile was
+removed by owner direction 2026-08-31). With it shut, the pressurizer **shell** gives back
+**180.8 kW** at 601.2 °F (316.2 °C) into a 425 °F fluid — heaters 0 kW, surge 0 kW, pressurizer
+**mass falling**, so not charging — and pressure reverses from −92 psi/min to **+33 psi/min**. The
+585 psig autoclosure fires at **610 psig / 274.7 °F**, the accumulator speed hold latches at 684
+psia, and the 425 psig open permissive refuses the re-align. Two symptoms, one cause.
+
+| controlled variant | outcome |
+|---|---|
+| spray held at 50 %, pumps secured as authored | 308 → 21 psia, RHR stays ALIGN, no hold, Mode 5 at 115.5 min |
+| RCPs left running, spray shut as authored | 1060 psia, RHR ISOLATES, hold latches, plant re-heats |
+
+The RCPs are irrelevant. `Manuals/04` PWR-N15 had already recorded the same trap from the other
+side (*"shutting the spray first bounces pressure back over the 425 psig block-open permissive"*)
+and never told the operator to shut it. Only the live checklist did.
+
+**Traps worth keeping.**
+- **The inherited triage named the RETIRED engine's constants.** `emergency.rhr_valve_interlock_mpa`
+  (2.76 MPa / 400 psi) and `rhr_autoclose_mpa` (4.14 MPa / 600 psi) are pwr1's, in
+  `layers/control/pwr_control.js`. PWR2's sourced pair is **425 psig open / 585 psig autoclose**
+  (`pwr2_rhr.js:77-78`). Grep the engine that ships, not the one the comment cites.
+- **"Entering from above never latches" is a claim about two physics steps, not about a leg.** The
+  accumulator speed hold's own comment asserted a cooldown could never latch it. Measured false:
+  the plant repressurizes on shell heat and climbs back through the cover gas with the
+  accumulators deliberately isolated. The discriminator is the VALVE'S HISTORY
+  (`_accEverOpened`), not the pressure's direction — `cold_shutdown` is the only initial condition
+  that boots with the valve shut, and the heatup is the only leg the trap is real for.
+- **A prose number no gate reads rots silently.** Step 12 claimed HX SPLIT 25 % gives *"close to
+  90 °F per hour … about two plant-hours"*. Measured from its own entry state: **worst −193 °F/hr
+  (−107 °C/hr), average −154 °F/hr, Mode 5 in 0.66 plant-h** — **1.9× the sourced 100 °F/hr
+  limit**, in a third of the stated time. 12 % measures −95 °F/hr worst, −74 average, Mode 5 in
+  1.36 plant-h. Authored 25 % → 12 %.
+- **A replay hold is a claim about how long a player stands on the step.** Cutting the hold to
+  5400 s missed Mode 5 (97.87 °C vs 93 °C) because the replay *ramps* 7 → 12 % across the hold
+  (average ~9.5 %) where a player types 12 once. At 9000 s the spray ran 68 min past Mode 5 and
+  walked subcooling (17.4 °F, decaying 0.2 °F/min) into the leg's own `subcooling_c < 5` guard.
+  **7200 s** is the number that satisfies both.
+
+**Landed (backshop, not merged — PWR2 standing hold #479).** `pwr_cooldown` step 11 keeps the
+spray (acceptance asserts `spray_flow_pct > 0`); new step 13 shuts it once cold (+1 psi per 5
+plant-min there against +33 psi/min at 274.7 °F); step 12 HX 12 %, ramp `[7,10,12]`, hold 7200 s;
+`pwr2_engine.js` `_accEverOpened`; `Manuals/04` PWR-N15 step 6 rewritten + new 6b, pending Rev 19
+row extended item **(xx)**, `stamp_manual_revision.js` + `pack_manuals.js` re-run;
+`test/manual_ui_map.js` one appended row.
+**Gate: `run_checklist_pwr2 pwr_cooldown` 31 passed 0 failed** (was 29/0).
+**Injection proof of the engine bit:** re-running the pre-fix route against the fixed engine, RHR
+still autocloses (609 psig) and the hold **never rises** — zero `speed_hold` events through a
+climb to 1791 psia, where it previously latched at 684.
+
+**#733 (item 17) — the power-ascension step 10 scrammed the plant 15 min AFTER checking itself
+off.** `boron_ppm < 645` latched at t+37.5 min with 65 % of the dilution undone and Tavg already
+587.6 °F; typing 617 in one press peaked Tavg at **603.3 °F** and tripped at **t+53.0 min**. The
+slow route did not scram but ended at **537.6 °F against a Tref of 580.0** at 15.4 plant-h —
+**Tref moved 0.1 °F over the whole run**, so #508's "the reference moved" trap is checked and
+excluded; nothing pulls the rods (`rods_tavg` is deliberately not `defaultOn`).
+**Measured at power: rod worth 0.2209 °F/step, boron worth 0.5670 °F/ppm.** A SECOND run that settled 48 plant-h before perturbing reads **0.2228 °F/step and
+0.6524 °F/ppm** — the rod figure is stable to 1 %, the boron one is settle-time sensitive
+(xenon moves during the 2-plant-hour settle), so read boron as **0.57–0.65 °F/ppm**. The
+conclusion is unchanged either way: 255 steps carry 56–57 °F against boron's 27–31 °F. The bank arrives at
+**351 of 627**, so it carries **56.3 °F** — the larger half — against boron's 27.0 °F, and xenon
+17.2 % → 100 % costs **82 °F**. Both levers are needed and they only just close. The old note's
+*"BORON is the lever here, not WITHDRAW"* was backwards arithmetic; its *"21 steps, 4.7 °F"*
+described the destination (measures 4.42 °F for 20 steps) rather than where the player stands.
+Step 10 is now the FIRST correction — a bounded rod pull with an endpoint acceptance paired
+against a scram (`mwe_output > 97`) — because the two-day endpoint **cannot be graded**, and that
+is exactly how the old acceptance came to fire at 645. The destination moved to the `why` and the
+`outcome`. **Gate: `run_checklist_pwr2 pwr_raise_power` 34 passed 0 failed** (was 31).
+The owner's proposed route is confirmed: trimming rods every 30 plant-min holds 100.0 MWe and
+Tavg within ±3.5 °F of programme to 10.9 plant-h and xenon 47 %, no scram.
+
+**#732 (item 15) — a threshold inside the plant's own ripple.** `power_pct` on `low_power` runs
+**9.222–10.061 %, span 0.840, mean 9.58**, and crosses the authored `> 10 %` precondition **twice
+in 10 plant-minutes**. Lowered to **9 %** (0.22 points below the measured floor). The chatter
+itself is a missing `cklMoving` guard on the CLEAR path in `layers/instructor_layer.js`
+`_stepChecklist` — diagnosed here, handed to develop, not edited from this lane.
+
+**#730 (item 11) and #734 (item 16) — answered, no change.** Turbine 0 → 1800 rpm is a **step in
+one 0.02 s physics step**, by design (no roll-and-synchronize evolution exists; steam is admitted
+only once the machine is loaded, and a loaded generator is synchronous). Coastdown measured 50 %
+at 2.77 min, 25 % at 5.55, 10 % at 9.21, 1 % at **18.42 min**. Evidence pass over 41 documents in
+three lanes: the roll IS a deliberate operator evolution (WTSM 11.3, ML11223A295 — *"roll the
+turbine from turning gear speed (about 1 rpm) to synchronous speed (1800 rpm)"*, operator selects
+*"a speed and an acceleration rate on the EHC panel"*; ML11223A342 — *"Accelerate the main turbine
+to 1800 rpm, and then synchronize"*), but **no numeric acceleration rate, roll duration or rotor
+inertia exists anywhere in the corpus**, so any spin-up constant would be UNVERIFIED.
+**This plant's settled 100 % point, worth keeping: 606 of 627 steps, 612.3 ppm, Tavg 580.31 °F,
+Tref 580.10 °F, xenon at equilibrium.** 351 steps / 660 ppm / 579.0 °F is the no-xenon end of the
+same curve, not a fault.
+
+**Still open.** `verify_manual_follow` has not been run against the two `manual_ui_map` changes.
+The corrected cooldown now ends at **21 psia (6 psig)** with **32 °F** of subcooling margin rather
+than the 363 psi the `cold_shutdown` preset boots at — nothing in the chain depends on it, but
+whether the leg should end with a bubble drawn back is an owner call and is not in this fix.
+Nobody has played either corrected leg in the browser.
 ## Session log — 2026-09-12-develop-b (#724 RC19 playtest, the develop share: #731, #735, #736, #732 half)
 
 **The one that could end a playthrough (#731, item 13).** `pwr_startup` steps 16 and 17 carried a

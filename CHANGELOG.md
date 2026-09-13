@@ -132,6 +132,94 @@ Two orphans left in place and reported rather than edited: `.ckl-why-btn` / `.ck
 `ui/shell.css` (nothing ever emitted either class), and `test/verify_flags_ui.js:203`, which
 queries `.ckl-why-btn` and passes on the `null`.
 
+### Fixed (Mode 3 → Mode 5 walkthrough BLOCKER: the cooldown shut the plant's only pressure control — #729, #724 item 19)
+
+`pwr_cooldown` step 11 told the player to switch the pressurizer spray off alongside the reactor
+coolant pumps, on the stated reason that *"the spray is driven by the pumps, so it does nothing
+once they stop."* Both halves are false on this plant: `pwr2_pressurizer.js` SPRAY carries
+`needs_rcp: true` (the physics) with `rcp_gate_enforced: false` (a declared departure), so the
+spray keeps working with the pumps secured — and with the heaters off since step 6, the Pressure SP
+dial on its 1700 psi floor and the auxiliary-spray tile removed from the board by owner direction
+2026-08-31, it is the only pressure control the player still has.
+
+MEASURED full stack on the player's route (seed 42, 600×, `inbox/724/m19*.js`): with the spray
+shut, the pressurizer **shell** gives back **180.8 kW** at 601.2 °F (316.2 °C) into a 425 °F
+(218 °C) fluid — heaters 0 kW, surge 0 kW, pressurizer mass falling, so not an insurge — and
+pressure reverses from −92 psi/min to **+33 psi/min**. The sourced 585 psig residual-heat-removal
+autoclosure shuts the suction valve at **610 psig / 274.7 °F (134.8 °C)**, the accumulator speed
+hold latches at 684 psia, and the 425 psig open permissive then refuses the re-align. Two symptoms,
+one cause; the playthrough could not finish.
+
+Controlled pair: leave the spray at 50 % and secure the pumps as authored → pressure falls 308 →
+21 psia, RHR stays ALIGN, no speed hold, Mode 5 at 115.5 plant-min. Leave the pumps *running* and
+shut the spray → 1060 psia and RHR isolates. The pumps are irrelevant.
+
+- **Step 11 keeps the spray**, and its acceptance now asserts it is still running.
+- **A new step shuts the spray once the plant is cold** — measured there it moves pressure +1 psi
+  per 5 plant-minutes, against +33 psi/min at 274.7 °F.
+- **Step 12's heat-exchanger split is 12 %, was 25 %.** The step claimed *"close to 90 °F per hour
+  … about two plant-hours"*; 25 % measures **−193 °F/hr (−107 °C/hr) worst, −154 °F/hr average,
+  Mode 5 in 0.66 plant-h** — 1.9× the sourced 100 °F/hr limit, in a third of the stated time. 12 %
+  measures −95 °F/hr worst, −74 °F/hr average, Mode 5 in 1.36 plant-h. Its replay hold moves
+  9000 → 7200 s.
+- **`engines/pwr2/pwr2_engine.js`: the accumulator speed hold no longer latches on a plant whose
+  accumulators have been open during the run.** Its own comment asserted *"a cooldown, entering
+  from above, never latches"* — that is a claim about the last two physics steps, not about the
+  leg, and this playtest is the counterexample: the plant repressurizes on shell heat and climbs
+  back through the cover-gas window with the accumulators deliberately isolated, pinning the clock
+  at 1× in a band whose only documented escape would dump the tanks. The window is a trap only for
+  a player who has not yet armed the accumulators — the heatup, the one leg that boots with the
+  valve shut.
+- `Manuals/04` PWR-N15 step 6 rewritten with the measured numbers and a new step 6b; pending Rev 19
+  row extended.
+
+Gate: `run_checklist_pwr2 pwr_cooldown` **31 passed, 0 failed** (was 29/0). The engine bit is
+verified by injection — re-running the pre-fix route against the fixed engine, the valve still
+autocloses at 609 psig and the speed hold never rises.
+
+### Fixed (power-ascension step 10 scrammed the plant 15 minutes after checking itself off — #733, #724 item 17)
+
+The step targeted 617 ppm of boron but graded `boron_ppm < 645`, which latched at t+37.5 min with
+**65 % of the dilution undone** and average coolant temperature already at 587.6 °F (308.7 °C)
+against a 580.1 °F (304.5 °C) reference. Setting the target straight to 617 ppm then peaked
+temperature at **603.3 °F (317.4 °C)** and **tripped the reactor on overtemperature at t+53.0 min**
+— fifteen minutes after the player had been told the step was done. Walking the target down slowly
+avoided the trip but ended at **537.6 °F (280.9 °C) against a 580.0 °F reference** after 15.4
+plant-hours, with the control bank still where the climb left it. The reference moved 0.1 °F over
+the whole run, so this is the plant getting cold, not the programme moving.
+
+Measured at power: **rod worth 0.2209 °F per step, boron worth 0.5670 °F per ppm** (a second run
+settled 48 plant-hours before perturbing reads 0.2228 and 0.6524 — the rod figure is stable, the
+boron one is settle-time sensitive, so read it as 0.57–0.65). The bank
+arrives at 351 of 627, so it carries **56.3 °F** — the larger half — against boron's 27.0 °F, while
+the xenon build from 17.2 % to equilibrium costs **82 °F**. Both levers are needed. The step's own
+note said *"BORON is the lever here, not WITHDRAW"*, which is backwards.
+
+Step 10 is now the first temperature correction — a bounded rod pull, with an endpoint acceptance
+paired against a scram so a tripped plant cannot satisfy it — and a new confirm step carries the
+two-day destination (606 of 627 steps, 617 ppm, 10 ppm at a time) in its explanation rather than in
+an acceptance that cannot be graded. Text cut per `Blueprint/CHECKLIST_WRITING_GUIDE.md`.
+
+Gate: `run_checklist_pwr2 pwr_raise_power` **34 passed, 0 failed** (was 31).
+
+### Fixed (power-ascension prerequisite flickered — #732, #724 item 15)
+
+`pwr_raise_power`'s "REACTOR POWER above 10 %" precondition sat **inside** the plant's own ripple,
+not near it: measured on `low_power` — where the startup walkthrough hands the player over —
+reactor power runs **9.222 % to 10.061 %**, a 0.840 % span, and crosses the 10 % line twice in ten
+plant-minutes. Lowered to 9 %, which sits below the whole measured band. The remaining chatter
+mechanism is a missing latch in the instructor layer and is tracked on the issue.
+
+### Answered, no change (#730 turbine spin-up, #734 the 100 % operating point — #724 items 11 and 16)
+
+The turbine reaching 1800 rpm in one physics step is deliberate: this engine has no separate
+roll-and-synchronize evolution, steam is admitted only once the machine is carrying load, and a
+loaded generator is synchronous. Coastdown measures 50 % of rated at 2.77 min, 25 % at 5.55 min,
+10 % at 9.21 min, 1 % at 18.42 min. An evidence pass over 41 documents found the real roll IS a
+deliberate operator evolution but **no acceleration rate anywhere in the corpus**, so no constant
+was changed. 351 steps / 660 ppm / 579 °F at full power is the no-xenon end of the curve, not too
+low; this plant's settled 100 % point is 606 of 627 steps at 612.3 ppm and 580.31 °F.
+
 ### Fixed (the trip-block acceptance graded INVERTED, and it was the only way out of a step it also could not see — #731)
 
 `pwr_startup` steps 16 and 17 — BLOCK the intermediate-range high-flux trip, then BLOCK the

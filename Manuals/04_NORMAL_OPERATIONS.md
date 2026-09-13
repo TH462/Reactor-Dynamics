@@ -185,7 +185,7 @@ Verify the unit is correctly lined up in **Mode 3, Hot Standby** before any appr
 | 6 | Confirm control bank fully inserted | Rod control | Position at bottom |
 | 7 | **Confirm shutdown bank parked withdrawn.** It should already be out — **PWR-N01 step 2a** withdrew it during the heatup. If it is **in** (you arrived here by trip rather than by heatup, and the trip dropped it), verify shutdown margin and withdraw it **now**, before any control-bank motion. It is worth **3676 pcm** and PWR-N03 cannot reach criticality with it inserted | Shutdown bank | Fully out, 627 / 627 |
 | 8 | **Sample boron and record it** — there is no live meter, and the number depends on how you reached Mode 3. Two normal arrivals: **~857 ppm** from a **PWR-N01** heatup (cold-shutdown boron, undiluted), **~705 ppm** on a plant already lined up at Hot Standby | CHEM SAMPLE | Result logged; it is the **E** input to the ECC (**09 §7.5.2**) |
-| 9 | Confirm Source Range energized and counting | SR | SR On; hundreds of cps class |
+| 9 | Confirm Source Range energized and counting | SR | SR On; hundreds of counts per second |
 | 10 | Confirm Intermediate Range available for handoff | IR | IR on scale or ready as power rises |
 | 11 | Confirm SG heat sink | SG level | ~65 %; not LO-LO |
 | 12 | Confirm turbine off line / 0 MWe | Turbine | Disconnected or zero load |
@@ -257,7 +257,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 | Step | Action | Control | Acceptance |
 |------|--------|---------|------------|
 | 1 | Confirm Mode 3: subcritical, Tavg ≈ 546.8 °F (286 °C), P ≈ 2235 psi (15.41 MPa), RCPs on | (observe) | ρ < 0; Mode 3 |
-| 2 | Confirm SR counting; IR ready | NIS | SR > ~100 cps |
+| 2 | Confirm SR counting; IR ready | NIS | SR > ~1.0e2 (100 counts per second) |
 | 3 | Engage Feed AUTO at ~65 % if not already | Feed Pumps | AUTO engaged |
 | 4 | Capture 1/M baseline (plot point 1) **before** any rod motion | 1/M Plot | Baseline logged |
 | 5 | Withdraw Control Bank in **decreasing** bursts; settle; plot after each (points 2–6) | Control Bank + 1/M | Count rate rising; prediction walks down |
@@ -275,11 +275,11 @@ rather than reading it as the plant's burst pattern.
 
 | Burst | Steps (Norm) | Settle to | Lands near | Role |
 |-------|--------------|-----------|-----------|------|
-| 1 | 94 | > 700 cps | 94 | First overestimate |
-| 2 | 63 | > 1,400 cps | 157 | Still late |
-| 3 | 31 | > 3,000 cps | 188 | Entering steep worth |
-| 4 | 14 | > 7,000 cps | 202 | Inside ~12 steps |
-| 5 | 9 | > 20,000 cps | 211 | Working prediction |
+| 1 | 94 | > 7.0e2 (700 counts per second) | 94 | First overestimate |
+| 2 | 63 | > 1.4e3 (1,400 counts per second) | 157 | Still late |
+| 3 | 31 | > 3.0e3 (3,000 counts per second) | 188 | Entering steep worth |
+| 4 | 14 | > 7.0e3 (7,000 counts per second) | 202 | Inside ~12 steps |
+| 5 | 9 | > 2.0e4 (20,000 counts per second) | 211 | Working prediction |
 | Creep | ~15 Slow | SUR positive, rods stopped | 226 | To critical, then a small excess for a gentle rise toward ~1 % |
 
 ### Outcome
@@ -741,7 +741,8 @@ After **PWR-N14** or any hot, subcritical plant.
 | 3 | Mode 4 | Keep the pressure walk-down *behind* the temperature — spray as needed, subcooling positive throughout | Pressure SP / Spray | P falling controlled; subcooling > 0 |
 | 4 | Mode 4 | At **1000 psi (6.895 MPa)**: **close accumulator discharge** | Accumulator valve | Valve shut; SIT fill holds |
 | 5 | Mode 4 | Below the **440 psi (3.03 MPa)** RHR block-open interlock: **set the HX split to ~7 % FIRST**, then place **RHR On**. The split arrives at 100 % from the at-power lineup and 100 % onto a 379.4 °F (193 °C) plant is a **−1517.4 °F/hr (−843 °C/hr)** shock | RHR HX / RHR | RHR active; rate still on programme |
-| 6 | 4 → 5 | **Secure RCPs** once RHR carries heat; from here the **HX split is the rate control**, and it has to keep RISING — walk it **7 → 25 %** as the gap to the RHR sink closes | RCP Stop / RHR HX | Flow to RHR path |
+| 6 | 4 → 5 | **Secure RCPs** once RHR carries heat — but **LEAVE THE PRESSURIZER SPRAY RUNNING.** With the heaters off and the Pressure SP dial already on its 1700 psi floor, spray is the only pressure control left, and the pressurizer shell is still hot metal: measured, shutting it at 274.7 °F (134.8 °C) gave back **181 kW** into a 425 °F (218.3 °C) fluid and drove pressure **+33 psi/min** until the 585 psig RHR autoclosure shut the suction valve at 610 psig, which the 425 psig open permissive then refused to re-open (#729). From here the **HX split is the rate control** — walk it **7 → 12 %**: 25 % measures **−193 °F/hr (−107 °C/hr)**, over the 100 °F/hr limit, while 12 % holds **−95 °F/hr (−53 °C/hr)** worst and **−74 °F/hr (−41 °C/hr)** average | RCP Stop / RHR HX | Flow to RHR path; spray still on; rate inside 100 °F/hr |
+| 6b | Mode 5 | **Then** shut the spray, once the plant is cold. Measured: at Mode 5 shutting it moves pressure **+1 psi per 5 plant-minutes**, against +33 psi/min at 274.7 °F (134.8 °C) | Spray | SPRAY OFF; pressure steady and low |
 | 7 | Mode 5 | Arrive cold (≤ ~199.4 °F (93 °C)), depressurized, RHR in service, accumulators isolated | (observe) | Mode 5 |
 
 > **Step 2 is a ramp, not a chase — and not a staircase either.** Both wrong ways have been

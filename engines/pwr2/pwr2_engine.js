@@ -1786,17 +1786,49 @@
      * 691.6 — three toasts, three refusals, and one 600x request accepted in each gap. Read from
      * the checklist, whose Pressure SP step then ticked at 682 psia, that is "a hold until 682".
      * So "rising" now decides only whether the band is being ENTERED from below: once latched
-     * the hold stands until the valve opens or the pressure leaves the band, and a cooldown,
-     * entering from above, never latches. The latch is per engine instance and is not saved —
-     * the same lifetime `_prevAccP` already had. */
+     * the hold stands until the valve opens or the pressure leaves the band. The latch is per
+     * engine instance and is not saved — the same lifetime `_prevAccP` already had.
+     *
+     * ⚠ "A COOLDOWN, ENTERING FROM ABOVE, NEVER LATCHES" WAS WRITTEN HERE AND IS FALSE (#729,
+     * 2026-09-12, owner playtest #724 item 19). "Entering from above" is not a property of the
+     * leg, it is a property of the last two physics steps. Measured on `pwr_cooldown` driven as
+     * a player at 600x: after step 11 shuts the pressurizer spray the plant REPRESSURIZES on its
+     * pressurizer shell's stored heat, climbs back through the cover gas at 86.0 min / 684 psia
+     * with the accumulators deliberately isolated, and the hold latches — at 1x, in a band whose
+     * only documented escape is to OPEN the accumulators, which at 684 psia would dump the tanks
+     * into the plant. That is the exact trap this hold exists to prevent, built by the hold.
+     *
+     * THE DISCRIMINATOR IS WHETHER THE TANKS HAVE BEEN ARMED **ON THIS ASCENT**. The window is a
+     * trap only for a player who has not yet opened the valve on the way up — the heatup, which
+     * boots `cold_shutdown` (and `hot_shutdown`; both are `ic.cold`) with
+     * `ec.acc.valve_open = false` and must open it before the 1600 psig lock. The four at-power
+     * initial conditions boot with the valve OPEN (`pwr2_eccs` default), so on a cooldown the
+     * tanks were armed at t=0 and shutting them is the procedure, not a missed step.
+     *
+     * ⚠ "EVER OPENED THIS RUN" WAS TOO COARSE AND THE QUALITY PASS CAUGHT IT. Measured: on
+     * `cold_shutdown` at 363 psia, `open_accumulator_valve` then `close_accumulator_valve` — two
+     * presses the board permits — set the bit permanently, and the heatup then ran the rest of
+     * the session with the trap silently disarmed. So the bit is RE-DERIVED: shut, and below the
+     * cover gas, means the tanks are not armed and the next climb through the window is a fresh
+     * trap. `accWinLo` is the same constant the window itself uses.
+     *
+     * THIS DELIBERATELY LETS THE HOLD FIRE AGAIN ON A PLANT THAT REPRESSURIZES THROUGH THE
+     * WINDOW WITH THE TANKS SHUT — the #729 symptom. That is now acceptable and was not before,
+     * because #729's real defect was that the window had NO ESCAPE: heaters off, Pressure SP
+     * floored, spray shut by the checklist itself. The cooldown keeps its spray now, so a player
+     * who ends up here can bring pressure down and clear the hold. A trap with an exit is a
+     * lesson; the one without an exit was the blocker. `run_checklist_pwr2` 2i/2j pin the heatup
+     * half. */
     var accWinLo = EC.ACC.p0_mpa;                                  // EC = RD.eccs, this file's alias
     var accWinHi = (EC.ACC.admin_lock_psig + 14.7) / 145.0377;
     var accP = ts.pressure_mpa;
     var accShut = ts.accumulator_valve_open !== true;
+    if (!accShut) eng._accEverOpened = true;
+    else if (accP < accWinLo) eng._accEverOpened = false;   /* shut and cold — not armed for the next climb */
     var accInWin = accP >= accWinLo && accP <= accWinHi;
     var accRising = eng._prevAccP != null && accP > eng._prevAccP;
     eng._prevAccP = accP;
-    if (!accShut || !accInWin) eng._accHold = false;
+    if (!accShut || !accInWin || eng._accEverOpened === true) eng._accHold = false;
     else if (accRising) eng._accHold = true;
     ts.speed_hold = eng._accHold
       ? 'accumulator window open — arm the accumulators before accelerating again'

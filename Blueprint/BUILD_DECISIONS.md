@@ -45,6 +45,93 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-12-backshop-a — #729: a step that shuts the only remaining pressure control, and a "never happens" written about the wrong time scale
+
+**Two decisions, both forced by the same playtest (#724 item 19), and both about claims that were
+true of something adjacent to what they described.**
+
+### 1. Content follows the plant (HR9): the cooldown keeps its spray
+
+`pwr_cooldown` step 11 shut the pressurizer spray beside the reactor coolant pumps, reasoning that
+*"the spray is driven by the pumps, so it does nothing once they stop."* `pwr2_pressurizer.js`
+SPRAY declares `needs_rcp: true` **and** `rcp_gate_enforced: false` — the first states the real
+plant's physics, the second is a DECLARED departure this sim has always carried. The step's
+sentence was a statement about the first, written into content governed by the second.
+
+It mattered because by that point in the leg the spray is the only pressure control left: heaters
+off from step 6, the Pressure SP dial floored at 1700 psi, and the auxiliary-spray tile removed
+from the board by owner direction 2026-08-31. MEASURED full stack (seed 42, 600×, player's route
+— advance on acceptance, not the replay's holds): the pressurizer SHELL returns **180.8 kW** at
+601.2 °F (316.2 °C) into a 425 °F (218 °C) fluid, heaters 0 kW, surge 0 kW, pressurizer mass
+FALLING — so not charging, not an insurge, stored metal energy. Pressure reverses **−92 → +33
+psi/min**, the sourced 585 psig autoclosure shuts the residual-heat-removal suction valve at
+**610 psig / 274.7 °F**, and the 425 psig open permissive refuses the re-align.
+
+The controlled pair is what makes it a cause: spray held and pumps secured → 308 → 21 psia, valve
+stays ALIGN, Mode 5 at 115.5 plant-min; pumps left RUNNING and spray shut → 1060 psia and the
+valve isolates. **The pumps are irrelevant.**
+
+**Decided:** the plant is right and the content is stale (HR9). Step 11 keeps the spray and now
+ASSERTS it (`spray_flow_pct > 0`); a new step shuts it once the plant is cold, where the same
+action is worth +1 psi per 5 plant-minutes instead of +33 psi/min. `Manuals/04` PWR-N15 moves with
+it — and had already recorded the same trap from the other side, *"shutting the spray first
+bounces pressure back over the 425 psig block-open permissive"*, while never telling the operator
+to shut it. Only the live walkthrough did.
+
+**Also decided, same step's neighbour:** heat-exchanger split **25 % → 12 %**. The step's prose
+claimed *"close to 90 °F per hour … about two plant-hours"*. Measured from its own entry state:
+25 % is **−193 °F/hr (−107 °C/hr) worst, −154 °F/hr average, Mode 5 in 0.66 plant-h** — **1.9× the
+sourced 100 °F/hr limit** (WTSM App 19-1 ML11223A342; NUREG-1431 LCO 3.4.3; ruled 2026-08-09 on
+#398) — against 12 % at −95 °F/hr worst, −74 average, 1.36 plant-h. **A prose number that no gate
+reads is an unmeasured claim that ages without a symptom**, which is the standing gap this is the
+newest instance of.
+
+### 2. The accumulator speed hold: the discriminator is the VALVE'S HISTORY, not the pressure's direction
+
+`pwr2_engine.js`'s hold (#619 item 13) exists so a player cannot ride past the accumulator arming
+window at 600× and be trapped. Its comment asserted *"a cooldown, entering from above, never
+latches."* **That is a claim about the last two physics steps, not about the leg** — and the
+cooldown falsifies it: after the spray is shut the plant repressurizes on shell heat and climbs
+back through the 665 psia cover gas with the accumulators **deliberately** isolated, so the hold
+latches and pins the clock at 1× in a band whose only documented escape is to open the
+accumulators, which at 684 psia would dump the tanks into the plant. The guard built the trap it
+exists to prevent.
+
+**Decided:** `_accEverOpened`, one bit. The window is a trap only for a player who has not yet
+ARMED the accumulators, and exactly one initial condition boots with the valve shut
+(`cold_shutdown`, `ec.acc.valve_open = false`) — the heatup's. Every other boots open
+(`pwr2_eccs` default), so on a cooldown the tanks have been armed since t=0 and shutting them is
+the procedure. One bit cannot be spoofed by a pressure excursion; "rising" can.
+
+### A worth is only as good as its settle time, and this one moved 15 %
+
+Rod and boron worth were measured twice at power (`inbox/724/m16.js`). Perturbing after a
+120-plant-minute settle: **0.2209 °F/step, 0.5670 °F/ppm**. Perturbing after a further 48
+plant-hours: **0.2228 °F/step, 0.6524 °F/ppm**. The ROD figure is stable to 1 %; the BORON
+figure moves **15 %**, because a boron change shifts temperature, temperature shifts power, and
+power shifts xenon inside the two-plant-hour settle the measurement allows. Read boron as
+**0.57–0.65 °F/ppm** and quote the range, not one end of it. The conclusion the ascension
+rewrite rests on survives either value: 255 steps carry **56–57 °F** against boron's
+**27–31 °F**, so rods are the larger lever at both ends of the spread. The walkthrough text
+says "about 0.6 °F" for the same reason.
+
+**Verified by injection, because a one-bit change has to be shown to do exactly one thing.**
+Re-running the PRE-FIX route (spray shut at the pump step) against the fixed engine: the valve
+still autocloses (**609 psig / 286.7 °F**, unchanged) and the hold **never rises** — zero
+`speed_hold` events through a climb to 1791 psia, where it previously latched at 684. The heatup
+half stays pinned by `run_checklist_pwr2` 2i/2j.
+
+### The trap that cost the most time, recorded so it is not paid twice
+
+The triage this lane was handed named `emergency.rhr_valve_interlock_mpa` (2.76 MPa / 400 psi) and
+`emergency.rhr_autoclose_mpa` (4.14 MPa / 600 psi) and a possible operator-inescapable dead band
+between them. Those are the **RETIRED pwr1 engine's** constants, in `layers/control/pwr_control.js`.
+The plant that ships is PWR2 and its pair is **425 psig open permissive / 585 psig autoclose**
+(`pwr2_rhr.js:77-78`), both sourced to WTSM 5.1 (ML11223A219). The hysteresis between them is real
+and correct and was never the defect. **Grep the engine that ships, not the one the comment cites.**
+
+---
+
 ## 2026-09-08-workbench-m — #668 RULED: a UNIFORM scale error passes every structural check, so exactly one check may type the sourced number
 
 *(OWNER RULING, 2026-09-08: "A — adopt the sourced 8 and 72; keep 48 as normal, marked
