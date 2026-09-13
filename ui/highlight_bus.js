@@ -99,9 +99,12 @@
    * A selector that matches nothing (panel closed, feature off) resolves to null and glows
    * nothing, exactly as an unknown board label does.
    *
-   * A SHELL TARGET WINS OVER THE BOARD MAP for the same label. That is the point for
-   * `Plot point`: the board label stays in CONTROL_LABEL_MAP (deleting it would red
-   * `run_manual_controls` for every step that names it) and this overrides where it points. */
+   * A SHELL TARGET WINS OVER THE BOARD MAP for the same label, and FALLS BACK TO IT when the
+   * selector matches nothing. That combination is the whole behaviour for `Plot point`: the
+   * board label stays in CONTROL_LABEL_MAP (deleting it would red `run_manual_controls` for
+   * every step that names it), so with the 1/M window OPEN the ring lands on the plot-point
+   * button and with it CLOSED it lands on `bdOneOverM` — the button you have to press to open
+   * the window, which is the right target in that state. Not a fallback that glows nothing. */
   var SHELL_TARGETS = {
     'Plot point': '#oomWin [data-oom="plot"]',
     'Speed control': '#speed'
