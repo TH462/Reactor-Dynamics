@@ -338,57 +338,11 @@ to read everything.
 
 _Last updated: **2026-09-09**._
 
-**Where the PWR is.** Read `BASELINES` for the runner count, never a number written here. The PWR
-is the only active plant: engines, control, service, instructor and the board are built.
-**It is feature-complete Mode 5 ↔ Mode 1** (#524), and the LIVE
-CHECKLISTS walk it: `RD.MANUAL_PROCEDURES.pwr2`, six chain-linked legs Mode 5 → full power →
-Mode 5, replayed by `run_checklist_pwr2` (#244/#526; #254 stages 4/6 remain). **What is open, in one line each:**
-
-**Do not read the list below as the issue tracker** — `gh issue list --state open` is the authority
-and this summary ages — measured twice, whole bullets called issues open that were closed.
-**Run the query.**
-
-- **#436 — the control-room rework, BUILT to its content gates**; children #437–#446 landed
-  bar **#441** (rung authoring pass) and **#446** (deferred by ruling).
-  `ui/test_panel/lane_reference.html` is the chart's golden artifact and measures itself —
-  **change it first, re-measure, then port**.
-- **#479 PWR2** — Layers 0–5 + core damage + protection + **the pressurizer through stage 2c**
-  (ruled 2026-08-18 "Option 1") — **MERGED INTO `develop` 2026-08-21** *(OWNER DIRECTIVE,
-  2026-08-21: "Full merge and push. Don't publish to main yet.")* — merge `b4122a7`, 86 runners
-  at baseline; the standing no-merge hold above is SPENT (its bar was the merge, which the owner
-  ordered). **SHIPPED as Alpha 1.7.0, 2026-08-30.** (#501–#504, #502, #488, #486/#487 — closed;
-  `PWR2_VALIDATION.md` §65.) **The plant settles at its
-  design point** (2226–2238 psia, 45 °F core subcooling) and **the TMI level deception is
-  emergent physics** (`PWR2_VALIDATION.md` §41–46: level control, stuck PORV + block valve +
-  tailpipe, 87 % high-level trip via P-7, aux spray). The two-h stratification is DEFERRED
-  and the §42 criterion RULED A *(OWNER RULING, 2026-08-19: "Defer. A.")* — the steam dump
-  control layer is built and **criterion A is met for the sourced reason** (C-7 keeps the dumps
-  shut on dispatch; power monotone, rods MANUAL — §47). The ADV rung is built (§48). **PWR2 is
-  PLAYABLE (ruled "A", 2026-08-19): `test_pwr2.html` + the `pwr2_engine` facade** — dev channel
-  only, true values declared, gated by `run_pwr2_engine` (14 checks / 8 mutations; it caught the
-  scram-bypasses-RPS defect and filed #499 on arrival — `PWR2_VALIDATION.md` §49). P-9 (turbine trip
-  = reactor trip above it, both sourced values), the #499 beyond-model guards and the
-  DELAYED-data sourcing are all LANDED (§50–52). **Everything since is recorded in `PWR2_VALIDATION.md` §53–§97 — read the sections, not this line**, which is why the roll-call that used to sit here is gone. Still open out of it: **#507**'s casualty menu stands at 22 honest rows (21 at wave 10, +`anticipatory_trip_failure` at #515) with Section F closed, and **#510** batches 1–4 landed leaving five LOW harness items. **#523 (owner rulings 2026-08-26 "Flip now, track the gaps" / "Strip it at build time"): PWR2 IS THE PLANT THE SITE RUNS (§94)** — every link and `/sim` carry `?engine=pwr2`, and a **public** build contains no retired engine at all (six tags + 544,663 bytes pruned by `site/build_site.js`; `make_portable` always). The strip is CHANNEL-GATED so the PREVIEW site keeps it, because the guided content is authored against it and `freePlayOnly` stays. `pwr_config.js`/`pwr_instruments.js` are NOT the old engine and ship everywhere. Two of the three pre-replacement gaps are now #531 (R8) and #525 (mission compatibility). Still owed: delta-T lead/lag + K5 (COLR), channel redundancy, the ESF arm display, stuck_rod_on_scram, the steam-line-break rows + auto isolation signal (the MSIV itself is BUILT, §80). shell.html no longer loads RBMK/BWR (#514/#513, 2026-08-25).
-- **#534 — the PWR2 adversarial bug hunt umbrella: 47 confirmed defects** (28 high, 18 medium,
-  1 low), filed 2026-08-27 as #535–#566. Report only; no simulator code was changed by the
-  sweep. It named TWO systemic patterns, both now fixed and gated: the board was calibrated to
-  the RETIRED engine (#557/#556/#561), and PWR2 kept the retired plant's failure table BY
-  REFERENCE, seven rows of it the kernel's licence to drop or rewrite a command (#546/#547,
-  `run_pwr2_kernel`). **They are one trap, and it is the one to carry forward — this engine
-  inherited the old plant's tables, scales and constants by reference, and each is wrong until
-  measured against THIS plant.** Latest instances: #536's neutron-source constant, tied to the
-  old engine's 500×-inflated prompt generation time (§107), and the whole 2026-08-29 bundle
-  (§119). Second standing fact: **all four kernel protection lists are EMPTY for this plant** —
-  a board band drawn off one (#572) and a reset permissive iterating one (#571) both read as
-  working features. **Grep every consumer.**
-  **The work is in `PWR2_VALIDATION.md` §95–§107 — read the sections, not this line.** Measured
-  2026-08-28: eight of the issues it called CLOSED were still open.
-- **#587 is open** (owner review) — the metal-wall coupling found by #573/#473, #574 and #583,
-  all closed; findings in `Blueprint/PWR2_VALIDATION.md` §108–110.
-- **#579/#580/#577/#575/#500/#576c (2026-08-29, §119)** — the retired plant's rates reached the
-  PUBLIC manual. **The break range STAYS at 20 cm²** *(OWNER RULING, 2026-08-29: "A")*: the model
-  latches above **46 cm²**, so a design-basis LOCA needs `pwr2_core`'s solve, not a bigger slider.
-
+**What is open, and where the plant stands: `gh issue list --state open` is the authority, and
+`Blueprint/PWR2_VALIDATION.md` is the engineering record.** This section carried ~820 words of
+per-issue prose that told you not to trust it — measured twice (2026-08-10, 2026-08-28), whole
+bullets called issues open that were closed. Cut *(OWNER DIRECTIVE, 2026-09-12: "Implement the
+ruleset and Claude.md cuts as recommended.")*. **Run the query; read the sections.**
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
 2026-08-06: "The revision number only matters during a release to the website. Revision numbers
 should never go up until a release happens.")*. **Read the top row of
@@ -824,6 +778,36 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 >   2026-09-12). Same trap as stashing under a background gate.
 >
 > The line above still binds: the gates a change touches are green before it commits.
+
+> **AGENT COST IS TOOL CALLS, NOT PROMPT LENGTH** *(OWNER DIRECTIVE, 2026-09-12: "How can you be
+> more efficient with time and tokens without sacrificing quality?")*. Counted **across two lanes**
+> that day: **~34 dispatches, 13 full `run_all` runs, ~8 h of gate wall time**; the expensive agents
+> ran **300–360 tool calls** each. Every call re-sends that agent's whole context, so the brief's
+> length is noise beside its call count.
+>
+> **CUT NONE OF THESE THREE. They are what an efficiency rule endangers:** the **re-measurement
+> pass** before anything is filed · the **injection proof** on every added check · an agent
+> **saying what it did NOT verify**. A tenth of the cost, and they caught six hollow checks, three
+> refuted diagnoses, a wrong citation, and a false reproduction claim in this file that three
+> sessions were acting on.
+>
+> - **An agent never backgrounds a gate and hands back.** Foreground with a long timeout, or it runs
+>   no aggregate and the coordinator owns it. A resumed agent re-reads its whole context.
+>   **Structural — telling agents to be careful does not fix it.**
+> - **No polling.** Put *"wait for the notification; do not re-check, do not re-read what you have
+>   read"* in every brief.
+> - **Hand over the measured numbers, each marked MEASURED or INHERITED, never as a premise the
+>   agent may not test** — or this cancels the re-measurement pass above. Two filed mechanisms were
+>   refuted by the agents handed them.
+> - **One WRITER per file per TREE.** Two agents editing different regions merge clean; the same
+>   line conflicts loudly; two writers in one tree destroy work with `git status` clean. Both need
+>   the same file → a scratch worktree each, `LANES.md` §9.
+> - **No agent where no judgement is required and the facts are in hand** — a ruling record, a
+>   cross-link, a version bump. One such cost **112 k tokens for three string edits**. No size
+>   threshold: size is not the axis.
+> - **A brief carries constraints and numbers, not rationale.** The *why* is for the owner.
+> - **One doc-budget pass**: compute what the block costs, cut that much in the same edit, measure
+>   once.
 
 - **Any engine or scenario change** → the affected `run_<plant>.js` and `run_scenarios.js`.
 - **Control-layer change** → `run_autoctl.js` **and** `run_m4.js`; check `run_ops.js`
