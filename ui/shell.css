@@ -2294,6 +2294,23 @@ select.num-input { width: auto; }
   margin-bottom: 2px;
 }
 .ckl-crit-met { color: var(--running); }
+/* THE LETTERED SUBSTEP PREFIX (#741) — `3a`, `3b`. A quiet fixed-width gutter, not a second
+   headline: the row's own text is the thing to read and the letter only says "this is part of
+   step 3". Muted rather than the row's cobalt so it does not compete with the ✓/○, and it goes
+   grey->green with the row because it inherits nothing (.ckl-crit-met sets `color` on the
+   parent, which this overrides). Drawn only when a step has more than one visible row. */
+.ckl-crit-n {
+  display: inline-block; min-width: 20px; color: var(--muted);
+  font-weight: 600; font-variant-numeric: tabular-nums;
+}
+/* …AND THE DONE-WHEN UNDER IT, on an entry that carries an `ask`. The instruction is the bold
+   cobalt row; this is what the sim is waiting for, so it is quieter and lighter — the same
+   relationship .ckl-use has to the step text. Indented to the letter gutter so the two lines
+   read as one row rather than two. */
+.ckl-crit-when {
+  font-weight: 400; font-size: 11px; color: var(--text-2);
+  margin-left: 20px; line-height: 1.4;
+}
 /* WHICH CONTROL, AND WHAT YOU ARE DRIVING IT TO (#598 item 13, owner ruling 2026-09-02).
    Promoted back out of the Details fold: measured, only 41 % of the steps carrying a control
    name it in their instruction text, so folding this away left 27 of them with no visible
@@ -2318,12 +2335,27 @@ select.num-input { width: auto; }
    other is optional. The label (above) names it; this tint is what makes it one BLOCK rather than
    one more paragraph. Deliberately the quietest ground on the card: a hair of --bg-elevated over
    the panel, no border colour, because it must not compete with .ckl-crit or the wait rung. */
-.ckl-why { font-size: 11.5px; color: var(--text-2); line-height: 1.45; margin-top: 6px;
-  border-left: 2px solid var(--border); padding: 5px 8px;
-  background: rgba(152,163,175,0.045); border-radius: 0 4px 4px 0; }
+/* …AND SINCE #741 IT IS A REAL BOX, SET APART FROM THE WORK *(OWNER, 2026-09-13: "I also want to
+   make the informational text block more obvious that it's not a work step but just there for
+   education. Put it in its own box, move it slightly away from the work steps and label it so
+   it's obvious what it is.")*.
+   #692 gave it a label and a left rule and a tint, and he is asking again — so the label alone
+   was not enough. Three changes, one per clause of the ruling:
+     - ITS OWN BOX: a border on all four sides and a full radius, instead of a left rule and a
+       tint that read as one more indented paragraph in a card built out of indented paragraphs.
+     - MOVED AWAY: margin-top 6px -> 12px, twice the gap between any two working rows, so the
+       separation is visible before a word is read. That gap IS the signal; the box only gives
+       the gap something to be a gap between.
+     - LABELLED: see .ckl-why-lbl. The wording is the owner's call and is pending.
+   Still the quietest ground on the card, deliberately: this must not out-shout .ckl-crit, which
+   is the row the player is being graded on. The border is --border, the same line the step card
+   itself uses, so the box reads as "a different KIND of thing" rather than "an important thing". */
+.ckl-why { font-size: 11.5px; color: var(--text-2); line-height: 1.45; margin-top: 12px;
+  border: 1px solid var(--border); padding: 6px 9px;
+  background: rgba(152,163,175,0.045); border-radius: 5px; }
 .ckl-why-lbl {
   display: block; color: var(--muted);
-  font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 2px;
+  font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 3px;
 }
 /* THE LEG'S CAUTIONS, DRAWN DURING THE RUN (#653 product defect 1). Amber, because they are
    cautions and the board's own amber is what a player has been taught to read that way — the
@@ -2342,10 +2374,18 @@ select.num-input { width: auto; }
   font-size: 11px; line-height: 1.45; color: #c9a86a;
   border-left: 2px solid #5a4718; padding: 3px 0 3px 8px; margin: 3px 0 0 6px;
 }
-.ckl-why-btn { font-size: 10px; padding: 1px 7px; margin-top: 4px; }
-.ckl-expand-hint { font-size: 10px; color: var(--muted); margin-top: 4px; }
+/* ⚰ `.ckl-why-btn`, `.ckl-why-all` and `.ckl-expand-hint` WERE HERE and are gone (#739/#741).
+   All three styled the per-step why TOGGLE and the card's click-to-expand, which #737 deleted by
+   owner ruling — the rules outlived the only markup that ever carried them.
+   PROVEN, not assumed: zero emitters in `ui/`, and across `ui/` + `test/` the only non-comment
+   reference to any of the three is `test/verify_flags_ui.js:203`, which queries `.ckl-why-btn`
+   and is itself a hollow check (an element that no longer exists) — workbench owns that file.
+   `dist/Reactor_Dynamics_Alpha_1.7.2.html` and `1.7.3.html` still contain them: those are FROZEN
+   RELEASE OUTPUT, a snapshot of the source at build time, not a consumer of it. A rule is live
+   because something in the tree emits it, and nothing does.
+   `.ckl-why` and `.ckl-why-lbl` are LIVE and stay — `ui/app.js` emits them on every active step
+   and `verify_ckl_relevance` asserts both. `.ckl-back` is live (the "All walkthroughs" button). */
 .ckl-back { font-size: 11px; padding: 2px 8px; margin-bottom: 6px; }
-.ckl-why-all { float: right; font-size: 10px; padding: 1px 7px; margin-left: 8px; }
 /* THE SPEED SUGGESTION IS NOT A CAUTION (#653 product defect 4). It wore var(--caution), the
    board's amber for "abnormal", so on a step whose `note` carries the plant's own limit — the
    heatup's 100 degF/hr, the ascension's 590 degF ceiling — the loudest line on the card was the

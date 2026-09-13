@@ -1579,6 +1579,87 @@ if (!only) {
     ck('every param the #739 acceptances grade resolves on every IC the pool boots from',
        miss.length === 0, miss.length ? ('UNRESOLVED: ' + miss.join(', ')) : Object.keys(ics).join(', '));
   })();
+
+  /* 2y. THE LETTERED SUBSTEP INSTRUCTIONS — AUTHORING SHAPE (#741).
+   *
+   * `accs[].ask` is the per-entry INSTRUCTION the card draws above that entry's done-when. This
+   * asserts the shape a bad `ask` would break; it does NOT assert the render, which needs a
+   * browser and has no reachable fixture (see the note at the end).
+   *
+   *   - an `ask` never replaces a `label`. The card draws the ask on the lit row and the label
+   *     under it, so an entry with an ask and no label loses the done-when entirely — the exact
+   *     thing #741 exists to restore.
+   *   - an `ask` is an INSTRUCTION, so it is short and it is not a copy of its own done-when. A
+   *     paste of the label would put the same sentence on the card twice and read as a bug.
+   *   - the pool's `ask` strings sit ONLY on steps with more than one visible entry. A single-row
+   *     step draws no letter, so an ask there is prose with nothing to distinguish it from the
+   *     label it duplicates — and the owner's principle is FEWER beats for mechanical work, not a
+   *     second voice on every step.
+   *
+   * NO SI is `run_style`'s `checklist_no_si`, which harvests this key alongside `label` — proven
+   * red by injection when the key was added: "Set LOAD to 50 MWe at 11.14 MPa." reddens it and
+   * removing the clause goes green. A new authoring key the harvester does not know about ships
+   * ungated, which is how the panel came to print "(116 degC)" under a green check at #670. */
+  (function () {
+    var noLabel = [], echoes = [], tooLong = [], onSingles = [], total = 0;
+    POOL.forEach(function (proc) {
+      (proc.steps || []).forEach(function (st, i) {
+        if (!st.accs || !st.accs.length) return;
+        var vis = st.accs.filter(function (e) { return !e.hidden; });
+        st.accs.forEach(function (en) {
+          if (!en.ask) return;
+          total++;
+          var where = proc.id + ' step ' + (i + 1);
+          if (!en.label) noLabel.push(where);
+          if (en.label && en.ask.replace(/[.\s]/g, '').toLowerCase() ===
+                          en.label.replace(/[.\s]/g, '').toLowerCase()) echoes.push(where);
+          if (en.ask.trim().split(/\s+/).length > 14) tooLong.push(where + ' (' + en.ask.trim().split(/\s+/).length + ' words)');
+          if (vis.length < 2) onSingles.push(where);
+        });
+      });
+    });
+    ck('every accs[].ask keeps its label — the ask REPLACES the done-when on the card otherwise (#741)',
+       noLabel.length === 0, noLabel.join(', ') || total + ' ask(s) authored, all with a label');
+    ck('...and no ask merely echoes its own done-when (the same sentence twice on one row)',
+       echoes.length === 0, echoes.join(', ') || 'none');
+    ck('...and every ask is an instruction, not a paragraph (at most 14 words)',
+       tooLong.length === 0, tooLong.join(', ') || 'longest is within the cap');
+    ck('...and asks sit only on steps that draw more than one row, where the letters mean something',
+       onSingles.length === 0, onSingles.join(', ') || 'none on single-row steps');
+
+    /* RED BY INJECTION, all four, in place. */
+    var lp = POOL.filter(function (p) { return p.id === 'pwr_lower_power'; })[0];
+    var probe = null;
+    (lp.steps || []).forEach(function (st) {
+      (st.accs || []).forEach(function (e) { if (e.ask && !probe) probe = e; });
+    });
+    if (probe) {
+      var savedLabel = probe.label, savedAsk = probe.ask;
+      function sweepOne(f) {
+        var hits = { noLabel: 0, echo: 0, long: 0 };
+        POOL.forEach(function (proc) { (proc.steps || []).forEach(function (st) {
+          (st.accs || []).forEach(function (en) {
+            if (!en.ask) return;
+            if (!en.label) hits.noLabel++;
+            else if (en.ask.replace(/[.\s]/g, '').toLowerCase() === en.label.replace(/[.\s]/g, '').toLowerCase()) hits.echo++;
+            if (en.ask.trim().split(/\s+/).length > 14) hits.long++;
+          });
+        }); });
+        return hits;
+      }
+      delete probe.label; var r1 = sweepOne(); probe.label = savedLabel;
+      probe.ask = savedLabel;  var r2 = sweepOne(); probe.ask = savedAsk;
+      probe.ask = 'One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen.';
+      var r3 = sweepOne(); probe.ask = savedAsk;
+      ck('...RED BY INJECTION: dropping a label, echoing it, and a 15-word ask are each caught',
+         r1.noLabel === 1 && r2.echo === 1 && r3.long === 1,
+         'noLabel ' + r1.noLabel + ', echo ' + r2.echo + ', long ' + r3.long);
+      ck('...and all three injections were cleaned up', !!probe.label && probe.ask === savedAsk,
+         'label restored, ask restored');
+    } else {
+      ck('...RED BY INJECTION: an ask exists to mutate', false, 'no accs[].ask authored anywhere');
+    }
+  })();
 }
 
 console.log('\n' + '='.repeat(74));

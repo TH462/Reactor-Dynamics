@@ -349,16 +349,40 @@ function sig(rows) {
      * INJECTION, run 2026-09-11: drop the `<span class="ckl-why-lbl">` from the `st.why` branch
      * and this goes red while the `why` text itself still renders — i.e. it pins the LABEL, not
      * the paragraph. */
+    /* THE LITERAL IS GONE FROM THIS ASSERTION (#741). It read `lbl === 'Why this step'`, which
+     * pins DISPLAY TEXT: every future wording change reds a gate that is not about wording, and
+     * the cheapest way out is to edit the gate — which trains people to treat it as noise. The
+     * claim is "the block is labelled and the label is a LEGEND, not prose", so that is what it
+     * asserts now: present, non-empty, short enough to be a heading, and not a restatement of the
+     * paragraph. The #692/#741 wording is free to change without touching this file.
+     * IT STILL PINS THE LABEL AND NOT THE PARAGRAPH — the #653 injection is unchanged: drop the
+     * `<span class="ckl-why-lbl">` and `lbl` is null while `body` still measures the prose.
+     * AND IT IS ALSO THE BOX CHECK NOW (#741, owner 2026-09-13: "Put it in its own box, move it
+     * slightly away from the work steps"). Both halves are read off computed style on the
+     * RENDERED element, never off the stylesheet or a hook that recomputes them: a border on all
+     * four sides distinguishes the box from the left-rule it replaced, and the top margin is what
+     * "move it slightly away" means in pixels. Measured on this tree at 12 px; banded at >= 10 so
+     * a spacing tweak does not red it but reverting to the old 6 px does. */
     var whyLbl = await page.evaluate(function () {
       var log = document.getElementById('cklLog');
       var w = log && log.querySelector('.ckl-why');
       var l = w && w.querySelector('.ckl-why-lbl');
+      var cs = w ? getComputedStyle(w) : null;
       return { hasWhy: !!w, lbl: l ? l.textContent.trim() : null,
-               body: w ? w.textContent.replace(/\s+/g, ' ').trim().length : 0 };
+               body: w ? w.textContent.replace(/\s+/g, ' ').trim().length : 0,
+               borders: cs ? [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth] : null,
+               marginTop: cs ? parseFloat(cs.marginTop) : null };
     });
+    var lblOk = !!whyLbl.lbl && whyLbl.lbl.length >= 4 && whyLbl.lbl.length <= 40 &&
+                whyLbl.lbl.length < whyLbl.body;
     ck('the active step\'s why is LABELLED as extra learning material, not left as a bare grey paragraph',
-       whyLbl.hasWhy && whyLbl.lbl === 'Why this step' && whyLbl.body > 40,
+       whyLbl.hasWhy && lblOk && whyLbl.body > 40,
        whyLbl.hasWhy ? ('label ' + JSON.stringify(whyLbl.lbl) + ', ' + whyLbl.body + ' chars')
+                     : 'no .ckl-why on the active step');
+    var allBordered = !!whyLbl.borders && whyLbl.borders.every(function (b) { return parseFloat(b) > 0; });
+    ck('...and it is a BOX set apart from the work rows — bordered on all four sides, and moved away (#741)',
+       whyLbl.hasWhy && allBordered && whyLbl.marginTop >= 10,
+       whyLbl.hasWhy ? ('borders ' + JSON.stringify(whyLbl.borders) + ', margin-top ' + whyLbl.marginTop + 'px')
                      : 'no .ckl-why on the active step');
 
     /* ---- 5. EVERY PIXEL OF A NUMBER TILE TYPES INTO ITS BOX (#615) --------------------- */

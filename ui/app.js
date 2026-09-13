@@ -4431,6 +4431,23 @@
          * `ck.graded_by` is untouched in the snapshot and still asserted by
          * run_checklist_pwr2 2a/2b, which read the snapshot rather than the DOM. */
         if (st.accs && st.accs.length) {
+          /* LETTERED SUBSTEPS (#741) *(OWNER RULING, 2026-09-13: "Let's implement the substep idea
+           * as you recommend after fixing 739 first. Fewer beats for mechanical work.")*.
+           *
+           * The rows, the per-entry latching and the tick were ALL ALREADY HERE — this draws a
+           * `3a` / `3b` prefix off the entry's position and lets an entry carry the INSTRUCTION
+           * (`ask`) above its done-when, instead of showing the done-when alone. Nothing about
+           * grading moves, and no ordering is created: see the `accs[].ask` note in
+           * manual_procedures.js for why "3b cannot tick until 3a" was deliberately not built.
+           *
+           * THE LETTER COUNTS VISIBLE ENTRIES, NOT ARRAY SLOTS. `hidden` entries are skipped for
+           * drawing, so indexing the letter off `ai` would print 3a, 3c on a step whose middle
+           * entry is a hidden cmd twin — `pwr_heatup` 8 is exactly that shape.
+           * AND IT IS SUPPRESSED ON A ONE-ROW STEP: a solitary "5a" is noise, since the letters
+           * exist to say "these are parts of one step", which needs at least two parts. */
+          var visN = 0;
+          for (var vi = 0; vi < st.accs.length; vi++) if (!st.accs[vi].hidden) visN++;
+          var visSeen = 0;
           for (var ai = 0; ai < st.accs.length; ai++) {
             var en = st.accs[ai], av = (ck.accs && ck.accs[ai]) || {};
             /* `hidden: true` — a cmd-kind entry the replay needs (it is how the harness presses
@@ -4438,11 +4455,19 @@
              * "spray" on the card twice (#660 item 6). Still graded; just not printed. */
             if (en.hidden) continue;
             var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) + modeLiveNote(en, s) : mesc(en.cmd || ''));
+            var tag = visN > 1 ? ((i + 1) + String.fromCharCode(97 + visSeen)) : '';
+            visSeen++;
             h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') + '">' +
+              (tag ? '<span class="ckl-crit-n">' + tag + '</span>' : '') +
               /* mesc UNCONDITIONALLY (#670 operator pass, S-5): since OPSYM prints a strict
                * '<' / '>' rather than ≤ / ≥, fmtPredicate's output carries MARKUP characters
                * and an unescaped insert would swallow the rest of the line as a tag. */
-              (av.met ? '✓ ' : '○ ') + mesc(enTxt) + '</div>';
+              (av.met ? '✓ ' : '○ ') + mesc(en.ask || enTxt) +
+              /* BOTH THE ASK AND THE DONE-WHEN, when the entry carries an instruction: the
+               * player needs to know what to do AND what the sim is waiting for. Quieter, on
+               * its own line, so the imperative is what the eye lands on. */
+              (en.ask ? '<div class="ckl-crit-when">' + mesc(enTxt) + '</div>' : '') +
+              '</div>';
           }
         } else if (st.acc) {
           h += '<div class="ckl-crit' + (ck.acc_met ? ' ckl-crit-met' : '') + '">' +

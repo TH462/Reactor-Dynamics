@@ -76,7 +76,23 @@
  *           the 1/M "point plotted" case; family-matched like the step's own `cmd`).
  *           The step completes when ALL entries are met. `label` is the card's line
  *           for that entry. When `accs` is present it REPLACES `acc` (author one or
- *           the other; `acc` remains the common single-check case).
+ *           the other; `acc` remains the common single-check case) — and `run_checklist_pwr2`
+ *           §2v reddens if a step authors both, because the `acc` is then never read (#739).
+ *   accs[].ask  OPTIONAL per-entry INSTRUCTION (#741, the lettered-substep display). `label` is
+ *           the DONE-WHEN — "Load target set to 30 MWe" — which is what the card drew for every
+ *           entry; on a step that packs three actions into one line that told the player what
+ *           the sim was watching for and never what to DO. `ask` carries the action in the
+ *           imperative ("Set LOAD to 30 MWe") and the card then draws BOTH: the ask on the lit
+ *           row, the done-when under it. Omit it on an entry that is a consequence rather than
+ *           an action — a row reading "3b. Generator at 30 MWe" as if it were an instruction is
+ *           the defect in the other direction. NO SI (owner ruling 2026-09-06); `run_style`'s
+ *           `checklist_no_si` scans this field.
+ *           ⚠ IT IS DISPLAY ONLY. Nothing grades on it, and ORDERING IS NOT IMPLIED: the letters
+ *           are drawn off the entry's position in the array and "3b cannot tick until 3a does"
+ *           is NOT expressible today and was explicitly not built (#741). `pwr_startup` 15 reads
+ *           "press LATCH, THEN set LOAD" while the replay issues LOAD first and nothing notices
+ *           — that is the standing evidence that ordering would be premature, not a bug this
+ *           field fixes.
  *   wait_hint OPTIONAL string — rendered as a time-acceleration suggestion on long
  *           steps (#244 M5→3 item 5). Prose only; harnesses ignore it.
  *   overtaken OPTIONAL {p,op,v[,tol],text[,industry]} — the plant condition under which
@@ -2068,9 +2084,9 @@
           why: 'Pulling rods first raises power and warms the water; raising LOAD then draws more steam and cools it back. Doing it in that order means the temperature is approached from above rather than dragged from below.',
           control: 'Control Bank', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE inside its band, near 556 °F',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 30, speed: 'normal' }, hold: 480,
-          accs: [{ cmd: { action: 'set_load_target', mwe: 30 }, label: 'Load target set to 30 MWe' },
+          accs: [{ cmd: { action: 'set_load_target', mwe: 30 }, ask: 'Set LOAD to 30 MWe.', label: 'Load target set to 30 MWe' },
                  { p: 'mwe_output', op: '>', v: 28, label: 'Generator at 30 MWe' },
-                 { p: 'power_pct', op: '>', v: 28, label: 'Reactor following, near 30 %' },
+                 { p: 'power_pct', op: '>', v: 28, ask: 'Hold WITHDRAW at MED, about 30 steps.', label: 'Reactor following, near 30 %' },
                  /* THE TEMPERATURE CHECK THESE STAGES NEVER HAD (layman playtest pass 2, #653 S-1/S-9):
                   * the four stages ticked on load and power alone while the player's coolant ran
                   * 581 -> 600 degF and tripped on OTdT at 93 %. Bounds are what the replay itself lands
@@ -2096,7 +2112,7 @@
                   * are carried through UNTOUCHED (302 / 306 / 307.5 / 307.5 degC) — this widens
                   * nothing, it closes the open end. Checked against the untrimmed replay's own
                   * measured landings (569.7 / 575.8 / 579.0 / 578.8 degF): all four sit inside. */
-                 { p: 'tavg_c', op: '~', v: 294.75, tol: 7.25, label: 'AVG COOLANT TEMPERATURE between 550 and 576 °F (the band is near 556)' }],
+                 { p: 'tavg_c', op: '~', v: 294.75, tol: 7.25, ask: 'Trim AVG COOLANT TEMPERATURE into its band.', label: 'AVG COOLANT TEMPERATURE between 550 and 576 °F (the band is near 556)' }],
           /* + `Rod Speed — Normal` (#735, develop's item 5 sweep): the text says "at MED" and this
            * is the leg's FIRST rod move. The player arrives from `pwr_startup` step 14, which says
            * "Press SLOW", so the selector IS at SLOW and nothing before this step changes it —
@@ -2108,29 +2124,29 @@
           why: 'Same order as the last stage: rods, then LOAD, then trim. Halfway up, xenon is starting to build in the fuel. Boron takes care of that over the coming hours; rods take care of the next few minutes.',
           control: 'Control Bank', target: 'OUTPUT 50 MWe; AVG COOLANT TEMPERATURE inside its band, near 562 °F',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 32, speed: 'normal' }, hold: 480,
-          accs: [{ cmd: { action: 'set_load_target', mwe: 50 }, label: 'Load target set to 50 MWe' },
+          accs: [{ cmd: { action: 'set_load_target', mwe: 50 }, ask: 'Set LOAD to 50 MWe.', label: 'Load target set to 50 MWe' },
                  { p: 'mwe_output', op: '>', v: 48, label: 'Generator at 50 MWe' },
-                 { p: 'power_pct', op: '>', v: 47, label: 'Reactor following, near 50 %' },
-                 { p: 'tavg_c', op: '~', v: 297, tol: 9, label: 'AVG COOLANT TEMPERATURE between 550 and 583 °F (the band is near 562)' }],
+                 { p: 'power_pct', op: '>', v: 47, ask: 'Hold WITHDRAW at MED, about 32 steps.', label: 'Reactor following, near 50 %' },
+                 { p: 'tavg_c', op: '~', v: 297, tol: 9, ask: 'Trim AVG COOLANT TEMPERATURE into its band.', label: 'AVG COOLANT TEMPERATURE between 550 and 583 °F (the band is near 562)' }],
           hl: ['Withdraw', 'Turbine Load'], hl_watch: ['Tavg'] },
         { text: 'Hold WITHDRAW at MED about 35 steps, set LOAD to 75 MWe, then trim AVG COOLANT TEMPERATURE into its band.',
           note: 'The band is near 570 °F at this load.',
           why: 'Three-quarter power. The band has climbed with the load, toward 578 °F at 100 %. If the temperature reads below the band, you led with LOAD instead of rods: pull more steps before you add more megawatts.',
           control: 'Control Bank', target: 'OUTPUT 75 MWe; AVG COOLANT TEMPERATURE inside its band, near 570 °F',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 35, speed: 'normal' }, hold: 480,
-          accs: [{ cmd: { action: 'set_load_target', mwe: 75 }, label: 'Load target set to 75 MWe' },
+          accs: [{ cmd: { action: 'set_load_target', mwe: 75 }, ask: 'Set LOAD to 75 MWe.', label: 'Load target set to 75 MWe' },
                  { p: 'mwe_output', op: '>', v: 72, label: 'Generator at 75 MWe' },
-                 { p: 'power_pct', op: '>', v: 70, label: 'Reactor following, near 75 %' },
-                 { p: 'tavg_c', op: '~', v: 300, tol: 7.5, label: 'AVG COOLANT TEMPERATURE between 558 and 585 °F (the band is near 570)' }],
+                 { p: 'power_pct', op: '>', v: 70, ask: 'Hold WITHDRAW at MED, about 35 steps.', label: 'Reactor following, near 75 %' },
+                 { p: 'tavg_c', op: '~', v: 300, tol: 7.5, ask: 'Trim AVG COOLANT TEMPERATURE into its band.', label: 'AVG COOLANT TEMPERATURE between 558 and 585 °F (the band is near 570)' }],
           hl: ['Withdraw', 'Turbine Load'], hl_watch: ['Tavg'] },
         { text: 'Hold WITHDRAW at MED about 18 steps, set LOAD to 90 MWe, then trim AVG COOLANT TEMPERATURE into its band.',
           note: 'The band is near 575 °F at this load, and the pulls get smaller from here: above 103 % power the plant stops the rods. If LOAD changes by itself, the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.',
           why: 'Above 103 % power the plant refuses to move the rods, and at 118 % it trips the reactor. Overshoot is real on this plant: 100 MWe of LOAD lands REACTOR POWER near 101 %. Small pulls keep you clear of the stop.',
           control: 'Control Bank', target: 'OUTPUT 90 MWe; AVG COOLANT TEMPERATURE inside its band, near 575 °F',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 18, speed: 'normal' }, hold: 480,
-          accs: [{ cmd: { action: 'set_load_target', mwe: 90 }, label: 'Load target set to 90 MWe' },
+          accs: [{ cmd: { action: 'set_load_target', mwe: 90 }, ask: 'Set LOAD to 90 MWe.', label: 'Load target set to 90 MWe' },
                  { p: 'mwe_output', op: '>', v: 86, label: 'Generator at 90 MWe' },
-                 { p: 'tavg_c', op: '~', v: 301.5, tol: 6, label: 'AVG COOLANT TEMPERATURE between 564 and 585 °F (the band is near 575)' }],
+                 { p: 'tavg_c', op: '~', v: 301.5, tol: 6, ask: 'Trim AVG COOLANT TEMPERATURE into its band.', label: 'AVG COOLANT TEMPERATURE between 564 and 585 °F (the band is near 575)' }],
           /* + `Insert` (#735): this step's note carries a contingency — "If LOAD changes by itself,
            * the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG
            * COOLANT TEMPERATURE is back in its band" — and `hl` offered no INSERT target. */
@@ -2139,9 +2155,9 @@
           why: 'A small pull, then the last 10 MWe of LOAD, then the trim. REACTOR POWER settles near 101 %. The control bank ends part-way out, because boron carried most of the reactivity the climb cost.',
           control: 'Control Bank', target: 'OUTPUT 100 MWe; AVG COOLANT TEMPERATURE 578 °F',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 9, speed: 'normal' }, hold: 900,
-          accs: [{ cmd: { action: 'set_load_target', mwe: 100 }, label: 'Load target set to 100 MWe' },
+          accs: [{ cmd: { action: 'set_load_target', mwe: 100 }, ask: 'Set LOAD to 100 MWe.', label: 'Load target set to 100 MWe' },
                  { p: 'mwe_output', op: '>', v: 97, label: 'Generator at 100 MWe' },
-                 { p: 'tavg_c', op: '~', v: 303.2, tol: 8, label: 'AVG COOLANT TEMPERATURE near 578 °F' },
+                 { p: 'tavg_c', op: '~', v: 303.2, tol: 8, ask: 'Trim AVG COOLANT TEMPERATURE onto 578 °F.', label: 'AVG COOLANT TEMPERATURE near 578 °F' },
                  /* THE ROD CHECK THIS LEG NEVER HAD. Every "Withdraw N steps" line above was a
                   * no-op for as long as the leg started from `50_percent`, which boots the bank
                   * on its top stop — and no acceptance read the bank, so the replay certified an
@@ -2422,8 +2438,8 @@
            * for step 3's reason: the boration keeps walking Tavg down and a two-sided band would
            * fall out from under a player reading at 1x. */
           accs: [{ p: 'power_pct', op: '<', v: 70, label: 'Reactor following through 70 %' },
-                 { p: 'mwe_output', op: '~', v: 50, tol: 5, label: 'Generator settled near 50 MWe' },
-                 { p: 'tavg_c', op: '<', v: 298.1, label: 'AVG COOLANT TEMPERATURE back below 569 °F, inside its band' }],
+                 { p: 'mwe_output', op: '~', v: 50, tol: 5, ask: 'Set LOAD to 50 MWe.', label: 'Generator settled near 50 MWe' },
+                 { p: 'tavg_c', op: '<', v: 298.1, ask: 'Hold INSERT at MED until AVG COOLANT TEMPERATURE is back in its band.', label: 'AVG COOLANT TEMPERATURE back below 569 °F, inside its band' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
         { text: 'Set LOAD to 30 MWe, let power follow, then hold INSERT until AVG COOLANT TEMPERATURE is back in its band.',
           note: 'About 10 steps at MED.',
@@ -2437,8 +2453,8 @@
            * MEASURED at the end of this hold: authored route 290.44 degC (554.8 degF) PASS,
            * step 3's trim removed 295.36 degC (563.6 degF) FAIL. */
           accs: [{ p: 'power_pct', op: '<', v: 45, label: 'Reactor following through 45 %' },
-                 { p: 'mwe_output', op: '~', v: 30, tol: 5, label: 'Generator settled near 30 MWe' },
-                 { p: 'tavg_c', op: '<', v: 294.4, label: 'AVG COOLANT TEMPERATURE back below 562 °F, inside its band' }],
+                 { p: 'mwe_output', op: '~', v: 30, tol: 5, ask: 'Set LOAD to 30 MWe.', label: 'Generator settled near 30 MWe' },
+                 { p: 'tavg_c', op: '<', v: 294.4, ask: 'Hold INSERT at MED until AVG COOLANT TEMPERATURE is back in its band.', label: 'AVG COOLANT TEMPERATURE back below 562 °F, inside its band' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
         { text: 'Set LOAD to 15 MWe, let power follow, then hold INSERT until AVG COOLANT TEMPERATURE is back in its band.',
           note: 'About 6 steps at MED. Stop here; the shutdown checklist takes over.',
@@ -2483,7 +2499,7 @@
                  /* TWO-SIDED (#736): 15.00 at the end of this hold, 30.00 at its entry, 0 on a
                   * scram — and this is the leg's LAST step, the one whose latched floor let the
                   * completion banner fire on a dead plant. */
-                 { p: 'mwe_output', op: '~', v: 15, tol: 5, label: 'Generator settled near 15 MWe' },
+                 { p: 'mwe_output', op: '~', v: 15, tol: 5, ask: 'Set LOAD to 15 MWe.', label: 'Generator settled near 15 MWe' },
                  /* ROD TRIM GRADED (#739) — see step 4 for the derivation and the three-way
                   * discrimination run. Band top at the measured 0.1495 steam flow is 291.60 degC;
                   * authored 291.6, 557 degF. MEASURED at the end of this hold: authored route
@@ -2493,7 +2509,7 @@
                   * to close the gap on its own, so it is the weakest of the three as a detector.
                   * ONE-SIDED IS NOT COSMETIC HERE: the authored route ends 6.7 degF BELOW the band
                   * (see the re-measurement above), so a two-sided band would red the shipping leg. */
-                 { p: 'tavg_c', op: '<', v: 291.6, label: 'AVG COOLANT TEMPERATURE back below 557 °F, inside its band' }],
+                 { p: 'tavg_c', op: '<', v: 291.6, ask: 'Hold INSERT at MED until AVG COOLANT TEMPERATURE is back in its band.', label: 'AVG COOLANT TEMPERATURE back below 557 °F, inside its band' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },

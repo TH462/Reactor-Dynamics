@@ -299,7 +299,15 @@ var CHECKS = [
         // the ruling exactly as `why` is. It is prose ABOUT a plant, which is where an "(11 MPa)"
         // is most likely to be written without thinking.
         if (s.step.story) STORY_KEYS.forEach(function (k) { chk(s.proc + ' step ' + s.n + '.story.' + k, s.step.story[k]); });
-        (s.step.accs || []).forEach(function (a, j) { chk(s.proc + ' step ' + s.n + '.accs' + j, a.label); });
+        /* BOTH per-entry strings (#741). `label` is the done-when; `ask` is the lettered
+         * substep's INSTRUCTION, added for the #741 display and drawn on the card exactly like
+         * the label — so it is player-facing and bound by the same 2026-09-06 ruling. A new
+         * authoring key that the harvester does not know about ships ungated, which is how the
+         * panel came to print "(116 degC)" while this check stayed green (#670 S-10). */
+        (s.step.accs || []).forEach(function (a, j) {
+          chk(s.proc + ' step ' + s.n + '.accs' + j, a.label);
+          chk(s.proc + ' step ' + s.n + '.accs' + j + '.ask', a.ask);
+        });
         if (s.step.overtaken) { chk(s.proc + ' step ' + s.n + '.overtaken', s.step.overtaken.text); chk(s.proc + ' step ' + s.n + '.overtaken', s.step.overtaken.label); }
       });
       return hits;
