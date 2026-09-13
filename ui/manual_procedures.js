@@ -1830,9 +1830,13 @@
           saw: { p: 'startup_rate_dpm', op: '>', v: 0 },
           acc: { p: 'power_pct', op: '>', v: 0.5 },
           hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
+        /* IT ASKS FOR A PRESS AND GLOWED NOTHING (quality pass, 2026-09-12). This step carried an
+         * EMPTY `hl` while its own text says "Close the 1/M PLOT window" — #735's sweep counted
+         * it and the fix list missed it. `1/M Plot Tool` is the label for the window; the two
+         * indications it also names stay in `hl_watch`, where a step's "look at this" belongs. */
         obs('Verify SOURCE RANGE has switched itself off and INTER RANGE is reading. Close the 1/M PLOT window.',
           { p: 'sr_energized', op: '<', v: 1 },
-          'Close it with the ✕ in its corner; its work is done.', null,
+          'Close it with the ✕ in its corner; its work is done.', ['1/M Plot Tool'],
           'The SOURCE RANGE detectors would wear out if they stayed on at power, so this plant switches them off by itself once INTER RANGE is reading. There is no button for it; you are checking that it happened.',
           null, ['Source Range', 'Intermediate Range']),
         { text: 'Press MED, then hold INSERT until REACTOR POWER stops rising and is below 5 %.',

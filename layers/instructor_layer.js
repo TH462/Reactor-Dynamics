@@ -212,6 +212,7 @@
       precond: null,
       precondMsg: false,   // an unmet-precondition instructor comment is standing
       precondSaid: false,  // #732 — it has been said ONCE for this run and will not be said again
+                           //   (restored by loadState too: a REWIND is not a new run)
       catchUp: true,       // first _stepChecklist tick walks past already-done steps (#607)
       // Behind-the-scenes failures fired on the CURRENT step (#670): `fired` is the once-per-
       // entry keys, `injected` the failure ids the snapshot publishes. Both reset per step.
@@ -1030,6 +1031,10 @@
    * P-10, so this must be read live every tick rather than latched once — which is exactly what
    * grading on state (and not on a command that happened once) gives. Boolean on the wire;
    * normalised to 1/0 here so the ordinary `{op:'>', v:0}` predicate vocabulary applies. */
+  /* The engine publishes fields of its own called `ir_high_blocked` and `lo_press_blocked`
+   * (pwr2_protection.js) and these param names shadow them in `paramValue`. Traced at the
+   * quality pass: both come from the SAME source — `pwr2_shell.js` builds `trip_blocks` out of
+   * the very flags those fields report — so there is no second copy of the truth here. */
   var RPS_BLOCK_PARAMS = {
     ir_high_blocked:         'ir_high',
     pr_low_setpoint_blocked: 'pr_low_setpoint',
@@ -1567,6 +1572,11 @@
          * injection and the step fires it again" true rather than an assumption. */
         fired: (this.checklist.fired || []).slice(),
         injected: (this.checklist.injected || []).slice(),
+        /* #732 — the once-per-run precondition latch rides with them, for the same reason. The
+         * REWIND button is a loadState of a checkpoint, so without this every rewind re-armed the
+         * comment and the flicker came back one press at a time. Absent in an old save reads as
+         * false, which is exactly the pre-#732 behaviour. */
+        precond_said: !!this.checklist.precondSaid,
       } : null,
     };
   };
@@ -1596,11 +1606,17 @@
           accsState: cs.accs_met ? cs.accs_met.map(function (m) {
             return { streak: 0, met: !!m, obs: null, graded_by: null };
           }) : null,
-          // Precondition verdicts are DERIVED state — never saved; the first
-          // step() tick after a restore regrades them against the live plant
-          // (and re-raises the comment if rows are still unmet, which is right:
-          // a fresh session deserves the warning again).
-          precond: null, precondMsg: false,
+          // Precondition VERDICTS are DERIVED state — never saved; the first step() tick
+          // after a restore regrades them against the live plant.
+          //
+          // THE LATCH IS NOT DERIVED AND IS RESTORED (#732, quality pass 2026-09-12). The
+          // comment above used to argue that re-raising is right because "a fresh session
+          // deserves the warning again" — true of a file load, and WRONG of the path this
+          // actually is most of the time: the walkthrough's own Rewind button goes through
+          // loadState (simulation_service.js `_restoreCheckpoint`), so an undefined flag meant
+          // every rewind re-armed the comment and handed the player the flicker back one press
+          // at a time. A save written before this field restores false, i.e. unchanged.
+          precond: null, precondMsg: false, precondSaid: !!cs.precond_said,
           // #670 — restored, not re-derived: a save written before this field is an empty set,
           // which is exactly what it used to behave as.
           fired: (cs.fired || []).slice(), injected: (cs.injected || []).slice(),

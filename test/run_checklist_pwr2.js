@@ -1278,6 +1278,44 @@ if (!only) {
     var fine = []; for (var d = 0; d < 20; d++) fine.push(20.0);
     ck('...and a plant that never breaks the precondition says nothing at all',
        run(fine).raises === 0);
+
+    /* THE LATCH SURVIVES A REWIND, because a rewind is a loadState of a checkpoint and NOT a new
+     * run (quality pass, 2026-09-12). Found by review, not by this section: 2u above drives
+     * `step()` only, so it could never see `loadState` rebuild the checklist without the flag and
+     * hand the player the flicker back one Rewind press at a time. An OLD save with no field must
+     * still read false, i.e. behave exactly as it did before #732.
+     * PROVEN RED BY INJECTION on a scratch worktree at the parent commit: 2 / 2 / 2 there
+     * (inbox/724/precond_rewind.js), 1 / 0 / 1 here. */
+    function raisesOver(il, series, t0) {
+      var n = 0, t = t0;
+      series.forEach(function (pw) {
+        t += 0.1; il.pendingMessage = null; il.step(snap(pw, t), t);
+        var m = il.pendingMessage;
+        if (m && /prerequisites|PRECONDITIONS/i.test(m.industry || m.learning || '')) n++;
+      });
+      return n;
+    }
+    var cycle = [9, 9, 9, 20, 20, 9, 9, 9];
+    var ilA = new RD.InstructorLayer(null);
+    ilA.engineKey = 'pwr2';
+    ilA.loadChecklist(PROBE, { procedure_id: PROBE.id, profile_key: 'pwr2' });
+    var rA = raisesOver(ilA, cycle, 0);
+    var saved = ilA.saveState();
+    ck('the once-per-run latch is SAVED with the checkpoint (#732 — a rewind is not a new run)',
+       rA === 1 && saved && saved.checklist && saved.checklist.precond_said === true,
+       'raises ' + rA + ', precond_said ' + (saved && saved.checklist && saved.checklist.precond_said));
+    var ilB = new RD.InstructorLayer(null);
+    ilB.engineKey = 'pwr2';
+    ilB.loadState(saved, RD.MANUAL_PROCEDURES);
+    ck('...so the same oscillation after a REWIND says nothing at all',
+       raisesOver(ilB, cycle, 100) === 0);
+    var oldSave = JSON.parse(JSON.stringify(saved));
+    delete oldSave.checklist.precond_said;
+    var ilC = new RD.InstructorLayer(null);
+    ilC.engineKey = 'pwr2';
+    ilC.loadState(oldSave, RD.MANUAL_PROCEDURES);
+    ck('...and a save written before the field reads false — unchanged behaviour, not a migration break',
+       raisesOver(ilC, cycle, 200) === 1);
   })();
 }
 

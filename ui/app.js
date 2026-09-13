@@ -4054,6 +4054,12 @@
      * two notations on one card, which is the inconsistency he is naming. `sci` renders the
      * board's form with the plain number in brackets, which is the form he called acceptable. */
     if (pd && pd.sci) {
+      /* ⚠ GUARD FIRST (quality pass, 2026-09-12): the normalising loops below never terminate
+       * for +/-Infinity, and `isFinite(null)` is TRUE in this codebase's standing trap — hence
+       * the `typeof` half. Not reachable from the shipped pool (no precondition names
+       * `sr_counts_cps`, so the only values here are the authored literals), but this formatter
+       * also renders a precondition's OBSERVED value, where a dead channel could arrive. */
+      if (typeof vv !== 'number' || !isFinite(vv) || vv === 0) return String(v);
       var mant = vv, exp = 0;
       while (Math.abs(mant) >= 10) { mant /= 10; exp++; }
       while (mant !== 0 && Math.abs(mant) < 1) { mant *= 10; exp--; }
@@ -4775,8 +4781,22 @@
    * on each long step would be a SECOND copy of that condition, free to drift from the sentence
    * the player is reading. One condition, two surfaces: the words and the ring.
    *
-   * It glows the RUNG the note names, not the whole bar: the note says a number, and a ring
-   * round six buttons does not. Falls back to the bar itself if that rung is not on the ladder.
+   * ⚠ IT GLOWS THE BAR, NOT THE RUNG, AND THAT IS A CSS CONSTRAINT RATHER THAN A CHOICE
+   * (quality pass, 2026-09-12). `.speed` is `display: inline-flex` with `overflow: hidden`
+   * (ui/shell.css:918) and `.ckl-step-glow`'s only visual is an OUTER box-shadow — an outer
+   * shadow on a child is clipped by the ancestor's overflow, and `position: relative` plus a
+   * z-index does not escape a clip. So a ring on `button[data-speed="600"]` would barely show
+   * while the whole-bar fallback showed properly, which is the worst of both. `#speed` itself
+   * sits in `.sim-row`, which has no clip, so the bar's own ring is drawn in full. The rung
+   * still gets a marker class so a per-rung treatment is one CSS rule away — that rule belongs
+   * in `ui/shell.css`, which this lane does not own; reported rather than written.
+   *
+   * NOT WHILE THE CLOCK IS HELD. `syncWarpInfo` has a HIGHER-priority branch: while
+   * `true_state.speed_hold` stands (the accumulator arming window) it prints that note INSTEAD
+   * of "set the speed control to N x", and the service refuses speed changes for as long as it
+   * does. Glowing through that window would ring a button that will refuse the press, which is
+   * owner item 3's complaint in reverse.
+   *
    * Uses the step-glow class (the pulse, "act on this") since this IS an action the step asks
    * for; it is applied after the step/watch glows and never fights them — they live on the
    * board, this lives in the shell. */
@@ -4784,16 +4804,19 @@
     clearCklSpeedGlow();
     var holdS = st ? (+st.hold || 0) : 0;
     if (!st || holdS < 180 || st.wait_hint === false) return;
+    if (warpNote && warpNote.reason === 'hold') return;   // the clock is held; the press would refuse
     var bar = document.getElementById('speed');
     if (!bar) return;
     var rung = (RD.CklSpeedHint ? RD.CklSpeedHint(holdS) : null);
     var el = (rung && rung.speed != null) ? bar.querySelector('[data-speed="' + rung.speed + '"]') : null;
-    (el || bar).classList.add('ckl-speed-glow', 'ckl-step-glow');
+    if (el) el.classList.add('ckl-speed-rung');            // marker only — no rule for it yet
+    bar.classList.add('ckl-speed-glow', 'ckl-step-glow');
   }
   function clearCklSpeedGlow() {
     document.querySelectorAll('.ckl-speed-glow').forEach(function (el) {
       el.classList.remove('ckl-speed-glow'); el.classList.remove('ckl-step-glow');
     });
+    document.querySelectorAll('.ckl-speed-rung').forEach(function (el) { el.classList.remove('ckl-speed-rung'); });
   }
   // Picker menu (free-play instructor card): every non-narrative procedure for
   // the active plant can run as a checklist.

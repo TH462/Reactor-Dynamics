@@ -67,8 +67,10 @@ position, because the 1/M relocation turns its button bar from a side column int
 plot and moves the window's parent as well.
 
 Swept on the built pool: **21 of 88 steps name a board button the highlight does not point at.**
-Fixed in the three legs this change owns (16 of them); `pwr_raise_power`'s 5 are reported, not
-touched. Rod-speed buttons (SLOW/MED/FAST) now glow on every step whose text says to **press**
+Six are cleared here — five rod-speed and plot-point misses in `pwr_startup` plus one that the
+rampdown split absorbed — and of the rest, `pwr_raise_power`'s five belong to another change and
+every remaining flag in these legs is the deliberate exclusion below (a step that continues at a
+speed already selected, or prose that merely names a speed it is not asking for). Rod-speed buttons (SLOW/MED/FAST) now glow on every step whose text says to **press**
 one, and deliberately not on a step that merely continues at a speed already selected. The
 time-compression speed bar glows the rung the card's own "set the speed control to N x" sentence
 names, keyed off that sentence's own condition rather than a second copy of it.

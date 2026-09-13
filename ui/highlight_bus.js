@@ -105,9 +105,13 @@
    * every step that names it), so with the 1/M window OPEN the ring lands on the plot-point
    * button and with it CLOSED it lands on `bdOneOverM` — the button you have to press to open
    * the window, which is the right target in that state. Not a fallback that glows nothing. */
+  /* ONE ENTRY ON PURPOSE. `Speed control` was here and is DELETED (quality pass, 2026-09-12):
+   * nothing resolved it — the speed-bar glow is COMPUTED in ui/app.js from the active step's own
+   * hold, not authored as an `hl` label — and a step that did name it would red
+   * `run_manual_controls`, because the label is not in the board's CONTROL_LABEL_MAP. A shell
+   * target only belongs here if a step can name it. */
   var SHELL_TARGETS = {
-    'Plot point': '#oomWin [data-oom="plot"]',
-    'Speed control': '#speed'
+    'Plot point': '#oomWin [data-oom="plot"]'
   };
   function shellTarget(label) {
     var sel = SHELL_TARGETS[label];
