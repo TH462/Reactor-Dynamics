@@ -125,6 +125,62 @@ cannot hold both claims. **Every "does not animate" check is PAIRED with the sam
 animations simply deleted. Four injections, all caught — an override removed (2 red), two signals
 sharing geometry (1), the JS scram guard removed (1), the critical alarm's double trimmed to 3px (1).
 
+
+### THE QUALITY PASS FOUND A SHIPPING REGRESSION THAT HAD NOTHING TO DO WITH ACCESSIBILITY
+
+**A STRAY `}`.** The `bdScramPulse` keyframe was put back with one extra closing brace. A top-level
+`}` is not skipped: per CSS error recovery it opens a qualified rule whose prelude runs to the next
+`{`, so it **swallows the following rule**. The victim was `.bd-num-frame`, ten lines below.
+
+MEASURED on the live board, reproduced independently before acting: **73 CSS rules parsed → 72**,
+and eleven number-input tiles lost `display: flex`, their border and their radius — the `<input>`
+rendering **169.6 px wide inside an 80.8 px frame**, overhanging the tile and painting over the
+neighbouring control, the frame 57.4 px tall instead of 24.2. Those are the setpoint boxes with two
+filed issues about being unusable (#605, #615).
+
+**EVERY GATE IN THE REPO WAS GREEN ON IT** — `verify_board_check` 278, `run_glow_stacking` 20/20,
+`run_style` 11, `run_hardrules` 550, and this change's own new `verify_reduced_motion` 14/14.
+
+The reviewer's closing line is the one to keep: *the commit spends ninety lines on a cascade trap it
+caught, and shipped a one-character brace error that silently deleted a rule ten lines away. The
+lesson filed was "rules that must win go last"; the lesson available was "nobody parsed the file
+after editing it."* So the gate now compares each stylesheet's **source top-level rule count against
+the CSSOM's** — two seconds, and it catches the whole class: a stray brace, an unclosed block, a
+swallowed rule. It would have caught the `.bd-info` bug this cycle keeps citing, too.
+
+**AND I DID NOT RESTORE THE KEYFRAME, I REWROTE IT.** The pre-image carried `inset 0 0 18px
+rgba(0,0,0,.55)` in both stops; my version dropped it, so the armed SCRAM button lost its inset
+depth shading while pulsing. Three documents said "restored". Put back byte-for-byte.
+
+### THREE BLIND SPOTS IN THE GATE I HAD JUST WRITTEN
+
+1. **It asserted DISTINCTNESS but not PRESENCE.** The claim is "the fallback is not hue-only";
+   pairwise uniqueness does not carry it, because a signal whose geometry is DELETED still has a
+   unique tuple as long as the others differ. Measured: dropping the outline from `button.armed`,
+   `.ckl-step-glow`, `.bd-msg.bd-unack` or `.bd-actuated`, or the box-shadow from `.instr-glow`,
+   each left the gate at 14/14. **The four injections I cited in the commit all removed a WHOLE
+   override, animation included** — the geometry-only case, which is what a real future edit looks
+   like, was never probed. Hard Rule 10 exactly: the property asserted was not the property the
+   defect violates.
+2. **`none` counted as a line style.** `new Set(['double','none','dotted']).size === 3` is true.
+3. **The keyframe-existence check did not exist.** Check 13 regex-tests the inline `animation`
+   string, so deleting `@keyframes bdScramPulse` outright left the gate green — the exact regression
+   the headline lesson is about, on the keyframe that had already been wrongly deleted once.
+
+14 → 19 checks. All four new ones proven red by injection. **My first attempt at the exclusion-key
+injection patched a comment rather than the list and reported zero reds** — the fourth time this
+cycle an injection of mine has missed its target, which is its own argument for always reading the
+red rather than the count.
+
+### AND FOUR COMMENTS THAT ARGUED FOR THE DESIGN WE REJECTED
+
+`shell.css` still said *"DASHED is a message, which borrows `.ckl-watch-glow`'s watch-this sense"* —
+the pre-fix prose, left in place, arguing for exactly the collision the commit's own headline section
+is about rejecting. `pwr_board.css`'s vocabulary table said `double 3px` when "5px NOT 3px" is one of
+the three headline findings, 55 lines from the note saying not to trim it. A third said *"NOTHING
+GATES IT"* about a thing this change gates. The superseded `.alarm-tile.unack.crit` override was left
+three lines from a comment insisting that placement is what matters. All corrected.
+
 ---
 
 ## Session log — 2026-09-13-workbench-b (#738/#716 — the trip-block message: what counts as one, measured four ways before anything was built)

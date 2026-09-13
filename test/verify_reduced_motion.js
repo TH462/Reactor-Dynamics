@@ -170,6 +170,14 @@ function probeAll() {
   var HUE_ONLY_BY_DESIGN = ['gauge alarm value', 'system slot alarm dot', 'retired-board scram'];
   ck('the hue-only exclusion list is still SMALL and named (3) — it is the easiest thing here to abuse',
     HUE_ONLY_BY_DESIGN.length === 3, HUE_ONLY_BY_DESIGN.join(', '));
+  /* A TYPO IN THE LIST IS SILENT OTHERWISE. A misspelt key excludes nothing and the list quietly
+     stops meaning what it says; it fails SAFE (the signal rejoins the distinctness set) but the
+     comment above it becomes a lie. */
+  var badKeys = HUE_ONLY_BY_DESIGN.filter(function (k) {
+    return !SIGNALS.some(function (s) { return s.key === k; });
+  });
+  ck('  …and every excluded key names a real signal (a typo excludes nothing and says nothing)',
+    badKeys.length === 0, badKeys.length ? badKeys.join(', ') : 'all 3 resolve');
 
   var keys = SIGNALS.map(function (s) { return s.key; })
     .filter(function (k) { return HUE_ONLY_BY_DESIGN.indexOf(k) < 0; });
@@ -189,11 +197,36 @@ function probeAll() {
       : Object.keys(sig).length + ' distinct shapes for ' + keys.length + ' competing signals (' +
         HUE_ONLY_BY_DESIGN.length + ' value/retired signals excluded by design, see above)');
 
+  /* DISTINCTNESS IS NOT ENOUGH, AND THE FIRST VERSION OF THIS FILE ONLY ASSERTED DISTINCTNESS.
+   * The claim is "the fallback is not hue-only". Pairwise uniqueness does not carry it: a signal
+   * whose geometry is DELETED still has a unique tuple as long as the others differ, so any one
+   * signal could silently revert to hue-only with this gate green. MEASURED (#740 quality pass):
+   * dropping the outline from `button.armed`, `.ckl-step-glow`, `.bd-msg.bd-unack` or
+   * `.bd-actuated` — or the box-shadow from `.instr-glow` — left the gate at 14/14.
+   *
+   * The four injections the commit cited all removed a WHOLE override, animation included, which
+   * is why they were caught; the geometry-only case, which is what a real future edit looks like,
+   * was never probed. Hard Rule 10 exactly: the property asserted was not the property the defect
+   * violates. So assert PRESENCE too — `none|3px|0px|none` is the browser default and means the
+   * signal has no static treatment at all. */
+  var DEFAULT_TUPLE = 'none|3px|0px|none';
+  var bare = keys.filter(function (k) {
+    var r = reduce[k];
+    var shape = (r.shadow === 'none') ? 'none' : r.shadow.replace(/rgba?\([^)]*\)/g, '').trim();
+    return (r.style + '|' + r.width + '|' + r.offset + '|' + shape) === DEFAULT_TUPLE;
+  });
+  ck('every competing signal actually HAS a static treatment (distinctness alone would pass on a deleted one)',
+    bare.length === 0, bare.length ? bare.join(', ') + ' carry the browser default' : keys.length + ' signals carry geometry');
+
   /* The trio the ruling is actually about, called out so a collision among THEM is unmissable. */
   var trio = ['critical alarm', 'protection latch (ACTUATED)', 'trip-block message'];
   var trioShapes = trio.map(function (k) { return reduce[k].style + '|' + reduce[k].width + '|' + reduce[k].offset; });
+  /* `none` IS NOT A LINE STYLE. `new Set(['double','none','dotted']).size === 3` is true, so the
+   * first version of this check stayed green when either outline was deleted outright (measured).
+   * Require three REAL styles. */
+  var trioStyles = trioShapes.map(function (t) { return t.split('|')[0]; });
   ck('  …and the three that were hue-only — critical alarm, protection latch, message — differ by LINE STYLE',
-    new Set(trioShapes.map(function (t) { return t.split('|')[0]; })).size === 3,
+    new Set(trioStyles).size === 3 && trioStyles.every(function (st) { return st !== 'none'; }),
     trio.map(function (k, i) { return k + ' ' + trioShapes[i]; }).join(' | '));
 
   /* `double` splits its width three ways: at 3px it renders as one thin line and read FAINTER than
@@ -214,6 +247,69 @@ function probeAll() {
       return { anim: btn.style.animation || 'none', shadow: btn.style.boxShadow || '' };
     });
   }
+  /* THE KEYFRAME HAS TO EXIST, and check 13 could not see that. It regex-tests the inline
+   * `animation` shorthand string, so MEASURED: deleting `@keyframes bdScramPulse` outright left the
+   * gate 14/14 green — the exact regression the commit's headline lesson is about (it was deleted
+   * once already, on a CSS-only grep that could not see its JavaScript caller). Ask the CSSOM. */
+  var kf = await pMotion.evaluate(function () {
+    var want = ['bdScramPulse', 'bdMsgFlash', 'bdActuatedFlash', 'alarmCritFlash', 'cklGlow', 'instrGlow'];
+    var found = {};
+    for (var i = 0; i < document.styleSheets.length; i++) {
+      var rules; try { rules = document.styleSheets[i].cssRules; } catch (e) { continue; }
+      for (var j = 0; j < rules.length; j++) {
+        if (rules[j].type === CSSRule.KEYFRAMES_RULE) found[rules[j].name] = true;
+      }
+    }
+    return want.filter(function (n) { return !found[n]; });
+  });
+  ck('every keyframe the board names still EXISTS in the CSSOM (a named animation with no keyframe is silent)',
+    kf.length === 0, kf.length ? 'MISSING: ' + kf.join(', ') : '6 keyframes present');
+
+  /* THE STYLESHEETS PARSE — and this is here because of what this very change shipped.
+   *
+   * A729beac restored `@keyframes bdScramPulse` with ONE EXTRA `}`. A stray top-level brace is not
+   * skipped: per CSS error recovery it opens a qualified rule whose prelude runs to the next `{`,
+   * so it SWALLOWS THE FOLLOWING RULE. The victim was `.bd-num-frame`, and MEASURED on the live
+   * board: 11 number-input tiles lost `display:flex`, their border and their radius, and the input
+   * rendered 169.6 px wide inside an 80.8 px frame — overhanging the tile and painting over the
+   * neighbouring control. Those are the setpoint boxes with two filed issues about being unusable
+   * (#605, #615).
+   *
+   * EVERY GATE IN THE REPO WAS GREEN ON IT, this runner included. The lesson the commit filed was
+   * "rules that must win go last"; the lesson available was "nobody parsed the file after editing
+   * it". Comparing the source's own top-level rule count against the CSSOM's catches the whole
+   * class — a swallowed rule, an unclosed block, a stray brace — for two seconds. */
+  var sheetCounts = await pMotion.evaluate(function () {
+    var out = {};
+    for (var i = 0; i < document.styleSheets.length; i++) {
+      var sh = document.styleSheets[i], rules;
+      try { rules = sh.cssRules; } catch (e) { continue; }
+      var href = (sh.href || '').split('/').pop();
+      if (href) out[href] = rules.length;
+    }
+    return out;
+  });
+  /* Count top-level rules in the SOURCE: strip comments and strings, then track brace depth. */
+  function sourceRuleCount(file) {
+    var t = fs.readFileSync(path.join(ROOT, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    var depth = 0, n = 0, stray = 0;
+    for (var i = 0; i < t.length; i++) {
+      var ch = t[i];
+      if (ch === '"' || ch === "'") { var q = ch; i++; while (i < t.length && t[i] !== q) { if (t[i] === '\\') i++; i++; } continue; }
+      if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) n++; else if (depth < 0) { stray++; depth = 0; } }
+    }
+    return { rules: n, stray: stray, unclosed: depth };
+  }
+  [['ui/shell.css', 'shell.css'], ['ui/diagram/board/pwr_board.css', 'pwr_board.css']].forEach(function (pair) {
+    var src = sourceRuleCount(pair[0]);
+    var dom = sheetCounts[pair[1]];
+    ck('the stylesheet PARSES — ' + pair[1] + ': every top-level rule the source declares reaches the CSSOM',
+      src.stray === 0 && src.unclosed === 0 && dom === src.rules,
+      'source ' + src.rules + ' rules (stray } ' + src.stray + ', unclosed ' + src.unclosed +
+      ') vs CSSOM ' + dom);
+  });
+
   var armedMotion = await scramArmed(pMotion);
   var armedReduce = await scramArmed(pReduce);
   ck('the SCRAM armed pulse animates when motion is allowed (inline style, invisible to a class probe)',

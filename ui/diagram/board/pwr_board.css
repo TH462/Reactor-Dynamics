@@ -222,8 +222,9 @@
    .bd-btn.bd-msg.bd-unack { animation: none } }` placed ABOVE the rule that sets the animation
    loses to it outright, and the button went on pulsing for a player who had asked it not to.
    `.bd-actuated` gets this right only because its animation happens to be declared above the media
-   block. Found by the #738 quality pass. NOTHING GATES IT: `prefers-reduced-motion` appears in no
-   test in this repo, so the ordering is held by this comment and by review. */
+   block. Found by the #738 quality pass. IT IS GATED NOW — `test/verify_reduced_motion.js` (#740)
+   asserts that nothing animates under the preference AND that each signal keeps a distinct static
+   shape; this comment said "nothing gates it" until that runner existed. */
 @media (prefers-reduced-motion: reduce) {
   /* DOTTED — and the first cut of this was DASHED, which would have collided (#740).
      A box-shadow ring, which is what this was, is the same GEOMETRY as bd-actuated's fallback and
@@ -235,7 +236,7 @@
      board is enough for the vocabulary to blur.
 
      The board's static vocabulary is therefore FOUR distinct line styles, not three:
-       double  3px  — critical alarm            (ui/shell.css)
+       double  5px  — critical alarm            (ui/shell.css)
        solid   2px  — a protection latch is holding this system
        dotted  2px  — there is a message in this control's card   <- this rule
        dashed  1/3px — the walkthrough is pointing at this (watch it / act on it)
@@ -278,9 +279,8 @@
    inline style beats any stylesheet rule, so `@media (prefers-reduced-motion) { … animation: none }`
    could never have stopped it. See buildScram in pwr_board.js. */
 @keyframes bdScramPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 180, 0, 0.55); }
-  50%      { box-shadow: 0 0 0 7px rgba(255, 180, 0, 0); }
-}
+  0%, 100% { box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.55), 0 0 0 0 rgba(255, 180, 0, 0.55); }
+  50%      { box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.55), 0 0 14px 3px rgba(255, 180, 0, 0.35); }
 }
 
 /* ---- number inputs ---- */

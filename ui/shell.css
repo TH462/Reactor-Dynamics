@@ -839,9 +839,10 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
   0%, 100% { background: transparent; }
   50% { background: rgba(229, 72, 77, 0.18); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .alarm-tile.unack.crit { animation: none; box-shadow: inset 0 0 0 1px var(--critical); }
-}
+/* (The `.alarm-tile.unack.crit` reduced-motion override that stood here is SUPERSEDED and was
+   deleted at #740: the block at the end of this file re-states `animation: none` and replaces its
+   inset ring with the 5px double outline. Leaving a dead override three lines from a comment
+   insisting that placement is what matters was the confusion this change is arguing against.) */
 
 /* ===================================================== right col: sim ctrls */
 .sim-controls {
@@ -3035,10 +3036,18 @@ select.num-input { width: auto; }
      hue collapse.
 
      THE VOCABULARY IS THE BOARD'S OWN, not a fourth one: the highlight bus is a halo,
-     `.ckl-watch-glow` is a dashed offset outline, and `#playBtn.paused`'s own fallback below is
-     already `outline: 2px solid`. DOUBLE is the loudest and belongs to the critical alarm; SOLID is
-     the protection latch (see pwr_board.css); DASHED is a message, which borrows
-     `.ckl-watch-glow`'s "watch this" sense deliberately — a message wants reading, not acting. */
+     `.ckl-watch-glow` is a dashed offset outline, and `#playBtn.paused`'s own fallback (at :2894,
+     ABOVE this block) is already `outline: 2px solid`.
+
+     DOUBLE is the loudest and belongs to the critical alarm; SOLID is the protection latch (see
+     pwr_board.css); DOTTED is a message; DASHED belongs to the WALKTHROUGH pointing something out,
+     in two widths — 3px "act on this", 1px "watch this".
+
+     ⚠ THE MESSAGE WAS DASHED IN THE FIRST CUT AND THAT WAS A COLLISION. `.ckl-watch-glow` is
+     already `1px dashed` at `outline-offset: 3px`, all but identical, and it means something else
+     entirely; both land on board tiles through `revealControl`. No step names TRIP BLOCKS in an
+     `hl_watch` list today, but 59 steps use one and adjacency on one board is enough to blur a
+     vocabulary. Do not move the message back onto dashed. */
   .alarm-tile.unack.crit {
     animation: none;
     /* 5px, NOT 3px, AND THE DIFFERENCE IS VISIBLE RATHER THAN THEORETICAL. A `double` outline

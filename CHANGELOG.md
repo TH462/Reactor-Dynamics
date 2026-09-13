@@ -45,7 +45,7 @@ colour was the only thing left separating *critical alarm*, *a protection latch 
 system* and *there is a message waiting* — three different meanings a red/green or blue/yellow
 colour-vision deficiency can flatten into one. So each signal now carries its own static shape
 instead: a heavy double ring for a critical alarm, a solid ring for a protection latch, a dotted
-ring for a message, dashes for the walkthrough pointing something out. Six signals, six shapes, none
+ring for a message, dashes for the walkthrough pointing something out. Eight signals, eight shapes, none
 of which needs colour to tell apart — checked by rendering them in greyscale, not by argument.
 
 The SCRAM button's armed pulse is fixed too. It was set from code rather than the stylesheet, so it
