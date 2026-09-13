@@ -792,9 +792,11 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 > refuted diagnoses, a wrong citation, and a false reproduction claim in this file that three
 > sessions were acting on.
 >
-> - **An agent never backgrounds a gate and hands back.** Foreground with a long timeout, or it runs
->   no aggregate and the coordinator owns it. A resumed agent re-reads its whole context.
->   **Structural — telling agents to be careful does not fix it.**
+> - **A SUBAGENT NEVER RUNS THE AGGREGATE — the coordinator owns it.** Not "foreground it": the Bash
+>   ceiling is **600 s** and `run_all` is **34–44 min**, so a foreground run is killed mid-gate and
+>   backgrounding then handing back is the only move left (measured 2026-09-12, after this rule
+>   shipped saying otherwise). A resumed agent re-reads its whole context. **Structural — an agent
+>   cannot comply by being careful.**
 > - **No polling.** Put *"wait for the notification; do not re-check, do not re-read what you have
 >   read"* in every brief.
 > - **Hand over the measured numbers, each marked MEASURED or INHERITED, never as a premise the
