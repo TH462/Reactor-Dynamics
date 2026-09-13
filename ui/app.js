@@ -3785,9 +3785,32 @@
   // bubble; done steps carry the check, the active step shows its live
   // acceptance status and a manual override. Step text comes from the same
   // RD.MANUAL_PROCEDURES artifact the Instructor graded it from.
-  // whyAll / whyOpen: the #244 item-2 explanation toggles (global + per-step); they
-  // survive re-renders via the render key and reset with the checklist itself.
-  var cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null, cautionsOpen: null };
+  /* ⚰ THE CLICK-TO-EXPAND IS GONE *(OWNER RULING, 2026-09-13, #737: delete — chosen from
+   * delete / comment-out / leave)*.
+   *
+   * WHAT IT WAS. `whyAll` and `whyOpen` were the #244 item-2 explanation toggles: a global
+   * "expand every why" and a per-step fold you opened by clicking the step card (#607 item 2).
+   * They rode in the render key and reset with the checklist.
+   *
+   * WHY IT WENT, AND THE LIMIT OF THAT CLAIM. It was INERT **given the one-step card** — not
+   * "never needed". #660 item 15 reduced the panel to the ACTIVE step only (`if (!active)
+   * continue` in the step loop) and the active step's details are always open, so
+   * `detOpen = active || whyAll || whyOpen[i]` short-circuited on the first term for every step
+   * that could ever reach it. The condition is a DESIGN CHOICE: restore a multi-step card and
+   * this feature becomes live again and has to be rebuilt.
+   *
+   * MEASURED, headless Chromium, before anything was removed (`inbox/724/rerender.js`, a
+   * MutationObserver on #cklRun with both controls): clicking the card produced **1** mutation
+   * — a full re-render — against **0** idle and **1** on a real button press. Neutering the
+   * branch AND both handlers took the card click to **0** with the controls unchanged, and
+   * nothing noticed: verify_e2e_ui PASS, verify_flags_ui 27/27, run_checklist 90/90,
+   * verify_ckl_relevance 21/21, run_style 11/11. Workbench's independent A/B against HEAD was
+   * byte-identical on both builds ({text: 532, h: 329.3, whyEls: 1}).
+   *
+   * THE HANDLER WENT WITH THE BRANCH, deliberately: it called `render(latest)` on every card
+   * click while changing nothing drawn, so deleting the branch alone would have removed the
+   * feature and kept its cost. */
+  var cklState = { key: null, step: null, view: 'list', userScrolled: false, preconHtml: null, cautionsOpen: null };
   var cklAutoScroll = false;   /* true while WE are writing scrollTop (#612) */
 
   /* ---- WHICH SPEED RUNG A LONG WAIT WANTS (#628) --------------------------------------------
@@ -3899,7 +3922,7 @@
   }
   function resetCkl() {
     if (!cklState.key) return;
-    cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null, cautionsOpen: null };
+    cklState = { key: null, step: null, view: 'list', userScrolled: false, preconHtml: null, cautionsOpen: null };
     var run = $('cklRun'); if (run) { run.hidden = true; run.innerHTML = ''; }
     /* the End-walkthrough row lives OUTSIDE #cklRun since #687 item 2, so blanking the card no
      * longer takes it with it — it has to be torn down by name or it outlives the run */
@@ -4178,7 +4201,8 @@
        * ring cleared reported rewind_ready false in the snapshot while the button on the board
        * stayed enabled, because nothing in the key had moved. */
       ck.awaiting_ack ? 1 : 0, ck.rewind_ready ? 1 : 0,
-      cklState.whyAll ? 1 : 0, Object.keys(cklState.whyOpen || {}).join(','), ui.units,
+      /* the two fold-state components left the key with the fold itself (#737) */
+      ui.units,
       /* the leg-caution block's open/shut state (#653 defect 1) — outside the key it would
        * never repaint, which is #392's lesson about the precondition banner */
       cklState.cautionsOpen == null ? 'd' : (cklState.cautionsOpen ? 1 : 0),
@@ -4537,9 +4561,12 @@
       }
       if (det) {
         /* THE ACTIVE STEP'S DETAILS ARE ALWAYS OPEN *(OWNER, 2026-09-08, #660: "The current step
-         * should have the why section automatically open.")*. Other steps keep the toggle. */
-        var detOpen = active || cklState.whyAll || (cklState.whyOpen && cklState.whyOpen[i]);
-        if (detOpen) h += det;
+         * should have the why section automatically open.")*. The "other steps keep the toggle"
+         * half is gone with #737: no other step is drawn, so `active` was the only term that
+         * could ever decide this. Kept as an explicit `if` rather than folded away because the
+         * loop above may one day draw more than the active step again, and that is exactly the
+         * condition under which a fold has to come back. */
+        if (active) h += det;
       }
       /* #687 item 3: Rewind step + Continue, LAST — under the instruction, the criteria and the
        * labelled `why`, which is where the owner asked for them. Built in the active block above
@@ -8294,16 +8321,14 @@
         if (!rw.disabled) { retireWarpNote(); TEL.walkthroughRewind(); releaseHold('walkthrough'); cmd({ action: 'rewind', steps: 2, scope: 'full', exact: true }); }
         return;
       }
-      var wa = e.target.closest('[data-ckl-why-all]');
-      if (wa) { cklState.whyAll = !cklState.whyAll; cklState.key = null; render(latest); return; }
       if (e.target.closest('[data-ckl-stop]')) { releaseHold('walkthrough'); cmd({ action: 'stop_checklist' }); return; }
-      /* Click the step card to expand (#607 item 2). Skip clicks on inner buttons. */
-      var stepEl = e.target.closest('.ckl-step');
-      if (stepEl && !e.target.closest('button')) {
-        var wi = stepEl.getAttribute('data-ckl-step');
-        if (cklState.whyOpen[wi]) delete cklState.whyOpen[wi]; else cklState.whyOpen[wi] = 1;
-        cklState.key = null; render(latest);
-      }
+      /* ⚰ THE `[data-ckl-why-all]` TOGGLE AND THE `.ckl-step` CLICK-TO-EXPAND WERE HERE and are
+       * deleted (#737, owner-ruled 2026-09-13). See the cklState declaration for what they did,
+       * why they were inert under the one-step card, and the measurement. The card click called
+       * `render(latest)` unconditionally, which is why it had to go with the branch rather than
+       * be left behind as a no-op re-render. Neither ever had a visible affordance: nothing in
+       * `ui/` emitted `[data-ckl-why-all]`, `.ckl-why-btn` or `.ckl-why-all` — the handler read
+       * an attribute no code wrote. */
     });
     // Plant & Mission window: mode / start-condition picks re-render in place; the start
     // buttons close the window and launch.

@@ -30,6 +30,27 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Removed (the walkthrough card's click-to-expand, inert given the one-step card — #737)
+
+*(OWNER RULING, 2026-09-13: delete — chosen from delete / comment-out / leave.)* `whyAll` /
+`whyOpen`, their two render-key components, the `detOpen` branch and **both handlers** (the
+`[data-ckl-why-all]` toggle and the `.ckl-step` card click) are gone from `ui/app.js`.
+
+Issue #660 item 15 reduced the panel to the ACTIVE step only, and the active step's details are
+always open, so `detOpen = active || whyAll || whyOpen[i]` short-circuited on the first term for
+every step that could reach it. **The limit of that claim: it was inert GIVEN THE ONE-STEP CARD,
+which is a design choice, not "never needed"** — restore a multi-step card and the fold has to
+come back. The branch is kept as an explicit `if (active)` for that reason.
+
+The handler went with the branch deliberately: it called `render(latest)` on every card click
+while changing nothing drawn, so deleting only the branch would have removed the feature and
+kept its cost. MEASURED in headless Chromium with a MutationObserver on `#cklRun`, both controls
+carried — card click **1 mutation before, 0 after**, idle 0 and a real button press 1 on every
+build. Broken-by-injection first and nothing noticed; deleted, and nothing noticed that either.
+Two orphans left in place and reported rather than edited: `.ckl-why-btn` / `.ckl-why-all` in
+`ui/shell.css` (nothing ever emitted either class), and `test/verify_flags_ui.js:203`, which
+queries `.ckl-why-btn` and passes on the `null`.
+
 ### Fixed (the trip-block acceptance graded INVERTED, and it was the only way out of a step it also could not see — #731)
 
 `pwr_startup` steps 16 and 17 — BLOCK the intermediate-range high-flux trip, then BLOCK the
