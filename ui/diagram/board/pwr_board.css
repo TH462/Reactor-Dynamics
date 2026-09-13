@@ -170,9 +170,6 @@
    pulse. The colour still says everything the flash does; only the attention-grab is dropped. */
 @media (prefers-reduced-motion: reduce) {
   .bd-btn.bd-actuated { animation: none; }
-  /* Same answer as bd-actuated's and the highlight bus's: a standing cue rather than a pulse. The
-     amber still says there is a message; only the attention-grab is dropped. */
-  .bd-btn.bd-msg.bd-unack { animation: none; box-shadow: 0 0 0 2px #ffd166; }
 }
 /* Informational/neutral state (grey) — a non-alarm condition the operator has deliberately
    set, e.g. reactor trips intentionally BLOCKED as part of a startup/shutdown lineup. Grey
@@ -210,6 +207,21 @@
 .bd-btn.bd-msg { background: #3a2408; border-color: #ffd166; color: #ffd166; }
 .bd-btn.bd-msg.bd-unack { animation: bdMsgFlash 1.0s ease-in-out infinite; }
 @keyframes bdMsgFlash { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+/* THE REDUCED-MOTION ANSWER, AND IT HAS TO SIT *AFTER* THE ANIMATION RULE. Same answer as
+   bd-actuated's and the highlight bus's — a standing cue rather than a pulse; the amber still says
+   there is a message and only the attention-grab is dropped.
+
+   ⚠ IT WAS DEAD ON THE FIRST CUT, in the same way and one rule later than the bd-info bug this
+   file already records. A media query adds NO specificity, so `@media (prefers-reduced-motion) {
+   .bd-btn.bd-msg.bd-unack { animation: none } }` placed ABOVE the rule that sets the animation
+   loses to it outright, and the button went on pulsing for a player who had asked it not to.
+   `.bd-actuated` gets this right only because its animation happens to be declared above the media
+   block. Found by the #738 quality pass. NOTHING GATES IT: `prefers-reduced-motion` appears in no
+   test in this repo, so the ordering is held by this comment and by review. */
+@media (prefers-reduced-motion: reduce) {
+  .bd-btn.bd-msg.bd-unack { animation: none; box-shadow: 0 0 0 2px #ffd166; }
+}
 
 
 /* Count badge on a button (e.g. number of trips blocked). */
@@ -335,7 +347,6 @@
   color: #9fb3c4; font-size: 9px; letter-spacing: 0.04em; line-height: 1.45;
   padding: 0 0 6px; margin: -4px 0 4px; border-bottom: 1px solid #22323c;
 }
-.bd-pop .bd-pop-status:empty { display: none; }
 .bd-pop .bd-pop-status.bd-pop-status-msg { color: #ffd166; }
 /* A row carrying a message the PLANT raised. The standing note for a release the player made
    keeps the ordinary grey — they know, and colouring it would make their own action look like a

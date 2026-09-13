@@ -1180,6 +1180,13 @@ function runSuite(quietRec) {
      * the end for the reason this file's own header gives: the driver keeps ONE ctxRef and
      * leaving it pointed at a newcomer costs five "silent" buttons in the no-orphan sweep. */
     var w7 = mkWorld();
+    /* START FROM A KNOWN MESSAGE STATE. The module-level message vars outlive a `runSuite()` call,
+     * and the mutation self-test calls runSuite once per mutant — so a lineup left behind by the
+     * previous mutant leaked in and made 10 of 33 mutations carry a spurious red that had nothing
+     * to do with them (measured, #738 quality pass). None was FALSELY caught, but three were down
+     * to a single genuine red, so the next refactor that blinded that one would have been reported
+     * as caught. Production gets the same reset from `onMount`; this is the harness end of it. */
+    RD.PwrBoardDriver.__resetTripBlocks();
     var snapNow = w7.snap();
     var st = (snapNow.rps_state && snapNow.rps_state.trip_block_status) || {};
 
@@ -1277,6 +1284,51 @@ function runSuite(quietRec) {
     feed({ pr_low_setpoint: true });
     q('msg: re-blocking a row clears what it was saying', !msgFor('pr_low_setpoint'),
       JSON.stringify(msgFor('pr_low_setpoint')));
+    /* ============ THE WORLD SEAM (#738 quality pass) ============
+     * The message state is session state over ONE world and must be dropped when the world is
+     * replaced. MEASURED before `tbReset` existed: a board on `cold_shutdown` with all four trips
+     * blocked, then a plant switch to `hot_full_power` and one render, raised TWO false messages
+     * ("RELEASED BY THE PLANT — pressure rose above the shutdown permissive (P-11)"),
+     * unacknowledged, so the button flashed amber on a brand-new plant for an event that never
+     * happened. Reachable in production by the RESET button and by any plant or engine switch —
+     * both go reset -> rebuildPlantUI -> render — and by loading a save.
+     *
+     * The fixture has to go from a MORE-blocked plant to a LESS-blocked one or there is no false
+     * transition to raise: cold_shutdown blocks all four, hot_full_power holds two. Asserting the
+     * precondition rather than trusting it, because a seam check between two identical lineups
+     * would pass on a completely broken reset. */
+    (function () {
+      var cold = mkWorld('cold_shutdown');
+      D2.__resetTripBlocks();
+      D2.afterRender(cold.snap()); D2.afterRender(cold.snap());
+      /* COUNT TRUTHY VALUES, NOT KEYS. `trip_blocks` always carries all four ids — the shell
+       * publishes `{ pr_low_setpoint: <bool>, ir_high: <bool>, lo_press: <bool>, si_trip: <bool> }`
+       * — so `Object.keys().length` is 4 on every plant in every state, and the first cut of this
+       * precondition compared 4 against 4 and reddened. A key count over a map of booleans is not
+       * a count of anything. */
+      function blockedIds(w2) {
+        var tb = (w2.snap().rps_state || {}).trip_blocks || {};
+        return Object.keys(tb).filter(function (k) { return !!tb[k]; }).sort();
+      }
+      var idsCold = blockedIds(cold);
+      var hot = mkWorld();
+      var idsHot = blockedIds(hot);
+      /* THE REQUIREMENT IS A ROW THAT WAS BLOCKED AND IS NOT, not a smaller count — and the two
+       * are different here in a way that would have made a count precondition pass while testing
+       * nothing. Both plants block exactly TWO rows: cold_shutdown holds the pressure pair
+       * (lo_press, si_trip) below P-11, hot_full_power holds the flux pair (ir_high,
+       * pr_low_setpoint) above P-10. 2 -> 2, and every row in the old lineup still drops. */
+      var dropped = idsCold.filter(function (id) { return idsHot.indexOf(id) < 0; });
+      q('msg: the seam fixture really does drop blocks across the switch (no dropped row would prove nothing)',
+        dropped.length > 0,
+        'cold [' + idsCold.join(',') + '] -> hot [' + idsHot.join(',') + '], dropped [' + dropped.join(',') + ']');
+      bindWorld(hot);                      /* onMount — the production seam */
+      D2.afterRender(hot.snap());
+      q('msg: a new world clears the message state — no false "the plant took your block" at a reset or plant switch',
+        D2.tripBlockMessages().length === 0 && D2.tripBlockUnacked() === false,
+        JSON.stringify(D2.tripBlockMessages()));
+    })();
+
     D2.__ackTripBlocks();
     bindWorld(w);                 /* put the driver back on the suite's world — see above */
   })();
@@ -1297,6 +1349,15 @@ var KSRC = fs.readFileSync(KPATH, 'utf8').replace(/\r\n/g, '\n');
 var PTPATH = path.join(SRC, 'pwr2_protection.js');
 var PTSRC = fs.readFileSync(PTPATH, 'utf8').replace(/\r\n/g, '\n');
 var MUTS = [
+  /* THE WORLD SEAM (#738 quality pass). Without the reset at onMount the message state from the
+   * previous plant is compared against the new one, which raised two false "RELEASED BY THE PLANT"
+   * messages and a flashing button on a brand-new plant. Reachable from the RESET button. */
+  ['the message state survives a plant switch (false "the plant took your block" on a new plant)',
+   WIRING_PATH, WSRC,
+   '      tbReset();      // a new world',
+   '      // a new world'],
+
+
   /* ============ #738/#716, the trip-block message. Four mutations, one per claim. ============
    * The feature is a RULE, not a rendering, so every mutation below breaks the rule rather than
    * the class it eventually sets. A check that could only read `bd-unack` off a button would be
@@ -1307,8 +1368,8 @@ var MUTS = [
    * one the owner reported as "nothing on the board saying the trip is live". */
   ['the board can no longer tell a plant revoke from the player releasing it (nothing ever flashes)',
    WIRING_PATH, WSRC,
-   '        if (tbSelf[id]) {',
-   '        if (true) {'],
+   '        var mine = !!(tbSelf[id] && tbSelf[id].want === false);',
+   '        var mine = true;'],
 
   /* AN ACKNOWLEDGE THAT DESTROYS THE MESSAGE. Plausible, smaller, and wrong: the flash must stop
    * while the row goes on saying the trip is live. This is the difference between an

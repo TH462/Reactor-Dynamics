@@ -3104,8 +3104,9 @@
    *
    * (a) IS ZERO ON EVERY AUTHORED ROUTE — which is what an exception annunciator SHOULD score on
    * the happy path — and fires exactly once per real event when a player deviates: MEASURED
-   * (inbox/738/deviation.js), blocking below P-11 and driving pressure back up gives exactly 2
-   * drops, one per row; blocking above P-10 and inserting the bank gives exactly 2. AND IT CANNOT
+   * (inbox/738/deviation.js), blocking below P-11 and driving pressure back up gives exactly one
+   * drop PER ROW — two rows lose their block, so two messages, one each; blocking above P-10 and
+   * inserting the bank gives the same shape. AND IT CANNOT
    * CHATTER: parked ON the P-11 boundary with a block that had actually taken hold, 1 drop and 0
    * regains over 3000 broadcasts, because the revoke law only ever CLEARS and never re-places.
    * That is the structural difference from (d), which is an availability edge and chatters by
@@ -3135,18 +3136,68 @@
    * would have been a window, and windows rot.
    *
    * ------------------------------------------------------------------ WHAT SURVIVES A RELOAD
-   * THE FLASH DOES NOT, AND THAT IS HONEST RATHER THAN A GAP. A message is derived from a
-   * TRANSITION between two broadcasts, and a transition is not in a snapshot — after a load there
-   * is no previous broadcast, so there is nothing to detect and no message is raised. What the
-   * CARD says is derived from STATE instead (blocked / permissive, read fresh every broadcast),
-   * so the lineup and the permissive status are correct immediately after a load. The split is
-   * deliberate: the flash is a live annunciator, the card is the record. */
+   * THE FLASH DOES NOT, AND THAT IS DELIBERATE. `tbReset` drops the message state whenever the
+   * world is replaced — a load, a reset, a plant switch — so nothing is carried across a seam and
+   * nothing false is raised at one.
+   *
+   * ⚠ AN EARLIER VERSION OF THIS NOTE GAVE THE WRONG REASON, AND THE WRONG REASON WAS LOAD-BEARING.
+   * It said a load raises nothing "because after a load there is no previous broadcast, so there is
+   * nothing to detect". `tbPrev` is module state and SURVIVES a load; the zero that was measured
+   * came from something else entirely — the save happened to hold the row BLOCKED, so the load
+   * re-blocked it and the re-block branch cleared the message. Save it UNBLOCKED and the same code
+   * raised a false one. The explicit reset is what makes the claim true; the argument never did.
+   *
+   * What the CARD says is derived from STATE instead (blocked / permissive, read fresh every
+   * broadcast), so the lineup and the permissive status are correct immediately after a load. The
+   * split is deliberate: the flash is a live annunciator, the card is the record. */
   var TB_IDS = ['lo_press', 'ir_high', 'pr_low_setpoint', 'si_trip'];
   var tbSeq = 0, tbAck = 0;
   var tbPrev = null;      // last broadcast's per-row {blocked, permissive}, null before the first
   var tbMsg = {};         // id -> { seq, text } — an outstanding "you did not do this" message
   var tbNote = {};        // id -> standing status text for a release the PLAYER made (case (c))
-  var tbSelf = {};        // id -> broadcasts remaining in which the BOARD commanded this row
+  /* id -> { want: <the blocked state the player asked for>, n: <broadcasts left> }.
+   *
+   * A DIRECTED, SINGLE-USE EXPECTATION — not a blind "the board touched this row recently" window,
+   * which is what shipped first and was wrong at speed. A broadcast is 100 ms of WALL time, so a
+   * 3-broadcast window is 0.3 s of plant time at 1x and **180 s at 600x** (the speed ladder goes to
+   * 3600x). A player who blocks the low-pressure trip during a heatup, then runs at 600x, would
+   * have had a genuine P-11 revoke inside the next three plant-MINUTES silently attributed to
+   * themselves — which is #716's own scenario, annunciated as "released by you".
+   *
+   * Directed and single-use fixes both ends of that. It absorbs only the transition the player
+   * actually asked for, and is CONSUMED by it, so a second change on the same row is the plant's
+   * however fast the clock is running. The broadcast count stays as the unit because the question
+   * it answers is "has my command been reflected yet", which is command latency and therefore wall
+   * time — 2 is one more than the synchronous path needs (`set_trip_block` reaches the engine
+   * inside handleCommand, so the next render already shows it). */
+  var tbSelf = {};
+
+  /* ONE ASSIGNMENT, TWO CALLERS, AND THAT IS THE POINT. The row's click handler and the test
+   * accessor must not each write this — a test accessor that RE-IMPLEMENTS what it is standing in
+   * for turns the production line into a dark wire, and this one did: deleting the click handler's
+   * assignment left `run_pwr2_board` 96/96 with 33/33 mutations caught and `verify_board_check`
+   * 272/272, both green, while every player release started flashing "RELEASED BY THE PLANT".
+   * Found by the #738 quality pass. */
+  function tbMarkSelf(id, want) { tbSelf[id] = { want: want, n: 2 }; }
+
+  /* THE WHOLE MESSAGE STATE IS SESSION STATE OVER ONE WORLD, and it has to be dropped when the
+   * world is replaced. MEASURED before this existed (#738 quality pass, reproduced independently):
+   * a board sitting on `cold_shutdown` with all four trips blocked, then a plant switch to
+   * `hot_full_power` and one render, raised TWO false messages — "RELEASED BY THE PLANT — pressure
+   * rose above the shutdown permissive (P-11)", unacknowledged, so the button flashed amber on a
+   * brand-new plant for an event that never happened. The mount render compares the new lineup
+   * against the PREVIOUS world's `tbPrev`.
+   *
+   * Reachable in production by the RESET button and by a plant/engine switch (both `ui/app.js`
+   * paths go reset -> rebuildPlantUI -> render), and by loading a save. The in-repo precedent is
+   * `ui/panels/one_over_m.js`, which self-clears its points on plant change, reset and rewind for
+   * exactly this reason — a scratchpad about a world that no longer exists.
+   *
+   * NOTE WHY THE INCIDENCE STUDY DID NOT CATCH IT: inbox/738/incidence.js drives four PROCEDURE
+   * REPLAYS, and a replay never crosses a session seam. Its zero is true for what it measured. */
+  function tbReset() {
+    tbSeq = 0; tbAck = 0; tbPrev = null; tbMsg = {}; tbNote = {}; tbSelf = {};
+  }
 
   /* THE CONDITION, NEVER THE NUMBER *(the owner's card text, and HR1 the right way round)*.
    * MEASURED instrument-vs-truth gap at both revokes: P-11 fired at 1965 psia (13.55 MPa)
@@ -3172,7 +3223,9 @@
       now[id] = { blocked: r.blocked === true, permissive: r.permissive === true };
       var p = tbPrev && tbPrev[id];
       if (p && p.blocked === true && now[id].blocked === false) {
-        if (tbSelf[id]) {
+        var mine = !!(tbSelf[id] && tbSelf[id].want === false);
+        if (mine) delete tbSelf[id];          // single-use: the next change on this row is the plant's
+        if (mine) {
           /* (c) THE PLAYER RELEASED IT. No flash — they did it a moment ago. But it must not
            * vanish either: #738's harm is precisely a release the player made and then forgot,
            * with the walkthrough step still green. It becomes standing status in the card. */
@@ -3189,10 +3242,15 @@
        * again, so there is nothing outstanding about it. */
       if (p && p.blocked === false && now[id].blocked === true) {
         delete tbMsg[id]; delete tbNote[id];
+        if (tbSelf[id] && tbSelf[id].want === true) delete tbSelf[id];
       }
     });
     tbPrev = now;
-    TB_IDS.forEach(function (id) { if (tbSelf[id]) tbSelf[id]--; });
+    /* Expire anything the plant never delivered, so a refused or lost command cannot leave a
+     * standing "this row is mine" that mis-attributes a revoke minutes later. */
+    TB_IDS.forEach(function (id) {
+      if (tbSelf[id] && --tbSelf[id].n <= 0) delete tbSelf[id];
+    });
   }
 
   /* Is anything outstanding that the player has not closed the card on since? */
@@ -3314,7 +3372,7 @@
          * a same-tick flag: the command lands between broadcasts and its effect shows on the NEXT
          * snapshot, sometimes the one after. 3 is comfortably over that and comfortably under any
          * plausible gap between a press and an unrelated revoke. */
-        tbSelf[t.id] = 3;
+        tbMarkSelf(t.id, !blocked);
         cmd({ action: 'set_trip_block', trip_id: t.id, blocked: !blocked });
       });
       row.appendChild(txt);
@@ -4382,6 +4440,7 @@
   RD.PwrBoardDriver = {
     onMount: function (doc, ctx, r) {
       ctxRef = ctx; refs = r; closePop();
+      tbReset();      // a new world — see tbReset (#738 quality pass: 2 false messages on a plant switch)
     },
     onButton: function (item, btn) {
       var b = BUTTONS[item.id];
@@ -4525,10 +4584,15 @@
      * no stage cannot open the card, and a check that skipped the acknowledge for that reason
      * would be testing half the feature. Read-accessor category, like ports()/lastSnapshot(). */
     __ackTripBlocks: function () { tbAck = tbSeq; },
+    /* Drop the whole message state. Production calls `tbReset` from onMount; a gate calls this so
+     * its own section starts from a known state — and so the mutation self-test stops carrying
+     * state between mutants (10 of 33 mutations were reporting a spurious red from a leftover
+     * lineup, measured by the #738 quality pass). */
+    __resetTripBlocks: function () { tbReset(); },
     /* Mark a row as one the BOARD just commanded, so a harness can exercise the (c) branch — the
      * player's own release — without a rendered popover to click. Same assignment the row's click
      * handler makes; see `tbSelf` at the top of this section for why it is a countdown. */
-    __markTripBlockSelf: function (id) { tbSelf[id] = 3; },
+    __markTripBlockSelf: function (id, want) { tbMarkSelf(id, want === undefined ? false : want); },
     scramResetNote: function (s) {
       var rps = (s && s.rps_state) || {};
       if (!rps.scrammed) return null;

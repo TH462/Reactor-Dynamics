@@ -130,6 +130,69 @@ Also recorded because it is a real property rather than a wart: **the flash land
 after the event** — the detector runs in `afterRender`, the last thing a render does, so the
 button's classes were computed before the event. 100 ms in production.
 
+### THE QUALITY PASS FOUND TWO THINGS I WOULD NOT HAVE SHIPPED, AND ONE CLAIM THAT WAS WRONG
+
+Re-measured independently before acting on any of it.
+
+**1. A DARK WIRE IN THE ONLY LINE THAT MAKES THE FEATURE WORK.** `tbSelf[t.id] = 3` in the row's
+click handler is the ONLY production code separating "the plant took your block" from "you released
+it". Delete it and `run_pwr2_board` stayed **96/96 with 33/33 mutations caught** and
+`verify_board_check` **272/272** — both gates fully green while every player release flashed
+"RELEASED BY THE PLANT", which is the defect this whole change exists to prevent. **The cause is
+worth more than the instance: the test accessor `__markTripBlockSelf` RE-IMPLEMENTED the assignment
+instead of calling it**, so the checks tested the accessor and the production line was unwatched.
+Both now route through one `tbMarkSelf`, and a new `board_check` leg presses a row through the real
+click handler — deleting the line now reds 2 checks.
+
+**2. THE MESSAGE STATE WAS NEVER DROPPED WHEN THE WORLD WAS REPLACED.** MEASURED: a board on
+`cold_shutdown` (pressure pair blocked), switched to `hot_full_power`, one render — **two false
+"RELEASED BY THE PLANT" messages, unacknowledged**, so the button flashed amber on a brand-new
+plant for an event that never happened. Reachable from the RESET button and from any plant or
+engine switch. The in-repo precedent was sitting there: `ui/panels/one_over_m.js` self-clears its
+points on plant change and reset for exactly this reason. `tbReset()` now runs at `onMount`.
+
+**Why the incidence study missed it, which is the transferable part:** `inbox/738/incidence.js`
+drives four PROCEDURE REPLAYS, and a replay never crosses a session seam. Its zeroes are true for
+what they measured and say nothing about that path. A measurement's population is part of its
+claim.
+
+**3. A MECHANISM CLAIM IN MY OWN COMMENT WAS WRONG, AND IT WAS LOAD-BEARING.** The header said a
+load raises nothing "because after a load there is no previous broadcast, so there is nothing to
+detect". `tbPrev` is module state and SURVIVES a load. The zero measured in route 3 came from
+somewhere else entirely: the save happened to hold the row BLOCKED, so the load re-blocked it and
+the re-block branch cleared the message. **Save it unblocked and the same code raises a false one.**
+The explicit reset is what makes the claim true; the argument never did. Corrected in place.
+
+**4. THE `tbSelf` WINDOW WAS WALL CLOCK.** A broadcast is 100 ms of wall time, so a 3-broadcast
+window is 0.3 s of plant time at 1x and **180 s at 600x** — a player who blocks the low-pressure
+trip and then runs at 600x would have had a genuine P-11 revoke inside the next three plant-minutes
+attributed to themselves, which is #716's own scenario annunciated as "released by you". Now a
+DIRECTED, SINGLE-USE expectation: it absorbs only the transition the player asked for and is
+consumed by it, so a second change on that row is the plant's however fast the clock runs.
+
+**5. THE REDUCED-MOTION OVERRIDE WAS DEAD — the same cascade trap, one rule later.** A media query
+adds no specificity, so `@media (prefers-reduced-motion) { … animation: none }` placed ABOVE the
+rule that sets the animation loses outright, and the button went on pulsing for a player who asked
+it not to. `.bd-actuated` gets it right only because its animation happens to be declared above the
+media block. **Nothing gates it**: `prefers-reduced-motion` appears in no test in this repo.
+
+**6. THE MUTATION INSTRUMENT WAS LEAKING STATE.** The self-test calls `runSuite()` once per mutant
+and the module-level message state outlived the call, so **10 of 33 mutations carried a spurious
+red** from a leftover lineup. None was falsely "caught" — but three were down to a single genuine
+red each, so the next refactor blinding that one would have been reported as caught. Same reset
+fixes it.
+
+**AND THE HARNESS CAUGHT ITS OWN STALE ANCHOR.** The `tbSelf` refactor moved the line the
+discriminator mutation named, and the self-test reported `ANCHOR MISS` and failed the gate rather
+than silently testing nothing — the "a mutation goes blind when a refactor moves the line its
+anchor names" trap, working as designed.
+
+**Two fixture defects of mine on the way, both caught by preconditions I had written for exactly
+that reason.** `Object.keys(trip_blocks).length` is **always 4** — the shell publishes all four ids
+as booleans, so a key count counts nothing; and a count of TRUTHY values is **2 on both plants**,
+because cold_shutdown holds the PRESSURE pair and hot_full_power the FLUX pair. The requirement was
+never a count: it is a row that was blocked and is not, asserted as a set difference.
+
 ### THE ORPHAN
 
 `verify_flags_ui`'s "the expander is labelled Details, not Why" read `.ckl-step.ckl-active
