@@ -3989,6 +3989,11 @@
      * AUTO selection from a manual demand that happens to sit at the same output */
     heater_auto:            { bool: 'AUTO is lit under HEATER' },
     spray_auto:             { bool: 'AUTO is lit under SPRAY' },
+    /* …and the DELIVERED flow, which the cooldown grades (#729). The two above read the AUTO
+     * lamp; this reads what the valve is actually passing, which is what `pwr_cooldown` needs
+     * — it puts the spray in MANUAL at 50 %, so no AUTO lamp is lit and there is nothing for
+     * `spray_auto` to say. Named for the board's own tile (PZR SPRAY FLOW, `ui/app.js:762`). */
+    spray_flow_pct:         { label: 'PZR SPRAY FLOW', u: '%' },
     letdown_flow_actual:    { label: 'LETDOWN', u: 'gpm', scale: 450000 },
     sr_energized:           { bool: 'SOURCE RANGE is switched on' },
     sg_safety_open:         { bool: 'an SG code safety is open' },

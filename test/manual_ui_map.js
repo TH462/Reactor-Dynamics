@@ -179,7 +179,11 @@ var STEP_UI = {
     { i: 6, view: 'board', control: 'Control Bank' },
     { i: 7, view: 'board', control: 'Control Bank' },
     { i: 8, view: 'board', control: 'Boron control' },    // the verify step, now boron-bounded (#683)
-    { i: 9, view: 'board', control: 'Boron control' },    // the closing trim to 626 ppm, now commanded (#683)
+    /* i:9 WAS 'Boron control' — the closing trim to 617 ppm. It is the ROD trim since #733
+     * (owner playtest #724 item 17): the boron route scrammed the plant 15 min after the step
+     * checked itself off, and measured at power the bank carries 56.3 degF against boron's 27.0.
+     * The step that follows it is an `obs` and owns no row. */
+    { i: 9, view: 'board', control: 'Control Bank' },
   ],
   'pwr2:pwr_lower_power': [
     { i: 0, view: 'board', control: 'Boron control' },
@@ -206,6 +210,10 @@ var STEP_UI = {
     { i: 9, view: 'board', control: 'Residual Heat Removal (RHR)' },
     { i: 10, view: 'board', control: 'RCP ON/OFF' },
     { i: 11, view: 'board', control: 'Residual Heat Removal (RHR)' },
+    /* the spray-off moved OUT of step 11 and became its own step at the END of the cooldown
+     * (#729): shutting it beside the RCPs repressurized the plant on the pressurizer shell's
+     * stored heat and cost the leg its RHR. Appended, so every index above is untouched. */
+    { i: 12, view: 'board', control: 'Pressurizer Spray (PZR)' },
   ],
   /* THE TMI-2 INCIDENT WALKTHROUGH (#670 Phase 2). Its own block, appended — the six cycle
    * legs above are untouched, because this table is POSITIONAL and the four historical

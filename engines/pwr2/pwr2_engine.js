@@ -1786,17 +1786,34 @@
      * 691.6 — three toasts, three refusals, and one 600x request accepted in each gap. Read from
      * the checklist, whose Pressure SP step then ticked at 682 psia, that is "a hold until 682".
      * So "rising" now decides only whether the band is being ENTERED from below: once latched
-     * the hold stands until the valve opens or the pressure leaves the band, and a cooldown,
-     * entering from above, never latches. The latch is per engine instance and is not saved —
-     * the same lifetime `_prevAccP` already had. */
+     * the hold stands until the valve opens or the pressure leaves the band. The latch is per
+     * engine instance and is not saved — the same lifetime `_prevAccP` already had.
+     *
+     * ⚠ "A COOLDOWN, ENTERING FROM ABOVE, NEVER LATCHES" WAS WRITTEN HERE AND IS FALSE (#729,
+     * 2026-09-12, owner playtest #724 item 19). "Entering from above" is not a property of the
+     * leg, it is a property of the last two physics steps. Measured on `pwr_cooldown` driven as
+     * a player at 600x: after step 11 shuts the pressurizer spray the plant REPRESSURIZES on its
+     * pressurizer shell's stored heat, climbs back through the cover gas at 86.0 min / 684 psia
+     * with the accumulators deliberately isolated, and the hold latches — at 1x, in a band whose
+     * only documented escape is to OPEN the accumulators, which at 684 psia would dump the tanks
+     * into the plant. That is the exact trap this hold exists to prevent, built by the hold.
+     *
+     * THE DISCRIMINATOR IS THE VALVE'S HISTORY, NOT THE PRESSURE'S DIRECTION. The window is a
+     * trap only for a player who has NOT YET ARMED the accumulators — the heatup, which boots
+     * `cold_shutdown` with `ec.acc.valve_open = false` and must open the valve before the 1600
+     * psig lock. Every other initial condition boots with the valve OPEN (`pwr2_eccs` default),
+     * so on a cooldown the accumulators have been armed since t=0 and shutting them is the
+     * procedure, not a missed step. `_accEverOpened` says which case this is in one bit, and it
+     * cannot be spoofed by a pressure excursion. `run_checklist_pwr2` 2i/2j pin the heatup half. */
     var accWinLo = EC.ACC.p0_mpa;                                  // EC = RD.eccs, this file's alias
     var accWinHi = (EC.ACC.admin_lock_psig + 14.7) / 145.0377;
     var accP = ts.pressure_mpa;
     var accShut = ts.accumulator_valve_open !== true;
+    if (!accShut) eng._accEverOpened = true;
     var accInWin = accP >= accWinLo && accP <= accWinHi;
     var accRising = eng._prevAccP != null && accP > eng._prevAccP;
     eng._prevAccP = accP;
-    if (!accShut || !accInWin) eng._accHold = false;
+    if (!accShut || !accInWin || eng._accEverOpened === true) eng._accHold = false;
     else if (accRising) eng._accHold = true;
     ts.speed_hold = eng._accHold
       ? 'accumulator window open — arm the accumulators before accelerating again'

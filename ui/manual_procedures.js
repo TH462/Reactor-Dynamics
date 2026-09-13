@@ -1822,9 +1822,27 @@
       title: 'Mode 1, At Power — power ascension to 100 %',
       purpose: 'Take the plant from low power to full power in stages. Rods lead, turbine follows: pull rods, raise LOAD to match, then trim AVG COOLANT TEMPERATURE back into its band. About 1 plant-hour.',
       from: 'low_power',
-      prereq: ['Reactor critical: REACTOR POWER above 10 % (auto-checked).', 'Turbine on line: OUTPUT above 5 MWe (auto-checked).', 'IR HIGH FLUX and PR HIGH (LOW SETPT) both lit on the TRIP BLOCKS panel, from the startup checklist.'],
+      prereq: ['Reactor critical: REACTOR POWER above 9 % (auto-checked).', 'Turbine on line: OUTPUT above 5 MWe (auto-checked).', 'IR HIGH FLUX and PR HIGH (LOW SETPT) both lit on the TRIP BLOCKS panel, from the startup checklist.'],
       precond: [
-        { p: 'power_pct', op: '>', v: 10, text: 'Reactor at power: REACTOR POWER above 10 %' },
+        /* 10 -> 9 % (#732, 2026-09-12, owner playtest #724 item 15: "it gave me a flickering
+         * warning that prerequisites for this checklist are not met since i think the reactor
+         * power was on the line for these prerequisites. we should probably lower this
+         * prerequisite to 9%").
+         *
+         * THE THRESHOLD SAT INSIDE THE PLANT'S OWN RIPPLE, not near it. MEASURED on `low_power`
+         * — this leg's declared `from`, which is where `pwr_startup` hands the player over —
+         * seed 42, 10x, 600 broadcasts (`inbox/724/m15.js`): `power_pct` runs **9.222 % to
+         * 10.061 %, a 0.840 % span, mean 9.58 %**, and **crosses the 10 % line twice in 10
+         * plant-minutes**. So the precondition was unmet more often than met, and it flipped.
+         * 9 % sits below the whole measured band with 0.22 points of margin. `mwe_output`
+         * (10.00 flat) and `control_bank_steps` (227) do not ripple and are unchanged.
+         *
+         * ⚠ THIS IS THE THRESHOLD HALF ONLY. The chatter itself is a missing latch in
+         * `layers/instructor_layer.js` `_stepChecklist`: the precondition COMMENT is raised
+         * under `anyUnmet && !precondMsg && !cklMoving`, but cleared under `!anyUnmet &&
+         * precondMsg` with no `cklMoving` guard — so any predicate that oscillates re-raises it
+         * once per crossing. That file is not this lane's to edit; raised with the coordinator. */
+        { p: 'power_pct', op: '>', v: 9, text: 'Reactor at power: REACTOR POWER above 9 %' },
         { p: 'mwe_output', op: '>', v: 5, text: 'Turbine on line: OUTPUT above 5 MWe' },
         /* the power presets used to boot the bank on its top stop (627), where every WITHDRAW in
          * this leg was a no-op and step 8's "not pinned" check could only be met by INSERTING
@@ -2144,17 +2162,60 @@
          * and the operator had no upward authority at all (#704). It sits at 606 now, and the
          * same command is worth +4.67 degF (+2.59 degC) — real, and still far less than the
          * ~25 degF the dilution is carrying, which is why the step says dilute. */
-        { text: 'Over the next hours lower the BORON setting in small steps toward 617 ppm as xenon builds.',
-          note: 'Watch AVG COOLANT TEMPERATURE come back into its band after each step, and walk the bank up with it toward 606 of 627. BORON is the lever here, not WITHDRAW. The bank has about 21 steps of real travel left at the top — worth about 4.7 °F of AVG COOLANT TEMPERATURE — and the dilution is carrying five times that, so dilute first and trim with rods. The ROD LIMIT LO-LO alarm is lit and that is normal: with no xenon yet the bank sits lower than a full-power plant runs. It clears as xenon builds and you dilute.',
-          why: 'Xenon is a neutron-absorbing gas that builds in the fuel after power comes up and levels off over about two days. As it absorbs more neutrons the plant needs less boron for the same power; leave the extra boron in and the plant makes full power at a lower temperature instead, taking PZR LEVEL down with it. Dilute as xenon builds and walk the control bank up toward 606 of 627, where a full-power plant runs — high, but not on its stop, so you keep rod authority both ways.',
-          control: 'Boron control', target: 'BORON 617 ppm',
-          wait_hint: 'Xenon takes about two days to level off. Use the speed buttons and come down in small steps.',
-          cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 617 }, hold: 900,
-          accs: [{ p: 'boron_ppm', op: '<', v: 645, label: 'BORON coming down off the 660 ppm the climb left' }],
-          hl: ['Boron control'], hl_watch: ['Control Bank', 'Tavg'] },
+        /* ⚠ REWRITTEN (#733, 2026-09-12, owner playtest #724 item 17). The step it replaces asked
+         * the player to type 617 ppm into the boron box, graded `boron_ppm < 645`, and told them
+         * *"BORON is the lever here, not WITHDRAW."* Four things were wrong and all four are
+         * MEASURED full stack on the player's route (`inbox/724/m1617.js`, seed 42, 600x):
+         *
+         *   1. THE ACCEPTANCE LATCHED 28 ppm SHORT. `boron_ppm < 645` was met at t+37.5 min with
+         *      65 % of the dilution undone — and with Tavg ALREADY at 587.6 degF against a 580.1
+         *      degF reference, i.e. green while the plant was on its way to a trip.
+         *   2. THE AUTHORED ROUTE SCRAMS. Target 617 in one press: peak Tavg 603.3 degF, then
+         *      `reactor_trip` at t+53.0 min — FIFTEEN MINUTES AFTER the step said it was done.
+         *      HR9: the route is wrong, not the physics.
+         *   3. THE SLOW ROUTE ENDS COLD. Walking the target down 10 ppm at a time with the bank
+         *      left where the climb put it: no scram, but Tavg 537.6 degF against Tref 580.0 at
+         *      t+15.4 plant-h and still falling. **Tref moved 0.1 degF over the whole run**, so
+         *      #508's trap — a red reading that is really the REFERENCE moving — is checked and
+         *      excluded. The plant is genuinely cold, because nothing pulls the rods:
+         *      `rods_tavg` is deliberately not `defaultOn` (OWNER DIRECTIVE, 2026-08-11).
+         *   4. "BORON IS THE LEVER, NOT WITHDRAW" WAS BACKWARDS ARITHMETIC. Measured at power:
+         *      rod worth **0.2209 degF/step**, boron worth **0.5670 degF/ppm** (`inbox/724/m16.js`; a second
+         *      run settled 48 plant-h before perturbing reads 0.2228 and 0.6524 — the rod figure is
+         *      stable, the boron one is settle-time sensitive, so read boron as **0.57-0.65**).
+         *      The bank arrives at **351 of 627**, so it carries **255 steps x 0.2209 = 56.3 degF**
+         *      — the *larger* half. Boron 660 -> 612 is 47.7 ppm x 0.5670 = **27.0 degF**. Against
+         *      a xenon build that costs **82 degF** (the two endpoints: 351/660 at 17.2 % xenon
+         *      and this plant's settled 606/612.3 at 100 %), BOTH levers are needed and they only
+         *      just close. The old note's own numbers were right for a bank ALREADY at the top
+         *      ("21 steps, 4.7 degF" measures 20 steps = 4.42 degF) — it just described the
+         *      destination, not where the player is standing.
+         *
+         * WHY THE STEP NO LONGER NAMES A TWO-DAY ENDPOINT. It cannot be graded. Xenon needs about
+         * two plant-days, and no `hold` a gate can afford reaches 617/606 — which is exactly how
+         * the old step came to have an acceptance that fired at 645. So the step now asks for the
+         * FIRST correction, which is a bounded action with a real acceptance, and the destination
+         * lives in the `why` and the `outcome` where it is not pretending to be checkable.
+         *
+         * THE ACCEPTANCE IS PAIRED AGAINST A SCRAM (#715's rule): a tripped plant reads 0 MWe and
+         * a falling Tavg, so it can satisfy none of these three. */
+        { text: 'Xenon is building. When AVG COOLANT TEMPERATURE drops out of its band, hold WITHDRAW at MED for about 10 steps.',
+          note: 'Small pulls, then wait for the temperature to settle. ROD LIMIT LO-LO is lit and that is normal — the bank is low because there is no xenon yet, and it clears as you walk the bank up.',
+          why: 'Xenon is a neutron absorber that builds in the fuel over about two days and then levels off. It takes reactivity away, and the plant answers by making the same power at a lower temperature — left alone it ends up about 40 °F cold, taking PZR LEVEL with it. You give the reactivity back with two levers: each rod step is worth about 0.22 °F and the bank has 255 steps to go, which is 56 °F; each ppm of boron is worth about 0.6 °F. Rods are the fast, reversible one, so they lead.',
+          control: 'Control Bank', target: 'CONTROL ROD POSITION coming up off 351; AVG COOLANT TEMPERATURE back near 580 °F',
+          wait_hint: 'Xenon takes about two days to level off. Use the speed buttons and keep the pulls small.',
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 10, speed: 'normal' }, hold: 3600,
+          accs: [{ p: 'control_bank_steps', op: '>', v: 355, label: 'CONTROL ROD POSITION above 355' },
+                 { p: 'mwe_output', op: '>', v: 97, label: 'Still at full load, 100 MWe' },
+                 { p: 'tavg_c', op: '~', v: 304.4, tol: 3, label: 'AVG COOLANT TEMPERATURE near 580 °F' }],
+          hl: ['Control Bank'], hl_watch: ['Tavg', 'Control Rod Position'] },
+        obs('Full power and on programme: OUTPUT 100 MWe, AVG COOLANT TEMPERATURE 580 °F, CONTROL ROD POSITION rising.',
+          { p: 'mwe_output', op: '>', v: 97 }, 'Keep trimming for the next two plant-days.', null,
+          'Where this ends up, if you keep at it: CONTROL ROD POSITION about 606 of 627 and BORON about 617 ppm, which is where this plant runs at full power with xenon at equilibrium. Rods carry the first 56 °F; once the bank is near the top it has only about 21 steps of travel left, worth 4.6 °F, and BORON carries the rest — 10 ppm at a time, never in one press. Type 617 in one go and the plant heats far faster than xenon can absorb it: measured, that trips the reactor on overtemperature.',
+          null, ['Control Rod Position', 'Boron']),
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
-      outcome: 'Full power with almost no xenon: BORON 660 ppm and the control bank part-way out. The last step then walks boron down to 617 ppm as xenon builds over the following hours, and the bank up toward 606 of 627 — leave that undone and the plant makes its power at a falling temperature instead, taking PZR LEVEL down with it. The round trip back down starts with the load rampdown checklist.',
+      outcome: 'Full power with almost no xenon: BORON 660 ppm and CONTROL ROD POSITION about 351 of 627 — the no-xenon end of the curve, not a fault. Over the next two plant-days xenon builds and you hand the reactivity back: the bank walks up toward 606 of 627 (255 steps, about 56 °F) and BORON comes down toward 617 ppm, 10 ppm at a time. Leave it undone and the plant makes full power about 40 °F cold, taking PZR LEVEL with it. The round trip back down starts with the load rampdown checklist.',
     },
     {
       id: 'pwr_lower_power', category: 'power', manual_ref: 'PWR-N08', next: 'pwr_shutdown',
@@ -2498,12 +2559,38 @@
           cmd: { action: 'set_rhr', active: true }, hold: 60,
           acc: { p: 'rhr_valve_open', op: '>', v: 0 },
           hl: ['Residual Heat Removal (RHR)'], hl_watch: ['Primary Pressure'] },
-        { text: 'Press OFF on the RCP FLOW card. Then, on the PRESSURIZER (PZR) card, press OFF under SPRAY.',
-          why: 'With RHR circulating, the reactor coolant pumps are only adding heat now. The spray is driven by the pumps, so it does nothing once they stop; switching it off afterwards just tidies the lineup. With the pumps stopped the steam generator drops out of the picture.',
-          control: 'RCP ON/OFF', target: 'RCP FLOW falling; SPRAY OFF lit',
+        /* ⚠ THE SPRAY STAYS ON HERE. THIS STEP USED TO SHUT IT AND THAT WAS THE #729 BLOCKER
+         * (owner playtest #724 item 19, 2026-09-12: "the RHR put itself into ISOLOATE and now i
+         * cant complete this step ... I cant put RHR into ALIGN. THIS IS A BLOCKER.").
+         *
+         * The old `why` said *"The spray is driven by the pumps, so it does nothing once they
+         * stop; switching it off afterwards just tidies the lineup."* Both halves are false on
+         * this plant. `pwr2_pressurizer.js` SPRAY declares `needs_rcp: true` (the physics) and
+         * `rcp_gate_enforced: false` (a DECLARED departure) — so the spray keeps working with the
+         * pumps secured, and it is the ONLY pressure control the player has left: the heaters are
+         * off from step 6, the Pressure SP dial floors at 1700 psi, and the auxiliary-spray tile
+         * was removed from the board by owner direction 2026-08-31.
+         *
+         * WHAT SHUTTING IT DOES, MEASURED full stack on the player's route (seed 42, 600x,
+         * `inbox/724/m19*.js`): the pressurizer SHELL is at 601 degF against a 425 degF fluid and
+         * gives back 181 kW with the heaters at 0 and the surge at 0. Pressure reverses from
+         * -92 psi/min to +33 psi/min and never stops: the 585 psig RHR autoclosure fires at
+         * 610 psig / 274.7 degF (the owner's "273F"), the accumulator speed hold then latches at
+         * 684 psia, and the 425 psig open permissive will not let the valve back. Leaving the
+         * spray at 50 % instead: pressure falls monotonically 308 -> 21 psia, RHR stays ALIGN,
+         * no hold, Mode 5 at 115.5 min. The spray comes off two steps later, cold.
+         *
+         * `Manuals/04` PWR-N15 already recorded the same trap from the other side — *"shutting
+         * the spray first bounces pressure back over the 425 psig block-open permissive —
+         * measured, the order is the lesson"* — and the manual never told the operator to shut
+         * it. Only this step did. */
+        { text: 'Press OFF on the RCP FLOW card. Leave SPRAY at 50 %.',
+          note: 'Do not switch the spray off yet — a later step does that, once the plant is cold.',
+          why: 'With RHR circulating, the reactor coolant pumps are only adding heat, so they come off. The spray stays: the pressurizer shell is still hot metal and it keeps boiling water off the top of the pressurizer, which puts pressure back up. The spray is the only thing taking that heat away now — the heaters are already off and the SET PZR PRESSURE box stopped reaching at 1700 psi. Shut it here and pressure climbs back over the number RHR needs, the RHR valve shuts itself, and it will not re-open.',
+          control: 'RCP ON/OFF', target: 'RCP FLOW falling; SPRAY still MANUAL at 50 %',
           cmd: { action: 'set_rcp', running: false }, hold: 60,
           accs: [{ p: 'pump_flow_pct', op: '<', v: 50, label: 'Pumps coasting down' },
-                 { cmd: { action: 'set_spray', open: false }, label: 'Spray shut' }],
+                 { p: 'spray_flow_pct', op: '>', v: 0, label: 'SPRAY still on' }],
           /* THE CARD, NOT ALSO THE PUMP *(OWNER, 2026-09-09 playtest, #684 §D: "When the RCP is
            * highlighted it should highlight the RCP card not the pump. Currently both get
            * highlighted.")* — his SECOND report of it, after #607 item 1. One label lights one
@@ -2513,18 +2600,59 @@
            * the card alone; this was the last one that did not. The pump label STAYS in the
            * vocabulary — the wiring reserves it for watch-the-flow steps. */
           hl: ['RCP Run/Stop', 'Pressurizer Spray (PZR)'] },
-        { text: 'Raise HX SPLIT to 25 % and wait until AVG COOLANT TEMPERATURE reads below 199 °F.',
-          note: 'Keep COOLDOWN RATE under 100 °F per hour: if it runs faster, lower HX SPLIT.',
-          why: 'HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. 25 % reaches Mode 5 in about two plant-hours at close to 90 °F per hour, just inside the limit.',
+        /* 25 % WAS OVER THE 100 degF/hr LIMIT THIS STEP'S OWN NOTE CITES (#729, 2026-09-12,
+         * owner playtest #724 item 19: "average coolant temperature isnt dropping and if it is
+         * it iwll take hours at real time" — he had it backwards, and so did this step).
+         *
+         * The old `why` claimed *"25 % reaches Mode 5 in about two plant-hours at close to 90 degF
+         * per hour, just inside the limit."* MEASURED full stack from this step's own entry state
+         * (300.0 degF, RCPs off, spray held, seed 42, `inbox/724/m19f.js`):
+         *
+         *   HX SPLIT 25 %  worst -193 degF/hr, average -154 degF/hr, Mode 5 in 0.66 plant-h
+         *   HX SPLIT 15 %  worst -120 degF/hr
+         *   HX SPLIT 12 %  worst  -95 degF/hr, average  -74 degF/hr, Mode 5 in 1.36 plant-h
+         *
+         * So the authored 25 % ran at 1.7x the limit and finished in a third of the time the text
+         * promised. 12 % is the split that actually honours the sourced 100 degF/hr ceiling
+         * (WTSM App 19-1, ML11223A342; NUREG-1431 LCO 3.4.3; ruled 2026-08-09 on #398), and at 12 %
+         * "about two plant-hours" becomes very nearly true instead of being off by 3x.
+         * `Manuals/04` PWR-N15 step 6 said "walk it 7 -> 25 %" and moves with this. */
+        { text: 'Raise HX SPLIT to 12 % and wait until AVG COOLANT TEMPERATURE reads below 199 °F.',
+          note: 'Keep COOLDOWN RATE under 100 °F per hour: if it runs faster, lower HX SPLIT. Watch SUBCOOLING MARGIN too — the spray is still running, and it keeps taking the margin down. Shut it as soon as the next step lets you.',
+          why: 'HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. 12 % holds about 95 °F per hour at the start and eases off as the plant closes on the RHR sink, reaching Mode 5 in about an hour and a half. Turn it higher and you go over the 100 °F per hour limit: 25 % measures 193 °F per hour.',
           control: 'Residual Heat Removal (RHR)', target: 'AVG COOLANT TEMPERATURE below 199 °F',
           wait_hint: true,
-          cmd: { action: 'set_rhr_hx', pct: 25 }, hold: 9000,
-          ramp: [{ action: 'set_rhr_hx', arg: 'pct', points: [7, 16, 25] }],
+          /* HOLD 9000 -> 5400 s (#729). 9000 s was authored for the 25 % split, which reaches
+           * Mode 5 in 0.66 plant-h; at 12 % it is 1.36 plant-h (4890 s), so 5400 s keeps the
+           * replay's ~8 min of slack. It also has to come down because the SPRAY IS STILL
+           * RUNNING through this step: measured, subcooling margin at Mode 5 is 17.4 degF and
+           * decays 0.2 degF/min while the spray is open, so a 2.5-hour hold walks it into the
+           * leg's own `subcooling_c < 5` guard 68 min after the plant is already cold — which is
+           * the replay sitting on a step the player leaves in seconds, not a plant defect. The
+           * step's `note` now tells the player the same thing.
+           *
+           * 5400 s WAS TOO SHORT AND THE GATE SAID SO (97.87 degC against a 93 degC bound). The
+           * replay does not step to 12 %, it RAMPS 7 -> 12 over the whole hold, so its average
+           * split is ~9.5 % and the leg runs ~1.7 plant-h where a player who types 12 once takes
+           * 1.36. 7200 s carries the ramp with ~17 min of slack, and leaves subcooling margin
+           * near 14 degF when the next step shuts the spray. */
+          cmd: { action: 'set_rhr_hx', pct: 12 }, hold: 7200,
+          ramp: [{ action: 'set_rhr_hx', arg: 'pct', points: [7, 10, 12] }],
           acc: { p: 'tavg_c', op: '<', v: 93 },
           hl: ['Residual Heat Removal (RHR)'], hl_watch: ['Tavg'] },
-        obs('Verify Cold Shutdown: AVG COOLANT TEMPERATURE below 199 °F, PRIMARY PRESSURE 250 to 550 psi, RCP FLOW off.',
-          { p: 'plant_mode', op: '~', v: 5, tol: 0.1 }, 'ALIGN should be lit on the RHR card.', null,
-          'This is the cold-shutdown picture: water below 199 °F, a small steam bubble still in the pressurizer, pumps off, RHR carrying the heat. It is the same state the Cold Shutdown preset loads, and the heatup checklist takes it back up.',
+        /* THE SPRAY COMES OFF HERE, NOT AT THE RCP STEP — see the note on that step. The plant
+         * is cold by now, so the pressurizer shell has almost nothing left to give: MEASURED,
+         * shutting the spray at 274.7 degF put pressure up 33 psi/min and cost the leg its RHR;
+         * shutting it at Mode 5 moves pressure +1 psi per 5 plant-minutes. */
+        { text: 'On the PRESSURIZER (PZR) card press OFF under SPRAY.',
+          why: 'The plant is cold now and the pressurizer shell has given up most of its stored heat, so there is nothing left for the spray to take away. Shut it and pressure sits where it is. This is the lineup the Cold Shutdown preset holds: heaters off, spray in hand and shut.',
+          control: 'Pressurizer Spray (PZR)', target: 'OFF lit under SPRAY',
+          cmd: { action: 'set_spray', open: false }, hold: 60,
+          acc: { p: 'spray_flow_pct', op: '<', v: 1 },
+          hl: ['Pressurizer Spray (PZR)'] },
+        obs('Verify Cold Shutdown: AVG COOLANT TEMPERATURE below 199 °F, RCP FLOW off, ALIGN lit on the RHR card.',
+          { p: 'plant_mode', op: '~', v: 5, tol: 0.1 }, 'PRIMARY PRESSURE will be low — the spray took it there.', null,
+          'This is the cold-shutdown picture: water below 199 °F, pumps off, RHR carrying the heat, pressure low with the spray shut. The heatup checklist takes it back up.',
           null, ['Tavg', 'Primary Pressure']),
         /* THE TILE THE TEXT NAMES, NOT THE VALVE *(OWNER, 2026-09-09 playtest, #684 §C: "Mode
          * 3>5 step 14 – this step has you look at the accumulators card but it highlights the
