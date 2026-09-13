@@ -278,6 +278,40 @@
   // predicted critical position far PAST actual (the danger side: it tells the
   // operator they have ~2× the margin they really do). Fitting only the trailing
   // window tracks the local slope and tightens toward the true point each plot.
+  //
+  /* CHALLENGED AND RE-AFFIRMED, WITH THE MEASUREMENT THAT SETTLED IT (#725, GitHub issue #724
+   * item 8 of the RC19 playtest). The owner asked for the all-points fit, on the stated premise
+   * that the curvature above is gone: *"make the 1/m plot best fit line use all points not just
+   * the last three. using the last three was a bandaid for a larger problem where the points were
+   * curved but with the current streight line we can use all points."* The premise is checkable,
+   * so it was checked before anything was changed — and it is false.
+   *
+   * MEASURED on the authored `pwr_startup` route (full stack, PWR2, `hot_zero_power`, seed 7, 10×,
+   * the checklist's own 94 / 63 / 31 / 14 / 9-step bursts, each plotted after its authored hold;
+   * harness in this lane's inbox/724/item8_fit.js). Control group full travel 627 steps, TRUE
+   * critical step 208 (first tick with `true_state.reactivity_pcm >= 0`, +5.6 pcm, t = 784 s):
+   *
+   *   pt  rod step  SOURCE RANGE   1/M      trailing-3      all-points
+   *    1     0        503.1 cps   1.0000        —                —
+   *    2    94        733.9       0.6855      298.9            298.9
+   *    3   157      1,422.6       0.3537      251.2            251.2
+   *    4   188      3,435.0       0.1465      216.1  (+8.1)    231.9  (+23.9)
+   *    5   202      8,660.4       0.0581      210.6  (+2.6)    224.2  (+16.2)
+   *    6   211     31,838.2       0.0158      213.1  (+5.1)    220.9  (+12.9)
+   *
+   * A prediction HIGHER than true critical is the danger side — it tells the operator they have
+   * more margin than they have — and all-points is 8 to 24 steps further out at every point where
+   * the two differ. The toe is still flat: per-step slope of 1/M runs −0.00334 (pt1→2), −0.00527,
+   * −0.00668, −0.00631, −0.00470, so the first segment is HALF the slope of the steepest.
+   *
+   * The owner's own figure corroborates the trailing fit rather than the proposal — in the same
+   * playtest he reported withdrawing to "the position the 1/m plot tells me to (216 steps)", which
+   * is what trailing-3 reads over points 4–6. All-points would have sent him to 224–232.
+   *
+   * *(OWNER RULING, 2026-09-13, on the measurement above and a recommendation to keep the
+   * trailing fit: "725 leave as is")*. So FIT_WINDOW stays 3. **Do not re-open this on the
+   * strength of the 2026-09-12 request alone** — it was made against a premise that has been
+   * measured and disproved, and re-running the harness above is the price of re-arguing it. */
   var FIT_WINDOW = 3;
   function fit() {
     if (points.length < 2) return null;

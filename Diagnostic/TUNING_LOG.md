@@ -71,8 +71,16 @@ All-points would have said 224-232.
 
 **Lesson worth keeping: a superseding instruction can rest on a premise that is checkable in ten
 minutes.** The instruction was clear and the reasoning behind it was explicit and wrong, and the
-only thing that separated those was running the route. Awaiting the owner's ruling on #725; nothing
-in the fit was touched.
+only thing that separated those was running the route.
+
+**RULED, 2026-09-13** *(OWNER RULING: "725 leave as is", on the measurement above and a
+recommendation to keep the trailing fit)*. `FIT_WINDOW` stays 3 and no code changed — the
+measurement was taken before anything was touched, which is why there was nothing to revert. The
+table, the true critical of step 208, the per-step slopes and the owner's own corroborating 216-step
+observation are now recorded at `FIT_WINDOW` in `ui/panels/one_over_m.js`, beside the constant they
+govern rather than only in an issue: an agent reading the 2026-09-12 request alone would find a
+clear instruction with no sign its premise had ever been tested, which is exactly how this comes
+back.
 
 ### Item 7 — the move, and two ways the plot was silently losing width
 
