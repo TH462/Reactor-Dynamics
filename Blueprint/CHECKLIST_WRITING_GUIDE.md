@@ -5,8 +5,9 @@
 **The feature is a WALKTHROUGH** *(OWNER, 2026-09-08, #660 items 14–15)*. "Live checklist" is the
 old name and survives only in code (`start_checklist`, `run_checklist`, `RD.MANUAL_PROCEDURES`,
 this file's own filename). In anything a player reads, and everywhere below, it is a
-**walkthrough** made of **steps**. The player finds them on the **Walkthroughs** tab of the Plant
-& Mission window, which is the LIST; a running walkthrough is drawn in the **Instructor** tab,
+**walkthrough** made of **steps**. The player finds them on the **Walkthroughs** tab of the **Main
+Menu** window (renamed from "Plant & Mission" at #748 — one name for the button and the
+window it opens), which is the LIST; a running walkthrough is drawn in the **Instructor** tab,
 whose role line reads "Walkthrough".
 
 **Governs:** every string a player reads in a walkthrough — `title`, `purpose`, `prereq`,

@@ -3453,7 +3453,7 @@
     '<li><b>System Scanner</b> (the line under the board) — hover anything for what it is.</li>' +
     '<li><b>Walkthroughs</b> — guided procedures, one step at a time, that check themselves off the instruments (the bar above opens them).</li>' +
     '<li><b>Manual</b> — full operator reference and written procedures.</li>' +
-    '<li><b>Plant &amp; Mission</b> (the bar under the clock) — starting condition, courses and reset.</li>' +
+    '<li><b>Main Menu</b> (in the tools row, beside Settings) — starting condition, courses and reset.</li>' +
     '</ol>' +
     '<p class="instr-idle-more">More help: <button type="button" class="btn linkish" data-open-help="1">Help</button> · ' +
     '<button type="button" class="btn linkish" data-open-tour="1">Quick tour</button> · ' +

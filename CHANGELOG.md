@@ -30,6 +30,75 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (a fresh-context layman played `pwr_startup` end to end — #748)
+
+- **The approach-to-criticality rod notes read as INCREMENTS and cost the reviewer a +9.38 DPM
+  excursion.** Steps 5–9 said *"About 90 to 110 steps at MED"*, *"About 150 to 175"*, *"180 to
+  205"*, *"195 to 220"*, *"205 to 225"* — every one of them a total CONTROL ROD POSITION, and
+  every one readable as "now withdraw that many more". **The trap is step 5**, where the two
+  readings coincide because the bank starts at 0: the increment reading is learned there and
+  collected on at step 6. The reviewer released WITHDRAW at **258** for a target crossed at
+  **158**, ran power to 16.7 % against a 35 % trip, and held STARTUP RATE at +9.38 against a
+  caution limit of 1.0. All five notes now name the readout and the card and say the number is a
+  total: *"Stop when CONTROL ROD POSITION — the 0-of-627 number on the ROD CONTROL card — reads
+  about 90 to 110. Every rod number in this walkthrough is that total reading, never a further
+  count of steps to add on."*
+- **Steps 9 and 10 said opposite things about which side of the 1/M prediction criticality falls
+  on, and the source comment behind them was wrong too.** Step 9 said criticality arrives *before*
+  the predicted position "between about 226 and 238 of 627"; step 10 said the prediction "reads
+  about ten steps low, so the reactor is not yet critical at that position". **RE-MEASURED on the
+  authored route, full stack, four seeds** (7 / 1 / 42 / 123): the trailing-3 prediction at the
+  last plot point reads **212.6 to 213.4** and the core goes critical at **208 of 627** every
+  time — the prediction is about **five steps HIGH**, so criticality arrives *before* it and
+  withdrawing straight to the prediction takes the core PAST critical. That is the direction step
+  9 had and the number it did not. Both fields now say *stop short of the prediction and tap*,
+  which is what the leg's third caution has always said.
+- **Step 13's acceptance tested half of its own instruction.** The line asks for power to stop
+  rising **and** be below 5 %; it graded `power_pct < 5` alone, so it ticked while the bank was
+  still driving in — a player releasing INSERT on the tick lands ~18 steps deeper with the rate
+  still falling, and step 14's *"about 13 steps"* then takes power DOWN instead of through 5 %.
+  The acceptance gains the rate term (**STARTUP RATE settled above −0.10**), measured clear of
+  both regimes: −0.308 while the bank drives, −0.031 to −0.045 once released. The "about 13
+  steps" is correct and is unchanged.
+- **Step 18 told the player to verify two lamps on a panel step 17 had told them to close.** The
+  two trip-block rows are now checked while the panel is still open, in the step that opens it;
+  the closing verification is the plant — REACTOR POWER and OUTPUT.
+- **Step 11's headline forbade the press its own ring was pulsing on.** *"Do not add steps"* over
+  a pulsing WITHDRAW and SLOW. The line now states the condition the note always carried: *"Let
+  power climb on its own. Add a step only if STARTUP RATE falls back to 0.00."*
+- **The one alarm standing on the starting condition was never mentioned.** `hot_zero_power`
+  boots with TURBINE TRIP / LOW STEAM DEMAND `active_unacknowledged` — verified on the first tick,
+  the only non-clear alarm of 49 — and the whole 18-step leg said nothing about it. Step 1 now
+  names it and says why it belongs there.
+- **The launch window had three names and one of them was a bar that no longer exists.** The
+  idle-Instructor list and the Help window both pointed at *"Plant & Mission (the bar under the
+  clock)"* — `#simStatus` was retired at #689 — while the button is engraved **Main Menu** and
+  the window heading said **Plant & Mission**. One name now: the window heading, the help text
+  and the instructor list all say **Main Menu (in the tools row, beside Settings)**. The
+  `missionOverlay` id is unchanged; four gates navigate by it.
+
+### Changed (the pulsing ring means "press this", and a gate that can tell — #748)
+
+- **Thirteen authored sites put the animated "press this" ring on a pure readout.** `SOURCE
+  RANGE` and `STARTUP RATE` wore the same pulse as `WITHDRAW` on **six consecutive** startup
+  steps, and `pwr_cooldown` 5 did it with `PRIMARY PRESSURE`. All thirteen move to `hl_watch`,
+  the steady "watch this" ring.
+- **`PwrBoardDriver.actionableIds()`** — the board can now answer *"can the player work this?"*,
+  which `pressableIds()` never could: it reads `BUTTONS`, so the four typed number boxes
+  (`Boron Target`, `Pressure SP`, `Dump Setpoint`, `Load Setpoint`), the clickable valve symbols
+  and SCRAM all came back read-only. A first sweep built on the old authority reported 27
+  offenders against the real 13; the authority was wrong, not the pool. The new list reads every
+  map the renderer dispatches a player action from, so wiring a new number box widens it in the
+  same edit.
+- **`run_manual_controls` gains the invariant** (926 → **1017 checks**, +90 derived one-per-label
+  off the pwr2 pool, +1 content). It is a LEAF rule, not an ancestor walk — a card earns its ring
+  from what it contains, everything else answers for itself — because `SOURCE RANGE` sits inside
+  the NUC INSTR card and an ancestor walk would go blind the day anything on that card becomes
+  pressable. **What it does not cover is written in the runner**: the reverse direction is not
+  gated (24 steady rings on actionable elements were adjudicated site by site as correct — 21
+  cards, plus the TMI-2 leg watching the PORV it is teaching you not to trust), and the retired
+  `pwr` pool's 56 offending sites are PRINTED every run rather than gated.
+
 ### Changed (the interactive procedures are WALKTHROUGHS everywhere a player reads it — #638)
 
 - **The simulator called one feature by two names.** The tools tab has said **Walkthroughs**

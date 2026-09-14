@@ -518,7 +518,15 @@
       <div class="mission-overlay" id="missionOverlay" hidden>
         <div class="mission-modal">
           <div class="mission-head">
-            <div class="mission-title">Plant &amp; Mission</div>
+            <!-- ONE NAME FOR ONE WINDOW (#748, layman playthrough). The player reached this
+                 window by three different names: the button they press is engraved "Main Menu"
+                 (#689), this heading said "Plant & Mission", and the help text and the idle
+                 Instructor list pointed at "Plant & Mission (the bar under the clock)" — a bar
+                 that has not existed since #689 retired #simStatus. The button's engraving wins,
+                 per the walkthrough guide's N1/N3: name a thing by the string on it, and use one
+                 name everywhere. The element id stays `missionOverlay` — identifiers are not
+                 player-facing and four gates navigate by it. -->
+            <div class="mission-title">Main Menu</div>
             <button class="btn" id="missionClose" aria-label="Close">✕ Close</button>
           </div>
           <!-- NO PLANT COLUMN *(OWNER, 2026-09-09, #675 section A / #688: "Remove the plant
@@ -599,7 +607,7 @@
               <b>Instructor</b> (right column) — free-play coaching and, later, guided voices. Use <b>−</b> to minimize it.<br>
               <b>Walkthroughs</b> (first tab) — interactive procedures that check themselves off the instruments.<br>
               <b>Manual</b> — full operator reference and written procedures.<br>
-              <b>Plant &amp; Mission</b> (the bar under the clock) — starting condition, courses and reset.<br>
+              <b>Main Menu</b> (in the tools row, beside Settings) — starting condition, courses and reset.<br>
               <b>System Scanner</b> (the line under the board) — hover anything for what it is and how to use it.</p>
             </div>
             <div class="help-sec">

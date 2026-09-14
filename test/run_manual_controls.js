@@ -158,8 +158,24 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
     if (st.control && !/^\(observe/i.test(st.control)) return [st.control];
     return [];
   }
+  /* ---- "can the player act on this?" (#748) — see the long note after this IIFE ---- */
+  var ITEM = {};
+  ((globalThis.window && globalThis.window.RD_PWR_BOARD_DOC &&
+    globalThis.window.RD_PWR_BOARD_DOC.items) || []).forEach(function (it) { ITEM[it.id] = it; });
+  (DRV.extraItems ? DRV.extraItems() : []).forEach(function (it) { ITEM[it.id] = it; });
+  function kindOf(id) { return (ITEM[id] && ITEM[id].kind) || 'board item'; }
+  var INSP = globalThis.RD.PwrBoardInspect;
+  var ACT = {}, ACT_OR_INSIDE = {};
+  (DRV.actionableIds ? DRV.actionableIds() : DRV.pressableIds()).forEach(function (id) {
+    ACT[id] = true;
+    var cur = id, guard = 0;
+    while (cur && guard++ < 8) { ACT_OR_INSIDE[cur] = true; cur = (INSP && INSP.parentOf) ? INSP.parentOf(cur) : null; }
+  });
+  // A CARD earns its ring from what it contains; every other kind answers for itself.
+  function workable(id) { return !!(ACT[id] || (kindOf(id) === 'box' && ACT_OR_INSIDE[id])); }
   /* The pwr board's vocabulary answers for the pwr pools only. A plant with its own board
    * (rbmk/bwr use the process-diagram labels) is checked by run_campaign's own pool. */
+  var retiredPoolPulseOnReadout = 0;
   ['pwr', 'pwr2'].forEach(function (prof) {
     (RD.MANUAL_PROCEDURES[prof] || []).forEach(function (proc) {
       (proc.steps || []).forEach(function (st, idx) {
@@ -204,10 +220,76 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
         ck(where + ' hl/hl_watch resolve to distinct elements', shared.length === 0,
            shared.join('; ') + ' — two labels, ONE board element: it can wear one ring, so ' +
            'the first is silently dropped');
+        /* ============ THE PULSING RING MEANS "PRESS THIS" (#748) ==========================
+         * See the block above this IIFE's end for what this asserts, what it does NOT, and
+         * why the obvious version of it is born wrong. */
+        pressLabels(st).forEach(function (lab) {
+          var id = resolveLabel(lab);
+          if (!id || /^shell:/.test(id)) return;   // unknown / shell-owned: not this check's subject
+          if (prof !== 'pwr2') { if (!workable(id)) retiredPoolPulseOnReadout++; return; }
+          ck(where + ' pulses only on something the player can work',
+             workable(id),
+             '"' + lab + '" -> ' + id + ' is a ' + kindOf(id) + ' — a pure readout. The pulsing ' +
+             'ring is the "press this" affordance; move the label to hl_watch');
+        });
       });
     });
   });
+  console.log('\n' + B + 'Pulse-vs-watch scan' + X + D + '  (#748 — hl rings a control, hl_watch rings an indication)' + X);
+  console.log('  board items the player can work: ' + (DRV.actionableIds ? DRV.actionableIds().length : 0) +
+    '   of which press/hold buttons: ' + DRV.pressableIds().length);
+  console.log('  retired `pwr` pool, NOT GATED (see the note below): ' + retiredPoolPulseOnReadout +
+    ' pulsing rings on a pure readout');
 })();
+
+/* ============================================================================
+ * WHAT THE PULSE CHECK ABOVE ASSERTS, AND WHAT IT DOES NOT (#748)
+ *
+ * THE RULING IT ENFORCES: pulsing (`hl`) = a control to press, steady (`hl_watch`) = an
+ * indication to watch. A fresh-context layman playing `pwr_startup` end to end reported the
+ * split did not hold — `SOURCE RANGE` and `STARTUP RATE`, two read-only meters, wore the same
+ * animated ring as `WITHDRAW` on eight consecutive steps.
+ *
+ * ⚠ THE OBVIOUS CHECK IS BORN WRONG, AND THIS IS THE HOUSE TRAP (CLAUDE.md: "ASK WHAT A GATE
+ * READS, not only what it asserts"). "Every `hl` id is in `pressableIds()`" reds on four
+ * correctly-authored steps: `pressableIds()` reads `BUTTONS`, so a TYPED NUMBER BOX — `Boron
+ * Target`, `Pressure SP`, `Dump Setpoint`, `Load Setpoint` — comes back read-only, as do the
+ * clickable valve symbols and SCRAM, which render from their own kinds. A first sweep built on
+ * it reported 27 offenders; the authority, not the pool, was wrong. The fix was to widen the
+ * BOARD's own introspection — `PwrBoardDriver.actionableIds()` reads `BUTTONS`, `NUMBERS`,
+ * `VALVE_TOGGLE` and the `scram` kind, i.e. every map the renderer dispatches a player action
+ * from — so the invariant is answerable rather than approximated, and wiring a new number box
+ * widens it in the same edit.
+ *
+ * LEAF RULE, NOT AN ANCESTOR WALK. `workable()` credits a container (`kind: 'box'` — a CARD)
+ * for holding something actionable, because `hl: ['Steam Dump']` legitimately rings the whole
+ * card; every other kind is judged on ITSELF. The #304 scan below walks ancestors instead, and
+ * that is right for its question and wrong for this one: `SOURCE RANGE` sits inside the NUC
+ * INSTR card, so the day anyone puts a button on that card an ancestor walk would go quietly
+ * blind to exactly the defect this check exists for.
+ *
+ * WHAT IT DOES NOT COVER, measured rather than guessed:
+ *   1. THE REVERSE DIRECTION IS NOT GATED. 24 pwr2 sites put a steady ring on something
+ *      actionable, and they were adjudicated site by site as CORRECT: 21 are cards (watch the
+ *      STEAM DUMP card, the RHR card, the BORON card), and `pwr_tmi2_incident` 6 and 8 watch
+ *      the PORV — a clickable valve the player is being taught NOT to trust. "hl_watch must not
+ *      be actionable" would red all of them. There is no rule here to enforce.
+ *   2. THE RETIRED `pwr` POOL IS OUT OF SCOPE. Measured on this tree: 56 sites in
+ *      `RD.MANUAL_PROCEDURES.pwr` fail the same invariant (`Plant Pressure`, `Tavg`, `SG Level`,
+ *      `Source Range` in `hl`). That pool drives the retired engine, it is a separate
+ *      adjudication, and gating it here would only invite a mass edit of steps nobody measured.
+ *      The count is PRINTED below every run so it cannot quietly grow.
+ *   3. IT SAYS NOTHING ABOUT WHETHER THE RING IS VISIBLE — a ring on a `display:none` element
+ *      is still a resolved id (the #745 block above has the same blind spot, for the same
+ *      reason: a static check cannot see the rendered board). The one live instance is narrow
+ *      and was MEASURED, so do not write it up as the broad claim: with the 1/M window OPEN,
+ *      `Plot point` rings correctly at 107x24; with the window SHUT it rings at 0x0 at (0,0).
+ *      "Nothing inside a floating window can be ringed" is REFUTED. Separately, step 12's ✕
+ *      (`[data-oom="close"]`, 27x22) can be ringed by no label at all, because `SHELL_TARGETS`
+ *      holds exactly one entry — a vocabulary gap, not a rendering one.
+ *   4. IT SAYS NOTHING ABOUT WHETHER THE STEP SHOULD BE PRESSING THAT CONTROL AT ALL. A step
+ *      whose text forbids the press it rings passes here; that is a reading, not a wiring.
+ * ============================================================================ */
 
 // ============================================================================
 // INOPERABLE-CLAIM CHECK (#304) — a manual may not call a control read-only

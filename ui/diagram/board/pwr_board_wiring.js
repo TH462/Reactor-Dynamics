@@ -4876,6 +4876,46 @@
         return !!(BUTTONS[k] && (BUTTONS[k].press || BUTTONS[k].hold));
       });
     },
+    /* EVERY WAY THE PLAYER CAN ACT ON THIS BOARD, not just the ones that are buttons (#748).
+     *
+     * `pressableIds()` above answers a NARROWER question than its name suggests, and the
+     * narrowness is load-bearing for #304 (it must not call a decoration a control) but WRONG
+     * for anything asking "can the player do something here?". It reads `BUTTONS`, so the four
+     * things a player works that are not buttons come back as read-only indication:
+     *
+     *   - a TYPED NUMBER BOX (`NUMBERS`) — `Boron Target`, `Pressure SP`, `Dump Setpoint`,
+     *     `Load Setpoint`, charging, spray, heaters. The player types a value and presses
+     *     Enter, or clicks the arrows; `set` is the command that goes down. Four walkthrough
+     *     steps name one of these as the control to press.
+     *   - a CLICKABLE VALVE SYMBOL (`VALVE_TOGGLE`) — the accumulator shutoff, the MSIV, the
+     *     PORV block valve, the PORV itself. N4 in the walkthrough guide exists because these
+     *     are not buttons and a step has to say so.
+     *   - the SCRAM item, whose `kind` is its own renderer (`buildScram`) and which therefore
+     *     appears in no button map at all.
+     *   - a shell-owned control that is not a board item — today only the 1/M panel's
+     *     `Plot point`. It is not in the doc, so it is not answerable here; the caller
+     *     resolves that one through `RD.Highlight.SHELL_TARGETS` (see run_manual_controls).
+     *
+     * SELF-MAINTAINING BY CONSTRUCTION: each clause reads the map the renderer itself
+     * dispatches from, so wiring a new number box or valve widens this list in the same edit.
+     * Returns SELF ids only — the caller walks `parentOf` if it wants "inside something
+     * workable", exactly as the #304 scan does. */
+    actionableIds: function () {
+      var out = {};
+      /* The BUTTONS clause is spelled out rather than calling `this.pressableIds()`: a caller
+       * that lifts this function off the driver (`var f = DRV.actionableIds`) would lose `this`
+       * and throw, and an introspection helper must not be fragile about how it is invoked. */
+      Object.keys(BUTTONS).forEach(function (k) {
+        if (BUTTONS[k] && (BUTTONS[k].press || BUTTONS[k].hold)) out[k] = true;
+      });
+      Object.keys(NUMBERS).forEach(function (k) { if (NUMBERS[k] && NUMBERS[k].set) out[k] = true; });
+      Object.keys(VALVE_TOGGLE).forEach(function (k) { out[k] = true; });
+      ((window.RD_PWR_BOARD_DOC && window.RD_PWR_BOARD_DOC.items) || []).forEach(function (it) {
+        if (it && it.kind === 'scram') out[it.id] = true;
+      });
+      (EXTRA_ITEMS || []).forEach(function (it) { if (it && it.kind === 'scram') out[it.id] = true; });
+      return Object.keys(out);
+    },
     // Inspection copy (#96) — what an item IS, in two tiers, resolved through the
     // registry's containment fallback so an unnamed sub-frame describes its card.
     // Kept in pwr_board_inspect.js rather than here: it is prose about the plant,
