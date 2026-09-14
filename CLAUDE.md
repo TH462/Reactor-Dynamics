@@ -629,14 +629,10 @@ Four things about it that are procedure, not history:
   `gh run list --workflow=gates.yml --limit 3`: it ran red for **32 consecutive runs** through one
   release, and 1.7.2 merged behind a timeout with none of 34 finished runners red.
 
-**One tracked red, carrying its `note` in `BASELINES`: `run_ops` 59/70** — ops probes are tuning
-targets by design. Of the reds, all but one are RBMK/BWR (on hold). The single PWR one is
-`ops_cvcs_pzr_drain_rate` (**284.3 s** against `>= 300 s`), a **RULED, ACCEPTED state, not a
-regression** *(OWNER RULING, 2026-08-04: "A")*. **It must NOT be re-banded** — the probe exists
-for a 2026-07-22 owner request for a drain-rate feel target, and re-banding a target whenever the
-plant moves retires it instead of reporting against it. Both options are costed in the probe's
-own comment (`test/ops_pwr.js`).
-
+**Tracked reds carry their own `note` in `BASELINES` — read it there, and do NOT re-band one.**
+A red kept on purpose is reporting against a target; re-banding it whenever the plant moves
+retires the target instead. This paragraph listed one such red by name and number and was stale
+inside a day when a second arrived (2026-09-14) — the same rot as the gate baselines above.
 `verify_e2e_ui` carries **1 strict xfail** for #111's missing unit conversion.
 ---
 
@@ -779,6 +775,24 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 >   2026-09-12). Same trap as stashing under a background gate.
 >
 > The line above still binds: the gates a change touches are green before it commits.
+
+> **AND THE PUSH IS ONCE A SESSION, AT THE END** *(OWNER, 2026-09-14: "Why are you running the
+> aggregate gate and pushing right now when you have a lot more work to do this is just a waste of
+> time if nobody is going to be play testing it right now")*. The rule above says one gate per
+> push; **it does not stop you pushing too early, and that is the expensive half.** A push costs
+> the aggregate PLUS the release-candidate bump and the changelog extension — pay it twice and the
+> second one buys nothing.
+> - **The trigger for the aggregate is "the work queue is EMPTY and the tree is settled", never
+>   "an agent finished."** Measured 2026-09-14: a 34 min run abandoned mid-flight and a whole
+>   second release cycle, because a finished work unit was read as a finished session.
+> - **Push when someone will LOOK** — he asks for it, or the session ends. "So he can review it on
+>   the tester site" is not a reason when he is not reviewing; commit and hold instead.
+> - **Give every subagent a tool-call ceiling: past ~150 calls, STOP and report what remains.**
+>   Cost is tool calls, not brief length (the rule below), and the tail is where it goes: measured
+>   the same day, seven agents ran 84 · 101 · 132 · 139 · 156 · **1231** · **2274**. The two long
+>   ones were not scoped worse — they ground, and a check-in would have let the coordinator
+>   re-scope instead. **An agent that EDITS BEFORE IT PLANS pays for the rework twice**: the
+>   2274-call run hit a contradiction its own change had created.
 
 > **AGENT COST IS TOOL CALLS, NOT PROMPT LENGTH** *(OWNER DIRECTIVE, 2026-09-12: "How can you be
 > more efficient with time and tokens without sacrificing quality?")*. Counted **across two lanes**
