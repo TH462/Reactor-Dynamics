@@ -749,6 +749,19 @@ plant the two verifications were already satisfied while the two actions were no
 **Do not author toward the glyph.** The DO/VERIFY distinction is carried by the first word of
 `text` (§3), which is the only place the player can read it before acting.
 
+**SETTLED — the glyph KEEPS its one meaning, and this is not to be re-proposed** *(OWNER RULING,
+2026-09-13: selected "Leave it as-is" — from a four-option list of add a second mark / leave it
+as-is / reassign the glyph to step kind / defer)*. He was asked whether `○`/`✓` should be made to
+mean do-vs-verify, since his own file reads that way. It stays exactly as measured above: the
+glyph says **"this acceptance is met right now"** and carries no other meaning — not step kind,
+not "you have pressed it", not "you may move on". Anything a reader wants the card to say about
+DO-vs-VERIFY belongs in the first word of `text`, and anything it should say about progress
+belongs to Continue.
+
+The reason to record a "no change" at all: the correlation in his template is perfect and the
+reading is the obvious one, so the next person to read that file will propose it again. It has
+been put and answered.
+
 ### T5. ⚠ NEW — the highlight is a two-list split, and the lists are ELEMENTS, not names
 
 His annotations mark every highlight `(steady)` or `(pulsing)`, which is exactly `hl_watch` vs
@@ -794,7 +807,11 @@ say what must be there, never what may not be.**
 - **The `why` heading.** He writes `Background`; the panel draws `BACKGROUND — NOT AN ACTION`
   (`ui/app.js`, upper-cased in `ui/shell.css`). He may be abbreviating, or asking for the
   qualifier to go. Unchanged pending his word.
-- **The italic `note`.** He renders the operating tip in italics; `.ckl-sub` sets no `font-style`
-  (the `muted` class beside it matches no rule that reaches the checklist card, so it is inert).
-  Either he is marking up his own file, or he wants the tip visually separated from the step line.
-  A one-line CSS change, unmade pending his word.
+- ~~**The italic `note`.**~~ **RESOLVED 2026-09-13 — the tip is now italic on the card.** He
+  renders the operating tip in italics in his own template and asked for the panel to match.
+  `ui/shell.css` gains one rule, `.ckl-sub.muted { font-style: italic; }`: the `muted` class is
+  on exactly one `.ckl-sub` in the renderer (the `st.note` line) and matched no other rule that
+  reaches this card, so it was already a free discriminator and no markup changed. Verified in
+  headless Chromium on the live `pwr_heatup` card — the note paints `italic`, the sibling
+  `.ckl-sub.ckl-use` stays `normal`, and deleting that single rule at runtime returns the note to
+  `normal`, so the italic is provably coming from it and not from an inherited style.

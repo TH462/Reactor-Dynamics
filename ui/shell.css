@@ -2376,6 +2376,16 @@ select.num-input { width: auto; }
    against the step text it belongs to. */
 .ckl-act { margin-top: 5px; }
 .ckl-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+/* THE OPERATING TIP IS ITALIC *(OWNER, 2026-09-13: he renders the `note` in italics in his own
+   step template — CHECKLIST_WRITING_GUIDE.md §15 T7 flagged it as a one-line CSS change pending
+   his word)*. `.ckl-sub.muted` is the step `note` and ONLY the step `note`: the `muted` class is
+   applied to exactly one `.ckl-sub` in the whole renderer (ui/app.js, the `st.note` line) and
+   matches no other rule that reaches this card, so it is a free discriminator — the other five
+   `.ckl-sub` users (checked by hand, overtaken, Watch for, the two wait lines) are untouched and
+   must stay upright. Same idiom as `.chart-legend .chart-meta.muted` above. Italic, not a colour
+   or a size, because the tip must stay QUIETER than .ckl-crit while reading as a different
+   VOICE from the step's imperative — a grey note is where an instruction goes to die (§15). */
+.ckl-sub.muted { font-style: italic; }
 /* THE CHECK-OFF CRITERIA — first line of the active card, bold, its own color *(OWNER,
    #244 M5→3 item 4: "cyan or cobalt or a blue grey. something that isnt too loud but
    brings attention to it so people know this is the requirement the step is looking

@@ -30,6 +30,129 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (the walkthrough highlights go cyan, the watch ring becomes a glow again, and only the recommended speed rung lights — #743)
+
+*(OWNER, 2026-09-13 playtest, #724: "on the plant screen i dont like the new textured highlights.
+it doesnt bring enough attention to itself like the old glowing and pulsing version did. if i
+didnt know it was there i would miss it. I think we should make the color cyan instead of green…
+You could try keeping some of the texture but bring the glow back. the glow looked much cleaner
+anyway. Lets use pulsing for a user control and steady for an indication to watch."; and "instead
+of highlighting all the speed controls, just highlight the one that is suggested.")*
+
+- **The watch ring was a TEXTURE, not a glow.** As #685 shipped it, `.ckl-watch-glow` was a 1 px
+  dashed outline over a `0 0 6px 1px … 0.22` halo — a quarter the spread and a fifth the alpha of
+  the pulse's — so the dash did all the work and the owner missed it on the board. Inverted: the
+  halo is now `0 0 0 1.5px .55 + 0 0 16px 4px .42`, within a whisker of the pulse's own, and the
+  dash rides on top as the shape difference rather than as the signal.
+- **Cyan was already spoken for twice**, so the family carries its own value and is held apart by
+  GEOMETRY, never hue alone — rendered with all four lit at once before shipping, not reasoned:
+  `rgba(91,179,196)` the highlight bus (muted, solid, flush, steady); `rgba(79,227,255)` the board
+  hover ring (tight 1 px, 9 px blur, no spread, only under the pointer); `rgba(90,240,255)` this
+  family (brighter, much wider bloom, and unrequested by the player). Within it MOTION splits the
+  meanings — pulsing = a control to act on, steady = an indication to watch, the owner's own words
+  — and the steady one is additionally dashed and offset. Nothing else cyan on this board pulses
+  and nothing else cyan is dashed.
+- **`cklGlow` is split from a new `cklAckGlow`; ACKNOWLEDGE stays GREEN.** That is an owner ruling
+  too *(2026-09-03, #619 item 4 — his words are recorded there, not re-quoted here)*, and an agent does not get to pick between two
+  rulings. The board therefore says "press this" in cyan while the panel says it in green —
+  reported on #743 for a ruling, deliberately NOT resolved here.
+- **Why the speed rung lit the whole strip before.** `.speed` is `overflow: hidden`, so an OUTER
+  box-shadow on a child rung is clipped to nothing — the strip-wide glow was a real constraint,
+  not laziness. The way out is an INSET, which paints inside the button's own border box and is
+  never clipped. The strip's clip is left alone: it is what rounds the six square rungs into the
+  strip's radius.
+- **And the pulse stands down once pressed.** A cue that keeps firing for the whole 180 s-plus
+  hold it just asked for is how a player learns to stop reading cues. Done in CSS
+  (`.ckl-speed-rung.on { animation: none }`) so no second JavaScript path has to be kept in step.
+  It does NOT de-escalate to a steady cyan ring, because `.on` already is one and that would have
+  been indistinguishable from ordinary selection.
+
+Gates: `verify_reduced_motion` 17 → 18 — the rung joins the signal set and gets one check of its
+own, that its fallback is an INSET, the one property the distinctness and presence checks cannot
+see. **Adding the signal caught a real defect on its first run**: the rung's first fallback was
+`inset 0 0 0 2px`, byte-identical in geometry to the instructor attention ring, hue-only to each
+other — the exact failure #740 exists to prevent. Fixed with a second bloom stop, not by excluding
+the signal. `verify_e2e_ui` gains `testSpeedRungGlowRendered`, which asserts the PAINTED effect
+rather than the class, because the class shipped for a day with no rule behind it; four
+assertions, each injection-proven separately and each red for its own reason and no other.
+Measured live on `pwr_heatup` step 3, hold 660 s: rung 60× of 6 lit and pulsing `cklRungGlow`,
+strip box-shadow `none`. `run_glow_stacking` 20/20 unchanged, `verify_stylesheets` 6/6.
+
+### Added (the owner's own step template, codified and applied to the Mode 5 → Mode 3 heatup — #744)
+
+The owner hand-edited four steps of the heatup while playing and handed the file over as the shape
+he wants: *"Does this give you enough of an idea of how i want the steps to look?"*
+
+**The template is a RATIFICATION, not a redesign.** Three of his four step lines and all four of
+his Background blocks came back verbatim, and every element of his shape already had a schema
+field. No field was added. `Blueprint/CHECKLIST_WRITING_GUIDE.md` §15 records the mapping plus
+three new rules and two refuted readings:
+
+- **The done-when is in the unit the named tile PRINTS.** He wrote "SHUTDOWN ROD POSITION = 627
+  steps"; the card rendered "… >= 98 %", because the step graded `shutdown_bank_pct` against a
+  readout that shows steps over a step denominator and never a percentage. Regraded on
+  `shutdown_bank_steps` (>= 615 — the same threshold: steps is integer, so 98 % of 627 is 614.46).
+  Position-not-reactivity (#607 item 4) is untouched; only the unit moved.
+- **REFUTED: the circle/check glyphs are NOT do-vs-verify.** Measured in the renderer they are
+  `ck.acc_met ? '✓' : '○'` and read nothing else. His file correlates perfectly only because he
+  pasted cards as he met them on a cold plant. Do not author toward the glyph. **Ruled to stay
+  that way** *(OWNER RULING, 2026-09-13: selected "Leave it as-is" — from a four-option list of
+  add a second mark / leave it as-is / reassign the glyph to step kind / defer)*.
+- **Steady/pulsing is `hl_watch`/`hl`, and the lists are ELEMENTS, not names.**
+
+**Three steps were drawing ONE ring from TWO labels, and no gate could see it.**
+`run_manual_controls` reds on a label appearing in both lists and says nothing about two
+*different* labels resolving to one id. `Turbine Load`/`Main Breaker` are both `imro8k5pzem`;
+`Dump SP`/`Steam Dump` are both `imrop5ouw7h`. In each case the control the step named FIRST
+glowed not at all. Filed as #745 with the resolved-id check that would catch it — born red on 11
+sites, so it ships with the fixes rather than ahead of them.
+
+Eleven `CONTROL_LABEL_MAP` keys added for board elements the vocabulary never carried — the
+shutdown-bank readout (the owner asked for this one by name), the turbine TRIP/LATCH/UNLOAD
+buttons and OUTPUT, the steam-dump CLOSE/AUTO/OPEN buttons with its status, valve and opening
+readouts, and the letdown flow readout. All twelve ids verified present on the canvas and absent
+from `DOC_REMOVE` (`imrzmlyafa3`, the old labelled STEAM DUMP % tile, IS removed and is
+deliberately not mapped — it would glow nothing, silently). Applied across all 17 steps of the
+heatup: every DO step's `hl` now holds only things the player presses, every VERIFY and WAIT step
+pulses nothing, and each names where its done-when is read.
+
+**The board's rod readouts carried the retired engine's bank size behind a comment asserting it
+was current**: `|| 912` under "on the current engine max_steps IS 912", true of `pwr_engine` and
+false of the shipped 627-step plant. Resolved through a new `bankFullScale` walking live published
+tables — the #707 resolution, which types no bank size at all, because hard-coding 627 is how 912
+got there. ⚠ **The 912s in the legacy `pwr` pool are CORRECT and are now marked so**: that pool
+runs against the retired `RD.PWREngine`, whose bank really is 912 fine steps. A sweep for the
+literal finds both and they mean different plants. Also filed: #746, the 1/M panel seeding its
+steps axis with the retired 912 bank.
+
+Verified in headless Chromium through the app's own appliers: all three of the owner's annotated
+steps draw both ring kinds on distinct elements, and nothing is dropped by `applyCklWatchGlow`'s
+already-pulsing skip guard. Gates: `run_manual_controls` 681 → 702 checks (+21 derived per step),
+`run_checklist_pwr2` 261/261, `run_procedures` 29/29, `run_procedures_stack` 29/29,
+`run_procedures_chain` 50/50, `run_pwr2_board` 98/98, `verify_ckl_relevance` 29/29.
+
+### Changed (the walkthrough step's operating tip is italic, and the hero blurb is the owner's own sentence)
+
+- **The tip is italic.** The owner renders the step `note` in italics in his own template and asked
+  the panel to match. One rule, `.ckl-sub.muted { font-style: italic; }` — no markup changed,
+  because `muted` is applied to exactly one `.ckl-sub` in the renderer (`ui/app.js`, the `st.note`
+  line) and matched no rule that reached the checklist card. §15 T7 had already found that and
+  called it inert; inert is the same thing as a free discriminator once you want one. The other
+  five `.ckl-sub` users (checked by hand, overtaken, "Watch for", the two wait lines) stay upright,
+  which is the half a blanket `.ckl-sub` rule would have got wrong. **Verified in a browser, not in
+  the CSS**: headless Chromium on the live `pwr_heatup` card — the note paints `italic`, the
+  sibling `.ckl-sub.ckl-use` paints `normal`, and deleting that single rule at runtime returns the
+  note to `normal`, so the italic provably comes from it and not from an inherited style.
+- **The hero blurb is the owner's own sentence, verbatim** (website only — no `changelog.html`
+  entry and no bump of its own). His version folds the old "Nothing to install — it all runs
+  locally in your browser" clause into "right in your browser"; that sentence is dropped
+  deliberately, not lost, and the comment above the paragraph now says so, because the next reader
+  will otherwise "restore" it. The `data-flag-off` alternate could not simply copy him — it is what
+  the site shows when the `walkthroughs` flag is off, so it must not promise walkthroughs. Brought
+  into his shape with the claim removed: *"Real reactor physics, a whole plant you take from cold
+  shutdown to full power and back right in your browser."* The `og:description` /
+  `twitter:description` meta are separate copy and were not touched.
+
 ### Changed (landing page: the hero promises the walkthroughs, and the fourth card stops promising an instructor — #742)
 
 *(OWNER, 2026-09-13: "the landing page needs some work. remove the 'Who its for' block. Its too
@@ -2017,7 +2140,7 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc22] — 2026-09-13
+## [Alpha 1.7.4-rc23] — 2026-09-13
 
 ### Fixed (`verify_e2e_ui` had been RED on CI since the 1/M dock widened — the bound was derived on Windows and CI gates on Linux — #713 pass 3)
 

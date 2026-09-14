@@ -29,6 +29,93 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-13-develop-a (the release presentation for #742/#743/#744, the italic tip, and a "no change" recorded so it stops being re-proposed)
+
+Small closing pass on develop after both overflow lanes merged in. Four jobs, one commit; the
+aggregate is the coordinator's and is deliberately not run here.
+
+### THE ACCEPTANCE GLYPH KEEPS ITS ONE MEANING — RULED, AND THE RULING IS A SELECTION, NOT A QUOTE
+
+`○`/`✓` on a walkthrough card is `ck.acc_met ? '✓' : '○'` and reads nothing else — measured in the
+renderer at #744, which also refuted the obvious reading of the owner's own template file (his two
+DO steps carry `○` and his two VERIFY steps carry `✓`, with no exceptions, because he pasted the
+cards as he met them on a cold plant). He was asked whether to make that correlation real.
+
+**He selected "Leave it as-is"** *(OWNER RULING, 2026-09-13: selected "Leave it as-is" — from a
+four-option list of add a second mark / leave it as-is / reassign the glyph to step kind /
+defer)*. The glyph means "this acceptance is met right now" and carries no other meaning. Recorded
+in `Blueprint/CHECKLIST_WRITING_GUIDE.md` §15 T4 beside the measurement that refuted it.
+
+⚠ **WRITTEN AS A SELECTION BECAUSE THAT IS WHAT IT WAS.** He did not speak those words; he picked
+an option off a list. HR11 wants a date and the owner's own input, and `run_hardrules` reds on the
+format — but the format is the cheap half. Paraphrasing a selection into quotation marks
+manufactures a quote, and a manufactured quote is indistinguishable from a real one to every agent
+downstream, for ever. **A ruling records HOW it was given.** A "no change" is worth recording at
+all only because the reading it rejects is the obvious one: the next reader of that template will
+propose it again unless the file says it has been put and answered.
+
+### THE OPERATING TIP IS ITALIC, AND THE DISCRIMINATOR WAS ALREADY THERE
+
+The owner renders the step `note` in italics in his own template; the panel did not. One rule,
+`.ckl-sub.muted { font-style: italic; }` — no markup change, because `muted` is applied to exactly
+one `.ckl-sub` in the whole renderer (`ui/app.js`, the `st.note` line) and matched no rule that
+reaches the checklist card. §15 T7 had already found that and called it inert; inert is the same
+thing as a free discriminator once you want one. The other five `.ckl-sub` users (checked by hand,
+overtaken, "Watch for", the two wait lines) stay upright, which is the half a blanket `.ckl-sub`
+rule would have got wrong.
+
+**VERIFIED IN A BROWSER, NOT IN THE CSS**, which is the only way this claim can be made: headless
+Chromium on the live `pwr_heatup` card — the note paints `italic`, the sibling `.ckl-sub.ckl-use`
+paints `normal`. **Injection: deleting that single rule at runtime returns the note to `normal`**,
+so the italic provably comes from the rule and not from an inherited or cascaded style. A source
+read of `shell.css` could not have told the two apart.
+
+### THE RELEASE PRESENTATION — rc22 → rc23, AND THE WEBSITE/SIMULATOR SPLIT HELD
+
+`changelog.html`, `site/release.js` and `CHANGELOG.md` to `Alpha 1.7.4-rc23`. The pending entry is
+**EXTENDED, never re-opened**, and it is at the 8-bullet cap, so #743's cyan highlights and speed
+rung, #744's SHUTDOWN ROD POSITION highlight and same-element collision, and the board's rod
+readouts coming off the retired 912-step scale were all **aggregated into the two bullets that
+already owned those subjects** rather than added as new ones.
+
+**#742 got no `changelog.html` line and no bump of its own** — it is a landing-page change, and
+that page is for simulator changes. Its dense entry was already in `CHANGELOG.md` under
+`[Unreleased]`, which is exactly the split CLAUDE.md asks for; #743 and #744 arrived without dense
+entries and got them here.
+
+### THE HERO BLURB IS THE OWNER'S OWN SENTENCE, VERBATIM
+
+He rewrote it himself mid-session and it is in `index.html` unedited and un-re-punctuated. His
+version folds the old "Nothing to install — it all runs locally in your browser" clause into
+"right in your browser"; **that sentence is dropped deliberately, not lost**, and the comment above
+the paragraph now says so, because the next reader will otherwise "restore" it.
+
+The `data-flag-off` alternate could not simply copy him: it is what the site shows when the
+`walkthroughs` flag is off, so **it must not promise walkthroughs**. Brought into his shape with
+the claim removed — *"Real reactor physics, a whole plant you take from cold shutdown to full power
+and back right in your browser."* Same rhythm, same closing clause, no claim the flag-off site
+cannot keep. The `og:description` / `twitter:description` meta are separate copy and were not
+touched.
+
+### GATES
+
+Touched only, per the batching directive — the aggregate is the coordinator's.
+
+```
+run_release         29 checks  0 failed   (PENDING, rc23 consistently across all three files)
+run_hardrules      552 checks  0 failed   (550 -> 552: the two new HR11 citations; BASELINES updated)
+run_doc_budget       4 checks  0 failed
+verify_stylesheets   6/6
+run_site_meta      164 checks  0 failed   (the rewritten hero copy)
+run_style           11 checks  0 failed
+run_site_build      41 checks  0 failed
+run_released_frozen  5 checks  0 failed
+```
+
+Plus the headless-Chromium italic check above, with its injection.
+
+---
+
 ## Session log — 2026-09-13-workbench-c (#740 — the board keeps its meaning without the movement, and two of my own findings were wrong)
 
 **The ruling** *(OWNER, 2026-09-13: "1:A, 2:A, 3:a now. I will playtest after you make these
