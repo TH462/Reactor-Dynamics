@@ -82,6 +82,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | PWR-A13a | PZR LTDN ISOL | warning | A |
 | PWR-A14 | PZR LVL LO LO | critical | A |
 | PWR-A15 | ROD INS LIMIT | warning | A |
+| PWR-A15a | ROD BANK FULL OUT | warning | A |
 | PWR-A16 | SG LVL HI | caution | B |
 | PWR-A16b | SG LVL HI HI | critical | B |
 | PWR-A17 | SG LVL LO | warning | B |
@@ -281,6 +282,20 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **Logic** | Control bank at/below insertion limit |
 | **Means** | Rods too deep for current power — inadequate rod worth margin concept. |
 | **Actions** | 1) Borate or reduce power. 2) Withdraw only within procedures. 3) Do not ignore during power ops. |
+
+---
+
+## PWR-A15a — Control Rods Fully Withdrawn (ROD BANK FULL OUT)
+
+| Field | Content |
+|-------|---------|
+| **Logic** | Control bank at its top stop — 627 of 627 steps |
+| **Means** | No rod authority left in the withdraw direction. WITHDRAW will not move the bank, and the only reactivity lever remaining is boron. This plant has ONE control bank and no overlap group, so the top stop is the end of rod control rather than a hand-off to the next bank. |
+| **Actions** | 1) Dilute — reduce boron concentration to bring Tavg back to programme. 2) Expect the bank to come off the stop as the dilution takes effect; the alarm clears on the first step of inward travel. 3) Check what drove the bank out: a xenon build-in after a power ascension is the usual cause. 4) Do NOT dilute in one large step — the plant heats faster than xenon can absorb it and trips on overtemperature ΔT. |
+
+**Shutdown bank:** this alarm is on the CONTROL bank only. The shutdown bank is parked fully
+withdrawn whenever the plant is hot — that is its normal position, not a fault — so it has no
+equivalent annunciator.
 
 ---
 

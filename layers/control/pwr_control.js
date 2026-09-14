@@ -634,6 +634,56 @@
     // which is in the same fine steps.
     { id: 'rod_limit_approach', instrument: 'rod_limit_margin', direction: 'low',     setpoint: 40,    priority: 'warning',  panel: 'A', category: 'reactivity', label_learning: 'Control Rods — Approaching Insertion Limit', label_industry: 'ROD LIMIT LO' },
     { id: 'rod_limit',         instrument: 'rod_at_limit',     direction: 'is_true', setpoint: null,  priority: 'warning',  panel: 'A', category: 'reactivity', label_learning: 'Control Rods — Insertion Limit',  label_industry: 'ROD LIMIT LO-LO' },
+    // ---- the OTHER end of the same bank (#752) ---------------------------------------
+    // *(OWNER, 2026-09-14: "I think we should still have a rod at max travel alarm.")* —
+    // given AFTER the refused-press flash shipped (fc7fae62), so it is in addition to it.
+    //
+    // WHAT A REAL BOARD DOES, AND WHY WE DO SOMETHING ELSE. A DECLARED DEPARTURE
+    // (DESIGN_CRITERIA Q2/Q3, DESIGN_COMPANION §8). An evidence pass over all three lanes'
+    // corpora (`tools/find_source.js`) found NOTHING annunciating the high end of rod travel,
+    // and the reason is structural rather than an omission: on a real plant fully-withdrawn is
+    // a normal DESIGNED position. Ginna Tech Spec Bases (ML20339A221): *"The shutdown bank is
+    // maintained either in the fully inserted or fully withdrawn position"*, and, of the
+    // overlap pattern, *"Control bank A stops at the fully withdrawn position, and control
+    // bank B continues to move out."* A bank on its top stop there means the NEXT bank has the
+    // reactivity — nothing is lost, so nothing annunciates. The alarmed limits are the
+    // INSERTION limits, which is what the pair above is: WTSM 8.4 (ML11223A256), *"Rod Limit
+    // Low setpoint = RIL + 10 steps"*, *"Rod Limit Low-Low setpoint = RIL"*.
+    //
+    // THIS PLANT HAS ONE CONTROL BANK AND NO OVERLAP. So "bank at the top" means here what it
+    // never means on a real board: there is no rod authority left at all, and the only lever
+    // remaining is boron. MEASURED full stack, 2026-09-14 (#752): trimming rods as xenon builds
+    // from the power-ascension leg's own end state, the bank pins at 627/627 at +24.37 h with
+    // xenon only 84.8 % built, and the plant then makes full power 24.08–24.85 °F below its
+    // Tavg programme PERMANENTLY (two independent routes, 0.8 °F apart). Over sixty plant-hours
+    // the annunciator panel produced THREE events, the last at +9.27 h — an alarm CLEARING,
+    // 15.1 hours before the player lost rod authority. Six instrumented hours sitting on the
+    // stop: 358 WITHDRAW presses, 0 refused, 0 `rod_stop` ticks, 0 alarm transitions.
+    // So the educational value is Q3-operational: the player can reach it on the board, and
+    // something visible changes when they do. The annunciator ITSELF is UNVERIFIED — no source
+    // is claimed for it, only for the practice it departs from.
+    //
+    // ONE ROW, NO APPROACH BAND, and the arithmetic is the reason — do NOT "fix" the asymmetry
+    // with the low side later. The settled full-power point is 606 of 627 (#734, re-measured
+    // here off the booted IC), i.e. 21 steps from the top, while the low side's approach band
+    // is 40 fine steps. A band of that order would stand permanently in normal full-power
+    // operation, and 606 itself drifts with xenon, so there is no quiet place to put one.
+    //
+    // CONTROL BANK ONLY, AND THAT IS A RULING, NOT AN OVERSIGHT — do not "fix" the asymmetry
+    // by adding the shutdown bank later *(OWNER RULING, 2026-09-14: "Do not alarm or color
+    // code the shutdown bank since it's used differently")*. It is used differently in the
+    // sourced sense: Ginna Tech Spec Bases (ML20339A221) — the shutdown bank *"is maintained
+    // either in the fully inserted or fully withdrawn position"* — so for THAT bank sitting on
+    // a stop is the normal condition, and a row there would annunciate correct operation and
+    // teach the player the opposite of the truth. Measured here before the ruling arrived and
+    // agreeing with it: the shutdown bank reads 627/627 in four of the six initial conditions
+    // (hot_full_power, 50_percent, low_power, hot_zero_power). See `ex.rod_at_max_travel` in
+    // pwr2_shell.js.
+    //
+    // `warning`, not `critical`: the plant is not in danger and nothing is degrading. The
+    // operator is out of one lever, which is a "go and do something about it" condition —
+    // the same class as the insertion-limit rows it sits beside.
+    { id: 'rod_max_travel',    instrument: 'rod_at_max_travel', direction: 'is_true', setpoint: null, priority: 'warning',  panel: 'A', category: 'reactivity', label_learning: 'Control Rods — Fully Withdrawn, No Rod Authority Left', label_industry: 'ROD BANK FULL OUT' },
     // ---- the small-leak cue pair (#262, owner ruling 2026-07-30) ----------------------
     // A leak inside CVCS make-up authority is HELD, and that is the problem: the plant
     // quietly loses inventory with charging near maximum and, before these two, nothing

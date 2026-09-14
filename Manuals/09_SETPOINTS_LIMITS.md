@@ -218,6 +218,7 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 | pzr_level_cutoff | PZR LTDN ISOL | pzr_level | low | **17 %** | warning |
 | pzr_level_lolo | PZR LVL LO LO | pzr_level | low | **12 %** | critical |
 | rod_limit | ROD INS LIMIT | rod_at_limit | true | — | warning |
+| rod_max_travel | ROD BANK FULL OUT | rod_at_max_travel | true | — | warning |
 | otdt_approach | OTΔT ROD STOP | otdt_margin | low | **3 % of rated ΔT** | warning |
 | opdt_approach | OPΔT ROD STOP | opdt_margin | low | **3 % of rated ΔT** | warning |
 

@@ -1273,6 +1273,32 @@
      * is overridden to the sourced RIL+10 in this currency — see getProtectionConfig) */
     ex.rod_at_limit = e._rodAtLimit === true;
     ex.rod_limit_margin = e._rodLimitMargin === undefined ? bankSteps() : e._rodLimitMargin;
+    /* THE HIGH END OF THE SAME BANK (#752) — the control bank on its TOP stop, which is the
+     * half of the travel nothing on this board has ever indicated. The two lines above are
+     * the INSERTION limit; this one says the operator has no rod authority left in the
+     * withdraw direction. See the ROD BANK FULL OUT row in layers/control/pwr_control.js for
+     * why this plant annunciates a position a real board treats as normal.
+     *
+     * `e.rodSteps`, RAW, against `bankSteps()` — the SAME predicate the refused-press flash
+     * uses (`rodPressRefused` in pwr_board_wiring.js: `position_pct >= 100`, and position_pct
+     * is `100 * e.rodSteps / bankSteps()` unrounded). They must agree: a press crossed out in
+     * red while the annunciator is dark, or lit while the press still moves the bank, is the
+     * board disagreeing with itself about the same fact. NOT the shell's `steps`, which is
+     * `Math.round(e.rodSteps)` and reads 627 with half a step of travel still there.
+     *
+     * The equality is EXACT and that is measured, not assumed: driven out in 10-step nudges
+     * from hot_full_power, `e.rodSteps === bankSteps()` is true (627 === 627) — the drive
+     * clamps its target at BANK() and the last move lands on it, so no epsilon is needed and
+     * none is added, because an epsilon here would light the lamp over travel that remains.
+     *
+     * THE CONTROL BANK ONLY, BY RULING *(OWNER RULING, 2026-09-14: "Do not alarm or color
+     * code the shutdown bank since it's used differently")*. The shutdown bank is parked
+     * fully withdrawn by design — Ginna Tech Spec Bases (ML20339A221): it *"is maintained
+     * either in the fully inserted or fully withdrawn position"* — and measures 627/627 in
+     * four of the six initial conditions (hot_full_power, 50_percent, low_power,
+     * hot_zero_power), so a row on it would stand through normal operation: a nuisance alarm
+     * that annunciates correct practice, which is worse than the silence it would replace. */
+    ex.rod_at_max_travel = e.rodSteps >= bankSteps();
     /* BOTH BANKS (#545). The retired engine has had this right since #75 —
      * `this.rod_groups.every(g => g.position_pct <= RODS_IN_PCT)` — and this was a second
      * copy that lost the `every`, so the kernel's RODS_NOT_INSERTED reset permissive was

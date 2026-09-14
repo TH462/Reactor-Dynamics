@@ -86,6 +86,15 @@ operator's switch. Full travel — 627 steps — is **8.7 minutes at Fast**, 13 
 - Alarm **ROD INS LIMIT** when at/below limit.  
 - Do not park rods below the limit during power operation without a plan to restore.
 
+### 3.4a Top of Travel
+
+- Ceiling on control bank withdrawal: **627 of 627 steps**, the full travel of the bank.
+- Alarm **ROD BANK FULL OUT** when the control bank reaches it. The WITHDRAW button is also
+  crossed out in red on a press that cannot move the bank.
+- At the top stop there is no rod authority left; boron is the only reactivity lever. Dilute.
+- Control bank only. The shutdown bank sits fully withdrawn as its normal hot position and
+  carries no such alarm.
+
 ### 3.5 SCRAM
 
 | Item | Detail |

@@ -2799,6 +2799,14 @@
                'rcp_secured', 'plant_mode',
                'hpi_active', 'station_blackout',
                'steam_demand_low', 'rod_at_limit', 'sr_energized', 'msiv_open', 'sg_safety_open',
+               // The OTHER end of the control bank's travel (#752) — the top stop, where the
+               // operator has no rod authority left in the withdraw direction. `rod_at_limit`
+               // beside it is the INSERTION limit. Declared here, not in pwr2_shell's status
+               // override, because `run_m7` asserts that every alarm's instrument exists in
+               // the plant's declared set and the ROD BANK FULL OUT row lives in the shared
+               // protection table. A STATUS passthrough, so it draws no PRNG number and the
+               // cross-step instrument noise stream is unchanged.
+               'rod_at_max_travel',
                // Rod bottom (#75) — read by the RPS-reset permissive in pwr_control.js, so
                // the board can say whether a reset will be accepted before it is attempted.
                'rods_fully_in',

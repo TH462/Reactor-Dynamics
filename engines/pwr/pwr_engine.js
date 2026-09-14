@@ -653,6 +653,12 @@
       // instruments from truth anyway).
       above_p9: (s._ins_power_pct != null ? s._ins_power_pct : (s.power_pct || 0)) > 50,
       rod_at_limit: this._controlGroup().at_insertion_limit,
+      // The TOP stop of the same bank (#752) — see the ROD BANK FULL OUT row in
+      // layers/control/pwr_control.js for why this plant annunciates a position a real board
+      // treats as normal. PWR2 publishes its own (pwr2_shell `_instrExtras`); this is the
+      // retired engine's copy, so the shared alarm row is live on both plants rather than a
+      // dark wire on one of them.
+      rod_at_max_travel: (function (g) { return g.steps >= g.max_steps; })(this._controlGroup()),
       // Steps of travel the control bank has left ABOVE its rod insertion limit — the
       // "authority remaining" signal, and what the ROD LIMIT LO annunciator reads (#306).
       // A real board carries TWO insertion-limit alarms, not one: *"Rod Limit Low setpoint

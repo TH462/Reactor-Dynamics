@@ -730,6 +730,14 @@
         { id: 'opdt_mar', instr: 'opdt_margin', grp: 'Protection & limits', label: 'OPΔT Margin', c: '#e0b088', get: function (i) { return i.opdt_margin; }, range: [-20, 60], dLo: 0, fmt: function (v) { return sgnFix(v, 1) + '%'; } },
         { id: 'rod_margin',instr: 'rod_limit_margin', grp: 'Protection & limits', label: 'Rod Limit Margin', c: '#7ac098', get: function (i) { return i.rod_limit_margin; }, range: function (s) { return [0, bankScale(s, 'control_rods')]; }, dLo: 0, fmt: function (v) { return v.toFixed(0) + ' st'; } },
         stat({ id: 'rod_limit', grp: 'Protection & limits', label: 'Rods At Limit', c: '#c0a050', ins: 'rod_at_limit', on: 'AT LIMIT', off: 'no', alarm: 'on', hint: 'whether the control bank has reached its insertion limit.', detail: 'The rod insertion limit preserves enough rod worth above the bank to shut the reactor down from any condition. Driving into it does not stop the plant working, it removes the margin that makes a trip effective — so the correct response is to borate, which brings the bank back out, rather than to keep inserting.' }),
+        // The OTHER end of the same bank (#752) — a boolean trace, so the chart can show the
+        // exact span the plant spent with no rod authority left. That span is the thing the
+        // strip chart can say and no gauge can: MEASURED full stack, trimming rods as xenon
+        // builds pins the bank at 627/627 and holds it there indefinitely while the plant
+        // makes full power ~24 °F (13 °C) below its Tavg programme. CONTROL bank only
+        // *(OWNER RULING, 2026-09-14: "Do not alarm or color code the shutdown bank since
+        // it's used differently")*.
+        stat({ id: 'rod_max_travel', grp: 'Protection & limits', label: 'Rods Fully Withdrawn', c: '#c08050', ins: 'rod_at_max_travel', on: 'FULL OUT', off: 'no', alarm: 'on', hint: 'whether the control bank has reached the top of its travel.', detail: 'The control bank at its top stop has no withdraw authority left, and this plant has one control bank with no overlap group, so there is no next bank to take over. WITHDRAW stops moving anything and boron is the only reactivity lever remaining — the response is to dilute, a dose at a time. The shutdown bank is parked fully withdrawn whenever the plant is hot, which is its normal position, so this trace follows the control bank alone.' }),
 
         // ---------------------------------------------------------------- pressure boundary
         // The relief path. Two of these are BOOLEAN traces and that is deliberate: a step
