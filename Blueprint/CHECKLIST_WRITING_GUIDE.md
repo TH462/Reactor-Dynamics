@@ -676,3 +676,125 @@ lives in the manual chapter the step cites.
   second step and critical alarms stand for the whole run, so the "no unexpected scram" and "no
   critical alarm standing at end" assertions do not apply. The `guard` block still does, and on an
   incident leg `never_melted` is the assertion that the plant stayed inside its envelope.
+
+---
+
+## 15. The owner's own step — the shape, annotated (2026-09-13, #744)
+
+The owner hand-edited four steps while playing and handed the file over as the pattern:
+
+> *"this file has my own edits to steps as ive been playing them. you can use it to adjust the
+> template for walkthroughs… The [HIGHLIGHTED:...] portions tell you what should be highlighted.
+> i probably forgot to add a few so dont take a missing one as nothing should be highlighted."*
+
+They are `pwr_heatup` steps 3–6. **Read what he did NOT change as hard as what he did**: three of
+the four step lines, and all four `why` blocks, came back verbatim. The shape below is therefore
+mostly a RATIFICATION of §§1–4, with three genuinely new rules (T3, T5, T6) and two readings of
+his file that measurement REFUTES.
+
+### T1. The anatomy, and the field each part is
+
+Every element of his shape already has a field. **No new field is needed and none was added.**
+
+| what he wrote | field | notes |
+|---|---|---|
+| `On the ROD CONTROL card press FAST, then click WITHDRAW under SHUTDOWN once.` | `text` | one imperative, the CARD then the CONTROL. §3 R1/R2, §4 N1. |
+| `○ When SHUTDOWN ROD POSITION = 627 steps` | **generated** from `acc` / `accs` | he cannot author this line; he authored the `acc` that produces it. See T3. |
+| `⏩ About 11 plant-minutes at 1× — set the speed control to 60×.` | **generated** from `hold` | `hold: 660`. An authored `wait_hint` is appended to it, never replaces it. |
+| *`One click starts the shutdown bank and it runs to 627 of 627 by itself…`* | `note` | the operating tip: what a wrong reading means, what a second click does. |
+| `Background` + prose | `why` | the prototypical/physics why, in plain prose. |
+| `[HIGHLIGHTED: … (steady), … (pulsing)]` | `hl_watch` / `hl` | steady = `hl_watch`, pulsing = `hl`. See T5. |
+
+### T2. A DO step is one imperative and, usually, no `note`
+
+His step 5 is the sharpest instruction in the file, because of what he deleted. The shipped text
+was *"Check SG FEED reads AUTO. If it does not, press AUTO."* with a 38-word `note` hedging the
+already-in-AUTO case. He cut both to **`Set SG FEED to AUTO.`**
+
+**A `note` has to earn its place; hedging a case the GRADING already covers does not earn it.**
+That step's acceptance reads the lamp, not the press, so a player who arrives with it already lit
+sees the step self-tick — the hedge was prose covering a case the runtime had covered since #697.
+This is the answer to #692: the wordiness is not in the sentence count, it is in optional blocks
+that are always open and say nothing the player needs.
+
+### T3. ⚠ NEW — the done-when is in the UNIT THE NAMED TILE PRINTS
+
+He wrote `SHUTDOWN ROD POSITION = 627 steps`. The card rendered
+`SHUTDOWN ROD POSITION ≥ 98 %`, because the step graded `shutdown_bank_pct`. **The board's
+readout prints steps over a step denominator and never a percentage** — so the done-when named
+the right tile in a unit that tile does not show.
+
+The fix is the acceptance, not the prose: `shutdown_bank_steps` is the same field on the same rod
+group (`ROD_PARAMS`, `layers/instructor_layer.js`) and renders in steps. **Before authoring an
+`acc`, look up its entry in `PRED_DISPLAY` (`ui/app.js`) and check the unit against the tile you
+told the player to read.** Several parameters ship in both flavours precisely so this choice
+exists.
+
+Two limits of the generator he could not have known, and which his line should not be read as
+asking for: `OPSYM` carries no `=`, so an exact-equality done-when is not expressible (`>=`
+renders `≥`); and a threshold in steps types a number derived from the bank size, so it needs a
+comment saying what it was derived from.
+
+### T4. ⚠ REFUTED — `○` and `✓` are LIVE STATE, not step kind
+
+It is tempting to read his file as *circle = a thing you DO, check = a thing you VERIFY*: his two
+DO steps carry `○` and his two VERIFY steps carry `✓`, with no exceptions.
+
+**Measured in the renderer: the glyph is `ck.acc_met ? '✓' : '○'` and nothing else** (`ui/app.js`,
+both the `accs` row and the plain-`acc` line). It reads the instructor's live verdict for that
+acceptance and never looks at the step's kind, its `control`, or its text. The correlation is real
+but it is a coincidence of his plant state: he pasted the cards as he met them, and on the cold
+plant the two verifications were already satisfied while the two actions were not.
+
+**Do not author toward the glyph.** The DO/VERIFY distinction is carried by the first word of
+`text` (§3), which is the only place the player can read it before acting.
+
+### T5. ⚠ NEW — the highlight is a two-list split, and the lists are ELEMENTS, not names
+
+His annotations mark every highlight `(steady)` or `(pulsing)`, which is exactly `hl_watch` vs
+`hl`. Three rules fall out, and all three were being broken:
+
+- **A step's `hl` list must contain only things the player presses.** `pwr_heatup`'s RHR/letdown
+  verification listed two cards in `hl` on a step with nothing to press.
+- **Two labels that resolve to the same board element are ONE ring, and NOTHING GATES IT.**
+  `run_manual_controls` reds on a *label* appearing in both lists; it says nothing about two
+  different labels pointing at one id. `Turbine Load` and `Main Breaker` are both `imro8k5pzem`;
+  `Dump SP` and `Steam Dump` are both `imrop5ouw7h`; `Boron` and `Boron control` are both
+  `imrmtlyf64y`.
+
+  **MEASURED 2026-09-13, by resolving every label in both pools through
+  `RD.PwrBoardDriver.controlLabelItem`: 14 steps carry a collision.** Three were in `pwr_heatup`
+  and are fixed here; eleven are elsewhere, of which **eight are in the live pwr2 pool** —
+  `pwr_startup` 2/4/15, `pwr_raise_power` 2/3, `pwr_lower_power` 1, `pwr_cooldown` 1/4. Those are
+  deliberately NOT fixed: they are other legs, out of this pass's scope (#744).
+
+  **The check that would catch them does not exist yet.** `run_manual_controls` would have to
+  resolve each label to its board id and assert the ids *within a step* are distinct — a
+  RESOLVED-ID comparison, where today's disjoint check is a string one. Until it ships, resolve
+  the ids by hand when you author a highlight list; a near-miss label is invisible otherwise.
+- **A watch label must resolve to a DIFFERENT element than the step's own `hl`.**
+  `applyCklWatchGlow` skips any element already carrying `ckl-step-glow`, so a steady ring asked
+  for on an element that is already pulsing is silently dropped.
+
+**Check the resolved ids, not the label strings**, and add a `CONTROL_LABEL_MAP` key rather than
+reaching for a near-miss label — a vocabulary hole is how a wrong label gets chosen (#598 item 14,
+#735, #744). **And verify the id is on the canvas**: `imrzmlyafa3`, the old labelled STEAM DUMP %
+tile, is in the board's `DOC_REMOVE`, and a key pointing at it would glow nothing, silently.
+
+### T6. His annotations are a FLOOR, not a list
+
+> *"i probably forgot to add a few so dont take a missing one as nothing should be highlighted."*
+
+Two of his four steps carry no `[HIGHLIGHTED:]` line at all, and one of those is the step he
+separately asked to have a highlight added to. **Author the full split for every step; his marks
+say what must be there, never what may not be.**
+
+### T7. Still ambiguous — do not resolve these by guessing
+
+- **The `why` heading.** He writes `Background`; the panel draws `BACKGROUND — NOT AN ACTION`
+  (`ui/app.js`, upper-cased in `ui/shell.css`). He may be abbreviating, or asking for the
+  qualifier to go. Unchanged pending his word.
+- **The italic `note`.** He renders the operating tip in italics; `.ckl-sub` sets no `font-style`
+  (the `muted` class beside it matches no rule that reaches the checklist card, so it is inert).
+  Either he is marking up his own file, or he wants the tip visually separated from the step line.
+  A one-line CSS change, unmade pending his word.
