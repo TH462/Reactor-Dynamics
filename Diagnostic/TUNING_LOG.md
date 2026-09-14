@@ -29,6 +29,101 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-14-develop-a (three walkthrough-pool defects nothing could see, and the one the fix exposed)
+
+**Bundle: #745, #746, #638 — the authoring defects `#744` scoped out, plus the rename it left half done.**
+Coordinated here, built by two Opus agents in this tree, one at a time because two of the three
+write `ui/manual_procedures.js`. Commits `79726327` (#745/#746) and `13ab50f1` (#638).
+
+### #745 — two highlight labels, one board element, one ring
+
+14 steps where two labels in a step's `hl` / `hl_watch` resolve to the SAME element. The renderer
+rings it once and the control the step names first glows not at all; when the collision spans the
+two lists, `applyCklWatchGlow` skips an element already wearing `ckl-step-glow`, so the steady ring
+is dropped **silently**. `run_manual_controls`'s disjoint check compared LABEL STRINGS, and
+`'Turbine Load'` ≠ `'Main Breaker'`, so it passed on every one of them.
+
+**The sweep has to be RENDERER-FAITHFUL, and a board-map sweep gets two rows wrong.** `ui/app.js`
+resolves through `RD.Highlight.resolve` — SHELL_TARGETS first, namespaced `shell:<selector>`, only
+then `revealControl` — and builds the press list with `stepHlLabels`, which falls back to `control`
+when `hl` is empty. Against the board map alone the issue's own table lists `pwr_startup` 4
+(`1/M Plot Tool` + `Plot point`) and misses `pwr_raise_power` 9. Both are wrong:
+
+- **`pwr_startup` 4 is a FALSE POSITIVE.** Measured at the renderer's layer (headless Chromium,
+  `?engine=pwr2`, calling `RD.Highlight.resolve`, with two known collisions in the same run as
+  positive controls): `'1/M Plot Tool'` → `DIV.bd-halo`, `'Plot point'` → `BUTTON.btn`, same:
+  FALSE — window shut AND open. The shipped check models that override path, so a genuine
+  `bdOneOverM` collision still reds: `Plot point` is the only label that leaves the board map.
+- **`pwr_raise_power` 9 IS a collision and has no `hl` at all** — `control: 'Boron control'` vs
+  `hl_watch: ['Boron']`. A check that reads only the two authored lists cannot see this class.
+
+⚠ **That probe refuted a mechanism three documents already asserted, `ui/highlight_bus.js`'s own
+#735 comment among them**: that a shell target falls back to the board map when its selector
+matches nothing, so the two labels collide while the 1/M window is shut. False — `#oomWin` is built
+at init and merely `display:none`, and `querySelector` matches hidden elements, so the fallback
+never fires for this label. Corrected in the gate, `CHECKLIST_WRITING_GUIDE` §15 T5, `verify_e2e_ui`
+and the comment itself.
+
+**The fix exposed a defect of a DIFFERENT class, recorded and NOT fixed (on #745).** With the tool
+shut, step 4's ring lands on a 0×0 hidden button — no visible pulse until the window is opened.
+**Neither gate half can see it**: the static check compares ids, the browser sweep counts elements
+wearing a class, and a hidden element counts.
+
+**The gate ships WITH the fixes, never ahead.** Born red on all 14, which is its own injection
+proof. Both injections re-run and reverted: `hl: ['Boron','Boron control']` at `pwr2 pwr_cooldown` 1
+→ 924/1; `'Boron'` added to `pwr_raise_power` 9's `hl_watch` (the no-`hl` sub-class) → 926/1.
+`run_manual_controls` **702 → 926 checks**, derived per step (+203 = one per step of 113+90, +21
+re-authoring), not a typed count.
+
+### #746 — the 1/M steps axis was on the retired engine's 912-step bank
+
+`ui/panels/one_over_m.js:60` seeded `maxSteps = 912`; the shipped bank is 627. It self-corrected
+only on the first plotted point, and `pwr2:pwr_startup` 4 tells the player to open the tool and
+THEN plot — so the axis, the predicted criticality and the "critical ≈ step N" label were drawn on
+a scale the plant does not have, on the authored route. Fixed with the `bankFullScale` ladder
+(`ui/diagram/board/pwr_board_wiring.js:560`), resolved lazily at draw time — **627 is not typed
+either; hard-coding the new number is how 912 got there.** Measured in the defect window (panel
+open, zero points): ticks **157/314/470/627**; with the literal restored, **228/456/684/912**.
+
+### #638 — the sim called one feature by two names
+
+Tab says *Walkthroughs* since #660, panel chrome *End Walkthrough* since #687, everything else said
+*checklist*. **66 player-facing strings across 15 files**, counted off the diff. **Both instructor
+registers moved together** — the Learning sentence and the industry `WALKTHROUGH PRECONDITIONS NOT
+MET`; renaming one is a defect. Identifiers untouched (`checklist_check`, `stop_checklist`,
+`s.instructor.checklist`, the `checklists` flag, `#cklRun` / `.ckl-step` / `data-tab="checklists"`,
+the `run_checklist*` runners) — save-format, command and gate contract.
+
+**"Checklist" in a manual sometimes means the paper artifact, not this feature.** Three sites left
+verbatim for that reason: `02` §10.0, `07` §5.0, and the `04` PWR-N03 precaution. Manual half took
+the pending **Rev 19** row EXTENDED with item (zz), chapter-qualified, then `stamp_manual_revision`,
+then `pack_manuals`. No new row.
+
+Two stale sentences were **corrected rather than word-swapped**, because the swap would have
+shipped a confident wrong statement: `shell.html`'s scanner detail claimed a running walkthrough
+"stays in this tab" (it runs in the Instructor tab since #660), and `app.js`'s Procedures page
+offered a Follow button not rendered since #660.
+
+### Noticed, not fixed
+
+**The roadmap's "Nearly there — built, in final review" tier is anchored to `stage:'preview'` in
+`site/flags.js`.** Both `walkthroughs` and `checklists` went `stage:'public'` on 2026-09-12 (#722)
+and the page was never moved, so two shipped features are still advertised as unreleased. Filed.
+
+### Not verified
+
+- The eight `pwr2` re-authorings were **not** confirmed against paint. `verify_e2e_ui`'s watch-glow
+  sweep is still scoped to `pwr_heatup`, green there. Widening it means restructuring a `startLeg`
+  loop and five legs of slow-gate time on legs whose preconditions `startLeg` may not satisfy —
+  declined, reported on #745.
+- **Nobody has looked at the rename in a browser.** Three headless gates drive the shell and pass;
+  no one has read the new wording in place. The `layman-playthrough` skill is the tool for it.
+- The 1/M predicted-criticality readout and "critical N" label share `maxSteps` with the ticks one
+  line apart; the ticks were read and those two inferred.
+- `pwr` `pwr_startup` 10 (`SR detector` + `Source Range`) is the one site fixed by dropping an alias
+  rather than finding a second element — the SR DET button is in `DOC_REMOVE`, so there is no press
+  target. Flagged rather than invented.
+
 ## Session log — 2026-09-13-develop-b (the two reds on the #743/#744 merge seam were both stale fixtures; the confirmation run then found #691 half fixed)
 
 **Both reds were checks pinning an incidental property of a content pool, in gates whose subject IS
