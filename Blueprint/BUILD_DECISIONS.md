@@ -45,6 +45,98 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-09-14-develop-b — #750: the 1/M ladder loses its last burst, and everything that inherited it is re-derived
+
+**The decision.** *(OWNER RULING, 2026-09-14: "I think there's one too many 1/m plot steps. If we
+remove one it doesn't change the indicated criticality rod step and it will let us slowly approach
+criticality for a lower point which will help reduce overshoot.")* The fifth burst of
+`pwr2:pwr_startup`'s approach to criticality — 9 steps to bank 211, target 2.0e4 — is removed. It
+is the one #749 had measured at **ρ = +33 pcm** the day before: criticality is at 207–208, *inside*
+that burst, so the last 1/M point was plotted on an already-critical core.
+
+**Which one goes was forced, not chosen.** Condition (b) — the last plotted point must be LOWER —
+is satisfiable only by removing the last burst; removing any earlier one leaves the ladder ending
+at 211. Re-sizing burst 5 was excluded by the ruling's own wording.
+
+**Condition (a) is off by two steps, in the conservative direction, and that is reported rather
+than absorbed.** The panel's trailing-three fit (`FIT_WINDOW = 3`, ruled at #725) reads **211**
+where it read **213** — measured on four seeds, 210.3 / 210.6 / 211.1 / 212.1 against 212.6 /
+212.7 / 213.1 / 213.4, with the true crossing at 208 on all of them. The prediction's error falls
+from +5.1 steps to +3.0. The ruling's premise is therefore *nearly* right and wrong in the safe
+direction; it was not rounded into agreement.
+
+**The cascade is the entry.** Removing one authored step re-derived six other things, and each was
+measured full stack rather than reasoned:
+
+| what | was | is | why it moved |
+|---|---|---|---|
+| plotted bursts | 94/63/31/14/9 = 211 | 94/63/31/14 = **202** | the ruling |
+| last point ρ | +33 pcm (supercritical) | **−37.6 pcm** measured (−35 static) | ditto |
+| creep | 15 slow → 226, **+148 pcm** | **11 slow → 213, +46 pcm** | `run_reactivity`'s own derivation, bound at 60 pcm |
+| creep step hold | 400 s | **1800 s** | 46 pcm is a slower climb: 0.1 % power takes 1444–1650 s (4 seeds), was 305 s |
+| the INSERT step | `−14 normal`, "hold INSERT until power stops rising" | **no `cmd`**, "watch REACTOR POWER stop rising on its own" | the overshoot it cleaned up is gone — power now arrests at **4.0 %** and holds, instead of running to 10.7 % |
+| Mode 1 entry | `+13 slow` from 214 | **`+13 slow` from 215** | sized by P-10, not by its own target — see below |
+
+**THE STEP THAT LOOKED LIKE FREE ARITHMETIC WAS SIZED BY A PERMISSIVE NOBODY HAD MEASURED.** From
+the new bank 215 at 4.0 %, `+8 slow` settles at **8.06 %** — exactly this step's authored target,
+in half the rod motion, and it was authored that way. `run_checklist_pwr2` then reddened three #731
+checks a step and a half later. **P-10, the permissive that allows a manual trip block, is 10 %
+power** (`PWR_TRIP_BLOCK_PERMISSIVE`, `layers/control/pwr_control.js`), and the leg arrived at the
+TRIP BLOCKS step at **8.375 %**, where the press is refused and the walkthrough stalls for ever.
+Swept on the live runtime, power at that step's entry: **+8 → 8.375 % (stalls) · +10 → 9.096 % ·
++12 → 10.060 % · +13 → 10.522 %**. The pre-#750 leg arrived at **10.066 %** — *six hundredths of a
+point* over the line — so this has been a fixture standing on an envelope wall since the step was
+written, and only a change that moved the plant a little could reveal it. 12 reproduces that wall;
+13 puts half a point of margin over it and lands the bank at 228, which is where the pre-#750 climb
+step already put it.
+
+**AND FOUR PLAYER-FACING SITES SAID THE PERMISSIVE IS 8 %.** The two TRIP BLOCKS steps' `note` and
+`why` have said "above 8 %" / "below 8 %" since they were written. Nothing caught it because the
+leg cleared 10 % by 0.066 and the press was accepted, so the wrong number never cost anything —
+the class of defect where *the gate was real and the documentation was wrong in a direction the
+plant happened to forgive*. Corrected to 10 %.
+
+**The creep is a derivation, and four candidates were measured before one was authored** (seed 42,
+time from the creep press to REACTOR POWER 0.1 %): 9 steps → 211, +31 pcm, 2243 s · 10 → 212,
++38 pcm, 1766 s · **11 → 213, +46 pcm, 1444 s** · 12 → 214, +54 pcm, 1214 s. Twelve is 90 % of the
+runner's own bound — a fixture built at an envelope wall — and buys four minutes. Nine lands
+exactly on the prediction but costs a 37-minute wait at 1×.
+
+**A latching acceptance cannot assert "it stopped".** The INSERT step's rate half was
+`startup_rate_dpm > -0.1` (#748), and `>`/`<` entries LATCH in `instructor_layer._gradeAccs` —
+only `op: '~'` re-grades (#683). On the player's route it was satisfied the instant the step
+opened. It is now `~ 0.00 ± 0.10`, injection-proven three ways through the real harness: as
+authored **−0.0012 PASS**, with the pre-#750 `cmd: -14` restored **−0.1298 FAIL**, graded
+mid-climb **+0.1828 FAIL**.
+
+**What it can assert is bounded by what the panel can DRAW, and the player's route is not the
+replay's.** Measured with every step advanced the tick its acceptance is met (seed 42): step 9
+ticks at t = 2110 (power 0.1 %, bank 213), step 10 at t = 2293 (0.5 %, bank 215), and this step's
+pair first holds at t = 2524 — **power 1.94 %, startup rate 0.0974, still climbing**; power does
+not reach its 4.0 % level for another ~900 s. So the check-off means *the rate has fallen to a
+tenth of its climbing value*, not *power has finished*. A tighter band cannot be drawn (below), and
+a POWER band would **soft-lock**: step 10 tells the player to tap only if the rate falls to 0.00,
+so a player who does not tap sits at bank 213 and levels near 3 %, outside any band centred on the
+replay's 4 %. The `target` and `note` say "under 0.10" and name the gap rather than promising
+"steady at 4 %" — the #748 shape avoided rather than repeated.
+
+**The tolerance is 0.10 because the PANEL ROUNDS, not because 0.10 is the tightest honest band —
+and that is a trap for the next author.** `fmtPredicate` draws a `~` entry as its two ENDS through
+`fmtPredValue`, which rounds to 0.1 below 100, and `Math.round(-0.5)` is `-0`, which stringifies
+as `"0"`. So a ±0.05 band draws **"STARTUP RATE 0 to 0.1 DPM"** — a player-facing line that is not
+the acceptance, the `-0.0` vs `0.0` shape again. Caught by hand-evaluating the formatter before
+committing, not by a gate; nothing in the tree compares a rendered band to its predicate. **Any
+band on a tile that rounds to one decimal must be a multiple of 0.1.**
+
+**Gate movement.** `run_reactivity` **28/3 → 31 checks / 0 failed** (the three #749 tracked reds,
+cleared by the change rather than by re-banding; its burst-count check reads *four* now, and the
+count is deliberately part of the claim). `run_manual_controls` **1018 → 1008**, diffed against a
+worktree at the parent commit: the whole −10 is the removed step, `controlled procedure steps
+148 → 147`, *all covered*. `run_checklist_pwr2` **262 → 260** (the replay emits one check per
+predicate acceptance; the removed step carried one, and the INSERT step's two entries stayed two).
+`run_style` needed four prose fixes to stay at 11/0 — two twenty-word instruction lines, two
+three-sentence detail caps and a "a few steps" vague quantifier.
+
 ## 2026-09-12-backshop-a — #729: a step that shuts the only remaining pressure control, and a "never happens" written about the wrong time scale
 
 **Two decisions, both forced by the same playtest (#724 item 19), and both about claims that were

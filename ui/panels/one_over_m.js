@@ -212,7 +212,13 @@
    * *(OWNER RULING, 2026-09-13, on the measurement above and a recommendation to keep the
    * trailing fit: "725 leave as is")*. So FIT_WINDOW stays 3. **Do not re-open this on the
    * strength of the 2026-09-12 request alone** — it was made against a premise that has been
-   * measured and disproved, and re-running the harness above is the price of re-arguing it. */
+   * measured and disproved, and re-running the harness above is the price of re-arguing it.
+   *
+   * ⚠ THE ROUTE ABOVE IS THE #725 ROUTE, NOT TODAY'S. #750 removed the sixth point — the 9-step
+   * burst to 211, plotted on an already-critical core — so the authored ladder is 94/63/31/14 and
+   * the approach now ENDS at pt 5. Re-measured on the shortened ladder, four seeds: trailing-3
+   * reads 210.3-212.1 (panel: "step 211") against 212.6-213.4 before, true critical still 208.
+   * The table is left as the record of what settled FIT_WINDOW; it is not the current ladder. */
   var FIT_WINDOW = 3;
   function fit() {
     if (points.length < 2) return null;

@@ -224,9 +224,9 @@ at, and the 918 → 719 dilution ends at **−1138.8**.
 >
 > **The instrument declaration lands on the same step.** Rods held still for 900 s: the startup
 > rate reaches 0.000 at 203, still *decays* (0.112 → 0.020) at 207, and settles *positive* at
-> 0.033–0.043 with power climbing at 208. **226 is where the live walkthrough's creep command
-> lands** (15 slow steps from 211) — eighteen steps past critical, and not a measurement of
-> anything.
+> 0.033–0.043 with power climbing at 208. The live walkthrough's creep used to land on **226**
+> (15 slow steps from 211) — eighteen steps past critical, and not a measurement of anything. Since
+> #750 it lands on **213**, five steps past, and the burst that plotted a point at 211 is gone.
 
 **Skip the dilution and the numbers in PWR-N03 stop being true.** Measured at the **~918 ppm** you
 arrive with, the bank does not go critical until **490 of 627 steps (78 % withdrawn)** — **282
@@ -275,7 +275,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 | Type | Text |
 |------|------|
 | **CAUTION** | Target SUR ≤ **1 DPM** (SUR HI at 1 DPM). **Nothing blocks withdrawal on rate** — the alarm is the only rate cue and the rate is yours to control. Withdrawal blocks on **flux**: the intermediate range rod stop at **20 % current equivalent**, until the **intermediate range trip** is blocked at P-10 — the same press. Insertion is never blocked. |
-| **CAUTION** | Plot **enough 1/M points**. Early predictions always read high (flat toe of the worth curve), and the first two land far past the true critical position; six points close on it. **Never** withdraw straight to the first prediction. |
+| **CAUTION** | Plot **enough 1/M points**. Early predictions always read high (flat toe of the worth curve), and the first two land far past the true critical position; five points close on it. A sixth is one too many — it is taken past criticality, which is the one thing the approach exists to avoid (#750). **Never** withdraw straight to the first prediction. |
 | **CAUTION** | One fine step near the band is **7.76 pcm — 1.19 ¢** (re-measured 2026-09-14, #749: 7.764 pcm/step over the fifteen steps above critical; 7.67 averaged over 205–215, min 7.32, max 8.29). The **8.1 — 1.24 ¢** printed here until 2026-09-14 is the same window computed at a benchmark anchor 10 °F above this plant’s no-load point — see PWR-N02 §Step 15. **This is not the bank average**, which is 6.49 pcm/step, and it is not the cent, which is 6.50 pcm on this plant (β_eff 650.2 pcm). All three are near 6.5–8 and only the first applies here. Final approach: **Slow**, single steps. |
 | **CAUTION** | **Criticality is declared on the instruments, not on the bank position.** Stop the rods; if the count rate keeps rising and SUR stays positive with nothing moving, the core is critical. WTSM 19.3 (ML11223A342): *"Supercriticality is indicated by a constant positive startup rate and steadily increasing source range count rate with no control rod withdrawal."* Record the rod position, boron and Tavg **after**. |
 | **NOTE** | **Source Range secures itself at 1e5 cps** — no switch, and no source-range trip on this plant. **P-6** (IR ≥ **1e-10 A**) is where the intermediate range comes into use, roughly 32× lower; watch it come on scale well before the source range goes dark. If it has not, stop the rise and diagnose. |
@@ -289,7 +289,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 | 2 | Confirm SR counting; IR ready | NIS | SR > ~1.0e2 (100 counts per second) |
 | 3 | Engage Feed AUTO at ~65 % if not already | Feed Pumps | AUTO engaged |
 | 4 | Capture 1/M baseline (plot point 1) **before** any rod motion | 1/M Plot | Baseline logged |
-| 5 | Withdraw Control Bank in **decreasing** bursts; settle; plot after each (points 2–6) | Control Bank + 1/M | Count rate rising; prediction walks down |
+| 5 | Withdraw Control Bank in **decreasing** bursts; settle; plot after each (points 2–5) | Control Bank + 1/M | Count rate rising; prediction walks down |
 | 6 | When IR on scale and below SR high caution: **SR detector OFF** | SR detector | SR de-energized; IR carries indication |
 | 7 | Creep to critical at **Slow** (single steps); watch SUR and period | Control Bank | Critical; SUR ≤ 1 DPM; period long |
 | 8 | Hold low power (Mode 2 band ≤ 5 %); let Doppler settle; trim | Rods | Stable Mode 2, Startup |
@@ -307,9 +307,19 @@ rather than reading it as the plant's burst pattern.
 | 1 | 94 | > 7.0e2 (700 counts per second) | 94 | First overestimate |
 | 2 | 63 | > 1.4e3 (1,400 counts per second) | 157 | Still late |
 | 3 | 31 | > 3.0e3 (3,000 counts per second) | 188 | Entering steep worth |
-| 4 | 14 | > 7.0e3 (7,000 counts per second) | 202 | Inside ~12 steps |
-| 5 | 9 | > 2.0e4 (20,000 counts per second) | 211 | ⚠ **This burst ends SUPERCRITICAL** — ρ crosses zero at **207–208**, part way through it, and 211 sits at **ρ = +33 pcm**. The last 1/M point is therefore plotted on a core that is already critical, which is the one thing the ladder exists to avoid. Measured 2026-09-14 (#749), tracked as a red in `run_reactivity`; the ladder has not been re-sized because step 10 steers on the plot by ruling. **Stop short of 211 and creep.** |
-| Creep | ~15 Slow | SUR positive, rods stopped | 226 | Confirms it on the instruments — **not** where criticality happens. It leaves **148 pcm** of excess above critical, and below the point of adding heat nothing takes that back out for you: withdraw less than the full 15 and read the startup rate |
+| 4 | 14 | > 7.0e3 (7,000 counts per second) | 202 | **The last plotted point**, ρ = **−36 pcm** — five bank steps short of criticality, which crosses zero at **207–208** |
+| Creep | ~11 Slow | SUR positive, rods stopped | 213 | Where criticality actually happens, and where it is confirmed on the instruments. It leaves **+46 pcm** of excess above critical, and below the point of adding heat nothing takes that back out for you: stop short of the 1/M prediction (≈ 211) and read the startup rate, which settles near **0.15 DPM** |
+
+> **There used to be a fifth burst, and it went critical.** It was 9 steps to bank 211, plotting
+> the last 1/M point at **ρ = +33 pcm** — on a core that was already critical, which is the one
+> thing a 1/CR approach exists to avoid — and the creep beyond it left **148 pcm**. Measured and
+> filed 2026-09-14 (#749); removed the same day *(OWNER RULING, 2026-09-14, #750: "I think there's
+> one too many 1/m plot steps. If we remove one it doesn't change the indicated criticality rod
+> step and it will let us slowly approach criticality for a lower point which will help reduce
+> overshoot.")*. The prediction the panel reads at the end of the approach moves **213 → 211**
+> against a true critical of **208** — two steps lower, two steps closer, and on the conservative
+> side. The climb that follows is gentler for it: power arrests on its own near **4 %** instead of
+> running through Mode 1 to **10.7 %**.
 
 ### Outcome
 **Mode 2, Startup** — critical, power ≤ 5 %. Ready for **PWR-N04** / **PWR-N05**.

@@ -30,6 +30,65 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (the approach to criticality plots one point fewer, and stops short of critical — #750)
+
+> *(OWNER RULING, 2026-09-14: "I think there's one too many 1/m plot steps. If we remove one it
+> doesn't change the indicated criticality rod step and it will let us slowly approach criticality
+> for a lower point which will help reduce overshoot.")*
+
+- **The 2.0e4 burst is gone. `pwr2:pwr_startup` is 17 steps, and the 1/M ladder is 94 / 63 / 31 /
+  14.** It was the fifth and last plotted burst, 9 steps to bank **211**, and #749 had measured it
+  the day before at **ρ = +33 pcm** — criticality is at **207–208**, *inside* that burst, so the
+  last point of the approach was plotted on a core that was already critical, which is the one
+  thing a 1/CR approach exists to avoid. The last point is now taken at bank **202**, **ρ −37.6 pcm
+  measured full stack** (−35 static) — five bank steps short of the crossing.
+- **The owner's two conditions, measured.** *(a) the indicated criticality rod step does not
+  change*: the panel's trailing-three fit reads **211** where it read **213**, across four seeds
+  (210.3 / 210.6 / 211.1 / 212.1 against 212.6 / 212.7 / 213.1 / 213.4) — **two steps lower, and
+  two steps closer** to the true 208, which is the conservative side. Not literally unchanged, and
+  reported as such. *(b) the last plotted point is lower*: **+33 pcm → −37.6 pcm**, supercritical
+  to subcritical.
+- **The creep is 11 slow steps to 213, not 15 to 226 — and that is a derivation, not a
+  preference.** `test/run_reactivity.js` re-derives it from the live pool every gate as
+  *(critical position − the plotted bursts) + the excess you want behind it*, and bounds the
+  excess at 60 pcm. The old route left **148**; this one leaves **46**. Four creeps were measured
+  full stack first (9 / 10 / 11 / 12 steps → 31 / 38 / 46 / 54 pcm of excess); 11 keeps a quarter
+  of the bound in hand rather than sitting on the envelope wall.
+- **A gentler approach is a slower climb, and the dwell had to follow it.** The creep step's hold
+  is **1800 s**, was 400: REACTOR POWER now takes **1444–1650 s** (four seeds) to reach 0.1 %
+  against 305 s, because the plant is riding 46 pcm instead of 148. The leg runs about **71 plant
+  minutes** to Mode 1 against 46, still inside the "about 2 plant-hours" it advertises.
+- **The overshoot the leg used to clean up no longer happens, so the step that cleaned it up
+  changed jobs.** Measured with the rods still at bank 215: power **arrests on its own at 4.0 %**
+  and holds it for 24 plant-minutes (STARTUP RATE −0.003 to +0.003, T-avg flat at 287.5 °C). It
+  used to run through Mode 1 to **10.7 %**. So the INSERT step is now *"watch REACTOR POWER stop
+  rising on its own, below 5 %"* — the moderator coupling doing the work, which this leg otherwise
+  never demonstrates — with the INSERT kept as the contingency and its replay command dropped;
+  driving 14 steps in on a settled plant took power to **0.75 %** and left the step after it
+  unable to reach 5 %. Its rate acceptance is now the two-sided **STARTUP RATE ≈ 0.00 ± 0.10**,
+  which re-grades every tick, instead of the latching `> −0.10` that was satisfied the moment the
+  step opened. **0.10 and not 0.05 because the panel rounds to one decimal**: `fmtPredicate` draws
+  a two-sided band as its two ends, `Math.round(-0.5)` is `-0`, and a ±0.05 band therefore renders
+  **"STARTUP RATE 0 to 0.1 DPM"** — a done-when line that is not the acceptance. Any band on that
+  tile has to be a multiple of 0.1.
+- **Mode 1 entry stays at about 13 steps, and the reason is a permissive nobody had measured.**
+  From the new bank 215 at 4.0 %, +8 SLOW settles at **8.06 %** — exactly this step's own authored
+  target, in half the rod motion. It was authored that way and `run_checklist_pwr2` reddened three
+  #731 checks a step and a half later: **P-10, the permissive that lets you switch the startup
+  trips off, is 10 % power** (`PWR_TRIP_BLOCK_PERMISSIVE`), and the leg then arrived at the TRIP
+  BLOCKS step at **8.375 %**, where the press is refused and the walkthrough stalls. Swept: +8 →
+  8.375 % (stalls) · +10 → 9.096 % · +12 → 10.060 % · **+13 → 10.522 %**. The pre-#750 leg arrived
+  at **10.066 %** — six hundredths of a point over the line — so this has been an envelope wall all
+  along and nothing noticed. **Four player-facing sites said the permissive is 8 %**; they now say
+  10 %.
+- **`run_reactivity` is green again: 31 checks / 0 failed**, from the tracked **28 / 3** #749 filed
+  the day before. Its burst-count check reads **four** bursts now — the count is part of the claim,
+  because "decreasing and ending subcritical" is satisfiable by any ladder short enough and nothing
+  else would notice a sixth point coming back.
+- Also: the leg's third caution now says the final prediction reads about **three** steps high (it
+  was five); the count-shorthand note drops 2.0e4 for 7.0e3; `Manuals/04` PWR-N03's burst table,
+  its 1/M caution and its Step-15 measurement note follow the plant.
+
 ### Fixed (what rod position this plant goes critical at — one number, four disagreeing sources — #749)
 
 - **719 ppm puts criticality at 208 of 627 steps. Not 223, not 226–238, not 230.** Four sources

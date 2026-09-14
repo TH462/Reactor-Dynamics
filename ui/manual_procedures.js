@@ -1753,7 +1753,7 @@
          * here reddens. */
         'Keep STARTUP RATE under 1.0 for the whole approach. It is the speed limit; the rod position is not. Near critical, one control-bank step adds about 7.76 pcm of reactivity (a pcm is a hundred-thousandth: a few is a small nudge, hundreds is a big one).',
         'After every rod pull, stop and let SOURCE RANGE settle before you read or plot anything. The closer to critical, the longer it takes.',
-        'Never pull the rods straight to the position the 1/M PLOT predicts. It reads far too high early on and comes down as points are added, and even the last one reads about five steps high — the reactor goes critical before you reach it.',
+        'Never pull the rods straight to the position the 1/M PLOT predicts. It reads far too high early on and comes down as points are added, and even the last one reads about three steps high — the reactor goes critical before you reach it.',
         'Do not add heat with SG FEED out of AUTO: once the reactor makes heat the steam generator boils down, and AUTO is what holds its level.',
       ],
       steps: [
@@ -1878,7 +1878,7 @@
         { text: 'Before any rod moves: press 1/M PLOT on the ROD CONTROL card, then press Plot point.',
           why: 'The 1/M plot predicts where the rods will be when the reactor goes critical, before you get there. It divides the starting count rate by the current one: as counts climb the result falls toward zero, and where the line crosses zero is the predicted critical position. It fits the last three points, so each new point sharpens it.',
           control: '1/M Plot', target: 'point 1 plotted',
-          note: 'This first point is the baseline. Every count target on this walkthrough is the SOURCE RANGE reading, printed in shorthand: 7.0e2 is 700 counts a second, 1.4e3 is 1,400, 2.0e4 is 20,000.',
+          note: 'This first point is the baseline. Every count target on this walkthrough is the SOURCE RANGE reading, printed in shorthand: 7.0e2 is 700 counts a second, 1.4e3 is 1,400, 7.0e3 is 7,000.',
           accs: [{ cmd: 'plot_1m_point', label: 'Baseline point plotted' }],
           overtaken: SR_OVERTAKEN,
           /* GLOW THE BUTTON, NOT THE BOX THAT OPENS IT (#735, owner playtest #724 items 4 and 5:
@@ -1937,28 +1937,44 @@
           overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
-        /* THE BAND’S TOP END IS PAST CRITICAL (#749, 2026-09-14). Measured, the core crosses ρ = 0 at
-         * 207-208 of 627, so 205-210 of this step’s own 195-210 band is at or above critical — a player
-         * who stops at the top of it is critical one step early with no warning and plots a point
-         * there. The band is NOT narrowed: the step is cued on the count rate and 7,000 cps lands the
-         * authored burst at 202 (measured full stack, seed 42, ρ −37.6). The note now says where the
-         * far end of the band puts them. */
-        { text: 'Hold WITHDRAW at MED until SOURCE RANGE settles above 7.0e3. Settle, press Plot point. Keep STARTUP RATE under 1.0.',
-          note: 'Stop when CONTROL ROD POSITION reads about 195 to 210 of 627 — the total on the ROD CONTROL card, not another 195 steps on top of where you are. The counts are the cue, not the number: 7,000 a second normally arrives near 200, and the top of that band is already at criticality, so stop on the counts rather than driving to 210.',
-          why: 'STARTUP RATE is the speedometer: 1.0 means power is multiplying by ten every minute. A positive reading means reactivity is above zero and the chain reaction is growing; zero means it is holding; negative, dying away. Under 1.0 is a comfortable climb; above it you are outrunning the plot, and nothing in the plant slows the rise for you yet.',
+        /* THE LADDER ENDS HERE NOW — THE 2.0e4 BURST IS GONE *(OWNER RULING, 2026-09-14, #750:
+         * "I think there's one too many 1/m plot steps. If we remove one it doesn't change the
+         * indicated criticality rod step and it will let us slowly approach criticality for a
+         * lower point which will help reduce overshoot.")*.
+         *
+         * The removed step was a sixth point taken at bank 211, where ρ = +33 pcm — criticality
+         * is at 207-208, so the last point of the ladder was plotted on a core that was ALREADY
+         * CRITICAL, which is the one thing a 1/CR approach exists to avoid (#749 measured it and
+         * filed it as three tracked reds in `run_reactivity`). This step is now the last point,
+         * and it is taken at bank 202, ρ −37.6 — SUBCRITICAL by five bank steps.
+         *
+         * MEASURED, full stack, `hot_zero_power`, the authored bursts each plotted after their
+         * own hold, panel fit copied from ui/panels/one_over_m.js, four seeds:
+         *
+         *   seed    last point (bank / cps)   trailing-3 prediction   true critical
+         *     7        202 /  8,660             210.6                 208
+         *     1        202 /  9,640             212.1                 208
+         *    42        202 /  9,355             210.3                 208
+         *   123        202 /  9,633             211.1                 208
+         *
+         * against 211 / 31,838-34,722 cps and a prediction of 212.6-213.4 with the sixth point.
+         * So the owner's condition holds to within the noise the fit already carries: the panel
+         * reads "step 211" instead of "step 213", 2 steps LOWER and 2 steps CLOSER to the true
+         * 208 — the conservative direction. The prediction's error falls from +5.1 steps to
+         * +3.0, which is why the leg's third caution now says three rather than five.
+         *
+         * THE BAND IS NARROWED, which #749 declined to do when a sixth point followed this one.
+         * It was 195-210, and 208-210 of that is at or above critical; with this step now the
+         * LAST plotted point, a player who drives to the top of the old band plots exactly the
+         * supercritical point the ruling removes. 205 is the highest bank in the band that is
+         * still subcritical (ρ −12.5 static, −15 measured), so the band ends there. The cue is
+         * unchanged and is still the count rate: 7,000 a second lands the authored burst at 202. */
+        { text: 'Hold WITHDRAW at MED until SOURCE RANGE settles above 7.0e3. Settle, press Plot point. This is the last point.',
+          note: 'Stop when CONTROL ROD POSITION reads about 195 to 205 of 627 — the total on the ROD CONTROL card, not another 195 steps on top of where you are. The counts are the cue, not the number: 7,000 a second normally arrives near 200. Write down the position the 1/M panel predicts — the reactor goes critical about three steps before it, so you stop short of it and tap from there.',
+          why: 'STARTUP RATE is the speedometer: 1.0 means power is multiplying by ten every minute, and any positive reading means reactivity is above zero and the chain reaction is growing. Under 1.0 is a comfortable climb; above it you are outrunning the plot, and nothing in the plant slows the rise for you yet. This is the last plotted point: from here single steps beat one more fitted number, and another burst would land you past criticality — plotting a point on a reactor that is already critical.',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e3 (7,000 counts a second); point 5 plotted; STARTUP RATE under 1.0',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 14, speed: 'normal' }, hold: 150,
           accs: [{ p: 'sr_counts_cps', op: '>', v: 7000, label: 'Counts settled above 7.0e3 (7,000 counts per second)' },
-                 { cmd: 'plot_1m_point', label: 'Point plotted' }],
-          overtaken: SR_OVERTAKEN,
-          hl: ['Withdraw', 'Plot point'],
-          hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
-        { text: 'Hold WITHDRAW at MED until SOURCE RANGE settles above 2.0e4. Settle, press Plot point. This is the last point.',
-          note: 'Stop when CONTROL ROD POSITION reads about 205 to 215 of 627 — the total on the ROD CONTROL card. The reactor goes critical inside that band, so stop short of the prediction and tap from there. Write down the position the 1/M panel predicts.',
-          why: 'From here the remaining distance is short enough that creeping up in single steps beats trusting one more fitted number. Criticality arrives a little before the predicted position, on this plant around 205 to 215 of 627.',
-          control: 'Control Bank', target: 'SOURCE RANGE above 2.0e4 (20,000 counts a second); point 6 plotted',
-          cmd: { action: 'rod_nudge', group_id: 'control', steps: 9, speed: 'normal' }, hold: 150,
-          accs: [{ p: 'sr_counts_cps', op: '>', v: 20000, label: 'Counts settled above 2.0e4 (20,000 counts per second)' },
                  { cmd: 'plot_1m_point', label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', 'Plot point'],
@@ -1969,59 +1985,69 @@
          * `cautions` already carried the expansion but a caution is not where a player meets a
          * term for the first time. */
         /* NO SPEED HINT FROM HERE TO THE POINT OF ADDING HEAT (layman playtest 2026-09-07, #653
-         * S9): the auto hint offered 60x for this step's 400 s dwell, and at 60x REACTOR POWER
-         * went 0.0 -> 3.4 % between two glances 2.5 s apart and 12.2 % before 1x could be
-         * re-selected. `wait_hint: false` suppresses the generated line (ui/app.js). */
+         * S9): the auto hint offered 60x for this step's then-400 s dwell, and at 60x REACTOR
+         * POWER went 0.0 -> 3.4 % between two glances 2.5 s apart and 12.2 % before 1x could be
+         * re-selected. `wait_hint: false` suppresses the generated line (ui/app.js). The dwell is
+         * 1800 s since #750 and the argument only gets stronger with it. */
         /* USE THE PLOT *(OWNER, 2026-09-08, #660 item 8: "Step 10 should tell user to set rod
          * position to the critical position shown in the 1/m plot. Currently, there is nothing to
          * tell the user how to actually use the 1/m plot except plotting points.")*. This
          * supersedes the 2026-09-03 ruling that the approach carries no rod-position target: the
-         * target is now the plot's, which is the plot's whole point. The replay's commands (15
-         * slow steps from 211) are unchanged; the acceptance is unchanged.
+         * target is now the plot's, which is the plot's whole point.
          *
          * ⚠ THE DIRECTION OF THE PLOT'S ERROR WAS WRITTEN HERE BACKWARDS, AND THE STEP BEFORE IT
          * SAID THE OPPOSITE (#748, layman playthrough). This comment used to read "prediction runs
          * 264 -> 241 -> 217 -> 211 -> 213 over points 2..6 against a true critical of 223 — high
-         * early, about ten steps LOW at the end", and step 10's note said the reactor is "not yet
-         * critical at that position" while step 9's `why` said criticality "arrives a little
-         * before the predicted position". Two player-facing fields, opposite directions.
+         * early, about ten steps LOW at the end", and this step's note said the reactor is "not
+         * yet critical at that position" while the step before it said criticality "arrives a
+         * little before the predicted position". Two player-facing fields, opposite directions.
+         * The prediction reads HIGH, and criticality arrives BEFORE it. That is the danger side,
+         * it is what the leg's third caution names, and it is why both fields say "stop short of
+         * the prediction and tap". Do not "tidy" the text back to "to the predicted position".
          *
-         * RE-MEASURED on this tree (full stack, PWR2, `hot_zero_power`, the checklist's own
-         * 94/63/31/14/9-step bursts each plotted after its authored hold, panel fit copied from
-         * ui/panels/one_over_m.js). FOUR SEEDS, and the answer does not move:
+         * RE-MEASURED AFTER #750 REMOVED THE SIXTH POINT (full stack, PWR2, `hot_zero_power`, the
+         * checklist's own 94/63/31/14-step bursts each plotted after its authored hold, panel fit
+         * copied from ui/panels/one_over_m.js). FOUR SEEDS, and the answer does not move:
          *
-         *   seed   pt6 rod step   pt6 counts   trailing-3 prediction   TRUE critical (rho >= 0)
-         *      7        211        31,838 cps          213.1            208 of 627, t = 784 s
-         *      1        211        34,444              212.7            208,          t = 783 s
-         *     42        211        34,722              213.4            208,          t = 783 s
-         *    123        211        34,620              212.6            208,          t = 783 s
+         *   seed   last point   counts     trailing-3 prediction   TRUE critical (rho >= 0)
+         *      7      202       8,660 cps         210.6            208 of 627
+         *      1      202       9,640             212.1            208
+         *     42      202       9,355             210.3            208
+         *    123      202       9,633             211.1            208
          *
-         * So the final prediction reads about FIVE STEPS HIGH and criticality arrives BEFORE it —
-         * the direction step 9 already had, and the number it did not (it said 226 to 238). The
-         * danger side is the one the leg's third caution names: withdrawing straight to the
-         * prediction takes the core PAST critical, not short of it. Both fields now say "stop
-         * short of the prediction and tap", which is also what the caution has always said.
-         * Independently corroborated by the same-day playthrough, which recorded a prediction of
-         * 220 and read critical at 220 and climbing.
+         * So the final prediction reads about THREE STEPS HIGH (it was five with the sixth point,
+         * 212.6-213.4), and the plot is read at 211 rather than 213.
          *
-         * ⚠ OPEN, AND NOT SILENTLY: THE REPLAY'S `cmd` GOES PAST WHAT THIS STEP'S TEXT NOW SAYS.
-         * The line reads "hold WITHDRAW to just short of the 1/M panel's predicted position"
-         * (≈ 213 on the measurement above); the `cmd` below drives 15 SLOW steps from 211, i.e.
-         * to 226 — thirteen steps PAST it. The gap was always there and the old text hid it by
-         * claiming the prediction read ten steps LOW, which is the claim this change refutes.
-         * MEASURED on the same run: the core is already critical at 208, DURING step 9's burst,
-         * so by the time this step is up the position target is behind the plant and the step's
-         * real job is the creep and the STARTUP RATE read — which is what its acceptance
-         * (`power_pct > 0.1`) grades. Left as authored because moving the `cmd` moves the replay
-         * and #660's directive is explicitly that this step steer on the plot's own number; that
-         * is a ruling, not an edit. Do not "tidy" the text back to "to the predicted position" —
-         * that is the danger side and the leg's third caution forbids it. */
+         * THE `cmd` NOW LANDS WHERE THE TEXT SENDS THE PLAYER, which it did not before. The old
+         * form drove 15 SLOW steps from 211 to 226 — thirteen steps past a prediction of 213, a
+         * gap this comment carried as ⚠ OPEN. From 202 the creep is ELEVEN steps to 213: the
+         * player holds to just short of the prediction (211) and taps up, and 213 is two taps
+         * past it, which is what "then tap single steps" is. The size is not a preference, it is
+         * the derivation `run_reactivity.js` re-runs against the live pool on every gate —
+         *     creep = (critical position − the plotted bursts) + the excess you want behind it
+         * — and 11 is what leaves a SMALL excess: rho(213) − rho(207) = +46 pcm, against +148 for
+         * the old 226 and a bound of 60 in the runner. Four creeps were measured full stack
+         * before this one was chosen (seed 42, time from the creep press to REACTOR POWER 0.1 %):
+         *
+         *   creep   lands   excess pcm   to 0.1 % power
+         *      9     211        31         2243 s        at the prediction, but a 37-minute wait
+         *     10     212        38         1766 s
+         *     11     213        46         1444 s        <- authored
+         *     12     214        54         1214 s        90 % of the runner's own bound
+         *   (15)    (226)     (148)        ( 305 s)      the pre-#750 route, three reds
+         *
+         * A smaller excess is a slower climb — that is the whole of the owner's "reduce
+         * overshoot", and it is paid for in dwell. 11 keeps a quarter of the bound in hand rather
+         * than sitting on the envelope wall, and costs four minutes against 12. THE HOLD FOLLOWS
+         * THE EXCESS: the replay asserts `acc` at the END of `hold`, so 400 s would now assert on
+         * a plant reading 1e-4 %. Measured across seeds 1/7/42/123 the crossing is at 1444, 1506,
+         * 1650 and 1506 s; 1800 leaves 9 % over the worst. Move the creep and this hold moves. */
         { text: "Press SLOW and hold WITHDRAW to just short of the 1/M panel's predicted position, then tap single steps.",
-          note: 'The 1/M panel predicts a CONTROL ROD POSITION, in steps — that is the number on the ROD CONTROL card, and it reads about five steps high at the end of the approach, so the reactor goes critical just short of it. Stop below the prediction and walk up in single taps. Wait after each tap. Critical is when the counts keep climbing and STARTUP RATE stays positive with the rods still. SOURCE RANGE will switch itself off part way through this step, above 1.0e5 (100,000 counts per second); that is normal and there is no button for it. The two detectors overlap on purpose — the source-range counters would wear out at power, so the plant secures them once INTER RANGE has a reading, and losing the counts is the plant telling you the approach worked. From that moment INTER RANGE and STARTUP RATE are what you steer on, and the 1/M plot is finished. Stay at 1× from here until power settles near 1 %: at 60× the reactor can run from 0 to 10 % between two glances. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.',
-          why: 'Critical means the chain reaction sustains itself: power keeps rising with nothing pushing it. A positive STARTUP RATE with the rods still is the sign; it is made on the meters, not on the rod position. No single step is dramatic, but ten of them are; expect STARTUP RATE to peak near 0.9.',
+          note: 'The 1/M panel predicts a CONTROL ROD POSITION, in steps — that is the number on the ROD CONTROL card, and it reads about three steps high at the end of the approach, so the reactor goes critical just short of it. Stop below the prediction and walk up in single taps. Wait after each tap. Critical is when the counts keep climbing and STARTUP RATE stays positive with the rods still. SOURCE RANGE will switch itself off part way through this step, above 1.0e5 (100,000 counts per second); that is normal and there is no button for it. The two detectors overlap on purpose — the source-range counters would wear out at power, so the plant secures them once INTER RANGE has a reading, and losing the counts is the plant telling you the approach worked. From that moment INTER RANGE and STARTUP RATE are what you steer on, and the 1/M plot is finished. This is a long step: the approach is deliberately gentle, so expect about twenty-five plant-minutes before REACTOR POWER reads anything at all. Stay at 1× from here until power settles near 1 %: at 60× the reactor can run from 0 to 10 % between two glances. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.',
+          why: 'Critical means the chain reaction sustains itself: power keeps rising with nothing pushing it, and a positive STARTUP RATE with the rods still is the sign. No single step is dramatic, but ten of them are — stopping five steps above criticality rather than eighteen is what keeps the climb slow, because below the point of adding heat nothing in the plant takes that reactivity back out for you. Expect STARTUP RATE to settle near 0.15.',
           control: 'Control Bank', target: 'STARTUP RATE positive and steady with the rods stopped, at or under 1.0',
           wait_hint: false,
-          cmd: { action: 'rod_nudge', group_id: 'control', steps: 15, speed: 'slow' }, hold: 400,
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 11, speed: 'slow' }, hold: 1800,
           /* 0.1, not 0.02: the done-when renders at the tile's resolution, and 0.02 drew "When
            * Reactor power ≥ 0 %" beside a tile reading 0.0 — true of every plant, unmet for four
            * minutes (layman playtest pass 2, #653 S-5). 0.1 is the first digit the tile shows. */
@@ -2033,10 +2059,12 @@
            * should watch.").
            *
            * MEASURED on the authored route (full stack, `hot_zero_power`, every step driven as
-           * written): the channel secures at t = 777 s with the control bank at 223 of 627 and
-           * REACTOR POWER still reading 0.000 % — step 10 is up from t = 690 s and step 11 does
-           * not start until t = 1053 s. So the death of the instrument happens 276 s INSIDE this
-           * step, and the only text that mentioned it was step 11's note, one step too late.
+           * written; re-measured after #750 shortened the ladder, seed 42): the channel secures
+           * at t = 931 s with the control bank at 213 of 627 and REACTOR POWER still reading
+           * 0.00004 % — this step is up from t = 665 s and the next does not start until
+           * t = 2465 s. So the death of the instrument happens 266 s INSIDE this step (it was
+           * 276 s before #750), and the only text that mentioned it was the next step's note,
+           * one step too late.
            * INTER RANGE joins `hl_watch` here so the instrument that takes over is glowing while
            * the one being lost goes dark. CONTROL ROD POSITION joins it because that is the
            * number the 1/M panel's prediction is expressed in, which is the other half of the
@@ -2050,7 +2078,7 @@
          * read STARTUP RATE and add a step only when it has come back to zero. */
         { text: 'Let power climb on its own. Tap WITHDRAW once only if STARTUP RATE falls back to 0.00.',
           why: 'Just critical, a positive STARTUP RATE means reactivity is above zero and power climbs by factors of ten on its own; every extra step adds to a rise that is already under way, which is how the approach overshoots. Below about 1 % power nothing in the plant slows the climb for you, so STARTUP RATE is the only speedometer. SOURCE RANGE hands over to INTER RANGE by itself.',
-          control: 'Control Bank', target: 'REACTOR POWER rising toward 1 %',
+          control: 'Control Bank', target: 'REACTOR POWER rising past 1 %',
           note: 'While STARTUP RATE is positive, leave the rods alone. Only if it falls back to 0.00 with REACTOR POWER still below 0.5 %, tap WITHDRAW one step at SLOW and wait again. SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE takes over. About 15 plant-minutes at 1×; stay at 1×, this is the part of the startup where the reactor can get away from you.',
           wait_hint: false,
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 2, speed: 'slow' }, hold: 900,
@@ -2085,33 +2113,105 @@
          * the 13: a rate term the player can read off the tile. -0.10 DPM sits clear of both
          * measured regimes (-0.308 while the bank drives, -0.031 to -0.045 once it is settled)
          * and is a number the STARTUP RATE tile prints. The replay meets both entries at +189 s,
-         * 51 s inside its own 240 s hold. */
-        { text: 'Press MED, then hold INSERT until REACTOR POWER stops rising and is below 5 %.',
-          note: 'About 14 steps if power is near 1 %, more if it ran ahead. If it is already steady below 5 %, nothing to press. Release INSERT and let the plant settle before you read it: while the bank is driving in, STARTUP RATE is still well below zero and power has not finished falling.',
-          why: 'Below about 1 % nothing in the plant holds power steady: every bit of extra reactivity you added has to come back out or power keeps climbing. Do it in one held drive, not taps, because the plant keeps running between taps.',
-          control: 'Control Bank', target: 'REACTOR POWER steady, below 5 %',
+         * 51 s inside its own 240 s hold.
+         *
+         * ⚠ THE OVERSHOOT THIS STEP CLEANED UP NO LONGER HAPPENS (#750, 2026-09-14). Every number
+         * above belongs to the pre-#750 route, where the creep left +148 pcm and the climb blew
+         * through Mode 1 to 10.68 %. With the ladder's last point moved down and the creep cut to
+         * +46 pcm, the climb ARRESTS ON ITS OWN below 5 %. Measured, full stack, seed 42, rods
+         * still at bank 215 from the end of step 10:
+         *
+         *   t = 3364   power 3.966 %   STARTUP RATE  0.002   rho  +0.7
+         *   t = 3604   power 4.010 %   STARTUP RATE -0.001   rho  +0.2
+         *   t = 4204   power 4.013 %   STARTUP RATE -0.000   rho  -0.3
+         *   t = 4804   power 3.995 %   STARTUP RATE -0.002   rho  -0.3      T-avg 287.5 °C flat
+         *
+         * — 4.0 % and level for 24 plant-minutes with nothing touched. So the authored -14 INSERT
+         * now drives a settled plant DOWN to 0.75 %, and the step after it can no longer reach
+         * 5 %: measured on the re-authored leg before this edit, step 12 ended 0.751 % with
+         * STARTUP RATE -0.130 (its own `> -0.1` entry unmet) and step 13 ended 2.614 %, short of
+         * its `power_pct > 5`.
+         *
+         * THE STEP KEEPS ITS PLACE AND CHANGES ITS JOB, which is the honest read of what the
+         * plant does here: the climb stops because the water warms and this core loses reactivity
+         * as it warms — the moderator coupling, which this leg otherwise never demonstrates. The
+         * INSERT stays in the text as the contingency it now is, and the `cmd` goes, because
+         * driving 14 steps in is not what the line asks for on a plant that has already levelled.
+         *
+         * AND THE RATE ENTRY BECOMES TWO-SIDED, which is what "stops rising" actually claims.
+         * `> -0.1` LATCHES (instructor_layer `_gradeAccs`: only `~` re-grades), so on the player's
+         * route it is satisfied the moment the step opens with the rate still positive — it could
+         * only ever have bitten the insert case. `~ 0.00 ± 0.10` re-grades every tick and is unmet
+         * in BOTH the regimes this step exists to exclude. Injection-proven through the real
+         * harness, three ways: as authored -0.0012 PASS · with the pre-#750 `cmd: -14` restored
+         * -0.1298 FAIL · graded mid-climb +0.1828 FAIL.
+         *
+         * ⚠ THE TOLERANCE IS 0.10 BECAUSE THE PANEL ROUNDS TO ONE DECIMAL, not because 0.10 is the
+         * tightest honest band. `fmtPredicate` prints a `~` entry as its two ENDS through
+         * `fmtPredValue`, which rounds to 0.1 below 100 — and `Math.round(-0.5)` is `-0`, which
+         * stringifies as "0". So a ±0.05 band draws as "STARTUP RATE 0 to 0.1 DPM": a player-facing
+         * line that is not the acceptance. ±0.10 draws "-0.1 to 0.1 DPM", which is what it is. Any
+         * future band on this tile must be a multiple of 0.1 for the same reason.
+         *
+         * AND THE BAND'S WIDTH IS WHY THE `target` SAYS "under 0.10" RATHER THAN "steady at 4 %".
+         * MEASURED on the PLAYER's route — every step advanced the tick its acceptance is met,
+         * which is NOT the replay's fixed holds (seed 42): step 9 ticks at t = 2110 (power 0.1 %,
+         * bank 213), step 10 at t = 2293 (0.5 %, bank 215), and this step's pair first holds at
+         * t = 2524 — power 1.94 % and STARTUP RATE 0.0974, still climbing. Power does not reach
+         * its 4.0 % level until ~900 s later. So the check-off is "the rate has fallen to a tenth
+         * of its climbing value", not "power has finished". A tighter band cannot be drawn (see
+         * above) and a POWER band would soft-lock: step 10 tells the player to tap only if the
+         * rate falls to 0.00, so a player who does not tap sits at bank 213 and levels near 3 %,
+         * outside any band centred on the replay's 4 %. The `note` states the gap in the player's
+         * own words rather than leaving the tick unexplained. */
+        { text: 'Watch REACTOR POWER stop rising on its own, below 5 %. If it does not, press MED and hold INSERT.',
+          note: 'The climb stops by itself near 4 %, about twenty plant-minutes after the rods stop, and STARTUP RATE comes back to 0.00 on the way. The step checks off once the rate is under 0.10, which comes about fifteen minutes before power finally levels — leave the rods alone and let it. If power instead runs past 5 %, press MED and hold INSERT until it comes back — about 14 steps — then release and let the plant settle before you read it: while the bank is driving in, STARTUP RATE is well below zero and power has not finished falling.',
+          why: 'This is the plant answering back. Warmer water slows this reactor down, so the heat the climb makes is what stops the climb — power finds a level for the rod position you left it at, and no further rod motion is needed to hold it. Below about 1 % that feedback was too weak to feel; from here it is what makes the plant steady.',
+          control: 'Control Bank', target: 'REACTOR POWER below 5 % and levelling off; STARTUP RATE back under 0.10',
           wait_hint: false,
-          cmd: { action: 'rod_nudge', group_id: 'control', steps: -14, speed: 'normal' }, hold: 240,
+          hold: 240,
           accs: [{ p: 'power_pct', op: '<', v: 5, label: 'REACTOR POWER below 5 %' },
-                 { p: 'startup_rate_dpm', op: '>', v: -0.1, label: 'STARTUP RATE settled above -0.10' }],
+                 { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.1, label: 'STARTUP RATE settled between -0.10 and 0.10' }],
           hl: ['Rod Speed — Normal', 'Insert'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
+        /* ⚠ STILL THIRTEEN, AND #750 TRIED EIGHT FIRST — THE STEP AFTER NEXT IS WHAT DECIDES IT.
+         * The 13 was measured from bank 214, where the -14 INSERT used to leave the plant; the leg
+         * now arrives at bank 215 already making 4.0 %, and +8 SLOW from there lands bank 223 at
+         * 8.06 % — this step's own authored target, in half the rod motion. It was authored that
+         * way, and `run_checklist_pwr2` reddened THREE #731 checks a leg-and-a-half later:
+         *
+         *   +8  -> bank 223: TRIP BLOCKS step entered at 8.375 % power, block REFUSED, leg stalls
+         *   +10 -> bank 225: entered at 9.096 %, completes
+         *   +12 -> bank 227: entered at 10.060 %, completes   (the pre-#750 leg: 10.066 %)
+         *   +13 -> bank 228: entered at 10.522 %, completes   <- authored
+         *
+         * P-10, THE PERMISSIVE THAT REFUSES THE BLOCK, IS 10 % — `PWR_TRIP_BLOCK_PERMISSIVE` in
+         * layers/control/pwr_control.js, `power_range` high at 10.0. Two steps below said 8 %, in
+         * four places, and had said it since they were written; nothing caught it because the
+         * pre-#750 leg arrived at 10.066 % — SIX HUNDREDTHS of a point over the line — so the
+         * press was accepted and the wrong number in the note never cost anything. Those sites now
+         * say 10 %.
+         *
+         * SO THIS STEP IS SIZED BY THE PERMISSIVE, NOT BY ITS OWN TARGET. 12 reproduces the
+         * pre-#750 arrival almost exactly and re-creates the same envelope wall; 13 puts half a
+         * point of margin over P-10 and lands the bank at 228, which is where the pre-#750 leg's
+         * own climb step already put it. Do not shorten this without re-running the #731 trio. */
         { text: 'Press SLOW, then hold WITHDRAW until REACTOR POWER passes 5 %, about 13 steps. That is Mode 1, At Power.',
-          why: 'Mode 1 begins at 5 % power. Above about 1 % the warming water starts to hold power back, so from here the reactor settles instead of running away. The turbine is still off; the next step puts it on line so the heat has somewhere to go.',
-          control: 'Control Bank', target: 'REACTOR POWER above 5 %, settling near 8 %',
+          why: 'Mode 1 begins at 5 % power. The warming water holds power back, so each step you add buys a new steady level rather than a runaway — about half a per cent of power per step here. You are going past 5 % on purpose: the turbine step after this one needs REACTOR POWER above 10 % before the plant will let you switch the startup trips off.',
+          control: 'Control Bank', target: 'REACTOR POWER above 5 %, settling near 11 %',
           wait_hint: false,
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 13, speed: 'slow' }, hold: 400,
           acc: { p: 'power_pct', op: '>', v: 5 },
           hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
         { text: 'Press LATCH on the TURBINE-GENERATOR card, then set LOAD to 10 MWe.',
-          why: 'LATCH resets the turbine so it can take steam; LOAD is how much electricity you ask the generator for. As the generator picks up load, the reactor follows it up to about 10 % by itself: more steam drawn cools the water, and cooler water raises power. The reactor following the turbine is the central idea of this whole plant.',
+          why: 'LATCH resets the turbine so it can take steam; LOAD is how much electricity you ask the generator for. As the generator picks up load, the reactor follows it up to about 11 % by itself: more steam drawn cools the water, and cooler water raises power. The reactor following the turbine is the central idea of this whole plant.',
           control: 'Turbine Load', target: 'OUTPUT near 10 MWe',
           cmd: { action: 'set_load_target', mwe: 10 }, hold: 240,
           accs: [{ cmd: 'latch_turbine', label: 'Turbine latched' },
                  { p: 'mwe_output', op: '>', v: 8, label: 'Generator above 8 MWe' }],
           hl: ['Turbine — Latch', 'Load Setpoint'], hl_watch: ['Turbine Load', 'Generator Output'] },
         { text: 'Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the IR HIGH FLUX row.',
-          note: 'Do this the moment REACTOR POWER is above 8 %: at 25 % this trip fires. The plant refuses the press below 8 %, and the reactor keeps climbing while the panel is open.',
-          why: 'Two automatic shutdowns exist only to protect a startup, one at 25 % power and one at 35 %. Above 8 % they are no longer needed and would trip the reactor on the way up, so you switch them off one at a time. This one also clears a rod stop at 20 %; drop below 8 % and the plant switches them back on by itself.',
+          note: 'Do this the moment REACTOR POWER is above 10 %: at 25 % this trip fires. The plant refuses the press below 10 %, and the reactor keeps climbing while the panel is open.',
+          why: 'Two automatic shutdowns exist only to protect a startup, one at 25 % power and one at 35 %. Above 10 % they are no longer needed and would trip the reactor on the way up, so you switch them off one at a time. This one also clears a rod stop at 20 %; drop below 10 % and the plant switches them back on by itself.',
           control: 'Trip Blocks', target: 'IR HIGH FLUX lit on the TRIP BLOCKS panel',
           cmd: { action: 'set_trip_block', trip_id: 'ir_high', blocked: true }, hold: 10,
           /* GRADED ON THE LINEUP, NOT ON THE PRESS (#731, owner playtest #724 item 13). These two
@@ -2126,12 +2226,12 @@
           hl: ['Trip Blocks'] },
         { text: 'On the TRIP BLOCKS panel press BLOCK on the PR HIGH (LOW SETPT) row, then close the panel.',
           note: 'This switches off the second startup shutdown, at 35 %. Check both rows read lit — IR HIGH FLUX and PR HIGH (LOW SETPT) — while the panel is still open, then close it with TRIP BLOCKS again: it covers the rod buttons.',
-          why: 'Miss this one and the climb trips at 35 % instead of 25 %. Above 8 % the shutdown at 118 % power takes over the job of catching a runaway. Two separate presses on purpose: on a real board switching one off never quietly switches off the other.',
+          why: 'Miss this one and the climb trips at 35 % instead of 25 %. Above 10 % the shutdown at 118 % power takes over the job of catching a runaway. Two separate presses on purpose: on a real board switching one off never quietly switches off the other.',
           control: 'Trip Blocks', target: 'PR HIGH (LOW SETPT) lit on the TRIP BLOCKS panel',
           cmd: { action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: true }, hold: 10,
           acc: { p: 'pr_low_setpoint_blocked', op: '>', v: 0 },   /* see step 16 — #731 */
           hl: ['Trip Blocks'] },
-        obs('Verify Mode 1: REACTOR POWER 10 % and OUTPUT 10 MWe.',
+        obs('Verify Mode 1: REACTOR POWER above 10 % and OUTPUT 10 MWe.',
           { p: 'plant_mode', op: '~', v: 1, tol: 0.1 },
           'IR HIGH FLUX and PR HIGH (LOW SETPT) were checked lit in the last step, before the TRIP BLOCKS panel was closed.', null,
           'The reactor is critical, the generator is carrying load, and both startup shutdowns are switched off. The next walkthrough is the climb to full power: rods lead, turbine follows.',
@@ -2170,7 +2270,8 @@
         /* the power presets used to boot the bank on its top stop (627), where every WITHDRAW in
          * this leg was a no-op and step 8's "not pinned" check could only be met by INSERTING
          * (layman playtest 2026-09-07, #653 S3/S4). Since #704 they boot at 606 — still a preset,
-         * still 379 steps above the 227 the startup hands over, and still caught by this bound,
+         * still 378 steps above the 228 the startup hands over (227 until #750 moved the leg's
+         * Mode 1 entry off the P-10 envelope wall), and still caught by this bound,
          * which now has 6 steps of margin instead of 27. A precondition warns; it never blocks. */
         { p: 'control_bank_steps', op: '<', v: 600, text: 'CONTROL ROD POSITION below 600 of 627: this walkthrough follows the startup walkthrough, not a power preset' },
       ],

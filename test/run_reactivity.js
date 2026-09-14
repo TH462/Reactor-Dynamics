@@ -409,25 +409,29 @@ console.log('\n' + BOLD + 'the derivation behind pwr_startup\'s creep onto criti
 
   ck('the live procedure still dilutes to the 719 ppm estimated critical concentration',
      B === 719, B + ' ppm, read from the checklist\'s own boron command');
-  /* ⚠ THE NEXT THREE CHECKS ARE RED, AND THE RED IS THE POINT (#749, 2026-09-14, TRACKED IN
-   * `BASELINES`). They were green only because the block above evaluated the plant 10 °F hot.
-   * At the plant's own no-load point the AUTHORED LADDER is not what it was designed to be:
+  /* ⚠ THESE THREE CHECKS WERE THE #749 TRACKED RED, AND #750 IS WHAT CLEARED THEM. They had
+   * been green only because the block above evaluated the plant 10 °F hot; at the plant's own
+   * no-load point the pre-#750 ladder was not what it was designed to be:
    *
    *   burst 4 lands at 202   ρ  −36.0   subcritical
-   *   burst 5 lands at 211   ρ  +33.3   SUPERCRITICAL — and it plots a 1/M point there
+   *   burst 5 lands at 211   ρ  +33.3   SUPERCRITICAL — and it plotted a 1/M point there
    *   creep  lands at 226    ρ +148.2 above critical, against this block's own `< 60` bound
    *
-   * Criticality is at 207-208, INSIDE burst 5, so the last plotted point is taken on a
+   * Criticality is at 207-208, INSIDE burst 5, so the last plotted point was taken on a
    * supercritical core — the one thing the comment below says the ladder exists to avoid.
-   * Confirmed full-stack on the authored route (seed 42): step 8 ends bank 202 / ρ −37.6,
-   * step 9 ends bank 211 / ρ +30.9.
    *
-   * NOT SILENCED AND NOT RE-BANDED. Re-sizing burst 5 and the creep changes the authored
-   * route, the replay, the step notes and the 1/M fit, and step 10 is governed by a ruling
-   * (#660: the step steers on the plot's own number) — so it is a decision, not an edit.
-   * `Manuals/04`'s burst table now states the fact in the reader's own words. */
-  ck('the plotted 1/CR bursts are five and decreasing, ending SUBCRITICAL',
-     nBursts === 5 && rhoAt(PLOTTED) < 0,
+   * THE FIX IS A REMOVAL, NOT A RE-BAND *(OWNER RULING, 2026-09-14, #750: "I think there's one
+   * too many 1/m plot steps. If we remove one it doesn't change the indicated criticality rod
+   * step and it will let us slowly approach criticality for a lower point which will help reduce
+   * overshoot.")*. Burst 5 is gone. The ladder is 94/63/31/14, the last point is plotted at 202
+   * (ρ −35 static, −37.6 measured full stack, seed 42) and the creep is 11 steps to 213, +46 pcm.
+   *
+   * FOUR, NOT FIVE, AND THE COUNT IS PART OF THE CLAIM. `nBursts` pins the ladder's SHAPE: a
+   * ladder that grew a sixth point again would satisfy "decreasing, ending subcritical" on any
+   * ladder short enough, and this check is the only thing that would notice. It moves when the
+   * authored ladder moves, and only then. */
+  ck('the plotted 1/CR bursts are four and decreasing, ending SUBCRITICAL',
+     nBursts === 4 && rhoAt(PLOTTED) < 0,
      nBursts + ' bursts summing ' + PLOTTED + ' steps, leaving ' + rhoAt(PLOTTED).toFixed(0) + ' pcm');
   // THE SAFETY HALF: going critical on a plotted burst would mean the player takes a 1/CR
   // point on a supercritical core, which is the one thing the whole ladder exists to avoid.

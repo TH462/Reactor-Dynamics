@@ -543,7 +543,13 @@ if (!only) {
    * count ABOVE its target, which reads 0 the moment the channel secures, so part 1 could not
    * pass if the predicate could fire on the authored bursts. Injection-verified by stripping
    * `overtaken` from the pool at runtime: the first check reds with all six steps unmet and the
-   * index pinned at the baseline step. */
+   * index pinned at the baseline step.
+   *
+   * FIVE PLOT STEPS SINCE #750, not six — the count is a STRUCTURAL PIN on the authored ladder,
+   * the same role `nBursts` plays in `run_reactivity.js`, and it moves only when the ladder does.
+   * It caught this change: the removal reddened it here with the observation `5 plot steps done_by
+   * [overtaken x5], past the last one 24 s later`, i.e. every claim the check makes still held and
+   * only the count had moved. */
   (function () {
     var svc = mkSvc('hot_zero_power');
     svc.timeAcceleration = 10;
@@ -579,7 +585,7 @@ if (!only) {
     }
     var by = plotIdx.map(function (k) { return cs && cs.done_by ? cs.done_by[k] : null; });
     ck('every 1/M plot step checks off as OVERTAKEN once the source range secures (#641 — was a soft lock on the plot box)',
-       plotIdx.length === 6 && srOffT !== null && doneT !== null &&
+       plotIdx.length === 5 && srOffT !== null && doneT !== null &&
        by.every(function (b) { return b === 'overtaken'; }) && (doneT - srOffT) <= 60,
        srOffT === null ? 'source range never secured in ' + n + ' ticks'
                        : 'SR off at t=' + srOffT.toFixed(0) + ' s; ' + plotIdx.length + ' plot steps done_by [' + by.join(',') + ']' +

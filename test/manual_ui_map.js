@@ -139,6 +139,9 @@ var STEP_UI = {
     { i: 12, view: 'board', control: 'Steam Dump' },
     { i: 13, view: 'board', control: 'Pressure SP' },
   ],
+  /* #750 (2026-09-14) DELETED the 2.0e4 1/M plot step, which sat at i:8, so every row below it
+   * shifts UP by one and its own row goes with it — the second time this map has shrunk (see the
+   * #698 note below). Moved one at a time, not re-derived, for the reason those notes give. */
   'pwr2:pwr_startup': [
     { i: 1, view: 'board', control: 'Boron control' },
     { i: 2, view: 'board', control: 'Feed Pumps' },
@@ -149,15 +152,14 @@ var STEP_UI = {
     { i: 7, view: 'board', control: 'Control Bank' },
     { i: 8, view: 'board', control: 'Control Bank' },
     { i: 9, view: 'board', control: 'Control Bank' },
-    { i: 10, view: 'board', control: 'Control Bank' },
+    { i: 11, view: 'board', control: 'Control Bank' },
     { i: 12, view: 'board', control: 'Control Bank' },
-    { i: 13, view: 'board', control: 'Control Bank' },
-    { i: 14, view: 'board', control: 'Turbine Load' },
+    { i: 13, view: 'board', control: 'Turbine Load' },
     /* TWO block steps since #601, taken in P-10's own order: the intermediate-range trip (which
      * also clears the C-1 rod stop) then the power-range low setting. Both land on the same
      * panel; they are separate rows because they are separate operator actions. */
+    { i: 14, view: 'board', control: 'Trip Blocks' },
     { i: 15, view: 'board', control: 'Trip Blocks' },
-    { i: 16, view: 'board', control: 'Trip Blocks' },
   ],
   /* #619 item 27 (2026-09-04) inserted the boron SAMPLE step at i:2, so every row below it
    * shifted by one. Written out rather than re-derived: the indices are positional and this map
