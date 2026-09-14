@@ -543,6 +543,31 @@
     for (var i = 0; i < g.length; i++) if (g[i].id === id) return g[i];
     return null;
   }
+  /* A BANK'S FULL SCALE, READ LIVE — the same resolution ui/app.js `bankScale` took for the
+   * trend chart's rod lanes *(#707, OWNER RULING 2026-09-11: "All as recommended")*, applied
+   * here because the rod-step readouts carried the identical stale literal.
+   *
+   * The number is NEVER typed on this side of the wire, and that includes the CURRENT number:
+   * hard-coding 627 is exactly how the retired engine's 912 got here in the first place. Both
+   * engines publish `max_steps` on every `control_state.rod_groups[]` record (pwr2_shell.js via
+   * its `bankSteps()` accessor, pwr_engine.js via getControlState), so the scale travels WITH
+   * the data and a replayed recording is drawn on the scale of the engine that produced it.
+   * The ladder below only ever falls through to a live read of a published table; the last-ditch
+   * literal fires when no plant module loaded at all.
+   *
+   * ⚠ typeof FIRST. `isFinite(null)` is TRUE and a JSON round trip writes a dead channel out as
+   * null (the #555 trap), which would land a plausible zero on the denominator. */
+  function bankFullScale(g) {
+    var n = g && g.max_steps;
+    if (typeof n === 'number' && isFinite(n) && n > 0) return n;
+    /* `RD` here is the module-scope alias bound at :17 — the SAME object as `window.RD`, so
+     * tables attached by a plant module that loads after this file are visible through it. */
+    var k = RD && RD.pwr2 && RD.pwr2.kinetics && RD.pwr2.kinetics.RODS;
+    if (k && typeof k.max_steps === 'number' && k.max_steps > 0) return k.max_steps;
+    var c = RD && RD.PWR_CONFIG && RD.PWR_CONFIG.rods;
+    if (c && typeof c.max_steps === 'number' && c.max_steps > 0) return c.max_steps;
+    return 627;
+  }
   // ---- IN-OUT lamps and rod speed indication (#306) --------------------------------
   // A real Westinghouse board carries *"Rod speed indication and the IN-OUT lights"*
   // among its rod controls, and the lamps are the AUTOMATIC system's voice as much as
@@ -1374,12 +1399,19 @@
       if (!isFinite(per) || Math.abs(per) > 9999) return { text: '∞', unit: 's' };
       return { text: String(Math.round(per)), unit: 's' };
     },
-    // Rod steps. The unit comes from the group's OWN max_steps rather than the authored
-    // "/912": the scale is the engine's declaration, and the PWR2 shell publishes its native
-    // 0..200 bank — printing 200 under a /912 label would claim a rod position that does not
-    // exist. On the current engine max_steps IS 912, so the rendered unit is unchanged.
-    imrpk4pjcpd: function (s) { var g = rodGroup(s, 'control_rods'); return g ? { text: String(g.steps), unit: '/' + (g.max_steps || 912) } : '0'; },
-    imrpnzfsfcx: function (s) { var g = rodGroup(s, 'shutdown_rods'); return g ? { text: String(g.steps), unit: '/' + (g.max_steps || 912) } : '0'; },
+    /* Rod steps. The unit comes from the group's OWN max_steps rather than the authored "/912":
+     * the scale is the engine's declaration, so printing a bank's steps under a label from a
+     * different engine would claim a rod position that does not exist.
+     *
+     * ⚠ THE FALLBACK WAS THE RETIRED ENGINE'S NUMBER, UNDER A COMMENT ASSERTING IT WAS CURRENT.
+     * These read `|| 912` beneath a line saying "on the current engine max_steps IS 912" — true
+     * of `pwr_engine` and false of the shipped plant, whose bank is 627. It never actually
+     * rendered, because both engines publish `max_steps` on every rod-group record; but a stale
+     * literal sitting behind a comment that claims it is live is precisely how the same number
+     * reached the trend chart's rod lanes and drew a bank on its stop at 69 % of the lane (#707).
+     * Resolved through `bankFullScale`, which types no bank size at all — see its comment. */
+    imrpk4pjcpd: function (s) { var g = rodGroup(s, 'control_rods'); return g ? { text: String(g.steps), unit: '/' + bankFullScale(g) } : '0'; },
+    imrpnzfsfcx: function (s) { var g = rodGroup(s, 'shutdown_rods'); return g ? { text: String(g.steps), unit: '/' + bankFullScale(g) } : '0'; },
     imrppee04aj: function (s) { return r0(IN(s).turbine_rpm); },                                        // turbine rpm
     // ---- steam-side indications, authored in the 2026-08-05 diagram (#371) ----
     // Read positionally off the board: each sits beside the valve it reports, and the
@@ -3492,6 +3524,36 @@
      * could not be pointed at by any step. 'Control Bank' is the CARD and glowing it does not
      * answer "which number"; this is the number. Adding a key only widens the vocabulary. */
     'Control Rod Position': 'imrpk4pjcpd',
+    /* THE SHUTDOWN BANK'S OWN READOUT — the sibling hole to 'Control Rod Position' above, and
+     * the one the owner asked for by name *(OWNER, 2026-09-13, #744: "walkthrough Mode 5>3 step 3
+     * should also highlight the SHUTDOWN ROD POSITION indication since thats what we are
+     * watching")*. `imrpnzfsfcx` is the shutdown-bank step count on the ROD CONTROL card
+     * (inspect name "Shutdown rod steps", driven above). 'Shutdown Bank' is the CARD
+     * (`imrpny66npx`) — a DIFFERENT element, which matters: `applyCklWatchGlow` (ui/app.js)
+     * skips any element already carrying the pulsing step glow, so a watch label that resolved
+     * to the same element as the step's own `hl` would draw nothing at all. */
+    'Shutdown Rod Position': 'imrpnzfsfcx',
+    /* THE TURBINE AND STEAM-DUMP BUTTON/INDICATION HOLES (#744). Six board elements the owner's
+     * own `[HIGHLIGHTED: ...]` annotations name, none of which had a key — so the two steps that
+     * want them were each pointing BOTH of their labels at one card: `pwr_heatup` step 4 listed
+     * 'Turbine Load' + 'Main Breaker' (both -> imro8k5pzem) and step 6 listed 'Dump SP' +
+     * 'Steam Dump' (both -> imrop5ouw7h). Two labels, one ring, and the control the step actually
+     * tells the player to press glowed not at all. Same class as #598 item 14 and #735; adding
+     * keys only widens the vocabulary.
+     *
+     * ⚠ `imrzmlyafa3` — the old labelled STEAM DUMP % tile — IS NOT USABLE AND IS NOT HERE. It
+     * is in DOC_REMOVE (see the entry there): the 2026-08-05 re-export dragged it off the canvas
+     * and replaced it with `imsgunuyvon`, the right-anchored % tag beside the condenser dump
+     * valve. A key pointing at a removed item resolves to null and glows nothing, silently. */
+    'Turbine — Trip': 'imro8lddxi', 'Turbine — Latch': 'imro8ktzs3u', 'Turbine — Unload': 'imro8len0oi',
+    'Generator Output': 'imrppeh5hkb',
+    'Steam Dump — Close': 'imrppqxggbj', 'Steam Dump — Auto': 'imrppqg6mcc', 'Steam Dump — Open': 'imrppquqg16',
+    'Steam Dump Status': 'imrppq5r7kw', 'Steam Dump Valve': 'imrprmm4u5q', 'Steam Dump Opening': 'imsgunuyvon',
+    /* THE LETDOWN FLOW READOUT (#744). `imsgti0gnpf` is the gpm value driven from `letdown_flow`
+     * above. Two `pwr_heatup` steps tell the player to read "LETDOWN above 0 gpm" — one of them
+     * GRADES on it (`letdown_flow_actual`) — and neither could point at it: the only letdown key
+     * was the orifice CARD. Same hole as 'Reactor Power' and 'Control Rod Position'. */
+    'Letdown Flow': 'imsgti0gnpf',
     // Aliases for the `control` strings the checklist steps use (so the step-hover
     // fallback in ui/app.js resolves without authoring an explicit `hl` on each).
     /* THE CARD, NOT THE PUMP GRAPHIC *(#607 item 1)*. Both names used to point at
