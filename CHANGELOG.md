@@ -30,6 +30,110 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (what rod position this plant goes critical at — one number, four disagreeing sources — #749)
+
+- **719 ppm puts criticality at 208 of 627 steps. Not 223, not 226–238, not 230.** Four sources
+  disagreed: the `pwr_startup` walkthrough's step 2 said **230**, `Manuals/04` said **223** and a
+  **226–238** band, `Manuals/09` §7.5.1 said **223** with a ±750 pcm band of **111–310**, and the
+  same leg's steps 9 and 10, rewritten hours earlier, said **208**. **Adjudicated by measurement**
+  (full stack, pwr2, `hot_zero_power`), one control-bank step at a time with 60 s of settle, boron
+  logged flat at 718.88 ppm and average coolant temperature at 547.2 °F (286.25 °C) at every
+  sample, the shutdown bank pinned at 627 and the position read back off both
+  `true_state.rod_steps` and `control_state.rod_groups[0].steps`: **ρ = −1.8 pcm at bank 207 and
+  +5.8 pcm at bank 208** (zero crossing 207.2). Corroborated on the authored route, four seeds
+  (42/1/7/123): ρ crosses zero at bank **208**, t = 672–673 s, inside step 9's burst.
+- **Both definitions of "critical" land on the same step, which is worth saying because the
+  walkthrough teaches the meter one.** Rods stopped and held 900 s: at bank 203 (ρ −32 pcm) power
+  plateaus at 6.6e-6 % and STARTUP RATE reaches 0.000; at **207** (ρ −1.9 pcm) the rate *decays*
+  0.112 → 0.020 and is still falling; at **208** it settles **positive**, 0.033–0.043, with power
+  climbing 6.5e-6 → 3.8e-5 %. So 207 is the ambiguous step, not 226.
+- **ROOT CAUSE: A GATE WAS EVALUATING THIS PLANT AT A BENCHMARK ANCHOR 10 °F ABOVE ITS OPERATING
+  POINT, AND STAYED GREEN WHILE IT PUBLISHED THE ANSWER.** `test/run_reactivity.js`'s startup
+  derivation read `K2.HZP` — the **BEAVRS / Watts Bar U1 Cycle 1 hot-zero-power physics-test
+  anchor, 557.0 °F (291.67 °C) / 15.5 MPa** — which is what the kinetics model is *calibrated*
+  against, not an operating point. The plant's own no-load point is **547.0 °F (286.1 °C) /
+  2235 psi (15.41 MPa)**, and dρ/dT here is **−11.6 pcm/°F**. Evaluate at the anchor and six
+  published figures fall out to four significant digits — ρ@0 **−1257.2**, critical **223**,
+  critical at 857 ppm **400**, the ±750 band **111/311**, ρ@0 at 857 ppm **−2772.4**, differential
+  **8.06 pcm/step (1.24 ¢)**; at the plant they are **−1136.2 / 207 / 392 / 88–297 / −2706.6 /
+  7.764 (1.19 ¢)**. That is where `Manuals/04`'s and `09 §7.5.1`'s numbers came from, and the
+  walkthrough's **230** with them. **The block now takes its temperature from the hottest row of
+  the §7.5 table the same runner has just verified against the plant**, so it cannot drift again
+  without that check reddening first — the same fix shape as the ECC block sixty lines above it,
+  which had it right all along. HR10, exactly: real, tight, and pointed at the wrong plant.
+  **Proven by injection, both directions, one line:** put `HZP2 = K2.HZP` back and the runner
+  prints *"critical at 223 … bursts end at 211, creep of 15 reaches 226"* and *"24 pcm above
+  critical"* — reproducing verbatim what shipped, including the 223 — while the new
+  which-temperature-is-this check goes red. Take the anchor away and they invert.
+- **I filed the wrong mechanism first, and a quality-pass reviewer refuted it.** The first draft of
+  this entry said the family was the walkthrough replay's creep landing, repeated — `git log -S`
+  puts **230** in `cd1cc20c` (#602 phase 2, the 200 → 627 bank rescale) whose validation block
+  recorded *"critical 226-238 steps"*. **Only 226–238 is a replay artifact** (step 10's 15 slow
+  steps from 211, off the anchor's 223); 223, −1257, 111–310, 400 and 8.1 are all the temperature.
+  Recorded because the wrong diagnosis was repeatable and internally consistent, which is what
+  made it convincing. What survives from it: re-run on scratch worktrees of `cd1cc20c` and of
+  `2b4ef9ed` — the 2026-09-03 commit that first wrote 223 — the sweep gives **208 on both**, so no
+  plant change is involved; and the retired engine is not the source either (**320 of 912** at its
+  own 705 ppm). The **223** that *is* real is unrelated — the sourced Westinghouse C-11 bank D
+  withdrawal interlock (WTSM 12.2 §12.2.4.1, ML11223A301), cited correctly in `pwr2_engine.js`
+  and left alone.
+- **⚠ NEWLY EXPOSED, AND NOT FIXED: the authored 1/M ladder plots its last point on a
+  SUPERCRITICAL core.** With the gate pointed at the plant's own temperature, three of its startup
+  checks go red and stay red (`run_reactivity` 30/0 → **28/3**, tracked in `BASELINES` with its
+  reasoning). Burst 5 lands at bank **211**, ρ = **+33 pcm**, and the walkthrough plots a 1/M point
+  there — the one thing the ladder exists to avoid; the creep then leaves **148 pcm** of excess
+  against the block's own `< 60` bound. Confirmed full stack on the authored route: step 8 ends
+  bank 202 / ρ −37.6, step 9 ends bank 211 / ρ +30.9. **Not re-banded and not silenced** —
+  re-sizing burst 5 and the creep moves the authored route, the replay, the step notes and the 1/M
+  fit, and step 10 steers on the plot by ruling (#660), so it is a decision and not an edit.
+  `Manuals/04`'s burst table now says so in the reader's own words: *stop short of 211 and creep*.
+- **The refutation was already in `Manuals/09`, three paragraphs above the claim.** §7.5's ECC
+  tables are computed from `RD.pwr2.kinetics.criticalBoron` and are correct — bank-in critical boron
+  **619 ppm** at 546.8 °F against a measured 619.1, differential boron worth **11.45 pcm/ppm**
+  against 11.38, control-bank integral worth **1232 pcm at 219 steps** against 1229. They already
+  implied the answer: 719 ppm is 100 ppm above the bank-in critical boron, so 1137 pcm to pull out,
+  and the integral-worth row puts that at about **206 steps** — two off the measurement and
+  seventeen from the 223 the prose beneath the same tables asserted. §7.5.1 now shows the
+  derivation.
+- **Four neighbouring figures were measured at the same time and three of them moved.**
+  Criticality at 857 ppm is **392 steps**, not 400. The 719 ppm Hot Standby hold is
+  **ρ = −1137 pcm**, not −1257 — and it is path-independent: borated to 857 ppm and diluted back,
+  the plant returns to −1141 pcm, and the 918 → 719 dilution ends at −1138.8 pcm. The ±750 pcm
+  acceptance band is **88–297 steps**, not 111–310. Boron differential worth over the pair is
+  **11.38 pcm/ppm**. The fine-step differential in the critical band is **7.764 pcm/step (1.19 ¢)**
+  over the fifteen steps above critical, 7.67 averaged over 205–215 (min 7.32, max 8.29). The
+  **8.1 / 1.24 ¢** the manuals and the leg's first caution carried is the same window computed at
+  the 557 °F anchor, and it was in **four more places** the first sweep missed: `Manuals/03`,
+  `Manuals/09 §6.0`, `Manuals/12` and the PWR-N03 burst-table intro — all corrected.
+- **918 ppm does not prevent criticality.** Step 2's `why` said *"at 918 ppm the control bank
+  cannot make the reactor critical at all"*. Measured at 917.6 ppm (ρ = −3398.6 pcm with the bank
+  in), the bank crosses zero at **490 of 627** — it has to come nearly all the way out, which is
+  the point the sentence was reaching for, so it now says that instead.
+- **And the arrival boron in `Manuals/04` was the RETIRED engine's.** PWR-N02 assumed a PWR-N01
+  arrival at **857 ppm**; the shipped `cold_shutdown` boots at **917.8 ppm**, PWR-N01 dilutes
+  nothing and the pwr2 cooldown borates to **920** — so ~918 ppm is what arrives, which is what
+  the walkthrough's step 2 and `04`'s own heatup section already said. The two artifacts were
+  teaching different plants for the same step. PWR-N02's acceptance, CAUTION, step 8 and Step 15
+  are re-anchored on the measured 918 ppm case (ρ = −3399 pcm with the bank in, critical at
+  **490 of 627**, **~88 plant-minutes** to dilute), with the 857 figures kept as the labelled
+  secondary datum. **PWR-N15's own 857 ppm boration target is left alone and filed** — it needs
+  its own clock re-measured, which is not this change.
+- **Two dilution clocks were wrong in the same direction.** 857 → 719 ppm takes **~63
+  plant-minutes**, not ~46 (2.2 ppm/min diluting against 3.0 ppm/min borating the same span —
+  46 minutes is the clock for the *other* direction). Step 2's wait hint for the heatup route,
+  918 → 719 ppm, is **~90 plant-minutes**, not 65: measured end to end, 88.4 minutes (850 ppm at
+  +28.4, 800 at +50.0, 760 at +68.4, 740 at +78.4, 725 at +85.0).
+- Sites changed: `test/run_reactivity.js` (the temperature, the differential expectation, and a
+  new check that the block is evaluated at the plant's own point), `test/run_all.js` BASELINES
+  (the tracked red, with its reasoning), `ui/manual_procedures.js` (`pwr_startup` step 2 `why` and
+  `wait_hint`, the leg's first caution), `Manuals/04` (PWR-N01 *Acceptance* note, PWR-N02 CAUTION /
+  step 8 / *Step 15*, PWR-N03 worked example, CAUTION and 1-over-M burst table), `Manuals/09`
+  §6.0 and §7.5.1, `Manuals/03`, `Manuals/12`, and a supersession note on
+  `Blueprint/PWR2_VALIDATION.md` §129.1 — the dated row itself left standing.
+- **Housekeeping:** commits `609f8b22` and `bb97ff9d` cite **#748** in their subject lines. #748
+  is the roadmap-tier issue; the startup-leg work in both belongs to **#749**. History not
+  rewritten — recorded here and on #749 so the trail is followable.
+
 ### Fixed (a fresh-context layman played `pwr_startup` end to end — #748)
 
 - **The approach-to-criticality rod notes read as INCREMENTS and cost the reviewer a +9.38 DPM

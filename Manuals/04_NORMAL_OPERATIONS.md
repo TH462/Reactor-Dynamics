@@ -110,17 +110,17 @@ Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot
 ### Acceptance (Mode 3 declared)
 - RCS at NOP T/P class: P ≈ **2235 psi (15.41 MPa)**, Tavg at no-load band ≈ **546.8 °F (286 °C)** — measured on the shipped plant with the dumps in AUTO, **547.2 °F (286.2 °C)**.
 - **Heat sink is the condenser dumps, not a relief**: STEAM DUMP status **PRESS**, dumps carrying **0.4–2.9 %**, steam header on the **1020 psi (7.03 MPa)** anchor (1005 psig), **atmospheric dump valve shut**. A plant sitting at 551.6 °F (288.7 °C) with that valve at 7–9 % is a plant that never got step 8b.
-- Reactor **subcritical** (measured arrival on this plant: ρ = **−2772 pcm** on **857 ppm**, control bank still fully inserted at 0 of 627 steps; re-measured 2026-09-03 on the shipped engine).
+- Reactor **subcritical** (measured arrival on this plant: ρ = **−3399 pcm** on **~918 ppm**, control bank still fully inserted at 0 of 627 steps; re-measured 2026-09-14, #749. The **−2772 pcm on 857 ppm** printed here until then was wrong twice over — 857 ppm is the RETIRED engine’s cold-shutdown target, and −2772 is this plant at 857 ppm evaluated 10 °F above its no-load point. The shipped `cold_shutdown` boots at **917.8 ppm** and PWR-N01 dilutes nothing, so ~918 ppm is what arrives).
 - **Shutdown bank fully withdrawn** (step 2a) — this is the state every mode above Mode 5 assumes, and PWR-N03 cannot reach criticality without it.
 - Accumulators **aligned**.
 - Ready for **PWR-N02** (lineup) then **PWR-N03** (approach to criticality).
 
 > **You arrive at cold-shutdown boron, and it is NOT the boron the approach to criticality
-> assumes.** The heatup dilutes nothing — 857 ppm in, 857 ppm out. That is ~138 ppm above the
-> **719 ppm** that puts criticality at the reference position, and measured (2026-09-03) it moves
-> the critical rod position from **223 steps to 400** — outside the ±750 pcm acceptance band the
-> estimate is checked against. **PWR-N02 step 15 is the dilution that closes it.** Do not carry
-> 857 ppm into PWR-N03.
+> assumes.** The heatup dilutes nothing — **~918 ppm in, ~918 ppm out**. That is ~199 ppm above the
+> **719 ppm** that puts criticality at the reference position, and measured (2026-09-14, #749) it
+> moves the critical rod position from **208 steps to 490** — far outside the ±750 pcm acceptance
+> band (**88–297**) the estimate is checked against. **PWR-N02 step 15 is the dilution that closes
+> it**, and it takes **~88 plant-minutes**. Do not carry cold-shutdown boron into PWR-N03.
 
 ### Expected heatup performance
 Pump heat only — no rod motion, no dilution. Heat source is RCP work (about 0.55 % of rated core heat at full flow) plus pressurizer heaters.
@@ -169,7 +169,7 @@ Verify the unit is correctly lined up in **Mode 3, Hot Standby** before any appr
 | Type | Text |
 |------|------|
 | **CAUTION** | Do not withdraw rods until this checklist is complete. |
-| **CAUTION** | **Boron is a prerequisite, not an observation.** Step 8 samples it and step 15 adjusts it. A plant that arrived here from **PWR-N01** is at cold-shutdown boron (~857 ppm) and is *not* ready to start — see step 15. |
+| **CAUTION** | **Boron is a prerequisite, not an observation.** Step 8 samples it and step 15 adjusts it. A plant that arrived here from **PWR-N01** is at cold-shutdown boron (**~918 ppm**) and is *not* ready to start — see step 15. |
 | **NOTE** | **Dilute HOT, never cold.** This is the whole reason the dilution lives here in Mode 3 and not at the end of the heatup: critical boron with the bank inserted is **806 ppm at 122 °F** but only **616 ppm at 546.8 °F** (**09 §7.5**), so a figure that is comfortably subcritical hot is critical cold. Reaching the no-load temperature *before* you dilute is what makes the dilution safe. |
 | **NOTE** | Speed for the following approach should allow SUR to be followed (typically 1×–10×). |
 
@@ -184,30 +184,57 @@ Verify the unit is correctly lined up in **Mode 3, Hot Standby** before any appr
 | 5 | Confirm RCPs running | RCP / flow | Flow ~100 % |
 | 6 | Confirm control bank fully inserted | Rod control | Position at bottom |
 | 7 | **Confirm shutdown bank parked withdrawn.** It should already be out — **PWR-N01 step 2a** withdrew it during the heatup. If it is **in** (you arrived here by trip rather than by heatup, and the trip dropped it), verify shutdown margin and withdraw it **now**, before any control-bank motion. It is worth **3676 pcm** and PWR-N03 cannot reach criticality with it inserted | Shutdown bank | Fully out, 627 / 627 |
-| 8 | **Sample boron and record it** — there is no live meter, and the number depends on how you reached Mode 3. Two normal arrivals: **~857 ppm** from a **PWR-N01** heatup (cold-shutdown boron, undiluted), **~705 ppm** on a plant already lined up at Hot Standby | CHEM SAMPLE | Result logged; it is the **E** input to the ECC (**09 §7.5.2**) |
+| 8 | **Sample boron and record it** — there is no live meter, and the number depends on how you reached Mode 3. Two normal arrivals: **~918 ppm** from a **PWR-N01** heatup (cold-shutdown boron, undiluted — the shipped `cold_shutdown` boots at 917.8 ppm and PWR-N15 borates to 920), **~719 ppm** on a plant already lined up at Hot Standby (the `hot_zero_power` preset boots at 718.9 ppm) | CHEM SAMPLE | Result logged; it is the **E** input to the ECC (**09 §7.5.2**) |
 | 9 | Confirm Source Range energized and counting | SR | SR On; hundreds of counts per second |
 | 10 | Confirm Intermediate Range available for handoff | IR | IR on scale or ready as power rises |
 | 11 | Confirm SG heat sink | SG level | ~65 %; not LO-LO |
 | 12 | Confirm turbine off line / 0 MWe | Turbine | Disconnected or zero load |
 | 13 | Review annunciators; clear spurious | Alarm panel | Board understood |
 | 14 | Confirm SI accumulators aligned if coming from heatup | Accumulator valve | Open (if heatup was done by the book) |
-| 15 | **Adjust boron to the estimated critical condition.** Work the ECC (**09 §7.5.2**) for the critical rod position you intend, then borate or dilute to it with charging **On**. For the reference startup — criticality at **223 steps (36 % withdrawn)** — the target is **719 ppm**. Note the direction: you choose the position, then move **boron** until the core is critical there | CVCS Borate/Dilute + CHEM SAMPLE | Sample confirms the ECC boron; ρ ≈ **−1257 pcm** with the bank still in |
+| 15 | **Adjust boron to the estimated critical condition.** Work the ECC (**09 §7.5.2**) for the critical rod position you intend, then borate or dilute to it with charging **On**. For the reference startup — criticality at **208 steps (33 % withdrawn)** — the target is **719 ppm**. Note the direction: you choose the position, then move **boron** until the core is critical there | CVCS Borate/Dilute + CHEM SAMPLE | Sample confirms the ECC boron; ρ ≈ **−1137 pcm** with the bank still in |
 
 ### Step 15 — the dilution, and why it is a step and not a note
 
-**Measured full stack.** From a **PWR-N01** arrival (857 ppm, ρ = −2772 pcm), diluting to
-**719 ppm** takes **~46 plant-minutes** at the plant's make-up rate (~3 ppm/min) and lands the
-reactor at **ρ = −1257 pcm** — the Hot Standby hold. Withdrawing the control bank to **223 steps**
-from there brings it critical, on the reference position. (The live walkthrough replay declares
-criticality a little later, between **226 and 238 steps**: 223 is the first whole step at which ρ is positive, and 226–238
-is where a player watching the count rate and SUR can actually *see* that it has. That gap is the
-whole reason the declaration is made on the instruments.)
+**Measured full stack** (re-measured 2026-09-14, #749). At the **719 ppm** Hot Standby hold the
+reactor sits at **ρ = −1137 pcm** with the bank in, and withdrawing the control bank to
+**about 208 steps** brings it critical — that is the reference position. Diluting there from a
+**PWR-N01** arrival (**~918 ppm**, ρ = **−3399 pcm**) takes **~88 plant-minutes**: measured end to
+end, 850 ppm at +28 min, 800 at +50, 760 at +68, 740 at +78, 725 at +85. Boron differential worth
+over that span is **11.38 pcm/ppm**, and the 719 ppm hold is **path-independent** — borate away
+from it and dilute back and the plant returns to **−1141 pcm** against the **−1137 pcm** it boots
+at, and the 918 → 719 dilution ends at **−1138.8**.
 
-**Skip the dilution and the numbers in PWR-N03 stop being true.** Measured on the same plant at
-857 ppm, the bank goes critical at **400 steps (63.8 % withdrawn)** — **178 steps outside** the
-±750 pcm acceptance band (111–310 steps) that **09 §7.5.1** tells you to stop and re-work the
-estimate at. The 1/M burst sizes in PWR-N03 are sized for the 719 ppm plant and will walk you past
-the band without ever looking wrong.
+> **Why the old numbers here were wrong, and it was not a stale plant.** This section printed
+> criticality at **223 steps** and ρ = **−1257 pcm**, and PWR-N03 printed a **226–238** band, a
+> **111–310** acceptance band and **8.1 pcm/step**. All of them came from one place:
+> `test/run_reactivity.js` was evaluating this plant at the **BEAVRS / Watts Bar hot-zero-power
+> physics-test anchor — 557.0 °F (291.67 °C) and 2248 psi (15.5 MPa)** — the benchmark the kinetics model is
+> *calibrated* against, not an operating point. The plant's own no-load point is
+> **547.0 °F (286.1 °C) / 2235 psi (15.41 MPa)**, ten degrees colder, and dρ/dT here is
+> **−11.6 pcm/°F**. Evaluate at 557 °F and 223, −1257, −2772, 400, 111–310 and 8.06 all fall out
+> to four figures; evaluate at the plant's own point and you get 207–208, −1136, −2707, 392,
+> 88–297 and 7.76. The gate was real, tight, and pointed at the wrong temperature — and it stayed
+> green while it published the answer. It now takes its temperature from the hottest row of the
+> **09 §7.5** table it has just verified against the plant.
+>
+> **207 or 208 — both are this plant.** Statically at the table's 546.8 °F anchor the crossing is
+> at 207; measured full stack the plant settles ~0.25 °F above its boot T-avg and it is at 208.
+> **One control-bank step is 0.66 °F of T-avg here**, so a step of spread is the honest width of
+> the answer. ρ is **−1.8 pcm at 207** and **+5.8 pcm at 208** on the settled plant.
+>
+> **The instrument declaration lands on the same step.** Rods held still for 900 s: the startup
+> rate reaches 0.000 at 203, still *decays* (0.112 → 0.020) at 207, and settles *positive* at
+> 0.033–0.043 with power climbing at 208. **226 is where the live walkthrough's creep command
+> lands** (15 slow steps from 211) — eighteen steps past critical, and not a measurement of
+> anything.
+
+**Skip the dilution and the numbers in PWR-N03 stop being true.** Measured at the **~918 ppm** you
+arrive with, the bank does not go critical until **490 of 627 steps (78 % withdrawn)** — **282
+steps above** the reference position and **193 above the upper edge** of the ±750 pcm acceptance
+band (**88–297 steps**) that **09 §7.5.1** tells you to stop and re-work the estimate at. (At the
+**857 ppm** this section assumed until 2026-09-14 — the retired engine's cold-shutdown target, not
+this plant's — it is **392 steps**.) The 1/M burst sizes in PWR-N03 are sized for the 719 ppm plant
+and will walk you past the band without ever looking wrong.
 
 ### Outcome
 Mode 3 lineup complete, boron at the ECC — ready for **PWR-N03**.
@@ -229,9 +256,11 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 3. RCPs running; SR energized; Feed AUTO recommended before POAH.
 
 > **The worked example below is for the reference startup: 719 ppm, bank fully inserted, Tavg at
-> the no-load band.** There the core first goes critical at **223 of 627 steps (36 % withdrawn)** and the ±750 pcm
-> band is **111–310 steps**; on the board you will *see* criticality between **226 and 238**, because
-> the count rate and startup rate take a moment to say so. **These are not constants of the plant —
+> the no-load band.** There the core first goes critical at **about 208 of 627 steps (33 %
+> withdrawn)** — 207 statically, 208 on the settled plant, one step being 0.66 °F of T-avg — and
+> the ±750 pcm band is **88–297 steps** (re-measured 2026-09-14, #749). **The board says so on the
+> same step**: stop the rods at 208 and the startup rate settles positive with the count rate still
+> climbing; stop one step lower and it decays. **These are not constants of the plant —
 > they are the answer for one boron.** Re-work the ECC for the boron you actually sampled; the 1/M
 > plot closes on your prediction, it does not replace it.
 >
@@ -247,7 +276,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 |------|------|
 | **CAUTION** | Target SUR ≤ **1 DPM** (SUR HI at 1 DPM). **Nothing blocks withdrawal on rate** — the alarm is the only rate cue and the rate is yours to control. Withdrawal blocks on **flux**: the intermediate range rod stop at **20 % current equivalent**, until the **intermediate range trip** is blocked at P-10 — the same press. Insertion is never blocked. |
 | **CAUTION** | Plot **enough 1/M points**. Early predictions always read high (flat toe of the worth curve), and the first two land far past the true critical position; six points close on it. **Never** withdraw straight to the first prediction. |
-| **CAUTION** | One fine step near the band is **8.1 pcm — 1.24 ¢** (measured 2026-09-03; 7.97 pcm/step at 226, 8.18 at 238). **This is not the bank average**, which is 6.49 pcm/step, and it is not the cent, which is 6.50 pcm on this plant (β_eff 650.2 pcm). All three are near 6.5–8 and only the first applies here. Final approach: **Slow**, single steps. |
+| **CAUTION** | One fine step near the band is **7.76 pcm — 1.19 ¢** (re-measured 2026-09-14, #749: 7.764 pcm/step over the fifteen steps above critical; 7.67 averaged over 205–215, min 7.32, max 8.29). The **8.1 — 1.24 ¢** printed here until 2026-09-14 is the same window computed at a benchmark anchor 10 °F above this plant’s no-load point — see PWR-N02 §Step 15. **This is not the bank average**, which is 6.49 pcm/step, and it is not the cent, which is 6.50 pcm on this plant (β_eff 650.2 pcm). All three are near 6.5–8 and only the first applies here. Final approach: **Slow**, single steps. |
 | **CAUTION** | **Criticality is declared on the instruments, not on the bank position.** Stop the rods; if the count rate keeps rising and SUR stays positive with nothing moving, the core is critical. WTSM 19.3 (ML11223A342): *"Supercriticality is indicated by a constant positive startup rate and steadily increasing source range count rate with no control rod withdrawal."* Record the rod position, boron and Tavg **after**. |
 | **NOTE** | **Source Range secures itself at 1e5 cps** — no switch, and no source-range trip on this plant. **P-6** (IR ≥ **1e-10 A**) is where the intermediate range comes into use, roughly 32× lower; watch it come on scale well before the source range goes dark. If it has not, stop the rise and diagnose. |
 | **NOTE** | Below the point of adding heat there is almost no temperature feedback — excess reactivity keeps driving power until you take it out. |
@@ -269,7 +298,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 
 **The count rate is the cue; the step column is what the burst lands on.** Withdraw, **stop**, let
 the counts settle to the value in the third column, then plot. The bursts shorten every time
-because the rods get more valuable as you go: 4.15 pcm/step off the bottom against 8.1 pcm/step in
+because the rods get more valuable as you go: 4.15 pcm/step off the bottom against 7.76 pcm/step in
 the critical band. At a different boron the whole ladder moves — re-scale it to your own ECC
 rather than reading it as the plant's burst pattern.
 
@@ -279,8 +308,8 @@ rather than reading it as the plant's burst pattern.
 | 2 | 63 | > 1.4e3 (1,400 counts per second) | 157 | Still late |
 | 3 | 31 | > 3.0e3 (3,000 counts per second) | 188 | Entering steep worth |
 | 4 | 14 | > 7.0e3 (7,000 counts per second) | 202 | Inside ~12 steps |
-| 5 | 9 | > 2.0e4 (20,000 counts per second) | 211 | Working prediction |
-| Creep | ~15 Slow | SUR positive, rods stopped | 226 | To critical, then a small excess for a gentle rise toward ~1 % |
+| 5 | 9 | > 2.0e4 (20,000 counts per second) | 211 | ⚠ **This burst ends SUPERCRITICAL** — ρ crosses zero at **207–208**, part way through it, and 211 sits at **ρ = +33 pcm**. The last 1/M point is therefore plotted on a core that is already critical, which is the one thing the ladder exists to avoid. Measured 2026-09-14 (#749), tracked as a red in `run_reactivity`; the ladder has not been re-sized because step 10 steers on the plot by ruling. **Stop short of 211 and creep.** |
+| Creep | ~15 Slow | SUR positive, rods stopped | 226 | Confirms it on the instruments — **not** where criticality happens. It leaves **148 pcm** of excess above critical, and below the point of adding heat nothing takes that back out for you: withdraw less than the full 15 and read the startup rate |
 
 ### Outcome
 **Mode 2, Startup** — critical, power ≤ 5 %. Ready for **PWR-N04** / **PWR-N05**.

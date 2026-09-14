@@ -279,7 +279,7 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 
 | Parameter | Value |
 |-----------|-------|
-| Control bank max steps | **627** fully withdrawn (fine-step drive). Differential worth is **4.15 pcm/step off the bottom, 8.82 peak at mid-travel, 6.49 averaged over the bank**; **in the startup critical band it is 8.1 pcm/step = 1.24 ¢**. ⚠ Do not quote the bank average as the critical-band figure: this plant's cent is **6.50 pcm** (β_eff 650.2) and its bank average is **6.49 pcm/step**, two unrelated quantities that happen to coincide, and neither is the value that applies during the approach to criticality |
+| Control bank max steps | **627** fully withdrawn (fine-step drive). Differential worth is **4.15 pcm/step off the bottom, 8.82 peak at mid-travel, 6.49 averaged over the bank**; **in the startup critical band it is 7.76 pcm/step = 1.19 ¢** (re-measured 2026-09-14, #749; the 8.1 printed here until then was this plant evaluated 10 °F hot — see §7.5.1). ⚠ Do not quote the bank average as the critical-band figure: this plant's cent is **6.50 pcm** (β_eff 650.2) and its bank average is **6.49 pcm/step**, two unrelated quantities that happen to coincide, and neither is the value that applies during the approach to criticality |
 | Speed slow / normal / fast | **8 / 48 / 72 steps/min** (0.133 / 0.800 / 1.200 steps/s), the operator's three-position selector. **Slow and fast are the sourced ends of the rod speed program** — WTSM 8.1 (ML11223A252): *"a minimum speed of eight steps per minute"*, and *"a maximum rod speed of 72 steps/min. The maximum rod speed is based upon a maximum response to a large error signal and upon the physical limitations of the rod drive mechanism, with the latter being the limiting factor"*. **Normal (48) is unverified** — no document in the corpus carries it. The real programmer is continuous between the two limits (8, then 32 steps/min/°F, then 72); three positions is a simplification of the operator's switch, not of the program |
 | Scram insertion time (control) | **~2.5 s** full travel |
 | Scram insertion time (shutdown) | **~2.0 s** |
@@ -391,9 +391,18 @@ an S: least effective at either end, most effective mid-travel.
 
 **The acceptance band.** Attachment 2.2-1 line Q brackets the prediction at **±750 pcm**
 around the estimated critical position, or the rod insertion limit, whichever is tighter. On
-this plant's lumped bank the **719 ppm reference startup goes critical at 223 steps**, and that
-gives a band of roughly **111 to 310 steps** (measured 2026-09-03). Criticality outside that band
-means the estimate was wrong — stop and re-work it, do not keep pulling.
+this plant's lumped bank the **719 ppm reference startup goes critical at 208 steps**, and that
+gives a band of roughly **88 to 297 steps** (re-measured 2026-09-14, #749: ρ = −750 pcm at bank 88
+and +750 pcm at bank 297, read off a one-step-at-a-time sweep with boron and T-avg held; 207
+statically, 208 on the settled plant, one step being 0.66 °F of T-avg). The
+**223 steps / 111–310** printed here until 2026-09-14 was this plant computed at a benchmark anchor 10 °F above its no-load point — see **04** PWR-N02
+§Step 15. **The two tables above already said so, three paragraphs up:** at 546.8 °F the bank-in
+critical boron is **619 ppm**, so 719 ppm is **1137 pcm** of boron to pull out
+(99.9 ppm at the 11.38 pcm/ppm measured there), and the integral-worth row puts 1137 pcm at
+about **206 steps** — within
+two steps of the measurement, and seventeen from what the prose underneath them claimed. Work the
+tables; they are computed from the engine. Criticality outside the band means the estimate was
+wrong — stop and re-work it, do not keep pulling.
 
 **The band is checked against, not steered to.** WTSM 19.0 (ML11223A342) Appendix 19-1 step 11
 gives the response, and it is not a rod adjustment: if the bank goes critical below the 0 %-power

@@ -295,7 +295,7 @@ term in it that a step uses without its one-line definition is a defect in that 
   *After:* "Withdraw at MED until SOURCE RANGE reads about 1.4e3 (1,400 counts a second), about 60 steps. Stop. When STARTUP RATE is back near zero, press Plot point."
   *Before:* "insert about 20 steps to trim Tavg"
   *After:* "Insert the control bank until AVG COOLANT TEMPERATURE is back in its band, about 20 steps."
-- **U7. Every number names what it is of.** "1.9 %" of what; "8.1 pcm" is meaningless without
+- **U7. Every number names what it is of.** "1.9 %" of what; "7.76 pcm" is meaningless without
   a scale ("a very small nudge"); "1.4e3" needs "1,400 counts a second" the first time in the
   leg.
 - **U8. No SI anywhere in a walkthrough** *(OWNER RULING, 2026-09-06: "DO not include SI. There

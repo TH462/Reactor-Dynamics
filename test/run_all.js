@@ -1465,7 +1465,26 @@ var BASELINES = {
   /* 27 -> 30 at #618: the Manuals/09 §7.5 ECC block was repointed from the RETIRED engine to
    * the shipped pwr2 kinetics (+1 check that both engines stay distinct in-process), and the creep
    * derivation was repointed at pwr2 and the LIVE ladder, gaining 2 checks. */
-  'run_reactivity.js':     { code: 0, score: '30checks 0failed' },
+  /* A TRACKED RED, and the red is the finding — same convention as run_ops 59/70 (#749,
+   * 2026-09-14). 30/0 -> 28/3, and the three are NOT a regression in the plant: the startup
+   * derivation block was evaluating this plant at `K2.HZP`, the BEAVRS / Watts Bar HZP
+   * physics-test anchor (291.67 °C / 15.5 MPa) that the kinetics model is CALIBRATED against.
+   * The plant's own no-load point is 547.0 °F (286.11 °C) / 15.41 MPa — 10 °F colder — and
+   * dρ/dT is −20.9 pcm/°C, so every number that block published was 10 °F hot. Six of them
+   * shipped into the manuals and the walkthrough: ρ −1257 (plant: −1136), critical 223 (207),
+   * critical at 857 ppm 400 (392), the ±750 band 111–310 (88–297) and 8.06 pcm/step (7.764).
+   * The block now takes its temperature from the hottest row of the §7.5 table this runner has
+   * just verified against the plant, so it cannot drift again without that check reddening.
+   *
+   * WHAT THE THREE REDS SAY, and why they are not re-banded: at the plant's own temperature the
+   * AUTHORED 1/M ladder ends its last plotted burst at bank 211 with ρ = +33 pcm — a 1/M point
+   * taken on a SUPERCRITICAL core, which is the one thing the ladder exists to avoid — and the
+   * creep then leaves 148 pcm of excess against the block's own `< 60` bound. Criticality is at
+   * 207-208, inside burst 5. Re-sizing burst 5 and the creep moves the authored route, the
+   * replay, the step notes and the 1/M fit, and step 10 is governed by a ruling (#660), so it
+   * is a DECISION and not an edit — filed, owner's call, red until it is made. Do not quieten
+   * this by widening the bound or by pointing the block back at the benchmark anchor. */
+  'run_reactivity.js':     { code: 1, score: '28checks 3failed' },
   // NEW 2026-08-14 (#472 phase 3b) — the pressurizer v2 two-region model at the REGION
   // level: correlations, geometry, the implicit flash, heater elevation, stratification and
   // mass closure. It exists because four commits of thermodynamics had NO consumer at all —

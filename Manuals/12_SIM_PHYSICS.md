@@ -258,7 +258,7 @@ A standard iodine → xenon chain with burnout, normalised to equilibrium xenon 
 | Scram insertion | control 2.5 s · shutdown 2.0 s, constant-rate (gravity) |
 | Insertion limit | **power-dependent**: none below 5 % power, ramping to 70 % withdrawn at 100 % |
 
-The fine 627-step drive exists so that one step in the critical band is worth **8.1 pcm (1.24 ¢)** — measured 2026-09-03 — rather than the ~36 pcm lurch a coarse drive gave. The whole profile runs **4.15 to 8.82 pcm/step**, inside the sourced 4–12 band (NRC HRTD WAT 05, ML11216A094); the shape is the four-bank overlap program of WTSM 8.1 §8.1.5.4 collapsed onto one lumped bank.
+The fine 627-step drive exists so that one step in the critical band is worth **7.76 pcm (1.19 ¢)** — re-measured 2026-09-14 (#749); the 8.1 printed here until then was this plant evaluated at a benchmark anchor 10 °F above its no-load point — rather than the ~36 pcm lurch a coarse drive gave. The whole profile runs **4.15 to 8.82 pcm/step**, inside the sourced 4–12 band (NRC HRTD WAT 05, ML11216A094); the shape is the four-bank overlap program of WTSM 8.1 §8.1.5.4 collapsed onto one lumped bank.
 
 The **rod insertion limit is a curve, not a floor**, because the limit exists to protect shutdown margin *at power*. During a startup the bank is deliberately deep and boron holds the margin, so a fixed floor would annunciate continuously through every ascent and mean nothing.
 

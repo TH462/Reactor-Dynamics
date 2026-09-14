@@ -1744,7 +1744,14 @@
         { p: 'power_pct', op: '<', v: 1, text: 'Reactor shut down: REACTOR POWER 0 %' },
       ],
       cautions: [
-        'Keep STARTUP RATE under 1.0 for the whole approach. It is the speed limit; the rod position is not. Near critical, one control-bank step adds about 8.1 pcm of reactivity (a pcm is a hundred-thousandth: 8 is a small nudge, hundreds is a big one).',
+        /* 7.76, NOT 8.1 (#749), and it is ONE number in every document now — #618's headline defect
+         * was four documents quoting this worth at three values. The 8.1 was the SAME window
+         * computed 10 °F hot (see step 2's note): `run_reactivity` evaluated it at the BEAVRS
+         * benchmark anchor, 557 °F, where it is 8.06 pcm/step. At the plant's own no-load point it
+         * is 7.764 over the fifteen steps above critical, and 7.67 averaged over 205-215 (min 7.32,
+         * max 8.29). `run_reactivity` parses this string and compares it to the plant, so a drift
+         * here reddens. */
+        'Keep STARTUP RATE under 1.0 for the whole approach. It is the speed limit; the rod position is not. Near critical, one control-bank step adds about 7.76 pcm of reactivity (a pcm is a hundred-thousandth: a few is a small nudge, hundreds is a big one).',
         'After every rod pull, stop and let SOURCE RANGE settle before you read or plot anything. The closer to critical, the longer it takes.',
         'Never pull the rods straight to the position the 1/M PLOT predicts. It reads far too high early on and comes down as points are added, and even the last one reads about five steps high — the reactor goes critical before you reach it.',
         'Do not add heat with SG FEED out of AUTO: once the reactor makes heat the steam generator boils down, and AUTO is what holds its level.',
@@ -1770,11 +1777,72 @@
          * step was never mechanically blocked — the REPLAY (section 1) drove it to completion
          * every time. What was broken was this prose: it told the player to expect a delay and
          * a control that no longer exist. BORON CHEM is a live channel now (#698); say so. */
+        /* ⚠ THIS `why` CARRIED THE LEG'S OLD CRITICAL POSITION AFTER #748 MOVED IT, AND BOTH ITS
+         * CLAUSES WERE WRONG (#749, 2026-09-14). It said "230 of 627" while steps 9 and 10, edited
+         * the same day, say the core goes critical around 205-215 — a contradiction inside one leg,
+         * which is the class #748 was hired to remove. And its 918 ppm clause said the control bank
+         * "cannot make the reactor critical at all", which is not what the plant does.
+         *
+         * ADJUDICATED BY MEASUREMENT (full stack, pwr2, `hot_zero_power`, boron and T-avg logged at
+         * every sample so nothing else was moving). QUASI-STATIC sweep — one step at a time, 60 s
+         * settle each, rods commanded on `control_rods` and the position read back off BOTH
+         * `true_state.rod_steps` and `control_state.rod_groups[0].steps`, shutdown bank pinned at
+         * 627, boron flat at 718.88 ppm, average coolant temperature 547.2-547.3 °F
+         * (286.24-286.27 °C) throughout:
+         *
+         *     bank 205   ρ -16.59      bank 208   ρ  +5.80  <- FIRST whole step with ρ >= 0
+         *     bank 206   ρ  -9.13      bank 209   ρ +13.31
+         *     bank 207   ρ  -1.81      bank 210   ρ +21.50      (zero crossing at 207.2)
+         *
+         * THE METER DEFINITION LANDS ON THE SAME STEP. Rods stopped and held 900 s: at 203
+         * (ρ −32) power plateaus at 6.6e-6 % and STARTUP RATE reaches 0.000; at 207 (ρ −1.9) the
+         * rate DECAYS 0.112 → 0.020 and is still falling; at 208 it settles POSITIVE (0.033-0.043)
+         * with power climbing 6.5e-6 → 3.8e-5 %. So "ρ crosses zero" and "self-sustaining on the
+         * meters" give the same answer here — 208 — and 207 is the ambiguous step, not 226.
+         * Corroborated on the AUTHORED route (every step's cmd issued and held as written, four
+         * seeds 42/1/7/123): ρ crosses zero at bank 208, t = 672-673 s, inside step 9's burst.
+         *
+         * AND 918 ppm DOES GO CRITICAL: measured at 917.6 ppm (ρ = −3398.6 pcm with the bank in),
+         * 50-step bursts to 450 then 2-step, the bank crosses zero at 490 of 627 (ρ −2.9 at 488,
+         * +9.1 at 490). Boron differential worth over the pair: 11.38 pcm/ppm.
+         *
+         * WHERE 230 CAME FROM — A GATE STANDING AT THE WRONG TEMPERATURE, and my first answer to
+         * this was wrong. I filed "one replay artifact, repeated"; the quality pass refuted it and
+         * the refutation reproduces. `test/run_reactivity.js`'s startup block evaluated this plant
+         * at `K2.HZP` — the BEAVRS / Watts Bar hot-zero-power physics-test anchor, 557.0 °F
+         * (291.67 °C) / 15.5 MPa, which the kinetics model is CALIBRATED against and which no
+         * initial condition occupies. The plant's no-load point is 547.0 °F (286.11 °C) /
+         * 15.41 MPa and dρ/dT is −11.6 pcm/°F, so everything that block published was 10 °F hot:
+         *
+         *                     at K2.HZP (what shipped)      at the plant
+         *   ρ @ 0, 719 ppm         −1257.2  ("−1257")          −1136.2
+         *   critical, 719 ppm          223  ("223 steps")          207
+         *   critical, 857 ppm          400  ("400 steps")          392
+         *   ±750 pcm band          111/311  ("111–310")         88/297
+         *   differential              8.06  ("8.1 / 1.24 ¢")    7.764  (1.19 ¢)
+         *
+         * ONLY 226-238 was the replay (step 10's 15 slow steps from 211, off the anchor's 223),
+         * recorded at cd1cc20c (#602 phase 2) where `git log -S` also puts this step's 230. The
+         * gate now reads its temperature from the §7.5 table it has just verified against the
+         * plant. Re-run on scratch worktrees of cd1cc20c (2026-09-01) and 2b4ef9ed (2026-09-03,
+         * the commit that wrote 223), the full-stack sweep gives 208 on both — so no plant change
+         * is involved — and the retired engine is not the source either (320 of 912 at 705 ppm).
+         *
+         * ⚠ THE FIX EXPOSED A LADDER DEFECT THAT IS STILL OPEN: burst 5 (step 9) lands at bank 211,
+         * ρ = +33 pcm, so the last 1/M point is plotted on a SUPERCRITICAL core, and the creep
+         * leaves 148 pcm of excess. `run_reactivity` carries three reds for it (28/3 in BASELINES).
+         * Not re-sized here — step 10 steers on the plot by ruling (#660), so it is a decision. */
         { text: 'Wash boron out of the water: on the BORON card set 719 and press Enter.',
-          why: 'Boron dissolved in the water soaks up neutrons. At 918 ppm the control bank cannot make the reactor critical at all; at 719 ppm it goes critical about 230 of 627 steps out.',
+          why: 'Boron dissolved in the water soaks up neutrons. At 918 ppm the bank has to come about four-fifths of the way out before the reactor will go critical — 490 of 627 steps; at 719 ppm it goes critical about 208 of 627 steps out, low in the bank with plenty of travel left.',
           note: 'ON is normally already lit; press it only if it is not. BORON STATUS reads DILUTING while the dose runs and stops by itself; BORON CHEM is a live channel and tracks the loop as it falls. From the Hot Standby preset boron already reads 719 and this step ticks at once.',
           control: 'Boron control', target: 'BORON box 719; BORON STATUS counting down; BORON CHEM tracking live',
-          wait_hint: 'From 918 ppm this takes about 65 plant-minutes. Use the speed buttons at the top.',
+          /* 90, not 65 (#749). MEASURED end to end on the full stack: 917.6 → 718.7 ppm takes
+           * 88.4 plant-minutes (850 at +28.4, 800 at +50.0, 760 at +68.4, 740 at +78.4, 725 at
+           * +85.0). Dilution is not linear and is not the boration rate read backwards — 857 → 719
+           * averages 2.2 ppm/min against 3.0 borating the same span. The plant lands at
+           * ρ = −1138.8 pcm, i.e. the same hold it boots at, so the number is the CLOCK and not a
+           * different plant. */
+          wait_hint: 'From 918 ppm this takes about 90 plant-minutes. Use the speed buttons at the top.',
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 }, hold: 60,
           acc: { p: 'boron_ppm', op: '~', v: 719, tol: 40 },
           hl: ['Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
@@ -1869,8 +1937,14 @@
           overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
+        /* THE BAND’S TOP END IS PAST CRITICAL (#749, 2026-09-14). Measured, the core crosses ρ = 0 at
+         * 207-208 of 627, so 205-210 of this step’s own 195-210 band is at or above critical — a player
+         * who stops at the top of it is critical one step early with no warning and plots a point
+         * there. The band is NOT narrowed: the step is cued on the count rate and 7,000 cps lands the
+         * authored burst at 202 (measured full stack, seed 42, ρ −37.6). The note now says where the
+         * far end of the band puts them. */
         { text: 'Hold WITHDRAW at MED until SOURCE RANGE settles above 7.0e3. Settle, press Plot point. Keep STARTUP RATE under 1.0.',
-          note: 'Stop when CONTROL ROD POSITION reads about 195 to 210 of 627 — the total on the ROD CONTROL card, not another 195 steps on top of where you are.',
+          note: 'Stop when CONTROL ROD POSITION reads about 195 to 210 of 627 — the total on the ROD CONTROL card, not another 195 steps on top of where you are. The counts are the cue, not the number: 7,000 a second normally arrives near 200, and the top of that band is already at criticality, so stop on the counts rather than driving to 210.',
           why: 'STARTUP RATE is the speedometer: 1.0 means power is multiplying by ten every minute. A positive reading means reactivity is above zero and the chain reaction is growing; zero means it is holding; negative, dying away. Under 1.0 is a comfortable climb; above it you are outrunning the plot, and nothing in the plant slows the rise for you yet.',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e3 (7,000 counts a second); point 5 plotted; STARTUP RATE under 1.0',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 14, speed: 'normal' }, hold: 150,

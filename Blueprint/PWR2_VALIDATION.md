@@ -10157,10 +10157,34 @@ DIFFERENTIAL  min 4.15  mean 6.49  peak 8.82 pcm/step     [sourced band 4-12]  I
 insertion rate at FAST                       9.3 pcm/s    [Ginna ch15 analyses 5-75]
 full pull    slow 90 min - normal 14.9 - fast 9.9         [real 627-count at 72/min = 8.7]
 critical     226-238 steps (36-38 % withdrawn)            [bank D sits ~210/230 at power]
+             ^^^ SUPERSEDED — see the note under this block (#749, 2026-09-14)
 trip reactivity                              7744 pcm     [unchanged; Ginna assumes >= 3500]
 ```
 
 The whole profile is inside the sourced band with the total worth untouched, which was the goal.
+
+> **⚠ THE `critical` ROW ABOVE IS WRONG, AND SO WAS MY FIRST EXPLANATION OF WHY (#749,
+> 2026-09-14).** Re-measured one step at a time with 60 s of settle, boron flat at 718.88 ppm and
+> average coolant temperature at 547.2 °F (286.25 °C): **ρ = −1.8 pcm at bank 207 and +5.8 pcm at
+> bank 208 — critical at about 208 of 627**; 207 statically at 546.8 °F, one step being 0.66 °F of
+> T-avg. The instrument declaration lands on the same step (rods held 900 s, the startup rate
+> decays at 207 and settles positive at 208).
+>
+> **THE ROOT CAUSE IS A TEMPERATURE, NOT A REPLAY.** I first wrote here that the whole family was
+> the walkthrough replay's creep landing, repeated; a quality-pass reviewer refuted it and I
+> reproduced the refutation. `test/run_reactivity.js` evaluated the startup derivation at
+> **`K2.HZP` — the BEAVRS / Watts Bar U1 Cycle 1 hot-zero-power physics-test anchor, 557.0 °F
+> (291.67 °C) / 15.5 MPa** — the benchmark the kinetics model is *calibrated* against, not an
+> operating point. This plant's no-load point is **547.0 °F (286.1 °C) / 15.41 MPa**, and dρ/dT is
+> **−11.6 pcm/°F**. At the anchor: ρ@0 **−1257.2**, critical **223**, critical at 857 ppm **400**,
+> ±750 band **111/311**, differential **8.06 pcm/step (1.24 ¢)**. At the plant:
+> **−1136.2 / 207 / 392 / 88–297 / 7.764 (1.19 ¢)**. Six published figures, four significant digits
+> each — `Manuals/04`'s and `09 §7.5.1`'s numbers were this plant, computed 10 °F hot, and the
+> walkthrough's **230** with them. **226–238 is the only member of the family that is a replay
+> artifact** (the creep's 15 slow steps from 211, at the anchor's 223). The gate now reads its
+> temperature from the §7.5 table it has just verified against the plant, and three of its startup
+> checks are RED as a result — the authored 1/M ladder ends its last plotted burst supercritical.
+> The other rows in the block were not re-measured.
 
 ### 129.2 SIXTEEN CHECKS REDDENED AT ONCE, AND ONLY TWO WERE ARITHMETIC
 
