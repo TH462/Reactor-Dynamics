@@ -248,6 +248,65 @@
 }
 
 
+/* ==================================================================================
+   YOUR PRESS DID NOTHING - THE BANK IS AGAINST ITS STOP (#752)
+   *(OWNER, 2026-09-14: "what if we have the rod insert/withdraw buttons flash red a few times
+   if to indicate no more rod travel when the rod reaches the end or is at the end of travel and
+   the user hits the button??")*
+
+   MEASURED, full stack, 2026-09-14 (issue #752, Diagnostic/XENON_ROD_AUTHORITY_2026-09-14.md): six
+   plant-hours of xenon trimming ran the control bank to 627 of 627 and the board said NOTHING -
+   358 WITHDRAW presses, 0 refused, 0 rod_stop ticks, 0 alarm transitions, no alarm standing. At the
+   stop `rod_nudge` returns a normal snapshot, throws nothing and moves 0.00 steps (re-measured for
+   this change against pwr2_shell: 627/627 delta 0.0000, and 0/627 delta 0.0000 on the insert end).
+
+   RED, NOT AMBER, AND THE DIFFERENCE IS THE WHOLE POINT. Amber on this board already means "the
+   plant took something away from you" - `bd-actuated` (a protection latch is holding this system),
+   `bd-msg` (the plant changed your lineup and you should know), and shell.css's WARP dropout flash
+   (#619 item 7). This one is the opposite direction: the plant did nothing at all, YOU asked for
+   something that is not there. A second amber would have made the board's loudest colour mean two
+   unrelated things, which is the exact failure the bd-msg note above spends a paragraph avoiding.
+
+   A DECLARED HMI DEPARTURE, NOT A PROTOTYPICALITY CLAIM (Blueprint/DESIGN_CRITERIA.md Q2/Q3). A
+   real Westinghouse board reports rod position through annunciator windows and the IN-OUT lamps
+   (WTSM 8.1 section 8.1.7, ML11223A252 - already cited by rodDriving in pwr_board_wiring.js); the
+   PUSHBUTTON itself does not change colour when you press it into a stop. We flash the button
+   because this board has no annunciator window for rod-at-limit and the coupling the player is
+   standing in - rod authority exhausted while Tavg sits 24 degF below programme - is the lesson.
+   UNVERIFIED: no document in this lane's corpus describes a press-refusal cue on a real rod
+   controller (`node tools/find_source.js` run for this change; see the commit message).
+
+   THE NON-COLOUR CHANNEL IS TYPOGRAPHIC, DELIBERATELY (#740: a signal may not separate itself by
+   colour and blink alone). The board's static OUTLINE vocabulary is already full - double 5px
+   (critical alarm), solid 2px (protection latch), dotted 2px (message), dashed 1/3px (the
+   walkthrough pointing at something), ridge 3px (an armed button, shell.css). A sixth line style
+   would be a hair split on a geometry that is already carrying five meanings. `line-through` is a
+   different CHANNEL: it survives greyscale and any hue collapse, it needs no motion, it sits on the
+   LABEL rather than around the button so it can never collide with an outline that is present at
+   the same time, and "WITHDRAW, crossed out" is the sentence this cue is trying to say.
+
+   FINITE, NOT INFINITE - the owner asked for "a few times". Three hard `steps(1, end)` blinks over
+   0.66 s, then the red and the strike STAND for the rest of the 1100 ms the class is held
+   (REFUSE_MS in pwr_board_wiring.js). The two numbers are independent on purpose: the standing tail
+   is what a player who blinked at the wrong moment still sees, and it is what a reduced-motion
+   viewer gets for the whole 1100 ms. OPACITY is what moves, for the reason bd-actuated's note
+   above gives at length - it composites, and this board has been render-bound before (#596). */
+.bd-btn.bd-refused {
+  background: #3a0d0d; border-color: #ff6b6b; color: #ff6b6b;
+  text-decoration: line-through; text-decoration-thickness: 2px;
+  animation: bdRefusedFlash 0.22s steps(1, end) 3;
+}
+@keyframes bdRefusedFlash { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* AND IT MUST SIT *AFTER* THE RULE THAT SETS THE ANIMATION. A media query adds NO specificity, so
+   the same block written above `.bd-refused` would lose outright and go on flashing for a player
+   who asked it not to - the defect this file already records twice (`.bd-info`, then `bdMsgFlash`).
+   Nothing else changes: the red and the line-through are the whole message, and only the
+   attention-grab is dropped. No outline is added here on purpose - see the vocabulary note above. */
+@media (prefers-reduced-motion: reduce) {
+  .bd-btn.bd-refused { animation: none; }
+}
+
 /* Count badge on a button (e.g. number of trips blocked). */
 .bd-btn { position: relative; }
 .bd-badge {

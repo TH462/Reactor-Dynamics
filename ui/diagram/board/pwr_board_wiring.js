@@ -724,8 +724,14 @@
     // so making the operator hold a button for the entire travel was the wrong affordance.
     // One click starts it, the button holds a yellow in-motion light while it travels, a
     // second click stops it wherever it is, and the latch clears itself at the limit. ---
-    imrpnyaxsb3: { press: function () { toggleLatchRod('shutdown_rods', 1); }, warn: function () { return latchActive('shutdown_rods', 1); } },
-    imrpnyf37ju: { press: function () { toggleLatchRod('shutdown_rods', -1); }, warn: function () { return latchActive('shutdown_rods', -1); } },
+    /* `rodCue` is the (group, direction) the REFUSED-PRESS cue reads (#752). The control bank's
+     * pair above already carry the same pair inside `hold` and need no second copy; these two are
+     * LATCHED pushbuttons rather than tap-or-hold, so their drive direction lives nowhere else. It
+     * is inert to every other consumer: `pressableIds`/`actionableIds` filter on press/hold only. */
+    imrpnyaxsb3: { press: function () { toggleLatchRod('shutdown_rods', 1); }, warn: function () { return latchActive('shutdown_rods', 1); },
+                   rodCue: { group: 'shutdown_rods', direction: 1 } },
+    imrpnyf37ju: { press: function () { toggleLatchRod('shutdown_rods', -1); }, warn: function () { return latchActive('shutdown_rods', -1); },
+                   rodCue: { group: 'shutdown_rods', direction: -1 } },
     // --- Steam dump: AUTO / OPEN / CLOSE ---
     imrppqg6mcc: { press: function () { cmd({ action: 'set_steam_dump', mode: 'auto' }); }, active: function (s) { return CS(s).steam_dump_auto; } },
     imrppquqg16: { press: function () { cmd({ action: 'set_steam_dump', mode: 'open' }); }, active: function (s) { return !CS(s).steam_dump_auto && (CS(s).steam_dump_pct || 0) > 50; } },
@@ -4524,6 +4530,75 @@
     return null;
   }
 
+  /* ---- "YOUR PRESS DID NOTHING": the refused rod press (#752) --------------------------------
+   * *(OWNER, 2026-09-14: "what if we have the rod insert/withdraw buttons flash red a few times
+   * if to indicate no more rod travel when the rod reaches the end or is at the end of travel and
+   * the user hits the button??")*
+   *
+   * THERE IS NO REFUSAL TO OBSERVE, SO THE TRIGGER IS READ OFF THE PUBLISHED GROUP. Measured
+   * 2026-09-14 against pwr2_shell: at 627/627 `rod_nudge` returns a normal snapshot, throws
+   * nothing, and moves 0.0000 steps; same at 0/627 on the insert end. The engine clamps in
+   * silence (`pwr2_engine.js` case 'rod_target': `Math.max(0, Math.min(BANK(), +value))`), and
+   * nothing downstream of that ever learns the command was a no-op. So this is an inference from
+   * live plant state - and it types NO bank size: a hard-coded 627 is how the retired engine's
+   * 912 survived for months (#746), which is why `bankFullScale` exists further up this file.
+   *
+   * position_pct, NOT `steps`. `steps` is `Math.round(e.rodSteps)` at the shell boundary, so it
+   * reads 627 with up to half a step of travel still available and would cross out a press that
+   * DID move the bank. `position_pct` is `100 * e.rodSteps / bankSteps()`, unrounded.
+   *
+   * EXACT BOUNDS, NOT `rodAtLimit`'s 99.9/0.1. That test asks "close enough to drop the shutdown
+   * bank's latch" and is right to be loose about it. This one asks "would this press have moved
+   * anything at all", where 0.1 % is 0.63 steps of real travel - a flash there is a lie about a
+   * press that worked.
+   *
+   * IT NEVER SUPPRESSES THE COMMAND. The cue is added and the press goes down exactly as before.
+   * If the inference is ever wrong the player gets a spurious flash; suppressing on a wrong
+   * inference would take the control away from them instead, which is much the worse failure.
+   * A second boundary worth knowing: the cue does NOT fire when the bank merely ARRIVES at its
+   * stop unpressed. A standing rod-at-limit indication is a different feature (an annunciator
+   * window) and is deliberately out of scope - arriving without a press means the player drove it
+   * there on purpose. */
+  function rodPressRefused(s, group, direction) {
+    var g = rodGroup(s, group);
+    if (!g) return false;
+    var pct = g.position_pct;
+    /* `== null` FIRST and on its own: `isFinite(null)` is TRUE, so a null-at-the-boundary field
+     * would sail through a bare isFinite guard and then compare as 0 - i.e. every INSERT press on
+     * a plant that publishes no position would be crossed out. It is the retired engine's safety
+     * too: a plant that publishes no `position_pct` gets no cue rather than a wrong one. */
+    if (pct == null || !isFinite(pct)) return false;
+    return direction > 0 ? pct >= 100 : pct <= 0;
+  }
+
+  /* How long the cue stands, blink included. See the bdRefusedFlash note in pwr_board.css for why
+   * this is longer than the animation (0.22 s x 3 = 0.66 s): the tail is what a player who looked
+   * away during the blink still sees, and it is the WHOLE cue under prefers-reduced-motion. */
+  var REFUSE_MS = 1100;
+  function cueRodRefusal(id, btn) {
+    var b = BUTTONS[id], d = b && (b.hold || b.rodCue);
+    /* `!btn.classList` IS NOT BELT-AND-BRACES - run_pwr2_board calls `onButton(item, btn)` with a
+     * Node stand-in for the element and the first cut of this threw `Cannot read properties of
+     * undefined (reading 'remove')` right through that gate. A cue is decoration: it must never be
+     * able to break the command path it decorates, on any caller. */
+    if (!d || !btn || !btn.classList) return false;
+    var s = (RD.PwrBoard && RD.PwrBoard.lastSnapshot) ? RD.PwrBoard.lastSnapshot() : null;
+    if (!s || !rodPressRefused(s, d.group, d.direction)) return false;
+    /* RESTART THE FINITE ANIMATION, or the SECOND press at the stop is silent - re-adding a class
+     * that is already on the element re-runs nothing, and a player pressing WITHDRAW over and over
+     * is exactly what #752 measured (358 of them). Remove, read a layout property to force the
+     * style flush, re-add. The `void btn.offsetWidth` is load-bearing rather than a tidy-up:
+     * without it the two class changes coalesce into no change at all. */
+    if (btn._rdRefuseT) { clearTimeout(btn._rdRefuseT); btn._rdRefuseT = null; }
+    btn.classList.remove('bd-refused');
+    void btn.offsetWidth;
+    btn.classList.add('bd-refused');
+    btn._rdRefuseT = setTimeout(function () {
+      btn.classList.remove('bd-refused'); btn._rdRefuseT = null;
+    }, REFUSE_MS);
+    return true;
+  }
+
   // ================================================================ driver API
   RD.PwrBoardDriver = {
     onMount: function (doc, ctx, r) {
@@ -4533,13 +4608,20 @@
     onButton: function (item, btn) {
       var b = BUTTONS[item.id];
       if (b && b.press) b.press(RD.PwrBoard.lastSnapshot() || {}, btn);
+      cueRodRefusal(item.id, btn);            /* the shutdown bank's latched pair (#752) */
     },
     // Momentary (press-and-hold) buttons — the rod drive. buttonMomentary tells the
     // board to route these through pointer/keyboard down+up instead of click.
     buttonMomentary: function (item) { var b = BUTTONS[item.id]; return !!(b && b.hold); },
     onButtonDown: function (item) {
       var b = BUTTONS[item.id];
-      if (b && b.hold) armRodTap(b.hold.group, b.hold.direction);
+      if (!b || !b.hold) return;
+      armRodTap(b.hold.group, b.hold.direction);
+      /* THE CUE GOES ON THE PRESS, NOT THE RELEASE (#752). A tap at the stop fires its
+       * `rod_nudge` from endHoldRod ~220 ms later and a hold fires `rod_start` there instead;
+       * hanging the cue off that would delay the answer to a question the player has already
+       * asked, and a hold would never get one at all. */
+      cueRodRefusal(item.id, (refs && refs.buttons) ? refs.buttons[item.id] : null);
     },
     onButtonUp: function () { endHoldRod(); },
     // Programmatic rod drive (keyboard ↑/↓) — mirrors the momentary buttons' tap-or-hold
@@ -4553,6 +4635,7 @@
         if (btn && btn.disabled) return false;
         if (btn) btn.classList.add('bd-pressed');
         armRodTap(group, direction);
+        if (id) cueRodRefusal(id, btn);        /* keyboard drive gets the same answer (#752) */
         return true;
       }
       if (refs && refs.buttons) Object.keys(refs.buttons).forEach(function (k) { refs.buttons[k].classList.remove('bd-pressed'); });
