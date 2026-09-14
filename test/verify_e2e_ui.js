@@ -3011,14 +3011,27 @@ async function testSpeedRungGlowRendered(page) {
  * took, and `classList.add` is idempotent, so both of those defects land as `painted < authored`
  * and nothing else in the tree can see them.
  *
- * ONE LEG, NAMED, NOT ALL SIX. Measured on this tree 2026-09-13, eight other steps still carry
- * that collision and would red the sweep on content neither #743 nor #744 touched: `pwr_startup`
- * 2 and 15, `pwr_raise_power` 2, 3 and 9, `pwr_cooldown` 1 and 4, `pwr_lower_power` 1 — the same
- * 'Boron'/'Boron control' and 'Turbine Load'/'Main Breaker' pairs #744 fixed in this leg, plus
- * 'Dump SP'/'Steam Dump'. Tracked on #745, whose own table has one FALSE POSITIVE (`pwr_startup`
- * 4) because it resolved through the board map; `RD.Highlight.resolve` consults the shell
- * overrides first and lands those two labels on different elements. Each leg joins the constant
- * above as #745 clears it. `pwr_tmi2_incident` is UNMEASURED: it carries `pause` steps, the panel stops
+ * ONE LEG, NAMED, NOT ALL SIX — AND THE REASON HAS CHANGED, SO READ THIS BEFORE CITING IT. Until
+ * 2026-09-14 the other legs were held out because eight of their steps still carried the
+ * collision and would have reddened the sweep on content neither #743 nor #744 touched. **#745
+ * fixed all eleven remaining sites in both pools and `run_manual_controls` now holds the SOURCE
+ * side at zero**, so what keeps this constant at one leg is COST and the startLeg preconditions
+ * of the other five, not known-red content. Widening it to a list is open work, not a blocker.
+ *
+ * KEEP THE TWO CORRECTIONS #745 WAS BUILT ON. The first sweep resolved through the board map and
+ * produced one FALSE POSITIVE (`pwr_startup` 4): `RD.Highlight.resolve` consults the shell
+ * overrides first and lands `1/M Plot Tool` and `Plot point` on different elements — in BOTH
+ * panel states, measured here 2026-09-14, because `#oomWin` is built at init and merely
+ * `display:none` and `querySelector` matches hidden elements, so the documented fallback to the
+ * board map never fires for this label. It also MISSED `pwr_raise_power` 9, which authors no `hl`
+ * at all and collided its `control` with its `hl_watch` — the sub-class `landOn` below already
+ * handles correctly, and the reason it recomputes the press list rather than reading `hl`.
+ *
+ * ⚠ THE BLIND SPOT THIS SWEEP SHARES WITH THE STATIC GATE: it counts elements WEARING a class,
+ * and a ring on the 1/M panel's plot button while that panel is `display:none` is counted and
+ * invisible. Neither half can currently tell those apart.
+ *
+ * `pwr_tmi2_incident` is UNMEASURED by any DOM method: it carries `pause` steps, the panel stops
  * re-rendering with the clock, and a fixed-sleep harness reads the PREVIOUS step's DOM — which is
  * exactly why `landOn` below waits for the panel to match the model instead of sleeping. The list
  * is a constant so the gap is visible and one line wide, not an omission.

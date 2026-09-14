@@ -100,11 +100,19 @@
    * nothing, exactly as an unknown board label does.
    *
    * A SHELL TARGET WINS OVER THE BOARD MAP for the same label, and FALLS BACK TO IT when the
-   * selector matches nothing. That combination is the whole behaviour for `Plot point`: the
-   * board label stays in CONTROL_LABEL_MAP (deleting it would red `run_manual_controls` for
-   * every step that names it), so with the 1/M window OPEN the ring lands on the plot-point
-   * button and with it CLOSED it lands on `bdOneOverM` — the button you have to press to open
-   * the window, which is the right target in that state. Not a fallback that glows nothing. */
+   * selector matches nothing. The board label therefore stays in CONTROL_LABEL_MAP — deleting it
+   * would red `run_manual_controls` for every step that names it.
+   *
+   * ⚠ BUT THE FALLBACK NEVER FIRES FOR `Plot point`, AND THIS COMMENT USED TO SAY IT DID.
+   * It claimed that with the 1/M window CLOSED the ring lands on `bdOneOverM`, the opener — a
+   * tidy story, and false. MEASURED in headless Chromium 2026-09-14 on `?engine=pwr2`: `#oomWin`
+   * is built at INIT and merely `display: none` until opened, and `document.querySelector`
+   * matches hidden elements, so `shellTarget('Plot point')` returns the plot button in BOTH
+   * states and `resolve` never reaches `revealControl`. What actually happens with the window
+   * shut is that the ring goes on a 0x0 hidden button and the player sees NOTHING for that
+   * label — which on `pwr_startup` 4 is defensible (the step tells them to open the tool first),
+   * but is not what was written here, and a gate that counts elements by class cannot see it.
+   * Do not re-derive the old claim from the `||` below; the DOM, not the operator, decides it. */
   /* ONE ENTRY ON PURPOSE. `Speed control` was here and is DELETED (quality pass, 2026-09-12):
    * nothing resolved it — the speed-bar glow is COMPUTED in ui/app.js from the active step's own
    * hold, not authored as an `hl` label — and a step that did name it would red

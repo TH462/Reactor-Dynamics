@@ -57,8 +57,42 @@
   var win = null, svg = null, msgEl = null;
   var points = [];           // [{ x: rod fraction withdrawn 0–1, counts, y: C0/counts }]
   var C0 = null;
-  var maxSteps = 912;        // control-group full-withdrawal steps (for the steps axis; self-updates from the snapshot on plot)
   var lastPlant = null, lastCaptureT = null;
+
+  /* THE STEPS AXIS READS THE BANK LIVE, AND THE NUMBER IS NEVER TYPED HERE (#746, the #707
+   * resolution; same ladder as `bankFullScale` in ui/diagram/board/pwr_board_wiring.js).
+   *
+   * This was `var maxSteps = 912` — the RETIRED engine's control-group bank — and it
+   * self-corrected at `plotPoint` from `g.max_steps`. Only there: from the moment the panel
+   * opened until the first point was plotted, the four x ticks, the "predicted criticality ≈
+   * step N" readout and the "critical N" label were all drawn on a 912-step scale against a
+   * plant whose bank is 627. `pwr2:pwr_startup` step 4 tells the player to open the tool and
+   * THEN press "Plot point", so the wrong scale sat on the authored route.
+   *
+   * HARD-CODING 627 WOULD BE THE SAME DEFECT WITH A FRESHER NUMBER — 912 was right when it was
+   * written too. Both engines publish `max_steps` on every `control_state.rod_groups[]` record,
+   * so the scale travels with the data and a replay is drawn on the scale of the engine that
+   * produced it. Resolved LAZILY, at draw time, off the live snapshot: `plotPoint` is not the
+   * only thing that can change the bank, and a value captured on the first plot is a second
+   * copy free to go stale the way the literal did.
+   *
+   * ⚠ typeof FIRST — `isFinite(null)` is TRUE (the #555 trap) and a JSON round trip writes a
+   * dead channel out as null, which would put a plausible 0 on the axis. The last-ditch literal
+   * fires only when no snapshot AND no plant module is reachable (a bare page, a fixture), so
+   * the panel still draws a sensible axis rather than dividing by nothing. */
+  function bankFullScale() {
+    var s = getSnap && getSnap();
+    var g = s ? controlGroup(s) : null;
+    var n = g && g.max_steps;
+    if (typeof n === 'number' && isFinite(n) && n > 0) return n;
+    /* `RD` is this module's IIFE parameter — the SAME object as `globalThis.RD`, so a table
+     * attached by a plant module that loads AFTER this file is still visible through it. */
+    var k = RD && RD.pwr2 && RD.pwr2.kinetics && RD.pwr2.kinetics.RODS;
+    if (k && typeof k.max_steps === 'number' && k.max_steps > 0) return k.max_steps;
+    var c = RD && RD.PWR_CONFIG && RD.PWR_CONFIG.rods;
+    if (c && typeof c.max_steps === 'number' && c.max_steps > 0) return c.max_steps;
+    return 627;
+  }
 
   /* Plot geometry (viewBox units).
    *
@@ -66,8 +100,12 @@
    * ticks and labels live in, and they were costing 15.3 % of the width and 18.3 % of the
    * height. getBBox() of every text node the plot emits (scratchpad probe, Chromium, viewBox
    * units) says what each one actually needs:
-   *   R — the last x tick ("912") is CENTRED on px(1.0) and its bbox ended at 335.58 of 340,
-   *       i.e. 4.4 spare. Half the tick's 14.05-unit width plus a hair -> 9.
+   *   R — the last x tick is CENTRED on px(1.0) and its bbox ended at 335.58 of 340, i.e. 4.4
+   *       spare. Half the tick's 14.05-unit width plus a hair -> 9. ⚠ THAT WAS MEASURED ON
+   *       "912" AND R IS THEREFORE A THREE-DIGIT BUDGET (#746 — the tick is `bankFullScale()`
+   *       now, "627" on the shipped plant, and the panel's font has tabular figures so three
+   *       digits is three digits; NOT re-measured for 627, and a bank of 1000+ steps would
+   *       need R measured again).
    *   L — the rotated y-axis label occupies x 0.51..12.71 after its rotate(-90 10 y) (that
    *       span is the text's HEIGHT, so it cannot be moved left: x >= 9.49 or it clips), and
    *       the y ticks ("0.25") are 17.14 wide ending at L-2.9. 12.71 + 17.14 + 2.9 + a 2-unit
@@ -216,6 +254,7 @@
      * circularity in computing it first — which is exactly why it can be hoisted and the cell
      * measurement cannot. */
     var f = fit(), pred = null, xc = null;
+    var maxSteps = bankFullScale();   /* #746 — resolved per draw, never cached */
     if (f && f.b < -1e-6) {
       xc = -f.a / f.b;
       if (xc > points[points.length - 1].x - 1e-9 && xc <= 1.2) pred = xc;
@@ -280,7 +319,9 @@
     if (counts > 9e5) { setMsg('SR pegged near full scale — past 1/M territory', true); return; }
     var g = controlGroup(s);
     if (!g) return;
-    if (g.max_steps) maxSteps = g.max_steps;
+    /* The `maxSteps = g.max_steps` capture that used to live here is GONE (#746). It was the
+     * only thing correcting the 912 literal, and it corrected it one press too late; the axis
+     * reads the bank live at draw time now, so there is nothing to capture. */
     var x = (g.position_pct || 0) / 100;
     if (points.length === 0) {
       C0 = counts;

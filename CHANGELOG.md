@@ -30,6 +30,32 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (two walkthrough highlight labels that drew one ring, and the 1/M plot's steps axis — #745, #746)
+
+- **Fourteen walkthrough steps named two highlight labels that resolve to the SAME board
+  element** — `Turbine Load`/`Main Breaker` are both `imro8k5pzem`, `Boron`/`Boron control` both
+  `imrmtlyf64y`, `Dump SP`/`Steam Dump` both `imrop5ouw7h`. One element wears one ring, and
+  `applyCklWatchGlow` skips anything already pulsing, so the control the step named FIRST glowed
+  not at all. Eight were in the live pwr2 pool (`pwr_startup` 2/15, `pwr_raise_power` 2/3/9,
+  `pwr_lower_power` 1, `pwr_cooldown` 1/4), six in the retired `pwr` pool. All fourteen re-authored
+  to the press/watch split: **collisions 14 → 0**, measured by resolving every label the way the
+  renderer does.
+- **Five board labels the vocabulary did not carry**, which is why the near-miss aliases were
+  reached for: the BORON target box, BORON STATUS, the BORON CHEM ppm reading, the STEAM DUMP
+  setpoint box and the generator LOAD box. A step that says "set 719 and press Enter" now rings the
+  box it means, and the readouts it tells you to watch ring steadily beside it.
+- **`run_manual_controls` gained the check that can see this**: it resolves every label of a step
+  through the renderer's own resolver — shell overrides first, then the board map, with the step's
+  `control` folded in as the press target when `hl` is empty — and asserts the resolved ids within
+  one step are distinct. Born red on all fourteen sites, so it ships with the fixes. **702 → 926
+  checks**, of which 203 is one check per step and 21 is the re-authoring.
+- **The 1/M plot drew its steps axis on the retired engine's 912-step bank** until the first point
+  was plotted. The shipped plant's bank is 627, and `pwr_startup` step 4 tells the player to open
+  the tool and *then* plot — so the ticks, the "predicted criticality ≈ step N" readout and the
+  "critical N" label were all on the wrong scale exactly when the panel is first looked at. The
+  bank is read live at draw time now (the same ladder the board's rod readouts use); the number is
+  not typed on this side of the wire, because typing 627 is how 912 got there.
+
 ### Changed (the walkthrough highlights go cyan, the watch ring becomes a glow again, and only the recommended speed rung lights — #743)
 
 *(OWNER, 2026-09-13 playtest, #724: "on the plant screen i dont like the new textured highlights.

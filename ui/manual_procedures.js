@@ -205,7 +205,7 @@
           control: 'Turbine Load', target: 'generator disconnected, governor shut',
           note: 'The cold_shutdown board SPAWNS off line (#251 — breaker open, rotor at rest, load mode disconnected). This step confirms rather than changes. Leave the turbine off until the end of the startup path.',
           cmd: { action: 'disconnect_grid' }, hold: 10,
-          hl: ['Turbine Load', 'Main Breaker'] },
+          hl: ['Turbine Load'], hl_watch: ['Generator Output'] },
         { text: 'Put steam-generator level control in AUTO now, while level is still at its cold 65 % (STEAM GEN FEED → AUTO on the board). The three-element channel captures the level it finds as its setpoint.',
           control: 'Feed Pumps', target: 'Feed AUTO engaged, SG level ≈ 65 %',
           note: 'On pump heat the SG barely boils, so AUTO simply holds. What it prevents is a standing manual feed demand that keeps filling a generator nobody is boiling.',
@@ -214,7 +214,7 @@
         { text: 'Set the Steam Dump Setpoint to the no-load anchor (1020 psi / 7.03 MPa — Ginna\'s sourced 1005 psig no-load point, #419 wave 3) so the secondary bottles with the heatup instead of dumping it. Leave the dump shut.',
           control: 'Dump SP', target: '1020 psi (7.03 MPa)',
           cmd: { action: 'set_steam_dump_setpoint', mpa: 7.03 }, hold: 5,
-          hl: ['Dump SP', 'Steam Dump'] },
+          hl: ['Dump Setpoint'], hl_watch: ['Steam Dump', 'Steam Dump Status'] },
         { text: 'Raise the Pressurizer Pressure Setpoint to 2235 psi (15.41 MPa). The setpoint walks up at the real full-heater pace — 0.23 psi/s (1.586e-3 MPa/s) — and measured full-stack, normal operating pressure arrives in about 1.8 plant-hours (#419 wave 1: the compressed clock is retired; ride it at time acceleration). The accumulator window in the next step opens and shuts inside this climb. Watch RHR isolate on the way past its 600 psi (4.14 MPa) autoclosure interlock (#288).',
           control: 'Pressure SP', target: '2235 psi (15.41 MPa)',
           cmd: { action: 'set_pressure_setpoint', mpa: 15.41 }, hold: 9000,
@@ -326,7 +326,7 @@
           control: 'SR detector', target: 'SR de-energized',
           cmd: { action: 'set_sr_detector', on: false }, hold: 5,
           acc: { p: 'sr_energized', op: '<', v: 1 },
-          hl: ['SR detector', 'Source Range', 'Intermediate Range'] },
+          hl: ['SR detector'], hl_watch: ['Intermediate Range'] },
         { text: 'Creep up on criticality: withdraw at Slow in single steps. The reactor goes critical and power begins to climb — watch the Startup Rate (SUR) and keep the reactor period long.',
           control: 'Control Bank', target: 'critical, SUR ≤ 1 DPM, period ≥ 30 s',
           note: 'One fine step is ~1 ¢ (6.70 pcm) near the band. If the period drops below 30 s, stop or insert — the reactor is accelerating.',
@@ -413,7 +413,7 @@
           control: 'Turbine — Connect Grid', target: 'generator loaded',
           cmd: { action: 'connect_grid' }, hold: 180,
           acc: { p: 'mwe_output', op: '>', v: 10 },
-          hl: ['Turbine Load', 'Main Breaker'] },
+          hl: ['Turbine Load'], hl_watch: ['Generator Output'] },
         { text: 'Take load control: put the turbine in MANUAL. It picked up load in FOLLOW, which was right for synchronising — the turbine chased the reactor while you got on line. From here you drive generator load yourself, and the setpoint stays where FOLLOW left it, already matched to the power you are making.',
           control: 'Turbine Load', target: 'MANUAL, setpoint matched to output',
           note: 'This is how the board is handed to you in free play, and it is the lineup the rest of the manual assumes. It also puts you in charge of a coupling worth understanding: in MANUAL the turbine sits at whatever load you last asked for, so if you change reactor power and leave the setpoint alone, the two diverge — LOAD IMBAL comes in at 4 MWe and the steam generator starts filling or draining. Matching them is the operator\'s job.',
@@ -579,7 +579,7 @@
           note: 'This is the same 857 ppm the cold_shutdown initial condition ships, and it is why a plant that came down this way goes critical near step 561 on the next startup rather than the 319 the startup checklist assumes (#303).',
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 857 }, hold: 3600,
           acc: { p: 'boron_ppm', op: '>', v: 850 },
-          hl: ['Boron control', 'Boron (Reactivity) — CVCS'] },
+          hl: ['Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
         { text: 'Lower the Pressurizer Pressure Setpoint to 1901 psi (13.11 MPa) — saturation for the temperature you are at plus the 63 °F (35 °C) of subcooling this cooldown holds throughout. It also puts you inside the P-11 permissive (below 1972 psi / 13.6 MPa), which is what makes the next two steps possible.',
           control: 'Pressure SP', target: '1901 psi (13.11 MPa), below P-11',
           cmd: { action: 'set_pressure_setpoint', mpa: 13.11 }, hold: 300,
@@ -606,7 +606,7 @@
           ramp: [{ action: 'set_steam_dump_setpoint', arg: 'mpa', points: [7.03, 6.67, 6.32, 5.96, 5.61] },
                  { action: 'set_pressure_setpoint',   arg: 'mpa', points: [13.11, 12.07, 11.10, 10.18, 9.32] }],
           acc: { p: 'tavg_c', op: '~', v: 271, tol: 4 },
-          hl: ['Dump SP', 'Pressure SP', 'Tavg', 'Steam Dump'] },
+          hl: ['Dump Setpoint', 'Pressure SP'], hl_watch: ['Tavg', 'Steam Dump'] },
         { text: 'LEG 2 — continue to the accumulator isolation point. Dump SP 814 → 580 psi (5.61 → 4.00 MPa), Pressure SP 1352 → 1004 psi (9.32 → 6.92 MPa), over 25 plant-minutes. Watch the pressure: this leg ends AT 1000 psi, and the SI ACCUM annunciator comes in there.',
           control: 'Dump SP', target: 'pressure 1000 psi (6.895 MPa), Tavg 482 °F (250 °C)',
           cmd: { action: 'set_steam_dump_setpoint', mpa: 4.00 }, hold: 1512,
@@ -1777,7 +1777,7 @@
           wait_hint: 'From 918 ppm this takes about 65 plant-minutes. Use the speed buttons at the top.',
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 }, hold: 60,
           acc: { p: 'boron_ppm', op: '~', v: 719, tol: 40 },
-          hl: ['Boron', 'Boron control'] },
+          hl: ['Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
         /* CONFIRM, NOT ACT *(OWNER, 2026-09-03, #619 item 16: "mode 3 CL has me put SG feed in
          * AUTO but its already in AUTO when I get there")*. Both routes into this leg arrive
          * with feed already in AUTO — the Hot Standby preset boots it there, and a player who
@@ -1979,7 +1979,7 @@
           cmd: { action: 'set_load_target', mwe: 10 }, hold: 240,
           accs: [{ cmd: 'latch_turbine', label: 'Turbine latched' },
                  { p: 'mwe_output', op: '>', v: 8, label: 'Generator above 8 MWe' }],
-          hl: ['Turbine Load', 'Main Breaker'] },
+          hl: ['Turbine — Latch', 'Load Setpoint'], hl_watch: ['Turbine Load', 'Generator Output'] },
         { text: 'Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the IR HIGH FLUX row.',
           note: 'Do this the moment REACTOR POWER is above 8 %: at 25 % this trip fires. The plant refuses the press below 8 %, and the reactor keeps climbing while the panel is open.',
           why: 'Two automatic shutdowns exist only to protect a startup, one at 25 % power and one at 35 %. Above 8 % they are no longer needed and would trip the reactor on the way up, so you switch them off one at a time. This one also clears a rod stop at 20 %; drop below 8 % and the plant switches them back on by itself.',
@@ -2122,7 +2122,7 @@
           cmd: { action: 'latch_turbine' }, hold: 240,
           accs: [{ p: 'turbine_tripped', op: '<', v: 1, label: 'Turbine latched, TRIP not lit' },
                  { p: 'mwe_output', op: '>', v: 8, label: 'Generator above 8 MWe' }],
-          hl: ['Turbine Load', 'Main Breaker'] },
+          hl: ['Turbine Load'], hl_watch: ['Generator Output'] },
         { text: 'On the BORON card set 660 and press Enter.',
           note: 'Press ON only if it is not already lit. The dilution then runs in the background for the whole climb.',
           why: 'Every percent of power costs reactivity: the fuel heats up and the water thins out. Rods could pay for all of it but would end up deep in the core, so real plants dilute boron for the bulk and use rods for the fine trim. Dilution runs at about 3 ppm a minute, so it needs the whole climb to work.',
@@ -2144,7 +2144,7 @@
            * is checked at the end of the climb, on the verify step. */
           accs: [{ cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 660 },
                    label: 'BORON set to 660 ppm' }],
-          hl: ['Boron', 'Boron control'] },
+          hl: ['Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
         /* THE "DRAW A SAMPLE" STEP WAS DELETED HERE, 2026-09-11 *(OWNER RULING, 2026-09-10,
          * option B, #698)*. It read "Press SAMPLE on the BORON card…" and was graded
          * `accs: [{ cmd: 'take_boron_sample' }]`.
@@ -2294,7 +2294,7 @@
           accs: [{ p: 'power_pct', op: '>', v: 96, label: 'REACTOR POWER near 100 %' },
                  { p: 'boron_ppm', op: '<', v: 680, label: 'BORON down to its 660 ppm setting' },
                  { p: 'tavg_c', op: '~', v: 303.2, tol: 8, label: 'AVG COOLANT TEMPERATURE between 563 and 592 °F' }],
-          hl_watch: ['Tavg', 'Turbine Load', 'Boron'] },
+          hl_watch: ['Reactor Power', 'Generator Output', 'Tavg', 'Boron Concentration'] },
         /* STEP TWO OF THE BORON PROGRAM *(OWNER RULING, 2026-09-04: selected "A two-step boron
          * program that follows xenon")*, and the measurement that makes it the right shape:
          *
@@ -2446,7 +2446,7 @@
           control: 'Boron control', target: 'BORON reads 719 ppm, ON lit',
           wait_hint: 'The boration takes about half a plant-hour. Start it first and take the stages while it works.',
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 }, hold: 30,
-          hl: ['Boron', 'Boron control'] },
+          hl: ['Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
         /* ================= TWO STEPS, BECAUSE THE ORDER IS THE LESSON (#736) ==================
          * *(OWNER, #724 item 18: "this step has yuou put rods in after lowering turbine output to
          * 75%. the problem is that it doesnt mater what order you do things it will end up
@@ -2743,7 +2743,7 @@
           wait_hint: 'The boration takes about 60 plant-minutes at 3 ppm a minute. Start it and carry on; the next steps run while it works.',
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 920 }, hold: 3900,
           acc: { p: 'boron_ppm', op: '>', v: 880 },
-          hl: ['Boron', 'Boron control'] },
+          hl: ['Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
         { text: 'Lower SET PZR PRESSURE to 1900 psi.',
           note: 'Below 1972 psi the plant lets you switch off the protection in the next step.',
           why: 'Two automatic protections watch for falling pressure, because on a running plant falling pressure means a leak. They can only be switched off below 1972 psi, so the setpoint comes under that first. This is not the depressurization; it only unlocks the next step.',
@@ -2855,7 +2855,7 @@
           accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_auto', op: '>', v: 0,
                    label: 'STEAM DUMP AUTO lit, status PRESS' },
                  { p: 'tavg_c', op: '<', v: 175, label: 'AVG COOLANT TEMPERATURE below 347 °F' }],
-          hl: ['Dump SP', 'Steam Dump'], hl_watch: ['Tavg'] },
+          hl: ['Steam Dump — Auto', 'Dump Setpoint'], hl_watch: ['Steam Dump Status', 'Tavg'] },
         { text: 'Lower SET PZR PRESSURE to 1700 psi, as low as the box goes. From here pressure comes down by hand.',
           why: 'The setpoint box is the at-power pressure control and it stops at 1700 psi. A real cooldown leaves it exactly there: below it the heaters have nothing to hold, and the operator lowers pressure with the spray instead.',
           control: 'Pressure SP', target: 'SET PZR PRESSURE 1700 psi; PRIMARY PRESSURE below 1770 psi',

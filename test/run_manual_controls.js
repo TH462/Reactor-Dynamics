@@ -98,6 +98,66 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
   if (!DRV.controlLabels) return;
   var known = {};
   DRV.controlLabels().forEach(function (l) { known[l] = true; });
+
+  /* ============================ THE RESOLVED-ID CHECK (#745) ============================
+   * The disjoint check below compares LABEL STRINGS. `Turbine Load` and `Main Breaker` are
+   * different strings and the same board element (`imro8k5pzem`), so a step naming both got
+   * ONE ring, the control it named first glowed not at all, and every gate agreed the step
+   * was correctly authored. Fourteen steps were doing it, eight in the live pwr2 pool.
+   *
+   * RESOLVE THE WAY THE RENDERER DOES, OR THIS LIES. Two corrections, both filed as prior
+   * measurements on #745/#747 and both REPRODUCED here before anything was built on them —
+   * cited that way on purpose, because every agent in this repo comments under the owner's
+   * account and authorship on an issue is not evidence of who measured what:
+   *
+   *   1. `controlLabelItem` IS NOT THE RENDERER'S RESOLVER. `ui/app.js`'s `hlTarget` calls
+   *      `RD.Highlight.resolve`, which tries the SHELL overrides FIRST and only then falls
+   *      back to the board map. #735 registered `Plot point` as a shell target precisely
+   *      because it was landing on `bdOneOverM`, the button that OPENS the plot. Resolving
+   *      through the board map alone reports `pwr_startup` 4 as a collision when the board
+   *      paints two distinct elements — a false positive that would have bought a fix for a
+   *      step that never had the defect. A shell target is namespaced `shell:<selector>` here
+   *      so it can never collide with a board id.
+   *   2. A STEP'S PRESS LIST IS NOT ALWAYS `hl`. `stepHlLabels` (ui/app.js) uses `hl` when it
+   *      has entries, ELSE the step's own `control`, skipping the "(observe…)" placeholders.
+   *      `pwr_raise_power` 9 authors no `hl` at all: its press target is `control: 'Boron
+   *      control'` and its `hl_watch` carries `'Boron'` — one element, and `applyCklWatchGlow`
+   *      drops the steady ring on it. A check walking only `hl` and `hl_watch` never sees that
+   *      whole sub-class. Fold `control` in exactly as the renderer does.
+   *
+   * ⚠ THE MODEL IS EXACT FOR THE ONE SHELL TARGET THERE IS, AND THAT WAS MEASURED, NOT REASONED.
+   * The obvious worry is that a shell target FALLS BACK to the board map when its selector
+   * matches nothing — which would make `1/M Plot Tool` and `Plot point` collide whenever the 1/M
+   * window is shut, and this check optimistic. IT DOES NOT HAPPEN. Measured in headless Chromium
+   * 2026-09-14, `?engine=pwr2`: `#oomWin` is built at INIT and merely `display:none` until
+   * opened, `document.querySelector` matches hidden elements, and `RD.Highlight.resolve` returns
+   * the plot button in BOTH states — `same: false` closed and open, against `same: true` for
+   * `Boron`/`Boron control` and `Turbine Load`/`Main Breaker` probed in the same run as controls.
+   * So the namespacing below matches the renderer exactly rather than approximating it.
+   *
+   * What IS true in the closed state is a different thing and not this check's subject: the ring
+   * lands on a 0x0 `display:none` button, so the player sees no pulse for that label until they
+   * open the tool. On `pwr_startup` 4 that is arguably right — the step tells them to open it
+   * first — but a class-COUNT gate cannot tell an invisible ring from a visible one.
+   * ==================================================================================== */
+  /* The bus is a plain global-namespace script and its SHELL_TARGETS is a plain object;
+   * nothing on this path touches `document`. Required here rather than at the top of the
+   * file so this stays the only section that depends on it. */
+  /* ⚠ If this ever throws, SHELL is empty and the check degrades to the BOARD-MAP resolution
+   * corrected against above — i.e. it reds on `pwr_startup` 4 for a defect that is not there.
+   * That is a loud failure, not a silent one, and the message names the labels, so the next
+   * reader can get here. Do not "fix" such a red by relaxing the check. */
+  try { require('../ui/highlight_bus.js'); } catch (e) { /* fall through with SHELL empty */ }
+  var SHELL = (globalThis.RD.Highlight && globalThis.RD.Highlight.SHELL_TARGETS) || {};
+  function resolveLabel(lab) {
+    if (SHELL[lab]) return 'shell:' + SHELL[lab];
+    return DRV.controlLabelItem ? (DRV.controlLabelItem(lab) || null) : null;
+  }
+  function pressLabels(st) {
+    if (st.hl && st.hl.length) return st.hl;
+    if (st.control && !/^\(observe/i.test(st.control)) return [st.control];
+    return [];
+  }
   /* The pwr board's vocabulary answers for the pwr pools only. A plant with its own board
    * (rbmk/bwr use the process-diagram labels) is checked by run_campaign's own pool. */
   ['pwr', 'pwr2'].forEach(function (prof) {
@@ -130,6 +190,20 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
              '"' + both.join('", "') + '" is in BOTH lists — one element cannot be both the ' +
              'control to press and the indication to watch');
         }
+        /* …AND THE SAME CLAIM ON RESOLVED IDS (#745). One check per step, so the count is
+         * DERIVED from the pool rather than typed: add a step and the tally moves by one. */
+        var byId = {}, shared = [];
+        pressLabels(st).concat(st.hl_watch || []).forEach(function (lab) {
+          var id = resolveLabel(lab);
+          if (!id) return;                       // unknown labels are the check above's job
+          (byId[id] = byId[id] || []).push(lab);
+        });
+        Object.keys(byId).forEach(function (id) {
+          if (byId[id].length > 1) shared.push('"' + byId[id].join('" + "') + '" -> ' + id);
+        });
+        ck(where + ' hl/hl_watch resolve to distinct elements', shared.length === 0,
+           shared.join('; ') + ' — two labels, ONE board element: it can wear one ring, so ' +
+           'the first is silently dropped');
       });
     });
   });

@@ -775,16 +775,39 @@ His annotations mark every highlight `(steady)` or `(pulsing)`, which is exactly
   `Dump SP` and `Steam Dump` are both `imrop5ouw7h`; `Boron` and `Boron control` are both
   `imrmtlyf64y`.
 
-  **MEASURED 2026-09-13, by resolving every label in both pools through
-  `RD.PwrBoardDriver.controlLabelItem`: 14 steps carry a collision.** Three were in `pwr_heatup`
-  and are fixed here; eleven are elsewhere, of which **eight are in the live pwr2 pool** —
-  `pwr_startup` 2/4/15, `pwr_raise_power` 2/3, `pwr_lower_power` 1, `pwr_cooldown` 1/4. Those are
-  deliberately NOT fixed: they are other legs, out of this pass's scope (#744).
+  **MEASURED 2026-09-13: 14 steps carried a collision** — three in `pwr_heatup`, fixed at #744;
+  the other eleven fixed at #745, 2026-09-14. **Collisions are now 0 in both pools and a gate
+  holds them there**, so what follows is how to keep it that way, not a backlog.
 
-  **The check that would catch them does not exist yet.** `run_manual_controls` would have to
-  resolve each label to its board id and assert the ids *within a step* are distinct — a
-  RESOLVED-ID comparison, where today's disjoint check is a string one. Until it ships, resolve
-  the ids by hand when you author a highlight list; a near-miss label is invisible otherwise.
+  **`run_manual_controls` now makes the RESOLVED-ID comparison** (#745), beside the string one.
+  Two things about it decide whether YOUR next highlight list is judged correctly:
+
+  - **It resolves the way the RENDERER does, not through the board map.** `ui/app.js`'s `hlTarget`
+    calls `RD.Highlight.resolve`, which tries the SHELL overrides first — so `Plot point` lands on
+    the 1/M panel's own button (#735) and not on `bdOneOverM`, the button that OPENS the plot.
+    Resolving through `controlLabelItem` alone reports `pwr_startup` 4 as a collision when the
+    board paints two distinct elements. **That false positive was caught only because someone
+    re-measured against paint instead of against the map**; the first sweep, and this section's
+    own first draft, both listed step 4 as defective and would have bought a fix for a step that
+    never had the bug. (Not attributed: agents and the owner share one GitHub account here, so an
+    issue comment's authorship says nothing about who took the measurement — reproduce it.)
+  - **It folds `control` in as the press target when `hl` is empty**, exactly as `stepHlLabels`
+    does. `pwr_raise_power` 9 authors no `hl` at all — its press target is `control: 'Boron
+    control'` and its `hl_watch` carried `'Boron'`, one element — and a check walking only the two
+    lists never sees that whole sub-class. It was missing from the first sweep for that reason.
+
+  **The fallback worry, MEASURED AND CLOSED (2026-09-14).** A shell target falls back to the
+  board map when its selector matches nothing, which would make `1/M Plot Tool` and `Plot point`
+  collide whenever the 1/M window is shut. Probed in headless Chromium on `?engine=pwr2`:
+  `#oomWin` is built at init and merely `display:none`, `querySelector` matches hidden elements,
+  and `RD.Highlight.resolve` lands the two labels on different elements in **both** states
+  (`same: false` closed and open; `Boron`/`Boron control` probed alongside as a control returns
+  `same: true`). The gate's model is exact, not approximate.
+
+  **What the closed state DOES cost** — a different class, not a collision: the ring goes on a
+  0×0 hidden button, so no pulse is visible until the player opens the tool, and a gate that
+  COUNTS elements by class cannot tell that from a visible ring. `verify_e2e_ui`'s watch-glow
+  sweep is the paint-side half and has the same blind spot.
 - **A watch label must resolve to a DIFFERENT element than the step's own `hl`.**
   `applyCklWatchGlow` skips any element already carrying `ckl-step-glow`, so a steady ring asked
   for on an element that is already pulsing is silently dropped.

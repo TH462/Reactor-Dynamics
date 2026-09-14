@@ -3554,6 +3554,32 @@
      * GRADES on it (`letdown_flow_actual`) — and neither could point at it: the only letdown key
      * was the orifice CARD. Same hole as 'Reactor Power' and 'Control Rod Position'. */
     'Letdown Flow': 'imsgti0gnpf',
+    /* THE FIVE REMAINING "SET A NUMBER / READ A NUMBER" HOLES (#745). #744 opened the turbine
+     * and steam-dump BUTTON vocabulary; what it left unnamed is the SETPOINT BOX a step types
+     * into and the READOUT it then tells the player to watch — so eleven steps outside
+     * `pwr_heatup` were still pointing both of their labels at one CARD. `Boron` / `Boron
+     * control` were both `imrmtlyf64y` (five sites), `Dump SP` / `Steam Dump` both
+     * `imrop5ouw7h`, `Turbine Load` / `Main Breaker` both `imro8k5pzem`. Adding keys only
+     * widens the vocabulary; both gates fail on a label that is MISSING, never on one nothing
+     * names yet.
+     *
+     * Each id VERIFIED ON THE CANVAS and against DOC_REMOVE — the trap `imrzmlyafa3` names two
+     * blocks above, and `bdSrDetector` / `bdBoronSample` are live examples of a plausible id
+     * that is no longer drawn. These five are all in the doc and none is removed:
+     *   'Boron Target'    imrpq29jo7t — the 0–2500 ppm input on the BORON card, the box a
+     *                     "set 719 and press Enter" step is actually asking for.
+     *   'Boron Status'    ims3wy5oym4 — BORATING / DILUTING / the dose countdown.
+     *   'Boron Concentration' ims2jva1ff5 — the BORON CHEM ppm reading (live and continuous
+     *                     since #698), i.e. the number a boron step tells the player to watch
+     *                     WALK toward the target. Named for the reading, not for the retired
+     *                     grab-sample button whose slot it shares.
+     *   'Dump Setpoint'   ims31tq7mgc — the 29–1350 psi STEAM DUMP VALVE SET POINT box, as
+     *                     against 'Dump SP', which is the card around it.
+     *   'Load Setpoint'   imro8rmka2y — the generator LOAD input, as against 'Turbine Load',
+     *                     which is the TURBINE-GENERATOR card. */
+    'Boron Target': 'imrpq29jo7t', 'Boron Status': 'ims3wy5oym4',
+    'Boron Concentration': 'ims2jva1ff5',
+    'Dump Setpoint': 'ims31tq7mgc', 'Load Setpoint': 'imro8rmka2y',
     // Aliases for the `control` strings the checklist steps use (so the step-hover
     // fallback in ui/app.js resolves without authoring an explicit `hl` on each).
     /* THE CARD, NOT THE PUMP GRAPHIC *(#607 item 1)*. Both names used to point at
