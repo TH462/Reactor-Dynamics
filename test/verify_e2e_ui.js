@@ -2858,6 +2858,149 @@ async function testWalkthroughHoldReleasedOnExit(page) {
  * THE NEGATIVE HALF IS LOAD-BEARING: the step authors no `hl` and no `control`, so the PULSING
  * class must be absent. Without it the check passes on a renderer that puts one treatment on
  * both lists, which is the defect the whole issue is about. */
+/* THE RECOMMENDED SPEED RUNG LIGHTS AND THE STRIP DOES NOT (#743).
+ *
+ * *(OWNER, 2026-09-13 playtest: "instead of highlighting all the speed controls, just highlight the
+ * one that is suggested.")*
+ *
+ * THIS IS A DARK-WIRE PROOF AND THE WIRE WAS ACTUALLY DARK FOR A DAY. `applyCklSpeedGlow` shipped
+ * on 2026-09-12 adding `.ckl-speed-rung` to the recommended button with NO CSS RULE BEHIND IT — the
+ * class was applied, every source read agreed the rung was "marked", and the rung was not painted.
+ * So this check asserts the PAINTED EFFECT, never the class: `getComputedStyle(rung).boxShadow` has
+ * to carry something, and it has to be an INSET, because `.speed` is `overflow: hidden` and an
+ * outer ring on a rung is clipped away to nothing while the class and the rule both still read
+ * correctly. Reading the class alone would pass on the exact defect this fixes.
+ *
+ * THE NEGATIVE HALF IS THE OWNER'S ACTUAL COMPLAINT: the strip itself must carry NO glow. Without
+ * it this passes on the old behaviour, which also put a class on the rung.
+ *
+ * Injection-proven three ways: dropping the `.speed button.ckl-speed-rung` rule from shell.css
+ * leaves the class applied and reds the painted-shadow assertion; changing the rule's `inset` to an
+ * outer ring reds the inset assertion; re-adding `bar.classList.add('ckl-step-glow')` in app.js
+ * reds the strip assertion and nothing else.
+ */
+async function testSpeedRungGlowRendered(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1',
+                  { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  var started = await page.evaluate(function () {
+    try {
+      var svc = globalThis.RD.__dev.service();
+      svc.attentionStops = false;
+      var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+      return { ok: !(r && r.type === 'error'), msg: r && r.message };
+    } catch (e) { return { ok: false, msg: String(e) }; }
+  });
+  if (!started.ok) throw new Error('#743 fixture: start_checklist failed — ' + started.msg);
+  await page.click('#tabbar [data-tab="checklists"]');
+  await page.waitForSelector('[data-ckl-start="pwr_heatup"]', { timeout: 10000 });
+  await page.click('[data-ckl-start="pwr_heatup"]');
+  await page.waitForFunction(function () {
+    var b = document.querySelector('#tabbar button.on');
+    return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step');
+  }, { timeout: 15000, polling: 200 });
+
+  /* Land on a step that actually asks for a long hold. Chosen from the procedure rather than typed
+   * here, so a re-authored checklist cannot leave this pointing at a step with no recommendation. */
+  var jumped = await page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    var target = -1;
+    for (var i = 0; i < c.proc.steps.length; i++) {
+      var s = c.proc.steps[i];
+      if ((+s.hold || 0) >= 180 && s.wait_hint !== false) { target = i; break; }
+    }
+    if (target < 0) return { ok: false };
+    c.idx = target; c.stepAt = null; c.awaitingAck = false;
+    return { ok: true, idx: target, hold: +c.proc.steps[target].hold };
+  });
+  if (!jumped.ok) throw new Error('#743 fixture: pwr_heatup authors no step with hold >= 180');
+  await page.waitForTimeout(2500);
+
+  var seen = await page.evaluate(function () {
+    var bar = document.getElementById('speed');
+    var rung = bar ? bar.querySelector('.ckl-speed-rung') : null;
+    var barCs = bar ? getComputedStyle(bar) : null;
+    return {
+      nRungs: bar ? bar.querySelectorAll('.ckl-speed-rung').length : -1,
+      nButtons: bar ? bar.querySelectorAll('button').length : -1,
+      speed: rung ? rung.getAttribute('data-speed') : null,
+      rungShadow: rung ? getComputedStyle(rung).boxShadow : null,
+      rungAnim: rung ? getComputedStyle(rung).animationName : null,
+      barGlowClass: bar ? bar.classList.contains('ckl-step-glow') : null,
+      barShadow: barCs ? barCs.boxShadow : null,
+      note: (document.querySelector('.warp-info') || {}).textContent || ''
+    };
+  });
+
+  if (seen.nRungs !== 1) {
+    throw new Error('#743: expected exactly ONE recommended rung on a step with hold ' +
+      jumped.hold + ' s, found ' + seen.nRungs + ' of ' + seen.nButtons + ' — ' + JSON.stringify(seen));
+  }
+  /* THE PAINTED EFFECT, not the class. A marker class with no rule behind it is what #743 fixes. */
+  if (!seen.rungShadow || seen.rungShadow === 'none' || !/\d/.test(seen.rungShadow)) {
+    throw new Error('#743 DARK WIRE: the rung carries .ckl-speed-rung but paints no box-shadow — ' +
+      JSON.stringify(seen));
+  }
+  if (!/inset/.test(seen.rungShadow)) {
+    throw new Error('#743: the rung glow is an OUTER shadow, which `.speed { overflow: hidden }` ' +
+      'clips away to nothing — it must be an inset. ' + JSON.stringify(seen));
+  }
+  if (seen.rungAnim !== 'cklRungGlow') {
+    throw new Error('#743: the recommended rung must PULSE (owner: pulsing for a user control), ' +
+      'animationName is ' + seen.rungAnim);
+  }
+  /* THE OWNER'S COMPLAINT, ASSERTED. Without this the check passes on the old whole-strip form. */
+  if (seen.barGlowClass || (seen.barShadow && seen.barShadow !== 'none')) {
+    throw new Error('#743: the speed STRIP is still lit ("instead of highlighting all the speed ' +
+      'controls, just highlight the one that is suggested") — ' + JSON.stringify(seen));
+  }
+  log.push('step ' + (jumped.idx + 1) + ' (hold ' + jumped.hold + ' s): rung ' + seen.speed +
+    '× of ' + seen.nButtons + ' lit, pulsing ' + seen.rungAnim);
+
+  /* AND IT STANDS DOWN ONCE PRESSED. Nothing else gates this and it is a behaviour, not styling:
+   * the pulse means "act on this", the act is pressing that rung, and a cue that keeps firing for
+   * the whole 180 s-plus hold it just asked for is how a player learns to stop reading cues. It is
+   * done in CSS (`.ckl-speed-rung.on { animation: none }`) precisely so no second JavaScript path
+   * has to be kept in step -- which also means a source read of app.js cannot see it at all, and a
+   * broken `.on` selector would leave the rung pulsing for ever with every other check green.
+   *
+   * A REAL CLICK, so the app's own speed handler runs and puts `.on` where it really goes; the
+   * class is never set by hand here. Injection-proven: deleting the `.ckl-speed-rung.on` rule
+   * leaves animationName at cklRungGlow after the press and reds this. */
+  var pressed = await page.evaluate(function (sp) {
+    var b = document.querySelector('#speed [data-speed="' + sp + '"]');
+    if (!b) return { err: 'rung vanished' };
+    b.click();
+    return { ok: true };
+  }, seen.speed);
+  if (pressed.err) throw new Error('#743 fixture: ' + pressed.err);
+  await page.waitForTimeout(900);
+  var after = await page.evaluate(function (sp) {
+    var b = document.querySelector('#speed [data-speed="' + sp + '"]');
+    return b ? { on: b.classList.contains('on'), rung: b.classList.contains('ckl-speed-rung'),
+                 anim: getComputedStyle(b).animationName } : null;
+  }, seen.speed);
+  if (!after || !after.on) {
+    throw new Error('#743 fixture: pressing rung ' + seen.speed + '× did not select it — ' +
+      JSON.stringify(after) + '; the stand-down assertion below would prove nothing');
+  }
+  if (after.anim !== 'none') {
+    throw new Error('#743: the recommended rung is STILL PULSING after the player pressed it (' +
+      after.anim + ') — an "act on this" cue that outlives the act. ' + JSON.stringify(after));
+  }
+  log.push('  pressed ' + seen.speed + '×: selected=' + after.on + ', still marked=' +
+    after.rung + ', animation=' + after.anim + ' (stands down to plain .on)');
+  log.push('  rung box-shadow: ' + seen.rungShadow);
+  log.push('  strip: class ' + seen.barGlowClass + ', box-shadow ' + seen.barShadow);
+  log.push('  note under the strip: ' + seen.note.trim());
+
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
 async function testWatchGlowRendered(page) {
   var log = [];
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1',
@@ -4634,6 +4777,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'walkthrough-hold-released-on-exit.log'), whLog);
     var wgLog = await testWatchGlowRendered(page);
     fs.writeFileSync(path.join(SCRATCH, 'watch-glow-rendered.log'), wgLog);
+    var srLog = await testSpeedRungGlowRendered(page);
+    fs.writeFileSync(path.join(SCRATCH, 'speed-rung-glow.log'), srLog);
     var prLog = await testPauseResumeSpeed(page);
     fs.writeFileSync(path.join(SCRATCH, 'pause-resume-speed.log'), prLog);
     var hnLog = await testHeldNotePauseResume(page);

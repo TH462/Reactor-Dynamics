@@ -941,6 +941,45 @@ html[data-channel="dev"] .logo-test {
 .speed button.warp { color: var(--caution); letter-spacing: .02em; }
 .speed button.warp.on { box-shadow: inset 0 0 0 1px var(--caution); }
 .speed button.warp.locked { color: var(--text-3, #6b7280); opacity: .45; cursor: not-allowed; }
+/* THE RECOMMENDED RUNG, AND ONLY IT *(OWNER, 2026-09-13 playtest, #743: "instead of highlighting
+   all the speed controls, just highlight the one that is suggested.")*. Applied by
+   `applyCklSpeedGlow` in ui/app.js when the active walkthrough step asks for a hold of 180 s or
+   more; the strip itself no longer lights.
+
+   ⚠ INSET, AND THAT IS THE WHOLE REASON THE OLD VERSION GLOWED THE STRIP. `.speed` is
+   `display: inline-flex` with `overflow: hidden` (above), so an OUTER box-shadow on a child button
+   is clipped by the strip and `position: relative` + a z-index does not escape a clip — the bar was
+   lit as a fallback because a ring on `button[data-speed="600"]` barely showed. An INSET shadow
+   paints inside the button's own border box and is never clipped, which is why `.speed button.on`
+   could already use one. Lifting the clip was the alternative and was not taken: it exists to round
+   the six square-cornered rungs into the strip's 5px radius.
+
+   NO `z-index` HERE, deliberately. `run_glow_stacking` collects every glow class in this file that
+   lifts a z-index and requires a matching `z-index: auto` pin in pwr_board.css; this one is a shell
+   button in a flex row, never a board tile, and an inset needs no lift to be seen. Adding one would
+   make the gate demand a board entry for a class the board never sees.
+
+   ONCE PRESSED IT STOPS PULSING — see `.ckl-speed-rung.on` below. */
+.speed button.ckl-speed-rung {
+  animation: cklRungGlow 1.2s ease-in-out infinite;
+  color: var(--text); font-weight: 700;
+}
+@keyframes cklRungGlow {
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(90, 240, 255, 0.70), inset 0 0 9px 1px rgba(90, 240, 255, 0.30); }
+  50%      { box-shadow: inset 0 0 0 2px rgba(90, 240, 255, 1), inset 0 0 15px 3px rgba(90, 240, 255, 0.58); }
+}
+/* THE PULSE IS "ACT ON THIS", SO IT MUST END WHEN THE ACT IS DONE — otherwise the rung the player
+   pressed first goes on pulsing for the whole 180 s-plus hold it was asking for, which is most of
+   the time the cue is up, and a cue that keeps firing after it is satisfied is how the player learns
+   to stop reading cues. Handled in CSS, not JavaScript, so it follows `.on` the instant the strip
+   re-renders — no second code path to keep in step with the first.
+
+   IT DOES NOT DE-ESCALATE TO A STEADY CYAN RING, because `.on` ALREADY IS one (`inset 0 0 0 1px
+   var(--normal)`, and --normal is cyan): a "you did it" ring would have been indistinguishable from
+   ordinary selection. So the treatment simply stands down and lets selection speak, with the
+   `.warp-info` line under the strip still naming the rung in words. A selected WARP rung keeps its
+   amber `.on` ring and its amber label, so the tier reading is not overwritten either. */
+.speed button.ckl-speed-rung.on { animation: none; font-weight: 700; }
 /* Achieved-rate readout (#581, folded into #625): what the plant actually does per wall
    second. Green = keeping up, amber = behind the request, red = well behind or stalling. */
 .ff-rate { flex: 0 0 auto; font-size: 11px; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-2); }
@@ -2005,14 +2044,44 @@ select.num-input { width: auto; }
 .ckl-hoverable .ckl-body button,
 .ckl-hoverable .ckl-body summary,
 .ckl-hoverable .ckl-body a { cursor: pointer; }
+/* ============================================ the WALKTHROUGH's attention family (#743)
+   THE HUE IS CYAN AND THAT IS A RULING *(OWNER, 2026-09-13 playtest, #724: "I think we should
+   make the color cyan instead of green. go back to the old glowing highlight and make it cyan.
+   cyan is our user interaction color… You could try keeping some of the texture but bring the
+   glow back. the glow looked much cleaner anyway. Lets use pulsing for a user control and steady
+   for an indication to watch.")*. It was green (rgba(120,210,150)) from #244 through #685.
+
+   ⚠ CYAN WAS ALREADY SPOKEN FOR TWICE ON THIS BOARD, so the family carries its own value and is
+   held apart from both by GEOMETRY, never by hue alone — the same argument the bus's own note
+   makes below, applied one level down:
+
+     rgba( 91,179,196)  the HIGHLIGHT BUS (.hl-glow/.hl-pin, = --normal). Muted teal, STEADY,
+                        SOLID and FLUSH (1-2px ring at offset 0). Answers "what is related to
+                        what", and the player asked for it.
+     rgba( 79,227,255)  the BOARD'S HOVER RING (.bd-btn:hover, pwr_board.css:310). Tight — 1px
+                        ring, 9px blur, NO spread — and present only while the pointer is on it.
+     rgba( 90,240,255)  THIS FAMILY. Brighter and lighter than either, with a much wider bloom
+                        (12-20px blur, 3-5px spread), and the player did NOT ask for it: it is the
+                        walkthrough pointing. Within the family, MOTION splits the two meanings —
+                        pulsing = a control to act on, steady = an indication to watch — and the
+                        steady one is additionally DASHED AND OFFSET, which nothing else cyan on
+                        this board is. Nothing else cyan on this board pulses, either.
+
+   Rendered with a watch ring, a bus halo and a hover ring lit at once before this shipped
+   (inbox/glowcyan/, #743). Do not narrow the bloom or drop the dash without re-rendering that. */
 .ckl-glow {
-  box-shadow: 0 0 0 1.5px rgba(120, 210, 150, 0.70), 0 0 12px 3px rgba(120, 210, 150, 0.30);
+  box-shadow: 0 0 0 1.5px rgba(90, 240, 255, 0.62), 0 0 12px 3px rgba(90, 240, 255, 0.26);
   border-radius: 6px; position: relative; z-index: 5;
 }
 /* ACKNOWLEDGE *(OWNER, 2026-09-03, #619 item 4: "this button should flash green so the user
-   knows thats the control that needs to be pressed to progres.")*. Green and pulsing, reusing
-   cklGlow below — the same glow the board's own up-next controls carry, so "the thing to press"
-   reads identically whether it is a board control or this button.
+   knows thats the control that needs to be pressed to progres.")*. Green and pulsing.
+
+   ⚠ IT USED TO SHARE `cklGlow` WITH THE BOARD'S UP-NEXT PULSE, and #743 had to split them: that
+   glow went CYAN on a 2026-09-13 ruling and this one is held to GREEN by the 2026-09-03 one above.
+   `cklAckGlow` is the old green keyframe under a new name, byte-identical in geometry, so the two
+   still read as the same GESTURE in two places — but the board now says "press this" in cyan while
+   this button says it in green. THAT INCONSISTENCY IS REPORTED, NOT RESOLVED (#743): both halves
+   are owner rulings and an agent does not get to pick between them.
 
    INFINITE, unlike the speed-dropout flash: this one is not reporting an event, it is the
    control the checklist is waiting on, and it must stay findable until pressed. Reduced motion
@@ -2021,16 +2090,23 @@ select.num-input { width: auto; }
 .ckl-ack {
   border-color: var(--running); color: var(--running); font-weight: 700;
   padding: 3px 12px; border-radius: 6px;
-  animation: cklGlow 1.2s ease-in-out infinite;
+  animation: cklAckGlow 1.2s ease-in-out infinite;
 }
 .ckl-ack:hover { background: rgba(120, 210, 150, 0.12); }
 .ckl-ack-note { font-size: 11px; color: var(--text-2); }
 @media (prefers-reduced-motion: reduce) {
   .ckl-ack { animation: none; box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.85); }
 }
-@keyframes cklGlow {
+/* The ACKNOWLEDGE button's green, kept at the geometry `cklGlow` had when the two shared it. */
+@keyframes cklAckGlow {
   0%, 100% { box-shadow: 0 0 0 1px rgba(120, 210, 150, 0.60), 0 0 10px 2px rgba(120, 210, 150, 0.28); }
   50%      { box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.98), 0 0 18px 5px rgba(120, 210, 150, 0.50); }
+}
+/* The board's "act on this" pulse. CYAN since #743; the geometry is unchanged from the green it
+   replaced, because the owner's complaint was the TEXTURE of #685's watch ring, not this. */
+@keyframes cklGlow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(90, 240, 255, 0.62), 0 0 10px 2px rgba(90, 240, 255, 0.30); }
+  50%      { box-shadow: 0 0 0 2px rgba(90, 240, 255, 1), 0 0 20px 5px rgba(90, 240, 255, 0.55); }
 }
 /* PERSISTENT up-next glow *(#607 item 3 supersedes #244's "steady" call)*. The current
    step's controls PULSE with no mouseover so they stay findable; hover of a non-current
@@ -2047,19 +2123,33 @@ select.num-input { width: auto; }
    IT DIFFERS BY GEOMETRY, NOT ONLY BY MOTION. Two rings in the same hue separated only by
    whether they animate is a weak distinction on a board of 50+ elements, and DESIGN_CRITERIA
    question 4 (does it complicate things for the player) is a VETO — the issue made passing it
-   conditional on the two being unmistakable. So the watch ring is DASHED and offset, and its
-   halo is a quarter the spread of the solid one. Dashes survive colour-vision deficiency for
-   the same reason the cyan highlight bus does: it is a shape difference, not a hue difference.
+   conditional on the two being unmistakable. So the watch ring is DASHED and offset. Dashes
+   survive colour-vision deficiency for the same reason the cyan highlight bus does: it is a
+   shape difference, not a hue difference.
+
+   ⚠ THE GLOW IS THE READ AND THE DASH IS ONLY TEXTURE ON TOP OF IT — #743 INVERTED THAT, and
+   the inversion is the whole point of the change *(OWNER, 2026-09-13 playtest: "on the plant
+   screen i dont like the new textured highlights. it doesnt bring enough attention to itself
+   like the old glowing and pulsing version did. if i didnt know it was there i would miss it…
+   You could try keeping some of the texture but bring the glow back.")*. As #685 shipped it,
+   the halo was `0 0 6px 1px … 0.22` — A QUARTER THE SPREAD AND A FIFTH THE ALPHA of the pulse's,
+   which left a bare 1px dashed hairline doing all the work; the owner's word for the result is
+   "textured", and he missed it on the board. The halo below is now within a whisker of the
+   pulse's own (16px/4px against 20px/5px at its peak) so the two read as ONE family at two
+   intensities, and the dash rides on top as the shape difference rather than as the signal.
+   DO NOT TRIM IT BACK TOWARDS #685's VALUES; that is the defect, not a tidy-up.
 
    The box-shadow is deliberately kept alongside the outline — it is what makes the ring read
    as a glow at a glance rather than as a selection border, and `run_glow_stacking` reads the
    box-shadow + z-index pair to decide this class must be pinned in pwr_board.css.
 
-   STEADY, with no reduced-motion clause needed: there is nothing to reduce. */
+   STEADY, with no reduced-motion clause needed: there is nothing to reduce. Steady is also now
+   a RULING rather than an inference — "Lets use pulsing for a user control and steady for an
+   indication to watch" (same playtest), which is what #685 already built. */
 .ckl-watch-glow {
-  outline: 1px dashed rgba(120, 210, 150, 0.85);
-  outline-offset: 3px;
-  box-shadow: 0 0 6px 1px rgba(120, 210, 150, 0.22);
+  outline: 1px dashed rgba(90, 240, 255, 0.90);
+  outline-offset: 4px;
+  box-shadow: 0 0 0 1.5px rgba(90, 240, 255, 0.55), 0 0 16px 4px rgba(90, 240, 255, 0.42);
   border-radius: 6px; position: relative; z-index: 4;
 }
 /* ============================================ the highlight bus (#444, spec §7)
@@ -3072,9 +3162,26 @@ select.num-input { width: auto; }
      not part of the walkthrough panel's own `.ckl-*` styling. Do not re-split it on the prefix. */
   .ckl-step-glow {
     animation: none;
-    outline: 3px dashed rgba(120, 210, 150, 0.95);
+    outline: 3px dashed rgba(90, 240, 255, 0.95);
     outline-offset: 2px;
     box-shadow: none;
+  }
+
+  /* The recommended speed rung (#743). Its pulse is an INSET, so its fallback is too — an outer
+     ring here would be clipped by `.speed`'s `overflow: hidden` and the fallback would be invisible
+     for exactly the player who most needs it to be static. 2px inset against `.on`'s 1px, so the
+     recommendation still outweighs plain selection with the motion gone; `.ckl-speed-rung.on`
+     already drops to `.on` alone, and that rule does not need repeating here because it kills the
+     animation rather than the shadow.
+
+     ⚠ THE SECOND STOP IS NOT DECORATION — a single `inset 0 0 0 2px` COLLIDED with the instructor
+     attention ring, which is already exactly that, and the gate caught it (this runner, 17/18, the
+     first time it was run against this change). Two signals with the same geometry are hue-only to
+     each other, which is the precise thing #740 exists to prevent. The bloom stop also keeps the
+     fallback reading as the same GLOW the pulse is, rather than as a border. */
+  .speed button.ckl-speed-rung {
+    animation: none;
+    box-shadow: inset 0 0 0 2px rgba(90, 240, 255, 0.95), inset 0 0 8px 2px rgba(90, 240, 255, 0.40);
   }
 
   /* The highlight bus. It is a HALO by design (see its own note above — cyan, never a fill, so a

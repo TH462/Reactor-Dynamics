@@ -79,6 +79,12 @@ var SIGNALS = [
   { key: 'walkthrough: act on this',      tag: 'div',    cls: ['ckl-step-glow'],               anim: 'cklGlow' },
   { key: 'walkthrough: watch this',       tag: 'div',    cls: ['ckl-watch-glow'],              anim: null },
   { key: 'highlight bus',                 tag: 'div',    cls: ['instr-glow'],                  anim: 'instrGlow' },
+  /* #743. The recommended speed rung is the one signal here whose treatment is an INSET, and that
+   * is load-bearing rather than stylistic: `.speed` is `overflow: hidden`, so an outer ring on a
+   * rung is CLIPPED and the fallback would be invisible for exactly the player who asked for a
+   * static one. Its shape tuple therefore starts with `inset`, which is also what keeps it apart
+   * from the highlight bus's `0 0 0 2px`. */
+  { key: 'walkthrough: recommended speed rung', tag: 'button', cls: ['ckl-speed-rung'], parent: ['speed'], anim: 'cklRungGlow' },
   { key: 'gauge alarm value',             tag: 'div',    cls: ['g-value'], parent: ['gauge', 'alarm'], anim: 'gauge-alarm-flash' },
   { key: 'armed button',                  tag: 'button', cls: ['armed'],                       anim: 'pulse' },
   { key: 'retired-board scram',           tag: 'button', cls: ['pd-scram', 'fired'],           anim: 'scram-flash' },
@@ -254,6 +260,16 @@ function probeAll() {
   ck('  …and the critical alarm\'s double outline is wide enough to read as two lines (>= 4px)',
     parseFloat(reduce['critical alarm'].width) >= 4, reduce['critical alarm'].width);
 
+  /* THE SPEED RUNG'S FALLBACK MUST BE AN INSET, AND NO OTHER CHECK HERE CAN SEE THAT (#743). The
+   * distinctness and presence checks above compare shape tuples and would be perfectly happy with
+   * an OUTER ring — which `.speed`'s `overflow: hidden` clips, so the signal would be gone from the
+   * screen while every check stayed green. That is the same clip that made the pre-#743 code light
+   * the whole six-rung strip instead of the one rung. Assert the thing the clip cares about.
+   * Injection-proven: dropping `inset` from the fallback reds this and nothing else. */
+  var rungShape = reduce['walkthrough: recommended speed rung'].shadow;
+  ck('the recommended speed rung fallback is an INSET ring (an outer one is clipped by .speed)',
+    /inset/.test(rungShape) && /\d/.test(rungShape), rungShape);
+
   /* THE SCRAM BUTTON'S ARMED PULSE IS SET BY JAVASCRIPT as an inline style, so no stylesheet rule
    * can stop it and no class probe can see it — it was missed twice by #740's own audit. Driven
    * here through the real board. */
@@ -271,7 +287,12 @@ function probeAll() {
    * gate 14/14 green — the exact regression the commit's headline lesson is about (it was deleted
    * once already, on a CSS-only grep that could not see its JavaScript caller). Ask the CSSOM. */
   var kf = await pMotion.evaluate(function () {
-    var want = ['bdScramPulse', 'bdMsgFlash', 'bdActuatedFlash', 'alarmCritFlash', 'cklGlow', 'instrGlow'];
+    /* `cklAckGlow` and `cklGlow` WERE ONE KEYFRAME until #743 split them — the board's pulse went
+     * cyan on the 2026-09-13 ruling while ACKNOWLEDGE is held to green by the 2026-09-03 one. A
+     * split like that is exactly how a name goes stale silently: whichever half keeps the old name
+     * still resolves, and the other animates nothing. Both are named here. */
+    var want = ['bdScramPulse', 'bdMsgFlash', 'bdActuatedFlash', 'alarmCritFlash', 'cklGlow',
+                'cklAckGlow', 'cklRungGlow', 'instrGlow'];
     var found = {};
     for (var i = 0; i < document.styleSheets.length; i++) {
       var rules; try { rules = document.styleSheets[i].cssRules; } catch (e) { continue; }
@@ -282,7 +303,7 @@ function probeAll() {
     return want.filter(function (n) { return !found[n]; });
   });
   ck('every keyframe the board names still EXISTS in the CSSOM (a named animation with no keyframe is silent)',
-    kf.length === 0, kf.length ? 'MISSING: ' + kf.join(', ') : '6 keyframes present');
+    kf.length === 0, kf.length ? 'MISSING: ' + kf.join(', ') : '8 keyframes present');
 
   /* ⚰ THE STYLESHEET PARSE CHECK WAS HERE AND HAS MOVED to `test/verify_stylesheets.js`.
    * It caught a stray `}` that this change itself shipped — one that silently swallowed the next
