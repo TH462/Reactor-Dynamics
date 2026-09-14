@@ -724,14 +724,22 @@
     // so making the operator hold a button for the entire travel was the wrong affordance.
     // One click starts it, the button holds a yellow in-motion light while it travels, a
     // second click stops it wherever it is, and the latch clears itself at the limit. ---
-    /* `rodCue` is the (group, direction) the REFUSED-PRESS cue reads (#752). The control bank's
-     * pair above already carry the same pair inside `hold` and need no second copy; these two are
-     * LATCHED pushbuttons rather than tap-or-hold, so their drive direction lives nowhere else. It
-     * is inert to every other consumer: `pressableIds`/`actionableIds` filter on press/hold only. */
-    imrpnyaxsb3: { press: function () { toggleLatchRod('shutdown_rods', 1); }, warn: function () { return latchActive('shutdown_rods', 1); },
-                   rodCue: { group: 'shutdown_rods', direction: 1 } },
-    imrpnyf37ju: { press: function () { toggleLatchRod('shutdown_rods', -1); }, warn: function () { return latchActive('shutdown_rods', -1); },
-                   rodCue: { group: 'shutdown_rods', direction: -1 } },
+    /* THE ROD CUE GRAMMAR, AND THIS BANK ONLY GETS HALF OF IT: yellow = the bank is MOVING, on
+     * EITHER bank; red = your press did NOTHING, control bank ONLY.
+     *
+     * *(OWNER RULING, 2026-09-14: "Do not alarm or color code the shutdown bank since it's used
+     * differently")* — which excludes the red refusal cue and the alarm. NARROWED the same day to
+     * let the yellow through: *(OWNER, 2026-09-14: "The shutdown bank button and indication should
+     * be yellow when in motion.")*.
+     *
+     * `fc7fae62` gave these two a `rodCue: {group, direction}` property so the crossed-out
+     * REFUSED-PRESS cue covered both banks. It is DELETED rather than left inert: a property with
+     * no consumer reads as a working feature to the next person who greps for it, and this one
+     * would read as "the shutdown bank has a refusal cue" three lines from the ruling that says it
+     * must not. Nothing else ever read it — `pressableIds`/`actionableIds` filter on press/hold
+     * only — so the deletion changes those lists by nothing. */
+    imrpnyaxsb3: { press: function () { toggleLatchRod('shutdown_rods', 1); }, warn: function () { return latchActive('shutdown_rods', 1); } },
+    imrpnyf37ju: { press: function () { toggleLatchRod('shutdown_rods', -1); }, warn: function () { return latchActive('shutdown_rods', -1); } },
     // --- Steam dump: AUTO / OPEN / CLOSE ---
     imrppqg6mcc: { press: function () { cmd({ action: 'set_steam_dump', mode: 'auto' }); }, active: function (s) { return CS(s).steam_dump_auto; } },
     imrppquqg16: { press: function () { cmd({ action: 'set_steam_dump', mode: 'open' }); }, active: function (s) { return !CS(s).steam_dump_auto && (CS(s).steam_dump_pct || 0) > 50; } },
@@ -3160,11 +3168,46 @@
    * consumer. If you find yourself typing a setpoint into this file, stop.
    *
    * ------------------------------------------------------------------ ACKNOWLEDGE SEMANTICS
-   * CLOSING the card acknowledges, not opening — the owner's gesture is open-then-close, and
-   * acknowledging on open would clear a message the player has not read yet. A teardown close
-   * (`onMount`) does NOT acknowledge; only a close the player performed.
+   * ⚠ THIS SECTION WAS REWRITTEN 2026-09-14 AND THE OLD RULE IS THE ONE YOU WILL BE TEMPTED TO
+   * RESTORE. It said "CLOSING the card acknowledges, not opening — acknowledging on open would
+   * clear a message the player has not read yet", and it was deliberate. The owner played it:
    *
-   * IT CLEARS ALL OUTSTANDING MESSAGES, not one. The card shows every row at once, so closing it
+   *   *(OWNER, 2026-09-14: "I don't like the new yellow warnings on the permissive box and the
+   *   yellow permissive button. They persist for too long even after they are relevant. The yellow
+   *   permissives button should stop being yellow after being opened. The yellow warnings on the
+   *   card should go away after being viewed.")*
+   *
+   * A CUE THAT SURVIVES BEING LOOKED AT STOPS MEANING "LOOK AT THIS". That is the whole argument,
+   * and it beats the old one: the old rule protected against clearing something unread, but the
+   * card IS the reading — there is nothing else to open — so by the time the close arrives the
+   * message has already been read, and every subsequent second of amber is the board shouting
+   * about something the player has dealt with. Two openings later it is still shouting.
+   *
+   * SO THERE ARE NOW TWO ACKNOWLEDGES, at two different grains, and they are not the same event:
+   *
+   *   THE BUTTON stops flashing THE MOMENT THE CARD IS OPEN (`tbAck`, set from refreshTripBlocks
+   *     on every refresh while the card is up — not from the close). "The open is the
+   *     acknowledgement." Setting it on every refresh rather than once at open is what makes a
+   *     message that ARRIVES while the card is open acknowledged too: the player is looking at it.
+   *
+   *   A ROW's amber clears WHEN IT HAS BEEN VIEWED (`tbSeen`), and "viewed" is: the card was open
+   *     and this row was rendered in it. The latch is recorded at render (`tbSeenPend`) and COMMITTED
+   *     AT THE CLOSE — deliberately, and this is the one place the two grains differ. Clearing a
+   *     row's amber in the same frame it is first drawn would mean the amber is never seen at all,
+   *     and the amber's whole job is to point at WHICH of the four rows lost its block. So it
+   *     stands for the viewing that is reading it, and is gone from the next opening onward. That
+   *     is what "persist for too long" was about: it used to stand for ever, across every future
+   *     opening, until the row happened to be re-blocked.
+   *
+   * WHAT CLEARING THE CUE MUST NOT CLEAR IS THE FACT. #738 exists because the plant silently
+   * revoked a block the player had placed. The row still says "RELEASED BY THE PLANT — <cause>",
+   * the status line still says what the lineup is and which rows are waiting on a permissive, and
+   * the player's own releases still carry their standing note. Only the amber goes. And a FRESH
+   * revoke after a dismissal takes the next `tbSeq`, which is higher than both `tbAck` and that
+   * row's `tbSeen` — so it flashes again, by construction. A cue that dismisses permanently would
+   * be worse than one that nags.
+   *
+   * IT CLEARS ALL OUTSTANDING MESSAGES, not one. The card shows every row at once, so opening it
    * means "I have seen the lineup"; clearing row by row would need per-row controls inside the
    * card, which is the new UI the ruling refused.
    *
@@ -3193,6 +3236,11 @@
   var tbPrev = null;      // last broadcast's per-row {blocked, permissive}, null before the first
   var tbMsg = {};         // id -> { seq, text } — an outstanding "you did not do this" message
   var tbNote = {};        // id -> standing status text for a release the PLAYER made (case (c))
+  /* id -> the highest message `seq` the player has VIEWED on that row, and the same for the
+   * viewing currently in progress. Two maps rather than one because the commit is deferred to the
+   * close — see ACKNOWLEDGE SEMANTICS above for why a row's amber must survive the frame that
+   * draws it. `tbSeenPend` is what the open card is accumulating; `tbSeen` is what it has banked. */
+  var tbSeen = {}, tbSeenPend = {};
   /* id -> { want: <the blocked state the player asked for>, n: <broadcasts left> }.
    *
    * A DIRECTED, SINGLE-USE EXPECTATION — not a blind "the board touched this row recently" window,
@@ -3235,6 +3283,16 @@
    * REPLAYS, and a replay never crosses a session seam. Its zero is true for what it measured. */
   function tbReset() {
     tbSeq = 0; tbAck = 0; tbPrev = null; tbMsg = {}; tbNote = {}; tbSelf = {};
+    tbSeen = {}; tbSeenPend = {};
+  }
+
+  /* Has this row's outstanding message been VIEWED? See ACKNOWLEDGE SEMANTICS. A row with no
+   * message is trivially nothing-to-view, and `tbSeen` is compared by SEQUENCE for the same reason
+   * `tbAck` is: a later message on the same row is a different event and un-views it by
+   * construction, where a boolean flag would have swallowed it. */
+  function tbRowUnviewed(id) {
+    var m = tbMsg[id];
+    return !!(m && m.seq > (tbSeen[id] || 0));
   }
 
   /* THE CONDITION, NEVER THE NUMBER *(the owner's card text, and HR1 the right way round)*.
@@ -3304,19 +3362,34 @@
   function tbMessages() {
     return TB_IDS.map(function (id) {
       return { id: id, msg: tbMsg[id] ? tbMsg[id].text : null, note: tbNote[id] || null,
-               unacked: !!(tbMsg[id] && tbMsg[id].seq > tbAck) };
+               unacked: !!(tbMsg[id] && tbMsg[id].seq > tbAck),
+               /* the ROW's half, which is a different grain from `unacked` (the BUTTON's) — see
+                * ACKNOWLEDGE SEMANTICS. Exposed so a gate can assert the amber without rendering a
+                * popover, the same argument `tripBlockRows` was extracted for. */
+               unviewed: tbRowUnviewed(id) };
     }).filter(function (r) { return r.msg || r.note; });
   }
 
   var popAway = null;                // { host, fn } while a popover is up, else null
 
-  /* `ack` IS THE PLAYER'S CLOSE, NOT EVERY CLOSE (#738). Acknowledging here is what stops the
-   * button flashing, so a TEARDOWN close must not do it: `onMount` calls closePop() on every board
-   * rebuild, and a rebuild silently clearing a message the player never saw is the opposite of the
-   * feature. Only the two player-initiated paths pass true — the button's own toggle and the
-   * outside-press dismissal. */
+  /* `ack` IS THE PLAYER'S CLOSE, NOT EVERY CLOSE (#738). A TEARDOWN close must not bank what the
+   * player was looking at: `onMount` calls closePop() on every board rebuild, and a rebuild
+   * silently retiring a cue the player never saw is the opposite of the feature. Only the two
+   * player-initiated paths pass true — the button's own toggle and the outside-press dismissal.
+   *
+   * WHAT IT BANKS IS THE ROWS, NOT THE BUTTON (2026-09-14, #752). `tbAck` moved to the OPEN — the
+   * owner's rule is "the permissives button should stop being yellow after being opened", so by the
+   * time any close arrives it is already current and setting it here would be a no-op. The rows are
+   * the deferred half: `tbSeenPend` is what this viewing has rendered, and committing it here is
+   * what makes a row's amber last for the viewing that reads it and no longer. */
   function closePop(ack) {
-    if (ack) tbAck = tbSeq;
+    if (ack) {
+      tbAck = tbSeq;
+      Object.keys(tbSeenPend).forEach(function (id) {
+        if (tbSeenPend[id] > (tbSeen[id] || 0)) tbSeen[id] = tbSeenPend[id];
+      });
+    }
+    tbSeenPend = {};
     if (popAway) { popAway.host.removeEventListener('pointerdown', popAway.fn, true); popAway = null; }
     if (pop && pop.parentNode) pop.parentNode.removeChild(pop); pop = null;
   }
@@ -3761,6 +3834,11 @@
 
   function refreshTripBlocks(s) {
     if (!pop || !s) return;
+    /* THE OPEN IS THE ACKNOWLEDGEMENT (2026-09-14, #752) — and it is applied HERE, on every refresh
+     * while the card is up, rather than once in toggleTripBlocks. Once at open would leave a
+     * message that ARRIVES thirty seconds into an open card flashing a button the player is already
+     * looking past. `tbSeq` only ever rises, so this is idempotent. */
+    tbAck = tbSeq;
     var rows = tripBlockRows(s), byId = {};
     rows.forEach(function (r) { byId[r.id] = r; });
     var want = stepTripWants(s);
@@ -3809,7 +3887,13 @@
                     ? btns[i].previousSibling.querySelector('.sub') : null;
         if (subEl) {
           subEl.textContent = (r.sub || '') + (r.sub && extra ? ' · ' : '') + (extra || '');
-          subEl.classList.toggle('bd-sub-msg', !!m);
+          /* THE AMBER IS THE UNVIEWED HALF; THE TEXT ABOVE IS THE FACT AND IT DOES NOT MOVE
+           * (2026-09-14, #752). This used to be `!!m` — the message existing — so a row stayed
+           * amber through every future opening until it happened to be re-blocked, which is the
+           * "persist for too long" the owner played. Rendering the row IS the viewing, so the seq
+           * is banked here; see closePop for why it is banked into `tbSeenPend` and not `tbSeen`. */
+          if (m) tbSeenPend[r.id] = Math.max(tbSeenPend[r.id] || 0, m.seq);
+          subEl.classList.toggle('bd-sub-msg', tbRowUnviewed(r.id));
         }
       }
     }
@@ -3857,7 +3941,12 @@
         + ' RELEASED BY THE PLANT — see the row' + (outstanding.length === 1 ? '' : 's') + ' below');
     }
     host.textContent = lines.join('  ·  ');
-    host.classList.toggle('bd-pop-status-msg', outstanding.length > 0);
+    /* THE LINE STAYS, THE AMBER GOES (2026-09-14, #752). The count is a FACT about the lineup and
+     * is as true on the fifth opening as the first — deleting it would be the "cleared the cue and
+     * the fact with it" failure. The colour is the cue, and it is the cue the owner called
+     * persistent, so it tracks the same unviewed predicate the rows do. */
+    host.classList.toggle('bd-pop-status-msg',
+      outstanding.some(function (r) { return tbRowUnviewed(r.id); }));
   }
 
   function mk(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -4575,8 +4664,44 @@
    * this is longer than the animation (0.22 s x 3 = 0.66 s): the tail is what a player who looked
    * away during the blink still sees, and it is the WHOLE cue under prefers-reduced-motion. */
   var REFUSE_MS = 1100;
+
+  /* WHICH BANK'S READING FLASHES WITH THE BUTTON *(OWNER, 2026-09-14: "We could flash the step
+   * indication red as well to show the relationship.")*. The player pressed a button and a number
+   * did not move; flashing BOTH says which number the dead button was about, which is the whole
+   * relationship. CONTROL BANK ONLY, and the map is one entry for exactly that reason — the
+   * shutdown bank takes no red at all (see its buttons' note, and the 2026-09-14 ruling there).
+   * A map rather than a literal so the exclusion is a visible line of code instead of an absence. */
+  var ROD_REFUSE_READOUT = { control_rods: 'imrpk4pjcpd' };
+
+  /* ONE FLASHER FOR THE BUTTON AND THE READING, so they cannot drift out of step — the cue is a
+   * single event with two faces, and two copies of this timing is how the faces disagree.
+   *
+   * RESTART THE FINITE ANIMATION, or the SECOND press at the stop is silent — re-adding a class
+   * that is already on the element re-runs nothing, and a player pressing WITHDRAW over and over
+   * is exactly what #752 measured (358 of them). Remove, read a layout property to force the
+   * style flush, re-add. The `void el.offsetWidth` is load-bearing rather than a tidy-up: without
+   * it the two class changes coalesce into no change at all.
+   *
+   * THE TIMER LIVES ON THE ELEMENT, not in module state, so the reading and the button each expire
+   * on their own clock and neither can strand the other. */
+  function flashRefused(el, cls) {
+    /* `!el.classList` IS NOT BELT-AND-BRACES — run_pwr2_board calls `onButton(item, btn)` with a
+     * Node stand-in for the element and the first cut of this threw `Cannot read properties of
+     * undefined (reading 'remove')` right through that gate. A cue is decoration: it must never be
+     * able to break the command path it decorates, on any caller. */
+    if (!el || !el.classList) return false;
+    if (el._rdRefuseT) { clearTimeout(el._rdRefuseT); el._rdRefuseT = null; }
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+    el._rdRefuseT = setTimeout(function () {
+      el.classList.remove(cls); el._rdRefuseT = null;
+    }, REFUSE_MS);
+    return true;
+  }
+
   function cueRodRefusal(id, btn) {
-    var b = BUTTONS[id], d = b && (b.hold || b.rodCue);
+    var b = BUTTONS[id], d = b && b.hold;
     /* `!btn.classList` IS NOT BELT-AND-BRACES - run_pwr2_board calls `onButton(item, btn)` with a
      * Node stand-in for the element and the first cut of this threw `Cannot read properties of
      * undefined (reading 'remove')` right through that gate. A cue is decoration: it must never be
@@ -4584,19 +4709,41 @@
     if (!d || !btn || !btn.classList) return false;
     var s = (RD.PwrBoard && RD.PwrBoard.lastSnapshot) ? RD.PwrBoard.lastSnapshot() : null;
     if (!s || !rodPressRefused(s, d.group, d.direction)) return false;
-    /* RESTART THE FINITE ANIMATION, or the SECOND press at the stop is silent - re-adding a class
-     * that is already on the element re-runs nothing, and a player pressing WITHDRAW over and over
-     * is exactly what #752 measured (358 of them). Remove, read a layout property to force the
-     * style flush, re-add. The `void btn.offsetWidth` is load-bearing rather than a tidy-up:
-     * without it the two class changes coalesce into no change at all. */
-    if (btn._rdRefuseT) { clearTimeout(btn._rdRefuseT); btn._rdRefuseT = null; }
-    btn.classList.remove('bd-refused');
-    void btn.offsetWidth;
-    btn.classList.add('bd-refused');
-    btn._rdRefuseT = setTimeout(function () {
-      btn.classList.remove('bd-refused'); btn._rdRefuseT = null;
-    }, REFUSE_MS);
+    flashRefused(btn, 'bd-refused');
+    /* …AND THE NUMBER THAT DID NOT MOVE, in the same call so the two start on the same frame. */
+    var roId = ROD_REFUSE_READOUT[d.group];
+    var ro = (roId && refs && refs.values && refs.values[roId]) ? refs.values[roId].el : null;
+    if (ro) flashRefused(ro, 'bd-val-refused');
     return true;
+  }
+
+  /* ---- YELLOW WHILE THE BANK IS DRIVEN, ON THE READING TOO (#752) ------------------------------
+   * *(OWNER, 2026-09-14: "The shutdown bank button and indication should be yellow when in
+   * motion.")* — BOTH banks, button AND indication. The buttons already carried it (the IN-OUT
+   * lamps, WTSM 8.1 §8.1.7, ML11223A252); the two step readouts carried no state styling at all.
+   *
+   * IT READS THE LAMPS' OWN PREDICATE — literally, out of the BUTTONS table, rather than a second
+   * copy of "is it moving". The two banks do not share one notion of motion and that is deliberate:
+   * the control bank's lamp is the PLANT's (`rodDriving` — g.moving, whoever asked, the automatic
+   * rod channel included), the shutdown bank's is the BOARD's latch (`latchActive`), because a
+   * latched full-travel drive is a board-held demand. Re-deriving either here would have produced a
+   * reading that disagrees with the buttons six inches away; calling `b.warn(s)` cannot.
+   *
+   * STEADY TINT, NEVER A PULSE. A 200-step withdrawal at MED runs for minutes and a number blinking
+   * for minutes is noise, not a cue — the same argument #738's amber makes about motion, applied to
+   * the one signal on this board that is legitimately long-lived. */
+  var ROD_MOVING_READOUT = { imrpk4pjcpd: 'control_rods', imrpnzfsfcx: 'shutdown_rods' };
+  var ROD_LAMP_IDS = {
+    control_rods:  ['imrpk6qzjq8', 'imrpk79mwng'],
+    shutdown_rods: ['imrpnyaxsb3', 'imrpnyf37ju']
+  };
+  function bankDriven(s, group) {
+    var ids = ROD_LAMP_IDS[group] || [];
+    for (var i = 0; i < ids.length; i++) {
+      var b = BUTTONS[ids[i]];
+      if (b && b.warn && b.warn(s)) return true;      // the lamp's own answer, not a second one
+    }
+    return false;
   }
 
   // ================================================================ driver API
@@ -4608,7 +4755,13 @@
     onButton: function (item, btn) {
       var b = BUTTONS[item.id];
       if (b && b.press) b.press(RD.PwrBoard.lastSnapshot() || {}, btn);
-      cueRodRefusal(item.id, btn);            /* the shutdown bank's latched pair (#752) */
+      /* ⚰ `cueRodRefusal(item.id, btn)` WAS HERE and is deleted with the shutdown bank's `rodCue`
+       * (#752, 2026-09-14 ruling). It could only ever have fired for a button carrying `hold`, and
+       * pwr_board.js gives a `hold` button pointerdown/keydown handlers and NO click handler
+       * (`buttonMomentary`, :355-378) — so this line reached the cue for the latched shutdown pair
+       * and for nothing else. Left in place it would be a dark wire pointing at a cue the ruling
+       * removed. The control bank is cued from `onButtonDown` and `driveRod`, which is where a
+       * momentary press actually arrives. */
     },
     // Momentary (press-and-hold) buttons — the rod drive. buttonMomentary tells the
     // board to route these through pointer/keyboard down+up instead of click.
@@ -4850,6 +5003,24 @@
     buttonUnack: function (item, s) {
       return item.id === 'imrsk4xz2dm' && tbUnacked();
     },
+    /* A STATE CLASS ON A READING (#752) — the yellow "this bank is being driven" tint on the two
+     * rod-step numbers. See ROD_MOVING_READOUT / bankDriven above for why it reads the lamps' own
+     * predicate rather than a second notion of motion, and why it is a steady tint.
+     *
+     * A CLASS, NOT A COLOUR, deliberately. The value tile carries its authored colour as an INLINE
+     * style (pwr_board.js buildValue), so a stylesheet rule has to be `!important` to reach it —
+     * and once it is a class, the red refusal flash (`bd-val-refused`) can be declared after it and
+     * win by source order. Had the tint gone through `valueFor`'s `out.color` instead, it would be
+     * an inline write on the same element and NOTHING in CSS could out-rank it: the tint would
+     * strand the flash for as long as the bank was moving, which is exactly when a refused press at
+     * the stop happens. */
+    valueCue: function (item, s) {
+      var g = ROD_MOVING_READOUT[item.id];
+      return (g && bankDriven(s, g)) ? 'bd-val-moving' : null;
+    },
+    /* Exposed for the gate: the tint is a CLAIM about the bank, and a check that can only read a
+     * class off a rendered tile is testing the renderer rather than the rule (#727's lesson). */
+    rodBankDriven: function (s, group) { return bankDriven(s, group); },
     // Count badge: how many trips are currently blocked, on the TRIP BLOCKS button.
     buttonBadge: function (item, s) {
       if (item.id !== 'imrsk4xz2dm') return null;

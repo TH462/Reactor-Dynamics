@@ -1352,6 +1352,23 @@
       // values
       Object.keys(valueEls).forEach(function (id) {
         var rec = valueEls[id];
+        /* A STATE CLASS ON A READING (#752). Colour is the only channel `valueFor` has, and it
+         * writes INLINE — which no stylesheet can out-rank, so a value could never carry an
+         * animated or layered cue. This hook gives the driver one class per reading.
+         *
+         * BEFORE the `out == null` return, on purpose: a cue must not depend on the driver also
+         * having produced a reading this frame. One class at a time, tracked on the record, so the
+         * renderer only ever touches the class it put there — anything else on the element (the
+         * refusal flash, which is applied by the driver on the press and expires on its own timer)
+         * is none of this loop's business. */
+        if (d.valueCue) {
+          var cue = d.valueCue(rec.item, s) || '';
+          if (rec._cue !== cue) {
+            if (rec._cue) rec.el.classList.remove(rec._cue);
+            if (cue) rec.el.classList.add(cue);
+            rec._cue = cue;
+          }
+        }
         var out = d.valueFor ? d.valueFor(rec.item, s) : null;
         if (out == null) return;
         var text = typeof out === 'object' ? out.text : out;

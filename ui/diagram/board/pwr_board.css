@@ -388,6 +388,52 @@
 .bd-value .bd-unit { color: #7f96a8; margin-left: -0.18em; }
 .bd-text { padding: 2px 4px; letter-spacing: 0.06em; white-space: pre-wrap; }
 
+/* ---- the two rod-step readings' state cues (#752) ---------------------------------------------
+   THE GRAMMAR, in one line, because the next person will meet the colours before the code:
+   YELLOW = this bank is MOVING, on EITHER bank; RED = your press did NOTHING, control bank ONLY.
+   *(OWNER, 2026-09-14: "The shutdown bank button and indication should be yellow when in
+   motion.")*, over *(OWNER RULING, 2026-09-14: "Do not alarm or color code the shutdown bank since
+   it's used differently")* — the ruling excludes the red and the alarm, the later line lets the
+   yellow through on both banks. See ROD_MOVING_READOUT in pwr_board_wiring.js.
+
+   `!important` IS LOAD-BEARING HERE AND NOWHERE ELSE ON THIS BOARD. buildValue writes the item's
+   authored colour as an INLINE style on this very element (`el.style.color = it.color`), and an
+   inline declaration beats any selector. Without `!important` these two rules parse, apply, and
+   change nothing — the silent kind of dead style.
+
+   ORDER IS THE PRECEDENCE, and it is stated rather than left to chance. Both rules are `color` at
+   equal specificity, so the LATER one wins: the refusal flash out-ranks the moving tint whenever
+   both are on the element, which is precisely the case that matters — a hold at the stop can leave
+   a bank reporting `moving` while every press is being refused. The tint therefore cannot strand
+   the flash, and the flash removes itself on its own timer (flashRefused) rather than waiting for
+   the tint to clear. */
+.bd-value.bd-val-moving { color: #ffd166 !important; }
+
+/* THE REFUSAL FLASH ON THE READING — the same cue as the button's `.bd-refused`, on the number the
+   dead button was about *(OWNER, 2026-09-14: "We could flash the step indication red as well to
+   show the relationship.")*. Same keyframe, same 3 finite blinks, same standing red tail for the
+   rest of REFUSE_MS, for the reasons written out at `.bd-refused` above.
+
+   NO `line-through` HERE, and that is the one deliberate difference from the button. The button's
+   label is the WORD "WITHDRAW" and crossing it out says "not that, not now"; a struck-through
+   NUMBER reads as "this reading is void", which is a different and false claim — the step count is
+   perfectly correct, it is simply not changing. So the non-colour channel is a RING instead, and it
+   is on the BASE rule rather than inside the reduced-motion block (#740's principle: a fallback
+   that only exists for the player who asked for it is a fallback nobody else's colour-vision gets).
+   1px at 2px offset is a tuple no other signal on this board carries — the protection latch is the
+   nearest at solid 2px, and the width is what separates them. */
+.bd-value.bd-val-refused {
+  color: #ff6b6b !important;
+  outline: 1px solid #ff6b6b; outline-offset: 2px;
+  animation: bdRefusedFlash 0.22s steps(1, end) 3;
+}
+/* AFTER the rule that sets the animation — a media query adds NO specificity, so the same block
+   written above would lose outright and go on flashing for a player who asked it not to. That
+   defect is recorded three times in this file already (`.bd-info`, `bdMsgFlash`, `.bd-refused`). */
+@media (prefers-reduced-motion: reduce) {
+  .bd-value.bd-val-refused { animation: none; }
+}
+
 /* ---- readout (caption + reading as one item; see buildReadout) ----
    Left-anchored, unlike .bd-value: a readout carries its own width from the
    diagram, so it is NOT pulled back by translateX(-100%). */

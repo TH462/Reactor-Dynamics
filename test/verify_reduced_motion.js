@@ -16,7 +16,10 @@
  *      thing separating "critical alarm", "a protection latch is holding this" and "there is a
  *      message" — the pairs a red/green or blue/yellow deficiency compresses. So each signal
  *      carries distinct static GEOMETRY, and this asserts that they are pairwise distinct on
- *      (outline-style, width, offset, box-shadow) — a comparison that never looks at a colour.
+ *      (outline-style, width, offset, box-shadow, text-decoration) — a comparison that never looks
+ *      at a colour. The fifth term arrived with #752: the tuple was four terms and could not see
+ *      `text-decoration` at all, which is the whole non-colour channel of the rod button's refusal
+ *      cue — so that cue would have read as the browser default however it was styled.
  *
  * WHY A SEPARATE RUNNER. `emulateMedia({ reducedMotion: 'reduce' })` is per-page and global, and
  * `verify_board_check` asserts in the other direction (#738 requires `bdMsgFlash` to be RUNNING).
@@ -89,7 +92,22 @@ var SIGNALS = [
   { key: 'armed button',                  tag: 'button', cls: ['armed'],                       anim: 'pulse' },
   { key: 'retired-board scram',           tag: 'button', cls: ['pd-scram', 'fired'],           anim: 'scram-flash' },
   { key: 'system slot alarm dot',         tag: 'div',    cls: ['slot-dot'], parent: ['sys-slot', 'state-alarm'], anim: 'status-flash' },
-  { key: 'instructor attention',          tag: 'div',    cls: ['instructor', 'instr-attn'],    anim: 'instrAttnPulse' }
+  { key: 'instructor attention',          tag: 'div',    cls: ['instructor', 'instr-attn'],    anim: 'instrAttnPulse' },
+  /* #752. `bd-refused` shipped in `fc7fae62` WITH NO GATE, and this list is exactly why it could
+   * ship that way: it is hand-maintained, so a signal nobody adds is invisible to both claims here
+   * — the house trap, a gate that iterates a hand-maintained map tests the map. Two entries,
+   * because the cue has two faces on two different kinds of element and only one of them was ever
+   * looked at.
+   *
+   * THEIR NON-COLOUR CHANNELS ARE DELIBERATELY DIFFERENT, and the tuple below had to grow a fifth
+   * term before it could see either. The BUTTON crosses its own label out — "WITHDRAW, struck
+   * through" is the sentence, and `text-decoration` is a channel no outline can collide with. The
+   * READING cannot borrow that: a struck-out NUMBER reads as "this value is void", which is false —
+   * the step count is perfectly correct, it is simply not moving — so it carries a 1px ring
+   * instead. Both are on the base rules, not inside the reduced-motion block, so every player gets
+   * them and not only the one who asked for stillness. */
+  { key: 'rod press refused (button)',    tag: 'button', cls: ['bd-btn', 'bd-refused'],        anim: 'bdRefusedFlash' },
+  { key: 'rod press refused (reading)',   tag: 'div',    cls: ['bd-value', 'bd-val-refused'],  anim: 'bdRefusedFlash' }
 ];
 
 function probeAll() {
@@ -107,7 +125,14 @@ function probeAll() {
       out[s.key] = {
         anim: cs.animationName,
         style: cs.outlineStyle, width: cs.outlineWidth, offset: cs.outlineOffset,
-        shadow: (cs.boxShadow || 'none')
+        shadow: (cs.boxShadow || 'none'),
+        /* THE FIFTH TERM (#752). The tuple was (outline-style, width, offset, box-shadow) and could
+         * not see `text-decoration` at all — which is the ENTIRE non-colour channel of the rod
+         * button's refusal cue. Without this, `.bd-refused` reads as `none|3px|0px|none`, the
+         * browser default, so it would have collided with any other ring-less signal AND been
+         * reported bare by the presence check below. A tuple that cannot see a signal's only
+         * geometry is a distinctness claim about something else. */
+        deco: (cs.textDecorationLine || 'none')
       };
       el.remove(); if (wrap) wrap.remove();
     });
@@ -200,7 +225,7 @@ function probeAll() {
     /* box-shadow carries colour in its string; reduce it to the SHAPE (offsets/blur/spread) so a
      * pair differing only in hue cannot pass as distinct. */
     var shape = (r.shadow === 'none') ? 'none' : r.shadow.replace(/rgba?\([^)]*\)/g, '').trim();
-    var fp = r.style + '|' + r.width + '|' + r.offset + '|' + shape;
+    var fp = r.style + '|' + r.width + '|' + r.offset + '|' + shape + '|' + r.deco;
     if (sig[fp]) collisions.push(sig[fp] + ' vs ' + k + '  [' + fp + ']');
     else sig[fp] = k;
   });
@@ -234,11 +259,11 @@ function probeAll() {
    * was never probed. Hard Rule 10 exactly: the property asserted was not the property the defect
    * violates. So assert PRESENCE too — `none|3px|0px|none` is the browser default and means the
    * signal has no static treatment at all. */
-  var DEFAULT_TUPLE = 'none|3px|0px|none';
+  var DEFAULT_TUPLE = 'none|3px|0px|none|none';
   var bare = keys.filter(function (k) {
     var r = reduce[k];
     var shape = (r.shadow === 'none') ? 'none' : r.shadow.replace(/rgba?\([^)]*\)/g, '').trim();
-    return (r.style + '|' + r.width + '|' + r.offset + '|' + shape) === DEFAULT_TUPLE;
+    return (r.style + '|' + r.width + '|' + r.offset + '|' + shape + '|' + r.deco) === DEFAULT_TUPLE;
   });
   ck('every competing signal actually HAS a static treatment (distinctness alone would pass on a deleted one)',
     bare.length === 0, bare.length ? bare.join(', ') + ' carry the browser default' : keys.length + ' signals carry geometry');
@@ -292,7 +317,7 @@ function probeAll() {
      * split like that is exactly how a name goes stale silently: whichever half keeps the old name
      * still resolves, and the other animates nothing. Both are named here. */
     var want = ['bdScramPulse', 'bdMsgFlash', 'bdActuatedFlash', 'alarmCritFlash', 'cklGlow',
-                'cklAckGlow', 'cklRungGlow', 'instrGlow'];
+                'cklAckGlow', 'cklRungGlow', 'instrGlow', 'bdRefusedFlash'];
     var found = {};
     for (var i = 0; i < document.styleSheets.length; i++) {
       var rules; try { rules = document.styleSheets[i].cssRules; } catch (e) { continue; }
@@ -303,7 +328,7 @@ function probeAll() {
     return want.filter(function (n) { return !found[n]; });
   });
   ck('every keyframe the board names still EXISTS in the CSSOM (a named animation with no keyframe is silent)',
-    kf.length === 0, kf.length ? 'MISSING: ' + kf.join(', ') : '8 keyframes present');
+    kf.length === 0, kf.length ? 'MISSING: ' + kf.join(', ') : '9 keyframes present');
 
   /* ⚰ THE STYLESHEET PARSE CHECK WAS HERE AND HAS MOVED to `test/verify_stylesheets.js`.
    * It caught a stray `}` that this change itself shipped — one that silently swallowed the next
