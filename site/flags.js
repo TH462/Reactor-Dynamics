@@ -88,10 +88,10 @@
       soon: 'Guided procedure walkthroughs are in final review. The procedures themselves are readable now in the operator\'s manual.',
     },
     checklists: {
-      label: 'Live checklists',
+      label: 'Live walkthroughs',
       stage: 'public',
-      desc: 'The passive 📋 checklist: a procedure ticked off against the plant as it sits.',
-      soon: 'Live checklists are in final review. The procedures themselves are readable now in the operator\'s manual.',
+      desc: 'The passive 📋 walkthrough: a procedure ticked off against the plant as it sits.',
+      soon: 'Live walkthroughs are in final review. The procedures themselves are readable now in the operator\'s manual.',
     },
   };
 

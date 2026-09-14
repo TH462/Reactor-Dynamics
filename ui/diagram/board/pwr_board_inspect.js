@@ -316,7 +316,7 @@
       'and the heaters pressurize toward it; lower it on a cooldown and spray brings pressure down. ' +
       'THE DIAL BOTTOMS OUT AT 1700 psig (11.72 MPa) — that is the operator span of the pressure ' +
       'control system, not the whole range the plant can sit at. Below it you do not wind the dial ' +
-      'down: you take the heaters off and hold spray open, which is how the cooldown checklist ' +
+      'down: you take the heaters off and hold spray open, which is how the cooldown walkthrough ' +
       'depressurizes to the Mode 5 point near 363 psi (2.50 MPa). A cold plant boots holding a ' +
       'setpoint under the span; once you dial the box, you are in the span and the floor applies.',
       CI, '5.1a'),

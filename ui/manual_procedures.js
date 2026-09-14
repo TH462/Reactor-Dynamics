@@ -233,7 +233,7 @@
           saw: { p: 'tavg_c', op: '>', v: 150 },
           acc: { p: 'tavg_c', op: '>', v: 283 },
           hl: ['Tavg', 'Plant Pressure', 'SG Pressure'] },
-        obs('Confirm Mode 3, Hot Standby: hot at the no-load band, pressurized, SUBCRITICAL with the control bank never moved. Ready for the approach to criticality (PWR-N03 / startup checklist).',
+        obs('Confirm Mode 3, Hot Standby: hot at the no-load band, pressurized, SUBCRITICAL with the control bank never moved. Ready for the approach to criticality (PWR-N03 / startup walkthrough).',
           { p: 'plant_mode', op: '~', v: 3, tol: 0.1 }),
         obs('Confirm the reactor stayed shut down: power near zero, reactivity deeply negative (measured arrival ρ ≈ −2828 pcm).',
           { p: 'reactivity_pcm', op: '<', v: -300 }),
@@ -420,7 +420,7 @@
           cmd: { action: 'set_load_mode', mode: 'manual' }, hold: 30,
           acc: { p: 'mwe_output', op: '>', v: 10 },
           hl: ['Turbine Load'] },
-        { text: 'Confirm Mode 1, At Power: critical, at operating temperature, generator on line, power above 5 %. Hold here, or continue the power ascension (raise-power checklist).',
+        { text: 'Confirm Mode 1, At Power: critical, at operating temperature, generator on line, power above 5 %. Hold here, or continue the power ascension (raise-power walkthrough).',
           control: '(observe)', target: 'Mode 1, At Power', hold: 2,
           acc: { p: 'plant_mode', op: '~', v: 1, tol: 0.1 },
           hl: ['Tavg', 'Turbine Load', 'SG Level'] },
@@ -576,7 +576,7 @@
           { p: 'tavg_c', op: '~', v: 286, tol: 3 }, null, ['Tavg', 'Plant Pressure', 'Reactor Coolant Pumps (RCP)']),
         { text: 'BORATE FIRST — nothing cools until this is done. Cooling a core makes it MORE reactive (the cold moderator is denser), so the shutdown margin you have at 546.8 °F is not the margin you will have at 199 °F. Set the boron target to 857 ppm on the board (BORON CONTROL): 806 ppm is critical cold with the bank in (09 §7.5) and the rest is margin. The makeup panel meters it as a batch dose at about 3 ppm/min, so 705 → 857 ppm takes roughly 50 plant-minutes.',
           control: 'Boron control', target: '857 ppm',
-          note: 'This is the same 857 ppm the cold_shutdown initial condition ships, and it is why a plant that came down this way goes critical near step 561 on the next startup rather than the 319 the startup checklist assumes (#303).',
+          note: 'This is the same 857 ppm the cold_shutdown initial condition ships, and it is why a plant that came down this way goes critical near step 561 on the next startup rather than the 319 the startup walkthrough assumes (#303).',
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 857 }, hold: 3600,
           acc: { p: 'boron_ppm', op: '>', v: 850 },
           hl: ['Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
@@ -591,7 +591,7 @@
           hl: ['Trip Blocks'] },
         { text: 'BLOCK the reactor trip on safety injection as well (Trip Blocks). This is a SECOND trip on the same channel, armed at the 1715 psi (11.824 MPa) SI setpoint — a real casualty means the reactor does not stay up, and a planned cooldown is not one. THIS BLOCK IS ALSO WHAT STOPS THE INJECTION ITSELF: there is no ESF arm on this plant, so switching the pumps off in the next step secures them without stopping the actuation from starting them again.',
           control: 'Trip Blocks', target: 'SI reactor trip BLOCKED',
-          note: 'Found by building this checklist: with only the low-pressure trip blocked the plant still scrams on the way down, because two entries in the trip table watch the same instrument in the same direction. Both blocks are needed and both are the operator\'s.',
+          note: 'Found by building this walkthrough: with only the low-pressure trip blocked the plant still scrams on the way down, because two entries in the trip table watch the same instrument in the same direction. Both blocks are needed and both are the operator\'s.',
           cmd: { action: 'set_trip_block', trip_id: 'si_trip', blocked: true }, hold: 10,
           hl: ['Trip Blocks'] },
         { text: 'Take HPI/LPI to OFF — the P-11 cold lineup. This SECURES THE PUMPS; it is the si_trip block above that stops the actuation, because this plant has no ESF arm to take to MANUAL. Left unblocked, the actuation reads the depressurization as a Loss-Of-Coolant Accident and injects 2500 ppm RWST water. Measured with it left in AUTO: boron ends at 2500 ppm instead of 857 and the cold injection cools the plant about ten times faster than you are asking for.',
@@ -1727,7 +1727,7 @@
           { p: 'power_pct', op: '>', v: 1 },
         ],
       },
-      outcome: 'Plant at Mode 3, Hot Standby: hot, at pressure, reactor shut down, control bank never moved. Boron is still at the cold concentration near 918 ppm; the startup checklist begins by diluting it.',
+      outcome: 'Plant at Mode 3, Hot Standby: hot, at pressure, reactor shut down, control bank never moved. Boron is still at the cold concentration near 918 ppm; the startup walkthrough begins by diluting it.',
     },
     {
       id: 'pwr_startup', category: 'startup', manual_ref: 'PWR-T03', next: 'pwr_raise_power',
@@ -1795,7 +1795,7 @@
          * player pressed the button the text told them not to press. The `cmd` is gone and the
          * acceptance is the lamp; the replay's plant boots with feed in AUTO and ticks on it. */
         { text: 'Check SG FEED reads AUTO. If it does not, press AUTO.',
-          why: 'Nothing happens until the reactor starts making heat, and then the steam generator boils down fast. AUTO is what refills it. Both routes into this checklist normally arrive with AUTO already lit; check anyway.',
+          why: 'Nothing happens until the reactor starts making heat, and then the steam generator boils down fast. AUTO is what refills it. Both routes into this walkthrough normally arrive with AUTO already lit; check anyway.',
           control: 'Feed Pumps', target: 'SG FEED reads AUTO, STEAM GENERATOR LEVEL near 65 %',
           hold: 5,
           acc: { p: 'feed_coupled', op: '>', v: 0 },
@@ -1810,7 +1810,7 @@
         { text: 'Before any rod moves: press 1/M PLOT on the ROD CONTROL card, then press Plot point.',
           why: 'The 1/M plot predicts where the rods will be when the reactor goes critical, before you get there. It divides the starting count rate by the current one: as counts climb the result falls toward zero, and where the line crosses zero is the predicted critical position. It fits the last three points, so each new point sharpens it.',
           control: '1/M Plot', target: 'point 1 plotted',
-          note: 'This first point is the baseline. Every count target on this checklist is the SOURCE RANGE reading, printed in shorthand: 7.0e2 is 700 counts a second, 1.4e3 is 1,400, 2.0e4 is 20,000.',
+          note: 'This first point is the baseline. Every count target on this walkthrough is the SOURCE RANGE reading, printed in shorthand: 7.0e2 is 700 counts a second, 1.4e3 is 1,400, 2.0e4 is 20,000.',
           accs: [{ cmd: 'plot_1m_point', label: 'Baseline point plotted' }],
           overtaken: SR_OVERTAKEN,
           /* GLOW THE BUTTON, NOT THE BOX THAT OPENS IT (#735, owner playtest #724 items 4 and 5:
@@ -2005,7 +2005,7 @@
         obs('Verify Mode 1: REACTOR POWER 10 %, OUTPUT 10 MWe, IR HIGH FLUX and PR HIGH (LOW SETPT) both lit.',
           { p: 'plant_mode', op: '~', v: 1, tol: 0.1 },
           'Both rows are on the TRIP BLOCKS panel.', null,
-          'The reactor is critical, the generator is carrying load, and both startup shutdowns are switched off. The next checklist is the climb to full power: rods lead, turbine follows.',
+          'The reactor is critical, the generator is carrying load, and both startup shutdowns are switched off. The next walkthrough is the climb to full power: rods lead, turbine follows.',
           null, ['Reactor Power', 'Turbine Load', 'SG Level']),
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
@@ -2016,7 +2016,7 @@
       title: 'Mode 1, At Power — power ascension to 100 %',
       purpose: 'Take the plant from low power to full power in stages. Rods lead, turbine follows: pull rods, raise LOAD to match, then trim AVG COOLANT TEMPERATURE back into its band. About 1 plant-hour.',
       from: 'low_power',
-      prereq: ['Reactor critical: REACTOR POWER above 9 % (auto-checked).', 'Turbine on line: OUTPUT above 5 MWe (auto-checked).', 'IR HIGH FLUX and PR HIGH (LOW SETPT) both lit on the TRIP BLOCKS panel, from the startup checklist.'],
+      prereq: ['Reactor critical: REACTOR POWER above 9 % (auto-checked).', 'Turbine on line: OUTPUT above 5 MWe (auto-checked).', 'IR HIGH FLUX and PR HIGH (LOW SETPT) both lit on the TRIP BLOCKS panel, from the startup walkthrough.'],
       precond: [
         /* 10 -> 9 % (#732, 2026-09-12, owner playtest #724 item 15: "it gave me a flickering
          * warning that prerequisites for this checklist are not met since i think the reactor
@@ -2043,7 +2043,7 @@
          * (layman playtest 2026-09-07, #653 S3/S4). Since #704 they boot at 606 — still a preset,
          * still 379 steps above the 227 the startup hands over, and still caught by this bound,
          * which now has 6 steps of margin instead of 27. A precondition warns; it never blocks. */
-        { p: 'control_bank_steps', op: '<', v: 600, text: 'CONTROL ROD POSITION below 600 of 627: this checklist follows the startup checklist, not a power preset' },
+        { p: 'control_bank_steps', op: '<', v: 600, text: 'CONTROL ROD POSITION below 600 of 627: this walkthrough follows the startup walkthrough, not a power preset' },
       ],
       cautions: [
         'Keep the turbine on line for the whole climb. A tripped turbine trips the reactor the moment REACTOR POWER passes 50 %, and at 8 % if the condenser is gone as well. If the TURBINE-GENERATOR card reads TRIP, press LATCH and set LOAD again before pulling more rods.',
@@ -2067,7 +2067,7 @@
            * startup hands over" actually means, it is true from the first broadcast, and the
            * 10 % row is already the leg's own precondition banner. */
           { p: 'plant_mode', op: '~', v: 1, tol: 0.1 },
-          'The two rows are IR HIGH FLUX and PR HIGH (LOW SETPT), both lit by the startup checklist.', null,
+          'The two rows are IR HIGH FLUX and PR HIGH (LOW SETPT), both lit by the startup walkthrough.', null,
           'This is the plant the startup hands over: critical, on the grid, feed holding level. Both startup shutdowns have to be switched off. With them on, the climb trips at 25 %, then 35 %.',
           { p: 'power_pct', op: '>', v: 40 },
           ['Reactor Power', 'SG Feed AUTO', 'Trip Blocks']),
@@ -2423,7 +2423,7 @@
           null, ['Control Rod Position', 'Boron']),
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
-      outcome: 'Full power with almost no xenon: BORON 660 ppm and CONTROL ROD POSITION about 351 of 627 — the no-xenon end of the curve, not a fault. Over the next two plant-days xenon builds and you hand the reactivity back: the bank walks up toward 606 of 627 (255 steps, about 56 °F) and BORON comes down toward 617 ppm, 10 ppm at a time. Leave it undone and the plant makes full power about 40 °F cold, taking PZR LEVEL with it. The round trip back down starts with the load rampdown checklist.',
+      outcome: 'Full power with almost no xenon: BORON 660 ppm and CONTROL ROD POSITION about 351 of 627 — the no-xenon end of the curve, not a fault. Over the next two plant-days xenon builds and you hand the reactivity back: the bank walks up toward 606 of 627 (255 steps, about 56 °F) and BORON comes down toward 617 ppm, 10 ppm at a time. Leave it undone and the plant makes full power about 40 °F cold, taking PZR LEVEL with it. The round trip back down starts with the load rampdown walkthrough.',
     },
     {
       id: 'pwr_lower_power', category: 'power', manual_ref: 'PWR-N08', next: 'pwr_shutdown',
@@ -2549,7 +2549,7 @@
                  { p: 'tavg_c', op: '<', v: 294.4, ask: 'Hold INSERT at MED until AVG COOLANT TEMPERATURE is back in its band.', label: 'AVG COOLANT TEMPERATURE back below 562 °F, inside its band' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
         { text: 'Set LOAD to 15 MWe, let power follow, then hold INSERT until AVG COOLANT TEMPERATURE is back in its band.',
-          note: 'About 6 steps at MED. Stop here; the shutdown checklist takes over.',
+          note: 'About 6 steps at MED. Stop here; the shutdown walkthrough takes over.',
           why: 'Scramming from full power is a thermal shock to the plant. About 15 % is low enough that the trip is gentle and high enough that the steam generator still has steam to dump afterwards.',
           control: 'Turbine Load', target: 'OUTPUT 15 MWe; REACTOR POWER near 15 %',
           cmd: { action: 'set_load_target', mwe: 15 }, hold: 900,
@@ -2608,7 +2608,7 @@
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
-      outcome: 'Plant stable near 15 % and 15 MWe, AVG COOLANT TEMPERATURE in its band. The shutdown checklist takes it to Mode 3.',
+      outcome: 'Plant stable near 15 % and 15 MWe, AVG COOLANT TEMPERATURE in its band. The shutdown walkthrough takes it to Mode 3.',
       /* THE BANNER'S OWN CHECK (#715, second cause). `outcome` above is an authored plant-state
        * claim ("15 MWe") that nothing verified before this — instructor_layer.js's
        * `_gradeOutcomeGuard` re-grades this array against the LIVE plant for as long as the
@@ -2661,7 +2661,7 @@
         { p: 'power_pct', op: '>', v: 10, text: 'Reactor at power: REACTOR POWER above 10 %' },
         { p: 'power_pct', op: '<=', v: 30, text: 'Reactor at LOW power, not full power: REACTOR POWER at or below 30 % — run "Mode 1, At Power — load rampdown to about 15 %" first if you are at full power' },
       ],
-      cautions: ['The fuel keeps making heat for days after a scram and it cannot be switched off. The STEAM DUMP carries it until the cooldown checklist starts.'],
+      cautions: ['The fuel keeps making heat for days after a scram and it cannot be switched off. The STEAM DUMP carries it until the cooldown walkthrough starts.'],
       steps: [
         { text: 'Set LOAD to 0 MWe and wait for OUTPUT to fall below 5 MWe.',
           why: 'Taking the load off the turbine first means the scram happens with no electricity on the generator. The reactor follows the falling steam demand down by itself.',
@@ -2710,7 +2710,7 @@
           hl: ['Steam Dump'], hl_watch: ['Tavg', 'SG Pressure'] },
       ],
       guard: { never_melted: true },
-      outcome: 'Reactor shut down at Mode 3, Hot Standby; decay heat going to the steam dump. The cooldown checklist takes the plant to Mode 5.',
+      outcome: 'Reactor shut down at Mode 3, Hot Standby; decay heat going to the steam dump. The cooldown walkthrough takes the plant to Mode 5.',
     },
     {
       id: 'pwr_cooldown', category: 'shutdown', manual_ref: 'PWR-N15', stack_only: true,
@@ -3061,7 +3061,7 @@
           hl: ['Pressurizer Spray (PZR)'] },
         obs('Verify Cold Shutdown: AVG COOLANT TEMPERATURE below 199 °F, RCP FLOW off, ALIGN lit on the RHR card.',
           { p: 'plant_mode', op: '~', v: 5, tol: 0.1 }, 'PRIMARY PRESSURE will be low — the spray took it there.', null,
-          'This is the cold-shutdown picture: water below 199 °F, pumps off, RHR carrying the heat, pressure low with the spray shut. The heatup checklist takes it back up.',
+          'This is the cold-shutdown picture: water below 199 °F, pumps off, RHR carrying the heat, pressure low with the spray shut. The heatup walkthrough takes it back up.',
           null, ['Tavg', 'Primary Pressure']),
         /* THE TILE THE TEXT NAMES, NOT THE VALVE *(OWNER, 2026-09-09 playtest, #684 §C: "Mode
          * 3>5 step 14 – this step has you look at the accumulators card but it highlights the
@@ -3077,7 +3077,7 @@
           null, ['Accumulators']),
         obs('Verify ALIGN is lit on the RHR card and HX SPLIT is above 0 %. The round trip is complete.',
           { p: 'rhr_valve_open', op: '>', v: 0 }, null, null,
-          'RHR is the only thing removing heat now. If its suction valve shut, the decay heat would have nowhere to go. The heatup checklist is the way back.',
+          'RHR is the only thing removing heat now. If its suction valve shut, the decay heat would have nowhere to go. The heatup walkthrough is the way back.',
           null, ['Residual Heat Removal (RHR)']),
       ],
       guard: {
@@ -3094,7 +3094,7 @@
           { p: 'tavg_rate_c_per_hr', op: '<', v: -600 },
         ],
       },
-      outcome: 'Mode 5, Cold Shutdown: water below 199 °F, RHR carrying the plant, reactor coolant pumps off, accumulators full and isolated, boron at the cold concentration. The heatup checklist takes it back up.',
+      outcome: 'Mode 5, Cold Shutdown: water below 199 °F, RHR carrying the plant, reactor coolant pumps off, accumulators full and isolated, boron at the cold concentration. The heatup walkthrough takes it back up.',
     },
     /* ============================ THE TMI-2 INCIDENT WALKTHROUGH (#670 Phase 2) ============
      * *(OWNER, 2026-09-08: "plan the building of a three mile island incident walkthrough…

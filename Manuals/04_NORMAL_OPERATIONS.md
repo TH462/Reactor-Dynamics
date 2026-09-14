@@ -131,7 +131,7 @@ motion. **Mode boundaries on this plant are by Tavg:** Mode 5 ≤ **199.4 °F (9
 boundary, not the Mode 5 → 4 one.
 
 
-> **⚠ THESE FIGURES WERE MEASURED ON THE RETIRED ENGINE (2026-08-02) AND HAVE NOT BEEN RE-MEASURED ON THE PLANT THAT SHIPS.** Treat them as the shape of the evolution, not as this plant's numbers. Since 2026-08-31 the Mode 5 rows are reachable again (#524) — measured on this engine, the pumps alone warm the Mode 5 plant at **94.9 °F/hr (52.7 °C/hr)** over the first half hour, a much faster class than the table's retired ~30 °F/hr, so expect the milestones to land earlier when this table is re-measured. **The live checklist's pwr2 entry (PWR-N01, replayed end to end 2026-08-31) is the measured authority for the shipped plant**: the pressurization is **STAGED** — Pressure SP to its **1700 psig floor** through the ride, completed to **2235 psi (15.41 MPa)** only with the secondary bottled at the 1020 psi anchor — because crossing the **P-11 permissive (1,972 psia)** with steam pressure still below the **327.7 psia** low-steam-pressure SI setpoint auto-reinstates a STANDING safety-injection signal: SI actuates on a healthy plant, the heaters shed (157.8 kW → 0) and the pressurization parks at **~1,921 psia** for good. Measured on the staged sequence: the ride to 541 °F takes **~11 plant-h** (the early rate is ~87–114 °F/hr; the approach to the no-load anchor is asymptotic), arrival is at cold-shutdown boron (**~918 ppm**, ρ ≈ −3,418 pcm) with the 200-step shutdown bank out and the control bank never moved. **Two figures from the 2026-09-05 replay (#629) supersede the table below**: the second half of the pressurization is *fast*, not slow — **1714 → 2188 psia in 21 plant-minutes** at full heaters (157.8 kW) — and the settled endpoint depends on step 8b, **547.2 °F (286.2 °C) / 1005 psig with the dumps in AUTO** against **551.6 °F (288.7 °C) / 1042 psig on the atmospheric dump valve without it**. The 567 °F (297.2 °C) endpoint printed in older revisions and in **05** §Phase A was the retired engine's Tavg-mode ride and is not this plant's.
+> **⚠ THESE FIGURES WERE MEASURED ON THE RETIRED ENGINE (2026-08-02) AND HAVE NOT BEEN RE-MEASURED ON THE PLANT THAT SHIPS.** Treat them as the shape of the evolution, not as this plant's numbers. Since 2026-08-31 the Mode 5 rows are reachable again (#524) — measured on this engine, the pumps alone warm the Mode 5 plant at **94.9 °F/hr (52.7 °C/hr)** over the first half hour, a much faster class than the table's retired ~30 °F/hr, so expect the milestones to land earlier when this table is re-measured. **The live walkthrough's pwr2 entry (PWR-N01, replayed end to end 2026-08-31) is the measured authority for the shipped plant**: the pressurization is **STAGED** — Pressure SP to its **1700 psig floor** through the ride, completed to **2235 psi (15.41 MPa)** only with the secondary bottled at the 1020 psi anchor — because crossing the **P-11 permissive (1,972 psia)** with steam pressure still below the **327.7 psia** low-steam-pressure SI setpoint auto-reinstates a STANDING safety-injection signal: SI actuates on a healthy plant, the heaters shed (157.8 kW → 0) and the pressurization parks at **~1,921 psia** for good. Measured on the staged sequence: the ride to 541 °F takes **~11 plant-h** (the early rate is ~87–114 °F/hr; the approach to the no-load anchor is asymptotic), arrival is at cold-shutdown boron (**~918 ppm**, ρ ≈ −3,418 pcm) with the 200-step shutdown bank out and the control bank never moved. **Two figures from the 2026-09-05 replay (#629) supersede the table below**: the second half of the pressurization is *fast*, not slow — **1714 → 2188 psia in 21 plant-minutes** at full heaters (157.8 kW) — and the settled endpoint depends on step 8b, **547.2 °F (286.2 °C) / 1005 psig with the dumps in AUTO** against **551.6 °F (288.7 °C) / 1042 psig on the atmospheric dump valve without it**. The 567 °F (297.2 °C) endpoint printed in older revisions and in **05** §Phase A was the retired engine's Tavg-mode ride and is not this plant's.
 
 | Milestone | Plant time | Notes |
 |-----------|-----------|--------|
@@ -198,7 +198,7 @@ Verify the unit is correctly lined up in **Mode 3, Hot Standby** before any appr
 **Measured full stack.** From a **PWR-N01** arrival (857 ppm, ρ = −2772 pcm), diluting to
 **719 ppm** takes **~46 plant-minutes** at the plant's make-up rate (~3 ppm/min) and lands the
 reactor at **ρ = −1257 pcm** — the Hot Standby hold. Withdrawing the control bank to **223 steps**
-from there brings it critical, on the reference position. (The live checklist replay declares
+from there brings it critical, on the reference position. (The live walkthrough replay declares
 criticality a little later, between **226 and 238 steps**: 223 is the first whole step at which ρ is positive, and 226–238
 is where a player watching the count rate and SUR can actually *see* that it has. That gap is the
 whole reason the declaration is made on the instruments.)
@@ -341,7 +341,7 @@ Reactor critical (Mode 2 or early Mode 1); condenser vacuum healthy; MSIV open.
 > demand on the primary.
 >
 > **This chapter said "Mode 2, ≤ 5 %" until 2026-08-12, and the plant never did.** The shipped
-> `pwr_startup` checklist has always raised power to ~12 % and blocked both trips before pressing
+> `pwr_startup` walkthrough has always raised power to ~12 % and blocked both trips before pressing
 > Connect Grid — gated by `run_procedures_stack`. The manual contradicted a passing gate; the
 > manual was the wrong one.
 
@@ -769,14 +769,14 @@ After **PWR-N14** or any hot, subcritical plant.
 ### Expected cooldown performance
 
 **The cadence is part of the answer, and it is now executable.** The table below is produced by
-the **`pwr_cooldown` checklist** (`ui/manual_procedures.js`, `manual_ref: PWR-N15`), replayed
+the **`pwr_cooldown` walkthrough** (`ui/manual_procedures.js`, `manual_ref: PWR-N15`), replayed
 through the full M4+M5+M6 stack by `test/run_procedures_stack.js` — so it is a gate, not a
 transcription. Conditions: `hot_zero_power`, free-play default lineup, seed 42, 10× acceleration,
 a **programmed −90 °F/hr (−50 °C/hr)** with **63 °F (35 °C)** of subcooling held throughout. Run
 it at a different rate and every row below moves; that is the point of a programmed cooldown.
 
 
-> **⚠ THESE FIGURES WERE MEASURED ON THE RETIRED ENGINE (2026-08-02) AND HAVE NOT BEEN RE-MEASURED ON THE PLANT THAT SHIPS.** Treat them as the shape of the evolution, not as this plant's numbers. Since 2026-08-31 the Mode 5 rows are reachable again (#524) — measured on this engine, the RHR heat exchanger at a held 15 % split takes the Mode 4 plant to the Mode 5 boundary in **0.56 plant-h** (worst 1-min rate **−159 °F/hr (−88 °C/hr)** — over the administrative limit, which is why the checklist's authored ramp starts at 7 %), so expect these milestones to move when this table is re-measured. **The live checklist's pwr2 entry (PWR-N15, replayed end to end 2026-08-31) is the measured authority for the shipped plant**: dump-SP walk down with the secondary stalling at its own saturation, **NORMAL spray** for the low-pressure leg (the Pressure SP floors at its **1700 psig** span bottom, so the walk cannot finish the job; heaters to MANUAL-0 — aux spray rides the charging flow and floods the vessel where normal spray recirculates, level holding ~60 %), accumulators isolated inside the **1600 psig** valve-power band, **RHR aligned UNDER the spray** (shutting the spray first bounces pressure back over the 425 psig block-open permissive — measured, the order is the lesson), **Mode 5 in ~6.7 plant-h**, RHR leg **−92 °F/hr (−51 °C/hr)**.
+> **⚠ THESE FIGURES WERE MEASURED ON THE RETIRED ENGINE (2026-08-02) AND HAVE NOT BEEN RE-MEASURED ON THE PLANT THAT SHIPS.** Treat them as the shape of the evolution, not as this plant's numbers. Since 2026-08-31 the Mode 5 rows are reachable again (#524) — measured on this engine, the RHR heat exchanger at a held 15 % split takes the Mode 4 plant to the Mode 5 boundary in **0.56 plant-h** (worst 1-min rate **−159 °F/hr (−88 °C/hr)** — over the administrative limit, which is why the walkthrough's authored ramp starts at 7 %), so expect these milestones to move when this table is re-measured. **The live walkthrough's pwr2 entry (PWR-N15, replayed end to end 2026-08-31) is the measured authority for the shipped plant**: dump-SP walk down with the secondary stalling at its own saturation, **NORMAL spray** for the low-pressure leg (the Pressure SP floors at its **1700 psig** span bottom, so the walk cannot finish the job; heaters to MANUAL-0 — aux spray rides the charging flow and floods the vessel where normal spray recirculates, level holding ~60 %), accumulators isolated inside the **1600 psig** valve-power band, **RHR aligned UNDER the spray** (shutting the spray first bounces pressure back over the 425 psig block-open permissive — measured, the order is the lesson), **Mode 5 in ~6.7 plant-h**, RHR leg **−92 °F/hr (−51 °C/hr)**.
 
 | Milestone | Plant time | Notes |
 |-----------|-----------|--------|
@@ -787,12 +787,12 @@ it at a different rate and every row below moves; that is the point of a program
 | RHR permissive reached, **440 psi (3.03 MPa)** | **~3.16 plant-h** | Tavg **382.8 °F (194.9 °C)** — close to the commercial ~350 °F / ~350 psig practice in the NOTE above |
 | RHR aligned, RCPs secured | ~3.19 plant-h | HX split 7 %; RHR carries the heat from here |
 | **Mode 4 entry** (350 °F (176.7 °C)) | ~3.49 plant-h | 392 psi (2.70 MPa) |
-| Cold end, **Mode 5** (199.4 °F (93 °C)) — reachable again since 2026-08-31 (#524) | **~4.89 plant-h** | boron **857 ppm**, accumulators **100 % full and isolated**, RHR on, RCPs off. The checklist runs on to **177 °F (80.5 °C)** at **363 psi (2.50 MPa)** — the `cold_shutdown` initial condition's own pressure |
+| Cold end, **Mode 5** (199.4 °F (93 °C)) — reachable again since 2026-08-31 (#524) | **~4.89 plant-h** | boron **857 ppm**, accumulators **100 % full and isolated**, RHR on, RCPs off. The walkthrough runs on to **177 °F (80.5 °C)** at **363 psi (2.50 MPa)** — the `cold_shutdown` initial condition's own pressure |
 
 Measured rate: **−85 to −100 °F/hr (−47 to −56 °C/hr)** through the secondary-led legs and
 **−65 to −118 °F/hr (−36 to −66 °C/hr)** on the RHR leg. The worst transient anywhere in the
 run is **−172 °F/hr (−95 °C/hr)** for about ten seconds as the RHR suction opens, which is why
-the checklist's guard sits at −270 °F/hr (−150 °C/hr): every known way to lose control of this
+the walkthrough's guard sits at −270 °F/hr (−150 °C/hr): every known way to lose control of this
 evolution is far beyond it (see the injection table in `Diagnostic/TUNING_LOG.md`). If the
 accumulators are left open through 665 psia (4.58 MPa) they dump; if SI is left armed the
 pressurizer goes solid and trips the plant; if either reactor trip is left unblocked you scram
@@ -835,6 +835,6 @@ in the first leg.
 | Accumulator OPERABLE / isolate on cooldown | NUREG-1431 Rev 4.0 **LCO 3.5.1**, **SR 3.4.12.3** |
 | RHR placement near intermediate T/P on cooldown | Commercial SOP practice (e.g. plant procedures of the form in NRC ADAMS **ML13310A240**) |
 | Critical boron, ECC, and 1/M practice values | **09 §7.5** |
-| Heatup / cooldown plant-time milestones | **PWR-N01** and **PWR-N15** expected performance — all MEASURED full stack, cadence stated with the table. N15's is produced by the `pwr_cooldown` checklist under `test/run_procedures_stack.js`, so it is re-derived on every gate run rather than transcribed |
+| Heatup / cooldown plant-time milestones | **PWR-N01** and **PWR-N15** expected performance — all MEASURED full stack, cadence stated with the table. N15's is produced by the `pwr_cooldown` walkthrough under `test/run_procedures_stack.js`, so it is re-derived on every gate run rather than transcribed |
 | RCS heatup / cooldown-rate limit | **SOURCED — 100 °F/hr.** *"Do not exceed a heatup rate of 100 °F/hr in the pressurizer or 100 °F/hr in the RCS"* (Westinghouse Technology Systems Manual App 19-1, NRC ADAMS **ML11223A342**), and WTSM §3.2 Table 3.2-10 lists the RCS design cycles as *"Heatup at <100 °F/hr — 200; Cooldown at <100 °F/hr — 200"* (**ML11223A213**). Tech Spec basis: NUREG-1431 **LCO 3.4.3**. *(OWNER RULING, 2026-08-09, on #398: "100 F/hr TS + 50 admin" — adopt the sourced limit as the hard number, keep ~50 °F/hr as a soft administrative target.)* This table said **"UNVERIFIED — no source found"** until 2026-08-12, four months after the number, the sources and the ruling had all landed in the engine and on the board — the board's Heatup Rate tile has annunciated at ±100 °F/hr since #375. The **90 °F/hr (50 °C/hr)** used throughout PWR-N15 is this plant's programmed rate and sits inside the limit; that part was always true. |
 | Shutdown-bank withdrawal is an operator evolution, not an initial condition | *"The shutdown banks are always in the fully withdrawn position during power operations and are moved into this position at a fixed speed in manual bank control prior to criticality"* — WTSM §8.1.1, NRC ADAMS **ML11223A252**. Verified on the Mode 5 → 4 leg (App 19-1 A.12) and required complete within 15 minutes of control-bank withdrawal (App 19-1 C.7), **ML11223A342**. Implemented as **PWR-N01 step 2a** 2026-08-12. |

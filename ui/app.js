@@ -3109,7 +3109,7 @@
     warp_locked: 'WARP unavailable — ',
     // #619 item 6. Not an emergency, so it toasts 'info' rather than 'error' below — the
     // other three are the plant interrupting you; this one is the checklist keeping pace.
-    step: 'Dropped to real time — checklist step complete',
+    step: 'Dropped to real time — walkthrough step complete',
     // #619 item 13 — the plant is holding the clock down (the accumulator arming window).
     // The service also REFUSES set_speed while it stands, so this is not merely advisory.
     hold: 'Held at real time — the plant needs you here',
@@ -3441,7 +3441,7 @@
   }
   var IDLE_INSTR_HTML =
     '<div class="instr-idle">' +
-    '<p class="instr-idle-lead">Free play — operate the plant on the left. This panel is your coach and checklist host.</p>' +
+    '<p class="instr-idle-lead">Free play — operate the plant on the left. This panel is your coach and walkthrough host.</p>' +
     '<ol class="instr-idle-list">' +
     /* F11 IS THE FIRST LINE *(OWNER DIRECTIVE, 2026-08-11: "I would like the helpful hints
      * list that shows in the instructor during free play to mention F11 makes the screen
@@ -4213,7 +4213,7 @@
        * with no owner (#598 item 12). Clear it, and clear the render key with it — the
        * card we are about to draw is not the one the key describes. */
       if (cklState.key) resetCkl();          /* resetCkl blanks cur — set the text AFTER it */
-      cur.hidden = false; cur.textContent = 'Checklist: ' + ck.procedure_id;
+      cur.hidden = false; cur.textContent = 'Walkthrough: ' + ck.procedure_id;
       return;
     }
     cur.hidden = cklState.view !== 'run';
@@ -9151,7 +9151,7 @@
       sel: '#instructorCard',
       place: 'left',
       title: 'Instructor',
-      body: '<p>Free-play coaching lives here. The title changes when a checklist, ' +
+      body: '<p>Free-play coaching lives here. The title changes when a walkthrough, ' +
         'procedure, or scenario is running. Expand the card to read more.</p>',
       prep: function () {
         var c = $('instructorCard');
@@ -9174,7 +9174,7 @@
     {
       sel: '#cklMenu',
       place: 'left',
-      title: 'Checklists',
+      title: 'Walkthroughs',
       body: '<p>Interactive procedures that check themselves off the instruments. ' +
         'Best next step after this tour — hover a step to glow the controls it names.</p>',
       prep: function () {
@@ -9216,7 +9216,7 @@
       place: 'bottom',
       title: 'Press Play when ready',
       body: '<p>Starts the clock. The pause overlay (and this tour) leave when you ' +
-        'run. Use <b>Help</b> anytime; open a <b>Checklist</b> to practice a procedure.</p>'
+        'run. Use <b>Help</b> anytime; open a <b>Walkthrough</b> to practice a procedure.</p>'
     }
   ];
   var tourIdx = 0;
@@ -9559,7 +9559,7 @@
     var item = 'procedure:' + pr.id;
     var h = '<div class="m-card"><div class="m-h">' + mesc(pr.title) + ' <span class="m-pill">' + mesc(pr.category) + '</span>' +
       /* the old Follow-in-Instructor walkthrough is gone from the player's menus (#660 item 14) */
-      (flagOn('checklists') && flagOn(item) ? '<button class="btn m-follow" data-checklist="' + mesc(pr.id) + '" title="Run as a walkthrough — one step at a time in the Instructor tab; no reset, steps auto-check off the instruments">📋 Checklist</button>' : '') + '</div>';
+      (flagOn('checklists') && flagOn(item) ? '<button class="btn m-follow" data-checklist="' + mesc(pr.id) + '" title="Run as a walkthrough — one step at a time in the Instructor tab; no reset, steps auto-check off the instruments">📋 Walkthrough</button>' : '') + '</div>';
     h += '<div class="m-sub">Start from: ' + mesc(pr.from) + '</div>';
     if (pr.purpose) h += '<p style="margin:8px 0">' + mesc(pr.purpose) + '</p>';
     if (pr.prereq && pr.prereq.length) h += '<div class="m-sub2">Prerequisites</div><ul class="m-ul">' + pr.prereq.map(function (x) { return '<li>' + mesc(x) + '</li>'; }).join('') + '</ul>';
@@ -9591,7 +9591,7 @@
     procs = procs.slice().sort(function (a, b) { return order.indexOf(a.category) - order.indexOf(b.category); });
     var driveable = flagOn('walkthroughs') || flagOn('checklists');
     var h = '<h2>Procedures</h2><p class="muted">' + (driveable
-      ? 'Pick a procedure to Follow (guided, resets the plant) or run as a live 📋 Checklist against the plant as it sits. Expand a card to preview its steps.'
+      ? 'Pick a procedure and run it as a live 📋 Walkthrough against the plant as it sits. Expand a card to preview its steps.'
       : 'The written procedures for this plant. Expand a card to read its steps — the guided walkthroughs that drive them are still in review.') + '</p>';
     procs.forEach(function (pr) { h += mProcCard(pr, true); });
     return h;

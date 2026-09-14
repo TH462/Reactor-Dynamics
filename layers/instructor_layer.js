@@ -700,8 +700,8 @@
         c.precondMsg = true;
         c.precondSaid = true;
         this.pendingMessage = {
-          learning: 'Before you lean on this checklist: the plant does not match one or more of its prerequisites — the checklist panel lists each one with what the plant actually reads. Nothing is blocked; the steps simply may not verify until the plant is where the procedure assumes.',
-          industry: 'CHECKLIST PRECONDITIONS NOT MET — see the checklist panel for the failed items.',
+          learning: 'Before you lean on this walkthrough: the plant does not match one or more of its prerequisites — the walkthrough panel lists each one with what the plant actually reads. Nothing is blocked; the steps simply may not verify until the plant is where the procedure assumes.',
+          industry: 'WALKTHROUGH PRECONDITIONS NOT MET — see the walkthrough panel for the failed items.',
         };
       } else if (!anyUnmet && c.precondMsg) {
         // All rows recovered — clear OUR message (set under precondMsg only).

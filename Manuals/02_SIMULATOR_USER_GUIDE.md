@@ -129,7 +129,7 @@ Alarm-tile detail is **generated from the plant's own protection table**, so it 
 real setpoint in your selected units and cannot drift from a retune.
 
 **NOTE:** hovering does **not** ring or highlight the element. The only glows on the board are
-the Instructor's (blue) and the checklist's step preview (green) — both of which point at
+the Instructor's (blue) and the walkthrough's step preview (green) — both of which point at
 something you did *not* choose to look at.
 
 ---
@@ -404,10 +404,10 @@ During missions:
 
 **NOTE:** Rewind restores a checkpoint; use it after a failed recovery or softlock.
 
-### 8.3 Walkthroughs (live checklists) and their prerequisite banner
+### 8.3 Walkthroughs and their prerequisite banner
 
-Any non-narrative procedure can be run as a **walkthrough** — a live checklist against the
-plant. The **Walkthroughs** tab lists them; the Plant & Mission window's Walkthroughs tab lists
+Any non-narrative procedure can be run as a **walkthrough** — a live, self-checking
+procedure against the plant. The **Walkthroughs** tab lists them; the Plant & Mission window's Walkthroughs tab lists
 them too, and its **Start** button loads the procedure's own starting condition first. The 📋
 button on a procedure card in the manual runs one against the plant as it sits. A running
 walkthrough is drawn in the **Instructor** tab **one step at a time**, headed *Step X of N*, with
@@ -417,9 +417,9 @@ which is dark until the instruments say the step is done and lights when they do
 step** takes the plant and the walkthrough back to the start of the previous step (the chart's
 Rewind is off while a walkthrough runs).
 
-Procedures also carry **machine-checked prerequisites**. From the moment a checklist starts,
+Procedures also carry **machine-checked prerequisites**. From the moment a walkthrough starts,
 the Instructor grades each one against the live plant — reading the same indications you
-do — and if any does not match, the checklist shows a caution banner listing each failed
+do — and if any does not match, the walkthrough shows a caution banner listing each failed
 item with **what the procedure expects and what the plant actually reads** (for example:
 boron at the estimated critical condition, ≈ 683 ppm — reads 857). The Instructor adds one
 comment pointing you at it.
@@ -430,9 +430,9 @@ comment pointing you at it.
   after a pump-heat heatup without first diluting to the estimated critical boron
   (PWR-N02 step 15).
 - **It is an ENTRY statement, and it does not come back.** The verdicts are taken once, as
-  the checklist opens, and the banner then stands until the run starts moving. Preconditions
-  ask whether it was sensible to *open* this checklist; re-asserting them against a plant the
-  checklist is deliberately changing would make the procedure complain about its own progress
+  the walkthrough opens, and the banner then stands until the run starts moving. Preconditions
+  ask whether it was sensible to *open* this walkthrough; re-asserting them against a plant the
+  walkthrough is deliberately changing would make the procedure complain about its own progress
   — a Mode 5 → Mode 3 heatup crosses out of every one of its own entry conditions by design.
 
 #### Reading a step card

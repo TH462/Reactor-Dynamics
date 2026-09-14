@@ -30,6 +30,33 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (the interactive procedures are WALKTHROUGHS everywhere a player reads it — #638)
+
+- **The simulator called one feature by two names.** The tools tab has said **Walkthroughs**
+  since #660 and the panel chrome **End Walkthrough** since #687, while the rest of the
+  player-facing copy still said *checklist* — the Scanner hints, the tour, the idle instructor,
+  the running-panel title, the Instructor's precondition comment, the 📋 button in the manual,
+  the manual set and the public site. **66 player-facing strings renamed across 15 files**,
+  counted off the diff: `ui/manual_procedures.js` 19 (step `why` / `note` / `text` / `outcome` /
+  `prereq` / `cautions` prose), `ui/app.js` 8, `ui/shell.html` 3, `layers/instructor_layer.js` 2
+  (**both registers** — the plain Learning line and the industry `WALKTHROUGH PRECONDITIONS NOT
+  MET`), `site/flags.js` 3, `ui/diagram/board/pwr_board_inspect.js` 1, `Manuals/` 26 (02 ×8,
+  04 ×8, 05 ×5, 09 ×2, 03 ×1, README ×1, 00 ×1), `roadmap.html` 3 and `about.html` 1.
+- **Nothing that is an identifier moved.** `checklist_check`, `stop_checklist`, `load_checklist`,
+  `s.instructor.checklist`, the `checklists` feature flag, the `#cklRun` / `.ckl-step` /
+  `data-tab="checklists"` DOM surface and the `run_checklist*` runners keep their names: they are
+  save-format, command and gate contract, and renaming them breaks old saves for no player-visible
+  gain. Historical prose in comments, `Diagnostic/` and the manual revision rows is RECORD and is
+  left verbatim, as are the quoted owner directives that contain the word.
+- **Three manual sites deliberately still say *checklist*,** because there the word means the
+  ordinary paper artifact and not this feature: `02` §10.0 *Recommended first-session checklist*,
+  `07` §5.0 *Post-event recovery checklist*, and the `04` PWR-N03 precaution *"Do not withdraw rods
+  until this checklist is complete"*.
+- **The roadmap and About listed the feature twice** — *Live checklists* and *Procedure
+  walkthroughs* as separate items — although Follow-in-Instructor left the player's menus at #660
+  and the surviving runtime is one thing. Merged into a single **Walkthroughs** entry on both pages
+  and in the roadmap's `<meta name="description">`.
+
 ### Fixed (two walkthrough highlight labels that drew one ring, and the 1/M plot's steps axis — #745, #746)
 
 - **Fourteen walkthrough steps named two highlight labels that resolve to the SAME board

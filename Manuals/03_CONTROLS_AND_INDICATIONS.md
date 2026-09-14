@@ -1165,7 +1165,7 @@ Listed for cross-reference — normal operation never requires typing a command.
 | Generator **OFF** — planned offline (§12.1) | `disconnect_grid` | — |
 | Turbine load (§12.2) | `set_load_target` | `{mwe}` |
 | CW inlet temperature (§13.1) | **CW INLET TEMP** box on the CONDENSER COOLING card, 35 – 85 °F | `set_condenser_cw_temp` |
-| Steam dump / bypass (§12.3) | `set_steam_dump` | `{mode}` — **`auto` or `closed` only** from the board; there is no manual position lever, and `open` and a bare `pct` are refused by name. **`auto` resolves to one of two control modes on the turbine latch**: steam-pressure mode when the turbine is tripped, Tavg mode when it is on line (§12.3). `pressure` and `tavg` are accepted explicitly as the checklist/scenario API for saying which one you mean |
+| Steam dump / bypass (§12.3) | `set_steam_dump` | `{mode}` — **`auto` or `closed` only** from the board; there is no manual position lever, and `open` and a bare `pct` are refused by name. **`auto` resolves to one of two control modes on the turbine latch**: steam-pressure mode when the turbine is tripped, Tavg mode when it is on line (§12.3). `pressure` and `tavg` are accepted explicitly as the walkthrough/scenario API for saying which one you mean |
 | Pressure setpoint box (§5) | `set_pressure_setpoint` | `{mpa}` |
 | Steam-dump setpoint box (§12.3) | `set_steam_dump_setpoint` | `{mpa}` |
 | HPI/LPI (§11.0) | `set_hpi` | `{active}` |
