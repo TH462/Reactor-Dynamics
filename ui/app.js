@@ -4867,15 +4867,17 @@
    * on each long step would be a SECOND copy of that condition, free to drift from the sentence
    * the player is reading. One condition, two surfaces: the words and the ring.
    *
-   * ⚠ IT GLOWS THE BAR, NOT THE RUNG, AND THAT IS A CSS CONSTRAINT RATHER THAN A CHOICE
-   * (quality pass, 2026-09-12). `.speed` is `display: inline-flex` with `overflow: hidden`
-   * (ui/shell.css:918) and `.ckl-step-glow`'s only visual is an OUTER box-shadow — an outer
-   * shadow on a child is clipped by the ancestor's overflow, and `position: relative` plus a
-   * z-index does not escape a clip. So a ring on `button[data-speed="600"]` would barely show
-   * while the whole-bar fallback showed properly, which is the worst of both. `#speed` itself
-   * sits in `.sim-row`, which has no clip, so the bar's own ring is drawn in full. The rung
-   * still gets a marker class so a per-rung treatment is one CSS rule away — that rule belongs
-   * in `ui/shell.css`, which this lane does not own; reported rather than written.
+   * ⚠ IT GLOWS THE RUNG, NOT THE BAR, SINCE #743 *(OWNER, 2026-09-13 playtest: "instead of
+   * highlighting all the speed controls, just highlight the one that is suggested.")*. From
+   * 2026-09-12 to that ruling it lit the whole strip, and the reason was a real CSS constraint
+   * rather than laziness: `.speed` is `display: inline-flex` with `overflow: hidden`, and
+   * `.ckl-step-glow`'s only visual is an OUTER box-shadow — an outer shadow on a child is clipped
+   * by the ancestor's overflow, and `position: relative` plus a z-index does not escape a clip, so
+   * a ring on `button[data-speed="600"]` barely showed. The way out is an INSET treatment, which
+   * paints inside the button's own border box and is never clipped (`.speed button.on` was already
+   * using one). `.ckl-speed-rung` in ui/shell.css now carries it; do not reintroduce an outer ring
+   * on a rung, and do not lift `.speed`'s clip — it is what rounds the six square rungs into the
+   * strip's radius.
    *
    * NOT WHILE THE CLOCK IS HELD. `syncWarpInfo` has a HIGHER-priority branch: while
    * `true_state.speed_hold` stands (the accumulator arming window) it prints that note INSTEAD
@@ -4883,9 +4885,14 @@
    * does. Glowing through that window would ring a button that will refuse the press, which is
    * owner item 3's complaint in reverse.
    *
-   * Uses the step-glow class (the pulse, "act on this") since this IS an action the step asks
-   * for; it is applied after the step/watch glows and never fights them — they live on the
-   * board, this lives in the shell. */
+   * A pulse, "act on this", since this IS an action the step asks for. It never fights the board's
+   * own step/watch glows — they live on the board, this lives in the shell.
+   *
+   * NOTHING LIGHTS IF THE RUNG CANNOT BE FOUND, and that replaces a fallback rather than forgetting
+   * one. `.speed` is rebuilt with the six rungs the plant currently offers, so a hint naming a rung
+   * that is not in the strip is a real mismatch; lighting the whole strip in that case is precisely
+   * what the owner rejected, and `syncWarpInfo` still prints "set the speed control to N x" in words
+   * under it either way. */
   function applyCklSpeedGlow(st) {
     clearCklSpeedGlow();
     var holdS = st ? (+st.hold || 0) : 0;
@@ -4895,10 +4902,13 @@
     if (!bar) return;
     var rung = (RD.CklSpeedHint ? RD.CklSpeedHint(holdS) : null);
     var el = (rung && rung.speed != null) ? bar.querySelector('[data-speed="' + rung.speed + '"]') : null;
-    if (el) el.classList.add('ckl-speed-rung');            // marker only — no rule for it yet
-    bar.classList.add('ckl-speed-glow', 'ckl-step-glow');
+    if (el) el.classList.add('ckl-speed-rung');
   }
   function clearCklSpeedGlow() {
+    /* `.ckl-speed-glow`/`.ckl-step-glow` ON THE STRIP ARE SWEPT TOO, and that is not dead code: the
+     * strip can still be carrying them from a session that loaded the previous build's app.js
+     * against a cached page, and more usefully it makes this clear function total — there is exactly
+     * one place that takes the treatment off, whichever form it is in. */
     document.querySelectorAll('.ckl-speed-glow').forEach(function (el) {
       el.classList.remove('ckl-speed-glow'); el.classList.remove('ckl-step-glow');
     });
