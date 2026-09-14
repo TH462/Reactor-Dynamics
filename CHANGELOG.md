@@ -30,6 +30,36 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (landing page: the hero promises the walkthroughs, and the fourth card stops promising an instructor — #742)
+
+*(OWNER, 2026-09-13: "the landing page needs some work. remove the 'Who its for' block. Its too
+wordy and i doubt anyone reads it. … We should add a consise blurb to the landing page about
+walkthroughs that can take you from cold shutdown to full power and back. … Also revise the
+'WHATS HERE' blocks, we dont have an instructor yet but dont mention the walkthroughs.")*
+
+Website only — no version bump and no `changelog.html` entry (CLAUDE.md: the player-facing
+changelog is for simulator changes).
+
+- The `.hero-who` "Who it's for" block is deleted from `index.html`, with its now-dead `site.css`
+  rules. It was 63 words in the highest-read slot on the page.
+- The hero subhead is now about the walkthroughs — cold shutdown to full power and back — and is
+  keyed to the `walkthroughs` flag instead of `campaign`. Measured: `campaign` resolves **false**
+  on the public channel, so the released site had been reading the `data-flag-off` alternate
+  rather than the sentence written for it; `walkthroughs` is `stage: 'public'` (#722) and
+  resolves true on all three channels. The claim itself is the PWR2 chain — six walkthroughs
+  whose `next` links run Mode 5, Cold Shutdown → Mode 1, At Power → Mode 5 again.
+- "What's here" card 4 was "Guided training — an instructor watches the board and gates progress
+  through procedures". There is no instructor. It is now the operator's manual, which is real and
+  ungated: the `manual` flag is `stage: 'public'` and the control room's Manual button carries no
+  `data-flag`. The walkthroughs are deliberately not named in the cards (owner's directive) — the
+  hero blurb carries them.
+- Cards 1 and 3 lose two claims that were no longer theirs or no longer true: the manual mention
+  in card 1 (card 4 carries it now), and card 3's "take them when they come", which reads as the
+  scenarios — `stage: 'preview'`, i.e. not offered on the public site at all.
+
+No version number, `changelog.html` entry, ALPHA badge or `.alpha-note` was touched. The owner's
+"take it out of Alpha for the next full release" is a separate pending ruling.
+
 ### Fixed (the board no longer moves for players who ask it not to — and still means what it meant — #740)
 
 *(OWNER RULING, 2026-09-13: "1:A, 2:A, 3:a now. I will playtest after you make these changes." —
