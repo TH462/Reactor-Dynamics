@@ -29,6 +29,147 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-13-develop-b (the two reds on the #743/#744 merge seam were both stale fixtures; the confirmation run then found #691 half fixed)
+
+**Both reds were checks pinning an incidental property of a content pool, in gates whose subject IS
+that pool.** Neither lane shipped a defect. Adjudicated one at a time, per the standing rule.
+
+### RED 1 — `verify_e2e_ui`, the #685 watch-glow control. The MESSAGE was the liar, not the payload
+
+```
+#685 control: a watch ring was painted on a step that authors none —
+{"idx":3,"authored":2,"hasHl":true,"watch":2,"press":1}
+```
+
+The check evaluated `before.watch !== 0` **and never read `authored` at all**, so its sentence could
+be neither true nor false of anything it measured. Its comment claimed the landing step was "the
+FIRST step" — already false when #743 wrote it: the checklist advances past steps the running plant
+already satisfies and lands on **step 4**. Step 4 authored no `hl_watch` before #744, which is the
+only reason the check ever passed.
+
+**The board is right.** All 17 `pwr_heatup` steps paint exactly what they author — 38
+`.ckl-watch-glow` and 13 `.ckl-step-glow` over the leg, measured on the merged tree.
+
+**THE TRAP, worth keeping:** a check whose pass depends on *which step the run happens to land on*
+is a fixture, however precisely it is worded — and the wording is what hides it. A message that
+describes a condition the code never evaluates will be believed by the next reader, including the
+next agent, because it reads like the claim. Ask what a check READS, not what it says.
+
+Replaced by the invariant, swept over every step: **elements wearing each class == labels authored
+for it**, for the watch list and the press list both. Strictly stronger, and it catches the class
+#744 had to find BY HAND and reported as unseeable — two DIFFERENT labels resolving to one board id
+(`run_manual_controls` reds only on one LABEL in both lists), which drops the ring for the control
+named first. `classList.add` is idempotent and `applyCklWatchGlow` skips elements the press pass
+already took, so both defects land as `painted < authored` and nothing else in the tree can see them.
+
+`landOn` waits for the panel's rendered `data-ckl-step` to match the checklist's own `idx` instead of
+sleeping, and then reads the step the panel is ACTUALLY showing — which is what makes the sweep
+immune to the auto-advance that killed the old control. 5.1 s for 17 steps plus a negative, against
+two 2500 ms sleeps in the form it replaces.
+
+Five injections, each reddening it and nothing else: `applyCklWatchGlow` early-returns (5 authored, 0
+painted); `clearCklWatchGlow` removed (5, 7); the pulse fed from the watch list (0); a third watch
+label sharing a board id with the first (3, 2); the pre-#744 pool (step 4, 2 press labels, 1 painted).
+**ONE EQUIVALENT MUTANT, recorded rather than buried:** feeding `applyCklWatchGlow` from
+`stepHlLabels` changes nothing observable — the press pass runs first and the watch pass skips what it
+took — so that line cannot be covered by a DOM assertion at all.
+
+**HR10.** The watch half passes on BOTH pools (18 rings pre-#744, 38 after) — a better test. The press
+half **reds on the old pool**, for the `Turbine Load`/`Main Breaker` collision #744 documented and
+fixed by hand. Discrimination, not a refit, and said out loud because the rule requires it.
+
+### RED 2 — `verify_flags_ui` 51/53, two landing checks quoting copy #742 deleted by directive
+
+Proven rather than assumed: **`Guided training` occurs 0 times in `index.html`**. A THIRD check was
+hollow and also went — `!/Guided training/` on the public hero could not fail once the phrase left the
+page, which is the exact anti-pattern the #263 note three lines below it names, shipping green under
+its own warning.
+
+The three replacements guard the MECHANISM and the rule #742 wrote into `index.html` ("any claim here
+must rest on a 'public' flag"), never the wording. The defect behind that rule is the one worth
+remembering: **the hero sat on `campaign` (stage `preview`) for months, so every visitor to the
+released site read the `data-flag-off` alternate and never the sentence anyone wrote** — and nothing
+could see it, because `run_flags` checks the registry and a copy check quoting the dev sentence passes
+while the public channel shows the other one. The enumeration is over whatever the page carries, never
+a list typed in the test, and it reds if the page carries no `[data-flag]` at all so the pair cannot
+go empty silently.
+
+Injection-proven, each reddening exactly one: hero re-keyed to `campaign` reds the public-flag check
+**while the other two stay green** (which is why it has to exist); `applyDom` early-returns reds only
+the swap check; rewording the hero reds only the promise check. HR10 against the pre-#742 page: the
+mechanism check passes on both; the other two red on the old page, one on the defect #742 fixed and
+one on copy the owner had changed.
+
+### #691 WAS HALF FIXED, and the confirmation run is what found it
+
+The re-run came back red on a check I had not touched: `#691: the 600x speed button is still lit
+while the plant is PAUSED — lit [600]`.
+
+**Not a flake, and the measurement is what said so:** 6/6 green driving that test alone, 9/9 green
+driving its three-test neighbourhood on one page. So the red had a mechanism, and it does.
+`syncPlayBtn` clears the lit rung by hand at the pause and nulls `lastSpeedSync` to guarantee the next
+repaint — both deliberate. But **pausing is not what changes `time_acceleration`**: it stays at 600,
+so that guaranteed repaint lights the old speed straight back up, and `cmd()` renders synchronously
+whenever the service is stopped. Any control the player touches while paused restores the symptom.
+
+```
+after 600x    lit [600]   running true    paused false
+after pause   lit []      running false   paused true
+after a cmd   lit [600]   running false   paused true   <- the owner's reported symptom, back
+```
+
+Fix: one condition in `syncSpeedUI` — never light a rung while `pauseWhy` is non-empty. **Keyed on
+`pauseWhy`, NOT on `service.running`**, and that is load-bearing: `resumeSim` empties `pauseWhy`
+BEFORE sending the 1x command precisely so that render lights 1x while the service still reads as
+stopped, so a `!service.running` test here would suppress exactly that and break the resume half of
+the same issue. A speed picked while paused is discarded by `resumeSim`'s own drop to 1x anyway, so
+lighting it would be a lie in the other direction. Covered by step 2b of `testPauseResumeSpeed`
+(press a rung on a held plant, assert it stays dark, with a fixture guard that the plant is still
+paused so it cannot pass vacuously); restoring the unconditional toggle reds that step and nothing
+else, 2/2.
+
+**THE TRAP:** a half-fix that holds until anything re-renders reads as a working fix for as long as
+nothing re-renders. The clearing was correct; the thing that undid it was the guarantee written to
+make the clearing stick. And the gate found it only under load — a fixed `waitForTimeout(300)` is
+where a race surfaces first, which is the same reason the new watch-glow sweep waits on the panel
+instead of on a clock.
+
+### The ACKNOWLEDGE colour is RULED and now cited in the source
+
+*(OWNER RULING, 2026-09-13: "Keeping the acknowledge button green is fine.")* settles the item #743
+shipped deliberately unresolved. The board's walkthrough cues are cyan; the panel's ACKNOWLEDGE keeps
+the green of *(OWNER, 2026-09-03, #619 item 4: "this button should flash green so the user knows
+thats the control that needs to be pressed to progres.")*. **The split carries a meaning — cyan on
+the BOARD = "press this control", green in the PANEL = "you are done with this step"** — and one
+colour would lose the distinction. Cited beside `.ckl-ack` and `@keyframes cklAckGlow` in
+`ui/shell.css`, where anyone hunting the mismatch arrives, with a do-not-"fix"-it line: it is ruled
+twice, so a consistency argument does not reopen it. No pixel changed.
+
+### Found on the way in, and filed
+
+- **`test/verify_e2e_ui.js`'s `module.exports` named `testOneOverMDockedGeometry`**, renamed by #713
+  — `require()` of the file threw a `ReferenceError`, and `require()` is the ONLY path to the
+  injection harness that block exists to provide. The gate runs the file directly, so nothing noticed
+  and the block sat broken. Repaired; the two walkthrough-glow tests are exported too.
+- **The label-collision class is #745** (backshop filed it first; my duplicate #747 is closed). Its
+  table has one **FALSE POSITIVE** — `pwr_startup` 4 was resolved through `controlLabelItem`, the
+  BOARD map, while the renderer uses `RD.Highlight.resolve`, which consults the shell overrides first
+  and lands `1/M Plot Tool` and `Plot point` on different elements (measured: identical? **false**).
+  And it **misses `pwr_raise_power` 9**, where the collision is between the step's own `control` and
+  its watch list — a sweep over `hl` + `hl_watch` never sees it, because that step has no `hl`.
+  **THE TRAP: a static sweep is only as faithful as its resolver.** Corrected live list, 8 rows:
+  `pwr_startup` 2, 15 · `pwr_raise_power` 2, 3, 9 · `pwr_lower_power` 1 · `pwr_cooldown` 1, 4.
+  `pwr_shutdown` clean.
+- **`pwr_tmi2_incident` is UNMEASURED by the paint method** and is recorded as such rather than
+  counted: it carries `pause` steps (3 and 6), so the clock stops, the panel stops re-rendering, and
+  a fixed-sleep harness reads the PREVIOUS step's DOM. My first pass produced nine plausible
+  anomalies on that leg, every one after the first pause, and all of them artifacts.
+
+**Gates:** `verify_e2e_ui` PASS (4 screenshots), `verify_flags_ui` 53/53, and nine shell-driving
+runners re-run against `BASELINES` — all at baseline, **no baseline moved**. Aggregate left to the
+coordinator.
+
+
 ## Session log — 2026-09-13-develop-a (the release presentation for #742/#743/#744, the italic tip, and a "no change" recorded so it stops being re-proposed)
 
 Small closing pass on develop after both overflow lanes merged in. Four jobs, one commit; the

@@ -2140,7 +2140,95 @@ stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
 
-## [Alpha 1.7.4-rc23] — 2026-09-13
+## [Alpha 1.7.4-rc24] — 2026-09-13
+
+### Fixed (a paused plant re-lit the old speed rung the moment the player touched anything — #691 second half)
+
+`syncPlayBtn` clears the lit `[data-speed]` rung by hand at the pause and nulls `lastSpeedSync` so
+the next repaint is guaranteed. But pausing is not what changes `time_acceleration` — it stays at
+600 — so that guaranteed repaint lit the old speed straight back up, and `cmd()` renders
+synchronously whenever the service is stopped, so **any** control pressed while paused restored the
+exact symptom #691 was filed for *(owner: "When pausing the sim the previously selected warp button
+shouldn't still be highlighted")*. Measured, deterministic in three clicks:
+
+```
+after 600x    lit [600]   running true    paused false
+after pause   lit []      running false   paused true
+after a cmd   lit [600]   running false   paused true
+```
+
+Found by a confirmation run, NOT by the check being flaky: 6/6 green driving the test alone and 9/9
+driving its three-test neighbourhood on one page, which is what sent me after the mechanism instead
+of writing the red off.
+
+The fix is one condition in `syncSpeedUI`: never light a rung while `pauseWhy` is non-empty. **Keyed
+on `pauseWhy`, not on `service.running`** — `resumeSim` empties `pauseWhy` BEFORE it sends the 1x
+command, precisely so that render lights 1x while the service still reads as stopped, and a
+`!service.running` test here would suppress exactly that and break the resume half of the same
+issue. A speed picked while paused is discarded by `resumeSim`'s own drop to 1x anyway, so lighting
+it would be a lie in the other direction. `testPauseResumeSpeed` gains step 2b (press a rung on a
+held plant, assert it stays dark, with a fixture guard that the plant is still paused so it cannot
+pass vacuously); restoring the unconditional toggle reds that step and nothing else.
+
+### Fixed (two gates drifted on the #743/#744 merge seam, both pinning fixtures rather than claims — #742, #743, #744)
+
+Each lane was green in its own tree. Neither red was a defect in the merged work.
+
+**`verify_e2e_ui`, the #685 watch-glow control.** It evaluated `before.watch !== 0` and never read
+`authored`, so its message — *"a watch ring was painted on a step that authors none"* — could not be
+true or false of anything it measured; the payload beside it read `authored: 2`. Its comment claimed
+the landing step was "the FIRST step", already false when it shipped: the checklist advances past
+steps the running plant satisfies and lands on step 4, which authored no `hl_watch` before #744.
+#744 gave it two, the board painted two.
+
+Replaced by the invariant, swept over every step of the leg: elements wearing each class ==
+labels the step authors for it, for the watch list and the press list both. That catches the class
+#744 had to find BY HAND and reported as invisible — two DIFFERENT labels resolving to one board id,
+which `run_manual_controls` cannot see (it reds only on one LABEL in both lists) and which drops the
+ring for the control named first; `classList.add` is idempotent and the watch pass skips elements
+the press pass took, so both land as `painted < authored`. `landOn` waits for the panel's rendered
+index to match the checklist's own rather than sleeping, and reads the step the panel is ACTUALLY
+showing — immune to the auto-advance that killed the old control, and 5.1 s against two 2500 ms
+sleeps. Five injections, each reddening it alone; one EQUIVALENT MUTANT recorded rather than buried
+(feeding `applyCklWatchGlow` from `stepHlLabels` changes nothing observable, because the press pass
+runs first and the watch pass skips what it took). HR10: the watch half passes on both pools (18
+rings pre-#744, 38 after); the press half reds on the old pool, for the collision #744 documented —
+discrimination, not a refit.
+
+**`verify_flags_ui` 51/53**, both landing checks quoting copy #742 removed by directive. Proven, not
+assumed: `Guided training` occurs **0 times** in `index.html`. A third check was hollow and also went
+— `!/Guided training/` on the public hero could not fail once the phrase left the page, the exact
+anti-pattern named in the #263 note three lines below it. The three replacements guard the MECHANISM
+and the rule #742 wrote into `index.html` ("any claim here must rest on a 'public' flag"): the hero
+carries the walkthrough promise on dev; every `[data-flag]` element the page actually carries —
+never a list typed in the test — is on for the public channel; and the `data-flag-off` alternate
+really does swap in under `?flags=-<id>`. Without that last one the second is satisfied by an
+`applyDom` that does nothing. Re-keying the hero to `campaign` reds the public-flag check while the
+other two stay GREEN, which is why it exists. 53/53, the recorded baseline.
+
+**Also fixed:** the `module.exports` block at the foot of `test/verify_e2e_ui.js` still named
+`testOneOverMDockedGeometry`, renamed by #713 — `require()` of the file threw a `ReferenceError`,
+and `require()` is the ONLY path to the injection harness that block exists to provide. The gate runs
+the file directly, so nothing noticed.
+
+**Filed, not fixed:** the label-collision class is #745 (filed first by the backshop lane; my
+duplicate #747 is closed). Its table has one FALSE POSITIVE — `pwr_startup` 4 resolved through the
+board map, while the renderer uses `RD.Highlight.resolve`, which consults the shell overrides first
+and lands those two labels on different elements — and misses `pwr_raise_power` 9, where the
+collision is between the step's `control` and its watch list, invisible to a sweep over `hl` +
+`hl_watch`. Corrected live list: `pwr_startup` 2, 15 · `pwr_raise_power` 2, 3, 9 · `pwr_lower_power`
+1 · `pwr_cooldown` 1, 4. `pwr_shutdown` clean; `pwr_tmi2_incident` UNMEASURED by paint (its `pause`
+steps stop the panel re-rendering, so a fixed-sleep harness reads the previous step's DOM).
+
+### Changed (the ACKNOWLEDGE button's green is now RULED, and cited where the next agent will look — #743)
+
+*(OWNER RULING, 2026-09-13: "Keeping the acknowledge button green is fine.")* settles the one item
+#743 shipped deliberately unresolved: the board's walkthrough cues went cyan while the panel's
+ACKNOWLEDGE kept the green of *(OWNER, 2026-09-03, #619 item 4)*. The split now carries a meaning —
+**cyan on the board = "press this control", green in the panel = "you are done with this step"** —
+and collapsing them to one colour would lose the distinction. Cited beside `.ckl-ack` and
+`@keyframes cklAckGlow` in `ui/shell.css`, where anyone hunting the colour mismatch arrives. Ruled
+twice now, so a consistency argument does not reopen it. No pixel changed.
 
 ### Fixed (`verify_e2e_ui` had been RED on CI since the 1/M dock widened — the bound was derived on Windows and CI gates on Linux — #713 pass 3)
 

@@ -2076,12 +2076,15 @@ select.num-input { width: auto; }
 /* ACKNOWLEDGE *(OWNER, 2026-09-03, #619 item 4: "this button should flash green so the user
    knows thats the control that needs to be pressed to progres.")*. Green and pulsing.
 
-   ⚠ IT USED TO SHARE `cklGlow` WITH THE BOARD'S UP-NEXT PULSE, and #743 had to split them: that
-   glow went CYAN on a 2026-09-13 ruling and this one is held to GREEN by the 2026-09-03 one above.
-   `cklAckGlow` is the old green keyframe under a new name, byte-identical in geometry, so the two
-   still read as the same GESTURE in two places — but the board now says "press this" in cyan while
-   this button says it in green. THAT INCONSISTENCY IS REPORTED, NOT RESOLVED (#743): both halves
-   are owner rulings and an agent does not get to pick between them.
+   ⚠ THE SPLIT FROM THE BOARD'S CYAN IS RULED AND DELIBERATE — DO NOT "FIX" THIS TO CYAN
+   *(OWNER RULING, 2026-09-13: "Keeping the acknowledge button green is fine.")*, settling the one
+   item #743 shipped unresolved. It used to share `cklGlow` with the board's up-next pulse; #743
+   took that glow CYAN and split this one off as `cklAckGlow`, the old green keyframe under a new
+   name, byte-identical in geometry, so the two still read as the same GESTURE in two places.
+   THE TWO COLOURS NOW CARRY A MEANING: cyan on the BOARD = "press this control"; green in the
+   PANEL = "you are done with this step". Different acts, and one colour would lose the
+   distinction. It is ruled TWICE — 2026-09-03 above and 2026-09-13 here — so a consistency
+   argument does not reopen it.
 
    INFINITE, unlike the speed-dropout flash: this one is not reporting an event, it is the
    control the checklist is waiting on, and it must stay findable until pressed. Reduced motion
@@ -2097,7 +2100,9 @@ select.num-input { width: auto; }
 @media (prefers-reduced-motion: reduce) {
   .ckl-ack { animation: none; box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.85); }
 }
-/* The ACKNOWLEDGE button's green, kept at the geometry `cklGlow` had when the two shared it. */
+/* The ACKNOWLEDGE button's green, kept at the geometry `cklGlow` had when the two shared it.
+   The green is RULED, not leftover *(OWNER RULING, 2026-09-13: "Keeping the acknowledge button
+   green is fine.")* — see the `.ckl-ack` block above before changing any colour here. */
 @keyframes cklAckGlow {
   0%, 100% { box-shadow: 0 0 0 1px rgba(120, 210, 150, 0.60), 0 0 10px 2px rgba(120, 210, 150, 0.28); }
   50%      { box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.98), 0 0 18px 5px rgba(120, 210, 150, 0.50); }
