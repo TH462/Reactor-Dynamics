@@ -30,6 +30,37 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (the power ascension now dilutes boron, and two of its own numbers were wrong — #752)
+
+- **`pwr2:pwr_raise_power` gains a graded first dilution dose.** The leg's last boron action was
+  step 3's 660 ppm setpoint; the instruction to take the remaining ~43 ppm back out lived only
+  inside the closing observation's explanatory text — no command, no acceptance — and that
+  observation grades on `mwe_output > 97`, which is already true when it opens. So the
+  walkthrough handed the player a plant whose control bank cannot hold the boron it set:
+  **measured**, trimming rods only from the leg's end state, the bank pins at 627 / 627 at
+  **+24.4 plant-hours** with xenon at 84.8 %, and full power then runs about **24.4 °F** below
+  programme permanently. The new step dials **650 ppm** — one 10 ppm dose — and grades on
+  `boron_ppm < 655`, which the dose reaches at **t = 250 s**. Peak AVG COOLANT TEMPERATURE
+  **586.60 °F (307.0 °C)**, 3.4 °F under the leg's own 590 °F caution and 17 °F under the
+  603.4 °F the one-press route to 617 ppm reaches before it trips.
+- **"Left alone it ends up about 40 °F cold" was the number the plant passes on the way to a
+  trip.** Measured from the leg's own end state with nothing touched and boron left at the
+  660 ppm the walkthrough sets: PZR LEVEL on its 25 % floor at **+7 h**, LOW TAVG at **+8.9 h**
+  (533.4 °F), and a **reactor trip on steam generator low-low level at +17.2 plant-hours**, T-avg
+  480.3 °F — a **100.8 °F (56.0 °C)** fall — with REACTOR POWER reading 100 % the whole way down.
+  Step 10's details and the leg's outcome now say that instead.
+- **"Dilution runs at about 3 ppm a minute" was a constant where the plant has a curve.**
+  Measured: the leg's `low_power` start boots at **683.8 ppm** (not the 719 the code comment
+  assumed) and step 3's move to 660 lands in **602 s**, ten plant-minutes, at an average
+  2.37 ppm/min. The rate is proportional to the distance left to go, so it slows as it closes —
+  the 10 ppm trim at the end of the leg takes about the same ten minutes for a third of the
+  distance.
+- **A stale rationale in a passing gate** (`test/verify_ckl_relevance.js`): the comment said the
+  Hot Full Power preset "boots the control bank on its top stop (627)". Measured, it boots at
+  **606 / 627** and has been since #704. The check itself is unchanged and still passes — its
+  precondition is `control_bank_steps < 600`, which 606 clears by 6 steps — so only a reader
+  could ever have found it.
+
 ### Changed (the approach to criticality plots one point fewer, and stops short of critical — #750)
 
 > *(OWNER RULING, 2026-09-14: "I think there's one too many 1/m plot steps. If we remove one it

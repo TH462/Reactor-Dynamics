@@ -186,6 +186,10 @@ var STEP_UI = {
      * checked itself off, and measured at power the bank carries 56.3 degF against boron's 27.0.
      * The step that follows it is an `obs` and owns no row. */
     { i: 9, view: 'board', control: 'Control Bank' },
+    /* #752 (2026-09-14) APPENDED the first dilution dose at i:10, after the rod trim and before
+     * the closing `obs`. Nothing below it shifts — the `obs` owns no row — so this is the one
+     * case where this positional table grows without a re-derivation. */
+    { i: 10, view: 'board', control: 'Boron control' },
   ],
   /* #736 — the 75 MWe stage is TWO steps now (lower load, then trim rods), so every later
    * index shifted by one. This table is `verify_manual_follow`'s COVERAGE LIST and it iterates

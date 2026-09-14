@@ -91,12 +91,21 @@ function sig(rows) {
     var heatM1 = atPower.filter(function (r) { return r.id === 'pwr_heatup'; })[0];
     var raiseM1 = atPower.filter(function (r) { return r.id === 'pwr_raise_power'; })[0];
     var lowerM1 = atPower.filter(function (r) { return r.id === 'pwr_lower_power'; })[0];
-    /* SINCE #653 (2026-09-07) THE ASCENSION IS GREY HERE TOO, on purpose: the Hot Full Power
-     * preset boots the control bank on its top stop (627), where every WITHDRAW in that leg is
-     * a no-op, so the leg carries a `control_bank_steps < 600` precondition ("this checklist
-     * follows the startup checklist, not a power preset"). Warns, never blocks — the click test
-     * below still proves that. The rampdown is the leg that must read WHITE at power. */
-    ck('Mode 1 boot: the list is populated; the Mode 5 heatup and the ascension (bank on its top stop) are greyed, the rampdown is white',
+    /* SINCE #653 (2026-09-07) THE ASCENSION IS GREY HERE TOO, on purpose: it carries a
+     * `control_bank_steps < 600` precondition ("this checklist follows the startup checklist,
+     * not a power preset"), and the Hot Full Power preset boots above it. Warns, never blocks —
+     * the click test below still proves that. The rampdown is the leg that must read WHITE at
+     * power.
+     *
+     * ⚠ THE REASON WRITTEN HERE WAS STALE AND THE CHECK COULD NOT CATCH IT (#752 unit 3). It
+     * said the preset "boots the control bank on its top stop (627), where every WITHDRAW in
+     * that leg is a no-op" — true when #653 wrote it, and false since #704 moved the at-power
+     * initial conditions off the upper stop. MEASURED on this tree: `hot_full_power` boots at
+     * **606 / 627** with boron 612.3 ppm at 100.00 % power, and is still at 606 ten minutes
+     * later. The precondition is unchanged and still bites (606 > 600, by 6 steps), so the check
+     * passes either way — which is exactly why nothing but a reader could find this. The bank
+     * DOES have 21 steps of travel at Hot Full Power; it is not pinned. */
+    ck('Mode 1 boot: the list is populated; the Mode 5 heatup and the ascension (preset bank at 606, above its 600 precondition) are greyed, the rampdown is white',
        atPower.length >= 5 && heatM1 && heatM1.gated && raiseM1 && raiseM1.gated && lowerM1 && !lowerM1.gated,
        atPower.length + ' rows; heatup ' + (heatM1 && heatM1.gated ? 'grey' : 'WHITE') +
        ', raise_power ' + (raiseM1 && raiseM1.gated ? 'grey' : 'WHITE') +

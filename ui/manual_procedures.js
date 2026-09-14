@@ -2354,8 +2354,19 @@
                  { p: 'mwe_output', op: '>', v: 8, label: 'Generator above 8 MWe' }],
           hl: ['Turbine Load'], hl_watch: ['Generator Output'] },
         { text: 'On the BORON card set 660 and press Enter.',
-          note: 'Press ON only if it is not already lit. The dilution then runs in the background for the whole climb.',
-          why: 'Every percent of power costs reactivity: the fuel heats up and the water thins out. Rods could pay for all of it but would end up deep in the core, so real plants dilute boron for the bulk and use rods for the fine trim. Dilution runs at about 3 ppm a minute, so it needs the whole climb to work.',
+          note: 'Press ON only if it is not already lit. The dilution then runs in the background while you take the first stages.',
+          /* ⚠ "ABOUT 3 ppm A MINUTE" WAS A CONSTANT WHERE THE PLANT HAS A CURVE (#752 fix 2).
+           * MEASURED on this leg's own `low_power` IC, seed 42, full stack: the plant boots at
+           * 683.8 ppm — not the 719 the old comment assumed — and this command's 23.8 ppm move
+           * lands inside 602 s, i.e. TEN plant-minutes, at an average 2.37 ppm/min (the first
+           * 10 ppm go in 247 s, 2.43 ppm/min). The rate is proportional to how far the number
+           * you typed is from the number on the card, so it FALLS as the move closes: the
+           * 10 ppm trim at the end of this leg takes about the same ten minutes for a third of
+           * the distance (measured, 660 -> 650: 250 s to move 5 ppm, ~600 s to settle). Both
+           * halves of the old sentence were wrong in the same direction — the rate was quoted
+           * 25 % high AND the move does not need "the whole climb", it is done before the
+           * second stage. */
+          why: 'Every percent of power costs reactivity: the fuel heats up and the water thins out. Rods could pay for all of it but would end up deep in the core, so real plants dilute boron for the bulk and use rods for the fine trim. Dilution is not instant and it slows as it closes on the number you typed: this 24 ppm move takes about ten plant-minutes, and a 10 ppm trim later takes about the same again.',
           control: 'Boron control', target: 'BORON reads 660 ppm, ON lit',
           wait_hint: 'The dilution keeps working between stages. Start it now.',
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 660 }, hold: 30,
@@ -2367,8 +2378,10 @@
            * turbine on a subcritical core scrams it.
            *
            * A cmd-kind entry, not a `boron_ppm` predicate, and the difference is the whole
-           * point: the dilution is SLOW (about 3 ppm a minute, ~20 plant-minutes from 719 to
-           * 660) and runs under the stages that follow. Grading the number here would stall the
+           * point: the dilution takes time (MEASURED #752: 683.8 -> 660 ppm in 602 s — the old
+           * figure here, "~20 plant-minutes from 719 to 660", had both ends wrong: `low_power`
+           * boots at 683.8 ppm, and the move is done in ten minutes, not twenty) and it runs
+           * under the stages that follow. Grading the number here would stall the
            * climb waiting for chemistry the leg is designed to do in the background. What has to
            * be true NOW is that the operator set the setpoint; that the plant actually got there
            * is checked at the end of the climb, on the verify step. */
@@ -2633,7 +2646,28 @@
          * a falling Tavg, so it can satisfy none of these three. */
         { text: 'Hold WITHDRAW at MED for about 6 steps.',
           note: 'Xenon is building, and it will keep pulling AVG COOLANT TEMPERATURE down. Repeat this pull whenever the temperature drops out of its band. Small pulls, then wait for it to settle. ROD LIMIT LO-LO is lit and that is normal — the bank is low because there is no xenon yet, and it clears as you walk the bank up.',
-          why: 'Xenon is a neutron absorber that builds in the fuel over about two days and then levels off. It takes reactivity away, and the plant answers by making the same power at a lower temperature — left alone it ends up about 40 °F cold, taking PZR LEVEL with it. You give it back with two levers, rods leading because they are fast and reversible: each rod step is worth about 0.22 °F and the bank has 255 to go, which is 56 °F, and each ppm of boron about 0.6 °F.',
+          /* ⚠ "ABOUT 40 °F COLD" WAS THE NUMBER THE PLANT PASSES ON ITS WAY TO A TRIP (#752
+           * fix 2), and it was the sentence that told the player skipping this trim is cosmetic.
+           * MEASURED from this leg's own end state, no rod and no boron motion, boron left at the
+           * 660 ppm the walkthrough sets (full stack, seed 42, 10×, `donothing.js`): 40 °F low at
+           * +8 h is passed and is not where it stops. PZR LEVEL reaches its 25 % floor at +7 h,
+           * LOW TAVG comes in at +8.87 h (533.42 °F), and at **+17.23 h the reactor trips on
+           * `sg_lolo_level`** with T-avg at 480.33 °F — a **100.80 °F** fall. REACTOR POWER holds
+           * 100 % the whole way down (100.8 → 101.7 %), which is why power is the wrong gauge to
+           * watch. Reproduced independently of the #752 measurement session, same two figures.
+           *
+           * THE ROD ARITHMETIC IS NOT NARROWED, AND THE PER-STEP FIGURE IS GONE. "0.22 °F a step"
+           * is the worth at the TOP of the bank (measured 0.2225–0.2247 °F/step at 606); at the
+           * 357 this leg leaves, the same measurement gives 0.5087–0.5199 — 2.3× more. The 56 °F
+           * TOTAL is right, because it is the reactivity balance the xenon build demands, so the
+           * sentence keeps the total and drops the per-step number rather than quoting a figure
+           * that is wrong where the player is standing. The integral itself cannot be measured as
+           * a perturbation: 249 steps of rod worth inserted into a core with no xenon in it is
+           * more heat than the 43 ppm one-shot dilution that trips this plant on overtemperature. */
+          /* THREE SENTENCES, because `run_style`'s W-detail cap is three and the first draft of
+           * this rewrite ran to five — the measured consequence is in the second one, which is
+           * the sentence the whole fix exists for. */
+          why: 'Xenon is a neutron absorber that builds in the fuel over about two days, takes reactivity away, and the plant answers by making the same power at a lower temperature. Left alone this plant does not just settle cold: measured from here, PZR LEVEL is on its floor in 7 plant-hours and the reactor trips on STEAM GENERATOR LEVEL LO-LO in 17, with REACTOR POWER reading 100 % the whole way down. You give the reactivity back with two levers, rods leading because they are fast and reversible: the bank has about 250 steps to go, worth roughly 56 °F between them, and each ppm of boron about 0.6 °F.',
           control: 'Control Bank', target: 'CONTROL ROD POSITION coming up off 351; AVG COOLANT TEMPERATURE back near 580 °F',
           wait_hint: 'Xenon takes about two days to level off. Use the speed buttons and keep the pulls small.',
           /* 10 steps took REACTOR POWER to 103.3 % — over the 103 % rod stop this leg's own step 7
@@ -2647,13 +2681,54 @@
                  { p: 'mwe_output', op: '>', v: 97, label: 'Still at full load, 100 MWe' },
                  { p: 'tavg_c', op: '~', v: 304.4, tol: 3, label: 'AVG COOLANT TEMPERATURE near 580 °F' }],
           hl: ['Control Bank'], hl_watch: ['Tavg', 'Control Rod Position'] },
+        /* ======= THE FIRST DILUTION DOSE — THE ACT THE LEG ONLY EVER DESCRIBED (#752) =========
+         * The leg's LAST boron action was the 660 ppm setpoint eight steps up, and the whole
+         * instruction to take that 43 ppm back out lived in the closing `obs`'s explanatory text:
+         * no command, no acceptance, and that `obs` grades on `mwe_output > 97`, which is already
+         * true when it opens. So the walkthrough handed the player a plant whose control bank
+         * cannot hold the boron it set — MEASURED: trimming rods only from the leg's end state,
+         * the bank reaches 627/627 at **+24.37 h** with xenon at 84.8 %, and the plant then makes
+         * full power ~24.4 °F below programme permanently, with nothing on the annunciator panel.
+         *
+         * THE PROPOSED `control_bank_steps > 500` ACCEPTANCE IS REFUTED AND IS NOT USED. The bank
+         * arrives at 357 and, with the dose in and no further rod motion, MEASURED 357.0 for the
+         * whole plant-hour after it. 500 is 143 steps away — about a plant-day of xenon build —
+         * so it could never close inside any dwell a replay can afford, and on a live board it
+         * would be a soft lock in the last step of the ascension. #641's rule, one shape over: an
+         * acceptance is only usable while the plant can still produce it.
+         *
+         * THE DOSE IS 10 ppm AND IT IS MEASURED SAFE (`rig.js dose 650`, full stack from the
+         * leg's own end state, seed 42, 10×): boron 659.74 → 654.99 at t=250 s, 650.48 at 434 s,
+         * settled 649.79 by ~600 s. T-avg rises from 581.12 °F to a peak of **586.60 °F** — 3.4 °F
+         * under this leg's own 590 °F caution and 17 °F under the 603.4 °F that the one-press
+         * route to 617 ppm reaches before it trips — and xenon then walks it back to 584.41 °F by
+         * +1 h. No new alarm, no rod stop, power flat at 100.7 %.
+         *
+         * THE ACCEPTANCE IS THE EFFECT, NOT THE WRITE, on purpose. A cmd-kind entry would match
+         * the press and so would demand the player type exactly 650; `boron_ppm < 655` is
+         * satisfied by any real dilution and cannot be had for free — the automatic channel HOLDS
+         * 660 until somebody moves the setpoint (measured: 659.74 ppm, unchanged, over the whole
+         * 17 h do-nothing ride), so the number can only fall because the player acted. It closes
+         * at t=250 s, well inside the dwell, and a SLOWER player is not stranded: the setpoint
+         * keeps delivering whatever time they take. The load entry is a `~` band rather than
+         * #715's floor because a floor met at the step's entry latches there and cannot then see
+         * a scram during the step (#736's lesson on the rampdown leg). */
+        { text: 'On the BORON card set 650 and press Enter.',
+          note: 'One 10 ppm dose, not the whole 43. It takes about ten plant-minutes to arrive and lifts AVG COOLANT TEMPERATURE about 5 °F on the way, to near 587 °F; xenon then takes it back down. Repeat a dose whenever the rods alone stop holding the temperature in its band.',
+          why: 'Rods are fast, but they run out: the bank has about 250 steps left and the xenon still to come costs more than they carry. Boron carries the rest, and it has to go in small doses — dial the whole way in one press and the plant heats far faster than xenon can absorb it, which trips the reactor on overtemperature.',
+          control: 'Boron control', target: 'BORON coming down off 660 ppm, heading for 650',
+          wait_hint: 'Give the dose ten plant-minutes to arrive before you judge it.',
+          cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 650 }, hold: 600,
+          accs: [{ p: 'boron_ppm', op: '<', v: 655, label: 'BORON coming down off 660 ppm' },
+                 { p: 'mwe_output', op: '~', v: 100, tol: 5, label: 'Still at full load, 100 MWe' }],
+          hl: ['Boron Target'], hl_watch: ['Boron Concentration', 'Tavg'] },
         obs('Full power and on programme: OUTPUT 100 MWe, AVG COOLANT TEMPERATURE 580 °F, CONTROL ROD POSITION rising.',
           { p: 'mwe_output', op: '>', v: 97 }, 'Keep trimming for the next two plant-days.', null,
-          'Where this ends up, if you keep at it: CONTROL ROD POSITION about 606 of 627 and BORON about 617 ppm, which is where this plant runs at full power with xenon at equilibrium (the settled point measures 612.3 ppm; 617 is the target you dial toward). Rods carry the first 56 °F; once the bank is near the top it has only about 21 steps of travel left, worth 4.6 °F, and BORON carries the rest — 10 ppm at a time, never in one press. Type 617 in one go and the plant heats far faster than xenon can absorb it: measured, that trips the reactor on overtemperature.',
+          'Where this ends up, if you keep at it: CONTROL ROD POSITION about 606 of 627 and BORON about 617 ppm, which is where this plant runs at full power with xenon at equilibrium (the settled point measures 612.3 ppm; 617 is the target you dial toward). Rods carry the first 56 °F; once the bank is near the top it has only about 21 steps of travel left, worth 4.6 °F, and BORON carries the rest — four more doses like the one you just set, 10 ppm at a time, never in one press. Type 617 in one go and the plant heats far faster than xenon can absorb it: measured, that trips the reactor on overtemperature.',
           null, ['Control Rod Position', 'Boron']),
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
-      outcome: 'Full power with almost no xenon: BORON 660 ppm and CONTROL ROD POSITION about 351 of 627 — the no-xenon end of the curve, not a fault. Over the next two plant-days xenon builds and you hand the reactivity back: the bank walks up toward 606 of 627 (255 steps, about 56 °F) and BORON comes down toward 617 ppm, 10 ppm at a time. Leave it undone and the plant makes full power about 40 °F cold, taking PZR LEVEL with it. The round trip back down starts with the load rampdown walkthrough.',
+      outcome: 'Full power with almost no xenon: BORON on its way to 650 ppm and CONTROL ROD POSITION about 357 of 627 — the no-xenon end of the curve, not a fault. Over the next two plant-days xenon builds and you hand the reactivity back: the bank walks up toward 606 of 627 (about 250 steps, roughly 56 °F) and BORON comes down toward 617 ppm, 10 ppm at a time. Leave it undone and the plant does not just run cold — measured, PZR LEVEL is on its floor in 7 plant-hours and the reactor trips on STEAM GENERATOR LEVEL LO-LO in 17. The round trip back down starts with the load rampdown walkthrough.',
     },
     {
       id: 'pwr_lower_power', category: 'power', manual_ref: 'PWR-N08', next: 'pwr_shutdown',
