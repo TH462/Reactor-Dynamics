@@ -4901,19 +4901,26 @@
      * Returns SELF ids only — the caller walks `parentOf` if it wants "inside something
      * workable", exactly as the #304 scan does. */
     actionableIds: function () {
-      var out = {};
+      var out = {}, gone = DOC_REMOVE || {};
+      /* A REMOVED TILE IS NOT A CONTROL (#748 quality pass). `applyDocPatches`/DOC_REMOVE run at
+       * BROWSER MOUNT, so a Node caller sees the raw doc: an id whose tile was deleted but whose
+       * `BUTTONS`/`NUMBERS`/`VALVE_TOGGLE` entry was left behind would be reported as something
+       * the player can work, and a gate built on that would go quietly optimistic. Measured
+       * today: zero removed ids reach this list and zero CONTROL_LABEL_MAP labels resolve to
+       * one, so this filter changes nothing now — it is here so the next deletion cannot. */
+      var add = function (k) { if (!gone[k]) out[k] = true; };
       /* The BUTTONS clause is spelled out rather than calling `this.pressableIds()`: a caller
        * that lifts this function off the driver (`var f = DRV.actionableIds`) would lose `this`
        * and throw, and an introspection helper must not be fragile about how it is invoked. */
       Object.keys(BUTTONS).forEach(function (k) {
-        if (BUTTONS[k] && (BUTTONS[k].press || BUTTONS[k].hold)) out[k] = true;
+        if (BUTTONS[k] && (BUTTONS[k].press || BUTTONS[k].hold)) add(k);
       });
-      Object.keys(NUMBERS).forEach(function (k) { if (NUMBERS[k] && NUMBERS[k].set) out[k] = true; });
-      Object.keys(VALVE_TOGGLE).forEach(function (k) { out[k] = true; });
+      Object.keys(NUMBERS).forEach(function (k) { if (NUMBERS[k] && NUMBERS[k].set) add(k); });
+      Object.keys(VALVE_TOGGLE).forEach(function (k) { add(k); });
       ((window.RD_PWR_BOARD_DOC && window.RD_PWR_BOARD_DOC.items) || []).forEach(function (it) {
-        if (it && it.kind === 'scram') out[it.id] = true;
+        if (it && it.kind === 'scram') add(it.id);
       });
-      (EXTRA_ITEMS || []).forEach(function (it) { if (it && it.kind === 'scram') out[it.id] = true; });
+      (EXTRA_ITEMS || []).forEach(function (it) { if (it && it.kind === 'scram') add(it.id); });
       return Object.keys(out);
     },
     // Inspection copy (#96) — what an item IS, in two tiers, resolved through the

@@ -93,6 +93,16 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
 // deleted from CONTROL_LABEL_MAP as much as when one is invented in a procedure.
 // ============================================================================
 (function highlightLabels() {
+  /* THE EARLY RETURN WAS A SILENT SKIP OF ~300 CHECKS (#748 quality pass). The board driver is
+   * loaded only as a SIDE EFFECT of `map.controlOnView` in the loop above firing `manual_ui_map`'s
+   * lazy `pwrLabels()` getter — nothing here asks for it. So a refactor that stops calling
+   * `controlOnView` leaves this whole section returning at the door and the runner printing OK.
+   * `run_all`'s score baseline would catch it; a standalone run would not, which is precisely the
+   * hollow-check shape this file's own #745 note warns about. Ask for the driver, then ASSERT it. */
+  try { map.controlOnView('pwr2', 'board', 'Withdraw'); } catch (e) { /* the ck below is the report */ }
+  ck('the pwr board driver is loaded, so the highlight checks below actually run',
+     !!(globalThis.RD && globalThis.RD.PwrBoardDriver && globalThis.RD.PwrBoardDriver.controlLabels),
+     'RD.PwrBoardDriver is absent — every highlight check in this file was SKIPPED, not passed');
   if (!globalThis.RD || !globalThis.RD.PwrBoardDriver) return;
   var DRV = globalThis.RD.PwrBoardDriver;
   if (!DRV.controlLabels) return;
@@ -229,8 +239,10 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
           if (prof !== 'pwr2') { if (!workable(id)) retiredPoolPulseOnReadout++; return; }
           ck(where + ' pulses only on something the player can work',
              workable(id),
-             '"' + lab + '" -> ' + id + ' is a ' + kindOf(id) + ' — a pure readout. The pulsing ' +
-             'ring is the "press this" affordance; move the label to hl_watch');
+             '"' + lab + '" -> ' + id + ' is a ' + kindOf(id) + ' and the board wires no player ' +
+             'action to it' + (/^(value|readout|component)$/.test(kindOf(id)) ? ' — it is a pure readout' : '') +
+             '. The pulsing ring is the "press this" affordance; move the label to hl_watch, or ' +
+             'wire the control (PwrBoardDriver.actionableIds is what this reads)');
         });
       });
     });
@@ -247,8 +259,9 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
  *
  * THE RULING IT ENFORCES: pulsing (`hl`) = a control to press, steady (`hl_watch`) = an
  * indication to watch. A fresh-context layman playing `pwr_startup` end to end reported the
- * split did not hold — `SOURCE RANGE` and `STARTUP RATE`, two read-only meters, wore the same
- * animated ring as `WITHDRAW` on eight consecutive steps.
+ * split did not hold. MEASURED on the pool as it stood: 13 pure-readout labels across 7 steps —
+ * `SOURCE RANGE` and `STARTUP RATE` wearing the same animated ring as `WITHDRAW` on SIX
+ * consecutive `pwr_startup` steps (5 to 10), plus `PRIMARY PRESSURE` on `pwr_cooldown` 5.
  *
  * ⚠ THE OBVIOUS CHECK IS BORN WRONG, AND THIS IS THE HOUSE TRAP (CLAUDE.md: "ASK WHAT A GATE
  * READS, not only what it asserts"). "Every `hl` id is in `pressableIds()`" reds on four
@@ -269,8 +282,8 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
  * blind to exactly the defect this check exists for.
  *
  * WHAT IT DOES NOT COVER, measured rather than guessed:
- *   1. THE REVERSE DIRECTION IS NOT GATED. 24 pwr2 sites put a steady ring on something
- *      actionable, and they were adjudicated site by site as CORRECT: 21 are cards (watch the
+ *   1. THE REVERSE DIRECTION IS NOT GATED. 22 pwr2 sites put a steady ring on something
+ *      actionable, and they were adjudicated site by site as CORRECT: 18 are cards (watch the
  *      STEAM DUMP card, the RHR card, the BORON card), and `pwr_tmi2_incident` 6 and 8 watch
  *      the PORV — a clickable valve the player is being taught NOT to trust. "hl_watch must not
  *      be actionable" would red all of them. There is no rule here to enforce.
@@ -288,7 +301,16 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
  *      (`[data-oom="close"]`, 27x22) can be ringed by no label at all, because `SHELL_TARGETS`
  *      holds exactly one entry — a vocabulary gap, not a rendering one.
  *   4. IT SAYS NOTHING ABOUT WHETHER THE STEP SHOULD BE PRESSING THAT CONTROL AT ALL. A step
- *      whose text forbids the press it rings passes here; that is a reading, not a wiring.
+ *      whose text forbids the press it rings passes here; that is a reading, not a wiring. Nor
+ *      whether the RIGHT control on a card is ringed: `pwr_startup` 12 says "Close the 1/M PLOT
+ *      window" and rings `bdOneOverM`, whose handler OPENS it — pressable, so green. The ITEM
+ *      this needs (`#oomWin [data-oom="close"]`) is in no vocabulary; SHELL_TARGETS holds one
+ *      entry.
+ *   5. THE BOX CREDIT IS A ONE-WAY DOOR, AND IT COVERS A THIRD OF THE VOCABULARY. MEASURED: 35
+ *      of the board's 92 highlight labels resolve to a `box`, and 20 of the 36 boxes hold
+ *      something actionable — so for those labels this check can never fail, in either
+ *      direction. That is the price of letting `hl: ['Steam Dump']` ring a whole card, and it
+ *      is why the rule is "a pure READOUT may not pulse", not "every pulse is a control".
  * ============================================================================ */
 
 // ============================================================================
@@ -328,8 +350,16 @@ var INOPERABLE_PHRASES = [
   if (!DRV.pressableIds) return;
 
   // Every id that is, or is inside, something pressable.
+  /* NOW READS `actionableIds()`, NOT `pressableIds()` (#748 quality pass). The comment above
+   * said the narrowness of `pressableIds` was load-bearing here — "it must not call a decoration
+   * a control". MEASURED, it was not: widening takes the operable list from 46 labels to 55, and
+   * every one of the nine gained is a real control the player works — `Pressure SP`, `Boron
+   * Target`, `Dump Setpoint`, `Load Setpoint` (typed boxes), `SCRAM`, and the four clickable
+   * valves `MSIV`, `PORV Block Valve`, `Accumulator valve`, `Relief Valve (PORV)`. Nothing is
+   * lost and the manual scan stays at 0 hits. Under the old authority a chapter could have
+   * called any of those nine "read-only" and this gate would have agreed. */
   var operableIds = {};
-  DRV.pressableIds().forEach(function (id) {
+  (DRV.actionableIds ? DRV.actionableIds() : DRV.pressableIds()).forEach(function (id) {
     var cur = id, guard = 0;
     while (cur && guard++ < 8) { operableIds[cur] = true; cur = I.parentOf(cur); }
   });

@@ -77,6 +77,57 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   and the instructor list all say **Main Menu (in the tools row, beside Settings)**. The
   `missionOverlay` id is unchanged; four gates navigate by it.
 
+### Fixed (the #748 quality pass found six more, two of them introduced by the fix above)
+
+- **The new criticality number made step 9's own stop band wrong.** The note said stop at
+  **205 to 225 of 627** while the rewritten `why` put criticality at **205 to 215** — so the top of
+  the authored band was 10 to 17 steps past critical, which is the excursion the layman had.
+  Narrowed against the measured route (it stops at 211): step 9 is **205 to 215**, step 8 comes
+  down from 195–220 to **195 to 210** for the same reason (it stops at 202).
+- **Step 10's text and the replay's own command disagree, and it is now written down rather than
+  left.** The line says "just short of the predicted position" (≈213); the `cmd` drives 15 slow
+  steps from 211 to **226**. The core is already critical at 208, *during step 9*, so by step 10
+  the position target is behind the plant and the step's real job is the creep. Left as authored —
+  moving the command moves the replay and #660 ruled this step steers on the plot — and recorded
+  as open in the source comment beside it.
+- **The caution said the opposite of what the measurement says.** *"It reads high early and comes
+  down as points are added"* implied the last prediction is trustworthy. It now carries the sign
+  and the size: the final one reads about five steps high, and the reactor goes critical before
+  you reach it.
+- **The walkthrough writing guide still taught the refuted direction — as advice.**
+  `CHECKLIST_WRITING_GUIDE.md` said the prediction is "about ten steps low at the end, which is
+  *safe to go to*", in the document the next author is told to read. Corrected with the
+  four-seed measurement, and the lesson sharpened: **the error has a sign, and the sign is the
+  half that decides whether the advice is safe.** The same pass found its canonical name table
+  carrying **SLOW 7, MED 42, FAST 63 steps a minute** against the engine's **8 / 48 / 72** — the
+  guide's own N5 rule is "check the board before you author".
+- **Three of the new strings broke the guide the change was written against.** Step 9's `why`
+  ended with an instruction (F1); the alarm in step 1 was named in neither register (the board
+  says *Turbine Trip / Low Steam Demand*, short form *TURB TRIP*) and told the player to
+  "acknowledge it" without naming a control; step 11's headline said "**Add a step**" in the one
+  change whose whole subject is that the word *steps* was read wrong (W7). All three reworded.
+- **The gate's own comment carried three counts that did not reproduce.** It claimed "eight
+  consecutive steps", "24 sites, 21 cards". Re-measured on the built pool: **13 labels across 7
+  steps, six of them consecutive**, and **22 sites, 18 cards**. The note now also records the
+  blind spot it did not: **35 of the board's 92 highlight labels resolve to a card, and 20 of the
+  36 cards hold something actionable**, so for those labels the check cannot fail either way.
+
+### Changed (the #748 quality pass, continued)
+
+- **`run_manual_controls`' highlight section could skip ~720 checks and still print OK.** It
+  opened `if (!RD.PwrBoardDriver) return;`, and the driver is loaded only as a side effect of an
+  unrelated earlier loop firing a lazy getter. It now asks for the driver and asserts it: proven
+  by injection, **1018 → 297 checks, 1 failed, exit 1**, naming the cause.
+- **The #304 inoperable-claim scan reads `actionableIds()` now.** Its comment claimed the
+  narrowness of `pressableIds()` was load-bearing; measured, it was not — widening takes operable
+  labels **46 → 55** with **0 manual hits** either way, and every one of the nine gained is a real
+  control (the four typed setpoint boxes, SCRAM, and the four clickable valves). A chapter could
+  have called any of those nine "read-only" and nothing would have noticed.
+- **`actionableIds()` filters `DOC_REMOVE`.** Those patches run at browser mount, so a Node caller
+  sees the raw document: a tile deleted with its handler left behind would be reported as
+  something the player can work. Zero such ids exist today; proven by injection (marking WITHDRAW
+  removed drops the list 62 → 61 and reds six startup steps).
+
 ### Changed (the pulsing ring means "press this", and a gate that can tell — #748)
 
 - **Thirteen authored sites put the animated "press this" ring on a pure readout.** `SOURCE

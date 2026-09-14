@@ -207,7 +207,7 @@ than the one engraved on it has failed before the verb.
 | **PRESSURIZER (PZR)** card, **HEATER** / **SPRAY** columns | PZR HEATERS, the HEATER card, the ladder |
 | **RCP FLOW** card, **ON** / **OFF** | the RCP card, the pumps |
 | **ROD CONTROL** card, **CONTROL** / **SHUTDOWN** columns; **SLOW** / **MED** / **FAST**; **WITHDRAW** / **INSERT** | the SHUTDOWN card, the bank, the rods |
-| — under CONTROL the buttons are momentary: **tap** moves one step, **hold** drives at the selected speed (SLOW 7, MED 42, FAST 63 steps a minute). Under SHUTDOWN one **click** latches and the bank runs to its stop. Say which. | "withdraw about 60 steps", "click … again", "release" without saying which mechanic |
+| — under CONTROL the buttons are momentary: **tap** moves one step, **hold** drives at the selected speed (SLOW 8, MED 48, FAST 72 steps a minute — `ROD_SPEEDS` in `engines/pwr2/pwr2_engine.js`; the 7/42/63 this row carried until #748 predates #668). Under SHUTDOWN one **click** latches and the bank runs to its stop. Say which. | "withdraw about 60 steps", "click … again", "release" without saying which mechanic |
 | **CONTROL ROD POSITION** / **SHUTDOWN ROD POSITION** (0 /627) | bank position |
 | **SOURCE RANGE**, **INTER RANGE**, **STARTUP RATE** (NUC INSTR card) | SR, IR, SUR |
 | **BORON** card, **ON** / **OFF** / **SAMPLE** | the make-up panel, boron control |
@@ -575,10 +575,15 @@ The startup leg's approach to criticality is the exemplar, and it is instrument-
   points.")* Shipped: *"Press SLOW and hold WITHDRAW until CONTROL ROD POSITION reaches the
   position the 1/M panel predicts, then release. From there tap WITHDRAW one step at a time and
   wait after each. Critical: the counts keep climbing and STARTUP RATE stays positive with the rods
-  still."* The `note` says how far the prediction can be trusted — measured with the panel's own
-  last-three fit on the replay's counts, it runs 264 → 241 → 217 → 211 → 213 against a true
-  critical of 223, so it is high early and about ten steps low at the end, which is *safe to go
-  to*. **A number a step tells the player to steer by needs its measured error beside it.**
+  still."* The `note` says how far the prediction can be trusted. **⚠ THE DIRECTION IN THIS BULLET
+  WAS WRONG UNTIL #748, AND IT WAS WRONG AS ADVICE** — it read "about ten steps low at the end,
+  which is *safe to go to*", which is the danger side. RE-MEASURED 2026-09-14 on the authored
+  route, four seeds: the last trailing-3 prediction reads **212.6 to 213.4** against a true
+  critical of **208 of 627**, i.e. about five steps HIGH, so the core goes critical BEFORE the
+  predicted position and withdrawing straight to it overshoots. The shipped text now says "just
+  short of the 1/M panel's predicted position". **A number a step tells the player to steer by
+  needs its measured error beside it — and the error has a SIGN, which is the half that decides
+  whether the advice is safe.**
 - **Let the plant do it; add a step only when the meter says the last one is spent.** *(OWNER,
   2026-09-08, #660 item 11: "Tapping withdraw 2 more times is not always the best approach. The
   user will usually overshoot at this point. These steps should take an instruments based
