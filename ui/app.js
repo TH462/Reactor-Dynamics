@@ -3276,7 +3276,23 @@
     if (v == null || v === lastSpeedSync) return;
     lastSpeedSync = v;
     var seg = $('speed');
-    if (seg) seg.querySelectorAll('[data-speed]').forEach(function (b) { b.classList.toggle('on', +b.getAttribute('data-speed') === v); });
+    /* #691, SECOND HALF (2026-09-13): NEVER LIGHT A RUNG WHILE THE PLANT IS HELD. `syncPlayBtn`
+     * clears the lit rung at the moment of the pause, but pausing is not what changes
+     * `time_acceleration` — so the next repaint puts the old speed straight back on, and the
+     * `lastSpeedSync = null` written there to GUARANTEE that repaint makes it certain rather
+     * than occasional. `cmd()` renders synchronously whenever the service is stopped, so any
+     * control the player touches while paused re-lights it. Measured: pause at 600x -> lit [],
+     * one command -> lit [600] with running:false, paused:true — the exact state the owner
+     * reported ("the previously selected warp button shouldn't still be highlighted"). It also
+     * reddened `verify_e2e_ui` intermittently, whenever anything produced a render inside the
+     * paused window.
+     * KEYED ON `pauseWhy`, NOT ON `service.running`: `resumeSim` empties `pauseWhy` BEFORE it
+     * sends the 1x command, precisely so that render lights 1x while the service still reads as
+     * stopped — a `!service.running` test here would suppress exactly that and break the resume
+     * half of the same issue. A speed picked while paused is discarded by `resumeSim`'s own
+     * drop to 1x anyway, so lighting it would be a lie in the other direction. */
+    var held = Object.keys(pauseWhy).length > 0;
+    if (seg) seg.querySelectorAll('[data-speed]').forEach(function (b) { b.classList.toggle('on', !held && +b.getAttribute('data-speed') === v); });
     var fb = $('ffBadge');
     if (fb) { var fast = v >= 600; fb.style.display = fast ? 'block' : 'none'; if (fast) fb.textContent = '⚡ ' + v + '×'; }
     syncChartWindows(v);

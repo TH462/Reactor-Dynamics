@@ -2840,24 +2840,6 @@ async function testWalkthroughHoldReleasedOnExit(page) {
   return log.join('\n') + '\n';
 }
 
-/* #685 — THE "WATCH THIS" GLOW, PROVED TO REACH THE BOARD FROM A REAL STEP'S `hl_watch`.
- *
- * WHY A BROWSER GATE AND NOT A SOURCE SCAN. `run_manual_controls` checks that every `hl_watch`
- * label is in the board's vocabulary; it cannot check that anything ever APPLIES the class.
- * This repo's standing trap is the DARK WIRE — a field authored, documented, read by a gate,
- * and never passed to the renderer (#507 wave 6 shipped three, #540 a fourth for six days) —
- * and `applyCklWatchGlow` is exactly that shape: one caller, in a render path no Node harness
- * enters. So the claim asserted here is the EFFECT: a DOM element on the board wearing the
- * class, put there by the step's own list.
- *
- * THE FIXTURE IS REAL CONTENT, not a synthetic step. `pwr_heatup`'s last step is one of the
- * four that measured as resolving to NO highlighted element at all before #685, and it is now
- * the leg's only `hl_watch` carrier — so this also pins the fix. The step is reached by moving
- * the checklist index rather than by driving 16 steps of a 12-plant-hour heatup.
- *
- * THE NEGATIVE HALF IS LOAD-BEARING: the step authors no `hl` and no `control`, so the PULSING
- * class must be absent. Without it the check passes on a renderer that puts one treatment on
- * both lists, which is the defect the whole issue is about. */
 /* THE RECOMMENDED SPEED RUNG LIGHTS AND THE STRIP DOES NOT (#743).
  *
  * *(OWNER, 2026-09-13 playtest: "instead of highlighting all the speed controls, just highlight the
@@ -3001,82 +2983,195 @@ async function testSpeedRungGlowRendered(page) {
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
 }
 
+/* #685 — THE "WATCH THIS" GLOW, PROVED TO REACH THE BOARD FROM A REAL STEP'S `hl_watch`.
+ *
+ * WHY A BROWSER GATE AND NOT A SOURCE SCAN. `run_manual_controls` checks that every `hl_watch`
+ * label is in the board's vocabulary; it cannot check that anything ever APPLIES the class.
+ * This repo's standing trap is the DARK WIRE — a field authored, documented, read by a gate,
+ * and never passed to the renderer (#507 wave 6 shipped three, #540 a fourth for six days) —
+ * and `applyCklWatchGlow` is exactly that shape: one caller, in a render path no Node harness
+ * enters. So the claim asserted here is the EFFECT: a DOM element on the board wearing the
+ * class, put there by the step's own list.
+ *
+ * REWRITTEN 2026-09-13 ON THE #743/#744 SEAM, and the rewrite is the point. The old form had a
+ * "control" half that asserted `0 rings painted` on whatever step the checklist happened to be
+ * sitting on when the run card opened — step 4, which authored no `hl_watch` when #743 wrote the
+ * check. #744 gave that step two, the board correctly painted two, and the check reddened with a
+ * message that said "a step that authors none" beside a payload reading `authored: 2`. The
+ * message was the liar: the check never read `authored` at all, and its comment's claim that the
+ * landing step was the FIRST step was already false when it shipped. A fixture is what that was —
+ * an incidental property of one step pool, in a gate whose whole subject is the step pool.
+ *
+ * WHAT IS ASSERTED NOW IS THE INVARIANT, ON EVERY STEP OF THE LEG: the number of elements wearing
+ * each class equals the number of labels the step authors for it. That is strictly stronger than
+ * counting one step's rings, and it catches the class of defect #744 had to find BY HAND —
+ * `run_manual_controls` reddens when one LABEL appears in both lists and says nothing at all when
+ * two DIFFERENT labels resolve to the same board id, which silently drops the ring for the
+ * control the step names first. `applyCklWatchGlow` skips any element the press list already
+ * took, and `classList.add` is idempotent, so both of those defects land as `painted < authored`
+ * and nothing else in the tree can see them.
+ *
+ * ONE LEG, NAMED, NOT ALL SIX. Measured on this tree 2026-09-13, eight other steps still carry
+ * that collision and would red the sweep on content neither #743 nor #744 touched: `pwr_startup`
+ * 2 and 15, `pwr_raise_power` 2, 3 and 9, `pwr_cooldown` 1 and 4, `pwr_lower_power` 1 — the same
+ * 'Boron'/'Boron control' and 'Turbine Load'/'Main Breaker' pairs #744 fixed in this leg, plus
+ * 'Dump SP'/'Steam Dump'. Tracked on #745, whose own table has one FALSE POSITIVE (`pwr_startup`
+ * 4) because it resolved through the board map; `RD.Highlight.resolve` consults the shell
+ * overrides first and lands those two labels on different elements. Each leg joins the constant
+ * above as #745 clears it. `pwr_tmi2_incident` is UNMEASURED: it carries `pause` steps, the panel stops
+ * re-rendering with the clock, and a fixed-sleep harness reads the PREVIOUS step's DOM — which is
+ * exactly why `landOn` below waits for the panel to match the model instead of sleeping. The list
+ * is a constant so the gap is visible and one line wide, not an omission.
+ *
+ * THE NEGATIVE HALF IS LOAD-BEARING and now comes from another leg, because since #744 every
+ * `pwr_heatup` step authors `hl_watch`: a step with press labels and no `hl_watch` must paint no
+ * ring at all. Without it this passes on a renderer that puts one treatment on both lists, which
+ * is the defect the whole issue is about. */
+var WATCH_GLOW_LEG = 'pwr_heatup';
+
 async function testWatchGlowRendered(page) {
   var log = [];
+
+  /* ONE HELPER FOR BOTH LEGS: start a procedure and get the RUN CARD drawn. The two clicks are
+   * #694's fixture verbatim — the card is behind `cklState.view === 'run'`, a UI-local flag that
+   * `svc.handleCommand` never sets. */
+  async function startLeg(pid, viaCard) {
+    var started = await page.evaluate(function (p) {
+      try {
+        var svc = globalThis.RD.__dev.service();
+        svc.attentionStops = false;
+        var r = svc.handleCommand({ action: 'start_checklist', procedure_id: p });
+        return { ok: !(r && r.type === 'error'), msg: r && r.message };
+      } catch (e) { return { ok: false, msg: String(e) }; }
+    }, pid);
+    if (!started.ok) throw new Error('#685 fixture: start_checklist ' + pid + ' failed — ' + started.msg);
+    /* THE CARD CLICKS ONLY WORK FOR THE FIRST LEG, and it is not a choice: a procedure whose
+     * preconditions the plant does not meet is drawn `.ckl-gated` and HIDDEN, so waiting for its
+     * launcher to be visible times out (measured on `pwr_startup`, 2026-09-13). They are needed
+     * once, to put `cklState.view` into 'run'; the flag then stays put across a second
+     * `start_checklist`, so every later leg is reached by the command alone. */
+    if (viaCard) {
+      await page.click('#tabbar [data-tab="checklists"]');
+      await page.waitForSelector('[data-ckl-start="' + pid + '"]', { timeout: 10000 });
+      await page.click('[data-ckl-start="' + pid + '"]');
+    }
+    await page.waitForFunction(function (p) {
+      var b = document.querySelector('#tabbar button.on');
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      return !!b && b.getAttribute('data-tab') === 'instructor' &&
+             !!document.querySelector('.ckl-step') && !!c && c.proc && c.proc.id === p;
+    }, pid, { timeout: 15000, polling: 200 });
+  }
+
+  /* LAND ON A STEP AND WAIT FOR THE PANEL TO AGREE WITH THE MODEL, rather than sleeping. Only the
+   * ACTIVE step is drawn (`data-ckl-step`), and `applyCklStepGlow` / `applyCklWatchGlow` run in
+   * the same render pass that writes it — so the panel carrying the checklist's own index is
+   * proof the glow pass for THIS step has run, which a fixed sleep can never say. It is also why
+   * the read trusts the checklist's live `idx` over the index it asked for: on a running plant a
+   * step whose acceptance is already met is advanced past, and asserting against the index we
+   * TYPED would be asserting against a step that is not on the board. */
+  async function landOn(i) {
+    await page.evaluate(function (i) {
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      c.idx = i; c.stepAt = null; c.awaitingAck = false;
+    }, i);
+    await page.waitForFunction(function () {
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      var el = document.querySelector('.ckl-step[data-ckl-step]');
+      return !!el && +el.getAttribute('data-ckl-step') === c.idx;
+    }, { timeout: 15000, polling: 100 });
+    return await page.evaluate(function () {
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      var st = c.proc.steps[c.idx];
+      /* The press list AS `ui/app.js` BUILDS IT (`stepHlLabels`): `hl` when it has entries, else
+       * the step's own `control`, and never an "(observe)" pseudo-control. Recomputed from the
+       * step rather than imported, so a change to that rule reddens this gate instead of being
+       * mirrored into it. */
+      var press = (st.hl && st.hl.length) ? st.hl.slice()
+                : (st.control && !/^\(observe/i.test(st.control)) ? [st.control] : [];
+      return { idx: c.idx, watchLabels: (st.hl_watch || []).slice(), pressLabels: press,
+               watch: document.querySelectorAll('.ckl-watch-glow').length,
+               painted: document.querySelectorAll('.ckl-step-glow').length };
+    });
+  }
+
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1',
                   { waitUntil: 'networkidle', timeout: 90000 });
   await dismissMission(page);
   await waitBoardLive(page, 20000);
+  await startLeg(WATCH_GLOW_LEG, true);
 
-  var started = await page.evaluate(function () {
-    try {
-      var svc = globalThis.RD.__dev.service();
-      svc.attentionStops = false;
-      var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
-      return { ok: !(r && r.type === 'error'), msg: r && r.message };
-    } catch (e) { return { ok: false, msg: String(e) }; }
+  /* ---- THE INVARIANT, ON EVERY STEP OF THE LEG ------------------------------------------- */
+  var n = await page.evaluate(function () {
+    return globalThis.RD.__dev.service().instructor.checklist.proc.steps.length;
   });
-  if (!started.ok) throw new Error('#685 fixture: start_checklist failed — ' + started.msg);
-  /* Same two clicks #694's fixture needs, and for the same reason: the run card is drawn
-   * behind `cklState.view === 'run'`, a UI-local flag that `svc.handleCommand` never sets. */
-  await page.click('#tabbar [data-tab="checklists"]');
-  await page.waitForSelector('[data-ckl-start="pwr_heatup"]', { timeout: 10000 });
-  await page.click('[data-ckl-start="pwr_heatup"]');
-  await page.waitForFunction(function () {
-    var b = document.querySelector('#tabbar button.on');
-    return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step');
-  }, { timeout: 15000, polling: 200 });
-
-  async function read() {
-    return await page.evaluate(function () {
-      var svc = globalThis.RD.__dev.service();
-      var c = svc.instructor.checklist;
-      var st = c && c.proc && c.proc.steps[c.idx];
-      return { idx: c ? c.idx : null,
-               authored: st && st.hl_watch ? st.hl_watch.length : 0,
-               hasHl: !!(st && ((st.hl && st.hl.length) || st.control)),
-               watch: document.querySelectorAll('.ckl-watch-glow').length,
-               press: document.querySelectorAll('.ckl-step-glow').length };
-    });
-  }
-
-  // ---- control: the FIRST step authors no hl_watch, so no watch ring may be painted ----
-  var before = await read();
-  if (before.watch !== 0) {
-    throw new Error('#685 control: a watch ring was painted on a step that authors none — ' +
-      JSON.stringify(before));
-  }
-  log.push('control: step ' + (before.idx + 1) + ' authors 0 watch labels, 0 painted');
-
-  // ---- the step that carries them ----------------------------------------------------
-  var jumped = await page.evaluate(function () {
-    var svc = globalThis.RD.__dev.service();
-    var c = svc.instructor.checklist;
-    var target = -1;
-    for (var i = 0; i < c.proc.steps.length; i++) {
-      if (c.proc.steps[i].hl_watch && c.proc.steps[i].hl_watch.length) { target = i; break; }
+  var seenIdx = {}, tw = 0, tp = 0;
+  for (var i = 0; i < n; i++) {
+    var r = await landOn(i);
+    seenIdx[r.idx] = true; tw += r.watch; tp += r.painted;
+    if (r.watch !== r.watchLabels.length) {
+      throw new Error('#685: ' + WATCH_GLOW_LEG + ' step ' + (r.idx + 1) + ' authors ' +
+        r.watchLabels.length + ' hl_watch labels (' + r.watchLabels.join(', ') + ') and the board ' +
+        'painted ' + r.watch + ' .ckl-watch-glow elements. Every authored label must land on its ' +
+        'OWN element: two labels resolving to one board id, or a label the press list already ' +
+        'took, paints fewer rings than the step promises and nothing else in the tree can see it.');
     }
-    if (target < 0) return { ok: false };
-    c.idx = target; c.stepAt = null; c.awaitingAck = false;
-    return { ok: true, idx: target, labels: c.proc.steps[target].hl_watch };
-  });
-  if (!jumped.ok) throw new Error('#685 fixture: pwr_heatup authors no hl_watch step at all');
-  await page.waitForTimeout(2500);
+    if (r.painted !== r.pressLabels.length) {
+      throw new Error('#685/#744: ' + WATCH_GLOW_LEG + ' step ' + (r.idx + 1) + ' authors ' +
+        r.pressLabels.length + ' press labels (' + r.pressLabels.join(', ') + ') and the board ' +
+        'painted ' + r.painted + ' .ckl-step-glow elements — when two labels share a board id the ' +
+        'control the step names FIRST is the one that glows nothing (#744 found three by hand).');
+    }
+  }
+  var missing = [];
+  for (var j = 0; j < n; j++) if (!seenIdx[j]) missing.push(j + 1);
+  if (missing.length) {
+    throw new Error('#685: steps ' + missing.join(', ') + ' of ' + WATCH_GLOW_LEG + ' were never ' +
+      'the active step during the sweep, so the invariant was not asserted on them — a gate that ' +
+      'silently skips rows tests the rows it happened to reach.');
+  }
+  log.push(WATCH_GLOW_LEG + ': ' + n + '/' + n + ' steps, every authored label painted its own ' +
+    'element (' + tw + ' .ckl-watch-glow and ' + tp + ' .ckl-step-glow over the leg)');
 
-  var after = await read();
-  if (after.watch !== jumped.labels.length) {
-    throw new Error('#685: step ' + (jumped.idx + 1) + ' authors ' + jumped.labels.length +
-      ' watch labels (' + jumped.labels.join(', ') + ') and the board painted ' + after.watch +
-      ' .ckl-watch-glow elements — ' + JSON.stringify(after));
+  /* ---- THE NEGATIVE, ON REAL CONTENT ------------------------------------------------------
+   * The step is found in the POOL, never typed here, so re-authoring moves the fixture instead of
+   * breaking it — which is exactly what happened to the form this replaces. */
+  var neg = await page.evaluate(function () {
+    var procs = (globalThis.RD.MANUAL_PROCEDURES || {}).pwr2 || [];
+    for (var a = 0; a < procs.length; a++) {
+      for (var b = 0; b < (procs[a].steps || []).length; b++) {
+        var st = procs[a].steps[b];
+        if (st.hl_watch && st.hl_watch.length) continue;
+        var press = (st.hl && st.hl.length) ? st.hl.slice()
+                  : (st.control && !/^\(observe/i.test(st.control)) ? [st.control] : [];
+        if (press.length) return { ok: true, pid: procs[a].id, idx: b, press: press };
+      }
+    }
+    return { ok: false };
+  });
+  if (!neg.ok) {
+    throw new Error('#685 fixture: no pwr2 step anywhere authors press labels and no hl_watch, so ' +
+      '"authors none paints none" cannot be asserted on real content — re-point this half.');
   }
-  if (after.press !== 0) {
-    throw new Error('#685: the PULSING .ckl-step-glow was painted ' + after.press +
-      ' times on a step that authors no `hl` and no `control` — the two treatments are not ' +
-      'distinct. ' + JSON.stringify(after));
+  await startLeg(neg.pid, false);
+  var nr = await landOn(neg.idx);
+  if (nr.idx !== neg.idx) {
+    throw new Error('#685 fixture: ' + neg.pid + ' advanced off step ' + (neg.idx + 1) + ' to step ' +
+      (nr.idx + 1) + ' before it could be read');
   }
-  log.push('step ' + (jumped.idx + 1) + ': ' + jumped.labels.length + ' authored (' +
-    jumped.labels.join(', ') + ') -> ' + after.watch + ' .ckl-watch-glow painted, ' +
-    after.press + ' .ckl-step-glow');
+  if (nr.watch !== 0) {
+    throw new Error('#685: ' + nr.watch + ' watch ring(s) painted on ' + neg.pid + ' step ' +
+      (nr.idx + 1) + ', which authors NO hl_watch (press labels: ' + nr.pressLabels.join(', ') +
+      ') — the two treatments are not distinct.');
+  }
+  if (nr.painted === 0) {
+    throw new Error('#685 fixture: ' + neg.pid + ' step ' + (nr.idx + 1) + ' painted no ' +
+      '.ckl-step-glow either, so "0 rings" proves nothing about the lists being distinct — the ' +
+      'step may simply not be reachable on the board.');
+  }
+  log.push('negative: ' + neg.pid + ' step ' + (nr.idx + 1) + ' authors 0 hl_watch and ' +
+    nr.pressLabels.length + ' press labels (' + nr.pressLabels.join(', ') + ') -> 0 watch rings, ' +
+    nr.painted + ' pulsing');
 
   await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
@@ -3138,6 +3233,34 @@ async function testPauseResumeSpeed(page) {
       afterPause.lit.join(',') + ']');
   }
   log.push('paused: lit [' + afterPause.lit.join(',') + '] (600x cleared)');
+
+  /* ---- 2b. AND IT STAYS DARK WHEN THE PLAYER TOUCHES ANYTHING (2026-09-13) -------------
+   * The clear above is done by hand in `syncPlayBtn`, but `time_acceleration` is still 600
+   * and `lastSpeedSync` was nulled to force the next repaint — so the NEXT render lit the
+   * rung straight back up, and `cmd()` renders synchronously whenever the service is stopped.
+   * Any control pressed while paused therefore undid the fix this test is named for. Found
+   * because it reddened this gate intermittently (whatever produced a render inside the
+   * paused window won the race); reproduced deterministically here in one command.
+   * `set_attention_stops` is chosen because it moves nothing in the plant — the point is the
+   * RENDER, not the command. Injection-proven: restoring the unconditional
+   * `b.classList.toggle('on', +b.getAttribute('data-speed') === v)` in `syncSpeedUI` reds this
+   * and nothing else. */
+  await page.evaluate(function () {
+    globalThis.RD.__dev.service().handleCommand({ action: 'set_attention_stops', value: false });
+  });
+  await page.click('#speed [data-speed="600"]');   // the same press, now against a held plant
+  await page.waitForTimeout(400);
+  var stillHeld = await read();
+  if (!stillHeld.paused || stillHeld.running) {
+    throw new Error('#691 fixture: the plant resumed during the held-press probe, so the ' +
+      'assertion below would prove nothing — ' + JSON.stringify(stillHeld));
+  }
+  if (stillHeld.lit.length) {
+    throw new Error('#691: a speed rung is lit again on a PAUSED plant after the player ' +
+      'touched a control — lit [' + stillHeld.lit.join(',') + ']. syncPlayBtn cleared it; the ' +
+      'next render repainted it from time_acceleration, which pausing never changed.');
+  }
+  log.push('pressed 600x while held: lit [' + stillHeld.lit.join(',') + '] (stays dark)');
 
   // ---- 3. resume: must land at 1x, with the 1x button (not 600x) lit ----------------
   await page.click('#playBtn');
@@ -4836,7 +4959,13 @@ if (require.main !== module) {
                      waitBoardLive: waitBoardLive,
                      testWalkthroughHoldReleasedOnExit: testWalkthroughHoldReleasedOnExit,
                      testHeldNotePauseResume: testHeldNotePauseResume,
-                     testOneOverMDockedGeometry: testOneOverMDockedGeometry,
+                     /* Renamed by #713 when the 1/M dock was retired; the old name stayed here and
+                      * made `require()` of this file throw, which is the ONLY way the injection
+                      * harness this block exists for is reached. The gate runs the file directly
+                      * and never noticed. Found adjudicating #743/#744 (2026-09-13). */
+                     testOneOverMGeometry: testOneOverMGeometry,
+                     testWatchGlowRendered: testWatchGlowRendered,
+                     testSpeedRungGlowRendered: testSpeedRungGlowRendered,
                      port: function () { return PORT; } };
 } else {
   main().catch(function (e) {

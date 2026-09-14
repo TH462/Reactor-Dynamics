@@ -693,20 +693,64 @@ function pinChannel(ch) {
   await b.ctx.close();
 
   // ----------------------------------------------------- the landing page
+  /* WHAT THESE ASSERT, AND WHY THEY STOPPED QUOTING SENTENCES (2026-09-13, #742/#744 seam).
+   *
+   * Until #742 the hero promised "Guided training" behind the `campaign` flag and the fourth
+   * feature card carried a "Guided training — coming soon" alternate; the three checks here
+   * quoted both phrases. The owner had both removed ("we dont have an instructor yet"), which
+   * left all three pinning copy that exists NOWHERE on the page — two of them red, and the
+   * third, the public-channel negative `!/Guided training/`, GREEN AND VACUOUS: the exact
+   * anti-pattern the #263 note below names, shipped three lines under it.
+   *
+   * SO WHAT IS GUARDED NOW IS THE MECHANISM AND THE RULE, not the wording. The rule is the one
+   * #742 wrote into index.html — "any claim here must rest on a 'public' flag" — and the defect
+   * behind it is worth keeping in view: the hero sat on `campaign`, stage 'preview', so every
+   * visitor to the RELEASED site read the data-flag-off alternate and never the sentence anyone
+   * wrote for them. Nothing in the tree could see that. `run_flags` checks the registry, not the
+   * page; a copy check quoting the dev sentence passes while the public channel shows the other
+   * one. The enumeration below is over whatever the page actually carries — never a list typed
+   * here — so a claim added tomorrow is covered the day it lands. */
   var ctx = await browser.newContext();
   var page = await ctx.newPage();
   await page.goto(LANDING);
-  ck('landing dev: the campaign promise stands', /Guided\s+training/.test(await page.textContent('.hero .sub')));
+  ck('landing dev: the hero carries the walkthrough promise',
+    /guided\s+walkthroughs/i.test(await page.textContent('.hero .sub')));
   await ctx.close();
 
   ctx = await browser.newContext();
   await ctx.addInitScript(pinChannel('public'));
   page = await ctx.newPage();
   await page.goto(LANDING);
-  ck('landing public: the hero no longer promises campaigns',
-    !/Guided\s+training/.test(await page.textContent('.hero .sub')));
-  ck('landing public: the feature block says coming soon',
-    /Guided\s+training\s+—\s+coming soon/.test(await page.textContent('.features')));
+  var gated = await page.evaluate(function () {
+    var out = [];
+    Array.prototype.forEach.call(document.querySelectorAll('[data-flag]'), function (el) {
+      var f = el.getAttribute('data-flag');
+      out.push({ flag: f, on: RD.Flags.on(f), stage: RD.Flags.stage(f) });
+    });
+    return out;
+  });
+  var offPublic = gated.filter(function (g) { return !g.on; });
+  ck('landing public: every gated claim rests on a flag the public channel has',
+    gated.length > 0 && offPublic.length === 0,
+    gated.length === 0
+      ? 'the page carries no [data-flag] element at all, so the swap below proves nothing — ' +
+        're-point this pair or delete it deliberately'
+      : offPublic.map(function (g) { return g.flag + ' (stage ' + g.stage + ')'; }).join(', ') +
+        ' — a visitor to the released site reads the data-flag-off alternate here, not the ' +
+        'sentence that was written');
+
+  /* THE SWAP ITSELF, PROVEN ON THE PAGE. Without this the check above is satisfied by an
+   * `applyDom` that does nothing at all: every flag reads on, no element is ever rewritten, and
+   * a landing page that over-promises on the public channel looks identical to a correct one.
+   * `?flags=-<id>` is the one-page-load override, so this needs no build and no stamp file. */
+  var subFlag = gated.length ? gated[0].flag : null;
+  await page.goto(LANDING + (subFlag ? '?flags=-' + subFlag : ''));
+  var heroOff = (await page.textContent('.hero .sub')) || '';
+  var heroAlt = (await page.getAttribute('.hero .sub', 'data-flag-off')) || '';
+  ck('landing public: the alternate swaps in when that flag is forced off',
+    !!subFlag && !!heroAlt && !/guided\s+walkthroughs/i.test(heroOff) &&
+    heroOff.replace(/\s+/g, ' ').trim() === heroAlt.replace(/\s+/g, ' ').trim(),
+    'rendered "' + heroOff.slice(0, 60) + '…" against alternate "' + heroAlt.slice(0, 60) + '…"');
   // REMOVED (#263 item 6): this was `!/The full experience/` on the PWR card, and the
   // phrase has not existed anywhere in the site since the card was rewritten — so the
   // check could never fail. Second vacuous negative in this file; the other was the hero
@@ -714,6 +758,10 @@ function pinChannel(ch) {
   // makes no channel-dependent promise to guard, and the over-promise guard now lives
   // where the promise does — the hero negative above and the features coming-soon check.
   // A negative assertion is only worth its line if the pattern still appears SOMEWHERE.
+  /* AND REMOVED AGAIN, for the same reason, 2026-09-13: `!/Guided training/` on the hero and
+   * `/Guided training — coming soon/` on `.features` both quoted copy #742 deleted. The note
+   * above is the standing rule; the block that replaced them is above it. */
+  await page.goto(LANDING);
   ck('landing public: the page still sells the plant',
     /Real reactor physics/.test(await page.textContent('.hero .sub')));
   await ctx.close();
