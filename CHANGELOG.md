@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.7.4] — 2026-09-15
+
 ### Fixed (a fresh-context layman played BOTH legs end to end, and four of its diagnoses were wrong — 2026-09-15, #653, #758, #759)
 
 - **A layman with no repo access finished `pwr_heatup` 17/17 and `pwr_startup` 17/17**, chaining
@@ -2760,8 +2762,6 @@ SI-5 two days earlier. Ported SI-5's four-conjunct form: both legs reach the win
 stays steady (power within 5 points of rated, pressure drift under 0.2 MPa / 29 psi), the legs
 meet within one broadcast of the window end, and a planted 1e-6 difference is seen by `compare()`.
 Four injections, one per conjunct, each proven to redden SI-0 alone. No baseline moves (8 checks).
-
-## [Alpha 1.7.4-rc26] — 2026-09-13
 
 ### Fixed (a paused plant re-lit the old speed rung the moment the player touched anything — #691 second half)
 
