@@ -130,7 +130,28 @@ var TOOLKIT = [
   '  anyRefused: function () { return document.querySelectorAll(".bd-refused, .bd-val-refused").length; },',
   '  tapDown: function (id) { window.__c.btn(id).dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); },',
   '  tapUp: function () { document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true })); },',
-  '  click: function (id) { window.__c.btn(id).click(); }',
+  '  click: function (id) { window.__c.btn(id).click(); },',
+  /* ---- THE REAL-PLANT LEG (#755 item 17). `?dev=1` hands the harness the live service; these
+   * three drive the ACTUAL plant through the ACTUAL command path, with no doctored snapshot
+   * anywhere. `advanceCycles` ticks and BROADCASTS each cycle, so the board's afterRender —
+   * which is where `noteTripBlockEvents` lives — sees every intermediate state exactly as it
+   * does in play. See the section header below for why a fabricated revoke was not enough. */
+  '  svc: function () { return RD.__dev.service(); },',
+  '  cmd: function (c) { try { return window.__c.svc().handleCommand(c); } catch (e) { return { threw: String(e.message || e) }; } },',
+  '  adv: function (n, sp) {',
+  '    var s = window.__c.svc();',
+  '    s.handleCommand({ action: "set_speed", value: sp || 60 });',
+  '    s.advanceCycles(n);',
+  '    s.handleCommand({ action: "set_speed", value: 1 });',
+  /* ⚠ THE SERVICE'S SNAPSHOT, NOT `RD.PwrBoard.lastSnapshot()`. The board is painted from a
+   * requestAnimationFrame, and `advanceCycles` runs its whole loop inside ONE JS turn — so no
+   * frame is painted while it runs and the board's last snapshot is from BEFORE the commands.
+   * MEASURED: both trip blocks read `blocked:false` immediately after the command that placed
+   * them, and only the revoke they later produced proved they had ever been on. Plant facts come
+   * from the plant here; the DOM reads below take their own settling time. */
+  '    var q = s.assembleSnapshot();',
+  '    return { mpa: q.true_state && q.true_state.pressure_mpa, st: (q.rps_state || {}).trip_block_status || {} };',
+  '  }',
   '};'
 ].join('\n');
 
@@ -349,11 +370,19 @@ var TOOLKIT = [
   ck('OPENING the card stops the button flashing (not open-and-close, which is what it used to be)',
     opened.unacked === false && !/\bbd-unack\b/.test(opened.btn.cls) && opened.btn.anim === 'none',
     opened.btn.cls + ' / ' + opened.btn.anim);
-  /* …AND IT MUST NOT CLEAR THE FACT. #738 exists because the plant silently revoked a block; a cue
-   * that dismisses the message with it would be the original defect wearing an acknowledgement. */
-  ck('  …while the MESSAGE survives — the button keeps its amber state class and the row its text',
-    /\bbd-msg\b/.test(opened.btn.cls) && /RELEASED BY THE PLANT/.test(opened.row.text),
-    opened.btn.cls + ' · row: ' + opened.row.text.slice(-70));
+  /* ⚠ THIS CHECK USED TO ASSERT THE DEFECT. It read "the button keeps its amber state class",
+   * pinning `bd-msg` as correct after the open — which is exactly what the owner then played:
+   * *(OWNER, 2026-09-14, #755 item 17: "The TRIP BLOCKS button stayed yellow after opening and
+   * closing the card.")*. The cue is the COLOUR as much as the motion; what must survive the
+   * acknowledge is the FACT, and the fact lives in the card's row text, the count badge and
+   * `bd-info`'s grey — not in a yellow button. #738 is still honoured: nothing is deleted. */
+  ck('  …and stops being YELLOW, not just stops moving — the colour is the cue too (#755 item 17)',
+    !/\bbd-msg\b/.test(opened.btn.cls) && opened.btn.color !== AMBER,
+    opened.btn.cls + ' / ' + opened.btn.color);
+  ck('  …while the FACT survives — the row keeps its text and the driver keeps the message',
+    /RELEASED BY THE PLANT/.test(opened.row.text) &&
+      opened.msgs.filter(function (m) { return m.id === ROW_A && m.msg; }).length === 1,
+    opened.msgs.length + ' messages held · row: ' + opened.row.text.slice(-70));
   ck('  …and the row is still amber for the viewing that is READING it (drawn, not 0x0)',
     /\bbd-sub-msg\b/.test(opened.row.cls) && opened.row.color === AMBER &&
       opened.row.w > 20 && opened.row.h > 4,
@@ -418,6 +447,130 @@ var TOOLKIT = [
     again.msgs.filter(function (m) { return m.unviewed; }).length === 1 &&
       again.msgs.filter(function (m) { return m.unviewed; })[0].id === ROW_B,
     again.msgs.map(function (m) { return m.id + (m.unviewed ? ' UNVIEWED' : ' viewed'); }).join(' · '));
+
+  // ============================================================ 4. the same, on a REAL transient
+  /* ⚠ WHY THIS SECTION EXISTS, AND WHY THE ONE ABOVE WAS NOT ENOUGH (#755 item 17). Everything
+   * above manufactures the revoke with `RD.PwrBoard.render(doctored)`. That is a legitimate way to
+   * reach the RENDERER, and it is how the row/status/sequence claims are exercised cheaply — but
+   * it proves nothing about the acknowledge a PLAYER meets, because the player's revoke arrives
+   * through the engine, the control layer, the service broadcast and `afterRender`, and the button
+   * he is looking at is painted by a chain none of those fake renders walk end to end. The #752
+   * commit shipped with this whole section green and the defect live: the owner hit it inside
+   * hours. A fabricated fixture certified the fix that did not work.
+   *
+   * SO THIS LEG DRIVES THE PLANT. A real depressurization below P-11 (13.6 MPa / 1972 psia), both
+   * cooldown blocks placed through `handleCommand` exactly as the card's buttons place them, a
+   * real repressurization back through P-11, and the engine's own revoke
+   * (`pwr2_protection.js:658-661`) does the rest. Nothing here is a literal and nothing is
+   * rendered by hand.
+   *
+   * IT IS BOUNDED AND IT FAILS LOUDLY IF THE PLANT DOES NOT COOPERATE: the two preconditions are
+   * their own checks, so a future engine change that stops producing this revoke reddens the gate
+   * saying so, rather than silently leaving the acknowledge untested. */
+  console.log(B + '\nTRIP BLOCKS — the same acknowledge on a REAL P-11 revoke (#755 item 17)' + X);
+
+  await page.evaluate(function () { RD.PwrBoardDriver.__resetTripBlocks(); });
+  var down = null;
+  await page.evaluate(function () { window.__c.cmd({ action: 'set_pressure_setpoint', mpa: 12.4 }); });
+  for (var di = 0; di < 20 && !down; di++) {
+    var dq = await page.evaluate(function () { return window.__c.adv(60, 60); });
+    if (dq.st.lo_press && dq.st.lo_press.permissive === true) down = dq;
+  }
+  ck('a real depressurization brings the plant inside P-11 (the blocks become placeable at all)',
+    !!down, down ? (down.mpa * 145.038).toFixed(0) + ' psia (' + down.mpa.toFixed(2) + ' MPa)'
+                 : 'P-11 never came in — the transient did not run');
+
+  /* The depressurization ALSO drops power through P-10 and revokes the two startup blocks — a
+   * real event, and a real message, but not the one under test. Cleared so the section speaks
+   * only for the P-11 pair. */
+  var placed = down ? await page.evaluate(function () {
+    RD.PwrBoardDriver.__resetTripBlocks();
+    window.__c.cmd({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true });
+    window.__c.cmd({ action: 'set_trip_block', trip_id: 'si_trip', blocked: true });
+    var q = window.__c.adv(6, 1);
+    return { lo: q.st.lo_press.blocked, si: q.st.si_trip.blocked };
+  }) : { lo: false, si: false };
+  ck('  …and the player\'s two cooldown blocks land through the ordinary command path',
+    placed.lo === true && placed.si === true,
+    'lo_press=' + placed.lo + ' · si_trip=' + placed.si);
+
+  var up = null;
+  if (down) {
+    await page.evaluate(function () { window.__c.cmd({ action: 'set_pressure_setpoint', mpa: 15.4 }); });
+    for (var ui = 0; ui < 30 && !up; ui++) {
+      var uq = await page.evaluate(function () { return window.__c.adv(30, 60); });
+      if (uq.st.lo_press && uq.st.lo_press.blocked === false) up = uq;
+    }
+    await page.evaluate(function () { window.__c.adv(6, 1); });
+  }
+  /* ⚠ +320 ms BEFORE THE FIRST COLOUR READ TOO, and this one was MISSED in the first cut of this
+   * section: the wait below (before the open) was there and this one was not, so the check read
+   * rgb(184, 196, 205) — `.bd-btn`'s `transition: color 0.12s` caught part-way from the resting
+   * grey to the amber — and the leg failed on a board that was behaving perfectly. The class and
+   * the animation were already correct in the same read, which is exactly what makes a
+   * mid-transition colour read a plausible-looking false red. `bdMsgFlash` animates OPACITY only
+   * (pwr_board.css), so the colour is a constant #ffd166 once the transition lands and this wait
+   * cannot land on the wrong half of a flash. */
+  await page.waitForTimeout(320);
+  var real = await page.evaluate(function (a) {
+    return { btn: window.__c.button(a.TB),
+             msgs: RD.PwrBoardDriver.tripBlockMessages(), unacked: RD.PwrBoardDriver.tripBlockUnacked() };
+  }, { TB: TB_BTN });
+  ck('the plant REVOKES them on the way back up, and the board says so unprompted',
+    !!up && real.unacked === true &&
+      real.msgs.filter(function (m) { return /P-11/.test(m.msg || ''); }).length === 2,
+    up ? (up.mpa * 145.038).toFixed(0) + ' psia · ' +
+         real.msgs.map(function (m) { return m.id; }).join(', ') : 'no revoke');
+  ck('  …by flashing the button amber (the annunciator half, on a real event)',
+    /\bbd-msg\b/.test(real.btn.cls) && /\bbd-unack\b/.test(real.btn.cls) &&
+      real.btn.anim === 'bdMsgFlash' && real.btn.color === AMBER,
+    real.btn.cls + ' / ' + real.btn.anim + ' / ' + real.btn.color);
+
+  /* ⚠ +300 ms BEFORE READING A COLOUR. `.bd-btn` carries `transition: background 0.12s`, so a
+   * computed colour read in the same tick as the class change is the OLD one part-way to the new.
+   * MEASURED while writing this: the same read at ~0 ms returned rgb(244, 207, 117) — neither
+   * amber nor the resting grey, and a strict comparison against either would have been a coin
+   * flip between a false PASS and a false FAIL. */
+  await page.evaluate(function () { window.__c.click('imrsk4xz2dm'); });
+  await page.evaluate(function () { window.__c.adv(5, 1); });
+  await page.waitForTimeout(320);
+  var rOpen = await page.evaluate(function (a) {
+    return { btn: window.__c.button(a.TB), row: window.__c.row('lo_press'),
+             msgs: RD.PwrBoardDriver.tripBlockMessages() };
+  }, { TB: TB_BTN });
+  ck('OPENING the card takes the YELLOW off the button, not only the flashing (#755 item 17)',
+    !/\bbd-msg\b/.test(rOpen.btn.cls) && !/\bbd-unack\b/.test(rOpen.btn.cls) &&
+      rOpen.btn.color !== AMBER && rOpen.btn.anim === 'none',
+    rOpen.btn.cls + ' / ' + rOpen.btn.color + ' / ' + rOpen.btn.anim);
+  ck('  …and the row inside is amber and drawn, so the card still says WHICH row lost its block',
+    /\bbd-sub-msg\b/.test(rOpen.row.cls) && rOpen.row.color === AMBER &&
+      rOpen.row.w > 20 && rOpen.row.h > 4,
+    rOpen.row.cls + ' / ' + rOpen.row.color + ' / ' + rOpen.row.w + ' x ' + rOpen.row.h + ' px');
+
+  /* THE OWNER'S GESTURE, LITERALLY: open, then close. This is the read that was never taken. */
+  await page.evaluate(function () { window.__c.click('imrsk4xz2dm'); });
+  await page.evaluate(function () { window.__c.adv(10, 1); });
+  await page.waitForTimeout(320);
+  var rClosed = await page.evaluate(function (a) {
+    return { btn: window.__c.button(a.TB), msgs: RD.PwrBoardDriver.tripBlockMessages() };
+  }, { TB: TB_BTN });
+  ck('…and CLOSING it leaves the button plain — the owner\'s open-then-close, measured',
+    !/\bbd-msg\b/.test(rClosed.btn.cls) && !/\bbd-unack\b/.test(rClosed.btn.cls) &&
+      rClosed.btn.color !== AMBER && rClosed.btn.anim === 'none',
+    rClosed.btn.cls + ' / ' + rClosed.btn.color + ' / ' + rClosed.btn.anim);
+  ck('  …with BOTH messages still held — the cue went, the fact did not',
+    rClosed.msgs.filter(function (m) { return /P-11/.test(m.msg || ''); }).length === 2 &&
+      rClosed.msgs.every(function (m) { return m.unviewed === false; }),
+    rClosed.msgs.map(function (m) { return m.id + (m.unviewed ? ' UNVIEWED' : ' viewed'); }).join(' · '));
+
+  await page.evaluate(function () { window.__c.click('imrsk4xz2dm'); });
+  await page.evaluate(function () { window.__c.adv(5, 1); });
+  var rAgain = await page.evaluate(function () { return { row: window.__c.row('lo_press') }; });
+  ck('  …and the ROW comes back plain on the next opening, its text intact (the row half, real)',
+    !/\bbd-sub-msg\b/.test(rAgain.row.cls) && rAgain.row.color !== AMBER &&
+      /RELEASED BY THE PLANT/.test(rAgain.row.text),
+    rAgain.row.cls + ' / ' + rAgain.row.color);
+  await page.evaluate(function () { window.__c.click('imrsk4xz2dm'); });
 
   ck('the page raised no script error while all of that was driven',
     pageErrs.length === 0, pageErrs.length ? pageErrs.slice(0, 3).join(' | ') : 'clean');

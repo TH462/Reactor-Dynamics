@@ -188,9 +188,19 @@
 
    THE GRAMMAR IS THE ALARM PANEL'S, DELIBERATELY. `ui/shell.css` already rules that only UNACKED
    tiles flash and acked ones stay solid, so this is the same split rather than a second
-   convention: `.bd-msg` is the amber and it persists for as long as the message does;
-   `.bd-unack` is the motion and it stops the moment the player closes the card. A board with two
-   different meanings for "flashing" is a board nobody can read.
+   convention: `.bd-msg` is the amber and `.bd-unack` is the motion. A board with two different
+   meanings for "flashing" is a board nobody can read.
+
+   ⚠ ON THIS BUTTON THE TWO CLASSES ARRIVE AND LEAVE TOGETHER, and the sentence that used to sit
+   here — "`.bd-msg` persists for as long as the message does" — was the #755 item 17 defect
+   written down as a design note. The acknowledge stopped the animation and left the amber
+   standing for ever, MEASURED on a real P-11 revoke as `bd-btn bd-msg` /
+   `color: rgb(255, 209, 102)` after open-and-close *(OWNER, 2026-09-14, #755 item 17: "The TRIP
+   BLOCKS button stayed yellow after opening and closing the card.")*. An alarm tile's colour
+   reports a CONDITION that is still live; a trip-block message reports an EVENT that has already
+   happened, and the standing facts live in `bd-info`'s grey, the count badge and the card's text.
+   `buttonMsg` in pwr_board_wiring.js now returns the UNACKED predicate; these two rules are
+   unchanged and still correct for any future button whose state really does outlast its motion.
 
    AMBER, NOT RED, and not `bd-actuated`'s orange. This is "the plant changed your lineup and you
    should know", which is the caution scale — `bd-warn`'s exact yellow, reused so the colour keeps

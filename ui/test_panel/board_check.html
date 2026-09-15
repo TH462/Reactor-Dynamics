@@ -1011,6 +1011,13 @@
             return b.parentNode.classList.contains('ckl-step-glow') ? b.getAttribute('data-trip') : null;
           }).filter(Boolean).join(',');
         }
+        /* The rows whose cue has STOOD DOWN — glowing, but no longer pulsing (#755 item 19). */
+        function settled() {
+          if (!pop0) return null;
+          return Array.prototype.map.call(pop0.querySelectorAll('button[data-trip]'), function (b) {
+            return b.parentNode.classList.contains('ckl-step-done') ? b.getAttribute('data-trip') : null;
+          }).filter(Boolean).join(',');
+        }
         function renderWithChecklist(ck) {
           var s = svc.assembleSnapshot();
           var instr = {};
@@ -1033,7 +1040,7 @@
 
         probeStep(0);
         ck('glow: the row the active step asks for GLOWS while its ask is outstanding (#727)',
-          glowing() === 'ir_high', 'glowing: [' + glowing() + ']');
+          glowing() === 'ir_high' && settled() === '', 'glowing: [' + glowing() + '] settled: [' + settled() + ']');
 
         probeStep(1);
         ck('glow: a row the PLANT is refusing never glows — a pulse on a button that cannot be pressed is the dead-button trap',
@@ -1050,12 +1057,20 @@
         ck('glow: the shipped pwr_startup leg still carries an ir_high trip-block step (the fixture below is real)',
           realIdx >= 0, 'step index ' + realIdx);
         renderWithChecklist({ procedure_id: 'pwr_startup', profile_key: 'pwr2', step_index: realIdx, complete: false });
-        ck('glow: a row whose ask is ALREADY SATISFIED stops glowing — the panel never points at work already done',
-          glowing() === '', 'glowing: [' + glowing() + ']');
+        /* ⚠ THIS CHECK USED TO READ "stops glowing", AND THAT IS THE BEHAVIOUR THE OWNER OVERRULED
+         * *(OWNER, 2026-09-14, #755 item 19: "During wlakthroughs, when a hightighted button the
+         * glow should stop pulsing."; ruled the same day as "after press: steady glow, no pulse")*.
+         * The row going DARK on the press said "you are on the wrong row now" while the step it
+         * belongs to was still the active step. What must stop is the MOTION, which is
+         * `.ckl-step-done` (ui/shell.css drops the animation and holds the ring). The claim under
+         * #727 is unchanged in substance — the panel stops ASKING for work already done. */
+        ck('glow: a row whose ask is ALREADY SATISFIED stops PULSING and keeps its glow (#755 item 19)',
+          glowing() === 'ir_high' && settled() === 'ir_high',
+          'glowing: [' + glowing() + '] settled: [' + settled() + ']');
 
         renderWithChecklist(null);
         ck('glow: with no walkthrough running, nothing in the panel glows',
-          glowing() === '', 'glowing: [' + glowing() + ']');
+          glowing() === '' && settled() === '', 'glowing: [' + glowing() + '] settled: [' + settled() + ']');
 
         delete RD.MANUAL_PROCEDURES.__bcprobe;
         RD.PwrBoard.render(svc.assembleSnapshot());
@@ -1147,14 +1162,34 @@
              /RELEASED BY THE PLANT/.test(subRow.textContent)),
           subRow ? subRow.textContent : 'no row carries the message class');
 
-        /* closing the card is the acknowledge — the flash stops, the amber stays */
+        /* THE OWNER'S GESTURE, LITERALLY: this click CLOSES the card he has just opened. The
+         * acknowledge itself happens on the OPEN (`refreshTripBlocks` raises `tbAck` on every
+         * refresh while the card is up), so by here both the flash and the amber are already gone
+         * and must still be gone.
+         *
+         * ⚠ THE SECOND CHECK USED TO ASSERT THE DEFECT, and it is the reason #755 item 17 could be
+         * reported twice against two "fixes" *(OWNER, 2026-09-14, #755 item 17: "The TRIP BLOCKS
+         * button stayed yellow after opening and closing the card."; and before it, #752: "The
+         * yellow permissives button should stop being yellow after being opened.")*. It read "…and
+         * leaves the button AMBER — the trip is still live and the button still says so", pinning
+         * the colour as CORRECT after the acknowledge: the cue is the colour as much as the motion,
+         * and what must survive is the FACT, which lives in the card's row text, the count badge
+         * and `bd-info`'s grey. `buttonMsg` in pwr_board_wiring.js now returns the UNACKED
+         * predicate, so the two classes arrive and leave together on this button.
+         *
+         * ⚠ THE CLASS IS ASSERTED AND THE COLOUR IS ONLY CHECKED FOR "NOT AMBER". `.bd-btn` carries
+         * `transition: color 0.12s`, and this block renders and reads in the SAME synchronous turn
+         * — MEASURED here, the read lands mid-transition at rgb(184, 196, 205), neither amber nor
+         * the resting grey. An equality test against the grey would be a coin flip; the class and
+         * the negative are both true at every instant of the fade. */
         clickBtn('imrsk4xz2dm');
         RD.PwrBoard.render(svc.assembleSnapshot());
         var cs4 = getComputedStyle(btn3);
-        ck('msg: closing the card stops the FLASH',
+        ck('msg: open-then-close leaves the FLASH off',
           !/bdMsgFlash/.test(cs4.animationName || ''), 'animation ' + cs4.animationName);
-        ck('msg: …and leaves the button AMBER — the trip is still live and the button still says so',
-          cs4.color.replace(/\s/g, '') === 'rgb(255,209,102)', 'color ' + cs4.color);
+        ck('msg: …and the YELLOW is off too — the cue went, the fact stayed (#755 item 17)',
+          !btn3.classList.contains('bd-msg') && cs4.color.replace(/\s/g, '') !== 'rgb(255,209,102)',
+          btn3.className + ' / color ' + cs4.color);
         /* THE PLAYER'S OWN RELEASE, THROUGH THE REAL CLICK HANDLER — the one path no other check
          * exercises. `run_pwr2_board`'s equivalent drives `__markTripBlockSelf`, and an accessor
          * standing in for a production line is not that line: with the click handler's own

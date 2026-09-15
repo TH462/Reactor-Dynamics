@@ -3146,6 +3146,17 @@ async function testWatchGlowRendered(page) {
   log.push(WATCH_GLOW_LEG + ': ' + n + '/' + n + ' steps, every authored label painted its own ' +
     'element (' + tw + ' .ckl-watch-glow and ' + tp + ' .ckl-step-glow over the leg)');
 
+  /* THE WATCH RING'S PAINTED STYLE, READ HERE AND ASSERTED AT THE BOTTOM (#755 items 7/10). It has
+   * to be taken on THIS leg: the negative leg below is chosen precisely because it authors no
+   * `hl_watch`, so a read down there would find nothing and the assertion would pass vacuously —
+   * which is how a check about a treatment ends up testing that an element is absent. */
+  var watchTreat = await page.evaluate(function () {
+    var w = document.querySelector('.ckl-watch-glow'); if (!w) return null;
+    var cs = getComputedStyle(w), r = w.getBoundingClientRect();
+    return { anim: cs.animationName, shadow: cs.boxShadow, outlineStyle: cs.outlineStyle,
+             w: +r.width.toFixed(1), h: +r.height.toFixed(1) };
+  });
+
   /* ---- THE NEGATIVE, ON REAL CONTENT ------------------------------------------------------
    * The step is found in the POOL, never typed here, so re-authoring moves the fixture instead of
    * breaking it — which is exactly what happened to the form this replaces. */
@@ -3185,6 +3196,135 @@ async function testWatchGlowRendered(page) {
   log.push('negative: ' + neg.pid + ' step ' + (nr.idx + 1) + ' authors 0 hl_watch and ' +
     nr.pressLabels.length + ' press labels (' + nr.pressLabels.join(', ') + ') -> 0 watch rings, ' +
     nr.painted + ' pulsing');
+
+  /* ================================================================ THE TWO TREATMENTS THEMSELVES
+   * (#755 items 7/10/19, OWNER RULING 2026-09-14, chosen from drawn options: "Both glow; pulse +
+   * one static cue" —
+   *     PRESS BUTTON      ((( soft pulsing glow )))   -> after press: steady glow, no pulse
+   *     WATCH INDICATION  [ steady glow + 2px solid ring ]  (no dash, no motion)  )
+   *
+   * ⚠ EVERYTHING ABOVE COUNTS RINGS AND CANNOT SEE WHAT THEY LOOK LIKE. The counting invariant was
+   * green for the whole life of the DASHED watch ring the owner then asked to have removed, and it
+   * would be just as green if both treatments rendered identically — which is the one thing the
+   * ruling is about. So read the PAINTED style off the real elements: `animationName`, the
+   * box-shadow, and the outline the dash lived in.
+   *
+   * THE PRESS IS A REAL POINTER PRESS AT REAL COORDINATES, not `element.click()` and not a class
+   * poked in by hand. `ui/app.js`'s `cklNotePress` matches the press GEOMETRICALLY — it has to,
+   * because the ring is a `pointer-events: none` halo in a different subtree from the control
+   * (measured; the DOM-relation forms of that handler both failed) — so a synthetic click with no
+   * clientX/clientY would exercise nothing the player does. */
+  var treat = await page.evaluate(function () {
+    var p = document.querySelector('.ckl-step-glow'); if (!p) return { press: null };
+    var cs = getComputedStyle(p), r = p.getBoundingClientRect();
+    return { press: { anim: cs.animationName, shadow: cs.boxShadow, outlineStyle: cs.outlineStyle,
+                      done: p.classList.contains('ckl-step-done'),
+                      w: +r.width.toFixed(1), h: +r.height.toFixed(1),
+                      x: r.left + r.width / 2, y: r.top + r.height / 2 } };
+  });
+  treat.watch = watchTreat;
+  if (!treat.watch || !treat.watch.w) {
+    throw new Error('#755 items 7/10 fixture: no drawn .ckl-watch-glow was captured on ' +
+      WATCH_GLOW_LEG + ' — the watch treatment cannot be asserted');
+  }
+  if (!treat.press || !treat.press.w) {
+    throw new Error('#755 item 19 fixture: no drawn .ckl-step-glow on ' + neg.pid + ' step ' +
+      (nr.idx + 1) + ' — the press treatment cannot be read');
+  }
+  if (treat.press.anim !== 'cklGlow') {
+    throw new Error('#755 item 7: the press cue is not pulsing — animationName "' + treat.press.anim +
+      '". The ruling is "((( soft pulsing glow )))" for a control to act on; a steady press cue is ' +
+      'indistinguishable from the watch ring.');
+  }
+  log.push('press cue: animation ' + treat.press.anim + ', ' + treat.press.w + 'x' + treat.press.h + ' px');
+
+  /* ---- item 19: the press stands the pulse down and the GLOW STAYS -------------------------- */
+  await page.mouse.move(treat.press.x, treat.press.y);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  var pressed = await page.evaluate(function () {
+    var p = document.querySelector('.ckl-step-glow'); if (!p) return null;
+    var cs = getComputedStyle(p);
+    return { anim: cs.animationName, shadow: cs.boxShadow, done: p.classList.contains('ckl-step-done') };
+  });
+  if (!pressed) {
+    throw new Error('#755 item 19: the ring went away entirely on the press — the ruling is ' +
+      '"steady glow, no pulse", and a cue that vanishes says the player is on the wrong control ' +
+      'while the step it belongs to is still the active step');
+  }
+  if (pressed.anim !== 'none') {
+    throw new Error('#755 item 19 (OWNER: "when a hightighted button the glow should stop ' +
+      'pulsing"): the pulse is still running after a real pointer press inside the ring — ' +
+      'animationName "' + pressed.anim + '"');
+  }
+  /* THE SECOND HALF, AND IT IS THE HALF A "stop the pulse" FIX GETS WRONG: the glow must still be
+   * PAINTED. `animation: none` with the box-shadow dropped satisfies the sentence and deletes the
+   * cue. */
+  if (!pressed.shadow || pressed.shadow === 'none') {
+    throw new Error('#755 item 19: the pulse stopped and took the glow with it (box-shadow "' +
+      pressed.shadow + '") — the ruling is "after press: steady glow, no pulse", not "no cue"');
+  }
+  log.push('after a real press: animation ' + pressed.anim + ', glow still painted (' +
+    pressed.shadow.slice(0, 60) + '…)');
+
+  /* ⚠ AND IT MUST SURVIVE THE RE-RENDER, which is the whole reason `ui/app.js` remembers the press
+   * against the STEP instead of writing the class on the element. `applyCklStepGlow` re-runs on
+   * every checklist render-key change — the acceptance flags and the rounded precondition
+   * observations move most broadcasts on a live plant — and a naive fix is swept seconds later,
+   * which a read taken 300 ms after the press cannot see. 2 s is ~20 broadcasts at 1x. */
+  await page.waitForTimeout(2000);
+  var stillDone = await page.evaluate(function () {
+    var p = document.querySelector('.ckl-step-glow'); if (!p) return null;
+    var cs = getComputedStyle(p);
+    return { anim: cs.animationName, shadow: cs.boxShadow, done: p.classList.contains('ckl-step-done') };
+  });
+  if (!stillDone || stillDone.anim !== 'none' || !stillDone.shadow || stillDone.shadow === 'none') {
+    throw new Error('#755 item 19: the stood-down cue did not survive the panel re-render — ' +
+      JSON.stringify(stillDone) + '. The "already pressed" memory must be keyed on the step and ' +
+      're-applied by applyCklStepGlow, not written once onto the element.');
+  }
+  log.push('and it survives ~20 broadcasts of panel re-render (animation ' + stillDone.anim + ')');
+
+  /* ---- and the NEXT step pulses again: a stand-down that never re-arms is a dead cue ---------- */
+  var nxt = await page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist, st = c.proc.steps;
+    for (var i = 0; i < st.length; i++) {
+      if (i === c.idx) continue;
+      var press = (st[i].hl && st[i].hl.length) ? st[i].hl.slice()
+                : (st[i].control && !/^\(observe/i.test(st[i].control)) ? [st[i].control] : [];
+      if (press.length) return i;
+    }
+    return -1;
+  });
+  if (nxt >= 0) {
+    var nr2 = await landOn(nxt);
+    var rearm = await page.evaluate(function () {
+      var p = document.querySelector('.ckl-step-glow'); if (!p) return null;
+      return { anim: getComputedStyle(p).animationName, done: p.classList.contains('ckl-step-done') };
+    });
+    if (rearm && (rearm.anim !== 'cklGlow' || rearm.done)) {
+      throw new Error('#755 item 19: step ' + (nr2.idx + 1) + ' did not re-arm the pulse after the ' +
+        'previous step was pressed (' + JSON.stringify(rearm) + ') — the "already pressed" set is ' +
+        'scoped to one step and must be dropped when the step changes');
+    }
+    log.push('step ' + (nr2.idx + 1) + ' re-arms: animation ' + (rearm ? rearm.anim : 'n/a'));
+  }
+
+  /* ---- the watch ring: SOLID, STEADY, and not the same thing as the press cue ---------------- */
+  if (treat.watch) {
+    if (/dashed|dotted/.test(treat.watch.outlineStyle)) {
+      throw new Error('#755 items 7/10 (OWNER: "I dont like the dashed line look for the ' +
+        'walkthrough highlights"): the watch ring is drawn with outline-style "' +
+        treat.watch.outlineStyle + '"');
+    }
+    if (treat.watch.anim !== 'none') {
+      throw new Error('#755 item 7: the watch ring is animating ("' + treat.watch.anim + '") — ' +
+        'steady is what separates "watch this" from "press this"');
+    }
+    log.push('watch ring: outline-style ' + treat.watch.outlineStyle + ', animation ' +
+      treat.watch.anim + ', shadow ' + treat.watch.shadow.slice(0, 40) + '…');
+  }
 
   await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);

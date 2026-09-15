@@ -1073,7 +1073,15 @@
       // is 1460-1528 x 560-585, immediately LEFT of the feed-rate number. That is also where
       // it belongs: the note above says the button and the number must stay together, and
       // side by side is a stronger form of together than the stacked pair they were before.
-      left: 1460, top: 560, label: 'RESTORE', width: 68, height: 25, color: '#8ba4b6', fontSize: 12 },
+      //
+      // 2026-09-14 (#755 item 9, OWNER: "Shift the SG FEED RESTORE button down slightly so it fits
+      // nicely. also shift the gpm input down a little."): 560 -> 565. MEASURED at 1500x950, board
+      // scale 0.808: at 560 this button's top edge was rendered y 441.9 and the AUTO/MAN/OFF row's
+      // bottom was 441.9 — touching, with 8.1 px of empty slot below it. The slot is authored
+      // 560..595 and the button is 25 tall, so 565 centres it with 5 px above and 5 below, and
+      // puts its centre (577.5) on the feed-rate number's new one (577, DOC_PATCHES below). The
+      // pairing note above still binds: THE TWO MOVE TOGETHER.
+      left: 1460, top: 565, label: 'RESTORE', width: 68, height: 25, color: '#8ba4b6', fontSize: 12 },
     // (The ROD CONTROL card's top-right corner held a rod controller status word here from
     // #306 until 2026-08-03, when the owner removed it as redundant against the IN-OUT
     // lamps. The reasoning, and where each of its states is still shown, is at the
@@ -3866,16 +3874,23 @@
        * meaning ("the step you are on wants this"), and nothing new for run_glow_stacking's two
        * lists to disagree about.
        *
-       * IT STOPS WHEN THE ASK IS SATISFIED, not when the panel closes: `r.blocked` is the live
-       * state, so the pulse dies the instant the operator's press lands and the panel stops
-       * pointing at work already done. A DISABLED row never pulses — the plant is refusing the
-       * press (wrong permissive), the `.sub` line says why, and a glow around a button that
-       * cannot be pressed is the dead-button trap this panel already refuses elsewhere. */
+       * THE PULSE STOPS WHEN THE ASK IS SATISFIED — AND THE GLOW STAYS *(OWNER, 2026-09-14, #755
+       * item 19: "During wlakthroughs, when a hightighted button the glow should stop pulsing.";
+       * settled by the same day's ruling, "after press: steady glow, no pulse")*. `r.blocked` is
+       * the live state, so the motion dies the instant the operator's press lands. Until 2026-09-14
+       * the whole class came off with it and the row went DARK, which said "you are on the wrong
+       * row now" while the step it belongs to was still the active step; `.ckl-step-done` (ui/
+       * shell.css) drops the animation and holds the ring.
+       *
+       * A DISABLED row never lights at all — the plant is refusing the press (wrong permissive),
+       * the `.sub` line says why, and a glow around a button that cannot be pressed is the
+       * dead-button trap this panel already refuses elsewhere. */
       var rowEl = btns[i].parentNode;
       if (rowEl && rowEl.classList) {
         var wants = Object.prototype.hasOwnProperty.call(want, r.id);
-        rowEl.classList.toggle('ckl-step-glow',
-          wants && !r.disabled && r.blocked !== want[r.id]);
+        var lit = wants && !r.disabled;
+        rowEl.classList.toggle('ckl-step-glow', lit);
+        rowEl.classList.toggle('ckl-step-done', lit && r.blocked === want[r.id]);
       }
       /* A row this plant does not carry goes DARK AND SAYS SO — an inert button with no reason
        * is the dead-button class wearing a different coat, and the operator should not have to
@@ -4315,6 +4330,20 @@
        * / 1590, a 65 px pitch), so the card does not carry a hole where a button was. */
       imrmssoa137: { props: { left: 1460 } },
       imrmssr9ihq: { props: { left: 1525 } },
+      /* THE SG FEED RATE INPUT, CENTRED IN ITS SLOT *(OWNER, 2026-09-14, #755 item 9: "Shift the
+       * SG FEED RESTORE button down slightly so it fits nicely. also shift the gpm input down a
+       * little.")*.
+       *
+       * MEASURED in the browser at 1500x950 (board scale 0.808) before the move: the AUTO/MAN/OFF
+       * row ends at rendered y 441.9 and this box STARTED at 441.9 — the two were touching, with
+       * all of the slot's slack sitting UNDERNEATH (4.0 px to the STEAM FLOW caption at 470.2).
+       * That is the "doesn't fit nicely": a control jammed against the row above with a gap below.
+       *
+       * The slot is authored 560..595 (row bottom to the STEAM FLOW caption) = 35 px, and this
+       * number box is 30 px tall, so there are 5 px of slack. 562 splits it 2/3 and lands this
+       * box's centre on 577 — the same centre as RESTORE at its new 565 (see the EXTRA_ITEMS
+       * entry, which must move WITH this one; the note there has the pairing). */
+      imro8xhy2me: { props: { top: 562 } },
       imrppvnburd: { props: { text: 'LOAD' } },
       imrppilyy52: { props: { text: 'OUTPUT' } },
       imrppim9gdg: { props: { text: 'GOVERNOR' } },
@@ -5000,15 +5029,36 @@
      * message … When the user opens the card and then closes it the permissive card opening
      * button stops flashing")*. #738/#716.
      *
-     * TWO CLASSES, NOT ONE, and they mirror the alarm panel's grammar exactly: the STATE class
-     * gives the colour and the `unack` class gives the motion (`ui/shell.css`: "Only unacked
-     * critical tiles flash"). A second flashing convention on one board is a defect, so this one
-     * is the same one — amber for "there is a message", motion only until the player has looked.
-     * The message SURVIVES the acknowledge (the row still says the trip is live); only the
-     * flashing stops, which is what the owner asked for and is also what an acknowledge means
-     * everywhere else on this board. */
+     * ⚠ THE COLOUR IS THE CUE TOO, AND SPLITTING IT OFF SHIPPED THE DEFECT TWICE. This read
+     * `tbMessages().some(r => r.msg)` — "a message EXISTS" — so the acknowledge stopped the
+     * animation and left the button amber for ever after. #752 rewrote the acknowledge and did
+     * not touch this line, so the amber survived that fix untouched and the owner played it again:
+     *
+     *   *(OWNER, 2026-09-14, #755 item 17: "The TRIP BLOCKS button stayed yellow after opening and
+     *   closing the card.")*, which is the second telling of *(OWNER, 2026-09-14, #752: "The yellow
+     *   permissives button should stop being yellow after being opened.")*
+     *
+     * MEASURED on a REAL P-11 revoke, not a doctored snapshot — a real depressurization to
+     * 1839 psia (12.68 MPa), both cooldown blocks placed through the command path, a real
+     * repressurization revoking them at 2021 psia (13.93 MPa): after open-and-close the button
+     * read `bd-btn bd-msg`, `color: rgb(255, 209, 102)`, `background: rgb(58, 36, 8)`. Amber,
+     * exactly as reported. #752's own gate asserted that amber as CORRECT, which is how it passed.
+     *
+     * SO THE STATE AND THE MOTION HAVE ONE LIFETIME ON THIS BUTTON, and the reason is what the
+     * cue is ABOUT. The alarm panel's two-class grammar (`ui/shell.css`: "Only unacked critical
+     * tiles flash") is right there because an alarm tile's colour reports a CONDITION that is
+     * still live — acknowledging says "I know", not "it stopped". A trip-block message is not a
+     * condition, it is an EVENT that already finished: the plant took a block, once. The standing
+     * facts — which rows are blocked, what the lineup is, what happened to a row — are the count
+     * badge, `bd-info`'s grey, and the card's own text, none of which this acknowledge touches.
+     * Colouring the button after the player has read the event is the board shouting about
+     * something already dealt with, which is the whole of the owner's complaint.
+     *
+     * The renderer's split stays as it is — it is generic, the alarm panel uses it properly, and
+     * `verify_reduced_motion` keys its static fallback on `.bd-msg.bd-unack`. On THIS button the
+     * two predicates simply coincide. */
     buttonMsg: function (item, s) {
-      return item.id === 'imrsk4xz2dm' && tbMessages().some(function (r) { return !!r.msg; });
+      return item.id === 'imrsk4xz2dm' && tbUnacked();
     },
     buttonUnack: function (item, s) {
       return item.id === 'imrsk4xz2dm' && tbUnacked();

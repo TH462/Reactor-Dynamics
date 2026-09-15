@@ -709,31 +709,24 @@
               <button class="btn" id="fbCopy">Copy address</button>
               <span class="fb-msg" id="fbStatus"></span>
             </div>
-            <!-- GITHUB, FOR PEOPLE WHO WOULD RATHER USE IT (owner, 2026-08-09: "In the contact
-                 form page in the sim it should also direct people to the github issues if they
-                 want to use that"). Same wording as the site footer, so the two routes read as
-                 one offer rather than two policies.
-
-                 target="_blank" IS LOAD-BEARING, not house style. This is the FIRST outbound
-                 link in the control room — the only other anchor here is a mailto, which does
-                 not navigate — and there is no autosave and no beforeunload guard: `rd_progress`
-                 stores campaign progress, never plant state. A same-tab click therefore destroys
-                 the running plant, which on a BUG-REPORT link would take the session the player
-                 came here to report. Keep the attribute if this block is ever restyled. -->
-            <div class="fb-hint fb-gh">Would rather use GitHub? <a
-              href="https://github.com/TH462/Reactor-Dynamics/issues" target="_blank"
-              rel="noopener">Open an issue</a> — public and tracked, and you can read what is
-              already known before you write. It opens in a new tab; your plant keeps running.</div>
+            <!-- THE GITHUB ROUTE WAS REMOVED HERE *(OWNER, 2026-09-14, #755 item 5: "also
+                 remove the github paragraph from it.")*. It offered the issue tracker as a
+                 second route (owner, 2026-08-09) and was the only outbound link in the control
+                 room; the send-from-here form below has since made the in-sim route the one
+                 that gets used, and the site footer still carries the tracker for anyone who
+                 wants it. If a link is ever put back here it needs target="_blank" again:
+                 there is no autosave, so a same-tab navigation destroys the running plant —
+                 on a BUG-REPORT link, the very session being reported. -->
             <div class="fb-hint">What makes a report easy to act on: what you were doing, what you
               expected, and what the board actually showed. If it is a physics or procedure
               question, the plant mode and the readings you were reading it from.</div>
-            <!-- ABOVE the input, deliberately (#438, spec §10): a warning under a text box is
-                 read after typing. The audience includes working nuclear professionals — name
-                 the categories; a generic "no confidential information" gets skimmed past. -->
-            <div class="fb-warn" id="fbWarn"><strong>Do not include restricted information.</strong>
-              No proprietary plant data, no safeguards or security information, no
-              export-controlled technical data, no personal information. Describe the simulator,
-              not a real facility.</div>
+            <!-- THE "DO NOT INCLUDE RESTRICTED INFORMATION" WARNING WAS REMOVED *(OWNER,
+                 2026-09-14, #755 item 5: "Remove the \"do not include restricted information\"
+                 warning from the feedback window.")*. It named the categories — proprietary
+                 plant data, safeguards, export-controlled data, personal information — above
+                 the box, deliberately (#438, spec §10), because a warning under a text box is
+                 read after typing. The same ground is covered by privacy.html and by what the
+                 form actually collects, which is disclosed below the attach box. -->
             <!-- SEND IT FROM HERE. The whole point (owner, 2026-08-07: "If it's that easy
                  to send people might actually do it") — a report that needs an email client,
                  a file attachment and a paragraph of context is a report nobody writes. The
@@ -762,8 +755,7 @@
                  turns "broken" into "not on this build, here is the route that works". -->
             <div class="fb-field fb-nosend" id="fbNoSend" hidden>
               <div class="fb-hint">Sending a report from inside the simulator is not available on
-                this build — use the address above, or the GitHub link. The diagnostics file below
-                attaches to either.</div>
+                this build — use the address above. The diagnostics file below attaches to it.</div>
             </div>
             <div class="fb-field fb-diag">
               <button class="btn" id="fbDiag">Download session diagnostics ⭳</button>
@@ -771,7 +763,14 @@
                 commands you issued this session, so what you saw can be replayed. Nothing about
                 you or your device. Attach the file to your email.</div>
             </div>
-            <div class="fb-hint fb-ver" id="fbVer"></div>
+            <!-- THE BUILD-STAMP LINE WAS REMOVED *(OWNER, 2026-09-14, #755 item 5: "also remove
+                 \"Build alpha · dev — quoting this in a bug report says exactly which version you
+                 were on.\" since it should already tell me what version they are on when they
+                 send a report.")*. It is true and it is redundant: every report sent from this
+                 form carries `RD_RELEASE` and `RD_VERSION` in its payload, and the diagnostics
+                 bundle carries them too, so the player never has to quote anything. `openFeedback`
+                 in ui/app.js no longer writes it — if a stamp is ever wanted back, put the element
+                 back FIRST: that writer used to assume it existed. -->
           </div>
         </div>
       </div>

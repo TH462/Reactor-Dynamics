@@ -4714,7 +4714,11 @@
     // Persistent highlight for the up-next step (#244 item 5) — applied on every key
     // change so it survives step advances and hover churn; cleared when the run ends.
     var actSt = !ck.complete && pr.steps[ck.step_index] ? pr.steps[ck.step_index] : null;
-    applyCklStepGlow(actSt ? stepHlLabels(actSt) : null);
+    /* THE STEP KEY IS WHAT SCOPES THE "already pressed" SET (#755 item 19) — procedure plus step
+     * index, so advancing a step, rewinding, or starting another leg all drop it and the next
+     * step's controls pulse again from scratch. */
+    applyCklStepGlow(actSt ? stepHlLabels(actSt) : null,
+                     actSt ? (pr.id + '#' + ck.step_index) : null);
     applyCklWatchGlow(actSt ? stepWatchLabels(actSt) : null);   /* #685 */
     applyCklSpeedGlow(actSt);                                   /* #735 — #724 item 2 */
     // Step hover → glow the controls/indications the step names (its `hl` list) on
@@ -4853,17 +4857,84 @@
    * the hover preview (.ckl-glow) and the Instructor beat glow (.instr-glow), so a hover or
    * a beat can come and go without wiping the standing highlight. Applied on every
    * checklist render-key change to the ACTIVE step's `hl` targets; cleared on step advance
-   * (the next apply clears first), on End checklist (resetCkl) and on plant rebuild. */
-  function applyCklStepGlow(labels) {
+   * (the next apply clears first), on End checklist (resetCkl) and on plant rebuild.
+   *
+   * ⚠ ONCE PRESSED IT STOPS PULSING AND KEEPS THE GLOW *(OWNER, 2026-09-14, #755 item 19:
+   * "During wlakthroughs, when a hightighted button the glow should stop pulsing."; drawn and
+   * ruled the same day as "after press: steady glow, no pulse")*. `.ckl-step-done` is the
+   * modifier and the CSS is in ui/shell.css; what is here is the bookkeeping, and it exists
+   * because of ONE measured fact: THIS FUNCTION RE-RUNS CONSTANTLY. The checklist render key
+   * carries the acceptance flags and the rounded precondition observations, so on a moving plant
+   * it changes most broadcasts — a `ckl-step-done` written straight onto the element would be
+   * swept by the very next apply, seconds after the press. So the PRESS is remembered against the
+   * step, not the element, and re-applied on every pass until the step changes.
+   *
+   * KEYED ON THE LABEL, NOT THE ELEMENT. The board re-renders and a tile can be a different node
+   * from one pass to the next; the label is what the step authored and what `hlTarget` resolves,
+   * so it survives. The element carries it back in `data-ckl-hl` for the listener to read.
+   *
+   * POINTERDOWN, IN CAPTURE. The board's own buttons ride `pointerdown`/`pointerup` (the rod taps)
+   * while others ride `click`, and capture means a handler that stops propagation cannot hide the
+   * press from this. It reads state and adds a class — it issues no command, grades nothing and
+   * never consumes the event (HR5). */
+  var cklPressStep = null;                      // "<procedure id>#<step index>" the set below belongs to
+  var cklPressed = Object.create(null);         // label -> the player has pressed it on THIS step
+  var cklPressArmed = false;
+  /* ⚠ THE PRESS IS MATCHED BY GEOMETRY, NOT BY THE DOM, AND TWO DOM VERSIONS WERE MEASURED FAILING
+   * BEFORE THIS ONE. The obvious `e.target.closest('.ckl-step-glow')` cannot work: on the board the
+   * class never lands on the button or even on the tile — `revealControl` returns the tile's
+   * `.bd-halo` CHILD (pwr_board.js `haloFor`), a `pointer-events: none` overlay that is a SIBLING
+   * of whatever the player presses, so `closest` walks straight past it. The second version walked
+   * up from the target looking DOWN one level for a halo at each ancestor, which is the right idea
+   * and still missed: MEASURED on `pwr_heatup` step 2 (press target "RCP Run/Stop"), the real hit
+   * chain is `svg` -> div -> div -> `div.bd-tile` -> `.pwr-board-stage` and NONE of those tiles owns
+   * the glowing halo — the board overlaps its tiles, so the element you press and the element that
+   * is ringed are two different subtrees at the same place on screen.
+   *
+   * So the question the code asks is the question the PLAYER is answering: did the pointer go down
+   * inside the ring? Both forms above answered "is the pressed node related to the ringed node",
+   * which is a DOM fact the board does not honour.
+   *
+   * IT DOES NOT CHECK THAT THE TARGET IS A CONTROL. An earlier cut required a BUTTON/INPUT in the
+   * chain and that was wrong for the same reason — the board draws many of its controls as SVG
+   * symbols with no button element anywhere. It does not need the test: the label came off the
+   * step's PRESS list (`hl`, with "(observe)" pseudo-controls already excluded by `stepHlLabels`),
+   * so what is under the ring IS the control the step is asking for. The cost of a stray press
+   * inside the ring is one cue standing down early, and the next step re-arms it.
+   *
+   * HR5 is untouched: this reads coordinates and adds a class. It issues no command, grades
+   * nothing, and never consumes the event. */
+  function cklNotePress(e) {
+    var x = e.clientX, y = e.clientY;
+    if (!isFinite(x) || !isFinite(y)) return;
+    document.querySelectorAll('.ckl-step-glow').forEach(function (g) {
+      var r = g.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      if (x < r.left || x > r.right || y < r.top || y > r.bottom) return;
+      var lab = g.getAttribute('data-ckl-hl');
+      if (lab) cklPressed[lab] = true;
+      g.classList.add('ckl-step-done');
+    });
+  }
+  function applyCklStepGlow(labels, stepKey) {
+    var key = stepKey || null;
+    if (key !== cklPressStep) { cklPressStep = key; cklPressed = Object.create(null); }
+    if (!cklPressArmed) { document.addEventListener('pointerdown', cklNotePress, true); cklPressArmed = true; }
     clearCklStepGlow();
     if (!labels || !labels.length) return;
     labels.forEach(function (lab) {
       var el = hlTarget(lab);
-      if (el) el.classList.add('ckl-step-glow');
+      if (!el) return;
+      el.classList.add('ckl-step-glow');
+      el.setAttribute('data-ckl-hl', lab);
+      if (cklPressed[lab]) el.classList.add('ckl-step-done');
     });
   }
   function clearCklStepGlow() {
-    document.querySelectorAll('.ckl-step-glow').forEach(function (el) { el.classList.remove('ckl-step-glow'); });
+    document.querySelectorAll('.ckl-step-glow').forEach(function (el) {
+      el.classList.remove('ckl-step-glow'); el.classList.remove('ckl-step-done');
+      el.removeAttribute('data-ckl-hl');
+    });
   }
   /* THE WATCH GLOW (#685) — same apply/clear lifecycle as the step glow above and applied in
    * the same breath, but its own class and its own list, so "press this" and "watch this" are
@@ -7701,9 +7772,12 @@
   // the recorder at open time so the numbers describe the session being reported.
   function openFeedback() {
     $('fbStatus').textContent = '';
-    $('fbVer').textContent = (typeof window.RD_VERSION === 'string' && window.RD_VERSION)
-      ? 'Build ' + window.RD_VERSION + ' — quoting this in a bug report says exactly which version you were on.'
-      : '';
+    /* NO BUILD-STAMP LINE *(OWNER, 2026-09-14, #755 item 5: "also remove \"Build alpha · dev — quoting
+     * this in a bug report says exactly which version you were on.\" since it should already tell me
+     * what version they are on when they send a report.")*. It did, and it still does: the POSTed
+     * report carries the build and so does the diagnostics bundle, so the sentence was asking the
+     * player to do by hand what the form already does. The #fbVer element went with it in
+     * shell.html — this writer assumed it existed, so the two must move together. */
     var ro = diag && diag.readout && diag.readout();
     if (ro && ro.samples) {
       txt($('fbAttachSum'),

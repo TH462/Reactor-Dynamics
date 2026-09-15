@@ -932,9 +932,22 @@ html[data-channel="dev"] .logo-test {
   color: var(--text-2); background: var(--bg-elevated, var(--bg-right)); border: 1px solid var(--border);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .warp-info.dropped { color: var(--danger, #ef4444); }
-/* selected speed: subtle cyan outline (not a saturated fill — the clock turns
-   amber to warn that time is accelerated; the selector itself stays quiet). */
-.speed button.on { background: transparent; color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px var(--normal); }
+/* SELECTED SPEED: GREEN FILL, LIGHT-GREY RING *(OWNER, 2026-09-14, #755 item 14: "The time
+   controls are confusing when they are cyan since the highlight is cyan as well. lets make the
+   background of the selected time rate green and the boarder a light grey.")*.
+
+   IT WAS A CYAN INSET RING, and cyan is the walkthrough's own colour on this very strip —
+   `.ckl-speed-rung` rings the RECOMMENDED rung in `rgba(90, 240, 255, …)` two rules below, so
+   "the rate you are on" and "the rate the walkthrough wants" differed by animation and a few
+   points of hue. Selection is now the only thing on the strip that FILLS, which is a channel
+   the cue does not use at all.
+
+   THE FILL IS SEMI-TRANSPARENT, not `var(--running)` flat. The two warp rungs keep amber LABELS
+   (`.speed button.warp`, below) and amber on saturated green is unreadable; at this alpha over
+   `--bg-right` the label sits on #24402f and both the amber and the plain text clear contrast.
+   The amber `.warp.on` ring below is left alone deliberately — the tier reading is a separate
+   claim from "this one is selected", and the fill now carries the selection on its own. */
+.speed button.on { background: rgba(70, 163, 94, 0.42); color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px rgba(200, 208, 216, 0.85); }
 /* The two WARP rungs (#625): a coarser physics step for long quiet evolutions. Visibly a
    different tier, and DARK while the plant is in a transient — the service refuses them then,
    so a lit button that did nothing would read as broken. */
@@ -1207,15 +1220,9 @@ html[data-channel="dev"] .logo-test {
 /* In-sim bug report (2026-08-07). The send block is `hidden` in the markup and only
    revealed when a deploy stamped a telemetry endpoint, so a local checkout and the
    offline build show the email route alone rather than a button that cannot work. */
-/* Restricted-info warning (#438) — sits ABOVE the input. Caution accent, but muted:
-   this is a modal notice, not a plant condition, so no alarm-tile styling. */
-.fb-warn {
-  margin-top: 12px; padding: 8px 10px; font-size: 12px; line-height: 1.45;
-  color: var(--text); border: 1px solid var(--border);
-  border-left: 3px solid var(--caution); background: rgba(217, 164, 65, .08);
-  border-radius: 3px;
-}
-.fb-warn strong { color: var(--caution); }
+/* (`.fb-warn`, the restricted-information notice's caution-accented box, and `.fb-ver`, the build
+   stamp's margin, were REMOVED with their markup on 2026-09-14 — #755 item 5. Both were one-use
+   rules; ui/shell.html carries the reason where each element stood.) */
 .lc-fb { margin-top: 10px; }
 .fb-send { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 14px; }
 .fb-note {
@@ -1245,7 +1252,6 @@ html[data-channel="dev"] .logo-test {
 .fb-mail { font-size: 17px; color: var(--running); text-decoration: none; border-bottom: 1px dotted var(--running); word-break: break-all; }
 .fb-mail:hover { color: var(--text); border-bottom-color: var(--text); }
 .fb-diag { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
-.fb-ver { margin-top: 14px; }
 .help-keys { font-size: 11px; color: var(--text-2); }
 
 /* ===================================================== right col: instructor */
@@ -2125,37 +2131,60 @@ select.num-input { width: auto; }
    glow.")*. The active step's `hl` targets keep the pulse above — that is #607 item 3 and it
    is not being undone here; this is the second treatment, for the step's `hl_watch` list.
 
-   IT DIFFERS BY GEOMETRY, NOT ONLY BY MOTION. Two rings in the same hue separated only by
-   whether they animate is a weak distinction on a board of 50+ elements, and DESIGN_CRITERIA
-   question 4 (does it complicate things for the player) is a VETO — the issue made passing it
-   conditional on the two being unmistakable. So the watch ring is DASHED and offset. Dashes
-   survive colour-vision deficiency for the same reason the cyan highlight bus does: it is a
-   shape difference, not a hue difference.
+   ⚠ THE DASH IS GONE, AND IT IS NOT COMING BACK ON THE DEFAULT PATH *(OWNER RULING, 2026-09-14,
+   #755 items 7/10/19, given as a choice between drawn options: "Both glow; pulse + one static
+   cue" —
+       PRESS BUTTON      ((( soft pulsing glow )))   -> after press: steady glow, no pulse
+       WATCH INDICATION  [ steady glow + 2px solid ring ]  (no dash, no motion)
+   after *(OWNER, #755 item 10: "I dont like the dashed line look for the walkthrough highlights.
+   go back to the glow and pulsing glow. i dont know what was wrong with them in the first
+   place.")*.)
 
-   ⚠ THE GLOW IS THE READ AND THE DASH IS ONLY TEXTURE ON TOP OF IT — #743 INVERTED THAT, and
-   the inversion is the whole point of the change *(OWNER, 2026-09-13 playtest: "on the plant
-   screen i dont like the new textured highlights. it doesnt bring enough attention to itself
-   like the old glowing and pulsing version did. if i didnt know it was there i would miss it…
-   You could try keeping some of the texture but bring the glow back.")*. As #685 shipped it,
-   the halo was `0 0 6px 1px … 0.22` — A QUARTER THE SPREAD AND A FIFTH THE ALPHA of the pulse's,
-   which left a bare 1px dashed hairline doing all the work; the owner's word for the result is
-   "textured", and he missed it on the board. The halo below is now within a whisker of the
-   pulse's own (16px/4px against 20px/5px at its peak) so the two read as ONE family at two
-   intensities, and the dash rides on top as the shape difference rather than as the signal.
-   DO NOT TRIM IT BACK TOWARDS #685's VALUES; that is the defect, not a tidy-up.
+   SO THE TWO STILL DIFFER BY GEOMETRY, NOT ONLY BY MOTION, which is what #685 and DESIGN_CRITERIA
+   question 4 (does it complicate things for the player — a VETO) required and what the dash used
+   to carry: the RING WEIGHT is now the shape difference. Watch holds a flat 2 px ring; the pulse
+   breathes 1 px -> 2 px with a bloom half again as wide at its peak (20px/5px against 16px/4px).
+   A colour-blind player and a `prefers-reduced-motion` player both still have a non-hue
+   difference — under reduced motion the pulse falls back to a 3 px DASHED OUTLINE (at the end of
+   this file) and this ring stays a solid box-shadow, so the two are a line style apart there and
+   a weight apart everywhere else. Do not give this class a reduced-motion clause: it has nothing
+   to reduce, and giving it the dash would put the dash back on the board.
 
-   The box-shadow is deliberately kept alongside the outline — it is what makes the ring read
-   as a glow at a glance rather than as a selection border, and `run_glow_stacking` reads the
-   box-shadow + z-index pair to decide this class must be pinned in pwr_board.css.
+   DO NOT TRIM THE BLOOM (#743's lesson, and it stands): as #685 shipped it the halo was
+   `0 0 6px 1px … 0.22` — a quarter the spread and a fifth the alpha of the pulse's — which left a
+   hairline doing all the work and the owner missed it on the board. The halo here stays within a
+   whisker of the pulse's own so the two read as ONE family at two intensities.
 
-   STEADY, with no reduced-motion clause needed: there is nothing to reduce. Steady is also now
-   a RULING rather than an inference — "Lets use pulsing for a user control and steady for an
-   indication to watch" (same playtest), which is what #685 already built. */
+   The box-shadow is deliberately the whole treatment rather than an outline plus a shadow: it is
+   what makes the ring read as a glow at a glance rather than as a selection border, and
+   `run_glow_stacking` reads the box-shadow + z-index pair to decide this class must be pinned in
+   pwr_board.css.
+
+   STEADY is a RULING, twice over — "Lets use pulsing for a user control and steady for an
+   indication to watch" (2026-09-13 playtest) and the 2026-09-14 ruling above. */
 .ckl-watch-glow {
-  outline: 1px dashed rgba(90, 240, 255, 0.90);
-  outline-offset: 4px;
-  box-shadow: 0 0 0 1.5px rgba(90, 240, 255, 0.55), 0 0 16px 4px rgba(90, 240, 255, 0.42);
+  box-shadow: 0 0 0 2px rgba(90, 240, 255, 0.90), 0 0 16px 4px rgba(90, 240, 255, 0.42);
   border-radius: 6px; position: relative; z-index: 4;
+}
+/* THE ACT IS DONE, SO THE MOTION STOPS AND THE GLOW STAYS *(OWNER, 2026-09-14, #755 item 19:
+   "During wlakthroughs, when a hightighted button the glow should stop pulsing."; settled by the
+   same ruling as above — "after press: steady glow, no pulse")*.
+
+   IT DOES NOT GO DARK, and that is the half that is easy to get wrong. The step is still the
+   active step and the control the player pressed is still the control it is about — a cue that
+   vanishes on the press says "you are on the wrong thing now", which is false until the step
+   advances. What ends is the ASK, not the pointing.
+
+   THE STEADY VALUE IS THE PULSE'S OWN 0% STOP, not a new one: the same ring, holding still. That
+   also keeps it under the watch ring's weight (1 px against 2 px), so a board carrying both still
+   reads press-then-watch rather than two equal rings.
+
+   A COMPOUND SELECTOR ON PURPOSE. `run_glow_stacking` pins every SIMPLE lifting-glow class in this
+   file to a `.bd-tile` override in pwr_board.css; this rule rides on `.ckl-step-glow`, which is
+   already pinned, so the element's z-index behaviour is unchanged and no second entry is owed. */
+.ckl-step-glow.ckl-step-done {
+  animation: none;
+  box-shadow: 0 0 0 1px rgba(90, 240, 255, 0.62), 0 0 10px 2px rgba(90, 240, 255, 0.30);
 }
 /* ============================================ the highlight bus (#444, spec §7)
    A soft CYAN halo — an outer GLOW, never a fill, tint or recolor. Cyan is the only
@@ -2927,6 +2956,37 @@ select.num-input { width: auto; }
 .tabpane.instructor .instr-body > #cklBtns { flex: 0 0 auto; margin-top: auto; padding-top: 8px; }
 .tabpane.instructor .instr-body > #cklBtns[hidden] { display: none; }
 
+/* THE RUNNING WALKTHROUGH REACHES THE FLOOR OF THE COLUMN *(OWNER, 2026-09-14, #755 item 3: "Some
+   of the walkthroughs windows were short making them use a scroll bar when there was a bunch of
+   room below them. the tab windows should go to the bottom of the right column.")*.
+
+   #612 fixed exactly this — for the CHECKLISTS pane, which is where the run lived at the time.
+   #660 moved the run back into the INSTRUCTOR pane (`#cklRun` is a child of `.instr-body` in
+   shell.html) and it inherited none of it, so the two halves of the old defect came back on the
+   pane the player actually uses:
+     1. `.ckl-log`'s 48vh cap applied again — a VIEWPORT fraction inside a COLUMN slot, which only
+        agree by accident — so the steps scrolled in a short box.
+     2. `.instr-log` below it is `flex: 1 1 0` and takes every remaining pixel, and `instrLogTick`
+        returns early while a walkthrough runs (`if (cklState.key) … return`), so that growing box
+        is EMPTY. That is the "bunch of room below them".
+   So the run becomes the growing child and the transcript stops growing, but only under
+   `.wt-headerless`, which is set for exactly the duration of a run — every other instructor state
+   keeps the transcript as the grower it has always been.
+
+   `#cklBtns` STAYS AT THE FLOOR either way, and verify_e2e_ui measures that rather than the
+   mechanism: with `.instr-log` no longer growing, the row's own `margin-top: auto` takes the
+   leftover — the second of the two mechanisms that test proved are redundant (2026-09-11). Here
+   `#cklRun` leaves no leftover, so the row lands on the floor with no margin at all.
+
+   THE `[hidden]` GUARD IS NOT OPTIONAL: `#cklRun` is `hidden` whenever no walkthrough is running,
+   and a `display: flex` in a rule this specific beats the UA's `[hidden] { display: none }`. */
+#instructorCard.wt-headerless .instr-body > #cklRun {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+}
+#instructorCard.wt-headerless .instr-body > #cklRun[hidden] { display: none; }
+#instructorCard.wt-headerless .instr-body > #cklRun .ckl-log { flex: 1 1 0; min-height: 0; max-height: none; }
+#instructorCard.wt-headerless .instr-body > #instrLog { flex: 0 1 auto; }
+
 /* THE CHECKLISTS PANE, same treatment, same reason (#612, owner playtest 2026-09-03: "the
    checklist scroll window keeps bouncing to the top and back to the step" and "the right column
    scroll window should go to the bottom of the column. There is currently an unused black space
@@ -3148,11 +3208,12 @@ select.num-input { width: auto; }
      pwr_board.css); DOTTED is a message; DASHED belongs to the WALKTHROUGH pointing something out,
      in two widths — 3px "act on this", 1px "watch this".
 
-     ⚠ THE MESSAGE WAS DASHED IN THE FIRST CUT AND THAT WAS A COLLISION. `.ckl-watch-glow` is
-     already `1px dashed` at `outline-offset: 3px`, all but identical, and it means something else
-     entirely; both land on board tiles through `revealControl`. No step names TRIP BLOCKS in an
-     `hl_watch` list today, but 59 steps use one and adjacency on one board is enough to blur a
-     vocabulary. Do not move the message back onto dashed. */
+     ⚠ THE MESSAGE WAS DASHED IN THE FIRST CUT AND THAT WAS A COLLISION. `.ckl-watch-glow` was
+     `1px dashed` at an offset, all but identical, and it means something else entirely; both land
+     on board tiles through `revealControl`. It is a SOLID RING since the 2026-09-14 ruling (#755
+     items 7/10) so that particular collision is gone, but the message keeps DOTTED: the reason it
+     moved was never the dash alone, it was that two walkthrough-adjacent signals on one board blur
+     a vocabulary, and 59 steps still use one. Do not move the message back onto dashed. */
   .alarm-tile.unack.crit {
     animation: none;
     /* 5px, NOT 3px, AND THE DIFFERENCE IS VISIBLE RATHER THAN THEORETICAL. A `double` outline
@@ -3165,12 +3226,22 @@ select.num-input { width: auto; }
     box-shadow: none;
   }
 
-  /* THE WALKTHROUGH'S OWN TWO GLOWS KEEP THE DASHED FAMILY, and differ within it by WIDTH.
-     `.ckl-watch-glow` is already `1px dashed` and is NOT animated, so it needs nothing here; it is
-     named only to say why `.ckl-step-glow` is 3px and not some fourth style. The pair means one
-     thing — "the walkthrough is pointing at this" — in two strengths: watch it, or act on it.
-     Splitting them across unrelated styles would have thrown away a distinction the board already
-     teaches.
+  /* THE PULSE'S FALLBACK IS THE DASH, AND THAT SURVIVES THE 2026-09-14 RULING ON PURPOSE. That
+     ruling took the dash off `.ckl-watch-glow` — the DEFAULT path, which is what the owner was
+     looking at — and replaced it with a solid 2 px ring, so press and watch are now separated by
+     MOTION plus ring weight. Here there is no motion to separate them with, and a weight-only
+     difference between two cyan rings is the hue-only failure this whole block exists to prevent.
+     So the pulse keeps a 3 px dashed OUTLINE and the watch ring stays a solid BOX-SHADOW: a line
+     style apart, which survives greyscale and any hue collapse. Nothing dashed reaches a player
+     who has not asked for stillness.
+
+     `.ckl-watch-glow` still needs no clause of its own — it is not animated, and giving it one
+     would put the dash back on the board.
+
+     THE PRESSED STATE (#755 item 19) IS THE SAME OUTLINE AT 1px, its own width in the same family:
+     with the motion gone, "act on this" and "you did it" would otherwise be identical. Widths, not
+     styles, because they are two strengths of one meaning — exactly the argument the dashed pair
+     used to carry between press and watch.
 
      ⚠ `.ckl-step-glow` IS A BOARD-SURFACE CLASS WEARING A CHECKLIST PREFIX. It is applied through
      `revealControl` to board TILES, and since #727 to the trip-block popover rows as well — it is
@@ -3179,6 +3250,10 @@ select.num-input { width: auto; }
     animation: none;
     outline: 3px dashed rgba(90, 240, 255, 0.95);
     outline-offset: 2px;
+    box-shadow: none;
+  }
+  .ckl-step-glow.ckl-step-done {
+    outline-width: 1px;
     box-shadow: none;
   }
 
