@@ -30,6 +30,79 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (a fresh-context layman played BOTH legs end to end, and four of its diagnoses were wrong — 2026-09-15, #653, #758, #759)
+
+- **A layman with no repo access finished `pwr_heatup` 17/17 and `pwr_startup` 17/17**, chaining
+  straight from one into the other. Across 34 steps `Continue` never lit early and never failed
+  to light once the condition held. Everything below is a defect it hit on the way; everything in
+  the second list is a claim it made that **measurement refuted**, kept here because a report that
+  only records the confirmed half teaches the next reader that the witness is always right.
+- **The two walkthrough highlights inverted for half of every pulse, so a player could not tell
+  "press this" from "watch this"** (#758). The watch ring is a flat **2.00 px**; the pulse ran
+  **1.00 → 2.00 px** and at its peak also beat the watch on brightness and bloom — so for the top
+  half of each 1.2 s cycle the button-to-press was the *thicker, brighter* ring, exactly backwards.
+  The layman stopped using board highlights altogether around step 8 and navigated by the card's
+  green ticks instead. The pulse now peaks at **1.60 px / alpha 0.80**, thinner and dimmer than
+  the watch ring at **all 25 sampled stops**, worst margin 0.40 px at 600 ms
+  *(OWNER RULING, 2026-09-15: "Cap the pulse below the watch ring")* — the watch ring itself does
+  not move, because it is the value ruled on 2026-09-14.
+  - **The gate was part of the bug, for the second time in a week.** `verify_board_cues` passed
+    **39/39** while this shipped, because nothing compared the two cues *to each other*;
+    `verify_e2e_ui` reads them on different walkthrough legs, so they are never on screen
+    together. There is now a check that paints both on one page, seeks the animation to each
+    keyframe stop, and asserts the inequality on width, alpha and bloom — the first check here
+    that pins a RELATION rather than a value. It also pins the watch ring, so the next inversion
+    cannot be "fixed" by shrinking the cue that is not allowed to move.
+- **A VERIFY step wore the "act on this" pulse on the TRIP button, and the layman nearly pressed
+  it.** `pwr_heatup` step 4 has no command — it asks you to *read* a lamp — and its ring resolved
+  to the TRIP button's box to the pixel. A pool-wide audit found **11 steps** with no command and
+  a pulsing ring on a workable control; two were outright defects and are fixed, including a
+  cooldown step that pulsed PZR SPRAY while its own text read *"Do not switch the spray off"*.
+- **Pressing Plot point out of turn banked a real point and said nothing** (#759). With the first
+  rung unmet, two presses added two points at rod position 0 into the trailing-three fit that
+  drives the criticality prediction; the rung never ticked, nothing was drawn, and only `Clear`
+  removed them — which wipes the good points too. The card's own line said *"Plot point does
+  nothing until the counts are steady"*, **which was false**. The card now names the blocking rung
+  — *"Not yet — 5a comes first: …"* — derived from the live verdicts, so every ordered step gets
+  it with no authoring, and the text no longer claims something the plant does not do
+  *(OWNER RULING, 2026-09-15: "Fix the text AND say why")*.
+- **A long step opened scrolled PAST its own instruction.** The panel aligned the active step's
+  *bottom* to the viewport, so any step taller than the box arrived mid-sentence with its number,
+  its instruction and its done-when above the fold. The layman read the criticality step twice and
+  still lost the action. Steps that overflow now open at their own top; steps that fit keep the
+  old alignment, which is what puts their check-off rows at the panel floor.
+- **Fast-forward dropped on an alarm and the status line then advised the button that had just
+  failed.** 600× held about 5 s, fell to 1×, and the line read *"About 50 plant-minutes left at
+  1× — set the speed control to 600×"* while pressure crawled **596 → 600 psi (4.11 → 4.14 MPa)
+  over 200 s of real time**. It was structural: the line printed a cause for **one** of five drop
+  reasons and fell through to the step's own advice for the other four. Every drop now states its
+  actual reason. A step can also declare the alarms its own evolution causes, which then do not
+  break fast-forward *(OWNER RULING, 2026-09-14: "Only alarms the step is not expecting")*.
+- **Walkthrough copy, all confirmed against the built pool**: a step said *"the valve symbol in the
+  **green** ring"* where no green has existed in the highlight vocabulary since #743; a step said
+  *"Press ACKNOWLEDGE"* where the control reads **ACK**; a done-when read *"Net reactivity
+  < −300 pcm"* with **pcm** defined nowhere in either leg and the quantity not on the board; four
+  steps carried a generated speed sentence colliding with an authored one, twice naming two
+  different speeds in one line; and the criticality step gave remedies for startup rate too HIGH
+  and none for too LOW — the layman settled at **+0.01 decades per minute** with period at
+  **2,391 s** and stalled, having to infer "tap one more step out".
+
+### Refuted by measurement (the same pass — recorded because the witness was wrong and the record should say so)
+
+- **"The two highlights differ only by animation"** — refuted. There is a real static difference:
+  1 px vs 2 px ring, and a smaller bloom. The *inversion* above is the defect; "no static cue"
+  was not.
+- **"The pulse is a 0.4 px breath"** — refuted. Measured envelope **1.00 → 2.00 px**, alpha
+  **0.62 → 1.00**. The reviewer sampled two arbitrary instants of a 1.2 s ease-in-out cycle.
+- **"A pressed button's cue is identical to a watch highlight"** — refuted. The pressed state is
+  byte-identical to the pulse's own resting stop, which is precisely what the ruling asks for.
+- **"No scrollbar is drawn on the overflowing step"** — refuted **in a headed Edge window**:
+  `clientWidth 350` against `offsetWidth 365`, a 15 px classic scrollbar. Headless Chromium draws
+  overlay scrollbars that consume no layout width, so the original reading measured the harness.
+- **"Reduced motion cannot separate the two cues"** — refuted. On that path the press cue is a
+  3 px dashed outline with no shadow and the watch keeps its solid ring: three distinct line
+  treatments, and no collision for the gate to catch.
+
 ### Changed (the 1/M ladder becomes sequenced substeps — 2026-09-15, #756)
 
 - **Each inverse-count-rate (1/M) step is now four lettered substeps that go live one at a
