@@ -4500,12 +4500,30 @@
         var isObs = st.control && /^\(observe/i.test(st.control);
         if (isObs) {
           if (st.target) h += '<div class="ckl-sub ckl-use">Watch for: ' + mesc(st.target) + '</div>';
-        } else if (st.control || st.target) {
-          h += '<div class="ckl-sub ckl-use">' +
-            (st.control ? 'Use <b>' + mesc(st.control) + '</b>' : '') +
-            (st.control && st.target ? ': ' : '') +
-            (st.target ? mesc(st.target) : '') + '</div>';
         }
+        /* THE "Use <control>: <target>" RUNG IS NOT DRAWN *(OWNER RULING, 2026-09-14/15, on
+         * options put as "delete `control` from the steps / hide it in the renderer / leave it":
+         * selected "Hide it in the renderer")*.
+         *
+         * `Blueprint/WALKTHROUGH_STEPS_OWNER.md` is the authority for step text and it carries
+         * that rung on exactly ONE of the nineteen steps that declare a `control`. The rung is
+         * therefore the renderer's addition, not the author's, and it is the renderer that stops.
+         *
+         * `control` AND `target` STAY ON EVERY STEP, and deleting them is the thing not to do:
+         * `control` is `verify_manual_follow`'s coverage key through `STEP_UI` (it reads the
+         * MANUAL card's `.m-pill`, rendered at renderManual below — untouched by this), so
+         * dropping it would take 18 steps out of that browser gate while looking like a tidy-up.
+         *
+         * ⚠ THIS SUPERSEDES THE #598 item 13 RULING OF 2026-09-02 ("the active step card must
+         * carry the CONTROL outside the Details fold"), which was made when the card had been
+         * collapsed to the instruction alone and 59 % of steps named no control in their text.
+         * `verify_flags_ui`'s check for that line is re-authored in the same change to assert the
+         * rung is ABSENT, and INJECTION-PROVEN: restoring the deleted branch reddens it naming
+         * the line it drew. Its first cut did NOT — it read whichever walkthrough the picker
+         * started, which opens on an observe step, and `.ckl-use` renders only under the active
+         * step; so it now starts one whose first step carries a control. The `isObs` branch above is deliberately untouched: the ruling names the
+         * "Use …" rung, and an observation step's "Watch for:" is the only statement of what it
+         * is asking the player to look at. */
         /* HOW LONG THIS STEP TAKES, ON THE FACE OF THE CARD *(OWNER, 2026-09-03, #619 item 8:
          * "Add estimated plant time to compeltion for steps with waiting that could take more
          * than a few minutes at 1x. add suggestion to time warp for those steps.")*.

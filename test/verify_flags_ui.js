@@ -140,12 +140,32 @@ function pinChannel(ch) {
    * carries a `.ckl-use` line naming a control, which survives any content edit and fails the
    * moment the block is folded back into Details. */
   await b.page.click('#tabbar [data-tab="checklists"]');
+  /* ⚠ THE FIRST LISTED CHECKLIST IS NOT A FIXTURE — PICK THE ONE THAT CAN ANSWER THE QUESTION
+   * (2026-09-15). This used to click `#cklMenu [data-ckl-start]`, whichever that was, and the
+   * step it landed on is an OBSERVE step, whose "Watch for:" line is drawn by a DIFFERENT branch
+   * of `renderChecklist`. MEASURED: with the deleted "Use <control>: <target>" branch put back,
+   * the check below still PASSED — it could never see the rung it exists to forbid. `.ckl-use`
+   * is drawn only under the ACTIVE step (`if (active)` in renderChecklist), so the only way to
+   * exercise the DO branch is to start a walkthrough whose FIRST step carries a real control.
+   * Chosen from `RD.MANUAL_PROCEDURES` for the running plant, so no content edit can quietly
+   * turn it back into the observe case — it would have to remove every controlled first step,
+   * which the `err` return below reports rather than passing over. */
   var cklStarted = await b.page.evaluate(function () {
-    var btn = document.querySelector('#cklMenu [data-ckl-start]') ||
-              document.querySelector('[data-ckl-start]');
-    if (!btn) return false;
-    btn.click();
-    return true;
+    var snap = (window.RD && RD.PwrBoard && RD.PwrBoard.lastSnapshot) ? RD.PwrBoard.lastSnapshot() : null;
+    var pid = (snap && snap.metadata && snap.metadata.plant_id) || null;
+    var pool = ((window.RD || {}).MANUAL_PROCEDURES || {})[pid] || [];
+    function procOf(id) { for (var i = 0; i < pool.length; i++) if (pool[i].id === id) return pool[i]; return null; }
+    var btns = Array.prototype.slice.call(document.querySelectorAll('#cklMenu [data-ckl-start]'));
+    if (!btns.length) btns = Array.prototype.slice.call(document.querySelectorAll('[data-ckl-start]'));
+    var fallback = btns[0] || null;
+    for (var b = 0; b < btns.length; b++) {
+      var p = procOf(btns[b].getAttribute('data-ckl-start'));
+      var s0 = p && p.steps && p.steps[0];
+      if (s0 && s0.control && !/^\(observe/i.test(s0.control)) { btns[b].click(); return 'do:' + p.id; }
+    }
+    if (!fallback) return false;
+    fallback.click();
+    return 'fallback';
   });
   if (cklStarted) {
     await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 20000 }).catch(function () {});
@@ -186,18 +206,40 @@ function pinChannel(ch) {
                target: st ? (st.target || null) : undefined,
                line: el ? (el.textContent || '').trim() : null };
     });
+    /* ⚠ THE CLAIM IS NOW THE OPPOSITE OF WHAT #598 item 13 ASSERTED, AND THAT IS A RULING, NOT A
+     * REGRESSION *(OWNER RULING, 2026-09-14/15: "Hide it in the renderer")*. The authored step
+     * file `Blueprint/WALKTHROUGH_STEPS_OWNER.md` carries the "Use <control>: <target>" rung on
+     * one of the nineteen steps that declare a `control`, so the rung is the renderer's addition
+     * and the renderer stops drawing it. The #598 ruling was made against a card collapsed to the
+     * instruction alone; it is superseded.
+     *
+     * THE CHECK IS INVERTED, NOT DELETED: the active step must draw NO `.ckl-use` line, so the
+     * rung coming back reddens it. Read from the step's own data through `RD.MANUAL_PROCEDURES`,
+     * so no content edit can turn it green or red for the wrong reason — the property #598's
+     * author built in.
+     *
+     * INJECTION-PROVEN, and the FIRST cut of this inversion was HOLLOW. With the deleted
+     * `renderChecklist` branch put back it still passed, because the walkthrough the picker
+     * happened to start opens on an OBSERVE step and `.ckl-use` renders only under the active
+     * one. With the selection above pointed at a controlled first step it goes RED naming the
+     * line: `pwr step 1 of "Mode 1, At Power — raise power" ... got "Use Rod Speed: small,
+     * steady power rise"`. That is the difference between testing the ruling and restating the
+     * renderer.
+     *
+     * ⚠ WHAT IT DOES NOT COVER, stated rather than implied: the `wantWatch` clause below — an
+     * OBSERVE step must still draw "Watch for:" — is reached only on the fallback path, when no
+     * listed walkthrough opens on a controlled step. On this build one always does, so that
+     * half is UNASSERTED here. It is not a second check pretending to be one. */
     var obs = seen.control && /^\(observe/i.test(seen.control);
-    var wantLine = !!(seen.control || seen.target) && !(obs && !seen.target);
-    ck('dev: the active step names its control OUTSIDE the fold, and only when it has one (#598 item 13)',
+    var wantWatch = !!(obs && seen.target);
+    ck('dev: the active step draws NO "Use …" rung (2026-09-15 ruling, supersedes #598 item 13)',
       seen.found === true && seen.control !== undefined &&
-      (wantLine
-        ? (!!seen.line && (obs ? /^Watch for:/.test(seen.line)
-                               : (seen.control ? seen.line.indexOf(seen.control) >= 0 : true)) &&
-           !/\(observe\)/.test(seen.line))
+      (wantWatch
+        ? (!!seen.line && /^Watch for:/.test(seen.line) && !/\(observe\)/.test(seen.line))
         : seen.line === null),
       seen.plant + ' step ' + (seen.idx + 1) + ' of "' + seen.title + '" control=' +
       JSON.stringify(seen.control) + ' target=' + JSON.stringify(seen.target) +
-      ' — expected ' + (wantLine ? 'a line naming it' : 'NO line') +
+      ' — expected ' + (wantWatch ? 'a "Watch for:" line' : 'NO line') +
       ', got ' + (seen.line === null ? 'none' : '"' + seen.line.slice(0, 70) + '"'));
     /* ⚰ "the expander is labelled Details, not Why" (#598 item 13) WAS HERE AND COULD NEVER FAIL.
      * It read `.ckl-step.ckl-active .ckl-why-btn` and asserted `folded === null || /Details/i`. No

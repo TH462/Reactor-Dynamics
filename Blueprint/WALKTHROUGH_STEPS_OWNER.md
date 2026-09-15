@@ -2,6 +2,13 @@ The steps should not include elements not included in my manual edits below exce
 
 
 
+**RULINGS RECORDED HERE SO THE NEXT RECONCILE DOES NOT UNDO THEM** (2026-09-15)
+
+- **The 100 °F/hr heatup-rate limit stays OUT of the Mode 5 → Mode 3 walkthrough** *(OWNER RULING, on options put as "put it back in a step / put it in a note / leave it out": selected "Leave it out of the walkthrough")*. It used to live in that leg's leg-level cautions, which were retired from the pool; it did not go missing, it was ruled out. **The cooldown leg keeps its own 100 °F/hr** and the manuals are unchanged — do not "restore" the heatup one as a missing-content defect.
+- **The `Use <control>: <target>` rung is no longer drawn on the walkthrough card** *(OWNER RULING: "Hide it in the renderer")*. This file carries that rung on exactly one of the nineteen steps that name a control (Mode 5 → 3 step 2), so it was the renderer's addition. The step data still carries `control` on every step — it is the coverage key for the browser gate that checks the manual's control pill — and an observation step still draws its "Watch for:" line. This supersedes the 2026-09-02 ruling that the control had to sit outside the details fold.
+
+
+
 \*\*\* MODE 5 -> 3
 
 
@@ -332,7 +339,11 @@ Power at zero is the whole point of a pump-heat heatup: the friction of the runn
 
 Background
 
-This is the plant the heatup hands over: hot, at pressure, pumps running, still shut down. Steady SOURCE RANGE counts mean nothing is drifting toward critical yet. From the Hot Standby preset, the shutdown bank is already out and boron is already near 719 ppm.  <<<THE MODE 5 TO MODE 3 WALKTHROUGH LEAVES BORON AT 918PPM, THIS SHOULD BE REVISED>>>
+This is the plant the heatup hands over: hot, at pressure, pumps running, still shut down. Steady SOURCE RANGE counts mean nothing is drifting toward critical yet. The shutdown bank is already out, and the next step trims whatever boron the route in left behind.
+
+*(...and the note gains: "BORON CHEM is the live loop concentration, and the two ways into this walkthrough arrive at different numbers — it is the reading, not a figure in the text, that says where you are starting from.")*
+
+REVISED 2026-09-15 *(OWNER RULING: "Drop the number entirely")*. The old background said "boron is already near 719 ppm", which is true of one route and wrong about the other — MEASURED: the Hot Standby preset boots at 718.9 ppm, the chained route from the Mode 5 to Mode 3 walkthrough arrives at 917.8 ppm. The step now sends the player to BORON CHEM instead of naming a value.
 
 
 
@@ -470,7 +481,15 @@ Each step now buys more reactivity than the last, so the pulls get smaller from 
 
 
 
-*Stop when CONTROL ROD POSITION reads about 195 to 205 steps.  Note the rod position at criticality the 1/M panel predicts — the reactor goes critical near this point so you stop short of it and tap from there.*
+*Stop when CONTROL ROD POSITION reads about 195 to 205 steps. This is the point the prediction is built on, so give it the time: SOURCE RANGE goes on climbing for about ten plant-minutes after the rods stop, and a point plotted while it is still rising throws the predicted position two or three steps too far out. Plot it when the counts have levelled off. Note the rod position at criticality the 1/M panel predicts — the reactor goes critical at it or just below, so you stop short of it and tap from there.*
+
+
+
+⏩ The counts are still climbing when the rods stop, and the prediction is only as good as the wait you give them. Come back to 10× before the next step, where the reactor starts making power.
+
+
+
+REVISED 2026-09-15 *(OWNER RULING: "Rewrite both")*. The step's settle went from 150 s to 600 s. MEASURED on this tree, the authored ladder with the panel's own trailing-three fit, four seeds, against a true critical of control bank 208 of 627: at a 150 s settle the final prediction reads 210.6 to 211.7 (+2.6 to +3.7 steps high); at 600 s it reads 208.0 to 209.0 (0 to +1). The error was never the fit — the counts are only about two-thirds of the way up when a 150 s hold expires.
 
 
 
@@ -488,15 +507,30 @@ STARTUP RATE is the speedometer: 1.0 means power is multiplying by ten every min
 
 
 
-This is a thirty plant-minute wait once the rods stop, and the step to use the speed buttons on: put the clock on 10×, and come back to 1× before you move a rod again. The 1/M panel predicts a CONTROL ROD POSITION, in steps — that is the number on the ROD CONTROL card, and it reads about three steps high at the end of the approach, so the reactor goes critical just short of it. Stop below the prediction and walk up in single taps. Wait after each tap. Critical is when the counts keep climbing and STARTUP RATE stays positive with the rods still. SOURCE RANGE will switch itself off part way through this step, above 1.0e5 (100,000 counts per second); that is normal and there is no button for it. The two detectors overlap on purpose — the source-range counters would wear out at power, so the plant secures them once INTER RANGE has a reading, and losing the counts is the plant telling you the approach worked. From that moment INTER RANGE and STARTUP RATE are what you steer on, and the 1/M plot is finished. The approach is deliberately gentle, so expect about twenty-five plant-minutes before REACTOR POWER reads anything at all. The plant does exactly the same thing at 1×, 5× or 10× — the climb still stops itself just over 4 % — so the speed costs you nothing here. Not 60×: there a 2 ½ second glance away is two and a half plant-minutes of reactor. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
+This is a twenty-five plant-minute wait once the rods stop, and the step to use the speed buttons on: put the clock on 10×, and come back to 1× before you move a rod again. The 1/M panel predicts a CONTROL ROD POSITION, in steps — that is the number on the ROD CONTROL card — and it reads HIGH, never low: the reactor goes critical at that position or a step or two below it. Stop below the prediction and walk up in single taps, waiting after each one. Critical is when the counts keep climbing and STARTUP RATE stays positive with the rods still. STARTUP RATE runs high while a rod is moving and goes on falling for about five minutes after it stops, so read it once it has stopped falling, not while it is: settled around 0.15 is this approach going as written, and around 0.5 means you are about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher. Over 1.0 with the rods already still, tap INSERT once and wait. PERIOD, under the instrument card, is the same fact in seconds — how long power takes to multiply by ten: about 150 seconds on plan, under 60 seconds says you are out too far. From your last tap onward, watch INTER RANGE and STARTUP RATE rather than REACTOR POWER: REACTOR POWER reads 0.0 % for about twenty-five plant-minutes while INTER RANGE climbs three decades, so INTER RANGE is what shows you the reactor is working. SOURCE RANGE will switch itself off part way through this step, above 1.0e5 (100,000 counts per second); that is normal and there is no button for it. The two detectors overlap on purpose — the source-range counters would wear out at power, so the plant secures them once INTER RANGE has a reading, and losing the counts is the plant telling you the approach worked. The plant does exactly the same thing at 1×, 5× or 10× — the climb still stops itself just over 4 % — so the speed costs you nothing here. Not 60×: there a 2 ½ second glance away is two and a half plant-minutes of reactor. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
 
 
 
 Background — not an action
 
-Critical means the chain reaction sustains itself: power keeps rising with nothing pushing it, and a positive STARTUP RATE with the rods still is the sign. No single step is dramatic, but ten of them are — stopping five steps above criticality rather than eighteen is what keeps the climb slow, because below the point of adding heat nothing in the plant takes that reactivity back out for you. Expect STARTUP RATE to settle near 0.15.
+Critical means the chain reaction sustains itself: power keeps rising with nothing pushing it, and a positive STARTUP RATE with the rods still is the sign. No single step is dramatic, but ten of them are — below the point of adding heat nothing in the plant takes that reactivity back out for you, so how far past criticality you stop is what sets how fast power climbs. REACTOR POWER is the last instrument to show any of it, which is why STARTUP RATE, PERIOD and INTER RANGE are the ones to steer on.
 
-<<<THIS STEP AND THE NEXT STEPS NEEDS TO BE REVISITED AND MEASURED>>>
+
+
+REVISED 2026-09-15 *(OWNER RULING: "Rewrite both")*, answering "the rate the power climbs seems to be is nothing until it suddenly shoots up in power if the user has pulled the rods out too far. It could be we need to explain how to use the intermediate range better."
+
+MEASURED on this tree, full stack, the authored route driven end to end (ladder at MED with the new 600 s last settle, then the creep at SLOW), true critical control bank 208 of 627:
+
+| after the rods stop | +11 creep → bank 213 (+5) | +19 creep → bank 221 (+13) |
+|---|---|---|
+| STARTUP RATE at 12 s | 0.255 | 0.568 |
+| STARTUP RATE settled | 0.163 | 0.525 |
+| PERIOD settled | 158 s | 49 s |
+| REACTOR POWER first reads 0.1 % | 1396 s (23.3 plant-minutes) | 400 s (6.7 plant-minutes) |
+| INTER RANGE over that window | 9.7e-10 → 2.5e-6 A | 3.3e-9 → 5.7e-4 A |
+| power levels at | about 4 % | 7.0 % |
+
+Two things deliberately NOT said, because they did not reproduce: the first reading after a single TAP is **1.3×** the settled value (0.137 → 0.187 → 0.16), not the seven times an earlier report proposed — that seven came from a continuous withdrawal, not a tap; and power arrives about **three** times sooner when over-withdrawn, not six. There is also no startup-rate rod block on this plant, so the step never implies one exists.
 
 
 

@@ -30,6 +30,40 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (five owner rulings on the walkthroughs — 2026-09-14/15)
+
+- **The Mode 3 → Mode 1 approach settles for 10 plant-minutes before the last 1/M point, and
+  step 9 is rewritten on the measurements** *(OWNER RULING: "Rewrite both")*. The final
+  inverse-count-rate prediction's error was a SETTLING artifact, not a fit defect: the source
+  range has not finished rising when the old 150 s hold expires. **MEASURED** (full stack,
+  authored ladder, the panel's own trailing-three fit, four seeds, true critical control bank
+  **208 of 627**): at 150 s the prediction reads **210.6–211.7** (+2.6 to +3.7 steps high); at
+  600 s it reads **208.0–209.0** (0 to +1). Step 8 holds 600 s and says to plot only when the
+  counts have levelled; step 9 stops claiming a three-step error and claims a DIRECTION — the
+  prediction reads high, never low.
+- **Step 9 now gives STARTUP RATE a band, names REACTOR PERIOD, and hands the player to
+  INTER RANGE from his last tap.** MEASURED on the authored route: settled startup rate
+  **0.163** at the authored creep (control bank 213, five steps above critical) against
+  **0.525** eight steps further out; REACTOR PERIOD **158 s** against **49 s**; REACTOR POWER
+  first reads 0.1 % at **1396 s** against **400 s**, while INTER RANGE climbs three decades
+  through the window in which the power tile reads 0.0 %. The board has drawn REACTOR PERIOD
+  in whole seconds all along and no step in the pool mentioned it.
+- **The walkthrough card no longer draws the `Use <control>: <target>` rung**
+  *(OWNER RULING: "Hide it in the renderer")*. The authored step file carries that rung on one
+  of the nineteen steps that name a control, so it was the renderer's addition. Every step keeps
+  its `control` — it is the coverage key for the browser gate — and an observation step still
+  says what to watch. Supersedes the #598 item 13 ruling of 2026-09-02.
+- **Startup step 1 stops quoting a boron number** *(OWNER RULING: "Drop the number entirely")*.
+  It said boron was "already near 719 ppm", which is true of one route in and wrong about the
+  other — MEASURED: the Hot Standby preset boots at **718.9 ppm**, the chained route arrives at
+  **917.8 ppm**. The step points at BORON CHEM instead.
+- **The trip-block note no longer says the blocks come back "the moment" power falls below
+  P-10** — since #752 the revoke confirms over 2.0 s, so a dip does not clear a block.
+- **The 100 °F/hr heatup-rate limit stays OUT of the Mode 5 → Mode 3 walkthrough**
+  *(OWNER RULING: "Leave it out of the walkthrough")*, recorded at the site and in
+  `Blueprint/WALKTHROUGH_STEPS_OWNER.md` so it is not "restored" as missing content. The
+  cooldown leg and the manuals keep theirs.
+
 ### Fixed (a standing trip block could be taken away by ONE noisy instrument sample — #752)
 
 - **The P-10 revoke now confirms over 2.0 s instead of acting on a single reading**
