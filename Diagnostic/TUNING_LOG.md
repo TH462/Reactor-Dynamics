@@ -29,6 +29,99 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-15-develop-b (#756 — the substeps become a SEQUENCE, and the owner's named indication is not the one that can carry the claim)
+
+**The directive.** *(OWNER DIRECTIVE, 2026-09-15: "For the early-plot hole, we could have
+instructions for substeps not just one line of instruction then multiple substeps. We could give a
+line of instruction per substep. We instruct to pull rods to a count/however many steps. The next
+substep says to wait for the startup rate to stabilize. Once the startup rate hits a predetermined
+number that step checks off. Then have another substep to plot the 1/m point.")*
+
+**What was already built, and what was not.** `accs` (multi-check-off) and `accs[].ask` (the
+per-row instruction, #741) both shipped. **Only SEQUENCING was missing**, and it was missing by
+decision — #741's own schema note said "3b cannot tick until 3a does" was explicitly not built.
+**MEASURED rather than read** (scratch probe, full stack, `hot_full_power`): a two-row step whose
+second row is a command, pressed while the first row is false, comes back `accs = [false, true]`.
+The later row latches. That is the hole #755 filed and could not close.
+
+**The schema.** Step-level `accs_ordered: true`, OPT-IN. Entry `i` may not LATCH until every entry
+before it is met; `_accsCmdWatch` makes a cmd row deaf to its command under the same rule, which is
+the half the player feels. Blocked rows still GRADE — deliberately: the `steady` ring has to run
+from the step's start or the settle row would owe a fresh 120 s after the count row ticks (the
+crossing is at the same instant either way, measured). A latch already taken is never given back
+when a predecessor un-ticks, so a re-grading `steady` row going back off holds the STEP open without
+erasing a point the player really plotted.
+
+**THE SETTLE IS TWO ROWS, NOT ONE — THE RATE IS WHAT THE PLAYER READS, THE COUNTS ARE WHAT THE PLOT
+WAITS ON.** The owner's sequence *(OWNER, 2026-09-15: "the operator watches the counts to get the
+count level then watches for the startup rate to get near zero. Am I correct in thinking this is
+the proper sequence and use of the startup rate? Otherwise we don't really have the user utilize
+the startup rate directly in a step.")* and his physics *(OWNER, 2026-09-15: "Our plant decays to
+near zero after burst and the counts flatten. It takes longer the closer to criticality we are.")*.
+**Both VERIFIED, not inherited** — `hot_zero_power`, the authored bursts, seed 42, 1 s samples, on
+the INSTRUMENT channel because that is what grades (Hard Rule 1):
+
+| burst (bank) | peak startup rate | \|rate\| ≤ 0.02 DPM | counts steady 3 %/120 s | gap |
+|---|---|---|---|---|
+| 94 (94)   | 0.131 | **141 s** | **223 s** | 82 s |
+| 63 (157)  | 0.283 | **151 s** | **226 s** | 75 s |
+| 31 (188)  | 0.458 | **202 s** | **281 s** | 79 s |
+| 14 (202)  | 0.552 | **345 s** | **507 s** | 162 s |
+
+- **It decays to zero after every burst** — settled instrument mean 0.0004 / −0.0001 / −0.0003 /
+  0.0027 DPM over a 300 s tail. No offset. His first sentence holds.
+- **Both criteria stretch toward criticality**, his second sentence, and on BOTH channels: 223 →
+  507 s on the counts, 141 → 345 s on the rate. So the worry that a FIXED 120 s / 3 % window
+  does no work on the early rungs is **disproved** — it accepts at 223 / 226 / 281 / 507 s against
+  authored holds of 300 / 300 / 420 / 600, and it self-scales because the drift is relative to
+  the window mean.
+- **⚠ THE RATE IS THE WEAKER GATE AT EVERY BAND THAT CLEARS THE NOISE**, 75–162 s early on all
+  four rungs, and **the gap is WIDEST on the last rung** — the point the trailing-three fit
+  weights most, which is the asymmetric failure mode. So it does not gate the plot. It is its
+  own row ABOVE the counts row, which is exactly his sequence and makes the instrument do real
+  work for the first time; the counts row underneath keeps the strength.
+- **The band is 0.02 DPM and the number is the channel's**: detrended standard deviation over the
+  settled tail is 0.0040–0.0043 DPM, so 0.02 is 5σ (3σ = 0.012). **0.08 and 0.10 are
+  disqualified** — the rate never exceeds 0.131 / 0.283 on the first two rungs, so those bands
+  are met 5 s after the burst, before the rods stop. `steady` on the rate is meaningless for the
+  reason its own doc gives: `v` is relative to a window mean that is zero here, so the metric
+  reads 14 %, 410 %, 3,390 % on a plant that is not moving.
+- Holds grew 150 → 300 / 300 / 420 / 600 s; counts-drift at each hold's end 0.35 / 0.81 / 0.68 /
+  2.06 % against 3 %.
+- **NOT MEASURED THROUGH THE PANEL:** the 1/M prediction error of plotting at the rate's instant
+  rather than the counts' was estimated by hand from the measured count rates and the panel's
+  trailing-three form — about **0.4 of a bank step** on the last rung (208.8 against 208.4). Small,
+  and it is not why the rate was rejected as the gate; the 162 s gap and the noise floor are.
+
+**The replay honours the order too.** `procedures_harness` used to issue every cmd-kind row at step
+entry — so the 1/M points were being plotted a tick after the rod burst, at the PREVIOUS rung's
+count rate, for as long as the field has existed. On an ordered step it now issues each cmd row on
+the first tick its predecessors come true, and asserts that every one was reached inside the hold.
+That second assertion is the other half of the pair: a sequencer that never opens satisfies "cannot
+press early" on its own.
+
+**Gate.** `run_checklist_pwr2` §2x — four live-path checks plus a static one, with the INJECTION
+being the flag itself (the identical probe with `accs_ordered` deleted latches the later row on the
+early press, and the check reds). `verify_ckl_relevance` gained two RENDER checks on the same
+row-probe fixture. Baselines: `run_checklist_pwr2` 273 → 289, `verify_ckl_relevance` 28 → 30,
+`run_hardrules` 573 → 576.
+
+**⚠ THE FIRST DRAFT OF §2x READ 9 FAILED AND ONLY 3 OF THEM WERE THE FEATURE.** Three were the
+probe's own first row — `ir_high_blocked > 0` is ALREADY TRUE on a `hot_full_power` boot, so no row
+was ever blocked and all three checks read `[true,true]`: **a sequencer probe whose first row starts
+MET tests nothing.** The other three were the #741 fourteen-word cap on `accs[].ask` and its own
+injection block, which three of the new asks broke. The probe now uses a `steady` row whose window
+is simply not yet covered — the one predicate that goes false → true on the CLOCK with no plant
+driving. **And the failures were invisible for a full 26-minute run** because the runner's output
+was piped through a `grep` that only kept lines matching the new section's name: 6 of 9 failures
+never reached the log. Run a long gate to a RAW file and grep the file.
+
+**What I did NOT verify:** the rendered card was read out of the DOM by a headless render probe,
+not by eye in a real browser session; and no retrofit was attempted to the other multi-check-off
+steps (MEASURED on the built pool: 34 steps carry two or more check-off rows, 4 are now ordered, and **14 of the remaining 30 have prose that implies a sequence** -- `pwr_startup` 14's "press LATCH, THEN set LOAD", all five `pwr_raise_power` rungs, `pwr_cooldown` 3's "press TRIP BLOCKS, then BLOCK...". Note the step number: the schema header said 15, inherited from #741, and it is 14.)
+
+---
+
 ## Session log — 2026-09-15-develop-a (#755 — the 1/M settle was a REPLAY hold; the live player now waits on a steadiness predicate)
 
 **The ruling.** Three options were put to the owner for the last inverse-count-rate (1/M) step of

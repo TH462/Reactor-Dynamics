@@ -6,6 +6,11 @@ The steps should not include elements not included in my manual edits below exce
 
 - **The 100 °F/hr heatup-rate limit stays OUT of the Mode 5 → Mode 3 walkthrough** *(OWNER RULING, 2026-09-14, on options put as "put it back in a step / put it in a note / leave it out": selected "Leave it out of the walkthrough")*. It used to live in that leg's leg-level cautions, which were retired from the pool; it did not go missing, it was ruled out. **The cooldown leg keeps its own 100 °F/hr** and the manuals are unchanged — do not "restore" the heatup one as a missing-content defect.
 - **Step 8 of Mode 3 → Mode 1 gets a "counts steady" check-off** *(OWNER RULING, 2026-09-15: selected "add a steadiness predicate" from three options put to him — raise the count target to 12,000 / add a steadiness predicate / leave it as text — taking the one that needed new plumbing over the one-number change. A selection, not verbatim words; the rationale relayed with it is that a steady count rate is what an operator actually looks for and an absolute threshold is only a stand-in for it)*. The 7,000 counts per second target is HIS number and stays as the floor; 8b is added beside it, and the old 8a ("Point plotted") is now 8c. Measured: the live step used to accept 47 s after the rods stop with the 1/M prediction reading 213.7 against a true critical of 208; it now accepts at 506 s, prediction 208.8, and the authored 600 s replay hold clears the same predicate with 72 s to spare. Do not "simplify" 8b back out.
+- **The four 1/M ladder steps are SEQUENCED SUBSTEPS: pull to the count, watch STARTUP RATE fall to zero, wait for the counts to flatten, plot** *(OWNER DIRECTIVE, 2026-09-15: "For the early-plot hole, we could have instructions for substeps not just one line of instruction then multiple substeps. We could give a line of instruction per substep. We instruct to pull rods to a count/however many steps. The next substep says to wait for the startup rate to stabilize. Once the startup rate hits a predetermined number that step checks off. Then have another substep to plot the 1/m point."; and on the sequence, *(OWNER, 2026-09-15: "the operator watches the counts to get the count level then watches for the startup rate to get near zero.")*, and on the physics, *(OWNER, 2026-09-15: "Our plant decays to near zero after burst and the counts flatten. It takes longer the closer to criticality we are.")*)*. Each rung carries four lettered rows, each with its own instruction, and the rows go live **one at a time** (`accs_ordered`) — Plot point is deaf until the rows above it are met, so an early press does nothing instead of banking a stale point.
+  - **His observation is VERIFIED on this plant, both halves.** STARTUP RATE decays to zero after every burst (settled instrument mean 0.0004 / -0.0001 / -0.0003 / 0.0027 DPM) and both the rate and the counts take longer to settle nearer criticality: counts-steady at **223 / 226 / 281 / 507 s** after each burst, startup rate inside 0.02 DPM at **141 / 151 / 202 / 345 s**.
+  - **STARTUP RATE is the row the player READS; the counts row is the row the plot WAITS on.** Measured: the rate enters its band **75 to 162 s before** the counts flatten on every rung, and the gap is widest on the last rung — the point the panel's trailing-three fit weights most. So grading the plot on the rate alone would reopen the early-plot hole. Both rows are kept, in his order, with the stronger one underneath.
+  - **The 0.02 DPM band is the channel's own scatter, not a round number**: the instrument's detrended standard deviation over a settled 300 s tail is 0.0040 to 0.0043 DPM, so 0.02 is five standard deviations. A 0.08 or 0.10 band is satisfied 5 s after the burst on the first two rungs, before the rods have stopped, because the rate never exceeds 0.131 / 0.283 DPM there.
+  - Holds grew from 150 s to **300 / 300 / 420 / 600 s** to cover the settle. Do not "simplify" the four rows back into one line.
 - **The `Use <control>: <target>` rung is no longer drawn on the walkthrough card** *(OWNER RULING, 2026-09-14: "Hide it in the renderer")*. This file carries that rung on exactly one of the nineteen steps that name a control (Mode 5 → 3 step 2), so it was the renderer's addition. The step data still carries `control` on every step — it is the coverage key for the browser gate that checks the manual's control pill — and an observation step still draws its "Watch for:" line. This supersedes the 2026-09-02 ruling that the control had to sit outside the details fold.
 
 
@@ -402,15 +407,23 @@ The 1/M plot predicts where the rods will be when the reactor goes critical, bef
 
 
 
-5\. Press MED, then hold WITHDRAW under CONTROL until SOURCE RANGE settles above 7.0e2. Settle, then press Plot point.
+5\. Raise SOURCE RANGE past 7.0e2, let the counts level off, then plot the point.
 
-5a○ Counts settled above 7.0e2 (700 counts per second)
+5a○ Press MED, then hold WITHDRAW under CONTROL until SOURCE RANGE passes 7.0e2.
+  — Counts above 7.0e2 (700 counts per second)
 
-5b○ Point plotted
+5b○ Release WITHDRAW and watch STARTUP RATE fall back toward zero.
+  — STARTUP RATE back to zero (within 0.02 DPM)
+
+5c○ Keep waiting until SOURCE RANGE has stopped climbing as well.
+  — Counts steady — under 3 % change over the last two minutes
+
+5d○ Press Plot point on the 1/M PLOT panel.
+  — Point plotted
 
 
 
-*Stop when CONTROL ROD POSITION reads about 80 to 100. Holding WITHDRAW drives the bank at the selected speed and releasing it stops; a single tap moves one step. MED moves 48 steps a minute at 1×, SLOW 8, FAST 72. A point plotted while STARTUP RATE is still positive reads low.*
+*Stop when CONTROL ROD POSITION reads about 80 to 100. Holding WITHDRAW drives the bank at the selected speed and releasing it stops; a single tap moves one step. MED moves 48 steps a minute at 1×, SLOW 8, FAST 72. Work the four lines below in order — Plot point does nothing until the counts are steady.*
 
 
 
@@ -426,15 +439,23 @@ The first two points always predict too high: near the bottom the rods are worth
 
 
 
-6\. Hold WITHDRAW at MED until SOURCE RANGE settles above 1.4e3. Settle, press Plot point, then read the 1/M prediction.
+6\. Raise SOURCE RANGE past 1.4e3, let it level off, plot the point, then read the 1/M prediction.
 
-6a○ Counts settled above 1.4e3 (1,400 counts per second)
+6a○ Hold WITHDRAW at MED until SOURCE RANGE passes 1.4e3.
+  — Counts above 1.4e3 (1,400 counts per second)
 
-6b○ Point plotted
+6b○ Release WITHDRAW and watch STARTUP RATE fall back toward zero.
+  — STARTUP RATE back to zero (within 0.02 DPM)
+
+6c○ Keep waiting until SOURCE RANGE has stopped climbing as well.
+  — Counts steady — under 3 % change over the last two minutes
+
+6d○ Press Plot point, then read the predicted critical position on the panel.
+  — Point plotted
 
 
 
-*Stop when CONTROL ROD POSITION reads about 150 to 175 steps.*
+*Stop when CONTROL ROD POSITION reads about 150 to 175 steps. The four lines below run in order.*
 
 
 
@@ -450,15 +471,23 @@ Each new point is taken closer to critical, where a step is worth more, so the l
 
 
 
-7\. Hold WITHDRAW at MED until SOURCE RANGE settles above 3.0e3. Settle, press Plot point, read the prediction again.
+7\. Raise SOURCE RANGE past 3.0e3, let it level off, plot the point, and read the prediction again.
 
-7a○ Counts settled above 3.0e3 (3,000 counts per second)
+7a○ Hold WITHDRAW at MED until SOURCE RANGE passes 3.0e3.
+  — Counts above 3.0e3 (3,000 counts per second)
 
-7b○ Point plotted
+7b○ Release WITHDRAW and watch STARTUP RATE fall back toward zero.
+  — STARTUP RATE back to zero (within 0.02 DPM)
+
+7c○ Keep waiting until SOURCE RANGE has stopped climbing as well.
+  — Counts steady — under 3 % change over the last two minutes
+
+7d○ Press Plot point, then read the prediction again.
+  — Point plotted
 
 
 
-*Stop when CONTROL ROD POSITION reads about 180 to 205 steps.*
+*Stop when CONTROL ROD POSITION reads about 180 to 205 steps. The four lines below run in order, and the settle takes longer at every rung.*
 
 
 
@@ -476,11 +505,17 @@ Each step now buys more reactivity than the last, so the pulls get smaller from 
 
 8\. Hold WITHDRAW at MED until SOURCE RANGE settles above 7.0e3. Settle, press Plot point. This is the last point.
 
-8a○ Counts above 7.0e3 (7,000 counts per second)
+8a○ Hold WITHDRAW at MED until SOURCE RANGE passes 7.0e3.
+  — Counts above 7.0e3 (7,000 counts per second)
 
-8b○ Counts steady — under 3 % change over the last two minutes
+8b○ Release WITHDRAW and watch STARTUP RATE fall back toward zero.
+  — STARTUP RATE back to zero (within 0.02 DPM)
 
-8c○ Point plotted
+8c○ Keep waiting — about ten plant-minutes here — for SOURCE RANGE to flatten.
+  — Counts steady — under 3 % change over the last two minutes
+
+8d○ Press Plot point. Note the critical position the panel predicts.
+  — Point plotted
 
 
 

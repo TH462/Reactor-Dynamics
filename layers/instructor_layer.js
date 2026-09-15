@@ -1384,6 +1384,7 @@
   InstructorLayer.prototype._gradeAccs = function (holder, st, snapshot) {
     var state = this._ensureAccsState(holder, st);
     var all = true;
+    var ordered = !!st.accs_ordered, blocked = false;
     for (var i = 0; i < st.accs.length; i++) {
       var en = st.accs[i], ax = state[i];
       /* a two-sided band re-grades for ever; every other kind latches (see the note above).
@@ -1398,23 +1399,37 @@
         } else g = this._grade(snapshot, en);
         ax.obs = g.value; ax.graded_by = g.graded_by;
         ax.streak = g.met ? ax.streak + 1 : 0;
-        if (ax.streak >= ACC_STABLE_N) ax.met = true;
+        /* ORDERED STEPS (#756): a blocked entry still GRADES — `obs` keeps updating and a
+         * `steady` ring keeps filling from the moment the step became active — it just may not
+         * LATCH. Grading it is not cosmetic: measured on the 1/M ladder, the settle window has
+         * to run from the step's start or the settle row would owe a fresh 120 s after the count
+         * row ticks, and the crossing is at the same wall-clock instant either way. */
+        if (ax.streak >= ACC_STABLE_N && !blocked) ax.met = true;
         else if (holds) ax.met = false;        // left the band — the check-off comes back off
       }
-      if (!ax.met) all = false;               // cmd-kind entries latch in handleCommand
+      if (!ax.met) { all = false; if (ordered) blocked = true; }   // cmd entries latch in handleCommand
+      /* A LATCHED ENTRY IS NEVER UN-LATCHED BY A PREDECESSOR GOING BACK OFF, and that is
+       * deliberate: "the counts passed 7.0e2" and "you plotted a point" stay true when a later
+       * `steady` row un-ticks because the player pulled more rod. The block only gates NEW
+       * latches, so the step still cannot COMPLETE until every row is met at once. */
     }
     return all;
   };
   // The command half of the watch: latch any unmet cmd-kind entry the command satisfies.
+  // On an `accs_ordered` step a cmd entry is DEAF until its predecessors are met — that is the
+  // half of the sequencer the player actually feels (#756: pressing Plot point early does nothing
+  // instead of latching a stale point), because the press, not the predicate, is what they do.
   InstructorLayer.prototype._accsCmdWatch = function (holder, st, command) {
     if (!st || !st.accs || !st.accs.length) return;
     var state = this._ensureAccsState(holder, st);
+    var ordered = !!st.accs_ordered, blocked = false;
     for (var i = 0; i < st.accs.length; i++) {
       var en = st.accs[i];
-      if (en && en.cmd && !state[i].met &&
+      if (!blocked && en && en.cmd && !state[i].met &&
           this._cmdEvidence(typeof en.cmd === 'string' ? { action: en.cmd } : en.cmd, command)) {
         state[i].met = true;
       }
+      if (ordered && !state[i].met) blocked = true;
     }
   };
 

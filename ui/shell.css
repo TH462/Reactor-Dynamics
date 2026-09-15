@@ -2450,6 +2450,13 @@ select.num-input { width: auto; }
   font-weight: 400; font-size: 11px; color: var(--text-2);
   margin-left: 20px; line-height: 1.4;
 }
+/* A ROW THAT HAS NOT COME UP YET, on an `accs_ordered` step (#756). Muted, and with a · for a
+   marker instead of the ○, because an ○ in the live cobalt is an invitation to act and this row
+   cannot be acted on — the runtime will not latch it and its button is deaf until the row above
+   is met. One treatment, not two: the row goes quiet and loses its done-when, which is the same
+   move .ckl-sub.muted makes for a note, rather than a new colour on a card that already carries
+   three (DESIGN_CRITERIA question 4). */
+.ckl-crit-wait { color: var(--muted); font-weight: 600; }
 /* WHICH CONTROL, AND WHAT YOU ARE DRIVING IT TO (#598 item 13, owner ruling 2026-09-02).
    Promoted back out of the Details fold: measured, only 41 % of the steps carrying a control
    name it in their instruction text, so folding this away left 27 of them with no visible

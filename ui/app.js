@@ -4483,6 +4483,20 @@
           var visN = 0;
           for (var vi = 0; vi < st.accs.length; vi++) if (!st.accs[vi].hidden) visN++;
           var visSeen = 0;
+          /* AN `accs_ordered` STEP'S ROWS ARE A SEQUENCE AND THE CARD HAS TO SAY SO (#756).
+           * `ordBlock` is the index of the first row not yet met — the one the player is on.
+           * Rows AFTER it are not live: the runtime will not latch them and a cmd row is deaf to
+           * its button, so drawing them in the same cobalt as the live row would be the card
+           * inviting a press that does nothing. They go muted and drop their done-when line; the
+           * `ask` stays visible, because seeing what is coming is the point of substeps.
+           * Computed off the SNAPSHOT's per-entry verdicts, the same bits the runtime latched,
+           * so the card cannot disagree with the grading about which row is live. */
+          var ordBlock = -1;
+          if (st.accs_ordered) {
+            for (var ob = 0; ob < st.accs.length; ob++) {
+              if (!((ck.accs && ck.accs[ob]) || {}).met) { ordBlock = ob; break; }
+            }
+          }
           for (var ai = 0; ai < st.accs.length; ai++) {
             var en = st.accs[ai], av = (ck.accs && ck.accs[ai]) || {};
             /* `hidden: true` — a cmd-kind entry the replay needs (it is how the harness presses
@@ -4492,16 +4506,19 @@
             var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) + modeLiveNote(en, s) : mesc(en.cmd || ''));
             var tag = visN > 1 ? ((i + 1) + String.fromCharCode(97 + visSeen)) : '';
             visSeen++;
-            h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') + '">' +
+            var ordWait = st.accs_ordered && ordBlock >= 0 && ai > ordBlock;
+            h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') +
+              (ordWait ? ' ckl-crit-wait' : '') + '">' +
               (tag ? '<span class="ckl-crit-n">' + tag + '</span>' : '') +
               /* mesc UNCONDITIONALLY (#670 operator pass, S-5): since OPSYM prints a strict
                * '<' / '>' rather than ≤ / ≥, fmtPredicate's output carries MARKUP characters
                * and an unescaped insert would swallow the rest of the line as a tag. */
-              (av.met ? '✓ ' : '○ ') + mesc(en.ask || enTxt) +
+              (av.met ? '✓ ' : ordWait ? '· ' : '○ ') + mesc(en.ask || enTxt) +
               /* BOTH THE ASK AND THE DONE-WHEN, when the entry carries an instruction: the
                * player needs to know what to do AND what the sim is waiting for. Quieter, on
-               * its own line, so the imperative is what the eye lands on. */
-              (en.ask ? '<div class="ckl-crit-when">' + mesc(enTxt) + '</div>' : '') +
+               * its own line, so the imperative is what the eye lands on. Not on a row that is
+               * still waiting its turn (#756) — a done-when for a row nothing is grading yet. */
+              (en.ask && !ordWait ? '<div class="ckl-crit-when">' + mesc(enTxt) + '</div>' : '') +
               '</div>';
           }
         } else if (st.acc) {

@@ -11,11 +11,12 @@
  *   category: startup | power | control | shutdown | emergency | accident
  *   narrative:true  → an accident walkthrough; not run by the harness (the engine
  *                     flagship suite owns its physics, CONTEXT §9).
- * Step: { text, control, target, cmd, hold, acc, saw, note, ramp, why, accs, wait_hint,
- *          overtaken, hl, hl_watch, past, story, crew, inject, clear, pause, wrong, wait_est_s }
- *   (THE DEBT #694 LEFT IS PAID (#755): all 23 names on that line are documented below. MEASURED
+ * Step: { text, control, target, cmd, hold, acc, saw, note, ramp, why, accs, accs_ordered,
+ *          wait_hint, overtaken, hl, hl_watch, past, story, crew, inject, clear, pause, wrong,
+ *          wait_est_s }
+ *   (THE DEBT #694 LEFT IS PAID (#755): all 24 names on that line are documented below. MEASURED
  *   on the built pool rather than counted by hand — which is how this note came to claim 12 of
- *   19, then 20 — 21 of them are in use; `clear` and `wrong` are implemented and unused. A step
+ *   19, then 20 — 22 of them are in use; `clear` and `wrong` are implemented and unused. A step
  *   field not on this line does not exist; add yours here, with a paragraph, in the same change.)
  *   text    integrated-voice instruction     control  on-screen control to use
  *   target  the value/limit to drive to      cmd      command issued (rod group 'control'/'shutdown' resolved)
@@ -88,12 +89,31 @@
  *           an action — a row reading "3b. Generator at 30 MWe" as if it were an instruction is
  *           the defect in the other direction. NO SI (owner ruling 2026-09-06); `run_style`'s
  *           `checklist_no_si` scans this field.
- *           ⚠ IT IS DISPLAY ONLY. Nothing grades on it, and ORDERING IS NOT IMPLIED: the letters
- *           are drawn off the entry's position in the array and "3b cannot tick until 3a does"
- *           is NOT expressible today and was explicitly not built (#741). `pwr_startup` 15 reads
- *           "press LATCH, THEN set LOAD" while the replay issues LOAD first and nothing notices
- *           — that is the standing evidence that ordering would be premature, not a bug this
- *           field fixes.
+ *           ⚠ IT IS DISPLAY ONLY — nothing grades on it. Whether the letters are also a SEQUENCE
+ *           is `accs_ordered`'s business, below; without that flag they are not, and the array
+ *           order is only a drawing order. `pwr_startup` 14 reads "press LATCH, THEN set LOAD"
+ *           while the replay issues LOAD first and nothing notices — an unordered step where the
+ *           prose implies one, left as it is (#756 retrofits nothing; see that note).
+ *   accs_ordered OPTIONAL boolean, OPT-IN, meaningless without `accs` — THE ENTRIES BECOME
+ *           LIVE ONE AT A TIME *(OWNER DIRECTIVE, 2026-09-15: "For the early-plot hole, we could
+ *           have instructions for substeps not just one line of instruction then multiple
+ *           substeps. We could give a line of instruction per substep. We instruct to pull rods to
+ *           a count/however many steps. The next substep says to wait for the startup rate to
+ *           stabilize. Once the startup rate hits a predetermined number that step checks off.
+ *           Then have another substep to plot the 1/m point.")*. Entry `i` cannot LATCH until
+ *           every entry before it is met; a cmd-kind entry is deaf to its command until then, so
+ *           pressing Plot point before the counts have settled does nothing at all instead of
+ *           banking a stale point (#741's standing hole, measured before the fix: the later entry
+ *           latched with the earlier one false). Blocked entries still GRADE — `obs` updates and
+ *           a `steady` ring fills from the step's start — only the latch waits. A latch already
+ *           taken is NOT given back when a predecessor un-ticks, so a re-grading `steady` row that
+ *           goes back off holds the STEP open without erasing work the player really did.
+ *           DEFAULT OFF, and that is the whole design: most multi-check-off steps are genuinely
+ *           unordered (two valves, either order), and making order the default would soft-lock
+ *           every one of them whose author listed the rows by importance. The replay honours it
+ *           too — `test/procedures_harness.js` issues an ordered step's cmd entries when their
+ *           predecessors come true rather than all at step entry, so the gate drives the route
+ *           the player has to take. `run_checklist_pwr2` §2x is the injection pair.
  *   wait_hint OPTIONAL string — rendered as a time-acceleration suggestion on long
  *           steps (#244 M5→3 item 5). Prose only; harnesses ignore it.
  *   overtaken OPTIONAL {p,op,v[,tol],text[,industry]} — the plant condition under which
@@ -1950,12 +1970,12 @@
          * #618 removed hours earlier: the step still steers on the count rate and the acceptance
          * is unchanged. The numbers are the replay's own `cmd.steps` — 94 / 63 / 31 / 14 / 9,
          * rounded — so they cannot drift from what the harness drives. */
-        { text: 'Press MED, then hold WITHDRAW under CONTROL until SOURCE RANGE settles above 7.0e2. Settle, then press Plot point.',
-          note: 'Stop when CONTROL ROD POSITION reads about 80 to 100. Holding WITHDRAW drives the bank at the selected speed and releasing it stops; a single tap moves one step. MED moves 48 steps a minute at 1×, SLOW 8, FAST 72. A point plotted while STARTUP RATE is still positive reads low.',
+        { text: 'Raise SOURCE RANGE past 7.0e2, let the counts level off, then plot the point.',
+          note: 'Stop when CONTROL ROD POSITION reads about 80 to 100. Holding WITHDRAW drives the bank at the selected speed and releasing it stops; a single tap moves one step. MED moves 48 steps a minute at 1×, SLOW 8, FAST 72. Work the four lines below in order — Plot point does nothing until the counts are steady.',
           wait_hint: 'Set the speed control to 10x if you don\'t want to wait in real time for the rod movement.',
           why: 'The first two points always predict too high: near the bottom the rods are worth little per step, so the line they draw crosses zero far past the real critical position. That is expected. While the reactor is shut down, SOURCE RANGE counts are the only thing that tells you how close you are; the rod position does not.',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e2 (700 counts a second); point 2 plotted',
-          cmd: { action: 'rod_nudge', group_id: 'control', steps: 94, speed: 'normal' }, hold: 150,
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 94, speed: 'normal' }, hold: 300,
           /* THE COUNT IS WRITTEN THE WAY THE METER WRITES IT *(OWNER, #724 item 6: "Whenever the
            * SOURCE RANGE is referenced it should be in the format of 7.0e2 not 700cps. this is
            * not consistant. it can still have '7.0e2 (700 counts per second)', this is
@@ -1963,33 +1983,111 @@
            * "700 cps", so the one number the player is hunting for appeared in two notations on
            * one card. `PRED_DISPLAY.sr_counts_cps` renders the done-when in the same form
            * (ui/app.js, the `sci` flag), which is the third place it was written differently. */
-          accs: [{ p: 'sr_counts_cps', op: '>', v: 700, label: 'Counts settled above 7.0e2 (700 counts per second)' },
-                 { cmd: 'plot_1m_point', label: 'Point plotted' }],
+          /* THREE SUBSTEPS, IN ORDER (#756) *(OWNER DIRECTIVE, 2026-09-15: "For the early-plot
+           * hole, we could have instructions for substeps not just one line of instruction then
+           * multiple substeps. We could give a line of instruction per substep. We instruct to
+           * pull rods to a count/however many steps. The next substep says to wait for the
+           * startup rate to stabilize. Once the startup rate hits a predetermined number that
+           * step checks off. Then have another substep to plot the 1/m point.")*. `accs_ordered`
+           * makes the plot row unreachable until the settle row is met, so an early press does
+           * nothing instead of banking a stale point — #755's standing hole, which gating the
+           * press could not have closed as cleanly.
+           *
+           * ⚠ THE PLAYER READS STARTUP RATE; THE PLOT IS GATED ON THE COUNTS. Four rows, and the
+           * order is the owner's own *(OWNER, 2026-09-15: "the operator watches the counts to get
+           * the count level then watches for the startup rate to get near zero.")*, with the
+           * counts-steady row kept UNDER it as the gate. MEASURED, hot_zero_power, the authored
+           * bursts, seed 42, 1 s samples, the INSTRUMENT channel (which is what grades, Hard Rule
+           * 1, instruments not truth):
+           *
+           *   burst  peak SUR   |SUR| <= 0.02   counts steady (3 %/120 s)   gap
+           *     94     0.131      141 s              223 s                  82 s
+           *     63     0.283      151 s              226 s                  75 s
+           *     31     0.458      202 s              281 s                  79 s
+           *     14     0.552      345 s              507 s                 162 s
+           *
+           *   · STARTUP RATE DOES DECAY TO ZERO after every burst — settled instrument mean
+           *     0.0004 / -0.0001 / -0.0003 / 0.0027 DPM — and BOTH criteria stretch as the ladder
+           *     approaches critical, which is the owner's second observation and it holds on both
+           *     channels (223 -> 507 s on the counts, 141 -> 345 s on the rate).
+           *   · STARTUP RATE IS THE WEAKER GATE AT EVERY BAND THAT CLEARS THE NOISE. It enters
+           *     its band 75-162 s BEFORE the counts flatten on all four rungs, and the gap is
+           *     WIDEST on the last rung — the point the panel's trailing-three fit weights most.
+           *     So it cannot be the thing the plot waits on: that reopens the early-plot hole
+           *     this change exists to close. The counts row stays the gate.
+           *   · THE BAND IS 0.02 DPM AND IT COMES FROM THE CHANNEL'S OWN SCATTER, not from what a
+           *     startup rate "ought" to read: the instrument's detrended standard deviation over a
+           *     settled 300 s tail is 0.0040-0.0043 DPM, so 0.02 is 5 sigma (3 sigma is 0.012).
+           *     0.08 and 0.10 are DISQUALIFIED outright — on the first two rungs SUR never exceeds
+           *     0.131 / 0.283, so those bands are satisfied 5 s after the burst, before the rods
+           *     have even stopped.
+           *   · `steady` on the rate would be meaningless: `v` is RELATIVE to the window mean and
+           *     this channel settles to zero, so the metric reads 14 %, 410 %, 3,390 % on a plant
+           *     that is not moving. A two-sided `~` band is the right form for a hold claim.
+           *   · AND THE FIXED 120 s / 3 % WINDOW IS NOT DOING NOTHING ON THE EARLY RUNGS, which
+           *     was the worry: it accepts at 223 / 226 / 281 / 507 s against authored holds of
+           *     300 / 300 / 420 / 600, and it self-scales because the drift is relative to the
+           *     window mean. Holds grew from 150 s to cover it: 300 / 300 / 420 / 600 s. */
+          accs_ordered: true,
+          accs: [{ p: 'sr_counts_cps', op: '>', v: 700,
+                   ask: 'Press MED, then hold WITHDRAW under CONTROL until SOURCE RANGE passes 7.0e2.',
+                   label: 'Counts above 7.0e2 (700 counts per second)' },
+                 { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.02,
+                   ask: 'Release WITHDRAW and watch STARTUP RATE fall back toward zero.',
+                   label: 'STARTUP RATE back to zero (within 0.02 DPM)' },
+                 { p: 'sr_counts_cps', op: 'steady', v: 0.03, window: 120,
+                   ask: 'Keep waiting until SOURCE RANGE has stopped climbing as well.',
+                   label: 'Counts steady — under 3 % change over the last two minutes' },
+                 { cmd: 'plot_1m_point',
+                   ask: 'Press Plot point on the 1/M PLOT panel.',
+                   label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
           /* CONTROL ROD POSITION IS WHAT THE 1/M PANEL'S PREDICTION IS A NUMBER ON (#735, owner
            * playtest #724 item 10: "we should probably highlight CONTROL ROD POSITION in the
            * step the first time we mvoe the rods as well"). This is that first move. */
           hl: ['Rod Speed — Normal', 'Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
-        { text: 'Hold WITHDRAW at MED until SOURCE RANGE settles above 1.4e3. Settle, press Plot point, then read the 1/M prediction.',
-          note: 'Stop when CONTROL ROD POSITION reads about 150 to 175 steps.',
+        { text: 'Raise SOURCE RANGE past 1.4e3, let it level off, plot the point, then read the 1/M prediction.',
+          note: 'Stop when CONTROL ROD POSITION reads about 150 to 175 steps. The four lines below run in order.',
           wait_hint: 'Set the speed control to 10x if you don\'t want to wait in real time for the rod movement.',
           why: 'Each new point is taken closer to critical, where a step is worth more, so the line steepens and the predicted crossing walks toward you. The panel prints "predicted criticality ≈ step N" with a marker on the plot. Treat it as too high for now; it improves with every point.',
           control: 'Control Bank', target: 'SOURCE RANGE above 1.4e3 (1,400 counts a second); point 3 plotted',
-          cmd: { action: 'rod_nudge', group_id: 'control', steps: 63, speed: 'normal' }, hold: 150,
-          accs: [{ p: 'sr_counts_cps', op: '>', v: 1400, label: 'Counts settled above 1.4e3 (1,400 counts per second)' },
-                 { cmd: 'plot_1m_point', label: 'Point plotted' }],
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 63, speed: 'normal' }, hold: 300,
+          accs_ordered: true,
+          accs: [{ p: 'sr_counts_cps', op: '>', v: 1400,
+                   ask: 'Hold WITHDRAW at MED until SOURCE RANGE passes 1.4e3.',
+                   label: 'Counts above 1.4e3 (1,400 counts per second)' },
+                 { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.02,
+                   ask: 'Release WITHDRAW and watch STARTUP RATE fall back toward zero.',
+                   label: 'STARTUP RATE back to zero (within 0.02 DPM)' },
+                 { p: 'sr_counts_cps', op: 'steady', v: 0.03, window: 120,
+                   ask: 'Keep waiting until SOURCE RANGE has stopped climbing as well.',
+                   label: 'Counts steady — under 3 % change over the last two minutes' },
+                 { cmd: 'plot_1m_point',
+                   ask: 'Press Plot point, then read the predicted critical position on the panel.',
+                   label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
-        { text: 'Hold WITHDRAW at MED until SOURCE RANGE settles above 3.0e3. Settle, press Plot point, read the prediction again.',
-          note: 'Stop when CONTROL ROD POSITION reads about 180 to 205 steps.',
+        { text: 'Raise SOURCE RANGE past 3.0e3, let it level off, plot the point, and read the prediction again.',
+          note: 'Stop when CONTROL ROD POSITION reads about 180 to 205 steps. The four lines below run in order, and the settle takes longer at every rung.',
           wait_hint: 'Set the speed control to 10x if you don\'t want to wait in real time for the rod movement.',
           why: 'Each step now buys more reactivity than the last, so the pulls get smaller from here. The prediction is starting to be useful. Keep waiting for STARTUP RATE to settle before each point.',
           control: 'Control Bank', target: 'SOURCE RANGE above 3.0e3 (3,000 counts a second); point 4 plotted',
-          cmd: { action: 'rod_nudge', group_id: 'control', steps: 31, speed: 'normal' }, hold: 150,
-          accs: [{ p: 'sr_counts_cps', op: '>', v: 3000, label: 'Counts settled above 3.0e3 (3,000 counts per second)' },
-                 { cmd: 'plot_1m_point', label: 'Point plotted' }],
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 31, speed: 'normal' }, hold: 420,
+          accs_ordered: true,
+          accs: [{ p: 'sr_counts_cps', op: '>', v: 3000,
+                   ask: 'Hold WITHDRAW at MED until SOURCE RANGE passes 3.0e3.',
+                   label: 'Counts above 3.0e3 (3,000 counts per second)' },
+                 { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.02,
+                   ask: 'Release WITHDRAW and watch STARTUP RATE fall back toward zero.',
+                   label: 'STARTUP RATE back to zero (within 0.02 DPM)' },
+                 { p: 'sr_counts_cps', op: 'steady', v: 0.03, window: 120,
+                   ask: 'Keep waiting until SOURCE RANGE has stopped climbing as well.',
+                   label: 'Counts steady — under 3 % change over the last two minutes' },
+                 { cmd: 'plot_1m_point',
+                   ask: 'Press Plot point, then read the prediction again.',
+                   label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
@@ -2104,10 +2202,19 @@
            * the counts are steady either way, and the unticked "Counts steady" row is the cue not
            * to plot yet — but the press itself is not gated. */
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 14, speed: 'normal' }, hold: 600,
-          accs: [{ p: 'sr_counts_cps', op: '>', v: 7000, label: 'Counts above 7.0e3 (7,000 counts per second)' },
+          accs_ordered: true,
+          accs: [{ p: 'sr_counts_cps', op: '>', v: 7000,
+                   ask: 'Hold WITHDRAW at MED until SOURCE RANGE passes 7.0e3.',
+                   label: 'Counts above 7.0e3 (7,000 counts per second)' },
+                 { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.02,
+                   ask: 'Release WITHDRAW and watch STARTUP RATE fall back toward zero.',
+                   label: 'STARTUP RATE back to zero (within 0.02 DPM)' },
                  { p: 'sr_counts_cps', op: 'steady', v: 0.03, window: 120,
+                   ask: 'Keep waiting — about ten plant-minutes here — for SOURCE RANGE to flatten.',
                    label: 'Counts steady — under 3 % change over the last two minutes' },
-                 { cmd: 'plot_1m_point', label: 'Point plotted' }],
+                 { cmd: 'plot_1m_point',
+                   ask: 'Press Plot point. Note the critical position the panel predicts.',
+                   label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },

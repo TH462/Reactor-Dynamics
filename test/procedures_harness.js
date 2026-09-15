@@ -198,7 +198,13 @@
       }
       // cmd-kind multi-check-off entries (#244 item 8) are operator actions of this step
       // — the replay performs them the way the player would (the 1/M "Plot point" case).
-      if (st.accs && st.accs.length) {
+      //
+      // ⚠ AN `accs_ordered` STEP HOLDS THEM BACK (#756). The live runtime makes a cmd entry DEAF
+      // until its predecessors are met, so issuing them all at step entry would drive a route the
+      // player cannot take — and the replay would certify a plot taken before the counts settle,
+      // which is the very defect the flag exists to stop. They are issued inside the tick loop
+      // below, each on the first tick its predecessors come true.
+      if (st.accs && st.accs.length && !st.accs_ordered) {
         st.accs.forEach(function (en) {
           if (en && en.cmd) issue(typeof en.cmd === 'string' ? { action: en.cmd }
                                                             : JSON.parse(JSON.stringify(en.cmd)));
@@ -259,6 +265,28 @@
         return ks;
       }
       var steadyList = steadyKeys();
+      /* the ordered-entry tracker (#756): `ordMet[i]` is this entry's standing verdict, and a
+       * cmd entry's verdict is "the replay has issued it". Predicate entries are read live here
+       * rather than only at the step's end, because the ISSUE ORDER is what this models. */
+      var ordMet = (st.accs_ordered && st.accs) ? st.accs.map(function () { return false; }) : null;
+      var ordUnissued = [];
+      function ordAdvance(s) {
+        for (var i = 0; i < st.accs.length; i++) {
+          var en = st.accs[i];
+          if (i > 0 && !ordMet[i - 1]) break;          // blocked — nothing past here is live
+          if (ordMet[i]) continue;
+          if (en && en.cmd) {
+            issue(typeof en.cmd === 'string' ? { action: en.cmd } : JSON.parse(JSON.stringify(en.cmd)));
+            ordMet[i] = true;
+          } else if (en && en.op === 'steady') {
+            var h = steadyBags['accs' + i];
+            ordMet[i] = !!(h && h.last && h.last.met);
+          } else if (en && en.p) {
+            ordMet[i] = pred(s, en);
+          } else ordMet[i] = true;
+          if (!ordMet[i]) break;
+        }
+      }
       var sawHits = [], ticks = Math.round((st.hold || 0) / SEC_PER_TICK);
       for (var i = 0; i < ticks; i++) {
         if (st.ramp && (i % RAMP_EVERY === 0)) {
@@ -269,6 +297,7 @@
         if (!s) continue;
         lastSnap = s;
         steadyList.forEach(function (e) { var h = steadyOf(e.p, e.k); h.last = RD.InstructorLayer.gradeSteady(h.bag, s, e.p); });
+        if (ordMet) ordAdvance(s);
         if (s.metadata && s.metadata.time_acceleration < ACCEL) {
           if (!slowTicks) firstSlow = 'step ' + curStep + ' @ t=' + s.metadata.sim_time.toFixed(1) +
             ' → ' + s.metadata.time_acceleration + '×' +
@@ -318,6 +347,23 @@
             d: 'step ' + curStep + ' accs[' + k + '] ' + en.p + ' ' + en.op + ' ' + en.v,
             pass: ev.pass, obs: ev.obs });
         });
+        /* THE OTHER HALF OF THE SEQUENCER (#756). A gate that only asserts "the plot cannot be
+         * taken early" is satisfied by a sequencer that never opens at all, so an ordered step
+         * also asserts that every cmd entry DID get issued inside the authored hold — i.e. the
+         * route the player is forced onto is one the plant actually completes. This is what
+         * reddens if a settle predicate is tightened past what its hold delivers. */
+        if (st.accs_ordered) {
+          for (var oi = 0; oi < st.accs.length; oi++) {
+            if (!st.accs[oi] || !st.accs[oi].cmd) continue;
+            ordUnissued.push({ i: oi, done: !!ordMet[oi] });
+          }
+          var bad = ordUnissued.filter(function (e) { return !e.done; });
+          checks.push({ d: 'step ' + curStep + ' ordered accs: every cmd entry reached inside the hold',
+            pass: bad.length === 0,
+            obs: bad.length ? 'never issued: [' + bad.map(function (e) { return e.i; }).join(',') + '] of ' +
+                              st.accs.length + ' (met ' + ordMet.map(function (m) { return m ? 1 : 0; }).join('') + ')'
+                            : 'met ' + ordMet.map(function (m) { return m ? 1 : 0; }).join('') + ' within ' + (st.hold || 0) + ' s' });
+        }
       }
     });
     if (!lastSnap) lastSnap = svc._assembleWithInstructor();

@@ -30,6 +30,43 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (the 1/M ladder becomes sequenced substeps — 2026-09-15, #756)
+
+- **Each inverse-count-rate (1/M) step is now four lettered substeps that go live one at a
+  time: pull to the count, watch STARTUP RATE fall to zero, wait for the counts to flatten,
+  plot the point** *(OWNER DIRECTIVE, 2026-09-15: "For
+  the early-plot hole, we could have instructions for substeps not just one line of instruction
+  then multiple substeps. We could give a line of instruction per substep. We instruct to pull
+  rods to a count/however many steps. The next substep says to wait for the startup rate to
+  stabilize. Once the startup rate hits a predetermined number that step checks off. Then have
+  another substep to plot the 1/m point.")* This closes the hole the bullet below left open.
+  A step may declare `accs_ordered: true`, and its check-offs then latch **in order** — a row
+  cannot tick until the row above it is met, and a button-kind row is **deaf to its button**
+  until then, so pressing Plot point while the counts are still climbing does nothing instead of
+  banking a stale point. **MEASURED before the change**, on the shipped shape: the later row
+  latched with the earlier one still false. The card draws each row's own instruction, and rows
+  that have not come up yet are drawn muted with no done-when.
+  - **STARTUP RATE is a check-off of its own now, and the counts are what the plot waits on**
+    *(OWNER, 2026-09-15: "the operator watches the counts to get the count level then watches for
+    the startup rate to get near zero"; and "Our plant decays to near zero after burst and the
+    counts flatten. It takes longer the closer to criticality we are.")*. Both halves of that
+    **verified by measurement** on this plant: the rate settles to zero after every burst
+    (0.0004 / −0.0001 / −0.0003 / 0.0027 DPM) and both criteria stretch toward criticality —
+    counts flat at **223 / 226 / 281 / 507 s** after each burst, rate inside 0.02 DPM at
+    **141 / 151 / 202 / 345 s**.
+  - **The rate is the WEAKER criterion, so it does not gate the plot.** It enters its band
+    **75 to 162 s earlier** than the counts flatten on every rung, and the gap is widest on the
+    last rung — the point the panel's trailing-three fit weights most. Both rows are kept, in the
+    owner's order, with the stronger one underneath. **The 0.02 DPM band is the channel's own
+    scatter**: the instrument's detrended standard deviation over a settled 300 s tail is
+    0.0040 to 0.0043 DPM, so the band is five standard deviations. A 0.08 or 0.10 band is
+    satisfied 5 s after the burst on the first two rungs, before the rods have stopped.
+  - **The settle costs plant time and the holds grew to pay for it**: 150 s → **300 / 300 /
+    420 / 600 s** on the four rungs, about 9.5 plant-minutes added to the leg. Drift at each
+    hold's end: **0.35 / 0.81 / 0.68 / 2.06 %** against the 3 % threshold.
+  - **Opt-in, and it retrofits nothing.** Multi-check-off steps are unordered by default; `pwr_startup`'s four 1/M rungs are the only ordered steps in the pool.
+
+
 ### Changed (six owner rulings on the walkthroughs — 2026-09-14/15)
 
 - **The last inverse-count-rate (1/M) step now waits for SOURCE RANGE to stop moving, not just to

@@ -113,6 +113,27 @@ POOL.forEach(function (proc) {
 if (!only) {
   console.log(B + '\nTHE LIVE RUNTIME  [Path 3 on a pwr2 service]' + X);
 
+  /* PRESSING AN ORDERED STEP'S BUTTONS THE WAY THE PLAYER HAS TO (#756). A section that walks a
+   * live checklist by issuing every `accs[].cmd` on step entry drives a route that no longer
+   * exists: on an `accs_ordered` step a cmd row is DEAF until the rows above it are met, so the
+   * press lands on nothing and the walk stalls there for ever. (Measured: the #731 trip-block
+   * sections stalled at step 5 of pwr_startup, index 4, and reported "never reached step 16".)
+   * This presses the FIRST UNMET row, once, each time it becomes the live one — read off the
+   * snapshot's own per-row verdicts, never re-pressed, because `plot_1m_point` is not idempotent
+   * and a per-tick re-press would bank a dozen points. */
+  function pressOrderedRow(svc, st, cs, memo) {
+    if (!st || !st.accs || !st.accs.length || !cs || !cs.accs) return;
+    for (var k = 0; k < st.accs.length; k++) {
+      if (cs.accs[k] && cs.accs[k].met) continue;
+      var e = st.accs[k];
+      if (e && e.cmd && !memo[k]) {
+        memo[k] = true;
+        svc.handleCommand(typeof e.cmd === 'string' ? { action: e.cmd } : e.cmd);
+      }
+      return;                                   // only the first unmet row is live
+    }
+  }
+
   function mkSvc(ic) {
     var svc = new RD.SimulationService({ seed: 7 });
     svc.selectPlant('pwr2', ic, null, undefined);
@@ -244,6 +265,98 @@ if (!only) {
        !!c3 && (c3.step_index >= 1 || c3.complete),
        c3 && ('step_index ' + c3.step_index + ' complete ' + c3.complete));
     RD.MANUAL_PROCEDURES.pwr2.pop();
+  })();
+
+  /* 2x. ORDERED MULTI-CHECK-OFF (#756) - `accs_ordered`, the sequencer under the owner's
+   * substeps *(OWNER DIRECTIVE, 2026-09-15: "We instruct to pull rods to a count/however many
+   * steps. The next substep says to wait for the startup rate to stabilize. Once the startup
+   * rate hits a predetermined number that step checks off. Then have another substep to plot
+   * the 1/m point.")*.
+   *
+   * THE PAIR, because either half alone is satisfied by a broken sequencer: one that NEVER
+   * opens passes "cannot latch early", and one that ALWAYS opens passes "advances when done".
+   * Both are asserted here against the SAME probe object, driven through the live path
+   * (`_stepChecklist` -> `_gradeAccs` / `_accsCmdWatch` -> `c.awaitingAck` -> Continue).
+   *
+   * THE INJECTION IS THE THIRD CHECK and it is the flag itself: the identical probe with
+   * `accs_ordered` deleted latches the later entry on the early press. MEASURED before the
+   * feature existed, on the shipped pool's own shape: accs = [false,true] with the cmd entry
+   * latched and the predicate entry still false. That is the hole #755 filed and could not
+   * close - the plot press was never gated, only the step's completion. */
+  (function () {
+    /* THE FIXTURE IS THE 1/M LADDER'S OWN SHAPE, MINIATURISED: a `steady` row gating a cmd row.
+     * `power_pct` at full power IS steady, so the row is false only because its 30 s window is
+     * not yet covered - which is exactly why it works here, and is the one predicate that goes
+     * false -> true on the CLOCK with no plant driving.
+     * ⚠ THE FIRST DRAFT OF THIS PROBE USED `ir_high_blocked > 0`, WHICH IS ALREADY TRUE ON A
+     * hot_full_power BOOT - so no row was ever blocked and all three checks read [true,true].
+     * A sequencer probe whose first row starts MET tests nothing. */
+    function probe(ordered) {
+      return {
+        id: '__ord_probe__', category: 'control', title: 'ordered probe', from: 'hot_full_power',
+        steps: [
+          { text: 'ordered pair', accs_ordered: ordered || undefined,
+            accs: [{ p: 'power_pct', op: 'steady', v: 0.02, window: 30,
+                     ask: 'Wait for power to settle', label: 'power steady' },
+                   { cmd: 'acknowledge_all_alarms', ask: 'Acknowledge', label: 'acked' }] },
+          { text: 'done', acc: { p: 'power_pct', op: '>', v: 5 } },
+        ],
+      };
+    }
+    function run(ordered) {
+      RD.MANUAL_PROCEDURES.pwr2.push(probe(ordered));
+      var svc = mkSvc('hot_full_power');
+      svc.handleCommand({ action: 'start_checklist', procedure_id: '__ord_probe__' });
+      var s = null, i;
+      for (i = 0; i < 8; i++) s = svc.tick();     // 10x: ~1 s of plant per tick, window not covered
+      // the player presses the LATER substep's button first, with the first row still unmet
+      svc.handleCommand({ action: 'acknowledge_all_alarms' });
+      for (i = 0; i < 5; i++) s = svc.tick();
+      var early = s.instructor.checklist.accs.map(function (a) { return !!a.met; });
+      // now let the first row satisfy itself - the window closes and the steadiness holds
+      for (i = 0; i < 60; i++) s = svc.tick();
+      var mid = s.instructor.checklist.accs.map(function (a) { return !!a.met; });
+      // ...and press again, which is what an ordered step costs the player: one more press
+      svc.handleCommand({ action: 'acknowledge_all_alarms' });
+      for (i = 0; i < 20; i++) s = svc.tick();
+      var c = s.instructor.checklist;
+      var late = c.accs.map(function (a) { return !!a.met; }), ack = !!c.awaiting_ack;
+      svc.handleCommand({ action: 'checklist_check', index: c.step_index });
+      for (i = 0; i < 5; i++) s = svc.tick();
+      var c2 = s.instructor.checklist;
+      RD.MANUAL_PROCEDURES.pwr2.pop();
+      return { early: early, mid: mid, late: late, ack: ack,
+               advanced: !!(c2 && (c2.step_index >= 1 || c2.complete)) };
+    }
+    var ord = run(true), un = run(false);
+    ck('2x ordered: a cmd entry pressed BEFORE its predecessor is met does not latch (#756)',
+       ord.early[0] === false && ord.early[1] === false, 'accs ' + JSON.stringify(ord.early));
+    ck('2x ordered: ...and satisfying the predecessor does not retroactively bank that press',
+       ord.mid[0] === true && ord.mid[1] === false, 'accs ' + JSON.stringify(ord.mid));
+    ck('2x ordered: ...but the press AFTER it latches, the step lights Continue and advances',
+       ord.late[0] === true && ord.late[1] === true && ord.ack === true && ord.advanced === true,
+       'accs ' + JSON.stringify(ord.late) + ' awaiting_ack ' + ord.ack + ' advanced ' + ord.advanced);
+    ck('2x INJECTION: the same probe WITHOUT accs_ordered latches the later entry early',
+       un.early[0] === false && un.early[1] === true,
+       'unordered accs ' + JSON.stringify(un.early) + ' (this is the pre-#756 behaviour)');
+    /* the static half: the flag is opt-in and means nothing on a step with one row, and every
+     * ordered step's rows must be authorable as a sequence (an `ask` on each, so the card has an
+     * instruction to draw for the row the player is standing on). */
+    var ordSteps = [];
+    POOL.forEach(function (pr) {
+      (pr.steps || []).forEach(function (st, k) {
+        if (st.accs_ordered) ordSteps.push({ id: pr.id, k: k + 1, st: st });
+      });
+    });
+    var badOrd = ordSteps.filter(function (e) {
+      return !e.st.accs || e.st.accs.length < 2 ||
+             e.st.accs.some(function (en) { return !en.ask; });
+    });
+    ck('2x every accs_ordered step has at least two rows and an `ask` on each (#756)',
+       ordSteps.length > 0 && badOrd.length === 0,
+       badOrd.length ? badOrd.map(function (e) { return e.id + ' step ' + e.k; }).join(', ')
+                     : ordSteps.length + ' ordered steps: ' +
+                       ordSteps.map(function (e) { return e.id + ' ' + e.k; }).join(', '));
   })();
 
   /* 2d. natural language coverage (#244 item 7): every predicate param in the pwr2 pool has
@@ -1166,7 +1279,7 @@ if (!only) {
     svc.timeAcceleration = 60;
     var s = null; for (var i = 0; i < 3; i++) s = svc.tick();
     svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
-    var pressed = {}, t17 = null, metOnEntry = null, cs = null;
+    var pressed = {}, ordMemo = {}, t17 = null, metOnEntry = null, cs = null;
     for (var n = 0; n < 6000; n++) {
       s = svc.tick();
       cs = s.instructor && s.instructor.checklist;
@@ -1182,10 +1295,14 @@ if (!only) {
           t17 = s.metadata.sim_time;
         } else {
           if (st.cmd) svc.handleCommand(st.cmd);
-          (st.accs || []).forEach(function (e) {
+          if (!st.accs_ordered) (st.accs || []).forEach(function (e) {
             if (e.cmd) svc.handleCommand(typeof e.cmd === 'string' ? { action: e.cmd } : e.cmd);
           });
         }
+      }
+      if (st && st.accs_ordered && idx !== i16 && idx !== i17) {
+        ordMemo[idx] = ordMemo[idx] || {};
+        pressOrderedRow(svc, st, cs, ordMemo[idx]);
       }
       if (idx === i17) {
         var d = s.metadata.sim_time - t17;
@@ -1209,7 +1326,7 @@ if (!only) {
     svc2.timeAcceleration = 60;
     var s2 = null; for (var i2 = 0; i2 < 3; i2++) s2 = svc2.tick();
     svc2.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
-    var pressed2 = {}, t17b = null, metUnblocked = null, metBlocked = null, blockedAt = null, cs2 = null;
+    var pressed2 = {}, ordMemo2 = {}, t17b = null, metUnblocked = null, metBlocked = null, blockedAt = null, cs2 = null;
     for (var n2 = 0; n2 < 6000; n2++) {
       s2 = svc2.tick();
       cs2 = s2.instructor && s2.instructor.checklist;
@@ -1223,10 +1340,14 @@ if (!only) {
           svc2.handleCommand({ action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: false });
         } else {
           if (st2.cmd) svc2.handleCommand(st2.cmd);
-          (st2.accs || []).forEach(function (e) {
+          if (!st2.accs_ordered) (st2.accs || []).forEach(function (e) {
             if (e.cmd) svc2.handleCommand(typeof e.cmd === 'string' ? { action: e.cmd } : e.cmd);
           });
         }
+      }
+      if (st2 && st2.accs_ordered && j !== i16 && j !== i17) {
+        ordMemo2[j] = ordMemo2[j] || {};
+        pressOrderedRow(svc2, st2, cs2, ordMemo2[j]);
       }
       if (j === i17) {
         var d2 = s2.metadata.sim_time - t17b;

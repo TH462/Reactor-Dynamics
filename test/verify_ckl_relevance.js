@@ -567,10 +567,14 @@ function sig(rows) {
           if (mode === 'unhide') delete accs[1].hidden;
           if (mode === 'single') accs = [accs[0]];
           if (mode === 'noask') delete accs[2].ask;
+          /* the ordered variant drops the hidden cmd twin, which would otherwise be the blocking
+           * row (a cmd entry is unmet until it is pressed) and put EVERY visible row behind it */
+          if (mode === 'ordered') accs.splice(1, 1);
           P.push({ id: 'zz_row_probe', category: 'control', manual_ref: 'ZZ-01',
                    title: 'Row probe', purpose: 'Render fixture.', from: 'hot_full_power',
                    steps: [{ text: 'A step with several rows.', why: 'Fixture.',
-                             control: '(observe)', accs: accs }] });
+                             control: '(observe)', accs: accs,
+                             accs_ordered: mode === 'ordered' || undefined }] });
         }, mutate);
         await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
         await page.waitForTimeout(200);
@@ -588,6 +592,7 @@ function sig(rows) {
             return { tag: n ? n.textContent.trim() : null,
                      when: when ? when.textContent.trim() : null,
                      met: r.classList.contains('ckl-crit-met'),
+                     wait: r.classList.contains('ckl-crit-wait'),
                      text: r.textContent.replace(/\s+/g, ' ').trim() };
           });
         });
@@ -629,6 +634,25 @@ function sig(rows) {
       ck('...VARIANT: dropping the `ask` drops the second line and leaves the done-when',
          !!noask && noask.length === 3 && noask[1].when === null && /The first done-when/.test(noask[1].text),
          noask ? 'row 1b when=' + JSON.stringify(noask[1].when) + ', text ' + JSON.stringify(noask[1].text.slice(0, 40)) : 'no rows');
+
+      /* #756: THE CARD HAS TO SAY WHICH ROW IS LIVE, or an ordered step is a button that silently
+       * does nothing. Same three-row fixture, `accs_ordered` on: row a is met, row b is the one
+       * the player is on, row c is BEHIND the sequencer. Read off the rendered card, because the
+       * runtime's per-row `met` bits are what run_checklist_pwr2 2x asserts and this is the other
+       * end of the wire. The comparison against `base` above is the discriminator: the same
+       * fixture WITHOUT the flag draws row c identically to row b. */
+      var ordr = await paint('ordered');
+      ck('#756 render: a row still behind the sequencer is drawn muted, with no done-when',
+         !!ordr && ordr.length === 3 && ordr[2].wait === true && ordr[2].when === null &&
+         /·/.test(ordr[2].text) && !/○/.test(ordr[2].text),
+         ordr ? 'row 1c wait=' + ordr[2].wait + ' when=' + JSON.stringify(ordr[2].when) +
+                ' text ' + JSON.stringify(ordr[2].text.slice(0, 34)) : 'no rows');
+      ck('...and the row the player is ON keeps the live treatment: not muted, ask + done-when',
+         !!ordr && ordr[0].met === true && ordr[1].wait === false && ordr[1].when === 'The first done-when' &&
+         /○/.test(ordr[1].text) && /Do the first thing\./.test(ordr[1].text) &&
+         base[2].wait === false,
+         ordr ? 'row 1b wait=' + ordr[1].wait + ' when=' + JSON.stringify(ordr[1].when) +
+                '; UNORDERED row 1c wait=' + base[2].wait : 'no rows');
     })();
 
   } catch (err) {
