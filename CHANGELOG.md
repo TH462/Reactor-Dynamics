@@ -30,6 +30,57 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed (the at-power permissive P-7 is the anchor plant's 8 %, and P-10 has one home — #753)
+
+- **P-7, the at-power permissive, moves 10 % → 8 %** *(OWNER RULING, 2026-09-14, #753: "1. Yes,
+  0.08")*, and is re-sourced from the generic Westinghouse figure (WTSM 10.3 §10.3.4.3) to the
+  anchor plant: Ginna Technical Specification Bases B 3.3.1 (ML20339A221) puts P-7 and P-10 at
+  the same crossing — *“generate a reactor trip above approximately 8% RTP (P-7 setpoint)”*. It
+  gates the low reactor coolant flow trip and the high pressurizer level trip, so both now arm
+  two points of power earlier.
+- **What it actually fixed was a CHATTER, measured.** At the shipped `low_power` initial
+  condition (true power 9.60 %) the indicated power-range channel spans **8.713 to 10.472 %**
+  around a mean of 9.572 — it straddles 10 % and never approaches 8. At 0.10 the permissive took
+  **92 transitions in 600 s**, one every 6.5 s, and both at-power trips armed and disarmed with
+  it on a settled plant nobody was touching. At 0.08 they sit steadily armed and the transition
+  count is zero. No trip setpoint moved and no authored leg crosses the band: the startup
+  walkthrough enters its trip-block steps at 10.5 %, loop flow sits at 99.85 % of rated against
+  an 87 % trip, and pressurizer level at 28.3 % against 87 %.
+- **P-10 had two homes and the shipped plant read neither.** `PWR_TRIP_BLOCK_PERMISSIVE` in the
+  control layer said `power_range high 10.0`; the engine's own P-10 is 8 % and is what decides.
+  The kernel never tests the control-layer copy for this plant — its trips list is empty, so
+  `set_trip_block` forwards to the engine — and the command path **never refuses**: measured,
+  accepted at 3.578 % power with the lamp lighting, then revoked by the engine on the next
+  protection step. What refuses is the BOARD BUTTON, and only below the permissive: the TRIP
+  BLOCKS row renders `disabled` when `can_block` is false, so below 8 % indicated the press
+  cannot be made at all, and from 8 % up it can be made and then taken away. The engine now publishes the number (`trip_block_permissive` derived
+  from `P10.frac`, and `permissive_pct` on each P-10 row of `trip_block_status`), and the
+  control-layer constant is annotated as the retired engine's own datum.
+- **The startup walkthrough said the plant refuses a press it never refuses.** `pwr_startup`'s
+  trip-block steps now describe both refusals and the number that matters: below 8 % the button
+  will not take the press, and between there and about 9 ½ % the block goes back out by itself. Measured survival of one press — **1 s at 8.19 %, 4 s at
+  8.72 %, 105 s at 9.10 %, indefinite from 9.36 %** — because the permissive is graded on the
+  indicated channel (± 0.3 %, no 2-of-4 coincidence), so the effective threshold is a noise
+  statistic rather than a setpoint.
+
+### Changed (the criticality dwell now carries a speed, and two boration hints carry measured numbers)
+
+- **`pwr_startup`'s criticality approach gains a fast-forward line** *(OWNER, 2026-09-14: "We
+  could mention that dwell in the walkthrough and have the user put it at 5 or 10x speed. We
+  should test this region.")*, and the region was driven before the line was written. From one
+  saved state at the creep press, steps 8–11 at **1× / 5× / 10× / 30× / 60×**: reactivity
+  crosses zero at t = 703 s and bank 207 in all five, power reaches 0.1 % at 2109–2110 s, peak
+  power is **4.0112–4.0113 %**, and **no speed drop fires at any speed** with the attention-stop
+  and speed-hold defaults on. What the speed costs is the player's eye: worst power change
+  inside one 2.5 s glance is **0.020 % at 1×, 0.094 % at 5×, 0.186 % at 10×, 1.083 % at 60×**.
+  The step now asks for 10×; the step after it, which may want a rod tap, asks for 5×. Both
+  previously said “stay at 1×”, from a finding measured on the pre-#750 leg that overshot.
+- **Two boration wait lines re-measured.** Boration is a flat delivery, not the first-order
+  approach dilution is: **3.00 ppm/min in every 60 s window, start to finish**. The cooldown's
+  “about 60 plant-minutes” is **53.7 min to the 880 ppm the step checks off at and 66.7 to the
+  full 920**, and the rampdown's “about half a plant-hour” is **35.6 min** (35.3 to the 718 ppm sample, 35.6 to the 719 target). Both lines now give
+  the measured figure and say the rate does not taper.
+
 ### Fixed (the power ascension now dilutes boron, and two of its own numbers were wrong — #752)
 
 - **`pwr2:pwr_raise_power` gains a graded first dilution dose.** The leg's last boron action was

@@ -10932,3 +10932,85 @@ now runs at: 625.78 -> 617.03); its `< 680` and `< 645` acceptances do **not** m
 are about the 660 ppm the climb *leaves*, not the arrival. The leg's `control_bank_steps < 600`
 precondition still discriminates a preset (606) from the startup's handover (227) — with 6 steps of
 margin instead of 27, which the comment now says out loud.
+
+## 134. #753 — P-7 WAS THE GENERIC 10 % WHILE THE CHANNEL IT READS SPANS 8.7–10.5 %, SO THE PERMISSIVE CHATTERED 92 TIMES IN 600 s — 2026-09-14
+
+### 134.1 The ruling and the source
+
+*(OWNER RULING, 2026-09-14, #753: "1. Yes, 0.08")* — given on the option of bringing P-7, the
+at-power permissive, from 0.10 to 0.08 so that it and P-10 are one crossing, as the anchor plant
+has them.
+
+The engine carried **two** permissives from **two** sources: P-7 at the generic Westinghouse 10 %
+(WTSM 10.3 §10.3.4.3) and P-10 at Ginna's 8 % (TS Bases B 3.3.1, ML20339A221). The anchor plant
+puts both at the same crossing, and says so on the very Function P-7 arms here — *“The Reactor
+Coolant Flow-Low (Single Loop) and (Two Loops) trip Functions utilize three common flow
+transmitters per RCS loop to generate a reactor trip above approximately 8% RTP (P-7 setpoint).”*
+— and again on Pressurizer Pressure-Low: *“automatically enabled on increasing power by the P-7
+interlock (approximately 8% RTP)”*. The same Bases requires every permissive value to be *“treated
+as a Nominal value”*, which is how P-10 was already carried.
+
+### 134.2 Q0 — what 10 % was actually doing
+
+P-7 is tested against `drivers.power_frac`, which is `eng.ins.reading.power_range` — the
+INSTRUMENTED channel (HR1), sigma 0.3 % of power, noise correlation `max(0.05, tau_s x 0.25)` =
+**0.05 s** against a 0.02 s protection step, i.e. effectively white. Measured at the shipped
+`low_power` initial condition (true power 9.60 %), 600 ticks of a settled plant:
+
+```
+indicated power-range   mean 9.572 %   min 8.713 %   max 10.472 %
+samples below 10 %      550 / 600      samples below 8 %   0 / 600
+p7_met transitions      92 in 600 s (one every 6.5 s)
+lo_flow / hi_pzr_level  armed <-> unarmed on every one of them
+```
+
+So the old value did not merely lack an anchor-plant source: it sat INSIDE the noise band of the
+channel it reads, and a permissive whose channel straddles its setpoint is not a permissive. At
+0.08 the minimum sample is 0.71 points clear and the transition count is zero. Margins in that
+state are wide either way — loop flow 99.85 % of rated against an 87 % trip, pressurizer level
+28.3 % against 87 % — so nothing ever tripped; the cost was two protection lines appearing and
+disappearing on the board.
+
+### 134.3 The same defect, one rung down: the P-10 block revoke
+
+P-10 is 8 % and is read off the same channel, and the revoke is an instantaneous per-step
+comparison with no two-out-of-four coincidence and no deadband. Measured by pressing
+`pr_low_setpoint` once at each load point and timing how long the request survives:
+
+```
+true power   driver mean   one press survives
+   8.19 %       8.29 %          1 s
+   8.72 %       8.73 %          4 s
+   9.10 %       9.11 %        105 s
+   9.36 %       9.33 %      > 900 s   (and every load above)
+```
+
+**The effective threshold is a noise statistic, not a setpoint** — it is wherever the chance of
+one sub-8 % sample crosses the observation window (about 3.5 sigma at 9.10 %, 4.6 sigma at
+9.36 %). That is what the separately-filed “the block holds from 9.172 %” measured, and it is why
+that number is neither 8 nor 10. **NOT FIXED HERE** — giving the revoke a confirmation time is a
+protection behaviour change this ruling did not cover; recommended on #753.
+
+### 134.4 One home for P-10
+
+`PWR_TRIP_BLOCK_PERMISSIVE` (`layers/control/pwr_control.js`) said `power_range high 10.0` and
+rode into PWR2's config through `Object.assign`. **The kernel never tests it on this plant**:
+`getProtectionConfig` hands it an empty `trips` list, so `set_trip_block` forwards to the engine
+and `_permTest` is unreachable. Measured: the press is accepted at **3.578 %** power, the lamp
+lights, and the engine revokes on the next protection step — no refusal was ever possible from
+the control layer. The engine now publishes the number instead: `trip_block_permissive` derived
+from `P10.frac`, and `permissive_pct` on each P-10 row of `trip_block_status`. The control-layer
+constant survives as the RETIRED engine's own kernel-trip datum, annotated — `pwr_control.js`
+reading `pwr2_protection` would be the cross-plant coupling HR3 forbids.
+
+**Still on the stale copy:** `ui/diagram/board/pwr_board_wiring.js` `powerBand()` reads
+`_PROT.trip_block_permissive.setpoint`, and `_PROT` is `RD.PWR_CONTROL.protection` whatever engine
+is running — so the power tile opens its block window at 10 % while the plant opens it at 8 %.
+One line, and the field it needs now exists.
+
+### 134.5 Gate
+
+`run_pwr2_protection` 125 → **127 checks, 0 failed**. The pinned literal moves to 0.08 and two
+checks are added: **P-7 === P-10** (the ruling's substance — two separately-correct literals is
+exactly how the pair drifted apart) and a 9 %-power high-level trip, which is the band the ruling
+opened. Injection-proved: `P7.frac` back to 0.10 turns those three red and nothing else.

@@ -806,7 +806,7 @@ Until 2026-07-29 the **low-flow reactor trip read true flow**, because no flow i
 
 **RCS Loop Flow** is modelled on the real measurement: **elbow taps** on the crossover-leg 90° elbow, reading the differential pressure between the inner and outer radius of the bend, with ΔP ∝ flow². Nothing is inserted into the flow path. Real accuracy figures for this channel are ±10 % absolute, with trip-point repeatability around ±1 %.
 
-The **setpoint is 87 % of rated, blocked below P-7 (10 % power)**. Measured on this plant, an RCP trip from full power: indicated flow crosses the setpoint at **3.7 s**, the trip fires at **4.6 s** on the sourced one-second delay, and the core **never voids at all** — peak void fraction **0.000**, indicated subcooling bottoming at **38.4 °F (21.3 °C)**. The trip does its job with margin to spare, which is the un-dramatic answer and the true one.
+The **setpoint is 87 % of rated, blocked below P-7 (8 % power)**. Measured on this plant, an RCP trip from full power: indicated flow crosses the setpoint at **3.7 s**, the trip fires at **4.6 s** on the sourced one-second delay, and the core **never voids at all** — peak void fraction **0.000**, indicated subcooling bottoming at **38.4 °F (21.3 °C)**. The trip does its job with margin to spare, which is the un-dramatic answer and the true one.
 
 **One departure remains, and it is deliberate: this plant has ONE flow channel**, where a real Westinghouse unit has **three detectors per loop and trips on 2-of-3**. That follows from the plant being single-loop and from every other protection function here being single-channel too — but be clear about what it costs, because it is the thing this event is built to teach:
 

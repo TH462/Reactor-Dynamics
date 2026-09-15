@@ -685,7 +685,7 @@ This plant models a single representative RCP. Multi-loop outage procedures are 
 
 | Type | Text |
 |------|------|
-| **WARNING** | Do **not** stop RCP at power except by drill/emergency — low-flow trip fires in ~2 s at **90 %** of rated flow (blocked below P-7 / 10 %). |
+| **WARNING** | Do **not** stop RCP at power except by drill/emergency — low-flow trip fires in ~2 s at **90 %** of rated flow (blocked below P-7 / 8 %). |
 | **CAUTION** | Flow is **one channel**. If the pump is gone and the gauge disagrees, believe the pump — the trip reads that gauge. See `12` §10.7. |
 | **NOTE** | Spray effectiveness requires flow. On heatup, RCPs **are** the heat source (N01). |
 

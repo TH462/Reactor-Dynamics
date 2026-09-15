@@ -1409,6 +1409,19 @@
       var base = root.RD.PWR_CONFIG.protection;
       this._protCfg = Object.assign({}, base, {
         trips: [], actuations: [], interlocks: [], runbacks: [],
+        /* ONE HOME FOR P-10 (#753, 2026-09-14). The pwr table's own `trip_block_permissive` is
+         * `power_range high 10.0` -- the RETIRED plant's kernel-trip datum -- and it rode in here
+         * on the Object.assign above, so this plant's config announced a permissive at 10 % while
+         * its RPS revokes the block at 8 % (P10.frac, Ginna TS Bases B 3.3.1). Nothing caught it
+         * because the kernel never TESTS this for PWR2: `trips` is empty one line up, so
+         * set_trip_block forwards to the engine's own door and this row is read only by surfaces
+         * that DRAW the permissive. Derived from the engine's constant, never re-typed -- a
+         * second copy of a permissive is wrong within the hour (the #716 note further down
+         * measured 16 phantom events from exactly that). Same instrument and direction as the
+         * law it mirrors: the RPS reads the INSTRUMENTED power-range channel (pwr2_engine's HR1
+         * driver block), not true power. */
+        trip_block_permissive: { instrument: 'power_range', direction: 'high',
+                                 setpoint: root.RD.pwr2.protection.P10.frac * 100 },
         /* THE RESET'S FIRST PERMISSIVE, RESTORED (#571). The kernel implements this refusal by
          * iterating `trips` — which is empty two lines up, correctly — so TRIP_SIGNAL_PRESENT
          * could never fire on this plant while `Manuals/03` §3.5.1 documented it as one of two.
@@ -1573,6 +1586,7 @@
    * symmetric. */
   PWR2Engine.prototype.getTripBlocks = function () {
     var e = this.eng, rp = e.rpsReport || {};
+    var PROT_P10_PCT = root.RD.pwr2.protection.P10.frac * 100;
     var blocked = !!e.pt.blockLowFlux;
     var asserted = false, sp = 35;
     /* the SECOND P-10 request (#601) — the 25 % intermediate-range trip, its own lever */
@@ -1667,7 +1681,16 @@
           permissive: rp.p10_met === true,
           can_block: !blocked && rp.p10_met === true,
           can_clear: blocked,
-          setpoint: sp
+          setpoint: sp,
+          /* THE PERMISSIVE'S OWN NUMBER, in the % the `power_range` instrument speaks (#753).
+           * `permissive` says whether it is satisfied NOW; a surface that draws WHERE it sits --
+           * the power tile's block window -- had no source for the number and read it out of the
+           * retired plant's static table, which says 10 % against this plant's 8 %. Published
+           * from P10.frac like `trip_block_permissive` above, so the band and the law are one
+           * constant. Both P-10 rows carry it; the P-11 rows do not (their permissive is a
+           * PRESSURE and no surface draws it yet -- publish it when one does, with a
+           * measurement, not by looping). */
+          permissive_pct: PROT_P10_PCT
         },
         /* the intermediate-range trip (#601) — SAME permissive as the row above, separate
          * request. The board id is the pwr1 board's `ir_high`, like every other row here. */
@@ -1676,7 +1699,8 @@
           permissive: rp.p10_met === true,
           can_block: !irB && rp.p10_met === true,
           can_clear: irB,
-          setpoint: spIr
+          setpoint: spIr,
+          permissive_pct: PROT_P10_PCT      /* see the row above */
         },
         lo_press: { blocked: loB, asserted: loAsserted, permissive: p11,
                     can_block: !loB && p11, can_clear: loB, setpoint: spLo },

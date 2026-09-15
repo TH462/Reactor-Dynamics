@@ -245,6 +245,21 @@
 
   // P-10, the nuclear at-power permissive: manual trip blocks are allowed only
   // above 10 % power-range power, and auto-clear (reinstate) below it.
+  //
+  // ⚠ THIS IS THE RETIRED ENGINE'S OWN DATUM AND IT IS NOT THE SHIPPED PLANT'S LAW (#753,
+  // 2026-09-14). It governs the kernel trips in THIS file's table, which only the retired `pwr`
+  // engine carries. PWR2's RPS lives in the engine and its P-10 is 8 % — Ginna TS Bases B 3.3.1
+  // (ML20339A221), `P10.frac` in engines/pwr2/pwr2_protection.js — so the two numbers differ by
+  // two points of power and the kernel never notices: `getProtectionConfig` hands PWR2 an EMPTY
+  // trips list, `setTripBlock` forwards to the engine's own door, and `_permTest` is never
+  // reached on that plant. Measured before the collapse: the block is accepted at 3.578 % power
+  // and the ENGINE revokes it on the next protection step — no refusal ever came from here.
+  //
+  // DO NOT read this constant to draw the shipped plant's block window. PWR2 publishes the law
+  // itself, derived from P10.frac and never re-typed: `getProtectionConfig().trip_block_permissive`
+  // and `getTripBlocks().trip_block_status.<row>.permissive_pct`. Reaching the other way — this
+  // file reading pwr2_protection — is the cross-plant coupling HR3 forbids and is refused
+  // deliberately (see the P6.amps note above).
   var PWR_TRIP_BLOCK_PERMISSIVE = { instrument: 'power_range', direction: 'high', setpoint: 10.0 };
 
   // Operator-facing names for instrument channels (#75). Instrument ids are source

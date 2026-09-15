@@ -117,9 +117,32 @@
     hi_pzr_level_frac:  0.87,
     src: 'Ginna UFSAR ch15 (ML20339A101) Table 15.0-6; hi level Ginna TS Bases B 3.4.9 + WTSM 10.3.4.3'
   };
-  /* P-7, the at-power permissive gating the high-level trip. UNLIKE P-10 there is no operator
-   * request anywhere in it -- below 10 % power the function is simply not active, above it is
-   * -- so it is a plain automatic gate, not a revoked request. WTSM 10.3.4.3 verbatim. */
+  /* P-7, the at-power permissive gating the high-level and low-flow trips. UNLIKE P-10 there is
+   * no operator request anywhere in it -- below the permissive the function is simply not active,
+   * above it is -- so it is a plain automatic gate, not a revoked request.
+   *
+   * 0.10 -> 0.08, RE-SOURCED TO THE ANCHOR PLANT (#753, OWNER RULING, 2026-09-14: "1. Yes, 0.08").
+   * It carried the GENERIC Westinghouse 10 % (WTSM 10.3 sec 10.3.4.3) while P-10 four hundred
+   * lines below carried Ginna's 8 % -- two permissives, one plant, two crossings, and the anchor
+   * plant puts BOTH at the same number. Ginna TS Bases B 3.3.1 (ML20339A221), verbatim, on
+   * Reactor Coolant Flow-Low -- which is one of the two rows this gate arms:
+   *
+   *   *"The Reactor Coolant Flow-Low (Single Loop) and (Two Loops) trip Functions utilize three
+   *    common flow transmitters per RCS loop to generate a reactor trip above approximately 8%
+   *    RTP (P-7 setpoint)."*
+   *
+   * and on Pressurizer Pressure-Low: *"Function is automatically enabled on increasing power by
+   * the P-7 interlock (approximately 8% RTP)."* The same Bases treats every permissive value as
+   * nominal ("In situations where the Applicability is associated with a Reactor Trip System
+   * Interlock/Permissive (P-6, P-7, P-8, P-9, and P-10), the Applicability value is to be treated
+   * as a Nominal value") -- so 8 % is carried as the nominal it is, exactly as P-10 is.
+   *
+   * WHAT MOVING IT BOUGHT, MEASURED (#753, the shipped `low_power` initial condition, 600 s):
+   * indicated power-range mean 9.572 %, min 8.713 %, max 10.472 % -- the channel straddles 10 %
+   * and never approaches 8 %. At 0.10 this gate CHATTERED: `p7_met` took 92 transitions in 600 s
+   * (one every 6.5 s) and `lo_flow` and `hi_pzr_level` armed and disarmed with it, on a settled
+   * plant nobody was touching. At 0.08 both rows sit steadily armed. A permissive whose channel
+   * noise spans the setpoint is not a permissive; it is a flicker. */
   /* [adopted] the P-11 pressurizer-pressure permissive — pwr1's ~1970 psig / 13.6 MPa pair
    * (its lo_press/si_trip block permissive); Ginna's own installed figure is not in corpus.
    * Below it the operator MAY block the low-pressure trip and the SI actuation (the
@@ -127,8 +150,8 @@
   var P11 = { kind: '[adopted]', mpa: 13.6 };
   var P7 = {
     kind: '[sourced]',
-    frac: 0.10,
-    src: 'WTSM 10.3 (ML11223A290) sec 10.3.4.3'
+    frac: 0.08,
+    src: 'Ginna TS Bases B 3.3.1 (ML20339A221), Reactor Coolant Flow-Low + Pressurizer Pressure-Low'
   };
   var ESFAS = {
     kind: '[sourced]',

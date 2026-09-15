@@ -371,6 +371,8 @@ IR ≥ 1e-10 A (P-6) → the intermediate range is on scale and is the instrumen
 
 Above **P-10 (8 %)** — already Mode 1, At Power — block **IR high (25 %)** first, then **PR low setpoint (35 %)**. Two separate presses; the IR one also clears the 20 % rod stop. Both auto-reinstate below P-10.
 
+**Take them with power comfortably above 10 %, not at 8 %.** The permissive is graded on the indicated power-range channel, which carries about ± 0.3 % with no 2-of-4 coincidence behind it, so a block taken just over 8 % is revoked within seconds: measured, one press survives **1 s at 8.19 % power, 4 s at 8.72 %, 105 s at 9.10 %, and indefinitely from 9.36 %**. Below the permissive the BLOCK control does not accept the press at all; above it the press is always accepted and it is the block that does not hold (#753).
+
 ### PWR-T15 — Learning ↔ Realistic display
 
 Training display only; does not change plant MODE.

@@ -2043,9 +2043,32 @@
          * a plant reading 1e-4 %. Measured across seeds 1/7/42/123 the crossing is at 1444, 1506,
          * 1650 and 1506 s; 1800 leaves 9 % over the worst. Move the creep and this hold moves. */
         { text: "Press SLOW and hold WITHDRAW to just short of the 1/M panel's predicted position, then tap single steps.",
-          note: 'The 1/M panel predicts a CONTROL ROD POSITION, in steps — that is the number on the ROD CONTROL card, and it reads about three steps high at the end of the approach, so the reactor goes critical just short of it. Stop below the prediction and walk up in single taps. Wait after each tap. Critical is when the counts keep climbing and STARTUP RATE stays positive with the rods still. SOURCE RANGE will switch itself off part way through this step, above 1.0e5 (100,000 counts per second); that is normal and there is no button for it. The two detectors overlap on purpose — the source-range counters would wear out at power, so the plant secures them once INTER RANGE has a reading, and losing the counts is the plant telling you the approach worked. From that moment INTER RANGE and STARTUP RATE are what you steer on, and the 1/M plot is finished. This is a long step: the approach is deliberately gentle, so expect about twenty-five plant-minutes before REACTOR POWER reads anything at all. Stay at 1× from here until power settles near 1 %: at 60× the reactor can run from 0 to 10 % between two glances. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.',
+          note: 'This is a thirty plant-minute wait once the rods stop, and the step to use the speed buttons on: put the clock on 10×, and come back to 1× before you move a rod again. The 1/M panel predicts a CONTROL ROD POSITION, in steps — that is the number on the ROD CONTROL card, and it reads about three steps high at the end of the approach, so the reactor goes critical just short of it. Stop below the prediction and walk up in single taps. Wait after each tap. Critical is when the counts keep climbing and STARTUP RATE stays positive with the rods still. SOURCE RANGE will switch itself off part way through this step, above 1.0e5 (100,000 counts per second); that is normal and there is no button for it. The two detectors overlap on purpose — the source-range counters would wear out at power, so the plant secures them once INTER RANGE has a reading, and losing the counts is the plant telling you the approach worked. From that moment INTER RANGE and STARTUP RATE are what you steer on, and the 1/M plot is finished. The approach is deliberately gentle, so expect about twenty-five plant-minutes before REACTOR POWER reads anything at all. The plant does exactly the same thing at 1×, 5× or 10× — the climb still stops itself just over 4 % — so the speed costs you nothing here. Not 60×: there a 2 ½ second glance away is two and a half plant-minutes of reactor. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.',
           why: 'Critical means the chain reaction sustains itself: power keeps rising with nothing pushing it, and a positive STARTUP RATE with the rods still is the sign. No single step is dramatic, but ten of them are — stopping five steps above criticality rather than eighteen is what keeps the climb slow, because below the point of adding heat nothing in the plant takes that reactivity back out for you. Expect STARTUP RATE to settle near 0.15.',
           control: 'Control Bank', target: 'STARTUP RATE positive and steady with the rods stopped, at or under 1.0',
+          /* THE DWELL GETS A SPEED, AND IT IS MEASURED *(OWNER, 2026-09-14: "We could mention that
+           * dwell in the walkthrough and have the user put it at 5 or 10x speed. We should test this
+           * region.")*. This step carried `wait_hint: false` and a note saying "stay at 1×", both from
+           * the #653 S9 layman pass of 2026-09-07 — which measured the PRE-#750 leg, where the creep
+           * left +148 pcm behind it and power ran to 12.2 %. #750 cut the creep to +46 pcm and the
+           * climb now arrests on its own, so that finding does not reproduce and the hint is safe.
+           *
+           * MEASURED (#753): the same saved state at the creep press, driven through steps 8-11 at
+           * 1× / 5× / 10× / 30× / 60×. The plant is INDISTINGUISHABLE at every speed — reactivity
+           * crosses zero at t=703 s and bank 207 in all five, power reaches 0.1 % at 2109-2110 s,
+           * peak power over the four steps is 4.0112-4.0113 %, and NOT ONE speed drop fires with the
+           * attention-stop and speed-hold defaults ON: no new alarm, no warp refusal. What the speed
+           * really costs is the player's eye. Worst REACTOR POWER change inside one 2.5 s glance:
+           *   1× 0.020 %   5× 0.094 %   10× 0.186 %   60× 1.083 %
+           * 10× is the recommendation; 60× is where a glance stops being a glance.
+           *
+           * IT IS IN THE `note`, NOT IN A `wait_hint`, AND THAT IS FORCED. `ui/app.js` prints its own
+           * ⏩ line for any step with `hold >= 180` unless `wait_hint` is FALSE, and it picks the rung
+           * itself: `RD.CklSpeedHint(1800)` against the ruled 30 s wall target returns 60×. So
+           * authoring the string here would have printed "set the speed control to 60×" immediately
+           * followed by my "use 10×" — the app contradicting the step in one line. `wait_hint: false`
+           * suppresses the generated line entirely and there is no third state; an authorable CAP on
+           * the rung is an app.js change and is filed rather than smuggled in here. */
           wait_hint: false,
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 11, speed: 'slow' }, hold: 1800,
           /* 0.1, not 0.02: the done-when renders at the tile's resolution, and 0.02 drew "When
@@ -2079,7 +2102,7 @@
         { text: 'Let power climb on its own. Tap WITHDRAW once only if STARTUP RATE falls back to 0.00.',
           why: 'Just critical, a positive STARTUP RATE means reactivity is above zero and power climbs by factors of ten on its own; every extra step adds to a rise that is already under way, which is how the approach overshoots. Below about 1 % power nothing in the plant slows the climb for you, so STARTUP RATE is the only speedometer. SOURCE RANGE hands over to INTER RANGE by itself.',
           control: 'Control Bank', target: 'REACTOR POWER rising past 1 %',
-          note: 'While STARTUP RATE is positive, leave the rods alone. Only if it falls back to 0.00 with REACTOR POWER still below 0.5 %, tap WITHDRAW one step at SLOW and wait again. SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE takes over. About 15 plant-minutes at 1×; stay at 1×, this is the part of the startup where the reactor can get away from you.',
+          note: 'While STARTUP RATE is positive, leave the rods alone. Only if it falls back to 0.00 with REACTOR POWER still below 0.5 %, tap WITHDRAW one step at SLOW and wait again. SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE takes over. About 15 plant-minutes. 5× is the speed for it: the plant behaves the same at any speed, but this is the step that may want a tap, and at 10× a tap has landed before you have read the rate. Come back to 1× to tap.',
           wait_hint: false,
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 2, speed: 'slow' }, hold: 900,
           saw: { p: 'startup_rate_dpm', op: '>', v: 0 },
@@ -2184,19 +2207,44 @@
          *   +12 -> bank 227: entered at 10.060 %, completes   (the pre-#750 leg: 10.066 %)
          *   +13 -> bank 228: entered at 10.522 %, completes   <- authored
          *
-         * P-10, THE PERMISSIVE THAT REFUSES THE BLOCK, IS 10 % — `PWR_TRIP_BLOCK_PERMISSIVE` in
-         * layers/control/pwr_control.js, `power_range` high at 10.0. Two steps below said 8 %, in
-         * four places, and had said it since they were written; nothing caught it because the
-         * pre-#750 leg arrived at 10.066 % — SIX HUNDREDTHS of a point over the line — so the
-         * press was accepted and the wrong number in the note never cost anything. Those sites now
-         * say 10 %.
+         * ⚠ THE PERMISSIVE IS 8 %, NOT 10 %, AND NOTHING EVER REFUSES THE PRESS (#753, corrected
+         * 2026-09-14 — this comment shipped 2026-09-13 with both halves wrong). It named
+         * `PWR_TRIP_BLOCK_PERMISSIVE` in layers/control/pwr_control.js, `power_range` high at 10.0:
+         * that constant is the RETIRED engine's kernel-trip datum and this plant never reads it —
+         * `getProtectionConfig` hands the kernel an EMPTY trips list, so `set_trip_block` forwards
+         * to the engine's own door. THE ENGINE'S P-10 IS 8 % (`P10.frac`, Ginna TS Bases B 3.3.1,
+         * ML20339A221) and that door accepts the press at ANY power — measured, accepted at
+         * 3.578 %, lamp lit — and then REVOKES the request on the next protection step while the
+         * channel reads under 8 %. So "the plant refuses the press" was never the mechanism.
+         *
+         * WHAT DOES REFUSE IT IS THE BUTTON, and only below the permissive: the TRIP BLOCKS row
+         * renders `disabled: can_block === false` (pwr_board_wiring), and `can_block` is
+         * `!blocked && p10_met`. So below 8 % INDICATED the press cannot be made at all; from 8 %
+         * up it can, and the plant then takes it away again. Two refusals at two layers, and the
+         * step text has to name the one the player meets.
+         *
+         * WHY 8 % IS STILL NOT ENOUGH, MEASURED (#753, `low_power` plus a load sweep; the number is
+         * the survival time of ONE press): the permissive reads the INSTRUMENTED power-range
+         * channel (HR1), and that channel carries sigma = 0.3 % of noise with a 0.05 s correlation
+         * time, sampled every 0.02 s protection step, with no 2-of-4 coincidence behind it:
+         *
+         *   true power   the block survives
+         *      8.19 %         1 s
+         *      8.72 %         4 s
+         *      9.10 %       105 s
+         *      9.36 %       > 900 s   (and every load above)
+         *
+         * The effective threshold is therefore a NOISE STATISTIC and not a setpoint — it is
+         * wherever the chance of one sub-8 % sample crosses the observer's patience, which is what
+         * the separately-filed "the block holds from 9.172 %" measured. Either way the leg's own
+         * arrival at 10.5 % is clear of it, and 13 keeps that margin.
          *
          * SO THIS STEP IS SIZED BY THE PERMISSIVE, NOT BY ITS OWN TARGET. 12 reproduces the
          * pre-#750 arrival almost exactly and re-creates the same envelope wall; 13 puts half a
          * point of margin over P-10 and lands the bank at 228, which is where the pre-#750 leg's
          * own climb step already put it. Do not shorten this without re-running the #731 trio. */
         { text: 'Press SLOW, then hold WITHDRAW until REACTOR POWER passes 5 %, about 13 steps. That is Mode 1, At Power.',
-          why: 'Mode 1 begins at 5 % power. The warming water holds power back, so each step you add buys a new steady level rather than a runaway — about half a per cent of power per step here. You are going past 5 % on purpose: the turbine step after this one needs REACTOR POWER above 10 % before the plant will let you switch the startup trips off.',
+          why: 'Mode 1 begins at 5 % power. The warming water holds power back, so each step you add buys a new steady level rather than a runaway — about half a per cent of power per step here. You are going past 5 % on purpose: the turbine step after this one needs REACTOR POWER above 10 % before the startup trips will stay switched off.',
           control: 'Control Bank', target: 'REACTOR POWER above 5 %, settling near 11 %',
           wait_hint: false,
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 13, speed: 'slow' }, hold: 400,
@@ -2210,8 +2258,8 @@
                  { p: 'mwe_output', op: '>', v: 8, label: 'Generator above 8 MWe' }],
           hl: ['Turbine — Latch', 'Load Setpoint'], hl_watch: ['Turbine Load', 'Generator Output'] },
         { text: 'Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the IR HIGH FLUX row.',
-          note: 'Do this the moment REACTOR POWER is above 10 %: at 25 % this trip fires. The plant refuses the press below 10 %, and the reactor keeps climbing while the panel is open.',
-          why: 'Two automatic shutdowns exist only to protect a startup, one at 25 % power and one at 35 %. Above 10 % they are no longer needed and would trip the reactor on the way up, so you switch them off one at a time. This one also clears a rod stop at 20 %; drop below 10 % and the plant switches them back on by itself.',
+          note: 'Do this the moment REACTOR POWER is above 10 %: at 25 % this trip fires. Below 8 % power the BLOCK button is dead and will not take the press at all; between there and about 9 ½ % it takes it and the block then goes out again by itself, because the permissive is read off the power-range meter, which wanders about ± 0.3 % and keeps dipping back under. If that happens, let power come up and press it again. The reactor keeps climbing while the panel is open.',
+          why: 'Two automatic shutdowns exist only to protect a startup, one at 25 % power and one at 35 %. Once power is up they are no longer needed and would trip the reactor on the way up, so you switch them off one at a time — and the plant keeps checking you are still up there, switching them on again by itself if power falls back down, whoever switched them off. This one also clears a rod stop at 20 %.',
           control: 'Trip Blocks', target: 'IR HIGH FLUX lit on the TRIP BLOCKS panel',
           cmd: { action: 'set_trip_block', trip_id: 'ir_high', blocked: true }, hold: 10,
           /* GRADED ON THE LINEUP, NOT ON THE PRESS (#731, owner playtest #724 item 13). These two
@@ -2749,7 +2797,13 @@
           note: 'Press ON only if it is not already lit. The boration then runs in the background while you take the plant down.',
           why: 'Coming down is the climb in reverse. Every percent of power shed hands reactivity back (the fuel cools, the water thickens), and it has to go somewhere. Adding boron carries most of it out; rods trim the rest over the next few minutes.',
           control: 'Boron control', target: 'BORON reads 719 ppm, ON lit',
-          wait_hint: 'The boration takes about half a plant-hour. Start it first and take the stages while it works.',
+          /* MEASURED (#753, full stack from this leg's own initial condition): 612.3 ppm to 719 is
+           * 106.7 ppm at a flat 3.00 ppm/min: 35.3 plant-minutes to 718 ppm and 35.6 to the 719 the
+           * step sets, not "about half" of a plant-hour. Same
+           * measurement as the cooldown leg's step 1; see the note there for why boration does not
+           * taper the way dilution does. Nothing grades on it (the step holds 30 s and carries no
+           * acceptance on boron), so the number is the player's planning figure only. */
+          wait_hint: 'The boration runs at a steady 3 ppm a minute and does not slow down as it closes — about 36 plant-minutes from 612 to 719 ppm. Start it first and take the stages while it works.',
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 }, hold: 30,
           hl: ['Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
         /* ================= TWO STEPS, BECAUSE THE ORDER IS THE LESSON (#736) ==================
@@ -3045,7 +3099,17 @@
           note: 'Press ON only if it is not already lit.',
           why: 'Hot, the plant is comfortably shut down on about 719 ppm of boron. Cold water makes the chain reaction easier, and the same core at 122 °F needs about 920 ppm for the same margin. Adding it first means the margin arrives before the cold does.',
           control: 'Boron control', target: 'BORON reads 920 ppm, ON lit',
-          wait_hint: 'The boration takes about 60 plant-minutes at 3 ppm a minute. Start it and carry on; the next steps run while it works.',
+          /* 3 ppm A MINUTE IS THE PLANT'S OWN NUMBER, AND IT IS FLAT (#753, re-measured 2026-09-14
+           * after the figure was filed as refuted). BORATION AND DILUTION ARE NOT THE SAME SHAPE:
+           * dilution is a first-order approach and slows as it closes, which is the finding that
+           * was carried across to here by mistake. Boration is a DELIVERY — the `boron_conc`
+           * channel's 0.05 ppm/s, essentially on this plant's charging ceiling (pwr_control.js) —
+           * and it does not taper. Measured full stack from this leg's own initial condition,
+           * 718.9 ppm to 920: 3.00 ppm/min in EVERY 60 s window, start to finish; 27.1 min to 800,
+           * 53.7 min to the 880 ppm this step checks off at, 60.4 to 900, 66.7 to 919. The hint said
+           * "about 60 minutes" for a wait that is 54 to the tick and 67 to the target, so it now
+           * gives both. */
+          wait_hint: 'The boration runs at a steady 3 ppm a minute and does not slow down as it closes: about 54 plant-minutes to the 880 ppm this step checks off at, about 67 to the full 920. Start it and carry on; the next steps run while it works.',
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 920 }, hold: 3900,
           acc: { p: 'boron_ppm', op: '>', v: 880 },
           hl: ['Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },

@@ -71,7 +71,9 @@ var DOC = {
   si_pzr_psia: 1715.0, si_steam_psia: 327.7,
   steam_flow: 1.55,
   lolo_frac: 0.17, d_lolo: 2.0, hihi_frac: 0.90, d_hihi: 2.0,
-  hi_pzr_level: 0.87, p7_frac: 0.10,
+  hi_pzr_level: 0.87, p7_frac: 0.08,   /* RETYPED from Ginna TS Bases B 3.3.1 (ML20339A221):
+                                        * "generate a reactor trip above approximately 8% RTP
+                                        * (P-7 setpoint)" -- the anchor plant, #753 */
   lead_s: 12.0, lag_s: 2.0,
   d_press: 2.0, d_flux: 0.5, d_flow: 1.0,
   psia_per_mpa: 145.0377,
@@ -428,14 +430,23 @@ function runSuite(P, rec, quiet) {
                      var rR = P.stepProtection(prHH, DT, healthy());
                      return rR.fwi === false && rR.turbine_trip_hi_level === false; })(), '');
 
-  /* ---- THE HIGH-LEVEL TRIP AND P-7 (stage 2b, 2026-08-19) ---------------------------------
-   * WTSM 10.3.4.3: an AT-POWER trip, "only active if either reactor power or turbine power is
-   * 10% or greater". Ginna's 87 % setpoint (TS Bases B 3.4.9). Unlike P-10 there is no operator
-   * request in P-7 -- a plain automatic gate -- so the two permissives are DIFFERENT shapes on
-   * purpose, and the checks pin both sides of the gate plus graceful absence of the reading. */
+  /* ---- THE HIGH-LEVEL TRIP AND P-7 (stage 2b, 2026-08-19; re-sourced #753, 2026-09-14) -----
+   * An AT-POWER trip. WTSM 10.3.4.3 gives the generic function's SHAPE ("only active if either
+   * reactor power or turbine power is 10% or greater"); the SETPOINT is the anchor plant's, and
+   * Ginna TS Bases B 3.3.1 (ML20339A221) puts P-7 at approximately 8% RTP -- the same crossing
+   * as P-10, which is what the equality check below pins. Ginna's 87 % level setpoint is TS
+   * Bases B 3.4.9. Unlike P-10 there is no operator request in P-7 -- a plain automatic gate --
+   * so the two permissives are DIFFERENT SHAPES on purpose even at one number, and the checks
+   * pin both sides of the gate plus graceful absence of the reading. */
   head('THE HIGH-LEVEL TRIP  [at-power via P-7 -- a plain gate, not a revoked request]');
   ck("the setpoint is Ginna's 87 %", P.RPS.hi_pzr_level_frac, DOC.hi_pzr_level, 0, 'frac');
-  ck('P-7 is the sourced 10 %', P.P7.frac, DOC.p7_frac, 0, 'frac');
+  ck("P-7 is the anchor plant's 8 %", P.P7.frac, DOC.p7_frac, 0, 'frac');
+  /* THE RULING ITSELF, not only its number *(OWNER RULING, 2026-09-14, #753: "1. Yes, 0.08")*:
+   * P-7 and P-10 are ONE CROSSING on this plant, because the anchor plant has them that way.
+   * Pinning the EQUALITY and not only the literal is what makes a future edit to either one
+   * red -- the pair drifted apart behind two separately-correct literals and nothing noticed. */
+  ckT('P-7 and P-10 are the SAME crossing', P.P7.frac === P.P10.frac,
+      'both ' + (P.P7.frac * 100).toFixed(0) + ' % -- Ginna TS Bases B 3.3.1');
   var sHiL = withReading('pzr_level_frac', 0.92);
   sHiL.power_frac = 0.05;                              /* below P-7: the trip is NOT ACTIVE */
   var rP7lo = ride(P.createProtection({}), sHiL, 10);
@@ -449,6 +460,16 @@ function runSuite(P, rec, quiet) {
   ckT('...and the SAME level at 12 % power trips, on this function and no other',
       rP7hi.reactor_trip === true && rP7hi.trip_cause === 'hi_pzr_level' && rP7hi.p7_met === true,
       'held ' + fn(rP7hi, 'hi_pzr_level').held_s.toFixed(1) + ' s past the 2.0 s [open] delay');
+  /* THE PROOF THAT THE CONSTANT MOVED SOMETHING (#753). 9 % power is ABOVE the new P-7 and
+   * BELOW the old one, so this check is RED on the pre-ruling engine and green on this one --
+   * the band the ruling actually opened, asserted rather than described. */
+  var sHiL3 = withReading('pzr_level_frac', 0.92);
+  sHiL3.power_frac = 0.09;
+  var rP7band = ride(P.createProtection({}), sHiL3, 10);
+  ckT('...and at 9 % power too -- the 8-10 % band the ruling opened',
+      rP7band.reactor_trip === true && rP7band.trip_cause === 'hi_pzr_level' &&
+      rP7band.p7_met === true,
+      'red at P7 = 0.10, green at 0.08');
   var sNoL = healthy();
   delete sNoL.pzr_level_frac;
   var rNoL = ride(atPower(), sNoL, 5);
