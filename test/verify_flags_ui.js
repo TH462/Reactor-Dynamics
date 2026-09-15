@@ -627,9 +627,19 @@ function pinChannel(ch) {
   await openMission(b.page, 'walkthroughs');
   var pubWalkIds = await b.page.$$eval('#mpContent [data-wtstart]',
     function (els) { return els.map(function (e) { return e.getAttribute('data-wtstart'); }); });
-  ck('public: the six operating-cycle legs are offered and the incident walkthrough is NOT (#670 R4 / #722)',
-    pubWalkIds.join(',') === 'pwr_heatup,pwr_startup,pwr_raise_power,pwr_lower_power,pwr_shutdown,pwr_cooldown' &&
-    (await b.page.evaluate(function () { return RD.Flags.on('procedure:pwr_tmi2_incident'); })) === false,
+  /* ONLY THE HEATUP LEG NOW *(OWNER DIRECTIVE, 2026-09-15: "Release and unlock only the mode 5
+   * to 3 walkthrough. I still need to test the mode 3 to 1 and other walkthroughs.")*. This check
+   * asserted the #722 policy (all six public) and that policy is superseded, so the check is
+   * RE-POINTED, not relaxed: it still pins an exact list, still pins the incident leg's absence,
+   * and it now also pins that the withdrawn five are absent BY NAME. Validated against the OLD
+   * behaviour too — with the five back at 'public' this form goes red naming them, so it is not
+   * a check refitted to whatever the build happens to do. */
+  ck('public: ONLY the Mode 5 to Mode 3 heatup is offered; the other five legs and the incident walkthrough are NOT (#722, owner 2026-09-15)',
+    pubWalkIds.join(',') === 'pwr_heatup' &&
+    (await b.page.evaluate(function () {
+      return ['pwr_startup', 'pwr_raise_power', 'pwr_lower_power', 'pwr_shutdown', 'pwr_cooldown',
+              'pwr_tmi2_incident'].every(function (id) { return RD.Flags.on('procedure:' + id) === false; });
+    })) === true,
     pubWalkIds.join(','));
   await b.ctx.close();
 
@@ -658,10 +668,24 @@ function pinChannel(ch) {
     (c.bonus || []).forEach(function (m) { all.push(m.kind + ':' + m.id); });
     return { total: all.length, on: all.filter(function (id) { return RD.Flags.on(id); }) };
   });
+  /* THE "> 0" WAS A FIXTURE, NOT THE CLAIM, and the 2026-09-15 walkthrough withdrawal proved it:
+   * campaign missions are gated on the SAME procedure: ids as the walkthroughs, so gating five
+   * legs took the public mission count to 0 and reddened a check about an unrelated relation. That
+   * coupling is worth knowing and is why this comment exists. The claim here is the IDENTITY —
+   * what the area draws is exactly what the flags say is on — and it holds at zero. Non-vacuity is
+   * carried by the very next check, which forces every flag on and requires the campaign to open in
+   * full: if the area could not render a mission at all, that one goes red. */
   ck('public + ?flags=+campaign: the area alone offers only missions whose OWN entry is public',
-    campShown.length > 0 && campShown.length < campSplit.total &&
+    campShown.length < campSplit.total &&
     campShown.slice().sort().join(',') === campSplit.on.slice().sort().join(',') &&
-    !/COMING SOON/.test(campTxt),
+    /* …and the COMING SOON clause becomes CONDITIONAL rather than being dropped. It was
+     * unconditional, which quietly assumed at least one mission was public — a fixture, not a
+     * claim, and the 2026-09-15 withdrawal took that set to zero. app.js:5473 returns
+     * soonPanel('campaign') when nothing is offerable, which is the DESIGNED answer for an empty
+     * area, so both halves are asserted here: offer something and the panel must list it; offer
+     * nothing and it must say COMING SOON rather than draw an empty list. Neither state can now
+     * pass by accident. */
+    (campShown.length ? !/COMING SOON/.test(campTxt) : /COMING SOON/.test(campTxt)),
     campShown.length + ' of ' + campSplit.total + ': ' + campShown.join(','));
   await b.ctx.close();
 

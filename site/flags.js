@@ -150,14 +150,26 @@
      * and dev every id is on anyway. The eleven ids that exist ONLY in the retired pool stay
      * preview below — flipping one would offer a walkthrough for a plant the site no longer
      * runs. */
+    /* ONLY THE MODE 5 -> MODE 3 HEATUP IS OFFERED PUBLICLY *(OWNER DIRECTIVE, 2026-09-15:
+     * "Release and unlock only the mode 5 to 3 walkthrough. I still need to test the mode 3
+     * to 1 and other walkthroughs.")*. The other five go back to preview: still fully playable
+     * on the tester channel, where he is testing them, and invisible to a public visitor.
+     * They were 'public' and shipped that way in Alpha 1.7.3 — this is a DELIBERATE withdrawal,
+     * not a new feature being held back, so it earns a changelog.html line even though a
+     * flag-gated feature normally does not.
+     * WHAT THIS ALSO WITHDRAWS, and is the reason it is not merely cautious: the counts-steady
+     * acceptance and the ordered 1/M substeps shipped 2026-09-15 live in pwr_startup, and #761
+     * is open on them — the replay harness and a live player disagree on the settle durations
+     * by up to 4x, so the predicate's window was tuned against a fixture that may not be what a
+     * player experiences. Gating pwr_startup takes that uncertainty out of the public build. */
     'procedure:pwr_heatup': 'public',
-    'procedure:pwr_startup': 'public',
-    'procedure:pwr_raise_power': 'public',
-    'procedure:pwr_lower_power': 'public',
+    'procedure:pwr_startup': 'preview',
+    'procedure:pwr_raise_power': 'preview',
+    'procedure:pwr_lower_power': 'preview',
     'procedure:pwr_pressure_control': 'preview',   // retired pool only — no pwr2 leg
     'procedure:pwr_sg_level': 'preview',           // retired pool only — no pwr2 leg
-    'procedure:pwr_shutdown': 'public',
-    'procedure:pwr_cooldown': 'public',
+    'procedure:pwr_shutdown': 'preview',
+    'procedure:pwr_cooldown': 'preview',
     'procedure:pwr_post_trip': 'preview',
     'procedure:pwr_loss_of_feedwater': 'preview',
     'procedure:pwr_rcp_trip': 'preview',
