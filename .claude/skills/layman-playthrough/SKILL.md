@@ -282,13 +282,15 @@ reporting a screen. Do it claim by claim.
   `_boardQuiet(prevAlarms)` held beforehand, and **acknowledgement is not in the test**, which is
   why one pass lost 600× to a single new warning and a later step held **3600× through four
   unacknowledged alarms**. Press **Ack All** first anyway; a caution never drops it.
-- **`#warpInfo` DOES NOT print the reason for every drop — it prints one of five.** This bullet
-  said it did, and it was wrong for as long as it stood. `syncWarpInfo` emits a cause only for
-  `warpNote.reason === 'hold'`; for **alarm, scram, failure and step** it falls through and prints
-  the STEP'S OWN fast-forward advice instead — so after an alarm-drop it cheerfully re-advises the
-  button that just failed, and a reviewer reading it in good faith reports the clock as broken.
-  **Quote it, but never treat it as the cause.** An owner ruling to fix this is open
-  *(OWNER RULING, 2026-09-14: "Only alarms the step is not expecting")*.
+- **`#warpInfo` states the reason for every drop — TRUE SINCE `fd5750c9` (2026-09-15), and FALSE
+  for four of the five reasons before it.** The bullet here claimed it all along, so a reviewer
+  that trusted it was misled for as long as the claim stood: `syncWarpInfo` emitted a cause only
+  for `warpNote.reason === 'hold'`, and for **alarm, scram, failure and step** it fell through and
+  printed the STEP'S OWN fast-forward advice — which is how the 2026-09-15 pass came to be advised
+  to press the 600× button that had just failed, and duly reported the clock as broken. It now
+  prints `warpNote.text` with the step advice behind it. **Still quote it rather than diagnosing
+  the clock — but if you are reading a build older than `fd5750c9`, it cannot tell you what
+  happened.**
 - **A step checking off drops the clock**, by design (#619). It looks exactly like the speed
   reverting on its own, and it is the single most-repeated wrong diagnosis in these reports.
 - **Rod buttons are momentary.** A tap is one step; driving takes a hold. `MED` at 1× is about
