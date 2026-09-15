@@ -30,14 +30,40 @@
  * MEASURED while writing this: a literal all-false status lost two of three messages that way, and
  * the runner read as a feature defect.
  *
+ * ⚠ SECTION 5 IS A RELATION, NOT A READING, AND THAT IS WHY THIS FILE GREW (#758). Everything
+ * above reads ONE cue and asks whether it is right. The walkthrough's two highlight treatments —
+ * `.ckl-step-glow` (press this control) and `.ckl-watch-glow` (watch this indication) — cannot be
+ * judged that way: each was individually exactly what its ruling asked for, and they still
+ * INVERTED, because the pulse's 50 % stop reached a 2.00 px ring at alpha 1.00 and the watch ring
+ * is a flat 2.00 px at 0.90. This gate was 39/39 the whole time it shipped, and `verify_e2e_ui`
+ * reads the two cues on two DIFFERENT walkthrough legs, so neither could ever have seen it. A
+ * layman playthrough did, and stopped using board highlights around step 8.
+ *
+ * SO SECTION 5 PUTS BOTH CUES ON THE BOARD AT ONCE and samples the pulse across its whole 1.2 s
+ * cycle — the animation is seeked with the Web Animations API rather than waited on, so the stops
+ * are exact and the run costs no wall time. Sampling only the resting state is how an inversion
+ * that lives in the upper half of the cycle stays invisible.
+ *
  * Run: node test/verify_board_cues.js
+ *      node test/verify_board_cues.js --inject    # restore the inverted peak; section 5 must RED
  */
 'use strict';
 var path = require('path');
 var http = require('http');
 var fs = require('fs');
 
+var INJECT = process.argv.indexOf('--inject') >= 0;
+/* The pre-#758 50 % stop, served in place of the capped one. It is the peak that inverted: a ring
+ * as wide as the watch ring's, brighter, with a bloom half again as large. */
+var INJECT_FROM = '50%      { box-shadow: 0 0 0 1.6px rgba(90, 240, 255, 0.80), 0 0 14px 3px rgba(90, 240, 255, 0.36); }';
+var INJECT_TO   = '50%      { box-shadow: 0 0 0 2px rgba(90, 240, 255, 1), 0 0 20px 5px rgba(90, 240, 255, 0.55); }';
+
 var ROOT = path.join(__dirname, '..');
+if (INJECT && fs.readFileSync(path.join(ROOT, 'ui', 'shell.css'), 'utf8').indexOf(INJECT_FROM) < 0) {
+  console.error('--inject: the cklGlow 50% anchor is not in ui/shell.css any more, so the ' +
+    'injection would be a NO-OP and the run would read as a hollow gate. Re-point INJECT_FROM.');
+  process.exit(2);
+}
 var PORT = 0;
 var B = '\x1b[1m', G = '\x1b[32m', R = '\x1b[31m', D = '\x1b[2m', X = '\x1b[0m';
 var nPass = 0, nFail = 0;
@@ -67,6 +93,16 @@ function startServer() {
       var fp = path.join(ROOT, decodeURIComponent(u.replace(/^\//, '').replace(/\//g, path.sep)));
       if (!fp.startsWith(ROOT) || !fs.existsSync(fp) || fs.statSync(fp).isDirectory()) { r.writeHead(404); r.end('nf'); return; }
       r.writeHead(200, { 'Content-Type': mime(fp) });
+      /* The injection is served, not written to disk — the tree is never dirtied and the browser
+       * gets a genuinely different stylesheet, which is the only thing a computed-style read can
+       * be fooled by. If the anchor ever stops matching, say so loudly rather than running a
+       * no-op injection that "passes". */
+      if (INJECT && u === '/ui/shell.css') {
+        var css = fs.readFileSync(fp, 'utf8');
+        if (css.indexOf(INJECT_FROM) < 0) { r.end('/* INJECTION ANCHOR MISSING */\n' + css); return; }
+        r.end(css.replace(INJECT_FROM, INJECT_TO));
+        return;
+      }
       r.end(fs.readFileSync(fp));
     });
     s.listen(0, '127.0.0.1', function () { PORT = s.address().port; res(s); });
@@ -151,6 +187,93 @@ var TOOLKIT = [
    * from the plant here; the DOM reads below take their own settling time. */
   '    var q = s.assembleSnapshot();',
   '    return { mpa: q.true_state && q.true_state.pressure_mpa, st: (q.rps_state || {}).trip_block_status || {} };',
+  '  },',
+  /* ---- THE WALKTHROUGH HIGHLIGHT PAIR (#758) ------------------------------------------------
+   * Split a computed `box-shadow` into its shadows. Commas appear INSIDE `rgba(...)` too, so a
+   * plain `.split(",")` shreds the colour and every alpha comes back NaN — which compares false
+   * against everything and would have made this whole section a green no-op. Depth-count. */
+  '  shadows: function (css) {',
+  '    var out = [], depth = 0, cur = "";',
+  '    for (var i = 0; i < css.length; i++) {',
+  '      var ch = css.charAt(i);',
+  '      if (ch === "(") depth++;',
+  '      else if (ch === ")") depth--;',
+  '      if (ch === "," && depth === 0) { out.push(cur); cur = ""; } else cur += ch;',
+  '    }',
+  '    if (cur.trim()) out.push(cur);',
+  '    return out.map(function (p) {',
+  '      var col = /rgba?\\(([^)]*)\\)/.exec(p);',
+  '      var c = col ? col[1].split(",").map(function (v) { return parseFloat(v); }) : [];',
+  '      var n = p.replace(/rgba?\\([^)]*\\)/, "").trim().split(/\\s+/)',
+  '               .map(parseFloat).filter(function (v) { return !isNaN(v); });',
+  '      return { alpha: (c.length > 3 ? c[3] : 1), blur: n.length > 2 ? n[2] : 0,',
+  '               spread: n.length > 3 ? n[3] : 0 };',
+  '    });',
+  '  },',
+  /* RING = the zero-blur shadow (its SPREAD is the ring width); BLOOM = the blurred one. Both cues
+   * are authored as exactly that pair, so a shape change here shows up as a null rather than as a
+   * silently wrong number. */
+  '  glow: function (el) {',
+  '    var parts = window.__c.shadows(getComputedStyle(el).boxShadow), ring = null, bloom = null;',
+  '    parts.forEach(function (p) {',
+  '      if (p.blur === 0) { if (!ring) ring = p; } else if (!bloom) bloom = p;',
+  '    });',
+  '    return { n: parts.length, ring: ring, bloom: bloom };',
+  '  },',
+  /* Put BOTH treatments on the REAL board at once, through the production resolver the walkthrough
+   * itself uses (`hlTarget` in ui/app.js is these two lines). Two DIFFERENT drawn halos, so the
+   * two rings are painted simultaneously on the same page — which is the condition neither this
+   * gate nor verify_e2e_ui was ever measuring in. */
+  '  reveal: function (lab) {',
+  '    if (RD.Highlight && RD.Highlight.resolve) return RD.Highlight.resolve(lab);',
+  '    return RD.PwrBoard.revealControl(lab);',
+  '  },',
+  '  cues: function () {',
+  '    var labs = (RD.PwrBoard.highlightLabels || []).slice(), got = [];',
+  '    for (var i = 0; i < labs.length && got.length < 2; i++) {',
+  '      var el = window.__c.reveal(labs[i]);',
+  '      if (!el || got.indexOf(el) >= 0) continue;',
+  '      var r = el.getBoundingClientRect();',
+  '      if (r.width < 8 || r.height < 5) continue;',
+  '      got.push(el); got[got.length - 1].__lab = labs[i];',
+  '    }',
+  '    if (got.length < 2) return null;',
+  '    window.__c._press = got[0]; window.__c._watch = got[1];',
+  '    got[0].classList.add("ckl-step-glow");',
+  '    got[1].classList.add("ckl-watch-glow");',
+  '    var a = got[0].getBoundingClientRect(), b = got[1].getBoundingClientRect();',
+  '    return { press: got[0].__lab, watch: got[1].__lab,',
+  '             pressBox: +a.width.toFixed(1) + "x" + +a.height.toFixed(1),',
+  '             watchBox: +b.width.toFixed(1) + "x" + +b.height.toFixed(1),',
+  '             pressAnim: getComputedStyle(got[0]).animationName,',
+  '             watchAnim: getComputedStyle(got[1]).animationName };',
+  '  },',
+  /* SEEK, do not wait. `getAnimations()` on the pulsing element gives the running CSS animation;
+   * pausing and setting `currentTime` lands on an EXACT stop, and `getComputedStyle` below forces
+   * the recalc that makes the seeked value readable. Waiting 50 ms at a time would sample wherever
+   * the event loop happened to land and could miss the peak entirely. */
+  '  sweep: function (stops) {',
+  '    var p = window.__c._press, w = window.__c._watch;',
+  '    var an = p.getAnimations()[0];',
+  '    if (!an) return { err: "the press cue has no running animation to sample" };',
+  '    an.pause();',
+  '    var rows = stops.map(function (t) {',
+  '      an.currentTime = t;',
+  '      return { t: t, press: window.__c.glow(p), watch: window.__c.glow(w) };',
+  '    });',
+  '    an.play();',
+  '    return { rows: rows };',
+  '  },',
+  '  done: function () {',
+  '    window.__c._press.classList.add("ckl-step-done");',
+  '    var g = window.__c.glow(window.__c._press);',
+  '    g.anim = getComputedStyle(window.__c._press).animationName;',
+  '    return g;',
+  '  },',
+  '  clearCues: function () {',
+  '    ["ckl-step-glow", "ckl-step-done", "ckl-watch-glow"].forEach(function (c) {',
+  '      document.querySelectorAll("." + c).forEach(function (e) { e.classList.remove(c); });',
+  '    });',
   '  }',
   '};'
 ].join('\n');
@@ -572,6 +695,126 @@ var TOOLKIT = [
     rAgain.row.cls + ' / ' + rAgain.row.color);
   await page.evaluate(function () { window.__c.click('imrsk4xz2dm'); });
 
+  // ============================================================ 5. the two walkthrough highlights
+  /* ⚠ THE ONLY SECTION IN THIS FILE THAT COMPARES TWO CUES TO EACH OTHER, and it exists because
+   * every isolated reading of these two was CORRECT while the pair was wrong (#758).
+   *
+   * *(OWNER RULING, 2026-09-14, #755 items 7/10/19: "Both glow; pulse + one static cue" — the
+   * press target pulses, the watch target is a steady glow plus a solid thicker ring.)*
+   * *(OWNER RULING, 2026-09-15, #758, from three drawn options: "Cap the pulse below the watch
+   * ring (Recommended)" — the watch ring stays at the 2.00 px / alpha 0.90 he approved the day
+   * before; only the pulse moves.)*
+   *
+   * So the claim is a STRICT INEQUALITY, on three channels, at EVERY instant of the cycle:
+   *   press ring width  <  watch ring width      press ring alpha <  watch ring alpha
+   *   press bloom (blur, spread, alpha)  <  watch bloom
+   * "At the resting stop" is not the claim, and the resting stop is where the shipped defect was
+   * innocent — it inverted only above ~50 % of each 1.2 s cycle. */
+  console.log(B + '\nWALKTHROUGH HIGHLIGHTS — the pulse must stay UNDER the watch ring, all cycle (#758)' + X);
+
+  var cues = await page.evaluate(function () { return window.__c.cues(); });
+  ck('both walkthrough treatments land on distinct DRAWN board elements, on the page together',
+    !!cues && cues.pressAnim === 'cklGlow' && cues.watchAnim === 'none',
+    cues ? 'press "' + cues.press + '" ' + cues.pressBox + ' px anim=' + cues.pressAnim +
+           ' · watch "' + cues.watch + '" ' + cues.watchBox + ' px anim=' + cues.watchAnim
+         : 'the board resolved fewer than two drawn highlight targets');
+
+  /* 25 stops across the full 1.2 s cycle — every 50 ms, which includes 0/25/50/75/100 %. */
+  var STOPS = [];
+  for (var si = 0; si <= 1200; si += 50) STOPS.push(si);
+  var sweep = cues ? await page.evaluate(function (s) { return window.__c.sweep(s); }, STOPS)
+                   : { err: 'no cues' };
+  var rows = sweep.rows || [];
+
+  /* ⚠ THE ANTI-HOLLOW CHECK, AND IT IS NOT OPTIONAL. If the seek did nothing — a paused animation
+   * that never recalcs, a `getAnimations()` that returned the wrong effect — every row would carry
+   * the SAME resting value, every inequality below would hold comfortably, and the section would
+   * be 5 confident greens over one sample. The pulse must be seen to MOVE. */
+  var rest = rows[0], peak = rows.filter(function (r) { return r.t === 600; })[0];
+  ck('  …and the sampler really walks the cycle (the pulse MOVES between 0 % and 50 %)',
+    !!rest && !!peak && rest.press.ring && peak.press.ring &&
+      peak.press.ring.spread > rest.press.ring.spread + 0.3 &&
+      peak.press.ring.alpha > rest.press.ring.alpha + 0.1,
+    rest && peak ? 'ring ' + rest.press.ring.spread + ' px @ ' + rest.press.ring.alpha +
+      ' -> ' + peak.press.ring.spread + ' px @ ' + peak.press.ring.alpha
+      : (sweep.err || 'no samples'));
+
+  /* THE WATCH RING IS THE FIXED POINT OF THE RULING — he looked at 2.00 px / 0.90 and approved it.
+   * Pinned here so that a future "fix" to this inversion cannot quietly be made by shrinking the
+   * cue that is not allowed to move. It is also steady, so one sample speaks for the whole cycle;
+   * assert that it never moved across the sweep rather than trusting that. */
+  var wMoved = rows.filter(function (r) {
+    return !r.watch.ring || !r.watch.bloom ||
+      r.watch.ring.spread !== 2 || r.watch.ring.alpha !== 0.9 ||
+      r.watch.bloom.blur !== 16 || r.watch.bloom.spread !== 4 || r.watch.bloom.alpha !== 0.42;
+  });
+  ck('the WATCH ring holds the approved 2.00 px @ 0.90 (bloom 16/4 @ 0.42), flat, every sample',
+    rows.length > 0 && wMoved.length === 0,
+    rows.length ? (wMoved.length ? wMoved.length + '/' + rows.length + ' samples differ, first at ' +
+      wMoved[0].t + ' ms: ' + JSON.stringify(wMoved[0].watch)
+      : 'unchanged across all ' + rows.length + ' samples') : 'no samples');
+
+  /* The three inequalities. Each names the WORST stop it found, because "it inverts" is useless
+   * without "at 600 ms, by 0.00 px" — which is the number that tells you whether the next tweak
+   * has any room. */
+  function worst(pick) {
+    var w = null;
+    rows.forEach(function (r) {
+      if (!r.press.ring || !r.press.bloom || !r.watch.ring || !r.watch.bloom) {
+        if (!w) w = { t: r.t, margin: NaN, note: 'a cue is not a ring+bloom pair' };
+        return;
+      }
+      var m = pick(r);
+      if (!w || !(m.margin > w.margin)) w = { t: r.t, margin: m.margin, note: m.note };
+    });
+    return w || { t: null, margin: NaN, note: 'no samples' };
+  }
+  var wRing = worst(function (r) {
+    return { margin: r.watch.ring.spread - r.press.ring.spread,
+             note: r.press.ring.spread + ' px vs ' + r.watch.ring.spread + ' px' };
+  });
+  var wAlpha = worst(function (r) {
+    return { margin: r.watch.ring.alpha - r.press.ring.alpha,
+             note: r.press.ring.alpha + ' vs ' + r.watch.ring.alpha };
+  });
+  var wBloom = worst(function (r) {
+    var m = Math.min(r.watch.bloom.blur - r.press.bloom.blur,
+                     r.watch.bloom.spread - r.press.bloom.spread,
+                     (r.watch.bloom.alpha - r.press.bloom.alpha) * 10);
+    return { margin: m, note: r.press.bloom.blur + '/' + r.press.bloom.spread + ' @ ' +
+             r.press.bloom.alpha + ' vs ' + r.watch.bloom.blur + '/' + r.watch.bloom.spread +
+             ' @ ' + r.watch.bloom.alpha };
+  });
+
+  ck('the PRESS ring is thinner than the watch ring at every one of ' + rows.length + ' stops',
+    rows.length > 0 && wRing.margin > 0,
+    'worst at ' + wRing.t + ' ms: ' + wRing.note + '  (margin ' + (+wRing.margin.toFixed(2)) + ' px)');
+  ck('  …and dimmer at every stop — width alone lets a brighter thin ring win the eye',
+    rows.length > 0 && wAlpha.margin > 0,
+    'worst at ' + wAlpha.t + ' ms: ' + wAlpha.note + '  (margin ' + (+wAlpha.margin.toFixed(3)) + ')');
+  /* THE BLOOM IS THE THIRD CHANNEL AND IT IS THE ONE THE EYE ACTUALLY READS AT A GLANCE: the
+   * shipped peak was 20px/5px @ 0.55 against the watch's 16px/4px @ 0.42, so even with the ring
+   * capped the press cue would still have been the louder object on the board. */
+  ck('  …with a smaller bloom at every stop (blur, spread AND alpha)',
+    rows.length > 0 && wBloom.margin > 0,
+    'worst at ' + wBloom.t + ' ms: ' + wBloom.note);
+
+  /* THE PRESSED STATE, WHICH IS THE PULSE STANDING STILL *(OWNER, 2026-09-14, #755 item 19:
+   * "when a hightighted button the glow should stop pulsing")*. It is authored as the pulse's own
+   * 0 % stop, so capping the peak must leave the two in agreement — and it must be under the watch
+   * ring too, or the board reads as two equal rings the moment a control is pressed. */
+  var doneG = cues ? await page.evaluate(function () { return window.__c.done(); }) : null;
+  ck('the PRESSED cue is the pulse\'s own resting stop, steady, and still under the watch ring',
+    !!doneG && doneG.anim === 'none' && !!rest && !!doneG.ring && !!doneG.bloom &&
+      doneG.ring.spread === rest.press.ring.spread && doneG.ring.alpha === rest.press.ring.alpha &&
+      doneG.bloom.blur === rest.press.bloom.blur && doneG.bloom.alpha === rest.press.bloom.alpha &&
+      doneG.ring.spread < 2 && doneG.ring.alpha < 0.9,
+    doneG ? 'anim=' + doneG.anim + ' · ring ' + doneG.ring.spread + ' px @ ' + doneG.ring.alpha +
+            ' · bloom ' + doneG.bloom.blur + '/' + doneG.bloom.spread + ' @ ' + doneG.bloom.alpha
+          : 'not read');
+
+  await page.evaluate(function () { window.__c.clearCues(); });
+
   ck('the page raised no script error while all of that was driven',
     pageErrs.length === 0, pageErrs.length ? pageErrs.slice(0, 3).join(' | ') : 'clean');
 
@@ -582,5 +825,13 @@ var TOOLKIT = [
     '   ' + nPass + '/' + (nPass + nFail) + ' checks');
   console.log(D + 'PASS means each cue REACHED a drawn element and its negative case did not. It says ' +
     'nothing about whether the colours are the right ones — that was decided by rendering them.' + X);
+  if (INJECT) {
+    var caught = nFail > 0;
+    console.log((caught ? G + 'INJECTION CAUGHT' : R + 'INJECTION MISSED') + X +
+      ' — restoring the pre-#758 cklGlow peak (2px @ 1.00, bloom 20/5 @ 0.55) ' +
+      (caught ? 'reddened ' + nFail + ' check(s).'
+              : 'changed NOTHING. Section 5 cannot see an inversion; the gate is hollow.'));
+    process.exit(caught ? 0 : 1);
+  }
   process.exit(nFail > 0 ? 1 : 0);
 })().catch(function (e) { console.error(e); process.exit(1); });

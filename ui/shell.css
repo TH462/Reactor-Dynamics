@@ -2114,10 +2114,41 @@ select.num-input { width: auto; }
   50%      { box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.98), 0 0 18px 5px rgba(120, 210, 150, 0.50); }
 }
 /* The board's "act on this" pulse. CYAN since #743; the geometry is unchanged from the green it
-   replaced, because the owner's complaint was the TEXTURE of #685's watch ring, not this. */
+   replaced, because the owner's complaint was the TEXTURE of #685's watch ring, not this.
+
+   ⚠ THE PEAK IS CAPPED UNDER THE WATCH RING, AND THAT CAP IS THE WHOLE POINT OF THIS KEYFRAME
+   *(OWNER RULING, 2026-09-15, #758, chosen from three drawn options: "Cap the pulse below the
+   watch ring (Recommended)" —
+       watch  |=========|  2.00 px flat, alpha 0.90
+       press   |=====~~|   1.00 -> 1.60 px, peak alpha 0.85   (never reaches the watch ring)  )*
+
+   IT INVERTED, MEASURED. This 50 % stop used to be `2px … 1` / `20px 5px … 0.55` — a ring EXACTLY
+   as wide as `.ckl-watch-glow`'s flat 2.00 px, and brighter (alpha 1.00 against 0.90) with a wider
+   bloom (20/5 against 16/4). So for the upper half of every 1.2 s cycle the ruled relationship
+   REVERSED and the button-to-press became the heavier ring. A layman playthrough read it as "you
+   cannot tell them apart" and stopped using board highlights around step 8.
+
+   THE WATCH RING DOES NOT MOVE — the owner looked at 2.00 px / 0.90 on 2026-09-14 and approved it.
+   Only this keyframe moves, and it must stay strictly under the watch ring on ALL THREE channels
+   (ring width, ring alpha, bloom) at EVERY instant, not only at the peak. The 0 % stop is
+   untouched, because `.ckl-step-glow.ckl-step-done` is byte-identical to it by design (the pulse
+   stops, the glow stays) and that pairing is itself a ruling.
+
+   Chosen margins at the peak, against watch's 2.00 px / 0.90 / 16px 4px / 0.42:
+     ring width  1.60 px  (0.40 px under, 20 %)      ring alpha 0.80 (0.10 under, 11 %)
+     bloom blur  14 px    (2 px under)               bloom spread 3 px (1 px under)
+     bloom alpha 0.36     (0.06 under, 14 %)
+   0.80 rather than the sketch's 0.85 on purpose: 0.85 leaves 0.05, which is inside the width of a
+   future "make it a bit brighter" nudge. The amplitude 0.62 -> 0.80 still reads as a pulse.
+
+   GATED AGAINST THE OTHER CUE, WHICH IS THE SECOND HALF OF THE DEFECT. `verify_board_cues` was
+   39/39 while this shipped inverted, because every check read one class in isolation and an
+   inversion is a RELATION. Its section 5 now puts both cues on the board at once, seeks this
+   animation to 25 stops across the full cycle and asserts the three margins at each. Do not change
+   a number here without re-running it. */
 @keyframes cklGlow {
   0%, 100% { box-shadow: 0 0 0 1px rgba(90, 240, 255, 0.62), 0 0 10px 2px rgba(90, 240, 255, 0.30); }
-  50%      { box-shadow: 0 0 0 2px rgba(90, 240, 255, 1), 0 0 20px 5px rgba(90, 240, 255, 0.55); }
+  50%      { box-shadow: 0 0 0 1.6px rgba(90, 240, 255, 0.80), 0 0 14px 3px rgba(90, 240, 255, 0.36); }
 }
 /* PERSISTENT up-next glow *(#607 item 3 supersedes #244's "steady" call)*. The current
    step's controls PULSE with no mouseover so they stay findable; hover of a non-current
@@ -2143,7 +2174,11 @@ select.num-input { width: auto; }
    SO THE TWO STILL DIFFER BY GEOMETRY, NOT ONLY BY MOTION, which is what #685 and DESIGN_CRITERIA
    question 4 (does it complicate things for the player — a VETO) required and what the dash used
    to carry: the RING WEIGHT is now the shape difference. Watch holds a flat 2 px ring; the pulse
-   breathes 1 px -> 2 px with a bloom half again as wide at its peak (20px/5px against 16px/4px).
+   breathes 1 px -> 1.6 px and NEVER REACHES IT — that ceiling is the #758 ruling and it is the
+   reason the weight difference is readable at all. This line used to read "1 px -> 2 px with a
+   bloom half again as wide at its peak (20px/5px against 16px/4px)", which was the INVERSION
+   written down as a design note: at the peak the press cue was the heavier and brighter ring on
+   all three channels. See the `cklGlow` block above for the capped numbers and their margins.
    A colour-blind player and a `prefers-reduced-motion` player both still have a non-hue
    difference — under reduced motion the pulse falls back to a 3 px DASHED OUTLINE (at the end of
    this file) and this ring stays a solid box-shadow, so the two are a line style apart there and
