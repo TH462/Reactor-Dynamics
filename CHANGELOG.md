@@ -48,7 +48,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   point early keeps that early point — Continue still will not light until the counts are steady.
 
 - **The Mode 3 → Mode 1 approach settles for 10 plant-minutes before the last 1/M point, and
-  step 9 is rewritten on the measurements** *(OWNER RULING: "Rewrite both")*. The final
+  step 9 is rewritten on the measurements** *(OWNER RULING, 2026-09-14: "Rewrite both")*. The final
   inverse-count-rate prediction's error was a SETTLING artifact, not a fit defect: the source
   range has not finished rising when the old 150 s hold expires. **MEASURED** (full stack,
   authored ladder, the panel's own trailing-three fit, four seeds, true critical control bank
@@ -64,18 +64,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   through the window in which the power tile reads 0.0 %. The board has drawn REACTOR PERIOD
   in whole seconds all along and no step in the pool mentioned it.
 - **The walkthrough card no longer draws the `Use <control>: <target>` rung**
-  *(OWNER RULING: "Hide it in the renderer")*. The authored step file carries that rung on one
+  *(OWNER RULING, 2026-09-14: "Hide it in the renderer")*. The authored step file carries that rung on one
   of the nineteen steps that name a control, so it was the renderer's addition. Every step keeps
   its `control` — it is the coverage key for the browser gate — and an observation step still
   says what to watch. Supersedes the #598 item 13 ruling of 2026-09-02.
-- **Startup step 1 stops quoting a boron number** *(OWNER RULING: "Drop the number entirely")*.
+- **Startup step 1 stops quoting a boron number** *(OWNER RULING, 2026-09-14: "Drop the number entirely")*.
   It said boron was "already near 719 ppm", which is true of one route in and wrong about the
   other — MEASURED: the Hot Standby preset boots at **718.9 ppm**, the chained route arrives at
   **917.8 ppm**. The step points at BORON CHEM instead.
 - **The trip-block note no longer says the blocks come back "the moment" power falls below
   P-10** — since #752 the revoke confirms over 2.0 s, so a dip does not clear a block.
 - **The 100 °F/hr heatup-rate limit stays OUT of the Mode 5 → Mode 3 walkthrough**
-  *(OWNER RULING: "Leave it out of the walkthrough")*, recorded at the site and in
+  *(OWNER RULING, 2026-09-14: "Leave it out of the walkthrough")*, recorded at the site and in
   `Blueprint/WALKTHROUGH_STEPS_OWNER.md` so it is not "restored" as missing content. The
   cooldown leg and the manuals keep theirs.
 
