@@ -307,44 +307,34 @@ function sig(rows) {
        'preconditions met, so this passes pre-fix too)',
        run.banner === false, run.banner ? 'a .m-caution banner is present mid-checklist' : 'none');
 
-    /* ---- 3c. THE LEG'S CAUTIONS ARE REACHABLE DURING THE RUN (#653 product defect 1) --------
+    /* ---- 3c. NO WALKTHROUGH DRAWS A CAUTION BLOCK — THE RULING, PINNED (#755 item 2) --------
      *
-     * `pr.cautions` rendered in exactly one place before this — `mProcCard`, the Manual tab's
-     * browse card — so every caution on every leg was off-screen from the moment the walkthrough
-     * started. The heatup's is the case that matters: "Do not exceed a heatup rate of 100 °F per
-     * hour. Control the rate with HX FLOW on the RHR card" is the leg's ONLY heatup-rate
-     * instruction outside step 11's note, and the fresh-context reviews reported it as absent.
+     * ⚠ THIS SECTION USED TO ASSERT THE OPPOSITE, AND ITS SUBJECT IS GONE. #653 product defect 1
+     * was that `pr.cautions` rendered in exactly one place — `mProcCard`, the Manual tab's browse
+     * card — so every caution on every leg was off-screen from the moment the walkthrough started;
+     * two checks here then pinned the heatup's three cautions being DRAWN, collapsed, and opening
+     * to reach "100 °F per hour". On 2026-09-14 the owner's own authored walkthrough source
+     * (`Blueprint/WALKTHROUGH_STEPS_OWNER.md`) carried no caution block at all and #755 item 2
+     * removed the `cautions` array from all seven pwr2 legs. A check cannot assert the presence of
+     * content the author has deleted, so those two go with it — 29 checks to 28.
      *
-     * READ OFF THE RENDERED PANEL, not the pool — the pool is where the string already was. This
-     * check asks whether the player running the leg can get to it.
-     *
-     * INJECTION, run 2026-09-11: delete the `if (pr.cautions && pr.cautions.length)` block from
-     * `renderChecklist` and both of these go red (no summary, no lines), 19/21. Neutering only
-     * the TOGGLE (the `[data-ckl-cautions]` handler) reds the second alone, 20/21 — which is why
-     * they are two checks and not one: the block drawing and the block opening are different
-     * claims and the first is satisfiable while the second is dead. */
+     * WHAT REPLACES THEM IS A PIN ON THE RULING, NOT A HOLLOW ABSENCE. It reads the RENDERED panel
+     * exactly as its predecessors did and reddens the moment any pwr2 leg authors a caution again,
+     * which is the only way the removal can be undone by accident. Discriminating by construction:
+     * restoring `cautions` to `pwr_heatup` in ui/manual_procedures.js reds it and prints the
+     * summary text. It says NOTHING about the renderer, which now has no live subject in this
+     * pool — if the owner rules cautions back in, this check inverts and the #653 pair above is
+     * what should come back, not a rebanding of this one. */
     var caut = await page.evaluate(function () {
       var log = document.getElementById('cklLog');
       var sum = log && log.querySelector('[data-ckl-cautions]');
       return { sum: sum ? sum.textContent.replace(/\s+/g, ' ').trim() : null,
                lines: log ? log.querySelectorAll('.ckl-caut-l').length : 0 };
     });
-    /* COLLAPSED HERE BY DESIGN: the leg is underway (the opening confirm has been pressed), and
-     * four cautions of 20-49 words above a one-step panel would put the step under the fold. The
-     * COUNT is what has to survive the collapse, so that is what is asserted. */
-    ck('the leg cautions are drawn during the run, collapsed and counted (#653 defect 1)',
-       !!caut.sum && /3 cautions for this walkthrough/.test(caut.sum) && caut.lines === 0,
-       caut.sum ? '"' + caut.sum + '" · ' + caut.lines + ' lines drawn' : 'no caution summary in the running panel');
-    await page.click('[data-ckl-cautions]').catch(function () {});
-    await page.waitForTimeout(500);
-    var cautOpen = await page.evaluate(function () {
-      var log = document.getElementById('cklLog');
-      return { lines: log ? Array.prototype.map.call(log.querySelectorAll('.ckl-caut-l'),
-                              function (e) { return e.textContent; }) : [] };
-    });
-    ck('...and opening it reaches the heatup-rate limit, which the run had nowhere else to show it',
-       cautOpen.lines.length === 3 && cautOpen.lines.some(function (t) { return /100 °F per hour/.test(t); }),
-       cautOpen.lines.length + ' lines: ' + (cautOpen.lines[0] || '').slice(0, 70));
+    ck('no caution block is drawn on a running walkthrough — the #755 item 2 ruling, pinned',
+       caut.sum === null && caut.lines === 0,
+       caut.sum ? 'a caution summary is back: "' + caut.sum + '" · ' + caut.lines + ' lines'
+                : 'none drawn, and the pwr2 pool authors none');
 
     /* ---- 3d. THE DETAILS PARAGRAPH IS LABELLED (#692 item 3, #687 item 4) -------------------
      * *(OWNER, 2026-09-09: "The why text needs to have some indication that its extra learning

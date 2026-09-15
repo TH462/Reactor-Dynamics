@@ -29,6 +29,7 @@
  */
 'use strict';
 var path = require('path');
+var fs = require('fs');
 function load(p) { require(path.join(__dirname, '..', p)); }
 ['engines/load_mode.js', 'engines/pwr/pwr_config.js', 'layers/control/pwr_control.js',
  'engines/pwr/pwr_thermal.js', 'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_pressurizer2.js', 'engines/pwr/pwr_primary.js',
@@ -445,17 +446,25 @@ console.log('\n' + BOLD + 'the derivation behind pwr_startup\'s creep onto criti
   // 8.06 was the same window measured 10 °F hot at the BEAVRS anchor; see the note above.
   ck('differential bank worth through the critical band is 7.76 pcm/step', near(dw, 7.76, 0.05),
      dw.toFixed(2) + ' pcm/step (' + (dw / (K2.DELAYED.beta * 1e5 / 100)).toFixed(2) + ' ¢)');
-  // AND THE CHECKLIST MUST SAY THE SAME NUMBER. This is the check that would have caught #618's
+  // AND THE CONTENT MUST SAY THE SAME NUMBER. This is the check that would have caught #618's
   // headline defect: four documents quoted this worth at three different values (6.5 / 8 / 9
   // pcm) and nothing compared any of them to the plant.
+  //
+  // ⚠ IT READ THE CHECKLIST'S `cautions` UNTIL 2026-09-14 (#755 item 2), AND THAT SUBJECT NO
+  // LONGER EXISTS: the owner's authored walkthrough source carries no caution block, so every
+  // pwr2 leg's `cautions` array was removed and this check's `quoted` went null. It is RE-POINTED,
+  // not deleted — deleting it would retire #618's target the first time the content moved, which
+  // is exactly the failure it exists to catch. Manuals/09 §"Control bank max steps" is the
+  // durable home for the figure (Manuals/04 and Manuals/12 quote it too, and `run_manual_units`
+  // already walks that chapter), so the plant-vs-content comparison survives the caution's
+  // removal and now guards the document a future agent is most likely to edit from recall.
   var quoted = null;
-  (proc.cautions || []).forEach(function (c) {
-    var m = /([\d.]+)\s*pcm/.exec(c);
-    if (m && quoted === null) quoted = parseFloat(m[1]);
-  });
-  ck('the checklist caution quotes the worth the plant actually has',
+  var mch = /critical band it is \*{0,2}([\d.]+) pcm\/step/.exec(
+    fs.readFileSync(path.join(__dirname, '..', 'Manuals', '09_SETPOINTS_LIMITS.md'), 'utf8'));
+  if (mch) quoted = parseFloat(mch[1]);
+  ck('Manuals/09 quotes the critical-band worth the plant actually has',
      quoted !== null && Math.abs(quoted - dw) <= 0.1,
-     'caution says ' + quoted + ' pcm/step, plant is ' + dw.toFixed(2));
+     'the manual says ' + quoted + ' pcm/step, plant is ' + dw.toFixed(2));
   // The creep must land PAST critical but not far past: all the excess it leaves has to come
   // back out by hand, because below the point of adding heat there is no temperature feedback.
   var excess = rhoAt(PLOTTED + CREEP) - rhoAt(crit);

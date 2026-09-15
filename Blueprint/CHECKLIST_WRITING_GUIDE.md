@@ -106,9 +106,19 @@ characters a line). Measured on the shipped build (`ui/app.js` `renderChecklist`
   (#692 item 3 / #687 item 4, 2026-09-11). It used to be a second, dimmer grey, which is what
   made the two indistinguishable; the label is now what separates a binding instruction from
   optional background. **Neither is still where an instruction survives.**
-- **Leg-level `cautions` ARE drawn during a run since #653 (2026-09-11)** — a collapsible amber
-  block at the head of the panel, open before the leg starts moving and one click away after,
-  with the COUNT always visible. `purpose` and `prereq` are still browse-card only. The
+- **⚠ NO WALKTHROUGH CARRIES `cautions` ANY MORE (#755 item 2, 2026-09-14).** The owner's own
+  authored step source, `Blueprint/WALKTHROUGH_STEPS_OWNER.md`, has no caution block on either
+  leg it covers, and its opening line governs the whole pool: *"The steps should not include
+  elements not included in my manual edits below except for highlights."* All seven pwr2 legs had
+  their `cautions` array removed. **Do not author one back without his ruling** — and if he rules
+  them back in, what returns with them is `verify_ckl_relevance` §3c's original #653 pair, not the
+  single ruling-pin that replaced it. The renderer is untouched and still draws the block.
+  **Anything that has to reach the player now goes in a step's own line or `note`** — which is
+  what the removal costs: the heatup's 100 °F/hr limit and the cooldown's 1615–665 psi
+  accumulator window had no other home, and they are open items on #755.
+- **How it was drawn, while it had a subject (#653, 2026-09-11)** — a collapsible amber block at
+  the head of the panel, open before the leg starts moving and one click away after, with the
+  COUNT always visible. `purpose` and `prereq` are still browse-card only. The
   `precond` banner is drawn once, latched at entry and never recomputed.
   **L5 below is retired by this: a caution no longer has to be repeated in a step line.** It is
   still correct to put a TIME-CRITICAL fact in the line — a caution one click away is not a
@@ -325,7 +335,7 @@ term in it that a step uses without its one-line definition is a defect in that 
 | `clear` *(incident)* | the same shapes, descending as `clear_failure` — the recovery half of a sequence, so a leg can put the plant back without the player opening the Failures tab | a tidy-up at the end of a leg — a failure that is still true when the walkthrough ends is the walkthrough's outcome, not a leak |
 | `story` *(incident)* | `{clock, saw, knew, did}` — the historical clock, what was on the crew's board, what they concluded, what they then did. Drawn **above** the numbered instruction and never folded away; **2 sentences per field** (`checklist_story_length`) | the plant lesson — that is `why`; an instruction; the long-form account, which lives in the manual chapter the step cites |
 | `crew` *(incident)* | `true` — draws *"the crew's action, as taken — not a recommendation"* beside the instruction. **Required on any step that asks the player to repeat an action that made the accident** | a step the player is meant to get right — the tag would then teach the opposite of what the step wants |
-| `cautions` (leg) | the leg's binding limits, one per row — drawn during a run since #653 in a collapsible amber block, and the only place several of them exist | a time-critical fact that binds on ONE step; that belongs in that step's line, because the block can be collapsed |
+| `cautions` (leg) | **NOTHING — the field is retired from the pool by #755 item 2 (2026-09-14) and no pwr2 leg carries one.** See the ⚠ bullet above before authoring one. *(What it took while it had a subject: the leg's binding limits, one per row, drawn in a collapsible amber block since #653.)* | anything, until the owner rules it back; a binding limit now goes in the step line or `note` of the step it binds on |
 
 Two rules the table implies, both broken repeatedly in the shipped set:
 
