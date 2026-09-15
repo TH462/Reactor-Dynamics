@@ -29,6 +29,142 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-15-develop-c (a fresh-context layman finished BOTH legs, and four of its diagnoses were wrong)
+
+**Issues:** #653 (umbrella), #758 (highlights, new), #759 (Plot point, new), #760 and #761 (filed,
+unstarted). **Commits:** `21fa7265`, `57a52e48`, `fd5750c9`, `1f55a755`, `5da3ce4d`, `c7edf964`.
+Nothing pushed.
+
+### What the pass was, and why the result is not "six bugs found"
+
+`layman-playthrough` over `pwr_heatup` and `pwr_startup` on `356c7033`, headless Edge 1600x1000,
+no `&dev=1`, ~95 min. **Both legs finished 17/17 and 17/17**, chained, and across 34 steps
+`Continue` never lit early and never failed to light once the condition held. Then the
+verification pass re-measured every claim before any of it was filed, per the skill's §9.
+
+**FOUR OF ITS DIAGNOSES WERE REFUTED, AND EVERY ONE OF THEM WOULD HAVE BEEN FILABLE.** This is
+the fourth pass in a row where that happened, and it is worth stating as a standing expectation
+rather than a surprise:
+
+| the claim | the measurement |
+|---|---|
+| "the two cues differ only by animation" | false — 1 px vs 2 px ring, smaller bloom. A real static cue exists. |
+| "the pulse is a 0.4 px breath" | envelope **1.00 → 2.00 px**, alpha 0.62 → 1.00. It sampled two arbitrary instants of a 1.2 s ease-in-out. |
+| "a pressed button equals a watch highlight" | it equals the pulse's own RESTING stop — which *is* the ruling. |
+| "no scrollbar is drawn" | headed Edge: `clientWidth 350` vs `offsetWidth 365`, **15 px**. Headless Chromium draws overlay scrollbars that consume no layout width, so the original read measured the HARNESS. |
+
+**The observations behind all four were correct.** The player really could not tell the cues
+apart; the step really did open mid-sentence. Keep the observation, replace the diagnosis — §9's
+own rule, earning itself again.
+
+### The defect the refutations were hiding
+
+`.ckl-watch-glow` is a flat **2.00 px** ring. `cklGlow` peaked at **2.00 px**, and at that peak
+also beat the watch on alpha (1.00 vs 0.90) and bloom (20/5 @ 0.55 vs 16/4 @ 0.42). **So for the
+upper half of every 1.2 s cycle the ruled relationship INVERTED** — the button-to-press was the
+thicker, brighter ring. Not "no difference": a difference that changed sign twice a second, which
+is why a player experiences it as noise and a source read finds nothing wrong.
+
+Fixed by capping the 50 % stop at **1.60 px / alpha 0.80 / 14-3 @ 0.36**
+*(OWNER RULING, 2026-09-15: "Cap the pulse below the watch ring")*. Alpha 0.80 not 0.85 —
+0.85 leaves 0.05 of headroom, inside the width of a future "make it a bit brighter" nudge.
+
+**THE GATE WAS PART OF THE BUG, FOR THE SECOND TIME IN A WEEK** (`ebf53ce7` was the first).
+`verify_board_cues` read **39/39** throughout. The structural reason: **nothing in this repo
+compared two cues to each other**, and `verify_e2e_ui` reads these two on *different walkthrough
+legs*, so they are never on screen together. New §5 in `verify_board_cues` (39 → 46) paints both
+on one page, **seeks** the animation with `getAnimations()[0].pause()` + `currentTime` rather than
+polling (polling samples wherever the event loop lands and can miss the peak), and asserts the
+inequality on all three channels at 25 stops. It also pins the watch ring's approved values, so a
+future inversion cannot be "fixed" by shrinking the cue that is not allowed to move. Two
+anti-hollow guards in it: the sampler must be SEEN to move the pulse, and the box-shadow splitter
+depth-counts parens — a plain comma split shreds `rgba(...)`, every alpha returns `NaN`, and NaN
+compares false against everything, which would have made the whole section a green no-op.
+
+### Three more, each with a mechanism worth keeping
+
+1. **A VERIFY step wore the "act on this" pulse on the TRIP button** and the layman nearly pressed
+   it. `pwr_heatup` 4 has no `cmd` and its ring resolved to TRIP's box to the pixel. Pool-wide
+   audit: **11 steps** with no `cmd` and a pulsing ring on a workable control; 6 legitimate, 2
+   fixed (including a cooldown step pulsing PZR SPRAY while its own text read *"Do not switch the
+   spray off"*), 3 left because they are the owner's own #744 drawings — since **ruled** to the
+   steady ring. **The structural blocker:** `stepHlLabels` falls back to the step's own `control`
+   when `hl` is empty, so deleting `hl` pulses something else and reds the distinct-element check.
+2. **Plot point out of turn banked a real point, silently, into the fit that drives the
+   prediction** (#759). `accs_ordered` gates the CHECK-OFF, not the BOARD CONTROL — the walkthrough
+   cannot stop a player pressing a button, which is #741's real shape. The card said *"Plot point
+   does nothing until the counts are steady"*: **a false statement in player-facing copy**, and the
+   code comment that was its source said the same. Both corrected; the card now names the blocking
+   rung.
+   **IT NEARLY SHIPPED DARK.** Runtime and renderer both finished, card drawing nothing — because
+   `renderChecklist`'s change key sits perfectly still on an out-of-turn press: no row latches, no
+   index moves, no acceptance changes, which is *precisely what makes the press out of turn*. A
+   source read of either half reads correct. **Third value in that key to have gone dark** (#392,
+   #653 defect 4). Only a browser could see it.
+3. **The fast-forward drop, and a status line that advised the button that had just failed.**
+   `_attentionStop` drops only when `_boardQuiet(prevAlarms)` held beforehand — the first WARNING
+   or CRITICAL on a QUIET board — and **acknowledgement is not in the test at all**, which is why
+   the same run lost 600× to one new warning and later held **3600× through FOUR unacknowledged
+   alarms**. And `syncWarpInfo` emitted a cause for **one of five** drop reasons, falling through
+   to the step's own advice for the rest. The 2026-09-14 ruling is now implemented inside
+   `_newAlarmOfPriority`, deliberately, so the fast-forward drop and the WARP drop inherit ONE
+   decision instead of two that agree today. **Live and inert until a step declares
+   `expect_alarms`.**
+
+### The tooling was lying, and that is the entry's real lesson
+
+`.claude/skills/layman-playthrough/SKILL.md` §10 told every reviewer: *"`#warpInfo` prints the
+reason for every refusal and every drop — quote that line rather than diagnosing the clock."*
+**It printed one of five.** The skill exists to stop reviewers attaching wrong causes to right
+observations, and on this one point it handed them a wrong cause with the project's authority
+behind it. Its companion claim — "a new unacknowledged critical or warning alarm drops WARP" — was
+also not the rule, and could not explain the 3600×-through-four contradiction the reviewer duly
+reported as a mystery.
+
+Corrected **twice in one day**: `1f55a755` replaced it with the measurement, then `fd5750c9` made
+the original claim TRUE, so `5da3ce4d` rewrote it as *"true since `fd5750c9`, false for four of
+five reasons before"* — which is what a reviewer on an older build needs and what a flat "it works"
+would have hidden.
+
+**A doc that tells an agent what to trust is wrong in a way that makes REPORTS worse, not just
+readers slower.** That is the one to carry forward.
+
+### Three-agent tree hazards, measured
+
+- **The shared git index swept one agent's staged work into another's commit, TWICE** — once by an
+  agent, once by me amending to *document the first sweep* (`--amend` takes the index too). Fixed
+  by splitting into two honest commits; tree byte-identical across the split.
+  **In a tree with more than one agent, `git add <file>` is not enough and `--amend` is not safe.
+  Commit with an explicit pathspec, every time.**
+- **`verify_ckl_relevance`'s single red was a LIVE-EDIT RACE**, not a defect: passed, failed 60 s
+  later, passes at 34/34 on the settled tree. `ui/app.js` was being written underneath the runner.
+- **`run_checklist_pwr2` took 52 min against a 29 min baseline** with three agents in the tree, and
+  its +5 was attributable to a *different* agent's commit than the one that ran it.
+- **Run a long gate to a RAW FILE and grep the file** — one agent piped a 26-minute runner through
+  `grep` and **6 of 9 failures never reached the log**.
+
+### Gate snapshot at close
+
+`verify_board_cues` **46/46** (39 → 46) · `verify_ckl_relevance` **34/34** (30 → 34) ·
+`run_checklist_pwr2` **294/294** (289 → 294) · `run_manual_controls` **1014** (1016 → 1014, all
+four checks from ONE step's `hl` → `hl_watch` move) · `run_hardrules` **581** (write-up drift,
+both directions in one day — a citation removed is a legitimate DOWN move, so a falling
+`run_hardrules` is not automatically a lost attribution) · `verify_reduced_motion` 18/18 ·
+`verify_board_check` 278 · `verify_e2e_ui` PASS (#111 strict xfail untouched) · `run_warp_tier`
+23/23 · `run_style` 11/11. **No aggregate run — nothing has been pushed.**
+
+### Open, and named so it is not read as clear
+
+- **#761 — the settle durations do not agree.** Replay 223/226/281/507 s against the layman's
+  400/1,000/350/met-on-arrival, step 6 out by ~4×. **The `steady` predicate's window and tolerance
+  were tuned against the replay**, so if the live numbers stand, the constants that gate the step
+  were fitted to a fixture that is not what a player experiences. Filed high, unstarted.
+- **#760** — 14 more steps imply a sequence and do not enforce one; deliberately NOT batched,
+  because turning the flag on changes what the replay drives and #756 already lost a leg silently
+  to exactly that.
+- **`expect_alarms` on real steps**, the verify-ring move and step 9's rungs — in flight.
+- **A layman re-run** — owed for the capped pulse's *loudness*, which no gate can judge.
+
 ## Session log — 2026-09-15-develop-b (#756 — the substeps become a SEQUENCE, and the owner's named indication is not the one that can carry the claim)
 
 **The directive.** *(OWNER DIRECTIVE, 2026-09-15: "For the early-plot hole, we could have
