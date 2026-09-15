@@ -215,3 +215,101 @@ original message:
 - Counter-example, done right: the branch name. Recommended `workbench`, gave the reasoning
   (generic, distinct, no collision with "benchmark"), offered two alternates, and flagged the
   design question the name implied. That is the shape.
+
+
+## 6. Working efficiently — the worked cases behind the CLAUDE.md block
+
+*Advisory, like the rest of this file. The prohibitions are in `CLAUDE.md`; what follows is why
+each one exists and where the boundary sits, from two lanes' measurements on 2026-09-12.*
+
+### 6.1 Where the cost actually is
+
+Counted across two lanes that day: **~34 dispatches, 13 full `run_all` runs, ~8 hours of gate wall
+time**, roughly **13 M subagent tokens**. The expensive agents ran **300–360 tool calls** each.
+Dispatch prompts run ~1,000 words and are **noise beside the call count** — every tool call re-sends
+that agent's entire context, so a 300-call agent pays for its brief three hundred times.
+
+**Three drivers, in order of cost:** gate-waiting wake/stop loops · the aggregate being run per
+change rather than per push · agents re-deriving facts the coordinator already held.
+
+### 6.2 The mid-gate hand-back — why it is structural
+
+An agent that backgrounds a 34-minute gate and hands back does not simply wait. It **stops**, and
+resuming it **re-reads its whole context**; the coordinator then adds a wait-loop of its own around
+it. Three agents on one lane did this repeatedly; several on the other did too. It was read each
+time as an agent being careless, and it is not — it is the shape of backgrounding a long gate inside
+a turn-based agent.
+
+**So it cannot be fixed by instruction.** Either the agent runs the gate in the foreground with a
+long timeout, or it runs no aggregate at all and the coordinator owns it.
+
+### 6.3 MEASURED versus INHERITED — the rule that nearly cancelled a better one
+
+Handing an agent the numbers is right: when one was given the Linux content floor, the 412 px
+figure and the per-caption table, it went straight to work instead of re-measuring.
+
+**But numbers handed over are also errors handed over.** Two filed mechanisms were refuted by the
+agents handed them — one contradicted by 308 of 308 broadcasts, another whose premise did not
+reproduce at all. And two of the coordinator's own figures that day were wrong in exactly this way:
+a **392 px content floor derived on Windows and stated as fact**, and **"18 tiles raised
+organically"** offered as coverage when the set never produced the binding string.
+
+**Hence the marking.** A number stated as a premise is one the agent will not test, and that quietly
+cancels the re-measurement pass. *Organic is not the same as representative* — a close cousin of the
+standing trap that a term which is an identity in the regime you test in is a term nothing tests.
+
+**And the missing half: a correction chases everyone holding the number, not whoever is in front of
+you.** Marking a figure MEASURED or INHERITED says how good it was *when given*. Nothing in that
+makes a retraction travel.
+
+**The worked case, from the commit that landed this section.** A coordinator estimated the evictable
+prose in `CLAUDE.md` at **~2,400 words** by eyeballing "roughly half" a 4,808-word section, and
+stated it as fact to the owner and to the other lane. Measured, it was **821**. The correction went
+to the owner — *"my estimate was wrong by a factor of three"* — **and never to the other lane**,
+which went on holding the retired number, used it as a premise, and built an argument on it: seeing
+821 and 753 in one commit, it reported "two numbers disagreed by 3.2×" and named it a MEASURED/
+INHERITED failure. **Both of those figures were right** — 821 gross, 68 words of replacement
+pointer, **753 net** — and the contradiction was manufactured out of a gross-versus-net difference
+neither side had checked. The only wrong number in the episode was the one already retracted in a
+conversation the other lane could not see.
+
+**So: when a number you have given turns out wrong, send the correction to every holder.** A
+retraction that reaches one of them is indistinguishable from no retraction — and worse than none,
+because you will reason as though it landed. The cost is one message; the failure mode is a peer
+defending your dead figure against your live one.
+
+### 6.4 One WRITER per file per TREE — and why the obvious rule was wrong
+
+The first draft said *one agent per file*. It was measured and it is too strong: two agents editing
+**different regions** of one file **auto-merged clean, both edits present**; only **same-line** edits
+conflicted, and they conflicted **loudly**.
+
+**The hazard is two writers in one working tree**, which destroyed a landed fix via
+`git checkout -- .` with `git status` reading clean throughout. The file-level rule would have
+bought nothing against that and cost real serialisation — one lane measured **~40 minutes** of pure
+file contention behind a rule of that shape.
+
+Two agents genuinely needing one file get **a scratch worktree each** (`LANES.md` §9).
+
+### 6.5 The no-agent boundary — and why it carries no size threshold
+
+**The worked case: a version bump cost 112 k tokens for three string edits and two gates.** It was
+not expensive because it was small. It was expensive because **no judgement was required and the
+facts were already in hand**.
+
+A size threshold would have **licensed** that delegation ("three string edits, obviously small") and
+would **mis-forbid** its opposite: a two-line physics change needing a measured adjudication belongs
+with an agent however small the diff. **Size is not the axis; judgement is.**
+
+Boundary, in practice: needs investigation, measurement or a call → an agent. Facts in hand, no call
+to make → do it directly. Recording a ruling, posting a cross-link, a status line, a version bump.
+
+### 6.6 Coordinator habits that cost turns
+
+- **Do not answer a spurious agent wake-up with a status check.** One lane did this fifteen-odd times
+  to report "still running". Silence costs nothing; the notification is the signal.
+- **Scope `STILL OUTSTANDING` to the task in hand.** `CLAUDE.md` already requires this. Printing a
+  six-to-eight item backlog every turn is the exact "appears every turn, stops being read" failure
+  that rule was written against.
+- **Lead a peer message with the ask or the number.** Several ran 700–900 words where the
+  load-bearing part was two sentences.

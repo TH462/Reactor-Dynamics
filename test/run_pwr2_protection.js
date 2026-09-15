@@ -71,7 +71,9 @@ var DOC = {
   si_pzr_psia: 1715.0, si_steam_psia: 327.7,
   steam_flow: 1.55,
   lolo_frac: 0.17, d_lolo: 2.0, hihi_frac: 0.90, d_hihi: 2.0,
-  hi_pzr_level: 0.87, p7_frac: 0.10,
+  hi_pzr_level: 0.87, p7_frac: 0.08,   /* RETYPED from Ginna TS Bases B 3.3.1 (ML20339A221):
+                                        * "generate a reactor trip above approximately 8% RTP
+                                        * (P-7 setpoint)" -- the anchor plant, #753 */
   lead_s: 12.0, lag_s: 2.0,
   d_press: 2.0, d_flux: 0.5, d_flow: 1.0,
   psia_per_mpa: 145.0377,
@@ -428,14 +430,23 @@ function runSuite(P, rec, quiet) {
                      var rR = P.stepProtection(prHH, DT, healthy());
                      return rR.fwi === false && rR.turbine_trip_hi_level === false; })(), '');
 
-  /* ---- THE HIGH-LEVEL TRIP AND P-7 (stage 2b, 2026-08-19) ---------------------------------
-   * WTSM 10.3.4.3: an AT-POWER trip, "only active if either reactor power or turbine power is
-   * 10% or greater". Ginna's 87 % setpoint (TS Bases B 3.4.9). Unlike P-10 there is no operator
-   * request in P-7 -- a plain automatic gate -- so the two permissives are DIFFERENT shapes on
-   * purpose, and the checks pin both sides of the gate plus graceful absence of the reading. */
+  /* ---- THE HIGH-LEVEL TRIP AND P-7 (stage 2b, 2026-08-19; re-sourced #753, 2026-09-14) -----
+   * An AT-POWER trip. WTSM 10.3.4.3 gives the generic function's SHAPE ("only active if either
+   * reactor power or turbine power is 10% or greater"); the SETPOINT is the anchor plant's, and
+   * Ginna TS Bases B 3.3.1 (ML20339A221) puts P-7 at approximately 8% RTP -- the same crossing
+   * as P-10, which is what the equality check below pins. Ginna's 87 % level setpoint is TS
+   * Bases B 3.4.9. Unlike P-10 there is no operator request in P-7 -- a plain automatic gate --
+   * so the two permissives are DIFFERENT SHAPES on purpose even at one number, and the checks
+   * pin both sides of the gate plus graceful absence of the reading. */
   head('THE HIGH-LEVEL TRIP  [at-power via P-7 -- a plain gate, not a revoked request]');
   ck("the setpoint is Ginna's 87 %", P.RPS.hi_pzr_level_frac, DOC.hi_pzr_level, 0, 'frac');
-  ck('P-7 is the sourced 10 %', P.P7.frac, DOC.p7_frac, 0, 'frac');
+  ck("P-7 is the anchor plant's 8 %", P.P7.frac, DOC.p7_frac, 0, 'frac');
+  /* THE RULING ITSELF, not only its number *(OWNER RULING, 2026-09-14, #753: "1. Yes, 0.08")*:
+   * P-7 and P-10 are ONE CROSSING on this plant, because the anchor plant has them that way.
+   * Pinning the EQUALITY and not only the literal is what makes a future edit to either one
+   * red -- the pair drifted apart behind two separately-correct literals and nothing noticed. */
+  ckT('P-7 and P-10 are the SAME crossing', P.P7.frac === P.P10.frac,
+      'both ' + (P.P7.frac * 100).toFixed(0) + ' % -- Ginna TS Bases B 3.3.1');
   var sHiL = withReading('pzr_level_frac', 0.92);
   sHiL.power_frac = 0.05;                              /* below P-7: the trip is NOT ACTIVE */
   var rP7lo = ride(P.createProtection({}), sHiL, 10);
@@ -449,6 +460,16 @@ function runSuite(P, rec, quiet) {
   ckT('...and the SAME level at 12 % power trips, on this function and no other',
       rP7hi.reactor_trip === true && rP7hi.trip_cause === 'hi_pzr_level' && rP7hi.p7_met === true,
       'held ' + fn(rP7hi, 'hi_pzr_level').held_s.toFixed(1) + ' s past the 2.0 s [open] delay');
+  /* THE PROOF THAT THE CONSTANT MOVED SOMETHING (#753). 9 % power is ABOVE the new P-7 and
+   * BELOW the old one, so this check is RED on the pre-ruling engine and green on this one --
+   * the band the ruling actually opened, asserted rather than described. */
+  var sHiL3 = withReading('pzr_level_frac', 0.92);
+  sHiL3.power_frac = 0.09;
+  var rP7band = ride(P.createProtection({}), sHiL3, 10);
+  ckT('...and at 9 % power too -- the 8-10 % band the ruling opened',
+      rP7band.reactor_trip === true && rP7band.trip_cause === 'hi_pzr_level' &&
+      rP7band.p7_met === true,
+      'red at P7 = 0.10, green at 0.08');
   var sNoL = healthy();
   delete sNoL.pzr_level_frac;
   var rNoL = ride(atPower(), sNoL, 5);
@@ -661,18 +682,22 @@ function runSuite(P, rec, quiet) {
   var rAbove = ride(prP, withReading('power_frac', 0.40), 1);
   ckT('a block requested ABOVE the permissive takes effect',
       rAbove.p10_met === true && rAbove.low_flux_blocked === true, '');
-  var rBelow = ride(prP, withReading('power_frac', DOC.p10_frac - 0.01), 1);
+  /* THE DWELL IS THE PLANT'S OWN, NEVER RETYPED (#752). Every ride below that has to outlast
+   * the confirmation time is written as confirm + 1 s, so moving the constant moves the gate
+   * with it instead of leaving a fixture pinned to the old behaviour. */
+  var CONF = P.P10.confirm_s, PAST = Math.min(CONF, 30) + 1;
+  var rBelow = ride(prP, withReading('power_frac', DOC.p10_frac - 0.01), PAST);
   ckT('...and falling BELOW the permissive unblocks it automatically',
       rBelow.p10_met === false && rBelow.low_flux_blocked === false,
       'the operator has no say in the unblock — that is what makes it not defeatable');
   ckT('...and the REQUEST itself is revoked, so it does not silently re-arm on the way back up',
       prP.blockLowFlux === false, '');
-  var rBack = ride(prP, withReading('power_frac', 0.40), 1);
+  var rBack = ride(prP, withReading('power_frac', 0.40), PAST);
   ckT('...so returning above the permissive leaves it UNBLOCKED until asked again',
       rBack.low_flux_blocked === false,
       'a stale request that re-armed by itself is the defeatable-trip shape the sources do not have');
   var prLow = P.createProtection({ blockLowFlux: true });
-  var rLowOnly = ride(prLow, withReading('power_frac', 0.03), 1);
+  var rLowOnly = ride(prLow, withReading('power_frac', 0.03), PAST);
   ckT('a block requested BELOW the permissive never takes effect at all',
       rLowOnly.low_flux_blocked === false && fn(rLowOnly, 'hi_flux_lo').asserted === false,
       'at 3 % power it is below the 35 % trip too, so the trip is not asserted for its own reason');
@@ -683,10 +708,10 @@ function runSuite(P, rec, quiet) {
   var rIRa = ride(prIR, withReading('power_frac', 0.20), 1);
   ckT('the INTERMEDIATE RANGE request takes effect above the permissive too',
       rIRa.ir_high_blocked === true && fn(rIRa, 'ir_high_flux').armed === false, '');
-  var rIRd = ride(prIR, withReading('power_frac', DOC.p10_frac - 0.01), 1);
+  var rIRd = ride(prIR, withReading('power_frac', DOC.p10_frac - 0.01), PAST);
   ckT('...and falling below P-10 revokes IT as well, request and all',
       rIRd.ir_high_blocked === false && prIR.blockIrHigh === false &&
-      ride(prIR, withReading('power_frac', 0.20), 1).ir_high_blocked === false,
+      ride(prIR, withReading('power_frac', 0.20), PAST).ir_high_blocked === false,
       'the same auto-reinstate, on the lever the C-1 rod stop also rides');
   ckT('...and revoking one does NOT revoke the other',
       (function () {
@@ -698,6 +723,98 @@ function runSuite(P, rec, quiet) {
       })(),
       'clearing the IR block must leave the power-range one standing, or a single press ' +
       're-arms a trip the operator did not touch');
+
+  /* ---- THE REVOKE IS CONFIRMED OVER TIME (#752, OWNER RULING 2026-09-14 "Confirmation time
+   * (Recommended)") ---------------------------------------------------------------------------
+   * `power_frac` is an INSTRUMENT reading (HR1) and this plant's power_range channel carries
+   * sigma 0.3 % power. Before this, ONE stray sample below 8 % removed a standing block:
+   * MEASURED on the real plant, a block taken with true power parked at 8.250 % was gone 0.04 s
+   * later with true power still 8.245 %. The dwell is the single-channel stand-in for the
+   * three-out-of-four coincidence the Bases give as the real plant's noise immunity.
+   *
+   * ⚠ THE FIRST TWO CHECKS ARE THE ONES THAT CANNOT BE HAD FOR FREE. "The block survives a dip"
+   * is satisfied by a revoke that never happens at all, and "the block revokes" is satisfied by
+   * the defect. They are written as a PAIR against the same pr for that reason, and the dwell
+   * check below pins WHEN, not just whether — a confirmation time nobody measures the length of
+   * is a gate that would accept 0.02 s or an hour. */
+  head('P-10 CONFIRMATION TIME  [#752 — one noisy sample must not take a standing block away]');
+  ckT('the confirmation time is DECLARED [derived], not dressed as sourced',
+      P.P10.confirm_kind === '[derived]' && P.P10.kind === '[sourced]' && CONF > 0,
+      'the 8 % setpoint is sourced and the dwell is not; find_source.js finds no P-10 time delay');
+  /* ⚠ THE ONE CHECK THAT PINS THE NUMBER. Every other fixture here is written in terms of
+   * P10.confirm_s so that moving the constant moves the gate with it — which is right, and is
+   * also exactly why none of them can see the constant move. This one retypes the MEASUREMENT
+   * instead: the dwell has to beat the worst spurious excursion the shipped power_range channel
+   * produced in 24 plant-hours parked essentially on the setpoint (0.94 s at 8.02 % true power,
+   * DT 0.02 s), and it has to stay short enough that the reinstate the startup checklist
+   * promises still arrives — measured on the plant, a 5.7 %/min rod ride-down reinstates 7.48 s
+   * after the true crossing at 2.0 s of dwell, and the delay scales with it. */
+  ckT('...and its LENGTH is inside the measured band, 1.0 s to 5.0 s',
+      CONF >= 1.0 && CONF <= 5.0,
+      'below 1.0 s the measured 0.94 s worst spurious run is inside its own scatter; above ' +
+      '5.0 s the ride-down is stranded well below P-10 with the startup net still blocked');
+  ckT('ONE reading below P-10 does NOT revoke a standing block',
+      (function () {
+        var pr = P.createProtection({ blockLowFlux: true, blockIrHigh: true });
+        ride(pr, withReading('power_frac', 0.40), 1);            /* standing, above */
+        var r1 = P.stepProtection(pr, DT, withReading('power_frac', DOC.p10_frac - 0.01));
+        return r1.low_flux_blocked === true && r1.ir_high_blocked === true &&
+               pr.blockLowFlux === true && pr.blockIrHigh === true;
+      })(),
+      'the shipped defect: at 8.19 % true power the channel produces its first sub-8 sample in ' +
+      '0.20 s, measured over a plant-hour');
+  ckT('...and it still revokes once the dwell is satisfied -- BOTH requests',
+      (function () {
+        var pr = P.createProtection({ blockLowFlux: true, blockIrHigh: true });
+        ride(pr, withReading('power_frac', 0.40), 1);
+        var r = ride(pr, withReading('power_frac', DOC.p10_frac - 0.01), PAST);
+        return r.low_flux_blocked === false && r.ir_high_blocked === false &&
+               pr.blockLowFlux === false && pr.blockIrHigh === false;
+      })(),
+      'the paired positive — without it the check above passes on a revoke that never fires');
+  ckT('the dwell is confirm_s LONG, to within one step',
+      (function () {
+        var pr = P.createProtection({ blockLowFlux: true });
+        ride(pr, withReading('power_frac', 0.40), 1);
+        var low = withReading('power_frac', DOC.p10_frac - 0.01), t = 0;
+        /* the cap is ABSOLUTE, not CONF-derived: a constant of 1e9 would otherwise spin this
+         * loop 5e10 times and hang the gate instead of reddening it (it did, once) */
+        var cap = Math.round(Math.min(CONF + 2, 30) / DT);
+        for (var i = 0; i < cap; i++) {
+          P.stepProtection(pr, DT, low); t += DT;
+          if (!pr.blockLowFlux) break;
+        }
+        return pr.blockLowFlux === false && t >= CONF - 1e-9 && t <= CONF + 2 * DT;
+      })(),
+      'pins the LENGTH, not just the existence — a dwell of 0.02 s or of an hour both satisfy ' +
+      '"survives a dip and eventually revokes"');
+  ckT('the dwell is CONTINUOUS -- a dip that recovers starts it over',
+      (function () {
+        var pr = P.createProtection({ blockLowFlux: true });
+        ride(pr, withReading('power_frac', 0.40), 1);
+        var low = withReading('power_frac', DOC.p10_frac - 0.01);
+        var hi = withReading('power_frac', 0.40);
+        /* twenty spells each just SHORT of the dwell, each ended by one sample back above --
+         * far more sub-8 time in total than confirm_s, and none of it continuous */
+        for (var k = 0; k < 20; k++) {
+          for (var i = 0; i < Math.round(Math.min(CONF - DT, 30) / DT); i++) P.stepProtection(pr, DT, low);
+          P.stepProtection(pr, DT, hi);
+        }
+        return pr.blockLowFlux === true;
+      })(),
+      'the #433 shape in the other direction: an elapsed-time-since-first-seen timer would ' +
+      'have revoked on the first spell');
+  ckT('a pre-#752 save carries no timer and still revokes (the migration)',
+      (function () {
+        var pr = P.createProtection({ blockLowFlux: true });
+        ride(pr, withReading('power_frac', 0.40), 1);
+        delete pr.p10_below_s;                       /* what a JSON round trip of an old save gives */
+        var r = ride(pr, withReading('power_frac', DOC.p10_frac - 0.01), PAST);
+        return r.low_flux_blocked === false && pr.blockLowFlux === false &&
+               isFinite(pr.p10_below_s);
+      })(),
+      'undefined + dt is NaN, and a NaN timer can never reach the dwell -- a block that never ' +
+      'revokes again, failing on the UNSAFE side (#555 shape)');
 
   /* AND NEITHER BLOCK MUST REACH THE OTHER FUNCTIONS. Only the two flux settings are blockable. */
   var prOnly = P.createProtection({ blockLowFlux: true, blockIrHigh: true });
@@ -984,7 +1101,7 @@ var MUTATIONS = [
   ['the INTERMEDIATE RANGE trip is carried at the ROD STOP 20 % (the retired plant conflation)',
    '    frac: 0.25,', '    frac: 0.20,'],
   ['the INTERMEDIATE RANGE block request is never revoked below P-10',
-   '    if (!p10Met && pr.blockIrHigh) pr.blockIrHigh = false;', '    if (false) pr.blockIrHigh = false;'],
+   '    if (p10Revoke && pr.blockIrHigh) pr.blockIrHigh = false;', '    if (false) pr.blockIrHigh = false;'],
   ['the high-pressure setpoint moved off its sourced value',
    '    hi_pzr_press_psia:  2425,', '    hi_pzr_press_psia:  2600,'],
   ['the low-pressure setpoint moved off its sourced value',
@@ -1003,7 +1120,24 @@ var MUTATIONS = [
    '        margin: available ? (f.dir > 0 ? sp - value : value - sp) : undefined',
    '        margin: available ? Math.max(0, f.dir > 0 ? sp - value : value - sp) : undefined'],
   ['falling below P-10 does not REVOKE the request, so it silently re-arms on the way up',
-   '    if (!p10Met && pr.blockLowFlux) pr.blockLowFlux = false;', ''],
+   '    if (p10Revoke && pr.blockLowFlux) pr.blockLowFlux = false;', ''],
+  /* THE CONFIRMATION TIME (#752). Four, because the mechanism has four ways to be wrong and
+   * three of them read as a working feature: no dwell at all (the shipped defect), a dwell that
+   * never expires, a dwell measured from FIRST SEEN rather than continuously, and a timer that
+   * goes NaN on an old save. Each must redden something. */
+  ['the confirmation time is ZERO -- one noisy sample takes a standing block away again (#752)',
+   '    confirm_s: 2.0', '    confirm_s: 0'],
+  /* 60, not 1e9: the band check above catches it either way, and a constant this gate's own
+   * fixtures ride against must stay small enough to RUN. 1e9 spun a fixture loop 5e10 times
+   * and hung the replay rather than reddening it. */
+  ['the confirmation time is far too long -- the block outlives its permissive by a minute',
+   '    confirm_s: 2.0', '    confirm_s: 60'],
+  ['the dwell is measured from FIRST SEEN, not CONTINUOUSLY (a dip that recovers still revokes)',
+   '    pr.p10_below_s = p10Met ? 0 : (pr.p10_below_s || 0) + (dt > 0 ? dt : 0);',
+   '    pr.p10_below_s = (pr.p10_below_s || 0) + (!p10Met && dt > 0 ? dt : 0);'],
+  ['the old-save migration is dropped -- undefined + dt is NaN and the block never revokes again',
+   '    pr.p10_below_s = p10Met ? 0 : (pr.p10_below_s || 0) + (dt > 0 ? dt : 0);',
+   '    pr.p10_below_s = p10Met ? 0 : pr.p10_below_s + (dt > 0 ? dt : 0);'],
   ['the P-10 setpoint moved off its sourced 8 %', '    frac: 0.08,', '    frac: 0.50,'],
   /* CONSTRUCTION */
   ['caller blockLowFlux ignored at construction',

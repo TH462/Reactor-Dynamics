@@ -423,7 +423,14 @@
       // currentRegion, not regionAt — this is the live reading and it carries the hysteresis.
       var curColor = REGION_COLORS[currentRegion(REG, cur).key];
       sty(valEl, 'color', curColor);
-      txt(valEl, cur.toFixed(st.decimals));
+      /* NEGATIVE ZERO IS A READING (#670 operator pass 2, S-11). `(-0.18).toFixed(0)` is the
+       * string "-0", and SUBCOOLING MARGIN genuinely sits there for minutes as the plant
+       * reaches saturation — an operator watching the one gauge that says whether the coolant
+       * is still water read "-0 F" off this tile through the TMI-2 walkthrough. The board's own
+       * `fmtNum` (pwr_board_wiring.js) has rounded this way since it was written, and its
+       * comment names this exact trap; the tile component was doing the cheap thing four files
+       * away and nothing compared the two. Math.round(-0.18) is -0 and String(-0) is "0". */
+      txt(valEl, st.decimals > 0 ? cur.toFixed(st.decimals) : String(Math.round(cur)));
       txt(unitEl, st.unit);
       sty(accentBar, 'background', 'linear-gradient(90deg,transparent,' + curColor + ',transparent)');
       areaEl.setAttribute('fill', curColor);

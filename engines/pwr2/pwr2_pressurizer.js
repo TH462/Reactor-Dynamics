@@ -148,7 +148,31 @@
     wall_LD: 5,
     wall_lumps: 2,
     level_program_full: 0.615,           /* WTSM 10.3 (ML11223A290): "high level setpoint of 61.5%" */
-    level_program_noload: 0.25           /* WTSM 10.3: "low level setpoint of 25%" */
+    level_program_noload: 0.25,          /* WTSM 10.3: "low level setpoint of 25%" */
+    /* ⚠ #647 EVIDENCE PASS, 2026-09-11: THESE TWO ENDPOINTS ARE A DIFFERENT PLANT'S FROM THE
+     * no-load Tavg ANCHOR THEY RIDE. 25 % / 61.5 % is WTSM 10.3's own Westinghouse Four-Loop
+     * generic plant (557 -> 584.7 degF span, HRTD 10.3, ML11223A290 p.10.3-4). Ginna's own
+     * UFSAR ch15 program (ML20339A101, Table 15.0-3 note f) is 20 % / 60 % over ITS OWN
+     * 547 -> 576.0 degF span -- verbatim: "varied linearly from 20% of span at the no-load
+     * TAVG of 547F to ... 60% of span at the maximum full power TAVG of 576F." Neither pair
+     * reproduces a source's own points-per-degF coefficient against THIS plant's span, because
+     * this plant's full-power anchor (tavg_full_c below, 304.5 degC / 580.1 degF) is neither
+     * plant's number -- it is this plant's own rated heat-balance design point (#479), and
+     * moving it to match either source is a new heat-balance derivation, not an anchor swap.
+     * RULED 2026-09-06 ("A"): keep 580.1 degF, keep the WTSM 25/61.5 endpoints, re-derive the
+     * DEPENDENTS (tt_full_c below, this file's level slope) from this plant's own span instead
+     * of a typed foreign number. Confirmed, not reopened, by the #647 evidence pass. */
+    /* ⚠ #680: THE ENDPOINTS ARE SOURCED, THE MECHANISM ONLY PARTLY IS. WTSM 10.3 derives 61.5 %
+     * from coolant thermal expansion alone between the no-load and full-power Tavg. That
+     * derivation does not carry over to this plant: reaching 61.5 % here from a settled 25 %
+     * Mode 3 needs 262.7 kg (579 lbm) of net RCS charging — expansion alone supplies only
+     * 491.1 of the 753.8 kg (1,082 of 1,662 lbm) the pressurizer must gain. Cause: this plant's
+     * loop-to-pressurizer volume ratio is 4.82 against the anchor plant's 6.86 (Ginna TS Bases
+     * ML20339A221), so the pressurizer sits about 42 % larger relative to its loop and the same
+     * expansion fills proportionally less of it. MEASURED (ruled A, "accept and document"):
+     * a full Mode 5-to-Mode 1 ride reaches the program unaided, charging demand never exceeding
+     * 0.44 of maximum (13.4 of 30.1 gpm) — the plant is correct, only the derivation's mechanism
+     * does not fully apply here. See `Manuals/12_SIM_PHYSICS.md` §6.3 and issue #680. */
   };
 
   var HEATERS = {
@@ -239,7 +263,7 @@
      *
      * The stand-in is CONSERVATIVE, which is why it is tolerable: main spray delivers
      * 73.9 gpm (3.45 kg/s) of ~550 degF (288 degC) cold-leg water for about 4.34e6 BTU/hr
-     * (1,273 kW) of condensing duty, while real auxiliary spray is 29.4 gpm (1.83 kg/s) of
+     * (1,273 kW) of condensing duty, while real auxiliary spray is 26.3 gpm (1.65 kg/s) of
      * ~131 degF (55 degC) charging water for about 8.74e6 BTU/hr (2,562 kW) — roughly HALF
      * the authority the modelled aux path would give, because cold charging water condenses
      * far harder per pound. Routing the lever to the aux path instead was costed and
@@ -264,13 +288,14 @@
      * procedure action — and it deliberately does NOT need the RCPs: charging pumps drive it,
      * which is its whole reason to exist (#472 measured the old engine lacking exactly this:
      * RCPs secured, spray demanded 12 %, delivered 0).
-     * aux_max_kgs is the CVCS charging maximum (29.4 gpm volume-scaled, at charging-water
+     * aux_max_kgs is the CVCS charging maximum (26.3 gpm volume-scaled, at charging-water
      * density) — THE SAME PHYSICAL NUMBER pwr2_cvcs derives, written down twice, which is the
      * protection-cadence failure mode; the GATE ties the two together so they cannot drift
-     * apart silently. aux_water_c is VCT-temperature charging water [derived ~55 degC]: the
-     * per-kg condensing duty is h_f(P) − h_l(55, P), several times the loop-water spray's,
-     * on a quarter of the flow. */
-    aux_max_kgs: 1.83,
+     * apart silently (#679, 2026-09-10: the CVCS volume-scale fix moved this constant, and the
+     * gate is what caught it — was 1.83). aux_water_c is VCT-temperature charging water
+     * [derived ~55 degC]: the per-kg condensing duty is h_f(P) − h_l(55, P), several times the
+     * loop-water spray's, on a quarter of the flow. */
+    aux_max_kgs: 1.65,
     aux_water_c: 55
   };
 
@@ -315,10 +340,18 @@
    *
    * THE PROGRAM is a function of Tavg — "programmed ... as a function of auctioneered high
    * Tavg, so that it follows the natural expansion characteristics of the reactor coolant" —
-   * from 25 % at the no-load Tavg to 61.5 % at full power. The source's no-load point is
-   * 557 degF, which is EXACTLY this plant's own HZP anchor (291.67 degC, OSTI 1991715); the
-   * full-power end is this plant's design Tavg (304.5 degC), the sourced percentages adopted
-   * over the plant's own temperature span.
+   * from 25 % at the no-load Tavg to 61.5 % at full power. The full-power end is this plant's
+   * design Tavg (304.5 degC), the sourced PERCENTAGES adopted over the plant's own temperature
+   * span; the no-load end is the plant's own no-load Tavg, see tavg_noload_c below.
+   *
+   * ⚠ #680: THAT QUOTED DERIVATION IS ONLY PARTLY THIS PLANT'S MECHANISM. WTSM 10.3 reaches
+   * 61.5 % from Tavg expansion alone; this plant reaches it with 262.7 kg (579 lbm) of net
+   * charging on top of 491.1 kg (1,082 lbm) of expansion, because its loop-to-pressurizer
+   * volume ratio (4.82) is smaller than the anchor plant's (6.86) — the same expansion fills
+   * proportionally less of a proportionally larger vessel. The PI controller above supplies the
+   * difference automatically and with margin (measured peak demand 0.44 of maximum charging
+   * capacity over a full Mode 5-to-1 ride) — the endpoints are right and the plant reaches them
+   * unaided; only the "expansion alone" mechanism in the quote above does not fully apply here.
    *
    * THE PROTECTION LADDER, all sourced (WTSM 10.3.4): level > program + 5 % energises the
    * BACKUP HEATERS (anticipatory — the insurge water is cooler and will drop pressure);
@@ -330,7 +363,37 @@
    * #447 measured mattering in the old engine (a latch with no differential chatters). */
   var LEVEL = {
     kind: '[sourced percentages over this plant\'s own Tavg span]',
-    tavg_noload_c: 291.67,               /* = the source's 557 degF, and the plant's HZP anchor */
+    /* ⚠ 547 degF, GINNA'S — RE-ANCHORED 2026-09-06 *(OWNER RULING, 2026-09-06: "Move the
+     * pressurizer copy too")*, #645, following #508's move of the same quantity in
+     * pwr2_dumpctl.js *(OWNER RULING, 2026-09-05: "547 °F — re-anchor to Ginna")*. It was
+     * 291.67 degC (557 degF), the WTSM 4-loop plant's own no-load point, adopted because the
+     * SOURCED PERCENTAGES came from that plant. This plant's no-load Tavg is not that plant's:
+     * pwr2_engine boots every no-load initial condition at Tsat of the sourced 1005 psig no-load
+     * steam pressure = 286.113 degC (547.0 degF), and #508 moved the Tavg PROGRAM (dumpctl's
+     * Tref) to match. The level program is linear in Tavg between a no-load and a full-power
+     * knot, so leaving this copy at 291.67 left the two describing DIFFERENT coolant expansions.
+     *   MEASURED, against the intended program (25 + 36.5*f points of indicated level, f =
+     *   dispatch fraction), before this change: 0.00 points low at no load, -10.95 at f = 0.30
+     *   (the peak, at the knee), -7.91 at 0.50 (35.34 % against 43.25 %), -3.16 at 0.80, 0.00 at
+     *   full power. After: 0.00 at every point, by construction.
+     *   WHY IT HID for two investigations: below 291.67 degC the program CLAMPS at its 25 %
+     *   floor, and 547-557 degF lies entirely inside that clamp — so the no-load point, the one
+     *   anybody checks, read an identical 25.00 % under either anchor. The error is a part-load
+     *   error only, and it peaks where nothing was probing.
+     * SCOPE, ruled: this copy and dumpctl's. pwr2_kinetics.js's 291.67 is a DIFFERENT quantity —
+     * the 975 ppm hot-zero-power boron anchor is BEAVRS / Watts Bar Unit 1 Cycle 1 (OSTI
+     * 1991715), a real measurement quoted at WATTS BAR's 557 degF, and moving it would attach
+     * that measurement to a temperature it was not taken at.
+     *   THE FULL-POWER HALF IS NOW RULED TOO *(OWNER RULING, 2026-09-06: "A")*, #647: the knot
+     * STAYS at this plant's own 304.5 degC — a derived heat-balance quantity from #479, this
+     * plant's identity rather than a citation — the level endpoints STAY at the sourced
+     * 25 / 61.5 %, and it is the DEPENDENTS that are re-derived from this plant's span. So
+     * pwr2_dumpctl's tt_full_c is no longer the typed 27.7 degF but tavg_full_c - tavg_noload_c;
+     * see that file. #647 also fixed the reason the plant never REACHED this knot (a 2.4 degF
+     * shortfall that held the program at 58.9 %) — pwr2_engine's fuel seed, not the anchor.
+     *   SOURCE — Ginna UFSAR ch15, ML20339A101, Table 15.0-3 note d, verbatim: "All analyses
+     *   assumed a programmed no-load TAVG of 547F." */
+    tavg_noload_c: 286.11,               /* 547 degF — Ginna's PROGRAMMED no-load Tavg */
     tavg_full_c: 304.5,
     backup_above_program_pct: 5,
     low_cut_pct: 17,
@@ -345,8 +408,13 @@
     /* THE PROGRAM REFERENCE'S OWN LAG, seconds (#516 item 10, 2026-08-29). The program is a
      * function of Tavg and the caller wires it to the INDICATED channel, correctly (HR1) —
      * but it was reading that channel RAW. The slope here is 36.5 points of level over the
-     * 12.83 degC span, i.e. 2.84 % per degC, so instrument noise is AMPLIFIED into setpoint
-     * motion. Measured at steady full power with feed in manual: TRUE Tavg spanned 0.022 degC
+     * 18.39 degC span, i.e. 1.98 % per degC, so instrument noise is AMPLIFIED into setpoint
+     * motion. (⚠ EVERY MEASUREMENT BELOW WAS TAKEN AT THE PRE-#645 SLOPE, 2.845 %/degC over a
+     * 12.83 degC span — see tavg_noload_c. Noise-into-setpoint and ramp tracking are both LINEAR
+     * in the slope, so each figure scales by 1.9848/2.8449 = 0.698; the two ramp-error numbers
+     * at the end are RE-MEASURED at the new slope and the conclusion is unchanged, the argument
+     * being a ratio of the two costs.) Measured at steady full power with feed in manual:
+     * TRUE Tavg spanned 0.022 degC
      * while INDICATED spanned 0.63 degC, and the published program swung 1.77 % — the charging
      * controller chased it from 0 to 17 gpm, which is what "charging in auto doesnt hold the
      * pzr level" looks like from the board.
@@ -363,8 +431,11 @@
      * 25 s, and the trade is measured both ways. Program noise falls 2.472 -> 1.018 % and the
      * charging hunt 9.99 -> 7.80 gpm; 60 s would reach 0.593 % but a first-order lag costs
      * tau*rate of TRACKING error on a real ramp, so at the ruled 100 degF/hr limit (0.01543
-     * degC/s over a 2.845 %/degC slope) 25 s lags program by 1.10 % and 60 s by 2.63 %. The
-     * larger lag buys 0.4 % of noise for 1.5 % of ramp error, which is the wrong way round. */
+     * degC/s over the slope) 25 s lags program by 1.10 % and 60 s by 2.63 %. The larger lag
+     * buys 0.4 % of noise for 1.5 % of ramp error, which is the wrong way round.
+     *   RE-MEASURED on the post-#645 slope, same 400 s / 100 degF/hr ramp: 25 s lags program by
+     *   0.765 % and 60 s by 1.835 % (tau*rate*slope exactly). Every term moved by the same 0.698,
+     *   so the trade is identical and 25 s stands. */
     program_lag_s: 25.0,
     demand_bias: 46 / 180                /* the source's "normally maintained at 46 gpm" over
                                           * its 180 gpm max — the balance point the PI trims */

@@ -85,8 +85,10 @@
 
     imrpk3wvydp: e('Control Bank',
       'The operable rod group — the reactivity trim control. WITHDRAW adds reactivity, INSERT removes it.',
-      'Position reads 0 steps fully inserted to 912 fully withdrawn, and sits near 92 % withdrawn ' +
-      'at hot full power. A quick click steps one step (about 9 pcm near the startup band); holding ' +
+      'Position reads 0 steps fully inserted to 627 fully withdrawn, and sits at 606 steps — ' +
+      '96.7 % withdrawn — at hot full power (#704: the sourced full-power position, and it is ' +
+      'deliberately NOT the stop, so you have 21 steps of withdrawal left as well as the whole ' +
+      'bank below you). A quick click steps one step (about 9 pcm near the startup band); holding ' +
       'drives continuously at the selected speed until you let go. Withdrawal is interlocked out ' +
       'when startup rate reaches 1.5 decades per minute (DPM) and stays blocked until it falls below 0.8 DPM — insertion ' +
       'is never blocked.', CI, '3.1'),
@@ -116,10 +118,10 @@
       'startup rate into the 1.5 decades per minute (DPM) withdrawal block, which stops the drive and leaves you waiting ' +
       'for the rate to decay below 0.8 DPM.', CI, '3.2'),
     imrpk4pjcpd: e('Control Rod Position',
-      'Control bank position in steps — 0 fully inserted, 912 fully withdrawn.',
+      'Control bank position in steps — 0 fully inserted, 627 fully withdrawn.',
       'Reads the rod group position from the control state, in drive steps rather than percent, ' +
-      'because steps are what the operator commands. Roughly 92 % withdrawn is the normal full-power ' +
-      'position; parked low it means the plant is holding power with rods instead of boron, which ' +
+      'because steps are what the operator commands. 606 of 627 — 96.7 % withdrawn — is the normal ' +
+      'full-power position; parked low it means the plant is holding power with rods instead of boron, which ' +
       'costs shutdown margin and trips the insertion-limit alarm.', CI, '3.1'),
     ims2hvqbvee: e('Control Rod Position',
       'The control bank\'s step-count indication.',
@@ -262,11 +264,14 @@
       'nothing like enough for power operation.', CI, '4.1'),
     imsgt6qmdgx: e('Pressurizer Spray Flow',
       'Spray water actually reaching the pressurizer, as a percentage of maximum spray flow.',
-      'Different from the spray valve demand in the box above it, and the difference is the lesson. ' +
-      'Spray is taken off the cold leg downstream of a Reactor Coolant Pump (RCP), so the pumps are ' +
-      'what push it: with them stopped the valve can be wide open and almost nothing flows. It also ' +
-      'tapers off as pressure approaches saturation at the core-exit temperature, because below that ' +
-      'the core exit flashes and boiling, not spray, sets pressure.', CI, '4.4'),
+      'Different from the spray valve demand in the box above it. Spray is taken off the cold leg ' +
+      'downstream of a Reactor Coolant Pump (RCP), so on a real plant the pumps are what push it and ' +
+      'stopping them takes the spray away. THIS SIMULATOR KEEPS IT WORKING with the pumps stopped, ' +
+      'standing in for the auxiliary spray line it has no separate control for (a declared departure, ' +
+      'Manuals 03 §7.2) — which is why the cooldown can still bring pressure down after the pumps are ' +
+      'secured, and why the walkthrough tells you to leave it running until the plant is cold. Flow ' +
+      'also tapers off as pressure approaches saturation at the core-exit temperature, because below ' +
+      'that the core exit flashes and boiling, not spray, sets pressure.', CI, '4.4'),
     bdOneOverM: e('1/M PLOT',
       'Opens the inverse-count-rate plot — the standard approach-to-criticality tool.',
       'Plot the inverse of source-range count rate against rod position: as the core approaches ' +
@@ -311,7 +316,7 @@
       'and the heaters pressurize toward it; lower it on a cooldown and spray brings pressure down. ' +
       'THE DIAL BOTTOMS OUT AT 1700 psig (11.72 MPa) — that is the operator span of the pressure ' +
       'control system, not the whole range the plant can sit at. Below it you do not wind the dial ' +
-      'down: you take the heaters off and hold spray open, which is how the cooldown checklist ' +
+      'down: you take the heaters off and hold spray open, which is how the cooldown walkthrough ' +
       'depressurizes to the Mode 5 point near 363 psi (2.50 MPa). A cold plant boots holding a ' +
       'setpoint under the span; once you dial the box, you are in the span and the floor applies.',
       CI, '5.1a'),
@@ -319,9 +324,12 @@
     imro8ymb0jw: e('Pressurizer Spray',
       'Cold-leg water sprayed into the steam space — the way you LOWER primary pressure.',
       'AUTO sprays when pressure is above the setpoint band; MANUAL opens the valve to the percentage ' +
-      'you set; OFF shuts it. Spray needs Reactor Coolant Pump (RCP) flow to work — the driving head comes from the pump, so ' +
-      'with the pumps stopped the spray does nothing. A spray valve stuck open depressurizes ' +
-      'continuously.', CI, '5.3'),
+      'you set; OFF shuts it. On a real plant the driving head comes from a Reactor Coolant Pump (RCP), ' +
+      'so stopping the pumps takes the spray away. THIS SIMULATOR KEEPS IT WORKING with the pumps ' +
+      'stopped, standing in for the auxiliary spray line it has no separate control for (a declared ' +
+      'departure, Manuals 03 §7.2) — so after the pumps are secured on a cooldown this box is still ' +
+      'your pressure control, and the only one: the heaters are off and the SET PZR PRESSURE box stops ' +
+      'reaching at 1700 psi. A spray valve stuck open depressurizes continuously.', CI, '5.3'),
     imro8zestdm: e('AUTO (spray)',
       'Spray follows the pressure controller — opens above the setpoint band.',
       'The normal lineup at power, and the half of pressure control that fights a pressure rise. ' +
@@ -337,12 +345,14 @@
       'pressure is falling with no obvious leak.', CI, '5.3'),
     imro929i738: e('Spray valve %',
       'Spray valve position demand, 0–100 %. Typing here takes spray to MANUAL.',
-      'Spray flow is proportional to this only while the Reactor Coolant Pumps (RCPs) are running. With no forced flow the ' +
-      'valve opens and nothing happens — a genuine trap on a natural-circulation plant.', CI, '5.3'),
+      'On a real plant spray flow is proportional to this only while the Reactor Coolant Pumps (RCPs) ' +
+      'are running, and with no forced flow the valve opens and nothing happens — a genuine trap. THIS ' +
+      'SIMULATOR DOES NOT ENFORCE THAT GATE: the spray keeps working with the pumps stopped, standing ' +
+      'in for the auxiliary spray line (a declared departure, Manuals 03 §7.2).', CI, '5.3'),
 
     pressurizer: e('Pressurizer',
       'The steam bubble that sets primary pressure. Water below, steam above, heaters and spray inside.',
-      'Level here is inventory\'s most visible proxy, normally about 55 % at full power — but it is a ' +
+      'Level here is inventory\'s most visible proxy, normally about 61.5 % at full power (25 % at no load) — but it is a ' +
       'proxy and it can lie: during a loss-of-coolant accident (LOCA) a void in the hot leg pushes water INTO the pressurizer, so ' +
       'level rises while the plant is emptying. That is the Three Mile Island Unit 2 (TMI-2) trap. The water colour tracks live ' +
       'saturation temperature at Reactor Coolant System (RCS) pressure.', CI, '5.4'),
@@ -375,7 +385,11 @@
       'climbing. Indications and protection read instruments, not truth (HR1).', TMI, '4.0'),
     imrsgch20pv: e('Power-Operated Relief Valve (PORV) Tailpipe Temperature',
       'Discharge-line temperature downstream of the PORV — the tell that the valve is passing.',
-      'A seated valve leaves the tailpipe at a leaky-seat baseline around 180 °F (82.2 °C); a passing ' +
+      /* 120 °F, NOT 180 (#670 Phase 3). Measured on the shipped plant at 100 % power with the
+       * valve seated: 122 °F. The 180 °F was the retired engine's baseline and it reached the
+       * walkthrough's step 4 as well, where the layman pass caught it against a board reading
+       * 122 °F on the same screen. */
+      'A seated valve leaves the tailpipe at a leaky-seat baseline around 120 °F (48.9 °C); a passing ' +
       'valve cooks it toward 300 °F (148.9 °C) and it turns amber as it climbs. The Three Mile Island Unit 2 (TMI-2) crew had this reading and ' +
       'read it as normal residual heat. Compare it against the PORV light, never in isolation.', TMI, '4.0'),
     imrppb3kuav: e('Power-Operated Relief Valve (PORV) Block Valve',
@@ -383,7 +397,12 @@
       'The recovery action when the PORV will not reseat: closing this stops all flow through the ' +
       'relief line even with the PORV stuck open. Closing it also removes the relief path, so ' +
       'pressure control falls to spray and the spring safeties — which this valve does NOT isolate. ' +
-      'Two-press confirm on isolate.', CI, '6.2'),
+      /* THERE IS NO TWO-PRESS CONFIRM ON THIS VALVE (#670 Phase 3, layman pass S-1). This card
+       * said "Two-press confirm on isolate." and it was the ONLY place a player could read that,
+       * so the walkthrough's "then confirm" appeared corroborated. Measured headless with the
+       * shell's handleCommand instrumented: ten clicks on the symbol emit ten commands,
+       * close/open/close/open — `comp_valve_vertical`'s hit circle is a plain toggle. */
+      'One click shuts it; a second click opens it again.', CI, '6.2'),
     imrsi2svtgn: e('Power-Operated Relief Valve (PORV) Discharge',
       'Where the relief line goes — the pressurizer relief path downstream of the valves.',
       'The plant models the relief path, not a relief tank: there is no tank level or rupture disc ' +
@@ -466,8 +485,8 @@
       'The Chemical and Volume Control System (CVCS) charging pump — make-up INTO the primary. Raises inventory and pressurizer level.',
       'AUTO runs the pump with inventory make-up modulating the flow; MAN runs it at the flow you set; ' +
       'OFF secures it. Charging is also the carrier for boron: a boration or dilution is only ' +
-      'delivered while this pump runs. The band runs to 30 gpm (6.9 m³/h) — the charging '  +
-      'capacity of THIS plant, power-scaled from the sourced Ginna basis.', CI, '7.1'),
+      'delivered while this pump runs. The band runs to 26 gpm (6.0 m³/h) — the charging '  +
+      'capacity of THIS plant, volume-scaled from the sourced Ginna basis.', CI, '7.1'),
     imrmtg3r8ez: e('AUTO (charging)',
       'Charging pump runs with automatic inventory make-up.',
       'The controller modulates charging flow to hold inventory, which in practice holds pressurizer ' +
@@ -482,11 +501,11 @@
       'restarts. With letdown still lined up, securing charging is a net drain on the primary.', CI, '7.1'),
     imrpq48hn3t: e('Charging flow',
       'Charging flow setpoint — how fast make-up enters the cold leg.',
-      'The band runs to 30 gpm (6.9 m³/h). Maximum charging is a lot of make-up: against an ' +
-      'isolated letdown it raises pressurizer level about 5 % a minute, so from a normal 58 % it ' +
-      'trips the reactor on high pressurizer level (87 %) in about five minutes. Letdown does NOT ' +
-      'hold it — with both orifices open the same flow still gains about 3 % a minute and trips ' +
-      'in under eight, because this plant charges at 30 gpm against a 13 gpm letdown lineup. ' +
+      'The band runs to 26 gpm (6.0 m³/h). Maximum charging is a lot of make-up: against an ' +
+      'isolated letdown it raises pressurizer level about 4.4 % a minute, so from a normal 61.5 % it ' +
+      'trips the reactor on high pressurizer level (87 %) in about six minutes. Letdown does NOT ' +
+      'hold it — with both orifices open the same flow still gains about 2.5 % a minute and trips ' +
+      'in under ten, because this plant charges at 26 gpm against a 12 gpm letdown lineup. ' +
       'Typing here takes Chemical and Volume Control System (CVCS) inventory control to ' +
       'manual.', CI, '7.2'),
     imrqp87ueqb: e('Charging Pump',
@@ -548,22 +567,26 @@
       'commands from a procedure also take the channel out of automatic.', CI, '7.5'),
     imrpq29jo7t: e('Boron target',
       'Target Reactor Coolant System (RCS) boron concentration in ppm. Setting it orders a batch dose.',
-      'This is a target, not a measurement — there is no live boron meter in this control room, ' +
-      'because real plants do not have one either. The authoritative number is the chemistry sample.', CI, '7.5'),
+      'This is what you ASKED for, not what is in the water — the measurement is the CHEM reading ' +
+      'below it, which tracks the loop continuously. Watch the two converge as a dose runs: the ' +
+      'target stands still and CHEM walks toward it. A real control room has no continuous boron ' +
+      'display at all, so this pairing is a teaching departure from the real board, recorded in ' +
+      'Simulator Physics and Simplifications.', CI, '7.5'),
     ims3wy5oym4: e('Boron Status',
       'Whether a dose is running: BORATING, DILUTING or HOLD, with the ppm remaining.',
       'The arrow figure counts down the metered ppm still to deliver. It pauses if the charging pump ' +
       'stops and resumes when it restarts — a dose is a delivery, not a timer.', CI, '7.5'),
-    bdBoronSample: e('SAMPLE',
-      'Draws a Reactor Coolant System (RCS) grab sample — the lab posts the authoritative boron concentration.',
-      'Chemistry, not a gauge: the result arrives after a compressed ~60 s turnaround (real labs take ' +
-      '30–60 minutes). Completed doses sample themselves; take a manual one when the books may be ' +
-      'stale — after Emergency Core Cooling System (ECCS) or accumulator injection, which borate the core outside the makeup system.', CI, '7.5'),
-    ims2jva1ff5: e('CHEM Sample',
-      'The lab result in ppm — the reference boron concentration.',
-      'Reads SAMPLING… while the lab works, then posts the number. A fresh result with no dose ' +
-      'running re-baselines the panel, so the next dose is computed from reality rather than from ' +
-      'dose bookkeeping.', CI, '7.5'),
+    /* The SAMPLE button's entry went with the button itself (#698, 2026-09-11) — see
+     * DOC_REMOVE in pwr_board_wiring.js. It is deleted rather than left: `run_inspect`
+     * reads DOC_REMOVE and fails an entry with no live item behind it. */
+    ims2jva1ff5: e('CHEM (boron)',
+      'Measured boron concentration in the loop, in ppm — live and continuous.',
+      'This is the number the dose controller works from, shown to you as well. It lags the loop ' +
+      'by about a minute of sensing time, so through a steady dilution it trails the true ' +
+      'concentration by 1 to 2 ppm — close enough that the gap never decides anything. Compare it ' +
+      'with the target above: target is the ask, this is the answer. A REAL control room has no ' +
+      'continuous boron display and works from periodic grab samples instead; this simulator shows ' +
+      'the reading deliberately, and Simulator Physics and Simplifications records why.', CI, '7.5'),
 
     // ---------------------------------------------------------- ECCS / SIT / RHR
     imrzpfd4qox: e('Emergency Core Cooling System (ECCS) Control',
@@ -580,7 +603,12 @@
     imrldz0wqds: e('STOP (Emergency Core Cooling System (ECCS))',
       'Stops emergency injection by hand.',
       'Also takes the system to MANUAL. Stopping injection with subcooling eroding is the Three Mile Island Unit 2 (TMI-2) error ' +
-      'in one button — the crew throttled injection on a rising level while the core was uncovering.', TMI, '5.5'),
+      /* §3.2, NOT §5.5 (#670 Phase 3). Phase 2 rewrote Manuals/08 against PWR2 and renumbered it;
+       * this citation kept pointing at a section that stopped existing, and `run_inspect` has been
+       * red at 55/56 ever since against a 56/56 baseline. §3.2 "What they did" is the throttling
+       * this card describes. Found by the verification pass, not by the gate — the gate DID say
+       * so, and nothing read it. */
+      'in one button — the crew throttled injection on a rising level while the core was uncovering.', TMI, '3.2'),
     imrle1mc0lk: e('AUTO (Emergency Core Cooling System (ECCS))',
       'Arms automatic actuation on low primary pressure.',
       'Lit means armed and waiting. This is the standing lineup at power: the system does nothing ' +
@@ -591,13 +619,18 @@
       'One pump serves two suctions on this plant, so MODE is the readout that tells you what it is ' +
       'doing: High Pressure Injection (HPI)/Low Pressure Injection (LPI) on the injection alignment, Residual Heat Removal (RHR) when the hot-leg suction valve is open, OFF ' +
       'when it is neither.', CI, '11.0'),
-    ims3w1cb6jc: e('Emergency Core Cooling System (ECCS) Flow',
+    ims3w1cb6jc: e('INJ FLOW — Emergency Core Cooling System (ECCS) injection flow',
       'Emergency injection flow — a trickle at operating pressure, real volume once the plant is down.',
       'Not zero at operating pressure, which surprises people: the high-head segment still passes ' +
       'about 1.7 % of rated against 2235 psi (15.41 MPa), because its shutoff head is ' +
       '2384 psi (16.44 MPa). The curve is steep, so the number that matters arrives as the plant falls — near ' +
       '60 % of rated by 360 psi (2.48 MPa). That is what makes injection effective exactly when it is ' +
-      'needed, and why a bare trickle here is not evidence the pump is failing.', CI, '11.0'),
+      'needed, and why a bare trickle here is not evidence the pump is failing. IT READS ZERO ' +
+      'THROUGHOUT A SHUTDOWN COOLDOWN, BY DESIGN: this is the INJECTION gauge, a cooldown injects ' +
+      'nothing, and the same pumps are meanwhile circulating the plant in their Residual Heat Removal ' +
+      '(RHR) lineup, which a real board indicates separately and this one does not indicate at all. ' +
+      'The MODE word beside this number is the cue — it reads RHR when that is what the train is ' +
+      'doing.', CI, '11.0'),
     ims3w1lj7n6: e('Emergency Core Cooling System (ECCS) Discharge Pressure',
       'Injection pump discharge pressure — the pump\'s head, not the plant\'s.',
       'A running pump against a closed system sits at its shutoff head. Discharge high with flow at ' +
@@ -642,14 +675,28 @@
 
     ims3xf18pk8: e('RHR',
       'Residual heat removal — the shutdown cooling path. An alignment, not a separate pump.',
+      /* THE NUMBERS ARE THIS PLANT'S, NOT THE RETIRED ONE'S (#701). This read "400 psi
+       * (2.76 MPa)" — `emergency.rhr_valve_interlock_mpa` out of the RETIRED engine's config.
+       * The shipped plant refuses at the sourced 425 psig (WTSM 5.1), which is 440 psi
+       * (3.03 MPa) absolute, and `Manuals/04` §PWR-N02 has printed 440 psi all along. The
+       * wiring's copy of the same pair was corrected under #524 and this one was missed —
+       * two files holding one constant, one of them updated.
+       * The autoclosure figure is NOT changed: PWR2's `permissive_close_psig` 585 is
+       * 599.7 psia, which is the 600 psi (4.14 MPa) already written here. It reads as a
+       * survivor of the same stale pair and is not one — measured, not assumed.
+       * AND THERE IS NO AUTO. #453 removed the RHR ESF arm ("with nothing left to arm, an
+       * AUTO button would light for a function no plant has"), the board draws no AUTO
+       * button on this card, and this sentence was still teaching one. */
       'ALIGN opens the hot-leg suction valve and puts the shared train on decay-heat removal; ISOLATE ' +
-      'shuts it; AUTO arms it to open itself after a trip once pressure allows. Two setpoints, not one: ' +
-      'the valve will not open above 400 psi (2.76 MPa), and force-closes only if pressure comes back ' +
+      'shuts it. There is no AUTO: placing shutdown cooling in service is an operator evolution on ' +
+      'this plant, as it is on a real one. Two setpoints, not one: ' +
+      'the valve will not open above 440 psi (3.03 MPa), and force-closes only if pressure comes back ' +
       'up past 600 psi (4.14 MPa) — the low-pressure piping cannot take Reactor Coolant System (RCS) pressure. The gap between ' +
       'them is deliberate, so the valve does not chatter on a plant hunting around one number.', CI, '11.2'),
     ims3wg27iif: e('ALIGN (Residual Heat Removal (RHR))',
       'Opens the RHR hot-leg suction valve — puts the plant on shutdown cooling.',
-      'Refused above the 400 psi (2.76 MPa) interlock; the button visibly fails to latch rather than lying about ' +
+      /* 440 psi, not 400 — see the RHR card's entry above (#701). */
+      'Refused above the 440 psi (3.03 MPa) interlock; the button visibly fails to latch rather than lying about ' +
       'the lineup. Below it, aligning RHR is the step that carries the plant from Mode 4 to Cold ' +
       'Shutdown and holds it there. NOTHING ALIGNS RHR FOR YOU — placing shutdown cooling in service ' +
       'is an operator evolution, and on a real plant a deliberate, throttled one: set the heat-exchanger ' +
@@ -658,11 +705,25 @@
       'Shuts the RHR suction valve — takes the train off shutdown cooling.',
       'Necessary before repressurizing: the interlock will force the valve shut anyway once you pass ' +
       '600 psi (4.14 MPa), but doing it deliberately is how a heatup starts.', MT, 'PWR-T20'),
-    ims3xu86zm5: e('Residual Heat Removal (RHR) HX Flow',
+    ims3xu86zm5: e('HX SPLIT — Residual Heat Removal (RHR) heat-exchanger split',
       'How much RHR flow goes through the heat exchanger rather than the bypass — the cooldown RATE knob.',
-      'This sets cooling rate without disturbing inventory. Walk it up slowly: full heat-exchanger flow ' +
-      'on a hot plant overshoots the 90 °F/h (50 °C/h) cooldown limit, and the primary temperature trend is the ' +
-      'only rate instrument you have.', CI, '11.2'),
+      'This sets cooling rate without disturbing inventory: heat removed scales straight off this number, ' +
+      'so it is a rate lever with a percent sign on it, not a valve position. Type a figure here and read ' +
+      'the consequence on COOLDOWN RATE beside it — that pairing is what the box is for. Walk it up ' +
+      'slowly: full heat-exchanger flow on a hot plant overshoots the 90 °F/h (50 °C/h) cooldown limit ' +
+      'long before you notice.', CI, '11.2'),
+    /* The readout that closes the loop on the box above (#700). Its numbers are the plant's own
+     * constants (the alarm setpoint) and a measured noise floor, NOT copied from the retired
+     * engine — `run_inspect` does not gate the figures in this copy, so they are measured here
+     * and the measurement is in the commit. */
+    bdRhrCooldownRate: e('COOLDOWN RATE',
+      'How fast average coolant temperature is actually moving, in degrees per hour. Negative is cooling.',
+      'This is the consequence of the HX SPLIT box beside it, and it is the same signal the cooldown and ' +
+      'heatup alarms watch — they annunciate at 100 °F/hr in either direction, and the working limit you ' +
+      'are taught to hold is 90 °F/hr. It is a measured trend, not a calculation: it differentiates ' +
+      'indicated average coolant temperature and damps the result, so it lags a change by the better part ' +
+      'of a minute and wanders a couple of degrees per hour either side of zero on a plant that is holding ' +
+      'steady. Read the direction and the magnitude, not the last digit.', CI, '11.2'),
 
     // -------------------------------------------------- steam generator and feed
     steamGenerator: e('Steam Generator',
@@ -1070,7 +1131,7 @@
       'says.', TMI, '4.0'),
     ims2immon9z: e('Pressurizer Level',
       'Water level in the pressurizer — the usual inventory proxy, and the one that can lie.',
-      'About 55 % at full power, controlled by charging and letdown. During a loss-of-coolant accident (LOCA) it can RISE while ' +
+      'About 61.5 % at full power (25 % at no load), controlled by charging and letdown. During a loss-of-coolant accident (LOCA) it can RISE while ' +
       'the plant empties, because voiding in the hot leg pushes water into the pressurizer. Confirm ' +
       'inventory against subcooling before you believe it.', TMI, '4.0'),
     ims2imn1nny: e('Steam Generator Level',

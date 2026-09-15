@@ -144,7 +144,8 @@ async function verifyProcedure(page, prof, proc) {
     var pill = await page.evaluate(function (args) {
       var cards = document.querySelectorAll('#manualContent .m-card');
       for (var c = 0; c < cards.length; c++) {
-        var btn = cards[c].querySelector('[data-follow="' + args.pid + '"]');
+        /* the card is found by its walkthrough button (the Follow button is gone, #660 item 14) */
+        var btn = cards[c].querySelector('[data-checklist="' + args.pid + '"]');
         if (!btn) continue;
         var steps = cards[c].querySelectorAll('.m-step');
         if (!steps[args.stepIdx]) return null;

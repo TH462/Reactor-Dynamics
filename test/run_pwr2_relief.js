@@ -45,12 +45,72 @@ function loadFrom(src) {
  *   is 6.58 x 10^6 lbm/hr" — and the same chapter's equipment table: "797,689: two valves at
  *   1085 psig +3% accumulation / 837,600: six valves at 1140 psig +3% accumulation" (eight
  *   valves = four per line; this single-loop plant carries one line's worth).  */
-var DOC = { safety_pop_psig: 1085.0, dump_frac: 0.28, safety_flow_frac: 0.84, blowdown: 0.033,
+var DOC = { safety_pop_psig: 1085.0, dump_frac: 0.28, blowdown: 0.033,
             stage2_psig: 1140.0, accum: 0.03,
             stage1_lbhr: 797689.0, stage2_lbhr: 3 * 837600.0,
             /* §10.3.2.4's own total, for BOTH steam lines */
-            bank_total_lbhr: 6.58e6 };
+            bank_total_lbhr: 6.58e6,
+            /* (#643) THE TWO DENOMINATORS THAT SAY WHAT `safety_flow_frac` IS AND IS NOT.
+             * Retyped independently of the engine, like everything else in this block.
+             *   UFSAR ch10 equipment table, MSIV row, verbatim: "Flow design capacity, lb/hr
+             *     3.29 x 106 at 770 psia" — ONE steam line's design flow. Twice it is
+             *     §10.3.2.4's own 6.58e6 bank total, which that section calls "equal to the
+             *     full load steam flow for the original 1520 MWt licensed power level". This
+             *     is the denominator the DESIGN BASIS uses, and since the 2026-09-08 ruling it
+             *     is the one the plant ships.
+             *   UFSAR ch15 Table 15.0-1 note b, verbatim: "If a high steam pressure is more
+             *     limiting for analysis purposes, a greater steam pressure of 855 psia, steam
+             *     temperature of 525.9F, and steam flow of 7.92 x 106 lb/hr total should be
+             *     assumed. This envelopes the possibility that the steam generator could
+             *     perform better than expected." — Ginna's POST-UPRATE (1775 MWt) flow, and an
+             *     envelope of it. This is the denominator the RETIRED 0.84 came from, kept here
+             *     as the falsifier: the provenance check below requires the shipped constant to
+             *     be the first ratio and NOT this one. */
+            ginna_design_line_lbhr:  3.29e6,
+            ginna_uprate_total_lbhr: 7.92e6,
+            ginna_mwt: 1520.0,             /* §10.3.2.4's "original 1520 MWt licensed power" */
+            plant_mwt: 300.0,              /* this plant's rated thermal power (D4 §21.2) */
+            lbhr_per_kgs: 3600 * 2.2046226,
+            /* THE QUOTED-AT PRESSURES (#633), from the SAME ch10 equipment table, verbatim:
+             *   "Atmospheric steam dump valves ... Capacity (each), lb/hr  329,000 at 1005 psig
+             *    (normal)"
+             *   "Main steam safety valves ... 797,689: two valves at 1085 psig +3% accumulation /
+             *    837,600: six valves at 1140 psig +3% accumulation"
+             * A capacity is never a bare mass flow, and every one of these carries its pressure.
+             * Retyped independently of the engine's copy, like everything else in this block. */
+            adv_ref_psig: 1005.0,
+            /* the dumps' reference is this plant's RATED steam pressure — §10.4's "28% rated
+             * steam flow" is a statement about the load they stand in for, so it means 28 % AT
+             * rated conditions. pwr2_sg.js owns the number; the cross-check below reads it from
+             * that module rather than retyping it here, which is the whole point. */
+            atm_psia: 14.6959488,          /* standard atmosphere, 0.101325 MPa */
+            xt: 0.70, fgamma: 1.30 / 1.40 };
+/* (#643) THE FULL-LIFT SCALE IS A DIVISION HERE TOO, and that is the whole discipline: the
+ * check below it compares the engine's derivation against THIS one, so it is two independent
+ * retypings of two sourced lb/hr figures agreeing on a quotient — not, as it was until
+ * 2026-09-08, a `0.84` in the engine agreeing with a `0.84` retyped in this block. That earlier
+ * arrangement is the #380 template-placeholder trap and it could never have failed. */
+DOC.safety_flow_frac = (DOC.stage1_lbhr + DOC.stage2_lbhr) / DOC.ginna_design_line_lbhr;
 var RATED = 164.25;      /* kg/s — this plant's rated steam flow (D4 §21.2, §22.2) */
+var ATM_MPA = 0.101325;  /* standard atmosphere, where the ADV and the MSSVs discharge */
+
+/* THE #633 MODEL, RE-DERIVED HERE FROM THE STANDARD rather than imported from the engine —
+ * the same discipline as DOC above. A check that calls the function under test to compute
+ * what it expects can only prove the function equals itself (HR10).
+ *
+ * IEC 60534-2-1 / ISA-75.01: W is proportional to Y*sqrt(x*P1*rho1) with x = (P1-P2)/P1 and
+ * Y = 1 - x/(3*F_g*x_T), x limited at the choked value F_g*x_T where Y bottoms out at 2/3.
+ * Saturated steam has rho1 roughly proportional to P1, so the form collapses to Y*sqrt(x)*P1,
+ * which at choked is W proportional to P1 — Napier. Normalized to 1.0 choked at P_ref. */
+function docFactor(P1, P2, Pref) {
+  var xc = DOC.fgamma * DOC.xt;
+  var x = (P1 - P2) / P1;
+  if (!(P1 > 0) || !(x > 0)) return 0;
+  if (x > xc) x = xc;
+  var Y = 1 - x / (3 * DOC.fgamma * DOC.xt);
+  var Yc = 1 - xc / (3 * DOC.fgamma * DOC.xt);
+  return (Y * Math.sqrt(x) * P1) / (Yc * Math.sqrt(xc) * Pref);
+}
 
 function runSuite(R, rec, quiet) {
   function ck(name, got, want, tol, unit) {
@@ -78,21 +138,79 @@ function runSuite(R, rec, quiet) {
       'a default of lifted would make every probe that omits it relieve a plant nobody overpressured');
 
   /* ---- SOURCED CONSTANTS ------------------------------------------------------------------ */
-  head('SOURCED  [Ginna, this plant\'s own anchor -- nothing needed re-anchoring]');
+  head('SOURCED  [Ginna, this plant\'s own anchor -- the safety SCALE included since #643]');
   ck('the safety pop setpoint matches the source', R.RELIEF.safety_pop_psig, DOC.safety_pop_psig,
      1e-12, 'psig');
   ck('...and its MPa form is DERIVED from the psig figure, not typed beside it',
      R.RELIEF.safety_pop_mpa, (DOC.safety_pop_psig + 14.7) / R.PSI_PER_MPA, 1e-12, 'MPa');
   ck('the dump capacity matches the source', R.RELIEF.dump_capacity_frac, DOC.dump_frac,
      1e-12, 'frac');
-  ck('the safety full-lift capacity matches the source', R.RELIEF.safety_flow_frac,
-     DOC.safety_flow_frac, 1e-12, 'frac');
+  ck('the safety full-lift SCALE is the sourced design-basis ratio (see #643 PROVENANCE below)',
+     R.RELIEF.safety_flow_frac, DOC.safety_flow_frac, 1e-12, 'frac');
   ck('the blowdown fraction is the derived valve-class figure', R.RELIEF.safety_blowdown,
      DOC.blowdown, 1e-12, '');
   ckT('the pop setpoint is ABOVE this plant\'s no-load secondary pressure',
       R.RELIEF.safety_pop_mpa > 7.03,
       R.RELIEF.safety_pop_mpa.toFixed(3) + ' MPa against Ginna no-load 7.03 — a safety that lifted ' +
       'below no-load would be open at every hot shutdown');
+
+  /* ---- #643 PROVENANCE --------------------------------------------------------------------
+   * `safety_flow_frac` wore a [sourced] marker until 2026-09-08 and NO DOCUMENT CARRIED THE
+   * NUMBER IT MARKED: `node tools/find_source.js '0\.84|84 ?%'` returned 3 hits across 39
+   * documents in 3 lanes, all digits inside unrelated tables. The check that stood here before
+   * that was called "the safety full-lift capacity matches the source" and compared the engine's
+   * 0.84 against a 0.84 retyped in DOC — the number agreeing with itself. It could never name
+   * WHICH source, and it is why #542's evidence pass verdicted the ARRANGEMENT and inherited the
+   * FIGURE: the #380 template-placeholder trap, second instance in this file.
+   *
+   * (OWNER RULING, 2026-09-08: "A — 1.0062 x rated, the sourced design basis".) The constant is
+   * now a DIVISION of two sourced lb/hr figures in the engine, and the pair below is what stops
+   * the quotient and the story drifting apart again:
+   *
+   *   (1) THE SOURCED-RATIO IDENTITY. The shipped scale IS numerator/denominator to 1e-12 — so
+   *       a typed 1.0062, or a hand-edit of either half, reddens. It also carries the negative
+   *       arm: the shipped value is NOT the post-uprate arithmetic it used to be, by a margin
+   *       far wider than the two routes' own spread, so a revert to 0.84 cannot pass either.
+   *   (2) THE TWO-ROUTE AGREEMENT, which is the cross-check the ruling asked to be asserted
+   *       rather than left as prose. Route 2 never touches Ginna's stated flow; it uses this
+   *       plant's own Layer-0-derived rated steam flow and the power ratio. A retyped
+   *       denominator on EITHER side breaks the agreement.
+   *
+   * ⚠ THESE ARE NOT INTERCHANGEABLE. (1) alone would pass if both the engine and this block
+   * were re-derived off the same wrong denominator; (2) alone would pass at any scale within
+   * its band. Both, and the identity, are needed — which the injection table below proves one
+   * mutation at a time. */
+  head('#643 PROVENANCE  [the shipped scale IS the sourced division, and two routes agree]');
+  var lineBank = DOC.stage1_lbhr + DOC.stage2_lbhr;         /* 3,310,489 lb/hr, one steam line */
+  var routeDesign = lineBank / DOC.ginna_design_line_lbhr;               /* 1.0062 */
+  var routeUprate = lineBank / (DOC.ginna_uprate_total_lbhr / 2);        /* 0.836 — the retired one */
+  /* ROUTE 2 — the whole bank power-scaled to this plant, over this plant's OWN rated steam flow.
+   * INDEPENDENT of route 1: it uses this plant's Layer-0 enthalpy rise and the power ratio, not
+   * Ginna's stated flow at all. The whole-bank-over-6.58e6 route is deliberately NOT used, because
+   * 2 x 3.29e6 IS 6.58e6 — it would be route 1 wearing a different name. */
+  var routePower = 2 * lineBank * (DOC.plant_mwt / DOC.ginna_mwt) / (RATED * DOC.lbhr_per_kgs);
+  ckT('the shipped scale IS the sourced design-basis division, and is NOT the post-uprate ' +
+      'arithmetic it replaced (#643)', (function () {
+        return Math.abs(R.RELIEF.safety_flow_frac - routeDesign) < 1e-12 &&
+               /* the falsifier: 0.836 is 0.17 away, the two routes are 0.004 apart, so this
+                * arm can only be satisfied by a plant that actually took the design basis */
+               Math.abs(R.RELIEF.safety_flow_frac - routeUprate) > 0.10;
+      })(),
+      'shipped ' + R.RELIEF.safety_flow_frac.toFixed(6) + ' = (797,689 + 3 x 837,600) / 3.29e6 = ' +
+      routeDesign.toFixed(6) + '  [ch10 equipment table: "Flow design capacity, lb/hr 3.29 x 106 ' +
+      'at 770 psia"]; the retired post-uprate ratio was ' + routeUprate.toFixed(4) +
+      ' (the same bank over half of ch15\'s 7.92e6 ENVELOPE flow at 1775 MWt)');
+  ckT('...and an INDEPENDENT route — the whole bank power-scaled against this plant\'s own ' +
+      'rated steam flow — agrees to within 0.01 (#643)', (function () {
+        return Math.abs(routeDesign - routePower) < 0.01 &&
+               Math.abs(R.RELIEF.safety_flow_frac - routePower) < 0.01 &&
+               routeDesign > 1.0 && routeDesign < 1.02;
+      })(),
+      'design-flow route ' + routeDesign.toFixed(4) + ' vs power-scaled route ' +
+      routePower.toFixed(4) + ' — ' +
+      Math.abs(routeDesign - routePower).toFixed(4) + ' apart against a stated tolerance of ' +
+      '0.0100, i.e. 2.7x margin; B 3.7.1: "limit the secondary system pressure to <= 110% of ' +
+      'design pressure when passing 100% of design steam flow"');
 
   /* ---- THE LATCH. The load-bearing check in this file. ------------------------------------- */
   head('THE LATCH  [a stateless valve chatters, and chattering looks like noisy physics]');
@@ -154,17 +272,51 @@ function runSuite(R, rec, quiet) {
 
   /* ---- SAFETY FLOW ------------------------------------------------------------------------- */
   head('SAFETY FLOW  [the ramp lives ABOVE the pop, and there is no step at the pop]');
+  /* THE BANK'S EXPECTED FLOW AT A PRESSURE, from the sourced shares AND the sourced quoted-at
+   * pressures (#633). Each stage's lb/hr is quoted at its OWN set pressure + 3 % accumulation,
+   * so a bank at full lift only passes exactly `safety_flow_frac` x rated when every stage sits
+   * at its own reference — which cannot happen at one pressure with staggered setpoints. Before
+   * #633 this file asserted the flat scale x rated at 1246.7 psig, a pressure 130 psi above
+   * stage 1's quoted condition; it read 148.15 kg/s at the then-shipped 0.84, and 148.15 is what
+   * Napier says a bank there should pass. THE SCALE IS READ FROM `DOC` (#643) and DOC derives it,
+   * so these five expectations follow the sourced division and never a retyped quotient. */
+  function bankFlow(P_mpa, lifts) {
+    var sum = 0;
+    for (var i = 0; i < 2; i++) {
+      var refP = (DOC[i ? 'stage2_psig' : 'safety_pop_psig'] * (1 + DOC.accum) + 14.7) / PSI;
+      var share = (i ? DOC.stage2_lbhr : DOC.stage1_lbhr) / (DOC.stage1_lbhr + DOC.stage2_lbhr);
+      sum += lifts[i] * share * docFactor(P_mpa, ATM_MPA, refP);
+    }
+    return sum * DOC.safety_flow_frac * RATED;
+  }
   var rl2 = R.createRelief({});
   step(rl2, pop + 0.001);                                       /* lift it */
+  ck('a stage AT ITS OWN QUOTED PRESSURE passes exactly its sourced share of capacity (#633)',
+     step(R.createRelief({}), s1Full).safety_kgs,
+     (DOC.stage1_lbhr / (DOC.stage1_lbhr + DOC.stage2_lbhr)) * DOC.safety_flow_frac * RATED,
+     1e-9, 'kg/s');
   var full = step(rl2, s2Full + 0.5);
-  ck('at full lift it passes the sourced fraction of rated flow', full.safety_kgs,
-     DOC.safety_flow_frac * RATED, 1e-9, 'kg/s');
-  ckT('...and it CLAMPS there rather than growing without bound',
-      Math.abs(step(rl2, 20).safety_kgs - full.safety_kgs) < 1e-9,
-      'at 20 MPa it still passes ' + full.safety_kgs.toFixed(2) + ' kg/s');
+  ck('at full lift it passes the sourced capacity SCALED to the pressure it is at',
+     full.safety_kgs, bankFlow(s2Full + 0.5, [1, 1]), 1e-9, 'kg/s');
+  /* ⚠ THE CHECK THIS REPLACED SAID "it CLAMPS there rather than growing without bound" AND
+   * READ THE FLOW. That was only ever an assertion about the LIFT — and it could make it
+   * through the flow because flow was pressure-independent, which is #633's whole defect.
+   * Split: the LIFT clamps at 1, and the flow above the reference grows LINEARLY with
+   * absolute pressure (Napier), which is what a fixed opening does and is not "unbounded". */
+  ckT('...the LIFT clamps at 1 — 20 MPa passes the Napier flow, not a multiple of it',
+      Math.abs(step(rl2, 20).safety_kgs - bankFlow(20, [1, 1])) < 1e-9,
+      'at 20 MPa it passes ' + step(rl2, 20).safety_kgs.toFixed(2) + ' kg/s; without the lift ' +
+      'clamp the same pressure would multiply that again by the lift ramp');
+  ckT('...and the flow ABOVE the reference is Napier-LINEAR in absolute pressure (#633)',
+      (function () {
+        var a = step(rl2, 8.0).safety_kgs, b = step(rl2, 16.0).safety_kgs;
+        return a > 0 && Math.abs(b / a - 2.0) < 1e-9;
+      })(),
+      'both stages choked and at full lift, so doubling P must double the flow exactly — the ' +
+      'shape a check that only samples endpoints cannot tell from a lookup table');
   ckT('...and full lift needs the SOURCED 1174.2 psig, not one stage-width above the pop',
-      Math.abs(step(R.createRelief({}), s2Full).safety_kgs - DOC.safety_flow_frac * RATED) < 1e-9 &&
-      step(R.createRelief({}), s2Full - 1 / PSI).safety_kgs < DOC.safety_flow_frac * RATED,
+      Math.abs(step(R.createRelief({}), s2Full).safety_kgs - bankFlow(s2Full, [1, 1])) < 1e-9 &&
+      step(R.createRelief({}), s2Full - 1 / PSI).safety_kgs < bankFlow(s2Full, [1, 1]),
       'a bank at full flow BELOW its top valves\' accumulation is a bank that never staggered');
 
   /* THE #542 CHECK. A fresh bank walked up through the pop in 0.1 psi steps: nothing below the
@@ -185,16 +337,34 @@ function runSuite(R, rec, quiet) {
 
   /* THE OTHER HALF OF #542, and the one that makes the park impossible rather than merely
    * relocating it: while a stage is latched BELOW its own setpoint, its flow is a constant. */
-  ckT('a latched stage below its setpoint passes a CONSTANT flow — no equilibrium to park in',
+  /* ⚠ #633 NARROWED THIS CLAIM AND THE NARROWING IS THE POINT. It used to assert that a latched
+   * stage passes a literally CONSTANT flow below its setpoint. That was two claims wearing one
+   * coat: the LIFT is constant (the ratchet, #542's actual mechanism) and the DENSITY is
+   * constant (which is #633's defect — the steam through a fixed opening thins with pressure).
+   * The first is what abolishes the park; the second was never true of any valve. So: the LIFT
+   * is held, and the flow droop across the WHOLE blowdown band is small enough that no
+   * equilibrium can hide in it. MEASURED at the layer, a bottled SG with relief the only path
+   * out, production swept 5-80 % of rated for a sim hour: the bank settles ABOVE its setpoint
+   * in every row, both before and after #633, to within 0.5 psi. */
+  ckT('a latched stage HOLDS ITS LIFT below its setpoint — the ratchet, unchanged by #633',
       (function () {
         var r = R.createRelief({});
         step(r, s1Full + 0.01);                       /* stage 1 ratcheted to full lift */
-        var a = step(r, mpaOf(1080)).safety_kgs;      /* both inside stage 1's blowdown band */
-        var b = step(r, mpaOf(1055)).safety_kgs;
-        return a > 0 && Math.abs(a - b) < 1e-12;
-      })(), 'a pop valve does not modulate back down; pre-#542 flow tracked pressure all the way ' +
-            'to reseat, so the bank settled wherever relief met production — measured, 24.2 % of ' +
-            'rated at 1063.3 psig, 21 psi BELOW the setpoint, for an hour with 0 reseats');
+        var a = step(r, mpaOf(1080));                 /* both inside stage 1's blowdown band */
+        var b = step(r, mpaOf(1055));
+        return a.safety_kgs > 0 && a.safety_stages[0].lift === 1 && b.safety_stages[0].lift === 1;
+      })(), 'a pop valve does not modulate back down; pre-#542 the LIFT tracked pressure all the ' +
+            'way to reseat, so the bank settled wherever relief met production — measured, ' +
+            '24.2 % of rated at 1063.3 psig, 21 psi BELOW the setpoint, for an hour with 0 reseats');
+  ckT('...and the flow droop across the whole blowdown band is under 7 %, so nothing parks in it',
+      (function () {
+        var r = R.createRelief({});
+        step(r, s1Full + 0.01);
+        var hi = step(r, R.RELIEF.safety_pop_mpa).safety_kgs;
+        var lo = step(r, R.SAFETY_STAGES[0].reseat_mpa + 1e-6).safety_kgs;
+        return lo > 0 && hi > lo && (hi - lo) / hi < 0.07;
+      })(), 'the band is 3.3 % wide and flow is linear in pressure, so the bank passes 93.9-97.1 % ' +
+            'of its quoted capacity across it — against the 24.2 %-vs-60.2 % swing pre-#542');
 
   ckT('stage 2 lifts ONLY above its own 1140 psig setpoint, and reseats on its OWN blowdown',
       (function () {
@@ -223,7 +393,7 @@ function runSuite(R, rec, quiet) {
         var legacy = { safety_open: true, relieved_kg: 0 };     /* no `stages` key at all */
         var o = step(legacy, mpaOf(1060));                      /* inside stage 1's blowdown band */
         return o.safety_open === true &&
-               Math.abs(o.safety_kgs - S1.share * DOC.safety_flow_frac * RATED) < 1e-9;
+               Math.abs(o.safety_kgs - bankFlow(mpaOf(1060), [1, 0])) < 1e-9;
       })(), 'the old model passed flow whenever that flag was set; landing on a shut bank would ' +
             'silently drop a relief path mid-transient');
   ckT('...and a legacy SHUT save comes back shut, which is the pre-#542 plant exactly',
@@ -236,11 +406,16 @@ function runSuite(R, rec, quiet) {
   /* ---- THE DUMP: HYDRAULICS ONLY ----------------------------------------------------------- */
   head('THE DUMP  [hydraulics here; the POSITION is the control layer\'s, by ruling]');
   var rl3 = R.createRelief({});
-  ck('a fully commanded dump passes the sourced 28 % of rated',
-     step(rl3, 6.0, { dump_demand: 1.0 }).dump_kgs, DOC.dump_frac * RATED, 1e-9, 'kg/s');
+  /* ⚠ EVERY CHECK IN THIS SECTION USED TO SAMPLE AT AN ARBITRARY 6.0 MPa and expect the flat
+   * 28 % of rated. 6.0 MPa is not this plant's rated steam pressure, so the number they were
+   * asserting was only right because flow was pressure-independent (#633). They now sample at
+   * the pressure the 28 % is QUOTED at, where the factor is 1.0 by construction. */
+  var DREF = R.RELIEF.dump_ref_mpa;
+  ck('a fully commanded dump passes the sourced 28 % of rated AT ITS QUOTED PRESSURE',
+     step(rl3, DREF, { dump_demand: 1.0 }).dump_kgs, DOC.dump_frac * RATED, 1e-9, 'kg/s');
   ck('half a command passes half of that',
-     step(rl3, 6.0, { dump_demand: 0.5 }).dump_kgs, 0.5 * DOC.dump_frac * RATED, 1e-9, 'kg/s');
-  ckT('no command means no dump flow', step(rl3, 6.0, {}).dump_kgs === 0,
+     step(rl3, DREF, { dump_demand: 0.5 }).dump_kgs, 0.5 * DOC.dump_frac * RATED, 1e-9, 'kg/s');
+  ckT('no command means no dump flow', step(rl3, DREF, {}).dump_kgs === 0,
       'this layer has no setpoint and no Tavg error — it opens nothing on its own');
   ckT('the dump does not open itself at ANY pressure', (function () {
         var any = false;
@@ -249,8 +424,8 @@ function runSuite(R, rec, quiet) {
       })(), 'swept 4-12 MPa with no command: a layer that opened its own dump would be deciding a ' +
             'position, which is the control layer\'s job');
   ckT('a command outside 0..1 is clamped, not trusted',
-      step(rl3, 6.0, { dump_demand: 5 }).dump_kgs === DOC.dump_frac * RATED &&
-      step(rl3, 6.0, { dump_demand: -2 }).dump_kgs === 0, '');
+      step(rl3, DREF, { dump_demand: 5 }).dump_kgs === DOC.dump_frac * RATED &&
+      step(rl3, DREF, { dump_demand: -2 }).dump_kgs === 0, '');
 
   /* ---- CONDENSER AVAILABILITY -------------------------------------------------------------- */
   head('THE CONDENSER  [the dump discharges to it, so losing it removes the path]');
@@ -274,7 +449,7 @@ function runSuite(R, rec, quiet) {
         return o.dump_kgs === 0;
       })(), 'the dumps are downstream of the isolation valve');
   ckT('a mid-stroke MSIV passes a proportional dump', (function () {
-        var o = step(R.createRelief({}), 6.0, { dump_demand: 1.0, msiv_frac: 0.5 });
+        var o = step(R.createRelief({}), DREF, { dump_demand: 1.0, msiv_frac: 0.5 });
         return Math.abs(o.dump_kgs - 0.5 * DOC.dump_frac * RATED) < 1e-9;
       })(), '');
   ckT('a shut MSIV does NOT touch the safeties or the ADV', (function () {
@@ -283,7 +458,7 @@ function runSuite(R, rec, quiet) {
       })(), 'both are upstream of the valve — the SG can still relieve with the line isolated, ' +
             'which is what keeps the MSSVs able to "prevent overpressure" per the source');
   ckT('absent msiv_frac means OPEN (the pre-#511 caller)', (function () {
-        var o = step(R.createRelief({}), 6.0, { dump_demand: 1.0 });
+        var o = step(R.createRelief({}), DREF, { dump_demand: 1.0 });
         return Math.abs(o.dump_kgs - DOC.dump_frac * RATED) < 1e-9;
       })(), '');
 
@@ -304,9 +479,12 @@ function runSuite(R, rec, quiet) {
   var below = step(rlA, R.RELIEF.adv_setpoint_mpa - 0.05);
   var mid = step(rlA, R.RELIEF.adv_setpoint_mpa + R.RELIEF.adv_band_mpa / 2);
   var full = step(rlA, R.RELIEF.adv_setpoint_mpa + R.RELIEF.adv_band_mpa + 0.02);
+  /* ⚠ THIS USED TO READ `full.adv_kgs === RELIEF.adv_kgs` for its "FULL above it" arm, i.e. it
+   * checked the valve's POSITION by reading its FLOW — which only worked because flow was
+   * pressure-independent (#633). The position claim is now made on the position. */
   ckT('shut below the setpoint, HALF at mid-band, FULL above it — a modulating valve, not a pop',
       below.adv_kgs === 0 && Math.abs(mid.adv_frac - 0.5) < 0.01 &&
-      Math.abs(full.adv_kgs - R.RELIEF.adv_kgs) < 1e-9,
+      Math.abs(full.adv_frac - 1) < 1e-12 && full.adv_kgs > 0,
       "the pneumatic controller's shape; the SAFETIES are the latching pop, not this");
   ckT('...and FULL before the safeties lift — the rung ordering is the point',
       full.safety_open === false && full.adv_kgs > 0,
@@ -323,6 +501,105 @@ function runSuite(R, rec, quiet) {
            { adv_demand: 1.0, adv_block: false }).adv_kgs === 0,
       '"upstream block valves ... to isolate a failed open ARV" (B 3.7.4)');
 
+  /* ---- #633: FLOW DEPENDS ON THE UPSTREAM PRESSURE ------------------------------------------
+   * THE FILED DEFECT, and it is worth stating what made it invisible: every capacity check in
+   * this file sampled at ONE pressure, so a model that ignored pressure and a model that
+   * honoured it were indistinguishable to the whole gate. Reproduced full stack before the fix
+   * (Mode 3, ADV commanded 100 % open, RD.SimulationService at 600x): SG pressure fell straight
+   * through atmospheric to -14.4 psig with `adv_flow_normalized` pinned at 1.0000 the entire
+   * way, SG level to 0 %. After: the plant settles at 428 degF / 266 psig and SG pressure never
+   * goes below 280.75 psia. */
+  head('#633 PRESSURE DEPENDENCE  [a capacity is quoted AT a pressure, or it is not a capacity]');
+  ck("the ADV's reference is the pressure the UFSAR quotes its capacity at, not its setpoint",
+     R.RELIEF.adv_ref_mpa * PSI - 14.7, DOC.adv_ref_psig, 1e-9, 'psig');
+  ckT('...and that is BELOW the ADV setpoint, so the valve passes MORE than rated when it opens',
+      R.RELIEF.adv_ref_mpa < R.RELIEF.adv_setpoint_mpa &&
+      step(R.createRelief({}), R.RELIEF.adv_setpoint_mpa, { adv_demand: 1 }).adv_kgs >
+        R.RELIEF.adv_kgs,
+      'a clamp at the quoted capacity would silently re-introduce a pressure-independent flow ' +
+      'at exactly the overpressure end');
+  ck('each safety stage references its OWN set pressure + the sourced 3 % accumulation',
+     S2.ref_mpa * PSI - 14.7, DOC.stage2_psig * (1 + DOC.accum), 1e-9, 'psig');
+  ckT('the dump reference is pwr2_sg.js\'s OWN rated pressure, not a second copy of it',
+      (function () {
+        /* THE SECOND-COPY GUARD. `dump_ref_mpa` restates a constant pwr2_sg.js owns, because
+         * this gate loads the relief layer in a sandbox with no SG module and a runtime read is
+         * not available to it. So the gate does the read instead: load pwr2_sg for real and
+         * compare. Move the plant's rated steam pressure and this reddens (#557's class). */
+        var sg = null;
+        try {
+          require(path.join(__dirname, '..', 'engines', 'pwr2', 'pwr2_sg.js'));
+          sg = globalThis.RD.pwr2.sg;
+        } catch (e) { return false; }
+        return sg && Math.abs(R.RELIEF.dump_ref_mpa - sg.createSG({}).P) < 1e-12;
+      })(), 'asserted against RD.pwr2.sg.createSG({}).P, the module that owns the number');
+
+  /* THE SHAPE, not just the endpoints. A check that samples three pressures cannot tell Napier
+   * from any other monotone curve through them, so assert the model itself against a DOC-side
+   * re-derivation (docFactor), then the two limits that decide plant behaviour. */
+  ckT('the ADV follows the IEC/Napier curve across the whole range, not a lookup', (function () {
+        var worst = 0;
+        for (var p = 0.11; p <= 8.0; p += 0.03) {
+          var got = step(R.createRelief({}), p, { adv_demand: 1.0 }).adv_kgs;
+          var want = R.RELIEF.adv_kgs * docFactor(p, ATM_MPA, (DOC.adv_ref_psig + 14.7) / PSI);
+          worst = Math.max(worst, Math.abs(got - want));
+        }
+        return worst < 1e-9;
+      })(), 'swept 0.11-8.0 MPa against a re-derivation of IEC 60534-2-1 that never calls the ' +
+            'engine, so the two agreeing is evidence rather than a tautology');
+  ckT('AT ATMOSPHERIC THE ADV PASSES NOTHING — the -14 psig runaway is impossible', (function () {
+        return step(R.createRelief({}), ATM_MPA, { adv_demand: 1.0 }).adv_kgs === 0 &&
+               step(R.createRelief({}), ATM_MPA * 0.5, { adv_demand: 1.0 }).adv_kgs === 0;
+      })(), 'a valve with no differential across it moves no steam; pre-#633 the ADV passed its ' +
+            'full 8.18 kg/s (64,900 lb/hr) at 0.29 psia and dragged the SG to -14.4 psig');
+  ckT('NO relief path can drive steam pressure below its own discharge', (function () {
+        /* the invariant, not one path's endpoint: at or below the discharge pressure every
+         * path is shut, whatever it is commanded to do (#543's lesson — assert the invariant
+         * the defect violated, not the branch it took). */
+        var bad = 0;
+        for (var p = 0.02; p <= ATM_MPA; p += 0.004) {
+          var o = step(R.createRelief({}), p,
+            { adv_demand: 1.0, dump_demand: 1.0, P_cond_mpa: ATM_MPA });
+          if (o.adv_kgs > 0 || o.dump_kgs > 0 || o.safety_kgs > 0) bad++;
+        }
+        return bad === 0;
+      })(), 'swept 0.02 MPa to atmospheric with every lever commanded fully open');
+  ck('at 15 psia the ADV passes a fraction of a per cent of its rating, not 100 %',
+     100 * step(R.createRelief({}), 15 / PSI, { adv_demand: 1.0 }).adv_kgs / R.RELIEF.adv_kgs,
+     0.386, 0.02, '% of rated');
+  ckT('the dump takes the CONDENSER pressure and the ADV takes ATMOSPHERE', (function () {
+        /* the two paths must not share a discharge: a dump into a vacuum stays choked far
+         * lower than an ADV venting to atmosphere, and the difference is visible at 0.2 MPa. */
+        /* 0.12 MPa (17.4 psia) is where the two diverge by ~48 %: a dump into a 0.005 MPa
+         * condenser is STILL choked there, one venting to atmosphere is deep in the
+         * subcritical knee. At operating pressure both are choked and identical, which is
+         * why the sample has to be down here to mean anything. */
+        var lowP = 0.12;
+        var vac = step(R.createRelief({}), lowP, { dump_demand: 1.0, P_cond_mpa: 0.005 });
+        var atm = step(R.createRelief({}), lowP, { dump_demand: 1.0, P_cond_mpa: ATM_MPA });
+        return vac.dump_kgs > atm.dump_kgs * 1.2 && atm.dump_kgs > 0 &&
+               Math.abs(vac.dump_flow_factor - docFactor(lowP, 0.005, R.RELIEF.dump_ref_mpa)) < 1e-12;
+      })(), 'a dump discharging to a real condenser is still choked at 17.4 psia where one ' +
+            'discharging to atmosphere is not');
+  ckT('an absent condenser pressure DEFAULTS to atmosphere, and says so by understating',
+      (function () {
+        var a = step(R.createRelief({}), 0.2, { dump_demand: 1.0 });
+        var b = step(R.createRelief({}), 0.2, { dump_demand: 1.0, P_cond_mpa: ATM_MPA });
+        return Math.abs(a.dump_kgs - b.dump_kgs) < 1e-12 && a.P_cond_mpa === a.P_atm_mpa;
+      })(), 'a fixture with no condenser model must never get MORE dump than the real plant — ' +
+            'the one direction a default is allowed to be wrong in');
+  ckT('every path is choked at its own reference, so the reference needs no downstream pressure',
+      (function () {
+        var xc = DOC.fgamma * DOC.xt;
+        return (R.RELIEF.adv_ref_mpa - ATM_MPA) / R.RELIEF.adv_ref_mpa > xc &&
+               (R.RELIEF.dump_ref_mpa - 0.01) / R.RELIEF.dump_ref_mpa > xc &&
+               (S1.ref_mpa - ATM_MPA) / S1.ref_mpa > xc &&
+               (S2.ref_mpa - ATM_MPA) / S2.ref_mpa > xc;
+      })(), 'x at each quoted condition exceeds the choked limit ' +
+            (DOC.fgamma * DOC.xt).toFixed(4) + ', which is why one normalisation serves all three');
+  ck('the choked expansion factor bottoms out at the standard\'s own 2/3',
+     R.Y_CHOKED, 2 / 3, 1e-12, '');
+
   head('TOTALS AND REPORTING');
   var rl4 = R.createRelief({});
   var both = step(rl4, pop + 0.5, { dump_demand: 1.0 });
@@ -332,7 +609,7 @@ function runSuite(R, rec, quiet) {
   ck('...reported as a fraction of rated', both.total_frac, both.total_kgs / RATED, 1e-12, '');
   ckT('relieved mass accumulates over time', (function () {
         var r5 = R.createRelief({});
-        R.stepRelief(r5, 6.0, 10, { rated_steam_kgs: RATED, dump_demand: 1.0 });
+        R.stepRelief(r5, R.RELIEF.dump_ref_mpa, 10, { rated_steam_kgs: RATED, dump_demand: 1.0 });
         return Math.abs(r5.relieved_kg - DOC.dump_frac * RATED * 10) < 1e-9;
       })(), '');
 
@@ -396,9 +673,16 @@ var MUTATIONS = [
    '        st.lift = lift;'],
   ['#542: the two sourced stages collapse onto one setpoint (the stagger deleted)',
    '    safety_stage2_psig:  1140.0,', '    safety_stage2_psig:  1085.0,'],
+  /* ⚠ RE-AIMED BY #643 — these two lb/hr figures moved from the object literal to module-level
+   * vars, because `safety_flow_frac` now DIVIDES by them and a literal cannot read its own
+   * siblings. An anchor that no longer exists reports as a BLIND SPOT, not as a caught defect.
+   * The replacement PRESERVES THE TOTAL (each half becomes half the sourced sum) so this stays a
+   * probe of the SHARE alone — with 1000000/1000000 it would now also re-scale the whole bank
+   * through safety_flow_frac, and a mutation that moves two things cannot tell you which one the
+   * gate saw. */
   ['#542: the sourced capacity split is replaced by an even one',
-   '    safety_stage1_lbhr:  797689.0,\n    safety_stage2_lbhr:  3 * 837600.0,',
-   '    safety_stage1_lbhr:  1000000.0,\n    safety_stage2_lbhr:  1000000.0,'],
+   '  var STAGE1_LBHR = 797689.0;\n  var STAGE2_LBHR = 3 * 837600.0;',
+   '  var STAGE1_LBHR = (797689.0 + 3 * 837600.0) / 2;\n  var STAGE2_LBHR = (797689.0 + 3 * 837600.0) / 2;'],
   ['#542: the accumulation band moves off the sourced +3 %',
    '    safety_accumulation: 0.03,', '    safety_accumulation: 0.12,'],
   ['#542: a stage reseats on the BANK\'s reseat instead of its own',
@@ -419,8 +703,18 @@ var MUTATIONS = [
    'safety_pop_mpa:      (1085.0 + 14.7) / PSI_PER_MPA,', 'safety_pop_mpa:      7.5,'],
   ['the dump capacity moves off the sourced 28 % to the fleet-typical 40 %',
    'dump_capacity_frac:  0.28,', 'dump_capacity_frac:  0.40,'],
-  ['the safety full-lift capacity moves off its sourced fraction',
-   'safety_flow_frac:    0.84,', 'safety_flow_frac:    0.50,'],
+  /* ⚠ RE-AIMED BY #643 — the anchor was `safety_flow_frac:    0.84,`, a typed quotient that no
+   * longer exists. The mutation now does what the 2026-09-08 ruling forbids: it TYPES the scale
+   * instead of dividing for it. Same defect as before (the bank re-scaled), plus the one this
+   * file could not previously express — a hard-coded number sitting where a derivation belongs. */
+  ['the safety full-lift capacity is TYPED instead of divided out of the sourced figures',
+   'safety_flow_frac:    (STAGE1_LBHR + STAGE2_LBHR) / DESIGN_LINE_LBHR,',
+   'safety_flow_frac:    0.50,'],
+  /* (#643) the new sourced DENOMINATOR gets its own injection — it is the half of the division
+   * that no other check reads directly, and a drift in it re-scales the whole bank silently.
+   * 3.96e6 is the retired post-uprate denominator, so this mutation is the constant reverting. */
+  ['#643: the design-flow denominator reverts to Ginna\'s POST-UPRATE envelope flow',
+   '  var DESIGN_LINE_LBHR = 3.29e6;', '  var DESIGN_LINE_LBHR = 3.96e6;'],
   ['safety flow no longer clamps at full lift (unbounded with pressure)',
    '        if (lift > 1) lift = 1;', ''],
   ['safety flow STEPS to full capacity instead of ramping',
@@ -433,9 +727,45 @@ var MUTATIONS = [
   ['losing the condenser stops the SAFETY valves too',
    '    var safety = safetyFrac * RELIEF.safety_flow_frac * rated;',
    '    var safety = avail ? safetyFrac * RELIEF.safety_flow_frac * rated : 0;'],
+  /* ⚠ RE-AIMED BY #633 — this mutation's anchor line gained the `* dumpF` term, and an
+   * anchor that no longer exists reports as a BLIND SPOT rather than as a caught defect. */
   ['the dump ignores condenser availability',
-   '    var dump = avail ? demand * RELIEF.dump_capacity_frac * rated * msivFrac : 0;',
-   '    var dump = demand * RELIEF.dump_capacity_frac * rated * msivFrac;'],
+   '    var dump = avail ? demand * RELIEF.dump_capacity_frac * rated * msivFrac * dumpF : 0;',
+   '    var dump = demand * RELIEF.dump_capacity_frac * rated * msivFrac * dumpF;'],
+  /* ---- #633 ITSELF, replayed. The top one IS the shipped defect. ---- */
+  ['#633: THE ADV IGNORES UPSTREAM PRESSURE (the shipped defect — SG to -14 psig)',
+   '    var adv = advFrac * RELIEF.adv_kgs * advF;', '    var adv = advFrac * RELIEF.adv_kgs;'],
+  ['#633: the DUMPS ignore upstream pressure',
+   '    var dump = avail ? demand * RELIEF.dump_capacity_frac * rated * msivFrac * dumpF : 0;',
+   '    var dump = avail ? demand * RELIEF.dump_capacity_frac * rated * msivFrac : 0;'],
+  ['#633: the SAFETIES ignore upstream pressure (the ratchet swallows the density too)',
+   '        safetyFrac += st.lift * S.share * flowFactor(P_mpa, pAtm, S.ref_mpa);',
+   '        safetyFrac += st.lift * S.share;'],
+  ['#633: the ADV is referenced to its SETPOINT instead of the quoted 1005 psig',
+   '    adv_ref_mpa:         (1005.0 + 14.7) / PSI_PER_MPA,',
+   '    adv_ref_mpa:         (1040.0 + 14.7) / PSI_PER_MPA,'],
+  ['#633: the dump reference drifts off the plant\'s rated steam pressure',
+   '    dump_ref_mpa:        825.0 / 145.038,', '    dump_ref_mpa:        900.0 / 145.038,'],
+  ['#633: a stage references the BANK\'s first-lift condition instead of its own',
+   '        ref_mpa:    (psig[i] * (1 + RELIEF.safety_accumulation) + 14.7) / PSI_PER_MPA,',
+   '        ref_mpa:    (RELIEF.safety_pop_psig * (1 + RELIEF.safety_accumulation) + 14.7) / PSI_PER_MPA,'],
+  ['#633: the expansion factor is dropped — pure Napier, so a valve at atmospheric still flows',
+   '    var Y = 1 - x / (3 * RELIEF.valve_fgamma * RELIEF.valve_xt);\n    return (Y * Math.sqrt(x) * P1) / (REF_DEN * P_ref);',
+   '    return P1 / P_ref;'],
+  ['#633: the no-differential floor is removed (flow goes NEGATIVE below the discharge)',
+   '    if (!(x > 0)) return 0;                       /* no differential, no flow — the #633 floor */',
+   ''],
+  ['#633: the factor is clamped at 1, re-introducing a flat flow above the reference',
+   '    return (Y * Math.sqrt(x) * P1) / (REF_DEN * P_ref);',
+   '    return Math.min(1, (Y * Math.sqrt(x) * P1) / (REF_DEN * P_ref));'],
+  ['#633: the dumps discharge to ATMOSPHERE instead of the condenser',
+   '    var dumpF = flowFactor(P_mpa, pCond, RELIEF.dump_ref_mpa);',
+   '    var dumpF = flowFactor(P_mpa, pAtm, RELIEF.dump_ref_mpa);'],
+  ['#633: the caller\'s condenser pressure is ignored (a fixture default for the real plant)',
+   '    var pCond = drivers.P_cond_mpa === undefined ? pAtm : drivers.P_cond_mpa;',
+   '    var pCond = pAtm;'],
+  ['#633: the choked limit is dropped, so x runs to 1 and Y goes below the standard\'s 2/3',
+   '    if (x > X_CHOKED) x = X_CHOKED;', ''],
   /* #511 — the MSIV gates the dump (downstream), never the safeties/ADV (upstream) */
   ['the MSIV stops gating the dump (a shut steam line keeps feeding the condenser)',
    '    var msivFrac = drivers.msiv_frac === undefined ? 1 : Math.max(0, Math.min(1, drivers.msiv_frac));',

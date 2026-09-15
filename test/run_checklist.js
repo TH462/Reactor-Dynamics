@@ -65,16 +65,23 @@ ck('step 1 waits for its command', c.step_index === 0, 'idx ' + c.step_index);
 svc.handleCommand({ action: 'set_steam_demand', mwe: 60 });
 snap = run(svc, 2);
 c = ckl(snap);
-ck('step 1 checked off by the command', c.steps_done[0] === true && c.step_index === 1, 'done_by ' + c.done_by[0]);
-ck('checked automatically, not by hand', c.done_by[0] === 'auto', c.done_by[0]);
+/* EVERY STEP WAITS FOR CONTINUE *(OWNER, 2026-09-08, #660 item 16)*: the command satisfies the
+ * step (awaiting_ack) and the player's Continue advances it; the record stays 'auto'. */
+ck('step 1 satisfied by the command, waiting for Continue', c.awaiting_ack === true && c.step_index === 0 && !c.steps_done[0], 'ack ' + c.awaiting_ack + ' idx ' + c.step_index);
+snap = svc.handleCommand({ action: 'checklist_check', index: 0 });
+c = ckl(snap);
+ck('Continue checks it off', c.steps_done[0] === true && c.step_index === 1, 'done_by ' + c.done_by[0]);
+ck('recorded as instrument-graded, not by hand', c.done_by[0] === 'auto', c.done_by[0]);
 
 // ------------------------------------------------- 3. acc auto-check (debounced)
 head('3. Auto-check — acceptance predicate, instrument-first, debounced');
 svc.handleCommand({ action: 'rod_nudge', group_id: ctlGroup(svc), steps: -40, speed: 'normal' });
 var lim = 0;
-do { snap = run(svc, 1); c = ckl(snap); lim++; } while (c && !c.complete && lim < 400);
-ck('step 2 auto-checks when power_pct < 98', c && c.steps_done[1] === true, 'after ' + lim + ' ticks');
-ck('checklist complete', c && c.complete === true, c && c.complete);
+do { snap = run(svc, 1); c = ckl(snap); lim++; } while (c && !c.awaiting_ack && lim < 400);
+ck('step 2 satisfied when power_pct < 98, waiting for Continue', c && c.awaiting_ack === true && !c.steps_done[1], 'after ' + lim + ' ticks');
+snap = svc.handleCommand({ action: 'checklist_check', index: 1 });
+c = ckl(snap);
+ck('checklist complete on Continue', c && c.complete === true && c.steps_done[1] === true, c && c.complete);
 ck('graded off the instrument (HR1)', c && c.done_by[1] === 'auto', c && (c.graded_by || 'auto'));
 
 // while complete, plant commands still descend
@@ -172,7 +179,30 @@ ck('fixing the plant clears the row live', pcv(c, 1).met === true, 'obs ' + pcv(
 ck('all rows met → the comment comes down', !(snap.instructor && snap.instructor.message), snap.instructor && String(snap.instructor.message));
 svc3.handleCommand({ action: 'set_hpi', active: false });
 snap = run(svc3, 2);
-ck('re-breaking the condition re-raises the comment AT ENTRY (new episode)', !!(snap.instructor && snap.instructor.message), 'raised');
+/* ONCE PER RUN, SUPERSEDING "ONCE PER EPISODE" (#732, owner playtest #724 item 15:
+ * "Walkthrough leaving mode 3>1 checklist and going into mode 1, power ascension it gave me a
+ * flickering warning that prerequisites for this checklist are not met since i think the reactor
+ * power was on the line for these prerequisites").
+ *
+ * ⚠ THIS CHECK ASSERTED THE OPPOSITE and is changed deliberately, not refitted around a
+ * regression. It pinned a per-EPISODE latch — re-breaking a precondition raised the comment again
+ * — which is exactly the flicker: a predicate sitting ON its threshold makes an episode per
+ * crossing, and the `!cklMoving` guard below cannot help because a checklist stays on step 0 for
+ * as long as its first step is ungraded. MEASURED BY BACKSHOP, INHERITED: `power_pct` on the
+ * `low_power` initial condition runs 9.222-10.061 %, crossing `pwr_raise_power`'s `> 10 %` row
+ * twice in ten plant-minutes.
+ *
+ * The episode granularity was an agent's choice, never a ruling, and BOTH owner inputs on this
+ * message push the same way — #619 item 3 was "probably just remove it" (scoped to entry-only
+ * rather than deleted) and #724 item 15 is "stop it flickering". Once per run is strictly closer
+ * to both than once per episode.
+ *
+ * The CLEAR is untouched and still asserted above ('all rows met -> the comment comes down'):
+ * a latch that never clears is the same defect facing the other way. Proven red by injection on
+ * a scratch worktree at the parent commit — this line reads `raised` there — and the count-based
+ * proof across six crossings is `run_checklist_pwr2` section 2u. */
+ck('re-breaking the condition does NOT re-raise the comment — once per RUN, not once per crossing (#732)',
+  !(snap.instructor && snap.instructor.message), snap.instructor ? String(snap.instructor.message).slice(0, 50) : 'silent');
 
 /* ENTRY ONLY, ONCE THE RUN IS MOVING (#619 item 3, owner: "The instructor block gets a 'before
  * you...' in the middle of mode 5>3 checklist. it doesnt make sense.").
@@ -254,6 +284,380 @@ ck('the #396 boron seam row reads UNMET at ~857 ppm', pcv(c, 3).met === false &&
 ck('the temperature row reads UNMET on a cold plant', pcv(c, 0).met === false, 'obs ' + (pcv(c, 0).obs != null ? (+pcv(c, 0).obs).toFixed(1) : '—'));
 ck('instructor comment raised for the seam', !!(snap.instructor && snap.instructor.message), 'raised');
 svc4.handleCommand({ action: 'stop_checklist' });
+
+// ------------------------------------- 9. rewind readiness (#660 items 17-18)
+head('9. "Rewind step" — lit only when this step\'s own checkpoint is on the ring');
+/* The walkthrough lays a checkpoint at every step boundary and the board's Rewind sends
+ * `rewind steps:2 exact`, so the button is a claim about the RING, not about step_index —
+ * and the two come apart on a loaded save. Both gaps were measured on pwr2, 2026-09-08:
+ *
+ *   (A) the one-broadcast gap does NOT exist. `checklist_check` runs _assembleWithInstructor,
+ *       which services the instructor's checkpoint request in the SAME call, so the snapshot
+ *       the check-off returns already carries the new checkpoint: ring 3 → 4 with no tick, and
+ *       a rewind issued immediately after landed at step_index 2 / simTime 2.00 — identical to
+ *       the same rewind with a tick in between. Nothing to guard, so this section PINS that.
+ *   (B) after a save/load the walkthrough survives and the ring does not: step_index 2 restored,
+ *       checkpoints.length 0, the rewind refused "no checkpoint to rewind to" with step_index
+ *       unmoved — under a button drawn lit on `step_index > 0`.
+ *
+ * A synthetic procedure, like section 7: four steps whose acceptance can never be met, so the
+ * only thing that moves the index is an explicit `checklist_check` and the ring arithmetic is
+ * exact rather than at the mercy of a step grading itself off a live plant. */
+RD.MANUAL_PROCEDURES.pwr.push({
+  id: 'zz_rewind_probe', category: 'control', title: 'rewind-ring mechanism probe',
+  from: 'hot_full_power', prereq: ['test'],
+  steps: [0, 1, 2, 3].map(function (i) {
+    return { text: 'rewind probe step ' + i + ' (advances only by checklist_check)',
+             acc: { p: 'power_pct', op: '>', v: 9e9 } };
+  }),
+});
+var svc5 = mkService();
+run(svc5, 3);
+/* The player was in FREE PLAY before pressing Start, so the ring already holds the sandbox
+ * cadence's own checkpoint — measured 1 here. It sits UNDER the walkthrough's checkpoint 0,
+ * which is why `rewind_ready` cannot be "the ring has two entries": at step 0 that is true and
+ * a rewind would land the player BEFORE the walkthrough began. */
+var ringFree = svc5.checkpoints.length;
+var s5 = svc5.handleCommand({ action: 'start_checklist', procedure_id: 'zz_rewind_probe' });
+var c5 = ckl(s5);
+var ring0 = svc5.checkpoints.length;
+ck('start lays the walkthrough\'s checkpoint 0 on top of free play\'s',
+   ring0 === ringFree + 1 && ringFree >= 1, 'ring ' + ringFree + ' → ' + ring0);
+ck('step 0 is NOT rewind-ready even with an earlier checkpoint on the ring',
+   c5.rewind_ready === false && c5.step_index === 0, 'ready ' + c5.rewind_ready + ', idx ' + c5.step_index + ', ring ' + ring0);
+// --- step 0 → 1. The check-off's OWN snapshot must already be rewind-ready (measurement A).
+s5 = svc5.handleCommand({ action: 'checklist_check', index: 0 });
+c5 = ckl(s5);
+var tStep1 = svc5.simTime;                    // the start of step 1 — where a later rewind lands
+ck('the check-off lays its checkpoint in the SAME broadcast (no one-tick gap)',
+   svc5.checkpoints.length === ring0 + 1, 'ring ' + ring0 + ' → ' + svc5.checkpoints.length);
+ck('rewind_ready true on the snapshot the check-off returns',
+   c5.rewind_ready === true && c5.step_index === 1, 'ready ' + c5.rewind_ready + ', idx ' + c5.step_index);
+s5 = run(svc5, 2);
+c5 = ckl(s5);
+ck('...and still true after the next broadcast, ring unchanged',
+   c5.rewind_ready === true && svc5.checkpoints.length === ring0 + 1, 'ready ' + c5.rewind_ready + ', ring ' + svc5.checkpoints.length);
+// --- step 1 → 2, then rewind: exactly one step back, to the start of step 1.
+s5 = svc5.handleCommand({ action: 'checklist_check', index: 1 });
+run(svc5, 3);
+ck('at step 2 with a checkpoint per boundary', ckl(s5).step_index === 2 && svc5.checkpoints.length === ring0 + 2,
+   'idx ' + ckl(s5).step_index + ', ring ' + svc5.checkpoints.length + ' (expected ' + (ring0 + 2) + ')');
+var rw5 = svc5.handleCommand({ action: 'rewind', steps: 2, scope: 'full', exact: true });
+var cr5 = ckl(rw5);
+ck('rewind steps:2 exact lands exactly ONE step back',
+   rw5.type === 'state' && cr5 && cr5.step_index === 1 && cr5.steps_done[1] === false,
+   'idx ' + (cr5 && cr5.step_index) + ', step1 done ' + (cr5 && cr5.steps_done[1]));
+ck('...and the plant comes back with it, at the start of that step',
+   Math.abs(svc5.simTime - tStep1) < 1e-9, svc5.simTime.toFixed(2) + ' vs ' + tStep1.toFixed(2));
+/* Derived from the ring, not book-kept: _rewind TRUNCATES to the target, so a remembered
+ * "checkpoint laid at step N" would now read stale and a second press would be dark. */
+ck('the rewound-to step is itself rewind-ready (a second press works)',
+   cr5.rewind_ready === true && svc5.checkpoints.length === ring0 + 1,
+   'ready ' + cr5.rewind_ready + ', ring ' + svc5.checkpoints.length + ' (expected ' + (ring0 + 1) + ')');
+// --- save/load mid-walkthrough: progress survives, the ring does not (measurement B).
+var saved5 = JSON.parse(JSON.stringify(svc5.saveState()));
+var svc6 = mkService();
+/* THE LOADING SERVICE MUST HAVE A RING OF ITS OWN, or "loadState clears the ring" is pinned on
+ * a NON-EVENT: a freshly constructed service starts with checkpoints [] anyway, and the probe
+ * below passed unchanged with loadState's `this.checkpoints = []` deleted. Three free-play ticks
+ * put a sandbox checkpoint on it first, which is also the player's real path (load from a game
+ * already in progress). */
+run(svc6, 3);
+var ringPre6 = svc6.checkpoints.length;
+var ld5 = svc6.loadState(saved5);
+var c6 = ckl(ld5) || ckl(svc6.tick());
+ck('a loaded save keeps the walkthrough\'s progress', !!c6 && c6.step_index === 1 && c6.procedure_id === 'zz_rewind_probe',
+   c6 && ('idx ' + c6.step_index));
+ck('...and clears the rewind ring', ringPre6 >= 1 && svc6.checkpoints.length === 0, 'ring ' + ringPre6 + ' → ' + svc6.checkpoints.length);
+ck('so rewind_ready is FALSE — the button that used to sit lit here', c6.rewind_ready === false, 'ready ' + c6.rewind_ready);
+var rw6 = svc6.handleCommand({ action: 'rewind', steps: 2, scope: 'full', exact: true });
+ck('the rewind command refuses cleanly and moves nothing',
+   rw6 && rw6.type === 'error' && svc6.instructor.checklist.idx === 1 && svc6.checkpoints.length === 0,
+   (rw6 && rw6.message) + '; idx ' + svc6.instructor.checklist.idx);
+svc5.handleCommand({ action: 'stop_checklist' });
+
+// ------------------------- 10. behind-the-scenes failures + narrative (#670 Phase 1)
+head('10. Incident walkthroughs — a step fires its own failures, and carries the history');
+/* *(OWNER, 2026-09-08: "these ones will automatically trigger failures behind the scenes.")*
+ *
+ * A synthetic procedure, for the same reason sections 7 and 9 use one: every step's acceptance
+ * is unmeetable, so nothing but an explicit `checklist_check` moves the index and the ring
+ * arithmetic below is exact rather than at the mercy of a plant grading itself.
+ *
+ * `porv_indicator_stuck_closed` is the when-gated and cleared id on purpose — it is an INSTRUMENT
+ * failure, so the plant stays quiet while the probe drives it, and a mechanism check does not turn
+ * into a transient. `stuck_porv_open` is the one that actually does something, which is what makes
+ * the rewind check below a claim about the PLANT and not only about a bookkeeping flag. */
+RD.MANUAL_PROCEDURES.pwr.push({
+  id: 'zz_inject_probe', category: 'control', title: 'behind-the-scenes failure mechanism probe',
+  from: 'hot_full_power', prereq: ['test'],
+  steps: [
+    { text: 'step 0 — the PORV sticks open behind the scenes',
+      inject: [{ failure: 'stuck_porv_open', severity: 1.0 }],
+      acc: { p: 'power_pct', op: '>', v: 9e9 } },
+    { text: 'step 1 — the indicator fails, but only once safety injection is running',
+      inject: [{ failure: 'porv_indicator_stuck_closed', when: { p: 'hpi_active', op: '>', v: 0.5 } }],
+      acc: { p: 'power_pct', op: '>', v: 9e9 } },
+    { text: 'step 2 — both are cleared',
+      clear: ['stuck_porv_open', 'porv_indicator_stuck_closed'],
+      acc: { p: 'power_pct', op: '>', v: 9e9 } },
+    { text: 'step 3 — a narrative step', crew: true,
+      story: { clock: '04:00:37', saw: 'Every alarm on the board.', knew: 'Feedwater had been lost.',
+               did: 'They read the turbine trip and looked for the reason.' },
+      acc: { p: 'power_pct', op: '>', v: 9e9 } },
+  ],
+});
+var svc7 = mkService();
+run(svc7, 3);
+function failIds(snap) { return (snap && snap.active_failures || []).map(function (f) { return f.id || f; }); }
+function inj(snap) { var cc = ckl(snap); return (cc && cc.injected) || []; }
+
+/* COUNT WHAT DESCENDS, not what the plant ends up with. "Fires once" is a claim about the
+ * commands the instructor issues, and an idempotent failure table would hide a re-injection
+ * completely — the plant looks identical either way. */
+/* ⚠ AND RE-ARM IT AFTER A REWIND. `scope:'full'` REBUILDS THE PLANT and M5 re-points
+ * `instructor.below` at the new ControlFailureLayer, so a wrapper installed once is silently
+ * gone the moment the thing it exists to measure happens — measured here: the re-entry check
+ * read "0 new inject_failure" beside a plant that plainly had the failure back. A counter that
+ * cannot count during the event it is watching is the #286 shape, one layer down. */
+var injCount = 0, wrappedBelow = null;
+function armInjectCounter() {
+  var b = svc7.instructor.below;
+  if (!b || b === wrappedBelow) return;
+  wrappedBelow = b;
+  var real = b.handleCommand.bind(b);
+  b.handleCommand = function (cmd) {
+    if (cmd && cmd.action === 'inject_failure') injCount++;
+    return real(cmd);
+  };
+}
+armInjectCounter();
+
+var s7 = svc7.handleCommand({ action: 'start_checklist', procedure_id: 'zz_inject_probe' });
+/* THE ENTRY TICK IS DELIBERATELY NOT THE FIRING TICK — see `_checklistFire`. The step's start
+ * checkpoint is laid in this very assemble, AFTER the instructor steps, so firing on entry would
+ * bake the failure into the checkpoint Rewind restores. This check pins that ordering. */
+ck('nothing fires on the step\'s ENTRY tick (the checkpoint is laid in this same broadcast)',
+   failIds(s7).indexOf('stuck_porv_open') === -1 && inj(s7).length === 0,
+   'active [' + failIds(s7).join(',') + '], injected [' + inj(s7).join(',') + ']');
+s7 = run(svc7, 3);
+ck('(a) the step\'s `inject` fires behind the scenes — the failure is active on the plant',
+   failIds(s7).indexOf('stuck_porv_open') >= 0, 'active_failures [' + failIds(s7).join(',') + ']');
+ck('(a) ...and the checklist snapshot reports what THIS step injected',
+   inj(s7).length === 1 && inj(s7)[0] === 'stuck_porv_open', 'injected [' + inj(s7).join(',') + ']');
+// (c) once per step entry, not once per tick.
+var countAfterFirst = injCount;
+s7 = run(svc7, 50);
+ck('(c) it fires ONCE — 50 further broadcasts issue no second inject_failure',
+   injCount === countAfterFirst && countAfterFirst === 1, injCount + ' inject_failure commands in all');
+
+/* (g) A SAVE TAKEN MID-STEP CARRIES THE FIRED-SET. This is the check that makes the two
+ * `getState`/`loadState` lines load-bearing rather than decorative — and it exists because the
+ * REWIND probe below could not see them: a rewind in this probe lands on the checklist's own
+ * step-boundary checkpoints, and those are laid immediately AFTER `_checklistCheckOff` clears
+ * the set, so they are empty either way. Measured: deleting `fired`/`injected` from `getState`
+ * reddened nothing at all until this check existed.
+ *
+ * The consequence it pins is a player's, not a harness's: load a saved game in the middle of an
+ * incident walkthrough and the step must not break the plant a second time. With an idempotent
+ * failure table the PLANT looks identical, which is exactly why the command count is what is
+ * asserted here — the #542 shape, where the reading that could tell the two apart was the one
+ * nobody took. */
+var saved7 = JSON.parse(JSON.stringify(svc7.saveState()));
+(function () {
+  var svc8 = mkService();
+  run(svc8, 3);
+  var ld = svc8.loadState(saved7);
+  var b8 = svc8.instructor.below, n8 = 0;
+  var real8 = b8.handleCommand.bind(b8);
+  b8.handleCommand = function (cmd) { if (cmd && cmd.action === 'inject_failure') n8++; return real8(cmd); };
+  var s8 = run(svc8, 6);
+  var c8 = ckl(s8);
+  ck('(g) a save restored mid-step does NOT fire the step\'s injection a second time',
+     n8 === 0, n8 + ' inject_failure commands after the restore');
+  ck('(g) ...and the restored card still reports what the step injected',
+     !!c8 && (c8.injected || []).indexOf('stuck_porv_open') >= 0 && c8.step_index === 0,
+     c8 ? 'injected [' + (c8.injected || []).join(',') + '] at idx ' + c8.step_index : 'no checklist');
+  ck('(g) ...on a plant that still carries it (the failure survived the save, so a re-fire would be a duplicate)',
+     failIds(s8).indexOf('stuck_porv_open') >= 0, 'active [' + failIds(s8).join(',') + ']');
+  b8.handleCommand = real8;
+})();
+
+// (b) a `when`-gated entry waits for its predicate, not for the step.
+svc7.handleCommand({ action: 'checklist_check', index: 0 });
+s7 = run(svc7, 6);
+ck('(b) a `when`-gated inject does NOT fire on step entry',
+   failIds(s7).indexOf('porv_indicator_stuck_closed') === -1 && inj(s7).length === 0,
+   'active [' + failIds(s7).join(',') + ']');
+svc7.handleCommand({ action: 'set_hpi', active: true });
+s7 = run(svc7, 3);
+ck('(b) ...and fires on the first tick the predicate holds',
+   failIds(s7).indexOf('porv_indicator_stuck_closed') >= 0 && inj(s7).indexOf('porv_indicator_stuck_closed') >= 0,
+   'active [' + failIds(s7).join(',') + '], injected [' + inj(s7).join(',') + ']');
+
+/* (d) REWIND. The whole reason the fired-set rides in the checkpoint: the plant comes back to the
+ * start of the step, so the step has to be able to break it again. A fired-set kept outside the
+ * checkpoint would leave the player looking at a walkthrough that says the PORV stuck open beside
+ * a PORV that is shut. `steps: 2, exact` is what the board's Rewind button sends. */
+var rw7 = svc7.handleCommand({ action: 'rewind', steps: 2, scope: 'full', exact: true });
+var cr7 = ckl(rw7);
+ck('(d) Rewind lands back at the start of step 0',
+   rw7.type === 'state' && cr7 && cr7.step_index === 0, 'idx ' + (cr7 && cr7.step_index));
+ck('(d) ...the plant comes back WITHOUT the injected failure, and the fired-set with it',
+   failIds(rw7).indexOf('stuck_porv_open') === -1 && (cr7.injected || []).length === 0,
+   'active [' + failIds(rw7).join(',') + '], injected [' + (cr7.injected || []).join(',') + ']');
+armInjectCounter();     // the rewind rebuilt the plant — see the note on the counter
+var beforeRe = injCount;
+s7 = run(svc7, 3);
+ck('(d) ...and re-entering the step fires it again',
+   failIds(s7).indexOf('stuck_porv_open') >= 0 && injCount === beforeRe + 1,
+   'active [' + failIds(s7).join(',') + '], ' + (injCount - beforeRe) + ' new inject_failure');
+
+// (e) `clear` takes it back off. Walk to step 2 — the rewind put us back at step 0.
+svc7.handleCommand({ action: 'checklist_check', index: 0 });
+run(svc7, 2);
+svc7.handleCommand({ action: 'checklist_check', index: 1 });
+s7 = run(svc7, 4);
+ck('(e) a step\'s `clear` removes the failures it names',
+   failIds(s7).indexOf('stuck_porv_open') === -1 && failIds(s7).indexOf('porv_indicator_stuck_closed') === -1,
+   'active [' + failIds(s7).join(',') + ']');
+ck('(e) ...and a cleared id is NOT reported as injected by this step',
+   inj(s7).length === 0, 'injected [' + inj(s7).join(',') + ']');
+
+// (f) the narrative block reaches the snapshot.
+svc7.handleCommand({ action: 'checklist_check', index: 2 });
+s7 = run(svc7, 2);
+var c7 = ckl(s7);
+ck('(f) a `story` step ships clock/saw/knew/did in the checklist snapshot',
+   !!(c7 && c7.story) && c7.story.clock === '04:00:37' &&
+   /alarm/i.test(c7.story.saw || '') && !!c7.story.knew && !!c7.story.did,
+   c7 && c7.story ? JSON.stringify(c7.story).slice(0, 80) : String(c7 && c7.story));
+ck('(f) ...and `crew: true`, the tag that says the step is history rather than advice',
+   c7 && c7.crew === true, c7 && String(c7.crew));
+/* THE NARRATIVE FIELDS BELONG TO THE INCIDENT CATEGORY AND TO NOTHING ELSE (#670 Phase 2).
+ *
+ * At Phase 1 this asserted that NO shipped leg authored `inject`/`clear`/`story`/`crew` — the
+ * runtime landed with no content, and the check made "nothing changes for the existing
+ * walkthroughs" measurable instead of inherited. Phase 2 authored the first one, so the claim
+ * moves rather than being deleted: the six operating-cycle legs still carry none of it, and
+ * every step that fires a failure or draws a narrative block is in a leg whose category is
+ * `incident`. That keeps the original guarantee — a cycle leg cannot quietly grow a behind-the-
+ * scenes failure — and adds the one Phase 2 owes, which is that the new fields did not leak.
+ *
+ * `crew` is checked harder than the rest: it is only ever correct on a step that ASKS the player
+ * to do something (guide §7 — a tag on a verification would teach the opposite of what the step
+ * wants), so it must sit beside a `cmd` or a cmd-kind `accs` entry. Read off the built pool,
+ * both plants. */
+(function () {
+  var leaked = [], crewNoAction = [], incidentSteps = 0, incidentLegs = 0;
+  ['pwr', 'pwr2'].forEach(function (k) {
+    (RD.MANUAL_PROCEDURES[k] || []).forEach(function (p) {
+      if (/^zz_|^__/.test(p.id)) return;
+      var isIncident = p.category === 'incident';
+      if (isIncident) incidentLegs++;
+      (p.steps || []).forEach(function (st, i) {
+        var uses = !!(st.inject || st.clear || st.story || st.crew || st.pause);
+        if (!uses) return;
+        if (!isIncident) { leaked.push(k + ':' + p.id + ' step ' + (i + 1)); return; }
+        incidentSteps++;
+        if (st.crew && !st.cmd && !(st.accs || []).some(function (e) { return e && e.cmd; })) {
+          crewNoAction.push(k + ':' + p.id + ' step ' + (i + 1));
+        }
+      });
+    });
+  });
+  ck('inject/clear/story/crew/pause appear ONLY in an `incident` leg — the six cycle legs are untouched',
+     leaked.length === 0,
+     leaked.length ? 'LEAKED into: ' + leaked.join(', ')
+                   : incidentLegs + ' incident leg(s), ' + incidentSteps + ' steps carrying the fields');
+  ck('...and every `crew` tag sits on a step that asks the player to act (guide §7)',
+     crewNoAction.length === 0,
+     crewNoAction.length ? 'tagged with no action: ' + crewNoAction.join(', ') : 'all crew steps carry a command');
+})();
+svc7.handleCommand({ action: 'stop_checklist' });
+
+head('11. The walkthrough pause (#694) — the SERVICE stops itself, not just the UI');
+/* *(OWNER, 2026-09-09: "have a step that explains what will happen. Then when the user presses
+ * continue they can see it happening ... sim pauses.")*
+ *
+ * WHY THIS RUNS HERE AND NOT ONLY IN A BROWSER. The issue's own investigation flagged the risk:
+ * `SimulationService.advanceCycles` forces `running = true` around every tick, so a harness
+ * that drives the service through it can never see a service-level pause — the request is
+ * visible, the clock stopping is not. This file does not use `advanceCycles`: `mkService()`
+ * sets `svc.running = true` ONCE and `run()` calls `tick()` directly in a loop (line 30), so if
+ * `_serviceInstructorRequests` (simulation_service.js) actually flips `running` to false, the
+ * VERY NEXT `tick()` call trips its own `if (!this.running...) return null;` guard — no UI, no
+ * `app.js`, no `render()` compensating anything. That is a genuine, non-redundant proof of the
+ * SERVICE half; `verify_e2e_ui.js`'s `testWalkthroughEventPause` is what proves the half this
+ * file cannot see at all — that the BROWSER's own setTimeout loop stops rescheduling and the
+ * board actually paints frozen. Neither alone is the whole claim (CLAUDE.md's own trap list on
+ * a check that samples only where it is already right). */
+RD.MANUAL_PROCEDURES.pwr.push({
+  id: 'zz_pause_probe', category: 'incident', title: 'walkthrough pause mechanism probe',
+  from: 'hot_full_power', prereq: ['test'],
+  steps: [
+    { text: 'step 0 — an event the player does not control, about to happen',
+      inject: [{ failure: 'porv_indicator_stuck_closed' }], pause: true,
+      acc: { p: 'power_pct', op: '>', v: 9e9 } },
+    { text: 'step 1 — the plant after the event', acc: { p: 'power_pct', op: '>', v: 9e9 } },
+  ],
+});
+var svc11 = mkService();
+run(svc11, 3);
+ck('control: the plant ticks normally before the checklist starts',
+   svc11.running && svc11.simTime > 0, 'running ' + svc11.running + ', sim_time ' + svc11.simTime.toFixed(2));
+
+var s11 = svc11.handleCommand({ action: 'start_checklist', procedure_id: 'zz_pause_probe' });
+ck('nothing fires (or pauses) on the step\'s own ENTRY tick — same ordering as section 10',
+   failIds(s11).indexOf('porv_indicator_stuck_closed') === -1 && svc11.running,
+   'active [' + failIds(s11).join(',') + '], running ' + svc11.running);
+s11 = run(svc11, 1);   // the tick AFTER entry — where `_checklistFire` (and now the pause) lands
+
+/* TWO DIFFERENT CLAIMS, read off TWO DIFFERENT snapshots on purpose. `assembleSnapshot()`
+ * fresh(below) reads the control layer LIVE, unaffected by instructor timing — it proves the
+ * command genuinely landed, full stop. `s11` is what THIS tick actually BROADCAST, and
+ * `assembleSnapshot()` at the top of `_assembleWithInstructor` runs BEFORE `step()` — so
+ * without the pause's forced reassembly (`_serviceInstructorRequests` returning true), a fired
+ * event lags the broadcast that caused it by one tick (measured while proving this red: with
+ * the pause branch neutered, the fresh read still saw the failure but `s11` did not). Testing
+ * both is testing the "same broadcast" guarantee itself, not just the fire. */
+ck('the step\'s `inject` genuinely lands on the plant (a live, non-lagged read)',
+   failIds(svc11.assembleSnapshot()).indexOf('porv_indicator_stuck_closed') >= 0,
+   'active_failures [' + failIds(svc11.assembleSnapshot()).join(',') + ']');
+ck('...and THIS BROADCAST already shows it — the pause forces the reassembly that makes that true',
+   failIds(s11).indexOf('porv_indicator_stuck_closed') >= 0,
+   'active_failures [' + failIds(s11).join(',') + ']');
+ck('THE SERVICE STOPPED ITSELF: svc.running is false with no UI, no render(), no app.js loaded',
+   svc11.running === false, 'svc11.running = ' + svc11.running);
+ck('...and the checklist snapshot agrees (`checklist.paused`), same broadcast as the injected event',
+   !!(ckl(s11) && ckl(s11).paused), 'checklist.paused = ' + (ckl(s11) && ckl(s11).paused));
+ck('...and the step is `awaiting_ack` — the pause IS this step\'s completion, not a dwell',
+   !!(ckl(s11) && ckl(s11).awaiting_ack), 'awaiting_ack = ' + (ckl(s11) && ckl(s11).awaiting_ack));
+
+var simTimeAtPause = svc11.simTime;
+var directTick = svc11.tick();   // NOT run()'s noop fallback — the raw call, proving the guard
+ck('`tick()` itself refuses while paused — returns null, not a frozen-but-ticking snapshot',
+   directTick === null, 'svc.tick() returned ' + (directTick === null ? 'null' : typeof directTick));
+run(svc11, 20);
+ck('20 more attempted broadcasts move sim_time by exactly zero',
+   svc11.simTime === simTimeAtPause, simTimeAtPause.toFixed(3) + ' -> ' + svc11.simTime.toFixed(3));
+
+/* CONTINUE DOES NOT ITSELF RESUME THE CLOCK — THAT IS THE UI'S JOB, ON PURPOSE. `checklistCheck`
+ * (instructor_layer.js) advances the instructor directly; it never touches `running`, and
+ * neither does `_serviceInstructorRequests`. `ui/app.js`'s Continue handler calls
+ * `releaseHold('walkthrough')` (-> `service.start()`) ALONGSIDE the command — a UI concern, the
+ * same way the play button and every other named pause reason already work (`pauseWhy`). A
+ * bare `checklist_check` here, with no UI in the picture, is the architectural fact: it moves
+ * the walkthrough, and leaves the plant exactly as stopped as it found it. */
+var s11b = svc11.handleCommand({ action: 'checklist_check', index: svc11.instructor.checklist.idx });
+ck('a bare `checklist_check` (no UI) advances the step off the paused one',
+   ckl(s11b).step_index === 1, 'step_index ' + ckl(s11b).step_index);
+ck('...but does NOT resume the clock by itself — resuming is `ui/app.js`\'s releaseHold(\'walkthrough\')',
+   svc11.running === false, 'svc11.running = ' + svc11.running);
+svc11.start();
+ck('...and an explicit start() (what releaseHold calls) resumes it normally',
+   svc11.running === true, 'svc11.running = ' + svc11.running);
+svc11.handleCommand({ action: 'stop_checklist' });
 
 // ---------------------------------------------------------------- summary
 console.log('\n' + B + '──────────' + X);

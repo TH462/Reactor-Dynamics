@@ -22,6 +22,63 @@ the evidence to put it back** — say so in the session log rather than quietly 
 
 ---
 
+## Evicted 2026-09-09 (a THEMES-rotation eviction — the #633/#508 relief-flow bullet, out for #670's arming-window trap)
+
+A rotation eviction, not a standing-list one: the themes list is capped at five and this was the
+oldest of them. **It meets the criterion in part.** The relief half is now pinned — the flow law
+is pressure-dependent and its checks sample across the range, so a flat-flow regression reds a
+runner — and the no-load Tavg half is pinned by the dump controllers' own probes at 547 °F
+(559.3 K). What no gate reaches is the *habit*: choosing the state a fixture sits at. That one
+line was rescued into the standing list, onto the #508 "reference moving, not the plant" bullet.
+
+> **A GATE WRITTEN WHERE THE DEFECT CANNOT BE SEEN IS 56 GREEN CHECKS OVER NOTHING** (2026-09-06,
+> #633/#508). Every relief path passed a FLAT mass flow, so a 100 % atmospheric dump valve drove the
+> steam generator to **−14 psig** still passing its full rating. Ten of the twelve reds sampled at an
+> ARBITRARY pressure (6.0 MPa) — right only BECAUSE flow ignored pressure. Sibling: the no-load Tavg
+> anchor was another plant's 557 °F while the engine boots no-load at 547 °F, so **both Tavg-mode dump
+> controllers were dead at this plant's own no-load point** and a routine trip vented **18,813 lbm**
+> to atmosphere. **Ask what pressure/state your fixture sits at, and whether the claim survives moving it.**
+
+**The half worth carrying, if you only read one line:** ask what pressure or state your fixture
+sits at, and whether the claim survives moving it — a check can be right only because the model
+ignores the very quantity the check is about.
+
+---
+
+## Evicted 2026-09-06a (a STANDING-LIST eviction — the board-data bullet, out for #633/#508's reference-vs-plant trap)
+
+**Why this one.** It is the clearest case the criterion above describes. The bullet's own
+load-bearing line was *"run `node test/verify_board_check.js` after any board change"* — and
+`run_all` now auto-discovers `verify_*` runners and fails on any it has no baseline for, so **the
+gate catches it whether or not anyone remembers the prose**. One sentence stayed in `CLAUDE.md`:
+never hand-edit the file, ask the owner to export. That half is a *process* instruction no runner
+can issue — the builder's live state is in the owner's browser localStorage, so no gate can
+produce the input.
+
+**⚠ If a board change goes wrong in a way `verify_board_check` does NOT catch, that is the
+evidence to put this back.** Say so in the session log rather than quietly re-adding it.
+
+### The evicted text, verbatim
+
+> **`pwr_board_data.js` is GENERATED** — never hand-edit it; the round trip is in
+> `tools/gen_board_data.js`'s header, and the builder's live state is in browser localStorage, so
+> **ask the owner to export**. **A re-export changes PIPE ids**, silently orphaning `PIPE_TEMP`
+> and undoing geometry fixes — **run `node test/verify_board_check.js` after any board change**
+> (this file twice claimed a green tally while the harness sat at 1 FAILURE). Editing traps: a
+> card TITLE is not an item; `DOC_PATCHES.items` is an object literal so a repeated id silently
+> replaces the first; `Pump`/`Valve`/`Tee` ports quantise to the 5 px grid; exclude
+> `kind: 'component'` tiles from a free-slot scan or the instrument column reads as full.
+> **Measure the board, don't eyeball it** — `RD.PwrBoard.ports()` makes an alignment claim a
+> subtraction. **Screenshot it** — art overlap is invisible to an item-vs-item scan.
+
+**The four editing traps are the part no gate reaches**, and they are why this section keeps the
+full text rather than a pointer: a repeated `DOC_PATCHES` id replacing the first *silently*, a card
+title mistaken for an item, port quantisation to the 5 px grid, and a free-slot scan that counts
+`kind: 'component'` tiles and reads the instrument column as full. Read them before authoring board
+data — `verify_board_check` will tell you the board is broken, not which of these four did it.
+
+---
+
 ## Evicted 2026-09-04b (a THEMES-rotation eviction — the #600/#601 trip-blocks bullet, out for #627's)
 
 The oldest of five. **It meets the criterion in part**: the P-7 rows and the intermediate-range trip
@@ -428,3 +485,68 @@ coefficient, and which convection regime that film is in — decides whether the
 all, and gets the sign of the error wrong in both directions if you guess. **Four of the five reds
 that change produced were not about the change**, which is the other half of the lesson: adjudicate
 a physics change's reds one at a time.
+
+## Evicted 2026-09-05 (a THEMES-rotation eviction — the #605 "a click that misses a text field is a keyboard shortcut" bullet, out for #641's)
+
+The oldest of five, and it **meets the criterion**: `verify_ckl_relevance` now clicks a number tile
+OUTSIDE its input's frame and asserts the digits land in the box (#615), so a regression reds a
+runner. The bullet, verbatim:
+
+- **A CLICK THAT MISSES A TEXT FIELD IS NOT A NO-OP — IT IS A KEYBOARD SHORTCUT** (2026-09-02,
+  #605). Both "can't type" blockers were this, and neither was the text box. The Pressure SP
+  `<input>` is **30 x 17 px of an 85 px frame** (a `psi` span and the arrows fill the rest, inside
+  the same border); a miss leaves focus on BODY and the global keys eat the digits — 2/3/5 are TIME
+  ACCELERATION, so "2235" ended at 3600x. Feedback form: 32 chars typed, **0 in the box**, focus on
+  `#playBtn`. **Make the whole affordance the target; the handler looks correct either way.**
+
+## Evicted 2026-09-08 (a THEMES-rotation eviction at the workbench merge — the #625 pacing bullet, out for #633/#508's)
+
+The oldest of six after the merge (develop had rotated in #653, workbench #633/#508, and the
+list is capped at five), and it **meets the criterion**: the two things it warned about are both
+gated now — `run_warp_tier` proves the 0.5 s WARP step stays inside instrument noise and that the
+1.0 s step trips the quiet plant (claims 1 and 2), and its claim 4 proves the per-broadcast step
+budget stops the loop and credits only what it stepped. What the bullet said, verbatim:
+
+- **A SPEED BUTTON IS A REQUEST THE LOOP NEVER REFUSED — AND "THE SAME PHYSICS AT A COARSER STEP"
+  WAS THE WHOLE SECOND MODEL** (2026-09-04, #625). There was no cap on steps per broadcast: 600×
+  blocked the main thread **350 ms per 100 ms broadcast** (3600×: 2.5 s), the page froze, and the
+  transient detector — scaled by WALL cadence — read a quiet plant at 600× as a standing transient.
+  Measured before designing anything: PWR2 at a **0.5 s** step stays inside instrument noise over
+  2 h in three regimes (~2,700×); at **1.0 s** the quiet plant trips itself. Kinetics is exact and
+  the loop sub-steps, so the "simplified physics tier" needed no physics. `run_warp_tier`.
+
+- **A FIGURE ARRIVED AT BY ARITHMETIC OVER TWO MEASUREMENTS IS NOT A MEASUREMENT** (2026-09-12,
+  #713 changelog copy). The 1/M dock grew **58 %** in pass 1 and **a further 48 %** in pass 2, and
+  compounding them into a tidy **~134 %** would have published a number nobody measured and no
+  viewport reproduces: pass 1 was taken at 1600 px against the original box, pass 2 at 1500 px
+  against a re-measured pass-1 rect — different baselines, different viewports, different rects.
+  Two honest numbers with their own provenance beat one impressive number with none. **Same class
+  as a `BASELINES` score derived by adding one side's delta to the other's map instead of reading
+  the merged tree's own gate output** — which two lanes each hit once on the same day. Hard Rule 12
+  says *step the plant and quote the number*; a number you computed from two other numbers has not
+  been stepped. **If you cannot name the single run that produced a figure, do not publish it.**
+
+- **READ THE RED, NOT THE COUNT — an injection that does not land is indistinguishable from a robust
+  check.** Both print `0 failed`. FOUR TIMES IN ONE CYCLE (2026-09-12/13) an injection meant to prove
+  a check reported zero reds because the INJECTION had missed: it patched a comment instead of the
+  list it meant to edit; it named a source anchor a refactor had moved (`run_pwr2_board` said
+  `ANCHOR MISS` and failed the gate, which is the only reason that one was visible); it settled a
+  plant ABOVE the permissive so the block under test never took hold and 3,000 ticks of zero proved
+  nothing; and it removed a WHOLE override when the defect it needed to simulate removes only part
+  of one. **Always name which check went red and confirm it is the one you aimed at.** The
+  neighbouring rule: an injection that removes more than a real edit would is not a proof — four
+  injections that each deleted an entire CSS override left a gate green against the geometry-only
+  deletion that a real future edit actually looks like.
+
+- **A STRAY `}` IN CSS DELETES THE NEXT RULE, SILENTLY, AND NO GATE HERE SAW IT UNTIL #740.** Error
+  recovery does not skip a top-level `}` — it opens a qualified rule whose prelude runs to the next
+  `{`, swallowing the rule that follows. MEASURED: one extra brace in `pwr_board.css` removed
+  `.bd-num-frame` (72 rules parsed instead of 73), eleven number-input tiles lost `display:flex` and
+  their border, and the `<input>` rendered **169.6 px wide inside an 80.8 px frame**, painting over
+  its neighbour. `verify_board_check`, `run_glow_stacking`, `run_style`, `run_hardrules` and the
+  accessibility runner shipped in the same commit were ALL green. `test/verify_stylesheets.js` now
+  compares each sheet's source top-level rule count against the CSSOM's. **The general lesson is
+  bigger than CSS: that commit spent ninety lines on a cascade trap it had caught, and shipped a
+  one-character error ten lines away. The lesson filed was "rules that must win go last"; the lesson
+  available was "nobody parsed the file after editing it."**
+

@@ -50,6 +50,16 @@ require(path.join(ROOT, 'engines/load_mode.js'));
  'layers/control/control_kernel.js', 'layers/instructor_layer.js', 'layers/simulation_service.js',
  'ui/diag_recorder.js'].forEach(load);
 
+// PWR2 (#702, TR-11 below) — the same load order run_service_invariance.js and
+// run_pwr2_board.js use, so `svc.selectPlant('pwr2', …)` can find `RD.pwr2.shell.PWR2Engine`.
+// A second, independent namespace (`RD.pwr2`); nothing here collides with the loads above.
+['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_kinetics',
+ 'pwr2_fuel', 'pwr2_reactor', 'pwr2_sources', 'pwr2_sg', 'pwr2_turbine', 'pwr2_relief',
+ 'pwr2_condenser', 'pwr2_cvcs', 'pwr2_eccs', 'pwr2_afw', 'pwr2_damage', 'pwr2_protection',
+ 'pwr2_pressurizer', 'pwr2_dumpctl', 'pwr2_break', 'pwr2_containment', 'pwr2_rhr',
+ 'pwr2_true_state', 'pwr2_instruments', 'pwr2_feedwater', 'pwr2_engine', 'pwr2_shell'
+].forEach(function (f) { load('engines/pwr2/' + f + '.js'); });
+
 var RD = globalThis.RD;
 var GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', RST = '\x1b[0m', BOLD = '\x1b[1m';
 var nPass = 0, nFail = 0;
@@ -96,6 +106,39 @@ function run(opts) {
   return { svc: svc, rec: rec, bundle: rec.build({ snapshot: snap, seed: svc.seed, engine_key: 'pwr' }) };
 }
 
+// Same shape as run(), on the shipped engine — 'pwr2' end to end, matching the #702 fix in
+// ui/app.js (diagReset/chartSample now key the recorder off engId(), not ui.plant, which
+// stays 'pwr' for both engines). Full stack, tick()-driven, never svc.start() (wall time).
+function runPwr2(opts) {
+  var svc = new RD.SimulationService({ seed: 4660 });
+  svc.selectPlant('pwr2', opts.ic || 'hot_full_power', null, undefined);
+  svc.running = true;
+  svc.timeAcceleration = opts.accel || 1;
+  svc.attentionStops = false;
+
+  if (opts.sampler !== false) {
+    svc.setFineSampler(function (ins, truth) { return { dv: RD.DiagRecorder.pack('pwr2', truth) }; });
+  }
+
+  var rec = RD.DiagRecorder.create({});
+  rec.reset('init', { engine_key: 'pwr2', initial_state: opts.ic || 'hot_full_power' }, 0, 'pwr2');
+
+  var sched = (opts.cmds || []).map(function (c) { return { at: c.at, body: c.body, sent: false }; });
+  var snap = svc.assembleSnapshot();
+  while (svc.simTime < opts.forSec) {
+    for (var i = 0; i < sched.length; i++) {
+      if (!sched[i].sent && svc.simTime >= sched[i].at) {
+        var r = svc.handleCommand(sched[i].body);
+        rec.command(svc.simTime, sched[i].body, !!(r && r.type === 'blocked'), !!(r && r.type === 'error'));
+        sched[i].sent = true;
+      }
+    }
+    snap = svc.tick();
+    rec.tick(snap, svc.takeFine ? svc.takeFine() : null);
+  }
+  return { svc: svc, rec: rec, bundle: rec.build({ snapshot: snap, seed: svc.seed, engine_key: 'pwr2' }) };
+}
+
 // Row spacings. The LAST row is a deliberate partial — `build()` records the export instant
 // wherever it falls in the grid — so it is excluded from spacing assertions rather than
 // allowed to widen every band by one arbitrary interval.
@@ -109,7 +152,7 @@ head('TR-1  the bundle is what it says it is');
 (function () {
   var b = run({ accel: 1, forSec: 30 }).bundle;
   var ts = b.timeseries;
-  ck('schema_version is 1.1', b.schema_version === '1.1', b.schema_version);
+  ck('schema_version is 1.2', b.schema_version === '1.2', b.schema_version);
   ck('the timeseries is columnar', !!(ts && ts.fields && ts.t && ts.v && ts.lo && ts.hi),
     Object.keys(ts || {}).join(','));
   var lens = [ts.t.length, ts.accel.length].concat(ts.v.map(function (c) { return c.length; }))
@@ -278,6 +321,196 @@ head('TR-9  the first alarm scan captures the non-clear starting state ONLY (#50
     ev2[1].detail.id === 'quiet_0' && ev2[1].detail.state === 'active' && ev2[1].detail.was === 'clear');
 }());
 
+// ================================================ TR-10: the bundle fits on the wire (#681)
+//
+// THE DEFECT THIS GUARDS. The ring is bounded in ROWS and was never bounded in BYTES, and
+// the bytes were not history — they were digits. Measured on PWR2 hot full power, 4
+// plant-hours, full stack: 14,400 rows x 10 fields x 3 sides = 432,000 doubles written as
+// `15.522619140623991`, gzipping to 2,939 KB against the Worker's 2 MB cap. Every report
+// from 2 h 45 min of plant time onward was answered 413 and the player was told to email.
+//
+// The load-bearing check is the LAST one in this block: the same fixture, unrounded, must
+// come out OVER the cap. Without it a shrinking field list or a smoother fixture would
+// quietly stop exercising the defect and the green would mean nothing.
+head('TR-10  the exported bundle is rounded, and a full ring fits under the wire cap');
+(function () {
+  var zlib = require('zlib');
+  var CAP = 2 * 1024 * 1024;                    // worker/src/index.js MAX_BUNDLE_BYTES
+  var BUDGET = CAP - 128 * 1024;                // site/telemetry.js WIRE_BUDGET
+
+  // A synthetic ring, because 4 plant-hours of real stack would cost minutes to prove an
+  // encoding property. The values are a RANDOM WALK at full double precision — smooth like
+  // plant data, so gzip gets the same purchase on it that it gets on a real recording, and
+  // every number is a 17-significant-digit one like the ones that caused this.
+  var seed = 0x5eed;
+  function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+  var N = RD.DiagRecorder.MAX_SAMPLES;
+  var base = { power_pct: 99.5, tavg_c: 304.6, thot_c: 321.0, tcold_c: 288.3, pressure_mpa: 15.52,
+               pzr_level_pct: 61.6, sg_level_pct: 64.9, steam_flow_normalized: 1.0,
+               fw_flow_normalized: 0.989, steam_pressure_mpa: 5.70 };
+  var walk = {}, k;
+  for (k in base) walk[k] = base[k];
+  var rec = RD.DiagRecorder.create({});
+  rec.reset('init', null, 0, 'pwr');
+  for (var t = 0; t <= N + 50; t++) {
+    for (k in walk) walk[k] = walk[k] * (1 + (rnd() - 0.5) * 0.002);
+    rec.tick({ metadata: { sim_time: t, time_acceleration: 1 }, true_state: walk, alarms: [], rps_state: {} }, null);
+  }
+  var b = rec.build({});
+  var ts = b.timeseries;
+  ck('the fixture is a full ring', ts.t.length === N, ts.t.length + ' rows');
+
+  // ---- the rounding rule, asserted on the SERIALISED digits, not on the constant --------
+  function decimals(x) {
+    var m = /\.(\d+)$/.exec(String(x));
+    return m ? m[1].length : 0;
+  }
+  function sig(x) {
+    var m = /^-?0?\.0*(\d+)/.exec(String(Math.abs(x)));
+    return m ? m[1].replace(/0+$/, '').length : String(Math.abs(x)).replace(/[-.]/g, '').replace(/^0+/, '').replace(/0+$/, '').length;
+  }
+  var worstDp = 0, worstVal = null, cells = 0;
+  ['v', 'lo', 'hi'].forEach(function (side) {
+    for (var i = 0; i < ts[side].length; i++) for (var j = 0; j < ts[side][i].length; j++) {
+      var x = ts[side][i][j];
+      if (typeof x !== 'number' || !isFinite(x) || Math.abs(x) < 1) continue;
+      cells++;
+      var d = decimals(x);
+      if (d > worstDp) { worstDp = d; worstVal = x; }
+    }
+  });
+  ck('no value of magnitude >= 1 carries more than 4 decimals', worstDp <= 4,
+    'worst ' + worstDp + ' dp on ' + worstVal + ' over ' + cells + ' cells');
+  ck('row timestamps are rounded too', ts.t.every(function (x) { return decimals(x) <= 3; }));
+
+  // A FRACTION IS NOT QUANTISED. A flat 4 dp would round a decay-heat steam flow of
+  // 0.00083123 to 0.0008 — 6 %, in the one regime a long report is sent about.
+  ck('a sub-unity value keeps 6 significant digits, not 4 decimals',
+    RD.DiagRecorder.roundValue(8.3123456789e-4) === 0.000831235 &&
+    sig(RD.DiagRecorder.roundValue(8.3123456789e-4)) === 6,
+    String(RD.DiagRecorder.roundValue(8.3123456789e-4)));
+  ck('...and so does a value three decades smaller',
+    sig(RD.DiagRecorder.roundValue(1.23456789e-6)) === 6,
+    String(RD.DiagRecorder.roundValue(1.23456789e-6)));
+
+  // ---- the rounding is a SERIALISATION rule, not a storage one -------------------------
+  var live = rec.rec.v[ts.fields.indexOf('pressure_mpa')];
+  ck('the recorder still holds full precision in memory',
+    live.some(function (x) { return decimals(x) > 4; }),
+    'worst live dp ' + live.reduce(function (a, x) { return Math.max(a, decimals(x)); }, 0));
+  ck('...and build() handed out a COPY, not the live ring',
+    ts.v !== rec.rec.v && ts.t !== rec.rec.t);
+
+  // ---- the number that is the acceptance criterion -------------------------------------
+  function pay(bundle) { return { v: 1, kind: 'session_bundle', note: 'x', bundle: bundle, build: 't', channel: 'd' }; }
+  function gz(o) { return zlib.gzipSync(Buffer.from(JSON.stringify(o), 'utf8')).length; }
+  var fitted = gz(pay(b));
+  ck('a full ring gzips under the wire budget', fitted <= BUDGET,
+    (fitted / 1024).toFixed(0) + ' KB = ' + (100 * fitted / CAP).toFixed(0) + '% of the 2 MB cap');
+
+  // THE FIXTURE CANARY. Rebuild the same rows unrounded and confirm they are still over the
+  // cap — otherwise the check above passes for reasons that have nothing to do with #681.
+  var rawTs = { fields: ts.fields, t: rec.rec.t, accel: rec.rec.accel, v: rec.rec.v, lo: rec.rec.lo, hi: rec.rec.hi };
+  var unrounded = gz(pay({ schema_version: '1.1', kind: b.kind, manifest: b.manifest, timeseries: rawTs, events: b.events, commands: b.commands }));
+  ck('the same rows UNROUNDED are still over the cap — the fixture still has the defect in it',
+    unrounded > CAP, (unrounded / 1024).toFixed(0) + ' KB = ' + (100 * unrounded / CAP).toFixed(0) + '% of the cap');
+
+  // ---- the backstop: oldest-first, in bytes --------------------------------------------
+  var before = ts.t.length, firstT = ts.t[0], lastT = ts.t[ts.t.length - 1];
+  var dropped = RD.DiagRecorder.trimOldest(b, 1000);
+  ck('trimOldest drops exactly what it was asked for', dropped === 1000, String(dropped));
+  ck('...and it is the OLDEST that went', ts.t.length === before - 1000 && ts.t[0] > firstT &&
+    ts.t[ts.t.length - 1] === lastT, 'first ' + firstT + ' -> ' + ts.t[0] + ', last ' + ts.t[ts.t.length - 1]);
+  ck('...on every column', ts.v.concat(ts.lo).concat(ts.hi).every(function (c) { return c.length === ts.t.length; }));
+  ck('...and the manifest SAYS the window was cut', !!(b.manifest.trimmed &&
+    b.manifest.trimmed.rows_dropped === 1000 && b.manifest.trimmed.window_start_sim_time === ts.t[0]),
+    JSON.stringify(b.manifest.trimmed));
+  ck('trimming makes it smaller', gz(pay(b)) < fitted,
+    (gz(pay(b)) / 1024).toFixed(0) + ' KB vs ' + (fitted / 1024).toFixed(0) + ' KB');
+  // It must STOP rather than empty the recording: a report with four rows in it is not a
+  // report. RD.DiagRecorder.MIN_KEPT_SAMPLES is the floor.
+  RD.DiagRecorder.trimOldest(b, 99999);
+  ck('the trim stops at the floor instead of emptying the recording',
+    ts.t.length === RD.DiagRecorder.MIN_KEPT_SAMPLES, ts.t.length + ' rows left');
+  ck('...and then reports 0, so a caller loop terminates',
+    RD.DiagRecorder.trimOldest(b, 100) === 0);
+  ck('a note-only bundle has nothing to trim and says so',
+    RD.DiagRecorder.trimOldest({ kind: 'reactor_dynamics_note_only' }, 100) === 0);
+}());
+
+// ====================================================== TR-11: PWR2's OWN FIELD LIST (#702)
+// The recorder fell back to FIELDS.pwr for every PWR2 session — no boron, bank position or
+// xenon — so a reactivity-balance defect that presents as a level/temperature symptom could
+// not be diagnosed from the report that shows it (report mtsmvirv-yav1uix2, worked in #702).
+head('TR-11  PWR2 has its own field list, with reactivity state, and it reaches a real bundle');
+(function () {
+  var F = RD.DiagRecorder.fieldsFor('pwr2');
+  ck('fieldsFor(pwr2) is not the pwr fallback', F !== RD.DiagRecorder.FIELDS.pwr);
+  ['boron_ppm', 'rod_steps', 'xenon_pct_eq', 'reactivity_pcm'].forEach(function (f) {
+    ck('pwr2 field list carries ' + f, F.indexOf(f) !== -1);
+  });
+  ck('pwr2 keeps all ten pwr channels too',
+    RD.DiagRecorder.FIELDS.pwr.every(function (f) { return F.indexOf(f) !== -1; }));
+
+  // ---- THE INJECTION: an actual PWR2 recording, full stack, tick()-driven -------------
+  // A field added to a list is not a field that reaches a bundle (CLAUDE.md standing rule).
+  // 40 s at hot_full_power is enough for a live reactor to carry non-trivial, non-zero
+  // reactivity state in every one of the four new columns.
+  var r2 = runPwr2({ forSec: 40, accel: 1 });
+  var ts2 = r2.bundle.timeseries;
+  ck('a real PWR2 bundle carries the pwr2 field list', ts2.fields.join(',') === F.join(','));
+  // Guarded, not a crash, if a column is MISSING (a mutation that drops a field from the
+  // list): a gate that dies here would be red about ITSELF, not about the defect (the same
+  // trap #681 rewrote two checks to avoid).
+  var vals = {};
+  ['boron_ppm', 'rod_steps', 'xenon_pct_eq', 'reactivity_pcm'].forEach(function (f) {
+    var i = ts2.fields.indexOf(f), c = i === -1 ? null : ts2.v[i];
+    if (!c) { ck(f + ' reaches the bundle with real values, not NaN/placeholder', false, 'column absent'); return; }
+    var finite = c.filter(function (x) { return typeof x === 'number' && isFinite(x); });
+    vals[f] = c[c.length - 1];
+    ck(f + ' reaches the bundle with real values, not NaN/placeholder',
+      c.length > 0 && finite.length === c.length, finite.length + '/' + c.length + ' finite, last=' + c[c.length - 1]);
+  });
+  ck('boron_ppm lands in a plausible ppm band', vals.boron_ppm > 0 && vals.boron_ppm < 3000, String(vals.boron_ppm));
+  ck('rod_steps lands within the drive\'s own travel', vals.rod_steps >= 0 && vals.rod_steps <= 700, String(vals.rod_steps));
+  ck('xenon_pct_eq is a percentage', vals.xenon_pct_eq >= 0 && vals.xenon_pct_eq <= 150, String(vals.xenon_pct_eq));
+
+  // ---- THE PAYLOAD COST (#681/#702) — a synthetic full 14-field ring, gzipped -----------
+  // Same technique as TR-10 (a smooth random walk gzip gets the same purchase on as real
+  // plant data), extended to the 4 new columns so the cost of #702 is measured, not guessed.
+  var zlib = require('zlib');
+  var CAP = 2 * 1024 * 1024, BUDGET = CAP - 128 * 1024;
+  var seed2 = 0x702702;
+  function rnd2() { seed2 = (seed2 * 1103515245 + 12345) & 0x7fffffff; return seed2 / 0x7fffffff; }
+  var N2 = RD.DiagRecorder.MAX_SAMPLES;
+  var base2 = { power_pct: 99.5, tavg_c: 304.6, thot_c: 321.0, tcold_c: 288.3, pressure_mpa: 15.52,
+                pzr_level_pct: 61.6, sg_level_pct: 64.9, steam_flow_normalized: 1.0,
+                fw_flow_normalized: 0.989, steam_pressure_mpa: 5.70,
+                boron_ppm: 660, rod_steps: 351, xenon_pct_eq: 18.6, reactivity_pcm: -30 };
+  var walk2 = {}, k2;
+  for (k2 in base2) walk2[k2] = base2[k2];
+  var rec2 = RD.DiagRecorder.create({});
+  rec2.reset('init', null, 0, 'pwr2');
+  for (var t2 = 0; t2 <= N2 + 50; t2++) {
+    for (k2 in walk2) walk2[k2] = walk2[k2] * (1 + (rnd2() - 0.5) * 0.002);
+    rec2.tick({ metadata: { sim_time: t2, time_acceleration: 1 }, true_state: walk2, alarms: [], rps_state: {} }, null);
+  }
+  var b2 = rec2.build({});
+  ck('the pwr2 fixture is a full 14,400-row ring, 14 fields', b2.timeseries.t.length === N2 && b2.timeseries.fields.length === 14,
+    b2.timeseries.t.length + ' rows x ' + b2.timeseries.fields.length + ' fields');
+  function pay2(bundle) { return { v: 1, kind: 'session_bundle', note: 'x', bundle: bundle, build: 't', channel: 'd' }; }
+  function gz2(o) { return zlib.gzipSync(Buffer.from(JSON.stringify(o), 'utf8')).length; }
+  var fitted10 = gz2(pay2((function () {   // the 10-field bundle, same rows, for the delta
+    var ts10 = { fields: b2.timeseries.fields.slice(0, 10), t: b2.timeseries.t, accel: b2.timeseries.accel,
+                 v: b2.timeseries.v.slice(0, 10), lo: b2.timeseries.lo.slice(0, 10), hi: b2.timeseries.hi.slice(0, 10) };
+    return { schema_version: b2.schema_version, kind: b2.kind, manifest: b2.manifest, timeseries: ts10, events: b2.events, commands: b2.commands };
+  }())));
+  var fitted14 = gz2(pay2(b2));
+  ck('a full 14-field PWR2 ring still gzips under the wire budget', fitted14 <= BUDGET,
+    (fitted14 / 1024).toFixed(0) + ' KB = ' + (100 * fitted14 / CAP).toFixed(0) + '% of the 2 MB cap, was ' +
+    (fitted10 / 1024).toFixed(0) + ' KB at 10 fields (+' + (100 * (fitted14 - fitted10) / fitted10).toFixed(0) + '%)');
+}());
+
 // ====================================================== TR-8: the wiring, which a Node gate
 // cannot execute. Everything above drives the recorder directly, so it would all stay green
 // if ui/app.js stopped calling it. These are source scans for exactly that gap.
@@ -298,6 +531,10 @@ head('TR-8  the UI is still wired to it (source scan — this gate cannot execut
   ck('the fine drain reaches the recorder', /pendingDiagFine/.test(app));
   ck('app.js no longer writes a hardcoded sample_hz', !/sample_hz/.test(app),
     (app.match(/.{0,40}sample_hz.{0,40}/) || [''])[0]);
+  // #702: the recorder must key off the ENGINE (engId()), not ui.plant, which stays 'pwr'
+  // for both engines — otherwise TR-11's pwr2 field list is dead code no session ever reaches.
+  ck('diagReset keys the recorder off engId(), not ui.plant', /diag\.reset\(reason, meta, t, engId\(\)\)/.test(app));
+  ck('chartSample packs the recorder off engId() too', /RD\.DiagRecorder\.pack\(engId\(\), trueState\)/.test(app));
 }());
 
 console.log('\n' + BOLD + '──────────────────────────────────────────' + RST);

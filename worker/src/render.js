@@ -289,6 +289,35 @@ export function cards(items) {
   }).join('') + '</div>';
 }
 
+/* Renders one titled section, and turns a FAILED QUERY into a visible message rather than
+ * an empty frame — a silent zero is indistinguishable from "nothing happened". Lived in
+ * analytics.js until the usage page (#674) needed the identical thing; two copies would
+ * have been two error conventions. `fn` is async and may throw. */
+export async function section(title, fn) {
+  let inner;
+  try { inner = await fn(); }
+  catch (e) { inner = errBlock(e.message); }
+  return '<section><h2>' + esc(title) + '</h2>' + inner + '</section>';
+}
+
+/* A ONE-BAR-PER-ROW MAGNITUDE CELL, for a funnel read down a table column (#674).
+ *
+ * NOT `barChart`: that draws a grouped column chart for a TIME SERIES, and a drop-off
+ * funnel is not one — it is an ordered list where the only question is "how much shorter
+ * is this row than the one above it", which the eye answers from left-aligned bars in a
+ * column and cannot answer from a row of labelled columns.
+ *
+ * THE NUMBER STAYS IN THE CELL, not in a tooltip. A bar's length reads as a precision it
+ * does not have at this site's volume, where one session can be a fifth of the bar; the
+ * bar carries the shape and the printed figure carries the fact. `pct` is 0-100 and is
+ * clamped, so a row somehow over its own denominator draws a full bar instead of
+ * overflowing its cell. */
+export function pctBar(pct, label) {
+  const w = Math.max(0, Math.min(100, Number(pct) || 0));
+  return '<div class="bar"><i style="width:' + w.toFixed(1) + '%"></i>'
+    + '<b>' + esc(label == null ? Math.round(w) + '%' : label) + '</b></div>';
+}
+
 export function html(body, status) {
   return new Response(body, {
     status: status || 200,
@@ -331,6 +360,15 @@ export const PAGE_HEAD = `<meta name="viewport" content="width=device-width,init
   .tile .k { font-size:11px; color:#8fa2b3; text-transform:uppercase; }
   .warn { color:#d9a85f; }
   .err { color:#d97a7a; }
+  /* Funnel bar (#674). A track wide enough to read a shape off, the fill left-aligned so
+     the eye compares LEFT EDGES down the column, and the figure printed on top of it —
+     the bar is the shape, the number is the fact. The fill colour is the chart's own
+     categorical blue (see barChart's palette note), not a status colour: a bar wearing
+     .warn's amber would claim a condition it does not have. */
+  .bar { position:relative; min-width:180px; height:18px; background:#111823; border-radius:3px; }
+  .bar i { position:absolute; inset:0 auto 0 0; background:#3987e5; border-radius:3px; }
+  .bar b { position:relative; padding:0 6px; font:12px/18px ui-monospace,Consolas,monospace;
+           color:#d7e0e8; font-weight:600; }
   /* Record cards. auto-fill/minmax means one column on a phone and as many as fit on a
      desktop, with no breakpoint to maintain. */
   .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px; }
@@ -359,18 +397,27 @@ export function nav(token, current) {
     const href = '?token=' + encodeURIComponent(token) + (view ? '&view=' + view : '');
     return '<a class="' + (current === view ? 'on' : '') + '" href="' + href + '">' + label + '</a>';
   };
+  /* `usage` is the FEATURE USAGE page (#674) and `features` is the feature FLAGS page.
+   * Two different things with confusingly close names, and the flags view had the good
+   * name first — renaming it would break every bookmark the owner holds. */
   return '<nav>' + link('', 'Bug reports') + link('analytics', 'Analytics')
-    + link('sessions', 'Sessions') + link('features', 'Features') + '</nav>';
+    + link('usage', 'Usage') + link('sessions', 'Sessions') + link('features', 'Features') + '</nav>';
 }
 
-// A table that does not lie about an empty result — "(none)" rather than a blank frame.
-// `cols` entries are {key, label, num?}; rows are plain objects.
+/* A table that does not lie about an empty result — "(none)" rather than a blank frame.
+ * `cols` entries are {key, label, num?, raw?}; rows are plain objects.
+ *
+ * ⚠ `raw` SUPPRESSES ESCAPING for that column and exists for ONE thing: a cell whose value
+ * this file BUILT, such as `pctBar()`. Never mark a column raw because its value happens to
+ * be a string today — every value on this page ultimately came off the wire, and the only
+ * reason a bar is safe is that its markup is assembled here from a clamped number. */
 export function table(rows, cols) {
   if (!rows || !rows.length) return '<p class="muted">(none)</p>';
   const head = cols.map((c) => '<th' + (c.num ? ' class="num"' : '') + '>' + esc(c.label) + '</th>').join('');
   const body = rows.map((r) =>
     '<tr>' + cols.map((c) =>
-      '<td' + (c.num ? ' class="num"' : '') + '>' + esc(r[c.key]) + '</td>').join('') + '</tr>'
+      '<td' + (c.num ? ' class="num"' : '') + '>'
+      + (c.raw ? (r[c.key] == null ? '' : String(r[c.key])) : esc(r[c.key])) + '</td>').join('') + '</tr>'
   ).join('');
   return '<table><tr>' + head + '</tr>' + body + '</table>';
 }

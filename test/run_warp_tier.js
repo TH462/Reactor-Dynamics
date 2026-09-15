@@ -190,6 +190,35 @@ function runMechanics(RD, quiet) {
       r._tier === 'play' && s.metadata.speed_snap && s.metadata.speed_snap.reason === 'transient' && /power moving/.test(s.metadata.speed_snap.detail || ''),
       'tier ' + r._tier + ', snap ' + JSON.stringify(s.metadata.speed_snap || null));
 
+  /* WHICH ALARMS DROP WARP (#655, 2026-09-08): by PRIORITY, on a quiet board. A synthetic alarm is
+   * appended to the layer's own list so nothing else in the plant moves — the same isolation
+   * WT-3f uses for the rate branch. INJECTION: with ALARM_DROP_PRIORITIES emptied, 3i stays on
+   * WARP; with the old quiet-board rule restored, 3h drops (a caution was "any new alarm"). */
+  function alarmProbe(prio) {
+    var q = mk(RD, 'hot_full_power');
+    settle(q, 120);
+    q.handleCommand({ action: 'set_attention_stops', value: false });
+    q.handleCommand({ action: 'set_speed', value: 3600 });
+    q.advanceCycles(2);                                   // on WARP with a baseline established
+    var realGet = q.layer.getAlarms.bind(q.layer), fired = false;
+    q.layer.getAlarms = function () {
+      var list = realGet().slice();
+      if (fired) list.push({ id: 'probe_' + prio, state: 'active_unacknowledged', priority: prio, label: 'Probe ' + prio });
+      return list;
+    };
+    fired = true;
+    var sp = q.advanceCycles(1);
+    return { tier: q._tier, speed: q.timeAcceleration, snap: sp.metadata.speed_snap || null };
+  }
+  var pc = alarmProbe('caution');
+  ck2('WT-3h', 'a new CAUTION alarm does NOT drop WARP (the accumulators-lined-up caution the heatup checklist causes)',
+      pc.tier === 'warp' && pc.speed === 3600 && !pc.snap,
+      'tier ' + pc.tier + ', ' + pc.speed + 'x, snap ' + JSON.stringify(pc.snap));
+  var pw = alarmProbe('warning');
+  ck2('WT-3i', 'a new WARNING alarm drops WARP to 60x and NAMES the alarm',
+      pw.tier === 'play' && pw.speed === 60 && !!pw.snap && pw.snap.reason === 'transient' && /new alarm: Probe warning/.test(pw.snap.detail || ''),
+      'tier ' + pw.tier + ', ' + pw.speed + 'x, snap ' + JSON.stringify(pw.snap));
+
   /* authored speed never warps */
   var a = mk(RD, 'hot_full_power');
   settle(a, 60);
@@ -319,6 +348,16 @@ function runMechanics(RD, quiet) {
 var RD = loadAll(undefined);
 runFidelity(RD);
 runMechanics(RD, false);
+
+/* ---- THE CLEAN-RUN GUARD (#644) -------------------------------------------------------------
+ * REFUSE TO SCORE on a red clean run. The replay below counts ABSOLUTE reds in the mutant, so an
+ * already-red check is red in every mutant too and EVERY mutation reads as caught — the coverage
+ * instrument reporting full coverage exactly when the runner is not green. Conservative on
+ * purpose: a FIDELITY red also stops the scoring, though only MECHANICS checks are replayed. The
+ * ruling and the measured case: mut_flags.requireCleanRun's header. */
+MUT.requireCleanRun(rec, '  run_warp_tier: ' +
+  rec.filter(function (r) { return r.ok; }).length + ' passed, ' +
+  rec.filter(function (r) { return !r.ok; }).length + ' failed  (' + rec.length + ' checks)');
 
 /* ---- mutations: each must redden a mechanics check ------------------------------------------ */
 var MUTATIONS = [

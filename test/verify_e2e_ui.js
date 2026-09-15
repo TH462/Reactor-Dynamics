@@ -577,6 +577,231 @@ async function testRefusalReachesTheScanner(page) {
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
 }
 
+/* THE TRIP BLOCKS POPOVER MUST NEVER REACH THE BOARD (#670 operator pass, S-1).
+ *
+ * The popover is shrink-to-fit and one of its captions is 90 characters: a blocked trip whose
+ * setpoint is crossed prints "RELEASING THIS WILL TRIP THE REACTOR NOW - the setpoint is
+ * crossed. Press again to confirm." (pwr_board_wiring.js `tripBlockRows`). MEASURED at
+ * 1600x1000 before the fix: the panel went 393.9 -> 519.0 rendered px on that one caption and
+ * covered the PORV block valve's hit circle, so `document.elementFromPoint` at the valve centre
+ * returned the panel's row and the click was SWALLOWED - while the System Scanner still hovered
+ * the valve THROUGH the overlay, so the board said "this is the thing you want" and the press
+ * did nothing. The RELEASE? button landed x 488-555 against the valve's x 466.7-506.9, i.e.
+ * OVER it: a player hunting for the valve was one slip from a press that trips the reactor.
+ *
+ * THE CHECK ASSERTS THE EFFECT, NOT THE DECLARATION. A static "`.bd-pop` has a max-width" test
+ * pins a CSS write and would pass on any number, including one that puts the panel back on the
+ * board (CLAUDE.md's standing trap: assert the effect, never the write). This opens the real
+ * popover, applies exactly the two DOM writes `refreshTripBlocks` makes on an armed row, and
+ * hit-tests the valve. INJECTION-VERIFIED: with `max-width` removed from `.bd-pop` it reports
+ * the panel at 519.0 px and elementFromPoint returning `bd-pop-row`, and fails.
+ *
+ * The step-6 -> step-14 gap in the TMI-2 walkthrough is what found it, but the defect is free
+ * play's too - nothing about it needs a walkthrough. */
+async function testTripBlockPopoverStaysOffTheBoard(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page);
+  var r = await page.evaluate(function () {
+    var btn = null, w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), n;
+    while ((n = w.nextNode())) {
+      if ((n.nodeValue || '').trim() === 'TRIP BLOCKS' && n.parentElement.matches('button')) {
+        btn = n.parentElement; break;
+      }
+    }
+    if (!btn) return { missing: 'the TRIP BLOCKS button' };
+    btn.click();
+    var pop = document.querySelector('.bd-pop');
+    if (!pop) return { missing: 'the popover it opens' };
+    var row = pop.querySelector('button[data-trip="si_trip"]');
+    if (!row) return { missing: 'the SI REACTOR TRIP row' };
+    var vlvs = [].slice.call(document.querySelectorAll('circle.vlv-hit')).map(function (c) {
+      return c.getBoundingClientRect();
+    }).filter(function (b) { return b.x > 400 && b.x < 600 && b.y < 300; });
+    if (!vlvs.length) return { missing: 'the PORV block valve hit circle' };
+    var v = vlvs[0];
+    function probe() {
+      var b = pop.getBoundingClientRect(), rb = row.getBoundingClientRect();
+      var el = document.elementFromPoint(Math.round(v.x + v.width / 2), Math.round(v.y + v.height / 2));
+      return { w: +b.width.toFixed(1), right: +b.right.toFixed(1),
+               overlaps: b.right > v.x && b.x < v.right && b.bottom > v.y && b.y < v.bottom,
+               btnOverValve: rb.right > v.x && rb.x < v.right && rb.bottom > v.y && rb.y < v.bottom,
+               hitIsValve: !!(el && el.classList && el.classList.contains('vlv-hit')),
+               hitTag: el ? (el.tagName + '.' + String(el.getAttribute('class') || '')) : 'null' };
+    }
+    var before = probe();
+    // exactly what refreshTripBlocks writes when `will_trip` is true
+    row.textContent = 'RELEASE?';
+    row.className = 'bd-blocked bd-willtrip';
+    var sub = row.previousSibling && row.previousSibling.querySelector
+            ? row.previousSibling.querySelector('.sub') : null;
+    if (!sub) return { missing: 'the row caption element' };
+    sub.textContent = 'RELEASING THIS WILL TRIP THE REACTOR NOW — the setpoint is crossed. Press again to confirm.';
+    return { valve: { x: +v.x.toFixed(1), right: +v.right.toFixed(1) }, before: before, after: probe() };
+  });
+  if (r.missing) {
+    console.error('FAIL: the trip-block overlay fixture is gone (' + r.missing + ') — re-point this check');
+    process.exitCode = 1;
+    return 'trip-block-overlay: FIXTURE MISSING — ' + r.missing + String.fromCharCode(10);
+  }
+  log.push('valve hit circle x ' + r.valve.x + '–' + r.valve.right);
+  log.push('normal captions: panel ' + r.before.w + ' px, right ' + r.before.right +
+           ', hit ' + r.before.hitTag);
+  log.push('armed caption:   panel ' + r.after.w + ' px, right ' + r.after.right +
+           ', hit ' + r.after.hitTag);
+  if (!r.before.hitIsValve) {
+    console.error('FAIL: the PORV block valve is not clickable with the trip-block panel open ' +
+      'and NO row armed — hit ' + r.before.hitTag + ' (#670 S-1)');
+    process.exitCode = 1;
+  }
+  if (!r.after.hitIsValve || r.after.overlaps || r.after.btnOverValve) {
+    console.error('FAIL: the trip-block popover grew onto the board when a row armed for ' +
+      'release — panel ' + r.before.w + ' → ' + r.after.w + ' px, right edge ' + r.after.right +
+      ' against the valve at ' + r.valve.x + '; elementFromPoint at the valve returns ' +
+      r.after.hitTag + '. The click is swallowed while the Scanner still names the valve ' +
+      'through the overlay (#670 S-1). Cap `.bd-pop` max-width — do not raise it.');
+    process.exitCode = 1;
+  } else {
+    console.log('  trip-block popover stays off the board when armed: ' + r.before.w + ' → ' +
+      r.after.w + ' px, valve still hit-tests (#670 S-1)');
+  }
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
+/* THE TRIP BLOCKS POPOVER MUST GO AWAY ON A PRESS OUTSIDE IT (#690; owner playtest #675
+ * section A, verbatim: "Trip block popup should disappear when clicking anywhere outside that
+ * popup.").
+ *
+ * EVERY PRESS HERE IS A REAL POINTER PRESS (`page.mouse.click`), never `element.click()`.
+ * That is not tidiness — it is the only way this check can see the mechanism at all: the
+ * dismissal rides `pointerdown`, and `HTMLElement.click()` dispatches a bare `click` with no
+ * pointer event in front of it, so a .click()-driven version of this check would pass on a
+ * board that had no listener whatsoever.
+ *
+ * FIVE PRESSES, and the middle three are the ones that catch the two ways this can be built
+ * wrong. A listener scoped too broadly (or without the `pop.contains` guard) eats press 2 and
+ * the panel cannot be used at all; one that forgets the TRIP BLOCKS button is exempt closes on
+ * press 3's pointerdown and then the button's own 'click' RE-OPENS it, so the panel becomes
+ * un-closable from the very control an operator would reach for. Press 4 is the mirror: a
+ * dismissal that swallows the button press leaves a panel that can never be opened a second
+ * time. Only press 5 is the feature the owner asked for, and it is the easy one.
+ *
+ * The outside point is found by hit-test, not authored: the check walks the stage on a 17 px
+ * grid and takes the first point where `elementFromPoint` returns the STAGE ITSELF, so the
+ * press cannot land on a plant control and issue a command as a side effect.
+ *
+ * INJECTION-VERIFIED — see the note in run_all.js's BASELINES entry. */
+async function testTripBlockPopoverDismissesOnOutsideClick(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page);
+
+  var btnPt = await page.evaluate(function () {
+    var btn = null, w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), n;
+    while ((n = w.nextNode())) {
+      if ((n.nodeValue || '').trim() === 'TRIP BLOCKS' && n.parentElement.matches('button')) {
+        btn = n.parentElement; break;
+      }
+    }
+    if (!btn) return { missing: 'the TRIP BLOCKS button' };
+    var b = btn.getBoundingClientRect();
+    return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) };
+  });
+  if (btnPt.missing) {
+    console.error('FAIL: the trip-block dismissal fixture is gone (' + btnPt.missing +
+      ') — re-point this check');
+    process.exitCode = 1;
+    return 'trip-block-dismiss: FIXTURE MISSING — ' + btnPt.missing + String.fromCharCode(10);
+  }
+  var isOpen = function () {
+    return page.evaluate(function () { return !!document.querySelector('.bd-pop'); });
+  };
+
+  // press 1 — open it
+  await page.mouse.click(btnPt.x, btnPt.y);
+  var openedAtAll = await isOpen();
+  if (!openedAtAll) {
+    console.error('FAIL: the trip-block dismissal fixture is gone (the popover did not open on ' +
+      'a real pointer press) — re-point this check');
+    process.exitCode = 1;
+    return 'trip-block-dismiss: FIXTURE MISSING — popover would not open' + String.fromCharCode(10);
+  }
+
+  var pts = await page.evaluate(function () {
+    var pop = document.querySelector('.bd-pop');
+    var stage = document.querySelector('.pwr-board-stage');
+    if (!pop || !stage) return { missing: pop ? 'the board stage' : 'the popover' };
+    var head = pop.querySelector('h4') || pop;
+    var hb = head.getBoundingClientRect();
+    var sb = stage.getBoundingClientRect(), pb = pop.getBoundingClientRect();
+    var out = null;
+    for (var y = sb.top + 8; y < sb.bottom - 8 && !out; y += 17) {
+      for (var x = sb.left + 8; x < sb.right - 8; x += 17) {
+        if (x > pb.left - 6 && x < pb.right + 6 && y > pb.top - 6 && y < pb.bottom + 6) continue;
+        if (document.elementFromPoint(x, y) !== stage) continue;   // bare board, no control under it
+        out = { x: Math.round(x), y: Math.round(y) };
+        break;
+      }
+    }
+    if (!out) return { missing: 'a bare point on the board stage outside the popover' };
+    return { inside: { x: Math.round(hb.x + hb.width / 2), y: Math.round(hb.y + hb.height / 2) },
+             outside: out,
+             pop: { x: +pb.x.toFixed(1), right: +pb.right.toFixed(1),
+                    y: +pb.y.toFixed(1), bottom: +pb.bottom.toFixed(1) } };
+  });
+  if (pts.missing) {
+    console.error('FAIL: the trip-block dismissal fixture is gone (' + pts.missing +
+      ') — re-point this check');
+    process.exitCode = 1;
+    return 'trip-block-dismiss: FIXTURE MISSING — ' + pts.missing + String.fromCharCode(10);
+  }
+  log.push('popover x ' + pts.pop.x + '–' + pts.pop.right + ', y ' + pts.pop.y + '–' + pts.pop.bottom);
+  log.push('press points: button ' + btnPt.x + ',' + btnPt.y + ' · inside ' + pts.inside.x + ',' +
+           pts.inside.y + ' · outside (bare stage) ' + pts.outside.x + ',' + pts.outside.y);
+
+  // press 2 — INSIDE the panel: it must stay up, or the panel cannot be used
+  await page.mouse.click(pts.inside.x, pts.inside.y);
+  var afterInside = await isOpen();
+  // press 3 — the TRIP BLOCKS button while it is up: the button's own toggle must still shut it
+  await page.mouse.click(btnPt.x, btnPt.y);
+  var afterButtonWhileOpen = await isOpen();
+  // press 4 — the button again: it must re-open (the dismissal must not swallow the press)
+  await page.mouse.click(btnPt.x, btnPt.y);
+  var afterReopen = await isOpen();
+  // press 5 — OUTSIDE it, on bare board: the feature
+  await page.mouse.click(pts.outside.x, pts.outside.y);
+  var afterOutside = await isOpen();
+  await page.evaluate(function () {   // hand the board back the way we found it
+    var pop = document.querySelector('.bd-pop');
+    if (pop && pop.parentNode) pop.parentNode.removeChild(pop);
+  });
+
+  log.push('open ' + openedAtAll + ' → press inside ' + afterInside + ' → press button ' +
+           afterButtonWhileOpen + ' → press button ' + afterReopen + ' → press outside ' + afterOutside);
+  var bad = [];
+  if (!afterInside) bad.push('a press INSIDE the popover (on its own TRIP BLOCKS heading) closed it — ' +
+    'the listener is missing its `pop.contains(e.target)` guard, so the panel cannot be used at all');
+  if (afterButtonWhileOpen) bad.push('a press on the TRIP BLOCKS button while the popover was up ' +
+    'left it OPEN — the dismissal closed it on pointerdown and the button’s own click re-opened it, ' +
+    'so the panel is un-closable from the control that opens it');
+  if (!afterReopen) bad.push('the popover would not re-open on a press of the TRIP BLOCKS button — ' +
+    'the dismissal is swallowing the opening press');
+  if (afterOutside) bad.push('a press OUTSIDE the popover, on bare board at ' + pts.outside.x + ',' +
+    pts.outside.y + ', left it open — that is the #690 defect itself');
+  if (bad.length) {
+    console.error('FAIL: trip-block popover outside-click dismissal (#690): ' + bad.join('; '));
+    process.exitCode = 1;
+  } else {
+    console.log('  trip-block popover dismisses on an outside press and still toggles from its ' +
+      'own button (#690)');
+  }
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
 async function testEsfArmButtons(page) {
   var log = [];
   /* pwr disables NOTHING; pwr2 disables the DELIBERATE set: the HPI AUTO re-arm (#503),
@@ -1019,6 +1244,448 @@ async function testMonitorList(page) {
   return log.join('\n') + '\n';
 }
 
+/* THE MISSION DOOR IS "MAIN MENU", BESIDE SETTINGS (#689, owner playtest #675 section A,
+ * 2026-09-09: "Add a Main Menu button to the right of settings. Change the SELECT PLANT,
+ * MISSION & RESET menu to this button and get rid of the old button.")
+ *
+ * FOUR CLAIMS, and the last two are the ones nothing else in the tree can see.
+ *
+ *  1. The button exists, reads "Main Menu", and sits in .sim-tools IMMEDIATELY AFTER Settings.
+ *     "To the right of settings" is a position, not "somewhere in the row" — and ⛶ (board
+ *     focus) was already the row's last child, so "append it" and "put it where he asked" are
+ *     different answers. The check reads DOM order inside .sim-tools.
+ *  2. The old full-width .sim-status bar is gone — the id, the class and #simStatusText.
+ *  3. IT ACTUALLY OPENS THE WINDOW, and the window's own ✕ still closes it. A renamed id with
+ *     the listener left on the old one is a button that looks right and does nothing.
+ *  4. NOTHING POINTS AT A NODE THAT NO LONGER EXISTS. Two consumers named #simStatus by
+ *     string: the COACH map (`session`) and the quick tour's step list. BOTH FAIL SILENTLY —
+ *     applyCoachMarks() does `if (el)` and skips, and a tour step with a dead selector just
+ *     highlights empty space. So the tour is DRIVEN to the Main Menu step and its highlight
+ *     rect is measured on the button, and the coach dot is forced on by clearing its
+ *     localStorage key and read off the rendered ::after. A source scan cannot do either. */
+async function testMainMenuButton(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await page.waitForSelector('#mainMenuBtn', { timeout: 8000 }).catch(function () {
+    throw new Error('#689: there is no #mainMenuBtn on the page — the owner asked for a Main ' +
+      'Menu button to the right of Settings and nothing answers to that id');
+  });
+
+  var row = await page.evaluate(function () {
+    var b = document.getElementById('mainMenuBtn');
+    var tools = document.querySelector('.sim-tools');
+    var kids = tools ? Array.prototype.slice.call(tools.children) : [];
+    var r = b.getBoundingClientRect(), sr = null;
+    var st = document.getElementById('settingsBtn');
+    if (st) sr = st.getBoundingClientRect();
+    return {
+      order: kids.map(function (k) { return k.id || k.tagName.toLowerCase(); }),
+      inTools: !!(tools && tools.contains(b)),
+      text: (b.textContent || '').trim(),
+      w: Math.round(r.width), h: Math.round(r.height),
+      leftOfMe: sr ? Math.round(r.left - sr.right) : null,
+      sameRow: sr ? Math.abs(r.top - sr.top) < 4 : false,
+      oldBar: !!document.getElementById('simStatus'),
+      oldBarClass: document.querySelectorAll('.sim-status').length,
+      oldReadout: !!document.getElementById('simStatusText')
+    };
+  });
+  if (!row.inTools) throw new Error('#689: #mainMenuBtn is not inside .sim-tools — order was ' + row.order.join(' , '));
+  if (row.text !== 'Main Menu') throw new Error('#689: the button reads "' + row.text + '", not "Main Menu"');
+  if (row.w < 20 || row.h < 10) throw new Error('#689: #mainMenuBtn paints ' + row.w + 'x' + row.h + ' px');
+  var iS = row.order.indexOf('settingsBtn'), iM = row.order.indexOf('mainMenuBtn');
+  if (iS < 0 || iM !== iS + 1) {
+    throw new Error('#689: Main Menu is not immediately to the RIGHT of Settings — .sim-tools ' +
+      'order is [' + row.order.join(', ') + ']. Appending it to the row puts the ⛶ board-focus ' +
+      'toggle between the two, which is not where the owner asked for it.');
+  }
+  if (!row.sameRow || !(row.leftOfMe >= 0 && row.leftOfMe < 40)) {
+    throw new Error('#689: Main Menu is in DOM order but not painted beside Settings — same row: ' +
+      row.sameRow + ', gap: ' + row.leftOfMe + ' px');
+  }
+  /* THE WHOLE ROW MUST BE ONE LINE, not just Main Menu's half of it (quality pass, 2026-09-11).
+   * #689 tightened .sim-tools to fit six controls in 338 px with 19 px of headroom and its comment
+   * promises that "a seventh named tool wraps it again, and verify_e2e_ui's testMainMenuButton reds
+   * on the PAINTED row and gap rather than letting it go quiet."
+   *
+   * IT DID NOT. PROVED by injection: adding a seventh `.btn.text-btn` to the row took .sim-tools
+   * from 27 px to 55 px on TWO lines — [manual, help, feedback, settings, mainMenu] at y 45 and
+   * [the new tool, demoBtn] at y 75 — and this check stayed GREEN. `flex-wrap` pushes the OVERFLOW
+   * to the end, and Main Menu is fifth of six, so the two assertions above (same row as Settings,
+   * 4 px gap) are both still satisfied while the ⛶ board-focus toggle silently drops below the row
+   * it is supposed to end. The measurement nobody had taken is the one the comment described.
+   *
+   * The row's painted height against its tallest child is the claim, and it reds for whichever
+   * control wraps. Measured one-line: 27 px row, 27 px tallest child. */
+  var wrap = await page.evaluate(function () {
+    var t = document.querySelector('.sim-tools');
+    var kids = Array.prototype.slice.call(t.children);
+    var tallest = 0, lines = {};
+    kids.forEach(function (k) {
+      var r = k.getBoundingClientRect();
+      if (r.height > tallest) tallest = r.height;
+      var band = Math.round(r.top / 5) * 5;
+      (lines[band] = lines[band] || []).push(k.id || k.tagName.toLowerCase());
+    });
+    return { rowH: Math.round(t.getBoundingClientRect().height), tallest: Math.round(tallest),
+             nLines: Object.keys(lines).length, lines: lines };
+  });
+  if (wrap.rowH > wrap.tallest + 6) {
+    throw new Error('#689: the .sim-tools row has WRAPPED — it paints ' + wrap.rowH + ' px against a ' +
+      'tallest control of ' + wrap.tallest + ' px, on ' + wrap.nLines + ' lines: ' +
+      JSON.stringify(wrap.lines) + '. Six controls fit 338 px with 19 px of headroom; a seventh ' +
+      'named tool does not, and the control that drops is whichever is last in the row rather than ' +
+      'the one you added. Either shorten the row or retune .sim-tools deliberately.');
+  }
+  log.push('.sim-tools is one line: ' + wrap.rowH + ' px row, ' + wrap.tallest + ' px tallest control');
+  if (row.oldBar || row.oldBarClass || row.oldReadout) {
+    throw new Error('#689: the old SELECT PLANT, MISSION & RESET bar is still there — #simStatus ' +
+      row.oldBar + ', .sim-status x' + row.oldBarClass + ', #simStatusText ' + row.oldReadout +
+      '. "Get rid of the old button" is half the item.');
+  }
+  log.push('.sim-tools order: ' + row.order.join(' , '));
+  log.push('Main Menu ' + row.w + 'x' + row.h + ' px, ' + row.leftOfMe + ' px right of Settings; ' +
+           'no #simStatus, no .sim-status, no #simStatusText');
+
+  // 3 — it opens the window, and ✕ still closes it.
+  /* THE FIRST CLOSE IS ALSO THE ONE THAT FIRES THE COACH TIP, so the ▲ is measured here and
+   * nowhere else: `missionTipArmed` is set once by boot and spent by this press, which is the
+   * player's own route (#689 moved the bubble up under .sim-tools for exactly this reason).
+   *
+   * THE AIM IS THE ASSERTION, not the presence. #689 moved the bubble to the right ROW and left
+   * it centre-aligned, which put its ▲ 128 px to the LEFT of the button it names — over the
+   * middle of the speed bar — because the bubble spans the whole panel row while Main Menu sits
+   * at the right end of it. A presence check passes on that; so does a class check. The arrow's
+   * painted centre has to land inside the button's painted box, and the glyph's rect is taken
+   * with a Range over the text node rather than from the span's layout box, because an absolutely
+   * positioned inline span can report a box while painting off-target. */
+  await dismissMission(page);
+  await page.waitForTimeout(250);
+  var aim = await page.evaluate(function () {
+    var t = document.getElementById('mainMenuTip'), b = document.getElementById('mainMenuBtn');
+    if (!t || !b) return { missing: !t ? '#mainMenuTip' : '#mainMenuBtn' };
+    var a = t.querySelector('.mm-arrow');
+    if (!a || !a.firstChild) return { noArrow: true, hidden: t.hidden, html: t.innerHTML.slice(0, 60) };
+    var rg = document.createRange(); rg.setStart(a.firstChild, 0); rg.setEnd(a.firstChild, 1);
+    var ar = rg.getBoundingClientRect(), br = b.getBoundingClientRect(), tr = t.getBoundingClientRect();
+    return { hidden: t.hidden, glyph: (a.textContent || '').trim(),
+             ax: +((ar.left + ar.right) / 2).toFixed(1), ay: +((ar.top + ar.bottom) / 2).toFixed(1),
+             bl: +br.left.toFixed(1), br: +br.right.toFixed(1), bb: +br.bottom.toFixed(1),
+             tipL: +tr.left.toFixed(1), tipR: +tr.right.toFixed(1), tipTop: +tr.top.toFixed(1) };
+  });
+  if (aim.missing) throw new Error('#689: the coach tip fixture is gone — no ' + aim.missing);
+  if (aim.noArrow) {
+    throw new Error('#689: #mainMenuTip carries no .mm-arrow glyph to aim — ' + JSON.stringify(aim) +
+      '. The ▲ has to be its own node, or it cannot be positioned independently of the centred text.');
+  }
+  if (aim.hidden) {
+    throw new Error('#689 control: the coach tip did not appear on the first close of the Plant & ' +
+      'Mission window, so its aim cannot be measured — missionTipArmed never fired');
+  }
+  if (!(aim.ax >= aim.bl && aim.ax <= aim.br)) {
+    throw new Error('#689: #mainMenuTip\'s ▲ points ' + Math.round(Math.min(Math.abs(aim.ax - aim.bl),
+      Math.abs(aim.ax - aim.br))) + ' px away from the Main Menu button it names — arrow centre x ' +
+      aim.ax + ', button box ' + aim.bl + '–' + aim.br + ', bubble ' + aim.tipL + '–' + aim.tipR +
+      '. The bubble spans the whole tools row and the button sits at its right end, so a CENTRED ' +
+      'arrow lands over the speed bar; aimMainMenuTip() has to set --mm-arrow-x from the button.');
+  }
+  if (aim.ay < aim.bb) {
+    throw new Error('#689: the tip\'s ▲ (y ' + aim.ay + ') is drawn ABOVE the button\'s bottom edge (' +
+      aim.bb + ') — the bubble is not below the row it points at');
+  }
+  log.push('coach tip ▲ at x ' + aim.ax + ', inside the Main Menu box ' + aim.bl + '–' + aim.br +
+           ' (bubble ' + aim.tipL + '–' + aim.tipR + ')');
+  await page.evaluate(function () { var t = document.getElementById('mainMenuTip'); if (t) t.hidden = true; });
+  if (await page.isVisible('#missionOverlay')) throw new Error('#689: could not get the window shut to start from');
+  await page.click('#mainMenuBtn');
+  await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 4000 })
+    .catch(function () { /* the throw below carries the message */ });
+  if (!(await page.isVisible('#missionOverlay'))) {
+    throw new Error('#689: pressing Main Menu did not open the Plant & Mission window — the ' +
+      'openMissionSelect listener is still bound to the deleted #simStatus');
+  }
+  log.push('Main Menu opens the window');
+
+  // 4a — the quick tour's step for this button lands ON the button.
+  await page.click('#missionClose');
+  await page.waitForTimeout(300);
+  /* renderTour() SKIPS a step whose selector resolves to nothing ("Skip missing targets rather
+   * than stalling the tour") and moves straight to the next one — so a dead selector costs a
+   * whole step and raises nothing. The probe therefore walks the tour to its end and demands
+   * that a step titled "Main Menu" both EXISTS and lands its spotlight on the button: a
+   * missing step and a mis-aimed one are different defects and both are invisible otherwise. */
+  var tour = await page.evaluate(async function () {
+    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    var help = document.getElementById('helpBtn');
+    var starter = document.getElementById('helpTourBtn');
+    if (!help || !starter) return { err: 'no #helpBtn / #helpTourBtn to start the tour from' };
+    help.click();
+    await sleep(250);
+    starter.click();
+    await sleep(400);
+    var root = document.getElementById('tourRoot');
+    if (!root || root.hidden) return { err: 'the tour did not open (#tourRoot still hidden)' };
+    var seen = [], guard = 0;
+    while (guard++ < 40) {
+      var title = (document.getElementById('tourTitle') || {}).textContent || '';
+      var spot = document.getElementById('tourSpot');
+      var live = document.querySelector('.tour-target-live');
+      var sr = spot ? spot.getBoundingClientRect() : null;
+      seen.push({
+        title: title.trim(),
+        prog: ((document.getElementById('tourProg') || {}).textContent || '').trim(),
+        liveId: live ? (live.id || live.className) : null,
+        spot: sr ? { x: Math.round(sr.x), y: Math.round(sr.y), w: Math.round(sr.width), h: Math.round(sr.height) } : null
+      });
+      var next = document.getElementById('tourNext');
+      if (!next || /done/i.test(next.textContent || '')) break;
+      next.click();
+      await sleep(260);
+    }
+    var b = document.getElementById('mainMenuBtn').getBoundingClientRect();
+    var close = document.getElementById('tourSkip'); if (close) close.click();
+    return { steps: seen,
+             btn: { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) } };
+  });
+  if (tour.err) throw new Error('#689: could not drive the quick tour — ' + tour.err);
+
+  /* #720 — THE TOUR MUST WALK EVERY STEP IT DECLARES, and this is the general form of the
+   * defect, not a check pinned to one step.
+   *
+   * renderTour()'s skip branch ("Skip missing targets rather than stalling the tour") costs a
+   * whole step and, until #720, printed nothing: `#tourProg` simply jumped. Measured on the
+   * shipped board before the fix — 1/11, then 3/11 — because step 2 pointed at `#gaugeStrip`,
+   * which is `display: none` on the PWR, so `tourElVisible()` rejected it. Ten of eleven steps
+   * ran and the tour read as complete. Nothing in the suite could see it: every existing
+   * assertion was about a step that DID render.
+   *
+   * The claim is the whole sequence, taken off `#tourProg`'s own denominator so it cannot go
+   * stale when a step is added or removed: the walk must report 1/N, 2/N … N/N with no gap.
+   * Any step whose selector is absent, hidden or zero-sized reds here by name.
+   *
+   * PROVED RED BY INJECTION (2026-09-12), at BOTH shapes, because "absent" and "present but
+   * invisible" reach tourElVisible() by different routes. Pointing the Alarms step (3 of 11) at
+   * `#rd720InjectionAbsent`, which matches nothing, and then at `#gaugeStrip`, which exists with
+   * six children and is display:none, each gave: "walked 10 of 11 and the progress readout went
+   * 1 -> 2 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10 -> 11. Never rendered: 3 / 11". Selector restored,
+   * green at 11 of 11. */
+  var walk = (tour.steps || []).map(function (s) {
+    var m = /^(\d+)\s*\/\s*(\d+)$/.exec(s.prog || '');
+    return m ? { i: +m[1], n: +m[2] } : null;
+  });
+  if (walk.some(function (w) { return !w; })) {
+    throw new Error('#720: a tour step reported no readable progress — #tourProg values were ' +
+      JSON.stringify(tour.steps.map(function (s) { return s.prog; })));
+  }
+  var total = walk[0].n;
+  if (walk.some(function (w) { return w.n !== total; })) {
+    throw new Error('#720: the tour changed its own step total mid-walk — ' +
+      JSON.stringify(walk.map(function (w) { return w.i + '/' + w.n; })));
+  }
+  var missing = [];
+  for (var wi = 1; wi <= total; wi++) {
+    if (!walk.some(function (w) { return w.i === wi; })) missing.push(wi + ' / ' + total);
+  }
+  if (missing.length || walk.length !== total) {
+    throw new Error('#720: the quick tour SILENTLY SKIPPED ' + missing.length + ' of its ' +
+      total + ' steps — it walked ' + walk.length + ' of ' + total + ' and the progress ' +
+      'readout went ' + walk.map(function (w) { return w.i; }).join(' -> ') + '. Never ' +
+      'rendered: ' + (missing.join(', ') || '(none — the walk repeated a step instead)') +
+      '. renderTour() skips a step whose `sel`/`sels` resolve to nothing visible and says ' +
+      'nothing, so a step pointing at an element that is absent, hidden or display:none on ' +
+      'this plant costs the player the whole step. Fix the selector — do NOT relax this check.');
+  }
+  log.push('quick tour walks every declared step: ' + walk.map(function (w) { return w.i; }).join(', ') +
+           ' of ' + total + ', titles ' + JSON.stringify(tour.steps.map(function (s) { return s.title; })));
+
+  var named = (tour.steps || []).filter(function (s) { return /main menu/i.test(s.title || ''); });
+  if (!named.length) {
+    throw new Error('#689: the quick tour walked ' + tour.steps.length + ' steps and none is ' +
+      'titled "Main Menu" — titles were ' +
+      JSON.stringify(tour.steps.map(function (s) { return s.title; })) + '. renderTour() SKIPS a ' +
+      'step whose selector resolves to nothing, so a stale sel is exactly this shape.');
+  }
+  var st = named[0];
+  if (st.liveId !== 'mainMenuBtn') {
+    throw new Error('#689: the tour\'s Main Menu step highlighted "' + st.liveId + '", not ' +
+      '#mainMenuBtn — its `sel` points somewhere else');
+  }
+  var cx = st.spot ? st.spot.x + st.spot.w / 2 : -1, cy = st.spot ? st.spot.y + st.spot.h / 2 : -1;
+  var inside = cx >= tour.btn.x - 12 && cx <= tour.btn.x + tour.btn.w + 12 &&
+               cy >= tour.btn.y - 12 && cy <= tour.btn.y + tour.btn.h + 12;
+  if (!inside) {
+    throw new Error('#689: the tour\'s Main Menu spotlight is not over the button — spotlight ' +
+      JSON.stringify(st.spot) + ', button ' + JSON.stringify(tour.btn));
+  }
+  log.push('quick tour: ' + tour.steps.length + ' steps; the "' + st.title + '" step (' + st.prog +
+           ') spotlights #' + st.liveId + ' at ' + JSON.stringify(st.spot));
+
+  // 4b — the coach dot resolves to this button. Forced on by clearing its seen key.
+  await page.evaluate(function () {
+    try { localStorage.removeItem('rd_seen_session'); } catch (e) { /* private mode */ }
+  });
+  await page.reload({ waitUntil: 'networkidle', timeout: 90000 });
+  await page.waitForSelector('#mainMenuBtn', { timeout: 8000 });
+  var dot = await page.evaluate(function () {
+    var b = document.getElementById('mainMenuBtn');
+    var after = getComputedStyle(b, '::after');
+    return { marked: b.classList.contains('unvisited'),
+             w: after.width, h: after.height, pos: after.position,
+             anyElse: Array.prototype.map.call(document.querySelectorAll('.unvisited'),
+               function (e) { return e.id || e.className; }) };
+  });
+  if (!dot.marked) {
+    throw new Error('#689: the coach dot does not reach the Main Menu button — COACH.session ' +
+      'still names a deleted element, and applyCoachMarks() skips a missing node in silence. ' +
+      'Elements carrying .unvisited: ' + JSON.stringify(dot.anyElse));
+  }
+  if (dot.pos !== 'absolute' || parseFloat(dot.w) < 4 || parseFloat(dot.h) < 4) {
+    throw new Error('#689: #mainMenuBtn carries .unvisited but the dot paints nothing — ' +
+      '::after is ' + dot.w + ' x ' + dot.h + ' at position ' + dot.pos +
+      ' (.unvisited::after needs a positioned parent)');
+  }
+  log.push('coach dot reaches Main Menu: ::after ' + dot.w + ' x ' + dot.h);
+
+  // …and it retires on first use, on the new element.
+  await dismissMission(page);
+  await page.waitForTimeout(250);
+  await page.click('#mainMenuBtn');
+  await page.waitForTimeout(350);
+  var gone = await page.evaluate(function () {
+    return document.getElementById('mainMenuBtn').classList.contains('unvisited');
+  });
+  if (gone) throw new Error('#689: the coach dot did not retire when Main Menu was pressed — ' +
+    "markSeen('session') is still bound to the deleted #simStatus");
+  log.push('coach dot retires on first press');
+  await page.click('#missionClose');
+  await page.waitForTimeout(300);
+  return log.join('\n') + '\n';
+}
+
+/* THE PLANT & MISSION WINDOW'S SHAPE (#688, owner playtest #675 section A, 2026-09-09:
+ * "Put a green [NEW] next to the Walkthroughs tab in the plant and mission menu. Remove the
+ * plant selection column from the plant and mission menu.")
+ *
+ * TWO CLAIMS, AND BOTH ARE READ OFF THE RENDERED DOM rather than the source, because a
+ * source scan for a rendered string cannot tell you the string is reachable (#485). The
+ * column was BUILT IN JS into #mpPlants, so "the div left shell.html" is not the claim — the
+ * claim is that no plant card reaches the screen and the body no longer reserves the 260 px
+ * track one would have sat in. Measured on a dev build before the change: five cards, `pwr`
+ * and `pwr2` selectable and three greyed COMING SOON, in a 260px|678px grid.
+ *
+ * The badge is asserted on its COMPUTED COLOUR and its painted rect, never on the class name.
+ * "Green" is the owner's word for it and it is the half a class-name check cannot see: a
+ * badge whose .mp-new rule never loaded still carries the class and still reads NEW.
+ *
+ * The third assertion is the one that makes the removal safe. All four content builders read
+ * `msel.engine`, which the deleted [data-mplant] handler used to write; it is now only ever
+ * seeded from ui.engineKey in openMissionSelect(), and a tab that renders empty is how a
+ * broken seed would surface. Driven through the dev door (?mmode=) so campaign and scenarios
+ * are swept as well — the player's window offers only the first two tabs (#660 item 19).
+ * `dev=1` arms RD.__dev so the last assertion can name the engine the Start button actually
+ * constructed; it does NOT move the flags channel, which site/flags.js reads from
+ * `channel=`/`flags=`/RD_CHANNEL, so the tab list under test is still the dev-door one. */
+async function testMissionMenuShape(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&mmode=free&dev=1',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 8000 });
+
+  var shape = await page.evaluate(function () {
+    var body = document.querySelector('#missionOverlay .mission-body');
+    var cols = getComputedStyle(body).gridTemplateColumns;
+    return {
+      column: !!document.getElementById('mpPlants'),
+      cards: document.querySelectorAll('[data-mplant]').length,
+      cols: cols,
+      tracks: cols.trim().split(/\s+/).length
+    };
+  });
+  if (shape.column || shape.cards) {
+    throw new Error('#688: the plant selection column is still on screen — #mpPlants ' +
+      (shape.column ? 'exists' : 'gone') + ', ' + shape.cards + ' [data-mplant] card(s) rendered');
+  }
+  if (shape.tracks !== 1) {
+    throw new Error('#688: the plant column is gone but .mission-body still reserves its track — ' +
+      'grid-template-columns is "' + shape.cols + '". The Plant & Mission body needs .mp-body; ' +
+      'the 260px|1fr default stays because the chart-settings window reuses this class with a ' +
+      'real left column.');
+  }
+  log.push('no plant column: 0 cards, body is one ' + shape.cols + ' track');
+
+  var badge = await page.evaluate(function () {
+    var out = { badges: [], walkthroughTab: null };
+    var btns = document.querySelectorAll('#mpModes [data-mmode]');
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i], s = b.querySelector('.mp-new');
+      if (b.getAttribute('data-mmode') === 'walkthroughs') out.walkthroughTab = (b.textContent || '').trim();
+      if (!s) continue;
+      var r = s.getBoundingClientRect(), c = getComputedStyle(s);
+      out.badges.push({ tab: b.getAttribute('data-mmode'), text: (s.textContent || '').trim(),
+                        color: c.color, w: Math.round(r.width), h: Math.round(r.height) });
+    }
+    return out;
+  });
+  if (badge.badges.length !== 1 || badge.badges[0].tab !== 'walkthroughs') {
+    throw new Error('#688: expected exactly one NEW badge and it belongs on the Walkthroughs ' +
+      'tab — got ' + JSON.stringify(badge.badges) + ' (the Walkthroughs tab reads "' +
+      badge.walkthroughTab + '")');
+  }
+  var nb = badge.badges[0];
+  if (!/^NEW$/.test(nb.text)) throw new Error('#688: the badge reads "' + nb.text + '", not NEW');
+  if (nb.w < 4 || nb.h < 4) {
+    throw new Error('#688: the NEW badge is in the DOM but paints ' + nb.w + 'x' + nb.h + ' px');
+  }
+  var rgb = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(nb.color);
+  if (!rgb) throw new Error('#688: could not read the badge colour ("' + nb.color + '")');
+  var R = +rgb[1], G = +rgb[2], B = +rgb[3];
+  if (!(G > R + 30 && G > B + 30)) {
+    throw new Error('#688: the badge is not GREEN — computed colour ' + nb.color + '. The owner ' +
+      'asked for a green [NEW], and the colour is the half a class-name check cannot see.');
+  }
+  log.push('NEW badge on Walkthroughs only: ' + nb.w + 'x' + nb.h + ' px, ' + nb.color);
+
+  var tabs = await page.$$eval('#mpModes [data-mmode]', function (els) {
+    return els.map(function (e) { return e.getAttribute('data-mmode'); });
+  });
+  var thin = [];
+  for (var i = 0; i < tabs.length; i++) {
+    await page.click('[data-mmode="' + tabs[i] + '"]');
+    await page.waitForTimeout(250);
+    var chars = await page.evaluate(function () {
+      var c = document.getElementById('mpContent');
+      return ((c && c.textContent) || '').trim().length;
+    });
+    log.push('tab ' + tabs[i] + ': ' + chars + ' chars of content');
+    if (chars < 40) thin.push(tabs[i] + '=' + chars);
+  }
+  if (thin.length) {
+    throw new Error('#688: a mode tab built (nearly) nothing once the plant column was ' +
+      'removed — ' + thin.join(', ') + '. All four builders read msel.engine, which the ' +
+      'deleted [data-mplant] handler used to write.');
+  }
+
+  // …and Start still boots the plant, with no plant card left to have selected it.
+  await page.click('[data-mmode="free"]');
+  await page.waitForTimeout(200);
+  await page.click('[data-mfree]');
+  await waitBoardLive(page, 20000);
+  var boot = await page.evaluate(function () {
+    var pid = null;
+    try { pid = RD.__dev.service().activePlantId; } catch (e) { pid = null; }
+    return { hidden: !!document.getElementById('missionOverlay').hidden,
+             paused: document.getElementById('playBtn').classList.contains('paused'),
+             plant: pid, clock: (document.getElementById('clock').textContent || '').trim() };
+  });
+  if (!boot.hidden || boot.paused || boot.plant !== 'pwr2') {
+    throw new Error('#688: Free Play no longer boots the plant after the column was removed — ' +
+      JSON.stringify(boot));
+  }
+  log.push('Free Play starts: plant_id=' + boot.plant + ', running at ' + boot.clock);
+  return log.join('\n') + '\n';
+}
+
 /* CLOSING PLANT & MISSION LEAVES THE PLANT RUNNING *(OWNER, 2026-08-11: "When i close the
  * plant menu after starting the sim the sim should start playing. it currently starts
  * paused. it should start running after closing the plant & mission menu.")*.
@@ -1050,7 +1717,7 @@ async function testMissionCloseResumes(page) {
   log.push('✕ Close: plant runs');
 
   // The reported path: pick a starting condition and press Free Play.
-  await page.click('#simStatus');
+  await page.click('#mainMenuBtn');
   await page.waitForTimeout(400);
   if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission');
   await page.click('[data-mfree]');
@@ -1075,7 +1742,7 @@ async function testMissionCloseResumes(page) {
   await page.click('#playBtn');
   await page.waitForTimeout(300);
   if (await running()) throw new Error('⏸ did not stop the plant');
-  await page.click('#simStatus');
+  await page.click('#mainMenuBtn');
   await page.waitForTimeout(400);
   if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission (2nd)');
   await page.click('[data-mfree]');
@@ -1353,9 +2020,23 @@ async function testDiagBundle(page) {
 
   var b = JSON.parse(fs.readFileSync(out, 'utf8'));
   var ts = b.timeseries || {};
-  if (b.schema_version !== '1.1') throw new Error('diag bundle schema is ' + b.schema_version + ', expected 1.1');
+  if (b.schema_version !== '1.2') throw new Error('diag bundle schema is ' + b.schema_version + ', expected 1.2');
   if ('sample_hz' in (b.manifest || {})) throw new Error('diag manifest still carries sample_hz');
   if (!ts.fields || !ts.t || !ts.lo || !ts.hi) throw new Error('diag timeseries is not columnar with extremes');
+  // AND THE ROUNDING IS ON THE BROWSER'S OWN PATH (#681). This is the DOWNLOAD button's bundle,
+  // built by the shipped app, so it is the one place outside Node that proves build() rounds at
+  // all — the report was 2,939 KB of 17-significant-figure doubles against a 2 MB wire cap.
+  var over = null;
+  ['v', 'lo', 'hi'].forEach(function (side) {
+    (ts[side] || []).forEach(function (col) {
+      col.forEach(function (x) {
+        if (over || typeof x !== 'number' || Math.abs(x) < 1) return;
+        var m = /\.(\d+)$/.exec(String(x));
+        if (m && m[1].length > 4) over = x;
+      });
+    });
+  });
+  if (over !== null) throw new Error('diag timeseries is not rounded: ' + over);
 
   // THE ONE THAT CATCHES THE DRAIN BEING IN THE WRONG PLACE. At 600x a broadcast carries 60 s
   // of plant, so the broadcast-only fallback yields ~1 row a minute; the fine seam yields one
@@ -1774,7 +2455,7 @@ async function testHeldSpeedClick(page) {
   if (!started.ok) throw new Error('#627 fixture: start_checklist failed — ' + started.msg);
   await page.waitForFunction(function () {
     var b = document.querySelector('#tabbar button.on');
-    return !!b && b.getAttribute('data-tab') === 'checklists' && !!document.querySelector('.ckl-step');
+    return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step');
   }, { timeout: 15000, polling: 200 });
   await page.waitForTimeout(1200);
   async function read() {
@@ -1790,8 +2471,8 @@ async function testHeldSpeedClick(page) {
   await page.click('#speed [data-speed="600"]');
   await page.waitForTimeout(300);
   var ctl = await read();
-  if (ctl.tab !== 'checklists' || !(ctl.accel > 1)) {
-    throw new Error('#627 control: an unheld 600x click must land above 1x with the Checklists tab kept — ' +
+  if (ctl.tab !== 'instructor' || !(ctl.accel > 1)) {
+    throw new Error('#627 control: an unheld 600x click must land above 1x with the Instructor tab kept — ' +
                     'tab ' + ctl.tab + ', accel ' + ctl.accel);
   }
   log.push('control: 600x click landed at ' + ctl.accel + 'x, tab ' + ctl.tab);
@@ -1815,15 +2496,1063 @@ async function testHeldSpeedClick(page) {
     throw new Error('#627: the held click was NOT refused — accel ' + held.accel +
                     ' (the fixture plants the hold at _prevSpeedHold; check set_speed in the service)');
   }
-  if (held.tab !== 'checklists' || held.steps === 0) {
-    throw new Error('#627: a refused speed click under a plant hold left the Checklists tab — tab ' +
+  if (held.tab !== 'instructor' || held.steps === 0) {
+    throw new Error('#627: a refused speed click under a plant hold left the Instructor tab — tab ' +
                     held.tab + ', ' + held.steps + ' steps visible (this is the "closes the checklist" report)');
   }
   if (!/Held/.test(held.scanner)) {
     throw new Error('#627: the refusal did not reach the scanner bar — it read "' + held.scanner + '"');
   }
   log.push('held: click refused at 1x, tab ' + held.tab + ', scanner "' + held.scanner.slice(0, 90) + '"');
+
+  /* #686 (OWNER RULING 2026-09-11, "option A" on the held-at-real-time question): the line
+   * PERSISTING under the speed bar — not just the per-click scanner flash above — must still
+   * carry this message. The #686 replacement deletes the other three `warpNote` reasons
+   * (momentary drops already toasted + flashed) but keeps this one, because the accumulator
+   * window is a genuine, multi-minute refusal (#675 §E measured the rate-based refusals at a
+   * 2.0 plant-second maximum; this one is not that). A literal reading of the #686 ruling
+   * would have deleted this too, which is exactly the regression ruling 3 exists to block.
+   *
+   * PROVED THROUGH THE REAL PIPELINE, NOT THE DOM: `_prevSpeedHold` alone (planted above) never
+   * reaches `syncWarpInfo` — the persistent line is only ever set from a `speed_snap`, which
+   * `_assembleWithInstructor` stamps ONLY on the RISING edge of `true_state.speed_hold` (and
+   * only while `timeAcceleration > 1`, `layers/simulation_service.js` :781). Reaching that state
+   * for real is the same 75-plant-minute heatup, so this plants the ONE upstream fact —
+   * `true_state.speed_hold` — behind a one-shot override of `assembleSnapshot`, then runs it
+   * through the unmodified `_assembleWithInstructor` -> `_attentionStop` -> `snap.metadata.
+   * speed_snap` -> `_broadcast` -> `syncSpeedUI`/`syncWarpInfo` chain exactly as a real hold
+   * would. A source scan of `syncWarpInfo` cannot prove this string reaches the player;
+   * only a broadcast that the client actually renders can (CLAUDE.md's standing trap: a
+   * source scan cannot prove a string is reachable). */
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    svc._prevSpeedHold = null;                                  // unheld, so this set_speed lands
+    svc.handleCommand({ action: 'set_speed', value: 600 });     // must land above 1x for the stamp
+    var orig = svc.assembleSnapshot;
+    svc.assembleSnapshot = function () {
+      var snap = orig.call(this);
+      snap.true_state = Object.assign({}, snap.true_state,
+        { speed_hold: 'accumulator window open — arm the accumulators before accelerating again' });
+      return snap;
+    };
+    var out;
+    try { out = svc._assembleWithInstructor(); } finally { svc.assembleSnapshot = orig; }
+    svc._broadcast(out);   // render() schedules its DOM work on the next rAF — read it after a wait
+  });
+  await page.waitForTimeout(300);
+  var warpLine = await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    var el = document.getElementById('warpInfo');
+    return { text: el ? el.textContent : null, hidden: el ? el.hidden : null, accel: svc.timeAcceleration };
+  });
+  if (warpLine.hidden || !/Held at real time/.test(warpLine.text || '') || warpLine.accel !== 1) {
+    throw new Error('#686: the accumulator hold must still print under the speed bar on a real ' +
+      'rising edge — accel ' + warpLine.accel + ', warpInfo "' + warpLine.text + '" (hidden=' + warpLine.hidden + ')');
+  }
+  log.push('warp line: "' + warpLine.text + '" (accel ' + warpLine.accel + 'x)');
+  await page.evaluate(function () { globalThis.RD.__dev.service()._prevSpeedHold = null; });
+
   await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  return log.join('\n') + '\n';
+}
+
+/* #694 — A WALKTHROUGH EVENT STEP FIRES A FAILURE AND PAUSES THE SIM SO THE PLAYER CAN SEE IT.
+ *
+ * *(OWNER, 2026-09-09: "have a step that explains what will happen. Then when the user presses
+ * continue they can see it happening ... sim pauses.")* `_checklistFire` (instructor_layer.js)
+ * and firing-on-Continue were already built (#670); the pause had NO PATH at all — flagged in
+ * this issue's own investigation as a HOLLOW-CHECK RISK, because `SimulationService.
+ * advanceCycles` forces `running = true` around every tick, so a Node harness driving the
+ * service directly cannot see a service-level pause. A gate written there could only assert
+ * that the snapshot carries the REQUEST, never that the clock actually stopped or the board
+ * actually froze. Only a browser, running the real setTimeout-driven loop, can see either.
+ *
+ * NO SHIPPED STEP AUTHORS `pause` YET (#693 is the first content consumer) — driven from a
+ * fixture here, on the live `pwr_heatup` checklist, and said so per CLAUDE.md's own rule
+ * against a dark wire (a capability nothing exercises reading as a working feature).
+ * `porv_indicator_stuck_closed` is a benign, real pwr2 failure id (an instrument sticks; no
+ * hydraulics move) so the fixture cannot itself trip the plant into an unrelated failure mode.
+ *
+ * POSITIVE CONTROL FIRST: the clock is read advancing normally before the fixture is armed, so
+ * a page that could not tick at all would not pass this by accident. Then, in order: the fixture
+ * step is armed with `inject`+`pause`; the NEXT broadcast (the tick after entry — see the
+ * ordering note in `_checklistFire`) fires the failure AND stops the clock; the sim_time is read
+ * again after a wait to prove no further ticks land (not just that `svc.running` reads false);
+ * the board carries `.bd-frozen`; Continue is lit; the failure actually landed in the control
+ * layer (`getActiveFailures()`), proving the event half of the path, not only the pause half;
+ * Continue is pressed, which must both resume ticking and advance the checklist off the step.
+ *
+ * PROVED RED BY INJECTION, 2026-09-10 (`inbox/694/inject_pause.js a|b`): with `st.pause`'s
+ * early return in `_stepChecklist` neutered, the event still lands (a fresh, non-lagged read
+ * confirms it) but Continue never lights and the board never freezes — every assertion from
+ * "svc.running never went false" onward fails, correctly. Separately, with
+ * `_serviceInstructorRequests`'s `this.stop()` call removed, THIS test still PASSES — measured,
+ * not assumed: `ui/app.js`'s own `render()` detects `checklist.paused` and calls
+ * `pauseSim('walkthrough')`, which stops the service anyway (the SAME defense-in-depth pattern
+ * already established for `metadata.running` staleness, right above this block). That is a
+ * real UI safety net, not a bug in the test — but it means THIS gate alone cannot tell "the
+ * service stops itself" from "the UI compensates for a service that doesn't", which is exactly
+ * why `_serviceInstructorRequests` calling `stop()` is proved by `test/run_checklist.js`
+ * section 11 instead: that harness drives `tick()` directly with no UI, no `app.js`, no
+ * `render()` loaded at all, and DOES go red under the same injection (`svc.running` stays
+ * `true`). The two gates are not redundant; each is blind to what the other proves. Both
+ * injections restored before this file was committed. */
+async function testWalkthroughEventPause(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  var started = await page.evaluate(function () {
+    try {
+      var svc = globalThis.RD.__dev.service();
+      svc.attentionStops = false;   // a step-boundary dropout must not snap speed under the fixture
+      var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+      return { ok: !(r && r.type === 'error'), msg: r && r.message };
+    } catch (e) { return { ok: false, msg: String(e) }; }
+  });
+  if (!started.ok) throw new Error('#694 fixture: start_checklist failed — ' + started.msg);
+  /* The run card is drawn behind `cklState.view === 'run'` (ui/app.js :3771,
+   * `cur.hidden = cklState.view !== 'run'`) — a UI-local flag `startChecklist()` sets, which
+   * driving the command straight through `svc.handleCommand` (above, matching #627) never
+   * touches. So the Continue button EXISTS in the DOM (a raw querySelector finds it and #627
+   * never needed more) but is not VISIBLE, and Playwright's .click() below would hang on
+   * "element is not visible" — measured. Reach it exactly the way a player would after
+   * starting a checklist from elsewhere: open the Walkthroughs tab and click the
+   * already-running procedure's own entry, which hits `startChecklist`'s "already running"
+   * branch (sets the view to 'run' and switches to the Instructor tab) rather than restarting it. */
+  await page.click('#tabbar [data-tab="checklists"]');
+  await page.waitForSelector('[data-ckl-start="pwr_heatup"]', { timeout: 10000 });
+  await page.click('[data-ckl-start="pwr_heatup"]');
+  // The Continue button must be ON SCREEN (not just in the DOM) for the click below to
+  // land — same wait #627 uses: the Instructor tab active, with the checklist rendered.
+  await page.waitForFunction(function () {
+    var b = document.querySelector('#tabbar button.on');
+    return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step');
+  }, { timeout: 15000, polling: 200 });
+
+  async function read() {
+    return await page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service();
+      var mk = document.querySelector('[data-ckl-check]');
+      return {
+        running: svc.running,
+        simTime: svc.simTime,
+        frozen: !!document.querySelector('.pwr-board-stage.bd-frozen'),
+        continueReady: !!(mk && !mk.disabled),
+        activeFailures: (svc.layer.getActiveFailures() || []).map(function (f) { return f.id; }),
+        idx: svc.instructor.checklist ? svc.instructor.checklist.idx : null,
+      };
+    });
+  }
+
+  // ---- positive control: the plant is genuinely ticking before the fixture is armed ----
+  var t0 = await read();
+  await page.waitForTimeout(600);
+  var t1 = await read();
+  if (!(t1.simTime > t0.simTime) || !t1.running) {
+    throw new Error('#694 control: the plant was not ticking before the fixture armed — ' +
+      JSON.stringify(t0) + ' -> ' + JSON.stringify(t1));
+  }
+  log.push('control: ticking normally, sim_time ' + t0.simTime.toFixed(2) + ' -> ' + t1.simTime.toFixed(2));
+
+  // ---- arm the fixture on the ACTIVE step (idx already past its own entry tick) --------
+  await page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    var st = c.proc.steps[c.idx];
+    st.inject = [{ failure: 'porv_indicator_stuck_closed' }];
+    st.pause = true;
+  });
+
+  // ---- the fire+pause lands within one broadcast; wait well past it, then prove the
+  // clock has ACTUALLY stopped — not merely that one read caught it mid-tick ----------------
+  await page.waitForTimeout(500);
+  var paused1 = await read();
+  await page.waitForTimeout(700);
+  var paused2 = await read();
+  if (paused1.running || paused2.running) {
+    throw new Error('#694: svc.running never went false — ' + JSON.stringify(paused1) + ' / ' + JSON.stringify(paused2));
+  }
+  if (paused2.simTime !== paused1.simTime) {
+    throw new Error('#694: sim_time still advancing while paused (' + paused1.simTime + ' -> ' +
+      paused2.simTime + ') — the browser timer loop is still rescheduling');
+  }
+  if (!paused2.frozen) {
+    throw new Error('#694: the board never carried .bd-frozen while the walkthrough paused it — ' + JSON.stringify(paused2));
+  }
+  if (!paused2.continueReady) {
+    throw new Error('#694: Continue never lit after the paused event fired — ' + JSON.stringify(paused2));
+  }
+  if (paused2.activeFailures.indexOf('porv_indicator_stuck_closed') < 0) {
+    throw new Error('#694: the step\'s own inject never reached the control layer — active failures [' +
+      paused2.activeFailures.join(',') + ']');
+  }
+  log.push('paused: running=false across ' + (700) + ' ms, sim_time held at ' + paused2.simTime.toFixed(2) +
+    ', .bd-frozen present, Continue lit, active_failures ' + JSON.stringify(paused2.activeFailures));
+
+  // ---- Continue: must resume ticking AND advance the checklist off the event step ------
+  await page.click('[data-ckl-check]');
+  await page.waitForTimeout(600);
+  var resumed = await read();
+  if (!resumed.running) {
+    throw new Error('#694: pressing Continue on a walkthrough-paused step did not resume the clock — ' + JSON.stringify(resumed));
+  }
+  if (!(resumed.simTime > paused2.simTime)) {
+    throw new Error('#694: sim_time did not advance after Continue resumed the clock — ' +
+      paused2.simTime + ' -> ' + resumed.simTime);
+  }
+  if (resumed.idx <= paused2.idx) {
+    throw new Error('#694: Continue did not advance the checklist off the paused step — idx ' +
+      paused2.idx + ' -> ' + resumed.idx);
+  }
+  if (resumed.frozen) throw new Error('#694: the board stayed .bd-frozen after Continue resumed the sim');
+  log.push('resumed: running=true, sim_time ' + paused2.simTime.toFixed(2) + ' -> ' + resumed.simTime.toFixed(2) +
+    ', checklist idx ' + paused2.idx + ' -> ' + resumed.idx + ', .bd-frozen cleared');
+
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  return log.join('\n') + '\n';
+}
+
+/* #711 — THE WALKTHROUGH HOLD SURVIVES RESET, A PLANT SWITCH, AND A NEW CHECKLIST.
+ *
+ * `render()`'s own `.paused` check above (the #694 take) never had a matching release: Reset
+ * (`doReset`), a plant switch (`switchEngine`) and picking a different walkthrough
+ * (`startChecklist`) all end or replace the running checklist without ever naming
+ * `'walkthrough'` to `releaseHold`, so the next plant loaded FROZEN with no caution on screen —
+ * silently fixed only by the player happening to press ▶ (`resumeSim` clears every hold).
+ *
+ * THE FIX IS THE SAME LIVE CHECK RUN BACKWARDS, not three new `releaseHold` calls (the #710
+ * shape): `render()` now also lets go the instant `checklist.paused` reads false while the hold
+ * is still standing, which is true whether the checklist was cleared entirely (Reset, a plant
+ * switch — both go through `simulation_service.js` `selectPlant` -> `instructor.unload()`) or
+ * replaced by a fresh one (`instructor_layer.js` `loadChecklist` always starts `paused: false`).
+ *
+ * WHY A BROWSER GATE: same reason as #694 immediately above — `SimulationService.advanceCycles`
+ * forces `running = true` around its own loop, so a Node harness can never see a service-level
+ * pause fail to lift.
+ *
+ * THE PROOF IS BEHAVIOURAL, NOT A FLAG READ. Each of the three exits is driven through the
+ * real UI (the Session menu's Reset, its Free Play button, the Checklists tab's own start
+ * button) and then the CLOCK is read twice with a wait between — not just `service.running`
+ * once, which a stale read or a one-tick flicker could pass by accident — to prove sim_time is
+ * genuinely advancing again, the same standard #694's own positive control holds itself to. A
+ * fix that left the hold PINNED (never lifted at all) fails every one of these; a fix that
+ * over-corrected into clearing the whole map would still pass here — that half is `deliberate`
+ * (a `user` hold surviving a plant switch is `testMissionCloseResumes`'s own regression pin
+ * immediately above in this file, for `plant_change`; this fix touches no other reason).
+ *
+ * PROVED RED BY INJECTION, 2026-09-12: with the `else if (pausedFor('walkthrough'))
+ * releaseHold('walkthrough')` line removed (i.e. back to the #694-only take with no release),
+ * all three sections below fail — the plant stays `.bd-frozen` and `sim_time` never advances
+ * past the fixture's pause, through Reset, the plant switch, and the new checklist alike.
+ * Restored before this file was committed. */
+async function testWalkthroughHoldReleasedOnExit(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+
+  // Load a fresh plant, start `pwr_heatup`, and arm the same benign fixture #694 uses
+  // (an instrument-only failure so arming it cannot itself trip the plant) on a `pause`
+  // step — then confirm the freeze actually landed before touching any exit.
+  async function armPausedWalkthrough() {
+    await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+    await dismissMission(page);
+    await waitBoardLive(page, 20000);
+    var started = await page.evaluate(function () {
+      try {
+        var svc = globalThis.RD.__dev.service();
+        svc.attentionStops = false;
+        var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+        return { ok: !(r && r.type === 'error'), msg: r && r.message };
+      } catch (e) { return { ok: false, msg: String(e) }; }
+    });
+    if (!started.ok) throw new Error('#711 fixture: start_checklist failed — ' + started.msg);
+    await page.evaluate(function () {
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      var st = c.proc.steps[c.idx];
+      st.inject = [{ failure: 'porv_indicator_stuck_closed' }];
+      st.pause = true;
+    });
+    await page.waitForTimeout(900);   // the fire+pause lands within one broadcast (#694)
+    var f = await read();
+    if (f.running || !f.frozen || !f.playPaused) {
+      throw new Error('#711 fixture: pwr_heatup never froze the plant before the exit was tried — ' + JSON.stringify(f));
+    }
+  }
+
+  async function read() {
+    return await page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service();
+      return {
+        running: svc.running,
+        simTime: svc.simTime,
+        frozen: !!document.querySelector('.pwr-board-stage.bd-frozen'),
+        playPaused: !!(document.getElementById('playBtn') && document.getElementById('playBtn').classList.contains('paused')),
+      };
+    });
+  }
+
+  // Read twice with a wait between and require sim_time to have actually moved — the
+  // behavioural proof the comment above calls for, not a one-shot flag read.
+  async function assertGenuinelyRunning(tag) {
+    var a = await read();
+    await page.waitForTimeout(600);
+    var b = await read();
+    if (a.frozen || b.frozen || a.playPaused || b.playPaused || !a.running || !b.running) {
+      throw new Error('#711: ' + tag + ' left the walkthrough hold standing — ' + JSON.stringify(a) + ' / ' + JSON.stringify(b));
+    }
+    if (!(b.simTime > a.simTime)) {
+      throw new Error('#711: ' + tag + ' reported running but sim_time never advanced (' +
+        a.simTime + ' -> ' + b.simTime + ') — the release did not actually resume ticking');
+    }
+    return b;
+  }
+
+  // ---- gap 1: Session Reset (doReset, ui/app.js ~9423) --------------------------------
+  await armPausedWalkthrough();
+  await page.click('#mainMenuBtn');
+  await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 5000 });
+  await page.click('[data-mreset]');   // arm
+  await page.click('[data-mreset]');   // confirm -> doReset(true)
+  await page.waitForTimeout(500);
+  var r1 = await assertGenuinelyRunning('Session Reset out of a paused walkthrough');
+  log.push('Reset: plant runs again, sim_time advancing past ' + r1.simTime.toFixed(2) + ', .bd-frozen cleared');
+
+  // ---- gap 2: a plant switch (switchEngine, ui/app.js ~9362, via Free Play) -----------
+  await armPausedWalkthrough();
+  await page.click('#mainMenuBtn');
+  await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 5000 });
+  await page.click('[data-mfree]');
+  await page.waitForTimeout(500);
+  var r2 = await assertGenuinelyRunning('a plant switch out of a paused walkthrough');
+  log.push('Plant switch: plant runs again, sim_time advancing past ' + r2.simTime.toFixed(2) + ', .bd-frozen cleared');
+
+  // ---- gap 3: picking a DIFFERENT walkthrough (startChecklist, ui/app.js ~4805) -------
+  await armPausedWalkthrough();
+  await page.click('#tabbar [data-tab="checklists"]');
+  await page.waitForSelector('[data-ckl-start="pwr_startup"]', { timeout: 10000 });
+  await page.click('[data-ckl-start="pwr_startup"]');
+  await page.waitForTimeout(500);
+  var r3 = await assertGenuinelyRunning('starting a different walkthrough over a paused one');
+  log.push('New walkthrough: plant runs again, sim_time advancing past ' + r3.simTime.toFixed(2) + ', .bd-frozen cleared');
+
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  return log.join('\n') + '\n';
+}
+
+/* THE RECOMMENDED SPEED RUNG LIGHTS AND THE STRIP DOES NOT (#743).
+ *
+ * *(OWNER, 2026-09-13 playtest: "instead of highlighting all the speed controls, just highlight the
+ * one that is suggested.")*
+ *
+ * THIS IS A DARK-WIRE PROOF AND THE WIRE WAS ACTUALLY DARK FOR A DAY. `applyCklSpeedGlow` shipped
+ * on 2026-09-12 adding `.ckl-speed-rung` to the recommended button with NO CSS RULE BEHIND IT — the
+ * class was applied, every source read agreed the rung was "marked", and the rung was not painted.
+ * So this check asserts the PAINTED EFFECT, never the class: `getComputedStyle(rung).boxShadow` has
+ * to carry something, and it has to be an INSET, because `.speed` is `overflow: hidden` and an
+ * outer ring on a rung is clipped away to nothing while the class and the rule both still read
+ * correctly. Reading the class alone would pass on the exact defect this fixes.
+ *
+ * THE NEGATIVE HALF IS THE OWNER'S ACTUAL COMPLAINT: the strip itself must carry NO glow. Without
+ * it this passes on the old behaviour, which also put a class on the rung.
+ *
+ * Injection-proven three ways: dropping the `.speed button.ckl-speed-rung` rule from shell.css
+ * leaves the class applied and reds the painted-shadow assertion; changing the rule's `inset` to an
+ * outer ring reds the inset assertion; re-adding `bar.classList.add('ckl-step-glow')` in app.js
+ * reds the strip assertion and nothing else.
+ */
+async function testSpeedRungGlowRendered(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1',
+                  { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  var started = await page.evaluate(function () {
+    try {
+      var svc = globalThis.RD.__dev.service();
+      svc.attentionStops = false;
+      var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+      return { ok: !(r && r.type === 'error'), msg: r && r.message };
+    } catch (e) { return { ok: false, msg: String(e) }; }
+  });
+  if (!started.ok) throw new Error('#743 fixture: start_checklist failed — ' + started.msg);
+  await page.click('#tabbar [data-tab="checklists"]');
+  await page.waitForSelector('[data-ckl-start="pwr_heatup"]', { timeout: 10000 });
+  await page.click('[data-ckl-start="pwr_heatup"]');
+  await page.waitForFunction(function () {
+    var b = document.querySelector('#tabbar button.on');
+    return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step');
+  }, { timeout: 15000, polling: 200 });
+
+  /* Land on a step that actually asks for a long hold. Chosen from the procedure rather than typed
+   * here, so a re-authored checklist cannot leave this pointing at a step with no recommendation. */
+  var jumped = await page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    var target = -1;
+    for (var i = 0; i < c.proc.steps.length; i++) {
+      var s = c.proc.steps[i];
+      if ((+s.hold || 0) >= 180 && s.wait_hint !== false) { target = i; break; }
+    }
+    if (target < 0) return { ok: false };
+    c.idx = target; c.stepAt = null; c.awaitingAck = false;
+    return { ok: true, idx: target, hold: +c.proc.steps[target].hold };
+  });
+  if (!jumped.ok) throw new Error('#743 fixture: pwr_heatup authors no step with hold >= 180');
+  await page.waitForTimeout(2500);
+
+  var seen = await page.evaluate(function () {
+    var bar = document.getElementById('speed');
+    var rung = bar ? bar.querySelector('.ckl-speed-rung') : null;
+    var barCs = bar ? getComputedStyle(bar) : null;
+    return {
+      nRungs: bar ? bar.querySelectorAll('.ckl-speed-rung').length : -1,
+      nButtons: bar ? bar.querySelectorAll('button').length : -1,
+      speed: rung ? rung.getAttribute('data-speed') : null,
+      rungShadow: rung ? getComputedStyle(rung).boxShadow : null,
+      rungAnim: rung ? getComputedStyle(rung).animationName : null,
+      barGlowClass: bar ? bar.classList.contains('ckl-step-glow') : null,
+      barShadow: barCs ? barCs.boxShadow : null,
+      note: (document.querySelector('.warp-info') || {}).textContent || ''
+    };
+  });
+
+  if (seen.nRungs !== 1) {
+    throw new Error('#743: expected exactly ONE recommended rung on a step with hold ' +
+      jumped.hold + ' s, found ' + seen.nRungs + ' of ' + seen.nButtons + ' — ' + JSON.stringify(seen));
+  }
+  /* THE PAINTED EFFECT, not the class. A marker class with no rule behind it is what #743 fixes. */
+  if (!seen.rungShadow || seen.rungShadow === 'none' || !/\d/.test(seen.rungShadow)) {
+    throw new Error('#743 DARK WIRE: the rung carries .ckl-speed-rung but paints no box-shadow — ' +
+      JSON.stringify(seen));
+  }
+  if (!/inset/.test(seen.rungShadow)) {
+    throw new Error('#743: the rung glow is an OUTER shadow, which `.speed { overflow: hidden }` ' +
+      'clips away to nothing — it must be an inset. ' + JSON.stringify(seen));
+  }
+  if (seen.rungAnim !== 'cklRungGlow') {
+    throw new Error('#743: the recommended rung must PULSE (owner: pulsing for a user control), ' +
+      'animationName is ' + seen.rungAnim);
+  }
+  /* THE OWNER'S COMPLAINT, ASSERTED. Without this the check passes on the old whole-strip form. */
+  if (seen.barGlowClass || (seen.barShadow && seen.barShadow !== 'none')) {
+    throw new Error('#743: the speed STRIP is still lit ("instead of highlighting all the speed ' +
+      'controls, just highlight the one that is suggested") — ' + JSON.stringify(seen));
+  }
+  log.push('step ' + (jumped.idx + 1) + ' (hold ' + jumped.hold + ' s): rung ' + seen.speed +
+    '× of ' + seen.nButtons + ' lit, pulsing ' + seen.rungAnim);
+
+  /* AND IT STANDS DOWN ONCE PRESSED. Nothing else gates this and it is a behaviour, not styling:
+   * the pulse means "act on this", the act is pressing that rung, and a cue that keeps firing for
+   * the whole 180 s-plus hold it just asked for is how a player learns to stop reading cues. It is
+   * done in CSS (`.ckl-speed-rung.on { animation: none }`) precisely so no second JavaScript path
+   * has to be kept in step -- which also means a source read of app.js cannot see it at all, and a
+   * broken `.on` selector would leave the rung pulsing for ever with every other check green.
+   *
+   * A REAL CLICK, so the app's own speed handler runs and puts `.on` where it really goes; the
+   * class is never set by hand here. Injection-proven: deleting the `.ckl-speed-rung.on` rule
+   * leaves animationName at cklRungGlow after the press and reds this. */
+  var pressed = await page.evaluate(function (sp) {
+    var b = document.querySelector('#speed [data-speed="' + sp + '"]');
+    if (!b) return { err: 'rung vanished' };
+    b.click();
+    return { ok: true };
+  }, seen.speed);
+  if (pressed.err) throw new Error('#743 fixture: ' + pressed.err);
+  await page.waitForTimeout(900);
+  var after = await page.evaluate(function (sp) {
+    var b = document.querySelector('#speed [data-speed="' + sp + '"]');
+    return b ? { on: b.classList.contains('on'), rung: b.classList.contains('ckl-speed-rung'),
+                 anim: getComputedStyle(b).animationName } : null;
+  }, seen.speed);
+  if (!after || !after.on) {
+    throw new Error('#743 fixture: pressing rung ' + seen.speed + '× did not select it — ' +
+      JSON.stringify(after) + '; the stand-down assertion below would prove nothing');
+  }
+  if (after.anim !== 'none') {
+    throw new Error('#743: the recommended rung is STILL PULSING after the player pressed it (' +
+      after.anim + ') — an "act on this" cue that outlives the act. ' + JSON.stringify(after));
+  }
+  log.push('  pressed ' + seen.speed + '×: selected=' + after.on + ', still marked=' +
+    after.rung + ', animation=' + after.anim + ' (stands down to plain .on)');
+  log.push('  rung box-shadow: ' + seen.rungShadow);
+  log.push('  strip: class ' + seen.barGlowClass + ', box-shadow ' + seen.barShadow);
+  log.push('  note under the strip: ' + seen.note.trim());
+
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
+/* #685 — THE "WATCH THIS" GLOW, PROVED TO REACH THE BOARD FROM A REAL STEP'S `hl_watch`.
+ *
+ * WHY A BROWSER GATE AND NOT A SOURCE SCAN. `run_manual_controls` checks that every `hl_watch`
+ * label is in the board's vocabulary; it cannot check that anything ever APPLIES the class.
+ * This repo's standing trap is the DARK WIRE — a field authored, documented, read by a gate,
+ * and never passed to the renderer (#507 wave 6 shipped three, #540 a fourth for six days) —
+ * and `applyCklWatchGlow` is exactly that shape: one caller, in a render path no Node harness
+ * enters. So the claim asserted here is the EFFECT: a DOM element on the board wearing the
+ * class, put there by the step's own list.
+ *
+ * REWRITTEN 2026-09-13 ON THE #743/#744 SEAM, and the rewrite is the point. The old form had a
+ * "control" half that asserted `0 rings painted` on whatever step the checklist happened to be
+ * sitting on when the run card opened — step 4, which authored no `hl_watch` when #743 wrote the
+ * check. #744 gave that step two, the board correctly painted two, and the check reddened with a
+ * message that said "a step that authors none" beside a payload reading `authored: 2`. The
+ * message was the liar: the check never read `authored` at all, and its comment's claim that the
+ * landing step was the FIRST step was already false when it shipped. A fixture is what that was —
+ * an incidental property of one step pool, in a gate whose whole subject is the step pool.
+ *
+ * WHAT IS ASSERTED NOW IS THE INVARIANT, ON EVERY STEP OF THE LEG: the number of elements wearing
+ * each class equals the number of labels the step authors for it. That is strictly stronger than
+ * counting one step's rings, and it catches the class of defect #744 had to find BY HAND —
+ * `run_manual_controls` reddens when one LABEL appears in both lists and says nothing at all when
+ * two DIFFERENT labels resolve to the same board id, which silently drops the ring for the
+ * control the step names first. `applyCklWatchGlow` skips any element the press list already
+ * took, and `classList.add` is idempotent, so both of those defects land as `painted < authored`
+ * and nothing else in the tree can see them.
+ *
+ * ONE LEG, NAMED, NOT ALL SIX — AND THE REASON HAS CHANGED, SO READ THIS BEFORE CITING IT. Until
+ * 2026-09-14 the other legs were held out because eight of their steps still carried the
+ * collision and would have reddened the sweep on content neither #743 nor #744 touched. **#745
+ * fixed all eleven remaining sites in both pools and `run_manual_controls` now holds the SOURCE
+ * side at zero**, so what keeps this constant at one leg is COST and the startLeg preconditions
+ * of the other five, not known-red content. Widening it to a list is open work, not a blocker.
+ *
+ * KEEP THE TWO CORRECTIONS #745 WAS BUILT ON. The first sweep resolved through the board map and
+ * produced one FALSE POSITIVE (`pwr_startup` 4): `RD.Highlight.resolve` consults the shell
+ * overrides first and lands `1/M Plot Tool` and `Plot point` on different elements — in BOTH
+ * panel states, measured here 2026-09-14, because `#oomWin` is built at init and merely
+ * `display:none` and `querySelector` matches hidden elements, so the documented fallback to the
+ * board map never fires for this label. It also MISSED `pwr_raise_power` 9, which authors no `hl`
+ * at all and collided its `control` with its `hl_watch` — the sub-class `landOn` below already
+ * handles correctly, and the reason it recomputes the press list rather than reading `hl`.
+ *
+ * ⚠ THE BLIND SPOT THIS SWEEP SHARES WITH THE STATIC GATE: it counts elements WEARING a class,
+ * and a ring on the 1/M panel's plot button while that panel is `display:none` is counted and
+ * invisible. Neither half can currently tell those apart.
+ *
+ * `pwr_tmi2_incident` is UNMEASURED by any DOM method: it carries `pause` steps, the panel stops
+ * re-rendering with the clock, and a fixed-sleep harness reads the PREVIOUS step's DOM — which is
+ * exactly why `landOn` below waits for the panel to match the model instead of sleeping. The list
+ * is a constant so the gap is visible and one line wide, not an omission.
+ *
+ * THE NEGATIVE HALF IS LOAD-BEARING and now comes from another leg, because since #744 every
+ * `pwr_heatup` step authors `hl_watch`: a step with press labels and no `hl_watch` must paint no
+ * ring at all. Without it this passes on a renderer that puts one treatment on both lists, which
+ * is the defect the whole issue is about. */
+var WATCH_GLOW_LEG = 'pwr_heatup';
+
+async function testWatchGlowRendered(page) {
+  var log = [];
+
+  /* ONE HELPER FOR BOTH LEGS: start a procedure and get the RUN CARD drawn. The two clicks are
+   * #694's fixture verbatim — the card is behind `cklState.view === 'run'`, a UI-local flag that
+   * `svc.handleCommand` never sets. */
+  async function startLeg(pid, viaCard) {
+    var started = await page.evaluate(function (p) {
+      try {
+        var svc = globalThis.RD.__dev.service();
+        svc.attentionStops = false;
+        var r = svc.handleCommand({ action: 'start_checklist', procedure_id: p });
+        return { ok: !(r && r.type === 'error'), msg: r && r.message };
+      } catch (e) { return { ok: false, msg: String(e) }; }
+    }, pid);
+    if (!started.ok) throw new Error('#685 fixture: start_checklist ' + pid + ' failed — ' + started.msg);
+    /* THE CARD CLICKS ONLY WORK FOR THE FIRST LEG, and it is not a choice: a procedure whose
+     * preconditions the plant does not meet is drawn `.ckl-gated` and HIDDEN, so waiting for its
+     * launcher to be visible times out (measured on `pwr_startup`, 2026-09-13). They are needed
+     * once, to put `cklState.view` into 'run'; the flag then stays put across a second
+     * `start_checklist`, so every later leg is reached by the command alone. */
+    if (viaCard) {
+      await page.click('#tabbar [data-tab="checklists"]');
+      await page.waitForSelector('[data-ckl-start="' + pid + '"]', { timeout: 10000 });
+      await page.click('[data-ckl-start="' + pid + '"]');
+    }
+    await page.waitForFunction(function (p) {
+      var b = document.querySelector('#tabbar button.on');
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      return !!b && b.getAttribute('data-tab') === 'instructor' &&
+             !!document.querySelector('.ckl-step') && !!c && c.proc && c.proc.id === p;
+    }, pid, { timeout: 15000, polling: 200 });
+  }
+
+  /* LAND ON A STEP AND WAIT FOR THE PANEL TO AGREE WITH THE MODEL, rather than sleeping. Only the
+   * ACTIVE step is drawn (`data-ckl-step`), and `applyCklStepGlow` / `applyCklWatchGlow` run in
+   * the same render pass that writes it — so the panel carrying the checklist's own index is
+   * proof the glow pass for THIS step has run, which a fixed sleep can never say. It is also why
+   * the read trusts the checklist's live `idx` over the index it asked for: on a running plant a
+   * step whose acceptance is already met is advanced past, and asserting against the index we
+   * TYPED would be asserting against a step that is not on the board. */
+  async function landOn(i) {
+    await page.evaluate(function (i) {
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      c.idx = i; c.stepAt = null; c.awaitingAck = false;
+    }, i);
+    await page.waitForFunction(function () {
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      var el = document.querySelector('.ckl-step[data-ckl-step]');
+      return !!el && +el.getAttribute('data-ckl-step') === c.idx;
+    }, { timeout: 15000, polling: 100 });
+    return await page.evaluate(function () {
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      var st = c.proc.steps[c.idx];
+      /* The press list AS `ui/app.js` BUILDS IT (`stepHlLabels`): `hl` when it has entries, else
+       * the step's own `control`, and never an "(observe)" pseudo-control. Recomputed from the
+       * step rather than imported, so a change to that rule reddens this gate instead of being
+       * mirrored into it. */
+      var press = (st.hl && st.hl.length) ? st.hl.slice()
+                : (st.control && !/^\(observe/i.test(st.control)) ? [st.control] : [];
+      return { idx: c.idx, watchLabels: (st.hl_watch || []).slice(), pressLabels: press,
+               watch: document.querySelectorAll('.ckl-watch-glow').length,
+               painted: document.querySelectorAll('.ckl-step-glow').length };
+    });
+  }
+
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1',
+                  { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await startLeg(WATCH_GLOW_LEG, true);
+
+  /* ---- THE INVARIANT, ON EVERY STEP OF THE LEG ------------------------------------------- */
+  var n = await page.evaluate(function () {
+    return globalThis.RD.__dev.service().instructor.checklist.proc.steps.length;
+  });
+  var seenIdx = {}, tw = 0, tp = 0;
+  for (var i = 0; i < n; i++) {
+    var r = await landOn(i);
+    seenIdx[r.idx] = true; tw += r.watch; tp += r.painted;
+    if (r.watch !== r.watchLabels.length) {
+      throw new Error('#685: ' + WATCH_GLOW_LEG + ' step ' + (r.idx + 1) + ' authors ' +
+        r.watchLabels.length + ' hl_watch labels (' + r.watchLabels.join(', ') + ') and the board ' +
+        'painted ' + r.watch + ' .ckl-watch-glow elements. Every authored label must land on its ' +
+        'OWN element: two labels resolving to one board id, or a label the press list already ' +
+        'took, paints fewer rings than the step promises and nothing else in the tree can see it.');
+    }
+    if (r.painted !== r.pressLabels.length) {
+      throw new Error('#685/#744: ' + WATCH_GLOW_LEG + ' step ' + (r.idx + 1) + ' authors ' +
+        r.pressLabels.length + ' press labels (' + r.pressLabels.join(', ') + ') and the board ' +
+        'painted ' + r.painted + ' .ckl-step-glow elements — when two labels share a board id the ' +
+        'control the step names FIRST is the one that glows nothing (#744 found three by hand).');
+    }
+  }
+  var missing = [];
+  for (var j = 0; j < n; j++) if (!seenIdx[j]) missing.push(j + 1);
+  if (missing.length) {
+    throw new Error('#685: steps ' + missing.join(', ') + ' of ' + WATCH_GLOW_LEG + ' were never ' +
+      'the active step during the sweep, so the invariant was not asserted on them — a gate that ' +
+      'silently skips rows tests the rows it happened to reach.');
+  }
+  log.push(WATCH_GLOW_LEG + ': ' + n + '/' + n + ' steps, every authored label painted its own ' +
+    'element (' + tw + ' .ckl-watch-glow and ' + tp + ' .ckl-step-glow over the leg)');
+
+  /* THE WATCH RING'S PAINTED STYLE, READ HERE AND ASSERTED AT THE BOTTOM (#755 items 7/10). It has
+   * to be taken on THIS leg: the negative leg below is chosen precisely because it authors no
+   * `hl_watch`, so a read down there would find nothing and the assertion would pass vacuously —
+   * which is how a check about a treatment ends up testing that an element is absent. */
+  var watchTreat = await page.evaluate(function () {
+    var w = document.querySelector('.ckl-watch-glow'); if (!w) return null;
+    var cs = getComputedStyle(w), r = w.getBoundingClientRect();
+    return { anim: cs.animationName, shadow: cs.boxShadow, outlineStyle: cs.outlineStyle,
+             w: +r.width.toFixed(1), h: +r.height.toFixed(1) };
+  });
+
+  /* ---- THE NEGATIVE, ON REAL CONTENT ------------------------------------------------------
+   * The step is found in the POOL, never typed here, so re-authoring moves the fixture instead of
+   * breaking it — which is exactly what happened to the form this replaces. */
+  var neg = await page.evaluate(function () {
+    var procs = (globalThis.RD.MANUAL_PROCEDURES || {}).pwr2 || [];
+    for (var a = 0; a < procs.length; a++) {
+      for (var b = 0; b < (procs[a].steps || []).length; b++) {
+        var st = procs[a].steps[b];
+        if (st.hl_watch && st.hl_watch.length) continue;
+        var press = (st.hl && st.hl.length) ? st.hl.slice()
+                  : (st.control && !/^\(observe/i.test(st.control)) ? [st.control] : [];
+        if (press.length) return { ok: true, pid: procs[a].id, idx: b, press: press };
+      }
+    }
+    return { ok: false };
+  });
+  if (!neg.ok) {
+    throw new Error('#685 fixture: no pwr2 step anywhere authors press labels and no hl_watch, so ' +
+      '"authors none paints none" cannot be asserted on real content — re-point this half.');
+  }
+  await startLeg(neg.pid, false);
+  var nr = await landOn(neg.idx);
+  if (nr.idx !== neg.idx) {
+    throw new Error('#685 fixture: ' + neg.pid + ' advanced off step ' + (neg.idx + 1) + ' to step ' +
+      (nr.idx + 1) + ' before it could be read');
+  }
+  if (nr.watch !== 0) {
+    throw new Error('#685: ' + nr.watch + ' watch ring(s) painted on ' + neg.pid + ' step ' +
+      (nr.idx + 1) + ', which authors NO hl_watch (press labels: ' + nr.pressLabels.join(', ') +
+      ') — the two treatments are not distinct.');
+  }
+  if (nr.painted === 0) {
+    throw new Error('#685 fixture: ' + neg.pid + ' step ' + (nr.idx + 1) + ' painted no ' +
+      '.ckl-step-glow either, so "0 rings" proves nothing about the lists being distinct — the ' +
+      'step may simply not be reachable on the board.');
+  }
+  log.push('negative: ' + neg.pid + ' step ' + (nr.idx + 1) + ' authors 0 hl_watch and ' +
+    nr.pressLabels.length + ' press labels (' + nr.pressLabels.join(', ') + ') -> 0 watch rings, ' +
+    nr.painted + ' pulsing');
+
+  /* ================================================================ THE TWO TREATMENTS THEMSELVES
+   * (#755 items 7/10/19, OWNER RULING 2026-09-14, chosen from drawn options: "Both glow; pulse +
+   * one static cue" —
+   *     PRESS BUTTON      ((( soft pulsing glow )))   -> after press: steady glow, no pulse
+   *     WATCH INDICATION  [ steady glow + 2px solid ring ]  (no dash, no motion)  )
+   *
+   * ⚠ EVERYTHING ABOVE COUNTS RINGS AND CANNOT SEE WHAT THEY LOOK LIKE. The counting invariant was
+   * green for the whole life of the DASHED watch ring the owner then asked to have removed, and it
+   * would be just as green if both treatments rendered identically — which is the one thing the
+   * ruling is about. So read the PAINTED style off the real elements: `animationName`, the
+   * box-shadow, and the outline the dash lived in.
+   *
+   * THE PRESS IS A REAL POINTER PRESS AT REAL COORDINATES, not `element.click()` and not a class
+   * poked in by hand. `ui/app.js`'s `cklNotePress` matches the press GEOMETRICALLY — it has to,
+   * because the ring is a `pointer-events: none` halo in a different subtree from the control
+   * (measured; the DOM-relation forms of that handler both failed) — so a synthetic click with no
+   * clientX/clientY would exercise nothing the player does. */
+  var treat = await page.evaluate(function () {
+    var p = document.querySelector('.ckl-step-glow'); if (!p) return { press: null };
+    var cs = getComputedStyle(p), r = p.getBoundingClientRect();
+    return { press: { anim: cs.animationName, shadow: cs.boxShadow, outlineStyle: cs.outlineStyle,
+                      done: p.classList.contains('ckl-step-done'),
+                      w: +r.width.toFixed(1), h: +r.height.toFixed(1),
+                      x: r.left + r.width / 2, y: r.top + r.height / 2 } };
+  });
+  treat.watch = watchTreat;
+  if (!treat.watch || !treat.watch.w) {
+    throw new Error('#755 items 7/10 fixture: no drawn .ckl-watch-glow was captured on ' +
+      WATCH_GLOW_LEG + ' — the watch treatment cannot be asserted');
+  }
+  if (!treat.press || !treat.press.w) {
+    throw new Error('#755 item 19 fixture: no drawn .ckl-step-glow on ' + neg.pid + ' step ' +
+      (nr.idx + 1) + ' — the press treatment cannot be read');
+  }
+  if (treat.press.anim !== 'cklGlow') {
+    throw new Error('#755 item 7: the press cue is not pulsing — animationName "' + treat.press.anim +
+      '". The ruling is "((( soft pulsing glow )))" for a control to act on; a steady press cue is ' +
+      'indistinguishable from the watch ring.');
+  }
+  log.push('press cue: animation ' + treat.press.anim + ', ' + treat.press.w + 'x' + treat.press.h + ' px');
+
+  /* ---- item 19: the press stands the pulse down and the GLOW STAYS -------------------------- */
+  await page.mouse.move(treat.press.x, treat.press.y);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  var pressed = await page.evaluate(function () {
+    var p = document.querySelector('.ckl-step-glow'); if (!p) return null;
+    var cs = getComputedStyle(p);
+    return { anim: cs.animationName, shadow: cs.boxShadow, done: p.classList.contains('ckl-step-done') };
+  });
+  if (!pressed) {
+    throw new Error('#755 item 19: the ring went away entirely on the press — the ruling is ' +
+      '"steady glow, no pulse", and a cue that vanishes says the player is on the wrong control ' +
+      'while the step it belongs to is still the active step');
+  }
+  if (pressed.anim !== 'none') {
+    throw new Error('#755 item 19 (OWNER: "when a hightighted button the glow should stop ' +
+      'pulsing"): the pulse is still running after a real pointer press inside the ring — ' +
+      'animationName "' + pressed.anim + '"');
+  }
+  /* THE SECOND HALF, AND IT IS THE HALF A "stop the pulse" FIX GETS WRONG: the glow must still be
+   * PAINTED. `animation: none` with the box-shadow dropped satisfies the sentence and deletes the
+   * cue. */
+  if (!pressed.shadow || pressed.shadow === 'none') {
+    throw new Error('#755 item 19: the pulse stopped and took the glow with it (box-shadow "' +
+      pressed.shadow + '") — the ruling is "after press: steady glow, no pulse", not "no cue"');
+  }
+  log.push('after a real press: animation ' + pressed.anim + ', glow still painted (' +
+    pressed.shadow.slice(0, 60) + '…)');
+
+  /* ⚠ AND IT MUST SURVIVE THE RE-RENDER, which is the whole reason `ui/app.js` remembers the press
+   * against the STEP instead of writing the class on the element. `applyCklStepGlow` re-runs on
+   * every checklist render-key change — the acceptance flags and the rounded precondition
+   * observations move most broadcasts on a live plant — and a naive fix is swept seconds later,
+   * which a read taken 300 ms after the press cannot see. 2 s is ~20 broadcasts at 1x. */
+  await page.waitForTimeout(2000);
+  var stillDone = await page.evaluate(function () {
+    var p = document.querySelector('.ckl-step-glow'); if (!p) return null;
+    var cs = getComputedStyle(p);
+    return { anim: cs.animationName, shadow: cs.boxShadow, done: p.classList.contains('ckl-step-done') };
+  });
+  if (!stillDone || stillDone.anim !== 'none' || !stillDone.shadow || stillDone.shadow === 'none') {
+    throw new Error('#755 item 19: the stood-down cue did not survive the panel re-render — ' +
+      JSON.stringify(stillDone) + '. The "already pressed" memory must be keyed on the step and ' +
+      're-applied by applyCklStepGlow, not written once onto the element.');
+  }
+  log.push('and it survives ~20 broadcasts of panel re-render (animation ' + stillDone.anim + ')');
+
+  /* ---- and the NEXT step pulses again: a stand-down that never re-arms is a dead cue ---------- */
+  var nxt = await page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist, st = c.proc.steps;
+    for (var i = 0; i < st.length; i++) {
+      if (i === c.idx) continue;
+      var press = (st[i].hl && st[i].hl.length) ? st[i].hl.slice()
+                : (st[i].control && !/^\(observe/i.test(st[i].control)) ? [st[i].control] : [];
+      if (press.length) return i;
+    }
+    return -1;
+  });
+  if (nxt >= 0) {
+    var nr2 = await landOn(nxt);
+    var rearm = await page.evaluate(function () {
+      var p = document.querySelector('.ckl-step-glow'); if (!p) return null;
+      return { anim: getComputedStyle(p).animationName, done: p.classList.contains('ckl-step-done') };
+    });
+    if (rearm && (rearm.anim !== 'cklGlow' || rearm.done)) {
+      throw new Error('#755 item 19: step ' + (nr2.idx + 1) + ' did not re-arm the pulse after the ' +
+        'previous step was pressed (' + JSON.stringify(rearm) + ') — the "already pressed" set is ' +
+        'scoped to one step and must be dropped when the step changes');
+    }
+    log.push('step ' + (nr2.idx + 1) + ' re-arms: animation ' + (rearm ? rearm.anim : 'n/a'));
+  }
+
+  /* ---- the watch ring: SOLID, STEADY, and not the same thing as the press cue ---------------- */
+  if (treat.watch) {
+    if (/dashed|dotted/.test(treat.watch.outlineStyle)) {
+      throw new Error('#755 items 7/10 (OWNER: "I dont like the dashed line look for the ' +
+        'walkthrough highlights"): the watch ring is drawn with outline-style "' +
+        treat.watch.outlineStyle + '"');
+    }
+    if (treat.watch.anim !== 'none') {
+      throw new Error('#755 item 7: the watch ring is animating ("' + treat.watch.anim + '") — ' +
+        'steady is what separates "watch this" from "press this"');
+    }
+    log.push('watch ring: outline-style ' + treat.watch.outlineStyle + ', animation ' +
+      treat.watch.anim + ', shadow ' + treat.watch.shadow.slice(0, 40) + '…');
+  }
+
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
+/* #691 — A PAUSED PLANT KEPT THE PREVIOUSLY-SELECTED SPEED BUTTON LIT, AND PLAY-FROM-PAUSE
+ * RESUMED AT THE OLD SPEED (owner: "When pausing the sim the previously selected warp button
+ * shouldn't still be highlighted. Pressing play from a pause should play at 1x.").
+ *
+ * ROOT CAUSE, both halves. `syncSpeedUI`'s repaint of `[data-speed].on` is guarded on
+ * `v !== lastSpeedSync` (`ui/app.js`) — pausing never touches `time_acceleration`, so a
+ * pause's own `syncPlayBtn()` call left the guard short-circuited and the lit button was
+ * never told to go dark. Separately, `resumeSim` called only `service.start()`: nothing
+ * resets `timeAcceleration` (its one mutator besides init is `_setSpeed`), so whatever speed
+ * survived the pause untouched is exactly what the plant resumed at.
+ *
+ * A NODE GATE CANNOT SEE THIS. `SimulationService.prototype.advanceCycles` forces
+ * `running = true` for the duration of its own loop and restores the prior value afterwards,
+ * so a Node harness that pauses and then steps the plant to check can never observe the
+ * pause holding — the very mechanism it would use to advance the plant defeats the pause it
+ * is trying to verify. This has to drive the real play/pause button and the service's own
+ * timer path, which only a browser gate does. */
+async function testPauseResumeSpeed(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  async function read() {
+    return await page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service();
+      var lit = Array.prototype.map.call(
+        document.querySelectorAll('#speed [data-speed].on'),
+        function (b) { return b.getAttribute('data-speed'); });
+      return { accel: svc.timeAcceleration, running: svc.running,
+               paused: document.getElementById('playBtn').classList.contains('paused'), lit: lit };
+    });
+  }
+
+  // ---- 1. select a non-1x speed: it lights and the plant accelerates ----------------
+  await page.click('#speed [data-speed="600"]');
+  await page.waitForTimeout(400);
+  var afterClick = await read();
+  if (!(afterClick.accel >= 600) || afterClick.lit.indexOf('600') < 0) {
+    throw new Error('#691 fixture: selecting 600x did not light the button or accelerate — ' + JSON.stringify(afterClick));
+  }
+  log.push('600x selected: accel ' + afterClick.accel + ', lit [' + afterClick.lit.join(',') + ']');
+
+  // ---- 2. pause: the 600x button must go dark, even though accel never changed ------
+  await page.click('#playBtn');
+  await page.waitForTimeout(300);
+  var afterPause = await read();
+  if (!afterPause.paused || afterPause.running) {
+    throw new Error('#691: #playBtn did not pause the plant — ' + JSON.stringify(afterPause));
+  }
+  if (afterPause.lit.indexOf('600') >= 0) {
+    throw new Error('#691: the 600x speed button is still lit while the plant is PAUSED — lit [' +
+      afterPause.lit.join(',') + ']');
+  }
+  log.push('paused: lit [' + afterPause.lit.join(',') + '] (600x cleared)');
+
+  /* ---- 2b. AND IT STAYS DARK WHEN THE PLAYER TOUCHES ANYTHING (2026-09-13) -------------
+   * The clear above is done by hand in `syncPlayBtn`, but `time_acceleration` is still 600
+   * and `lastSpeedSync` was nulled to force the next repaint — so the NEXT render lit the
+   * rung straight back up, and `cmd()` renders synchronously whenever the service is stopped.
+   * Any control pressed while paused therefore undid the fix this test is named for. Found
+   * because it reddened this gate intermittently (whatever produced a render inside the
+   * paused window won the race); reproduced deterministically here in one command.
+   * `set_attention_stops` is chosen because it moves nothing in the plant — the point is the
+   * RENDER, not the command. Injection-proven: restoring the unconditional
+   * `b.classList.toggle('on', +b.getAttribute('data-speed') === v)` in `syncSpeedUI` reds this
+   * and nothing else. */
+  await page.evaluate(function () {
+    globalThis.RD.__dev.service().handleCommand({ action: 'set_attention_stops', value: false });
+  });
+  await page.click('#speed [data-speed="600"]');   // the same press, now against a held plant
+  await page.waitForTimeout(400);
+  var stillHeld = await read();
+  if (!stillHeld.paused || stillHeld.running) {
+    throw new Error('#691 fixture: the plant resumed during the held-press probe, so the ' +
+      'assertion below would prove nothing — ' + JSON.stringify(stillHeld));
+  }
+  if (stillHeld.lit.length) {
+    throw new Error('#691: a speed rung is lit again on a PAUSED plant after the player ' +
+      'touched a control — lit [' + stillHeld.lit.join(',') + ']. syncPlayBtn cleared it; the ' +
+      'next render repainted it from time_acceleration, which pausing never changed.');
+  }
+  log.push('pressed 600x while held: lit [' + stillHeld.lit.join(',') + '] (stays dark)');
+
+  // ---- 3. resume: must land at 1x, with the 1x button (not 600x) lit ----------------
+  await page.click('#playBtn');
+  await page.waitForTimeout(300);
+  var afterResume = await read();
+  if (afterResume.paused || !afterResume.running) {
+    throw new Error('#691: #playBtn did not resume the plant — ' + JSON.stringify(afterResume));
+  }
+  if (afterResume.accel !== 1) {
+    throw new Error('#691: play-from-pause resumed at ' + afterResume.accel + 'x, not 1x — ' + JSON.stringify(afterResume));
+  }
+  if (afterResume.lit.indexOf('1') < 0 || afterResume.lit.indexOf('600') >= 0) {
+    throw new Error('#691: after resume the lit speed button(s) are [' + afterResume.lit.join(',') + '], want just 1');
+  }
+  log.push('resumed: accel ' + afterResume.accel + ', lit [' + afterResume.lit.join(',') + ']');
+  return log.join('\n') + '\n';
+}
+
+/* #710 — RESUME-FROM-PAUSE CLEARED THE ACCUMULATOR-HELD SPEED-BAR MESSAGE WHILE THE HOLD STILL
+ * STOOD (filed by the #686 agent, out of scope there). `resumeSim()` (and two siblings — the
+ * speed-button click handler, the walkthrough rewind handler) nulled `warpNote` unconditionally
+ * on the theory that any player act means the plant-declared hold is over. It is not: the
+ * accumulator arming window (`true_state.speed_hold`) can stand for plant-minutes, and
+ * `set_speed(1)` — what a resume always sends — always succeeds under it (only `> 1` is
+ * refused), so nothing stopped a pause/resume from happening WHILE still inside the window.
+ * That silently re-created the #619 item 13 trap: the plant refuses every speed press above 1x
+ * and the ONLY standing explanation on screen (`#warpInfo`'s persistent line, #686 ruling 3)
+ * disappeared on an ordinary pause/resume.
+ *
+ * THE FIX (`retireWarpNote` in ui/app.js) reads the LIVE state — `latest.true_state.speed_hold`
+ * — instead of assuming an act means the hold is over: keep the note while the hold still
+ * stands, retire it once the act happens with the hold genuinely gone.
+ *
+ * WHY A ONE-SHOT PLANT DOES NOT PROVE THIS (learned from #686's own check, `testHeldSpeedClick`
+ * above): its `assembleSnapshot` override is restored immediately after ONE manual broadcast, so
+ * by the time `resumeSim()`'s own `cmd()` calls `assembleSnapshot()` again, the injected
+ * `speed_hold` is gone — which would make retirement look CORRECT even with the #710 defect
+ * still in place, because the live state genuinely no longer shows a hold. This override stays
+ * installed (`__710hold`, toggled rather than restored) so every subsequent broadcast — the one
+ * `resumeSim()` triggers, and the real interval ticks around it — keeps reporting the hold for as
+ * long as the test says it stands, exactly like a real 75-plant-minute arming window would.
+ *
+ * PROVED THROUGH THE REAL PIPELINE, NOT THE DOM, same shape as `testHeldSpeedClick`: the rising
+ * edge is produced by one manual `_assembleWithInstructor()` + `_broadcast()` call while running
+ * at >1x (the drop-to-1x-and-stamp branch only fires when `timeAcceleration > 1`,
+ * `layers/simulation_service.js` :781), then the pause/resume cycle is driven through the real
+ * `#playBtn` exactly as a player would click it. render() schedules DOM work on the next
+ * `requestAnimationFrame`, so every read below is preceded by a wait for a broadcast/paint to
+ * land — reading `#warpInfo` synchronously races the paint and reads empty text, which looks
+ * like a pass (the #686 agent's finding, `read()`'s own `waitForTimeout` avoids it).
+ *
+ * BOTH HALVES: POSITIVE — pause/resume while the hold still stands must keep the message.
+ * NEGATIVE — once the hold is actually cleared (`__710hold = false`, then a real broadcast lands
+ * it), the next pause/resume must retire the message, or this only pins a message that can
+ * never go away. */
+async function testHeldNotePauseResume(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  async function read() {
+    return await page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service();
+      var el = document.getElementById('warpInfo');
+      return { accel: svc.timeAcceleration, running: svc.running,
+               paused: document.getElementById('playBtn').classList.contains('paused'),
+               warp: el ? el.textContent : null, warpHidden: el ? el.hidden : null };
+    });
+  }
+
+  // ---- establish a STANDING hold, with the fabricated fact left installed rather than
+  // one-shot (see header comment for why a one-shot plant cannot prove this). ----
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    svc.handleCommand({ action: 'set_speed', value: 600 });   // must be >1x for the drop-and-stamp
+    var orig = svc.assembleSnapshot;
+    globalThis.__710orig = orig;
+    globalThis.__710hold = true;
+    svc.assembleSnapshot = function () {
+      var snap = orig.call(this);
+      if (globalThis.__710hold) {
+        snap.true_state = Object.assign({}, snap.true_state,
+          { speed_hold: 'accumulator window open — arm the accumulators before accelerating again' });
+      }
+      return snap;
+    };
+    var out = svc._assembleWithInstructor();   // the rising edge: stamps speed_snap, drops to 1x
+    svc._broadcast(out);
+  });
+  await page.waitForTimeout(400);
+  var afterHold = await read();
+  if (afterHold.warpHidden || !/Held at real time/.test(afterHold.warp || '') || afterHold.accel !== 1) {
+    throw new Error('#710 fixture: the standing hold did not print under the speed bar — ' + JSON.stringify(afterHold));
+  }
+  log.push('hold established: "' + afterHold.warp + '", accel ' + afterHold.accel);
+
+  // ---- THE CASE (positive): pause and resume through the real button WHILE THE HOLD STILL
+  // STANDS. Pre-fix, resumeSim() nulled `warpNote` unconditionally here. ----
+  await page.click('#playBtn');
+  await page.waitForTimeout(300);
+  var afterPause = await read();
+  if (!afterPause.paused || afterPause.running) {
+    throw new Error('#710 fixture: #playBtn did not pause — ' + JSON.stringify(afterPause));
+  }
+  await page.click('#playBtn');
+  await page.waitForTimeout(400);
+  var afterResume = await read();
+  if (afterResume.paused || !afterResume.running || afterResume.accel !== 1) {
+    throw new Error('#710 fixture: #playBtn did not resume at 1x — ' + JSON.stringify(afterResume));
+  }
+  if (afterResume.warpHidden || !/Held at real time/.test(afterResume.warp || '')) {
+    throw new Error('#710: resume cleared the held-at-real-time message while the hold still ' +
+      'stands — warpInfo "' + afterResume.warp + '" (hidden=' + afterResume.warpHidden + ')');
+  }
+  log.push('resumed under a standing hold: message survives ("' + afterResume.warp + '")');
+
+  // ---- THE NEGATIVE HALF: the hold genuinely lifts, a real broadcast reports it, THEN the
+  // player acts again — the message must clear, or this only pins a message that never goes
+  // away. ----
+  await page.evaluate(function () { globalThis.__710hold = false; });
+  await page.waitForTimeout(400);   // the service is running: let a real broadcast drop speed_hold
+  await page.click('#playBtn');
+  await page.waitForTimeout(300);
+  await page.click('#playBtn');
+  await page.waitForTimeout(400);
+  var afterLifted = await read();
+  if (/Held at real time/.test(afterLifted.warp || '')) {
+    throw new Error('#710: the held-at-real-time message survived a pause/resume after the hold ' +
+      'genuinely lifted — warpInfo "' + afterLifted.warp + '"');
+  }
+  log.push('hold lifted, then resumed: message cleared (warpInfo "' + (afterLifted.warp || '') + '")');
+
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    svc.assembleSnapshot = globalThis.__710orig;
+    delete globalThis.__710orig; delete globalThis.__710hold;
+  });
   return log.join('\n') + '\n';
 }
 
@@ -1867,6 +3596,678 @@ async function testHeldSpeedClick(page) {
  * rule is what went red. The ceiling is the backstop for a declaration outside the board or on
  * a tag this rule does not name; it is not the primary assertion, and a future edit that
  * loosens the target rule to "count only" would re-open exactly this defect. */
+/* THE VITAL-FEW PRESSURIZER LEVEL GAUGE MUST NOT CAUTION ON A PLANT THAT IS ON PROGRAM (#676).
+ *
+ * The authored `caution_lo: 25` in ui/app.js is a FOSSIL — it is the retired plant's
+ * `pzr_level_low` setpoint from before #500 made that row a deviation. The level program is
+ * scheduled on Tavg and IS 25 % at the no-load anchor, so in Mode 5, Cold Shutdown, Mode 4,
+ * Hot Shutdown and Mode 3, Hot Standby the needle sits ON the edge, the instrument noise
+ * crosses it, and `gaugeState`'s latch pins the gauge amber for the whole run — on a plant
+ * holding its setpoint to within 1.0 point. Measured before the fix, 20 plant-minutes per
+ * initial condition: CAUTION 100.0 % of the time in all three. Those three states begin every
+ * startup walkthrough, so the first thing a new player is taught is to ignore a vital gauge.
+ *
+ * WHY IT IS CHECKED HERE and not in a Node runner: ui/app.js does not load headless (it wants
+ * a real DOM at script scope), and the vital strip publishes no thresholds — only the CLASS
+ * they produce. So the only place the rendered band can be observed is a browser.
+ *
+ * TWO HALVES, because either alone passes on a bug:
+ *   1. THE CLASS, sampled on the live plant at three initial conditions. This is the defect.
+ *   2. THE RULE, called directly through `RD.PwrGaugeBands` — including the DISCRIMINATOR that
+ *      the edge MOVES (17 % cold against 51.5 % at power). Half 1 alone would go green on an
+ *      edge hard-coded to 0; half 2 alone cannot tell you the gauge reads it.
+ *
+ * PROVED BY INJECTION, 2026-09-10: restoring the plain `caution_lo: 25` (dropping the gauge's
+ * `autorange`) fails half 1 at cold_shutdown with 40/40 samples amber, and restoring the
+ * absolute form of `pzrGaugeCautionLo` fails half 2's discriminator. */
+async function testPzrGaugeFollowsProgram(page) {
+  var log = [];
+  /* Mode 4, Hot Shutdown is deliberately off the free-play menu — the ruling and the measured
+   * Mode 4 / Mode 5 diff are recorded at the pwr2 registry in ui/app.js — so the browser cannot
+   * reach it; it carries the same 25 % program as Mode 5 and was measured in Node instead.
+   * These three are what the player can actually select. */
+  var ICS = [['cold_shutdown', 'Mode 5, Cold Shutdown'],
+             ['hot_zero_power', 'Mode 3, Hot Standby'],
+             ['hot_full_power', 'Mode 1, At Power']];
+  var edges = {};
+  for (var i = 0; i < ICS.length; i++) {
+    var ic = ICS[i][0], name = ICS[i][1];
+    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=' + ic +
+                    '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+    await dismissMission(page);
+    await waitBoardLive(page, 20000);
+    if (await page.$('#speed [data-speed="10"]')) await page.click('#speed [data-speed="10"]');
+    await page.waitForTimeout(1200);
+    /* 40 samples over ~4 s of wall at 10x — the noise that latched the band is per-broadcast,
+     * so this spans hundreds of plant-seconds of it. */
+    var r = await page.evaluate(async function () {
+      function sleep(ms) { return new Promise(function (f) { setTimeout(f, ms); }); }
+      var g = document.getElementById('gauge-pzr'), warn = 0, alarm = 0, n = 0, i;
+      for (i = 0; i < 40; i++) {
+        if (g.classList.contains('alarm')) alarm++;
+        else if (g.classList.contains('warn')) warn++;
+        n++;
+        await sleep(100);
+      }
+      var svc = window.RD.__dev.service();
+      var prog = svc.engine.getControlState().pzr_level_program_pct;
+      var rows = (svc.layer && svc.layer.config && svc.layer.config.alarms) || [];
+      function sp(id) { for (var k = 0; k < rows.length; k++) if (rows[k].id === id) return rows[k]; return null; }
+      var dev = sp('pzr_level_dev_low'), cut = sp('pzr_level_cutoff');
+      return {
+        warn: warn, alarm: alarm, n: n,
+        val: (document.querySelector('#gauge-pzr [data-val]') || {}).textContent,
+        program: prog,
+        devSp: dev && dev.setpoint, cutSp: cut && cut.setpoint,
+        edge: window.RD.PwrGaugeBands.pzrLevelCautionLo({ control_state: { pzr_level_program_pct: prog } }, 25),
+        noProgram: window.RD.PwrGaugeBands.pzrLevelCautionLo({ control_state: {} }, 25),
+        nullProgram: window.RD.PwrGaugeBands.pzrLevelCautionLo({ control_state: { pzr_level_program_pct: null } }, 25)
+      };
+    });
+    edges[ic] = r;
+    log.push(name + ': program ' + r.program.toFixed(1) + ' %, gauge reads ' + r.val +
+             ', caution edge ' + r.edge.toFixed(1) + ' % — ' + r.warn + ' warn / ' + r.alarm +
+             ' alarm of ' + r.n + ' samples');
+    if (r.warn || r.alarm) {
+      throw new Error('pzr gauge banded on an on-program plant at ' + name + ': ' + r.warn +
+                      ' warn / ' + r.alarm + ' alarm of ' + r.n + ' samples, program ' +
+                      r.program.toFixed(1) + ' %, gauge ' + r.val);
+    }
+    /* The green must be EARNED: a plant that had drifted off program would also be a plant
+     * whose amber was correct, and this check would then be asserting nothing. */
+    if (r.devSp == null || r.cutSp == null) throw new Error('pzr level alarm ladder missing from the running config at ' + name);
+    var want = Math.max(r.cutSp, r.program + r.devSp);
+    if (Math.abs(r.edge - want) > 1e-9) {
+      throw new Error('pzr caution edge at ' + name + ' is ' + r.edge + ', not the plant\'s own ' +
+                      'max(' + r.cutSp + ', program ' + r.program.toFixed(1) + ' + ' + r.devSp + ') = ' + want);
+    }
+    /* …and a plant publishing no program keeps the authored edge, so the retired engine and
+     * old recordings are unchanged. `isFinite(null)` is TRUE, so null is checked separately. */
+    if (r.noProgram !== 25 || r.nullProgram !== 25) {
+      throw new Error('a snapshot with no level program must keep the authored 25 %, got ' +
+                      r.noProgram + ' / ' + r.nullProgram);
+    }
+  }
+  /* THE DISCRIMINATOR. An absolute edge — the shipped bug, or any fixed replacement — gives the
+   * SAME number in Mode 5 and at power. The program spans 25 -> 61.5 %, so these must not. */
+  var cold = edges.cold_shutdown.edge, hot = edges.hot_full_power.edge;
+  if (!(hot - cold > 20)) {
+    throw new Error('the pzr caution edge did not follow the program: Mode 5 ' + cold +
+                    ' %, Mode 1 ' + hot + ' % — an absolute edge reads the same in both');
+  }
+  log.push('edge follows the program: Mode 5 ' + cold.toFixed(1) + ' % (the 17 % letdown-isolate ' +
+           'cut) -> Mode 1 ' + hot.toFixed(1) + ' % (program - 10)');
+  return log.join('\n') + '\n';
+}
+
+/* THE VITAL-FEW PRESSURIZER GAUGE MUST CAUTION WHEN LEVEL RUNS ABOVE ITS PROGRAM (#706) — the
+ * same gap as #703's, on the other end of the same gauge. The strip carried NO high-side band at
+ * all, so a player watching the board through the shipped Mode 5 -> Mode 3 heatup got no cue of
+ * any kind while level ran **+20.4 points above a 25.00 % program (peak 45.37 %) for 11.6 of the
+ * leg's 13.4 plant-hours** (#706's measurement). The plant's own absolute PZR LVL HI sits at 75 %,
+ * thirty points away, and never fired.
+ *
+ * MEASURED (full stack, svc.tick() driven, ACCEL=10, seed 7): the worst LEGITIMATE upward
+ * deviation of pzr_level above its program is +7.53 points, a momentary spike on the power
+ * ascension (pwr_raise_power spends 0.0 % of the leg above +8). Steady state at all four
+ * free-play initial conditions is +1.07..+1.17; a 100 -> 90 -> 100 MWe load change +5.98/+2.45;
+ * +-15 ppm boration/dilution +1.62/+1.30. Against the faults: pwr_heatup +21.34, pwr_shutdown
+ * +21.19, pwr_cooldown +43.07, the TMI-2 leg +75.00. The chosen edge, program + 10 points, is
+ * the mirror of the `pzr_level_dev_low` rung that already exists, and NOTHING measured sits
+ * between +7.53 and +21.19.
+ *
+ * TWO HALVES PLUS A FAULT LEG, same reasons as the two tests above: ui/app.js does not load
+ * headless and the vital strip publishes no thresholds, only the class they produce.
+ *   1. THE CLASS, sampled on the live plant at the three reachable on-program initial
+ *      conditions. A gauge that banded here would be a false warn on a healthy plant.
+ *   2. THE RULE, through `RD.PwrGaugeBands.pzrLevelCautionHi` — that it is the plant's own
+ *      min(PZR LVL HI, program + PZR LVL DEV HI) read live rather than a retyped number, that a
+ *      snapshot with no program keeps the authored 75, and the DISCRIMINATOR that the edge MOVES
+ *      between Mode 5 and full power (35.0 -> 71.5 %). A fixed absolute edge — the shipped bug,
+ *      or any naive replacement — reads the same in both.
+ *   3. THE FAULT LEG: drive level far above a 25 % program on the live plant (charging out of
+ *      AUTO at 9 gpm) and confirm the gauge actually goes amber — AND that it did so while level
+ *      was still BELOW the absolute 75 % fallback, which is what makes it the program-relative
+ *      edge rather than the old literal doing the work.
+ *
+ * PROVED BY INJECTION, 2026-09-11: reverting the gauge to its shipped form (no `caution` key,
+ * autorange returning only `caution_lo`) leaves the fault leg at 0/40 warn where the fix reads
+ * 40/40, and a FIXED absolute edge (a literal 75, or `caution: 75` with no autorange) fails the
+ * discriminator and the fault leg both. */
+async function testPzrGaugeHighLevelCaution(page) {
+  var log = [];
+  var ICS = [['cold_shutdown', 'Mode 5, Cold Shutdown'],
+             ['hot_zero_power', 'Mode 3, Hot Standby'],
+             ['hot_full_power', 'Mode 1, At Power']];
+  var edges = {};
+  for (var i = 0; i < ICS.length; i++) {
+    var ic = ICS[i][0], name = ICS[i][1];
+    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=' + ic +
+                    '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+    await dismissMission(page);
+    await waitBoardLive(page, 20000);
+    if (await page.$('#speed [data-speed="10"]')) await page.click('#speed [data-speed="10"]');
+    await page.waitForTimeout(1200);
+    var r = await page.evaluate(async function () {
+      function sleep(ms) { return new Promise(function (f) { setTimeout(f, ms); }); }
+      var g = document.getElementById('gauge-pzr'), warn = 0, alarm = 0, n = 0, i;
+      for (i = 0; i < 40; i++) {
+        if (g.classList.contains('alarm')) alarm++;
+        else if (g.classList.contains('warn')) warn++;
+        n++;
+        await sleep(100);
+      }
+      var svc = window.RD.__dev.service();
+      var prog = svc.engine.getControlState().pzr_level_program_pct;
+      var rows = (svc.layer && svc.layer.config && svc.layer.config.alarms) || [];
+      function sp(id) { for (var k = 0; k < rows.length; k++) if (rows[k].id === id) return rows[k]; return null; }
+      var dev = sp('pzr_level_dev_high'), hi = sp('pzr_level_high');
+      return {
+        warn: warn, alarm: alarm, n: n,
+        val: (document.querySelector('#gauge-pzr [data-val]') || {}).textContent,
+        program: prog, devSp: dev && dev.setpoint, devInstr: dev && dev.instrument, hiSp: hi && hi.setpoint,
+        edge: window.RD.PwrGaugeBands.pzrLevelCautionHi({ control_state: { pzr_level_program_pct: prog } }, 75),
+        noProgram: window.RD.PwrGaugeBands.pzrLevelCautionHi({ control_state: {} }, 75),
+        nullProgram: window.RD.PwrGaugeBands.pzrLevelCautionHi({ control_state: { pzr_level_program_pct: null } }, 75)
+      };
+    });
+    edges[ic] = r;
+    log.push(name + ': program ' + r.program.toFixed(1) + ' %, gauge reads ' + r.val +
+             ', high caution edge ' + r.edge.toFixed(1) + ' % — ' + r.warn + ' warn / ' + r.alarm +
+             ' alarm of ' + r.n + ' samples');
+    if (r.warn || r.alarm) {
+      throw new Error('pzr gauge banded on an on-program plant at ' + name + ': ' + r.warn +
+                      ' warn / ' + r.alarm + ' alarm of ' + r.n + ' samples, program ' +
+                      r.program.toFixed(1) + ' %, gauge ' + r.val);
+    }
+    /* The green must be EARNED — the rung has to be in the RUNNING config, on the DEVIATION
+     * channel, or this leg is asserting nothing. */
+    if (r.devSp == null || r.hiSp == null) throw new Error('pzr level high ladder missing from the running config at ' + name);
+    if (r.devInstr !== 'pzr_level_dev') throw new Error('pzr_level_dev_high is on ' + r.devInstr + ', not the deviation channel');
+    var want = Math.min(r.hiSp, r.program + r.devSp);
+    if (Math.abs(r.edge - want) > 1e-9) {
+      throw new Error('pzr high caution edge at ' + name + ' is ' + r.edge + ', not the plant\'s own ' +
+                      'min(' + r.hiSp + ', program ' + r.program.toFixed(1) + ' + ' + r.devSp + ') = ' + want);
+    }
+    if (r.noProgram !== 75 || r.nullProgram !== 75) {
+      throw new Error('a snapshot with no level program must keep the authored 75 %, got ' +
+                      r.noProgram + ' / ' + r.nullProgram);
+    }
+  }
+  /* THE DISCRIMINATOR. An absolute edge — the shipped state's 75, or any fixed replacement —
+   * gives the SAME number in Mode 5 and at power. The program spans 25 -> 61.5 %, so these
+   * must not. */
+  var cold = edges.cold_shutdown.edge, hot = edges.hot_full_power.edge;
+  if (!(hot - cold > 20)) {
+    throw new Error('the pzr high caution edge did not follow the program: Mode 5 ' + cold +
+                    ' %, Mode 1 ' + hot + ' % — an absolute edge reads the same in both');
+  }
+  log.push('edge follows the program: Mode 5 ' + cold.toFixed(1) + ' % -> Mode 1 ' + hot.toFixed(1) +
+           ' % (program + 10 in each; the 75 % absolute cap never binds, because the program ' +
+           'clamps at 61.5 %)');
+
+  /* THE FAULT LEG. Reconstruct the #706 shape on the live plant: a 25 % program with level far
+   * above it. Charging out of AUTO at 9 gpm at Mode 3 reaches program + 30 or so inside an hour
+   * and a half of plant time, which WARP covers in a few wall-seconds. */
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_zero_power' +
+                  '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await page.evaluate(function () {
+    var svc = window.RD.__dev.service();
+    svc.handleCommand({ action: 'set_cvcs_auto', active: false });
+    svc.handleCommand({ action: 'set_charging_flow', normalized: 9 / 450000 });
+  });
+  if (await page.$('#speed [data-speed="600"]')) await page.click('#speed [data-speed="600"]');
+  /* 6.5 s of wall at 600x is a bit over an hour of plant time, which takes the deviation to about
+   * +36 points. The settle is deliberately SHORT of the 75 % absolute alarm — 61.5 % on three
+   * consecutive runs, 13.5 points clear — because the check below asserts that the amber came from
+   * the program-relative edge and not from the authored literal, and that assertion is only
+   * available while level stays under 75. */
+  await page.waitForTimeout(6500);
+  var faultR = await page.evaluate(async function () {
+    function sleep(ms) { return new Promise(function (f) { setTimeout(f, ms); }); }
+    var g = document.getElementById('gauge-pzr'), warn = 0, n = 0, i;
+    for (i = 0; i < 40; i++) {
+      if (g.classList.contains('warn') || g.classList.contains('alarm')) warn++;
+      n++;
+      await sleep(100);
+    }
+    var svc = window.RD.__dev.service();
+    var snap = svc.assembleSnapshot();
+    var prog = snap.control_state.pzr_level_program_pct;
+    var lit = (snap.alarms || []).filter(function (a) { return a.id === 'pzr_level_dev_high'; })[0];
+    return { warn: warn, n: n, lvl: snap.instruments.pzr_level, program: prog,
+             annunciator: lit ? lit.state : '(absent)' };
+  });
+  log.push('fault leg (charging MANUAL 9 gpm at Mode 3, WARP settle): level ' +
+           faultR.lvl.toFixed(1) + ' % against a ' + faultR.program.toFixed(1) + ' % program (+' +
+           (faultR.lvl - faultR.program).toFixed(1) + ' points) — ' + faultR.warn + ' warn of ' +
+           faultR.n + ' samples, PZR LVL DEV HI ' + faultR.annunciator);
+  if (!faultR.warn) {
+    throw new Error('pzr gauge never banded on the reconstructed high-level excursion: level ' +
+                    faultR.lvl.toFixed(1) + ' % against a ' + faultR.program.toFixed(1) + ' % program');
+  }
+  /* …and it has to be the PROGRAM-RELATIVE edge that did it. Amber at a level ABOVE 75 % would
+   * be satisfied by the authored literal alone, which is the state this whole fix replaces. */
+  if (!(faultR.lvl < 75)) {
+    throw new Error('the fault leg ran past the 75 % absolute alarm (' + faultR.lvl.toFixed(1) +
+                    ' %), so the amber proves nothing about the program-relative edge — the ' +
+                    'excursion is too large, shorten the WARP settle');
+  }
+  if (faultR.annunciator === 'clear' || faultR.annunciator === '(absent)') {
+    throw new Error('the gauge banded but PZR LVL DEV HI did not: ' + faultR.annunciator +
+                    ' at level ' + faultR.lvl.toFixed(1) + ' % against program ' + faultR.program.toFixed(1) + ' %');
+  }
+  return log.join('\n') + '\n';
+}
+
+/* THE VITAL-FEW Tavg GAUGE MUST CAUTION ON A COLD-AT-POWER PLANT AND STAY SILENT ON ONE
+ * TRACKING ITS PROGRAM (#703) — the opposite gap from #676's: the strip carried NO low edge
+ * on Tavg at all, so a plant running 105 °F (58.3 °C) cold at 96.5 % power had no vital-few
+ * cue until the reactor tripped (measured during the #676 fix, 2026-09-10).
+ *
+ * MEASURED (full stack, svc.tick() driven, ACCEL=10, rods MANUAL): the worst LEGITIMATE
+ * downward deviation of Tavg below its sliding program (a +15 ppm boration at full power) is
+ * 9.5 °F; the ascension climb, a load transient, the post-ascension xenon swing and steady
+ * state at all four initial conditions are all under 2 °F. The chosen edge, program − 20 °F,
+ * clears every legitimate case by 2x or more and fires about 5x before the fault's own 105 °F.
+ *
+ * TWO HALVES, same reason as testPzrGaugeFollowsProgram: ui/app.js does not load headless and
+ * the vital strip publishes no thresholds, only the class they produce.
+ *   1. THE CLASS, sampled on the live plant at two on-program initial conditions (Mode 1 at
+ *      power and Mode 3, Hot Standby — both HI-RANGE, where the edge is live).
+ *   2. THE RULE, called through `RD.PwrGaugeBands.tavgCautionLo` — including the
+ *      DISCRIMINATOR that the edge MOVES with load (the no-load anchor vs the full-power
+ *      point), that LOW RANGE nulls it exactly as caution/danger already are, and that a
+ *      snapshot with no program falls back to the plant's own LO TAVG (P-12) annunciator.
+ *
+ * PROVED BY INJECTION, 2026-09-10: restoring the pre-#703 gauge (no `caution_lo` at all) never
+ * warns no matter how cold Tavg reads — fails half 1's fault-reproduction leg with 0/40 warn
+ * where the fix reads 40/40; and a FIXED absolute edge (e.g. a literal 278) fails the
+ * discriminator, since it gives the same number at every load. */
+async function testTavgGaugeDeviationCaution(page) {
+  var log = [];
+  var ICS = [['hot_full_power', 'Mode 1, At Power'], ['hot_zero_power', 'Mode 3, Hot Standby']];
+  var edges = {};
+  for (var i = 0; i < ICS.length; i++) {
+    var ic = ICS[i][0], name = ICS[i][1];
+    await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=' + ic +
+                    '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+    await dismissMission(page);
+    await waitBoardLive(page, 20000);
+    if (await page.$('#speed [data-speed="10"]')) await page.click('#speed [data-speed="10"]');
+    await page.waitForTimeout(1200);
+    var r = await page.evaluate(async function () {
+      function sleep(ms) { return new Promise(function (f) { setTimeout(f, ms); }); }
+      var g = document.getElementById('gauge-tavg'), warn = 0, n = 0, i;
+      for (i = 0; i < 40; i++) {
+        if (g.classList.contains('warn')) warn++;
+        n++;
+        await sleep(100);
+      }
+      var svc = window.RD.__dev.service();
+      var snap = svc.assembleSnapshot();
+      var tavgC = snap.instruments.tavg, loadFrac = snap.instruments.steam_flow;
+      var CTL = window.RD.PWR_CONTROL;
+      var refC = (CTL && CTL.trefProgram) ? CTL.trefProgram(Math.max(0, Math.min(1, loadFrac || 0))) : null;
+      return {
+        warn: warn, n: n,
+        val: (document.querySelector('#gauge-tavg [data-val]') || {}).textContent,
+        tavgC: tavgC, refC: refC,
+        edge: window.RD.PwrGaugeBands.tavgCautionLo(snap, 278)
+      };
+    });
+    edges[ic] = r;
+    log.push(name + ': Tavg ' + r.tavgC.toFixed(1) + ' degC, ref ' + (r.refC != null ? r.refC.toFixed(1) : '?') +
+             ' degC, edge ' + (r.edge != null ? r.edge.toFixed(1) : 'null') + ' degC, gauge reads ' + r.val +
+             ' — ' + r.warn + ' warn of ' + r.n + ' samples');
+    if (r.warn) {
+      throw new Error('tavg gauge cautioned on a plant tracking its program at ' + name + ': ' +
+                      r.warn + '/' + r.n + ' samples, Tavg ' + r.tavgC.toFixed(1) + ' degC vs ref ' +
+                      (r.refC != null ? r.refC.toFixed(1) : '?') + ' degC');
+    }
+    if (r.refC == null || r.edge == null) throw new Error('tavg gauge published no live program/edge at ' + name);
+    if (Math.abs(r.edge - (r.refC - 20 * 5 / 9)) > 1e-6) {
+      throw new Error('tavg caution edge at ' + name + ' is ' + r.edge + ', not ref-20degF = ' + (r.refC - 20 * 5 / 9));
+    }
+  }
+  /* THE DISCRIMINATOR. An absolute edge gives the SAME number at no load and at full power. */
+  var cold = edges.hot_zero_power.edge, hot = edges.hot_full_power.edge;
+  if (!(hot - cold > 5)) {
+    throw new Error('the tavg caution edge did not follow the program: Hot Standby ' + cold +
+                    ' degC, Mode 1 ' + hot + ' degC — an absolute edge reads the same in both');
+  }
+  log.push('edge follows the program: Hot Standby ' + cold.toFixed(1) + ' degC -> Mode 1 ' +
+           hot.toFixed(1) + ' degC (program - 20 degF in each)');
+
+  /* THE FAULT LEG: reconstruct 105 degF (58.3 degC) cold at power directly on the live plant
+   * (boron forced back up after the ascension, exactly the pre-#683-fix scenario) and confirm
+   * the gauge actually warns — half 1's positive case, the one a "no low edge at all" gauge
+   * (the pre-#703 shipped defect) can never produce. */
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power' +
+                  '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await page.evaluate(function () {
+    window.RD.__dev.service().handleCommand({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 750 });
+  });
+  // WARP tier (the real speed buttons, not a direct property poke — a manual svc.tick() loop
+  // here would race the app's own running interval): 750 ppm pins the level program on its
+  // floor (the #683 pin point is 670 ppm) and settles Tavg well below the no-load anchor
+  // within a couple of plant-hours, which WARP's coarser step covers in a few wall-seconds.
+  if (await page.$('#speed [data-speed="3600"]')) await page.click('#speed [data-speed="3600"]');
+  await page.waitForTimeout(20000);
+  var faultR = await page.evaluate(async function () {
+    function sleep(ms) { return new Promise(function (f) { setTimeout(f, ms); }); }
+    var g = document.getElementById('gauge-tavg'), warn = 0, n = 0, i;
+    for (i = 0; i < 40; i++) {
+      if (g.classList.contains('warn')) warn++;
+      n++;
+      await sleep(100);
+    }
+    var svc = window.RD.__dev.service();
+    var snap = svc.assembleSnapshot();
+    return { warn: warn, n: n, tavgC: snap.instruments.tavg, power: snap.instruments.power_range };
+  });
+  log.push('fault leg (boron forced to 750 ppm, WARP settle): Tavg ' + faultR.tavgC.toFixed(1) +
+           ' degC, power ' + faultR.power.toFixed(1) + ' % — ' + faultR.warn + ' warn of ' + faultR.n + ' samples');
+  if (!faultR.warn) {
+    throw new Error('tavg gauge never cautioned on the reconstructed cold-at-power fault: Tavg ' +
+                    faultR.tavgC.toFixed(1) + ' degC, power ' + faultR.power.toFixed(1) + ' %');
+  }
+  return log.join('\n') + '\n';
+}
+
+/* THE ROD LANES ARE DRAWN TO THE ENGINE'S OWN BANK, AND THE SCALE IS READ LIVE (#707).
+ *
+ * THE DEFECT. `ui/app.js` declared three chart lanes — Control Rod Steps, Shutdown Rod Steps
+ * and Rod Limit Margin — with a full scale of 912 steps: the RETIRED engine's fine drive
+ * (`RD.PWR_CONFIG.rods.max_steps`). The shipped plant's bank is 627
+ * (`RD.pwr2.kinetics.RODS.max_steps`, the sourced four-bank 131-step overlap program —
+ * Westinghouse Technology Systems Manual chapter 8.1 section 8.1.5.4, ADAMS ML11223A252), so a
+ * bank sitting ON ITS STOP drew at 69 % of its lane: "fully withdrawn" was a height the chart
+ * could not reach, and the same was true of the rod-limit margin's own full-scale reading.
+ *
+ * AN AXIS IS A RENDERING CLAIM, so this reads the DRAWN lane chrome (`.lane-rng`, the text the
+ * player sees beside each lane's name) rather than the literal in the profile table. Four
+ * checks, and NO bank number is typed here — every bound is read back out of the page:
+ *
+ *   1. A CHANNEL PARKED ON THE STOP REACHES THE TOP OF ITS LANE. The shutdown bank is parked
+ *      fully out at power, so its lane's fitted top must land exactly ON the bank the plant
+ *      publishes. On the defect it lands at 700 — holdRange's minSpan is a tenth of full
+ *      scale, so the 912 lane fits a flat 627 into a 50-step ladder band 550–700 and the 912
+ *      clamp never binds. On the fix it lands at 627, which is the clamp.
+ *   2. NO LANE'S TOP MAY EXCEED THE BANK THE PLANT PUBLISHES — the general form of 1, applied
+ *      to the control bank, which sits at its at-power design point (606 of 627, #704) rather
+ *      than on the stop.
+ *   3. THE SCALE FOLLOWS A CHANGE. `pwr2_engine.js`'s BANK() accessor is a function precisely
+ *      because "a consumer that captures the value at load cannot follow a change", so a
+ *      parse-time capture of 627 would satisfy 1 and 2 and still be the wrong mechanism. The
+ *      bank is moved UNDER the running chart and the drawn top has to move with it.
+ *   4. THE ROD-LIMIT MARGIN, at the one initial condition where its top is a claim about the
+ *      bank at all — see below.
+ *
+ * Check 3 is why the poke is UPWARD. holdRange's clamp is a preference that must never beat
+ * the data (chart_math.js), so shrinking the bank under a trace already at 627 would leave the
+ * band where it is and the check would pass on a captured value too — it would be sampling the
+ * side of the mechanism the defect cannot reach. Raising it widens minSpan, the flat trace then
+ * sits well inside its band, and the shrink dwell (CHART_SHRINK_FRAMES, 40 frames) re-fits.
+ *
+ * Check 4 needs its OWN initial condition: the margin only reads full scale where the insertion
+ * limit does not apply (below 5 % power the engine publishes BANK() outright), so at power it
+ * sits near 167 steps and no clamp binds at either scale.
+ */
+async function testRodLaneBankScale(page) {
+  var log = [];
+
+  /* Put exactly the wanted channels in the lane stack. Everything else has to come OFF: the
+   * stack demotes the overflow to numeric rows, which carry a value and no range, so a lane
+   * left in the crowd would report `null` rather than a wrong bound. */
+  async function pinLanes(ids) {
+    await page.click('#chartOptsBtn');
+    await page.waitForTimeout(400);
+    await page.evaluate(function (want) {
+      var boxes = Array.prototype.slice.call(document.querySelectorAll('.cs-row input[data-cs-side]'));
+      boxes.forEach(function (b) { if (b.checked && !b.disabled) b.click(); });
+      want.forEach(function (id) {
+        var row = document.querySelector('.cs-row[data-cs="' + id + '"]');
+        if (!row) throw new Error('no chart-settings row for series "' + id + '"');
+        var box = row.querySelector('input[data-cs-side]:not([disabled])');
+        if (!box) throw new Error('series "' + id + '" has no selectable side');
+        if (!box.checked) box.click();
+      });
+    }, ids);
+    await page.click('#chartOptsClose');
+    await page.waitForTimeout(1500);
+  }
+
+  /* The DRAWN range, parsed out of the lane's own chrome. A channel demoted to a numeric row
+   * has no `.lane-rng` at all and comes back null, which every caller treats as a failure
+   * rather than as an absent bound. */
+  function readLanes() {
+    return page.evaluate(function () {
+      var out = {};
+      Array.prototype.slice.call(document.querySelectorAll('#chartFloats .lane-chrome')).forEach(function (c) {
+        var rng = c.querySelector('.lane-rng'), t = rng ? (rng.textContent || '') : '';
+        var nums = t.match(/-?[\d.]+/g);
+        out[c.getAttribute('data-ser')] = (nums && nums.length >= 2)
+          ? { lo: parseFloat(nums[0]), hi: parseFloat(nums[1]), text: t } : null;
+      });
+      var snap = window.RD.__dev.service().assembleSnapshot();
+      var gs = (snap.control_state || {}).rod_groups || [], banks = {};
+      gs.forEach(function (g) { banks[g.id] = { steps: g.steps, max_steps: g.max_steps }; });
+      return {
+        lanes: out, banks: banks,
+        margin: snap.instruments.rod_limit_margin,
+        power: snap.instruments.power_range,
+        /* BOTH published scales, so "the lane is not on the retired bank" is a comparison
+         * between two numbers the page itself supplies, not against a literal in this file. */
+        shipped: ((((window.RD.pwr2 || {}).kinetics || {}).RODS) || {}).max_steps,
+        retired: (((window.RD.PWR_CONFIG || {}).rods) || {}).max_steps
+      };
+    });
+  }
+
+  // ---- leg A: the two bank lanes at power -----------------------------------------------
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power' +
+                  '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await pinLanes(['rod_steps', 'sd_steps']);
+  var a = await readLanes();
+
+  var bank = (a.banks.shutdown_rods || {}).max_steps;
+  if (!(bank > 0)) throw new Error('the plant published no shutdown-bank max_steps to draw against');
+  if (!(a.retired > 0) || a.retired === bank) {
+    throw new Error('this check cannot discriminate: the retired engine bank (' + a.retired +
+      ') and the shipped one (' + bank + ') are the same number, so a stale literal would pass');
+  }
+  if (a.shipped !== bank) {
+    throw new Error('the snapshot rod group (' + bank + ') disagrees with RD.pwr2.kinetics.RODS.max_steps (' +
+      a.shipped + ') — the two published copies of the bank have drifted');
+  }
+  log.push('banks: shipped ' + bank + ' steps, retired engine ' + a.retired + ' steps');
+
+  var sd = a.lanes.sd_steps, ctl = a.lanes.rod_steps;
+  if (!sd || !ctl) throw new Error('the rod lanes did not draw as LANES (sd=' + JSON.stringify(sd) +
+    ', ctl=' + JSON.stringify(ctl) + ') — demoted to numeric rows?');
+  var sdSteps = (a.banks.shutdown_rods || {}).steps;
+  if (sdSteps !== bank) {
+    throw new Error('precondition: the shutdown bank is meant to be parked on its stop at power, ' +
+      'and reads ' + sdSteps + ' of ' + bank + ' — check 1 asserts a lane top against a channel ' +
+      'sitting at full scale and cannot be run against a bank somewhere else');
+  }
+  log.push('at power: control bank ' + (a.banks.control_rods || {}).steps + '/' + bank +
+           ', shutdown bank ' + sdSteps + '/' + bank + ', lanes "' + ctl.text + '" / "' + sd.text + '"');
+
+  if (sd.hi !== bank) {
+    throw new Error('a bank parked ON ITS STOP does not reach the top of its lane: Shutdown Rod ' +
+      'Steps reads ' + sdSteps + ' of ' + bank + ' and its lane is drawn to ' + sd.hi +
+      '. (#707 — the lane was declared to the RETIRED engine ' + a.retired + '-step bank, so ' +
+      'full scale was a height this plant cannot produce.)');
+  }
+  if (ctl.hi > bank) {
+    throw new Error('the Control Rod Steps lane is drawn to ' + ctl.hi + ' steps on a plant whose ' +
+      'bank stops at ' + bank + ' — the top of that lane does not exist (#707)');
+  }
+  log.push('check 1+2: the stop IS full scale (shutdown lane top ' + sd.hi + ' = bank ' + bank +
+           '), control lane top ' + ctl.hi + ' <= ' + bank);
+
+  // ---- leg A, check 3: the scale FOLLOWS the bank ---------------------------------------
+  /* Raise the one place the bank is defined and let the chart's own shrink dwell re-fit. The
+   * shell republishes max_steps off it every broadcast (bankSteps()), so this is the same path
+   * a retune takes — and it is the half a parse-time capture cannot follow. */
+  var moved = await page.evaluate(function (factor) {
+    var R = window.RD.pwr2.kinetics.RODS, was = R.max_steps;
+    R.max_steps = Math.round(was * factor);
+    return { was: was, now: R.max_steps };
+  }, 2.5);
+  await page.waitForTimeout(9000);      /* > CHART_SHRINK_FRAMES (40 frames) */
+  var b = await readLanes();
+  var sd2 = b.lanes.sd_steps;
+  if (!sd2) throw new Error('the shutdown-bank lane stopped drawing after the bank moved');
+  log.push('check 3: bank ' + moved.was + ' -> ' + moved.now + ' steps under the running chart; ' +
+           'shutdown lane "' + sd.text + '" -> "' + sd2.text + '", published max_steps ' +
+           (b.banks.shutdown_rods || {}).max_steps);
+  if ((b.banks.shutdown_rods || {}).max_steps !== moved.now) {
+    throw new Error('the shell did not republish the moved bank (' +
+      (b.banks.shutdown_rods || {}).max_steps + ' vs ' + moved.now + ') — check 3 cannot run');
+  }
+  if (sd2.hi === sd.hi) {
+    throw new Error('the rod lane full scale did NOT follow the bank: it stayed at ' + sd.hi +
+      ' while the plant own max_steps went ' + moved.was + ' -> ' + moved.now +
+      '. That is a scale CAPTURED once, which is the mechanism #707 forbids — pwr2_engine.js ' +
+      'BANK() is a function for this exact reason.');
+  }
+  if (sd2.hi > moved.now) {
+    throw new Error('the rod lane followed the bank past it: top ' + sd2.hi + ' on a ' +
+      moved.now + '-step bank');
+  }
+
+  // ---- leg B: the rod-limit margin, where its full scale is a claim ----------------------
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_zero_power' +
+                  '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await pinLanes(['rod_margin']);
+  var c = await readLanes();
+  var bankB = (c.banks.control_rods || {}).max_steps;
+  var mar = c.lanes.rod_margin;
+  if (!mar) throw new Error('the Rod Limit Margin lane did not draw as a LANE');
+  log.push('Hot Standby: power ' + c.power.toFixed(3) + ' %, margin ' + c.margin.toFixed(1) +
+           ' steps of a ' + bankB + '-step bank, lane "' + mar.text + '"');
+  if (Math.abs(c.margin - bankB) > 0.5) {
+    throw new Error('precondition: below the 5 % applicability floor the engine publishes the ' +
+      'margin as the whole bank, and it reads ' + c.margin + ' against ' + bankB +
+      ' — this leg asserts a lane top against a channel at full scale');
+  }
+  if (mar.hi !== bankB) {
+    throw new Error('Rod Limit Margin reads its full scale (' + c.margin.toFixed(1) + ' of ' +
+      bankB + ') and its lane is drawn to ' + mar.hi + ' — the reading cannot reach the top of ' +
+      'its own lane (#707; the lane was declared to the retired ' + c.retired + '-step bank)');
+  }
+  log.push('check 4: margin at full scale reaches the lane top (' + mar.hi + ' = bank ' + bankB + ')');
+
+  return log.join('\n') + '\n';
+}
+
+/* THE ROD LIMIT MARGIN INDICATIONS-TAB ROW MUST READ THE ENGINE'S OWN BANK, LIVE (#707) — the
+ * same fix as testRodLaneBankScale's, on a DIFFERENT rendering path. That check reads the rod
+ * TREND-CHART lane's drawn top; this one reads the Rod Limit Margin ROW's own scanner-detail
+ * prose in the Indications tab ("Indicating range 0 steps to 627 steps."), built by
+ * indicationFacts() (ui/app.js) through bankScale() rather than the generated manual
+ * reference's static [0, 912] (ui/manual_data.js — the RETIRED engine's 912-fine-step drive).
+ * A one-off Playwright probe proved the fix at the time — reading the row's
+ * data-scanner-detail attribute, "0 steps to 912 steps" before, "0 steps to 627 steps" after —
+ * but was never committed, so nothing gates this string and it can regress silently: the same
+ * `/\(partial\)/` shape CLAUDE.md records, where a source scan cannot prove a rendered string
+ * is reachable.
+ *
+ * TWO CHECKS, and #707's own ruling makes the SECOND the one that matters — hard-coding the
+ * new literal is exactly how the old one got here, so "it says 627" is not enough:
+ *   1. NOT the retired engine's 912-step literal.
+ *   2. THE STRING FOLLOWS THE ENGINE. `RD.pwr2.kinetics.RODS.max_steps` is moved under the
+ *      running plant (the same poke testRodLaneBankScale's check 3 uses), then a Free Play
+ *      reset re-triggers buildIndications() — the row's text is built once per plant rebuild,
+ *      not per broadcast, so the poke alone changes nothing on screen until the plant rebuilds.
+ *      A captured 627 passes check 1 and fails this one.
+ *
+ * PROVED BY INJECTION, 2026-09-11: pointing indicationFacts() at `ind.range` (the generated
+ * static [0, 912]) instead of bankScale() reds check 1, reading "0 steps to 912 steps"; a
+ * literal 627 in bankScale()'s place passes check 1 and reds check 2 — the string never moves
+ * when the bank does.
+ */
+async function testRodLimitMarginIndicationRange(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power' +
+                  '&run=1&dev=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await page.click('[data-tab="indications"]');
+  await page.waitForTimeout(600);
+
+  function readDetail() {
+    return page.evaluate(function () {
+      var row = document.querySelector('#indicationsList .num-line[data-ser="rod_margin"]');
+      return row ? row.getAttribute('data-scanner-detail') : null;
+    });
+  }
+
+  var before = await readDetail();
+  if (!before) {
+    throw new Error('no Rod Limit Margin row (data-ser="rod_margin") in the Indications tab, or it carries no data-scanner-detail');
+  }
+  if (/\b912\b/.test(before)) {
+    throw new Error('Rod Limit Margin\'s indicating range still reads the retired engine\'s 912-step literal: "' + before + '"');
+  }
+  var m = /Indicating range 0 steps to (\d+) steps/.exec(before);
+  if (!m) {
+    throw new Error('Rod Limit Margin\'s scanner detail carries no "Indicating range 0 steps to N steps." sentence: "' + before + '"');
+  }
+  var shipped = parseFloat(m[1]);
+  if (!(shipped > 0)) throw new Error('parsed a non-positive bank (' + shipped + ') from: "' + before + '"');
+  log.push('shipped: "' + before + '" (bank ' + shipped + ' steps)');
+
+  /* ---- the discriminator: move the ONE place the bank is defined, let a broadcast publish
+   * it (indicationFacts() reads `latest`, not a live function, so the row text will not move
+   * until the NEXT rebuild sees a `latest` that already carries the moved bank), then rebuild
+   * the tab through a real Free Play reset — the path a player's own Reset takes, not a
+   * synthetic hook. */
+  var moved = await page.evaluate(function (factor) {
+    var R = window.RD.pwr2.kinetics.RODS, was = R.max_steps;
+    R.max_steps = Math.round(was * factor);
+    return { was: was, now: R.max_steps };
+  }, 2.5);
+  await page.waitForTimeout(1500);      // >= one broadcast, so `latest` carries the moved bank
+  await page.click('#mainMenuBtn');
+  await page.waitForTimeout(400);
+  if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission to reset the plant');
+  await page.click('[data-mfree]');
+  await waitBoardLive(page, 20000);
+  await page.click('[data-tab="indications"]');
+  await page.waitForTimeout(600);
+
+  var after = await readDetail();
+  log.push('bank ' + moved.was + ' -> ' + moved.now + ' steps, plant reset through Free Play: "' + after + '"');
+  var m2 = /Indicating range 0 steps to (\d+) steps/.exec(after || '');
+  if (!m2) {
+    throw new Error('Rod Limit Margin lost its indicating-range sentence after the bank moved: "' + after + '"');
+  }
+  var movedRead = parseFloat(m2[1]);
+  if (movedRead === shipped) {
+    throw new Error('the indicating range did NOT follow the bank: it stayed at ' + shipped +
+      ' steps while RD.pwr2.kinetics.RODS.max_steps went ' + moved.was + ' -> ' + moved.now +
+      '. That is a range CAPTURED once (a hard-coded 627), the exact mechanism #707 forbids.');
+  }
+  if (movedRead !== moved.now) {
+    throw new Error('the indicating range followed the bank to the wrong number: row reads ' +
+      movedRead + ', plant published ' + moved.now);
+  }
+  log.push('range follows the engine: ' + shipped + ' -> ' + movedRead + ' steps, matching the moved bank exactly');
+  return log.join('\n') + '\n';
+}
+
 async function testCssTransitions(page) {
   var log = [];
   var url = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_full_power&run=1&dev=1';
@@ -1920,6 +4321,673 @@ async function testCssTransitions(page) {
   return log.join('\n') + '\n';
 }
 
+/* START A WALKTHROUGH AND LAND ON ITS CARD — the three-step dance every walkthrough check in
+ * this file repeats. `start_checklist` alone is not enough: the run card is drawn behind
+ * `cklState.view === 'run'`, a UI-local flag only `startChecklist()` sets, so the Walkthroughs
+ * tab's own entry has to be clicked. It is clicked THROUGH THE PAGE rather than by
+ * `page.click`, because a leg whose preconditions are unmet wears `.ckl-gated` and is HIDDEN —
+ * Playwright's actionability check waits for visibility and times out, while the delegated
+ * `data-ckl-start` listener at document.body does not care (measured: pwr_startup, 26 polls
+ * against a hidden button). */
+async function startWalkthrough(page, procId) {
+  var started = await page.evaluate(function (p) {
+    try {
+      var svc = globalThis.RD.__dev.service();
+      svc.attentionStops = false;
+      svc.handleCommand({ action: 'stop_checklist' });
+      var r = svc.handleCommand({ action: 'start_checklist', procedure_id: p });
+      return { ok: !(r && r.type === 'error'), msg: r && r.message };
+    } catch (e) { return { ok: false, msg: String(e) }; }
+  }, procId);
+  if (!started.ok) throw new Error('fixture: start_checklist ' + procId + ' failed — ' + started.msg);
+  await page.click('#tabbar [data-tab="checklists"]');
+  await page.waitForSelector('[data-ckl-start="' + procId + '"]', { timeout: 15000, state: 'attached' });
+  await page.evaluate(function (p) { document.querySelector('[data-ckl-start="' + p + '"]').click(); }, procId);
+  await page.waitForFunction(function () {
+    var b = document.querySelector('#tabbar button.on');
+    return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step.ckl-active');
+  }, { timeout: 20000, polling: 200 });
+}
+
+/* #687 — THE WALKTHROUGH PANEL'S CHROME. Four owner complaints (2026-09-09 playtest sheet §A),
+ * every one of them a claim about what is DRAWN and WHERE, so every one of them invisible to
+ * every Node runner in this repo.
+ *
+ * ON THE FLICKER, SAID PLAINLY: the filed mechanism — `renderInstructorInner` falling through to
+ * a later branch on a broadcast with no `s.instructor.checklist` — DID NOT REPRODUCE.
+ * `s.instructor.checklist` was non-null on 308 of 308 broadcasts across a full ride (step
+ * advances, five speed changes, pause/resume cycles) and `#instrRole` read "Walkthrough" on all
+ * 1108 sampled frames with its opacity, visibility and box unmoved. What the same sweep DID
+ * measure is below, and both halves are pinned here:
+ *
+ *   - `#instrRole`'s TEXT NODE was destroyed and recreated on EVERY broadcast — 207 records
+ *     against 208 broadcasts — because `setInstrRole` assigned `textContent` unguarded. That is
+ *     a 10 Hz (20 Hz on the transient cadence) rebuild of the exact node the owner reports
+ *     blinking, and it is the only per-broadcast writer in that header. Change-guarded now.
+ *   - `#clock` carried `animation: pulse 2s infinite` (opacity 1.0 <-> 0.6) for as long as the
+ *     plant ran: 576 opacity transitions over 50 s, sampled per animation frame. THAT is "other
+ *     UI elements like the time keep doing the same", and it is not a walkthrough defect at all.
+ *
+ * A source scan cannot settle any of this: the heading's absence is a computed `display`, the
+ * button order is two rectangles, and an animation is a resolved `animationName`. */
+async function testWalkthroughPanelChrome(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  /* THE CLOCK FIRST, BEFORE ANY WALKTHROUGH — it is a free-play defect and pinning it inside a
+   * walkthrough would let a future change hide it behind the checklist branch. */
+  var clk = await page.evaluate(function () {
+    var c = document.getElementById('clock');
+    var out = { running: c.classList.contains('running'), accel: c.classList.contains('accel'),
+                anim: getComputedStyle(c).animationName, opacity: getComputedStyle(c).opacity,
+                color: getComputedStyle(c).color };
+    /* the SAME element with `running` taken off, so "the running clock is coloured" is a
+     * difference rather than a reading of whatever the clock is coloured anyway */
+    c.classList.remove('running');
+    out.offColor = getComputedStyle(c).color;
+    if (out.running) c.classList.add('running');
+    /* --running resolved through the cascade, so the assertion names the token the fix chose
+     * rather than a hex literal copied into a test */
+    var probe = document.createElement('span');
+    probe.style.color = 'var(--running)';
+    document.body.appendChild(probe);
+    out.runningToken = getComputedStyle(probe).color;
+    probe.remove();
+    return out;
+  });
+  if (!clk.running) throw new Error('#687 control: the clock is not marked running, so this check would pass on a stopped plant');
+  if (clk.anim !== 'none') {
+    throw new Error('#687: the running clock is animating ("' + clk.anim + '") — an indefinite ' +
+      'opacity fade on a always-on readout is the "the time keeps appearing and disappearing" report');
+  }
+  /* AND THE THING THAT REPLACED THE FADE IS ASSERTED, not just the fade's absence (quality pass,
+   * 2026-09-11). PROVED HOLLOW by injection: with only the `animationName !== 'none'` test above,
+   * deleting `.clock.running { color: var(--running) }` left this check GREEN — so the running
+   * plant's only remaining cue on the clock could go silently and the gate would agree. #687's
+   * own argument for removing the animation is that "a steady colour carries the same fact with
+   * no motion"; that colour is half the fix and it now reds if it goes. `.accel` legitimately
+   * wins by source order, so the token is only demanded when the clock is not accelerated —
+   * either way the running clock must not read the same as a stopped one. */
+  if (clk.color === clk.offColor) {
+    throw new Error('#687: the running clock is not distinguished from a stopped one — both read ' +
+      clk.color + '. The pulse animation was removed in favour of a steady colour; with the colour ' +
+      'gone too there is no running cue on the clock at all.');
+  }
+  if (!clk.accel && clk.color !== clk.runningToken) {
+    throw new Error('#687: the running clock reads ' + clk.color + ', not the board\'s --running ' +
+      'green (' + clk.runningToken + ') — .clock.running lost the colour that replaced the fade');
+  }
+  log.push('clock: running, animationName ' + clk.anim + ', opacity ' + clk.opacity +
+           ', colour ' + clk.color + ' (--running ' + clk.runningToken + '; stopped reads ' + clk.offColor + ')');
+
+  /* ---- setInstrRole's change guard, MEASURED WHERE THE FUNCTION IS ACTUALLY CALLED --------
+   *
+   * Not during the walkthrough, and that is the whole point: the walkthrough branch no longer
+   * calls setInstrRole at all (it goes headerless), so a churn assertion taken there is HOLLOW —
+   * PROVED by injection, 2026-09-11: reverting the guard to the unconditional write left this
+   * check GREEN at 0 mutations, because nothing was writing. The FOLLOW branch
+   * (`setInstrRole(prF.title)`) runs once per broadcast for as long as a procedure is followed,
+   * which is the state the unguarded write was measured in (207 records / 208 broadcasts). */
+  var followed = await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    svc.attentionStops = false;
+    var r = svc.handleCommand({ action: 'start_follow', procedure_id: 'pwr_startup' });
+    return { ok: !(r && r.type === 'error'), msg: r && r.message };
+  });
+  if (!followed.ok) throw new Error('#687 fixture: start_follow pwr_startup failed — ' + followed.msg);
+  await page.waitForTimeout(700);
+  await page.evaluate(function () {
+    var W = globalThis.__wtChrome = { mut: 0, bc: 0, role: null };
+    var r = document.getElementById('instrRole');
+    W.role = r.textContent;
+    new MutationObserver(function (recs) { W.mut += recs.length; })
+      .observe(r, { childList: true, characterData: true, subtree: true });
+    globalThis.RD.__dev.service().subscribe(function () { W.bc++; });
+  });
+  await page.waitForTimeout(2200);
+  var churn = await page.evaluate(function () { return globalThis.__wtChrome; });
+  if (churn.bc < 8) {
+    throw new Error('#687 control: only ' + churn.bc + ' broadcasts landed in 2.2 s — the plant is ' +
+      'not ticking, so the churn check could not fail');
+  }
+  if (!churn.role || churn.role === 'Instructor') {
+    throw new Error('#687 control: the follow branch did not name the procedure in the header ' +
+      '("' + churn.role + '"), so setInstrRole is not the per-broadcast writer this measures');
+  }
+  if (churn.mut > 2) {
+    throw new Error('#687: the persona role node was rewritten ' + churn.mut + ' times over ' +
+      churn.bc + ' broadcasts (ceiling 2) — setInstrRole is writing textContent unguarded');
+  }
+  log.push('role node under follow ("' + churn.role + '"): ' + churn.mut + ' mutations over ' +
+           churn.bc + ' broadcasts');
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_follow' }); });
+  await page.waitForTimeout(400);
+
+  await startWalkthrough(page, 'pwr_heatup');
+  await page.waitForTimeout(900);
+
+  var r = await page.evaluate(function () {
+    function box(sel) {
+      var el = document.querySelector(sel); if (!el) return null;
+      var rc = el.getBoundingClientRect();
+      return { top: Math.round(rc.top), bottom: Math.round(rc.bottom), h: Math.round(rc.height),
+               text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40) };
+    }
+    var persona = document.querySelector('#instructorCard .persona');
+    return {
+      role: (document.getElementById('instrRole') || {}).textContent,
+      personaDisplay: persona ? getComputedStyle(persona).display : null,
+      instrBody: box('#instructorCard .instr-body'),
+      instrLog: box('#instrLog'),
+      cklBtns: box('#cklBtns'),
+      stopInBtns: !!document.querySelector('#cklBtns [data-ckl-stop]'),
+      stopInCard: !!document.querySelector('#cklRun [data-ckl-stop]'),
+      why: box('.ckl-active .ckl-why'),
+      whyLbl: box('.ckl-active .ckl-why-lbl'),
+      ackRow: box('.ckl-active .ckl-ack-row'),
+      stepTxt: box('.ckl-active .ckl-txt'),
+    };
+  });
+  /* positive control: the card really is drawn, with a why on the active step — without this
+   * every "is A below B" test below passes vacuously on a panel that rendered nothing */
+  if (!r.stepTxt || !r.why || !r.ackRow || !r.instrBody) {
+    throw new Error('#687 control: the active walkthrough step did not render its text/why/buttons — ' +
+                    JSON.stringify(r));
+  }
+
+  /* ---- item 1a: no "Walkthrough" heading, and no empty strip left behind ---------------- */
+  if (/walkthrough/i.test(r.role || '') || r.personaDisplay !== 'none') {
+    throw new Error('#687 item 1: the persona header is still drawn during a walkthrough — role "' +
+      r.role + '", display ' + r.personaDisplay);
+  }
+  log.push('header: persona display ' + r.personaDisplay + ' (role text parked at "' + r.role + '")');
+
+  /* ---- item 2: End walkthrough at the bottom of the SPACE, not of the card -------------- */
+  if (!r.cklBtns || !r.stopInBtns || r.stopInCard) {
+    throw new Error('#687 item 2: the End-walkthrough row is not in #cklBtns — ' +
+      'inBtns=' + r.stopInBtns + ' inCard=' + r.stopInCard);
+  }
+  if (r.cklBtns.top < r.instrLog.bottom) {
+    throw new Error('#687 item 2: the End-walkthrough row (top ' + r.cklBtns.top + ') is ABOVE the ' +
+      'transcript (bottom ' + r.instrLog.bottom + ') — it is at the bottom of the card, not of the space');
+  }
+  /* THE EFFECT IS THE ASSERTION, AND TWO MECHANISMS CAN DELIVER IT (quality pass, 2026-09-11).
+   * This test is right and stays; only its error message was wrong, because it blamed
+   * `margin-top: auto` — which it cannot see.
+   *
+   * MEASURED THREE WAYS, each restored:
+   *   - `margin-top: auto` deleted            -> GREEN, IDENTICAL numbers (921 / 931 / 889). The
+   *     row is at the floor because `.instr-log` is `flex: 1 1 0` and eats every free pixel; auto
+   *     margins only take what flex-grow left over, and computed marginTop is `0px` at viewport
+   *     heights 950, 1200, 760 and 640.
+   *   - `.instr-log` dropped to `flex: 0 0 auto` -> GREEN. Now the auto margin DOES absorb the
+   *     free space (96 / 282 / 14 px at those heights) and holds the row down on its own.
+   *   - BOTH removed                          -> RED, "floats 97 px above the panel floor".
+   *
+   * So this reds when NEITHER reaches the row, which is the right bar: the owner asked for the
+   * button at the bottom of the space, not for a particular declaration. Do not narrow it to one
+   * mechanism — that is how a check starts pinning a stylesheet instead of a layout. */
+  if (r.instrBody.bottom - r.cklBtns.bottom > 24) {
+    throw new Error('#687 item 2: the End-walkthrough row floats ' +
+      (r.instrBody.bottom - r.cklBtns.bottom) + ' px above the panel floor (ceiling 24) — ' +
+      'nothing is pushing it down any more: #instrLog above it has stopped being the growing ' +
+      'child of .instr-body AND the row is not absorbing the free space with margin-top:auto ' +
+      '(either one alone holds it at the floor; measured, both do)');
+  }
+  log.push('End walkthrough: bottom ' + r.cklBtns.bottom + ' vs panel floor ' + r.instrBody.bottom +
+           ', below the transcript (' + r.instrLog.bottom + ')');
+
+  /* ---- item 3: Rewind + Continue BELOW the why, not above it ---------------------------- */
+  if (r.ackRow.top < r.why.bottom) {
+    throw new Error('#687 item 3: Rewind/Continue (top ' + r.ackRow.top + ') is drawn ABOVE the ' +
+      'why block (bottom ' + r.why.bottom + ')');
+  }
+  if (r.ackRow.top < r.stepTxt.bottom) {
+    throw new Error('#687 item 3: Rewind/Continue is drawn above the numbered step text');
+  }
+  log.push('buttons: step text ends ' + r.stepTxt.bottom + ' -> why ends ' + r.why.bottom +
+           ' -> Rewind/Continue at ' + r.ackRow.top);
+
+  /* ---- item 4: the why is LABELLED (landed at #692; pinned here so it cannot silently go) */
+  if (!r.whyLbl || !r.whyLbl.text) {
+    throw new Error('#687 item 4: the why block carries no visible label — it reads as another step');
+  }
+  log.push('why label: "' + r.whyLbl.text + '"');
+
+  /* ---- the header comes back, and the row goes, when the run ends ----------------------- */
+  await page.evaluate(function () { document.querySelector('#cklBtns [data-ckl-stop]').click(); });
+  await page.waitForTimeout(700);
+  var after = await page.evaluate(function () {
+    var b = document.getElementById('cklBtns'), p = document.querySelector('#instructorCard .persona');
+    return { personaDisplay: p ? getComputedStyle(p).display : null,
+             role: (document.getElementById('instrRole') || {}).textContent,
+             btnsH: b ? Math.round(b.getBoundingClientRect().height) : null,
+             btnsHtml: b ? b.innerHTML.length : null };
+  });
+  if (after.personaDisplay === 'none' || !after.role) {
+    throw new Error('#687 item 1: the persona header did not come back when the walkthrough ended — ' +
+      JSON.stringify(after));
+  }
+  if (after.btnsH !== 0 || after.btnsHtml !== 0) {
+    throw new Error('#687 item 2: the End-walkthrough row outlived the run (' + after.btnsH + ' px, ' +
+      after.btnsHtml + ' chars) — it is a sibling of the card now and has to be torn down by name');
+  }
+  log.push('teardown: header back as "' + after.role + '", button row emptied');
+  return log.join('\n') + '\n';
+}
+
+/* #656 — THE ACKNOWLEDGE BUTTON ON A STEP WITH NO PREDICATE.
+ *
+ * Reported from the third layman playthrough (2026-09-07): an observation step that completes on
+ * its dwell showed no done-when line, no Acknowledge and no Next, and `[data-ckl-check]` returned
+ * ZERO until the player pressed "Show all details" — an unrelated button. From the player's seat
+ * the leg could not be finished.
+ *
+ * IT DOES NOT REPRODUCE ON THIS TREE, and the reason is dated: #660 items 17-18 (2026-09-08, the
+ * day after the report) made Rewind + Continue unconditional on every active step, where the card
+ * used to draw the acknowledge row only while `ck.awaiting_ack`. Swept 2026-09-11 in headless
+ * Edge over 53 steps of three legs (pwr_raise_power, pwr_startup, pwr_tmi2_incident), including
+ * the six steps in the pwr2 pool that carry NO acceptance predicate at all: the button is drawn
+ * 86x23 on every one of them, outside any collapsible block.
+ *
+ * So this check exists to keep it that way, and it is deliberately written against the WORST
+ * case the report names rather than against a convenient step: a step whose acceptance list is
+ * empty, read with the details at their default state, before anything is expanded. The
+ * pre-#660 conditional is what turns it red. */
+async function testObservationStepAckButton(page) {
+  var log = [];
+  var base = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1';
+  await page.goto(base, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await startWalkthrough(page, 'pwr_tmi2_incident');
+
+  /* Find the step the report is about — NO predicate, so nothing can grade it and the only way
+   * off it is the button. Derived from the running pool, never a hand-written index: the legs
+   * are re-authored constantly (#692 rewrote this one), and a pinned index would quietly drift
+   * onto a step with an acceptance and stop testing the class. */
+  var target = await page.evaluate(function () {
+    var steps = globalThis.RD.__dev.service().instructor.checklist.proc.steps;
+    for (var i = 0; i < steps.length; i++) {
+      var st = steps[i];
+      if (!st.acc && !(st.accs && st.accs.length)) return { i: i, text: String(st.text).slice(0, 60) };
+    }
+    return null;
+  });
+  if (!target) {
+    throw new Error('#656 control: pwr_tmi2_incident carries no predicate-free step any more — ' +
+      'repoint this check at a leg that does, or the class is untested');
+  }
+  log.push('target: step ' + (target.i + 1) + ' (no acceptance predicate) — "' + target.text + '"');
+
+  await page.evaluate(function (i) {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    c.idx = i;
+    for (var k = 0; k < c.done.length; k++) c.done[k] = k < i;
+  }, target.i);
+  await page.waitForTimeout(800);
+
+  var r = await page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    var mk = document.querySelector('.ckl-step.ckl-active [data-ckl-check]');
+    var rc = mk ? mk.getBoundingClientRect() : null;
+    return {
+      idx: c.idx,
+      anyCheck: document.querySelectorAll('[data-ckl-check]').length,
+      inActive: !!mk,
+      w: rc ? Math.round(rc.width) : 0, h: rc ? Math.round(rc.height) : 0,
+      disp: mk ? getComputedStyle(mk).display : null,
+      inCollapsible: !!(mk && mk.closest('details')),
+      text: mk ? mk.textContent.trim() : null,
+    };
+  });
+  if (r.idx !== target.i) {
+    throw new Error('#656 control: the card is not on the target step (' + r.idx + ' vs ' + target.i + ')');
+  }
+  if (!r.inActive || r.w <= 0 || r.h <= 0 || r.disp === 'none') {
+    throw new Error('#656: a step with no acceptance predicate drew NO usable Acknowledge/Continue ' +
+      'button before any details were expanded — ' + JSON.stringify(r) +
+      ' (this is "from a player\'s seat the leg had no way to finish")');
+  }
+  if (r.inCollapsible) {
+    throw new Error('#656: the Acknowledge/Continue button is inside a collapsible details block — ' +
+      'it is only reachable once the player expands something unrelated');
+  }
+  log.push('drawn on first paint: "' + r.text + '" ' + r.w + 'x' + r.h + ', ' + r.anyCheck +
+           ' check target(s) in the DOM, not inside a collapsible');
+
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  return log.join('\n') + '\n';
+}
+
+/* #713/#712: the 1/M plot's geometry — the letterbox, the axis gutters, and #712's
+ * general risk that this repo has no gate for, a caption or readout overflowing its own box. The
+ * panel's longest string is the prediction readout, so that is the one to stress.
+ *
+ * THE FIXTURE HAS TO BE THE PANEL'S OWN READOUT, NOT A STRING POKED INTO `#oomPred` (#724
+ * quality pass, finding 1). It used to be the latter, and after #724 item 7 that silently stopped
+ * testing anything: the panel now re-renders when a sibling row's height moves, and render()
+ * REWRITES the readout from the live fit — which, on a plant with no plotted points, is the empty
+ * string. MEASURED at the old fixture's own measurement moment: `#oomPred` empty, `display:none`,
+ * height 0, so the overflow check compared `0 > 0 + 1` (false for ever) and the letterbox check
+ * measured the geometry of a panel with NO readout at all. Both green, neither looking at the
+ * state they were written for.
+ *
+ * So this boots a SUBCRITICAL plant and plots two real points with a rod withdrawal between them,
+ * which is the only way to make the panel author a prediction itself. Everything downstream then
+ * measures the panel a player actually gets. The readout being non-empty is asserted, not assumed
+ * — that is the specific way this check went hollow, and it must not do it again quietly.
+ *
+ * `hot_zero_power`, not `hot_full_power`: above ~1e5 cps the source range secures itself and the
+ * panel refuses to plot (#641), so the old initial condition could never have produced a point. */
+async function testOneOverMGeometry(page) {
+  var log = [];
+  var url = 'http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&init=hot_zero_power&dev=1';
+  await page.goto(url, { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+
+  /* Two real points: baseline, withdraw, settle, plot again. The withdrawal is what makes the
+   * count rate move, and without a moving count rate the second point lands on top of the first
+   * and no fit exists. */
+  await page.evaluate(function () {
+    if (!(window.RD && RD.OneOverM)) return;
+    RD.OneOverM.open();
+    var b = document.querySelector('[data-oom="plot"]');
+    if (b) b.click();
+    RD.__dev.service().handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 140, speed: 'fast' });
+  });
+  await page.waitForTimeout(3000);
+  await page.evaluate(function () {
+    var b = document.querySelector('[data-oom="plot"]');
+    if (b) b.click();
+  });
+  await page.waitForTimeout(600);
+
+  var geo = await page.evaluate(function () {
+    function rect(sel) {
+      var el = document.querySelector(sel);
+      if (!el) return null;
+      var r = el.getBoundingClientRect();
+      return { w: r.width, h: r.height };
+    }
+    if (!(window.RD && RD.OneOverM)) return { error: 'RD.OneOverM missing' };
+    function overflowOf(sel) {
+      var el = document.querySelector(sel);
+      if (!el) return null;
+      return { scrollW: el.scrollWidth, clientW: el.clientWidth, scrollH: el.scrollHeight, clientH: el.clientHeight };
+    }
+    var btnOverflow = Array.prototype.map.call(document.querySelectorAll('.oom-foot .btn'), function (b) {
+      return { text: b.textContent, over: b.scrollWidth > b.clientWidth + 1 };
+    });
+    var svgEl = document.querySelector('.oom-svg');
+    return {
+      floating: !document.querySelector('.oom-win.oom-docked') &&
+                (document.getElementById('oomWin') || {}).parentNode === document.body &&
+                getComputedStyle(document.getElementById('oomWin')).position === 'fixed',
+      headCursor: getComputedStyle(document.querySelector('.oom-head')).cursor,
+      svg: rect('.oom-svg'),
+      /* The plotted-DATA rectangle, in CSS px: .oom-frame is the rect render() draws at
+       * (L, T, W-L-R, H-T-B), so measuring it measures the letterbox and the axis gutters
+       * together, in the one number the owner actually sees. */
+      frame: rect('.oom-frame'),
+      viewBox: svgEl ? svgEl.getAttribute('viewBox') : null,
+      pred: overflowOf('#oomPred'),
+      predText: (document.querySelector('#oomPred') || {}).textContent || '',
+      predRect: rect('#oomPred'),
+      win: overflowOf('.oom-win'),
+      btnOverflow: btnOverflow,
+    };
+  });
+
+  if (geo.error) throw new Error('#713: ' + geo.error);
+  /* FLOATING AND DRAGGABLE, ALWAYS *(OWNER RULING, 2026-09-13: "let's make the card floating and
+   * dragable like it was originally")*. This assertion used to require the OPPOSITE — that the
+   * panel had docked — under #724 item 7, and before that #660 item 13 docked it into the bottom
+   * row. Both are superseded. It is asserted three ways because "not docked" alone would pass on a
+   * panel that had simply failed to mount: parented to <body>, position:fixed, and a title bar
+   * whose cursor still says `move`. THE CURSOR IS THE HALF THE OWNER NAMED — "dragable" — and it is
+   * the half a re-dock would silently take away, because the dock's own rule set
+   * `.oom-head { cursor: default }` and its pointerdown handler returned early. */
+  if (!geo.floating) {
+    throw new Error('#713: the 1/M panel is not a floating window — it must be parented to <body> ' +
+      'with position:fixed and no dock class (OWNER RULING 2026-09-13: "let\'s make the card ' +
+      'floating and dragable like it was originally"). Do not re-add a dock without a newer ruling.');
+  }
+  if (geo.headCursor !== 'move') {
+    throw new Error('#713: the 1/M title bar reads cursor:' + geo.headCursor + ', not `move` — the ' +
+      'window is not advertising that it can be dragged, which is the half of the ruling the owner ' +
+      'named explicitly. The retired dock set `cursor: default` here; check nothing has re-added it.');
+  }
+
+  /* THE PRECONDITION, AND IT IS THE POINT (#724 quality pass, finding 1). Every check below reads
+   * a panel whose readout is supposed to be the longest string it draws. When the readout is
+   * EMPTY it is `display:none` with a zero box, and each of those checks then passes on a state
+   * it was not written for — the overflow test compares 0 against 0, and the letterbox test
+   * measures a cell 47 px taller than the one a player with a prediction on screen is looking at.
+   * That is exactly how this check went hollow once. Assert it rather than hoping. */
+  if (!/predicted criticality|insufficient trend/.test(geo.predText) ||
+      !(geo.predRect && geo.predRect.h > 0)) {
+    throw new Error('#713/#712: the 1/M readout is empty (' + JSON.stringify(geo.predText) +
+      ', height ' + (geo.predRect ? Math.round(geo.predRect.h) : 'null') + ') — the two points this ' +
+      'fixture plots did not produce one, so every geometry check below would be measuring a panel ' +
+      'with NO readout row. Check that the rod withdrawal moved the source-range count rate and ' +
+      'that the plot button was accepted; do NOT satisfy this by writing #oomPred directly, which ' +
+      'is the no-op this assertion exists to prevent (render() rewrites it from the live fit).');
+  }
+  log.push('oom-svg box: ' + Math.round(geo.svg.w) + 'x' + Math.round(geo.svg.h) +
+           ', readout "' + geo.predText + '" ' + Math.round(geo.predRect.h) + 'px tall');
+
+  geo.btnOverflow.forEach(function (b) {
+    if (b.over) throw new Error('#713/#712: button "' + b.text + '" overflows its box in the 1/M panel');
+  });
+  if (geo.pred && geo.pred.scrollW > geo.pred.clientW + 1) {
+    throw new Error('#713/#712: the prediction readout overflows its box horizontally: scrollWidth ' +
+      geo.pred.scrollW + ' > clientWidth ' + geo.pred.clientW);
+  }
+  if (geo.win && geo.win.scrollW > geo.win.clientW + 1) {
+    throw new Error('#713/#712: the 1/M panel overflows its own box horizontally: scrollWidth ' +
+      geo.win.scrollW + ' > clientWidth ' + geo.win.clientW);
+  }
+
+  // Regression floor: measured 177px at the default --bottomrow-h (230px) after #713; was
+  // ~141px before it (300px-wide dock, buttons in a footer below the svg). Set well below
+  // the measurement so ordinary tuning doesn't retrip it.
+  if (geo.svg.h < 160) {
+    throw new Error('#713: the 1/M plot is only ' + Math.round(geo.svg.h) + 'px tall ' +
+      'height — expected >= 160px (measured 177px after #713; ~141px before it)');
+  }
+  log.push('no overflow in the 1/M panel; plot height ' + Math.round(geo.svg.h) + 'px >= 160px floor');
+
+  /* PASS 2 (#713). Two things pass 1 left on the table, and one invariant each.
+   *
+   * (a) THE LETTERBOX. Kept, though the mechanism that caused it is retired: the DOCKED svg was
+   * stretched into a grid cell of the column's aspect, and preserveAspectRatio then padded whatever
+   * the viewBox did
+   * not match: 33.2px of dead width at the default row height before this, and the waste SWAPS
+   * AXIS as the operator drags (96.5px of dead HEIGHT at --bottomrow-h 350px). So the viewBox
+   * now follows the cell (one_over_m.js syncViewBox) and the assertion is on the waste itself,
+   * not on a width — a width floor would have passed happily on a box whose gain went into a
+   * taller letterbox instead. Measured after: 0.2px x 0.0px. 24px is a long way below the
+   * 33.2px this replaces and a long way above rounding. */
+  /* Absence is a RED here, not a skip. Both assertions below read elements render() draws, so
+   * "no .oom-frame" and "no viewBox" are exactly the states in which a guarded `if` would have
+   * reported a clean pass over nothing. */
+  var vb = (geo.viewBox || '').trim().split(/\s+/).map(Number);
+  if (!geo.svg || vb.length !== 4 || !vb.every(isFinite)) {
+    throw new Error('#713 pass 2: the 1/M svg has no usable viewBox (' + geo.viewBox + ') — ' +
+      'the letterbox check cannot run, which is not the same as passing.');
+  }
+  if (!geo.frame || !(geo.frame.w > 0)) {
+    throw new Error('#713 pass 2: .oom-frame (the plotted-data rectangle render() draws) is absent or ' +
+      'zero-width — the geometry checks below have nothing to measure. render() is not drawing.');
+  }
+  {
+    var scale = Math.min(geo.svg.w / vb[2], geo.svg.h / vb[3]);
+    var waste = { x: geo.svg.w - vb[2] * scale, y: geo.svg.h - vb[3] * scale };
+    if (waste.x > 24 || waste.y > 24) {
+      throw new Error('#713 pass 2: the 1/M plot is letterboxed inside its own box — ' +
+        Math.round(waste.x) + 'px of dead width and ' + Math.round(waste.y) + 'px of dead height ' +
+        '(svg box ' + Math.round(geo.svg.w) + 'x' + Math.round(geo.svg.h) + ', viewBox ' + geo.viewBox +
+        '). The viewBox must follow the cell aspect; ceiling 24px, measured 0.2x0.0 after the fix ' +
+        'and 33.2x0.0 before it.');
+    }
+    log.push('letterbox waste ' + waste.x.toFixed(1) + 'x' + waste.y.toFixed(1) + 'px (ceiling 24)');
+  }
+
+  /* (b) THE AXIS GUTTERS. L/R/T/B are viewBox units reserved for the tick and axis text and
+   * were 15.3% of the width. .oom-frame is the rectangle the data is actually drawn in, so it
+   * is the one measurement neither failure fools: a wider box whose gain went to the
+   * letterbox, or a filled box whose gain went to margins. 291px measured after pass 2, 212px
+   * after pass 1; the 250px floor sat between them with room for ordinary tuning.
+   *
+   * PASS 3 (#713 CI red) gave width back to the alarm panel — see the dock-width comment in
+   * ui/shell.css — and .oom-frame fell with it: 291px -> 243px, measured (same 1500x950
+   * viewport this gate uses). 220px is the new floor: below pass 3's real value (243px, room
+   * for ordinary tuning) and still above pass 1's 212px, so a regression all the way back to
+   * pass 1's un-adaptive viewBox still reddens here. Do not raise this back toward 250
+   * without the SAME Linux-metrics alarm-panel measurement pass 3 did — that is the whole
+   * reason it moved. */
+  if (geo.frame.w < 220) {
+    throw new Error('#713 pass 3: the 1/M plot draws its data in only ' + Math.round(geo.frame.w) +
+      'px of width at the default row height — expected >= 220px (measured 243px after #713 pass 3; ' +
+      '291px after pass 2; 212px after pass 1). Check the letterbox AND the L/R gutters in one_over_m.js, ' +
+      'or ui/shell.css\'s .oom-win.oom-docked dock width if the alarm panel needs it back.');
+  }
+  log.push('plotted data rect ' + Math.round(geo.frame.w) + 'x' + Math.round(geo.frame.h) + 'px (width floor 220)');
+
+  /* (c) THE ALARM PANEL UNDER LOAD. Pass 2 takes width back off this panel and hands it to the
+   * plot, which is only safe if the panel still renders every tile at a real alarm load — and
+   * pass 1's numbers were all taken on a plant showing "— no active alarms —", which is not a
+   * state anyone operates in. So: raise them for real (a large LOCA through the app's own
+   * ?inject= path; 18 tiles when this was written), then push EVERY label the registry can
+   * produce through a live tile and check it fits the column the layout gives it.
+   *
+   * Reading the labels off RD.PWR_PROTECTION.alarms rather than listing them here is the point.
+   * A hand-maintained list of "the long ones" is a gate that tests the list, and it goes
+   * quietly stale the first time someone writes a longer alarm. The binding string when this
+   * landed was "Overtemperature Limit Approaching" at 179.3px of min-content, against the
+   * 184px track minimum in ui/shell.css.
+   *
+   * PASS 3 (#713, the CI-red this pass fixes): the registry sweep above only ever measures RAW
+   * labels, but the board does not always render one raw — the `reactor_trip` tile COMPOSES
+   * `label + ' — ' + tripCauseLabel(reason)` at runtime (ui/app.js ~line 3075), and that
+   * composed string is not a member of RD.PWR_PROTECTION.alarms at all, so the sweep above
+   * could never generate it. It caught the CI overflow ("Reactor Trip — Overtemperature
+   * Delta-T (OTΔT)", widest word "Overtemperature") only because a DIFFERENT raw registry
+   * label — "Overtemperature Limit Approaching" — happens to share that same widest word by
+   * coincidence; a metrics change or a registry edit that removed that one label would have
+   * left this gate silently trusting an unmeasured string. So: read the real cause map off
+   * `RD.__dev.tripCauses()` (the ?dev=1 hook added alongside this fix, not a hand-copy of
+   * ui/app.js's TRIP_CAUSE table — a copy is exactly the staleness this comment is about) and
+   * push every `reactor_trip` label × every cause, composed exactly the way app.js composes
+   * it, into the same sweep as the raw labels below. */
+  await page.goto(url + '&inject=large_loca&ff=300&run=1', { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  /* NO DOCK TO RE-OPEN ANY MORE, and the alarm panel is the better for it. This leg used to have
+   * to open the 1/M dock before measuring, because the dock took 370px out of this row and an
+   * alarm panel measured without it was 652px against the 392px a player actually got. The
+   * 2026-09-13 ruling made the plot a floating window, so it takes nothing from this row at any
+   * time and the panel measured here is the only width there is. */
+  await page.waitForFunction(function () {
+    return document.querySelectorAll('.alarm-tile').length >= 8;
+  }, { timeout: 20000, polling: 200 }).catch(function () { /* the throws below carry the state */ });
+  if (await page.evaluate(function () { return !!document.querySelector('.oom-win.oom-docked'); })) {
+    throw new Error('#713: something re-docked the 1/M panel — it is a floating window by owner ' +
+      'ruling (2026-09-13) and must never take width from the alarm row again.');
+  }
+
+  var al = await page.evaluate(function () {
+    var tiles = document.querySelectorAll('.alarm-tile');
+    if (!tiles.length) return { n: 0 };
+    var defs = (window.RD && RD.PWR_PROTECTION && RD.PWR_PROTECTION.alarms) || [];
+    var labels = [];
+    var nComposed = 0;
+    defs.forEach(function (d) {
+      if (d.label_learning) labels.push(d.label_learning);
+      if (d.label_industry) labels.push(d.label_industry);
+      // #713 pass 3: the reactor_trip tile is the one case app.js appends live text to a
+      // registry label (' — ' + the first-out trip cause) rather than rendering the label
+      // alone — mirror that composition here, off the SAME map the board renders from
+      // (RD.__dev.tripCauses(), the ?dev=1 hook), so the sweep measures what the board can
+      // actually put in a tile instead of only what the registry states verbatim.
+      if (d.id === 'reactor_trip') {
+        var causes = (window.RD && RD.__dev && RD.__dev.tripCauses && RD.__dev.tripCauses()) || {};
+        Object.keys(causes).forEach(function (k) {
+          if (d.label_learning) { labels.push(d.label_learning + ' — ' + causes[k]); nComposed++; }
+          if (d.label_industry) { labels.push(d.label_industry + ' — ' + causes[k]); nComposed++; }
+        });
+      }
+    });
+    function over(el) { return el ? el.scrollWidth - el.clientWidth : 0; }
+    var organic = [];
+    Array.prototype.forEach.call(tiles, function (t) {
+      var d = Math.max(over(t), over(t.querySelector('.label')), over(t.querySelector('.meta')));
+      if (d > 1) organic.push({ txt: (t.querySelector('.label') || {}).textContent, d: d });
+    });
+    var t0 = tiles[0], lab0 = t0.querySelector('.label');
+    var keep = lab0 ? lab0.textContent : null;
+    var worst = { d: -1, txt: '' }, widest = 0;
+    if (lab0) {
+      labels.forEach(function (str) {
+        lab0.textContent = str;
+        void t0.offsetWidth;
+        var d = Math.max(over(t0), over(lab0));
+        if (t0.scrollWidth > widest) widest = t0.scrollWidth;
+        if (d > worst.d) worst = { d: d, txt: str };
+      });
+      lab0.textContent = keep;
+    }
+    var stack = document.querySelector('.alarm-stack'), panel = document.querySelector('.alarm-panel');
+    return {
+      n: tiles.length, nLabels: labels.length, nComposed: nComposed, organic: organic, worst: worst,
+      widestTile: widest,
+      tileW: Math.round(t0.getBoundingClientRect().width),
+      panelW: Math.round(panel.getBoundingClientRect().width),
+      stackOver: over(stack), panelOver: over(panel),
+    };
+  });
+
+  /* A count guard, because everything below it is vacuously green on a quiet board — the
+   * "assert an absence and pin a non-event" trap. 18 tiles when written; 8 is the floor. */
+  if (!al.n || al.n < 8) {
+    throw new Error('#713 pass 2: the alarm-load check ran against ' + (al.n || 0) + ' alarm tiles — ' +
+      'the large-LOCA injection is meant to raise >= 8 (18 when this was written). The check is ' +
+      'vacuous until that is fixed; it is not evidence the panel fits its content.');
+  }
+  /* A second count guard for pass 3's own half: `RD.__dev.tripCauses()` missing (dev hook
+   * renamed, or the check run without &dev=1) would silently drop back to raw-labels-only —
+   * the exact "caught it by accident" state this pass exists to end — with no other symptom.
+   * 46 composed strings (23 causes x 2 registers) when this landed. */
+  if (!al.nComposed) {
+    throw new Error('#713 pass 3: zero composed reactor_trip strings were swept — RD.__dev.tripCauses() ' +
+      'returned nothing. The check has fallen back to raw registry labels only, which is the coincidence ' +
+      'this pass was written to remove.');
+  }
+  if (al.organic.length) {
+    throw new Error('#713 pass 2: ' + al.organic.length + ' of ' + al.n + ' live alarm tiles overflow their ' +
+      'box at a ' + al.panelW + 'px alarm panel — worst "' + al.organic[0].txt + '" by ' + al.organic[0].d + 'px');
+  }
+  if (al.worst.d > 1) {
+    throw new Error('#713 pass 2: alarm label "' + al.worst.txt + '" overflows its tile by ' + al.worst.d +
+      'px at a ' + al.panelW + 'px alarm panel (' + al.tileW + 'px columns). Either the panel gave up too ' +
+      'much width to the 1/M dock, or the .alarm-stack track minimum is below this label min-content.');
+  }
+  if (al.stackOver > 1 || al.panelOver > 1) {
+    throw new Error('#713 pass 2: the alarm panel overflows HORIZONTALLY with ' + al.n + ' alarms up ' +
+      '(stack +' + al.stackOver + 'px, panel +' + al.panelOver + 'px) at ' + al.panelW + 'px wide — the ' +
+      'two-column stack is meant to fall back to one column, not scroll sideways.');
+  }
+  log.push(al.n + ' live alarms, ' + al.nLabels + ' registry labels + ' + al.nComposed +
+    ' composed reactor_trip strings swept through a tile: none overflow at a ' +
+    al.panelW + 'px panel (' + al.tileW + 'px columns, widest label ' + al.widestTile + 'px)');
+  return log.join('\n') + '\n';
+}
+
 async function main() {
   fs.mkdirSync(SCRATCH, { recursive: true });
   var fallback = path.join(SCRATCH, 'ui-screenshot-fallback.log');
@@ -1951,6 +5019,10 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'chart-settings.log'), csLog);
     var mlLog = await testMonitorList(page);
     fs.writeFileSync(path.join(SCRATCH, 'monitor-list.log'), mlLog);
+    var mbLog = await testMainMenuButton(page);
+    fs.writeFileSync(path.join(SCRATCH, 'main-menu-button.log'), mbLog);
+    var msLog = await testMissionMenuShape(page);
+    fs.writeFileSync(path.join(SCRATCH, 'mission-menu-shape.log'), msLog);
     var mcLog = await testMissionCloseResumes(page);
     fs.writeFileSync(path.join(SCRATCH, 'mission-close-resumes.log'), mcLog);
     var rsLog = await testRunStartMark(page);
@@ -1961,6 +5033,10 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'esf-arm-buttons.log'), ebLog);
     var rfLog = await testRefusalReachesTheScanner(page);
     fs.writeFileSync(path.join(SCRATCH, 'refusal-scanner.log'), rfLog);
+    var tbLog = await testTripBlockPopoverStaysOffTheBoard(page);
+    fs.writeFileSync(path.join(SCRATCH, 'trip-block-overlay.log'), tbLog);
+    var tdLog = await testTripBlockPopoverDismissesOnOutsideClick(page);
+    fs.writeFileSync(path.join(SCRATCH, 'trip-block-dismiss.log'), tdLog);
     var dbLog = await testDiagBundle(page);
     fs.writeFileSync(path.join(SCRATCH, 'diag-bundle.log'), dbLog);
     var hpLog = await testHeldPlantDialog(page);
@@ -1971,8 +5047,36 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'adv-fail-panel.log'), afLog);
     var hsLog = await testHeldSpeedClick(page);
     fs.writeFileSync(path.join(SCRATCH, 'held-speed-click.log'), hsLog);
+    var wpLog = await testWalkthroughEventPause(page);
+    fs.writeFileSync(path.join(SCRATCH, 'walkthrough-event-pause.log'), wpLog);
+    var whLog = await testWalkthroughHoldReleasedOnExit(page);
+    fs.writeFileSync(path.join(SCRATCH, 'walkthrough-hold-released-on-exit.log'), whLog);
+    var wgLog = await testWatchGlowRendered(page);
+    fs.writeFileSync(path.join(SCRATCH, 'watch-glow-rendered.log'), wgLog);
+    var srLog = await testSpeedRungGlowRendered(page);
+    fs.writeFileSync(path.join(SCRATCH, 'speed-rung-glow.log'), srLog);
+    var prLog = await testPauseResumeSpeed(page);
+    fs.writeFileSync(path.join(SCRATCH, 'pause-resume-speed.log'), prLog);
+    var hnLog = await testHeldNotePauseResume(page);
+    fs.writeFileSync(path.join(SCRATCH, 'held-note-pause-resume.log'), hnLog);
     var ctLog = await testCssTransitions(page);
     fs.writeFileSync(path.join(SCRATCH, 'css-transitions.log'), ctLog);
+    var pgLog = await testPzrGaugeFollowsProgram(page);
+    fs.writeFileSync(path.join(SCRATCH, 'pzr-gauge-program.log'), pgLog);
+    var phLog = await testPzrGaugeHighLevelCaution(page);
+    fs.writeFileSync(path.join(SCRATCH, 'pzr-gauge-high-level.log'), phLog);
+    var tgLog = await testTavgGaugeDeviationCaution(page);
+    fs.writeFileSync(path.join(SCRATCH, 'tavg-gauge-deviation.log'), tgLog);
+    var rlLog = await testRodLaneBankScale(page);
+    fs.writeFileSync(path.join(SCRATCH, 'rod-lane-bank-scale.log'), rlLog);
+    var rmLog = await testRodLimitMarginIndicationRange(page);
+    fs.writeFileSync(path.join(SCRATCH, 'rod-limit-margin-indication-range.log'), rmLog);
+    var wcLog = await testWalkthroughPanelChrome(page);
+    fs.writeFileSync(path.join(SCRATCH, 'walkthrough-panel-chrome.log'), wcLog);
+    var oaLog = await testObservationStepAckButton(page);
+    fs.writeFileSync(path.join(SCRATCH, 'observation-step-ack-button.log'), oaLog);
+    var oomLog = await testOneOverMGeometry(page);
+    fs.writeFileSync(path.join(SCRATCH, 'one-over-m-geometry.log'), oomLog);
     fs.writeFileSync(path.join(SCRATCH, 'ui-screenshot-summary.log'), summary.join('\n') + '\n');
     console.log('E2E UI verification: PASS (' + (ENGINES.length * VIEWS.length) + ' screenshots)');
   } finally {
@@ -1991,8 +5095,30 @@ if (require.main !== module) {
   module.exports = { startServer: startServer, dismissMission: dismissMission,
                      testChartSettings: testChartSettings, testMonitorList: testMonitorList,
                      testMissionCloseResumes: testMissionCloseResumes, testRunStartMark: testRunStartMark,
+                     testMissionMenuShape: testMissionMenuShape,
+                     testMainMenuButton: testMainMenuButton,
                      testHeldPlantDialog: testHeldPlantDialog, testHeldSpeedClick: testHeldSpeedClick,
                      testSaveLoadRefusal: testSaveLoadRefusal, testCssTransitions: testCssTransitions,
+                     testPzrGaugeFollowsProgram: testPzrGaugeFollowsProgram,
+                     testPzrGaugeHighLevelCaution: testPzrGaugeHighLevelCaution,
+                     testTavgGaugeDeviationCaution: testTavgGaugeDeviationCaution,
+                     testRodLaneBankScale: testRodLaneBankScale,
+                     testRodLimitMarginIndicationRange: testRodLimitMarginIndicationRange,
+                     testWalkthroughPanelChrome: testWalkthroughPanelChrome,
+                     testObservationStepAckButton: testObservationStepAckButton,
+                     startWalkthrough: startWalkthrough,
+                     testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
+                     testTripBlockPopoverDismissesOnOutsideClick: testTripBlockPopoverDismissesOnOutsideClick,
+                     waitBoardLive: waitBoardLive,
+                     testWalkthroughHoldReleasedOnExit: testWalkthroughHoldReleasedOnExit,
+                     testHeldNotePauseResume: testHeldNotePauseResume,
+                     /* Renamed by #713 when the 1/M dock was retired; the old name stayed here and
+                      * made `require()` of this file throw, which is the ONLY way the injection
+                      * harness this block exists for is reached. The gate runs the file directly
+                      * and never noticed. Found adjudicating #743/#744 (2026-09-13). */
+                     testOneOverMGeometry: testOneOverMGeometry,
+                     testWatchGlowRendered: testWatchGlowRendered,
+                     testSpeedRungGlowRendered: testSpeedRungGlowRendered,
                      port: function () { return PORT; } };
 } else {
   main().catch(function (e) {

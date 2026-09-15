@@ -257,6 +257,15 @@
   // Time constants are per indication, by what the thing physically is — a single global
   // number was wrong in both directions. Anything not listed is undamped: booleans, status
   // flags, and the noise:0 instruments are already smooth.
+  //
+  // RULED (#670) — OWNER RULING, 2026-09-09: "A." A walkthrough acceptance grades the UNDAMPED
+  // transmitter, not the number drawn here, so on a fast transient the tile can sit a point the
+  // wrong side of the limit a step quotes — measured, `STEAM GENERATOR LEVEL below 55 %` ticked
+  // with the tile displaying 56 %, a 1 percentage point gap (it is rate x time constant). Known
+  // and accepted; the 58 acceptances across the seven walkthroughs that grade on a damped
+  // channel are all covered. Do NOT retune these constants, or regrade on the drawn value, to
+  // close it — that trades Hard Rule 1, instruments versus truth, for cosmetic agreement.
+  // github.com/TH462/Reactor-Dynamics/issues/670#issuecomment-5604928260
   var DISPLAY_DAMP = {
     // RTDs in a damped bypass manifold — heaviest damping on the board
     tavg: 3.5, thot: 3.5, tcold: 3.5,
@@ -534,6 +543,31 @@
     for (var i = 0; i < g.length; i++) if (g[i].id === id) return g[i];
     return null;
   }
+  /* A BANK'S FULL SCALE, READ LIVE — the same resolution ui/app.js `bankScale` took for the
+   * trend chart's rod lanes *(#707, OWNER RULING 2026-09-11: "All as recommended")*, applied
+   * here because the rod-step readouts carried the identical stale literal.
+   *
+   * The number is NEVER typed on this side of the wire, and that includes the CURRENT number:
+   * hard-coding 627 is exactly how the retired engine's 912 got here in the first place. Both
+   * engines publish `max_steps` on every `control_state.rod_groups[]` record (pwr2_shell.js via
+   * its `bankSteps()` accessor, pwr_engine.js via getControlState), so the scale travels WITH
+   * the data and a replayed recording is drawn on the scale of the engine that produced it.
+   * The ladder below only ever falls through to a live read of a published table; the last-ditch
+   * literal fires when no plant module loaded at all.
+   *
+   * ⚠ typeof FIRST. `isFinite(null)` is TRUE and a JSON round trip writes a dead channel out as
+   * null (the #555 trap), which would land a plausible zero on the denominator. */
+  function bankFullScale(g) {
+    var n = g && g.max_steps;
+    if (typeof n === 'number' && isFinite(n) && n > 0) return n;
+    /* `RD` here is the module-scope alias bound at :17 — the SAME object as `window.RD`, so
+     * tables attached by a plant module that loads after this file are visible through it. */
+    var k = RD && RD.pwr2 && RD.pwr2.kinetics && RD.pwr2.kinetics.RODS;
+    if (k && typeof k.max_steps === 'number' && k.max_steps > 0) return k.max_steps;
+    var c = RD && RD.PWR_CONFIG && RD.PWR_CONFIG.rods;
+    if (c && typeof c.max_steps === 'number' && c.max_steps > 0) return c.max_steps;
+    return 627;
+  }
   // ---- IN-OUT lamps and rod speed indication (#306) --------------------------------
   // A real Westinghouse board carries *"Rod speed indication and the IN-OUT lights"*
   // among its rod controls, and the lamps are the AUTOMATIC system's voice as much as
@@ -581,8 +615,7 @@
   // Buttons that press an AUTOMATION CHANNEL by id — disabled when the running engine's
   // kernel carries no such channel (#506: the boron panel and rod AUTO on PWR2, whose
   // channels list is empty). Keyed off the snapshot, like every disable here.
-  var CHANNEL_BUTTONS = { imrqp6com2b: 'boron_conc', imrqp6avzkw: 'boron_conc',
-                          bdBoronSample: 'boron_conc' };
+  var CHANNEL_BUTTONS = { imrqp6com2b: 'boron_conc', imrqp6avzkw: 'boron_conc' };
   // Controls whose machinery is declared by a control_state field's PRESENCE: absent field =
   // the running engine has no such system (pwr always publishes these; #506).
   var RHR_BUTTONS = { ims3wg27iif: 1, ims3xfeye1q: 1 };
@@ -691,6 +724,20 @@
     // so making the operator hold a button for the entire travel was the wrong affordance.
     // One click starts it, the button holds a yellow in-motion light while it travels, a
     // second click stops it wherever it is, and the latch clears itself at the limit. ---
+    /* THE ROD CUE GRAMMAR, AND THIS BANK ONLY GETS HALF OF IT: yellow = the bank is MOVING, on
+     * EITHER bank; red = your press did NOTHING, control bank ONLY.
+     *
+     * *(OWNER RULING, 2026-09-14: "Do not alarm or color code the shutdown bank since it's used
+     * differently")* — which excludes the red refusal cue and the alarm. NARROWED the same day to
+     * let the yellow through: *(OWNER, 2026-09-14: "The shutdown bank button and indication should
+     * be yellow when in motion.")*.
+     *
+     * `fc7fae62` gave these two a `rodCue: {group, direction}` property so the crossed-out
+     * REFUSED-PRESS cue covered both banks. It is DELETED rather than left inert: a property with
+     * no consumer reads as a working feature to the next person who greps for it, and this one
+     * would read as "the shutdown bank has a refusal cue" three lines from the ruling that says it
+     * must not. Nothing else ever read it — `pressableIds`/`actionableIds` filter on press/hold
+     * only — so the deletion changes those lists by nothing. */
     imrpnyaxsb3: { press: function () { toggleLatchRod('shutdown_rods', 1); }, warn: function () { return latchActive('shutdown_rods', 1); } },
     imrpnyf37ju: { press: function () { toggleLatchRod('shutdown_rods', -1); }, warn: function () { return latchActive('shutdown_rods', -1); } },
     // --- Steam dump: AUTO / OPEN / CLOSE ---
@@ -805,11 +852,15 @@
     //     flux); the engine ignores a blocked switch, so active() reflects the true state
     //     either way. Lit = energized/monitoring. Secure it during the SR→IR handoff to
     //     clear the 1e5 cps high-flux trip (pwr_control 'sr_high') before it scrams the ascent. ---
-    // --- Boron grab sample (batch-dose rework): draws an RCS sample; the lab posts the
-    //     authoritative ppm after the turnaround (instruments.boron_sample/_pending).
-    //     Lit while the lab is working. Doses auto-sample on completion; this button is
-    //     for when the books may be stale (post-ECCS, freehand Bor/Dil). ---
-    bdBoronSample: { press: function () { cmd({ action: 'take_boron_sample' }); }, active: function (s) { return !!IN(s).boron_sample_pending; } }
+    // --- The boron grab-sample button was REMOVED from the board 2026-09-11, #698
+    //     *(OWNER RULING, 2026-09-10, option B)*. The CHEM readout below it (ims2jva1ff5) is
+    //     now a LIVE continuous reading off `boron_analyzer` rather than a lab result, so a
+    //     control whose only job was to ask for a number the tile already shows is a
+    //     DESIGN_CRITERIA question-4 orphan. The tile goes via DOC_REMOVE, not from here.
+    //
+    //     THE ENGINE COMMAND `take_boron_sample` STAYS AND IS NOT ORPHANED: control_kernel.js
+    //     auto-issues it after every completed dose to re-baseline the totalizer, so deleting
+    //     the action would break the dose re-anchor. Remove the button, not the action. ---
   };
 
   // Driver-supplied tiles NOT in the generated board_data.js. EMPTY as of the V2 diagram
@@ -1022,7 +1073,15 @@
       // is 1460-1528 x 560-585, immediately LEFT of the feed-rate number. That is also where
       // it belongs: the note above says the button and the number must stay together, and
       // side by side is a stronger form of together than the stacked pair they were before.
-      left: 1460, top: 560, label: 'RESTORE', width: 68, height: 25, color: '#8ba4b6', fontSize: 12 },
+      //
+      // 2026-09-14 (#755 item 9, OWNER: "Shift the SG FEED RESTORE button down slightly so it fits
+      // nicely. also shift the gpm input down a little."): 560 -> 565. MEASURED at 1500x950, board
+      // scale 0.808: at 560 this button's top edge was rendered y 441.9 and the AUTO/MAN/OFF row's
+      // bottom was 441.9 — touching, with 8.1 px of empty slot below it. The slot is authored
+      // 560..595 and the button is 25 tall, so 565 centres it with 5 px above and 5 below, and
+      // puts its centre (577.5) on the feed-rate number's new one (577, DOC_PATCHES below). The
+      // pairing note above still binds: THE TWO MOVE TOGETHER.
+      left: 1460, top: 565, label: 'RESTORE', width: 68, height: 25, color: '#8ba4b6', fontSize: 12 },
     // (The ROD CONTROL card's top-right corner held a rod controller status word here from
     // #306 until 2026-08-03, when the owner removed it as redundant against the IN-OUT
     // lamps. The reasoning, and where each of its states is still shown, is at the
@@ -1087,7 +1146,44 @@
       name: 'Letdown status: ISOLATED on the 17 % pressurizer low-level cut  ·  sim: control_state.letdown_isolated',
       // rAnchor, so `left` is the RIGHT edge: card right (1435) minus 5. `top` is the card's
       // new bottom (780) minus 25, i.e. the band the height patch below adds.
-      left: 1430, top: 755, value: '—', color: '#5aad7c', fontSize: 12, rAnchor: true }
+      left: 1430, top: 755, value: '—', color: '#5aad7c', fontSize: 12, rAnchor: true },
+    /* THE RESIDUAL HEAT REMOVAL COOLDOWN RATE *(OWNER RULING, 2026-09-10, option A, #700:
+     * relabel the typed box and put "a live readout of instruments.tavg_rate beside it in
+     * °F/hr", so the player sees the CONSEQUENCE of the number they type)*. The complaint the
+     * ruling answers is that the HX SPLIT box "reads as a raw percentage with no visible
+     * effect" — this is the visible effect.
+     *
+     * A `readout`, not a text+value pair, because it sits in the outer ECCS panel rather than
+     * inside a card: the kind travels its caption and its reading as ONE item, so the two
+     * cannot drift apart, and it needs no parent card to hang a caption on.
+     *
+     * GEOMETRY, MEASURED, not computed from authored coordinates. The slot is 1155..1245 x
+     * 730..785 — bounded above by the ECCS card (imrzpfd4qox, which is 125 tall where its two
+     * neighbours are 175, and that shortfall IS the slot), left by the RHR card's right edge at
+     * 1150, right by CHARGING at 1250, below by the outer panel's own bottom at 785. Swept at
+     * the pinned 1400x900 against every rendered tile: the only thing overlapping that band is
+     * the outer panel itself. 1155,735 at 90x45 therefore lands its bottom on 780, flush with
+     * the RHR and CHARGING cards beside it, with the panel's 5 px margin below.
+     *
+     * IT IS BESIDE THE CARD AND NOT IN IT BECAUSE THE CARD HAS NO ROOM AND CANNOT BE GIVEN
+     * ANY. Inside, the band under the number box is 775..780. Growing the card downward is the
+     * move that looks obvious and is wrong: the board's bounding box ends at 785 and the stage
+     * scale derives from it, so a taller card shrinks every tile on the board — the regression
+     * DOC_REMOVE's `imrzmlyafa3` entry exists to undo.
+     *
+     * `labelSize: 10` is measured too, and is the reason the full ruled words fit: at 11 px
+     * "COOLDOWN RATE" renders 89.7 in a 90 px tile, which is flush with the border; at 10 px it
+     * is 81.6, with 8 px to spare. The reading stays at 15 px so the NUMBER is not shrunk to
+     * pay for the caption.
+     *
+     * THE UNIT IS RETURNED BY THE VALUES FUNCTION, not left to this authored string, because
+     * "/hr" has to survive the SI toggle — see the note there. The authored value is what the
+     * first paint shows before the first snapshot arrives. */
+    { id: 'bdRhrCooldownRate', kind: 'readout',
+      name: 'Heatup / cooldown rate  ·  sim: instruments.tavg_rate (indicated Tavg, differentiated and damped), °C/hr in',
+      left: 1155, top: 745, width: 90, height: 45,
+      label: 'COOLDOWN RATE', labelSize: 10, value: '0', unit: 'F/hr',
+      color: '#9fb3c4', fontSize: 15 }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -1142,11 +1238,20 @@
     /* the AUX FEED THROTTLE setter went with its tile (#591 item 2) — see EXTRA_ITEMS */
     /* the PZR AUX SPRAY setter went with its tile (owner direction 2026-08-31) — the
      * `set_aux_spray` engine door stays, see the EXTRA_ITEMS note. */
-    // RHR heat-exchanger flow split, % — the cooldown-RATE knob (Q_rhr scales with it,
-    // pwr_thermal.js:90-93). Deliberately NOT an alignment command: the control layer
-    // excludes set_rhr_hx from the 'rhr' ESF arm's disarming command list, so trimming
-    // the rate does not drop the auto-alignment (pwr_control.js:556-558). numberAuto()
-    // therefore leaves this box editable even while RHR AUTO is lit.
+    /* RHR heat-exchanger flow split, % — the cooldown-RATE knob, captioned HX SPLIT on the
+     * board since #700 with the COOLDOWN RATE readout (`bdRhrCooldownRate`, EXTRA_ITEMS)
+     * beside it, so the consequence of what is typed here is visible on the same panel.
+     *
+     * THE CITATION HERE WAS THE RETIRED ENGINE'S (#700). It read `pwr_thermal.js:90-93`. The
+     * live term is `pwr2_rhr.js:321`:
+     *     duty = max(0, avail) x hx_fraction x UA x (Thot - ccw_temp_c)
+     * — so the split scales the duty linearly, which is why the box is a rate knob at all, and
+     * why 100 % onto a hot plant is a shock rather than a setting.
+     *
+     * Deliberately NOT an alignment command: the control layer excludes set_rhr_hx from the
+     * 'rhr' Engineered Safety Feature arm's disarming command list, so trimming the rate does
+     * not drop the auto-alignment (pwr_control.js). numberAuto() therefore leaves this box
+     * editable even while RHR AUTO is lit. */
     ims3xu86zm5: { set: function (v) { cmd({ action: 'set_rhr_hx', pct: v }); }, get: function (s) { var f = CS(s).rhr_hx_fraction; return f == null ? 100 : f * 100; } },
     // Circulating-water inlet temperature. Sits next to the COND VAC readout because vacuum
     // is the variable it moves: raise the water temperature and the condenser can only pull
@@ -1174,6 +1279,15 @@
     // --- ECCS (merged HPI/LPI): ONE pump on a dedicated RWST-sourced train (owner ruling
     //     2026-07-22, pwr_primary.js:56-60) — NOT the charging pump doing double duty, which
     //     is what justifies the two systems reading on different flow scales. ---
+    /* ECCS INJECTION flow, captioned INJ FLOW on the board since #705. THIS FUNCTION IS
+     * CORRECT AND IS DELIBERATELY UNCHANGED: `hpi_flow` is emergency injection only
+     * (pwr2_true_state), so a shutdown cooldown reads 0 GPM for the whole of Mode 4 and
+     * Mode 5 — not a dead channel, an honest zero. Measured with RHR aligned at a 25 % split:
+     * rhr_active true, eccs_mode 'rhr', rhr_running true, hpi_flow 0.
+     * Do not "fix" this by folding Residual Heat Removal circulation into it: that flow is a
+     * lineup FRACTION with no pump hydraulics behind it, so it has no gallons-per-minute
+     * figure to fold, and putting one here on GPM_HPI's injection scale would render the
+     * plant's 1,000 gpm floor as roughly 324 gpm — a number meaning nothing on either side. */
     ims3w1cb6jc: function (s) { return dQ((IN(s).hpi_flow || 0) * GPM_HPI); },   // ECCS flow (true hpi_flow)
     ims3w1lj7n6: function (s) { return dP(IN(s).hpi_discharge_pressure || 0); },  // ECCS discharge (true pump head)
     // Which alignment that one pump is in: RHR when the hot-leg suction valve is open, else
@@ -1307,12 +1421,19 @@
       if (!isFinite(per) || Math.abs(per) > 9999) return { text: '∞', unit: 's' };
       return { text: String(Math.round(per)), unit: 's' };
     },
-    // Rod steps. The unit comes from the group's OWN max_steps rather than the authored
-    // "/912": the scale is the engine's declaration, and the PWR2 shell publishes its native
-    // 0..200 bank — printing 200 under a /912 label would claim a rod position that does not
-    // exist. On the current engine max_steps IS 912, so the rendered unit is unchanged.
-    imrpk4pjcpd: function (s) { var g = rodGroup(s, 'control_rods'); return g ? { text: String(g.steps), unit: '/' + (g.max_steps || 912) } : '0'; },
-    imrpnzfsfcx: function (s) { var g = rodGroup(s, 'shutdown_rods'); return g ? { text: String(g.steps), unit: '/' + (g.max_steps || 912) } : '0'; },
+    /* Rod steps. The unit comes from the group's OWN max_steps rather than the authored "/912":
+     * the scale is the engine's declaration, so printing a bank's steps under a label from a
+     * different engine would claim a rod position that does not exist.
+     *
+     * ⚠ THE FALLBACK WAS THE RETIRED ENGINE'S NUMBER, UNDER A COMMENT ASSERTING IT WAS CURRENT.
+     * These read `|| 912` beneath a line saying "on the current engine max_steps IS 912" — true
+     * of `pwr_engine` and false of the shipped plant, whose bank is 627. It never actually
+     * rendered, because both engines publish `max_steps` on every rod-group record; but a stale
+     * literal sitting behind a comment that claims it is live is precisely how the same number
+     * reached the trend chart's rod lanes and drew a bank on its stop at 69 % of the lane (#707).
+     * Resolved through `bankFullScale`, which types no bank size at all — see its comment. */
+    imrpk4pjcpd: function (s) { var g = rodGroup(s, 'control_rods'); return g ? { text: String(g.steps), unit: '/' + bankFullScale(g) } : '0'; },
+    imrpnzfsfcx: function (s) { var g = rodGroup(s, 'shutdown_rods'); return g ? { text: String(g.steps), unit: '/' + bankFullScale(g) } : '0'; },
     imrppee04aj: function (s) { return r0(IN(s).turbine_rpm); },                                        // turbine rpm
     // ---- steam-side indications, authored in the 2026-08-05 diagram (#371) ----
     // Read positionally off the board: each sits beside the valve it reports, and the
@@ -1361,13 +1482,53 @@
     // ADV position (#371). No VALUE_UNIT entry — % is unit-neutral, and a conversion
     // layer that touched it would be worse than none (board_check pins that).
     bdAdvPct: function (s) { return r0(IN(s).adv_valve); },
-    // Boron chem sample (lab result). The V1 item carried no unit so the text baked one in;
-    // the V2 item is authored with unit 'ppm', which rendered "734 PPM ppm". Return the
-    // unit explicitly instead: 'ppm' with a number, blank for the non-numeric states, so
-    // "SAMPLING…" and "—" don't get a stray unit hung off them either.
+    /* RHR COOLDOWN RATE (#700). `tavg_rate` is the indicated Tavg differentiated and damped
+     * (engines/pwr/pwr_instruments.js), published in °C/hr, and it is the SAME channel the
+     * `cooldown_rate_high` / `heatup_rate_high` alarms act on at ±55.6 °C/hr — so the player
+     * now watches the number the annunciator is watching, which nothing on the board showed.
+     *
+     * MEASURED live on PWR2 rather than assumed from the retired plant: the channel is present
+     * and non-null on the shipped engine (5.65 °C/hr on a freshly booted hot plant still
+     * settling). On a plant holding temperature it wanders about ±3 °F/hr — it is a derivative,
+     * so that band is its noise floor and not the plant moving.
+     *
+     * `dTd`, NOT `dT` — a RATE of temperature converts x9/5 with NO 32° offset (the `tempd`
+     * family). Getting this wrong would print a cooling plant as heating.
+     *
+     * THE UNIT IS BUILT HERE rather than left to the item's authored `unit: 'F/hr'`, and the
+     * reason is the SI toggle: `uStr` returns the family's unit for the active mode ('F' in US,
+     * 'C' in SI) and the '/hr' is appended to whichever it is. Left to the authored string the
+     * tile would print "C" in SI mode and lose the per-hour entirely, or print "F/hr" over a
+     * °C/hr number. Same idiom as ui/app.js's own series formatter for this channel. */
+    bdRhrCooldownRate: function (s) {
+      var v = IN(s).tavg_rate;
+      if (v == null) return { text: '—', unit: '' };
+      return { text: dTd(v), unit: uStr('tempd', 'F') + '/hr' };
+    },
+    /* Boron chemistry — a LIVE CONTINUOUS READING since 2026-09-11 *(OWNER RULING,
+     * 2026-09-10, option B, #698)*, where it used to print the lab's grab-sample result
+     * (`boron_sample` / `SAMPLING…` while `boron_sample_pending`).
+     *
+     * IT READS THE CHANNEL THE DOSE CONTROLLER ALREADY TRUSTS, which is what makes this a
+     * display change and not a new instrument: `instruments.boron_analyzer` is the
+     * `boron_conc` channel's process variable and its setpoint-capture source
+     * (pwr_control.js), and it has been published all along with `pvDisplay:false` keeping it
+     * off the Automate tab. MEASURED on this tree, PWR2 at full power diluting 88.4 ppm over
+     * 60 plant-minutes: max |analyzer − true| = 2.08 ppm, typically 1.0–1.5 ppm, against the
+     * 88 ppm the grab sample was stale by at the end of the same hour.
+     *
+     * THE FIELD NAME IS `boron_analyzer`, NOT `boron`, and that is worth stating because
+     * pwr2_instruments declares the channel as id `boron` (src `boron_ppm`) — the shell
+     * renames it on the way into the snapshot. MEASURED rather than read off either file:
+     * `getInstruments().boron` is undefined and `.boron_analyzer` is 612.19 against a true
+     * 612.27 on a settled plant.
+     *
+     * The unit is returned EXPLICITLY rather than left to the item's authored `unit: 'ppm'`,
+     * which is the V1/V2 trap this function was already carrying: the text used to bake the
+     * unit in and the authored item added a second one, rendering "734 PPM ppm". Blank unit
+     * on the dash so a dead channel does not get a stray 'ppm' hung off it. */
     ims2jva1ff5: function (s) {
-      if (IN(s).boron_sample_pending) return { text: 'SAMPLING…', unit: '' };
-      var v = IN(s).boron_sample;
+      var v = IN(s).boron_analyzer;
       return v != null ? { text: String(r0(v)), unit: 'ppm' } : { text: '—', unit: '' };
     },
     // Condensate polisher: there is no polisher model, so this cannot report resin condition.
@@ -1643,7 +1804,30 @@
     // at power. Reading the delivered flow fixes both halves of item 7 at once: the impeller
     // now tracks feed rate during normal load-follow as well, which it never did — the
     // commanded speed sits at 100 whatever the plant is doing.
-    imrobnzlha1: function (s) { return pumpProps((IN(s).hpi_flow || 0) > 1e-4, IN(s).hpi_flow || 0, 50); },   // eccs pump (RWST — cold)
+    /* …AND THE SAME PUMP HAS A SECOND JOB THIS LINE COULD NOT SEE (#699). RHR has no pump of
+     * its own — it is a suction ALIGNMENT on this shared ECCS train (see :607) — so through
+     * the whole of Mode 4 and Mode 5, which is the back half of the authored round trip, the
+     * only pump art on the board was drawn STOPPED while residual heat removal carried the
+     * plant. Measured 2026-09-10, PWR2 cold_shutdown with RHR aligned and the heat-exchanger
+     * split at 25 %: `rhr_active` true, `eccs_mode` 'rhr', `hpi_flow_normalized` 0 — because
+     * on PWR2 `hpi_flow` is EMERGENCY INJECTION only (pwr2_true_state.js:400) and a cooldown
+     * injects nothing.
+     *
+     * IT GATES ON DELIVERY, NOT ON THE ALIGNMENT BUTTON, which is the whole point of the note
+     * above: `rhr_running` is the engine's own `valve_open && powered`, published as a status
+     * passthrough. Keying this on `rhr_valve_open` would have re-created the exact defect the
+     * paragraph above removed from three other pumps — a rotor turning on a dead bus.
+     *
+     * The MAGNITUDE stays the injection flow. RHR circulation is a lineup fraction in this
+     * model, not a curve (pwr2_rhr.js:54: "NO PUMP HYDRAULICS"), and the board's gpm figures
+     * are an authored display scale over normalized internals rather than a modelled flow —
+     * so there is no honest RHR number to hand a flow-proportional dash speed. On the RHR
+     * branch the impeller turns at the same nominal rate the other lineup-fraction pumps use. */
+    imrobnzlha1: function (s) {
+      var f = IN(s).hpi_flow || 0;
+      var rhr = IN(s).rhr_running === true;
+      return pumpProps(f > 1e-4 || rhr, f > 1e-4 ? f : (rhr ? 0.6 : 0), 50);
+    },   // eccs pump (RWST — cold; also the RHR train)
     imrobph7xrq: function (s) { var f = IN(s).fw_flow || 0; return pumpProps(f > 1e-3, f, fwTemp(s)); },      // feed pump (feedwater — tracks load)
     imrobpq4a70: function (s) { var p = pumpRec(s, 'rcp'); return pumpProps(IN(s).rcp_running, p ? p.flow_pct / 100 : 1, IN(s).tcold); },  // rcp (cold-leg coolant — live)
     // Charging: the pump runs at a steady speed and the FLOW is set by the charging valve, so
@@ -2105,7 +2289,7 @@
   // scram at a fifth of the indicated trip.
   //
   // Armed, the tile reads as the startup ladder the plant actually enforces:
-  //   green to P-10 (10 %) | amber P-10 → 25 % — block the startup trips HERE | red above.
+  //   green to P-10 (8 % on PWR2, read live) | amber P-10 → 25 % — block HERE | red above.
   // The amber band is not decoration: it is the window in which blocking is permitted, so
   // its width is the operator's margin. Blocking the trip collapses it and the tile reopens
   // to the at-power scale; dropping back below P-10 auto-reinstates the block and the band
@@ -2115,7 +2299,17 @@
     var b = TILE_BANDS.imrzl4b7g9m;
     var lim = limitingArmedTrip('power_range', 'high', s);
     if (!lim || !(lim.setpoint < b.tripHi)) return null;   // backstop only → authored bands stand
-    var p10 = (_PROT.trip_block_permissive || {}).setpoint;
+    /* THE ENGINE'S OWN PERMISSIVE WINS, same rule as the setpoint above (#753). `_PROT` is the
+     * RETIRED plant's table and its `trip_block_permissive` is 10 %; PWR2 opens the block window
+     * at P-10 = 8 %, so the amber band — which IS the operator's margin — was drawn 2 points
+     * narrow on the shipped plant, and the tile invited the press later than the board accepts
+     * it. `permissive_pct` is published per blockable row through `trip_block_status`
+     * (pwr2_shell.js:1693); a row without one leaves the static datum standing, bit-identical
+     * for the retired engine and every old recording. */
+    var tbsPerm = s && s.rps_state && s.rps_state.trip_block_status;
+    var p10 = (tbsPerm && lim.id && tbsPerm[lim.id] && typeof tbsPerm[lim.id].permissive_pct === 'number')
+      ? tbsPerm[lim.id].permissive_pct
+      : (_PROT.trip_block_permissive || {}).setpoint;
     if (p10 == null || !isFinite(p10) || !(p10 < lim.setpoint)) p10 = lim.setpoint;
     // normHi === alarmHi collapses the grey "acceptable" band to nothing, so the region
     // above P-10 reads amber rather than as more headroom.
@@ -2139,7 +2333,7 @@
    * THE RULE. A red edge is drawn only where the running plant publishes an ARMED row. `armed`
    * is the protection module's own flag, not a permissive re-tested here — re-testing P-7 on the
    * board would be the second copy of a threshold, which is the defect this whole change is
-   * about. An unarmed high row (below the at-power permissive P-7, 10 % power) has no line to
+   * about. An unarmed high row (below the at-power permissive P-7, 8 % power — #753) has no line to
    * draw, so the top region collapses at the meter top.
    *
    * NO NOTE, deliberately. pressureBand's "LO TRIP BLKD" is right there because an OPERATOR
@@ -2168,6 +2362,22 @@
     var prog = CS(s).pzr_level_program_pct;
     if (lowRow && lowRow.instrument === 'pzr_level_dev') {
       out.alarmLo = (prog != null && isFinite(prog)) ? qz(prog + lowRow.setpoint) : b.min;
+    }
+    /* ⚠ AND SO IS THE HIGH ALARM SINCE #706 (2026-09-11), for the mirror reason. `pzr_level_high`
+     * is a fixed 75 % — live, not a dark wire (proved by injection: forcing the channel to 76 %
+     * lights PZR LVL HI, 74 % leaves it clear) — but the level program runs 25 -> 61.5 %, so at
+     * the cold end the amber edge sits fifty points above a plant that is genuinely running high.
+     * Measured on the shipped Mode 5 -> Mode 3 heatup: level ran +20.4 points above a 25.00 %
+     * program (peak 45.37 %) for 11.6 of the leg's 13.4 plant-hours with this edge untouched.
+     * The new `pzr_level_dev_high` rung (+10 points, caution) lands where the annunciator
+     * actually fires, and the absolute row still CAPS it so the tile can never go amber later
+     * than PZR LVL HI itself. Without this the tile would sit in its grey "acceptable" region
+     * while the annunciator was lit — the board-vs-plant disagreement #556/#557 are the record
+     * of. A plant that publishes no program (the retired engine, an old recording) keeps its
+     * authored absolute edge untouched. */
+    var devHiRow = liveAlarmRow('pzr_level_dev_high');
+    if (devHiRow && devHiRow.instrument === 'pzr_level_dev' && prog != null && isFinite(prog)) {
+      out.alarmHi = qz(Math.min(out.alarmHi, prog + devHiRow.setpoint));
     }
     /* ⚠ AND THE NORMAL BAND IS PROGRAM-RELATIVE TOO (#598 item 11). The authored band is a flat
      * 40-70 %, which is a FULL-POWER band applied to every mode — the same inherited-constant
@@ -2235,7 +2445,8 @@
   /* THIS PLANT'S CHARGING CEILING in gpm (#516 item 11, 2026-08-29) — the pressBandMpa shape,
    * one system over. `CHARGING_MAX_GPM` is `GPM_CHARGING * _RX.charging_max` where `_RX` is
    * `RD.PWR_CONFIG.reactivity` CAPTURED AT SCRIPT LOAD, i.e. the RETIRED engine's 60 gpm.
-   * PWR2's own maximum is 30.14 gpm (180 gpm power-scaled by its declared volume basis), and
+   * PWR2's own maximum is 26.31 gpm (180 gpm power-scaled by its declared volume basis; was
+   * 30.14 gpm before #679 corrected the scale's basis mismatch), and
    * `pwr2_shell.set_charging_flow` clamps the demand to [0,1], so the top HALF of the box's
    * range was one value the player could not tell apart. A plant that publishes
    * `charging_max_gpm` gets its own ceiling; everything else — the retired engine, a partial
@@ -2904,23 +3115,360 @@
       } }
   ];
 
-  function closePop() { if (pop && pop.parentNode) pop.parentNode.removeChild(pop); pop = null; }
+  /* OUTSIDE-CLICK DISMISSAL FOR THE TRIP BLOCKS POPOVER (#690; owner playtest #675 section A,
+   * verbatim: "Trip block popup should disappear when clicking anywhere outside that popup.").
+   * This is the first click-away in the product — there was no pattern here to copy, so the
+   * three choices below are the whole design and each one is load-bearing.
+   *
+   *  1. THE LISTENER LIVES WITH THE POPOVER, NOT WITH THE BOARD. It is armed in
+   *     `toggleTripBlocks` when the panel opens and torn down in `closePop`, so there is exactly
+   *     one while a panel is up and none otherwise. That is also the unmount/remount teardown:
+   *     `onMount` already calls `closePop()`, so a board rebuild cannot leave a listener behind
+   *     on a detached stage. Nothing else has to remember to clean up.
+   *  2. THE HOST IS THE BOARD, NEVER `document`. A document-level listener fires on every piece
+   *     of chrome — the walkthrough panel, the menus, the chart — which is not what "outside
+   *     that popup" means for a panel that lives on the board. It is attached to the wrap rather
+   *     than the stage so the letterbox margin around the scaled canvas counts as outside too.
+   *  3. THE TRIP BLOCKS BUTTON IS EXEMPT, and that guard is what makes the panel openable at
+   *     all. The button toggles on 'click'; this listener runs on 'pointerdown', which fires
+   *     FIRST. Without the exemption a press on the button while the panel is up would close it
+   *     here and then the click would re-open it, so the button could never shut it — the panel
+   *     would be dismissible by every press except the one an operator would try. A press inside
+   *     the panel is exempt for the obvious reason: the rows are buttons.
+   *
+   * pointerdown rather than click so the panel goes away on the press, and in the CAPTURE phase
+   * so a handler that ever starts calling stopPropagation cannot strand it open. */
+  /* ==================== THE TRIP-BLOCK MESSAGE STATE (#738, #716) ====================
+   * *(OWNER RULING, 2026-09-13: "I don't want to add new UI elements to the main board. What if
+   * we flash the permissive button amber when there's a message and put the permissive messages
+   * and status inside the popup permissive card? When the user opens the card and then closes it
+   * the permissive card opening button stops flashing.")*
+   *
+   * NO NEW BOARD REAL ESTATE. That is the constraint, not a preference — a permissive lamp row on
+   * the board was refused. Everything lives on the TRIP BLOCKS button and inside its card.
+   *
+   * ------------------------------------------------------------------ WHAT COUNTS AS A MESSAGE
+   * ONE rule flashes: A BLOCK WENT AWAY AND THE PLAYER DID NOT DO IT. Three other candidates were
+   * measured across `pwr_startup`, `pwr_raise_power`, `pwr_lower_power` and `pwr_cooldown` driven
+   * end to end (inbox/738/incidence.js) and each is excluded on evidence, not taste:
+   *
+   *   flashes per leg                       startup  raise  lower  cooldown
+   *   (a) block dropped, no player command        0      0      0      0    <- SHIPPED
+   *   (b) blocked while its permissive gone       0      0      0      0    <- unreachable
+   *   (c) the player released it                  0      0      0      0    <- status, never a flash
+   *   (d) a block became AVAILABLE               38      0      0     14    <- DISQUALIFIED
+   *
+   * (d) IS THE ONE THAT LOOKS REASONABLE AND IS NOT. 38 flashes on a single startup, all of them
+   * the plant wandering across a permissive — power at 7.68 / 7.87 / 8.04 %, pressure at 1976 /
+   * 1974 / 1974 psia (13.62 / 13.61 / 13.61 MPa), over and over. That is rebuilt alarm fatigue.
+   *
+   * (b) CANNOT HAPPEN: the engine REVOKES a block the instant its permissive is lost
+   * (pwr2_protection.js:623-639, the #295/#507 anti-defeat law), so "blocked while the permissive
+   * is gone" cannot persist past the tick that clears it.
+   *
+   * (a) IS ZERO ON EVERY AUTHORED ROUTE — which is what an exception annunciator SHOULD score on
+   * the happy path — and fires exactly once per real event when a player deviates: MEASURED
+   * (inbox/738/deviation.js), blocking below P-11 and driving pressure back up gives exactly one
+   * drop PER ROW — two rows lose their block, so two messages, one each; blocking above P-10 and
+   * inserting the bank gives the same shape. AND IT CANNOT
+   * CHATTER: parked ON the P-11 boundary with a block that had actually taken hold, 1 drop and 0
+   * regains over 3000 broadcasts, because the revoke law only ever CLEARS and never re-places.
+   * That is the structural difference from (d), which is an availability edge and chatters by
+   * nature.
+   *
+   * ------------------------------------------------------- THIS CODE MUST NOT RE-DERIVE A LAW
+   * A DESIGN RULE FOR THIS CHANGE, and it is written here because it was learned here. The
+   * incidence harness re-derived P-10 as "power >= 10 %" against this plant's SOURCED 8 %
+   * (P10.frac = 0.08, Ginna TS Bases B 3.3.1, ML20339A221) and manufactured 16 phantom events on
+   * one leg before the constant was checked. So nothing below compares a pressure or a power to
+   * anything: the permissive arrives on the snapshot as `trip_block_status[id].permissive`, which
+   * pwr2_shell publishes from the protection module's own p10_met / p11_permit for exactly this
+   * consumer. If you find yourself typing a setpoint into this file, stop.
+   *
+   * ------------------------------------------------------------------ ACKNOWLEDGE SEMANTICS
+   * ⚠ THIS SECTION WAS REWRITTEN 2026-09-14 AND THE OLD RULE IS THE ONE YOU WILL BE TEMPTED TO
+   * RESTORE. It said "CLOSING the card acknowledges, not opening — acknowledging on open would
+   * clear a message the player has not read yet", and it was deliberate. The owner played it:
+   *
+   *   *(OWNER, 2026-09-14: "I don't like the new yellow warnings on the permissive box and the
+   *   yellow permissive button. They persist for too long even after they are relevant. The yellow
+   *   permissives button should stop being yellow after being opened. The yellow warnings on the
+   *   card should go away after being viewed.")*
+   *
+   * A CUE THAT SURVIVES BEING LOOKED AT STOPS MEANING "LOOK AT THIS". That is the whole argument,
+   * and it beats the old one: the old rule protected against clearing something unread, but the
+   * card IS the reading — there is nothing else to open — so by the time the close arrives the
+   * message has already been read, and every subsequent second of amber is the board shouting
+   * about something the player has dealt with. Two openings later it is still shouting.
+   *
+   * SO THERE ARE NOW TWO ACKNOWLEDGES, at two different grains, and they are not the same event:
+   *
+   *   THE BUTTON stops flashing THE MOMENT THE CARD IS OPEN (`tbAck`, set from refreshTripBlocks
+   *     on every refresh while the card is up — not from the close). "The open is the
+   *     acknowledgement." Setting it on every refresh rather than once at open is what makes a
+   *     message that ARRIVES while the card is open acknowledged too: the player is looking at it.
+   *
+   *   A ROW's amber clears WHEN IT HAS BEEN VIEWED (`tbSeen`), and "viewed" is: the card was open
+   *     and this row was rendered in it. The latch is recorded at render (`tbSeenPend`) and COMMITTED
+   *     AT THE CLOSE — deliberately, and this is the one place the two grains differ. Clearing a
+   *     row's amber in the same frame it is first drawn would mean the amber is never seen at all,
+   *     and the amber's whole job is to point at WHICH of the four rows lost its block. So it
+   *     stands for the viewing that is reading it, and is gone from the next opening onward. That
+   *     is what "persist for too long" was about: it used to stand for ever, across every future
+   *     opening, until the row happened to be re-blocked.
+   *
+   * WHAT CLEARING THE CUE MUST NOT CLEAR IS THE FACT. #738 exists because the plant silently
+   * revoked a block the player had placed. The row still says "RELEASED BY THE PLANT — <cause>",
+   * the status line still says what the lineup is and which rows are waiting on a permissive, and
+   * the player's own releases still carry their standing note. Only the amber goes. And a FRESH
+   * revoke after a dismissal takes the next `tbSeq`, which is higher than both `tbAck` and that
+   * row's `tbSeen` — so it flashes again, by construction. A cue that dismisses permanently would
+   * be worse than one that nags.
+   *
+   * IT CLEARS ALL OUTSTANDING MESSAGES, not one. The card shows every row at once, so opening it
+   * means "I have seen the lineup"; clearing row by row would need per-row controls inside the
+   * card, which is the new UI the ruling refused.
+   *
+   * A NEW MESSAGE AFTER AN ACKNOWLEDGE FLASHES AGAIN, and that is a SEQUENCE, not a time window.
+   * Every event takes the next `tbSeq`; acknowledging records the highest seq seen. A later event
+   * has a higher seq and is therefore unacknowledged by construction. A timestamp comparison
+   * would have been a window, and windows rot.
+   *
+   * ------------------------------------------------------------------ WHAT SURVIVES A RELOAD
+   * THE FLASH DOES NOT, AND THAT IS DELIBERATE. `tbReset` drops the message state whenever the
+   * world is replaced — a load, a reset, a plant switch — so nothing is carried across a seam and
+   * nothing false is raised at one.
+   *
+   * ⚠ AN EARLIER VERSION OF THIS NOTE GAVE THE WRONG REASON, AND THE WRONG REASON WAS LOAD-BEARING.
+   * It said a load raises nothing "because after a load there is no previous broadcast, so there is
+   * nothing to detect". `tbPrev` is module state and SURVIVES a load; the zero that was measured
+   * came from something else entirely — the save happened to hold the row BLOCKED, so the load
+   * re-blocked it and the re-block branch cleared the message. Save it UNBLOCKED and the same code
+   * raised a false one. The explicit reset is what makes the claim true; the argument never did.
+   *
+   * What the CARD says is derived from STATE instead (blocked / permissive, read fresh every
+   * broadcast), so the lineup and the permissive status are correct immediately after a load. The
+   * split is deliberate: the flash is a live annunciator, the card is the record. */
+  var TB_IDS = ['lo_press', 'ir_high', 'pr_low_setpoint', 'si_trip'];
+  var tbSeq = 0, tbAck = 0;
+  var tbPrev = null;      // last broadcast's per-row {blocked, permissive}, null before the first
+  var tbMsg = {};         // id -> { seq, text } — an outstanding "you did not do this" message
+  var tbNote = {};        // id -> standing status text for a release the PLAYER made (case (c))
+  /* id -> the highest message `seq` the player has VIEWED on that row, and the same for the
+   * viewing currently in progress. Two maps rather than one because the commit is deferred to the
+   * close — see ACKNOWLEDGE SEMANTICS above for why a row's amber must survive the frame that
+   * draws it. `tbSeenPend` is what the open card is accumulating; `tbSeen` is what it has banked. */
+  var tbSeen = {}, tbSeenPend = {};
+  /* id -> { want: <the blocked state the player asked for>, n: <broadcasts left> }.
+   *
+   * A DIRECTED, SINGLE-USE EXPECTATION — not a blind "the board touched this row recently" window,
+   * which is what shipped first and was wrong at speed. A broadcast is 100 ms of WALL time, so a
+   * 3-broadcast window is 0.3 s of plant time at 1x and **180 s at 600x** (the speed ladder goes to
+   * 3600x). A player who blocks the low-pressure trip during a heatup, then runs at 600x, would
+   * have had a genuine P-11 revoke inside the next three plant-MINUTES silently attributed to
+   * themselves — which is #716's own scenario, annunciated as "released by you".
+   *
+   * Directed and single-use fixes both ends of that. It absorbs only the transition the player
+   * actually asked for, and is CONSUMED by it, so a second change on the same row is the plant's
+   * however fast the clock is running. The broadcast count stays as the unit because the question
+   * it answers is "has my command been reflected yet", which is command latency and therefore wall
+   * time — 2 is one more than the synchronous path needs (`set_trip_block` reaches the engine
+   * inside handleCommand, so the next render already shows it). */
+  var tbSelf = {};
+
+  /* ONE ASSIGNMENT, TWO CALLERS, AND THAT IS THE POINT. The row's click handler and the test
+   * accessor must not each write this — a test accessor that RE-IMPLEMENTS what it is standing in
+   * for turns the production line into a dark wire, and this one did: deleting the click handler's
+   * assignment left `run_pwr2_board` 96/96 with 33/33 mutations caught and `verify_board_check`
+   * 272/272, both green, while every player release started flashing "RELEASED BY THE PLANT".
+   * Found by the #738 quality pass. */
+  function tbMarkSelf(id, want) { tbSelf[id] = { want: want, n: 2 }; }
+
+  /* THE WHOLE MESSAGE STATE IS SESSION STATE OVER ONE WORLD, and it has to be dropped when the
+   * world is replaced. MEASURED before this existed (#738 quality pass, reproduced independently):
+   * a board sitting on `cold_shutdown` with all four trips blocked, then a plant switch to
+   * `hot_full_power` and one render, raised TWO false messages — "RELEASED BY THE PLANT — pressure
+   * rose above the shutdown permissive (P-11)", unacknowledged, so the button flashed amber on a
+   * brand-new plant for an event that never happened. The mount render compares the new lineup
+   * against the PREVIOUS world's `tbPrev`.
+   *
+   * Reachable in production by the RESET button and by a plant/engine switch (both `ui/app.js`
+   * paths go reset -> rebuildPlantUI -> render), and by loading a save. The in-repo precedent is
+   * `ui/panels/one_over_m.js`, which self-clears its points on plant change, reset and rewind for
+   * exactly this reason — a scratchpad about a world that no longer exists.
+   *
+   * NOTE WHY THE INCIDENCE STUDY DID NOT CATCH IT: inbox/738/incidence.js drives four PROCEDURE
+   * REPLAYS, and a replay never crosses a session seam. Its zero is true for what it measured. */
+  function tbReset() {
+    tbSeq = 0; tbAck = 0; tbPrev = null; tbMsg = {}; tbNote = {}; tbSelf = {};
+    tbSeen = {}; tbSeenPend = {};
+  }
+
+  /* Has this row's outstanding message been VIEWED? See ACKNOWLEDGE SEMANTICS. A row with no
+   * message is trivially nothing-to-view, and `tbSeen` is compared by SEQUENCE for the same reason
+   * `tbAck` is: a later message on the same row is a different event and un-views it by
+   * construction, where a boolean flag would have swallowed it. */
+  function tbRowUnviewed(id) {
+    var m = tbMsg[id];
+    return !!(m && m.seq > (tbSeen[id] || 0));
+  }
+
+  /* THE CONDITION, NEVER THE NUMBER *(the owner's card text, and HR1 the right way round)*.
+   * MEASURED instrument-vs-truth gap at both revokes: P-11 fired at 1965 psia (13.55 MPa)
+   * INDICATED against a 1972 psia (13.60 MPa) setpoint, and P-10 at 8.65 % indicated against a
+   * sourced 8.0 %. The revoke reads TRUE pressure; the player reads the board. Printing the
+   * setpoint would teach a number their own gauge contradicts — they would watch it pass with the
+   * block still on and lose it seven psi later. Name the condition and the interlock instead. */
+  function tbCause(id) {
+    return (id === 'ir_high' || id === 'pr_low_setpoint')
+      ? 'reactor power fell below the startup permissive (P-10)'
+      : 'pressure rose above the shutdown permissive (P-11)';
+  }
+
+  /* Per-broadcast, whether or not the card is open — which is the entire point. Called from
+   * `afterRender`, so it sees every broadcast the board does. */
+  function noteTripBlockEvents(s) {
+    var st = (s && s.rps_state && s.rps_state.trip_block_status) || null;
+    if (!st) return;
+    var now = {};
+    TB_IDS.forEach(function (id) {
+      var r = st[id];
+      if (!r) return;
+      now[id] = { blocked: r.blocked === true, permissive: r.permissive === true };
+      var p = tbPrev && tbPrev[id];
+      if (p && p.blocked === true && now[id].blocked === false) {
+        var mine = !!(tbSelf[id] && tbSelf[id].want === false);
+        if (mine) delete tbSelf[id];          // single-use: the next change on this row is the plant's
+        if (mine) {
+          /* (c) THE PLAYER RELEASED IT. No flash — they did it a moment ago. But it must not
+           * vanish either: #738's harm is precisely a release the player made and then forgot,
+           * with the walkthrough step still green. It becomes standing status in the card. */
+          tbNote[id] = 'released by you — this trip is LIVE again';
+          delete tbMsg[id];
+        } else {
+          /* (a) THE PLANT TOOK IT. This is the message. */
+          tbSeq++;
+          tbMsg[id] = { seq: tbSeq, text: 'RELEASED BY THE PLANT — ' + tbCause(id) };
+          delete tbNote[id];
+        }
+      }
+      /* Re-blocking clears whatever the row was saying: the lineup is what the player asked for
+       * again, so there is nothing outstanding about it. */
+      if (p && p.blocked === false && now[id].blocked === true) {
+        delete tbMsg[id]; delete tbNote[id];
+        if (tbSelf[id] && tbSelf[id].want === true) delete tbSelf[id];
+      }
+    });
+    tbPrev = now;
+    /* Expire anything the plant never delivered, so a refused or lost command cannot leave a
+     * standing "this row is mine" that mis-attributes a revoke minutes later. */
+    TB_IDS.forEach(function (id) {
+      if (tbSelf[id] && --tbSelf[id].n <= 0) delete tbSelf[id];
+    });
+  }
+
+  /* Is anything outstanding that the player has not closed the card on since? */
+  function tbUnacked() {
+    for (var i = 0; i < TB_IDS.length; i++) {
+      var m = tbMsg[TB_IDS[i]];
+      if (m && m.seq > tbAck) return true;
+    }
+    return false;
+  }
+  /* Exposed for the gate — the flash is a CLAIM about state, and a check that can only read a
+   * class off a button is testing the renderer, not the rule (#727's lesson, applied up front). */
+  function tbMessages() {
+    return TB_IDS.map(function (id) {
+      return { id: id, msg: tbMsg[id] ? tbMsg[id].text : null, note: tbNote[id] || null,
+               unacked: !!(tbMsg[id] && tbMsg[id].seq > tbAck),
+               /* the ROW's half, which is a different grain from `unacked` (the BUTTON's) — see
+                * ACKNOWLEDGE SEMANTICS. Exposed so a gate can assert the amber without rendering a
+                * popover, the same argument `tripBlockRows` was extracted for. */
+               unviewed: tbRowUnviewed(id) };
+    }).filter(function (r) { return r.msg || r.note; });
+  }
+
+  var popAway = null;                // { host, fn } while a popover is up, else null
+
+  /* `ack` IS THE PLAYER'S CLOSE, NOT EVERY CLOSE (#738). A TEARDOWN close must not bank what the
+   * player was looking at: `onMount` calls closePop() on every board rebuild, and a rebuild
+   * silently retiring a cue the player never saw is the opposite of the feature. Only the two
+   * player-initiated paths pass true — the button's own toggle and the outside-press dismissal.
+   *
+   * WHAT IT BANKS IS THE ROWS, NOT THE BUTTON (2026-09-14, #752). `tbAck` moved to the OPEN — the
+   * owner's rule is "the permissives button should stop being yellow after being opened", so by the
+   * time any close arrives it is already current and setting it here would be a no-op. The rows are
+   * the deferred half: `tbSeenPend` is what this viewing has rendered, and committing it here is
+   * what makes a row's amber last for the viewing that reads it and no longer. */
+  function closePop(ack) {
+    if (ack) {
+      tbAck = tbSeq;
+      Object.keys(tbSeenPend).forEach(function (id) {
+        if (tbSeenPend[id] > (tbSeen[id] || 0)) tbSeen[id] = tbSeenPend[id];
+      });
+    }
+    tbSeenPend = {};
+    if (popAway) { popAway.host.removeEventListener('pointerdown', popAway.fn, true); popAway = null; }
+    if (pop && pop.parentNode) pop.parentNode.removeChild(pop); pop = null;
+  }
+
+  function armPopAway(btn) {
+    var host = refs && (refs.wrap || refs.stage);
+    if (!host) return;
+    var fn = function (e) {
+      var t = e.target;
+      if (!t) return;
+      if (pop && pop.contains(t)) return;                                    // inside the panel
+      if (btn && btn.contains && btn.contains(t)) return;                    // the button's own toggle
+      if (t.closest && t.closest('[data-item="imrsk4xz2dm"]')) return;       // …and its tile
+      closePop(true);            // the player dismissed it — that is the acknowledge (#738)
+    };
+    host.addEventListener('pointerdown', fn, true);
+    popAway = { host: host, fn: fn };
+  }
 
   /* The per-row "press again to confirm" arm (#598 item 15). Reset whenever the popover opens,
    * so it cannot survive the operator looking away and coming back. */
   var tripArm = {};
   function toggleTripBlocks(btn) {
-    if (pop) { closePop(); return; }
+    if (pop) { closePop(true); return; }   // the player closed it — acknowledge (#738)
     tripArm = {};
     var stage = refs && refs.stage;
     if (!stage) return;
     pop = document.createElement('div');
     pop.className = 'bd-pop bd-mono';
-    // position just above the button within the stage (canvas coords)
+    /* IT OPENS DOWNWARD, OVER THE BORON CARD AND THE VESSEL — NOT UPWARD OVER THE NUCLEAR
+     * INSTRUMENTATION *(OWNER, #724 item 14, verbatim: "THe trip block card blocks vital
+     * instruments, it should pop up lower and block the boron card and reactor diagram. these
+     * are not as critical as the NIS.")*. #728.
+     *
+     * WHAT IT USED TO COVER, MEASURED, not argued (inbox/724/measure.js, 1500x950, panel open):
+     * 21 board items, led by the NUC INSTR (NIS) card (19,136 px^2 of overlap), the ROD CONTROL
+     * card (13,509), the SCRAM button (5,139), and the SOURCE RANGE / INTER RANGE / STARTUP RATE
+     * / delta TEMP AVG captions (1,357 / 1,402 / 1,358 / 1,284). On the approach to criticality —
+     * the one leg where this panel is opened twice — it hid both count channels and the scram.
+     *
+     * ANCHORED BY ITS TOP EDGE, DELIBERATELY. The panel's height is content-driven (four rows of
+     * text, and `.sub` wraps), so it is a font-metric measurement and it is LARGER under CI's
+     * DejaVu than under Segoe UI. Anchoring the top means every extra line grows the panel
+     * DOWNWARD, away from the NIS card — the clearance above cannot be eaten by a font. Anchoring
+     * the bottom, or centring it, would make that clearance depend on the font stack, which is
+     * the #713 pass-3 trap.
+     *
+     * The left edge is the BORON card's own (canvas 330), so the card it is meant to cover is
+     * covered squarely rather than by 15 px less than all of it. */
     var item = null;
     (window.RD_PWR_BOARD_DOC.items || []).forEach(function (it) { if (it.id === 'imrsk4xz2dm') item = it; });
-    if (item) { pop.style.left = (item.left - 90) + 'px'; pop.style.top = (item.top - 250) + 'px'; }
+    if (item) {
+      pop.style.left = (item.left - 105) + 'px';
+      pop.style.top = (item.top + (item.height || 30) + 8) + 'px';
+    }
     pop.appendChild(mk('h4', null, 'TRIP BLOCKS'));
+    /* THE STATUS REGION (#738/#716) — "put the permissive messages and status inside the popup
+     * permissive card". Created empty and filled by refreshTripBlocks, for the #600 reason: a
+     * caption that exists only as a DOM write at open time is a caption no gate can read and one
+     * that cannot follow the plant while the card is up. */
+    pop.appendChild(mk('div', 'bd-pop-status'));
     var snap = RD.PwrBoard.lastSnapshot ? RD.PwrBoard.lastSnapshot() : null;
     var rowsAtOpen = {};
     tripBlockRows(snap).forEach(function (r) { rowsAtOpen[r.id] = r; });
@@ -2948,6 +3496,12 @@
           return;
         }
         tripArm[t.id] = false;
+        /* MARK IT AS OURS BEFORE IT LANDS (#738). This is the only thing that separates "the
+         * plant took your block" from "you released it", and it has to be a countdown rather than
+         * a same-tick flag: the command lands between broadcasts and its effect shows on the NEXT
+         * snapshot, sometimes the one after. 3 is comfortably over that and comfortably under any
+         * plausible gap between a press and an unrelated revoke. */
+        tbMarkSelf(t.id, !blocked);
         cmd({ action: 'set_trip_block', trip_id: t.id, blocked: !blocked });
       });
       row.appendChild(txt);
@@ -2956,6 +3510,7 @@
     });
     stage.appendChild(pop);
     refreshTripBlocks(snap);
+    armPopAway(btn);                 // #690 — see the block above closePop
   }
 
   function isBlocked(s, id) { var tb = (s && s.rps_state && s.rps_state.trip_blocks) || {}; return !!tb[id]; }
@@ -2997,6 +3552,21 @@
     'Pressurizer Heaters (PZR)': 'imro94kec8b', 'Pressurizer Spray (PZR)': 'imro8ymb0jw',
     'Reactor Coolant Pumps (RCP)': 'imrobpq4a70',
     'Relief Valve (PORV)': 'porv', 'PORV Block Valve': 'imrppb3kuav',
+    /* THE PORV'S OWN STATUS READOUT — A VOCABULARY HOLE, NOT AN AUTHORING MISS (#684 §B).
+     * `ims2jf7fv7m` is the value tile that prints OPEN / CLOSED for the relief valve
+     * (wiring :1220, inspect name "Power-Operated Relief Valve (PORV) Status"), and it had
+     * no key here at all — so no step could point at it, and the owner's ask ("the highlight
+     * should be around the PORV and the PORV CLOSED indication") was not a bad `hl` list, it
+     * was unreachable. Both spellings, because the board engraves the word CLOSED and the
+     * inspect panel says Status.
+     *
+     * NO STEP NAMES IT TODAY, deliberately. Measured 2026-09-10 with the art-aware halo in:
+     * the PORV's ring is now 541-604 x 171-232 client px and this tile is 551-593 x 175-192,
+     * i.e. the valve's own halo already ENCLOSES the indication, which is what he asked for.
+     * A second `hl` entry would draw a nested ring inside the first. board_check pins the
+     * containment, so if the layout ever moves them apart the gate says so and the step can
+     * take this label then. */
+    'PORV Status': 'ims2jf7fv7m', 'PORV Closed': 'ims2jf7fv7m',
     // V2 split the old combined ECCS/RHR box into two cards. HPI/LPI is the ECCS pump
     // triad; RHR is its own card (the suction alignment + HX rate), so the RHR label now
     // glows the RHR card rather than the shared box it used to share with HPI.
@@ -3015,6 +3585,14 @@
     // tile. (Highlighting an indication is checklist hover-glow only; campaign beats
     // highlight controls, so run_campaign never names these.)
     'Tavg': 'ims2immk7ks', 'Plant Pressure': 'ims2immsvn6', 'SG Level': 'ims2imn1nny',
+    /* THE OTHER TWO TILES IN THE SAME STRIP (#670 operator pass 2, S-3). The vital-parameter
+     * strip has six tiles and this map named four of them, so a step that says "verify
+     * PRESSURIZER LEVEL" or "verify SUBCOOLING MARGIN" had no label to point at — and the
+     * TMI-2 step 8 reached instead for 'Plant Pressure', which resolves cleanly to the tile
+     * NEXT to the one it meant. A vocabulary with a hole in it is how a wrong label gets
+     * chosen; both tiles are in the board's inspect map already (Pressurizer Level,
+     * Subcooling Margin) and these are the same names. */
+    'Pressurizer Level': 'ims2immon9z', 'Subcooling Margin': 'ims2immxl2s',
     'Steam Flow': 'ims3wm0d0bu', 'Feed Flow': 'imrsgkz4lq0',
     /* TWO LABELS THE CHECKLISTS HAVE ALWAYS USED AND THIS MAP NEVER CARRIED (#598 item 14).
      * `revealControl` returns null for an unknown label and the step then glows NOTHING —
@@ -3027,6 +3605,78 @@
      *   'ECCS' -> the ECCS panel (ims3l6k3mb0), the enclosing box for RHR, the accumulator and
      *     the injection lineup — which is what every step using this label is pointing at. */
     'SG Pressure': 'imrr1gwi93j', 'ECCS': 'ims3l6k3mb0',
+    /* THE POWER-RANGE METER, WHICH THIS MAP HAS NEVER CARRIED (#685). Same hole as the two
+     * vital tiles above and found the same way: `pwr_heatup`'s last step is "Verify REACTOR
+     * POWER reads 0.0 %" and it was one of four shipped steps that resolved to NO board element
+     * at all, because the only name for this gauge lived in the inspect map (`pwr_board_inspect`
+     * "Reactor Power") and not here. Adding a key only widens the vocabulary — `run_campaign`
+     * and `run_manual_controls` both fail on a label that is MISSING, never on one nothing
+     * names yet. */
+    'Reactor Power': 'imrzl4b7g9m',
+    /* THE ROD-POSITION READOUT (#735) — the same hole as 'Reactor Power' above, found the same
+     * way *(OWNER, #724 item 10: "this step isnt obvious which number the 1./m plot is referring
+     * to. we should highlight the CONTROL ROD POSITION")*. `imrpk4pjcpd` is the control-bank
+     * step-count readout on the ROD CONTROL card (inspect name "Control Rod Position"), and it
+     * had no key here at all — so the one indication the 1/M panel's prediction is a number ON
+     * could not be pointed at by any step. 'Control Bank' is the CARD and glowing it does not
+     * answer "which number"; this is the number. Adding a key only widens the vocabulary. */
+    'Control Rod Position': 'imrpk4pjcpd',
+    /* THE SHUTDOWN BANK'S OWN READOUT — the sibling hole to 'Control Rod Position' above, and
+     * the one the owner asked for by name *(OWNER, 2026-09-13, #744: "walkthrough Mode 5>3 step 3
+     * should also highlight the SHUTDOWN ROD POSITION indication since thats what we are
+     * watching")*. `imrpnzfsfcx` is the shutdown-bank step count on the ROD CONTROL card
+     * (inspect name "Shutdown rod steps", driven above). 'Shutdown Bank' is the CARD
+     * (`imrpny66npx`) — a DIFFERENT element, which matters: `applyCklWatchGlow` (ui/app.js)
+     * skips any element already carrying the pulsing step glow, so a watch label that resolved
+     * to the same element as the step's own `hl` would draw nothing at all. */
+    'Shutdown Rod Position': 'imrpnzfsfcx',
+    /* THE TURBINE AND STEAM-DUMP BUTTON/INDICATION HOLES (#744). Six board elements the owner's
+     * own `[HIGHLIGHTED: ...]` annotations name, none of which had a key — so the two steps that
+     * want them were each pointing BOTH of their labels at one card: `pwr_heatup` step 4 listed
+     * 'Turbine Load' + 'Main Breaker' (both -> imro8k5pzem) and step 6 listed 'Dump SP' +
+     * 'Steam Dump' (both -> imrop5ouw7h). Two labels, one ring, and the control the step actually
+     * tells the player to press glowed not at all. Same class as #598 item 14 and #735; adding
+     * keys only widens the vocabulary.
+     *
+     * ⚠ `imrzmlyafa3` — the old labelled STEAM DUMP % tile — IS NOT USABLE AND IS NOT HERE. It
+     * is in DOC_REMOVE (see the entry there): the 2026-08-05 re-export dragged it off the canvas
+     * and replaced it with `imsgunuyvon`, the right-anchored % tag beside the condenser dump
+     * valve. A key pointing at a removed item resolves to null and glows nothing, silently. */
+    'Turbine — Trip': 'imro8lddxi', 'Turbine — Latch': 'imro8ktzs3u', 'Turbine — Unload': 'imro8len0oi',
+    'Generator Output': 'imrppeh5hkb',
+    'Steam Dump — Close': 'imrppqxggbj', 'Steam Dump — Auto': 'imrppqg6mcc', 'Steam Dump — Open': 'imrppquqg16',
+    'Steam Dump Status': 'imrppq5r7kw', 'Steam Dump Valve': 'imrprmm4u5q', 'Steam Dump Opening': 'imsgunuyvon',
+    /* THE LETDOWN FLOW READOUT (#744). `imsgti0gnpf` is the gpm value driven from `letdown_flow`
+     * above. Two `pwr_heatup` steps tell the player to read "LETDOWN above 0 gpm" — one of them
+     * GRADES on it (`letdown_flow_actual`) — and neither could point at it: the only letdown key
+     * was the orifice CARD. Same hole as 'Reactor Power' and 'Control Rod Position'. */
+    'Letdown Flow': 'imsgti0gnpf',
+    /* THE FIVE REMAINING "SET A NUMBER / READ A NUMBER" HOLES (#745). #744 opened the turbine
+     * and steam-dump BUTTON vocabulary; what it left unnamed is the SETPOINT BOX a step types
+     * into and the READOUT it then tells the player to watch — so eleven steps outside
+     * `pwr_heatup` were still pointing both of their labels at one CARD. `Boron` / `Boron
+     * control` were both `imrmtlyf64y` (five sites), `Dump SP` / `Steam Dump` both
+     * `imrop5ouw7h`, `Turbine Load` / `Main Breaker` both `imro8k5pzem`. Adding keys only
+     * widens the vocabulary; both gates fail on a label that is MISSING, never on one nothing
+     * names yet.
+     *
+     * Each id VERIFIED ON THE CANVAS and against DOC_REMOVE — the trap `imrzmlyafa3` names two
+     * blocks above, and `bdSrDetector` / `bdBoronSample` are live examples of a plausible id
+     * that is no longer drawn. These five are all in the doc and none is removed:
+     *   'Boron Target'    imrpq29jo7t — the 0–2500 ppm input on the BORON card, the box a
+     *                     "set 719 and press Enter" step is actually asking for.
+     *   'Boron Status'    ims3wy5oym4 — BORATING / DILUTING / the dose countdown.
+     *   'Boron Concentration' ims2jva1ff5 — the BORON CHEM ppm reading (live and continuous
+     *                     since #698), i.e. the number a boron step tells the player to watch
+     *                     WALK toward the target. Named for the reading, not for the retired
+     *                     grab-sample button whose slot it shares.
+     *   'Dump Setpoint'   ims31tq7mgc — the 29–1350 psi STEAM DUMP VALVE SET POINT box, as
+     *                     against 'Dump SP', which is the card around it.
+     *   'Load Setpoint'   imro8rmka2y — the generator LOAD input, as against 'Turbine Load',
+     *                     which is the TURBINE-GENERATOR card. */
+    'Boron Target': 'imrpq29jo7t', 'Boron Status': 'ims3wy5oym4',
+    'Boron Concentration': 'ims2jva1ff5',
+    'Dump Setpoint': 'ims31tq7mgc', 'Load Setpoint': 'imro8rmka2y',
     // Aliases for the `control` strings the checklist steps use (so the step-hover
     // fallback in ui/app.js resolves without authoring an explicit `hl` on each).
     /* THE CARD, NOT THE PUMP GRAPHIC *(#607 item 1)*. Both names used to point at
@@ -3034,7 +3684,14 @@
      * art and not the ON/OFF card the operator actually presses (`imrsjyqoq6t`, inspect
      * name RCP Control). 'Reactor Coolant Pumps (RCP)' stays on the pump for watch-the-
      * flow steps; this alias is the control. */
-    'Boron control': 'imrmtlyf64y', 'RCP Run/Stop': 'imrsjyqoq6t', 'Dump SP': 'imrop5ouw7h',
+    /* 'RCP ON/OFF' IS THE PLAYER-FACING NAME (#670 operator pass, S-8). The card's buttons are
+     * engraved ON and OFF and its inspect name is "RCP Control"; "Run/Stop" is on no label on
+     * this board in any state (measured: 0 occurrences of "Run/Stop" in the page's text). It
+     * stayed a highlight alias because six steps' `hl` arrays name it, and `st.control` is
+     * PRINTED to the player as "Use <control>" (ui/app.js), which is how an internal vocabulary
+     * key became an instruction. Both keys point at the card; only the printed one changed. */
+    'Boron control': 'imrmtlyf64y', 'RCP Run/Stop': 'imrsjyqoq6t', 'RCP ON/OFF': 'imrsjyqoq6t',
+    'Dump SP': 'imrop5ouw7h',
     // ADV (#371) — both names point at the card, so highlighting either lights the
     // whole group, the same way 'Dump SP' points at the STEAM DUMP card above.
     // The ATMOS DUMP card is AUTHORED now (#371) — the driver-injected box it replaced
@@ -3151,10 +3808,58 @@
       };
     });
   }
+  /* WHICH ROWS THE ACTIVE WALKTHROUGH STEP IS ASKING FOR, and what it wants them set TO
+   * *(OWNER, #724 item 12: "When trip blocks is opened, it should highlight the buttons needed
+   * to press in this menu (this should be changed for any time we toggle trip blocks)")*. #727.
+   *
+   * THE STEP ALREADY SAYS WHICH ROW — NOTHING NEW IS AUTHORED. Every trip-block step in the pool
+   * carries `cmd: { action: 'set_trip_block', trip_id: '<id>', blocked: <bool> }`, and its `hl`
+   * list says only 'Trip Blocks', which is why the button glowed and nothing inside the panel
+   * did. Reading the step's own `cmd` is what makes this general, in the owner's words, to "any
+   * time we toggle trip blocks": a step added tomorrow highlights its row with no new wiring,
+   * and an UNBLOCK step highlights correctly too because the desired state comes from the same
+   * command rather than being assumed to be `true`.
+   *
+   * RESOLVED FROM THE SNAPSHOT, NOT PUSHED FROM ui/app.js. `s.instructor.checklist` carries
+   * `procedure_id` and `step_index`, and the pool is a global — so the whole feature lives in
+   * the file that owns the panel, with no new cross-layer call to keep in step. It also means it
+   * follows the active step live, because `afterRender` already calls refreshTripBlocks every
+   * broadcast.
+   *
+   * HR5 is untouched: this reads state and adds a class. It issues no command and grades
+   * nothing — the trip-block ACCEPTANCE is #724 item 13 and belongs to another lane. */
+  function stepTripWants(s) {
+    var want = {};
+    var cs = s && s.instructor && s.instructor.checklist;
+    if (!cs || cs.complete || typeof cs.step_index !== 'number') return want;
+    /* `profile_key`, NOT `plant_id` (#724 quality pass, finding 7). The broadcast carries
+     * `profile_key` on the checklist for exactly this purpose — instructor_layer's own comment
+     * says the UI reads step content from RD.MANUAL_PROCEDURES with it, and its restore path
+     * (`_load`) resolves the procedure the same way. The pool is keyed
+     * {pwr, pwr2, rbmk_pre, rbmk_post, bwr}, and `plant_id` agrees with those keys for the PWR
+     * and diverges for the RBMK, so keying on the plant would have failed silently — no glow, no
+     * error — the day it mattered. `plant_id` stays only as a fallback for a snapshot old enough
+     * to predate the field. */
+    var cs_key = cs.profile_key || (s.metadata && s.metadata.plant_id) || '';
+    var pool = (RD.MANUAL_PROCEDURES || {})[cs_key] || [];
+    var proc = null;
+    for (var i = 0; i < pool.length; i++) if (pool[i].id === cs.procedure_id) proc = pool[i];
+    var st = proc && proc.steps && proc.steps[cs.step_index];
+    var c = st && st.cmd;
+    if (c && c.action === 'set_trip_block' && c.trip_id) want[c.trip_id] = c.blocked !== false;
+    return want;
+  }
+
   function refreshTripBlocks(s) {
     if (!pop || !s) return;
+    /* THE OPEN IS THE ACKNOWLEDGEMENT (2026-09-14, #752) — and it is applied HERE, on every refresh
+     * while the card is up, rather than once in toggleTripBlocks. Once at open would leave a
+     * message that ARRIVES thirty seconds into an open card flashing a button the player is already
+     * looking past. `tbSeq` only ever rises, so this is idempotent. */
+    tbAck = tbSeq;
     var rows = tripBlockRows(s), byId = {};
     rows.forEach(function (r) { byId[r.id] = r; });
+    var want = stepTripWants(s);
     var btns = pop.querySelectorAll('button[data-trip]');
     for (var i = 0; i < btns.length; i++) {
       var r = byId[btns[i].getAttribute('data-trip')];
@@ -3164,15 +3869,109 @@
       btns[i].className = armed ? 'bd-blocked bd-confirm'
                         : (r.will_trip ? 'bd-blocked bd-willtrip' : (r.blocked ? 'bd-blocked' : ''));
       btns[i].disabled = r.disabled;
+      /* THE ROW GLOWS WHILE THE STEP'S ASK IS OUTSTANDING (#727). `.ckl-step-glow` is the SAME
+       * class the active step's board targets already pulse with — one copy of the glow, one
+       * meaning ("the step you are on wants this"), and nothing new for run_glow_stacking's two
+       * lists to disagree about.
+       *
+       * THE PULSE STOPS WHEN THE ASK IS SATISFIED — AND THE GLOW STAYS *(OWNER, 2026-09-14, #755
+       * item 19: "During wlakthroughs, when a hightighted button the glow should stop pulsing.";
+       * settled by the same day's ruling, "after press: steady glow, no pulse")*. `r.blocked` is
+       * the live state, so the motion dies the instant the operator's press lands. Until 2026-09-14
+       * the whole class came off with it and the row went DARK, which said "you are on the wrong
+       * row now" while the step it belongs to was still the active step; `.ckl-step-done` (ui/
+       * shell.css) drops the animation and holds the ring.
+       *
+       * A DISABLED row never lights at all — the plant is refusing the press (wrong permissive),
+       * the `.sub` line says why, and a glow around a button that cannot be pressed is the
+       * dead-button trap this panel already refuses elsewhere. */
+      var rowEl = btns[i].parentNode;
+      if (rowEl && rowEl.classList) {
+        var wants = Object.prototype.hasOwnProperty.call(want, r.id);
+        var lit = wants && !r.disabled;
+        rowEl.classList.toggle('ckl-step-glow', lit);
+        rowEl.classList.toggle('ckl-step-done', lit && r.blocked === want[r.id]);
+      }
       /* A row this plant does not carry goes DARK AND SAYS SO — an inert button with no reason
        * is the dead-button class wearing a different coat, and the operator should not have to
        * press it to find out (the same argument as the SCRAM reset caption). */
-      if (r.sub) {
+      /* THE SUB LINE IS COMPOSED ONCE, HERE, and that is a correction rather than a preference.
+       * The first cut wrote the message into `.sub` in its own block ABOVE this one — and this
+       * block then overwrote it with the plain caption on the very same pass. The class survived
+       * and the text did not, so the row went amber while saying nothing: MEASURED in the browser,
+       * `subMsg=true` with the sub reading only "REACTOR TRIP · 1775 psi (P-11 PERMISSIVE)". Two
+       * writers to one node, and the later one wins silently.
+       *
+       * APPENDED, NOT SUBSTITUTED. The caption already says what the row IS and what its
+       * permissive is; the message says what HAPPENED to it. A message that replaced the caption
+       * would answer "why did I lose this" while hiding "may I put it back", which is the half
+       * #716 is actually about. */
+      var m = tbMsg[r.id], note2 = tbNote[r.id], extra = m ? m.text : (note2 || null);
+      if (r.sub || extra) {
         var subEl = btns[i].previousSibling && btns[i].previousSibling.querySelector
                     ? btns[i].previousSibling.querySelector('.sub') : null;
-        if (subEl) subEl.textContent = r.sub;
+        if (subEl) {
+          subEl.textContent = (r.sub || '') + (r.sub && extra ? ' · ' : '') + (extra || '');
+          /* THE AMBER IS THE UNVIEWED HALF; THE TEXT ABOVE IS THE FACT AND IT DOES NOT MOVE
+           * (2026-09-14, #752). This used to be `!!m` — the message existing — so a row stayed
+           * amber through every future opening until it happened to be re-blocked, which is the
+           * "persist for too long" the owner played. Rendering the row IS the viewing, so the seq
+           * is banked here; see closePop for why it is banked into `tbSeenPend` and not `tbSeen`. */
+          if (m) tbSeenPend[r.id] = Math.max(tbSeenPend[r.id] || 0, m.seq);
+          subEl.classList.toggle('bd-sub-msg', tbRowUnviewed(r.id));
+        }
       }
     }
+    renderTripBlockStatus(s, rows);
+  }
+
+  /* THE CARD'S OWN STATUS BLOCK (#738/#716). Two things the board could not say before, and
+   * neither is a new board element — both live inside the card the owner asked for.
+   *
+   * 1. WHAT THE LINEUP IS. A one-line summary of how many of the blockable trips are blocked, so
+   *    the card answers "what is my protection lineup" without the player reading four rows.
+   * 2. WHETHER A RELEASED BLOCK CAN BE PUT BACK. This is the half #716 is really about and the
+   *    half `can_block` could never answer: `can_block` is `!blocked && permissive`, false by
+   *    construction for a held block, so "the interlock still permits this" was unreachable until
+   *    pwr2_shell started publishing `permissive` separately. #716's title says the blocks "never
+   *    re-arm"; MEASURED, that is wrong about the PLANT and right about the INDICATION — back
+   *    inside the permissive `can_block` is true, the command is not refused, and the row
+   *    re-blocks. The player was never stuck. They were never told.
+   *
+   * DERIVED FROM THE SNAPSHOT EVERY REFRESH, never from the message state, which is why it is
+   * correct immediately after a save/load while the flash (a transition, and transitions are not
+   * in snapshots) is not. */
+  function renderTripBlockStatus(s, rows) {
+    var host = pop && pop.querySelector('.bd-pop-status');
+    if (!host) return;
+    var st = (s && s.rps_state && s.rps_state.trip_block_status) || {};
+    var live = rows.filter(function (r) { return r.supported; });
+    var blockedN = live.filter(function (r) { return r.blocked; }).length;
+    /* A row is RESTORABLE when it is not blocked and its interlock permits it. Read, never
+     * recomputed — see the design rule at the top of this section. */
+    var restorable = live.filter(function (r) {
+      return !r.blocked && st[r.id] && st[r.id].permissive === true;
+    }).length;
+    var waiting = live.filter(function (r) {
+      return !r.blocked && st[r.id] && st[r.id].permissive === false;
+    }).length;
+    var lines = [
+      blockedN + ' of ' + live.length + ' BLOCKED'
+        + (restorable ? ' · ' + restorable + ' AVAILABLE TO BLOCK NOW' : '')
+        + (waiting ? ' · ' + waiting + ' WAITING ON ITS PERMISSIVE' : '')
+    ];
+    var outstanding = tbMessages().filter(function (r) { return r.msg; });
+    if (outstanding.length) {
+      lines.push(outstanding.length + ' TRIP' + (outstanding.length === 1 ? '' : 'S')
+        + ' RELEASED BY THE PLANT — see the row' + (outstanding.length === 1 ? '' : 's') + ' below');
+    }
+    host.textContent = lines.join('  ·  ');
+    /* THE LINE STAYS, THE AMBER GOES (2026-09-14, #752). The count is a FACT about the lineup and
+     * is as true on the fifth opening as the first — deleting it would be the "cleared the cue and
+     * the fact with it" failure. The colour is the cue, and it is the cue the owner called
+     * persistent, so it tracks the same unviewed predicate the rows do. */
+    host.classList.toggle('bd-pop-status-msg',
+      outstanding.some(function (r) { return tbRowUnviewed(r.id); }));
   }
 
   function mk(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -3286,7 +4085,22 @@
      * recorded in pwr_board_inspect), so there is nothing left for it to arm and no plan to give
      * it something. 1/M PLOT takes the vacated slot via DOC_PATCHES rather than leaving a hole —
      * the treatment RHR ALIGN/ISOLATE and AFW STOP/AUTO both got. */
-    ims5glucngg: 1
+    ims5glucngg: 1,
+    /* THE BORON GRAB-SAMPLE BUTTON *(OWNER RULING, 2026-09-10, option B, #698)*, removed
+     * 2026-09-11 in the same change that made the CHEM tile beside it a LIVE continuous
+     * reading. With a live number on the card, a button whose whole job was to request that
+     * number after a 30 plant-minute turnaround is a control with nothing left to ask for.
+     *
+     * NO SLOT PROMOTION, unlike the four removals above, and that is deliberate rather than
+     * an omission. Those four vacated a slot with a sibling DIRECTLY BELOW it in the same
+     * column. This one sits in the BORON card's RIGHT column (410,490) under the target box,
+     * and the only thing below it is the card's bottom row — the left-anchored BORON CHEM
+     * label and its right-anchored value, which span the card and pair with the ON/OFF column.
+     * Moving that row up would empty the card's bottom instead and break the pairing, so the
+     * 95x25 gap beside OFF is the better of the two holes.
+     *
+     * The ENGINE COMMAND survives this: see the note where the BUTTONS entry used to be. */
+    bdBoronSample: 1
   };
 
   // The CVCS flow captions, enlarged *(OWNER DIRECTIVE, 2026-08-04: "Make the \"Charging\" and
@@ -3344,8 +4158,9 @@
       // valve tile (ends 1414) and too narrow for its own label. 1416/72 clears the valve
       // and, with the .bd-ro-label letter-spacing fix, fits "STEAM DUMP" with room.
       // CVCS flow captions to 14 px — #350 item 27, see the note above DOC_PATCHES.
-      // NIS caption authored "d TEMP AVG" — the builder text lost its Δ (#235).
-      imrsho1qu6t: { props: { text: 'Δ TEMP AVG' } },
+      // (The NIS caption's "d TEMP AVG" → "Δ TEMP AVG" text patch (#235) lives in the NIS
+      //  re-layout block below with the caption's position — ONE key per id, see the
+      //  object-literal trap at bdOneOverM.)
       /* (The PRESSURIZER card's 235 -> 290 growth patch went with the AUX SPRAY tile it
        * carried — owner direction 2026-08-31; the card is back at its authored height. The
        * geometry measurements are in git at the #563 commit.) */
@@ -3369,6 +4184,52 @@
       // the card title. 30 is the authored button pitch, so the spacing is unchanged.
       ims3wg27iif: { props: { top: 635 } },
       ims3xfeye1q: { props: { top: 665 } },
+      /* TWO CAPTIONS AT ZERO SPARE ON THE PLATFORM THAT GATES (#713 pass 3, same CI-red as
+       * the alarm panel). `verify_board_scroll`'s caption sweep checks each `.bd-text` tile's
+       * shrink-to-fit width against its enclosing card's right edge with a 1px tolerance —
+       * CONDENSATE and RCP FLOW both measured `over === 1` under Linux's DejaVu Sans
+       * (Windows/Segoe UI: `over` 0, i.e. the check's own 1px tolerance is standing in for
+       * the platform gap, not real margin) — RIGHT AT the `over > 1` failure line, not yet a
+       * defect but one font substitution away from being this issue's alarm panel again.
+       * fontSize 14 -> 13 (already a used size — 5 of 42 board captions are 13px, this does
+       * not introduce a new one) measured on Linux DejaVu: -5 / -6px raw margin against the
+       * card edge (was +1, i.e. AT the tolerance). No left/width change, so nothing else on
+       * the card moves. SOURCE RANGE / STARTUP RATE / SHUTDOWN ROD are the SAME defect but
+       * are patched below, in the NIS-card row-layout block that already owns these three
+       * ids — a second `imrshofh36b:`-shaped key here would silently REPLACE that patch
+       * rather than merge with it (the object-literal trap the row-layout comment already
+       * names for `bdOneOverM`; it bit this fix on the first attempt). */
+      imrqrnzbm6h: { props: { fontSize: 13 } },   // CONDENSATE
+      imsgtedbunb: { props: { fontSize: 13 } },   // RCP FLOW
+      /* THE HX FLOW CAPTION IS RENAMED *(OWNER RULING, 2026-09-10, option A, #700)*. The ruled
+       * name is "COOLDOWN RATE / HX SPLIT" and it is rendered as its TWO HALVES, each attached
+       * to the thing it names: this caption becomes "HX SPLIT" (the lever) and the new
+       * `bdRhrCooldownRate` readout beside the card carries "COOLDOWN RATE" (the consequence).
+       * The ruling's own words are "a live readout of instruments.tavg_rate BESIDE it", so the
+       * pairing is the point rather than a compromise on it.
+       *
+       * IT IS NOT ONE CAPTION BECAUSE ONE CAPTION DOES NOT FIT, and that is measured, not
+       * estimated. The card is 90 wide (1060..1150) and this caption starts at 1070, so the
+       * column is 80 px. Intrinsic text widths in authored units, measured in the real renderer
+       * at the pinned 1400x900:
+       *     "COOLDOWN RATE"  14 px 126.7   13 px 118.5   12 px 110.4
+       *     "COOLDOWN"       14 px  87.3   13 px  81.6   12 px  75.9
+       *     "HX SPLIT"       14 px  62.7
+       * Nothing carrying the words "COOLDOWN RATE" fits an 80 px column at a readable size.
+       *
+       * THE FONT SIZE DROPS 14 -> 13, AND THAT IS A MEASURED CORRECTION, NOT A PREFERENCE. The
+       * intrinsic widths above under-predict the rendered tile: "HX FLOW" is 65.0 intrinsic and
+       * renders 72.2, so the arithmetic said "HX SPLIT" would render ~70. It renders 81.3 —
+       * one character more than "HX FLOW" at the tile's real 10.16 px/char — which put its
+       * right edge on 1151.3, i.e. 1.3 px OUTSIDE the card border at 1150. Nothing would have
+       * failed; it would simply have looked like a caption leaking out of its card. At 13 px it
+       * renders 75.5 and ends near 1145, 5 px inside. Measure the tile, not the glyphs.
+       *
+       * WHY THE CARD IS NOT SIMPLY MADE TALLER TO HOLD BOTH. The board's bounding box ends at
+       * y 785 (this item's own outer panel), and the stage scale is derived from that box — so
+       * growing the card downward shrinks EVERY tile on the board. That is not hypothetical: it
+       * is exactly the regression DOC_REMOVE's `imrzmlyafa3` entry above was written to undo. */
+      ims3xtrobbq: { props: { text: 'HX SPLIT', fontSize: 13 } },
       /* THE ECCS INDICATION CARD'S THREE ROWS MOVE UP SO THE MODE WORD GETS ITS OWN LINE
        * *(#630, owner: "ECCS STANDBY text sits on top of MODE text. Shift the elements in this
        * card up so that the mode indication can sit below MODE.")*.
@@ -3390,7 +4251,27 @@
        * label-end 782.3 + STANDBY 55.7 = 838. So MODE becomes a stacked pair like its two
        * neighbours, and the rows come up to pay for the extra line. Uniform now: 38 px group
        * pitch, 15 px label -> value, MODE value ends 782 against the card's 785. */
-      ims3w19984s: { props: { top: 672 } },   // FLOW  label   (was 675)
+      /* …and the FLOW caption also becomes "INJ FLOW" (#705, 2026-09-11). The gauge reads
+       * 0 GPM through the WHOLE of Mode 4 and Mode 5 — measured, `hpi_flow` is emergency
+       * injection only and a cooldown injects nothing — while the same pumps circulate the
+       * plant through the Residual Heat Removal heat exchanger. The reading is correct; the
+       * LABEL was the thing that made it look like a dead instrument, because "FLOW" on the
+       * emergency core cooling card reads as "flow in this system" rather than "injection
+       * flow". Naming the quantity is the whole fix, and it is option A of the three the
+       * issue put up: B (a separate Residual Heat Removal flow indication) is deferred to be
+       * designed with the sibling card decision, and C (summing two systems onto one scale)
+       * was refused — it would make "non-zero here" stop meaning "the plant is injecting",
+       * which is a diagnosis cue.
+       *
+       * IT FITS AT THE AUTHORED 13 px, and the number quoted is the RENDERED one because the
+       * sibling change in #700 was caught out by quoting an intrinsic: the tile renders
+       * 740..816.6 against the card's right edge at 825, so 8.4 px of clearance. Confirmed by
+       * eye as well as by rect — it clears the "N GPM" reading below it, which shares four
+       * pixels of BOX with every caption on this card (15 px row pitch, ~19 px line boxes) and
+       * has never shared a glyph. Arithmetic off the rendered rect of the old "FLOW" (42.3 for
+       * four characters, padding included) predicted 84.6 and a label flush on the border;
+       * that prediction was wrong by 8 px, in the direction that would have shipped. */
+      ims3w19984s: { props: { top: 672, text: 'INJ FLOW' } },   // INJ FLOW label (was 675 / 'FLOW')
       ims3w1cb6jc: { props: { top: 687 } },   // FLOW  value   (was 690)
       ims3w1hf6n:  { props: { top: 710 } },   // DISCG label   (was 715)
       ims3w1lj7n6: { props: { top: 725 } },   // DISCG value   (was 730)
@@ -3449,6 +4330,20 @@
        * / 1590, a 65 px pitch), so the card does not carry a hole where a button was. */
       imrmssoa137: { props: { left: 1460 } },
       imrmssr9ihq: { props: { left: 1525 } },
+      /* THE SG FEED RATE INPUT, CENTRED IN ITS SLOT *(OWNER, 2026-09-14, #755 item 9: "Shift the
+       * SG FEED RESTORE button down slightly so it fits nicely. also shift the gpm input down a
+       * little.")*.
+       *
+       * MEASURED in the browser at 1500x950 (board scale 0.808) before the move: the AUTO/MAN/OFF
+       * row ends at rendered y 441.9 and this box STARTED at 441.9 — the two were touching, with
+       * all of the slot's slack sitting UNDERNEATH (4.0 px to the STEAM FLOW caption at 470.2).
+       * That is the "doesn't fit nicely": a control jammed against the row above with a gap below.
+       *
+       * The slot is authored 560..595 (row bottom to the STEAM FLOW caption) = 35 px, and this
+       * number box is 30 px tall, so there are 5 px of slack. 562 splits it 2/3 and lands this
+       * box's centre on 577 — the same centre as RESTORE at its new 565 (see the EXTRA_ITEMS
+       * entry, which must move WITH this one; the note there has the pairing). */
+      imro8xhy2me: { props: { top: 562 } },
       imrppvnburd: { props: { text: 'LOAD' } },
       imrppilyy52: { props: { text: 'OUTPUT' } },
       imrppim9gdg: { props: { text: 'GOVERNOR' } },
@@ -3477,13 +4372,60 @@
        * card's own selfTest requires the bottom row to be LEVEL. Taking ROD AUTO's slot
        * means taking the row it was levelled into. */
       bdOneOverM: { props: { left: 340, top: 388, width: 80, height: 30 } },
-      /* AND THE NIS CARD CLOSES UP BEHIND BOTH BUTTONS (#598 item 10). SOURCE RANGE was authored
-       * 70 px tall against INTER RANGE's 45 for one reason: the extra 25 px held SR DET at
-       * (550,315). With SR DET deleted (#598 item 7) that space is a ragged step between two
-       * boxes that show the same KIND of thing, so the box takes its neighbour's height and the
-       * two range readouts sit level. Both then end at y 315 with a uniform 30 px gutter down to
-       * the rod-position boxes at y 345 — where the 1/M button used to float. */
-      ims176nions: { props: { height: 45 } },
+      /* THE NIS CARD RE-LAID OUT WITHOUT ITS TWO BUTTONS (#598 items 7/9/10; owner, 2026-09-05:
+       * "adjust the indications in the NUC INSTR card to get rid of the gap where the 1/m plot
+       * and the source range on/off buttons used to be. make it look nice.").
+       *
+       * WHAT WAS THERE. The card is 530,190 255x225 and its content band runs y 220..410. As
+       * authored: row 1 (Δ TEMP AVG / STARTUP RATE) 220..265, row 2 (SOURCE RANGE / INTER
+       * RANGE) 270..315 — SOURCE RANGE 70 tall to hold SR DET at (550,315), 1/M PLOT floating at
+       * (680,317) — then a 30 px gutter to row 3 (rod positions) at 345..410. With both buttons
+       * gone (#598) the gutters read 5 / 30 / 5 and the middle one was the hole.
+       *
+       * THE CARD DOES NOT SHRINK: the PERIOD card (bdReactivityCard, EXTRA_ITEMS) sits flush
+       * under its bottom edge at y 415, so taking 25 px off the card moves the hole, not fills
+       * it. The three rows redistribute over the SAME 190 px band instead: 55 / 55 / 70 with
+       * 5 px gutters (220..275, 280..335, 340..410). Rows 1 and 2 hold the same shape (one
+       * caption + one value) and get the same height; row 3 carries a two-line caption and gets
+       * the extra 15. Inside each box the content is centred: caption top = box top + 5, value
+       * 20 below it (the authored pitch), which puts the 24 px value 6 px off the box bottom.
+       * Row 3: captions at +7/+22 (the authored 15 px pitch), value at +37, 8 px off the bottom.
+       *
+       * TWO AUTHORING SLIPS FIXED WHILE EVERY ITEM IS BEING PLACED ANYWAY. Row 1's values were
+       * NOT level (Δ TEMP AVG at 240, STARTUP RATE at 235), and the Δ TEMP AVG caption was the
+       * one 16 px caption on a card of 14s (it is the only reason that caption measured 110 px
+       * against 117 for a 12-letter neighbour). Captions are 14 px mono, ~9.75 px/char, and are
+       * placed so each is centred in its 120 px box (a 12-letter caption spans 117 and gets 1.5
+       * px a side; 11 letters, 6.5; POSITION, 20). The rAnchor value right edges are unchanged
+       * except Δ TEMP AVG, 620 → 615, so a two-digit value centres like its neighbours.
+       *
+       * Patched here, not in the builder, because pwr_board_data.js is REGENERATED. The rhythm
+       * is pinned by the `NIS card rows` selfTest check below, which reads these same items. */
+      // row 1 — 220..275
+      ims175ay22g: { props: { height: 55 } },
+      ims175yp3k8: { props: { height: 55 } },
+      imrsho1qu6t: { props: { text: 'Δ TEMP AVG', top: 225, left: 546, fontSize: 14 } },   // "d TEMP AVG" lost its Δ (#235)
+      // fontSize 13 (#713 pass 3): measured `over === 1` under Linux DejaVu Sans, right at
+      // the caption-sweep's 1px tolerance — see the note above the CONDENSATE/RCP FLOW pair.
+      imrshos9w20: { props: { top: 225, left: 662, fontSize: 13 } },   // STARTUP RATE
+      imro6qpci2d: { props: { top: 245, left: 615 } },
+      imro6qsncb9: { props: { top: 245 } },
+      // row 2 — 280..335
+      ims176nions: { props: { top: 280, height: 55 } },
+      ims176t4e8s: { props: { top: 280, height: 55 } },
+      imrshofh36b: { props: { top: 285, left: 537, fontSize: 13 } },   // SOURCE RANGE, #713 pass 3
+      imrshosegml: { props: { top: 285, left: 667 } },
+      imro6qutiht: { props: { top: 305 } },
+      imro6rctcgm: { props: { top: 305 } },
+      // row 3 — 340..410
+      ims2hvqbvee: { props: { top: 340, height: 70 } },
+      ims2hvv0wgo: { props: { top: 340, height: 70 } },
+      ims15i4eyhf: { props: { top: 347, left: 542 } },
+      ims15i60dd8: { props: { top: 347, left: 662, fontSize: 13 } },   // SHUTDOWN ROD, #713 pass 3
+      ims2hnpzc1t: { props: { top: 362 } },
+      ims2hnyt0jk: { props: { top: 362, left: 680 } },
+      imrpk4pjcpd: { props: { top: 377 } },
+      imrpnzfsfcx: { props: { top: 377 } },
       // (TRIP BLOCKS carried a top/height patch here until the 2026-07-28t re-export —
       // the builder now authors it at 425/30, so the patch was pinning what the diagram
       // already says. Dropped rather than kept: a patch that agrees with the doc is a
@@ -3716,21 +4658,162 @@
     return null;
   }
 
+  /* ---- "YOUR PRESS DID NOTHING": the refused rod press (#752) --------------------------------
+   * *(OWNER, 2026-09-14: "what if we have the rod insert/withdraw buttons flash red a few times
+   * if to indicate no more rod travel when the rod reaches the end or is at the end of travel and
+   * the user hits the button??")*
+   *
+   * THERE IS NO REFUSAL TO OBSERVE, SO THE TRIGGER IS READ OFF THE PUBLISHED GROUP. Measured
+   * 2026-09-14 against pwr2_shell: at 627/627 `rod_nudge` returns a normal snapshot, throws
+   * nothing, and moves 0.0000 steps; same at 0/627 on the insert end. The engine clamps in
+   * silence (`pwr2_engine.js` case 'rod_target': `Math.max(0, Math.min(BANK(), +value))`), and
+   * nothing downstream of that ever learns the command was a no-op. So this is an inference from
+   * live plant state - and it types NO bank size: a hard-coded 627 is how the retired engine's
+   * 912 survived for months (#746), which is why `bankFullScale` exists further up this file.
+   *
+   * position_pct, NOT `steps`. `steps` is `Math.round(e.rodSteps)` at the shell boundary, so it
+   * reads 627 with up to half a step of travel still available and would cross out a press that
+   * DID move the bank. `position_pct` is `100 * e.rodSteps / bankSteps()`, unrounded.
+   *
+   * EXACT BOUNDS, NOT `rodAtLimit`'s 99.9/0.1. That test asks "close enough to drop the shutdown
+   * bank's latch" and is right to be loose about it. This one asks "would this press have moved
+   * anything at all", where 0.1 % is 0.63 steps of real travel - a flash there is a lie about a
+   * press that worked.
+   *
+   * IT NEVER SUPPRESSES THE COMMAND. The cue is added and the press goes down exactly as before.
+   * If the inference is ever wrong the player gets a spurious flash; suppressing on a wrong
+   * inference would take the control away from them instead, which is much the worse failure.
+   * A second boundary worth knowing: the cue does NOT fire when the bank merely ARRIVES at its
+   * stop unpressed. A standing rod-at-limit indication is a different feature (an annunciator
+   * window) and is deliberately out of scope - arriving without a press means the player drove it
+   * there on purpose. */
+  function rodPressRefused(s, group, direction) {
+    var g = rodGroup(s, group);
+    if (!g) return false;
+    var pct = g.position_pct;
+    /* `== null` FIRST and on its own: `isFinite(null)` is TRUE, so a null-at-the-boundary field
+     * would sail through a bare isFinite guard and then compare as 0 - i.e. every INSERT press on
+     * a plant that publishes no position would be crossed out. It is the retired engine's safety
+     * too: a plant that publishes no `position_pct` gets no cue rather than a wrong one. */
+    if (pct == null || !isFinite(pct)) return false;
+    return direction > 0 ? pct >= 100 : pct <= 0;
+  }
+
+  /* How long the cue stands, blink included. See the bdRefusedFlash note in pwr_board.css for why
+   * this is longer than the animation (0.22 s x 3 = 0.66 s): the tail is what a player who looked
+   * away during the blink still sees, and it is the WHOLE cue under prefers-reduced-motion. */
+  var REFUSE_MS = 1100;
+
+  /* WHICH BANK'S READING FLASHES WITH THE BUTTON *(OWNER, 2026-09-14: "We could flash the step
+   * indication red as well to show the relationship.")*. The player pressed a button and a number
+   * did not move; flashing BOTH says which number the dead button was about, which is the whole
+   * relationship. CONTROL BANK ONLY, and the map is one entry for exactly that reason — the
+   * shutdown bank takes no red at all (see its buttons' note, and the 2026-09-14 ruling there).
+   * A map rather than a literal so the exclusion is a visible line of code instead of an absence. */
+  var ROD_REFUSE_READOUT = { control_rods: 'imrpk4pjcpd' };
+
+  /* ONE FLASHER FOR THE BUTTON AND THE READING, so they cannot drift out of step — the cue is a
+   * single event with two faces, and two copies of this timing is how the faces disagree.
+   *
+   * RESTART THE FINITE ANIMATION, or the SECOND press at the stop is silent — re-adding a class
+   * that is already on the element re-runs nothing, and a player pressing WITHDRAW over and over
+   * is exactly what #752 measured (358 of them). Remove, read a layout property to force the
+   * style flush, re-add. The `void el.offsetWidth` is load-bearing rather than a tidy-up: without
+   * it the two class changes coalesce into no change at all.
+   *
+   * THE TIMER LIVES ON THE ELEMENT, not in module state, so the reading and the button each expire
+   * on their own clock and neither can strand the other. */
+  function flashRefused(el, cls) {
+    /* `!el.classList` IS NOT BELT-AND-BRACES — run_pwr2_board calls `onButton(item, btn)` with a
+     * Node stand-in for the element and the first cut of this threw `Cannot read properties of
+     * undefined (reading 'remove')` right through that gate. A cue is decoration: it must never be
+     * able to break the command path it decorates, on any caller. */
+    if (!el || !el.classList) return false;
+    if (el._rdRefuseT) { clearTimeout(el._rdRefuseT); el._rdRefuseT = null; }
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+    el._rdRefuseT = setTimeout(function () {
+      el.classList.remove(cls); el._rdRefuseT = null;
+    }, REFUSE_MS);
+    return true;
+  }
+
+  function cueRodRefusal(id, btn) {
+    var b = BUTTONS[id], d = b && b.hold;
+    /* `!btn.classList` IS NOT BELT-AND-BRACES - run_pwr2_board calls `onButton(item, btn)` with a
+     * Node stand-in for the element and the first cut of this threw `Cannot read properties of
+     * undefined (reading 'remove')` right through that gate. A cue is decoration: it must never be
+     * able to break the command path it decorates, on any caller. */
+    if (!d || !btn || !btn.classList) return false;
+    var s = (RD.PwrBoard && RD.PwrBoard.lastSnapshot) ? RD.PwrBoard.lastSnapshot() : null;
+    if (!s || !rodPressRefused(s, d.group, d.direction)) return false;
+    flashRefused(btn, 'bd-refused');
+    /* …AND THE NUMBER THAT DID NOT MOVE, in the same call so the two start on the same frame. */
+    var roId = ROD_REFUSE_READOUT[d.group];
+    var ro = (roId && refs && refs.values && refs.values[roId]) ? refs.values[roId].el : null;
+    if (ro) flashRefused(ro, 'bd-val-refused');
+    return true;
+  }
+
+  /* ---- YELLOW WHILE THE BANK IS DRIVEN, ON THE READING TOO (#752) ------------------------------
+   * *(OWNER, 2026-09-14: "The shutdown bank button and indication should be yellow when in
+   * motion.")* — BOTH banks, button AND indication. The buttons already carried it (the IN-OUT
+   * lamps, WTSM 8.1 §8.1.7, ML11223A252); the two step readouts carried no state styling at all.
+   *
+   * IT READS THE LAMPS' OWN PREDICATE — literally, out of the BUTTONS table, rather than a second
+   * copy of "is it moving". The two banks do not share one notion of motion and that is deliberate:
+   * the control bank's lamp is the PLANT's (`rodDriving` — g.moving, whoever asked, the automatic
+   * rod channel included), the shutdown bank's is the BOARD's latch (`latchActive`), because a
+   * latched full-travel drive is a board-held demand. Re-deriving either here would have produced a
+   * reading that disagrees with the buttons six inches away; calling `b.warn(s)` cannot.
+   *
+   * STEADY TINT, NEVER A PULSE. A 200-step withdrawal at MED runs for minutes and a number blinking
+   * for minutes is noise, not a cue — the same argument #738's amber makes about motion, applied to
+   * the one signal on this board that is legitimately long-lived. */
+  var ROD_MOVING_READOUT = { imrpk4pjcpd: 'control_rods', imrpnzfsfcx: 'shutdown_rods' };
+  var ROD_LAMP_IDS = {
+    control_rods:  ['imrpk6qzjq8', 'imrpk79mwng'],
+    shutdown_rods: ['imrpnyaxsb3', 'imrpnyf37ju']
+  };
+  function bankDriven(s, group) {
+    var ids = ROD_LAMP_IDS[group] || [];
+    for (var i = 0; i < ids.length; i++) {
+      var b = BUTTONS[ids[i]];
+      if (b && b.warn && b.warn(s)) return true;      // the lamp's own answer, not a second one
+    }
+    return false;
+  }
+
   // ================================================================ driver API
   RD.PwrBoardDriver = {
     onMount: function (doc, ctx, r) {
       ctxRef = ctx; refs = r; closePop();
+      tbReset();      // a new world — see tbReset (#738 quality pass: 2 false messages on a plant switch)
     },
     onButton: function (item, btn) {
       var b = BUTTONS[item.id];
       if (b && b.press) b.press(RD.PwrBoard.lastSnapshot() || {}, btn);
+      /* ⚰ `cueRodRefusal(item.id, btn)` WAS HERE and is deleted with the shutdown bank's `rodCue`
+       * (#752, 2026-09-14 ruling). It could only ever have fired for a button carrying `hold`, and
+       * pwr_board.js gives a `hold` button pointerdown/keydown handlers and NO click handler
+       * (`buttonMomentary`, :355-378) — so this line reached the cue for the latched shutdown pair
+       * and for nothing else. Left in place it would be a dark wire pointing at a cue the ruling
+       * removed. The control bank is cued from `onButtonDown` and `driveRod`, which is where a
+       * momentary press actually arrives. */
     },
     // Momentary (press-and-hold) buttons — the rod drive. buttonMomentary tells the
     // board to route these through pointer/keyboard down+up instead of click.
     buttonMomentary: function (item) { var b = BUTTONS[item.id]; return !!(b && b.hold); },
     onButtonDown: function (item) {
       var b = BUTTONS[item.id];
-      if (b && b.hold) armRodTap(b.hold.group, b.hold.direction);
+      if (!b || !b.hold) return;
+      armRodTap(b.hold.group, b.hold.direction);
+      /* THE CUE GOES ON THE PRESS, NOT THE RELEASE (#752). A tap at the stop fires its
+       * `rod_nudge` from endHoldRod ~220 ms later and a hold fires `rod_start` there instead;
+       * hanging the cue off that would delay the answer to a question the player has already
+       * asked, and a hold would never get one at all. */
+      cueRodRefusal(item.id, (refs && refs.buttons) ? refs.buttons[item.id] : null);
     },
     onButtonUp: function () { endHoldRod(); },
     // Programmatic rod drive (keyboard ↑/↓) — mirrors the momentary buttons' tap-or-hold
@@ -3744,6 +4827,7 @@
         if (btn && btn.disabled) return false;
         if (btn) btn.classList.add('bd-pressed');
         armRodTap(group, direction);
+        if (id) cueRodRefusal(id, btn);        /* keyboard drive gets the same answer (#752) */
         return true;
       }
       if (refs && refs.buttons) Object.keys(refs.buttons).forEach(function (k) { refs.buttons[k].classList.remove('bd-pressed'); });
@@ -3853,6 +4937,25 @@
      * popover will draw without rendering one. Three rows shipped permanently enabled and
      * permanently throwing precisely because this was DOM-only. */
     tripBlockRows: function (s) { return tripBlockRows(s); },
+    /* The message state as DATA (#738). The flash is a claim about state; a check that can only
+     * read a class off a button is testing the renderer rather than the rule, which is how the
+     * #727 row glow shipped with no gate at all. */
+    tripBlockMessages: function () { return tbMessages(); },
+    tripBlockUnacked: function () { return tbUnacked(); },
+    /* The acknowledge as a FUNCTION, so it is testable without a rendered popover. `closePop(true)`
+     * is the only production caller path and this is the same assignment it makes — a harness with
+     * no stage cannot open the card, and a check that skipped the acknowledge for that reason
+     * would be testing half the feature. Read-accessor category, like ports()/lastSnapshot(). */
+    __ackTripBlocks: function () { tbAck = tbSeq; },
+    /* Drop the whole message state. Production calls `tbReset` from onMount; a gate calls this so
+     * its own section starts from a known state — and so the mutation self-test stops carrying
+     * state between mutants (10 of 33 mutations were reporting a spurious red from a leftover
+     * lineup, measured by the #738 quality pass). */
+    __resetTripBlocks: function () { tbReset(); },
+    /* Mark a row as one the BOARD just commanded, so a harness can exercise the (c) branch — the
+     * player's own release — without a rendered popover to click. Same assignment the row's click
+     * handler makes; see `tbSelf` at the top of this section for why it is a countdown. */
+    __markTripBlockSelf: function (id, want) { tbMarkSelf(id, want === undefined ? false : want); },
     scramResetNote: function (s) {
       var rps = (s && s.rps_state) || {};
       if (!rps.scrammed) return null;
@@ -3922,6 +5025,62 @@
     buttonInfo: function (item, s) {
       return item.id === 'imrsk4xz2dm' && blockedTripCount(s) > 0;
     },
+    /* THE FLASH *(OWNER RULING, 2026-09-13: "flash the permissive button amber when there's a
+     * message … When the user opens the card and then closes it the permissive card opening
+     * button stops flashing")*. #738/#716.
+     *
+     * ⚠ THE COLOUR IS THE CUE TOO, AND SPLITTING IT OFF SHIPPED THE DEFECT TWICE. This read
+     * `tbMessages().some(r => r.msg)` — "a message EXISTS" — so the acknowledge stopped the
+     * animation and left the button amber for ever after. #752 rewrote the acknowledge and did
+     * not touch this line, so the amber survived that fix untouched and the owner played it again:
+     *
+     *   *(OWNER, 2026-09-14, #755 item 17: "The TRIP BLOCKS button stayed yellow after opening and
+     *   closing the card.")*, which is the second telling of *(OWNER, 2026-09-14, #752: "The yellow
+     *   permissives button should stop being yellow after being opened.")*
+     *
+     * MEASURED on a REAL P-11 revoke, not a doctored snapshot — a real depressurization to
+     * 1839 psia (12.68 MPa), both cooldown blocks placed through the command path, a real
+     * repressurization revoking them at 2021 psia (13.93 MPa): after open-and-close the button
+     * read `bd-btn bd-msg`, `color: rgb(255, 209, 102)`, `background: rgb(58, 36, 8)`. Amber,
+     * exactly as reported. #752's own gate asserted that amber as CORRECT, which is how it passed.
+     *
+     * SO THE STATE AND THE MOTION HAVE ONE LIFETIME ON THIS BUTTON, and the reason is what the
+     * cue is ABOUT. The alarm panel's two-class grammar (`ui/shell.css`: "Only unacked critical
+     * tiles flash") is right there because an alarm tile's colour reports a CONDITION that is
+     * still live — acknowledging says "I know", not "it stopped". A trip-block message is not a
+     * condition, it is an EVENT that already finished: the plant took a block, once. The standing
+     * facts — which rows are blocked, what the lineup is, what happened to a row — are the count
+     * badge, `bd-info`'s grey, and the card's own text, none of which this acknowledge touches.
+     * Colouring the button after the player has read the event is the board shouting about
+     * something already dealt with, which is the whole of the owner's complaint.
+     *
+     * The renderer's split stays as it is — it is generic, the alarm panel uses it properly, and
+     * `verify_reduced_motion` keys its static fallback on `.bd-msg.bd-unack`. On THIS button the
+     * two predicates simply coincide. */
+    buttonMsg: function (item, s) {
+      return item.id === 'imrsk4xz2dm' && tbUnacked();
+    },
+    buttonUnack: function (item, s) {
+      return item.id === 'imrsk4xz2dm' && tbUnacked();
+    },
+    /* A STATE CLASS ON A READING (#752) — the yellow "this bank is being driven" tint on the two
+     * rod-step numbers. See ROD_MOVING_READOUT / bankDriven above for why it reads the lamps' own
+     * predicate rather than a second notion of motion, and why it is a steady tint.
+     *
+     * A CLASS, NOT A COLOUR, deliberately. The value tile carries its authored colour as an INLINE
+     * style (pwr_board.js buildValue), so a stylesheet rule has to be `!important` to reach it —
+     * and once it is a class, the red refusal flash (`bd-val-refused`) can be declared after it and
+     * win by source order. Had the tint gone through `valueFor`'s `out.color` instead, it would be
+     * an inline write on the same element and NOTHING in CSS could out-rank it: the tint would
+     * strand the flash for as long as the bank was moving, which is exactly when a refused press at
+     * the stop happens. */
+    valueCue: function (item, s) {
+      var g = ROD_MOVING_READOUT[item.id];
+      return (g && bankDriven(s, g)) ? 'bd-val-moving' : null;
+    },
+    /* Exposed for the gate: the tint is a CLAIM about the bank, and a check that can only read a
+     * class off a rendered tile is testing the renderer rather than the rule (#727's lesson). */
+    rodBankDriven: function (s, group) { return bankDriven(s, group); },
     // Count badge: how many trips are currently blocked, on the TRIP BLOCKS button.
     buttonBadge: function (item, s) {
       if (item.id !== 'imrsk4xz2dm') return null;
@@ -4011,6 +5170,10 @@
     afterRender: function (s) {
       // Boron target-seeking now lives in the control/automation layer (the
       // 'boron_conc' channel) — the ON/OFF buttons and target number engage and set it.
+      /* BEFORE refreshTripBlocks, and OUTSIDE it: refreshTripBlocks returns immediately when the
+       * card is closed, and a message that only exists while the player is already looking at the
+       * card is not an annunciator. This is the every-broadcast half (#738). */
+      noteTripBlockEvents(s);
       refreshTripBlocks(s);
       clearLatchIfDone(s);
     },
@@ -4026,6 +5189,53 @@
       return Object.keys(BUTTONS).filter(function (k) {
         return !!(BUTTONS[k] && (BUTTONS[k].press || BUTTONS[k].hold));
       });
+    },
+    /* EVERY WAY THE PLAYER CAN ACT ON THIS BOARD, not just the ones that are buttons (#748).
+     *
+     * `pressableIds()` above answers a NARROWER question than its name suggests, and the
+     * narrowness is load-bearing for #304 (it must not call a decoration a control) but WRONG
+     * for anything asking "can the player do something here?". It reads `BUTTONS`, so the four
+     * things a player works that are not buttons come back as read-only indication:
+     *
+     *   - a TYPED NUMBER BOX (`NUMBERS`) — `Boron Target`, `Pressure SP`, `Dump Setpoint`,
+     *     `Load Setpoint`, charging, spray, heaters. The player types a value and presses
+     *     Enter, or clicks the arrows; `set` is the command that goes down. Four walkthrough
+     *     steps name one of these as the control to press.
+     *   - a CLICKABLE VALVE SYMBOL (`VALVE_TOGGLE`) — the accumulator shutoff, the MSIV, the
+     *     PORV block valve, the PORV itself. N4 in the walkthrough guide exists because these
+     *     are not buttons and a step has to say so.
+     *   - the SCRAM item, whose `kind` is its own renderer (`buildScram`) and which therefore
+     *     appears in no button map at all.
+     *   - a shell-owned control that is not a board item — today only the 1/M panel's
+     *     `Plot point`. It is not in the doc, so it is not answerable here; the caller
+     *     resolves that one through `RD.Highlight.SHELL_TARGETS` (see run_manual_controls).
+     *
+     * SELF-MAINTAINING BY CONSTRUCTION: each clause reads the map the renderer itself
+     * dispatches from, so wiring a new number box or valve widens this list in the same edit.
+     * Returns SELF ids only — the caller walks `parentOf` if it wants "inside something
+     * workable", exactly as the #304 scan does. */
+    actionableIds: function () {
+      var out = {}, gone = DOC_REMOVE || {};
+      /* A REMOVED TILE IS NOT A CONTROL (#748 quality pass). `applyDocPatches`/DOC_REMOVE run at
+       * BROWSER MOUNT, so a Node caller sees the raw doc: an id whose tile was deleted but whose
+       * `BUTTONS`/`NUMBERS`/`VALVE_TOGGLE` entry was left behind would be reported as something
+       * the player can work, and a gate built on that would go quietly optimistic. Measured
+       * today: zero removed ids reach this list and zero CONTROL_LABEL_MAP labels resolve to
+       * one, so this filter changes nothing now — it is here so the next deletion cannot. */
+      var add = function (k) { if (!gone[k]) out[k] = true; };
+      /* The BUTTONS clause is spelled out rather than calling `this.pressableIds()`: a caller
+       * that lifts this function off the driver (`var f = DRV.actionableIds`) would lose `this`
+       * and throw, and an introspection helper must not be fragile about how it is invoked. */
+      Object.keys(BUTTONS).forEach(function (k) {
+        if (BUTTONS[k] && (BUTTONS[k].press || BUTTONS[k].hold)) add(k);
+      });
+      Object.keys(NUMBERS).forEach(function (k) { if (NUMBERS[k] && NUMBERS[k].set) add(k); });
+      Object.keys(VALVE_TOGGLE).forEach(function (k) { add(k); });
+      ((window.RD_PWR_BOARD_DOC && window.RD_PWR_BOARD_DOC.items) || []).forEach(function (it) {
+        if (it && it.kind === 'scram') add(it.id);
+      });
+      (EXTRA_ITEMS || []).forEach(function (it) { if (it && it.kind === 'scram') add(it.id); });
+      return Object.keys(out);
     },
     // Inspection copy (#96) — what an item IS, in two tiers, resolved through the
     // registry's containment fallback so an unnamed sub-frame describes its card.
@@ -4255,6 +5465,39 @@
         var g3 = (card.top + card.height) - (aut[0].top + aut[0].height);
         var lo = Math.min(g1, g2, g3), hi = Math.max(g1, g2, g3);
         return (hi - lo) <= 1 ? true : 'gaps ' + g1 + '/' + g2 + '/' + g3;
+      })() === true);
+      /* THE NIS CARD ROWS (owner, 2026-09-05 — see the DOC_PATCHES block). Three row-pairs,
+       * each pair level, 5 px gutters throughout, filling the card's content band from its
+       * 220 top to 5 px above the card bottom. Reads the patched doc, so it fails on the shipped
+       * pwr_board_data.js without the patches (gutters 5/30/5) — INJECTION-VERIFIED 2026-09-05:
+       * moving row 3 to 345/65 (a 10 px gutter) reddened exactly this check, 1 of 242 — and it
+       * would fail again if a re-export or a neighbour's nudge reopened the hole. */
+      ck('driver: the NIS card rows are level pairs with uniform 5 px gutters and no hole', (function () {
+        function it(id) { return (window.RD_PWR_BOARD_DOC.items || []).filter(function (x) { return x.id === id; })[0]; }
+        var card = it('ims175lciah');
+        var rows = [['ims175ay22g', 'ims175yp3k8'], ['ims176nions', 'ims176t4e8s'], ['ims2hvqbvee', 'ims2hvv0wgo']].map(function (p) { return p.map(it); });
+        if (!card || rows.some(function (r) { return r.some(function (x) { return !x; }); })) return 'item missing';
+        for (var i = 0; i < rows.length; i++) {
+          if (rows[i][0].top !== rows[i][1].top || rows[i][0].height !== rows[i][1].height)
+            return 'row ' + (i + 1) + ' not level: ' + rows[i].map(function (r) { return r.top + '+' + r.height; }).join(' / ');
+        }
+        var gaps = [rows[1][0].top - (rows[0][0].top + rows[0][0].height),
+                    rows[2][0].top - (rows[1][0].top + rows[1][0].height),
+                    (card.top + card.height) - (rows[2][0].top + rows[2][0].height)];
+        if (gaps.some(function (g) { return g !== 5; })) return 'gutters ' + gaps.join('/');
+        // and every caption/value sits inside its own box (the re-layout moved all twelve)
+        var inside = [['ims175ay22g', 'imrsho1qu6t', 'imro6qpci2d'], ['ims175yp3k8', 'imrshos9w20', 'imro6qsncb9'],
+                      ['ims176nions', 'imrshofh36b', 'imro6qutiht'], ['ims176t4e8s', 'imrshosegml', 'imro6rctcgm'],
+                      ['ims2hvqbvee', 'ims15i4eyhf', 'ims2hnpzc1t', 'imrpk4pjcpd'], ['ims2hvv0wgo', 'ims15i60dd8', 'ims2hnyt0jk', 'imrpnzfsfcx']];
+        for (var j = 0; j < inside.length; j++) {
+          var box = it(inside[j][0]);
+          for (var k = 1; k < inside[j].length; k++) {
+            var el = it(inside[j][k]);
+            if (!el) return inside[j][k] + ' missing';
+            if (el.top < box.top || el.top > box.top + box.height - 15) return inside[j][k] + ' top ' + el.top + ' outside box ' + box.top + '..' + (box.top + box.height);
+          }
+        }
+        return true;
       })() === true);
       // ---- the board's AUTO colour convention (2026-08-01) --------------------------------
       // `buildButton` uses the authored item colour AS the lit colour, so an off-convention

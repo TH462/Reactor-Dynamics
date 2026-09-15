@@ -182,18 +182,6 @@ html[data-channel="dev"] .brand-test {
   color: var(--caution); border-radius: var(--radius);
   padding: 8px 16px; font-size: 13px; font-weight: 600; letter-spacing: 0.2px;
 }
-/* WHO IT IS FOR — the question the copy never answered (2026-08-06). The site's
-   own vocabulary (boration, hot standby, xenon) reads as a filter to anyone
-   without a nuclear background, and a reader who has to guess whether they are
-   the audience leaves. Highest-read slot on the page: under the subhead, above
-   the CTA. */
-.hero-who {
-  max-width: 660px; margin: 0 auto 26px; padding: 12px 18px;
-  background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-2); font-size: 15px; line-height: 1.55;
-}
-.hero-who strong { color: var(--text); }
 .hero h1 {
   font-size: clamp(28px, 5vw, 44px); line-height: 1.15; margin: 0 0 14px;
   letter-spacing: -0.5px;

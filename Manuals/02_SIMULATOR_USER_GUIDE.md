@@ -2,7 +2,7 @@
 
 **Document:** PWR-SIM-01  
 **Title:** Reactor⚛️Dynamics — PWR Trainer Operation  
-**Revision:** 18  
+**Revision:** 19  
 
 ---
 
@@ -129,7 +129,7 @@ Alarm-tile detail is **generated from the plant's own protection table**, so it 
 real setpoint in your selected units and cannot drift from a retune.
 
 **NOTE:** hovering does **not** ring or highlight the element. The only glows on the board are
-the Instructor's (blue) and the checklist's step preview (green) — both of which point at
+the Instructor's (blue) and the walkthrough's step preview (green) — both of which point at
 something you did *not* choose to look at.
 
 ---
@@ -227,7 +227,7 @@ Entry: the plant & mission status line under the sim controls, or **Operate** ta
 | `hot_full_power` | Hot Full Power | **Mode 1, At Power** | Critical ~100 %, ~100 MWe |
 | `50_percent` | 50 % Power | **Mode 1, At Power** | Critical mid-power (> 5 %) |
 | `hot_zero_power` | Hot Standby | **Mode 3, Hot Standby** | Subcritical, hot T/P, control bank in, SR on |
-| `hot_shutdown` | Hot Shutdown | **Mode 4, Hot Shutdown** | Subcritical, RCS **250 °F (121.1 °C) / 369 psi (2.545 MPa)** settled, **RCPs secured**, **RHR in service**, both banks in, the P-11 blocks taken, SR on, PZR level 30 % |
+| `hot_shutdown` | Hot Shutdown | **Mode 4, Hot Shutdown** | Subcritical, RCS **250 °F (121.1 °C) / 369 psi (2.545 MPa)** settled, **RCPs secured**, **RHR in service**, both banks in, the P-11 blocks taken, SR on, PZR level 25 % |
 | `cold_shutdown` | Cold Shutdown | **Mode 5, Cold Shutdown** | Subcritical, RCS **122 °F (50 °C) / 363 psi (2.50 MPa)**, **RCPs secured**, **RHR in service**, both banks in, the P-11 blocks taken, SR on, boron 918 ppm — the SG secondary rides at its own saturation, **1.8 psi (0.0127 MPa)** |
 
 > **THE COLD END IS MODE 5 (#524, landed 2026-08-31).** The water-property floor moved from 14.5 psi (0.1 MPa) to **0.29 psi (0.002 MPa)**, so a steam generator at or below Mode 5's **200 °F (93.3 °C)** boundary is representable and `cold_shutdown` loads. Take the plant up with **PWR-T20**, or run **PWR-T21** down from power — both run end to end on integrated physics again.
@@ -404,16 +404,22 @@ During missions:
 
 **NOTE:** Rewind restores a checkpoint; use it after a failed recovery or softlock.
 
-### 8.3 Live checklists and their prerequisite banner
+### 8.3 Walkthroughs and their prerequisite banner
 
-Any non-narrative procedure can be run as a **live checklist** against the plant as it
-sits — from the Instructor panel's checklist picker or the 📋 button on a procedure card in
-the manual. Steps check themselves off the instruments while you operate; nothing is reset
-and no command is ever blocked.
+Any non-narrative procedure can be run as a **walkthrough** — a live, self-checking
+procedure against the plant. The **Walkthroughs** tab lists them; the Plant & Mission window's Walkthroughs tab lists
+them too, and its **Start** button loads the procedure's own starting condition first. The 📋
+button on a procedure card in the manual runs one against the plant as it sits. A running
+walkthrough is drawn in the **Instructor** tab **one step at a time**, headed *Step X of N*, with
+the step's details open. Steps check themselves off the instruments while you operate; nothing
+is reset by starting one and no command is ever blocked. Every step waits for **Continue**,
+which is dark until the instruments say the step is done and lights when they do; **Rewind
+step** takes the plant and the walkthrough back to the start of the previous step (the chart's
+Rewind is off while a walkthrough runs).
 
-Procedures also carry **machine-checked prerequisites**. From the moment a checklist starts,
+Procedures also carry **machine-checked prerequisites**. From the moment a walkthrough starts,
 the Instructor grades each one against the live plant — reading the same indications you
-do — and if any does not match, the checklist shows a caution banner listing each failed
+do — and if any does not match, the walkthrough shows a caution banner listing each failed
 item with **what the procedure expects and what the plant actually reads** (for example:
 boron at the estimated critical condition, ≈ 683 ppm — reads 857). The Instructor adds one
 comment pointing you at it.
@@ -424,9 +430,9 @@ comment pointing you at it.
   after a pump-heat heatup without first diluting to the estimated critical boron
   (PWR-N02 step 15).
 - **It is an ENTRY statement, and it does not come back.** The verdicts are taken once, as
-  the checklist opens, and the banner then stands until the run starts moving. Preconditions
-  ask whether it was sensible to *open* this checklist; re-asserting them against a plant the
-  checklist is deliberately changing would make the procedure complain about its own progress
+  the walkthrough opens, and the banner then stands until the run starts moving. Preconditions
+  ask whether it was sensible to *open* this walkthrough; re-asserting them against a plant the
+  walkthrough is deliberately changing would make the procedure complain about its own progress
   — a Mode 5 → Mode 3 heatup crosses out of every one of its own entry conditions by design.
 
 #### Reading a step card
@@ -439,8 +445,9 @@ underneath it:
 | Check-off criterion | The indication the step is graded on, in blue; it turns green when met. |
 | **Use …** | The board control this step drives, and the value to drive it to. |
 | ⏩ wait line | Roughly how long the step takes **in plant time**, and the speed-control rung to set. |
-| **Acknowledge ✓** | Only on steps that ask no operator action — press it to move on. |
-| Click to expand | The step's reasoning, cautions and any extra notes. |
+| **Continue ▶** | On every step. Dark until the instruments satisfy the step, lit when they do — press it to move on. |
+| **⏪ Rewind step** | Takes the plant and the walkthrough back to the start of the previous step. Off on the first step. |
+| Details | The step's reasoning, cautions and any extra notes — always open on the step you are on. |
 
 The wait line appears on steps that hold three plant-minutes or longer. The suggested rung is
 the lowest one that finishes the wait in about **half a minute** of real time, so three quarters

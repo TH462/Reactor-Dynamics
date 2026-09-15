@@ -148,6 +148,10 @@
     // auto-reinstate — the automatic permissive blocks still reinstate, but a block
     // the operator set proactively persists until they clear it.
     this.manualTripBlocks = {};
+    // How long each blocked trip's permissive has been CONTINUOUSLY unsatisfied, in sim
+    // seconds (#752). The revoke below confirms over `config.trip_block_revoke_confirm_s`
+    // rather than acting on one instrument sample — see _autoReinstateTripBlocks.
+    this.permBelowS = {};
   }
 
   // Initial ESF arm state. Armed by default; disarm any system whose ACTIVATING
@@ -454,7 +458,7 @@
         this.rps.last_trip_reason = null;
       }
     }
-    this._evalTrips(this.lastInstruments);
+    this._evalTrips(this.lastInstruments, dt);
     this._evalActuations(this.lastInstruments);
     this._evalInterlocks(this.lastInstruments);
     this._evalAlarms(this.lastInstruments, dt);
@@ -468,9 +472,9 @@
   //   blockable  — the trip can be manually blocked (set_trip_block) while the
   //                config's trip_block_permissive is satisfied (P-10); blocks
   //                AUTO-CLEAR (reinstate) when the permissive drops.
-  ControlLayer.prototype._evalTrips = function (ins) {
+  ControlLayer.prototype._evalTrips = function (ins, dt) {
     var trips = this.config.trips || [];
-    this._autoReinstateTripBlocks(ins);
+    this._autoReinstateTripBlocks(ins, dt);
     for (var i = 0; i < trips.length; i++) {
       var t = trips[i];
       if (t.condition && !this._evaluateCondition(t.condition)) continue;
@@ -622,14 +626,37 @@
   // and the cooldown says its block "stands until you clear it or pressure climbs back
   // above P-11 on the next heatup". `manualTripBlocks` survives as PROVENANCE only (who
   // set it, for the save format and the UI); it no longer changes behaviour.
-  ControlLayer.prototype._autoReinstateTripBlocks = function (ins) {
-    if (!this._anyTripBlocks()) return;
+  //
+  // THE REVOKE IS CONFIRMED OVER TIME, NOT TAKEN ON ONE SAMPLE (#752, OWNER RULING 2026-09-14
+  // on options put as confirmation time / deadband / document only: "Confirmation time
+  // (Recommended)"). `_permTest` reads an INSTRUMENT (HR1) and every one of them is noisy, so
+  // before this a single stray sample below the permissive removed a standing block. The plant
+  // supplies the dwell as `config.trip_block_revoke_confirm_s` (HR3); a plant that declares
+  // none keeps the old one-sample behaviour exactly, which is why RBMK and BWR do not move.
+  //
+  // ⚠ NO dt, NO CONFIRMATION — and that direction is deliberate. `evaluate(ins)` is called
+  // with no dt by several harnesses, and a timer that can never accumulate would leave a block
+  // standing FOR EVER: the degenerate-latch shape (#433's `held_within_s` age `0 <= 60`), but
+  // failing on the unsafe side. With no dt this revokes immediately, i.e. exactly what it did
+  // before, so no harness silently gains a defeated reinstate. The production path always has
+  // a dt — layers/simulation_service.js:476 and :502 both pass `sinceEval`.
+  ControlLayer.prototype._autoReinstateTripBlocks = function (ins, dt) {
+    if (!this._anyTripBlocks()) { this.permBelowS = {}; return; }
+    var confirm = +this.config.trip_block_revoke_confirm_s || 0;
+    var step = (typeof dt === 'number' && isFinite(dt) && dt > 0) ? dt : null;
     var tps = this.config.trips || [];
+    if (!this.permBelowS) this.permBelowS = {};   // old saves restore no timer map
     for (var i = 0; i < tps.length; i++) {
       var t = tps[i];
-      if (t.id && this.tripBlocks[t.id] && !this._permTest(this._tripPermissive(t), ins)) {
+      if (!t.id) continue;
+      if (!this.tripBlocks[t.id]) { this.permBelowS[t.id] = 0; continue; }
+      if (this._permTest(this._tripPermissive(t), ins)) { this.permBelowS[t.id] = 0; continue; }
+      // below the permissive — accumulate, and revoke once the dwell is satisfied
+      this.permBelowS[t.id] = (this.permBelowS[t.id] || 0) + (step === null ? confirm : step);
+      if (this.permBelowS[t.id] >= confirm) {
         delete this.tripBlocks[t.id];
         delete this.manualTripBlocks[t.id];
+        this.permBelowS[t.id] = 0;
       }
     }
   };
@@ -1453,6 +1480,13 @@
       // conc: open the books at the captured target — no dose pending on engage;
       // sample seq re-latches on the first evaluation (a stale result must not fire).
       c.concBasis = c.sp; c.concLastSp = c.sp; c.concSampleSeq = null;
+      /* AND STOP THE PANEL (#653, layman playtest 2026-09-07). Re-engaging an ENGAGED conc
+       * channel mid-dose re-captured the target and zeroed the books above — but the last
+       * `set_boron_adjust` it had sent stayed standing in the engine, because only the
+       * disengage branch below ever sends the stop. Measured, cold_shutdown (918 ppm): set 719
+       * then press ON -> channel 'idle' at sp 919 while boron ran 918 -> 565 in four plant-hours
+       * and kept falling. "No dose pending on engage" has to mean the panel is stopped too. */
+      if (def.kind === 'conc' || def.kind === 'bang') this._sendInternal({ action: 'set_boron_adjust', rate: 0 });
       c.pvF = null; c.rate = null; c.trimSlow = null;
     } else {
       // Leave the plant exactly where automation had it — plus safe stand-down.
@@ -1875,8 +1909,14 @@
     // Totalizer bookkeeping FIRST: the rate commanded at the previous evaluation
     // has been injecting for `step` sim-seconds (the engine applies the metered
     // rate only while the path is available — the same gate as `paused` here).
-    if (!paused && c.concBasis != null) {
-      if (c.concMode === 'borate') c.concBasis += def.rate * step;
+    if (!paused && c.concBasis != null && c.concMode !== 'hold') {
+      /* COUNT WHAT WAS DELIVERED, NOT WHAT WAS ASKED (#654, owner-ruled 2026-09-07). A plant
+       * that publishes its delivered makeup rate (def.deliveredRate -> ppm/s, signed) has its
+       * books advance by that; the blender's clamp means it can be well under `rate`. A plant
+       * that publishes nothing keeps the feedforward-by-command books this always had. */
+      var delivered = def.deliveredRate ? def.deliveredRate(ctx) : null;
+      if (delivered != null) c.concBasis += delivered * step;
+      else if (c.concMode === 'borate') c.concBasis += def.rate * step;
       else if (c.concMode === 'dilute') c.concBasis -= def.rate * step;
     }
     // A NEW target = a new dose computation. Re-anchor the books from the
@@ -2064,6 +2104,11 @@
     // instruments (a pre-NIS save at full power must not insta-trip on load).
     this.tripBlocks = (au && au.trip_blocks) ? Object.assign({}, au.trip_blocks) : this._initialTripBlocks();
     this.manualTripBlocks = (au && au.manual_trip_blocks) ? Object.assign({}, au.manual_trip_blocks) : {};   // old saves: none → all treated as auto
+    // The revoke's confirmation timers (#752) are LIVE signals, not saved state — a restore
+    // starts them clean rather than inheriting a partial dwell from whatever the layer object
+    // happened to be doing, which is what makes a rewind land on the same plant twice. The
+    // conservative direction too: the worst it costs is up to one confirm_s of extra dwell.
+    this.permBelowS = {};
   };
 
   // -------------------------------------------------------------- save / restore

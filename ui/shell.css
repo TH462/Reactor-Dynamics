@@ -212,8 +212,24 @@ body {
 /* Stacked (narrow) layouts size themselves; dragging a track that isn't there is nonsense. */
 @media (max-width: 1200px) { .bd-split { display: none; } }
 .app.pwr-synoptic .plant-area > .bottom-row > .sim-controls { order: 1; flex: 0 0 auto; }
+/* THE ROW IS TWO PANELS AGAIN (#713 / #724 item 7). The 1/M dock left this row for the foot of
+   the right-hand column at the owner's instruction, so the three-way split it forced is over.
+
+   WHAT THE SPLIT COST, AND WHY THE HISTORY IS KEPT RATHER THAN DELETED. #713 widened the dock
+   300 -> 380 -> 420 px, taking width first from the strip chart (the owner asked for that
+   specifically) and then from the alarm panel, and the grow ratio went 1.6 -> 1.55 to do it.
+   Pass 3 had to hand 50 px straight back: the alarm panel's two-column content floor is 377.7 px
+   under Windows' Segoe UI and 412 px under CI's DejaVu Sans, and `verify_e2e_ui` was red on every
+   CI run in between. THE FLOOR IS THE NUMBER TO REMEMBER — 412 px on the platform that gates, not
+   378 px on the one you are looking at — and any future rule that squeezes this panel has to be
+   measured there. Diagnostic/TUNING_LOG.md 2026-09-12-workbench-d / -e.
+
+   The ratio stays 1.55 rather than reverting to 1.6: 1.55 was the MEASURED split (the alarm panel
+   does not use the width 1.6 gives it), and it is now applied to a row 370 px wider, so the panel
+   clears its Linux floor by a margin no font can eat. Reverting the number would undo a
+   measurement to restore a guess. */
 .app.pwr-synoptic .plant-area > .bottom-row > .strip-chart  { order: 2; flex: 1 1 0; min-width: 0; }
-.app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel  { order: 3; flex: 1 1 0; min-width: 0; min-height: 0; }
+.app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel  { order: 3; flex: 1.55 1 0; min-width: 0; min-height: 0; }
 
 /* ⛶ hides the right sim panel → the diagram column takes the whole width */
 .app.pwr-synoptic.sim-hidden {
@@ -229,7 +245,7 @@ body {
   .app.pwr-synoptic {
     height: auto; min-height: 100vh;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 78vh auto;
+    grid-template-rows: 78vh minmax(260px, 22vh);
     grid-template-areas: "diagram" "simcol";
   }
   .app.pwr-synoptic.sim-hidden {
@@ -238,6 +254,8 @@ body {
   }
   /* stack chart above alarms rather than squeezing both into a narrow row */
   .app.pwr-synoptic .plant-area > .bottom-row { flex: 0 0 auto; flex-direction: column; }
+  /* (the 1/M dock used to be pinned here — it left the bottom row for the right-hand column,
+     #724 item 7; its narrow-screen rule now lives with the dock itself, below.) */
 }
 
 /* generic panel chrome */
@@ -769,9 +787,24 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .alarm-stack { flex: 1 1 auto; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 5px; }
 /* Under the diagram the alarm panel is wide and short, so a single column wastes the width
    and buries anything past the first two or three. Two columns, filled top-to-bottom in
-   priority order (app.js sorts the stack), so the worst alarm is still the first thing read. */
+   priority order (app.js sorts the stack), so the worst alarm is still the first thing read.
+
+   TWO COLUMNS ONLY WHILE BOTH CAN HOLD A TILE (#713 pass 2). `1fr 1fr` is minmax(auto, 1fr):
+   the columns cannot shrink below a tile's min-content, so a narrow panel did not reflow, it
+   OVERFLOWED SIDEWAYS — measured with 18 alarms up, the stack's scrollWidth pinned at 376px
+   against a clientWidth that kept falling, from 376px of panel down. That already bit at a
+   1250px viewport (alarm panel 267.8px) before this pass took any width back. The measured
+   per-column min-content is 179.3px ("Overtemperature Limit Approaching"); the track minimum
+   is 184px rather than that, because an EXPLICIT px minimum does NOT grow to fit content the
+   way the auto it replaces did — a platform whose font measures a little wider would overflow
+   the track instead of widening it, and 4.7px buys that. The calc(50% - 2.5px) half of the
+   max() is what CAPS it at two columns on a wide board, where a bare auto-fill would have
+   found room for three at 1920px. Below 387px of panel it now drops to one column and scrolls
+   vertically, which is what the stack does under load anyway. Swept 330-400px with 18 alarms
+   up and the registry's widest label in every tile: zero overflowing tiles at every width. */
 .app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel > .alarm-stack {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 5px; align-content: start;
+  display: grid; gap: 5px; align-content: start;
+  grid-template-columns: repeat(auto-fill, minmax(max(184px, calc(50% - 2.5px)), 1fr));
 }
 .app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel > .alarm-stack > .alarm-empty {
   grid-column: 1 / -1;
@@ -806,9 +839,10 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
   0%, 100% { background: transparent; }
   50% { background: rgba(229, 72, 77, 0.18); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .alarm-tile.unack.crit { animation: none; box-shadow: inset 0 0 0 1px var(--critical); }
-}
+/* (The `.alarm-tile.unack.crit` reduced-motion override that stood here is SUPERSEDED and was
+   deleted at #740: the block at the end of this file re-states `animation: none` and replaces its
+   inset ring with the 5px double outline. Leaving a dead override three lines from a comment
+   insisting that placement is what matters was the confusion this change is arguing against.) */
 
 /* ===================================================== right col: sim ctrls */
 .sim-controls {
@@ -836,7 +870,18 @@ html[data-channel="dev"] .logo-test {
   font-size: 9px; font-weight: 700; letter-spacing: 1.2px; white-space: nowrap;
 }
 .clock { font-size: 15px; font-weight: 600; }
-.clock.running { animation: pulse 2s ease-in-out infinite; }
+/* THE RUNNING CLOCK DOES NOT FADE (#687 item 1, OWNER 2026-09-09: "Other UI elements like the
+   time keep doing the same [appearing and disappearing]"). It carried
+   `animation: pulse 2s ease-in-out infinite`, i.e. opacity 1.0 -> 0.6 -> 1.0 for ever while the
+   plant ran — MEASURED in headless Edge over a 50 s walkthrough ride: 576 opacity transitions on
+   #clock, cycling 1.00 / 0.87 / 0.84 / 0.81 / 0.77 / 0.75 / 0.73 / 0.70 and back. That is an
+   element appearing and disappearing, permanently, in peripheral vision — the exact thing this
+   file's own instrAttnPulse note calls out as "fatiguing over an hour and stops being noticed",
+   and it had no prefers-reduced-motion escape either.
+   A steady colour carries the same fact with no motion: green is already the board's "running"
+   (.play uses var(--running)), and .accel's amber still wins below by source order. The digits
+   advancing are the primary cue and always were. */
+.clock.running { color: var(--running); }
 .clock.accel { color: var(--caution); }
 @keyframes pulse { 50% { opacity: .6; } }
 .sim-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -855,19 +900,99 @@ html[data-channel="dev"] .logo-test {
   50%      { box-shadow: 0 0 0 6px rgba(64, 209, 122, 0); }
 }
 @media (prefers-reduced-motion: reduce) { .play.attention { animation: none; box-shadow: 0 0 0 2px rgba(64,209,122,0.5); } }
+/* ONE ROW, STATUS STRIP BELOW, TOOLS ABOVE (owner, 2026-09-08, #660 — the two-row form of #655
+   lasted a day). The six rungs sit edge to edge in one strip; the status line is its own
+   full-width row under it; Manual / Help / Feedback / Settings are the row above. */
 .speed { display: inline-flex; gap: 0; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; flex: 1 1 auto; }
 .speed button { flex: 1 1 0; background: var(--bg-right); color: var(--text-2); border: none; border-right: 1px solid var(--border);
   padding: 4px 0; font-size: 11px; cursor: pointer; }
 .speed button:last-child { border-right: none; }
-/* selected speed: subtle cyan outline (not a saturated fill — the clock turns
-   amber to warn that time is accelerated; the selector itself stays quiet). */
-.speed button.on { background: transparent; color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px var(--normal); }
+/* SIX CONTROLS IN A 338 px ROW SINCE #689 ADDED MAIN MENU, and .sim-row wraps — so this is a
+   measurement, not a taste. At the shipped padding the six came to 402 px of buttons plus 40 px
+   of gaps against 338 px: the row WRAPPED and Main Menu dropped to a second line beside ⛶,
+   which is "to the right of settings" in DOM order only. Tightened here and here ONLY (every
+   other .btn in the app keeps 5px 9px / 12px) the six measure 299 px of buttons plus 20 px of
+   gaps = 319 px, one row 27 px tall, 19 px of headroom.
+   A SEVENTH NAMED TOOL WRAPS IT AGAIN — MEASURED (quality pass, 2026-09-11): adding one takes this
+   row from 27 px to 55 px on TWO lines, [manual, help, feedback, settings, mainMenu] then [the new
+   tool, demoBtn]. Note WHICH control drops: `flex-wrap` pushes the OVERFLOW to the end, so the ⛶
+   end-cap goes below the row and the tool you added goes with it — never the one in the middle.
+   That is also why the row-and-gap assertions this comment used to credit did NOT catch it: they
+   ask whether Main Menu is beside Settings, and at seven controls it still is. `testMainMenuButton`
+   now asserts the ROW's painted height against its tallest control, which reds for whichever
+   control wraps; the original two still red on reverting the padding here (Main Menu itself drops,
+   gap -120 px). Both injection-proven. */
+.sim-tools { justify-content: flex-end; gap: 4px; }
+.sim-tools .btn { padding: 5px 5px; font-size: 11px; }
+.sim-tools .text-btn { padding: 4px 5px; font-size: 11px; }
+/* the status strip (#686): the active checklist step's own wait + recommended rung, or the
+   one exception that persists across clicks — the accumulator hold ("held at real time").
+   Empty and hidden otherwise; min-height keeps the speed bar from reflowing when it is. */
+.warp-info { min-height: 16px; margin: 4px 0 2px; padding: 2px 6px; font-size: 10.5px; line-height: 1.3; border-radius: 4px;
+  color: var(--text-2); background: var(--bg-elevated, var(--bg-right)); border: 1px solid var(--border);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.warp-info.dropped { color: var(--danger, #ef4444); }
+/* SELECTED SPEED: GREEN FILL, LIGHT-GREY RING *(OWNER, 2026-09-14, #755 item 14: "The time
+   controls are confusing when they are cyan since the highlight is cyan as well. lets make the
+   background of the selected time rate green and the boarder a light grey.")*.
+
+   IT WAS A CYAN INSET RING, and cyan is the walkthrough's own colour on this very strip —
+   `.ckl-speed-rung` rings the RECOMMENDED rung in `rgba(90, 240, 255, …)` two rules below, so
+   "the rate you are on" and "the rate the walkthrough wants" differed by animation and a few
+   points of hue. Selection is now the only thing on the strip that FILLS, which is a channel
+   the cue does not use at all.
+
+   THE FILL IS SEMI-TRANSPARENT, not `var(--running)` flat. The two warp rungs keep amber LABELS
+   (`.speed button.warp`, below) and amber on saturated green is unreadable; at this alpha over
+   `--bg-right` the label sits on #24402f and both the amber and the plain text clear contrast.
+   The amber `.warp.on` ring below is left alone deliberately — the tier reading is a separate
+   claim from "this one is selected", and the fill now carries the selection on its own. */
+.speed button.on { background: rgba(70, 163, 94, 0.42); color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px rgba(200, 208, 216, 0.85); }
 /* The two WARP rungs (#625): a coarser physics step for long quiet evolutions. Visibly a
    different tier, and DARK while the plant is in a transient — the service refuses them then,
    so a lit button that did nothing would read as broken. */
 .speed button.warp { color: var(--caution); letter-spacing: .02em; }
 .speed button.warp.on { box-shadow: inset 0 0 0 1px var(--caution); }
 .speed button.warp.locked { color: var(--text-3, #6b7280); opacity: .45; cursor: not-allowed; }
+/* THE RECOMMENDED RUNG, AND ONLY IT *(OWNER, 2026-09-13 playtest, #743: "instead of highlighting
+   all the speed controls, just highlight the one that is suggested.")*. Applied by
+   `applyCklSpeedGlow` in ui/app.js when the active walkthrough step asks for a hold of 180 s or
+   more; the strip itself no longer lights.
+
+   ⚠ INSET, AND THAT IS THE WHOLE REASON THE OLD VERSION GLOWED THE STRIP. `.speed` is
+   `display: inline-flex` with `overflow: hidden` (above), so an OUTER box-shadow on a child button
+   is clipped by the strip and `position: relative` + a z-index does not escape a clip — the bar was
+   lit as a fallback because a ring on `button[data-speed="600"]` barely showed. An INSET shadow
+   paints inside the button's own border box and is never clipped, which is why `.speed button.on`
+   could already use one. Lifting the clip was the alternative and was not taken: it exists to round
+   the six square-cornered rungs into the strip's 5px radius.
+
+   NO `z-index` HERE, deliberately. `run_glow_stacking` collects every glow class in this file that
+   lifts a z-index and requires a matching `z-index: auto` pin in pwr_board.css; this one is a shell
+   button in a flex row, never a board tile, and an inset needs no lift to be seen. Adding one would
+   make the gate demand a board entry for a class the board never sees.
+
+   ONCE PRESSED IT STOPS PULSING — see `.ckl-speed-rung.on` below. */
+.speed button.ckl-speed-rung {
+  animation: cklRungGlow 1.2s ease-in-out infinite;
+  color: var(--text); font-weight: 700;
+}
+@keyframes cklRungGlow {
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(90, 240, 255, 0.70), inset 0 0 9px 1px rgba(90, 240, 255, 0.30); }
+  50%      { box-shadow: inset 0 0 0 2px rgba(90, 240, 255, 1), inset 0 0 15px 3px rgba(90, 240, 255, 0.58); }
+}
+/* THE PULSE IS "ACT ON THIS", SO IT MUST END WHEN THE ACT IS DONE — otherwise the rung the player
+   pressed first goes on pulsing for the whole 180 s-plus hold it was asking for, which is most of
+   the time the cue is up, and a cue that keeps firing after it is satisfied is how the player learns
+   to stop reading cues. Handled in CSS, not JavaScript, so it follows `.on` the instant the strip
+   re-renders — no second code path to keep in step with the first.
+
+   IT DOES NOT DE-ESCALATE TO A STEADY CYAN RING, because `.on` ALREADY IS one (`inset 0 0 0 1px
+   var(--normal)`, and --normal is cyan): a "you did it" ring would have been indistinguishable from
+   ordinary selection. So the treatment simply stands down and lets selection speak, with the
+   `.warp-info` line under the strip still naming the rung in words. A selected WARP rung keeps its
+   amber `.on` ring and its amber label, so the tier reading is not overwritten either. */
+.speed button.ckl-speed-rung.on { animation: none; font-weight: 700; }
 /* Achieved-rate readout (#581, folded into #625): what the plant actually does per wall
    second. Green = keeping up, amber = behind the request, red = well behind or stalling. */
 .ff-rate { flex: 0 0 auto; font-size: 11px; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-2); }
@@ -896,32 +1021,37 @@ html[data-channel="dev"] .logo-test {
 .text-btn { flex: 0 0 auto; padding: 4px 10px; font-size: 12px; font-weight: 600; }
 .demo-btn { flex: 0 0 auto; min-width: 28px; padding: 4px 8px; }
 
-/* What's running now — the always-visible mission entry point (click → Plant & Mission) */
-.sim-status {
-  display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 8px;
-  padding: 5px 8px; background: var(--bg-elevated); border: 1px solid var(--border);
-  border-radius: 6px; color: var(--text-2); font-size: 11px; cursor: pointer; text-align: left;
-}
-.sim-status:hover { color: var(--text); border-color: var(--normal); }
-.sim-status .ss-txt { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sim-status .ss-chev { flex: 0 0 auto; color: var(--muted); font-size: 13px; }
-/* THE BUTTON SAYS WHAT IT OPENS *(OWNER DIRECTIVE, 2026-08-11: "The button should be
-   clearly labeled.")*. It used to read only its own state — "PWR · Free Play — 50 % Power"
-   — which says where you are and not that pressing it takes you somewhere. */
-.sim-status .ss-lbl {
-  flex: 0 0 auto; font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--normal); border-right: 1px solid var(--border); padding-right: 6px;
-}
-/* The pointer back to that button, for a few seconds after the window is closed. */
-.ss-tip {
-  position: relative; margin-top: 4px; padding: 4px 8px;
+/* THE .sim-status BAR IS GONE (#689, owner 2026-09-09: "Add a Main Menu button to the right of
+   settings. Change the SELECT PLANT, MISSION & RESET menu to this button and get rid of the old
+   button."). It was a full-width bar under the speed controls with a 9 px .ss-lbl, a live
+   .ss-txt readout and a .ss-chev; #mainMenuBtn wears the plain .btn .text-btn of the tools row
+   it now sits in, so it needs no rules of its own, and the readout was dropped (option A). */
+/* The pointer back to that button, for a few seconds after the window is closed. Was .ss-tip;
+   renamed with the button at #689, and it now sits directly under .sim-tools so its ▲ points
+   at the control it names instead of three rows past it.
+   THE VERTICAL MOVE WAS ONLY HALF OF IT (quality pass, 2026-09-11). The bubble is full-row
+   width and the old ▲ was the first glyph of a CENTRE-ALIGNED line, which was right under the
+   full-width .sim-status bar it used to sit below and is wrong under a six-button row: MEASURED
+   at a 1500 px viewport, arrow centre x 1252.7 against a Main Menu box of 1380.2–1449.0 — 128 px
+   off, pointing at the middle of the speed bar. So the glyph leaves the text flow and is aimed
+   from --mm-arrow-x, which aimMainMenuTip() sets from the button's own measured centre each time
+   the tip is shown. Aimed rather than hard-coded because the row is not fixed: ⛶ is the end-cap,
+   and #689's own note says a seventh named tool re-lays the row out.
+   Its own strip above the text (padding-top 13px) rather than inline, so the arrow can never
+   land on top of the centred sentence at a narrow panel width. */
+.mm-tip {
+  position: relative; margin: 2px 0 4px; padding: 13px 8px 4px;
   background: rgba(91, 179, 196, .12); border: 1px solid var(--normal); border-radius: 5px;
   color: var(--text); font-size: 11px; line-height: 1.35; text-align: center;
-  animation: ssTipIn .18s ease-out;
+  animation: mmTipIn .18s ease-out;
 }
-.ss-tip[hidden] { display: none; }
-@keyframes ssTipIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .ss-tip { animation: none; } }
+.mm-tip .mm-arrow {
+  position: absolute; top: 1px; left: var(--mm-arrow-x, 50%); transform: translateX(-50%);
+  font-size: 10px; line-height: 1; color: var(--normal);
+}
+.mm-tip[hidden] { display: none; }
+@keyframes mmTipIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .mm-tip { animation: none; } }
 
 /* Help / tour — reuses the mission-modal chrome, narrower and content-sized */
 .help-modal { width: min(560px, 96vw); height: auto; max-height: min(84vh, 760px); }
@@ -1090,15 +1220,9 @@ html[data-channel="dev"] .logo-test {
 /* In-sim bug report (2026-08-07). The send block is `hidden` in the markup and only
    revealed when a deploy stamped a telemetry endpoint, so a local checkout and the
    offline build show the email route alone rather than a button that cannot work. */
-/* Restricted-info warning (#438) — sits ABOVE the input. Caution accent, but muted:
-   this is a modal notice, not a plant condition, so no alarm-tile styling. */
-.fb-warn {
-  margin-top: 12px; padding: 8px 10px; font-size: 12px; line-height: 1.45;
-  color: var(--text); border: 1px solid var(--border);
-  border-left: 3px solid var(--caution); background: rgba(217, 164, 65, .08);
-  border-radius: 3px;
-}
-.fb-warn strong { color: var(--caution); }
+/* (`.fb-warn`, the restricted-information notice's caution-accented box, and `.fb-ver`, the build
+   stamp's margin, were REMOVED with their markup on 2026-09-14 — #755 item 5. Both were one-use
+   rules; ui/shell.html carries the reason where each element stood.) */
 .lc-fb { margin-top: 10px; }
 .fb-send { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 14px; }
 .fb-note {
@@ -1128,7 +1252,6 @@ html[data-channel="dev"] .logo-test {
 .fb-mail { font-size: 17px; color: var(--running); text-decoration: none; border-bottom: 1px dotted var(--running); word-break: break-all; }
 .fb-mail:hover { color: var(--text); border-bottom-color: var(--text); }
 .fb-diag { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
-.fb-ver { margin-top: 14px; }
 .help-keys { font-size: 11px; color: var(--text-2); }
 
 /* ===================================================== right col: instructor */
@@ -1408,7 +1531,13 @@ html[data-channel="dev"] .logo-test {
 }
 .scanline-body {
   flex: 1 1 auto; min-width: 0;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; overflow: hidden; overflow: clip; text-overflow: ellipsis;
+  /* `overflow: hidden` here is doing real work — it is what makes the ellipsis happen — but
+     it still made this a live SCROLLPORT (#723, sibling of #717): a single nowrap line's
+     content box runs ~2px taller than its own line-height (font-metric rounding, not real
+     content), and that 2px was a `scrollTop` an operator could set. `overflow: clip` keeps
+     the ellipsis (verified: identical rendering, both compute to the same clipped glyph) and
+     refuses the scroll write outright, same backstop shape as `.pwr-board-wrap`. */
 }
 /* EXPANDED: the line grows in place to show the whole description — no second box
    *(OWNER DIRECTIVE, 2026-08-11)* — and while expanded it is PINNED TO ONE HEIGHT
@@ -1904,14 +2033,64 @@ select.num-input { width: auto; }
 /* Checklist hover glow — greener tint, distinct from the directive .instr-glow (blue).
    STEADY: hovering a NON-current step must not pulse (#607 item 3). */
 .ckl-hoverable { cursor: pointer; }
+/* THE PROSE IS PROSE, NOT A HIT TARGET (#726; owner #724 item 9, verbatim: "the walkthrough
+   text has the mouse pointer finger and i cant select the text to copy it").
+
+   `.ckl-hoverable` is applied to the WHOLE step card whenever the step names a highlight
+   target — which is most steps — so the pointer finger was drawn over every word of the
+   instruction, the why block, the done-when line and the cautions. MEASURED computed `cursor`
+   before this rule, on the active `pwr_startup` step: .ckl-txt, .ckl-why, .ckl-sub and
+   .ckl-crit all `pointer`.
+
+   The card is still clickable; only the CURSOR moves off the text, and the icon column plus
+   the card's own padding keep the pointer so the expand affordance is still discoverable.
+   THE SELECTION HALF OF THAT REPORT IS NOT HERE AND WAS NEVER CSS — `user-select` measured
+   `auto` on every one of those blocks. See ui/app.js `selectionInside`. */
+.ckl-hoverable .ckl-body { cursor: text; }
+.ckl-hoverable .ckl-body button,
+.ckl-hoverable .ckl-body summary,
+.ckl-hoverable .ckl-body a { cursor: pointer; }
+/* ============================================ the WALKTHROUGH's attention family (#743)
+   THE HUE IS CYAN AND THAT IS A RULING *(OWNER, 2026-09-13 playtest, #724: "I think we should
+   make the color cyan instead of green. go back to the old glowing highlight and make it cyan.
+   cyan is our user interaction color… You could try keeping some of the texture but bring the
+   glow back. the glow looked much cleaner anyway. Lets use pulsing for a user control and steady
+   for an indication to watch.")*. It was green (rgba(120,210,150)) from #244 through #685.
+
+   ⚠ CYAN WAS ALREADY SPOKEN FOR TWICE ON THIS BOARD, so the family carries its own value and is
+   held apart from both by GEOMETRY, never by hue alone — the same argument the bus's own note
+   makes below, applied one level down:
+
+     rgba( 91,179,196)  the HIGHLIGHT BUS (.hl-glow/.hl-pin, = --normal). Muted teal, STEADY,
+                        SOLID and FLUSH (1-2px ring at offset 0). Answers "what is related to
+                        what", and the player asked for it.
+     rgba( 79,227,255)  the BOARD'S HOVER RING (.bd-btn:hover, pwr_board.css:310). Tight — 1px
+                        ring, 9px blur, NO spread — and present only while the pointer is on it.
+     rgba( 90,240,255)  THIS FAMILY. Brighter and lighter than either, with a much wider bloom
+                        (12-20px blur, 3-5px spread), and the player did NOT ask for it: it is the
+                        walkthrough pointing. Within the family, MOTION splits the two meanings —
+                        pulsing = a control to act on, steady = an indication to watch — and the
+                        steady one is additionally DASHED AND OFFSET, which nothing else cyan on
+                        this board is. Nothing else cyan on this board pulses, either.
+
+   Rendered with a watch ring, a bus halo and a hover ring lit at once before this shipped
+   (inbox/glowcyan/, #743). Do not narrow the bloom or drop the dash without re-rendering that. */
 .ckl-glow {
-  box-shadow: 0 0 0 1.5px rgba(120, 210, 150, 0.70), 0 0 12px 3px rgba(120, 210, 150, 0.30);
+  box-shadow: 0 0 0 1.5px rgba(90, 240, 255, 0.62), 0 0 12px 3px rgba(90, 240, 255, 0.26);
   border-radius: 6px; position: relative; z-index: 5;
 }
 /* ACKNOWLEDGE *(OWNER, 2026-09-03, #619 item 4: "this button should flash green so the user
-   knows thats the control that needs to be pressed to progres.")*. Green and pulsing, reusing
-   cklGlow below — the same glow the board's own up-next controls carry, so "the thing to press"
-   reads identically whether it is a board control or this button.
+   knows thats the control that needs to be pressed to progres.")*. Green and pulsing.
+
+   ⚠ THE SPLIT FROM THE BOARD'S CYAN IS RULED AND DELIBERATE — DO NOT "FIX" THIS TO CYAN
+   *(OWNER RULING, 2026-09-13: "Keeping the acknowledge button green is fine.")*, settling the one
+   item #743 shipped unresolved. It used to share `cklGlow` with the board's up-next pulse; #743
+   took that glow CYAN and split this one off as `cklAckGlow`, the old green keyframe under a new
+   name, byte-identical in geometry, so the two still read as the same GESTURE in two places.
+   THE TWO COLOURS NOW CARRY A MEANING: cyan on the BOARD = "press this control"; green in the
+   PANEL = "you are done with this step". Different acts, and one colour would lose the
+   distinction. It is ruled TWICE — 2026-09-03 above and 2026-09-13 here — so a consistency
+   argument does not reopen it.
 
    INFINITE, unlike the speed-dropout flash: this one is not reporting an event, it is the
    control the checklist is waiting on, and it must stay findable until pressed. Reduced motion
@@ -1920,16 +2099,56 @@ select.num-input { width: auto; }
 .ckl-ack {
   border-color: var(--running); color: var(--running); font-weight: 700;
   padding: 3px 12px; border-radius: 6px;
-  animation: cklGlow 1.2s ease-in-out infinite;
+  animation: cklAckGlow 1.2s ease-in-out infinite;
 }
 .ckl-ack:hover { background: rgba(120, 210, 150, 0.12); }
 .ckl-ack-note { font-size: 11px; color: var(--text-2); }
 @media (prefers-reduced-motion: reduce) {
   .ckl-ack { animation: none; box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.85); }
 }
-@keyframes cklGlow {
+/* The ACKNOWLEDGE button's green, kept at the geometry `cklGlow` had when the two shared it.
+   The green is RULED, not leftover *(OWNER RULING, 2026-09-13: "Keeping the acknowledge button
+   green is fine.")* — see the `.ckl-ack` block above before changing any colour here. */
+@keyframes cklAckGlow {
   0%, 100% { box-shadow: 0 0 0 1px rgba(120, 210, 150, 0.60), 0 0 10px 2px rgba(120, 210, 150, 0.28); }
   50%      { box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.98), 0 0 18px 5px rgba(120, 210, 150, 0.50); }
+}
+/* The board's "act on this" pulse. CYAN since #743; the geometry is unchanged from the green it
+   replaced, because the owner's complaint was the TEXTURE of #685's watch ring, not this.
+
+   ⚠ THE PEAK IS CAPPED UNDER THE WATCH RING, AND THAT CAP IS THE WHOLE POINT OF THIS KEYFRAME
+   *(OWNER RULING, 2026-09-15, #758, chosen from three drawn options: "Cap the pulse below the
+   watch ring (Recommended)" —
+       watch  |=========|  2.00 px flat, alpha 0.90
+       press   |=====~~|   1.00 -> 1.60 px, peak alpha 0.85   (never reaches the watch ring)  )*
+
+   IT INVERTED, MEASURED. This 50 % stop used to be `2px … 1` / `20px 5px … 0.55` — a ring EXACTLY
+   as wide as `.ckl-watch-glow`'s flat 2.00 px, and brighter (alpha 1.00 against 0.90) with a wider
+   bloom (20/5 against 16/4). So for the upper half of every 1.2 s cycle the ruled relationship
+   REVERSED and the button-to-press became the heavier ring. A layman playthrough read it as "you
+   cannot tell them apart" and stopped using board highlights around step 8.
+
+   THE WATCH RING DOES NOT MOVE — the owner looked at 2.00 px / 0.90 on 2026-09-14 and approved it.
+   Only this keyframe moves, and it must stay strictly under the watch ring on ALL THREE channels
+   (ring width, ring alpha, bloom) at EVERY instant, not only at the peak. The 0 % stop is
+   untouched, because `.ckl-step-glow.ckl-step-done` is byte-identical to it by design (the pulse
+   stops, the glow stays) and that pairing is itself a ruling.
+
+   Chosen margins at the peak, against watch's 2.00 px / 0.90 / 16px 4px / 0.42:
+     ring width  1.60 px  (0.40 px under, 20 %)      ring alpha 0.80 (0.10 under, 11 %)
+     bloom blur  14 px    (2 px under)               bloom spread 3 px (1 px under)
+     bloom alpha 0.36     (0.06 under, 14 %)
+   0.80 rather than the sketch's 0.85 on purpose: 0.85 leaves 0.05, which is inside the width of a
+   future "make it a bit brighter" nudge. The amplitude 0.62 -> 0.80 still reads as a pulse.
+
+   GATED AGAINST THE OTHER CUE, WHICH IS THE SECOND HALF OF THE DEFECT. `verify_board_cues` was
+   39/39 while this shipped inverted, because every check read one class in isolation and an
+   inversion is a RELATION. Its section 5 now puts both cues on the board at once, seeks this
+   animation to 25 stops across the full cycle and asserts the three margins at each. Do not change
+   a number here without re-running it. */
+@keyframes cklGlow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(90, 240, 255, 0.62), 0 0 10px 2px rgba(90, 240, 255, 0.30); }
+  50%      { box-shadow: 0 0 0 1.6px rgba(90, 240, 255, 0.80), 0 0 14px 3px rgba(90, 240, 255, 0.36); }
 }
 /* PERSISTENT up-next glow *(#607 item 3 supersedes #244's "steady" call)*. The current
    step's controls PULSE with no mouseover so they stay findable; hover of a non-current
@@ -1937,6 +2156,70 @@ select.num-input { width: auto; }
 .ckl-step-glow {
   animation: cklGlow 1.2s ease-in-out infinite;
   border-radius: 6px; position: relative; z-index: 4;
+}
+/* WATCH THIS, as opposed to PRESS THIS *(OWNER, 2026-09-09, #675 section B, built as #685:
+   "Each step should highlight the important indications to watch with a non pulsing green
+   glow.")*. The active step's `hl` targets keep the pulse above — that is #607 item 3 and it
+   is not being undone here; this is the second treatment, for the step's `hl_watch` list.
+
+   ⚠ THE DASH IS GONE, AND IT IS NOT COMING BACK ON THE DEFAULT PATH *(OWNER RULING, 2026-09-14,
+   #755 items 7/10/19, given as a choice between drawn options: "Both glow; pulse + one static
+   cue" —
+       PRESS BUTTON      ((( soft pulsing glow )))   -> after press: steady glow, no pulse
+       WATCH INDICATION  [ steady glow + 2px solid ring ]  (no dash, no motion)
+   after *(OWNER, #755 item 10: "I dont like the dashed line look for the walkthrough highlights.
+   go back to the glow and pulsing glow. i dont know what was wrong with them in the first
+   place.")*.)
+
+   SO THE TWO STILL DIFFER BY GEOMETRY, NOT ONLY BY MOTION, which is what #685 and DESIGN_CRITERIA
+   question 4 (does it complicate things for the player — a VETO) required and what the dash used
+   to carry: the RING WEIGHT is now the shape difference. Watch holds a flat 2 px ring; the pulse
+   breathes 1 px -> 1.6 px and NEVER REACHES IT — that ceiling is the #758 ruling and it is the
+   reason the weight difference is readable at all. This line used to read "1 px -> 2 px with a
+   bloom half again as wide at its peak (20px/5px against 16px/4px)", which was the INVERSION
+   written down as a design note: at the peak the press cue was the heavier and brighter ring on
+   all three channels. See the `cklGlow` block above for the capped numbers and their margins.
+   A colour-blind player and a `prefers-reduced-motion` player both still have a non-hue
+   difference — under reduced motion the pulse falls back to a 3 px DASHED OUTLINE (at the end of
+   this file) and this ring stays a solid box-shadow, so the two are a line style apart there and
+   a weight apart everywhere else. Do not give this class a reduced-motion clause: it has nothing
+   to reduce, and giving it the dash would put the dash back on the board.
+
+   DO NOT TRIM THE BLOOM (#743's lesson, and it stands): as #685 shipped it the halo was
+   `0 0 6px 1px … 0.22` — a quarter the spread and a fifth the alpha of the pulse's — which left a
+   hairline doing all the work and the owner missed it on the board. The halo here stays within a
+   whisker of the pulse's own so the two read as ONE family at two intensities.
+
+   The box-shadow is deliberately the whole treatment rather than an outline plus a shadow: it is
+   what makes the ring read as a glow at a glance rather than as a selection border, and
+   `run_glow_stacking` reads the box-shadow + z-index pair to decide this class must be pinned in
+   pwr_board.css.
+
+   STEADY is a RULING, twice over — "Lets use pulsing for a user control and steady for an
+   indication to watch" (2026-09-13 playtest) and the 2026-09-14 ruling above. */
+.ckl-watch-glow {
+  box-shadow: 0 0 0 2px rgba(90, 240, 255, 0.90), 0 0 16px 4px rgba(90, 240, 255, 0.42);
+  border-radius: 6px; position: relative; z-index: 4;
+}
+/* THE ACT IS DONE, SO THE MOTION STOPS AND THE GLOW STAYS *(OWNER, 2026-09-14, #755 item 19:
+   "During wlakthroughs, when a hightighted button the glow should stop pulsing."; settled by the
+   same ruling as above — "after press: steady glow, no pulse")*.
+
+   IT DOES NOT GO DARK, and that is the half that is easy to get wrong. The step is still the
+   active step and the control the player pressed is still the control it is about — a cue that
+   vanishes on the press says "you are on the wrong thing now", which is false until the step
+   advances. What ends is the ASK, not the pointing.
+
+   THE STEADY VALUE IS THE PULSE'S OWN 0% STOP, not a new one: the same ring, holding still. That
+   also keeps it under the watch ring's weight (1 px against 2 px), so a board carrying both still
+   reads press-then-watch rather than two equal rings.
+
+   A COMPOUND SELECTOR ON PURPOSE. `run_glow_stacking` pins every SIMPLE lifting-glow class in this
+   file to a `.bd-tile` override in pwr_board.css; this rule rides on `.ckl-step-glow`, which is
+   already pinned, so the element's z-index behaviour is unchanged and no second entry is owed. */
+.ckl-step-glow.ckl-step-done {
+  animation: none;
+  box-shadow: 0 0 0 1px rgba(90, 240, 255, 0.62), 0 0 10px 2px rgba(90, 240, 255, 0.30);
 }
 /* ============================================ the highlight bus (#444, spec §7)
    A soft CYAN halo — an outer GLOW, never a fill, tint or recolor. Cyan is the only
@@ -2130,6 +2413,31 @@ select.num-input { width: auto; }
 .ckl-ico { font-weight: 700; width: 16px; text-align: center; flex: none; }
 .ckl-body { flex: 1; min-width: 0; }
 .ckl-txt { font-size: 12.5px; line-height: 1.4; color: var(--text); }
+/* THE INCIDENT WALKTHROUGH'S NARRATIVE BLOCK (#670 Phase 1) — clock, what the crew saw, what
+   they knew, what they did — ABOVE the numbered instruction. Quieter than the instruction and
+   louder than a .ckl-sub: it is the reason the step exists, but the step is still the thing to
+   do. The left rule borrows .ckl-why's idiom so the two read as the same kind of writing (one
+   history, one plant lesson) rather than as two competing headlines. Every color is a token, so
+   it follows the board's theme; nothing here is authored per-walkthrough. */
+.ckl-story {
+  margin-bottom: 6px; padding: 5px 0 5px 8px;
+  border-left: 2px solid var(--border);
+  font-size: 11.5px; line-height: 1.45; color: var(--text-2);
+}
+.ckl-story-l { margin-bottom: 2px; }
+.ckl-story-l:last-child { margin-bottom: 0; }
+/* the label column: small caps-ish legend, so four lines scan as a table without being one */
+.ckl-story-l > span {
+  display: inline-block; min-width: 86px; color: var(--muted);
+  font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
+}
+/* `crew: true` — the step is history, not advice, and the tag says so beside the instruction
+   rather than under it, where the details fold could hide it. Caution-coloured on purpose: the
+   steps that carry it are the ones that made the accident. */
+.ckl-crew {
+  font-size: 10px; color: var(--caution); white-space: nowrap;
+  border: 1px solid var(--caution); border-radius: 3px; padding: 0 4px; margin-left: 4px;
+}
 /* THE ACTIVE BLOCK, WHICH NOW HANGS BELOW THE INSTRUCTION (#628, owner 2026-09-04: "move the
    numbered step to always be the first part of the stack. then the rest of the step that appears
    when its active goes below it."). Its only job is the gap: the criteria line carries
@@ -2137,6 +2445,16 @@ select.num-input { width: auto; }
    against the step text it belongs to. */
 .ckl-act { margin-top: 5px; }
 .ckl-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+/* THE OPERATING TIP IS ITALIC *(OWNER, 2026-09-13: he renders the `note` in italics in his own
+   step template — CHECKLIST_WRITING_GUIDE.md §15 T7 flagged it as a one-line CSS change pending
+   his word)*. `.ckl-sub.muted` is the step `note` and ONLY the step `note`: the `muted` class is
+   applied to exactly one `.ckl-sub` in the whole renderer (ui/app.js, the `st.note` line) and
+   matches no other rule that reaches this card, so it is a free discriminator — the other five
+   `.ckl-sub` users (checked by hand, overtaken, Watch for, the two wait lines) are untouched and
+   must stay upright. Same idiom as `.chart-legend .chart-meta.muted` above. Italic, not a colour
+   or a size, because the tip must stay QUIETER than .ckl-crit while reading as a different
+   VOICE from the step's imperative — a grey note is where an instruction goes to die (§15). */
+.ckl-sub.muted { font-style: italic; }
 /* THE CHECK-OFF CRITERIA — first line of the active card, bold, its own color *(OWNER,
    #244 M5→3 item 4: "cyan or cobalt or a blue grey. something that isnt too loud but
    brings attention to it so people know this is the requirement the step is looking
@@ -2146,6 +2464,41 @@ select.num-input { width: auto; }
   margin-bottom: 2px;
 }
 .ckl-crit-met { color: var(--running); }
+/* THE LETTERED SUBSTEP PREFIX (#741) — `3a`, `3b`. A quiet fixed-width gutter, not a second
+   headline: the row's own text is the thing to read and the letter only says "this is part of
+   step 3". Muted rather than the row's cobalt so it does not compete with the ✓/○.
+   IT STAYS MUTED WHEN THE ROW GOES GREEN, and that is the behaviour rather than an oversight: a
+   direct declaration on the child beats the parent's inherited colour, so .ckl-crit-met's
+   var(--running) never reaches it. The tick and the row text carry the met state; the letter is a
+   gutter label and reads the same either way. (An earlier draft of this comment claimed the
+   opposite AND contradicted itself in one sentence — #741 quality pass.)
+   Drawn only when a step has more than one visible row. */
+.ckl-crit-n {
+  display: inline-block; min-width: 20px; color: var(--muted);
+  font-weight: 600; font-variant-numeric: tabular-nums;
+}
+/* …AND THE DONE-WHEN UNDER IT, on an entry that carries an `ask`. The instruction is the bold
+   cobalt row; this is what the sim is waiting for, so it is quieter and lighter — the same
+   relationship .ckl-use has to the step text. Indented to the letter gutter so the two lines
+   read as one row rather than two. */
+.ckl-crit-when {
+  font-weight: 400; font-size: 11px; color: var(--text-2);
+  margin-left: 20px; line-height: 1.4;
+}
+/* A ROW THAT HAS NOT COME UP YET, on an `accs_ordered` step (#756). Muted, and with a · for a
+   marker instead of the ○, because an ○ in the live cobalt is an invitation to act and this row
+   cannot be acted on — the runtime will not latch it and its button is deaf until the row above
+   is met. One treatment, not two: the row goes quiet and loses its done-when, which is the same
+   move .ckl-sub.muted makes for a note, rather than a new colour on a card that already carries
+   three (DESIGN_CRITERIA question 4). */
+.ckl-crit-wait { color: var(--muted); font-weight: 600; }
+/* THE OUT-OF-TURN REASON (#759, owner ruling 2026-09-15). Amber, not red: the press was not an
+   error — the plant accepted it and the point really was plotted — it simply does not count
+   toward a rung whose turn has not come. Red would say "you broke something", which is the
+   misreading the line exists to prevent. Sits directly under the rows it is about. */
+.ckl-oot { margin: 4px 0 0; padding: 3px 7px; border-radius: 4px; font-size: 11px; line-height: 1.35;
+           color: var(--caution); background: rgba(217, 164, 65, 0.10);
+           border-left: 2px solid rgba(217, 164, 65, 0.55); }
 /* WHICH CONTROL, AND WHAT YOU ARE DRIVING IT TO (#598 item 13, owner ruling 2026-09-02).
    Promoted back out of the Details fold: measured, only 41 % of the steps carrying a control
    name it in their instruction text, so folding this away left 27 of them with no visible
@@ -2156,14 +2509,79 @@ select.num-input { width: auto; }
    itself is the brightest thing on the line; that is the word the eye is hunting for. */
 .ckl-use { font-size: 11.5px; color: var(--text-2); margin-bottom: 3px; margin-top: 0; }
 .ckl-use b { color: var(--text); font-weight: 600; }
-/* the collapsible "why" (#244 items 2/9) — teaching prose, visually quieter than the action */
-.ckl-why { font-size: 11.5px; color: var(--text-2); line-height: 1.45; margin-top: 4px;
-  border-left: 2px solid var(--border); padding-left: 8px; }
-.ckl-why-btn { font-size: 10px; padding: 1px 7px; margin-top: 4px; }
-.ckl-expand-hint { font-size: 10px; color: var(--muted); margin-top: 4px; }
+/* the "why" (#244 items 2/9) — teaching prose, visually quieter than the action. Since #660
+   item 3 it is ALWAYS open on the active step, so it is no longer collapsible in practice and
+   its length is paid on every step (which is what made CHECKLIST_WRITING_GUIDE F2 load-bearing).
+   #692 item 3 gives it a legend: an unheaded grey paragraph read as part of the step, and the
+   owner asked for it "presented as extra learning material". The legend deliberately matches
+   .ckl-story-l > span — the other always-drawn supplementary block on the same card. */
+/* A LABELLED BUBBLE, not a fourth grey (#653 product defect 4, #687 item 4) *(OWNER, 2026-09-09:
+   "The why text needs to have some indication that its extra learning info not actually a step.
+   Maby but it in a buttle and label it appropriately?")*. Both fresh-context reviews measured the
+   same thing from the other side: `note` and `why` were "two near-identical greys" — both
+   var(--text-2) at 11-11.5 px — while one carries contingencies the player must act on and the
+   other is optional. The label (above) names it; this tint is what makes it one BLOCK rather than
+   one more paragraph. Deliberately the quietest ground on the card: a hair of --bg-elevated over
+   the panel, no border colour, because it must not compete with .ckl-crit or the wait rung. */
+/* …AND SINCE #741 IT IS A REAL BOX, SET APART FROM THE WORK *(OWNER, 2026-09-13: "I also want to
+   make the informational text block more obvious that it's not a work step but just there for
+   education. Put it in its own box, move it slightly away from the work steps and label it so
+   it's obvious what it is.")*.
+   #692 gave it a label and a left rule and a tint, and he is asking again — so the label alone
+   was not enough. Three changes, one per clause of the ruling:
+     - ITS OWN BOX: a border on all four sides and a full radius, instead of a left rule and a
+       tint that read as one more indented paragraph in a card built out of indented paragraphs.
+     - MOVED AWAY: margin-top 6px -> 12px, twice the gap between any two working rows, so the
+       separation is visible before a word is read. That gap IS the signal; the box only gives
+       the gap something to be a gap between.
+     - LABELLED: see .ckl-why-lbl. The wording is the owner's call and is pending.
+   Still the quietest ground on the card, deliberately: this must not out-shout .ckl-crit, which
+   is the row the player is being graded on. The border is --border, the same line the step card
+   itself uses, so the box reads as "a different KIND of thing" rather than "an important thing". */
+.ckl-why { font-size: 11.5px; color: var(--text-2); line-height: 1.45; margin-top: 12px;
+  border: 1px solid var(--border); padding: 6px 9px;
+  background: rgba(152,163,175,0.045); border-radius: 5px; }
+.ckl-why-lbl {
+  display: block; color: var(--muted);
+  font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 3px;
+}
+/* THE LEG'S CAUTIONS, DRAWN DURING THE RUN (#653 product defect 1). Amber, because they are
+   cautions and the board's own amber is what a player has been taught to read that way — the
+   same idiom as .m-caution on the browse card, so the two screens agree. The summary line is a
+   button (keyboard-reachable, unlike a bare <summary> we would have to restyle) and carries the
+   count, which is the half that must survive the collapse. */
+.ckl-cautions { margin-bottom: 6px; }
+.ckl-caut-sum {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: rgba(251,191,36,0.06); border: 1px solid #5a4718; border-radius: 4px;
+  color: #d7b25a; font-size: 11px; padding: 3px 8px; font-family: inherit;
+}
+.ckl-caut-sum:hover { background: rgba(251,191,36,0.11); }
+.ckl-caut-chev { display: inline-block; width: 12px; color: var(--muted); }
+.ckl-caut-l {
+  font-size: 11px; line-height: 1.45; color: #c9a86a;
+  border-left: 2px solid #5a4718; padding: 3px 0 3px 8px; margin: 3px 0 0 6px;
+}
+/* ⚰ `.ckl-why-btn`, `.ckl-why-all` and `.ckl-expand-hint` WERE HERE and are gone (#739/#741).
+   All three styled the per-step why TOGGLE and the card's click-to-expand, which #737 deleted by
+   owner ruling — the rules outlived the only markup that ever carried them.
+   PROVEN, not assumed: zero emitters in `ui/`, and across `ui/` + `test/` the only non-comment
+   reference to any of the three is `test/verify_flags_ui.js:203`, which queries `.ckl-why-btn`
+   and is itself a hollow check (an element that no longer exists) — workbench owns that file.
+   `dist/Reactor_Dynamics_Alpha_1.7.2.html` and `1.7.3.html` still contain them: those are FROZEN
+   RELEASE OUTPUT, a snapshot of the source at build time, not a consumer of it. A rule is live
+   because something in the tree emits it, and nothing does.
+   `.ckl-why` and `.ckl-why-lbl` are LIVE and stay — `ui/app.js` emits them on every active step
+   and `verify_ckl_relevance` asserts both. `.ckl-back` is live (the "All walkthroughs" button). */
 .ckl-back { font-size: 11px; padding: 2px 8px; margin-bottom: 6px; }
-.ckl-why-all { float: right; font-size: 10px; padding: 1px 7px; margin-left: 8px; }
-.ckl-wait { color: var(--caution); }
+/* THE SPEED SUGGESTION IS NOT A CAUTION (#653 product defect 4). It wore var(--caution), the
+   board's amber for "abnormal", so on a step whose `note` carries the plant's own limit — the
+   heatup's 100 degF/hr, the ascension's 590 degF ceiling — the loudest line on the card was the
+   advice about which speed button to press. Both reviewers read the orange as the warning and
+   the grey as the footnote, which is exactly backwards. Amber now belongs to .ckl-caut-*, which
+   is where the real cautions are; the rung line keeps its own colour, a step up from .ckl-sub
+   so it still reads as advice rather than prose, and the ⏩ glyph carries the meaning. */
+.ckl-wait { color: #8fa3b4; }
 .ckl-next { border-color: var(--running); font-weight: 700; }
 .ckl-done { opacity: 0.62; border-left: 3px solid var(--running); }
 .ckl-done .ckl-ico { color: var(--running); }
@@ -2197,31 +2615,11 @@ select.num-input { width: auto; }
 }
 .mission-title { font-weight: 700; font-size: 14px; color: var(--text); }
 .mission-body { flex: 1; display: grid; grid-template-columns: 260px 1fr; min-height: 0; }
-/* step 1 — plant column */
-.mp-plants {
-  border-right: 1px solid var(--border); overflow-y: auto;
-  padding: 10px; display: flex; flex-direction: column; gap: 8px;
-}
-/* NB: not ".plant-card" — that class belongs to the PWR synoptic (positioned) */
-.mplant-card {
-  border: 1px solid var(--border); border-radius: 6px; padding: 10px;
-  cursor: pointer; background: var(--bg-elevated);
-}
-.mplant-card:hover { border-color: rgba(122, 176, 255, 0.4); }
-.mplant-card.on { border-color: rgba(122, 176, 255, 0.7); background: rgba(122, 176, 255, 0.08); }
-.mplant-name { font-weight: 700; font-size: 13px; color: var(--text); }
-.mplant-live { font-size: 10px; color: #79d297; font-weight: 400; }
-.mplant-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
-.mplant-desc { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
-/* Engine complete, control room not built yet: visible so the roadmap reads,
-   but muted and inert so it doesn't look broken when clicking does nothing. */
-.mplant-card.soon { opacity: 0.45; cursor: default; }
-.mplant-card.soon:hover { border-color: var(--border); }
-.mplant-soon {
-  margin-top: 8px; align-self: flex-start; display: inline-block;
-  border: 1px solid var(--caution); color: var(--caution); border-radius: 4px;
-  padding: 1px 6px; font-size: 9px; font-weight: 700; letter-spacing: 1px;
-}
+/* THE PLANT COLUMN IS GONE (#688, owner 2026-09-09) — .mp-plants and the whole .mplant-*
+   family went with it. The 260px|1fr default above STAYS: the chart-settings window (#454)
+   reuses .mission-body wholesale and needs that left track, as does .fl-body's override
+   below by counter-example. The Plant & Mission window collapses to one column here. */
+.mission-body.mp-body { grid-template-columns: 1fr; }
 /* The clock carries the halt for as long as it stands (#520). Dismissing the dialog
    must not lose the fact that the model has stopped — that IS the defect #520 is
    about — and the clock is the right home because a held plant's clock is the one
@@ -2261,11 +2659,8 @@ select.num-input { width: auto; }
    read as "danger, do not press", and pressing it is the way out. */
 .halt-go { border-color: var(--accent); color: var(--accent); font-weight: 700; }
 
-/* ---- selection screen (#443, spec §9) --------------------------------------
-   Reuses .mission-overlay / .mplant-card so the front door and the Plant &
-   Mission window read as one family; only the frame and the activity rows are
-   new. z-index sits above the mission overlay because the start screen can hand
-   off to it. */
+/* The "selection screen (#443)" header that stood here described .mplant-card, deleted with
+   the plant column (#688); its own rules had already gone with the start screen. */
 /* Settings and the Scanner's long form: modal class, so they pause (#439, spec §1).
    Narrower than the Plant & Mission window — both are a column of rows, not a picker. */
 .set-modal { height: auto; max-height: min(84vh, 700px); width: min(560px, 96vw); }
@@ -2364,13 +2759,23 @@ select.num-input { width: auto; }
 }
 .mp-modes button:hover { color: var(--text); }
 .mp-modes button.on { color: var(--text); border-bottom-color: rgba(122, 176, 255, 0.85); }
+/* THE GREEN [NEW] ON THE WALKTHROUGHS TAB (#688, owner 2026-09-09). #79d297 is the same
+   green the deleted plant column used for its ● active mark — brighter than --running
+   (#46A35E), which is sized for a filled board tile and reads dim at 9 px. Deliberately NOT
+   the caution amber of the COMING SOON badge below: this one says "here now". */
+.mp-modes .mp-new {
+  margin-left: 6px; display: inline-block; vertical-align: 1px;
+  border: 1px solid #79d297; color: #79d297; background: rgba(121, 210, 151, .10);
+  border-radius: 3px; padding: 0 4px;
+  font-size: 9px; font-weight: 700; letter-spacing: .08em;
+}
 .mp-content { flex: 1; overflow-y: auto; padding: 12px 14px; }
 /* campaign mission rows in the wide window: pin the Start button to the title
    row (the teaches line spans beneath it), instead of wrapping to its own row */
 .mp-content .camp-mission > .btn { grid-column: 3; grid-row: 1; white-space: nowrap; }
 /* Coming-soon panel — an area whose content this channel does not offer yet
-   (site/flags.js, #241). Deliberately the same amber COMING SOON badge the
-   not-yet-built plant cards use: "being finished", not "broken". */
+   (site/flags.js, #241). Amber, and it says "being finished", not "broken". It used to share
+   its badge with the plant column's not-yet-built cards; that column went at #688. */
 .mp-soon {
   border: 1px dashed var(--border); border-radius: 6px;
   padding: 18px 16px; text-align: center; background: var(--bg-elevated);
@@ -2430,12 +2835,58 @@ select.num-input { width: auto; }
 .mp-start { display: block; width: 100%; margin-top: 12px; padding: 10px; font-weight: 700; }
 
 /* ---- 1/M startup plot (draggable window — ui/panels/one_over_m.js) ---- */
+/* ONE FORM, FLOATING AND DRAGGABLE *(OWNER RULING, 2026-09-13: "let's make the card floating and
+   dragable like it was originally")*. This supersedes #724 item 7's docked layout, which lived for
+   one day in `.right-col` and before that (#660 item 13) in `.bottom-row`. Every `.oom-docked` rule
+   is deleted; nothing keys on a host any more.
+
+   WHAT THE OWNER WAS COMPLAINING ABOUT SURVIVES THE RULING, because the dock was only the means.
+   Item 7's other two sentences — "The 1/m plot is too small" and "make the predicted criticality
+   text large enough to read and obvious" — are answered here, and floating answers the first one
+   BETTER: the plotted-data rect measures 308x220 px floating against 321x160 docked, 68,000 px^2
+   against 51,000, because a floating window's height is its own rather than a share of somebody
+   else's column.
+
+   A GRID, NOT THE FLEX COLUMN THIS WAS, and for exactly one reason: the buttons go ABOVE the plot
+   (the owner, item 7) while the DOM order stays head, svg, foot, pred, msg, help. Grid areas move
+   the visual slot without touching one_over_m.js's markup — the same trick the retired dock used,
+   kept because the requirement it serves was not what got overruled. Rows are all `auto`: the svg
+   has `width: 100%` and no height, so its height follows the viewBox aspect and a longer readout
+   makes the WINDOW taller instead of the plot shorter. (That is why the dock needed a
+   ResizeObserver on the readout and this does not — see one_over_m.js.)
+
+   THE WIDTH IS CLAMPED AT EVERY WIDTH, not just narrow ones. `right: 340px; width: 356px` is a
+   position measured from a 1500 px control room, and it was latent for as long as narrow layouts
+   had a dock to fall back on: MEASURED at a 400 px viewport it put the window's left edge at
+   -296 px, most of it off the left of the screen. With the dock gone this is the only form there
+   is, so the guard is load-bearing everywhere. */
 .oom-win {
-  position: fixed; top: 90px; right: 340px; width: 356px; z-index: 250;
+  position: fixed; top: 90px; z-index: 250;
+  /* `right: 340px` alone is a position measured from a 1500px control room, and it was a
+     defect at every narrow width: MEASURED at a 400px viewport it put the window's left edge
+     at -296px, most of it off the screen with the plot unreachable. It was LATENT while
+     narrow layouts had a dock to fall back on and became live the moment they did not.
+     `max(12px, min(340px, 100vw - 380px))` keeps the 340px gutter wherever there is room for
+     it, pulls the window back toward the right edge when there is not, and never lets it
+     leave the viewport at all — 340px at 1500px and 1920px wide, 20px at 400px, 12px at
+     300px. One rule rather than a breakpoint, because a breakpoint is a claim about which
+     widths are narrow and this is arithmetic that holds at all of them. */
+  right: max(12px, min(340px, calc(100vw - 380px)));
+  width: min(356px, calc(100vw - 24px));
   background: var(--bg-elevated); border: 1px solid var(--border);
   border-radius: 8px; box-shadow: 0 12px 48px rgba(0,0,0,0.6);
   font-size: 12px; color: var(--text);
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "head" "foot" "svg" "pred" "msg" "help";
 }
+.oom-win[hidden] { display: none; }   /* the grid display above must not beat [hidden] */
+.oom-win > .oom-head { grid-area: head; }
+.oom-win > .oom-svg  { grid-area: svg; }
+.oom-win > .oom-foot { grid-area: foot; }
+.oom-win > .oom-pred { grid-area: pred; }
+.oom-win > .oom-msg  { grid-area: msg; }
+.oom-win > .oom-help { grid-area: help; }
+
 .oom-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 6px 10px; border-bottom: 1px solid var(--border);
@@ -2443,8 +2894,33 @@ select.num-input { width: auto; }
 }
 .oom-x { padding: 0 8px; line-height: 20px; }
 .oom-svg { display: block; width: 100%; background: var(--bg-plant); }
-.oom-foot { display: flex; gap: 8px; align-items: center; padding: 8px 10px 4px; }
-.oom-pred { color: var(--text-2); font-size: 11px; }
+/* The button bar, ABOVE the plot (owner, #724 item 7 — the one part of that item the 2026-09-13
+   ruling leaves standing). Equal widths so it reads as one control group rather than three sizes,
+   and a rule under it separating the controls from the drawing. */
+.oom-foot {
+  display: flex; gap: 6px; align-items: center;
+  padding: 6px 10px; border-bottom: 1px solid var(--border);
+}
+.oom-foot .btn { flex: 1 1 0; min-width: 0; padding: 5px 4px; white-space: nowrap; }
+/* THE PREDICTION, LARGE AND OBVIOUS *(OWNER, #724 item 7: "make the predicted criticality text
+   large enough to read and obvious")*. That sentence is untouched by the 2026-09-13 ruling, which
+   moved the window and nothing else, so the readout keeps the size the dock gave it: 15 px, 600,
+   and in `--caution`, the SAME colour the plot draws its own critical marker and label in
+   (.oom-crit / .oom-critlab below), so the readout and the line on the plot read as one fact. It
+   was 11 px / 400 / --text-2 at the tail of the button bar — the smallest type in the panel, for
+   the one number the tool exists to produce.
+
+   IT WRAPS RATHER THAN OVERFLOWS. The string is the longest in this panel
+   ("predicted criticality ~ step 1234 (12.3% withdrawn)") and #712 is open precisely because no
+   gate stops a readout overflowing its box. `white-space: normal` on an auto-height grid row means
+   a wider font stack (CI's DejaVu is ~15 % wider than Segoe UI on this kind of label) costs a
+   second line, which the row absorbs — it cannot push text out of the panel. */
+.oom-pred {
+  padding: 7px 10px 3px;
+  font-size: 15px; font-weight: 600; line-height: 1.25; text-align: center;
+  color: var(--caution); white-space: normal;
+}
+.oom-pred:empty { display: none; }
 .oom-msg { min-height: 16px; padding: 0 10px 8px; color: var(--muted); font-size: 11px; }
 .oom-msg.warn { color: var(--caution); }
 /* HELP, IN PLACE *(OWNER, 2026-09-03, #619 item 23)*. The window grows downward instead of
@@ -2489,18 +2965,76 @@ select.num-input { width: auto; }
 /* The pane fills the tab body and scrolls INSIDE the log, not as a whole — the persona
    header and the walkthrough nav have to stay put while the messages move under them. */
 /* THE INSTRUCTOR PANE OWNS ITS HEIGHT, and the LOG is what scrolls — not .tab-body.
-   
+
    .tab-body is `overflow-y: auto` and .tabpane.on is `display: block`, so every other pane
    is content-sized and the tab body scrolls it. That is right for a list of failures and
    wrong for a transcript: a `flex: 1 1 0` log inside a content-sized parent resolves to
    ZERO height and every message overflows an invisible box. Measured: log clientHeight 0
    against scrollHeight 1270, four messages in the DOM and one visible.
-   
-   `.instr-mode` is set on .tab-body by selectTab so this does not depend on :has(). */
-.tab-body.instr-mode { overflow: hidden; display: flex; flex-direction: column; }
+
+   `.instr-mode` is set on .tab-body by selectTab so this does not depend on :has(). Since
+   `overflow: hidden` still makes this a live, unclamped SCROLLPORT (#723, sibling of #717):
+   in the control-room grid's stacked row (`.app.pwr-synoptic` at <=1200px, see the
+   `grid-template-rows` fix below) this wrapper used to be squeezed to ~20px against ~62px
+   of content and could be PANNED the other 42px with no way back. `overflow: clip` is the
+   same #717 backstop — it never scrolls by design, so clip costs nothing real. */
+.tab-body.instr-mode { overflow: hidden; overflow: clip; display: flex; flex-direction: column; }
 .tabpane.instructor { display: none; flex-direction: column; min-height: 0; }
 .tabpane.instructor.on { display: flex; flex: 1 1 auto; min-height: 0; }
 .tabpane.instructor .instr-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* NO PERSONA HEADER WHILE A WALKTHROUGH RUNS (#687 item 1, OWNER 2026-09-09: "Remove this
+   Walkthrough text, its not needed"). The class is set by instrHeaderless() on the walkthrough
+   branch of renderInstructorInner and cleared by setInstrRole, so every other panel state keeps
+   its header. Removing the word alone would have left a 32 px bordered strip carrying nothing;
+   the row goes with it, and the walkthrough card gets the height back. */
+#instructorCard.wt-headerless .persona { display: none; }
+/* END WALKTHROUGH AT THE FOOT OF THE PANEL (#687 item 2). What puts it at the bottom of the
+   SPACE rather than the bottom of the card is `.instr-log { flex: 1 1 0 }` above: the log is the
+   growing child, it eats every pixel of free space in this column, and this row is what is left
+   at the bottom. MEASURED at 1500x950: row bottom 921, panel floor 931, transcript bottom 889.
+
+   `margin-top: auto` IS A FALLBACK AND IS INERT TODAY — say it plainly rather than crediting it,
+   because #687 named it as the mechanism in three places. Auto margins only take free space that
+   flex-grow left over, and the log leaves none: MEASURED at viewport heights 950 / 1200 / 760 /
+   640, `getComputedStyle(#cklBtns).marginTop` resolves to `0px` at every one, and setting it to
+   0 moves the row 0 px. It earns its keep only if the log ever stops growing (#612 is about that
+   column) — forced to `flex: 0 0 auto`, the same measurement has it absorb 96 / 282 / 14 px. Keep
+   it; do not cite it — and note the pair is REDUNDANT BY DESIGN, which verify_e2e_ui measures:
+   with the log's grow removed the auto margin holds the row down on its own (96 / 282 / 14 px at
+   those heights), and only removing BOTH floats the row 97 px off the floor. */
+.tabpane.instructor .instr-body > #cklBtns { flex: 0 0 auto; margin-top: auto; padding-top: 8px; }
+.tabpane.instructor .instr-body > #cklBtns[hidden] { display: none; }
+
+/* THE RUNNING WALKTHROUGH REACHES THE FLOOR OF THE COLUMN *(OWNER, 2026-09-14, #755 item 3: "Some
+   of the walkthroughs windows were short making them use a scroll bar when there was a bunch of
+   room below them. the tab windows should go to the bottom of the right column.")*.
+
+   #612 fixed exactly this — for the CHECKLISTS pane, which is where the run lived at the time.
+   #660 moved the run back into the INSTRUCTOR pane (`#cklRun` is a child of `.instr-body` in
+   shell.html) and it inherited none of it, so the two halves of the old defect came back on the
+   pane the player actually uses:
+     1. `.ckl-log`'s 48vh cap applied again — a VIEWPORT fraction inside a COLUMN slot, which only
+        agree by accident — so the steps scrolled in a short box.
+     2. `.instr-log` below it is `flex: 1 1 0` and takes every remaining pixel, and `instrLogTick`
+        returns early while a walkthrough runs (`if (cklState.key) … return`), so that growing box
+        is EMPTY. That is the "bunch of room below them".
+   So the run becomes the growing child and the transcript stops growing, but only under
+   `.wt-headerless`, which is set for exactly the duration of a run — every other instructor state
+   keeps the transcript as the grower it has always been.
+
+   `#cklBtns` STAYS AT THE FLOOR either way, and verify_e2e_ui measures that rather than the
+   mechanism: with `.instr-log` no longer growing, the row's own `margin-top: auto` takes the
+   leftover — the second of the two mechanisms that test proved are redundant (2026-09-11). Here
+   `#cklRun` leaves no leftover, so the row lands on the floor with no margin at all.
+
+   THE `[hidden]` GUARD IS NOT OPTIONAL: `#cklRun` is `hidden` whenever no walkthrough is running,
+   and a `display: flex` in a rule this specific beats the UA's `[hidden] { display: none }`. */
+#instructorCard.wt-headerless .instr-body > #cklRun {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+}
+#instructorCard.wt-headerless .instr-body > #cklRun[hidden] { display: none; }
+#instructorCard.wt-headerless .instr-body > #cklRun .ckl-log { flex: 1 1 0; min-height: 0; max-height: none; }
+#instructorCard.wt-headerless .instr-body > #instrLog { flex: 0 1 auto; }
 
 /* THE CHECKLISTS PANE, same treatment, same reason (#612, owner playtest 2026-09-03: "the
    checklist scroll window keeps bouncing to the top and back to the step" and "the right column
@@ -2521,8 +3055,9 @@ select.num-input { width: auto; }
 
    Giving the pane the height makes `.ckl-log` the ONLY scroller and lets it reach the bottom of
    the column, which is one fix for both reports. `.ckl-mode` is set on .tab-body by selectTab,
-   exactly as `.instr-mode` is, so this does not depend on :has(). */
-.tab-body.ckl-mode { overflow: hidden; display: flex; flex-direction: column; }
+   exactly as `.instr-mode` is, so this does not depend on :has(). The identical construct is the
+   identical scrollport risk (#723) — clamp it too. */
+.tab-body.ckl-mode { overflow: hidden; overflow: clip; display: flex; flex-direction: column; }
 .tabpane[data-pane="checklists"] { flex-direction: column; min-height: 0; }
 .tabpane[data-pane="checklists"].on { display: flex; flex: 1 1 auto; min-height: 0; }
 .tabpane[data-pane="checklists"] #cklRun { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
@@ -2654,3 +3189,145 @@ select.num-input { width: auto; }
 }
 .cs-pick input:checked + .cs-val { color: var(--text); }
 .cs-row.diverged .cs-val { color: var(--caution, #D9A441); }
+
+/* Walkthrough step card (#660 items 15-18): "Step X of N", a Continue that only lights when the
+   step is satisfied, and the walkthrough's own one-step Rewind beside it. */
+.ckl-stepno { float: right; font-size: 11px; color: var(--text-2); font-weight: normal; }
+.wt-continue:not(.ready) { opacity: 0.45; animation: none; box-shadow: none; cursor: default; }
+.wt-continue:not(.ready):hover { background: transparent; }
+.wt-rewind[disabled] { opacity: 0.45; cursor: default; }
+
+/* (The 1/M plot's DOCK lived here and is gone — OWNER RULING, 2026-09-13: "let's make the card
+   floating and dragable like it was originally". It docked into `.right-col` for one day under
+   #724 item 7, and into `.bottom-row` before that under #660 item 13. Everything the dock was
+   carrying that the ruling did NOT overrule — the buttons above the plot, the 15 px prediction
+   readout — moved up into the base `.oom-win` rules; `git log ui/shell.css` has the rest.
+   Do not re-add a dock without a newer ruling than this one. #713.) */
+
+/* ===================================================================================
+   REDUCED MOTION, IN ONE PLACE AND AT THE END OF THE FILE (#740)
+   *(OWNER RULING, 2026-09-13: "1:A, 2:A, 3:a now. I will playtest after you make these changes."
+   — item 2 was #740, and option A was "distinct static geometry per signal under reduced motion,
+   matching the convention the board already uses".)*
+
+   MEASURED BEFORE THIS EXISTED (inbox/738/rm_browser.js, a real browser with
+   `emulateMedia({ reducedMotion })`, reading computed `animationName` off live elements): SIX
+   animations went on running for a player who had asked them not to — `gauge-alarm-flash`,
+   `pulse` on `button.armed`, `scram-flash`, `status-flash`, `cklGlow` and `instrGlow`. Four others
+   already stopped correctly.
+
+   ⚠ WHY THEY ARE ALL HERE, AT THE BOTTOM, RATHER THAN NEXT TO THE RULES THEY OVERRIDE. A MEDIA
+   QUERY ADDS NO SPECIFICITY. `@media (prefers-reduced-motion) { .x { animation: none } }` placed
+   ABOVE `.x { animation: flash … }` loses outright, and both forms read as correct. That cost this
+   repo three separate defects in one cycle — the `.bd-info` cascade in #738's parent, my own
+   `bdMsgFlash` override one rule later, and these six. Rules that must WIN go last; keeping them
+   together is what makes that checkable at a glance instead of per-rule.
+
+   THE EXISTING PER-RULE OVERRIDES ARE LEFT WHERE THEY ARE. They work (their animations are
+   declared above them) and moving correct code to prove a point risks more than it buys; the ones
+   below are the ones that were broken. */
+@media (prefers-reduced-motion: reduce) {
+  .gauge.alarm .g-value,
+  .pd-row.subcool .pv.alarm,
+  .sys-slot.state-alarm .slot-dot,
+  .sys-slot.state-alarm .slot-badge,
+  .pd-scram.fired { animation: none; }
+
+  /* `button.armed` IS A BUTTON, so it gets a ring like the other button-shaped signals rather than
+     just losing its pulse. RIDGE, which is the fifth distinct line style on the board and reads as
+     "raised" — apt for a control waiting on a confirming second press. */
+  button.armed {
+    animation: none;
+    outline: 3px ridge #a13a3a;
+    outline-offset: 2px;
+  }
+
+  /* THE FALLBACK IS WHERE THE BOARD LEANS HARDEST ON HUE, so these do not merely stop.
+     Stopping the six was option D and the owner did not take it: take the motion away and a HUE
+     becomes the only difference between "critical alarm", "a protection latch is holding this" and
+     "there is a message" — the pairs a red/green or blue/yellow deficiency compresses. So each
+     signal gets a distinct OUTLINE STYLE, which is geometry and survives both greyscale and any
+     hue collapse.
+
+     THE VOCABULARY IS THE BOARD'S OWN, not a fourth one: the highlight bus is a halo,
+     `.ckl-watch-glow` is a dashed offset outline, and `#playBtn.paused`'s own fallback (at :2894,
+     ABOVE this block) is already `outline: 2px solid`.
+
+     DOUBLE is the loudest and belongs to the critical alarm; SOLID is the protection latch (see
+     pwr_board.css); DOTTED is a message; DASHED belongs to the WALKTHROUGH pointing something out,
+     in two widths — 3px "act on this", 1px "watch this".
+
+     ⚠ THE MESSAGE WAS DASHED IN THE FIRST CUT AND THAT WAS A COLLISION. `.ckl-watch-glow` was
+     `1px dashed` at an offset, all but identical, and it means something else entirely; both land
+     on board tiles through `revealControl`. It is a SOLID RING since the 2026-09-14 ruling (#755
+     items 7/10) so that particular collision is gone, but the message keeps DOTTED: the reason it
+     moved was never the dash alone, it was that two walkthrough-adjacent signals on one board blur
+     a vocabulary, and 59 steps still use one. Do not move the message back onto dashed. */
+  .alarm-tile.unack.crit {
+    animation: none;
+    /* 5px, NOT 3px, AND THE DIFFERENCE IS VISIBLE RATHER THAN THEORETICAL. A `double` outline
+       splits its width three ways, so 3px is 1px-1px-1px and the two lines merge into one thin
+       stroke at button size — rendered and looked at (inbox/740/grey/), 3px came out FAINTER than
+       the protection latch's 2px solid, which is backwards for the loudest signal on the board.
+       5px gives 2px-1px-2px and reads as two lines. Do not trim this without re-rendering it. */
+    outline: 5px double var(--critical);
+    outline-offset: -5px;
+    box-shadow: none;
+  }
+
+  /* THE PULSE'S FALLBACK IS THE DASH, AND THAT SURVIVES THE 2026-09-14 RULING ON PURPOSE. That
+     ruling took the dash off `.ckl-watch-glow` — the DEFAULT path, which is what the owner was
+     looking at — and replaced it with a solid 2 px ring, so press and watch are now separated by
+     MOTION plus ring weight. Here there is no motion to separate them with, and a weight-only
+     difference between two cyan rings is the hue-only failure this whole block exists to prevent.
+     So the pulse keeps a 3 px dashed OUTLINE and the watch ring stays a solid BOX-SHADOW: a line
+     style apart, which survives greyscale and any hue collapse. Nothing dashed reaches a player
+     who has not asked for stillness.
+
+     `.ckl-watch-glow` still needs no clause of its own — it is not animated, and giving it one
+     would put the dash back on the board.
+
+     THE PRESSED STATE (#755 item 19) IS THE SAME OUTLINE AT 1px, its own width in the same family:
+     with the motion gone, "act on this" and "you did it" would otherwise be identical. Widths, not
+     styles, because they are two strengths of one meaning — exactly the argument the dashed pair
+     used to carry between press and watch.
+
+     ⚠ `.ckl-step-glow` IS A BOARD-SURFACE CLASS WEARING A CHECKLIST PREFIX. It is applied through
+     `revealControl` to board TILES, and since #727 to the trip-block popover rows as well — it is
+     not part of the walkthrough panel's own `.ckl-*` styling. Do not re-split it on the prefix. */
+  .ckl-step-glow {
+    animation: none;
+    outline: 3px dashed rgba(90, 240, 255, 0.95);
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+  .ckl-step-glow.ckl-step-done {
+    outline-width: 1px;
+    box-shadow: none;
+  }
+
+  /* The recommended speed rung (#743). Its pulse is an INSET, so its fallback is too — an outer
+     ring here would be clipped by `.speed`'s `overflow: hidden` and the fallback would be invisible
+     for exactly the player who most needs it to be static. 2px inset against `.on`'s 1px, so the
+     recommendation still outweighs plain selection with the motion gone; `.ckl-speed-rung.on`
+     already drops to `.on` alone, and that rule does not need repeating here because it kills the
+     animation rather than the shadow.
+
+     ⚠ THE SECOND STOP IS NOT DECORATION — a single `inset 0 0 0 2px` COLLIDED with the instructor
+     attention ring, which is already exactly that, and the gate caught it (this runner, 17/18, the
+     first time it was run against this change). Two signals with the same geometry are hue-only to
+     each other, which is the precise thing #740 exists to prevent. The bloom stop also keeps the
+     fallback reading as the same GLOW the pulse is, rather than as a border. */
+  .speed button.ckl-speed-rung {
+    animation: none;
+    box-shadow: inset 0 0 0 2px rgba(90, 240, 255, 0.95), inset 0 0 8px 2px rgba(90, 240, 255, 0.40);
+  }
+
+  /* The highlight bus. It is a HALO by design (see its own note above — cyan, never a fill, so a
+     haloed component in alarm still reads as in alarm), and the halo is already geometry; only the
+     pulse goes. */
+  .instr-glow {
+    animation: none;
+    box-shadow: 0 0 0 2px rgba(122, 176, 255, 0.9);
+  }
+}

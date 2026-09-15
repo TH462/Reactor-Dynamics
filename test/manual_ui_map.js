@@ -5,7 +5,9 @@
  * hand copy of `ui/app.js` PD[].controls, and by 2026-07-31 they were a copy of a display
  * that no longer exists: the PWR plant display is the learning BOARD, with no view bar, and
  * app.js resolves a control through `RD.PwrBoard.revealControl`. Nine labels the authored
- * procedures use — `RCP Run/Stop`, `Dump SP`, `Pressure SP`, `Accumulator valve`,
+ * procedures use — `RCP ON/OFF` (renamed from `RCP Run/Stop` at #670's operator pass: the
+ * board engraves ON and OFF and prints "Run/Stop" nowhere), `Dump SP`, `Pressure SP`,
+ * `Accumulator valve`,
  * `Trip Blocks`, `Boron control`, `1/M Plot`, `Turbine — Connect Grid`, `Rod AUTO` — were
  * absent from the copy while being perfectly reachable on the board, so the copy could only
  * ever produce false failures. `pwrLabels()` reads the board's own `CONTROL_LABEL_MAP`
@@ -103,7 +105,7 @@ var STEP_UI = {
    * verify_manual_follow still walks the pwr profile only — these rows are the STATIC
    * gate's coverage, not the browser gate's. */
   'pwr2:pwr_heatup': [
-    { i: 1, view: 'board', control: 'RCP Run/Stop' },
+    { i: 1, view: 'board', control: 'RCP ON/OFF' },
     { i: 2, view: 'board', control: 'Shutdown Bank' },
     { i: 3, view: 'board', control: 'Turbine Load' },
     { i: 4, view: 'board', control: 'Feed Pumps' },
@@ -137,6 +139,9 @@ var STEP_UI = {
     { i: 12, view: 'board', control: 'Steam Dump' },
     { i: 13, view: 'board', control: 'Pressure SP' },
   ],
+  /* #750 (2026-09-14) DELETED the 2.0e4 1/M plot step, which sat at i:8, so every row below it
+   * shifts UP by one and its own row goes with it — the second time this map has shrunk (see the
+   * #698 note below). Moved one at a time, not re-derived, for the reason those notes give. */
   'pwr2:pwr_startup': [
     { i: 1, view: 'board', control: 'Boron control' },
     { i: 2, view: 'board', control: 'Feed Pumps' },
@@ -147,36 +152,56 @@ var STEP_UI = {
     { i: 7, view: 'board', control: 'Control Bank' },
     { i: 8, view: 'board', control: 'Control Bank' },
     { i: 9, view: 'board', control: 'Control Bank' },
-    { i: 10, view: 'board', control: 'Control Bank' },
+    { i: 11, view: 'board', control: 'Control Bank' },
     { i: 12, view: 'board', control: 'Control Bank' },
-    { i: 13, view: 'board', control: 'Control Bank' },
-    { i: 14, view: 'board', control: 'Turbine Load' },
+    { i: 13, view: 'board', control: 'Turbine Load' },
     /* TWO block steps since #601, taken in P-10's own order: the intermediate-range trip (which
      * also clears the C-1 rod stop) then the power-range low setting. Both land on the same
      * panel; they are separate rows because they are separate operator actions. */
+    { i: 14, view: 'board', control: 'Trip Blocks' },
     { i: 15, view: 'board', control: 'Trip Blocks' },
-    { i: 16, view: 'board', control: 'Trip Blocks' },
   ],
   /* #619 item 27 (2026-09-04) inserted the boron SAMPLE step at i:2, so every row below it
    * shifted by one. Written out rather than re-derived: the indices are positional and this map
    * has been broken three times by renumbering it wholesale instead of moving the rows that
    * actually moved. The gate caught the shift immediately — both symptoms, a pill/row mismatch
    * at the insertion point and an UNVERIFIED tail step, are what an off-by-one looks like here. */
+  /* #664 (2026-09-08) inserted the "turbine on line" step at i:1, so every row below it shifted
+   * by one again. Moved, not re-derived, for the reason the note above gives. */
+  /* #698 (2026-09-11) DELETED the boron SAMPLE step that #619 item 27 had inserted at i:3, so
+   * every row below it shifts back UP by one — the first time this map has shrunk rather than
+   * grown. Its own row goes with it. Moved one at a time, not re-derived, for the reason the
+   * two notes above give. */
   'pwr2:pwr_raise_power': [
-    { i: 1, view: 'board', control: 'Boron control' },
-    { i: 2, view: 'board', control: 'Boron control' },   // draw a boron sample (#619 item 27)
+    { i: 1, view: 'board', control: 'Turbine Load' },    // latch + load after a turbine trip (#664)
+    { i: 2, view: 'board', control: 'Boron control' },
     { i: 3, view: 'board', control: 'Control Bank' },
     { i: 4, view: 'board', control: 'Control Bank' },
     { i: 5, view: 'board', control: 'Control Bank' },
     { i: 6, view: 'board', control: 'Control Bank' },
     { i: 7, view: 'board', control: 'Control Bank' },
+    { i: 8, view: 'board', control: 'Boron control' },    // the verify step, now boron-bounded (#683)
+    /* i:9 WAS 'Boron control' — the closing trim to 617 ppm. It is the ROD trim since #733
+     * (owner playtest #724 item 17): the boron route scrammed the plant 15 min after the step
+     * checked itself off, and measured at power the bank carries 56.3 degF against boron's 27.0.
+     * The step that follows it is an `obs` and owns no row. */
+    { i: 9, view: 'board', control: 'Control Bank' },
+    /* #752 (2026-09-14) APPENDED the first dilution dose at i:10, after the rod trim and before
+     * the closing `obs`. Nothing below it shifts — the `obs` owns no row — so this is the one
+     * case where this positional table grows without a re-derivation. */
+    { i: 10, view: 'board', control: 'Boron control' },
   ],
+  /* #736 — the 75 MWe stage is TWO steps now (lower load, then trim rods), so every later
+   * index shifted by one. This table is `verify_manual_follow`'s COVERAGE LIST and it iterates
+   * the table, not the pool: an entry left behind does not merely go stale, it silently moves
+   * the gate's attention onto a step it was never written for. */
   'pwr2:pwr_lower_power': [
     { i: 0, view: 'board', control: 'Boron control' },
     { i: 1, view: 'board', control: 'Turbine Load' },
-    { i: 2, view: 'board', control: 'Turbine Load' },
+    { i: 2, view: 'board', control: 'Rod Speed' },      // #736 — the rod trim, split off from the load drop
     { i: 3, view: 'board', control: 'Turbine Load' },
     { i: 4, view: 'board', control: 'Turbine Load' },
+    { i: 5, view: 'board', control: 'Turbine Load' },
   ],
   'pwr2:pwr_shutdown': [
     { i: 0, view: 'board', control: 'Turbine Load' },
@@ -188,11 +213,47 @@ var STEP_UI = {
     { i: 2, view: 'board', control: 'Trip Blocks' },
     { i: 3, view: 'board', control: 'Dump SP' },
     { i: 4, view: 'board', control: 'Pressure SP' },
-    { i: 5, view: 'board', control: 'Pressurizer Spray (PZR)' },
+    /* THE HEATER-OFF AND THE SPRAY ARE ONE STEP AGAIN (owner ruling 2026-09-13) — the
+     * pressure-control handover, merged as one mechanical beat. Its `control` is the HEATER card
+     * (the first action); the spray is covered by `hl` and the board vocabulary, because a step
+     * owns exactly one row here.
+     * ⚠ THE ROW BELOW IT WAS DELETED AND THE REST RENUMBERED BY HAND, -1 each: 7->6, 9->8,
+     * 10->9, 11->10, 12->11. RENUMBER, DO NOT RE-DERIVE — this table has been broken five times
+     * by re-reading the array after a change, and the signature is always the same, a "pill X !=
+     * STEP_UI Y" cascade plus one unmapped tail step. A DELETION is the safe direction only if
+     * you resist closing the gap by re-deriving; the numbers below were shifted, not rebuilt.
+     * The gap at what is now i:7 is the observation step and it is still a gap. ⚠ NOT because that
+     * step has no `control` — it carries `'(observe)'`, which is TRUTHY. `run_manual_controls`
+     * skips it on the `/^\(observe/` test in the forward loop, while its REVERSE check keys on
+     * `!!st.control`. So a row that lands on i:7 by an off-by-one is invisible to that gate:
+     * measured, moving the i:8 row to i:7 reds exactly one check (coverage 147/148) and never
+     * names the misdirected row. Renumbering by hand is what keeps this honest. */
+    { i: 5, view: 'board', control: 'Pressurizer Heaters (PZR)' },
     { i: 6, view: 'board', control: 'Accumulator valve' },
     { i: 8, view: 'board', control: 'Residual Heat Removal (RHR)' },
-    { i: 9, view: 'board', control: 'RCP Run/Stop' },
+    { i: 9, view: 'board', control: 'RCP ON/OFF' },
     { i: 10, view: 'board', control: 'Residual Heat Removal (RHR)' },
+    /* the spray-off moved OUT of step 11 and became its own step at the END of the cooldown
+     * (#729): shutting it beside the RCPs repressurized the plant on the pressurizer shell's
+     * stored heat and cost the leg its RHR. It is still the last step; its index came down by
+     * one with everything else when the handover merged, 12 -> 11. */
+    { i: 11, view: 'board', control: 'Pressurizer Spray (PZR)' },
+  ],
+  /* THE TMI-2 INCIDENT WALKTHROUGH (#670 Phase 2). Its own block, appended — the six cycle
+   * legs above are untouched, because this table is POSITIONAL and the four historical
+   * breakages were all somebody re-deriving instead of leaving existing rows alone. Seven of
+   * its TWENTY steps carry a `control`; the rest are narration and verification and own no row.
+   * ROWS MOVED +4 (#693, 2026-09-11): step 2 -- the lump that injected four failures in one
+   * broadcast -- became FIVE narrated steps, so every index from 1 upward shifted by four. The
+   * rows were MOVED, not re-derived, and none of the five new steps carries a `control`. */
+  'pwr2:pwr_tmi2_incident': [
+    { i: 9, view: 'board', control: 'Trip Blocks' },        // 04:03:50 — bypass the SI signal
+    { i: 10, view: 'board', control: 'ECCS' },               // 04:05:07 — throttle injection
+    { i: 13, view: 'board', control: 'AFW' },                // 04:08:37 — the found block valves
+    { i: 14, view: 'board', control: 'RCP ON/OFF' },        // 05:13:37 — secure the pumps
+    { i: 17, view: 'board', control: 'PORV Block Valve' },  // 06:18:37 — the first correct move
+    { i: 18, view: 'board', control: 'ECCS' },              // 07:20:37 — injection restored
+    { i: 19, view: 'board', control: 'RCP ON/OFF' },        // 19:50:37 — the epilogue restart
   ],
   pwr_startup: [
     { i: 2,  view: 'board', control: 'Feed Pumps' },
@@ -219,7 +280,7 @@ var STEP_UI = {
   // "pill X != STEP_UI Y" mismatches plus one unmapped tail step; a cascade shaped like
   // that is an INSERTION, not six independent errors. Renumber, do not re-derive.
   pwr_heatup: [
-    { i: 1,  view: 'board', control: 'RCP Run/Stop' },
+    { i: 1,  view: 'board', control: 'RCP ON/OFF' },
     { i: 2,  view: 'board', control: 'Shutdown Bank' },
     { i: 3,  view: 'board', control: 'Turbine Load' },
     { i: 4,  view: 'board', control: 'Feed Pumps' },
@@ -244,7 +305,7 @@ var STEP_UI = {
     { i: 10, view: 'board', control: 'Dump SP' },
     { i: 11, view: 'board', control: 'Residual Heat Removal (RHR)' },
     { i: 12, view: 'board', control: 'Residual Heat Removal (RHR)' },
-    { i: 13, view: 'board', control: 'RCP Run/Stop' },
+    { i: 13, view: 'board', control: 'RCP ON/OFF' },
     { i: 14, view: 'board', control: 'Residual Heat Removal (RHR)' },
   ],
   pwr_raise_power: [{ i: 0, view: 'primary', control: 'Rod Speed' }, { i: 1, view: 'secondary', control: 'Turbine Load' }],

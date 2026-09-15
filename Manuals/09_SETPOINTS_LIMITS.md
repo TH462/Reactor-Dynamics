@@ -2,7 +2,7 @@
 
 **Document:** PWR-SP-01  
 **Title:** Operating Limits and Protection Setpoints — PWR  
-**Revision:** 18  
+**Revision:** 19  
 **Source:** As-built `pwr_control.js`, `pwr_config.js`; normal values captured from the live engine  
 
 **NOTE:** Values are trainer setpoints (SI). Real US plant Tech Specs differ.
@@ -18,15 +18,15 @@
 | Reactor power | **100 %** | Mode 1, At Power |
 | Electrical output | **≈ 100 MWe** | Mode 1, At Power |
 | Primary pressure | **2235 psi (15.41 MPa)** | Mode 1, At Power |
-| Tavg | **≈ 577.7 °F (303.2 °C)** | Mode 1, At Power |
-| Thot / Tcold | **≈ 607.2 / 548.2 °F** (319.6 / 286.8 °C) (ΔT ≈ 59.0 °F / 32.8 °C) | Mode 1, At Power |
-| Pressurizer level | **≈ 57 %** | Mode 1, At Power |
+| Tavg | **≈ 580.4 °F (304.7 °C)** | Mode 1, At Power |
+| Thot / Tcold | **≈ 609.8 / 550.9 °F** (321.0 / 288.3 °C) (ΔT ≈ 58.9 °F / 32.7 °C) | Mode 1, At Power |
+| Pressurizer level | **≈ 62 %** | Mode 1, At Power |
 | Steam Generator level | **≈ 65 %** | Mode 1, At Power |
-| Secondary steam pressure | **≈ 808 psi (5.57 MPa)** — measured on a settled ride; Ginna's sourced 810 psig full-load outlet is the anchor it was tuned to (#419 wave 3) | Mode 1, At Power |
-| Subcooling margin | **≈ 45 °F** (25 °C) | Mode 1, At Power |
-| Control bank position | **≈ 92 %** withdrawn | Mode 1, At Power |
+| Secondary steam pressure | **≈ 827 psi (5.70 MPa)** — measured on a settled ride; Ginna's sourced 810 psig full-load outlet is the anchor it was tuned to (#419 wave 3) | Mode 1, At Power |
+| Subcooling margin | **≈ 43 °F** (23.9 °C) | Mode 1, At Power |
+| Control bank position | **96.7 %** withdrawn (606 of 627 steps) | Mode 1, At Power |
 | Core inventory | **100 %** | Mode 1, At Power |
-| Decay heat (after long power run) | **≈ 7 %** at scram instant | — |
+| Decay heat (after long power run) | **≈ 6.2 %** at scram instant | — |
 
 ### Mode 3, Hot Standby — Hot Standby (typical)
 
@@ -54,8 +54,8 @@
 | SG level | low | **17 %** | Lo-lo; the same signal auto-starts AFW (single-signal, as in the real plant) |
 | SG level (P-14) | high | **90 %** | High-high; reactor trip via P-9, condition **≥50 % power** |
 | **Turbine trip (P-9)** | turbine tripped | — | **Reactor trip on turbine trip**, condition **≥50 % power** (P-9). Above P-9 a turbine trip scrams the reactor *immediately* — it is not a ride-out. Below P-9 there is no reactor trip and the steam dump carries the transient. A **planned offline** (generator OFF / `disconnect_grid`) is **not** a turbine trip and never arms this — see `03` §12.1 |
-| RCS loop flow | low | **87 % of rated** | Low-flow trip; reads the `loop_flow` elbow-tap channel. Blockable below **P-7 (10 % power)**, auto-reinstates above. Real Westinghouse setpoint. **One channel, not 2-of-3** — see `12` §10.7 for that departure and what it costs |
-| Source range | high | **1e5 cps** | When SR energized |
+| RCS loop flow | low | **87 % of rated** | Low-flow trip; reads the `loop_flow` elbow-tap channel. Blockable below **P-7 (8 % power)**, auto-reinstates above. Real Westinghouse setpoint. **One channel, not 2-of-3** — see `12` §10.7 for that departure and what it costs |
+| Source range | high | **NOT MODELLED** | A real plant trips the reactor on source-range high flux — Ginna's is the trip the P-6 permissive lets the operator block on the way up. This one does not. **1e5 cps is real on this plant, but it is the DE-ENERGIZATION point, not a trip**: the source-range channel switches itself off there (see §9.0 below and the P-6 row in this section), so the count rate can never reach a setpoint above it. That is what hid the gap — measured by forcing the channel to stay energized, the plant publishes **1.3e11 cps** at 50 % power and does not trip. Kept so the contrast is visible, not because the plant will act on it |
 | Intermediate range | high | **25 % (2.08e-3 A)** | Startup; blockable above P-10, and the SAME press clears the 20 % rod stop below. **This row read 1.67e-3 A / “~20 %” until #601** — the retired plant’s number, and it was the ROD STOP’s setpoint written into the TRIP’s row. Same channel, two setpoints: the stop at 20 % acts first, this trip at 25 % is what happens if it does not hold. Sourced: WTSM 12.2 §12.2.3.3 (ML11223A301) — *“the current output from at least one of the two intermediate range channels indicates greater than the equivalent of 25% power”*. Ginna publishes no number for this Function (UFSAR ch15 §B: *“a pre-selected, manually adjustable setpoint”*), so the generic Westinghouse figure is the sourced one |
 | Primary pressure (SI trip, PI-3) | low | **1715 psi (11.824 MPa)** | Reactor trip on safety injection; blockable below P-11 (1973 psi (13.6 MPa)), auto-reinstates |
 | PZR level (PI-8) | high | **87 %** | Going-solid backstop, and it is the anchor plant's figure rather than the four-loop 92 %. Armed above P-7; the 70 % alarm warns first |
@@ -66,13 +66,13 @@
 
 | Name | Value | Effect |
 |------|-------|--------|
-| **P-6** | IR ≥ **1e-10 A** | Allows SR de-energize |
+| **P-6** | IR ≥ **1e-10 A** | **Intermediate range on scale.** On a real plant this is the permissive that lets the operator block the source-range trip and secure the detector; **this plant has no such lever** — the source range de-energizes itself on flux alone at 1e5 cps, which is IR ≈ 3.2e-9 A, some **32×** above P-6. So what P-6 does here is mark the bottom of the **INTER RANGE in-use band** on the NIS card: below it, read the source range. Sourced — Ginna Technical Specification Bases B 3.3.1 (ML20339A221): *"actuated when any NIS intermediate range channel goes approximately one decade (1 E-10 amps) above the minimum channel reading"*. **The 5E-11 A in the same passage is a different point** — the source-range re-energize on the way down — and the engine carried it as P-6 until #642 |
 | **P-9** | Power ≥ **50 %** | Arms the **reactor trip on turbine trip** and the P-14 reactor trip; also gates the loss-of-MFW AFW start |
-| **P-7** | Power ≥ **10 %** | Arms the **low-flow reactor trip**; below it the trip may be blocked (RCPs are secured in Mode 5, where RHR provides circulation) and it auto-reinstates above |
-| **P-10** | Power ≥ **8 %** | Allows IR/PR low-setpoint trip blocks. Note this is NOT the same threshold as P-7 above — the two are 8 % and 10 % on this plant and are easy to conflate |
+| **P-7** | Power ≥ **8 %** | Arms the **low-flow reactor trip** and the high pressurizer level trip; below it neither is active (RCPs are secured in Mode 5, where RHR provides circulation) and both re-arm above. **8 %, not 10 %, since #753** — the anchor plant puts P-7 and P-10 at the same crossing: Ginna Technical Specification Bases B 3.3.1 (ML20339A221), *“generate a reactor trip above approximately 8% RTP (P-7 setpoint)”*. The engine carried the generic Westinghouse 10 % (WTSM 10.3 §10.3.4.3) until then, and at 10 % this permissive CHATTERED: the power-range channel at the 9.6 % initial condition spans 8.7 to 10.5 %, so `p7_met` took 92 transitions in 600 s and both trips armed and disarmed with it |
+| **P-10** | Power ≥ **8 %** | Allows IR/PR low-setpoint trip blocks, and revokes a standing block below. **The same crossing as P-7 since #753** (they were 8 % and 10 %). The block is graded against the INDICATED power-range channel, which carries about ±0.3 % of noise with no 2-of-4 coincidence behind it, so a block pressed just over 8 % is revoked within seconds: measured survival of one press is 1 s at 8.19 % power, 4 s at 8.72 %, 105 s at 9.10 % and indefinite from 9.36 % — which is why `04` PWR-T03 asks for a comfortable 10 % before you press |
 | **P-11** | Pressure ≥ **1973 psi (13.6 MPa)** | Below it the SI trip may be blocked; auto-reinstates above |
 | **P-12** | Tavg low **532.4 °F (278 °C)** | LO TAVG annunciator (`PWR-A29`) — ~14.4 °F (8 °C) below the 546.8 °F (286 °C) no-load anchor (#419 wave 3; Ginna's numeric P-12 is in its TS proper, fetch owed) |
-| SR re-energize block | IR ≥ **1e-6 A** | Protects SR detector |
+| SR re-energize block | IR ≥ **1e-6 A** | **NOT MODELLED on this plant.** It protects the counter on a plant where the operator can switch it back on; here there is no switch, and the channel re-energizes on flux alone below 1e5 cps. Kept for the contrast — the real interlock exists and the retired engine enforces it |
 
 ### Rod withdrawal interlocks — the four rod stops
 
@@ -89,6 +89,16 @@ and corroborated on the anchor plant — Ginna UFSAR ch7 (ML20339A027): *"The ov
 are initiated by one-out-of-four high nuclear flux of 103 %; one-out-of-two high flux at 20 %
 current equivalent power; two-out-of-four high overtemperature delta T at 3 % of rated loop T
 below trip setpoints; and high overpower delta T at 3 % of rated."*
+
+> **"Rated ΔT" is 58.9 °F (32.7 °C)** — this plant's own settled hot-full-power loop split, so
+> the 3 % rod stop is **1.8 °F (1.0 °C)** of ΔT and the 6 % clear is twice that. Every
+> overtemperature and overpower ΔT number on this page is a fraction of that one figure, and it
+> is the plant's OWN reading rather than a design target: the source defines it that way —
+> USNRC HRTD 12.2 (ML11223A301) and NUREG-1431 Rev 4 (ML12100A222) both say *"ΔT₀ = indicated ΔT
+> at rated thermal power"*. Added 2026-09-06 (#650), when the constant behind it was found to be
+> **56.0 °F (31.1 °C)**, a figure sourced to nothing and 5 % below what the plant actually reads
+> — which put a healthy plant 5 % into both ΔT bands before anything happened. The manual had
+> never printed the number at all, which is part of why it went three weeks unnoticed.
 
 **Pressing WITHDRAW into a standing rod stop is refused, and the refusal names which stop.**
 Inward motion still takes — that is the source's own scope, quoted at the end of this section.
@@ -142,7 +152,7 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 | HPI start (SI on PZR level lo-lo) | pzr_level | low | **NOT MODELLED** | A real plant carries an inventory-protecting SI path that fires on level even while the heaters hold pressure. **This plant's engineered-safeguards list has exactly three entries and this is not one of them**, so on a slow inventory loss nothing starts injection until pressure itself reaches 1715 psi (11.824 MPa). Kept because the coupling is real operator knowledge — level and pressure are not the same signal — and because knowing which of the two your plant actually watches is the point. Formerly documented as live at **12 %**, re-arming above **20 %**; rides the HPI arm |
 | Letdown isolation | pzr_level | low | **17 %** indicated | **This row declared the function absent until 2026-09-04, and was wrong** — it contradicted §2.0's own PZR-level row and the engine, which has carried this isolation all along (`pwr2_pressurizer`, `LEVEL.low_cut_pct`). At **17 %** indicated pressurizer level the plant isolates letdown to stop the leak-out path making a low level worse, and it stops **both** letdown paths: the orifices *and* the RHR-to-CVCS cross-connect. Annunciated **PZR LTDN ISOL** (§4.0); the same 17 % also cuts the pressurizer heaters (§6.0). **It does not move your orifice selection and it does not restore itself.** The latch clears when level recovers past **20 %**, but letdown stays shut until you re-select an orifice by hand — the restoration is an operator act (WTSM §4.1.3.1, ML11223A214: *"The letdown orifice isolation valves automatically close on low pressurizer level"*, and nothing in that chapter re-opens them). Response: **06** PWR-A13a. ⚠ Whether the real interlock reaches HCV-128 (the cross-connect) or only the normal-line valves is **unverified**; this plant stops both, by ruling |
 | Feedwater isolation (on SI) | primary_pressure | low | **1715 psi (11.824 MPa)** | **Sourced 32 s delay behind the LATCHED SI signal** (Ginna Table 15.0-6, "Feedwater Isolation Delay from SI … 32.0"), and it is *held* time, not edge — a reset that clears SI inside the 32 s cancels the isolation. There is no HPI arm for it to ride |
-| **Atmospheric dump (ADV)** | steam_pressure | high | **1055 psi (7.272 MPa)** — the sourced 1040 psig | **SHIPS IN AUTO.** Vents to atmosphere, upstream of the MSIV and independent of the condenser: this is the cooldown path when the condenser is gone. In AUTO it holds a bottled generator at the setpoint instead of on the 1099 psi (7.58 MPa) code safeties — but capping pressure is not a cooldown; lower the setpoint or open the valve for that. Full open at 1078 psi (7.43 MPa); capacity 10 % of rated steam flow. Sourced twice over (#419 wave 3): the WTSM §7.1.3.3 placement rule — *"approximately half the difference between the no-load steam generator pressure and the lowest set pressure of the safety valves"*, which on the Ginna ladder (1020 → 1099 psi) is 1060 — and Ginna's own ARV solenoid band, 1005–1060 psig (UFSAR ch 10), which brackets it; capacity is the same section's *"approximately 10% of the rated steam flow … from each steam generator"*. Setpoint box clamps to the same 29–1099 psi band as the Dump SP. Cools well past the 100 °F/hr limit at full open — see `12` §12.18 |
+| **Atmospheric dump (ADV)** | steam_pressure | high | **1055 psi (7.272 MPa)** — the sourced 1040 psig | **SHIPS IN AUTO.** Vents to atmosphere, upstream of the MSIV and independent of the condenser: this is the cooldown path when the condenser is gone. In AUTO it holds a bottled generator at the setpoint instead of on the 1099 psi (7.58 MPa) code safeties — but capping pressure is not a cooldown; lower the setpoint or open the valve for that. Full open at 1078 psi (7.43 MPa); capacity ≈5 % of rated steam flow (4.98 %, measured — 8.18 kg/s of this plant's 164.2 kg/s rated flow). Sourced twice over (#419 wave 3): the WTSM §7.1.3.3 placement rule — *"approximately half the difference between the no-load steam generator pressure and the lowest set pressure of the safety valves"*, which on the Ginna ladder (1020 → 1099 psi) is 1060 — and Ginna's own ARV solenoid band, 1005–1060 psig (UFSAR ch 10), which brackets it. **Capacity was formerly quoted at 10 %** — the same section's *"approximately 10% of the rated steam flow … from each steam generator"*, Ginna's per-valve figure carried directly onto a plant with one generator instead of two. **Corrected 2026-09-08 (#659):** this valve's sourced function — decay-heat removal once the condenser is gone, Technical Specification Bases B 3.7.4 — scales with thermal power, not with how many steam generators the reference plant had, and that same Bases section gives its own cross-check for the identical hardware: *"approximately 4% of RTP"*. Both figures describe one valve; this plant's 4.98 % sits between them. Setpoint box clamps to the same 29–1099 psi band as the Dump SP. Cools well past the 100 °F/hr limit at full open — see `12` §12.18 |
 | **Main steam line isolation (MSLI)** | steam_pressure | low | **NOT MODELLED** | **The main steam isolation valve on this plant closes only when you close it.** There is no automatic isolation signal of any kind — not on low steam pressure, not on steam flow, not on containment pressure. The valve itself is real (**03 §17.5**), and so is the reasoning about *when* a steam line wants isolating; what is absent is anything that does it for you. Formerly documented as a rate-compensated **600 psi (4.14 MPa)** leg in coincidence with `sg_steam_flow` **> 1.25** of rated |
 | **MSLI (containment leg)** | containment_pressure | high | **NOT MODELLED** | Same absence as the row above, by the other signal. Formerly documented at **44.7 psi (0.308 MPa)** absolute — the sourced **30 psig** hi-hi |
 | **SI backup (containment)** | containment_pressure | high | **NOT MODELLED** | The high-energy-line-break backup, which starts injection on building pressure when the primary has not yet fallen far enough to. This plant's three engineered-safeguards entries are all primary- or steam-side, so **a break that pressurizes containment without depressurizing the loop starts nothing.** Formerly documented at **18.1 psi (0.125 MPa)** absolute — the sourced **3.5 psig** |
@@ -155,12 +165,12 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 | AFW start (loss of MFW, PI-4) | fw_flow | low | **0.10** normalized | Above P-9 (≥50 % power) |
 | MFW isolation + AFW start (P-4) | tavg | low | **552.2 °F (289 °C)** | Condition: reactor tripped — the post-trip MFW→AFW handoff; computed as the no-load anchor + 5.4 °F (3 °C), so it moved with the #419 wave-3 anchor |
 | SR re-energize assist | intermediate_range | low | **1e-10 A** | Actuation path as configured |
-| Open SG safety | steam_pressure | high | **1099 psi (7.58 MPa)** | Reseat **1063 psi (7.33 MPa)**. The pop is Ginna's first-lift MSSV, 1085 psig (UFSAR ch 10 §10.3.2.4); the single modeled valve carries the sourced bank capacity (0.84× rated) at that first-lift point (#419 wave 3) |
+| Open SG safety | steam_pressure | high | **1099 psi (7.58 MPa)** | Reseat **1063 psi (7.33 MPa)**. The pop is Ginna's first-lift main steam safety valve, 1085 psig (UFSAR ch 10 §10.3.2.4), and the plant models that section's **staggered bank** — one valve there and three at 1140 psig (**1155 psi / 7.96 MPa**), each reaching full lift at its own +3 % accumulation, so the upper stage does not lift on a plain turbine trip. **The bank's full-lift capacity, 0.84× rated steam flow, is NOT a sourced figure** — corrected 2026-09-08, #643. It is Ginna's ratio *after* its uprate, while the same chapter's stated design basis sizes the bank at **100 % of design steam flow**; the scale is under review and the per-valve shares are unaffected |
 | Turbine trip (vacuum) | condenser_vacuum | low | **22 inHg (74.5 kPa)** | Reset region **25 inHg (84.7 kPa)** |
 | Turbine trip (overspeed) | turbine_rpm | high | **1980 RPM** | Reset below ~**1800 RPM**. **CONFIGURED BUT NOT REACHABLE in this simulator** — there is no turbine roll model, so the rotor is either pinned at rated by the grid or coasting down. Measured peak: **1800 RPM** on line in Follow, **1800** in Manual with a 2×-rated MWe demand, **1799** with the MSIVs shut and the breaker closed. Declared at **12** §12.14; pinned by `run_reachability` B3 |
 | Turbine trip (SG hi-hi / P-14) | sg_level | high | **90 %** | Re-arm below **85 %** |
 | Steam dump (pressure mode) | steam_pressure | high | **1020 psi (7.03 MPa)** | = Ginna's sourced 1005 psig no-load point (TS Bases B 3.3.2) = Psat(546.8 °F (286 °C)), the no-load Tavg anchor; capacity **28 %** of rated steam flow — Ginna's own (UFSAR ch 10; #419 D1, adopted after the full-rejection ride-out measured survivable at it). **This is the value in the Dump SP box, and the controller reads it in this mode only. The mode is SELECTED, not permanent**: pressing STEAM DUMP AUTO with the turbine **tripped** selects it — heatup, cooldown, hot standby (WTSM §11.2; `03` §12.3, #629). The cold plant boots with the controller out of service, so on a heatup the selection is an operator action |
-| Steam dump (trip-open mode) | tavg error | — | opens on the Tavg error above the no-load reference, full demand ~14.4 °F (8 °C) above it | Inside **Tavg mode**, which is what AUTO selects with the turbine **on line**. On turbine trip; needs the condenser (unavailable on lost vacuum / MSIV shut). **It cannot serve a heatup**: the controller opens only above the **557 °F (291.67 °C)** no-load reference, which is above the atmospheric dump valve's relief point below, so a plant left in Tavg mode while heating up rides that valve instead (#629) |
+| Steam dump (trip-open mode) | tavg error | — | opens on the Tavg error above the no-load reference; full demand **33.1 °F (18.4 °C)** above it | Inside **Tavg mode**, which is what AUTO selects with the turbine **on line**. On turbine trip; needs the condenser (unavailable on lost vacuum / MSIV shut). **The band is this plant's own Tavg program span** — 547 → 580.1 °F (286.1 → 304.5 °C) — so full demand arrives exactly at full-power Tavg, which is the structure the source itself uses *(OWNER RULING, 2026-09-06: "A")*, #647. It was the reference plant's **27.7 °F (15.4 °C)** span borrowed as a gain, and saturated 5.4 °F (3.0 °C) short of full power. ⚠ **It opens from the 547 °F (286.1 °C) reference, 4.2 °F (2.3 °C) BELOW the atmospheric dump valve's 1040 psig (7.17 MPa) relief point** (saturation 551.2 °F (288.4 °C)) — measured 2026-09-06. That ordering inverted when the no-load anchor moved to 547 °F (#508), so the earlier note here — that a plant left in Tavg mode while heating up rides the ADV instead (#629) — is refuted, and the heatup ride says so directly: left in **Tavg** mode the plant parks at **547.4 °F (286.3 °C) / 1006 psig (7.04 MPa)** with that valve **shut** and **0 lbm** vented, against **551.6 °F (288.7 °C) / 1042 psig (7.29 MPa)**, the valve at **8.1 %** and **11,005 lbm (4,992 kg)** vented in two hours when the dump is never selected at all (measured 2026-09-08, #646). **Steam-pressure mode is still the heatup / cooldown selection** — WTSM §11.2, and it is the only mode that reads the Dump SP box |
 | Spray flow cap | — | — | **12 %** of full spray flow | Sized for step insurges; cannot suppress a loss-of-heat-sink repressurization |
 | Main feedwater isolation (P-14) | sg_level | high | **90 %** | Latches (manual restore); AFW unaffected. Re-arm below **85 %** |
 
@@ -204,9 +214,11 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 | subcooling_lost | SUBCOOL LOST | subcooling_margin | low | **0 °F** (0 °C) | critical |
 | pzr_level_high | PZR LVL HI | pzr_level | high | **75 %** | caution |
 | pzr_level_low | PZR LVL LO | pzr_level_dev | low | **20 % below program** | warning |
+| pzr_level_dev_high | PZR LVL DEV HI | pzr_level_dev | high | **10 % above program** | caution |
 | pzr_level_cutoff | PZR LTDN ISOL | pzr_level | low | **17 %** | warning |
 | pzr_level_lolo | PZR LVL LO LO | pzr_level | low | **12 %** | critical |
 | rod_limit | ROD INS LIMIT | rod_at_limit | true | — | warning |
+| rod_max_travel | ROD BANK FULL OUT | rod_at_max_travel | true | — | warning |
 | otdt_approach | OTΔT ROD STOP | otdt_margin | low | **3 % of rated ΔT** | warning |
 | opdt_approach | OPΔT ROD STOP | opdt_margin | low | **3 % of rated ΔT** | warning |
 
@@ -268,11 +280,11 @@ Inward motion still takes — that is the source's own scope, quoted at the end 
 
 | Parameter | Value |
 |-----------|-------|
-| Control bank max steps | **627** fully withdrawn (fine-step drive). Differential worth is **4.15 pcm/step off the bottom, 8.82 peak at mid-travel, 6.49 averaged over the bank**; **in the startup critical band it is 8.1 pcm/step = 1.24 ¢**. ⚠ Do not quote the bank average as the critical-band figure: this plant's cent is **6.50 pcm** (β_eff 650.2) and its bank average is **6.49 pcm/step**, two unrelated quantities that happen to coincide, and neither is the value that applies during the approach to criticality |
-| Speed slow / normal / fast | **0.533 / 3.20 / 4.80 steps/s** (32 / 192 / 288 steps/min — same fraction-of-travel rates as the pre-fine-step drive) |
+| Control bank max steps | **627** fully withdrawn (fine-step drive). Differential worth is **4.15 pcm/step off the bottom, 8.82 peak at mid-travel, 6.49 averaged over the bank**; **in the startup critical band it is 7.76 pcm/step = 1.19 ¢** (re-measured 2026-09-14, #749; the 8.1 printed here until then was this plant evaluated 10 °F hot — see §7.5.1). ⚠ Do not quote the bank average as the critical-band figure: this plant's cent is **6.50 pcm** (β_eff 650.2) and its bank average is **6.49 pcm/step**, two unrelated quantities that happen to coincide, and neither is the value that applies during the approach to criticality |
+| Speed slow / normal / fast | **8 / 48 / 72 steps/min** (0.133 / 0.800 / 1.200 steps/s), the operator's three-position selector. **Slow and fast are the sourced ends of the rod speed program** — WTSM 8.1 (ML11223A252): *"a minimum speed of eight steps per minute"*, and *"a maximum rod speed of 72 steps/min. The maximum rod speed is based upon a maximum response to a large error signal and upon the physical limitations of the rod drive mechanism, with the latter being the limiting factor"*. **Normal (48) is unverified** — no document in the corpus carries it. The real programmer is continuous between the two limits (8, then 32 steps/min/°F, then 72); three positions is a simplification of the operator's switch, not of the program |
 | Scram insertion time (control) | **~2.5 s** full travel |
 | Scram insertion time (shutdown) | **~2.0 s** |
-| Insertion limit (RIL) | **Power-dependent.** Not applicable below **5 %** power; above it the % withdrawn floor ramps linearly from **5 %** to **70 %** at 100 % power (≈ 10 % withdrawn at 12 % power, 70 % at full power). Drives the ROD INS LIMIT alarm and stops the automatic rod channel inserting further. The bank sits at 92 % withdrawn across the load range, so the limit means "the bank is abnormally deep for this power" |
+| Insertion limit (RIL) | **Power-dependent.** Not applicable below **5 %** power; above it the % withdrawn floor ramps linearly from **5 %** to **70 %** at 100 % power (≈ 10 % withdrawn at 12 % power, 70 % at full power = **439 of 627 steps**). Drives the ROD INS LIMIT alarm and stops the automatic rod channel inserting further. The at-power initial conditions sit at **96.7 % withdrawn (606 steps)**, 167 steps clear of the limit, so it means "the bank is abnormally deep for this power" |
 | Control worth (total group) | **4068 pcm** (`rod_worth_total = 0.04068`) — WTSM 2.2 Table 2.2-1, all control banks |
 | Shutdown worth (total group) | **3676 pcm** (`rod_worth_shutdown = 0.03676`) — same source, all shutdown banks; all RCCAs together **7744 pcm** |
 
@@ -366,14 +378,32 @@ an S: least effective at either end, most effective mid-travel.
 > Calculations* (ML11216A051), Attachment 2.2-1, note on line O: *"Since T avg is required to
 > be >541°F, the reactivity change from moderator temperature is considered negligible."* A
 > real ECC is only ever computed **hot**, which is why a real operator never faces this
-> question. Our plant will let you drive it cold and dilute anyway; the source-range
-> high-flux trip at 1e5 cps is the backstop, and it is the last one.
+> question. Our plant will let you drive it cold and dilute anyway, **and there is no
+> source-range trip to catch you.** §2.0 marks it NOT MODELLED, and the reason is arithmetic on
+> this plant's own flux scale: **1e5 cps is 1.5 decades ABOVE the P-6 permissive** that a real
+> operator blocks that trip at, so the sourced shape could never fire here. What stands below
+> **P-10 (8 % power)** is one caution and then two flux functions, in this order: **SUR HI at
+> 1 DPM** — an annunciator, not an interlock — then the **intermediate-range high-flux rod stop
+> at 20 % current equivalent**, then the **intermediate-range high-flux trip at 25 %**. Measured
+> on a runaway withdrawal from hot zero power (2026-09-08, #661; engine under the control kernel,
+> 0.02 s step, normal drive speed): SUR HI at **367 s**, the rod stop at **442 s**, the trip at
+> **444 s**. **The annunciator is the whole of your early warning** — nothing acts for you before
+> the rod stop.
 
 **The acceptance band.** Attachment 2.2-1 line Q brackets the prediction at **±750 pcm**
 around the estimated critical position, or the rod insertion limit, whichever is tighter. On
-this plant's lumped bank the **719 ppm reference startup goes critical at 223 steps**, and that
-gives a band of roughly **111 to 310 steps** (measured 2026-09-03). Criticality outside that band
-means the estimate was wrong — stop and re-work it, do not keep pulling.
+this plant's lumped bank the **719 ppm reference startup goes critical at 208 steps**, and that
+gives a band of roughly **88 to 297 steps** (re-measured 2026-09-14, #749: ρ = −750 pcm at bank 88
+and +750 pcm at bank 297, read off a one-step-at-a-time sweep with boron and T-avg held; 207
+statically, 208 on the settled plant, one step being 0.66 °F of T-avg). The
+**223 steps / 111–310** printed here until 2026-09-14 was this plant computed at a benchmark anchor 10 °F above its no-load point — see **04** PWR-N02
+§Step 15. **The two tables above already said so, three paragraphs up:** at 546.8 °F the bank-in
+critical boron is **619 ppm**, so 719 ppm is **1137 pcm** of boron to pull out
+(99.9 ppm at the 11.38 pcm/ppm measured there), and the integral-worth row puts 1137 pcm at
+about **206 steps** — within
+two steps of the measurement, and seventeen from what the prose underneath them claimed. Work the
+tables; they are computed from the engine. Criticality outside the band means the estimate was
+wrong — stop and re-work it, do not keep pulling.
 
 **The band is checked against, not steered to.** WTSM 19.0 (ML11223A342) Appendix 19-1 step 11
 gives the response, and it is not a rod adjustment: if the bank goes critical below the 0 %-power
@@ -427,7 +457,11 @@ longer is (**04** PWR-N01 step 2a). Measured on this plant at cold shutdown, 857
 **The operational point.** Withdrawing the shutdown bank does not make the plant unsafe — it is
 still 1000 pcm subcritical — but it spends the margin that was buying you *time*. Measured: an
 unattended dilution at the plant's make-up rate takes **79 minutes** to reach criticality with the
-bank in, and trips the source range **inside the hour** with it out. That is what a shutdown
+bank in; with the bank out it starts from **−1000 pcm** instead of **−4676**, so the same dilution
+gets there far sooner. **And nothing stops it.** This manual said that case "trips the source
+range inside the hour" until 2026-09-08 (#661) — **there is no source-range trip on this plant**
+(§2.0), so what the dilution buys you is **indication only**: the count rate climbing, **SR HI
+FLUX** at 5e4 cps, and **SUR HI** at 1 DPM once the rate is real. That is what a shutdown
 margin is for, and it is why the real procedure verifies it before the bank moves
 (**ML11223A342** App 19-1 A.12 / C.8).
 
@@ -449,7 +483,7 @@ Commercial practice keeps boron sufficient for at least **1 % Δk/k** (WTSM 19.2
 
 | Detector | Scaling note |
 |----------|--------------|
-| Source range | ~**500 cps** class at HZP source equilibrium; high scale ~1e6 cps near low power |
+| Source range | ~**500 cps** class at HZP source equilibrium; high scale ~1e6 cps near low power. **De-energizes itself at 1e5 cps** and reads zero above it — no operator switch, and no source-range reactor trip on this plant. The P-6 point (IR 1e-10 A) sits at ≈ **3,100 cps** on this scale |
 | Intermediate range | Full scale ~**1e-3 A** near ~12 % power (“maxes out ~10 %”) |
 | Power range | 0–120 % calibrated scale; **instrument reads to 200 %** so a pegged meter can still cross the 118 % high-flux trip (strict `crossed()`) |
 
@@ -472,10 +506,54 @@ Commercial practice keeps boron sufficient for at least **1 % Δk/k** (WTSM 19.2
 ## 11.0 Normal values by initial condition
 
 Expected readings at each named engine initial condition, captured from the live engine after
-settling **70 s at 10x, the same for every column** — the low-power states are still walking their pressure up at 6 s, which is how the old table came to quote a hot-standby pressure 9 psi (0.06 MPa) light. **These six are the whole list** and the engine refuses any other name, but only **four** are on the Free Play picker: `hot_full_power`, `50_percent`, `hot_zero_power` and `cold_shutdown`. `hot_shutdown` and `low_power` are **engine-only** — real, loadable by the gates and the checklists, not offered to the player.
+settling **70 s at 10x, the same for every column** — the low-power states are still walking their pressure up at 6 s, which is how the old table came to quote a hot-standby pressure 9 psi (0.06 MPa) light. **These six are the whole list** and the engine refuses any other name, but only **four** are on the Free Play picker: `hot_full_power`, `50_percent`, `hot_zero_power` and `cold_shutdown`. `hot_shutdown` and `low_power` are **engine-only** — real, loadable by the gates and the walkthroughs, not offered to the player.
 
-> **`low_power` is where the startup checklist hands you the plant** (added 2026-09-04, #624 item 28). It is the only initial condition whose control bank is **off its top stop** — **227 of 627 steps** — which is what an at-power plant actually looks like: Ginna UFSAR §15.4.5.1.1 (ML20339A101), *"the reactor is operated with the RCCAs inserted only far enough to permit load follow."* Every other at-power column boots on the stop, so a rod withdrawal in those states is a no-op.
+> **`low_power` is where the startup walkthrough hands you the plant** (added 2026-09-04, #624 item 28). Its control bank sits at **227 of 627 steps**, which is what the startup actually hands over: Ginna UFSAR §15.4.5.1.1 (ML20339A101), *"the reactor is operated with the RCCAs inserted only far enough to permit load follow."*
+>
+> **The other two at-power columns used to boot on the top stop, 627 of 627, and no longer do** (added 2026-09-11, #704). They sit at **606 of 627 — 96.7 % withdrawn**, the sourced full-power position: NUREG-1431 Rev 4 STS Bases B 3.2.3A (ML12100A228) puts control bank D *"near its normal position (i.e., 210 steps withdrawn)"* at high power, and with banks A, B and C fully out that is **627 − (231 − 210) = 606** on this plant's bank-overlap step scale (WTSM §8.1.5.4, ML11223A252). Booting on the stop left the operator **no upward rod authority at all** — measured full stack, commanding the bank out moved settled T-avg by **−0.01 °F**; from 606 the same command gives **+4.67 °F (+2.59 °C)**, and insertion is unchanged. The design point itself does not move (T-avg, level, power and output are identical to 0.01 °F at every bank position from 439 to 627, because critical boron re-trims); **only boron moves — 621 → 612 ppm at full power and 777 → 768 ppm at half.**
 
+> **RE-CAPTURED AGAIN, AND SO WAS §1.0** (added 2026-09-06, #650, hours after the #645 note
+> below). Two unrelated constants moved the at-power columns:
+> - **The rated loop ΔT the overtemperature and overpower ΔT trips normalise against** was
+>   **56.0 °F (31.1 °C)**, a figure sourced to nothing, against a plant that settles at
+>   **58.9 °F (32.7 °C)**. It is also the construction input every initial condition is built
+>   from, so correcting it to the plant's own split moved all three at-power columns — but only
+>   a little, and *toward* where they already sat: T-avg **+0.1 °F** at hot full power and at
+>   50 %, primary pressure **+3.7 psi (+0.026 MPa)** and **+1.1 psi (+0.008 MPa)**.
+> - **`low_power`'s thermal power fraction is now derived from its 10 MWe dispatch** instead of
+>   typed beside it. It declared 10.5 % against a plant that needs **9.6 %** to make 10 MWe, so
+>   the state opened 0.9 points hot and walked down. That column moved most:
+>   T-avg **−0.6 °F (−0.3 °C)**, primary pressure **−10.3 psi (−0.071 MPa)**,
+>   pressurizer level **−0.8 points**.
+> **§1.0's normal operating point was stale by far more than either**, and is re-captured on the
+> same ride: T-avg 577.7 → **580.4 °F**, legs 607.2 / 548.2 → **609.8 / 550.9 °F**, pressurizer
+> level 59 → **62 %**, steam pressure 808 → **827 psi (5.70 MPa)**, control bank "≈ 92 %" →
+> **100 % withdrawn** (every at-power initial condition but `low_power` boots on the top stop).
+> That table dates from before #508 moved the no-load T-avg anchor and **nothing gates it** —
+> `run_manual_setpoints` reads the §11.0 table below, and skips §1.0 by design because both open
+> with the same `| Parameter |` header.
+>
+> **THE TWO PART-LOAD COLUMNS WERE RE-CAPTURED** (added 2026-09-06, #645 after #508). This
+> plant's programmed **no-load average coolant temperature (T-avg)** is Ginna's
+> **547 °F (286.1 °C)**, not the four-loop reference plant's **557 °F (291.7 °C)** — in the T-avg program
+> since #508, and in the **pressurizer level program** since #645. Every reading between no load
+> and full power moved with it, and `50_percent` and `low_power` are the two columns that live
+> there. T-avg falls **5.0 °F (2.8 °C)** and **8.1 °F (4.5 °C)** respectively. Subcooling margin is
+> saturation temperature at RCS pressure **minus T-hot**, and the pressurizer holds a **pressure**
+> setpoint — so saturation stays where it was and the margin gains what T-hot loses. That, and
+> nothing else, is the **+5 and +9 °F (+2.8 and +5.0 °C)** in that row: at `low_power` T-hot falls
+> **8.6 °F (4.8 °C)** while saturation rises **0.4 °F (0.2 °C)** on the 5 psi (0.034 MPa) of extra
+> pressure, for **+9.0 °F (+5.0 °C)** of margin against the **+8.8 °F (+4.9 °C)** measured.
+> Pressurizer level rises for a different reason: the level program is a straight line
+> between the no-load and full-power T-avg knots, and moving the lower knot **down** makes that
+> line **shallower** — **1.10 points of level per °F (1.98 per °C)** where it was 1.58 (2.84) — so
+> at any temperature below the full-power knot the programmed level is now higher. That is also
+> why `hot_full_power` moved two points while `hot_zero_power`, `hot_shutdown` and `cold_shutdown`
+> did not move at all: those three sit at the no-load knot or below it, where the program is
+> already sitting on its 25 % floor and reads the same under either anchor. **That floor is why
+> the error was invisible for two investigations** — the no-load point, which is the one anybody
+> checks first, was never wrong.
+>
 > **MODE 5 EXISTS (#524, landed 2026-08-31).** The water-property floor moved from 14.5 psi (0.1 MPa) to **0.29 psi (0.002 MPa)**, so a steam generator can sit at ambient — the `cold_shutdown` column below is a real, loadable state whose secondary rides at **1.8 psi (0.0127 MPa)**, saturation at the plant's own 123 °F (50.6 °C). The cold end of the ladder is **Mode 5, Cold Shutdown** — 122 °F (50 °C), 363 psi (2.50 MPa) at boot, RHR in service, reactor coolant pumps secured, **turbine tripped, both main feed pumps secured with level control in MANUAL**, **pressurizer heaters OFF and spray in hand and shut** (#624, 2026-09-04), both banks in. `5_percent` remains the retired engine's and is **refused by name**.
 > **`hot_shutdown` IS NOT ON THE FREE PLAY MENU** *(OWNER RULING, 2026-09-02: "A")*. The column
 > stays because the initial condition is real, is booted by three gates, and is the reference for
@@ -493,24 +571,24 @@ persists is either a transient in progress or a failed instrument.
 | Parameter | `hot_full_power` | `50_percent` | `low_power` | `hot_zero_power` | `hot_shutdown` | `cold_shutdown` |
 |---|---|---|---|---|---|---|
 | Plant MODE | At Power (1) | At Power (1) | **At Power (1)** — *engine only, not on the Free Play menu* | Hot Standby (3) | **Hot Shutdown (4)** — *engine only, not on the Free Play menu* | **Cold Shutdown (5)** |
-| Reactor power (%) | 99.6 | 49.6 | 11.0 | ~0 (source) | ~0 (source) | ~0 (source) |
+| Reactor power (%) | 99.6 | 49.6 | 9.6 | ~0 (source) | ~0 (source) | ~0 (source) |
 | Generator output (MWe) | 100.0 | 50.0 | 10.0 | 0 | 0 | 0 |
-| Control bank (steps of 627) | 627 | 627 | **227** | 0 | 0 | 0 |
-| Tavg °F (°C) | 577.7 (303.2) | 566.7 (296.9) | 558.7 (292.6) | 547.2 (286.2) | 250.4 (121.3) | 123.0 (50.6) |
-| T-hot / T-cold °F (°C) | 607.2 / 548.2 (319.6 / 286.8) | 582.1 / 551.4 (305.6 / 288.6) | 562.2 / 555.2 (294.5 / 290.7) | 547.2 / 547.2 (286.2 / 286.2) | 250.4 / 250.5 (121.3 / 121.4) | 123.0 / 123.0 (50.6 / 50.6) |
-| Primary pressure psi (MPa) | 2235 (15.41) | 2235 (15.41) | 2240 (15.447) | 2246 (15.482) | 364 (2.510) | 363 (2.500) |
-| Subcooling margin °F (°C) | 45 (25) | 70 (39) | 90 (50) | 105 (58.5) | 186 (103.6) | 313 (174.2) |
-| PZR level (%) | 57 | 40 | 27 | 25 | 25 | 25 |
+| Control bank (steps of 627) | 606 | 606 | **227** | 0 | 0 | 0 |
+| Tavg °F (°C) | 580.4 (304.7) | 563.9 (295.5) | 550.3 (288.0) | 547.2 (286.2) | 250.4 (121.3) | 123.0 (50.6) |
+| T-hot / T-cold °F (°C) | 609.8 / 550.9 (321.0 / 288.3) | 579.2 / 548.5 (304.0 / 286.9) | 553.4 / 547.3 (289.7 / 286.3) | 547.2 / 547.2 (286.2 / 286.2) | 250.4 / 250.5 (121.3 / 121.4) | 123.0 / 123.0 (50.6 / 50.6) |
+| Primary pressure psi (MPa) | 2247 (15.493) | 2243 (15.466) | 2240 (15.441) | 2246 (15.482) | 364 (2.510) | 363 (2.500) |
+| Subcooling margin °F (°C) | 43 (23.7) | 73 (40.5) | 99 (54.9) | 105 (58.5) | 186 (103.6) | 313 (174.2) |
+| PZR level (%) | 62 | 44 | 29 | 25 | 25 | 25 |
 | SG level (%) | 65 | 65 | 65 | 65 | 65 | 66 |
-| SG / steam pressure psi (MPa) | 808 (5.57) | 943 (6.50) | 1062 (7.32) | 1020 (7.03) | 30 (0.207) | 1.8 (0.0127) |
+| SG / steam pressure psi (MPa) | 827 (5.702) | 921 (6.349) | 999 (6.887) | 1020 (7.03) | 30 (0.207) | 1.8 (0.0127) |
 | Steam / feed flow (norm.) | 1.00 | 0.50 | 0.10 | 0 | 0 | 0 |
-| Fuel average temp °F (°C) | 1292 (700) | 896 (480) | 628 (331.1) | 547 (286.1) | 250 (121.1) | 123 (50.5) |
-| Decay heat (%) | 6.23 | 3.11 | 0.68 | ~0 | ~0 | ~0 |
+| Fuel average temp °F (°C) | 1295 (701.5) | 893 (478.3) | 610 (321.4) | 547 (286.1) | 250 (121.1) | 123 (50.5) |
+| Decay heat (%) | 6.23 | 3.11 | 0.60 | ~0 | ~0 | ~0 |
 | Xenon (% of equilibrium) | 100 | 66 | 19 | 0 | 0 | 0 |
-| Boron (ppm) | 626 | 774 | 669 | 719 | 894 | 918 |
+| Boron (ppm) | 612 | 768 | 684 | 719 | 894 | 918 |
 | Net reactivity (pcm) | 0 | 0 | 0 | ≈ −1141 | ≈ −5635 | ≈ −5809 |
 | Source range (cps) | 0 (de-energized) | 0 (de-energized) | 0 (de-energized) | ≈ 501 | ≈ 101 | ≈ 98 |
-| Intermediate range (A) | ≈ 8.3e-3 | ≈ 4.1e-3 | ≈ 9.2e-4 | ≈ 1.6e-11 | ≈ 3.2e-12 | ≈ 3.2e-12 |
+| Intermediate range (A) | ≈ 8.3e-3 | ≈ 4.1e-3 | ≈ 8.0e-4 | ≈ 1.6e-11 | ≈ 3.2e-12 | ≈ 3.2e-12 |
 | SR detector | OFF | OFF | OFF | Energized | Energized | Energized |
 | Condenser vacuum (kPa) | 93.2 | 98.0 | 99.8 | 100.1 | 100.1 | 100.1 |
 | Turbine | Latched, on line | Latched, on line | Latched, on line | Latched, off line | **TRIPPED** | **TRIPPED** |
@@ -525,10 +603,13 @@ persists is either a transient in progress or a failed instrument.
 
 Notes:
 
-- **PZR level rides the Tavg program** (1.39 %/°F, 2.5 %/°C, 55 % at full-power Tavg): the level column
-  IS the program — do not "correct" a 38 % level at low power, it is where the program wants it.
-- **Steam pressure rides the load**: full-power 819 psi (5.65 MPa) up to the 1194 psi (8.23 MPa) no-load point
-  (= Psat of the 566.6 °F (297 °C) no-load Tavg anchor).
+- **PZR level rides the Tavg program** (1.10 %/°F, 1.98 %/°C, **61.5 % at full-power Tavg**): the level column
+  IS the program — do not "correct" a 30 % level at low power, it is where the program wants it.
+  Both figures were re-measured 2026-09-06 (#645, #647); the slope followed the no-load knot down
+  to 547 °F (286.1 °C), and the plant now **reaches** the full-power end (it settled 2.4 °F (1.3 °C)
+  short of it, and held 59 %, until #647 fixed the initial conditions' fuel seed).
+- **Steam pressure rides the load**: full-power 826 psi (5.696 MPa) up to the 1020 psi (7.03 MPa) no-load point
+  (= Psat of the 547 °F (286.1 °C) no-load Tavg anchor).
 - **Boron differs per IC by design** (rod position and xenon differ); the `hot_zero_power`
   value is low because the control bank is fully inserted and xenon-free ≈ criticality is
   held down by rods, not boron.

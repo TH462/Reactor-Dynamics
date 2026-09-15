@@ -37,7 +37,9 @@ var ROOT = path.join(__dirname, '..');
  *
  * This moves to pwr2 when the scenario-compatibility pass lifts freePlayOnly, and not before.
  * The engine still loads from the repo tree; only PUBLISHED builds drop it. */
-var SHELL = 'file:///' + path.join(ROOT, 'ui', 'shell.html').replace(/\\/g, '/') + '?engine=pwr';
+var SHELL = 'file:///' + path.join(ROOT, 'ui', 'shell.html').replace(/\\/g, '/') + '?engine=pwr&mmode=free';
+// `&mmode=` is the dev/screenshot door that keeps the Campaign and Scenarios tabs drawn (#660 item 19
+// removed them from the player's window); this gate probes those areas through it.
 var LANDING = 'file:///' + path.join(ROOT, 'index.html').replace(/\\/g, '/');
 
 var pass = 0, fail = 0;
@@ -77,12 +79,12 @@ function pinChannel(ch) {
   async function closeSettings(page) {
     if (await page.isVisible('#settingsOverlay')) await page.click('#settingsClose');
   }
-  // #missionBtn is gone with the Operate tab (#439). The session bar in the header is the
-  // shipped entry point to this window now — and was already one before, so this is the
-  // path a player takes, not a test-only door.
+  // #missionBtn is gone with the Operate tab (#439), and the .sim-status bar that replaced it
+  // is gone too (#689). #mainMenuBtn — "Main Menu", beside Settings — is the shipped entry
+  // point to this window now, so this is the path a player takes, not a test-only door.
   async function openMission(page, tab) {
     var open = await page.evaluate(function () { return !document.getElementById('missionOverlay').hidden; });
-    if (!open) await page.click('#simStatus');
+    if (!open) await page.click('#mainMenuBtn');
     await page.click('[data-mmode="' + tab + '"]');
     return (await page.textContent('#mpContent')) || '';
   }
@@ -91,7 +93,7 @@ function pinChannel(ch) {
     if (channel) await ctx.addInitScript(pinChannel(channel));
     var page = await ctx.newPage();
     await page.goto(url || SHELL);
-    await page.waitForSelector('#simStatus');
+    await page.waitForSelector('#mainMenuBtn');
     // CLOSE THE PLANT & MISSION WINDOW, which is up on load since 2026-08-11. It covers the
     // board and intercepts every click this file then makes. (It replaced the selection
     // screen that used to be dismissed here; that overlay no longer exists.)
@@ -138,12 +140,32 @@ function pinChannel(ch) {
    * carries a `.ckl-use` line naming a control, which survives any content edit and fails the
    * moment the block is folded back into Details. */
   await b.page.click('#tabbar [data-tab="checklists"]');
+  /* ⚠ THE FIRST LISTED CHECKLIST IS NOT A FIXTURE — PICK THE ONE THAT CAN ANSWER THE QUESTION
+   * (2026-09-15). This used to click `#cklMenu [data-ckl-start]`, whichever that was, and the
+   * step it landed on is an OBSERVE step, whose "Watch for:" line is drawn by a DIFFERENT branch
+   * of `renderChecklist`. MEASURED: with the deleted "Use <control>: <target>" branch put back,
+   * the check below still PASSED — it could never see the rung it exists to forbid. `.ckl-use`
+   * is drawn only under the ACTIVE step (`if (active)` in renderChecklist), so the only way to
+   * exercise the DO branch is to start a walkthrough whose FIRST step carries a real control.
+   * Chosen from `RD.MANUAL_PROCEDURES` for the running plant, so no content edit can quietly
+   * turn it back into the observe case — it would have to remove every controlled first step,
+   * which the `err` return below reports rather than passing over. */
   var cklStarted = await b.page.evaluate(function () {
-    var btn = document.querySelector('#cklMenu [data-ckl-start]') ||
-              document.querySelector('[data-ckl-start]');
-    if (!btn) return false;
-    btn.click();
-    return true;
+    var snap = (window.RD && RD.PwrBoard && RD.PwrBoard.lastSnapshot) ? RD.PwrBoard.lastSnapshot() : null;
+    var pid = (snap && snap.metadata && snap.metadata.plant_id) || null;
+    var pool = ((window.RD || {}).MANUAL_PROCEDURES || {})[pid] || [];
+    function procOf(id) { for (var i = 0; i < pool.length; i++) if (pool[i].id === id) return pool[i]; return null; }
+    var btns = Array.prototype.slice.call(document.querySelectorAll('#cklMenu [data-ckl-start]'));
+    if (!btns.length) btns = Array.prototype.slice.call(document.querySelectorAll('[data-ckl-start]'));
+    var fallback = btns[0] || null;
+    for (var b = 0; b < btns.length; b++) {
+      var p = procOf(btns[b].getAttribute('data-ckl-start'));
+      var s0 = p && p.steps && p.steps[0];
+      if (s0 && s0.control && !/^\(observe/i.test(s0.control)) { btns[b].click(); return 'do:' + p.id; }
+    }
+    if (!fallback) return false;
+    fallback.click();
+    return 'fallback';
   });
   if (cklStarted) {
     await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 20000 }).catch(function () {});
@@ -184,25 +206,54 @@ function pinChannel(ch) {
                target: st ? (st.target || null) : undefined,
                line: el ? (el.textContent || '').trim() : null };
     });
+    /* ⚠ THE CLAIM IS NOW THE OPPOSITE OF WHAT #598 item 13 ASSERTED, AND THAT IS A RULING, NOT A
+     * REGRESSION *(OWNER RULING, 2026-09-14/15: "Hide it in the renderer")*. The authored step
+     * file `Blueprint/WALKTHROUGH_STEPS_OWNER.md` carries the "Use <control>: <target>" rung on
+     * one of the nineteen steps that declare a `control`, so the rung is the renderer's addition
+     * and the renderer stops drawing it. The #598 ruling was made against a card collapsed to the
+     * instruction alone; it is superseded.
+     *
+     * THE CHECK IS INVERTED, NOT DELETED: the active step must draw NO `.ckl-use` line, so the
+     * rung coming back reddens it. Read from the step's own data through `RD.MANUAL_PROCEDURES`,
+     * so no content edit can turn it green or red for the wrong reason — the property #598's
+     * author built in.
+     *
+     * INJECTION-PROVEN, and the FIRST cut of this inversion was HOLLOW. With the deleted
+     * `renderChecklist` branch put back it still passed, because the walkthrough the picker
+     * happened to start opens on an OBSERVE step and `.ckl-use` renders only under the active
+     * one. With the selection above pointed at a controlled first step it goes RED naming the
+     * line: `pwr step 1 of "Mode 1, At Power — raise power" ... got "Use Rod Speed: small,
+     * steady power rise"`. That is the difference between testing the ruling and restating the
+     * renderer.
+     *
+     * ⚠ WHAT IT DOES NOT COVER, stated rather than implied: the `wantWatch` clause below — an
+     * OBSERVE step must still draw "Watch for:" — is reached only on the fallback path, when no
+     * listed walkthrough opens on a controlled step. On this build one always does, so that
+     * half is UNASSERTED here. It is not a second check pretending to be one. */
     var obs = seen.control && /^\(observe/i.test(seen.control);
-    var wantLine = !!(seen.control || seen.target) && !(obs && !seen.target);
-    ck('dev: the active step names its control OUTSIDE the fold, and only when it has one (#598 item 13)',
+    var wantWatch = !!(obs && seen.target);
+    ck('dev: the active step draws NO "Use …" rung (2026-09-15 ruling, supersedes #598 item 13)',
       seen.found === true && seen.control !== undefined &&
-      (wantLine
-        ? (!!seen.line && (obs ? /^Watch for:/.test(seen.line)
-                               : (seen.control ? seen.line.indexOf(seen.control) >= 0 : true)) &&
-           !/\(observe\)/.test(seen.line))
+      (wantWatch
+        ? (!!seen.line && /^Watch for:/.test(seen.line) && !/\(observe\)/.test(seen.line))
         : seen.line === null),
       seen.plant + ' step ' + (seen.idx + 1) + ' of "' + seen.title + '" control=' +
       JSON.stringify(seen.control) + ' target=' + JSON.stringify(seen.target) +
-      ' — expected ' + (wantLine ? 'a line naming it' : 'NO line') +
+      ' — expected ' + (wantWatch ? 'a "Watch for:" line' : 'NO line') +
       ', got ' + (seen.line === null ? 'none' : '"' + seen.line.slice(0, 70) + '"'));
-    var folded = await b.page.evaluate(function () {
-      var d = document.querySelector('.ckl-step.ckl-active .ckl-why-btn');
-      return d ? (d.textContent || '').trim() : null;
-    });
-    ck('dev: and the expander is labelled Details, not Why (#598 item 13)',
-      folded === null || /Details/i.test(folded), folded === null ? '(no expander on this step)' : folded);
+    /* ⚰ "the expander is labelled Details, not Why" (#598 item 13) WAS HERE AND COULD NEVER FAIL.
+     * It read `.ckl-step.ckl-active .ckl-why-btn` and asserted `folded === null || /Details/i`. No
+     * file in `ui/` has ever emitted `.ckl-why-btn` — the class exists only in shell.css and in the
+     * handler #737 deleted (see the headstone at ui/app.js:8344) — so the query returned null on
+     * every run and the first clause passed unconditionally. It went green at the injection that
+     * was supposed to break it AND at the deletion of the feature it described, which is the whole
+     * signature of a hollow check.
+     *
+     * DELETED RATHER THAN REPAIRED, because there is nothing left to point it at: the card has no
+     * expander at all now — the active step's detail block is always open. Its real concern, that
+     * the step names its control OUTSIDE the fold, is asserted by the LIVE check immediately above
+     * this comment, so nothing is lost by removing it. Do not re-add a check here without an
+     * element to read; that is how this one came to exist. (#738 orphan sweep.) */
 
     /* ---- #628 item 1: THE NUMBERED INSTRUCTION IS THE HEAD OF EVERY CARD -------------------
      * *(OWNER, 2026-09-04: "move the numbered step to always be the first part of the stack.
@@ -335,8 +386,100 @@ function pinChannel(ch) {
     (await b.page.$$('#mpContent [data-camp-start]')).length > 20);
   ck('dev: scenarios are listed', /Welcome to the Control Room/.test(await openMission(b.page, 'scenarios')));
   var walk = await openMission(b.page, 'walkthroughs');
-  ck('dev: walkthroughs listed with checklist buttons',
-    /Follow/.test(walk) && (await b.page.$$('#mpContent [data-checklist]')).length > 0);
+  ck('dev: walkthroughs listed with Start buttons',
+    /Start/.test(walk) && (await b.page.$$('#mpContent [data-wtstart]')).length > 0);
+  ck('dev: no Follow-in-Instructor buttons remain (#660 item 14)',
+    (await b.page.$$('#mpContent [data-follow]')).length === 0 && !/Follow/.test(walk));
+  await b.ctx.close();
+
+  /* THE TMI-2 INCIDENT WALKTHROUGH IS PREVIEW-ONLY (#670, plan R4 ruled 2026-09-08). Asserted
+   * on BOTH channels and on the rendered list, not on the registry: `mpWalkthroughs` filters the
+   * pool by `flagOn('procedure:' + id)`, so the Start button's presence is the only thing that
+   * says what a visitor is offered.
+   *
+   * ⚠ ON `?engine=pwr2`, AND THAT IS THE WHOLE CHECK. `SHELL` boots the RETIRED engine, whose
+   * pool has no incident leg at all — so run against it the dev half FAILS for the wrong reason
+   * and, worse, the public half PASSES for the wrong reason. Measured both ways at authoring:
+   * on `engine=pwr` the public assertion is green over a list that could never have contained
+   * the row. The shipped plant is pwr2 (#523) and it is the only pool this claim is about. */
+  var WT2 = SHELL.replace('engine=pwr&', 'engine=pwr2&');
+  b = await build('dev', WT2);
+  var walk2 = await openMission(b.page, 'walkthroughs');
+  ck('dev (pwr2): the TMI-2 incident walkthrough is offered (#670)',
+    (await b.page.$$('[data-wtstart="pwr_tmi2_incident"]')).length === 1,
+    (await b.page.$$eval('#mpContent [data-wtstart]', function (n) { return n.map(function (x) { return x.getAttribute('data-wtstart'); }); })).join(',') ||
+    walk2.slice(0, 60));
+  await b.ctx.close();
+
+  /* ---- #686: THE STATUS LINE UNDER THE SPEED BAR CONSOLIDATES WITH THE CARD'S OWN LINE ------
+   * *(OWNER RULING, 2026-09-10, "All decisions as recommended" ratifying option B)*. Same fact,
+   * same rung as `.ckl-wait` on a qualifying step (`hold >= 180`); NOTHING under the speed bar
+   * on a step that does not qualify — "nothing on other steps" is the ruling's own words.
+   * Asserted on the SHIPPED plant's own pool (pwr2, #523), each case its own fresh build so the
+   * second checklist never has to contend with the first one's run state. */
+  b = await build('dev', WT2);
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  var w2 = await b.page.evaluate(function () {
+    var pool = ((window.RD || {}).MANUAL_PROCEDURES || {}).pwr2 || [];
+    for (var i = 0; i < pool.length; i++) {
+      if ((+pool[i].steps[0].hold || 0) < 180) continue;
+      var btn = document.querySelector('[data-ckl-start="' + pool[i].id + '"]');
+      if (!btn) continue;
+      btn.click();
+      return { id: pool[i].id, hold: +pool[i].steps[0].hold };
+    }
+    return { id: null };
+  });
+  if (w2.id) await b.page.waitForSelector('.ckl-step.ckl-active .ckl-wait', { timeout: 20000 }).catch(function () {});
+  var lines2 = w2.id ? await b.page.evaluate(function () {
+    var a = document.querySelector('.ckl-step.ckl-active');
+    var cardEl = a ? a.querySelector('.ckl-wait') : null;
+    var barEl = document.getElementById('warpInfo');
+    return { card: cardEl ? (cardEl.textContent || '').trim() : null,
+             bar: barEl ? (barEl.textContent || '').trim() : null,
+             barHidden: barEl ? barEl.hidden : null };
+  }) : null;
+  var wantRung2 = w2.id ? await b.page.evaluate(function (h) { return RD.CklSpeedHint(h).speed; }, w2.hold) : null;
+  ck('dev (pwr2): the speed-bar line names the same rung as the card on a qualifying step (#686)',
+    !!w2.id && !!lines2 && lines2.barHidden === false && !!lines2.bar && lines2.bar.indexOf(wantRung2 + '×') >= 0,
+    w2.id ? (w2.id + ' hold=' + w2.hold + ', card="' + (lines2.card || '').slice(0, 70) +
+             '", bar="' + (lines2.bar || '') + '"')
+          : 'no pwr2 procedure opens on a long-wait step');
+  await b.ctx.close();
+
+  b = await build('dev', WT2);
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  var w2b = await b.page.evaluate(function () {
+    var pool = ((window.RD || {}).MANUAL_PROCEDURES || {}).pwr2 || [];
+    for (var i = 0; i < pool.length; i++) {
+      if ((+pool[i].steps[0].hold || 0) >= 180) continue;
+      var btn = document.querySelector('[data-ckl-start="' + pool[i].id + '"]');
+      if (!btn) continue;
+      btn.click();
+      return { id: pool[i].id, hold: +pool[i].steps[0].hold || 0 };
+    }
+    return { id: null };
+  });
+  if (w2b.id) {
+    await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 20000 }).catch(function () {});
+    await b.page.waitForTimeout(1200);   // let a broadcast land so #warpInfo's own guard has run
+  }
+  var lineNo = w2b.id ? await b.page.evaluate(function () {
+    var el = document.getElementById('warpInfo');
+    return { text: el ? (el.textContent || '').trim() : null, hidden: el ? el.hidden : null };
+  }) : null;
+  ck('dev (pwr2): and prints nothing under the speed bar on a step below the hold gate (#686)',
+    !!w2b.id && !!lineNo && (lineNo.hidden === true || lineNo.text === ''),
+    w2b.id ? (w2b.id + ' hold=' + w2b.hold + ' -> ' + JSON.stringify(lineNo))
+           : 'no non-qualifying pwr2 procedure found to open');
+  await b.ctx.close();
+
+  // The player's window (no `mmode` in the URL) offers exactly Free Play and Walkthroughs
+  // (#660 item 19); the campaign and scenario areas are reachable only through the door.
+  b = await build('dev', SHELL.replace('&mmode=free', ''));
+  await b.page.click('#mainMenuBtn');
+  var tabsPlain = await b.page.$$eval('#mpModes [data-mmode]', function (els) { return els.map(function (e) { return e.getAttribute('data-mmode'); }); });
+  ck('player window: only Free Play and Walkthroughs tabs', tabsPlain.join(',') === 'free,walkthroughs', tabsPlain.join(','));
   await b.ctx.close();
 
   // ------------------------------------ the public build (what `main` deploys)
@@ -345,22 +488,65 @@ function pinChannel(ch) {
   await openSettings(b.page);
   ck('public: Features row is not on screen', !(await b.page.isVisible('#featureRow')));
   await closeSettings(b.page);
-  ck('public: the checklist picker is not on screen', !(await b.page.isVisible('#instrCklRow')));
+  /* THE PICKER IS ON SCREEN NOW *(OWNER RULING, 2026-09-12: "A", on #722 — `checklists` and
+   * `walkthroughs` are stage:'public')*, and the check that used to assert its ABSENCE here
+   * was HOLLOW, which the flip is what exposed. It read `isVisible('#instrCklRow')` with the
+   * INSTRUCTOR tab active — the row lives in the checklists pane, so it is off screen on that
+   * tab whatever the flag says. MEASURED both ways before rewriting it: `?flags=all` on the
+   * public channel, no tab click, still `false`. It could never have failed.
+   *
+   * So it clicks the tab a player clicks, and asserts the shipped answer. Its negative half is
+   * NOT deleted — it is the `flags=all,-checklists` probe further down, which now clicks the
+   * same tab and was hollow in the same way. One flag, two channels of it, both non-vacuous. */
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  ck('public: the checklist picker IS on screen (#722)', await b.page.isVisible('#instrCklRow'));
   var help = await b.page.textContent('#helpOverlay');
   ck('public: free play is still offered', /Start Free Play/.test(await openMission(b.page, 'free')));
-  var tabs = ['campaign', 'scenarios', 'walkthroughs'];
+  var tabs = ['campaign', 'scenarios'];
   for (var i = 0; i < tabs.length; i++) {
     var t = await openMission(b.page, tabs[i]);
     ck('public: ' + tabs[i] + ' says COMING SOON', /COMING SOON/.test(t), t.slice(0, 70));
     ck('public: ' + tabs[i] + ' offers nothing to start',
       (await b.page.$$('#mpContent .btn, #mpContent [data-camp-start], #mpContent [data-trstart]')).length === 0);
   }
+  /* …AND WALKTHROUGHS IS NO LONGER ONE OF THEM (#722). It was the third entry in that loop
+   * until the ruling; keeping it there and relaxing the pattern would have left the loop
+   * asserting nothing about the one area whose state changed. It gets its own check instead —
+   * the tab LISTS rather than saying COMING SOON. WHICH legs it lists is asserted further
+   * down, on `?engine=pwr2`, because THIS url boots the retired engine (see the header) and
+   * its pool authors the same six ids plus eleven more; a content assertion here would be
+   * reading the wrong plant's pool for the right answer. */
+  var pubList = await openMission(b.page, 'walkthroughs');
+  var pubIds = await b.page.$$eval('#mpContent [data-wtstart]',
+    function (els) { return els.map(function (e) { return e.getAttribute('data-wtstart'); }); });
+  ck('public: walkthroughs LIST rather than saying COMING SOON (#722)',
+    !/COMING SOON/.test(pubList) && pubIds.length > 0, pubIds.join(',') || pubList.slice(0, 70));
   // The manual keeps its PROSE — only the instructed experiences are gated.
   await b.page.click('#missionClose');
   await b.page.click('#manualBtn');
   ck('public: the manual still opens', await b.page.isVisible('#manualOverlay'));
-  ck('public: manual has no Follow / Checklist buttons',
-    (await b.page.$$('#manualContent [data-follow], #manualContent [data-checklist]')).length === 0);
+  /* HOLLOW IN THE SAME WAY, and found by the same flip: this queried #manualContent the
+   * instant the manual opened, which is the `readme` DOCUMENT — the 📋 buttons are drawn by
+   * mProcedures() on the "Procedures (live)" section, which nothing here had selected.
+   * MEASURED: 0 on open with `?flags=all`, 17 on the Procedures section of the same page.
+   * It now navigates there and asserts the SHIPPED SET rather than an absence — a count of
+   * zero is also what a page that failed to render produces. Three claims, and NONE of them
+   * is a written list, so the check holds on either engine's pool: every button that IS drawn
+   * names a procedure the resolver says is offered; at least one is drawn; and there are more
+   * procedure CARDS than buttons, which is what proves the gate is still withholding rather
+   * than the page simply drawing everything. [data-follow] stays an absence — that button is
+   * retired (#660 item 14), so its subject is gone rather than gated. */
+  await b.page.click('#manualNav [data-msec="procedures"]');
+  var mIds = await b.page.$$eval('#manualContent [data-checklist]',
+    function (els) { return els.map(function (e) { return e.getAttribute('data-checklist'); }); });
+  var mCards = (await b.page.$$('#manualContent .m-card')).length;
+  var mAllOffered = await b.page.evaluate(function (ids) {
+    return ids.every(function (id) { return RD.Flags.on('procedure:' + id) === true; });
+  }, mIds);
+  ck('public: a 📋 Checklist button appears on the offered procedures and no others (#722)',
+    mIds.length > 0 && mAllOffered && mCards > mIds.length &&
+    (await b.page.$$('#manualContent [data-follow]')).length === 0,
+    mIds.length + ' buttons on ' + mCards + ' cards: ' + mIds.join(','));
   ck('public: manual prose is still there',
     ((await b.page.textContent('#manualContent')) || '').length > 200);
   await b.ctx.close();
@@ -372,11 +558,135 @@ function pinChannel(ch) {
   await closeSettings(b.page);
   await b.ctx.close();
 
+  /* ---- THE GREEN [NEW] BADGE MUST NOT OUTRUN THE FLAG (#688, quality pass 2026-09-11) -------
+   *
+   * MEASURED before the fix, on the public channel, this URL: the Walkthroughs tab read
+   * "Walkthroughs NEW" — the badge painted 33x14 px in rgb(121, 210, 151) — directly above a
+   * panel reading "COMING SOON. Guided procedure walkthroughs are in final review." The badge
+   * was the literal `true` in renderMissionSelect's mode tuple while the panel asks
+   * site/flags.js, and `walkthroughs` is stage:'preview' there — so the public site advertised
+   * a locked door in the colour that means "here now".
+   *
+   * BOTH HALVES, ONE URL, because either alone is hollow. The half where nothing is offered
+   * alone passes on a badge that never renders anywhere; the half where it is offered alone
+   * passes on a badge that renders everywhere. Asserted on the PAINTED RECT and the COMPUTED
+   * COLOUR, never the class name — a badge whose .mp-new rule never loaded still carries the
+   * class and still reads NEW (#485). The COMING SOON / list text is read in the same breath so
+   * the pair can never agree for the wrong reason: if the panel and the badge ever disagree
+   * again, one of these two reds.
+   *
+   * THE PAIR IS NO LONGER public-vs-dev *(OWNER RULING, 2026-09-12: "A", on #722)*. `walkthroughs`
+   * is stage:'public' now, so BOTH channels list and both must paint the badge — a channel split
+   * would assert nothing. The split that still separates the two outcomes is the flag itself:
+   * the shipped public page (offered → badge + list), and the same public page with
+   * `?flags=-walkthroughs` (withheld → no badge + COMING SOON). Same claim, same two directions,
+   * measured where they still differ. The dev half stays as its own row underneath. */
+  async function wtBadge(page) {
+    return page.evaluate(function () {
+      var t = document.querySelector('#mpModes [data-mmode="walkthroughs"]');
+      var s = t ? t.querySelector('.mp-new') : null;
+      var r = s ? s.getBoundingClientRect() : null;
+      return { tab: !!t, painted: !!(r && r.width > 2 && r.height > 2),
+               w: r ? Math.round(r.width) : 0, h: r ? Math.round(r.height) : 0,
+               color: s ? getComputedStyle(s).color : null,
+               flag: RD.Flags.on('walkthroughs') };
+    });
+  }
+  b = await build('public', WT2 + '&flags=-walkthroughs');
+  var pubBadgeTxt = await openMission(b.page, 'walkthroughs');
+  var pubBadge = await wtBadge(b.page);
+  ck('public + ?flags=-walkthroughs: the tab carries NO green NEW badge over its COMING SOON panel',
+    pubBadge.tab && !pubBadge.painted && pubBadge.flag === false && /COMING SOON/.test(pubBadgeTxt),
+    JSON.stringify(pubBadge) + ' | ' + pubBadgeTxt.replace(/\s+/g, ' ').slice(0, 60));
+  await b.ctx.close();
+
+  b = await build('public', WT2);
+  var pubOnTxt = await openMission(b.page, 'walkthroughs');
+  var pubOnBadge = await wtBadge(b.page);
+  ck('public (as shipped): the Walkthroughs tab DOES carry the green NEW badge over its live list (#722)',
+    pubOnBadge.painted && pubOnBadge.color === 'rgb(121, 210, 151)' && pubOnBadge.flag === true &&
+    !/COMING SOON/.test(pubOnTxt) && (await b.page.$$('[data-wtstart]')).length > 0,
+    JSON.stringify(pubOnBadge) + ' | ' + pubOnTxt.replace(/\s+/g, ' ').slice(0, 60));
+  await b.ctx.close();
+
+  b = await build('dev', WT2);
+  var devBadgeTxt = await openMission(b.page, 'walkthroughs');
+  var devBadge = await wtBadge(b.page);
+  ck('dev: the Walkthroughs tab DOES carry the green NEW badge over its live list',
+    devBadge.painted && devBadge.color === 'rgb(121, 210, 151)' && devBadge.flag === true &&
+    !/COMING SOON/.test(devBadgeTxt) && (await b.page.$$('[data-wtstart]')).length > 0,
+    JSON.stringify(devBadge) + ' | ' + devBadgeTxt.replace(/\s+/g, ' ').slice(0, 60));
+  await b.ctx.close();
+
+  /* …and the same SHIPPED public page, which now lists — so the incident leg's absence is
+   * measured against a live list rather than against a closed tab. The `?flags=+walkthroughs`
+   * override this used to carry is gone with the ruling: forcing an area that is already
+   * stage:'public' adds nothing, and it hid the fact that the list is now the public answer.
+   * Non-vacuous by construction — the same selector finds the row one build up, on dev. */
+  b = await build('public', WT2);
+  await openMission(b.page, 'walkthroughs');
+  var pubWalkIds = await b.page.$$eval('#mpContent [data-wtstart]',
+    function (els) { return els.map(function (e) { return e.getAttribute('data-wtstart'); }); });
+  /* ONLY THE HEATUP LEG NOW *(OWNER DIRECTIVE, 2026-09-15: "Release and unlock only the mode 5
+   * to 3 walkthrough. I still need to test the mode 3 to 1 and other walkthroughs.")*. This check
+   * asserted the #722 policy (all six public) and that policy is superseded, so the check is
+   * RE-POINTED, not relaxed: it still pins an exact list, still pins the incident leg's absence,
+   * and it now also pins that the withdrawn five are absent BY NAME. Validated against the OLD
+   * behaviour too — with the five back at 'public' this form goes red naming them, so it is not
+   * a check refitted to whatever the build happens to do. */
+  ck('public: ONLY the Mode 5 to Mode 3 heatup is offered; the other five legs and the incident walkthrough are NOT (#722, owner 2026-09-15)',
+    pubWalkIds.join(',') === 'pwr_heatup' &&
+    (await b.page.evaluate(function () {
+      return ['pwr_startup', 'pwr_raise_power', 'pwr_lower_power', 'pwr_shutdown', 'pwr_cooldown',
+              'pwr_tmi2_incident'].every(function (id) { return RD.Flags.on('procedure:' + id) === false; });
+    })) === true,
+    pubWalkIds.join(','));
+  await b.ctx.close();
+
   b = await build('public', SHELL + '&flags=%2Bcampaign');
-  // Area and item flags are independent by design: opening the area alone offers
-  // nothing, because every mission inside it is still gated on its own entry.
-  ck('public + ?flags=+campaign: the area alone offers no gated mission',
-    /COMING SOON/.test(await openMission(b.page, 'campaign')));
+  /* Area and item flags are independent by design: opening the AREA alone does not open a
+   * mission that is still gated on its own entry.
+   *
+   * IT USED TO ASSERT COMING SOON, and #722 voided that premise rather than breaking the check:
+   * four campaign missions are `kind: procedure` on ids the ruling flipped public
+   * (pwr_startup, pwr_raise_power, pwr_lower_power, pwr_shutdown), so the area forced on now
+   * lists those four and campaignHtml no longer falls through to soonPanel. THE CLAIM IS
+   * UNCHANGED and is now asserted directly, which is stronger than the proxy it replaces: of
+   * the plant's 35 campaign missions the tab lists ONLY the ones whose own entry resolves on,
+   * it lists strictly fewer than all of them, and the ones it withholds are still gated.
+   *
+   * NOT A LEAK, and worth writing down because the shape is the one #241 exists to prevent: no
+   * visitor reaches this. `campaign` is stage:'preview', and on pwr2 — the plant the site runs —
+   * mpCampaign() returns the Free-Play-only note before any flag is consulted. This URL forces
+   * the area AND boots the retired engine, which a published build does not carry (#523). */
+  var campTxt = await openMission(b.page, 'campaign');
+  var campShown = await b.page.$$eval('#mpContent [data-camp-start]',
+    function (els) { return els.map(function (e) { return e.getAttribute('data-camp-start'); }); });
+  var campSplit = await b.page.evaluate(function () {
+    var c = (RD.CAMPAIGNS || {}).pwr, all = [];
+    (c.acts || []).forEach(function (a) { (a.missions || []).forEach(function (m) { all.push(m.kind + ':' + m.id); }); });
+    (c.bonus || []).forEach(function (m) { all.push(m.kind + ':' + m.id); });
+    return { total: all.length, on: all.filter(function (id) { return RD.Flags.on(id); }) };
+  });
+  /* THE "> 0" WAS A FIXTURE, NOT THE CLAIM, and the 2026-09-15 walkthrough withdrawal proved it:
+   * campaign missions are gated on the SAME procedure: ids as the walkthroughs, so gating five
+   * legs took the public mission count to 0 and reddened a check about an unrelated relation. That
+   * coupling is worth knowing and is why this comment exists. The claim here is the IDENTITY —
+   * what the area draws is exactly what the flags say is on — and it holds at zero. Non-vacuity is
+   * carried by the very next check, which forces every flag on and requires the campaign to open in
+   * full: if the area could not render a mission at all, that one goes red. */
+  ck('public + ?flags=+campaign: the area alone offers only missions whose OWN entry is public',
+    campShown.length < campSplit.total &&
+    campShown.slice().sort().join(',') === campSplit.on.slice().sort().join(',') &&
+    /* …and the COMING SOON clause becomes CONDITIONAL rather than being dropped. It was
+     * unconditional, which quietly assumed at least one mission was public — a fixture, not a
+     * claim, and the 2026-09-15 withdrawal took that set to zero. app.js:5473 returns
+     * soonPanel('campaign') when nothing is offerable, which is the DESIGNED answer for an empty
+     * area, so both halves are asserted here: offer something and the panel must list it; offer
+     * nothing and it must say COMING SOON rather than draw an empty list. Neither state can now
+     * pass by accident. */
+    (campShown.length ? !/COMING SOON/.test(campTxt) : /COMING SOON/.test(campTxt)),
+    campShown.length + ' of ' + campSplit.total + ': ' + campShown.join(','));
   await b.ctx.close();
 
   b = await build('public', SHELL + '&flags=all');
@@ -402,15 +712,19 @@ function pinChannel(ch) {
       /COMING SOON/.test(await openMission(b.page, AREAS[a].tab)));
     await b.ctx.close();
   }
-  // checklists is not a tab: with it off, walkthroughs still list and still
-  // Follow — only the 📋 buttons and the instructor picker go.
+  // checklists is not a tab: with it off, walkthroughs still list with their Start
+  // buttons — only the instructor picker goes.
   b = await build('public', SHELL + '&flags=all,-checklists');
   var wt = await openMission(b.page, 'walkthroughs');
-  ck('only checklists off: walkthroughs still list and still Follow',
-    /Follow/.test(wt) && !/COMING SOON/.test(wt));
-  ck('only checklists off: no 📋 buttons on them',
-    (await b.page.$$('#mpContent [data-checklist]')).length === 0);
+  ck('only checklists off: walkthroughs still list with Start buttons',
+    /Start/.test(wt) && !/COMING SOON/.test(wt) && (await b.page.$$('#mpContent [data-wtstart]')).length > 0);
   await b.page.click('#missionClose');
+  /* THE TAB CLICK IS LOAD-BEARING and was missing (#722). Without it this read #instrCklRow
+   * with the Instructor tab active, where the row is off screen whatever the flag says —
+   * measured `false` on the public channel with `?flags=all`, i.e. the check could not fail.
+   * It is the negative half of "public: the checklist picker IS on screen" above, which
+   * clicks the same tab; the pair only means something if both of them do. */
+  await b.page.click('#tabbar [data-tab="checklists"]');
   ck('only checklists off: the instructor picker is gone', !(await b.page.isVisible('#instrCklRow')));
   await b.ctx.close();
 
@@ -435,7 +749,7 @@ function pinChannel(ch) {
   await closeSettings(b.page);
   ck('panel: view-as public gates the campaign', /COMING SOON/.test(await openMission(b.page, 'campaign')));
   await b.page.reload();
-  await b.page.waitForSelector('#simStatus');
+  await b.page.waitForSelector('#mainMenuBtn');
   if (await b.page.isVisible('#missionOverlay')) await b.page.click('#missionClose');
   ck('panel: view-as survives a reload', await b.page.evaluate(function () { return RD.Flags.channel(); }) === 'public');
   ck('panel: the build still knows what it is', await b.page.evaluate(function () { return RD.Flags.baseChannel(); }) === 'dev');
@@ -445,20 +759,64 @@ function pinChannel(ch) {
   await b.ctx.close();
 
   // ----------------------------------------------------- the landing page
+  /* WHAT THESE ASSERT, AND WHY THEY STOPPED QUOTING SENTENCES (2026-09-13, #742/#744 seam).
+   *
+   * Until #742 the hero promised "Guided training" behind the `campaign` flag and the fourth
+   * feature card carried a "Guided training — coming soon" alternate; the three checks here
+   * quoted both phrases. The owner had both removed ("we dont have an instructor yet"), which
+   * left all three pinning copy that exists NOWHERE on the page — two of them red, and the
+   * third, the public-channel negative `!/Guided training/`, GREEN AND VACUOUS: the exact
+   * anti-pattern the #263 note below names, shipped three lines under it.
+   *
+   * SO WHAT IS GUARDED NOW IS THE MECHANISM AND THE RULE, not the wording. The rule is the one
+   * #742 wrote into index.html — "any claim here must rest on a 'public' flag" — and the defect
+   * behind it is worth keeping in view: the hero sat on `campaign`, stage 'preview', so every
+   * visitor to the RELEASED site read the data-flag-off alternate and never the sentence anyone
+   * wrote for them. Nothing in the tree could see that. `run_flags` checks the registry, not the
+   * page; a copy check quoting the dev sentence passes while the public channel shows the other
+   * one. The enumeration below is over whatever the page actually carries — never a list typed
+   * here — so a claim added tomorrow is covered the day it lands. */
   var ctx = await browser.newContext();
   var page = await ctx.newPage();
   await page.goto(LANDING);
-  ck('landing dev: the campaign promise stands', /Guided\s+training/.test(await page.textContent('.hero .sub')));
+  ck('landing dev: the hero carries the walkthrough promise',
+    /guided\s+walkthroughs/i.test(await page.textContent('.hero .sub')));
   await ctx.close();
 
   ctx = await browser.newContext();
   await ctx.addInitScript(pinChannel('public'));
   page = await ctx.newPage();
   await page.goto(LANDING);
-  ck('landing public: the hero no longer promises campaigns',
-    !/Guided\s+training/.test(await page.textContent('.hero .sub')));
-  ck('landing public: the feature block says coming soon',
-    /Guided\s+training\s+—\s+coming soon/.test(await page.textContent('.features')));
+  var gated = await page.evaluate(function () {
+    var out = [];
+    Array.prototype.forEach.call(document.querySelectorAll('[data-flag]'), function (el) {
+      var f = el.getAttribute('data-flag');
+      out.push({ flag: f, on: RD.Flags.on(f), stage: RD.Flags.stage(f) });
+    });
+    return out;
+  });
+  var offPublic = gated.filter(function (g) { return !g.on; });
+  ck('landing public: every gated claim rests on a flag the public channel has',
+    gated.length > 0 && offPublic.length === 0,
+    gated.length === 0
+      ? 'the page carries no [data-flag] element at all, so the swap below proves nothing — ' +
+        're-point this pair or delete it deliberately'
+      : offPublic.map(function (g) { return g.flag + ' (stage ' + g.stage + ')'; }).join(', ') +
+        ' — a visitor to the released site reads the data-flag-off alternate here, not the ' +
+        'sentence that was written');
+
+  /* THE SWAP ITSELF, PROVEN ON THE PAGE. Without this the check above is satisfied by an
+   * `applyDom` that does nothing at all: every flag reads on, no element is ever rewritten, and
+   * a landing page that over-promises on the public channel looks identical to a correct one.
+   * `?flags=-<id>` is the one-page-load override, so this needs no build and no stamp file. */
+  var subFlag = gated.length ? gated[0].flag : null;
+  await page.goto(LANDING + (subFlag ? '?flags=-' + subFlag : ''));
+  var heroOff = (await page.textContent('.hero .sub')) || '';
+  var heroAlt = (await page.getAttribute('.hero .sub', 'data-flag-off')) || '';
+  ck('landing public: the alternate swaps in when that flag is forced off',
+    !!subFlag && !!heroAlt && !/guided\s+walkthroughs/i.test(heroOff) &&
+    heroOff.replace(/\s+/g, ' ').trim() === heroAlt.replace(/\s+/g, ' ').trim(),
+    'rendered "' + heroOff.slice(0, 60) + '…" against alternate "' + heroAlt.slice(0, 60) + '…"');
   // REMOVED (#263 item 6): this was `!/The full experience/` on the PWR card, and the
   // phrase has not existed anywhere in the site since the card was rewritten — so the
   // check could never fail. Second vacuous negative in this file; the other was the hero
@@ -466,6 +824,10 @@ function pinChannel(ch) {
   // makes no channel-dependent promise to guard, and the over-promise guard now lives
   // where the promise does — the hero negative above and the features coming-soon check.
   // A negative assertion is only worth its line if the pattern still appears SOMEWHERE.
+  /* AND REMOVED AGAIN, for the same reason, 2026-09-13: `!/Guided training/` on the hero and
+   * `/Guided training — coming soon/` on `.features` both quoted copy #742 deleted. The note
+   * above is the standing rule; the block that replaced them is above it. */
+  await page.goto(LANDING);
   ck('landing public: the page still sells the plant',
     /Real reactor physics/.test(await page.textContent('.hero .sub')));
   await ctx.close();

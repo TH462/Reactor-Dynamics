@@ -96,6 +96,16 @@
   var WARP_MIN_SPEED = 600;       // the ladder's two top rungs are the WARP tier
   var WARP_DROP_SPEED = 60;       // OWNER RULING 2026-09-04: a rate-based drop lands here
   var WARP_QUIET_S = 30;          // sim-s of quiet after any event before WARP re-arms
+  /* WHICH ALARMS DROP THE CLOCK (#655, 2026-09-08). A new, unacknowledged alarm of these
+   * priorities, arriving on a QUIET board (none of these priorities already standing), drops
+   * WARP to 60x and fast-forward to 1x. A `caution`
+   * (the accumulators lined up below 1000 psi, which the heatup checklist tells the player to
+   * do) or a `status` tile (an "expected, plant is cold" reclassification, which arrives
+   * acknowledged) never does: measured on the third layman playthrough, those were the drops
+   * that read as the clock "reverting on its own". The priority is the alarm's OWN, after the
+   * mode reclassification the kernel applies, so the same alarm can be a drop in Mode 1 and
+   * a non-event in Mode 5 without a list here to maintain. */
+  var ALARM_DROP_PRIORITIES = { critical: true, warning: true };
   // Rate thresholds, per SIM second. These are `_isRapidChange`'s own numbers restated as
   // rates: 1.0 % per 0.5 s and 0.14 MPa (20 psi) per 0.5 s.
   var RAPID_POWER_PCT_PER_S = 2.0;
@@ -551,6 +561,9 @@
   SimulationService.prototype._now = function () { return Date.now(); };
   SimulationService.prototype._maybeSandboxCheckpoint = function () {
     if (this.instructor && this.instructor.mode) return;
+    /* a running walkthrough lays its own checkpoint on every step boundary (#660 item 17), and a
+     * 20 s sandbox mark in between would make "back one step" land mid-step */
+    if (this.instructor && this.instructor.checklist) return;
     var now = this._now();
     if (this._lastSandboxCpMs != null && now - this._lastSandboxCpMs < SANDBOX_CP_SPACING_MS) return;
     this._lastSandboxCpMs = now;
@@ -646,7 +659,11 @@
   // report and the model's own hold.
   SimulationService.prototype._warpBlocked = function () {
     if (!this.engine) return 'no plant';
-    if (this.simTime < this._warpLockedUntil) return this._warpLockWhy || 'plant not settled';
+    /* NO QUIET TIMER *(OWNER, 2026-09-08, #660: "Warp lock should not have a time out, it should
+     * either be locked or not.")*. The 30-plant-second `_warpLockedUntil` that every event used to
+     * start is gone: a drop still happens on the event, and afterwards WARP is refused only while
+     * a LIVE condition stands — the rate detector, a model hold, the loop's Courant limit. At 1x
+     * the timer had been 30 wall-seconds of a button that did nothing (#655). */
     if (this._lastRapid) return 'plant in transient';
     var ts = this.engine.getTrueState ? this.engine.getTrueState() : null;
     if (ts && (ts.beyond_model === true || ts.model_held === true)) return 'model held';
@@ -654,8 +671,9 @@
     if (rep && rep.courant_limit_s > 0 && this.pacing.warpDt / rep.courant_limit_s > WARP_COURANT_MAX_SUB) return 'loop transient';
     return null;
   };
+  // Kept as the one place an event's reason is recorded (the info line prints it); it no longer
+  // starts a timer (#660 — "either locked or not").
   SimulationService.prototype._lockWarp = function (why) {
-    this._warpLockedUntil = this.simTime + WARP_QUIET_S;
     this._warpLockWhy = why;
   };
   // THE IN-LOOP WATCH. Called right after every protection evaluation while on WARP, with the
@@ -678,12 +696,25 @@
     if (scrammed && !prev.scrammed) return 'reactor trip';
     if (this._anyNewFailureIn(fails, prev.fails)) return 'equipment failure';
     // An alarm drops WARP on the same terms it drops fast-forward (`_attentionStop`): a NEW,
-    // unacknowledged arrival on a QUIET board. A heatup with low-pressure alarms latched in
-    // is exactly where WARP is wanted, and the rate checks below are what guard fidelity.
-    if (this._boardQuiet(prev.alarms) && this._anyAlarmNewlyFiring(alarms, prev.alarms, true)) return 'new alarm';
+    // unacknowledged arrival of critical or warning PRIORITY on a QUIET board (#655). Quiet
+    // means no warning or critical standing: a heatup's expected-cold status tiles do not
+    // make the board lit (before #655 they did, so no alarm ever dropped WARP on a heatup),
+    // while a board already carrying a casualty's warnings stays lit and the consequences
+    // that follow do not drop the tier one by one — the fidelity leg after a scram runs its
+    // decay-heat hour on WARP for exactly that reason (WT-1b).
+    var na = this._boardQuiet(prev.alarms) ? this._newAlarmOfPriority(alarms, prev.alarms) : null;
+    if (na) return 'new alarm: ' + (na.label || na.id);
+    /* SAY WHICH WINDOW THE RATE IS OVER (#670 operator pass 2, S-6). `spanS` is PLANT seconds,
+     * not warped ones — but on WARP one evaluation is one WARP_DT step, so this is an
+     * instantaneous half-second rate, and the threshold is 0.28 MPa/s, which is why every
+     * refusal reads just above 41 psi/s. The board's pressure tile is damped at tau 2.5 s and
+     * the player reads it over minutes: an operator told "pressure moving 81 psi/s" while
+     * watching the gauge crawl 0.13 psi/s over two and a half plant-minutes read the line as an
+     * instrument fault rather than an explanation. The figure is honest; the window was not
+     * stated. Naming it costs four words and is the difference between a reason and a riddle. */
     if (spanS > 0) {
-      if (Math.abs(power - prev.power) / spanS > RAPID_POWER_PCT_PER_S) return 'power moving ' + (Math.abs(power - prev.power) / spanS).toFixed(1) + ' %/s';
-      if (Math.abs(P - prev.P) / spanS > RAPID_P_MPA_PER_S) return 'pressure moving ' + (Math.abs(P - prev.P) / spanS * 145.038).toFixed(0) + ' psi/s';
+      if (Math.abs(power - prev.power) / spanS > RAPID_POWER_PCT_PER_S) return 'power moving ' + (Math.abs(power - prev.power) / spanS).toFixed(1) + ' %/s right now';
+      if (Math.abs(P - prev.P) / spanS > RAPID_P_MPA_PER_S) return 'pressure moving ' + (Math.abs(P - prev.P) / spanS * 145.038).toFixed(0) + ' psi/s right now (the gauge is damped and shows the trend)';
     }
     return null;
   };
@@ -704,6 +735,8 @@
       achieved: this._achieved == null ? null : Math.round(this._achieved),
       warp_available: !why,
       warp_lock: why,
+      /* no quiet timer since #660 — the field stays 0 so a reader that learned it (#655) is unchanged */
+      warp_lock_remaining_s: 0,
       /* The EFFECTIVE budget — what THIS tier is spending, not what was configured (#631).
        * A reader (ui/perf.js's verdict, a bug report) is asking "how much of the broadcast is
        * the physics allowed", and on WARP that is the WARP number. The configured WARP value
@@ -742,12 +775,16 @@
     if (stop === 'alarm' && this._authoredSpeed) stop = null;
     // Any attention-stop event also starts WARP's quiet timer (#625), whether or not the
     // clock was accelerated at the time.
-    if (stop) this._lockWarp(stop === 'scram' ? 'reactor trip' : stop === 'failure' ? 'equipment failure' : 'new alarm');
+    var stopDetail = stop === 'scram' ? 'reactor trip' : stop === 'failure' ? 'equipment failure'
+                   : stop === 'alarm' ? 'new alarm: ' + (this._attnAlarmLabel || '') : null;
+    if (stop) this._lockWarp(stopDetail || stop);
     if (stop && this.timeAcceleration > 1) {
       this.timeAcceleration = 1.0;
       this._authoredSpeed = false;
       this._applyTier();
-      snap.metadata.speed_snap = { reason: stop };
+      // the reason travels with the snap (#655): the UI prints it under the speed buttons
+      // and keeps it there, where a toast alone was missed three times in one playthrough
+      snap.metadata.speed_snap = stopDetail ? { reason: stop, detail: stopDetail } : { reason: stop };
     } else if (this._warpDrop) {
       // The in-loop watch dropped WARP this tick (#625): 60x, with the plant's reason.
       snap.metadata.speed_snap = { reason: 'transient', detail: this._warpDrop };
@@ -761,6 +798,35 @@
     snap.metadata.pacing = this._pacingBlock();
     snap.instructor = this._instructorBlock();
     return snap;
+  };
+
+  /* IS THE CURRENT WALKTHROUGH STEP'S OWN START CHECKPOINT STILL ON THE RING? (#660 items 17-18)
+   *
+   * DERIVED FROM THE RING, NEVER BOOK-KEPT. The obvious implementation — remember the step index
+   * at the moment we lay a checklist checkpoint — goes stale the instant `_rewind` truncates the
+   * ring, so a second press would read "not ready" on a ring that is perfectly intact. Every
+   * checkpoint IS a saveState(), and a saveState carries `instructor.checklist.idx`, so the
+   * newest checkpoint can simply be asked which step it was laid at.
+   *
+   * TWO conditions, and they fail in different places:
+   *   - the newest checkpoint was laid at the START of the step now showing (procedure and index
+   *     both) — false for ever after a file load, which clears the ring and keeps the progress.
+   *     NOT true of the broadcast right after a Continue: `checklist_check` runs
+   *     _assembleWithInstructor, which services the checkpoint request in that same call, so
+   *     the check-off's own snapshot already has it (measured 2026-09-08, ring 3 → 4 with no
+   *     tick). No measured path produces a lag here; the index comparison is the guard that
+   *     would catch one if a future path ever laid the checkpoint a broadcast late;
+   *   - there is at least one EARLIER checkpoint to land on, and the walkthrough is past step 0,
+   *     so "back one step" has a step to go back to. The second half is not redundant: stopping a
+   *     walkthrough leaves its checkpoints on the ring, so a restart at step 0 finds ring >= 2
+   *     with the OLD run's checkpoints underneath it. */
+  SimulationService.prototype._checklistRewindReady = function () {
+    var ck = this.instructor && this.instructor.checklist;
+    if (!ck || !(ck.idx > 0)) return false;
+    if (this.checkpoints.length < 2) return false;
+    var top = this.checkpoints[this.checkpoints.length - 1];
+    var cs = top && top.instructor && top.instructor.checklist;
+    return !!cs && cs.procedure_id === ck.procedure_id && cs.idx === ck.idx;
   };
 
   SimulationService.prototype._serviceInstructorRequests = function () {
@@ -778,7 +844,21 @@
     // stored acceleration (fast-forward in, snap back to real time at set points).
     var sp = i.consumeSpeedRequest ? i.consumeSpeedRequest() : null;
     if (sp != null) this._setSpeed(sp, true);   // authored: never the WARP tier (#625)
-    return rewound;
+    /* THE WALKTHROUGH PAUSE (#694). A checklist step's fired event asked to freeze the
+     * plant — "user hits continue, [event] happens, sim pauses" (owner, 2026-09-09).
+     * `stop()` directly, NEVER `_setSpeed(0, ...)`: `_setSpeed` clamps `!(v > 0)` to 1 (a
+     * speed channel cannot express a pause), and this is a different axis anyway — a rate
+     * of 0 is not the same fact as the clock being stopped for a reason the player did not
+     * choose. `stop()` also clears `_timer`, so the browser's self-rescheduling loop
+     * (`_reschedule`) simply does not arm a next tick; `tick()`'s own `!this.running` guard
+     * covers the (unused today) case of something calling it directly. Returning true here
+     * forces the reassemble below, so THIS broadcast carries both the just-landed event
+     * (`checklist.injected`) and the frozen clock (`metadata.running`) together — without it
+     * the freeze would lag the event it explains by one broadcast, since `assembleSnapshot()`
+     * at the top of `_assembleWithInstructor` ran before `instructor.step()` fired it. */
+    var paused = false;
+    if (i.consumePauseRequest && i.consumePauseRequest() && this.running) { this.stop(); paused = true; }
+    return rewound || paused;
   };
 
   // Authored automation preset (scenario.auto_channels / procedure.auto_channels):
@@ -838,6 +918,11 @@
   // ui_policy/highlight/follow/level_complete) when the occupant provides it,
   // else the classic message-only block (placeholder / DefaultInstructor / mocks).
   SimulationService.prototype._instructorBlock = function () {
+    /* The walkthrough's Rewind button is a claim about THIS ring, which is M5's (#660 items
+     * 17-18). Answered HERE rather than at the one call site that matters, because
+     * assembleSnapshot() builds an instructor block of its own and is called standalone —
+     * a value written once per tick would ride out of those calls stale. */
+    if (this.instructor.setRewindReady) this.instructor.setRewindReady(this._checklistRewindReady());
     return this.instructor.getSnapshotBlock
       ? this.instructor.getSnapshotBlock()
       : this.instructor.getMessage();
@@ -977,7 +1062,14 @@
     // "new alarm" for one would contradict the tile it just drew. The transient
     // cadence flip above is deliberately left alone: a shorter broadcast interval
     // costs the operator nothing.
-    if (this._boardQuiet(this._prevAlarms) && this._anyAlarmNewlyFiring(snap.alarms, this._prevAlarms, true)) return 'alarm';
+    /* …and, since #655, one whose PRIORITY asks for it: critical or warning. A caution or a
+     * status tile arriving on a quiet board used to yank the clock to 1x for a lineup the
+     * checklist had just told the player to make. The quiet-board rule above it stays. */
+    /* …and, since the 2026-09-14 ruling, one the ACTIVE WALKTHROUGH STEP DID NOT DECLARE. The
+     * filter lives inside `_newAlarmOfPriority` so the WARP drop inherits it unchanged — see
+     * `_stepExpectsAlarm` below for the ruling, the measurement and why it is a declaration. */
+    var newAlarm = this._boardQuiet(this._prevAlarms) ? this._newAlarmOfPriority(snap.alarms, this._prevAlarms) : null;
+    if (newAlarm) { this._attnAlarmLabel = newAlarm.label || newAlarm.id; return 'alarm'; }
     /* A CHECKLIST STEP CHECKING OFF *(OWNER, 2026-09-03, #619 item 6: "when a step is checked
      * off, drop out of warp.")*. Walking a checklist at 600x, the step you were waiting for
      * completes and the plant keeps racing while you read the next one — so the clock comes
@@ -1009,9 +1101,14 @@
   };
 
   // No alarm annunciating (acknowledged or not) as of the previous broadcast.
+  // …where "annunciating" means a WARNING or CRITICAL (#655). A status tile ("expected, plant
+  // is cold") or a caution standing does not make the board lit: on a heatup those stand for
+  // twelve plant-hours, and counting them meant no new alarm could ever drop the clock there.
   SimulationService.prototype._boardQuiet = function (alarms) {
     if (!alarms) return true;
-    for (var i = 0; i < alarms.length; i++) if (alarms[i].state !== 'clear') return false;
+    for (var i = 0; i < alarms.length; i++) {
+      if (alarms[i].state !== 'clear' && ALARM_DROP_PRIORITIES[alarms[i].priority]) return false;
+    }
     return true;
   };
 
@@ -1047,6 +1144,67 @@
   // Nothing but the control layer can produce a clear→acknowledged transition in
   // one broadcast (an operator ack takes a cycle of its own), so that is exactly
   // the set of alarms the plant answered on the operator's behalf.
+  // The first alarm that was clear last broadcast and is now annunciating UNACKNOWLEDGED with a
+  // priority in ALARM_DROP_PRIORITIES (#655) — or null. The priority read is the alarm's own
+  // as the kernel reports it, after any mode reclassification.
+  SimulationService.prototype._newAlarmOfPriority = function (now, prev) {
+    if (!prev || !now) return null;
+    var prevState = {};
+    for (var i = 0; i < prev.length; i++) prevState[prev[i].id] = prev[i].state;
+    for (var j = 0; j < now.length; j++) {
+      var a = now[j];
+      var wasClear = !prevState[a.id] || prevState[a.id] === 'clear';
+      if (!wasClear || a.state !== 'active_unacknowledged') continue;
+      if (!ALARM_DROP_PRIORITIES[a.priority]) continue;
+      if (this._stepExpectsAlarm(a)) continue;      // the active walkthrough step declared it
+      return a;
+    }
+    return null;
+  };
+
+  /* AN ALARM THE ACTIVE WALKTHROUGH STEP DECLARED IS NOT AN INTERRUPTION *(OWNER RULING,
+   * 2026-09-14: "Only alarms the step is not expecting")*. A step declares the alarms its own
+   * evolution causes in `expect_alarms`; those do not break fast-forward, anything else does.
+   *
+   * WHY IT HAD TO BE A DECLARATION AND NOT A HEURISTIC. The board's own quiet rule is `#655`'s
+   * (`_boardQuiet`): the FIRST warning or critical on a quiet board drops the clock, and every
+   * one after it is free while that one stands. Acknowledgement is not in the test — measured
+   * 2026-09-15, 3600× held through FOUR unacknowledged alarms on a later step — so "any unacked
+   * alarm drops warp" was never the rule, and no reading of the board can tell a cooldown's own
+   * low-pressure warning from a casualty. Only the step knows which one it is about to cause.
+   *
+   * MEASURED, the case that produced the ruling: on the heatup leg 600× held about 5 s then fell
+   * to 1×, on "Shutdown Cooling Not In Service — RCS Is Below the RHR Entry Pressure" — a tile
+   * the step itself brings on. Pressure then crawled 596 to 600 psia (4.11 to 4.14 MPa) over
+   * 200 s of real time, about four minutes lost, and the player escaped it by guessing at Ack
+   * All.
+   *
+   * MATCHED ON THE ID, OR ON A SUBSTRING OF THE LABEL, case-insensitively. Ids are exact and are
+   * what an author should write; the label form exists because the alarm registry renames labels
+   * far more often than ids, and a declaration that silently stops matching re-creates the defect
+   * while reading as a fix. It is scoped to the ACTIVE step only: a declaration is a statement
+   * about one evolution, and letting it outlive the step turns it into a permanent exemption.
+   *
+   * IT IS DELIBERATELY INSIDE `_newAlarmOfPriority`, so BOTH callers inherit it — the fast-forward
+   * drop (`_attentionStop`) and the WARP tier drop (`_warpBlocked`), which #655 already wrote to
+   * the same terms. Splitting them would leave WARP dropping on a step's own alarm while
+   * fast-forward held, which is the disagreement the `speed_hold` half already cost us once. */
+  SimulationService.prototype._stepExpectsAlarm = function (a) {
+    var ckl = this.instructor && this.instructor.checklist;
+    if (!a || !ckl || ckl.complete || !ckl.proc || !ckl.proc.steps) return false;
+    var st = ckl.proc.steps[ckl.idx];
+    var list = st && st.expect_alarms;
+    if (!list || !list.length) return false;
+    var id = String(a.id || ''), label = String(a.label || '').toLowerCase();
+    for (var i = 0; i < list.length; i++) {
+      var w = String(list[i] || '');
+      if (!w) continue;
+      if (w === id) return true;
+      if (label && label.indexOf(w.toLowerCase()) !== -1) return true;
+    }
+    return false;
+  };
+
   SimulationService.prototype._anyAlarmNewlyFiring = function (now, prev, requireUnacked) {
     if (!prev) return false;
     var prevState = {};
@@ -1182,6 +1340,11 @@
       // Rewind (Gameplay §7.2): pop back to an in-memory checkpoint. Distinct
       // from file save/load — this is the constructive-failure loop.
       case 'rewind': {
+        /* A ring SHORTER than `steps` already refuses cleanly and changes nothing — measured
+         * 2026-09-08 on both shapes that produce it (#660 items 17-18): a walkthrough one
+         * checkpoint in, and a walkthrough restored from a file (ring 0, step_index 2). Both
+         * returned this error with step_index and the ring untouched, so the guard belongs on
+         * the BUTTON (instructor.checklist.rewind_ready), not here. */
         var rsnap = this._rewind(command.steps || 1, command.scope || 'full', !!command.exact);
         if (!rsnap) return { type: 'error', code: 'COMMAND_ERROR', message: 'no checkpoint to rewind to', received: command };
         return rsnap;

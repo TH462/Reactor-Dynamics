@@ -17,6 +17,17 @@
 ;(function (RD) {
   'use strict';
 
+  // THE P-6 PERMISSIVE, ONE COPY (#642). Three rows below carry this setpoint — the auto
+  // re-energize actuation and the de-energize/re-energize interlock pair — and one of them
+  // SPELLED it into the operator's message as well, which is four places for one number. The
+  // sourced value and the message's rendering of it now come from here, so a correction cannot
+  // land in the row and miss the words the operator reads. Ginna TS Bases B 3.3.1
+  // (ML20339A221), Intermediate Range Neutron Flux, P-6 Permissive: *"actuated when any NIS
+  // intermediate range channel goes approximately one decade (1 E-10 amps) above the minimum
+  // channel reading"*. See the actuation row for the full note and the PWR2 measurement.
+  var P6_AMPS = 1.0e-10;
+  var P6_TXT  = P6_AMPS.toExponential(0);        // "1e-10" — the operator-facing rendering
+
   // Trips — { instrument, direction, setpoint, action }. Any trip scrams.
   // Optional: id (referenced by set_trip_block), condition (evaluates only
   // while it holds), blockable (manually blockable above the P-10 permissive).
@@ -234,6 +245,21 @@
 
   // P-10, the nuclear at-power permissive: manual trip blocks are allowed only
   // above 10 % power-range power, and auto-clear (reinstate) below it.
+  //
+  // ⚠ THIS IS THE RETIRED ENGINE'S OWN DATUM AND IT IS NOT THE SHIPPED PLANT'S LAW (#753,
+  // 2026-09-14). It governs the kernel trips in THIS file's table, which only the retired `pwr`
+  // engine carries. PWR2's RPS lives in the engine and its P-10 is 8 % — Ginna TS Bases B 3.3.1
+  // (ML20339A221), `P10.frac` in engines/pwr2/pwr2_protection.js — so the two numbers differ by
+  // two points of power and the kernel never notices: `getProtectionConfig` hands PWR2 an EMPTY
+  // trips list, `setTripBlock` forwards to the engine's own door, and `_permTest` is never
+  // reached on that plant. Measured before the collapse: the block is accepted at 3.578 % power
+  // and the ENGINE revokes it on the next protection step — no refusal ever came from here.
+  //
+  // DO NOT read this constant to draw the shipped plant's block window. PWR2 publishes the law
+  // itself, derived from P10.frac and never re-typed: `getProtectionConfig().trip_block_permissive`
+  // and `getTripBlocks().trip_block_status.<row>.permissive_pct`. Reaching the other way — this
+  // file reading pwr2_protection — is the cross-plant coupling HR3 forbids and is refused
+  // deliberately (see the P6.amps note above).
   var PWR_TRIP_BLOCK_PERMISSIVE = { instrument: 'power_range', direction: 'high', setpoint: 10.0 };
 
   // Operator-facing names for instrument channels (#75). Instrument ids are source
@@ -394,7 +420,29 @@
     // open; `run_pwr`'s `rhr_valve_and_mode` pins both interlocks engine-direct.
     // SR auto re-energize: when the IR falls below P-6 (deep shutdown) the
     // source-range detector comes back on so the operator keeps a count rate.
-    { instrument: 'intermediate_range', direction: 'low', setpoint: 1.0e-10,
+    //
+    // THE 1.0e-10 IS NOW SOURCED, AND IT WAS RIGHT ALL ALONG (#642). It shipped as a bare
+    // literal here and in the manual while the PWR2 engine carried a `[sourced]` 5e-11, and
+    // the natural reading — two unsourced copies agreeing with each other against the one
+    // marked figure — had it backwards. Ginna TS Bases B 3.3.1 (ML20339A221): *"The
+    // Intermediate Range Neutron Flux, P-6 permissive is actuated when any NIS intermediate
+    // range channel goes approximately one decade (1 E-10 amps) above the minimum channel
+    // reading."* 5E-11 A is the SR re-energize / SR trip enable point in the same passage,
+    // which is a different thing, and is what the engine had adopted. PWR2's copy lives in
+    // `pwr2_protection` (P6.amps); this row is NOT read from it, deliberately — a pwr-only
+    // harness never loads pwr2, and reaching across would be the cross-plant coupling HR3
+    // forbids. Two plants, one source, cited at both.
+    //
+    // ⚠ THIS ROW AND THE TWO INTERLOCKS BELOW ARE DEAD FOR PWR2, MEASURED (#642). PWR2's
+    // `getProtectionConfig` hands the kernel `actuations: []` and `interlocks: []`, so the
+    // control layer sees ZERO rows blocking `set_sr_detector` on that plant. Injected on the
+    // full stack at six intermediate-range currents spanning 1.6e-11 -> 1.15e-10 A: mutating
+    // this setpoint to 1.0e-3 (seven decades) changed nothing at all. The same mutation on the
+    // retired engine flips `set_sr_detector {on:false}` from accepted to "blocked" — which is
+    // what says the probe can see a live block, and that these rows are this plant's only.
+    // PWR2 REFUSES the command by name (no operator lever, #598 item 7), so there is nothing
+    // there to wire them to.
+    { instrument: 'intermediate_range', direction: 'low', setpoint: P6_AMPS,
       action: 'set_sr_detector', params: { on: true } },
     // Letdown isolation on LOW pressurizer level (~17 %, real Westinghouse
     // interlock). Letdown is a bleed OUT of the RCS; if it keeps running while
@@ -515,6 +563,27 @@
     // admin startup-rate limit the checklist teaches, and lands one step below
     // the 1.5 DPM rod-withdrawal block — caution first, then the physical stop.
     { id: 'sur_high',          instrument: 'startup_rate',     direction: 'high',    setpoint: 1.0,   priority: 'caution',  panel: 'A', category: 'reactivity', label_learning: 'Startup Rate High',               label_industry: 'SUR HI' },
+    // THE ALARM IS SOURCED; THE NUMBER IS NOT [UNVERIFIED] (#661, evidence pass 2026-09-08).
+    // The ALARM's existence is real and prototypical — Ginna UFSAR ch7 (ML20339A027): the source
+    // range channels "provide high flux level reactor trip AND ALARM signals"; UFSAR ch15
+    // (ML20339A101) §15.4.4.3.1.2 lists "High flux at shutdown alarm" as one of three source-range
+    // indications in Modes 3-6; and the startup procedure ML11223A342 has "Block the alarm for
+    // source range high flux level at shutdown at both source range drawers" (an operator action
+    // at the drawers — NOT modelled here, and this row is therefore unblockable).
+    //
+    // ITS SETPOINT IS NOT SOURCED. `find_source` over 39 documents in 3 lanes returns ZERO hits
+    // for 5e4 / 50,000 cps; no source in the corpus publishes a source-range ALARM setpoint at
+    // all. What the corpus does publish is the TRIP at 1e5 cps (Ginna UFSAR ch7), so 5.0e4 is
+    // almost certainly "half the retired plant's trip" — and that trip is itself declared
+    // UNSOURCED and NOT MODELLED on PWR2 (`Manuals/09` §2.0; #661 measured why: 1e5 cps is
+    // 1.5 decades ABOVE the P-6 permissive that blocks it, so it could never fire).
+    //
+    // NOT RETUNED, deliberately. Moving it would need a derivation on THIS plant's flux scale,
+    // which is the A3 option the owner declined at #661; and the row is doing honest work where
+    // it stands — measured on the runaway withdrawal from hot zero power, it annunciates at
+    // 396.8 s, 30 s after SUR HI and 46 s before the intermediate-range rod stop, which is the
+    // "the handoff is about to happen by itself" cue `Manuals/06` PWR-A09 teaches. The number is
+    // marked, not defended: re-derive it if a source-range alarm setpoint ever turns up.
     { id: 'sr_high_flux',      instrument: 'source_range',     direction: 'high',    setpoint: 5.0e4, priority: 'caution',  panel: 'A', category: 'reactivity', label_learning: 'Source Range Count Rate High',    label_industry: 'SR HI FLUX' },
     { id: 'subcooling_low',    instrument: 'subcooling_margin', direction: 'low',    setpoint: 11.1,  priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Low Subcooling Margin',           label_industry: 'LO SUBCOOL' },
     { id: 'subcooling_lost',   instrument: 'subcooling_margin', direction: 'low',    setpoint: 0.0,   priority: 'critical', panel: 'A', category: 'coolant', label_learning: 'Subcooling Lost — Coolant Boiling', label_industry: 'SUBCOOL LOST' },
@@ -580,6 +649,56 @@
     // which is in the same fine steps.
     { id: 'rod_limit_approach', instrument: 'rod_limit_margin', direction: 'low',     setpoint: 40,    priority: 'warning',  panel: 'A', category: 'reactivity', label_learning: 'Control Rods — Approaching Insertion Limit', label_industry: 'ROD LIMIT LO' },
     { id: 'rod_limit',         instrument: 'rod_at_limit',     direction: 'is_true', setpoint: null,  priority: 'warning',  panel: 'A', category: 'reactivity', label_learning: 'Control Rods — Insertion Limit',  label_industry: 'ROD LIMIT LO-LO' },
+    // ---- the OTHER end of the same bank (#752) ---------------------------------------
+    // *(OWNER, 2026-09-14: "I think we should still have a rod at max travel alarm.")* —
+    // given AFTER the refused-press flash shipped (fc7fae62), so it is in addition to it.
+    //
+    // WHAT A REAL BOARD DOES, AND WHY WE DO SOMETHING ELSE. A DECLARED DEPARTURE
+    // (DESIGN_CRITERIA Q2/Q3, DESIGN_COMPANION §8). An evidence pass over all three lanes'
+    // corpora (`tools/find_source.js`) found NOTHING annunciating the high end of rod travel,
+    // and the reason is structural rather than an omission: on a real plant fully-withdrawn is
+    // a normal DESIGNED position. Ginna Tech Spec Bases (ML20339A221): *"The shutdown bank is
+    // maintained either in the fully inserted or fully withdrawn position"*, and, of the
+    // overlap pattern, *"Control bank A stops at the fully withdrawn position, and control
+    // bank B continues to move out."* A bank on its top stop there means the NEXT bank has the
+    // reactivity — nothing is lost, so nothing annunciates. The alarmed limits are the
+    // INSERTION limits, which is what the pair above is: WTSM 8.4 (ML11223A256), *"Rod Limit
+    // Low setpoint = RIL + 10 steps"*, *"Rod Limit Low-Low setpoint = RIL"*.
+    //
+    // THIS PLANT HAS ONE CONTROL BANK AND NO OVERLAP. So "bank at the top" means here what it
+    // never means on a real board: there is no rod authority left at all, and the only lever
+    // remaining is boron. MEASURED full stack, 2026-09-14 (#752): trimming rods as xenon builds
+    // from the power-ascension leg's own end state, the bank pins at 627/627 at +24.37 h with
+    // xenon only 84.8 % built, and the plant then makes full power 24.08–24.85 °F below its
+    // Tavg programme PERMANENTLY (two independent routes, 0.8 °F apart). Over sixty plant-hours
+    // the annunciator panel produced THREE events, the last at +9.27 h — an alarm CLEARING,
+    // 15.1 hours before the player lost rod authority. Six instrumented hours sitting on the
+    // stop: 358 WITHDRAW presses, 0 refused, 0 `rod_stop` ticks, 0 alarm transitions.
+    // So the educational value is Q3-operational: the player can reach it on the board, and
+    // something visible changes when they do. The annunciator ITSELF is UNVERIFIED — no source
+    // is claimed for it, only for the practice it departs from.
+    //
+    // ONE ROW, NO APPROACH BAND, and the arithmetic is the reason — do NOT "fix" the asymmetry
+    // with the low side later. The settled full-power point is 606 of 627 (#734, re-measured
+    // here off the booted IC), i.e. 21 steps from the top, while the low side's approach band
+    // is 40 fine steps. A band of that order would stand permanently in normal full-power
+    // operation, and 606 itself drifts with xenon, so there is no quiet place to put one.
+    //
+    // CONTROL BANK ONLY, AND THAT IS A RULING, NOT AN OVERSIGHT — do not "fix" the asymmetry
+    // by adding the shutdown bank later *(OWNER RULING, 2026-09-14: "Do not alarm or color
+    // code the shutdown bank since it's used differently")*. It is used differently in the
+    // sourced sense: Ginna Tech Spec Bases (ML20339A221) — the shutdown bank *"is maintained
+    // either in the fully inserted or fully withdrawn position"* — so for THAT bank sitting on
+    // a stop is the normal condition, and a row there would annunciate correct operation and
+    // teach the player the opposite of the truth. Measured here before the ruling arrived and
+    // agreeing with it: the shutdown bank reads 627/627 in four of the six initial conditions
+    // (hot_full_power, 50_percent, low_power, hot_zero_power). See `ex.rod_at_max_travel` in
+    // pwr2_shell.js.
+    //
+    // `warning`, not `critical`: the plant is not in danger and nothing is degrading. The
+    // operator is out of one lever, which is a "go and do something about it" condition —
+    // the same class as the insertion-limit rows it sits beside.
+    { id: 'rod_max_travel',    instrument: 'rod_at_max_travel', direction: 'is_true', setpoint: null, priority: 'warning',  panel: 'A', category: 'reactivity', label_learning: 'Control Rods — Fully Withdrawn, No Rod Authority Left', label_industry: 'ROD BANK FULL OUT' },
     // ---- the small-leak cue pair (#262, owner ruling 2026-07-30) ----------------------
     // A leak inside CVCS make-up authority is HELD, and that is the problem: the plant
     // quietly loses inventory with charging near maximum and, before these two, nothing
@@ -616,6 +735,46 @@
     // make-up authority; both together mean make-up has lost it. Both `caution` — find-it-and-
     // fix-it conditions, not casualties. [tune]
     { id: 'pzr_level_dev_low', instrument: 'pzr_level_dev',    direction: 'low',     setpoint: -10.0, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Below Program — make-up is not holding', label_industry: 'PZR LVL DEV LO' },
+    // ---- the HIGH half of that pair (#706, 2026-09-11) --------------------------------
+    // THE DEFECT WAS A SHAPE, NOT A MISSING ALARM. `pzr_level_high` twenty lines up IS live on
+    // PWR2 — proved by injection, not by reading: forcing the `pzr_level` channel to 76 %
+    // lights PZR LVL HI `active_unacknowledged`, and 74 % leaves it clear. (#706's body says
+    // that row "belongs to the retired PWR1 alarm table and is not a consumer of anything
+    // pwr2_true_state publishes". It is wrong, and it is wrong in the direction this repo keeps
+    // getting wrong — an inherited claim, repeated in a fresh voice. Grep for the EFFECT.)
+    // It is FIXED at an absolute 75 %, and that is the whole problem: #706 measured the shipped
+    // Mode 5 → Mode 3 heatup running level **+20.4 points above a 25.00 % program (peak 45.37 %)
+    // for 11.6 of the leg's 13.4 plant-hours** — 30 points clear of 75 %, so nothing annunciated
+    // and the player got no cue of any kind. Exactly the collision #500 fixed on the LOW side:
+    // a fixed setpoint on a PROGRAMMED level is right in at most one place.
+    //
+    // WHY THE 75 % ROW IS NOT CONVERTED THE WAY `pzr_level_low` WAS. It cannot be. `pzr_hi_level`
+    // (97 %, scram — the going-solid backstop, PI-8) reads the ABSOLUTE `pzr_level` channel, and
+    // the ladder rule in layers/test_runner.js requires every instrument-based trip to have a
+    // less-extreme alarm on the SAME instrument; the trip's own comment says so in words ("the
+    // 75 % alarm warns first"). A deviation setpoint has no magnitude to compare against an
+    // absolute trip — which is the run_m7 red #500 had to answer on the low side. So the high
+    // side ends up with the same TWO-CHANNEL ladder the low side already has: an absolute rung
+    // that guards the absolute trip, and a deviation rung that says level has left its program.
+    //
+    // +10.0 POINTS, and the number is measured. Full stack (RD.SimulationService + ControlLayer),
+    // svc.tick() driven, ACCEL=10 / 1.0 s, seed 7 — the worst LEGITIMATE upward deviation:
+    //     every shipped checklist leg that is not the fault:  pwr_startup +2.46, pwr_lower_power
+    //       +4.16, pwr_raise_power +7.53 (momentary — 0.0 % of the leg above +8)
+    //     steady state, all four free-play initial conditions, 2 h each:  +1.07 .. +1.17
+    //     100 -> 90 -> 100 MWe load change:  +5.98 / +2.45
+    //     +-15 ppm boration and dilution at power, 2 h:  +1.62 / +1.30
+    // — against the FAULT: pwr_heatup +21.34 (this tree; #706 measured +20.37 on its own),
+    // pwr_cooldown +43.07, pwr_shutdown +21.19, and the TMI-2 leg +75.00 (the level deception,
+    // pegged at 100 % against a 25 % program). The separation is 2.8x between the worst honest
+    // case and the nearest fault, and NOTHING sits in between.
+    //
+    // It is also the plant's own next rung: `pwr2_pressurizer` LEVEL.backup_above_program_pct
+    // is 5 — at +5 the BACKUP HEATERS come on by themselves, an action with no annunciator. So
+    // +5 the plant acts, +10 it tells you, 75 % absolute it tells you again, 97 % it trips. And
+    // it is the mirror of `pzr_level_dev_low` above: one number, ten points, either way, which
+    // is one thing for the player to learn rather than two (DESIGN_CRITERIA Q4).
+    { id: 'pzr_level_dev_high', instrument: 'pzr_level_dev',   direction: 'high',    setpoint: 10.0, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Above Program — letdown is not holding', label_industry: 'PZR LVL DEV HI' },
     { id: 'charging_high',     instrument: 'charging_flow',    direction: 'high',    setpoint: 8.0e-5, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Charging Flow High — make-up is working hard',            label_industry: 'CHG FLOW HI' },   // #408 real currency: 36 gpm, nominal letdown 30 + a sev-0.2 seal leak — keeps the documented "from about severity 0.2 up" cue; was 0.036, unreachable once max charging became 1.333e-4
   ];
   var PWR_ALARMS_B = [
@@ -981,14 +1140,15 @@
       message_learning: 'Rod withdrawal blocked — the reactor is already speeding up too fast (startup rate high). Let the rate settle below 0.8 DPM, then continue. You can always insert.',
       message_industry: 'ROD WITHDRAWAL BLOCK: SUR ≥ 1.5 DPM. Withdrawal inhibited until SUR < 0.8 DPM. Insertion available.' },
     // P-6 pair on the source-range detector switch (blocks_when picks the
-    // guarded form of set_sr_detector):
+    // guarded form of set_sr_detector). SOURCE + the PWR2 dark-wire measurement: see the
+    // actuation row above, which carries the same setpoint and the same #642 note.
     // (a) can't DE-energize the SR until the IR is on scale — you'd go blind.
-    { instrument: 'intermediate_range', direction: 'low', setpoint: 1.0e-10,
+    { instrument: 'intermediate_range', direction: 'low', setpoint: P6_AMPS,
       blocks: ['set_sr_detector'], blocks_when: { field: 'on', equals: false },
       message_learning: 'Source-range detector stays on — the intermediate range is not reading yet (below P-6). Switching it off now would leave you blind at low power.',
-      message_industry: 'SR DE-ENERGIZE BLOCKED: IR < 1e-10 A (P-6 not satisfied).' },
+      message_industry: 'SR DE-ENERGIZE BLOCKED: IR < ' + P6_TXT + ' A (P-6 not satisfied).' },
     // (b) can't RE-energize the SR at high flux — it would damage the counter.
-    { instrument: 'intermediate_range', direction: 'high', setpoint: 1.0e-6, clears_below: 1.0e-10,
+    { instrument: 'intermediate_range', direction: 'high', setpoint: 1.0e-6, clears_below: P6_AMPS,
       blocks: ['set_sr_detector'], blocks_when: { field: 'on', equals: true },
       message_learning: 'Source-range detector stays off — the flux is far above its range (past P-6); energizing the counter here would burn it out.',
       message_industry: 'SR ENERGIZE BLOCKED: IR ≥ 1e-6 A — flux above SR detector limits.' },
@@ -1539,6 +1699,17 @@
       // check into the plant must not quietly turn that into a throw.
       pausedWhen: function (s) { return !!(s.control_state && s.control_state.charging_pump_running === false); },
       pausedNote: 'idle — charging pump OFF',
+      /* THE TOTALIZER COUNTS WHAT THE PLANT DELIVERS (#654, owner-ruled 2026-09-07). The
+       * blender clamps at pure water and at the acid tank, so the delivered rate is below
+       * `rate` whenever the charging lineup is small — measured at hot zero power, -0.036
+       * against the -0.050 commanded — and books that count the command land the dose short
+       * and then re-anchor the target to the shortfall. The plant publishes its own number
+       * (control_state.boron_rate_delivered, pwr2 only); absent, the kernel falls back to the
+       * command, which is the retired engine's flat-rate world and stays byte-identical. */
+      deliveredRate: function (s) {
+        var v = s.control_state ? s.control_state.boron_rate_delivered : null;
+        return (v != null && isFinite(v)) ? v : null;
+      },
       // rate: 0.05 ppm/s. The old 0.5 was a firehose: ~5 pcm/s spiked power ~10 % per
       // 10 ppm asked (TUNING_LOG S9). [tune]
       //
@@ -1861,6 +2032,26 @@
   var PWR_PROTECTION = {
     trips: PWR_TRIPS,
     trip_block_permissive: PWR_TRIP_BLOCK_PERMISSIVE,
+    // CONFIRMATION TIME on the trip-block revoke, sim seconds (#752, OWNER RULING 2026-09-14:
+    // "Confirmation time (Recommended)"). The kernel's auto-reinstate reads an INSTRUMENT (HR1)
+    // and used to act on ONE sample, so a stray reading below the permissive removed a standing
+    // block. [derived], not sourced: `node tools/find_source.js` finds no confirmation or
+    // time-delay figure for P-10 anywhere in the corpus — the Bases give the real plant's noise
+    // immunity as three-out-of-four COINCIDENCE, which one lumped flux signal cannot carry.
+    //
+    // MEASURED on THIS plant's own power_range channel (sigma 0.2 x power/25, so 0.08 % at the
+    // 10 % permissive; noise_tau 0, i.e. white; DT 0.1 s = PROTECTION_DT, 24 plant-hours a row):
+    //   true power   first reading below 10.0 %   longest CONTINUOUS sub-10.0 run in 24 h
+    //     10.02 %            0.30 s                            1.50 s
+    //     10.05 %            0.50 s                            0.90 s
+    //     10.10 %            5.00 s                            0.50 s
+    //     10.20 %           26.20 s                            0.20 s
+    // 2.0 s beats the worst of those. It is the same number PWR2's engine-side P-10 carries
+    // (engines/pwr2/pwr2_protection.js P10.confirm_s), where it was chosen on that plant's own
+    // measurements — deliberately one figure for one law, not two that drift apart the way the
+    // 8 %/10 % setpoint pair above already did. A plant that declares NO confirm time keeps the
+    // one-sample behaviour exactly, which is why RBMK and BWR do not move.
+    trip_block_revoke_confirm_s: 2.0,
     rps_reset_permissive: PWR_RPS_RESET_PERMISSIVE,
     instrument_labels: PWR_INSTRUMENT_LABELS,
     actuations: PWR_ACTUATIONS,

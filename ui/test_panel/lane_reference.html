@@ -34,6 +34,10 @@
     border: 1px solid var(--border, #232a31);
     border-radius: 2px;              /* <= 2px */
     overflow: hidden;
+    /* Pixel-exact fixed list — nothing here is meant to scroll (#723, sibling of #717);
+       `overflow: hidden` alone still made this a live, unclamped scrollport (measured 7px,
+       the .form-num fix above accounts for it). `overflow: clip` closes it the same way. */
+    overflow: clip;
   }
   .lane {
     position: relative;
@@ -88,6 +92,12 @@
   .lane.form-num { height: 18px; }
   .lane.form-num .lane-plot { display: flex; align-items: center; }
   .lane.form-num .lane-name { position: static; }
+  /* #723: the shared .lane-val stacks value over unit in a column, which needs ~22.5px —
+     more than this row's own 18px. That silently overflowed the row by the few px that made
+     #laneStack a live scrollport (measured 7px stack-wide). A numeric row's whole point is to
+     be the compact form, so put value and unit on ONE line instead of inflating the row past
+     its documented size. */
+  .lane.form-num .lane-val { flex-direction: row; align-items: baseline; gap: 3px; }
 
   /* ---- shared time axis, drawn ONCE for the stack --------------------- */
   .lane-axis {

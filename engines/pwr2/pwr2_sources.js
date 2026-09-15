@@ -115,10 +115,54 @@
   }
 
   /* THE DESIGN POINT, one copy (#509 item 3). tavg/P are the plant's design condition
-   * (580 degF / 2235 psia); dt_c is the full-power loop split (606 - 550 degF = 56 degF),
-   * [derived] — pwr2_engine's TREF/DT0_C/P0 consume THIS object, so the pair cannot drift
-   * into two copies (the PROTECTION_DT trap class). */
-  var DESIGN = { tavg_c: 304.5, dt_c: 31.1, P_mpa: 15.41 };
+   * (580 degF / 2235 psia); dt_c is the full-power loop split, [derived] — pwr2_engine's
+   * TREF/DT0_C/P0 consume THIS object, so the pair cannot drift into two copies (the
+   * PROTECTION_DT trap class).
+   *
+   * ⚠ dt_c IS THE PLANT'S OWN SETTLED SPLIT AND IT IS RE-DERIVED WHENEVER THE PLANT MOVES.
+   * It used to read 31.1 degC, annotated "the full-power loop split (606 - 550 degF =
+   * 56 degF)" — a claim with three things wrong with it, all measured at #650:
+   *
+   *   1. 606/550 degF IS SOURCED TO NOTHING. `node tools/find_source.js '606'` returns six
+   *      hits across all three lanes and not one is a temperature (two RHR throttle valves,
+   *      decay-heat coefficient digits, an elevation). Ginna, this plant's anchor, is not it
+   *      either: UFSAR ch15 Table 15.0-1 (ML20339A101) puts its rated legs at 601.0/528.3
+   *      degF low-Tavg and 611.8/540.2 degF high-Tavg — a rated split of 72.7 / 71.6 degF,
+   *      not 56. (Both columns reproduce their own stated vessel average to 0.05 degF, which
+   *      is how the OCR'd table's label offset was resolved.)
+   *   2. IT DID NOT EVEN REPRODUCE ITS OWN CONSTANT. tavg_c +- 31.1/2 is 608.1/552.1 degF.
+   *      The endpoints in the comment described neither the constant nor the plant.
+   *   3. IT CONTRADICTED THE FLOW IT SHARES A DESIGN POINT WITH. `PUMP.mdot_rated` = 1630
+   *      kg/s is [derived] from the energy balance at "300 MWt, 321/288 degC" (D1 §1) — a
+   *      33 degC / 59.4 degF split. Carrying 300 MWt at 1630 kg/s through tavg_c/P_mpa needs
+   *      dh = 184.05 kJ/kg, i.e. dt = 32.993 degC (59.39 degF). At 31.1 the construction
+   *      carried only 282.5 MWt: the design point was 5.75 % short of its own nameplate.
+   *
+   * Provenance of the 31.1: typed 2026-08-19 (15dfb48d) as a one-off measurement of the
+   * plant as it then stood, and made a CONSTRUCTION input two days later by #502's
+   * `designHmap`. That closed a loop on a stale number, and #573/#574/#583/#586/#647 have
+   * moved the plant underneath it since. Measured on this tree, it left the settled plant at
+   * (Thot-Tcold)/dt_c = **1.0500** — every OTdT and OPdT comparison normalises against
+   * dt_c, so the plant stood 5.0 % inside both trip bands with nothing wrong with it.
+   *
+   * WHY THE SETTLED SPLIT AND NOT THE 32.993 DESIGN INTENT. Both consumers want the settled
+   * value and the source agrees:
+   *   - the trips: WTSM 12.2 (ML11223A301) and NUREG-1431 Rev 4 (ML12100A222) both define
+   *     the normalizer as "ΔT0 = indicated ΔT at rated thermal power" — what the plant
+   *     READS at rated, not what its design point computes. That is why K1 is a "manually
+   *     adjusted preset bias" on the real machine.
+   *   - `designHmap`: its whole job since #502 is to open the IC ALREADY SETTLED.
+   * The 0.86 % between 32.993 and this value is two real terms, both measured: the core
+   * carries 99.56 % of 300 MWt because the RCPs make up the rest (1.38 MWt at the rcp node),
+   * and the settled flow runs 1637.7 kg/s against `mdot_rated` 1630 (+0.48 %).
+   *
+   * IT IS A FIXED POINT, converged by measurement (dt_c feeds `designHmap` AND `rhoRated`,
+   * so a candidate has to be booted and ridden): 32.7100 in gives 32.7101 settled, frac
+   * 1.00000. **If you move the plant's heat balance, flow or Layer 0 properties, this
+   * number is stale — re-derive it.** `run_pwr2_protection`'s RATED-POINT IDENTITY check is
+   * what tells you: it asserts the settled hot-full-power plant reads delta_t_frac within
+   * 0.5 % of 1.000, which is the check whose absence let a 5 % offset ship. */
+  var DESIGN = { tavg_c: 304.5, dt_c: 32.71, P_mpa: 15.41 };
 
   /* Pump head, affinity-scaled from the rated point. H ~ w^2 at fixed flow coefficient. */
   /* THE RATED PUMP-SUCTION DENSITY, resolved once from the design condition rather than

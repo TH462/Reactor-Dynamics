@@ -75,24 +75,21 @@
 
 <section class="hero">
   <h1>Run a nuclear power plant<br>from your browser.</h1>
-  <p class="sub" data-flag="campaign"
-     data-flag-off="Real reactor physics — a whole plant, from cold shutdown to full power. Nothing to install: it all runs locally in your browser.">Real
-  reactor physics — a whole plant, from cold shutdown to full power. Guided
-  training when you&rsquo;re ready. Nothing to install — it all runs locally in
-  your browser.</p>
-  <!-- WHO IT IS FOR. Say it before the CTA, in plain words, and say it about the
-       reader rather than about the product. Everything else near the top of this
-       page is written in plant vocabulary — boration, hot standby, xenon — which
-       tells a curious non-specialist that the site is not addressed to them.
-       The tour and the operator's manual named here are UNGATED (ui/shell.html
-       helpBtn / helpTourBtn, no data-flag), so this promise holds on the public
-       channel too — do not add a claim here that rests on a `preview` feature. -->
-  <p class="hero-who"><strong>Who it&rsquo;s for:</strong> anyone curious about
-  how a nuclear plant actually behaves &mdash; <strong>no nuclear background
-  required</strong>. The control room opens with a quick tour and a full
-  operator&rsquo;s manual, and you can break the plant on purpose from the first
-  minute. If you do have the background &mdash; Navy nuke, NE student, plant
-  staff &mdash; the physics is modelled to reward it.</p>
+  <!-- HERO BLURB. Keyed to `walkthroughs`, which is stage:'public' in site/flags.js
+       (#722, 2026-09-12), so what it promises is what the released site actually offers.
+       It keyed on `campaign` until 2026-09-13 (#742) — that flag is stage:'preview', so
+       the public channel read the data-flag-off alternate instead. Any claim added here
+       must rest on a 'public' flag; check site/flags.js before you write one.
+       The "Who it's for" block that stood below this was deleted with #742 (owner:
+       "Its too wordy and i doubt anyone reads it").
+       THE PRIMARY SENTENCE IS THE OWNER'S OWN WORDS, VERBATIM (2026-09-13) — do not
+       re-punctuate or "tighten" it. His version folds the old "Nothing to install — it
+       all runs locally in your browser" clause into "right in your browser"; that
+       sentence is dropped deliberately, not lost. The data-flag-off alternate is the
+       same shape with the walkthrough claim removed, because it is what the site shows
+       when that flag is off and it must not promise them. -->
+  <p class="sub" data-flag="walkthroughs"
+     data-flag-off="Real reactor physics, a whole plant you take from cold shutdown to full power and back right in your browser.">Real reactor physics, with guided walkthroughs that take you from cold shutdown to full power and back right in your browser.</p>
   <a class="cta" href="ui/shell.html?engine=pwr2">▶&nbsp; Enter the Control Room</a>
   <div class="alpha-note">🚧 Alpha · desktop or laptop only — not for phones or tablets yet</div>
   <!-- DEV-ONLY-START — build_site.js deletes this block from every published page.
@@ -122,8 +119,8 @@
       <h3>Plant operation</h3>
       <p>Run the board: rods, boron, pressurizer, feed, steam, turbine, and
       alarms. Learn the order of a startup and how to hold the plant online —
-      the <strong>what</strong> operators do. Free play and commercial-format
-      manuals are in the control room.</p>
+      the <strong>what</strong> operators do. Free play: every start condition,
+      every control live.</p>
     </div>
     <div class="feature">
       <h3>Plant dynamics</h3>
@@ -135,17 +132,20 @@
     <div class="feature">
       <h3>Casualties and recovery</h3>
       <p>Trips, stuck valves, pump trips, sensor failures, tube leaks, loss of
-      heat sink — inject them yourself or take them when they come. Same plant
-      for every session; easier runs are gentler scenarios, not a simpler
-      model.</p>
+      heat sink — inject them yourself and work the recovery. Same plant every
+      session; an easier run is a gentler situation, not a simpler model.</p>
     </div>
     <div class="feature">
-      <h3 data-flag="campaign" data-flag-off="Guided training — coming soon">Guided training</h3>
-      <p data-flag="campaign"
-         data-flag-off="An instructor that watches the board and gates progress through real procedures is in work. Free play and the manuals are open now — see the Roadmap.">An
-      instructor watches the board and gates progress through procedures —
-      startup, power maneuvers, casualty response — with the manuals open in
-      the room.</p>
+      <!-- The fourth card claimed "an instructor watches the board and gates progress
+           through procedures" until 2026-09-13 (#742). There is no instructor — owner:
+           "we dont have an instructor yet". The manual is the honest fourth thing: the
+           `manual` flag is stage:'public' and the control room's Manual button carries
+           no data-flag, so this holds on the released site. Do not name the walkthroughs
+           here; the hero blurb carries them (same directive). -->
+      <h3>Operator&rsquo;s manual</h3>
+      <p>A commercial-format manual set for this plant, open in the control
+      room: controls and indications, normal and emergency procedures, alarm
+      response, setpoints and limits, and a glossary.</p>
     </div>
   </div>
 </section>

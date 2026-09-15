@@ -50,8 +50,11 @@
  * (core_heat_pct barely moves in the first second of a startup that power_pct has already left
  * subcritical). What this does NOT attempt: `sr_counts_cps` and `ir_amps` need a count-rate /
  * current CALIBRATION this corpus does not give (an evidence pass found the sourced NIS TRIP
- * setpoints — Ginna's 5e-11 A P-6 permissive, a generic 1e5 cps source-range trip — but no
- * full-scale figure to turn a neutron population into an instrument reading). Building period/SUR
+ * setpoints — Ginna's P-6 permissive, 1.0e-10 A, `pwr2_protection`'s P6.amps; corrected from
+ * 5e-11 A at #642, and the "generic 1e5 cps source-range TRIP" this line used to name alongside
+ * it is not one either: 1e5 cps is where THIS plant DE-ENERGIZES the channel, and it has no
+ * source-range reactor trip at all — but no full-scale figure to turn a neutron population into
+ * an instrument reading). Building period/SUR
  * needs no such calibration; building count-rate or current from the same population would, and
  * stays declared-missing rather than invented.
  *

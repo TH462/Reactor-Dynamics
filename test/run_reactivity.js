@@ -29,6 +29,7 @@
  */
 'use strict';
 var path = require('path');
+var fs = require('fs');
 function load(p) { require(path.join(__dirname, '..', p)); }
 ['engines/load_mode.js', 'engines/pwr/pwr_config.js', 'layers/control/pwr_control.js',
  'engines/pwr/pwr_thermal.js', 'engines/pwr/pwr_pressurizer.js', 'engines/pwr/pwr_pressurizer2.js', 'engines/pwr/pwr_primary.js',
@@ -341,19 +342,97 @@ console.log('\n' + BOLD + 'the derivation behind pwr_startup\'s creep onto criti
     else if (CREEP === null && PLOTTED > 0) CREEP = s.cmd.steps;      // the first pull after the last plot
   });
 
-  var HZP2 = K2.HZP;
+  /* ⚠ THIS BLOCK EVALUATED THE PLANT AT A TEMPERATURE NO INITIAL CONDITION OCCUPIES, AND
+   * PUBLISHED THE ANSWER AS THE PLANT'S NUMBER (#749, 2026-09-14).
+   *
+   * It read `K2.HZP` — {975 ppm, 291.67 °C, 15.5 MPa}, the BEAVRS / Watts Bar U1 Cycle 1 HZP
+   * physics-test anchor the kinetics model is CALIBRATED against (OSTI 1991715). That is a
+   * benchmark, not an operating point. The shipped plant's `hot_zero_power` boots at
+   * 547.0 °F (286.11 °C) and 15.41 MPa — **10 °F colder and 0.09 MPa lower** — and dρ/dT here
+   * is −20.9 pcm/°C (−11.6 pcm/°F), so the whole approach came out 10 °F hot.
+   *
+   * SIX PUBLISHED FIGURES CAME FROM THIS LINE, and every one of them reproduces to four
+   * significant digits when you evaluate at 291.67 °C / 15.5 MPa (measured, both columns):
+   *
+   *                        at K2.HZP (what shipped)     at the plant (547 °F / 15.41 MPa)
+   *   ρ @ bank 0, 719 ppm       −1257.2  ("−1257")            −1136.2
+   *   ρ @ bank 0, 857 ppm       −2772.4  ("−2772")            −2706.6
+   *   critical, 719 ppm             223  ("223 steps")            207
+   *   critical, 857 ppm             400  ("400 steps")            392
+   *   ±750 pcm band             111/311  ("111–310")           88/297
+   *   differential, crit..+15      8.06  ("8.1 pcm / 1.24 ¢")   7.764  (1.19 ¢)
+   *
+   * That is where `Manuals/04`'s and `09 §7.5.1`'s numbers came from, and the walkthrough's
+   * "230" with them. It is HR10 in its purest form: the check was real, tight, and pointed at
+   * the wrong plant — the same sentence the ECC block above this one already carries about
+   * the 912-step bank, made twice in one file. The ECC block gets it right sixty lines up
+   * (`ECC_P_MPA`, a per-row temperature); only this block did not.
+   *
+   * THE FIX IS NOT A NEW CONSTANT. The temperature is taken from the hottest row of the
+   * §7.5 table this runner has just verified against the plant to 1 ppm — so it cannot drift
+   * without that check reddening first, and there is no second written-down copy of the
+   * no-load anchor to go stale (the PROTECTION_DT trap).
+   *
+   * 207, NOT 208, AND BOTH ARE THIS PLANT. Static at the table's 546.8 °F the crossing is at
+   * 207; measured full-stack the plant settles 0.14 °C above its boot T-avg and the crossing
+   * is at 208. One control-bank step is 0.66 °F of T-avg here, so a step of spread is the
+   * honest resolution of the number, not a disagreement.
+   *
+   * PROVEN BY INJECTION, both directions, one line. Put `HZP2 = K2.HZP` back and this runner
+   * prints, verbatim:
+   *
+   *   ✗ the approach is evaluated at the PLANT's no-load point ...   (557 °F / 15.5 MPa)
+   *   ✓ the plotted 1/CR bursts ... ending SUBCRITICAL               (leaving -88 pcm)
+   *   ✓ criticality lies past the last plotted burst, inside the creep (critical at 223)
+   *   ✓ the authored creep leaves a small positive excess             (24 pcm above critical)
+   *
+   * i.e. the anchor reproduces EXACTLY what shipped, including the 223, and the three ladder
+   * checks below only pass there. Take the anchor away and they red at 207 / +33 / +148. The
+   * composition of the failures changes; the 28/3 tally happens to be the same either way, so
+   * read the NAMES, not the count. */
+  if (!rows.length) { ck('the §7.5 table was parsed, so the startup block has a temperature', false, 'no rows'); return; }
+  var HZP2 = { temp_c: F2C(rows[rows.length - 1].Tf), P_mpa: ECC_P_MPA, srcTf: rows[rows.length - 1].Tf };
   function groups(st) {
     return [{ steps: R2.max_steps, max_steps: R2.max_steps, worth: R2.worth_shutdown },
             { steps: st,           max_steps: R2.max_steps, worth: R2.worth_control }];
   }
   function rhoAt(st) { return K2.reactivity(kin2, HZP2.temp_c, HZP2.temp_c, B, groups(st), HZP2.P_mpa) * 1e5; }
+  /* BOTH CLAUSES COMPARE AGAINST THE ANCHOR, not against themselves. The first draft of this
+   * check asserted `HZP2.P_mpa === ECC_P_MPA`, which is how the line two above ASSIGNS it — a
+   * tautology that could never fail, the `!range(x).max` shape. Proven by injection: restore
+   * `var HZP2 = K2.HZP` and both clauses go red. */
+  ck('the approach is evaluated at the PLANT\'s no-load point, not the BEAVRS benchmark anchor (#749)',
+     Math.abs(HZP2.temp_c - K2.HZP.temp_c) > 1 && Math.abs(HZP2.P_mpa - K2.HZP.P_mpa) > 0.01,
+     HZP2.srcTf + ' °F (' + HZP2.temp_c.toFixed(2) + ' °C) / ' + HZP2.P_mpa + ' MPa, from the §7.5 table\'s '
+       + 'hottest verified row — the anchor is ' + K2.HZP.temp_c + ' °C');
   var crit = null;
   for (var s = 0; s <= R2.max_steps && crit == null; s++) if (rhoAt(s) >= 0) crit = s;
 
   ck('the live procedure still dilutes to the 719 ppm estimated critical concentration',
      B === 719, B + ' ppm, read from the checklist\'s own boron command');
-  ck('the plotted 1/CR bursts are five and decreasing, ending SUBCRITICAL',
-     nBursts === 5 && rhoAt(PLOTTED) < 0,
+  /* ⚠ THESE THREE CHECKS WERE THE #749 TRACKED RED, AND #750 IS WHAT CLEARED THEM. They had
+   * been green only because the block above evaluated the plant 10 °F hot; at the plant's own
+   * no-load point the pre-#750 ladder was not what it was designed to be:
+   *
+   *   burst 4 lands at 202   ρ  −36.0   subcritical
+   *   burst 5 lands at 211   ρ  +33.3   SUPERCRITICAL — and it plotted a 1/M point there
+   *   creep  lands at 226    ρ +148.2 above critical, against this block's own `< 60` bound
+   *
+   * Criticality is at 207-208, INSIDE burst 5, so the last plotted point was taken on a
+   * supercritical core — the one thing the comment below says the ladder exists to avoid.
+   *
+   * THE FIX IS A REMOVAL, NOT A RE-BAND *(OWNER RULING, 2026-09-14, #750: "I think there's one
+   * too many 1/m plot steps. If we remove one it doesn't change the indicated criticality rod
+   * step and it will let us slowly approach criticality for a lower point which will help reduce
+   * overshoot.")*. Burst 5 is gone. The ladder is 94/63/31/14, the last point is plotted at 202
+   * (ρ −35 static, −37.6 measured full stack, seed 42) and the creep is 11 steps to 213, +46 pcm.
+   *
+   * FOUR, NOT FIVE, AND THE COUNT IS PART OF THE CLAIM. `nBursts` pins the ladder's SHAPE: a
+   * ladder that grew a sixth point again would satisfy "decreasing, ending subcritical" on any
+   * ladder short enough, and this check is the only thing that would notice. It moves when the
+   * authored ladder moves, and only then. */
+  ck('the plotted 1/CR bursts are four and decreasing, ending SUBCRITICAL',
+     nBursts === 4 && rhoAt(PLOTTED) < 0,
      nBursts + ' bursts summing ' + PLOTTED + ' steps, leaving ' + rhoAt(PLOTTED).toFixed(0) + ' pcm');
   // THE SAFETY HALF: going critical on a plotted burst would mean the player takes a 1/CR
   // point on a supercritical core, which is the one thing the whole ladder exists to avoid.
@@ -363,19 +442,29 @@ console.log('\n' + BOLD + 'the derivation behind pwr_startup\'s creep onto criti
   var dw = (rhoAt(crit + 15) - rhoAt(crit)) / 15;
   // ±0.05 (0.6 %) — a deterministic static computation with no noise in it. Kept tight for the
   // reason the retired version recorded: at ±0.15 a 3.2 % rod-worth retune slid straight through.
-  ck('differential bank worth through the critical band is 8.06 pcm/step', near(dw, 8.06, 0.05),
+  // 7.76, NOT 8.06 (#749): the rod worths did not move — the temperature this block reads did.
+  // 8.06 was the same window measured 10 °F hot at the BEAVRS anchor; see the note above.
+  ck('differential bank worth through the critical band is 7.76 pcm/step', near(dw, 7.76, 0.05),
      dw.toFixed(2) + ' pcm/step (' + (dw / (K2.DELAYED.beta * 1e5 / 100)).toFixed(2) + ' ¢)');
-  // AND THE CHECKLIST MUST SAY THE SAME NUMBER. This is the check that would have caught #618's
+  // AND THE CONTENT MUST SAY THE SAME NUMBER. This is the check that would have caught #618's
   // headline defect: four documents quoted this worth at three different values (6.5 / 8 / 9
   // pcm) and nothing compared any of them to the plant.
+  //
+  // ⚠ IT READ THE CHECKLIST'S `cautions` UNTIL 2026-09-14 (#755 item 2), AND THAT SUBJECT NO
+  // LONGER EXISTS: the owner's authored walkthrough source carries no caution block, so every
+  // pwr2 leg's `cautions` array was removed and this check's `quoted` went null. It is RE-POINTED,
+  // not deleted — deleting it would retire #618's target the first time the content moved, which
+  // is exactly the failure it exists to catch. Manuals/09 §"Control bank max steps" is the
+  // durable home for the figure (Manuals/04 and Manuals/12 quote it too, and `run_manual_units`
+  // already walks that chapter), so the plant-vs-content comparison survives the caution's
+  // removal and now guards the document a future agent is most likely to edit from recall.
   var quoted = null;
-  (proc.cautions || []).forEach(function (c) {
-    var m = /([\d.]+)\s*pcm/.exec(c);
-    if (m && quoted === null) quoted = parseFloat(m[1]);
-  });
-  ck('the checklist caution quotes the worth the plant actually has',
+  var mch = /critical band it is \*{0,2}([\d.]+) pcm\/step/.exec(
+    fs.readFileSync(path.join(__dirname, '..', 'Manuals', '09_SETPOINTS_LIMITS.md'), 'utf8'));
+  if (mch) quoted = parseFloat(mch[1]);
+  ck('Manuals/09 quotes the critical-band worth the plant actually has',
      quoted !== null && Math.abs(quoted - dw) <= 0.1,
-     'caution says ' + quoted + ' pcm/step, plant is ' + dw.toFixed(2));
+     'the manual says ' + quoted + ' pcm/step, plant is ' + dw.toFixed(2));
   // The creep must land PAST critical but not far past: all the excess it leaves has to come
   // back out by hand, because below the point of adding heat there is no temperature feedback.
   var excess = rhoAt(PLOTTED + CREEP) - rhoAt(crit);

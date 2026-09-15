@@ -316,22 +316,71 @@
     for (var i = 0; i < g.length; i++) if (g[i].id === id) return g[i];
     return null;
   }
+  /* THE BANK'S FULL SCALE IS THE ENGINE'S NUMBER, READ LIVE — never a literal on this side of
+   * the wire (#707, 2026-09-11). The trend chart plotted all three rod lanes to a full scale of
+   * 912 steps: the RETIRED engine's fine drive (`RD.PWR_CONFIG.rods.max_steps`). The SHIPPED
+   * plant's bank is 627 (`RD.pwr2.kinetics.RODS.max_steps` — derived from the sourced four-bank
+   * 131-step overlap program, Westinghouse Technology Systems Manual chapter 8.1 section
+   * 8.1.5.4, ADAMS ML11223A252). So a bank sitting ON ITS STOP drew at 69 % of its lane and
+   * "fully withdrawn" was a height the chart could not reach; the at-power design point (606 of
+   * 627, #704) drew at 66 %. Fifth instance tonight of the inherited-by-reference class the
+   * #534 sweep named (#557, #556, #561, #676).
+   *
+   * ⚠ 627 IS NOT TYPED HERE EITHER, AND THAT IS THE WHOLE POINT *(OWNER RULING, 2026-09-11:
+   * "All as recommended")* — hard-coding the new number is exactly how the old one got here.
+   * `pwr2_engine.js`'s own BANK() accessor is a function for this reason, and says so: "a
+   * consumer that captures it at load cannot follow a change."
+   *
+   * THE SOURCE IS THE SNAPSHOT'S OWN ROD GROUP. Both engines publish `max_steps` inside every
+   * `control_state.rod_groups[]` record (pwr2_shell.js via bankSteps(), pwr_engine.js's
+   * getControlState), so the scale travels WITH the data: a replayed recording is drawn on the
+   * scale of the engine that produced it rather than on whatever happens to be loaded now, and
+   * the lane needs no knowledge of which plant it is looking at. Two fallbacks for a render
+   * before the first snapshot, both still LIVE reads of a published table — the pwr2 kinetics
+   * object, then the retired engine's config. The last-ditch 912 is the only unpublished number
+   * here and it fires only when no plant module loaded at all; it is the larger of the two
+   * banks, and holdRange's clamp is careful never to let a declared range beat the data, so an
+   * over-wide lane wastes height where it cannot hide a trace. */
+  function bankScale(s, groupId) {
+    var g = rodGrp(s && s.control_state, groupId), n = g && g.max_steps;
+    /* typeof FIRST: isFinite(null) is TRUE, and a JSON round trip writes a dead channel out as
+     * null — the #555 trap, which lands a plausible zero on every guard that asks isFinite. */
+    if (typeof n === 'number' && isFinite(n) && n > 0) return n;
+    var k = RD && RD.pwr2 && RD.pwr2.kinetics && RD.pwr2.kinetics.RODS;
+    if (k && typeof k.max_steps === 'number' && k.max_steps > 0) return k.max_steps;
+    var c = RD && RD.PWR_CONFIG && RD.PWR_CONFIG.rods;
+    if (c && typeof c.max_steps === 'number' && c.max_steps > 0) return c.max_steps;
+    return 912;
+  }
+  /* A SERIES' DECLARED RANGE, RESOLVED. `range` is normally the authored [lo, hi] pair; a lane
+   * whose full scale is a PLANT PARAMETER authors a function instead, called per render against
+   * the live snapshot — the same layering as the vital-few gauges' `autorange` over a static
+   * min/max, and the same idiom as pzrGaugeCautionLo / pzrGaugeCautionHi / tavgGaugeCautionLo.
+   * EVERY consumer of `.range` goes through here: reading `ser.range[0]` directly is what makes
+   * a function form silently produce `undefined` instead of an error. (logSer is the one
+   * deliberate exception — see its own note.) */
+  function serRange(ser) {
+    var r = ser && ser.range;
+    return (typeof r === 'function') ? r(latest) : r;
+  }
 
   // ====================================================================== engines
   // Selector key → plant + design_version + default initial state, plus the
   // display copy for the Plant & Mission window's plant cards.
-  // `soon: true` = the physics engine is complete but the M8 board / M4 control
-  // surface is not extended to it yet, so the card is shown greyed and is not
-  // selectable. The ?engine= dev override still reaches them deliberately.
+  // `soon: true` = the physics engine is complete but the M8 board / M4 control surface is not
+  // extended to it yet. IT RENDERS NOWHERE SINCE #688 deleted the plant column (2026-09-09), and
+  // nor do `sub` / `desc`; they are kept as the plants' own data, not as a live flag. The
+  // ?engine= dev override still reaches those plants deliberately.
   //
   // WHICH CONSTRUCTORS ACTUALLY LOADED — measured, never declared (2026-08-26). A published
   // build carries PWR2 only: site/build_site.js deletes the retired engine's <script> tags
   // from ui/shell.html on the `public` channel, and tools/make_portable.js deletes them from
   // the offline download unconditionally. So this file cannot hold a list of what is
-  // available; it has to LOOK. Every consumer — the boot override, the fallback and the plant
-  // column — reads this one probe, which is what keeps the menu from offering a card whose
-  // constructor is not in the page. Same shape as #514's greyed RBMK/BWR cards, except
-  // derived rather than written down, because for the PWR the answer differs per build.
+  // available; it has to LOOK. Both remaining consumers — the boot override and the fallback —
+  // read this one probe. The THIRD one, the plant column that kept the menu from offering a card
+  // whose constructor is not in the page, went at #688 with the column itself; there is no menu
+  // left to offer a missing plant, so the probe's job is now purely the boot decision. Derived
+  // rather than written down, because for the PWR the answer differs per build.
   // Deliberately a function, not a snapshot: it is called after all <script>s have run.
   function ctorPresent(key) {
     switch (key) {
@@ -348,8 +397,9 @@
     // preset")* — there is somewhere to go in both directions from it. `ui.initState` above
     // carries the same value for the first render.
     // THE RETIRED ENGINE (2026-08-26). PWR2 replaced it *(OWNER RULING, 2026-08-26: "Flip
-    // now, track the gaps")*, and a published build does not contain it at all — so this
-    // card only ever appears on a dev or preview build, where ctorPresent('pwr') is true.
+    // now, track the gaps")*, and a published build does not contain it at all. It has had no
+    // CARD anywhere since #688 deleted the plant column; it is reached only by ?engine=pwr on a
+    // dev or preview build, where ctorPresent('pwr') is true.
     // It is kept reachable, not deleted, for two live reasons: it is the A/B reference
     // test/measure_pwr2_ab.js diffs against, and it is the only engine the campaign, the
     // scenarios and the walkthroughs are authored for, so it is where that content is
@@ -459,6 +509,13 @@
   // whole reason a startup is read on a log meter in the first place. Storing log10 makes one
   // decade one division — the shape an operator is trained to read — and `fmt` puts the real
   // number back on the chip, so nothing on screen is in log units the label does not admit.
+  //
+  // ⚠ A LOG SERIES' `range` MUST BE A STATIC ARRAY, not the live function form serRange()
+  // resolves (#707). `o.range[0]` is the FLOOR a non-positive count is pinned to and it is read
+  // once per sample inside the bucketing loop — resolving a function there would allocate per
+  // sample in the hot path for a scale (decades of a fixed detector span) that is not a plant
+  // parameter and cannot move. Nothing here needs it; the note exists so the next author knows
+  // this exception was measured rather than missed.
   function logSer(o) {
     return { id: o.id, grp: o.grp, label: o.label, c: o.c, range: o.range,
              instr: o.ins, hint: o.hint, detail: o.detail,
@@ -481,7 +538,10 @@
        * unlabelled pair were not in a mode at all. MEASURED, not assumed — the engine
        * reports plant_mode 1 for both at 100.0 % and 50.0 % power (Mode 1 is At Power,
        * i.e. above the low-power threshold, which is why two different powers share it). */
-      initStates: [['hot_full_power', 'Hot Full Power (Mode 1)'], ['50_percent', '50 % Power (Mode 1)'], ['hot_zero_power', 'Hot Standby (Mode 3)'], ['cold_shutdown', 'Cold Shutdown (Mode 5)']],
+      /* `low_power` — the state the startup walkthrough hands over (bank 227/627, ~10 %) and the
+       * one the power ascension is authored from (OWNER, 2026-09-08, #660 item 22: "Add an at
+       * power – power ascension starting condition."). */
+      initStates: [['hot_full_power', 'Hot Full Power (Mode 1)'], ['50_percent', '50 % Power (Mode 1)'], ['low_power', 'At Power — power ascension (Mode 1)'], ['hot_zero_power', 'Hot Standby (Mode 3)'], ['cold_shutdown', 'Cold Shutdown (Mode 5)']],
       /* THE DEFAULT SET TEACHES A COUPLING (#440, spec §8). It was Power / Tavg / Pressure /
        * SG Level — four independent state variables that demonstrate nothing between them
        * and duplicate the vital gauge row above the board.
@@ -501,18 +561,28 @@
       gauges: [
         { id: 'power',   label: 'Reactor Power', lead: true, instr: 'power_range', raw: function (s) { return s.instruments.power_range; }, units: '%', min: 0, max: 120, caution: 108, danger: 118, dp: 1 },
         { id: 'press',   label: 'Primary Pressure', instr: 'primary_pressure', raw: function (s) { return s.instruments.primary_pressure; }, dim: 'pressure', min: 0, max: 20.7, caution: 16.2, danger: 16.44, dp: 0 },
-        { id: 'tavg',    label: 'Avg Coolant Temp (Tavg)', instr: 'tavg', raw: function (s) { return s.instruments.tavg; }, dim: 'temp', min: 250, max: 343, caution: 312, danger: 335, dp: 0,
+        /* caution_lo 278 (°C, the LO TAVG / P-12 annunciator's own absolute setpoint) is the
+         * FALLBACK, not the edge — see tavgGaugeCautionLo (#703): on a plant publishing a
+         * sliding Tavg program the caution follows it, program - 20 °F, because a plant running
+         * cold at power otherwise had no vital-few cue at all until the reactor tripped. */
+        { id: 'tavg',    label: 'Avg Coolant Temp (Tavg)', instr: 'tavg', raw: function (s) { return s.instruments.tavg; }, dim: 'temp', min: 250, max: 343, caution: 312, danger: 335, caution_lo: 278, dp: 0,
           // Auto-ranging: the operating band [250-343] when hot; a wide LOW-RANGE scale
           // [30-260] when cold (Mode 5 / heatup-cooldown) so one gauge covers both. 8°C
           // hysteresis around the operating minimum avoids flicker while crossing.
-          autorange: function (raw) {
+          autorange: function (raw, s) {
             if (this._wide == null) this._wide = raw < 246;
             this._wide = raw < (this._wide ? 254 : 246);
             return this._wide
               ? { min: 30, max: 260, caution: null, danger: null, caution_lo: null, danger_lo: null, label: 'Avg Coolant Temp (Tavg) · LOW RANGE' }
-              : { min: 250, max: 343, caution: 312, danger: 335, label: 'Avg Coolant Temp (Tavg)' };
+              : { min: 250, max: 343, caution: 312, danger: 335, caution_lo: tavgGaugeCautionLo(s, 278), label: 'Avg Coolant Temp (Tavg)' };
           } },
-        { id: 'pzr',     label: 'Pressurizer Level (PZR)', instr: 'pzr_level', raw: function (s) { return s.instruments.pzr_level; }, units: '%', min: 0, max: 100, caution_lo: 25, danger_lo: 12, dp: 0 },
+        /* caution_lo 25 is the FALLBACK, not the edge — see pzrGaugeCautionLo (#676): on a plant
+         * that publishes a level program the caution follows it, because 25 % IS the program in
+         * Modes 3/4/5 and this gauge sat latched in caution there 100 % of the time. `caution`
+         * (high) is the same construction pointing the other way — see pzrGaugeCautionHi (#706);
+         * 75 is the plant's own absolute PZR LVL HI and is likewise the FALLBACK, not the edge. */
+        { id: 'pzr',     label: 'Pressurizer Level (PZR)', instr: 'pzr_level', raw: function (s) { return s.instruments.pzr_level; }, units: '%', min: 0, max: 100, caution: 75, caution_lo: 25, danger_lo: 12, dp: 0,
+          autorange: function (raw, s) { return { caution: pzrGaugeCautionHi(s, 75), caution_lo: pzrGaugeCautionLo(s, 25) }; } },
         { id: 'sg',      label: 'Steam Generator Level (SG)', instr: 'sg_level', raw: function (s) { return s.instruments.sg_level; }, units: '%', min: 0, max: 100, caution_lo: 30, danger_lo: 12, dp: 0 },
         { id: 'subcool', label: 'Subcooling Margin', instr: 'subcooling_margin', raw: function (s) { return s.instruments.subcooling_margin; }, dim: 'tempdiff', min: -28, max: 83, caution_lo: 11, danger_lo: 0, dp: 0 },
       ],
@@ -658,8 +728,16 @@
         { id: 'otdt_mar', instr: 'otdt_margin', grp: 'Protection & limits', label: 'OTΔT Margin', c: '#e08888', get: function (i) { return i.otdt_margin; }, range: [-20, 60], dLo: 0, fmt: function (v) { return sgnFix(v, 1) + '%'; } },
         { id: 'opdt_sp',  instr: 'opdt_setpoint', grp: 'Protection & limits', label: 'OPΔT Setpoint', c: '#c89868', get: function (i) { return i.opdt_setpoint; }, range: [0, 150], fmt: function (v) { return v.toFixed(1) + '%'; } },
         { id: 'opdt_mar', instr: 'opdt_margin', grp: 'Protection & limits', label: 'OPΔT Margin', c: '#e0b088', get: function (i) { return i.opdt_margin; }, range: [-20, 60], dLo: 0, fmt: function (v) { return sgnFix(v, 1) + '%'; } },
-        { id: 'rod_margin',instr: 'rod_limit_margin', grp: 'Protection & limits', label: 'Rod Limit Margin', c: '#7ac098', get: function (i) { return i.rod_limit_margin; }, range: [0, 912], dLo: 0, fmt: function (v) { return v.toFixed(0) + ' st'; } },
+        { id: 'rod_margin',instr: 'rod_limit_margin', grp: 'Protection & limits', label: 'Rod Limit Margin', c: '#7ac098', get: function (i) { return i.rod_limit_margin; }, range: function (s) { return [0, bankScale(s, 'control_rods')]; }, dLo: 0, fmt: function (v) { return v.toFixed(0) + ' st'; } },
         stat({ id: 'rod_limit', grp: 'Protection & limits', label: 'Rods At Limit', c: '#c0a050', ins: 'rod_at_limit', on: 'AT LIMIT', off: 'no', alarm: 'on', hint: 'whether the control bank has reached its insertion limit.', detail: 'The rod insertion limit preserves enough rod worth above the bank to shut the reactor down from any condition. Driving into it does not stop the plant working, it removes the margin that makes a trip effective — so the correct response is to borate, which brings the bank back out, rather than to keep inserting.' }),
+        // The OTHER end of the same bank (#752) — a boolean trace, so the chart can show the
+        // exact span the plant spent with no rod authority left. That span is the thing the
+        // strip chart can say and no gauge can: MEASURED full stack, trimming rods as xenon
+        // builds pins the bank at 627/627 and holds it there indefinitely while the plant
+        // makes full power ~24 °F (13 °C) below its Tavg programme. CONTROL bank only
+        // *(OWNER RULING, 2026-09-14: "Do not alarm or color code the shutdown bank since
+        // it's used differently")*.
+        stat({ id: 'rod_max_travel', grp: 'Protection & limits', label: 'Rods Fully Withdrawn', c: '#c08050', ins: 'rod_at_max_travel', on: 'FULL OUT', off: 'no', alarm: 'on', hint: 'whether the control bank has reached the top of its travel.', detail: 'The control bank at its top stop has no withdraw authority left, and this plant has one control bank with no overlap group, so there is no next bank to take over. WITHDRAW stops moving anything and boron is the only reactivity lever remaining — the response is to dilute, a dose at a time. The shutdown bank is parked fully withdrawn whenever the plant is hot, which is its normal position, so this trace follows the control bank alone.' }),
 
         // ---------------------------------------------------------------- pressure boundary
         // The relief path. Two of these are BOOLEAN traces and that is deliberate: a step
@@ -780,6 +858,12 @@
         stat({ id: 'accum_valve',grp: 'Support systems', label: 'Accumulator Valve', c: '#78a850', ins: 'accum_valve_open', tru: 'accumulator_valve_open', on: 'OPEN', off: 'SHUT', hint: 'whether the accumulator isolation valve is open.', detail: 'Shut, the passive injection cannot happen at all whatever the pressure does. The valves are deliberately shut during a controlled cooldown so the tanks do not dump into a depressurizing plant that does not need them — and leaving them shut afterwards is the way that protection gets quietly lost.' }),
         stat({ id: 'rhr_on',    grp: 'Support systems', label: 'RHR Active', c: '#60a8c0', ins: 'rhr_active', tru: 'rhr_active', on: 'ACTIVE', off: 'no', hint: 'whether residual heat removal is in service.', detail: 'The low-pressure, long-term cooling path: it takes suction from the hot leg and rejects core heat through its own heat exchangers, which is what carries a shut-down plant for days. It is interlocked to pressure and cannot be placed in service until the primary is well down, so getting to it is the object of most of a cooldown.' }),
         stat({ id: 'rhr_valve', grp: 'Support systems', label: 'RHR Suction Valve', c: '#4888a0', ins: 'rhr_valve_open', tru: 'rhr_valve_open', on: 'OPEN', off: 'SHUT', hint: 'whether the residual heat removal suction valve is open.', detail: 'The interlocked valve that admits hot leg water to the low-pressure system. The interlock exists because the residual heat removal piping is not rated for full primary pressure — opening it too early is one of the ways a plant is destroyed from the control room.' }),
+        /* THE ROTOR, not the valve (#699) — no `tru:`, because there is no true_state twin:
+         * this is a status passthrough (`rhr_running` = valve open AND powered), the same flag
+         * the engine gates the heat-exchanger duty on. It is the row that separates ALIGNED
+         * from DELIVERING, which the two rows above cannot: in a blackout both of them stay
+         * lit and the plant is removing nothing. */
+        stat({ id: 'rhr_pumps', grp: 'Support systems', label: 'RHR Pumps', c: '#4888a0', ins: 'rhr_running', on: 'RUNNING', off: 'stopped', hint: 'whether the residual heat removal pumps are actually turning.', detail: 'RHR has no pump of its own — it is a suction alignment on the shared emergency injection train — so this is that train running on the shutdown-cooling lineup. Aligned is not the same as running: the pumps are motor loads, and a loss of AC power stops them with the suction valve still showing OPEN. That gap is the whole reason this row exists beside the valve row.' }),
         { id: 'cw_temp',  instr: 'cw_inlet_temp', grp: 'Support systems', label: 'CW Inlet Temp', c: '#7ab0b8', get: function (i) { return i.cw_inlet_temp; }, tru: function (t) { return t.cw_inlet_temp_c; }, range: [0, 45], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         stat({ id: 'cond_avail',grp: 'Support systems', label: 'Condenser Available', c: '#6890a8', ins: 'condenser_cooling_available', tru: 'condenser_cooling_available', on: 'available', off: 'LOST', alarm: 'off', hint: 'whether the condenser can still take steam.', detail: 'The steam dump only works while the condenser can condense, which needs circulating water and vacuum. Lose either and the dump valves are useless: the secondary\'s heat has to go to atmosphere through the relief valves instead, which wastes treated water and is an inventory loss with no return.' }),
 
@@ -787,8 +871,8 @@
         // COMMANDED positions, not readings. Plotted against everything above them, these
         // are what turn a trend into a cause: rod steps beside Tavg, spray and heater
         // beside pressure, dump beside steam flow.
-        { id: 'rod_steps',grp: 'Controls', label: 'Control Rod Steps', c: '#5ac0a0', ctl: function (c) { var g = rodGrp(c, 'control_rods'); return g ? g.steps : null; }, range: [0, 912], fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the control bank is, in steps withdrawn.', detail: 'The operator\'s fast reactivity control, and the only one that acts in seconds. Withdrawing adds reactivity and raises power; inserting does the reverse. Plot it against average coolant temperature and the whole rod-control loop becomes visible — the bank chasing the temperature program rather than power directly.' },
-        { id: 'sd_steps', grp: 'Controls', label: 'Shutdown Rod Steps', c: '#3a8070', ctl: function (c) { var g = rodGrp(c, 'shutdown_rods'); return g ? g.steps : null; }, range: [0, 912], fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the shutdown bank is, in steps withdrawn.', detail: 'The shutdown bank is parked fully out during power operation and exists to be dropped. Its worth is the margin that makes a trip effective, which is why it is withdrawn first during a startup and why an insertion limit on the control bank is enforced separately.' },
+        { id: 'rod_steps',grp: 'Controls', label: 'Control Rod Steps', c: '#5ac0a0', ctl: function (c) { var g = rodGrp(c, 'control_rods'); return g ? g.steps : null; }, range: function (s) { return [0, bankScale(s, 'control_rods')]; }, fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the control bank is, in steps withdrawn.', detail: 'The operator\'s fast reactivity control, and the only one that acts in seconds. Withdrawing adds reactivity and raises power; inserting does the reverse. Plot it against average coolant temperature and the whole rod-control loop becomes visible — the bank chasing the temperature program rather than power directly.' },
+        { id: 'sd_steps', grp: 'Controls', label: 'Shutdown Rod Steps', c: '#3a8070', ctl: function (c) { var g = rodGrp(c, 'shutdown_rods'); return g ? g.steps : null; }, range: function (s) { return [0, bankScale(s, 'shutdown_rods')]; }, fmt: function (v) { return v.toFixed(0) + ' st'; }, hint: 'where the shutdown bank is, in steps withdrawn.', detail: 'The shutdown bank is parked fully out during power operation and exists to be dropped. Its worth is the margin that makes a trip effective, which is why it is withdrawn first during a startup and why an insertion limit on the control bank is enforced separately.' },
         { id: 'heater',   grp: 'Controls', label: 'PZR Heater', c: '#d09040', ctl: function (c) { return c.heater_power_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how hard the pressurizer heaters are being driven, as a percentage.', detail: 'Heaters are the slow way UP in pressure: they boil water in the pressurizer steam space over minutes, where spray drops pressure in seconds. They also need alternating-current power, so pressure control is asymmetric in a blackout — and a safety injection or a loss of offsite power SHEDS them off the bus until you put them back — you can still spray, but you cannot heat.' },
         { id: 'spray',    grp: 'Controls', label: 'PZR Spray', c: '#50a8d0', ctl: function (c) { return c.spray_valve_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how far the pressurizer spray valve has been commanded open.', detail: 'Spray is the fast way DOWN in pressure: cold leg water sprayed into the steam space condenses steam and drops pressure in seconds. It is drawn from the reactor coolant pump discharge, so on a real unit it needs a running pump and a loss of offsite power takes it away — there, you depressurize with the relief valve instead. This simulator keeps the spray working without the pumps, standing in for the auxiliary spray line it has no separate control for; that stand-in is deliberately the weaker half of the trade, giving about half the condensing duty real auxiliary spray would.' },
         { id: 'dump',     grp: 'Controls', label: 'Steam Dump', c: '#a0b850', ctl: function (c) { return c.steam_dump_pct; }, range: [0, 100], fmt: function (v) { return v.toFixed(0) + '%'; }, hint: 'how far the steam dump valves have been commanded open.', detail: 'The turbine bypass: steam routed straight to the condenser instead of the turbine. It is what lets the plant survive a load rejection without tripping, and it only works while the condenser is available. Plot it against steam pressure to see the pressure control loop working.' },
@@ -1451,6 +1535,137 @@
     for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
     return null;
   }
+  /* THE RUNNING PLANT'S alarm row, not the table captured at script load. `alarmSpecs()` above
+   * reads `RD.PWR_CONTROL.protection`, which is the RETIRED engine's table — and the pressurizer
+   * level channel is precisely where the two plants disagree. Same accessor and same reason as
+   * the `protection` hook the board is handed at mount (:9360, #556), which exists because the
+   * board drew that alarm at the retired plant's 25 % while PWR2's annunciator fired at 17 %.
+   * Falls back to the static row when there is no live plant (pre-init, an old recording). */
+  function liveAlarm(id) {
+    var c = service && service.layer && service.layer.config;
+    var a = (c && c.alarms) || null, i;
+    if (a) for (i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
+    return alarmSpec(id);
+  }
+  /* THE PRESSURIZER LEVEL GAUGE'S CAUTION EDGE IS PROGRAM-RELATIVE (#676) — the #598 item 11
+   * fix, one element over, and the same fossil: the authored `caution_lo: 25` IS the retired
+   * plant's `pzr_level_low` setpoint, from before #500 made that row a DEVIATION. The level
+   * program is scheduled on Tavg (pwr2_pressurizer levelProgram: 25 % at the no-load anchor,
+   * 61.5 % at full power), so an absolute 25 % edge is wrong in BOTH directions:
+   *
+   *   MEASURED 2026-09-10, 20 plant-minutes per initial condition, charging in AUTO, the real
+   *   gaugeState() latch and its 5-point release deadband —
+   *     Mode 4, Hot Shutdown and Mode 5, Cold Shutdown: program 25.0 %, level 24.1-26.0 %, so
+   *     the noise crosses the edge, the band LATCHES and the gauge reads CAUTION 100.0 % of the
+   *     time on a plant holding its setpoint to within 1.0 point. Mode 3, Hot Standby likewise.
+   *     Those three states begin every startup walkthrough.
+   *     Mode 1: silent until 25 %, which is 36.5 points BELOW program — measured on a draining
+   *     plant, the annunciator PZR LVL DEV LO came in at t=115 s and this gauge at t=395 s.
+   *
+   * The new edge is the plant's OWN two-rung ladder, read live, never retyped:
+   *   - `pzr_level_dev_low` (-10 points, caution) on the DEVIATION channel -> program - 10;
+   *   - floored at `pzr_level_cutoff` (17 %, absolute) because that edge is an ACTUATION the
+   *     player can see the plant take (letdown isolates, all heaters cut, WTSM 10.3). Cold, the
+   *     deviation rung lands at 15 % — BELOW the cut — so without the floor the gauge would
+   *     still be green while the plant isolated letdown. Measured on the same draining plant:
+   *     new edge warns at t=239 s / 16.7 %, the deviation annunciator at t=376 s / 15.8 %.
+   *   The floor also keeps the two edges ordered: 17 > `danger_lo` 12 in every mode.
+   * After: caution 0.0 % of the time in all five initial conditions, and 1 s behind the
+   * annunciator at power instead of 280 s.
+   *
+   * `danger_lo` stays ABSOLUTE at 12 on purpose — it is `pzr_level_lolo`, a critical alarm on
+   * the absolute channel, correct in every mode by construction. A plant that publishes no
+   * level program (the retired engine, an old recording) keeps the authored edge untouched. */
+  function pzrGaugeCautionLo(s, authored) {
+    var prog = (s && s.control_state) ? s.control_state.pzr_level_program_pct : null;
+    if (prog == null || !isFinite(prog)) return authored;   /* isFinite(null) is TRUE — order matters */
+    var dev = liveAlarm('pzr_level_dev_low'), cut = liveAlarm('pzr_level_cutoff');
+    if (!dev || dev.instrument !== 'pzr_level_dev' || dev.setpoint == null) return authored;
+    if (!cut || cut.instrument !== 'pzr_level' || cut.setpoint == null) return authored;
+    return Math.max(cut.setpoint, prog + dev.setpoint);
+  }
+  /* …AND ITS HIGH EDGE IS THE SAME RULE POINTING THE OTHER WAY (#706, 2026-09-11). The gauge
+   * carried NO high-side band at all — `caution_lo` and `danger_lo` only — so the one thing the
+   * pressurizer strip could not tell you was that level was running HIGH. #706 measured the
+   * shipped Mode 5 → Mode 3 heatup at **+20.4 points above a 25.00 % program (peak 45.37 %) for
+   * 11.6 of the leg's 13.4 plant-hours** with the player given no cue of any kind: the plant's
+   * absolute PZR LVL HI sits at 75 %, thirty points away, and it never fired.
+   *
+   * The edge is `pzr_level_dev_high` (+10 points, caution — the new deviation rung, measured at
+   * layers/control/pwr_control.js), read LIVE, never retyped, same `liveAlarm()` pattern as
+   * pzrGaugeCautionLo above. CAPPED at the plant's own absolute `pzr_level_high` (75 %) so the
+   * gauge can never go amber LATER than that annunciator — the mirror of the low edge's 17 %
+   * floor. ⚠ The cap is INERT on this plant and that is arithmetic, not luck: `levelProgram`
+   * clamps to 25 .. 61.5 % (pwr2_pressurizer, WTSM 10.3), so program + 10 tops out at 71.5 %.
+   * It is here for the invariant, not for a case that exists today.
+   *
+   * MEASURED AFTER, full stack, svc.tick() driven, ACCEL=10, the real gaugeState() latch and its
+   * 5-point release deadband: caution 0.0 % of the time at all four free-play initial conditions
+   * (2 h each) and across a 100 -> 90 -> 100 MWe load change; 75.3 % of a reconstructed excursion
+   * (level driven to 61.6 % against a 25.0 % program). Before: 0.0 % everywhere, including the
+   * excursion — there was no edge to cross.
+   *
+   * No `danger` (high) edge, deliberately. The absolute partner would be `pzr_hi_level`, the 97 %
+   * going-solid scram — but PWR2's high-level protection bistable is `atPower` (P-7 gated, above
+   * 10 % power), so a red band drawn at it would promise a trip that does not exist through the
+   * whole of the heatup this cue was built for. An edge that lies in the regime it was added for
+   * is worse than no edge. */
+  function pzrGaugeCautionHi(s, authored) {
+    var prog = (s && s.control_state) ? s.control_state.pzr_level_program_pct : null;
+    if (prog == null || !isFinite(prog)) return authored;   /* isFinite(null) is TRUE — order matters */
+    var dev = liveAlarm('pzr_level_dev_high'), hi = liveAlarm('pzr_level_high');
+    if (!dev || dev.instrument !== 'pzr_level_dev' || dev.setpoint == null) return authored;
+    if (!hi || hi.instrument !== 'pzr_level' || hi.setpoint == null) return authored;
+    return Math.min(hi.setpoint, prog + dev.setpoint);
+  }
+  /* THE Tavg GAUGE'S LOW EDGE IS A DEVIATION FROM THE SLIDING PROGRAM (#703) — the opposite
+   * gap from #676's: the strip carried NO low edge on Tavg at all, so a plant running cold at
+   * power had no vital-few cue until the reactor tripped (measured during the #676 fix,
+   * 2026-09-10: 105 °F / 58.3 °C low at 96.5 % power). An ABSOLUTE edge is wrong for the same
+   * reason #676's fixed 25 % was wrong: the sliding Tavg program (`trefProgram`,
+   * layers/control/pwr_control.js) runs from about 547 °F (286 °C) no-load to about 576-581 °F
+   * (302-305 °C) at full power, so one number is right in at most one place.
+   *
+   * MEASURED 2026-09-10, full stack (RD.SimulationService + ControlLayer), svc.tick() driven,
+   * ACCEL=10, rods MANUAL (their free-play default) — the maximum LEGITIMATE downward
+   * deviation of Tavg below trefProgram(load), HI-RANGE gauge only (below it Tavg is in the
+   * wide LOW RANGE scale and this edge is already nulled, same as caution/danger below):
+   *
+   *   the power-ascension climb (pwr_raise_power, the gated 0-fail replay)      1.9 °F
+   *   the 6 h xenon swing immediately after it, rods untouched, no dilution     0.5 °F
+   *   a 100 -> 90 -> 100 MWe load transient                                    1.7 °F
+   *   a +15 ppm boration at full power, 2 h to settle (the WORST case)         9.5 °F
+   *   steady state, all four free-play initial conditions                    <= 0.7 °F
+   *
+   * — against the FAULT this exists for: 105 °F (58.3 °C) low at 96.5 % power (#703, #683).
+   * BAND = 20 °F (11.1 °C): 2.1x the worst legitimate excursion measured, clear of every other
+   * case by 10x or more, and it fires about 5x earlier than the fault's own 105 °F — an early
+   * cue, not a second trip announcement.
+   *
+   * The fallback (no program published — the retired engine, an old recording, or `steam_flow`
+   * itself missing) is the plant's own LO TAVG (P-12) annunciator setpoint (`low_tavg`,
+   * absolute, 278 °C / 532.4 °F, ~8 °C below the no-load anchor) — read live, never retyped,
+   * the same #676/`liveAlarm()` pattern; a plain literal if even that row is unavailable. */
+  var TAVG_DEV_CAUTION_F = 20;
+  function tavgGaugeCautionLo(s, authoredC) {
+    var tavgC = s && s.instruments ? s.instruments.tavg : null;
+    if (tavgC == null || !isFinite(tavgC)) return authoredC;   /* isFinite(null) is TRUE — order matters */
+    if (tavgC < 246) return null;   /* LOW RANGE — the gauge nulls caution/danger here too */
+    var CTL = RD.PWR_CONTROL;
+    var loadFrac = s.instruments ? s.instruments.steam_flow : null;
+    if (!CTL || !CTL.trefProgram || loadFrac == null || !isFinite(loadFrac)) {
+      var lo = liveAlarm('low_tavg');
+      return (lo && lo.instrument === 'tavg' && lo.setpoint != null) ? lo.setpoint : authoredC;
+    }
+    var ref = CTL.trefProgram(Math.max(0, Math.min(1, loadFrac)));
+    return ref - (TAVG_DEV_CAUTION_F * 5 / 9);
+  }
+  /* EXPORTED so a gate can assert the RULE and not just the source text. A source scan cannot
+   * tell you an edge is reachable or that it moved — the standing trap — and the vital strip
+   * has no DOM handle on its own thresholds, only on the class they produce. verify_e2e_ui
+   * calls this with the LIVE snapshot at three initial conditions and with synthetic ones. */
+  RD.PwrGaugeBands = { pzrLevelCautionLo: pzrGaugeCautionLo, pzrLevelCautionHi: pzrGaugeCautionHi,
+                       tavgCautionLo: tavgGaugeCautionLo };
   // The dimension an instrument's value converts on, so a quoted range or setpoint
   // follows the operator's US/SI selection instead of always reading SI.
   //
@@ -1478,8 +1693,17 @@
     var ind = instr ? manualIndication(instr) : null, bits = [];
     if (!ind) return bits;
     if (ind.measures) bits.push(ind.measures);
-    if (ind.range) bits.push('Indicating range ' + fmtInstrValue(ind.range[0], ind.unit, instr) +
-                             ' to ' + fmtInstrValue(ind.range[1], ind.unit, instr) + '.');
+    /* rod_limit_margin's manual-reference range is GENERATED from the RETIRED engine
+     * (ui/manual_data.js ← RD.PWREngine, tools/gen_manual_reference.js) and correctly reads
+     * 912 — that engine's own 912-fine-step drive. It is wrong only once it reaches THIS
+     * plant's copy: PWR2's bank is 627 today (#704) and can move, the same fourth-instance
+     * stale reference #707 found and fixed on the chart lanes beside this row. Same fix here:
+     * read the SNAPSHOT's own rod-group max_steps live via bankScale() rather than the
+     * generated reference's static figure — 627 is not typed here either, so a future bank
+     * retune does not silently strand this text the way 912 did (#707 ruling, 2026-09-11). */
+    var rng = (instr === 'rod_limit_margin') ? [0, bankScale(latest, 'control_rods')] : ind.range;
+    if (rng) bits.push('Indicating range ' + fmtInstrValue(rng[0], ind.unit, instr) +
+                             ' to ' + fmtInstrValue(rng[1], ind.unit, instr) + '.');
     if (ind.lag_s) bits.push('About ' + ind.lag_s + ' s of instrument lag — it trails the plant.');
     if (ind.alarms && ind.alarms.length) {
       bits.push('Drives ' + ind.alarms.map(function (id) {
@@ -2236,34 +2460,22 @@
     advFailed[id] = mode; renderAdvActive();
   }
 
-  // What's running now (plant + free-play/scenario/walkthrough) — shown in the
-  // Sim tab summary AND the always-visible status line under the sim controls
-  // (the main-screen entry point to the Plant & Mission window). Called every
-  // instructor render, so it's guarded to touch the DOM only on change.
-  var lastSimSummary = null;
-  function updateSimSummary() {
-    var lbl = $('simPlantLbl'); if (!lbl) return;
-    var e = ENGINES[ui.engineKey] || {};
-    var plant = e.label || ui.engineKey;
-    var mode;
-    if (ui.scenario) {
-      var sc = (RD.SCENARIOS || {})[ui.scenario];
-      mode = 'Scenario — ' + ((sc && sc.title) || ui.scenario);
-    } else if (ui.follow) {
-      var pr = curFollowProc();
-      mode = 'Walkthrough — ' + ((pr && pr.title) || ui.follow.id);
-    } else {
-      var st = (prof().initStates.filter(function (s) { return s[0] === ui.initState; })[0] || [])[1] || ui.initState;
-      mode = 'Free Play — ' + st;
-    }
-    var key = plant + '|' + mode;
-    if (key === lastSimSummary) return;
-    lastSimSummary = key;
-    lbl.textContent = plant;
-    $('simModeLbl').textContent = mode;
-    var st2 = $('simStatusText'); if (st2) st2.textContent = plant + ' · ' + mode;
-  }
-
+  /* updateSimSummary() IS GONE (#689). It wrote "plant · mode" into three places: #simPlantLbl
+   * and #simModeLbl in the Sim tab's summary, and #simStatusText in the status bar under the
+   * speed controls.
+   *
+   * IT HAD ALREADY BEEN DEAD, and that is the measurement that let #689's option A be taken
+   * without argument. Its first line was `var lbl = $('simPlantLbl'); if (!lbl) return;` — and
+   * #simPlantLbl / #simModeLbl left shell.html with the old Settings-panel summary, so the
+   * function returned before the #simStatusText write on EVERY call. Measured in headless
+   * Chromium on 2026-09-11 against the tree before this change: the bar read a literal "—".
+   * Four render sites called it every broadcast for nothing.
+   *
+   * The dropped readout is not lost information: the walkthrough card names the leg it is
+   * running at the top of the card, and a published build is always PWR2 (#523). If it is ever
+   * wanted back, the honest home is the mission modal's own header, where it is read on open
+   * (option C of the three costed on #689) — not on the Main Menu button, which the owner asked
+   * for to make this corner SMALLER. */
   // ============================================================ display damping
   // RETIRED 2026-07-26 (#217). This applied a per-FRAME EMA to every instrument and
   // replaced s.instruments wholesale, so the whole board read damped values. Three
@@ -2341,6 +2553,40 @@
   function render(s) {
     latest = s;
     _renderSnap = s;
+    /* THE WALKTHROUGH PAUSE (#694) is a SERVICE fact, not a UI one — the service stops
+     * itself (simulation_service.js `_serviceInstructorRequests`) the instant a checklist
+     * step's fired event asks for it, before this render() call ever runs. What is missing
+     * on the UI side is the NAMED hold: `pauseWhy`/`.bd-frozen`/the flashing play button all
+     * key off `pauseSim(reason)` having been called, and nothing calls it just because
+     * `service.running` went false out from under the UI. Detected here, on every render,
+     * off the sticky `checklist.paused` flag (set with the step, cleared with it) rather
+     * than an edge, so a late-joining render (a tab switch while already paused) still
+     * catches it. `pausedFor` guards the re-entrant call once the hold is already named.
+     *
+     * MUST RUN BEFORE THE `metadata.running` RESTAMP BELOW, not after — measured by
+     * injection: `pauseSim` -> `service.stop()` flips `service.running` false, but this
+     * SNAPSHOT's own `metadata.running` was already assembled true. The restamp below exists
+     * exactly to fix a stale `true` from live state; running it BEFORE this block would bake
+     * the pre-pause `true` into `s.metadata.running`, and the board's own renderer trusts
+     * that field (`pwr_board.js` `setRunning(!(s.metadata.running === false))`) — so it would
+     * un-freeze itself on the very next queued render, reproducing the exact "queued broadcast
+     * still in flight" trap the comment below is about, one line down from its own fix.
+     *
+     * THE RELEASE IS THE SAME LIVE CHECK, RUN BACKWARDS (#711). The take above is edge-armed
+     * off `checklist.paused`; three of the four ways to end the running checklist — Reset,
+     * a plant switch, and picking a different walkthrough from the list — never call
+     * `releaseHold('walkthrough')` (only the checklist's own Continue/Rewind/Stop did, #694),
+     * so the hold outlived the checklist that asked for it and the next plant loaded frozen
+     * with no caution on screen. The #710 precedent is the shape to copy: don't enumerate the
+     * hold at every place that might end it, ask whether the reason is STILL TRUE. Reset and a
+     * plant switch both clear the instructor (`simulation_service.js` `selectPlant` ->
+     * `instructor.unload()`), so `_cklWt` itself goes away; starting a different checklist loads
+     * a fresh one with `paused: false` (`instructor_layer.js` `loadChecklist`). Either way this
+     * same block sees `paused` no longer holding and lets go — one test covers the three named
+     * gaps and any future exit nobody has written yet, the same way the take already does. */
+    var _cklWt = s && s.instructor && s.instructor.checklist;
+    if (_cklWt && _cklWt.paused) { if (!pausedFor('walkthrough')) pauseSim('walkthrough'); }
+    else if (pausedFor('walkthrough')) releaseHold('walkthrough');
     /* THE SNAPSHOT'S `running` FLAG IS STAMPED AT ASSEMBLY AND CAN BE STALE BY THE TIME IT
      * IS DRAWN. Re-stamp it from the live service here, which is the one place every
      * renderer downstream reads it from.
@@ -2416,7 +2662,6 @@
     applyUiPolicy(s);
     renderGauges(s);
     renderAlarms(s); renderInstructor(s); renderFailures(s);
-    updateSimSummary();
     // alarm tint on the CSF gauge strip while anything is unacknowledged
     $('gaugeStrip').classList.toggle('alarm-tint', s.alarms.some(function (a) { return a.state === 'active_unacknowledged'; }));
     // auto-switch to Diagram the moment a scram fires (legacy views only).
@@ -2600,9 +2845,10 @@
     // THIRD SIDE: the bug-report recorder's fields, in RAW true-state units (#432). It cannot
     // read `tv` instead — two series here scale for DISPLAY (`steam_flow`/`fw_flow` are
     // `* 100`), so riding those columns would silently change the bundle's units and make an
-    // old report and a new one disagree by 100× on the same quantity. Ten doubles beside two
-    // 96-wide arrays; the cost in this function is the call, not the packing.
-    return { v: v, tv: tv, dv: RD.DiagRecorder.pack(ui.plant, trueState) };
+    // old report and a new one disagree by 100× on the same quantity. Ten (fourteen on PWR2,
+    // #702) doubles beside two 96-wide arrays; the cost in this function is the call, not the
+    // packing. `engId()`, not `ui.plant` — see the #702 comment on `diagReset`.
+    return { v: v, tv: tv, dv: RD.DiagRecorder.pack(engId(), trueState) };
   }
 
   // Held between frames, per gauge: the LATCHED band, so a reading parked on a setpoint
@@ -2644,7 +2890,10 @@
       if (raw == null || isNaN(raw)) { txt(root.querySelector('[data-val]'), '—'); return; }
       // Auto-ranging gauge: a gauge may pick a different scale/bands from the reading
       // (e.g. Tavg swaps to a wide LOW-RANGE scale in cold shutdown to save a second gauge).
-      var eff = g.autorange ? Object.assign({}, g, g.autorange(raw) || {}) : g;
+      // It is handed the WHOLE SNAPSHOT as well, because a band can be a function of the plant
+      // rather than of the needle: the pressurizer level caution follows the running level
+      // PROGRAM (#676), which is a control_state field, not something `raw` can imply.
+      var eff = g.autorange ? Object.assign({}, g, g.autorange(raw, s) || {}) : g;
       var lblSpan = root.querySelector('.g-label span');
       if (lblSpan && eff.label && lblSpan.textContent !== eff.label) lblSpan.textContent = eff.label;
       var st = gaugeState(eff, raw);
@@ -2725,7 +2974,31 @@
     'sg_level low':            'Lo SG Level',
     'sg_level high':           'Hi SG Level (P-14)',
     'rcs_flow low':            'Lo RCS Flow',
-    'manual scram':            'Manual Trip'
+    'manual scram':            'Manual Trip',
+    /* THE SHIPPED PLANT'S OWN CAUSES (#670 operator pass 2, S-11). Every key above is the
+     * RETIRED engine's "<instrument> <direction>" form, and PWR2 does not produce one of them:
+     * `control_kernel` takes the cause from `engine.getTripCause()`, which on this plant is
+     * `pr.trip_cause` — the protection table's ID (pwr2_protection.js). So all twelve of this
+     * plant's causes fell through to the title-case fallback and the board printed
+     * "Reactor Trip — Ot Delta T", which is what an operator saw and read as a typo. The same
+     * inherited-table trap as #546/#557: the map was correct for the engine it was written
+     * against and was never re-measured against the one that ships.
+     *
+     * The words are the engine's own `name` fields, put in the board's register (Title Case,
+     * the abbreviation spelled out on the tile because the tile is all the operator gets).
+     * `run_checklist_pwr2` asserts every id in pwr2_protection's table has a key here. */
+    'ot_delta_t':              'Overtemperature Delta-T (OTΔT)',
+    'op_delta_t':              'Overpower Delta-T (OPΔT)',
+    'hi_pzr_press':            'Hi Pressurizer Pressure',
+    'lo_pzr_press':            'Lo Pressurizer Pressure',
+    'ir_high_flux':            'Intermediate Range Hi Flux',
+    'hi_flux_lo':              'Power-Range Hi Flux (Low Setting)',
+    'hi_flux_hi':              'Power-Range Hi Flux (High Setting)',
+    'lo_flow':                 'Lo Reactor Coolant Loop Flow',
+    'hi_pzr_level':            'Hi Pressurizer Level',
+    'sg_lolo_level':           'Lo-Lo Steam Generator Level',
+    'turbine_trip':            'Turbine Trip (P-9)',
+    'manual':                  'Manual Trip'
   };
   function tripCauseLabel(reason) {
     if (!reason) return null;
@@ -2752,7 +3025,7 @@
   // resolved to `#alarmStack` — which carries no `[data-ack]` — and was silently DROPPED.
   // That last one is the "delay when clicking controls" half of the report, and it was a
   // LOST input rather than a slow one.
-  // Same idiom as renderChecklist and updateSimSummary.
+  // Same idiom as renderChecklist.
   var lastAlarmKey = null;
   function alarmClock(t) {
     t = Math.max(0, Math.floor(t));
@@ -2836,20 +3109,114 @@
   var SPEED_SNAP_MSG = {
     scram: 'Dropped to real time — reactor trip',
     failure: 'Dropped to real time — equipment failure',
-    alarm: 'Dropped to real time — new alarm',
+    // #655: the service names the alarm ("new alarm: Heatup Rate High"); a bare 'new alarm'
+    // is the fallback for a snap without a detail.
+    alarm: 'Dropped to real time — ',
     // #625: the WARP tier let go (60x) or was refused; the service names the plant's reason.
     transient: 'WARP dropped to 60× — ',
     warp_locked: 'WARP unavailable — ',
     // #619 item 6. Not an emergency, so it toasts 'info' rather than 'error' below — the
     // other three are the plant interrupting you; this one is the checklist keeping pace.
-    step: 'Dropped to real time — checklist step complete',
+    step: 'Dropped to real time — walkthrough step complete',
     // #619 item 13 — the plant is holding the clock down (the accumulator arming window).
     // The service also REFUSES set_speed while it stands, so this is not merely advisory.
     hold: 'Held at real time — the plant needs you here',
   };
   function speedSnapText(snap) {
     var base = SPEED_SNAP_MSG[snap.reason] || 'Dropped to real time';
-    return /— $/.test(base) ? base + (snap.detail || 'plant in transient') : base;
+    return /— $/.test(base) ? base + (snap.detail || (snap.reason === 'alarm' ? 'new alarm' : 'plant in transient')) : base;
+  }
+  /* THE LINE UNDER THE SPEED BUTTONS (#686, OWNER RULING 2026-09-10, "All decisions as
+   * recommended" ratifying option B — REPLACES the #655 four-state paragraph this comment
+   * used to describe, not merely reword it). It now prints exactly two things, never more:
+   *
+   *   1. THE ONE STANDING EXCEPTION (OWNER RULING 2026-09-11, "option A" on the held-at-real-
+   *      time question). The accumulator arming window (`true_state.speed_hold`) is a GENUINE,
+   *      non-momentary refusal — it can hold the clock for plant-minutes, unlike the rate-based
+   *      refusals #675 §E measured at a 2.0 plant-second maximum. A literal reading of the #686
+   *      ruling deletes this case along with the other three; that would silently re-trap the
+   *      player #619 item 13 was filed to stop, so it is kept, unchanged, as `warpNote`'s only
+   *      surviving reason.
+   *   2. OTHERWISE, THE ACTIVE CHECKLIST STEP'S OWN WAIT — the same fact, the same formatter
+   *      (`cklWaitSpan`, `RD.CklSpeedHint`) as the card's own `.ckl-wait` line — and NOTHING when
+   *      the active step does not qualify (`hold < 180`, no checklist running, `wait_hint ===
+   *      false`, or the checklist complete). "Nothing on other steps" is the ruling's own words.
+   *
+   * Everything else the old paragraph drew is gone, on purpose, and each has a home already:
+   * WARP's achieved rate is `#ffRate` (`syncPacingUI` below); a WARP lock's reason is the WARP
+   * buttons' own `title`; every momentary drop (scram/failure/alarm/transient/warp_locked/step)
+   * is already toasted AND flashed (`syncSpeedUI` above) at the moment it happens — #655 must
+   * not be reopened, and #675 §E leaves nothing here worth restating for those.
+   *
+   * It does NOT become a whole-leg "time to completion": that number has no honest source
+   * (`hold` is the replay's fixture dwell, not a player-timing measurement — see the wait-line
+   * comment in `renderChecklist` below) and the ruling declines it explicitly. */
+  var warpNote = null;   // { text, reason } — the held-at-real-time note only; retired on any player speed act (unless the hold it names is still standing — see retireWarpNote, #710)
+  /* #710: three sites (resumeSim, the speed-button click handler, the walkthrough rewind
+   * handler) used to null `warpNote` unconditionally on any player act, on the theory that
+   * acting on the last drop means the player has seen it and is moving on — true for the five
+   * momentary reasons (scram/failure/alarm/transient/step/warp_locked), which never outlive the
+   * broadcast that reported them. `hold` is not one of those: `true_state.speed_hold` can still
+   * be standing the instant the act happens (a pause/resume, a repeat speed click, or a rewind
+   * taken WHILE inside the accumulator arming window changes nothing about the plant), and
+   * nulling the note there silently re-creates the exact #619 item 13 trap this line exists to
+   * close — the player is left with NO explanation for why every speed press above 1x keeps
+   * refusing. `latest` (the last-rendered snapshot, assigned synchronously at the top of
+   * `render()`) is read rather than re-deriving anything: if the hold is still live, the note
+   * survives; once it has genuinely lifted, the next player act clears it exactly as before. */
+  function retireWarpNote() {
+    if (warpNote && warpNote.reason === 'hold' && latest && latest.true_state && latest.true_state.speed_hold) return;
+    warpNote = null;
+  }
+  function syncWarpInfo(s) {
+    var el = $('warpInfo');
+    if (!el) return;
+    var text = '', cls = '';
+    /* THE ACTIVE STEP'S OWN FAST-FORWARD ADVICE — computed first now, because it is no longer
+     * the only thing this line can say and the drop reason has to be able to sit in front of
+     * it (see below). Unchanged in what it says or when it qualifies. */
+    var advice = '';
+    var ck = s.instructor && s.instructor.checklist;
+    var pr = ck && !ck.complete && ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || [])
+      .filter(function (x) { return x.id === ck.procedure_id; })[0];
+    var st = pr ? pr.steps[ck.step_index] : null;
+    var holdS = st ? (+st.hold || 0) : 0;
+    if (st && holdS >= 180 && st.wait_hint !== false) {
+      var span = cklWaitSpan(st, holdS);
+      var rung = RD.CklSpeedHint(holdS);
+      advice = (span ? 'About ' + span + ' left at 1× — s' : 'A wait whose length depends on the plant — s') +
+               'et the speed control to ' + rung.speed + '×.';
+    }
+    /* EVERY DROP STATES ITS OWN REASON, not just the held-at-real-time one (2026-09-15 layman
+     * pass, #653). This branch read `warpNote.reason === 'hold'` and fell through for the other
+     * four — alarm, scram, failure and step — printing the step's fast-forward advice instead.
+     * MEASURED: the clock dropped on a new unacknowledged warning and `#warpInfo` then read
+     * "About 50 plant-minutes left at 1× — set the speed control to 600×" while the plant
+     * crawled 596 to 600 psia (4.11 to 4.14 MPa) over 200 s of real time. The line was advising
+     * the button that had just failed, and it is STRUCTURAL: four of five reasons land here.
+     *
+     * IT DOES NOT REOPEN #686. That ruling's concern was this line growing back into a
+     * four-state paragraph that says something on every step; the reason is written only while
+     * a drop is STANDING, and `retireWarpNote` already clears the four momentary reasons on the
+     * player's very next speed act (the `hold` exception is #710's and is untouched). So the
+     * line still says nothing on an ordinary step, and the toast and the button flash are still
+     * the moment-of-event cue — this is the explanation that has to survive until the player
+     * looks at the speed bar, which is exactly where they look when the clock has changed.
+     *
+     * The advice RIDES ALONG behind the reason rather than being replaced by it, because both
+     * facts are wanted at once: why it stopped, and what to press now. Not under `hold` — the
+     * service REFUSES `set_speed` above 1× while that stands, so offering the rung there is the
+     * same contradiction one level down (the speed-rung glow already stands down for it). */
+    if (warpNote) {
+      cls = 'dropped';
+      text = warpNote.text + (warpNote.reason !== 'hold' && advice ? '. ' + advice : '');
+    } else {
+      text = advice;
+    }
+    if (el.textContent !== text) el.textContent = text;
+    el.hidden = !text;
+    var want = 'warp-info mono' + (cls ? ' ' + cls : '');
+    if (el.className !== want) el.className = want;
   }
   /* The pacing readout (#625, and #581's achieved rate): runs every broadcast, cheap. The
    * achieved figure is the service's own EMA off its timer path. AMBER means the physics is
@@ -2866,6 +3233,7 @@
     var p = s && s.metadata ? s.metadata.pacing : null;
     var el = $('ffRate');
     if (!p || !el) return;
+    syncWarpInfo(s);
     var req = s.metadata.time_acceleration || 1, ach = p.achieved;
     var straining = false;
     if (RD.Perf && req > 1) {
@@ -2881,7 +3249,7 @@
       text = '→ ' + (ach >= 100 ? Math.round(ach / 10) * 10 : Math.round(ach)).toLocaleString() + '×';
     }
     var key = cls + '|' + text + '|' + (p.warp_available ? 1 : 0) + '|' + (p.warp_lock || '');
-    if (key === _lastPacingKey) return;
+    if (key === _lastPacingKey) return;   // (syncWarpInfo above has its own change guard)
     _lastPacingKey = key;
     el.hidden = !text;
     el.textContent = text;
@@ -2909,6 +3277,11 @@
        * refusal is a caution (#625); everything else is the plant interrupting you. */
       showToast(speedSnapText(snap),
         snap.reason === 'step' ? 'info' : snap.reason === 'warp_locked' ? 'warn' : 'error');
+      /* …and, ONLY for the held-at-real-time reason (#686 ruling 3), it stays written under the
+       * speed buttons until the player next acts — the other five reasons rely on the toast +
+       * flash above since #686; carrying `reason` is what lets `syncWarpInfo` single out this
+       * one case without re-deriving it from the text. */
+      warpNote = { text: speedSnapText(snap), reason: snap.reason };
       /* FLASH THE SPEED BUTTONS *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp,
        * flash the warp buttons for a moment to make it more obvious.")*. The toast says what
        * happened; the flash says WHERE, which is the control the player now has to touch to
@@ -2936,7 +3309,23 @@
     if (v == null || v === lastSpeedSync) return;
     lastSpeedSync = v;
     var seg = $('speed');
-    if (seg) seg.querySelectorAll('[data-speed]').forEach(function (b) { b.classList.toggle('on', +b.getAttribute('data-speed') === v); });
+    /* #691, SECOND HALF (2026-09-13): NEVER LIGHT A RUNG WHILE THE PLANT IS HELD. `syncPlayBtn`
+     * clears the lit rung at the moment of the pause, but pausing is not what changes
+     * `time_acceleration` — so the next repaint puts the old speed straight back on, and the
+     * `lastSpeedSync = null` written there to GUARANTEE that repaint makes it certain rather
+     * than occasional. `cmd()` renders synchronously whenever the service is stopped, so any
+     * control the player touches while paused re-lights it. Measured: pause at 600x -> lit [],
+     * one command -> lit [600] with running:false, paused:true — the exact state the owner
+     * reported ("the previously selected warp button shouldn't still be highlighted"). It also
+     * reddened `verify_e2e_ui` intermittently, whenever anything produced a render inside the
+     * paused window.
+     * KEYED ON `pauseWhy`, NOT ON `service.running`: `resumeSim` empties `pauseWhy` BEFORE it
+     * sends the 1x command, precisely so that render lights 1x while the service still reads as
+     * stopped — a `!service.running` test here would suppress exactly that and break the resume
+     * half of the same issue. A speed picked while paused is discarded by `resumeSim`'s own
+     * drop to 1x anyway, so lighting it would be a lie in the other direction. */
+    var held = Object.keys(pauseWhy).length > 0;
+    if (seg) seg.querySelectorAll('[data-speed]').forEach(function (b) { b.classList.toggle('on', !held && +b.getAttribute('data-speed') === v); });
     var fb = $('ffBadge');
     if (fb) { var fast = v >= 600; fb.style.display = fast ? 'block' : 'none'; if (fast) fb.textContent = '⚡ ' + v + '×'; }
     syncChartWindows(v);
@@ -3052,13 +3441,40 @@
   }
   // Multi-use panel title: Instructor (default free play), Checklist, Procedure,
   // scenario title, or a speaking role when the content carries one.
+  /* CHANGE-GUARDED, AND IT SHOWS THE HEADER (#687 item 1). It used to assign
+   * `roleEl.textContent` unconditionally, which DESTROYS AND RECREATES the text node on every
+   * call — and `renderInstructorInner` calls it once per broadcast. MEASURED in headless Edge
+   * on a running walkthrough: 207 MutationObserver records against 208 broadcasts, i.e. the
+   * very node the owner reports blinking was being rebuilt 10 times a second (20 on the
+   * transient cadence) while its string never once changed. The guard is the house idiom —
+   * `syncWarpInfo`, `syncPacingUI` and `instrLogTick` all compare before writing — and this
+   * was the one per-broadcast writer in the persona header that did not.
+   *
+   * WHAT IT IS NOT: the branch fall-through this issue proposed. `s.instructor.checklist` was
+   * non-null on 308 of 308 broadcasts across a full ride (step advances, five speed changes,
+   * pause/resume cycles), the role read "Walkthrough" on every one of 1108 sampled frames, and
+   * its opacity/visibility/geometry never moved. Said plainly on the issue: the heading's
+   * disappearance is NOT reproduced headless; the 10 Hz node churn is the only measurable
+   * defect at that node, and this removes it. */
   function setInstrRole(title) {
     var roleEl = $('instrRole') || document.querySelector('#instructorCard .persona .role');
-    if (roleEl) roleEl.textContent = title || 'Instructor';
+    var want = title || 'Instructor';
+    if (roleEl && roleEl.textContent !== want) roleEl.textContent = want;
+    instrHeaderless(false);
+  }
+  /* NO PERSONA HEADER AT ALL WHILE A WALKTHROUGH RUNS *(OWNER, 2026-09-09, #687: "Remove this
+   * Walkthrough text, its not needed.")*. Blanking the string alone would leave a 32 px bordered
+   * strip with nothing in it, so the row goes with the word. Every other branch of
+   * renderInstructorInner names a role, and setInstrRole above clears the class, so the header
+   * comes back on its own the moment the panel is anything but a walkthrough — there is no
+   * second place that has to remember to restore it. */
+  function instrHeaderless(on) {
+    var card = $('instructorCard');
+    if (card) card.classList.toggle('wt-headerless', !!on);
   }
   var IDLE_INSTR_HTML =
     '<div class="instr-idle">' +
-    '<p class="instr-idle-lead">Free play — operate the plant on the left. This panel is your coach and checklist host.</p>' +
+    '<p class="instr-idle-lead">Free play — operate the plant on the left. This panel is your coach and walkthrough host.</p>' +
     '<ol class="instr-idle-list">' +
     /* F11 IS THE FIRST LINE *(OWNER DIRECTIVE, 2026-08-11: "I would like the helpful hints
      * list that shows in the instructor during free play to mention F11 makes the screen
@@ -3068,9 +3484,9 @@
     '<li><b>F11</b> goes fullscreen — the plant diagram gets the extra room, and it plays better that way.</li>' +
     '<li><b>Play</b> starts the clock (the ▶ button flashes whenever the plant is stopped).</li>' +
     '<li><b>System Scanner</b> (the line under the board) — hover anything for what it is.</li>' +
-    '<li><b>Checklists</b> — interactive procedures that check themselves off the instruments (the bar above opens them).</li>' +
+    '<li><b>Walkthroughs</b> — guided procedures, one step at a time, that check themselves off the instruments (the bar above opens them).</li>' +
     '<li><b>Manual</b> — full operator reference and written procedures.</li>' +
-    '<li><b>Plant &amp; Mission</b> (the bar under the clock) — starting condition, courses and reset.</li>' +
+    '<li><b>Main Menu</b> (in the tools row, beside Settings) — starting condition, courses and reset.</li>' +
     '</ol>' +
     '<p class="instr-idle-more">More help: <button type="button" class="btn linkish" data-open-help="1">Help</button> · ' +
     '<button type="button" class="btn linkish" data-open-tour="1">Quick tour</button> · ' +
@@ -3098,9 +3514,9 @@
   function idleLauncherHtml() {
     if (!flagOn('checklists')) return '';
     return '<div class="instr-launch"><button type="button" class="btn instr-launch-bar" ' +
-      'data-open-ckl="1" data-scanner-hint="Open the Checklists tab — interactive procedures ' +
+      'data-open-ckl="1" data-scanner-hint="Open the Walkthroughs tab — guided procedures ' +
       'that check themselves off the instruments as you operate.">' +
-      'Try the new interactive checklists</button></div>';
+      'Try the walkthroughs</button></div>';
   }
   function showIdleInstructor() {
     setInstrRole('Instructor');
@@ -3122,13 +3538,14 @@
   function renderInstructorInner(s) {
     // Rewind is live whenever a checkpoint exists (beats / follow steps / sandbox).
     var noCp = !(service && service.checkpoints && service.checkpoints.length);
-    document.querySelectorAll('[data-fnav="rewind"]').forEach(function (rw) { rw.disabled = noCp; });
+    /* while a walkthrough runs, the only rewind is its own step rewind (#660 item 17) */
+    var wtRunning = !!(s && s.instructor && s.instructor.checklist);
+    document.querySelectorAll('[data-fnav="rewind"]').forEach(function (rw) { rw.disabled = noCp || wtRunning; });
     var crw = $('chartRewindBtn');
-    if (crw) crw.disabled = noCp;
+    if (crw) crw.disabled = noCp || wtRunning;
     syncSpeedUI(s);
     syncPacingUI(s);
     renderHighlight(s);
-    updateSimSummary();   // status line follows scenario/walkthrough transitions (change-guarded)
     instrGateOpen(s);     // a step that blocks progress opens the card, once per beat (#439)
     // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
     // is just a synced mirror. This survives start_follow's internal plant reset,
@@ -3147,7 +3564,11 @@
       cklRow.hidden = !showList;
       if (showList) toggleCklMenu();
     }
-    if (cklRun) cklRun.hidden = !(runningCkl && cklState.view === 'run');
+    if (cklRun) cklRun.hidden = !runningCkl;   // in the Instructor pane, up whenever a walkthrough runs
+    /* #687 item 2 — the End-walkthrough row is a sibling of the card now, so it needs the same
+     * per-broadcast gate; without it the row survives every path that hides #cklRun. */
+    var cklBtnsEl = $('cklBtns');
+    if (cklBtnsEl && !runningCkl) { cklBtnsEl.hidden = true; cklBtnsEl.innerHTML = ''; }
     /* THE CHECKLIST TEARDOWN MUST HAPPEN BEFORE ANY EARLY RETURN (#598 item 12). This
      * used to sit ~25 lines below, under three of them — the follow branch, the chat
      * branch and the checklist branch. The instructor layer clears the checklist when a
@@ -3173,7 +3594,20 @@
     if (chatState.sid) resetChat();
     // Auto-checklist (Path 3): painted in the Checklists tab, not this card.
     var ckb = s.instructor && s.instructor.checklist;
-    if (ckb) renderChecklist(s, ckb);
+    if (ckb) {
+      /* The walkthrough IS the Instructor's card (#660 item 15): the step card above, the
+       * instructor's own line (check-offs, overtaken notes) as plain text beneath it. */
+      renderChecklist(s, ckb);
+      syncInstrNav('idle');
+      instrHeaderless(true);   /* #687 item 1 — no "Walkthrough" heading, and no empty strip */
+      var curW = $('instrCurrent');
+      if (curW) {
+        curW.classList.remove('instr-standby');
+        var wmsg = s.instructor.message || '';
+        if (curW.textContent !== wmsg) curW.textContent = wmsg;
+      }
+      return;
+    }
     var lc = s.instructor && s.instructor.level_complete;
     if (lc) { syncInstrNav('lc'); msgHold.queue = []; msgHold.shown = null; setInstrRole('Instructor'); renderLevelComplete(s, lc); return; }
     syncInstrNav(ui.scenario ? 'scenario' : 'idle');
@@ -3400,9 +3834,32 @@
   // bubble; done steps carry the check, the active step shows its live
   // acceptance status and a manual override. Step text comes from the same
   // RD.MANUAL_PROCEDURES artifact the Instructor graded it from.
-  // whyAll / whyOpen: the #244 item-2 explanation toggles (global + per-step); they
-  // survive re-renders via the render key and reset with the checklist itself.
-  var cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null };
+  /* ⚰ THE CLICK-TO-EXPAND IS GONE *(OWNER RULING, 2026-09-13, #737: delete — chosen from
+   * delete / comment-out / leave)*.
+   *
+   * WHAT IT WAS. `whyAll` and `whyOpen` were the #244 item-2 explanation toggles: a global
+   * "expand every why" and a per-step fold you opened by clicking the step card (#607 item 2).
+   * They rode in the render key and reset with the checklist.
+   *
+   * WHY IT WENT, AND THE LIMIT OF THAT CLAIM. It was INERT **given the one-step card** — not
+   * "never needed". #660 item 15 reduced the panel to the ACTIVE step only (`if (!active)
+   * continue` in the step loop) and the active step's details are always open, so
+   * `detOpen = active || whyAll || whyOpen[i]` short-circuited on the first term for every step
+   * that could ever reach it. The condition is a DESIGN CHOICE: restore a multi-step card and
+   * this feature becomes live again and has to be rebuilt.
+   *
+   * MEASURED, headless Chromium, before anything was removed (`inbox/724/rerender.js`, a
+   * MutationObserver on #cklRun with both controls): clicking the card produced **1** mutation
+   * — a full re-render — against **0** idle and **1** on a real button press. Neutering the
+   * branch AND both handlers took the card click to **0** with the controls unchanged, and
+   * nothing noticed: verify_e2e_ui PASS, verify_flags_ui 27/27, run_checklist 90/90,
+   * verify_ckl_relevance 21/21, run_style 11/11. Workbench's independent A/B against HEAD was
+   * byte-identical on both builds ({text: 532, h: 329.3, whyEls: 1}).
+   *
+   * THE HANDLER WENT WITH THE BRANCH, deliberately: it called `render(latest)` on every card
+   * click while changing nothing drawn, so deleting the branch alone would have removed the
+   * feature and kept its cost. */
+  var cklState = { key: null, step: null, view: 'list', userScrolled: false, preconHtml: null, cautionsOpen: null };
   var cklAutoScroll = false;   /* true while WE are writing scrollTop (#612) */
 
   /* ---- WHICH SPEED RUNG A LONG WAIT WANTS (#628) --------------------------------------------
@@ -3468,6 +3925,16 @@
     for (var i = 0; i < lad.length; i++) if (holdS / lad[i].speed <= WAIT_TARGET_WALL_S) return lad[i];
     return lad[lad.length - 1];
   };
+  /* THE WAIT SPAN, shared by the card's `.ckl-wait` line AND the consolidated `#warpInfo` line
+   * (#686) — one fact, one formatter, so the two can never disagree. `wait_est_s: false` drops
+   * the number and keeps the rung, for a step whose duration is genuinely route-dependent (the
+   * speed advice is right even with no honest number; see the call site in `renderChecklist`). */
+  function cklWaitSpan(st, holdS) {
+    if (st.wait_est_s === false) return null;
+    var mins = holdS / 60;
+    return mins < 90 ? Math.round(mins) + ' plant-minutes'
+                     : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours';
+  }
   /* IS THE POINTER IN THIS ELEMENT? (#605.) `:hover` cannot answer it here — the element is
    * BRAND NEW, built microseconds ago by an innerHTML rebuild, and the browser does not
    * re-run its hit test until the next mouse event or paint. So track the pointer ourselves
@@ -3502,12 +3969,29 @@
     }
     return $('cklLog');
   }
+  /* ⚰ `selectionInside(el)` WAS HERE (#726) and went in the merge, not in a decision. It
+   * guarded the checklist card's click-to-expand against a drag-select ending in a click that
+   * re-rendered the card and destroyed the selection (44 characters selected during the drag,
+   * ZERO after mouseup). #737 then DELETED that handler outright (owner-ruled 2026-09-13), so
+   * the guard lost its only caller: with no click handler there is no re-render for a selection
+   * to be destroyed by, and owner #724 item 9 is satisfied more completely than the guard ever
+   * satisfied it. The other half of the item 9 fix is NOT here and is still live -- the
+   * `cursor: pointer` narrowing in `ui/shell.css`, which is what made the card look unselectable.
+   *
+   * TWO CORRECT CHANGES FROM TWO LANES CAN CANCEL: workbench added this against the handler while
+   * develop was deleting the handler. Neither diff is wrong and the conflict named only the
+   * handler, so the orphan would have merged in silently and read as live code. */
   function resetCkl() {
     if (!cklState.key) return;
-    cklState = { key: null, whyAll: false, whyOpen: {}, step: null, view: 'list', userScrolled: false, preconHtml: null };
+    cklState = { key: null, step: null, view: 'list', userScrolled: false, preconHtml: null, cautionsOpen: null };
     var run = $('cklRun'); if (run) { run.hidden = true; run.innerHTML = ''; }
+    /* the End-walkthrough row lives OUTSIDE #cklRun since #687 item 2, so blanking the card no
+     * longer takes it with it — it has to be torn down by name or it outlives the run */
+    var btns = $('cklBtns'); if (btns) { btns.hidden = true; btns.innerHTML = ''; }
     var row = $('instrCklRow'); if (row) row.hidden = !flagOn('checklists');
     clearCklStepGlow();
+    clearCklWatchGlow();                      /* #685 — the watch ring has the same owner */
+    clearCklSpeedGlow();                      /* #735 — and so does the speed rung */
     var card = $('instructorCard'); if (card) card.classList.remove('chat-mode');
     var cur = $('instrCurrent'); if (cur) cur.textContent = '';
   }
@@ -3522,54 +4006,78 @@
    * and test/run_checklist_pwr2.js asserts every predicate the shipped chain uses has an
    * entry, so the fallback is a net for NEW content, not a lifestyle. */
   var PRED_DISPLAY = {
-    power_pct:              { label: 'Reactor power', u: '%' },
+    /* THE LABELS ARE THE TILES' OWN WORDS (#653 pass 3, S-12): a done-when that read "When
+     * Tavg ≥ 541 °F" beside a tile engraved AVG COOLANT TEMPERATURE sent the layman looking
+     * for a gauge that does not exist; "Steam dump demand" is a number no card shows. Where
+     * the board prints a name, the line prints the same name. */
+    power_pct:              { label: 'REACTOR POWER', u: '%' },
     fuel_temp_c:            { label: 'Fuel temperature', dim: 'temp' },
-    tavg_c:                 { label: 'Tavg', dim: 'temp' },
+    tavg_c:                 { label: 'AVG COOLANT TEMPERATURE', dim: 'temp' },
     thot_c:                 { label: 'T-hot', dim: 'temp' },
     tcold_c:                { label: 'T-cold', dim: 'temp' },
-    pressure_mpa:           { label: 'Pressure', dim: 'pressure' },
-    steam_pressure_mpa:     { label: 'Steam pressure', dim: 'pressure' },
-    subcooling_c:           { label: 'Subcooling margin', dim: 'tempdiff' },
+    pressure_mpa:           { label: 'PRIMARY PRESSURE', dim: 'pressure' },
+    steam_pressure_mpa:     { label: 'STEAM PRESS', dim: 'pressure' },
+    subcooling_c:           { label: 'SUBCOOLING MARGIN', dim: 'tempdiff' },
     tavg_rate_c_per_hr:     { label: 'Heatup/cooldown rate', dim: 'tempdiff', suffix: '/hr' },
-    sr_counts_cps:          { label: 'Source Range counts', u: 'cps' },
-    startup_rate_dpm:       { label: 'Startup rate', u: 'DPM' },
+    /* #735 / #724 item 6 — the count rate renders the way the meter writes it: "7.0e2
+     * (700 counts per second)". See `sci` in fmtPredValue. */
+    sr_counts_cps:          { label: 'SOURCE RANGE', u: 'counts per second', sci: true },
+    startup_rate_dpm:       { label: 'STARTUP RATE', u: 'DPM' },
     reactivity_pcm:         { label: 'Net reactivity', u: 'pcm' },
-    boron_ppm:              { label: 'Boron', u: 'ppm' },
-    mwe_output:             { label: 'Generator output', u: 'MWe' },
+    boron_ppm:              { label: 'Boron in the loop (BORON CHEM after a sample)', u: 'ppm' },
+    mwe_output:             { label: 'OUTPUT', u: 'MWe' },
     core_inventory_pct:     { label: 'Core coolant inventory', u: '%' },
     decay_heat_pct:         { label: 'Decay heat', u: '%' },
-    sg_level_pct:           { label: 'SG level', u: '%' },
-    pzr_level_pct:          { label: 'Pressurizer level', u: '%' },
-    pump_flow_pct:          { label: 'RCP flow', u: '%' },
+    sg_level_pct:           { label: 'STEAM GENERATOR LEVEL', u: '%' },
+    pzr_level_pct:          { label: 'PRESSURIZER LEVEL', u: '%' },
+    pump_flow_pct:          { label: 'RCP FLOW', u: '%' },
     /* ROD POSITION (#605). Resolved out of `control_state.rod_groups` by the instructor layer,
      * not out of `true_state` — see ROD_PARAMS there. The `_pct` forms are what a step should
      * normally check: "fully withdrawn" is 100 % on any bank scale, where a step count is only
      * true for the bank length this plant happens to carry (627 on PWR2, 200 on the retired
      * engine), and a step written in steps silently never checks off on the other one. */
-    control_bank_pct:       { label: 'Control bank position', u: '%' },
-    control_bank_steps:     { label: 'Control bank', u: 'steps' },
-    shutdown_bank_pct:      { label: 'Shutdown bank position', u: '%' },
-    shutdown_bank_steps:    { label: 'Shutdown bank', u: 'steps' },
-    feed_coupled:           { bool: 'steam-generator feed is in AUTO' },
-    steam_dump_setpoint:    { label: 'Dump setpoint', dim: 'pressure' },
-    accumulator_volume_pct: { label: 'Accumulator inventory', u: '%' },
-    steam_dump_valve_pct:   { label: 'Steam dump demand', u: '%' },
+    control_bank_pct:       { label: 'CONTROL ROD POSITION', u: '%' },
+    control_bank_steps:     { label: 'CONTROL ROD POSITION', u: 'steps' },
+    shutdown_bank_pct:      { label: 'SHUTDOWN ROD POSITION', u: '%' },
+    shutdown_bank_steps:    { label: 'SHUTDOWN ROD POSITION', u: 'steps' },
+    feed_coupled:           { bool: 'SG FEED is in AUTO' },
+    /* THE TRIP BLOCKS (#731). Resolved out of `rps_state.trip_blocks` by the instructor layer
+     * (RPS_BLOCK_PARAMS there) — an operator lineup the board draws as a lit row, not an
+     * instrument. The labels are the panel's own row captions, so the done-when line names what
+     * the player is looking at. */
+    ir_high_blocked:         { bool: 'IR HIGH FLUX is blocked on the TRIP BLOCKS panel' },
+    pr_low_setpoint_blocked: { bool: 'PR HIGH (LOW SETPT) is blocked on the TRIP BLOCKS panel' },
+    lo_press_blocked:        { bool: 'PZR PRESS LO-LO is blocked on the TRIP BLOCKS panel' },
+    si_trip_blocked:         { bool: 'SI REACTOR TRIP is blocked on the TRIP BLOCKS panel' },
+    steam_dump_setpoint:    { label: 'DUMP SETPOINT', dim: 'pressure' },
+    accumulator_volume_pct: { label: 'ACCUMULATORS', u: '%' },
+    steam_dump_valve_pct:   { label: 'STEAM DUMP opening', u: '%' },
     /* the dump SELECTION and the atmospheric dump valve (#629) — the heatup's Mode 3
      * confirmation reads both, because "the dumps are in service" and "the ADV is shut" are
      * the two halves of the claim that the condenser, not the atmosphere, is the heat sink */
-    steam_dump_auto:        { bool: 'the steam dumps are in automatic control' },
-    adv_valve_pct:          { label: 'Atmospheric dump valve', u: '%' },
+    steam_dump_auto:        { bool: 'AUTO is lit on the STEAM DUMP card' },
+    adv_valve_pct:          { label: 'ATMOS DUMP opening', u: '%' },
     vessel_level_pct:       { label: 'Vessel level', u: '%' },
     drum_level_pct:         { label: 'Drum level', u: '%' },
     plant_mode:             { mode: true },
     scrammed:               { bool: 'the reactor is tripped' },
     melted:                 { bool: 'the core is damaged' },
     turbine_tripped:        { bool: 'the turbine is tripped' },
-    hpi_active:             { bool: 'HPI is injecting' },
+    /* "HPI" IS NOT A WORD ON THIS BOARD (#670 Phase 3, layman pass S-4). The done-when read
+     * "When HPI is injecting" and the player searched the board for it: the card is engraved
+     * ECCS, its mode reads HHSI, the alarm says "Safety Injection Actuated" and the inspect card
+     * says "Emergency Core Cooling System (ECCS)" — four names, none of them this one. The label
+     * keeps a " is " so the negative form ("ECCS injection is not running", step 7's done-when)
+     * still comes out of fmtPredicate's replace rather than its "not: " fallback. */
+    hpi_active:             { bool: 'ECCS injection is running' },
     afw_active:             { bool: 'auxiliary feedwater is running' },
-    rhr_active:             { bool: 'RHR is in service' },
-    rhr_valve_open:         { bool: 'the RHR suction valve is open' },
-    accumulator_valve_open: { bool: 'the accumulator discharge valve is open' },
+    rhr_active:             { bool: 'ALIGN is lit on the RHR card' },
+    rhr_valve_open:         { bool: 'ALIGN is lit on the RHR card' },
+    /* HX SPLIT (#739) — the cooldown throttle on the RHR card. Published as a FRACTION
+     * (`control_state.rhr_hx_fraction`, 0..1) and drawn as a per cent, so it takes the same
+     * `scale` the CVCS flows take rather than a branch: 0.07 renders "7 %". */
+    rhr_hx_fraction:        { label: 'HX SPLIT', u: '%', scale: 100 },
+    accumulator_valve_open: { bool: 'the accumulator valve is open (the ACCUMULATORS tile no longer reads ISOLATED)' },
     /* the letdown pair (#624 items 14/25): the SELECTOR is control_state, the FLOW is
      * true_state, and the heatup's transfer step needs both — one is what you pressed, the
      * other is what the plant did about it */
@@ -3578,25 +4086,54 @@
     /* the two pressurizer AUTO lamps (#624 item 14) — the heatup grades the MODE the operator
      * selected, which is control_state; the kW and the spray flow in true_state cannot tell an
      * AUTO selection from a manual demand that happens to sit at the same output */
-    heater_auto:            { bool: 'the pressurizer heaters are in AUTO' },
-    spray_auto:             { bool: 'the pressurizer spray is in AUTO' },
-    letdown_flow_actual:    { label: 'Letdown flow', u: 'gpm', scale: 450000 },
-    sr_energized:           { bool: 'the Source Range detector is energized' },
+    heater_auto:            { bool: 'AUTO is lit under HEATER' },
+    spray_auto:             { bool: 'AUTO is lit under SPRAY' },
+    /* …and the DELIVERED flow, which the cooldown grades (#729). The two above read the AUTO
+     * lamp; this reads what the valve is actually passing, which is what `pwr_cooldown` needs
+     * — it puts the spray in MANUAL at 50 %, so no AUTO lamp is lit and there is nothing for
+     * `spray_auto` to say. Labelled with the BOARD's caption (PZR SPRAY, item imsgt6tl11c in
+     * `pwr_board_data.js`) — `ui/app.js:762` is the Indications tab's row, a different surface,
+     * and citing it is how the wrong string got here in the first place. */
+    spray_flow_pct:         { label: 'PZR SPRAY', u: '%' },
+    letdown_flow_actual:    { label: 'LETDOWN', u: 'gpm', scale: 450000 },
+    sr_energized:           { bool: 'SOURCE RANGE is switched on' },
     sg_safety_open:         { bool: 'an SG code safety is open' },
     porv_open:              { bool: 'the PORV is open' },
+    /* THE INCIDENT WALKTHROUGH'S TWO (#670 Phase 2). The tailpipe temperature has no engraved
+     * label on the board — it is the bare °F number under the PORV status light, and the
+     * inspect card names it "Power-Operated Relief Valve (PORV) Tailpipe Temperature" — so the
+     * done-when line uses the inspect card's own words rather than inventing a tile name.
+     * `rcp_cavitating` reaches the player as the RCP CAVITATION alarm, which is what the phrase
+     * names; with `op:'<'` it renders "the pump cavitation alarm is not standing". */
+    porv_tailpipe_temp_c:   { label: 'PORV tailpipe temperature', dim: 'temp' },
+    rcp_cavitating:         { bool: 'the pump cavitation alarm is standing' },
   };
   var MODE_NAMES = { 1: 'Mode 1, At Power', 2: 'Mode 2, Startup', 3: 'Mode 3, Hot Standby',
                      4: 'Mode 4, Hot Shutdown', 5: 'Mode 5, Cold Shutdown' };
-  // A predicate's VALUE in the player's units: US-first with SI in parentheses for the
-  // dimensioned families; plain number + unit otherwise.
+  /* A predicate's VALUE in the player's units — ONE FORM, the display units, never a pair.
+   *
+   * OWNER RULING (2026-09-06): "DO not include SI. There will be an option to switch between
+   * imperial and SI but i dont think thats been implemented yet." The board prints only °F,
+   * psi, %, gpm, MWe and cps, so a "(15.41 MPa)" tail on a done-when line is the only metric
+   * text a player ever meets, in the narrowest column on the page.
+   *
+   * IT WAS GATED AND IT STILL SHIPPED (#670 operator pass 2, S-10). `run_style`'s
+   * `checklist_no_si` walks the AUTHORED strings of RD.MANUAL_PROCEDURES.pwr2 — text, note,
+   * why, target, wait_hint, story, accs[].label, precond text — and every one of them is
+   * clean. The SI was never authored: it was COMPOSED HERE, from a numeric `v` and the unit
+   * table below, for any predicate with a `dim` and no `label` to render instead. Measured on
+   * the built pool: 18 sites across four walkthroughs (heatup 5, startup 3, cooldown 7,
+   * TMI-2 3), six of them precondition-banner lines. A source scan of the pool could not see
+   * one of them, which is the whole trap — the gate read the author, and the author was not
+   * the source.
+   *
+   * The `Manuals/` set is NOT affected and keeps US-first-with-SI: all five callers of this
+   * formatter are inside the live checklist panel. */
   function fmtPredValue(pd, v) {
     if (v == null || isNaN(+v)) return String(v);
     if (pd && pd.dim) {
       var us = conv(+v, pd.dim), sfx = pd.suffix || '';
-      var siU = { pressure: 'MPa', temp: '°C', tempdiff: '°C', vacuum: 'kPa' }[pd.dim] || '';
-      var usTxt = (Math.abs(us) >= 100 ? Math.round(us) : Math.round(us * 10) / 10) + ' ' + unit(pd.dim) + sfx;
-      if (ui.units === 'SI') return usTxt;                        // already SI — one form
-      return usTxt + ' (' + (Math.abs(+v) >= 100 ? Math.round(+v) : Math.round(+v * 100) / 100) + ' ' + siU + sfx + ')';
+      return (Math.abs(us) >= 100 ? Math.round(us) : Math.round(us * 10) / 10) + ' ' + unit(pd.dim) + sfx;
     }
     /* A DISPLAY SCALE, for the params published in the #408 currency (#624 item 25). The CVCS
      * flows are gpm/450,000 on the wire, so a raw render prints "0" for every flow a plant ever
@@ -3604,6 +4141,26 @@
      * conversion for the checklist's own criteria line, declared on the entry rather than
      * hidden in a branch. */
     var vv = (pd && pd.scale) ? +v * pd.scale : +v;
+    /* THE METER'S OWN NOTATION (#735) *(OWNER, #724 item 6: "Whenever the SOURCE RANGE is
+     * referenced it should be in the format of 7.0e2 not 700cps. this is not consistant. it can
+     * still have '7.0e2 (700 counts per second)', this is acceptable.")*. The source range is a
+     * LOG channel and the board prints its exponent (`logSer`); the checklist's step text has
+     * said 7.0e2 since #619 item 19, and this line still said "700 cps" — the same number in
+     * two notations on one card, which is the inconsistency he is naming. `sci` renders the
+     * board's form with the plain number in brackets, which is the form he called acceptable. */
+    if (pd && pd.sci) {
+      /* ⚠ GUARD FIRST (quality pass, 2026-09-12): the normalising loops below never terminate
+       * for +/-Infinity, and `isFinite(null)` is TRUE in this codebase's standing trap — hence
+       * the `typeof` half. Not reachable from the shipped pool (no precondition names
+       * `sr_counts_cps`, so the only values here are the authored literals), but this formatter
+       * also renders a precondition's OBSERVED value, where a dead channel could arrive. */
+      if (typeof vv !== 'number' || !isFinite(vv) || vv === 0) return String(v);
+      var mant = vv, exp = 0;
+      while (Math.abs(mant) >= 10) { mant /= 10; exp++; }
+      while (mant !== 0 && Math.abs(mant) < 1) { mant *= 10; exp--; }
+      return mant.toFixed(1) + 'e' + exp + ' (' + Math.round(vv).toLocaleString('en-US') +
+             (pd.u ? ' ' + pd.u : '') + ')';
+    }
     var n = Math.abs(vv) >= 100 ? Math.round(vv) : Math.round(vv * 10) / 10;
     return n + (pd && pd.u ? ' ' + pd.u : '');
   }
@@ -3620,11 +4177,74 @@
                                             : 'not: ' + pd.bool;
     }
     var label = pd ? pd.label : pred.p;
+    /* STEADINESS (#755) has no value to print — the claim is about CHANGE, not about a reading,
+     * so neither the band form below nor the "label op value" form at the bottom says it. An
+     * authored `label` on an `accs` entry still wins (that is the path step 8 takes); this is
+     * what an unlabelled entry or a bare `acc` draws. Per cent and minutes, no SI to carry. */
+    if (pred.op === 'steady') {
+      var sw = (pred.window > 0) ? pred.window : 120;
+      var swTxt = (sw % 60 === 0) ? (sw / 60) + (sw === 60 ? ' minute' : ' minutes') : sw + ' seconds';
+      var swPct = +pred.v * 100;
+      return label + ' steady — under ' + (swPct < 1 ? swPct.toFixed(1) : String(Math.round(swPct))) +
+             ' % change over the last ' + swTxt;
+    }
     if (pred.op === '~') {
       var tol = pred.tol != null ? pred.tol : 1;
-      return label + ' within ' + fmtPredValue(pd, tol) + ' of ' + fmtPredValue(pd, pred.v);
+      /* A BAND, NOT A SUM THE PLAYER HAS TO DO (#653 product defect 3). It printed
+       * "AVG COOLANT TEMPERATURE within 14 °F of 547 °F" — arithmetic, in the narrowest column
+       * on the page, and both fresh-context reviewers said so. The tile shows one number and
+       * the question the player is asking is "is this number in or out", which is a RANGE. So
+       * the two ends are printed instead: "AVG COOLANT TEMPERATURE 533 to 561 °F".
+       *
+       * A TOLERANCE IS STILL A DIFFERENCE and that trap is unchanged — it is just applied one
+       * step earlier now, to the ENDPOINTS. `v ± tol` is computed in the predicate's own
+       * internal units (°C here) and each end then converts ABSOLUTELY, which is arithmetically
+       * the same thing and is why the band cannot pick up the +32 the old form could: there is
+       * no lone difference left to convert. (The old bug printed "within 46 °F of 547 °F" — an
+       * 8 °C band run through the `temp` converter. Under this form that mistake would have to
+       * print 501 to 593 °F, which is visibly a different claim, so verify_ckl_relevance now
+       * pins the endpoints rather than the band.)
+       *
+       * `fmtPredValue` rounds, so a band whose ends round to the same number would read
+       * "547 to 547 °F". Guarded: fall back to the tolerance form rather than print a
+       * degenerate range. Measured on the shipped pool — no predicate does this today; the
+       * guard is for the next author, not for a live case. */
+      var lo = fmtPredValue(pd, +pred.v - tol), hi = fmtPredValue(pd, +pred.v + tol);
+      if (lo !== hi) {
+        /* both ends carry the unit from fmtPredValue; drop the low end's so the pair reads
+         * "533 to 561 °F" rather than "533 °F to 561 °F" — one unit, at the end, like a tile */
+        var loBare = (pd && (pd.dim || pd.u)) ? lo.replace(/\s\S+$/, '') : lo;
+        return label + ' ' + loBare + ' to ' + hi;
+      }
+      var tolPd = (pd && pd.dim === 'temp') ? { dim: 'tempdiff', suffix: pd.suffix } : pd;
+      return label + ' within ' + fmtPredValue(tolPd, tol) + ' of ' + fmtPredValue(pd, pred.v);
     }
     return label + ' ' + (OPSYM[pred.op] || pred.op) + ' ' + fmtPredValue(pd, pred.v);
+  }
+
+  /* WHAT MODE THE PLANT IS ACTUALLY IN, beside a "Confirm Mode N" criterion (#653 product
+   * defect 4, the last of the four: "no MODE readout exists for any Confirm Mode N step").
+   *
+   * Six of the pool's steps grade on `plant_mode` and the board carries no mode indication of
+   * any kind — it is still an open nice-to-have in CLAUDE.md's Known open work. So the layman
+   * reviewer hit "Confirm Mode 5, Cold Shutdown" with nothing on the screen that says a mode,
+   * and no way to tell a step that is waiting from one that is stuck. A board tile is a board
+   * change and is not this pass; the criterion line can answer the question for free, because
+   * the mode is already in the snapshot the panel is holding.
+   *
+   * ONLY `plant_mode`. Every other predicate in the pool names a tile the player can read, and
+   * printing the live value beside each of them would turn the criteria block into a second set
+   * of gauges. This is the one criterion with no gauge behind it.
+   *
+   * DECLARED AS A TRUE VALUE (HR1), the same way the precondition banner declares its own. There
+   * is no mode transmitter; the mode is inferred from temperature, pressure and power, each of
+   * which does have a gauge. */
+  function modeLiveNote(pred, s) {
+    var pd = PRED_DISPLAY[pred && pred.p];
+    if (!pd || !pd.mode) return '';
+    var m = s && s.true_state ? s.true_state.plant_mode : null;
+    if (typeof m !== 'number') return '';
+    return '  — the plant reads ' + (MODE_NAMES[Math.round(m)] || ('Mode ' + m)) + ' (true value)';
   }
 
   function renderChecklist(s, ck) {
@@ -3637,10 +4257,11 @@
        * with no owner (#598 item 12). Clear it, and clear the render key with it — the
        * card we are about to draw is not the one the key describes. */
       if (cklState.key) resetCkl();          /* resetCkl blanks cur — set the text AFTER it */
-      cur.hidden = false; cur.textContent = 'Checklist: ' + ck.procedure_id;
+      cur.hidden = false; cur.textContent = 'Walkthrough: ' + ck.procedure_id;
       return;
     }
     cur.hidden = cklState.view !== 'run';
+    var btnsEl0 = $('cklBtns'); if (btnsEl0) btnsEl0.hidden = cklState.view !== 'run';   /* #687 item 2 */
     // Precondition verdicts join the render key (#392's lesson: a banner outside
     // the key never repaints). Observed values are keyed ROUNDED so the banner
     // tracks a dilution at ~whole-unit granularity instead of rebuilding the DOM
@@ -3655,18 +4276,50 @@
       // #244 additions: per-entry check-off states, the why-toggle states, and the display
       // units all change what the card shows, so they join the render key.
       (ck.accs || []).map(function (a) { return a.met ? 1 : 0; }).join(''),
-      cklState.whyAll ? 1 : 0, Object.keys(cklState.whyOpen || {}).join(','), ui.units,
+      /* #660 items 17-18: BOTH BUTTONS' LIT STATES BELONG IN THE KEY. `awaiting_ack` is what
+       * lights Continue and draws its note, and `rewind_ready` is what enables Rewind — neither
+       * was here, and neither is implied by the rest of the key: `rewind_ready` can flip while
+       * the step index and every acceptance sit still (emptying the ring, which is what loading
+       * a save does). MEASURED in headless Chromium before this line existed: step 1 with the
+       * ring cleared reported rewind_ready false in the snapshot while the button on the board
+       * stayed enabled, because nothing in the key had moved. */
+      ck.awaiting_ack ? 1 : 0, ck.rewind_ready ? 1 : 0,
+      /* the two fold-state components left the key with the fold itself (#737) */
+      ui.units,
+      /* the leg-caution block's open/shut state (#653 defect 1) — outside the key it would
+       * never repaint, which is #392's lesson about the precondition banner */
+      cklState.cautionsOpen == null ? 'd' : (cklState.cautionsOpen ? 1 : 0),
+      /* the live mode, ROUNDED — it is printed beside a Confirm Mode N criterion (#653
+       * defect 4) and a value outside the key never repaints. Rounding is what keeps it
+       * off the per-broadcast churn list: five values over a whole evolution. */
+      (s && s.true_state && typeof s.true_state.plant_mode === 'number') ? Math.round(s.true_state.plant_mode) : '',
+      /* THE OUT-OF-TURN NOTE (#759). A value outside the key never repaints — this file's own
+       * lesson twice already (#392's precondition banner, #653 defect 4's mode line) and it bit
+       * a third time here. MEASURED in headless Chromium with the renderer and the runtime both
+       * finished and the key untouched: two real Plot point presses on `pwr_startup` step 5 at
+       * 538 counts per second, the service recording `out_of_turn {acc_index: 3, blocked_by: 0}`,
+       * and the card drawing NOTHING. Every other component of the key sits still on an
+       * out-of-turn press — no row latches, no index moves, no acceptance changes — which is
+       * precisely what makes the press out of turn, so this is the one case the key could never
+       * have covered by accident. */
+      ck.out_of_turn ? ck.out_of_turn.blocked_by : '',
       cklState.view].join('|');
     if (key === cklState.key) return;
     var firstBuild = !cklState.key;
     cklState.key = key;
-    var h = '<button class="btn ckl-back" data-ckl-list="1">← All checklists</button>';
+    /* ONE STEP AT A TIME *(OWNER, 2026-09-08, #660 items 15-16)*: the card is the current step
+     * only, its why always open, headed "Step X of N". The Walkthroughs tab keeps the list. */
+    var h = '<button class="btn ckl-back" data-ckl-list="1">← All walkthroughs</button>';
     h += '<div class="ckl-log" id="cklLog">';
-    // Global explanations toggle (#244 item 2): expands/collapses every step's "why".
+    /* THE HISTORICAL CLOCK RIDES ON THE STEP COUNTER (#670): "Step 6 of 15 · 04:05". An
+     * incident walkthrough's steps are a timeline, and the elapsed time is the one fact that
+     * turns a list of actions into an account of a morning. Read off the pool, like the step
+     * text — `story` is content, not state. Ordinary legs author no `story` and are untouched. */
+    var headSt = (!ck.complete && pr.steps[ck.step_index]) || null;
+    var headClock = (headSt && headSt.story && headSt.story.clock) ? headSt.story.clock : null;
     h += '<div class="ckl-head"><b>' + mesc(pr.title) + '</b>' +
-      '<button class="btn ckl-why-all" data-ckl-why-all="1" title="Show or hide the details on every step">' +
-      (cklState.whyAll ? 'Hide all details' : 'Show all details') + '</button>' +
-      '<div class="m-note">Auto-checklist — steps check themselves off the instruments while you operate.</div></div>';
+      '<span class="ckl-stepno">' + (ck.complete ? 'Complete' : ('Step ' + (ck.step_index + 1) + ' of ' + pr.steps.length)) +
+      (headClock ? ' · ' + mesc(headClock) : '') + '</span></div>';
     // Precondition banner (#395) — WARN, NEVER BLOCK: unmet rows are listed with
     // measured-vs-expected and everything below still runs. Row text comes from
     // the procedure artifact (`precond[i].text`); the snapshot ships verdicts only.
@@ -3724,8 +4377,13 @@
         for (var pj = 0; pj < pc.length && pj < pr.precond.length; pj++) {
           if (pc[pj].met) continue;
           var pd = pr.precond[pj];
-          pcH += '<div>✗ ' + mesc(pd.text || pd.p) + ' <span class="muted">— wants ' + mesc(pd.p) + ' ' +
-            (OPSYM[pd.op] || pd.op) + ' ' + mesc(pd.v) + ', reads ' + fmtPcObs(pc[pj].obs) +
+          /* the detail line speaks the criteria language (#606, adjacent): it printed the raw
+           * param and SI-only numbers — "wants tavg_c ≈ 286, reads 50.2" — under a headline that
+           * had just been made player-facing. Same formatter as the step criteria, so it reads
+           * "wants Tavg within 14 °F (8 °C) of 547 °F (286 °C), reads 122 °F (50 °C)". */
+          var pdd = PRED_DISPLAY[pd.p];
+          pcH += '<div>✗ ' + mesc(pd.text || pd.p) + ' <span class="muted">— wants ' + mesc(fmtPredicate(pd)) +
+            ', reads ' + mesc((pdd && (pdd.bool || pdd.mode)) ? fmtPcObs(pc[pj].obs) : fmtPredValue(pdd, pc[pj].obs)) +
             (pc[pj].graded_by === 'true_state' ? ' (true value)' : '') + '</span></div>';
         }
         pcH += '</div>';
@@ -3733,16 +4391,57 @@
       cklState.preconHtml = pcH;
     }
     if (cklState.preconHtml) h += cklState.preconHtml;
+    /* THE LEG'S CAUTIONS REACH THE PLAYER WHO IS RUNNING IT (#653 product defect 1, the first of
+     * the four and the only one with a safety argument).
+     *
+     * `pr.cautions` rendered in exactly ONE place — `mProcCard`, the Manual tab's browse card —
+     * so every caution on every leg was unreachable from the moment the walkthrough started.
+     * Both fresh-context reviews found the consequence rather than the cause: the heatup's only
+     * heatup-rate instruction, the startup's "never pull the rods straight to the position the
+     * 1/M PLOT predicts", the cooldown's accumulator window and its spray limit are all leg-level
+     * cautions, and the reviewers reported them as missing from the checklist. They were not
+     * missing; they were on a different screen.
+     *
+     * It is also where the startup leg DEFINES pcm ("a pcm is a hundred-thousandth"), which the
+     * layman review listed as undefined at first use. The definition existed and could not be
+     * read.
+     *
+     * COLLAPSED BY DEFAULT ONCE THE LEG IS UNDERWAY, open before it. Four cautions of 20-49 words
+     * at the head of a panel that draws ONE step (#660 item 15) would push the step itself under
+     * the fold, which is the complaint this is answering, inverted. So they are open while the
+     * player is still deciding whether to start — the same moment the precondition banner above
+     * is allowed to show — and one click away after that. The summary line keeps the COUNT
+     * visible for the whole run, because "there are four cautions on this leg" is the half that
+     * has to survive the collapse.
+     *
+     * The open/shut choice is per-run state, not per-broadcast: `cklState.cautionsOpen` starts
+     * null (meaning "follow the underway default") and latches to a boolean the first time the
+     * player touches it, so a rebuild cannot shut a block they just opened. It joins the render
+     * key below for the #392 reason — a block outside the key never repaints. */
+    if (pr.cautions && pr.cautions.length) {
+      var cautOpen = cklState.cautionsOpen == null ? (pcKey === 'entry') : !!cklState.cautionsOpen;
+      h += '<div class="ckl-cautions">' +
+        '<button class="ckl-caut-sum" data-ckl-cautions="1">' +
+          '<span class="ckl-caut-chev">' + (cautOpen ? '▾' : '▸') + '</span>⚠ ' +
+          pr.cautions.length + ' caution' + (pr.cautions.length === 1 ? '' : 's') +
+          ' for this walkthrough</button>' +
+        (cautOpen ? pr.cautions.map(function (c) {
+          return '<div class="ckl-caut-l">' + mesc(c) + '</div>';
+        }).join('') : '') +
+        '</div>';
+    }
     for (var i = 0; i < pr.steps.length; i++) {
       var st = pr.steps[i];
       var done = !!(ck.steps_done && ck.steps_done[i]);
       var active = !ck.complete && i === ck.step_index;
+      if (!active) continue;   // ONE STEP AT A TIME (#660 item 15): done and pending steps are not drawn
       var cls = done ? 'ckl-done' : active ? 'ckl-active' : 'ckl-pend';
-      var hoverable = stepHlLabels(st) ? ' ckl-hoverable' : '';
+      var hoverable = (stepHlLabels(st) || stepWatchLabels(st)) ? ' ckl-hoverable' : '';   /* #685 */
       /* Per-iteration, NOT hoisted by accident: `var` is function-scoped, so a flag set on one
        * step would still read true on the next and silently suppress its wait line. Reset here,
        * at the top of every step. */
       var waitLineShown = false;
+      var ackRow = '';   /* same reason — #687 item 3 builds it above and emits it below the why */
       h += '<div class="ckl-step ' + cls + hoverable + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
       /* THE NUMBERED INSTRUCTION IS THE HEAD OF THE STACK, ON EVERY STEP *(OWNER, 2026-09-04,
        * #628: "move the numbered step to always be the first part of the stack. then the rest of
@@ -3758,8 +4457,40 @@
        * The workflow order is preserved WITHIN the active block below (criteria → control →
        * wait → acknowledge); what changed is that the whole block now hangs off the instruction
        * instead of pushing it down. */
-      h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) + '</div>';
+      /* THE NARRATIVE BLOCK, ABOVE THE INSTRUCTION (#670 Phase 1) *(OWNER, 2026-09-08: "This
+       * walkthrough should have enough context in it so the user learns what happened during the
+       * incident. It should include things like the operators actions and their reasoning behind
+       * them and what they knew.")*.
+       *
+       * ABOVE the numbered step, not in the details fold, and that is the point: on an incident
+       * walkthrough the history is not supplemental context, it is what the player is here for —
+       * and #628 put the instruction at the head of the stack precisely because everything under
+       * it is optional reading. Four labelled lines in a fixed order (clock · saw · knew · did),
+       * because the sequence IS the lesson: what was on the board, what they concluded from it,
+       * what they then did. `why` keeps its own job below — the plant lesson of the step.
+       *
+       * Read off the pool, exactly like `st.text` and `st.why`. The snapshot carries a copy for
+       * gates and headless probes (instructor_layer's checklist block); the card never uses it. */
+      if (st.story) {
+        var sy = st.story, syH = '';
+        if (sy.clock) syH += '<div class="ckl-story-l"><span>Clock</span>' + mesc(sy.clock) + '</div>';
+        if (sy.saw)   syH += '<div class="ckl-story-l"><span>The crew saw</span>' + mesc(sy.saw) + '</div>';
+        if (sy.knew)  syH += '<div class="ckl-story-l"><span>They knew</span>' + mesc(sy.knew) + '</div>';
+        if (sy.did)   syH += '<div class="ckl-story-l"><span>They did</span>' + mesc(sy.did) + '</div>';
+        if (syH) h += '<div class="ckl-story">' + syH + '</div>';
+      }
+      /* `crew: true` — THE STEP IS HISTORY, NOT ADVICE. It is what lets a walkthrough tell the
+       * player to stop the safety injection pumps, as the TMI-2 crew did, without the sim
+       * appearing to recommend it. Never suppressed by register: the disclaimer is the same
+       * sentence to a student and to an operator. */
+      h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) +
+        (st.crew ? ' <span class="ckl-crew">the crew\'s action, as taken — not a recommendation</span>' : '') + '</div>';
       if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
+      /* a step the plant moved past (#641) says so on the card, with the authored reason, so a
+       * tick the player never earned is not read as one they did */
+      if (done && ck.done_by && ck.done_by[i] === 'overtaken') {
+        h += '<div class="ckl-sub">overtaken — ' + mesc((st.overtaken && st.overtaken.label) || 'the plant moved past this step') + '</div>';
+      }
       if (active) {
         h += '<div class="ckl-act">';
         /* THE "graded off the …" LINE IS GONE *(OWNER, 2026-09-03, #619 item 5: "remove the
@@ -3770,34 +4501,130 @@
          * `ck.graded_by` is untouched in the snapshot and still asserted by
          * run_checklist_pwr2 2a/2b, which read the snapshot rather than the DOM. */
         if (st.accs && st.accs.length) {
+          /* LETTERED SUBSTEPS (#741) *(OWNER RULING, 2026-09-13: "Let's implement the substep idea
+           * as you recommend after fixing 739 first. Fewer beats for mechanical work.")*.
+           *
+           * The rows, the per-entry latching and the tick were ALL ALREADY HERE — this draws a
+           * `3a` / `3b` prefix off the entry's position and lets an entry carry the INSTRUCTION
+           * (`ask`) above its done-when, instead of showing the done-when alone. Nothing about
+           * grading moves, and no ordering is created: see the `accs[].ask` note in
+           * manual_procedures.js for why "3b cannot tick until 3a" was deliberately not built.
+           *
+           * THE LETTER COUNTS VISIBLE ENTRIES, NOT ARRAY SLOTS. `hidden` entries are skipped for
+           * drawing, so indexing the letter off `ai` would print 3a, 3c on a step whose middle
+           * entry is a hidden cmd twin — `pwr_heatup` 8 is exactly that shape.
+           * AND IT IS SUPPRESSED ON A ONE-ROW STEP: a solitary "5a" is noise, since the letters
+           * exist to say "these are parts of one step", which needs at least two parts. */
+          var visN = 0;
+          for (var vi = 0; vi < st.accs.length; vi++) if (!st.accs[vi].hidden) visN++;
+          var visSeen = 0;
+          /* AN `accs_ordered` STEP'S ROWS ARE A SEQUENCE AND THE CARD HAS TO SAY SO (#756).
+           * `ordBlock` is the index of the first row not yet met — the one the player is on.
+           * Rows AFTER it are not live: the runtime will not latch them and a cmd row is deaf to
+           * its button, so drawing them in the same cobalt as the live row would be the card
+           * inviting a press that does nothing. They go muted and drop their done-when line; the
+           * `ask` stays visible, because seeing what is coming is the point of substeps.
+           * Computed off the SNAPSHOT's per-entry verdicts, the same bits the runtime latched,
+           * so the card cannot disagree with the grading about which row is live. */
+          var ordBlock = -1;
+          if (st.accs_ordered) {
+            for (var ob = 0; ob < st.accs.length; ob++) {
+              if (!((ck.accs && ck.accs[ob]) || {}).met) { ordBlock = ob; break; }
+            }
+          }
           for (var ai = 0; ai < st.accs.length; ai++) {
             var en = st.accs[ai], av = (ck.accs && ck.accs[ai]) || {};
-            var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) : mesc(en.cmd || ''));
-            h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') + '">' +
-              (av.met ? '✓ ' : '○ ') + (en.label ? mesc(enTxt) : enTxt) + '</div>';
+            /* `hidden: true` — a cmd-kind entry the replay needs (it is how the harness presses
+             * the button) whose twin predicate entry already draws the lamp; drawing both put
+             * "spray" on the card twice (#660 item 6). Still graded; just not printed. */
+            if (en.hidden) continue;
+            var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) + modeLiveNote(en, s) : mesc(en.cmd || ''));
+            var tag = visN > 1 ? ((i + 1) + String.fromCharCode(97 + visSeen)) : '';
+            visSeen++;
+            var ordWait = st.accs_ordered && ordBlock >= 0 && ai > ordBlock;
+            h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') +
+              (ordWait ? ' ckl-crit-wait' : '') + '">' +
+              (tag ? '<span class="ckl-crit-n">' + tag + '</span>' : '') +
+              /* mesc UNCONDITIONALLY (#670 operator pass, S-5): since OPSYM prints a strict
+               * '<' / '>' rather than ≤ / ≥, fmtPredicate's output carries MARKUP characters
+               * and an unescaped insert would swallow the rest of the line as a tag. */
+              (av.met ? '✓ ' : ordWait ? '· ' : '○ ') + mesc(en.ask || enTxt) +
+              /* BOTH THE ASK AND THE DONE-WHEN, when the entry carries an instruction: the
+               * player needs to know what to do AND what the sim is waiting for. Quieter, on
+               * its own line, so the imperative is what the eye lands on. Not on a row that is
+               * still waiting its turn (#756) — a done-when for a row nothing is grading yet. */
+              (en.ask && !ordWait ? '<div class="ckl-crit-when">' + mesc(enTxt) + '</div>' : '') +
+              '</div>';
+          }
+          /* A PRESS THAT LANDED OUT OF TURN GETS A REASON ON THE CARD (#759, OWNER RULING
+           * 2026-09-15: "Fix the text AND say why"). The sim ACCEPTS the press — measured, the
+           * 1/M plot took three real points at 501 counts per second against a 700 target — and
+           * the walkthrough silently declines to count it, so the player is told two things at
+           * once and neither of them out loud.
+           *
+           * DERIVED FROM THE BLOCKING ROW, never authored per step: the runtime reports which
+           * `accs` index is holding the sequence (`out_of_turn.blocked_by`) and this reads that
+           * row's own `ask` — or its done-when when it carries none — so a step whose wording
+           * changes cannot leave a stale sentence behind, and every ordered step gets the
+           * behaviour without an author touching it. The letter is recomputed over VISIBLE
+           * entries for the same reason the row tags are (a hidden cmd twin must not consume
+           * one), and is dropped when the blocker is itself hidden. */
+          var oot = ck.out_of_turn;
+          var bEn = oot ? st.accs[oot.blocked_by] : null;
+          if (bEn) {
+            var bTag = '';
+            if (visN > 1 && !bEn.hidden) {
+              var bSeen = 0;
+              for (var bi = 0; bi < oot.blocked_by; bi++) if (!st.accs[bi].hidden) bSeen++;
+              bTag = (i + 1) + String.fromCharCode(97 + bSeen);
+            }
+            var bTxt = bEn.ask || (bEn.label ? bEn.label
+              : (bEn.p ? fmtPredicate(bEn) + modeLiveNote(bEn, s) : String(bEn.cmd || '')));
+            h += '<div class="ckl-oot">Not yet — ' +
+              (bTag ? mesc(bTag) + ' comes first: ' : 'this comes first: ') + mesc(bTxt) + '</div>';
           }
         } else if (st.acc) {
           h += '<div class="ckl-crit' + (ck.acc_met ? ' ckl-crit-met' : '') + '">' +
-            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + fmtPredicate(st.acc) + '</div>';
+            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc) + modeLiveNote(st.acc, s)) + '</div>';
         }
         var isObs = st.control && /^\(observe/i.test(st.control);
         if (isObs) {
           if (st.target) h += '<div class="ckl-sub ckl-use">Watch for: ' + mesc(st.target) + '</div>';
-        } else if (st.control || st.target) {
-          h += '<div class="ckl-sub ckl-use">' +
-            (st.control ? 'Use <b>' + mesc(st.control) + '</b>' : '') +
-            (st.control && st.target ? ': ' : '') +
-            (st.target ? mesc(st.target) : '') + '</div>';
         }
+        /* THE "Use <control>: <target>" RUNG IS NOT DRAWN *(OWNER RULING, 2026-09-14/15, on
+         * options put as "delete `control` from the steps / hide it in the renderer / leave it":
+         * selected "Hide it in the renderer")*.
+         *
+         * `Blueprint/WALKTHROUGH_STEPS_OWNER.md` is the authority for step text and it carries
+         * that rung on exactly ONE of the nineteen steps that declare a `control`. The rung is
+         * therefore the renderer's addition, not the author's, and it is the renderer that stops.
+         *
+         * `control` AND `target` STAY ON EVERY STEP, and deleting them is the thing not to do:
+         * `control` is `verify_manual_follow`'s coverage key through `STEP_UI` (it reads the
+         * MANUAL card's `.m-pill`, rendered at renderManual below — untouched by this), so
+         * dropping it would take 18 steps out of that browser gate while looking like a tidy-up.
+         *
+         * ⚠ THIS SUPERSEDES THE #598 item 13 RULING OF 2026-09-02 ("the active step card must
+         * carry the CONTROL outside the Details fold"), which was made when the card had been
+         * collapsed to the instruction alone and 59 % of steps named no control in their text.
+         * `verify_flags_ui`'s check for that line is re-authored in the same change to assert the
+         * rung is ABSENT, and INJECTION-PROVEN: restoring the deleted branch reddens it naming
+         * the line it drew. Its first cut did NOT — it read whichever walkthrough the picker
+         * started, which opens on an observe step, and `.ckl-use` renders only under the active
+         * step; so it now starts one whose first step carries a control. The `isObs` branch above is deliberately untouched: the ruling names the
+         * "Use …" rung, and an observation step's "Watch for:" is the only statement of what it
+         * is asking the player to look at. */
         /* HOW LONG THIS STEP TAKES, ON THE FACE OF THE CARD *(OWNER, 2026-09-03, #619 item 8:
          * "Add estimated plant time to compeltion for steps with waiting that could take more
          * than a few minutes at 1x. add suggestion to time warp for those steps.")*.
          *
          * DERIVED FROM `hold`, NOT AUTHORED. Every step already carries the dwell the replay
          * gives it, so the estimate cannot drift from what the harness proves the step needs —
-         * and 24 of the 61 pwr2 steps qualify without a word of new authoring. An authored
-         * number beside a `hold` would be the same fact written twice, which is how the 705 ppm
-         * in the ascension came to disagree with the plant.
+         * and 34 of the pool's 88 pwr2 steps qualify (re-measured 2026-09-11, #686; was "24 of
+         * the 61" when this comment was written — the pool has grown twice since, #670/#693/
+         * #692) without a word of new authoring. An authored number beside a `hold` would be the
+         * same fact written twice, which is how the 705 ppm in the ascension came to disagree
+         * with the plant.
          *
          * ⚠ IT IS THE REPLAY'S DWELL, WHICH IS AN UPPER BOUND, NOT A PROMISE. The harness waits
          * `hold` seconds; a player who drives the plant harder gets there sooner, and one who
@@ -3809,19 +4636,34 @@
          * carries the real warnings — the accumulator window is the one that matters), and is
          * then suppressed from the collapsed detail so it is not printed twice. */
         var holdS = +st.hold || 0;
-        if (holdS >= 180) {
-          var mins = holdS / 60;
-          var span = mins < 90 ? Math.round(mins) + ' plant-minutes'
-                   : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours';
+        /* `wait_hint: false` SUPPRESSES the generated line (#653 S9, layman playtest 2026-09-07):
+         * the startup's criticality steps carry 240-900 s dwells, so the hint offered 60x, and
+         * at 60x the reactor went 0 -> 12 % between two glances. A step may author the hint away. */
+        if (holdS >= 180 && st.wait_hint !== false) {
+          /* `hold` IS THE REPLAY'S DWELL, NOT A MEASUREMENT OF THE PLAYER'S STEP (#670 operator
+           * pass 2, S-1). It is how long `procedures_harness` sits on the step so the plant has
+           * settled before the next command, and it has been printed to the player as "About N
+           * plant-minutes" since #628. On the TMI-2 leg, measured full-stack on two routes
+           * (advance the instant each acceptance is met, and again holding step 10 to the
+           * steam-generator level the reviewer carried), step 14's cue is met in 3.1 plant-minutes
+           * against a printed 62 — while an operator playing it live took 175. The number is not
+           * an estimate of anything; it is a gate fixture wearing a prediction's clothes. */
+          var span = cklWaitSpan(st, holdS);
           /* AND WHICH RUNG TO REACH FOR *(OWNER, 2026-09-04, #628: "Add a suggested time warp
            * value for the long term waiting steps.")*. "Use time acceleration" left the player
            * to work out how much, and the answer is not obvious: the ladder is 1/5/10/60/600/
-           * 3600 and the right rung spans four of those across the 24 pwr2 steps that qualify.
+           * 3600 and the right rung spans four of those across the 34 pwr2 steps that qualify.
            * RD.CklSpeedHint picks it off the ladder itself, so this can never name a button that
            * is not there. */
           var rung = RD.CklSpeedHint(holdS);
-          h += '<div class="ckl-sub ckl-wait">⏩ About ' + span + ' at 1× — set the speed control to <b>' +
-            rung.speed + '×</b>' + (rung.warp ? ' (WARP; the plant must be quiet to take it)' : '') + '.' +
+          /* THE WARP EXPLANATION CLAUSE IS GONE (#686, OWNER RULING 2026-09-10): it pointed at
+           * "the line under the speed bar", which is exactly the paragraph #686 replaces — a
+           * sentence that would have dangled the moment that paragraph did. This shrinks to the
+           * span, the rung, and any step-authored `wait_hint` string (a different, per-step
+           * fact — the accumulator-window caution, a pressure-swing note — not the boilerplate
+           * that was removed). */
+          h += '<div class="ckl-sub ckl-wait">⏩ ' + (span ? 'About ' + span + ' at 1× — s' : 'A wait whose length depends on the plant — s') + 'et the speed control to <b>' +
+            rung.speed + '×</b>.' +
             (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
           waitLineShown = true;
         }
@@ -3838,11 +4680,34 @@
          * have just gone green, so the eye goes criterion → met → press. (It used to be
          * described as "directly above the step text it belongs to"; #628 moved the step text
          * to the head of the card, so the button is now the foot of the block rather than the
-         * hinge between two. The reading order it was placed for is unchanged.) */
-        if (ck.awaiting_ack) {
-          h += '<div class="ckl-ack-row"><button class="btn ckl-ack" data-ckl-check="' + i +
-            '">Acknowledge ✓</button><span class="ckl-ack-note">This step is complete — acknowledge to continue.</span></div>';
-        }
+         * hinge between two. The reading order it was placed for is unchanged.)
+         *
+         * SINCE #687 item 3 IT IS ALSO BELOW THE `why` *(OWNER, 2026-09-09: "The walkthrough
+         * rewind step and continue buttons should be under the text not above the why text.")*.
+         * It is BUILT here, beside the criteria it reads from, and APPENDED after the detail
+         * block below — so the row leaves `.ckl-act` and becomes the last thing in the step. The
+         * active step's details are force-open (#660), so nothing can land it under a collapsed
+         * stub. */
+        /* REWIND + CONTINUE, ON EVERY STEP *(OWNER, 2026-09-08, #660 items 17-18)*. Continue is
+         * always drawn and lights (`ready`) when the instructor reports the step satisfied —
+         * every step waits for it now, not only the observations. Rewind takes plant and
+         * walkthrough back one step: two checkpoints back, because the newest is the start of
+         * THIS step (laid on the last Continue). Disabled on the first step — and disabled
+         * whenever the step's start checkpoint is NOT on the rewind ring (`rewind_ready`, #660
+         * items 17-18): a loaded save restores the walkthrough's progress but clears the ring,
+         * which used to leave the button lit over a command the service refuses. */
+        var wtRw = ck.step_index > 0 && ck.rewind_ready;
+        ackRow = '<div class="ckl-ack-row">' +
+          '<button class="btn wt-rewind" data-wt-rewind="1"' + (wtRw ? '' : ' disabled') +
+            ' title="' + (wtRw
+              ? 'Back one step — the plant and the walkthrough return to the start of the previous step'
+              : ck.step_index > 0
+                ? 'Rewind is not available here — this step\'s saved plant state is not in memory (loading a saved game clears it)'
+                : 'This is the first step — there is nothing to go back to') +
+            '">⏪ Rewind step</button>' +
+          '<button class="btn ckl-ack wt-continue' + (ck.awaiting_ack ? ' ready' : '') + '" data-ckl-check="' + i + '"' +
+            (ck.awaiting_ack ? '' : ' disabled') + '>Continue ▶</button>' +
+          (ck.awaiting_ack ? '<span class="ckl-ack-note">Step done — press Continue.</span>' : '') + '</div>';
         h += '</div>';
       }
       var det = '';
@@ -3852,17 +4717,68 @@
           ? 'This takes a while in plant time — use time acceleration (the speed control, top bar).'
           : st.wait_hint) + '</div>';
       }
-      if (st.why) det += '<div class="ckl-why">' + mesc(st.why) + '</div>';
-      if (det) {
-        var detOpen = cklState.whyAll || (cklState.whyOpen && cklState.whyOpen[i]);
-        if (active && !detOpen) h += '<div class="ckl-expand-hint">Click to expand</div>';
-        if (detOpen) h += det;
+      /* THE DETAILS PARAGRAPH IS LABELLED, SO IT READS AS EXTRA (#692 item 3, from the owner's
+       * 2026-09-09 sheet §B — he asked for it "presented as extra learning material rather than
+       * part of the step", and suggested a labelled bubble).
+       *
+       * It had no label at all. Since #660 item 3 the active step's details are ALWAYS OPEN, so
+       * the `why` arrives as an unheaded grey paragraph hanging under the instruction with
+       * nothing saying it is optional — the same visual weight as the `note`, which carries
+       * contingencies the player does have to act on. A label is what separates "read this to
+       * act" from "read this to understand".
+       *
+       * "Background - not an action" *(OWNER RULING, 2026-09-13: "Info-box label - a", choosing
+       * it over "Why this step - background, not an action")*, settling his own instruction of
+       * the same day: "I also want to make the informational text block more obvious that it's
+       * not a work step but just there for education. Put it in its own box, move it slightly
+       * away from the work steps and label it so it's obvious what it is."
+       *
+       * IT NAMES THE CATEGORY AND STATES THE NEGATIVE, which is the half a question-shaped
+       * label cannot do. "Why this step" named the field's contract (CHECKLIST_WRITING_GUIDE
+       * F2 - one causal chain answering why the step is here) but a player scanning for what
+       * to press still has to read it to learn it is not for them. The rejected candidate kept
+       * both halves and ran long for a 10 px upper-case legend.
+       *
+       * THE GUIDE STILL CALLS THE FIELD "why" and F2 still governs what goes in it - this is
+       * the LEGEND the player reads, not a rename of the authoring key.
+       *
+       * The legend borrows `.ckl-story-l > span`'s idiom — small, upper case, muted — because
+       * the story block is the OTHER always-drawn supplementary field on this card, and two
+       * supplementary blocks that look like two different kinds of thing is the confusion this
+       * is fixing. */
+      if (st.why) {
+        det += '<div class="ckl-why"><span class="ckl-why-lbl">Background — not an action</span>' +
+          mesc(st.why) + '</div>';
       }
+      if (det) {
+        /* THE ACTIVE STEP'S DETAILS ARE ALWAYS OPEN *(OWNER, 2026-09-08, #660: "The current step
+         * should have the why section automatically open.")*. The "other steps keep the toggle"
+         * half is gone with #737: no other step is drawn, so `active` was the only term that
+         * could ever decide this. Kept as an explicit `if` rather than folded away because the
+         * loop above may one day draw more than the active step again, and that is exactly the
+         * condition under which a fold has to come back. */
+        if (active) h += det;
+      }
+      /* #687 item 3: Rewind step + Continue, LAST — under the instruction, the criteria and the
+       * labelled `why`, which is where the owner asked for them. Built in the active block above
+       * (it reads `awaiting_ack` / `rewind_ready` beside the lamps those flags light). */
+      h += ackRow;
       h += '</div></div>';
     }
     if (ck.complete) {
-      h += '<div class="ckl-complete"><b>Checklist complete</b>' +
-        (pr.outcome ? '<div class="m-note">' + mesc(pr.outcome) + '</div>' : '') + '</div>';
+      /* #715 — `pr.outcome` is an AUTHORED plant-state claim ("stable near 15 %, 15 MWe"),
+       * and the checklist's own steps can be satisfied for free (a scram, in the leg this
+       * was filed for). `outcome_verified` is the server's re-grade of the leg's optional
+       * `outcome_guard` against the LIVE plant (instructor_layer.js `_gradeOutcomeGuard`) —
+       * `false` only when a guard is authored AND fails; `null`/`true` draw the claim as
+       * before, so every leg without one is unaffected. */
+      var outcomeOk = ck.outcome_verified !== false;
+      h += '<div class="ckl-complete"><b>Walkthrough complete</b>' +
+        (pr.outcome
+          ? (outcomeOk ? '<div class="m-note">' + mesc(pr.outcome) + '</div>'
+                       : '<div class="m-note">Steps checked off, but the board does not match ' +
+                         'this leg\'s expected finish. Read the board, not this note.</div>')
+          : '') + '</div>';
     }
     h += '</div>';
     // Chain handoff (#244, the Mode 5 → full power → Mode 5 round trip): a finished leg
@@ -3870,10 +4786,26 @@
     var nextPr = ck.complete && pr.next
       ? ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === pr.next; })[0]
       : null;
-    h += '<div class="ckl-btns">' +
-      (nextPr ? '<button class="btn ckl-next" data-ckl-start="' + mesc(nextPr.id) + '">Next: ' +
-                mesc(nextPr.title) + ' ▸</button>' : '') +
-      '<button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : 'End checklist') + '</button></div>';
+    /* THE BUTTON ROW IS RENDERED OUTSIDE THIS CARD (#687 item 2, OWNER 2026-09-09: "Put 'End
+     * Walkthrough' at the very bottom of the space"). It used to be appended to `h` and so ended
+     * up the last child of `#cklRun` — which is only the FIRST child of `.instr-body`, with
+     * `#instrPrev` and `#instrLog` below it. "Last in its card" was not "the bottom of the
+     * space", and the transcript sat under the button that ends the run.
+     *
+     * `#cklBtns` (shell.html) is the last child of `.instr-body`, and what pins it to the panel
+     * floor is `.instr-log`'s `flex: 1 1 0` above it taking all the free space in that column —
+     * NOT the `margin-top: auto` this comment used to credit, which measures inert (shell.css has
+     * the four-viewport measurement). Both buttons are delegated at `document.body`
+     * (`data-ckl-start` / `data-ckl-stop`), so
+     * moving the row out of the card changes nothing about the wiring — the same reason the
+     * launcher could live in two places since #443. */
+    var btnsEl = $('cklBtns');
+    if (btnsEl) {
+      var bh = (nextPr ? '<button class="btn ckl-next" data-ckl-start="' + mesc(nextPr.id) + '">Next: ' +
+                         mesc(nextPr.title) + ' ▸</button>' : '') +
+        '<button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : 'End walkthrough') + '</button>';
+      if (btnsEl.innerHTML !== bh) btnsEl.innerHTML = bh;   /* `hidden` is set once, above */
+    }
     /* KEEP THE READER'S PLACE ACROSS THE REBUILD (#605, owner playtest 2026-09-02: "The
      * checklist keeps auto scrolling. Happens when fast forwarding. To the top then back down.
      * When mouse over it, it keeps jumping up to the top making it unusable.").
@@ -3890,14 +4822,24 @@
     // Persistent highlight for the up-next step (#244 item 5) — applied on every key
     // change so it survives step advances and hover churn; cleared when the run ends.
     var actSt = !ck.complete && pr.steps[ck.step_index] ? pr.steps[ck.step_index] : null;
-    applyCklStepGlow(actSt ? stepHlLabels(actSt) : null);
+    /* THE STEP KEY IS WHAT SCOPES THE "already pressed" SET (#755 item 19) — procedure plus step
+     * index, so advancing a step, rewinding, or starting another leg all drop it and the next
+     * step's controls pulse again from scratch. */
+    applyCklStepGlow(actSt ? stepHlLabels(actSt) : null,
+                     actSt ? (pr.id + '#' + ck.step_index) : null);
+    applyCklWatchGlow(actSt ? stepWatchLabels(actSt) : null);   /* #685 */
+    applyCklSpeedGlow(actSt);                                   /* #735 — #724 item 2 */
     // Step hover → glow the controls/indications the step names (its `hl` list) on
     // the plant display, reusing the Instructor highlight vocabulary (revealControl).
     Array.prototype.forEach.call(cur.querySelectorAll('.ckl-step'), function (el) {
       var idx2 = +el.getAttribute('data-ckl-step');
       var st2 = pr.steps[idx2];
-      var labs = st2 && stepHlLabels(st2);
-      if (!labs) return;
+      /* HOVER IS ONE TREATMENT FOR BOTH LISTS (#685). The hover preview answers "where is
+       * this step pointing", which is the same question for a control and for a gauge; the
+       * press/watch DISTINCTION is drawn on the ACTIVE step, where it is standing rather than
+       * transient and where the player is about to act on it. */
+      var labs = st2 && (stepHlLabels(st2) || []).concat(stepWatchLabels(st2) || []);
+      if (!labs || !labs.length) return;
       /* Current step already pulses via .ckl-step-glow; hovering it must not add the
        * hover class, and hovering a NON-current step must not pulse (#607 item 3). */
       var isActive = !ck.complete && idx2 === ck.step_index;
@@ -3955,7 +4897,28 @@
           if (act) {
             var top = act.offsetTop - log.offsetTop;
             var bot = top + act.offsetHeight;
+            /* A STEP MUST OPEN SHOWING ITS OWN BEGINNING (#653, layman pass 2026-09-15).
+             *
+             * The three lines below are the MINIMAL-SCROLL idiom — move the view the least
+             * distance that brings the step into view — which is what #612 wrote in place of
+             * `scrollIntoView` (whose default `block: 'nearest'` does exactly this, but walks
+             * up and scrolls every ancestor). It is right, and it is kept: on a step that FITS,
+             * bottom-aligning is what leaves the most of the preceding step on screen and puts
+             * the check-off rows at the panel floor where the eye already is.
+             *
+             * It is only right while the step fits. Advancing forward, `top >= scrollTop`
+             * always, so the first branch never runs and a step TALLER than the log is
+             * bottom-aligned — it opens scrolled PAST its own number, heading and instruction.
+             * MEASURED on the shipped pool, leg 2 step 9 (note 2,103 characters): scrollTop
+             * 144 of a 995 px step in a 728 px log, first visible words "...stop, and the step
+             * to use the speed buttons on...", mid-sentence. The player had to force the panel
+             * to the top and read it twice.
+             *
+             * So overflow takes the other alignment, and nothing else changes. Not a clamp on
+             * `bot - clientHeight`: the two cases want opposite ends of the same box, and
+             * saying so is what keeps a future edit from collapsing them again. */
             if (top < log.scrollTop) log.scrollTop = top;
+            else if (act.offsetHeight > log.clientHeight) log.scrollTop = top;
             else if (bot > log.scrollTop + log.clientHeight) log.scrollTop = bot - log.clientHeight;
           }
         }
@@ -3965,7 +4928,7 @@
     }
     /* Stay on the Checklists tab (#607 item 6). startChecklist selects it; this path
      * must not yank the player to Instructor the way applyFocus(true) used to. */
-    if (firstBuild && currentTab() !== 'checklists') selectTab('checklists');
+    if (firstBuild && currentTab() !== 'instructor') selectTab('instructor');
   }
   // Observed value for the precondition banner: whole units above 100 (ppm, °C
   // near operating point), one decimal below (fractions, small margins).
@@ -3981,15 +4944,37 @@
     if (st.control && !/^\(observe/i.test(st.control)) return [st.control];
     return null;
   }
+  /* THE INDICATIONS TO WATCH, AS OPPOSED TO THE CONTROL TO PRESS (#685) *(OWNER, 2026-09-09,
+   * #675 section B: "Each step should highlight the important indications to watch with a non
+   * pulsing green glow.")*. `hl` was one flat list rendered identically, so the gauge and the
+   * button were the same affordance; `hl_watch` is the second kind. No `control` fallback —
+   * a step's own control is by definition the thing to act on, never the thing to watch. */
+  function stepWatchLabels(st) {
+    return (st.hl_watch && st.hl_watch.length) ? st.hl_watch : null;
+  }
   // Hover-preview glow for checklist steps: glow every control/indication label a
   // step names. Separate class from the Instructor beat glow (.instr-glow) so a
   // transient hover never wipes an active beat highlight.
+  /* THE ONE LABEL RESOLVER for the checklist's three glows (#735, owner playtest #724 items
+   * 4 and 5). A glow target is not always a BOARD item: the 1/M plot-point button lives in the
+   * 1/M panel and the time-compression rungs live in the shell's speed bar, and
+   * `revealControl` can only ever answer with a board element — so `Plot point` resolved to
+   * `bdOneOverM`, the little button that OPENS the plot, and the step asking for the plot press
+   * glowed the opener. `RD.Highlight.resolve` tries the shell overrides first and falls back to
+   * the board map, keyed on the element's own identity rather than its position so #713's
+   * relocation of the 1/M panel cannot break it. Falls back to the old lookup if the highlight
+   * bus is not loaded (a bare page, a fixture). */
+  function hlTarget(lab) {
+    if (ui.plant !== 'pwr') return findPdControl(lab);
+    if (RD.Highlight && RD.Highlight.resolve) return RD.Highlight.resolve(lab);
+    var board = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
+    return board ? board.revealControl(lab) : null;
+  }
   function glowLabels(labels) {
     clearHoverGlow();
     if (!labels || !labels.length) return;
-    var board = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
     labels.forEach(function (lab) {
-      var el = ui.plant === 'pwr' ? (board ? board.revealControl(lab) : null) : findPdControl(lab);
+      var el = hlTarget(lab);
       if (el) el.classList.add('ckl-glow');
     });
   }
@@ -4001,18 +4986,157 @@
    * the hover preview (.ckl-glow) and the Instructor beat glow (.instr-glow), so a hover or
    * a beat can come and go without wiping the standing highlight. Applied on every
    * checklist render-key change to the ACTIVE step's `hl` targets; cleared on step advance
-   * (the next apply clears first), on End checklist (resetCkl) and on plant rebuild. */
-  function applyCklStepGlow(labels) {
+   * (the next apply clears first), on End checklist (resetCkl) and on plant rebuild.
+   *
+   * ⚠ ONCE PRESSED IT STOPS PULSING AND KEEPS THE GLOW *(OWNER, 2026-09-14, #755 item 19:
+   * "During wlakthroughs, when a hightighted button the glow should stop pulsing."; drawn and
+   * ruled the same day as "after press: steady glow, no pulse")*. `.ckl-step-done` is the
+   * modifier and the CSS is in ui/shell.css; what is here is the bookkeeping, and it exists
+   * because of ONE measured fact: THIS FUNCTION RE-RUNS CONSTANTLY. The checklist render key
+   * carries the acceptance flags and the rounded precondition observations, so on a moving plant
+   * it changes most broadcasts — a `ckl-step-done` written straight onto the element would be
+   * swept by the very next apply, seconds after the press. So the PRESS is remembered against the
+   * step, not the element, and re-applied on every pass until the step changes.
+   *
+   * KEYED ON THE LABEL, NOT THE ELEMENT. The board re-renders and a tile can be a different node
+   * from one pass to the next; the label is what the step authored and what `hlTarget` resolves,
+   * so it survives. The element carries it back in `data-ckl-hl` for the listener to read.
+   *
+   * POINTERDOWN, IN CAPTURE. The board's own buttons ride `pointerdown`/`pointerup` (the rod taps)
+   * while others ride `click`, and capture means a handler that stops propagation cannot hide the
+   * press from this. It reads state and adds a class — it issues no command, grades nothing and
+   * never consumes the event (HR5). */
+  var cklPressStep = null;                      // "<procedure id>#<step index>" the set below belongs to
+  var cklPressed = Object.create(null);         // label -> the player has pressed it on THIS step
+  var cklPressArmed = false;
+  /* ⚠ THE PRESS IS MATCHED BY GEOMETRY, NOT BY THE DOM, AND TWO DOM VERSIONS WERE MEASURED FAILING
+   * BEFORE THIS ONE. The obvious `e.target.closest('.ckl-step-glow')` cannot work: on the board the
+   * class never lands on the button or even on the tile — `revealControl` returns the tile's
+   * `.bd-halo` CHILD (pwr_board.js `haloFor`), a `pointer-events: none` overlay that is a SIBLING
+   * of whatever the player presses, so `closest` walks straight past it. The second version walked
+   * up from the target looking DOWN one level for a halo at each ancestor, which is the right idea
+   * and still missed: MEASURED on `pwr_heatup` step 2 (press target "RCP Run/Stop"), the real hit
+   * chain is `svg` -> div -> div -> `div.bd-tile` -> `.pwr-board-stage` and NONE of those tiles owns
+   * the glowing halo — the board overlaps its tiles, so the element you press and the element that
+   * is ringed are two different subtrees at the same place on screen.
+   *
+   * So the question the code asks is the question the PLAYER is answering: did the pointer go down
+   * inside the ring? Both forms above answered "is the pressed node related to the ringed node",
+   * which is a DOM fact the board does not honour.
+   *
+   * IT DOES NOT CHECK THAT THE TARGET IS A CONTROL. An earlier cut required a BUTTON/INPUT in the
+   * chain and that was wrong for the same reason — the board draws many of its controls as SVG
+   * symbols with no button element anywhere. It does not need the test: the label came off the
+   * step's PRESS list (`hl`, with "(observe)" pseudo-controls already excluded by `stepHlLabels`),
+   * so what is under the ring IS the control the step is asking for. The cost of a stray press
+   * inside the ring is one cue standing down early, and the next step re-arms it.
+   *
+   * HR5 is untouched: this reads coordinates and adds a class. It issues no command, grades
+   * nothing, and never consumes the event. */
+  function cklNotePress(e) {
+    var x = e.clientX, y = e.clientY;
+    if (!isFinite(x) || !isFinite(y)) return;
+    document.querySelectorAll('.ckl-step-glow').forEach(function (g) {
+      var r = g.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      if (x < r.left || x > r.right || y < r.top || y > r.bottom) return;
+      var lab = g.getAttribute('data-ckl-hl');
+      if (lab) cklPressed[lab] = true;
+      g.classList.add('ckl-step-done');
+    });
+  }
+  function applyCklStepGlow(labels, stepKey) {
+    var key = stepKey || null;
+    if (key !== cklPressStep) { cklPressStep = key; cklPressed = Object.create(null); }
+    if (!cklPressArmed) { document.addEventListener('pointerdown', cklNotePress, true); cklPressArmed = true; }
     clearCklStepGlow();
     if (!labels || !labels.length) return;
-    var board = (RD.PwrBoard && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
     labels.forEach(function (lab) {
-      var el = ui.plant === 'pwr' ? (board ? board.revealControl(lab) : null) : findPdControl(lab);
-      if (el) el.classList.add('ckl-step-glow');
+      var el = hlTarget(lab);
+      if (!el) return;
+      el.classList.add('ckl-step-glow');
+      el.setAttribute('data-ckl-hl', lab);
+      if (cklPressed[lab]) el.classList.add('ckl-step-done');
     });
   }
   function clearCklStepGlow() {
-    document.querySelectorAll('.ckl-step-glow').forEach(function (el) { el.classList.remove('ckl-step-glow'); });
+    document.querySelectorAll('.ckl-step-glow').forEach(function (el) {
+      el.classList.remove('ckl-step-glow'); el.classList.remove('ckl-step-done');
+      el.removeAttribute('data-ckl-hl');
+    });
+  }
+  /* THE WATCH GLOW (#685) — same apply/clear lifecycle as the step glow above and applied in
+   * the same breath, but its own class and its own list, so "press this" and "watch this" are
+   * two affordances rather than one. Applied AFTER the step glow deliberately: if a step ever
+   * names the same label in both lists the pulse wins the element rather than being replaced
+   * by a quieter ring — `run_manual_controls` reddens on that overlap, this is the behaviour
+   * while the red is being fixed. */
+  function applyCklWatchGlow(labels) {
+    clearCklWatchGlow();
+    if (!labels || !labels.length) return;
+    labels.forEach(function (lab) {
+      var el = hlTarget(lab);
+      if (el && !el.classList.contains('ckl-step-glow')) el.classList.add('ckl-watch-glow');
+    });
+  }
+  function clearCklWatchGlow() {
+    document.querySelectorAll('.ckl-watch-glow').forEach(function (el) { el.classList.remove('ckl-watch-glow'); });
+  }
+  /* THE SPEED BAR GLOWS WHEN THE STEP RECOMMENDS A SPEED (#735, owner playtest #724 item 2:
+   * "when a speed control is recommended the speed control button should glow").
+   *
+   * NOT AUTHORED PER STEP, on purpose. The recommendation already exists as a computed fact —
+   * `syncWarpInfo` prints "set the speed control to N x" under exactly one condition, the
+   * active step's own `hold >= 180` with `wait_hint !== false` — so a hand-written `hl` entry
+   * on each long step would be a SECOND copy of that condition, free to drift from the sentence
+   * the player is reading. One condition, two surfaces: the words and the ring.
+   *
+   * ⚠ IT GLOWS THE RUNG, NOT THE BAR, SINCE #743 *(OWNER, 2026-09-13 playtest: "instead of
+   * highlighting all the speed controls, just highlight the one that is suggested.")*. From
+   * 2026-09-12 to that ruling it lit the whole strip, and the reason was a real CSS constraint
+   * rather than laziness: `.speed` is `display: inline-flex` with `overflow: hidden`, and
+   * `.ckl-step-glow`'s only visual is an OUTER box-shadow — an outer shadow on a child is clipped
+   * by the ancestor's overflow, and `position: relative` plus a z-index does not escape a clip, so
+   * a ring on `button[data-speed="600"]` barely showed. The way out is an INSET treatment, which
+   * paints inside the button's own border box and is never clipped (`.speed button.on` was already
+   * using one). `.ckl-speed-rung` in ui/shell.css now carries it; do not reintroduce an outer ring
+   * on a rung, and do not lift `.speed`'s clip — it is what rounds the six square rungs into the
+   * strip's radius.
+   *
+   * NOT WHILE THE CLOCK IS HELD. `syncWarpInfo` has a HIGHER-priority branch: while
+   * `true_state.speed_hold` stands (the accumulator arming window) it prints that note INSTEAD
+   * of "set the speed control to N x", and the service refuses speed changes for as long as it
+   * does. Glowing through that window would ring a button that will refuse the press, which is
+   * owner item 3's complaint in reverse.
+   *
+   * A pulse, "act on this", since this IS an action the step asks for. It never fights the board's
+   * own step/watch glows — they live on the board, this lives in the shell.
+   *
+   * NOTHING LIGHTS IF THE RUNG CANNOT BE FOUND, and that replaces a fallback rather than forgetting
+   * one. `.speed` is rebuilt with the six rungs the plant currently offers, so a hint naming a rung
+   * that is not in the strip is a real mismatch; lighting the whole strip in that case is precisely
+   * what the owner rejected, and `syncWarpInfo` still prints "set the speed control to N x" in words
+   * under it either way. */
+  function applyCklSpeedGlow(st) {
+    clearCklSpeedGlow();
+    var holdS = st ? (+st.hold || 0) : 0;
+    if (!st || holdS < 180 || st.wait_hint === false) return;
+    if (warpNote && warpNote.reason === 'hold') return;   // the clock is held; the press would refuse
+    var bar = document.getElementById('speed');
+    if (!bar) return;
+    var rung = (RD.CklSpeedHint ? RD.CklSpeedHint(holdS) : null);
+    var el = (rung && rung.speed != null) ? bar.querySelector('[data-speed="' + rung.speed + '"]') : null;
+    if (el) el.classList.add('ckl-speed-rung');
+  }
+  function clearCklSpeedGlow() {
+    /* `.ckl-speed-glow`/`.ckl-step-glow` ON THE STRIP ARE SWEPT TOO, and that is not dead code: the
+     * strip can still be carrying them from a session that loaded the previous build's app.js
+     * against a cached page, and more usefully it makes this clear function total — there is exactly
+     * one place that takes the treatment off, whichever form it is in. */
+    document.querySelectorAll('.ckl-speed-glow').forEach(function (el) {
+      el.classList.remove('ckl-speed-glow'); el.classList.remove('ckl-step-glow');
+    });
+    document.querySelectorAll('.ckl-speed-rung').forEach(function (el) { el.classList.remove('ckl-speed-rung'); });
   }
   // Picker menu (free-play instructor card): every non-narrative procedure for
   // the active plant can run as a checklist.
@@ -4114,7 +5238,12 @@
    * The CATEGORY grouping stays on top of it. Declaration order alone would give the same
    * answer for every pool we ship today, but it would put the categories at the mercy of how
    * a future pool happens to be typed, and the grouping is what the directive named. */
-  var CKL_CAT_ORDER = ['startup', 'power', 'control', 'shutdown', 'emergency', 'accident'];
+  /* `incident` is LAST and that is the requirement, not a preference (#670 Phase 2): the six
+   * operating-cycle legs are the list a player works through, and the TMI-2 walkthrough is a
+   * historical reconstruction that starts at full power and ends with a damaged core. An
+   * unknown category already sorts last here, so this entry only makes the position explicit
+   * and stops a future category landing between the cycle and the incident by accident. */
+  var CKL_CAT_ORDER = ['startup', 'power', 'control', 'shutdown', 'emergency', 'accident', 'incident'];
   function cklMenuHtml(ranked) {
     if (!ranked) ranked = rankedProcedures();
     if (!ranked.length) return '<div class="m-note">No procedures for this plant.</div>';
@@ -4154,13 +5283,13 @@
     if (running && running.procedure_id === id) {
       cklState.view = 'run';
       cklState.key = null;
-      selectTab('checklists');
+      selectTab('instructor');
       if (latest) render(latest);
       return;
     }
     cklState.view = 'run';
     cmd({ action: 'start_checklist', procedure_id: id });
-    selectTab('checklists');
+    selectTab('instructor');   // the walkthrough runs in the Instructor tab (#660 item 15)
   }
 
   // ---- Instructor highlight (Gameplay §5) — glow the control the current beat /
@@ -4413,12 +5542,31 @@
    * Armed only by the on-load open, so it fires once per session and never interrupts a
    * player who opened the window deliberately and knows where it is. */
   var missionTipArmed = false, missionTipT = null;
+  /* AIM THE ▲ AT THE BUTTON IT NAMES (quality pass, 2026-09-11). #689 moved this bubble up to
+   * sit under .sim-tools, which fixed the vertical half and left the horizontal half wrong: the
+   * bubble is the full width of the panel row and Main Menu is at its RIGHT end, so a centred
+   * glyph lands nowhere near it — MEASURED at a 1500 px viewport, arrow centre x 1252.7 against
+   * a button box of 1380.2–1449.0, i.e. 128 px out, over the middle of the speed bar. Under the
+   * full-width .sim-status bar this tip used to follow, centred was correct; it stopped being
+   * correct the moment the target became one button in a six-button row.
+   *
+   * MEASURED, not computed from constants: ⛶ is the row's end-cap, the labels differ per build,
+   * and #689's own note says a seventh named tool re-lays the row out — so a hard-coded
+   * padding-right would be a number that rots. Read AFTER `hidden = false`, or the rects are all
+   * zero. Silently does nothing if either node is missing; the CSS falls back to 50 %. */
+  function aimMainMenuTip(tip) {
+    var b = $('mainMenuBtn'); if (!b || !tip) return;
+    var bb = b.getBoundingClientRect(), tb = tip.getBoundingClientRect();
+    if (!bb.width || !tb.width) return;
+    tip.style.setProperty('--mm-arrow-x', Math.round(bb.left + bb.width / 2 - tb.left) + 'px');
+  }
   function closeMissionSelect() {
     closeModal('missionOverlay');
     if (!missionTipArmed) return;
     missionTipArmed = false;
-    var tip = $('simStatusTip'); if (!tip) return;
+    var tip = $('mainMenuTip'); if (!tip) return;
     tip.hidden = false;
+    aimMainMenuTip(tip);
     clearTimeout(missionTipT);
     missionTipT = setTimeout(function () { tip.hidden = true; }, 6000);
     markSeen('session');
@@ -4456,29 +5604,46 @@
       '<div class="m-note">' + mesc(RD.Flags ? RD.Flags.soon(area) : '') + '</div></div>';
   }
   function renderMissionSelect() {
-    // Step 1 — the plant column
-    $('mpPlants').innerHTML = Object.keys(ENGINES).filter(function (k) {
-      if (ENGINES[k].hidden) return false;     /* general gate; nothing hidden today */
-      /* A card whose constructor is not in the page is not a card. On a published build that
-       * is the retired PWR engine, whose tags site/build_site.js deleted; RBMK/BWR keep their
-       * greyed `soon` cards deliberately (#514) and are exempt, because a plant on hold is a
-       * roadmap statement, not a missing file. Without this the menu would offer a plant the
-       * service cannot construct — engineCtor() returns undefined and selectPlant throws. */
-      if (!ENGINES[k].soon && !ctorPresent(k)) return false;
-      return true;
-    }).map(function (k) {
-      var e = ENGINES[k];
-      return '<div class="mplant-card' + (k === msel.engine ? ' on' : '') + (e.soon ? ' soon' : '') + '"' +
-        ' data-mplant="' + k + '"' + (e.soon ? ' aria-disabled="true" title="Control room under construction"' : '') + '>' +
-        '<div class="mplant-name">' + mesc(e.label) + (k === ui.engineKey ? ' <span class="mplant-live">● active</span>' : '') + '</div>' +
-        '<div class="mplant-sub">' + mesc(e.sub) + '</div>' +
-        '<div class="mplant-desc">' + mesc(e.desc) + '</div>' +
-        (e.soon ? '<div class="mplant-soon">COMING SOON</div>' : '') + '</div>';
-    }).join('');
+    /* STEP 1, THE PLANT COLUMN, IS GONE *(OWNER, 2026-09-09, #675 section A / #688: "Remove
+     * the plant selection column from the plant and mission menu.")*. Measured on a dev build
+     * before removing it: five cards, of which `pwr` (retired) and `pwr2` were selectable and
+     * rbmk_pre / rbmk_post / bwr were greyed COMING SOON placards. On a PUBLISHED build the
+     * retired engine's script tags are gone (#523), so the column offered ONE choice and three
+     * things you cannot click — the orphan-control shape DESIGN_CRITERIA Q3 vetoes.
+     *
+     * `msel.engine` STAYS. It is seeded from ui.engineKey in openMissionSelect() and read by
+     * all four content builders and by the Start button's switchEngine() — it is simply no
+     * longer re-pointed from inside this window; ?engine= and the fallback in boot() decide it.
+     * ENGINES keeps its `soon` / `sub` / `desc` fields: nothing renders them today, and the
+     * consequence to accept is that the sim no longer states anywhere that RBMK and BWR are
+     * planned. Those plants are on hold; the roadmap belongs on the site, not in this window. */
     // Step 2 — the mode tabs
-    var modes = [['free', 'Free Play'], ['campaign', 'Campaign'], ['scenarios', 'Scenarios'], ['walkthroughs', 'Walkthroughs']];
+    /* TWO TABS *(OWNER, 2026-09-08, #660 item 19: "In the opening plant and missions screen get rid
+     * of the Campaign and Scenarios tabs.")*. The campaign and scenario content and their gates
+     * are untouched; the tabs are simply not offered. `?mmode=campaign|scenarios` still routes
+     * for screenshots and the flags gate. */
+    /* A GREEN [NEW] ON WALKTHROUGHS *(OWNER, 2026-09-09, #675 section A / #688: "Put a green
+     * [NEW] next to the Walkthroughs tab in the plant and mission menu.")*. Third tuple slot,
+     * so any tab can carry it and none carries it by accident.
+     *
+     * PERMANENT, deliberately — there is no expiry and no markSeen() on it. The walkthroughs
+     * are the headline of the next release and the badge is meant to be seen by everyone who
+     * opens this window, not only by whoever has not opened it before. It comes off by
+     * pointing the third slot at `false` when the next release stops being about them.
+     *
+     * BUT IT IS GATED ON THE TAB ACTUALLY HAVING THE CONTENT, not written `true` (quality pass,
+     * 2026-09-11). MEASURED on the PUBLIC channel before this line existed: the tab read
+     * "Walkthroughs NEW" — badge painted 33x14 px, rgb(121, 210, 151) — above a panel reading
+     * "COMING SOON. Guided procedure walkthroughs are in final review." `walkthroughs` is
+     * stage:'preview' in site/flags.js, so a public visitor gets a green "here now" over a
+     * locked door. Same rule as CLAUDE.md's "a flag-gated feature is not released and gets no
+     * changelog.html entry": the badge is an announcement and must not outrun the flag. */
+    var modes = [['free', 'Free Play'], ['walkthroughs', 'Walkthroughs', walkthroughsOffered()]];
+    if (/[?&]mmode=/.test(location.search || '')) modes.push(['campaign', 'Campaign'], ['scenarios', 'Scenarios']);
+    else if (msel.mode === 'campaign' || msel.mode === 'scenarios') msel.mode = 'free';
     $('mpModes').innerHTML = modes.map(function (m) {
-      return '<button class="' + (msel.mode === m[0] ? 'on' : '') + '" data-mmode="' + m[0] + '">' + m[1] + '</button>';
+      return '<button class="' + (msel.mode === m[0] ? 'on' : '') + '" data-mmode="' + m[0] + '">' + m[1] +
+        (m[2] ? '<span class="mp-new">NEW</span>' : '') + '</button>';
     }).join('');
     // Step 3 — the mode's content
     $('mpContent').innerHTML =
@@ -4501,8 +5666,8 @@
     var e = ENGINES[msel.engine];
     var states = e.initStates || PROFILES[e.plant].initStates;   /* per-ENGINE override (pwr2: its own five-IC registry) */
     if (!states.some(function (s) { return s[0] === msel.init; })) msel.init = e.init;
-    var h = '<div class="m-note">Free Play — the plant is yours: no script, no grading, every control live. Pick the starting condition.</div>' +
-      '<div class="g-section-title" style="margin-top:12px">Starting condition</div>';
+    /* the "The plant is yours…" line is gone (OWNER, 2026-09-08, #660 item 23) */
+    var h = '<div class="g-section-title" style="margin-top:4px">Starting condition</div>';
     h += states.map(function (s) {
       return '<div class="init-row' + (s[0] === msel.init ? ' on' : '') + '" data-minit="' + s[0] + '">' +
         '<span class="init-dot">' + (s[0] === msel.init ? '◉' : '○') + '</span><span>' + mesc(s[1]) + '</span></div>';
@@ -4546,24 +5711,48 @@
           : '<button class="btn" data-trstart="' + id + '">▶ Start</button>') + '</div></div>';
     }).join('') : '<div class="m-note">No scenarios for this plant yet.</div>');
   }
+  /* DOES THE WALKTHROUGHS TAB HAVE ANYTHING BEHIND IT ON THIS CHANNEL, FOR THIS PLANT?
+   *
+   * ONE AUTHORITY, TWO CONSUMERS: mpWalkthroughs() below decides whether to draw the list or a
+   * COMING SOON panel, and renderMissionSelect's mode tuple decides whether to draw the green
+   * NEW badge. Those were two independent answers until the quality pass on 2026-09-11, and they
+   * disagreed on the channel that matters: the badge was the literal `true`, so the PUBLIC site
+   * painted "Walkthroughs NEW" over "COMING SOON — in final review". Duplicate authority is the
+   * shape DESIGN_CRITERIA Q4 vetoes, so the two gates the panel used to test inline live here and
+   * both callers ask the same function. verify_flags_ui pins the pair on both channels.
+   *
+   * The freePlayOnly fence stays OUTSIDE this, in mpWalkthroughs: it is a different sentence to
+   * the player (content authored for the retired engine, not content in review) and the badge
+   * treats both the same way — nothing offered, nothing announced. */
+  function walkthroughsOffered() {
+    var e = ENGINES[msel.engine] || {};
+    if (e.freePlayOnly && !(RD.MANUAL_PROCEDURES || {})[msel.engine]) return false;
+    if (!flagOn('walkthroughs')) return false;
+    var all = procsFor(msel.engine);
+    return !(all.length && !all.filter(function (x) { return flagOn('procedure:' + x.id); }).length);
+  }
   function mpWalkthroughs() {
     /* #244/#526 (owner-ruled 2026-08-31): walkthroughs run the validated procedure artifact
      * itself, and the pwr2 pool is authored and gated ON this plant — so an engine with its
      * own MANUAL_PROCEDURES pool is exempt from the freePlayOnly fence here. Campaign and
      * scenarios keep the fence until the #525 compatibility pass. */
     if (ENGINES[msel.engine].freePlayOnly && !(RD.MANUAL_PROCEDURES || {})[msel.engine]) return freeOnlyPanel();
-    if (!flagOn('walkthroughs')) return soonPanel('walkthroughs');
+    if (!walkthroughsOffered()) return soonPanel('walkthroughs');
     var p = progress();
     var all = procsFor(msel.engine);
     var procs = all.filter(function (x) { return flagOn('procedure:' + x.id); });
-    if (all.length && !procs.length) return soonPanel('walkthroughs');
     var doneP = p.completed_procedures || [];
-    var h = '<div class="m-note">Follow a real procedure step by step — the Instructor checks each step off the instruments.</div>';
+    /* WALKTHROUGHS *(OWNER, 2026-09-08, #660 items 21-22)*: the list is the plant's checklist
+     * pool; picking one loads its starting condition (`from`) and starts it in the Instructor
+     * tab. The old Follow-in-Instructor buttons are gone. */
+    var ics = {}; (ENGINES[msel.engine].initStates || []).forEach(function (r) { ics[r[0]] = r[1]; });
+    var h = '<div class="m-note">Pick a walkthrough. The plant loads at its starting condition and the walkthrough runs in the Instructor tab, one step at a time.</div>';
     return h + (procs.map(function (x) {
-      return '<div class="tr-row"><span class="tr-ptitle">' + (doneP.indexOf(x.id) !== -1 ? '✓ ' : '') + mesc(x.title) + '</span>' +
-        (flagOn('checklists') ? '<button class="btn" data-checklist="' + x.id + '" title="Run as a passive checklist against the live plant">📋</button>' : '') +
-        '<button class="btn" data-follow="' + x.id + '">▶ Follow</button></div>';
-    }).join('') || '<div class="m-note">No procedures for this plant.</div>');
+      var from = x.from && ics[x.from] ? ics[x.from] : null;
+      return '<div class="tr-row"><span class="tr-ptitle">' + (doneP.indexOf(x.id) !== -1 ? '✓ ' : '') + mesc(x.title) +
+        (from ? '<span class="m-note"> · starts at ' + mesc(from) + '</span>' : '') + '</span>' +
+        '<button class="btn" data-wtstart="' + mesc(x.id) + '">▶ Start</button></div>';
+    }).join('') || '<div class="m-note">No walkthroughs for this plant.</div>');
   }
 
   // THE SELECTION SCREEN IS GONE *(OWNER DIRECTIVE, 2026-08-11: "The plant and mission menu
@@ -4578,7 +5767,10 @@
    * A tooltip that fades gets dismissed by the click the user was already making
    * and is then gone for ever; a dot waits until they are curious and retires
    * itself the first time they open the thing. Exactly three, by ruling: the
-   * session bar, Checklists, and Feedback. */
+   * mission door, Checklists, and Feedback. The `session` key still names the first
+   * of those; its ELEMENT moved from the retired #simStatus bar to #mainMenuBtn at
+   * #689, and the localStorage key is untouched so a returning player keeps the
+   * dot they already retired. */
   /* Panel state across sessions (#439, spec §14-7 — OWNER SELECTION 2026-08-10 from the
    * options presented: "Persist panel state"). Which tab was open and whether the
    * Instructor was folded are the player's arrangement of their own control room, and
@@ -4652,7 +5844,7 @@
   var SEEN_KEY = 'rd_seen_';
   // The Checklists mark points at the LIST now — its open button is gone, because the
   // list is always on screen (owner, 2026-08-11).
-  var COACH = { session: 'simStatus', checklists: 'cklMenu', feedback: 'fbHeaderBtn' };
+  var COACH = { session: 'mainMenuBtn', checklists: 'cklMenu', feedback: 'fbHeaderBtn' };
   function seenCoach(k) {
     try { return localStorage.getItem(SEEN_KEY + k) === '1'; } catch (e) { return true; }
   }
@@ -4897,7 +6089,7 @@
     if (st.acc) {
       var met = !!f.acc_met;   // graded by the Instructor — instruments first (HR1)
       var via = f.graded_by === 'instrument' ? 'reading the instrument' : f.graded_by === 'true_state' ? 'no instrument twin — true value' : null;
-      acc = '<div class="m-note">✓ when ' + mesc(st.acc.p) + ' ' + (OPSYM[st.acc.op] || st.acc.op) + ' ' + mesc(st.acc.v) +
+      acc = '<div class="m-note">✓ when ' + mesc(st.acc.p) + ' ' + mesc(OPSYM[st.acc.op] || st.acc.op) + ' ' + mesc(st.acc.v) +
         (met ? ' <span style="color:var(--running)">✓ met</span>' : ' <span class="muted">…not yet</span>') +
         (via ? ' <span class="muted">· ' + via + '</span>' : '') + '</div>';
     }
@@ -5282,7 +6474,8 @@
       else if (ser.get) v = ser.get(latest.instruments);
     } catch (e) { v = null; }
     if (v == null || !isFinite(v)) return !!seriesHot[ser.id];
-    var full = Math.abs(ser.range[1] - ser.range[0]) || 1, dead = full * 0.05;
+    var sr = serRange(ser);
+    var full = Math.abs(sr[1] - sr[0]) || 1, dead = full * 0.05;
     var was = !!seriesHot[ser.id], hot = was;
     if (ser.dHi != null) hot = was ? (v >= ser.dHi - dead) : (v >= ser.dHi);
     if (ser.dLo != null) hot = was ? (v <= ser.dLo + dead) : (v <= ser.dLo);
@@ -5456,8 +6649,9 @@
       svg.innerHTML = '';
       drawLanes(active.map(function (s, i) {
         var b = laneBand(i, active.length, H);
+        var sr = serRange(s);
         return { ser: s, top: b.top / H * 100, mid: (b.top + b.bot) / 2 / H * 100,
-                 lo: s.range[0], hi: s.range[1], val: null, hot: false };
+                 lo: sr[0], hi: sr[1], val: null, hot: false };
       }));
       return;
     }
@@ -5577,13 +6771,14 @@
       // kept sliding and changing shape. The axis now sits on a 1-2-5 ladder and is HELD:
       // it only re-fits when the data leaves the band, or when the data has been small
       // inside it for a sustained dwell. Between re-fits every drawn point is frozen.
-      var full = Math.abs(ser.range[1] - ser.range[0]) || 1;
+      var sr = serRange(ser);
+      var full = Math.abs(sr[1] - sr[0]) || 1;
       // Minimum zoom, so a dead-flat line doesn't fill the plot with rounding: a tenth
       // of full scale, and a fortieth for the slow-moving boron trend.
       var minSpan = full * ((ser.id === 'boron') ? 0.025 : 0.1);
       var h = chartRange[ser.id];
       if (!isFinite(vmin) || !isFinite(vmax)) {
-        ranges[ser.id] = h ? [h.lo, h.hi] : [ser.range[0], ser.range[1]];
+        ranges[ser.id] = h ? [h.lo, h.hi] : [sr[0], sr[1]];
         return;
       }
       /* THE POLICY IS RD.ChartMath.holdRange (#393) — the same call the vital tiles make,
@@ -5600,7 +6795,7 @@
        * The clamp preference — don't spend height on values the quantity cannot take, a
        * level axis running to -50 % reads as broken — moves into holdRange's clampLo/Hi,
        * which is careful never to let it beat the data. */
-      var rLo = Math.min(ser.range[0], ser.range[1]), rHi = Math.max(ser.range[0], ser.range[1]);
+      var rLo = Math.min(sr[0], sr[1]), rHi = Math.max(sr[0], sr[1]);
       var hr = RD.ChartMath.holdRange(h && { lo: h.lo, hi: h.hi }, vmin, vmax, {
         minSpan: minSpan, shrinkFrames: CHART_SHRINK_FRAMES, shrinkFor: h ? (h.small || 0) : 0,
         clampLo: rLo, clampHi: rHi
@@ -6134,6 +7329,19 @@
       var B = window.RD && RD.PwrBoard;
       if (B && B.setRunning && B.isMounted && B.isMounted()) B.setRunning(run);
     } catch (e) {}
+    /* #691: A PAUSED PLANT IS ACCELERATING AT NO RATE AT ALL, so the previously-selected
+     * speed button must not read as current. This can't wait for syncSpeedUI's own repaint
+     * because pausing never changes `time_acceleration` (see resumeSim below) — pausing
+     * STOPS THE BROADCAST, same as the board-freeze note above, so no snapshot ever arrives
+     * to trigger it. Clear the lit rung by hand, and drop `lastSpeedSync`'s memory so the
+     * NEXT real snapshot always repaints — even if it lands back on the same number (a
+     * pause/resume that never touched the speed dropdown at all, e.g. the chart-settings
+     * modal), which the `v === lastSpeedSync` guard would otherwise skip silently. */
+    if (!run) {
+      var speedSeg = $('speed');
+      if (speedSeg) speedSeg.querySelectorAll('[data-speed].on').forEach(function (x) { x.classList.remove('on'); });
+      lastSpeedSync = null;
+    }
   }
   function pauseSim(reason) {
     pauseWhy[reason || 'user'] = true;
@@ -6144,6 +7352,24 @@
   function pausedFor(reason) { return !!pauseWhy[reason]; }
   function resumeSim() {
     pauseWhy = {};                       // the player said go: every hold is released
+    /* #691: play-from-pause always lands at 1x, never the speed that was showing when the
+     * player paused (that speed only ever meant "the plant was accelerating at N× until it
+     * stopped being watched" — it is not a request to resume there). Reuse the exact path
+     * the speed buttons themselves use (`ui/app.js` speed-segment click handler) rather than
+     * writing `service.timeAcceleration` directly or routing through the service's
+     * `speed_snap` drop-to-1x path (`layers/simulation_service.js` attention-stop branch) —
+     * that path toasts "Dropped to real time" and would misreport a deliberate play press as
+     * the plant interrupting the player. `warpNote` is retired for the same reason: this is
+     * the player's own act, not a plant-declared drop, so the line under the speed bar must
+     * not blame one — UNLESS the hold it names is still standing, in which case nulling it
+     * here is the #710 defect: pause/resume inside the accumulator arming window never changes
+     * `true_state.speed_hold`, so the note must survive (`retireWarpNote` checks the live
+     * state rather than assuming an act means the hold is over). Sent BEFORE `service.start()`,
+     * while the service still reads as stopped, so `cmd()`'s own `if (!service.running)
+     * render(...)` fires and the 1x button is lit immediately rather than waiting on the next
+     * broadcast. */
+    retireWarpNote();
+    cmd({ action: 'set_speed', value: 1 });
     if (!service.running) service.start();
     syncPlayBtn();
   }
@@ -6379,6 +7605,21 @@
     var lastMode = (function () { var v = ssGet(MODE_KEY); return v === null ? null : Number(v); }());
     var lastPanel = null;
     var startedAt = 0, mission = null, ended = false;
+    /* THE WALKTHROUGH RUN IN FLIGHT (#674): { id, steps, step, at, stepAt, ended }.
+     *
+     * A PLAIN VARIABLE, NOT A sessionStorage LATCH, and that is the deliberate call.
+     * `seen` above is latched because a reload re-fires a MILESTONE under an unchanged
+     * session id, which would double-count "sessions that reached the grid". A
+     * walkthrough cannot do that: it lives in the service's memory and a reload does
+     * not restore it, so the next tick sees no checklist and the run simply ends.
+     *
+     * AND A REDO AFTER A REWIND IS DELIBERATELY A SECOND `walkthrough_step` ROW. A step
+     * done twice is precisely the stuck-signal this exists to find, so de-duplicating it
+     * would delete the answer. `sum(_sample_interval)` on that step therefore counts
+     * check-offs, not people — which is why the drop-off funnel counts DISTINCT SESSIONS
+     * and the by-step mix counts events. The two columns mean different things on the
+     * dashboard and are labelled so. */
+    var wt = null;
     // session_start fires during BOOT, which on a first visit is before the consent
     // prompt has been answered — so it would be dropped, and first visits are exactly
     // the sessions worth having. Hold the facts locally (the app knows them anyway)
@@ -6477,6 +7718,80 @@
           ev('mission_complete', { id: mission.id, seconds: since(mission.at) });
           mission = null;
         }
+
+        this.walkthrough(s.instructor && s.instructor.checklist);
+      },
+
+      /* THE WALKTHROUGHS (#674). Driven off the snapshot, from inside tick, because
+       * `s.instructor.checklist` is the ONLY complete account of a run: the UI already
+       * draws the card from it, the instructor's `done_by` verdicts are in it, and
+       * hooking `start_checklist` at the button instead would see the start and none of
+       * the steps. One reader, one place, same argument as `plant_mode` above.
+       *
+       * `ck` is null whenever no walkthrough is loaded — which is also how a plant reset,
+       * a scenario load and a page reload all present themselves here. */
+      walkthrough: function (ck) {
+        var id = ck && ck.procedure_id;
+
+        // Gone, or replaced. A live run always ends with a row, and the reason is the
+        // difference between "they closed it" and "they went to another one".
+        if (wt && !wt.ended && (!id || id !== wt.id)) this.walkthroughEnd(id ? 'switched' : 'stopped');
+        if (!id) { wt = null; return; }
+
+        if (!wt || wt.id !== id) {
+          /* A COMPLETE checklist that we were not watching is NOT a start — that is a
+           * finished run still sitting on screen (the card stays until it is closed), and
+           * treating it as new would file a start for something already over. */
+          if (ck.complete) { wt = null; return; }
+          wt = { id: id, steps: ck.step_total || 0,
+                 /* NOT 0 — `step_index`. A restored save can bring a walkthrough back
+                  * mid-leg, and counting from zero there would file every step before it
+                  * as though this session had walked them. */
+                 step: ck.step_index || 0,
+                 at: Date.now(), stepAt: Date.now(), ended: false };
+          ev('walkthrough_start', { id: id, steps: wt.steps });
+          return;                                  // the entry tick checks nothing off
+        }
+        if (wt.ended) return;
+
+        var idx = ck.step_index || 0;
+        // Backwards is a rewind (or a restored checkpoint): re-arm on the step we landed
+        // on and emit nothing. The press itself is reported by `walkthroughRewind`, which
+        // knows which step was ABANDONED — this only sees where it came to rest.
+        if (idx < wt.step) { wt.step = idx; wt.stepAt = Date.now(); return; }
+
+        /* ONE ROW PER STEP CROSSED, because `step_index` can jump: the catch-up pass
+         * walks past every step that was already true, and an `overtaken` step is skipped
+         * in the same broadcast as the one after it. A single row for the jump would hide
+         * exactly the steps worth seeing.
+         *
+         * THE DWELL GOES TO THE FIRST STEP CROSSED and the rest report 0 — which is what
+         * happened: the player sat on the step they were on, and everything after it
+         * resolved in the same 100 ms broadcast. */
+        var by = ck.done_by || [];
+        for (var i = wt.step; i < idx; i++) {
+          var p = { id: wt.id, step: i, seconds: (i === wt.step) ? since(wt.stepAt) : 0 };
+          if (by[i]) p.by = by[i];                 // an unrecognised verdict is dropped by clean()
+          ev('walkthrough_step', p);
+        }
+        if (idx !== wt.step) { wt.step = idx; wt.stepAt = Date.now(); }
+
+        if (ck.complete) this.walkthroughEnd('complete');
+      },
+
+      // The walkthrough's own Rewind button, not the checkpoint picker: a general rewind
+      // is a decision about the plant. `wt.step` is the step being abandoned, which is
+      // the one that reads as "they got this wrong".
+      walkthroughRewind: function () {
+        if (!wt || wt.ended) return;
+        ev('walkthrough_rewind', { id: wt.id, step: wt.step });
+      },
+
+      walkthroughEnd: function (reason) {
+        if (!wt || wt.ended) return;
+        wt.ended = true;
+        ev('walkthrough_end', { id: wt.id, step: wt.step, steps: wt.steps,
+                                seconds: since(wt.at), reason: reason });
       },
 
       // Called once, from pagehide. sendBeacon is the only transport that survives
@@ -6485,6 +7800,9 @@
         if (ended) return;
         ended = true;
         if (mission) ev('mission_abandon', { id: mission.id, seconds: since(mission.at), beat: 0 });
+        // A walkthrough still running when the tab goes away never sees another tick, so
+        // without this the most interesting runs — the abandoned ones — end in silence.
+        this.walkthroughEnd('left');
         // sim_seconds > 0 IS "they pressed play" — the clock only advances while
         // running, so no separate flag is needed (and the one that was here read
         // false on a session that had obviously run: play is not a dispatched command).
@@ -6500,10 +7818,16 @@
 
   function diagReset(reason, meta) {
     var t = latest && latest.metadata ? latest.metadata.sim_time : 0;
-    diag.reset(reason, meta, t, ui.plant);
-    // The SOE stream is per-plant for the same reason the recording is: the watch table
-    // and the seeded edge state are the plant's, so carrying either across a plant change
-    // would compare one reactor's booleans against another's.
+    // #702: the recorder's field list is ENGINE-specific (PWR2 carries reactivity state the
+    // retired engine's true_state shapes differently), so it keys off `engId()` — 'pwr2' for
+    // the shipped engine, 'pwr' for the retired one — not `ui.plant`, which stays 'pwr' for
+    // both (see the ENGINES map comment: "only the ENGINE differs"). `fieldsFor()` in
+    // ui/diag_recorder.js falls back to FIELDS.pwr for any key it does not recognise, so an
+    // unexpected engId() never throws, only under-reports.
+    diag.reset(reason, meta, t, engId());
+    // The SOE stream stays keyed on `ui.plant`: its WATCH table is boolean board channels
+    // (turbine_tripped, hpi_active, …) that both engines publish identically, so nothing is
+    // lost by not splitting it the way the recorder's field list had to be.
     if (RD.Events) RD.Events.reset(t, ui.plant);
     TEL.sessionStart(reason, meta);
   }
@@ -6577,9 +7901,12 @@
   // the recorder at open time so the numbers describe the session being reported.
   function openFeedback() {
     $('fbStatus').textContent = '';
-    $('fbVer').textContent = (typeof window.RD_VERSION === 'string' && window.RD_VERSION)
-      ? 'Build ' + window.RD_VERSION + ' — quoting this in a bug report says exactly which version you were on.'
-      : '';
+    /* NO BUILD-STAMP LINE *(OWNER, 2026-09-14, #755 item 5: "also remove \"Build alpha · dev — quoting
+     * this in a bug report says exactly which version you were on.\" since it should already tell me
+     * what version they are on when they send a report.")*. It did, and it still does: the POSTed
+     * report carries the build and so does the diagnostics bundle, so the sentence was asking the
+     * player to do by hand what the form already does. The #fbVer element went with it in
+     * shell.html — this writer assumed it existed, so the two must move together. */
     var ro = diag && diag.readout && diag.readout();
     if (ro && ro.samples) {
       txt($('fbAttachSum'),
@@ -6993,6 +8320,7 @@
       // The ⚡ badge is syncSpeedUI's job (it runs off the snapshot and null-guards
       // the element). This handler used to set it too, unguarded — and the PWR shell
       // has no #ffBadge, so every speed click threw before the segment could repaint.
+      retireWarpNote();   // the player has acted on the last drop (#655); the info line moves on — unless the hold named is still standing (#710)
       cmd({ action: 'set_speed', value: +b.getAttribute('data-speed') });
     });
     // Settings: Units only under Display (#277 removed Values / Terminology /
@@ -7240,30 +8568,71 @@
         startChecklist(st.getAttribute('data-ckl-start'));
         return;
       }
-      if (e.target.closest('[data-ckl-list]')) {
-        cklState.view = 'list';
+      if (e.target.closest('[data-ckl-list]')) { selectTab('checklists'); return; }   // the list tab; the run stays live
+      /* the leg-caution block (#653 defect 1). Latching a BOOLEAN — not toggling a null — is the
+       * point: once the player has said open or shut, the underway default stops deciding for
+       * them. `cklState.key = null` forces the rebuild the way the why-all toggle does. */
+      var cz = e.target.closest('[data-ckl-cautions]');
+      if (cz) {
+        var wasOpen = cklState.cautionsOpen == null
+          ? !((latest && latest.instructor && latest.instructor.checklist &&
+               (latest.instructor.checklist.step_index > 0 ||
+                (latest.instructor.checklist.steps_done || []).some(Boolean))))
+          : !!cklState.cautionsOpen;
+        cklState.cautionsOpen = !wasOpen;
         cklState.key = null;
         if (latest) render(latest);
         return;
       }
       var mk = e.target.closest('[data-ckl-check]');
-      if (mk) { cmd({ action: 'checklist_check', index: +mk.getAttribute('data-ckl-check') }); return; }
-      var wa = e.target.closest('[data-ckl-why-all]');
-      if (wa) { cklState.whyAll = !cklState.whyAll; cklState.key = null; render(latest); return; }
-      if (e.target.closest('[data-ckl-stop]')) { cmd({ action: 'stop_checklist' }); return; }
-      /* Click the step card to expand (#607 item 2). Skip clicks on inner buttons. */
-      var stepEl = e.target.closest('.ckl-step');
-      if (stepEl && !e.target.closest('button')) {
-        var wi = stepEl.getAttribute('data-ckl-step');
-        if (cklState.whyOpen[wi]) delete cklState.whyOpen[wi]; else cklState.whyOpen[wi] = 1;
-        cklState.key = null; render(latest);
+      /* releaseHold('walkthrough') on every way OFF a step (#694): Continue, Rewind and Stop
+       * below. It is a no-op unless the walkthrough pause actually took the hold (`clearPause`
+       * on a key nobody set is a plain delete; `service.running` is already true the rest of
+       * the time), so this costs nothing on the 99% of steps that never pause — but a step
+       * that DID pause has stopped the clock at the service level, and nothing else resumes
+       * it: Continue's own command runs the instructor forward directly (not through tick()),
+       * so pressing it while stopped would otherwise check the step off into a plant that
+       * never ticks again. */
+      if (mk) { if (!mk.disabled) { releaseHold('walkthrough'); cmd({ action: 'checklist_check', index: +mk.getAttribute('data-ckl-check') }); } return; }
+      /* the walkthrough's own rewind (#660 item 17): exact, two checkpoints back — the newest is the
+       * start of the current step — scope 'full' so the walkthrough's progress comes back with the
+       * plant. The chart's rewind is disabled while a walkthrough runs. */
+      var rw = e.target.closest('[data-wt-rewind]');
+      if (rw) {
+        /* A REWIND CLEARS THE DROP LINE (#670 operator pass 2, S-7). `warpNote` is latched until
+         * the player next presses a speed button, which was right when the only way out of a drop
+         * was to press one. Rewind also puts the speed back to 1x and takes the plant back past
+         * the transient that caused the drop — so the line under the bar went on reading "WARP
+         * dropped to 60x — pressure moving 41 psi/s" with 1x lit above it, indefinitely.
+         * Measured: 1x lit, that text still shown 4 s later and until a speed button was touched.
+         * The rewind IS the player acting on the drop, so the note is spent — UNLESS it names a
+         * `hold` still standing at the moment of the click (#710): a rewind taken while still
+         * inside the accumulator arming window does not itself clear `true_state.speed_hold`,
+         * so `retireWarpNote` is used here too rather than a bare null. */
+        /* #694: a rewind taken FROM a paused walkthrough step restores an earlier checkpoint
+         * (laid at that earlier step's ENTRY, before it fired anything — see the ordering note
+         * in instructor_layer.js `_checklistFire`), so the restored state never asked for this
+         * pause. Nothing else would ever clear it: release the hold here too, or the plant
+         * comes back from the rewind and simply never ticks again. */
+        if (!rw.disabled) { retireWarpNote(); TEL.walkthroughRewind(); releaseHold('walkthrough'); cmd({ action: 'rewind', steps: 2, scope: 'full', exact: true }); }
+        return;
       }
+      if (e.target.closest('[data-ckl-stop]')) { releaseHold('walkthrough'); cmd({ action: 'stop_checklist' }); return; }
+      /* ⚰ THE `[data-ckl-why-all]` TOGGLE AND THE `.ckl-step` CLICK-TO-EXPAND WERE HERE and are
+       * deleted (#737, owner-ruled 2026-09-13). See the cklState declaration for what they did,
+       * why they were inert under the one-step card, and the measurement. The card click called
+       * `render(latest)` unconditionally, which is why it had to go with the branch rather than
+       * be left behind as a no-op re-render. Neither ever had a visible affordance: nothing in
+       * `ui/` emitted `[data-ckl-why-all]`, `.ckl-why-btn` or `.ckl-why-all` — the handler read
+       * an attribute no code wrote. */
     });
-    // Plant & Mission window: plant / mode / start-condition picks re-render in
-    // place; the start buttons close the window and launch.
-    // The session bar is now the ONLY entry point (#439/#443) — the Operate tab that
-    // carried a "Plant & Mission…" button is dissolved.
-    $('simStatus').addEventListener('click', openMissionSelect);
+    // Plant & Mission window: mode / start-condition picks re-render in place; the start
+    // buttons close the window and launch.
+    // #mainMenuBtn — "Main Menu", in the tools row beside Settings — is the ONLY entry point
+    // (#689, owner 2026-09-09). It replaced the full-width .sim-status bar under the speed
+    // controls, which had itself replaced the Operate tab's "Plant & Mission…" button
+    // (#439/#443). One door, and it now lives with the other chrome.
+    $('mainMenuBtn').addEventListener('click', openMissionSelect);
     $('missionClose').addEventListener('click', closeMissionSelect);
     /* #520 — the halt dialog. Two ways out, and they are different decisions: reset rebuilds
      * the plant (the ONLY recovery — the latch cannot be cleared in place), while dismiss
@@ -7367,20 +8736,33 @@
         var bundle = attach ? buildDiagBundle() : { kind: 'reactor_dynamics_note_only' };
         btn.disabled = true;
         txt($('fbStatus'), 'Sending…');
-        T.sendBundle(bundle, note).then(function (r) {
+        /* EVERY PATH RE-ENABLES THE BUTTON AND SAYS SOMETHING (#682). This handler used to
+         * have a success branch and a not-ok branch and no rejection branch at all, and
+         * `sendBundle` had no terminal `.catch` — so a fetch REJECTION (dropped connection,
+         * offline, DNS, CORS) resolved neither: measured, the form read "Sending…" at 45 s
+         * with Send permanently disabled and two `TypeError: Failed to fetch` in the page
+         * log. The `.catch` in site/telemetry.js is the real fix and makes this unreachable;
+         * the second argument here is belt-and-braces, because the cost of being wrong about
+         * that is a form the player cannot use without reloading the page.
+         *
+         * THE WORDS COME FROM RD.Telemetry.sendResultMessage (#681/#682), not from here.
+         * app.js is browser-only, so a string chosen in this file is one no Node gate can
+         * prove is reached — and the three failures need three different sentences, because
+         * "the attachment is too big" has a fix the player can act on (untick the box; the
+         * note-only path measured 165 bytes and sends fine) and "please email instead" does
+         * not. Never a dead end either way: the address above still works and the download
+         * button beside it produces the same bundle as a file. */
+        function settle(r) {
           btn.disabled = false;
-          if (r && r.ok) {
-            // THE REFERENCE IS THE ONLY HANDLE ON THE REPORT (#431). The Worker names the
-            // stored object and hands the id back for exactly this; the id is also the only
-            // way a follow-up conversation can say WHICH report, since two sent the same
-            // evening are otherwise told apart by upload time alone.
-            txt($('fbStatus'), r.id ? ('Sent — thank you. Reference ' + r.id) : 'Sent — thank you.');
-            $('fbNote').value = '';
-          } else {
-            // Never a dead end: the address above still works, and the download
-            // button beside it produces the same bundle as a file.
-            txt($('fbStatus'), 'Could not send — please email instead.');
-          }
+          txt($('fbStatus'), T.sendResultMessage(r));
+          // THE REFERENCE IS THE ONLY HANDLE ON THE REPORT (#431). The Worker names the
+          // stored object and hands the id back for exactly this; the id is also the only
+          // way a follow-up conversation can say WHICH report, since two sent the same
+          // evening are otherwise told apart by upload time alone. It rides in the message.
+          if (r && r.ok) $('fbNote').value = '';
+        }
+        T.sendBundle(bundle, note).then(settle, function (e) {
+          settle({ ok: false, network: true, reason: String(e) });
         });
       });
     }());
@@ -7461,10 +8843,20 @@
           demoBtn.classList.remove('on');
           demoBtn.title = 'Board focus — hide the side panel and enlarge the plant diagram';
         }
+        /* ⛶ IS A RELAYOUT, AND ANYTHING LIVING IN THE RIGHT COLUMN HAS TO HEAR ABOUT IT
+         * (#713 / #724 quality pass, finding 2). Hiding the column is a bigger layout change
+         * than a splitter drag, and `pwr_board.js` already announces those with exactly this
+         * event (beginDrag / resetSplit). Nothing announced this one, so the 1/M plot — which
+         * now docks INTO that column — went to 0x0 while still believing itself open, and its
+         * board button became a silent no-op. The panel re-homes itself to a floating window on
+         * this event; the board's own refit is idempotent. */
+        if (typeof window.dispatchEvent === 'function' && typeof Event === 'function') {
+          window.dispatchEvent(new Event('resize'));
+        }
       });
     })();
     // Coach marks retire on first use of the thing they point at (#443).
-    $('simStatus').addEventListener('click', function () { markSeen('session'); });
+    $('mainMenuBtn').addEventListener('click', function () { markSeen('session'); });
     $('fbHeaderBtn').addEventListener('click', function () { markSeen('feedback'); });
     $('cklMenu').addEventListener('click', function () { markSeen('checklists'); });
 
@@ -7487,20 +8879,25 @@
         }
         return;
       }
-      var pc = e.target.closest('[data-mplant]');
-      if (pc) {
-        // Plants whose control room isn't built yet are shown but not selectable.
-        if (ENGINES[pc.getAttribute('data-mplant')].soon) return;
-        msel.engine = pc.getAttribute('data-mplant');
-        msel.init = ENGINES[msel.engine].init;
-        renderMissionSelect(); return;
-      }
+      /* the [data-mplant] branch went with the plant column (#688) — nothing emits that
+       * attribute any more, so a handler for it would be a dark wire. */
       var mm = e.target.closest('[data-mmode]');
       if (mm) { msel.mode = mm.getAttribute('data-mmode'); renderMissionSelect(); return; }
       var ir = e.target.closest('[data-minit]');
       if (ir) { msel.init = ir.getAttribute('data-minit'); renderMissionSelect(); return; }
       if (e.target.closest('[data-mfree]')) {
         closeMissionSelect(); switchEngine(msel.engine, msel.init); return;
+      }
+      var wt = e.target.closest('[data-wtstart]');
+      if (wt) {
+        /* a walkthrough starts from ITS starting condition (#660 item 22): load the plant
+         * there, then start the checklist — the reset is synchronous through the service. */
+        var wid = wt.getAttribute('data-wtstart');
+        var wpr = procsFor(msel.engine).filter(function (x) { return x.id === wid; })[0];
+        closeMissionSelect();
+        switchEngine(msel.engine, (wpr && wpr.from) || msel.init);
+        startChecklist(wid);
+        return;
       }
       var cc = e.target.closest('[data-camp-continue]');
       if (cc) {
@@ -7914,11 +9311,38 @@
         'feed, and the turbine here — not in a separate menu.</p>'
     },
     {
-      sel: '#gaugeStrip',
+      /* RETARGETED FROM '#gaugeStrip' (#720, OWNER RULING 2026-09-12: "A").
+       *
+       * `#gaugeStrip` is the OTHER plants' vital strip — a row of six gauges above the
+       * schematic. The PWR mounts the learning board instead and `display: none`s the strip,
+       * so the step's selector resolved to a 0x0 box, `tourElVisible()` rejected it and
+       * `renderTour()` skipped the step IN SILENCE: the tour ran 10 of its 11 steps and
+       * `#tourProg` jumped 1/11 -> 3/11. It had been describing a surface this plant does
+       * not have for as long as the board has been the PWR's display.
+       *
+       * SIX SELECTORS, NOT ONE, because no single element carries the group. Measured on the
+       * shipped board: the six Indicator Panel tiles are absolutely-positioned `.bd-tile`
+       * divs parented DIRECTLY by `.pwr-board-stage`, alongside the other 212 tiles — the
+       * smallest element that encloses all six is `.pwr-board-wrap`, i.e. the whole board,
+       * which is what step 1 already spotlights. Rather than add an empty wrapper to the
+       * board doc purely to give the tour something to point at, the tour takes the UNION of
+       * a step's `sels` (see tourResolveEls / tourUnionRect). The tiles abut exactly — 220 px
+       * pitch at 220 px wide, all at top 70 — so the union IS the strip: measured 1066 x 92 px
+       * at (32, 46) on a 1500x950 viewport.
+       *
+       * The ids are the board doc's own item ids, the same addressing pwr_board_wiring.js
+       * drives every one of these tiles by; they are as stable as the wiring table. No
+       * `fallback:` on purpose — option B ("fall back to #viewArea") was declined because two
+       * steps on one box reads as a bug, and the gate below now reds on a silent skip. */
+      sels: ['[data-item="imrzl4b7g9m"]', '[data-item="ims2immk7ks"]', '[data-item="ims2immxl2s"]',
+             '[data-item="ims2immsvn6"]', '[data-item="ims2immon9z"]', '[data-item="ims2imn1nny"]'],
       place: 'bottom',
-      title: 'Vital gauges',
-      body: '<p>Power, temperature, subcooling, pressure, and levels — the ' +
-        'readings you watch first. They turn amber/red when something is off.</p>'
+      title: 'Vital indications',
+      body: '<p>Six tiles across the top of the board: <b>REACTOR POWER</b>, <b>AVG COOLANT ' +
+        'TEMPERATURE</b>, <b>SUBCOOLING MARGIN</b>, <b>PRIMARY PRESSURE</b>, <b>PRESSURIZER ' +
+        'LEVEL</b> and <b>STEAM GENERATOR LEVEL</b> — the readings you watch first. Each one ' +
+        'draws the last three minutes beside the number, and the number turns amber as the ' +
+        'reading reaches an alarm setpoint and red at a trip setpoint.</p>'
     },
     {
       sel: '.alarm-panel',
@@ -7938,7 +9362,7 @@
       sel: '#instructorCard',
       place: 'left',
       title: 'Instructor',
-      body: '<p>Free-play coaching lives here. The title changes when a checklist, ' +
+      body: '<p>Free-play coaching lives here. The title changes when a walkthrough, ' +
         'procedure, or scenario is running. Expand the card to read more.</p>',
       prep: function () {
         var c = $('instructorCard');
@@ -7949,7 +9373,7 @@
       sel: '#toolsCard',
       place: 'left',
       title: 'The reference tabs',
-      body: '<p><b>Checklists</b> to follow a procedure. <b>Indications</b> and ' +
+      body: '<p><b>Walkthroughs</b> to follow a procedure. <b>Indications</b> and ' +
         '<b>Physics</b> for every reading the plant produces and the true state behind ' +
         'them. <b>Inject Failure</b> when you are ready for casualties. None of them ' +
         'stops the plant.</p>',
@@ -7961,7 +9385,7 @@
     {
       sel: '#cklMenu',
       place: 'left',
-      title: 'Checklists',
+      title: 'Walkthroughs',
       body: '<p>Interactive procedures that check themselves off the instruments. ' +
         'Best next step after this tour — hover a step to glow the controls it names.</p>',
       prep: function () {
@@ -7983,11 +9407,13 @@
         'Same plant you are sitting.</p>'
     },
     {
-      sel: '#simStatus',
+      /* moved from '#simStatus' with the button itself (#689) — a tour step whose selector
+       * resolves to nothing is SILENT: the step just points at empty space. */
+      sel: '#mainMenuBtn',
       place: 'bottom',
-      title: 'Plant &amp; Mission',
-      body: '<p>Starting condition and guided content. Switching restarts the plant ' +
-        'from a clean initial state.</p>'
+      title: 'Main Menu',
+      body: '<p>Starting condition, guided walkthroughs, and Reset. Starting any of them ' +
+        'restarts the plant from a clean initial state.</p>'
     },
     {
       sel: '#scannerPanel',
@@ -8001,11 +9427,11 @@
       place: 'bottom',
       title: 'Press Play when ready',
       body: '<p>Starts the clock. The pause overlay (and this tour) leave when you ' +
-        'run. Use <b>Help</b> anytime; open a <b>Checklist</b> to practice a procedure.</p>'
+        'run. Use <b>Help</b> anytime; open a <b>Walkthrough</b> to practice a procedure.</p>'
     }
   ];
   var tourIdx = 0;
-  var tourLiveEl = null;
+  var tourLiveEls = [];
   var tourOn = false;
 
   function tourElVisible(el) {
@@ -8020,12 +9446,40 @@
     if (!tourElVisible(el) && step.fallback) el = document.querySelector(step.fallback);
     return tourElVisible(el) ? el : null;
   }
+  /* A step may name a GROUP of elements (`sels`) instead of one (`sel`) — #720. The
+   * spotlight is then the union of what actually resolved, and EVERY member gets the live
+   * class, so a group of tiles glows as the strip it is. A `sels` step is satisfied by any
+   * one of its members resolving: losing one tile should narrow the spotlight, not delete
+   * the step. `sel`/`fallback` still work exactly as before when `sels` is absent. */
+  function tourResolveEls(step) {
+    if (!step) return [];
+    if (step.sels && step.sels.length) {
+      var out = [];
+      step.sels.forEach(function (s) {
+        var e = document.querySelector(s);
+        if (tourElVisible(e)) out.push(e);
+      });
+      if (out.length) return out;
+      if (!step.sel && !step.fallback) return [];
+    }
+    var one = tourResolveEl(step);
+    return one ? [one] : [];
+  }
+  function tourUnionRect(els) {
+    var L = Infinity, T = Infinity, R = -Infinity, B = -Infinity;
+    els.forEach(function (e) {
+      var r = e.getBoundingClientRect();
+      if (r.left < L) L = r.left;
+      if (r.top < T) T = r.top;
+      if (r.right > R) R = r.right;
+      if (r.bottom > B) B = r.bottom;
+    });
+    return { top: T, left: L, right: R, bottom: B, width: R - L, height: B - T };
+  }
 
   function tourClearLive() {
-    if (tourLiveEl) {
-      tourLiveEl.classList.remove('tour-target-live');
-      tourLiveEl = null;
-    }
+    tourLiveEls.forEach(function (e) { e.classList.remove('tour-target-live'); });
+    tourLiveEls = [];
   }
 
   function openTour(i) {
@@ -8042,11 +9496,12 @@
     if ($('tourRoot')) $('tourRoot').hidden = true;
     document.body.classList.remove('tour-active');
   }
-  function placeTourTip(target, place) {
+  /* `r` is a RECT, not an element, since #720 — a group step's spotlight is the union of its
+   * members and there is no element whose box that is. */
+  function placeTourTip(r, place) {
     var tip = $('tourTip'), spot = $('tourSpot');
     if (!tip || !spot) return;
     var pad = 6;
-    var r = target.getBoundingClientRect();
     var tw = Math.min(320, window.innerWidth - 24);
     var th = tip.offsetHeight || 160;
     // Spotlight box
@@ -8096,16 +9551,24 @@
     // Allow layout (expand card / show checklist) to settle before measuring.
     requestAnimationFrame(function () {
       if (!tourOn) return;
-      var el = tourResolveEl(step);
-      if (!el) {
-        // Skip missing targets rather than stalling the tour.
+      var els = tourResolveEls(step);
+      if (!els.length) {
+        /* Skip missing targets rather than stalling the tour — but SAY SO. This branch cost
+         * the tour a whole step for months and printed nothing (#720). verify_e2e_ui now
+         * reds on the skip itself; the warning is for whoever is looking at a live board. */
+        try {
+          console.warn('[tour] step ' + (tourIdx + 1) + '/' + TOUR_STEPS.length + ' "' +
+            step.title + '" SKIPPED — no visible target for ' +
+            (step.sels ? step.sels.join(', ') : step.sel) +
+            (step.fallback ? ' (fallback ' + step.fallback + ')' : ''));
+        } catch (eW) {}
         if (tourIdx < TOUR_STEPS.length - 1) { tourIdx++; renderTour(); }
         else closeTour();
         return;
       }
-      try { el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); } catch (e2) {}
-      el.classList.add('tour-target-live');
-      tourLiveEl = el;
+      try { els[0].scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); } catch (e2) {}
+      els.forEach(function (e) { e.classList.add('tour-target-live'); });
+      tourLiveEls = els;
       if ($('tourTitle')) $('tourTitle').textContent = step.title;
       if ($('tourBody')) $('tourBody').innerHTML = step.body;
       if ($('tourProg')) $('tourProg').textContent = (tourIdx + 1) + ' / ' + TOUR_STEPS.length;
@@ -8114,8 +9577,8 @@
       if (next) next.textContent = tourIdx >= TOUR_STEPS.length - 1 ? 'Done' : 'Next →';
       // Second frame: after scroll/expand, tip height is known.
       requestAnimationFrame(function () {
-        if (!tourOn || !tourLiveEl) return;
-        placeTourTip(tourLiveEl, step.place);
+        if (!tourOn || !tourLiveEls.length) return;
+        placeTourTip(tourUnionRect(tourLiveEls), step.place);
       });
     });
   }
@@ -8175,7 +9638,13 @@
    * indications. `manualRef()` fifty lines up has carried the fallback since it was written;
    * this one was the copy that did not. */
   function manualProfile() { return (RD.MANUAL || {})[ui.engineKey] || (RD.MANUAL || {})[ui.plant] || null; }
-  var OPSYM = { '>': '≥', '<': '≤', '>=': '≥', '<=': '≤', '~': '≈' };   // acceptance display
+  /* STRICT IS PRINTED STRICT (#670 operator pass, S-5). '>' and '<' used to print ≥ and ≤,
+   * which is an epsilon's difference everywhere except on the boundary — and the tiles round to
+   * whole units, so the boundary is exactly where a player looks. Measured on the TMI leg: step
+   * 12's acceptance is `pzr_level_pct < 50`, PRESSURIZER LEVEL read 50 on the tile, the printed
+   * criterion said "≤ 50 %", and the check correctly stayed open. The reviewer read that as a
+   * broken check. The comparison in the instructor is strict; the line now says so. */
+  var OPSYM = { '>': '>', '<': '<', '>=': '≥', '<=': '≤', '~': '≈' };   // acceptance display
   // Dimension of a dimensioned instrument-id / true_state field so the manual
   // converts to the active unit setting (US/SI) like the board. Everything else
   // (%, normalized, rods, MWe, RPM, cal/g/s) is unit-neutral and shown as-is.
@@ -8284,8 +9753,8 @@
     var meta = [];
     if (st.control) meta.push('<span class="m-pill">' + mesc(st.control) + '</span>');
     if (st.target) meta.push('<span class="m-target">Target: ' + mesc(st.target) + '</span>');
-    if (st.acc) meta.push('<span class="m-acc">✓ when ' + mesc(st.acc.p) + ' ' + (OPSYM[st.acc.op] || st.acc.op) + ' ' + mesc(st.acc.v) + '</span>');
-    if (st.saw) meta.push('<span class="m-acc">✓ observe ' + mesc(st.saw.p) + ' ' + (OPSYM[st.saw.op] || st.saw.op) + ' ' + mesc(st.saw.v) + '</span>');
+    if (st.acc) meta.push('<span class="m-acc">✓ when ' + mesc(st.acc.p) + ' ' + mesc(OPSYM[st.acc.op] || st.acc.op) + ' ' + mesc(st.acc.v) + '</span>');
+    if (st.saw) meta.push('<span class="m-acc">✓ observe ' + mesc(st.saw.p) + ' ' + mesc(OPSYM[st.saw.op] || st.saw.op) + ' ' + mesc(st.saw.v) + '</span>');
     if (meta.length) h += '<div class="m-meta">' + meta.join(' ') + '</div>';
     if (st.note) h += '<div class="m-note">' + mesc(st.note) + '</div>';
     return h + '</div></div>';
@@ -8300,8 +9769,8 @@
     // A gated procedure therefore reads normally here — it just cannot be driven.
     var item = 'procedure:' + pr.id;
     var h = '<div class="m-card"><div class="m-h">' + mesc(pr.title) + ' <span class="m-pill">' + mesc(pr.category) + '</span>' +
-      (flagOn('walkthroughs') && flagOn(item) ? '<button class="btn m-follow" data-follow="' + mesc(pr.id) + '">▶ Follow in Instructor</button>' : '') +
-      (flagOn('checklists') && flagOn(item) ? '<button class="btn m-follow" data-checklist="' + mesc(pr.id) + '" title="Run as a passive checklist against the live plant — no reset, steps auto-check off the instruments">📋 Checklist</button>' : '') + '</div>';
+      /* the old Follow-in-Instructor walkthrough is gone from the player's menus (#660 item 14) */
+      (flagOn('checklists') && flagOn(item) ? '<button class="btn m-follow" data-checklist="' + mesc(pr.id) + '" title="Run as a walkthrough — one step at a time in the Instructor tab; no reset, steps auto-check off the instruments">📋 Walkthrough</button>' : '') + '</div>';
     h += '<div class="m-sub">Start from: ' + mesc(pr.from) + '</div>';
     if (pr.purpose) h += '<p style="margin:8px 0">' + mesc(pr.purpose) + '</p>';
     if (pr.prereq && pr.prereq.length) h += '<div class="m-sub2">Prerequisites</div><ul class="m-ul">' + pr.prereq.map(function (x) { return '<li>' + mesc(x) + '</li>'; }).join('') + '</ul>';
@@ -8333,7 +9802,7 @@
     procs = procs.slice().sort(function (a, b) { return order.indexOf(a.category) - order.indexOf(b.category); });
     var driveable = flagOn('walkthroughs') || flagOn('checklists');
     var h = '<h2>Procedures</h2><p class="muted">' + (driveable
-      ? 'Pick a procedure to Follow (guided, resets the plant) or run as a live 📋 Checklist against the plant as it sits. Expand a card to preview its steps.'
+      ? 'Pick a procedure and run it as a live 📋 Walkthrough against the plant as it sits. Expand a card to preview its steps.'
       : 'The written procedures for this plant. Expand a card to read its steps — the guided walkthroughs that drive them are still in review.') + '</p>';
     procs.forEach(function (pr) { h += mProcCard(pr, true); });
     return h;
@@ -8520,7 +9989,7 @@
     // list, so a leaked row writes one plant's numbers under another's names.
     pendingFine = null; pendingTiles = null; pendingDiagFine = null; RD.ChartFine = null;
     syncUnitsScope();
-    buildGauges(); buildIndications(); buildPhysics(); updateSimSummary(); buildFailures();
+    buildGauges(); buildIndications(); buildPhysics(); buildFailures();
     // The control layer already reset its channels and engaged the plant's
     // normal lineup (M5 selectPlant → engageDefaults); the tab just rebuilds.
     buildAutomate();
@@ -9032,7 +10501,18 @@
     // latches the flag directly — the same manual-latch adjudication run_pwr2_loca's hold
     // section made. A closure getter so it always reflects the current service.
     if (/[?&]dev=1/.test(location.search || '')) {
-      RD.__dev = { service: function () { return service; } };
+      // tripCauseLabel/TRIP_CAUSE (#713 pass 3): the board COMPOSES the reactor-trip tile as
+      // `label + ' — ' + tripCauseLabel(reason)` (below, ~line 3075) — a string that exists
+      // nowhere in RD.PWR_PROTECTION.alarms, so a check that sweeps only that registry can
+      // never generate it and was catching a real CI overflow by accident (a different
+      // registry label happened to share its widest WORD). Exposing the real map, rather than
+      // a hand-copy in the test file, is the point — a copy goes stale the day this map gets
+      // a new cause and the test does not.
+      RD.__dev = {
+        service: function () { return service; },
+        tripCauseLabel: tripCauseLabel,
+        tripCauses: function () { return TRIP_CAUSE; },
+      };
     }
     // Fine strip-chart sampling. The service calls this on a fixed SIM-time interval inside
     // its step loop, so the chart sees the plant between broadcasts and its resolution stops
@@ -9096,7 +10576,7 @@
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
     buildSeriesIndex();   // must precede the first chartSample — see rebuildPlantUI
     syncUnitsScope();
-    buildGauges(); buildIndications(); buildPhysics(); updateSimSummary();
+    buildGauges(); buildIndications(); buildPhysics();
     buildPlantDisplay();
     service.selectPlant(engId(startKey), ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)
     diagReset('init', { engine_key: startKey, initial_state: ui.initState });

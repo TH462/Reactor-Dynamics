@@ -216,3 +216,135 @@ looks exactly like a clean audit.
 it had been printing a plant defect by name into contexts the exclusion had just cleaned (#383).
 Hooks fire regardless of `claudeMdExcludes`, so that was the one priming channel no settings file
 could close.
+
+---
+
+## 9. Scratch worktrees — one per agent, for parallel work
+
+*(OWNER DIRECTIVE, 2026-09-12: "Do the worktree experiment", after "Can we find a faster way to
+get work done? It can take forever to complete some simple changes.")*
+
+The three named lanes are for **sessions**. This section is about something different and much
+cheaper: giving each **subagent** its own throwaway worktree so two agents can work the same file
+at the same time. It is not a new lane and it never gets a lane tag.
+
+**Why.** Two agents in one tree serialize on every browser gate and clobber each other's
+uncommitted work. Both happened on 2026-09-12: `#688`/`#689` waited ~40 min behind `#687` purely
+for file contention, and an agent ran `git checkout -- ui/app.js` over another's finished,
+measured `#720` fix — which survived only because that agent still held a copy in its scratchpad.
+`git status` read clean the whole time.
+
+**Measured that day, so it is not a guess:**
+
+| | |
+|---|---|
+| `git worktree add` | **1 s** |
+| `node_modules` junction | **0 s** |
+| disk per worktree | **24 MB** (`.git` is shared, and it is 229 MB) |
+| two `verify_e2e_ui` runs, one per tree, **concurrent** | both **PASS**, 4 m 27.5 s and 4 m 28.0 s — a 0.5 s spread, no port or profile collision |
+| two agents editing **different regions** of `ui/app.js`, then merging | clean auto-merge, both edits present |
+| two agents editing the **same line** | **CONFLICT, loudly** — the correct outcome, and the opposite of the silent clobber above |
+
+**Setup** (from the primary tree; the branch name is throwaway):
+
+```
+git worktree add -b exp/<task> C:/grok_build/RD_<task> develop
+powershell -c "New-Item -ItemType Junction -Path C:\grok_build\RD_<task>\node_modules -Target C:\grok_build\Reactor_Dynamics\node_modules"
+mkdir C:/grok_build/RD_<task>/inbox
+```
+
+**`mklink /J` through Git Bash fails on the path escaping** — use the PowerShell form above.
+Without the junction every browser gate in that tree dies. **The junction is also the one thing
+here that can damage the PRIMARY tree — see the teardown warning below.**
+
+**Teardown**, once the work is merged. **THE ORDER IS NOT OPTIONAL:**
+
+```
+cmd /c rmdir "C:\grok_build\RD_<task>\node_modules"     <-- the JUNCTION first, and no /S
+git worktree remove --force C:/grok_build/RD_<task>
+git branch -D exp/<task>
+```
+
+> **`git worktree remove --force` DELETES THROUGH A JUNCTION AND EMPTIES ITS TARGET.** This is not
+> a theory: it happened on 2026-09-12, minutes after the section above was written, and it emptied
+> `C:\grok_build\Reactor_Dynamics\node_modules` — the shared playwright install every lane's
+> browser gates resolve through. Reproduced twice with a decoy target, and both halves measured:
+> `git worktree remove --force` over a junction leaves the target **empty**; `rmdir` on the
+> junction first, then the same command, leaves it **intact**. `rm -rf` on the same tree does NOT
+> follow the junction — so the hazard is git's own removal code, not the shell, and it will not
+> show up if you test the teardown with `rm`.
+>
+> **The damage is silent and it does not look like itself.** Nothing in `git status` changes;
+> the next browser gate throws at `require('playwright')` (`verify_e2e_ui.js` requires it bare,
+> with no skip path) and reports as a runner off baseline — which reads exactly like a code
+> regression in the diff you happen to be holding. **A browser gate that fails in a way that makes
+> no sense against the diff: check `node -e "require.resolve('playwright')"` BEFORE adjudicating
+> the code.**
+
+### If the run is in a CONTAINER, do not junction at all
+
+**A containerised run needs no junction, and that is strictly better than sequencing the teardown
+safely.** Mount the primary tree's `node_modules` read-only as a second volume and point Node at
+it:
+
+```
+docker run --rm -v C:\grok_build\RD_<task>:/w -v C:\grok_build\Reactor_Dynamics\node_modules:/nm:ro \
+  -e NODE_PATH=/nm -w /w <image> node test/<runner>.js
+```
+
+**`:ro` is what makes this structurally safe rather than merely conventional** — a writable mount
+would put the primary copy back inside the blast radius of anything the container does, which is
+the situation the junction created. With no junction in the worktree there is nothing for
+`git worktree remove --force` to follow, so **the teardown order above stops being something
+anyone has to remember** — and a rule that depends on remembering an order fails exactly when
+someone is tired or in a hurry, which is when that command gets typed.
+
+> **OMITTING `:ro` REPRODUCES THE HAZARD, and this is a worked failure, not a caution.** Hours
+> after the read-only argument was made in the abstract on 2026-09-12, another lane's container run
+> mounted `node_modules` **writable** and **wrote through the bind mount, breaking that tree's
+> install** — the same damage the junction did, by a different route, on the same day, to a session
+> that had already agreed with the reasoning. Caught immediately and restored, gates re-verified.
+> **The mount being read-only is not a tidiness preference; it is the whole of what makes the
+> technique safe.**
+
+**Measured, not merely plausible** (2026-09-12, the #713 CI investigation): a detached worktree at
+another lane's commit, this mount instead of a junction, `git worktree remove --force` afterwards
+— and the primary tree's `node_modules/playwright` **verified intact** after that deliberate force
+removal. That verification is the whole reason this is in the record rather than a suggestion.
+
+**This does NOT replace the junction for a NATIVE run.** An agent running gates directly on this
+machine still needs real module resolution in its own tree, so the setup above stands for that
+case with its teardown order. Scope the choice to how the run executes, not to which you read first.
+
+### `taskkill /F /IM node.exe` REACHES ALL THREE TREES
+
+Same shape as `worktree remove --force` following a junction: **a command that looks local and is
+not.** Killing by image name has no way to express "mine" — it takes every `node` on the machine,
+so a lane mid-aggregate dies silently and reports as a crashed runner in a diff that did not cause
+it. It happened on 2026-09-12 clearing a stray; no lane was running and nothing was lost, which is
+luck rather than design.
+
+**Match on the TREE PATH in the command line and kill by PID:**
+
+```
+powershell -c "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*RD_<task>*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
+```
+
+The same `Where-Object` form is how you *wait* for your own gate without polling a file — count the
+matches until they reach zero.
+
+**Four rules.**
+
+1. **A scratch worktree is NOT a lane.** No lane tag, no `status-wip-*`, and it is invisible to
+   `tools/hook_lane_status.js` — so it must never outlive the task. A stale one is a tree nobody
+   is watching.
+2. **Never push it**, same as the named lanes (§5), and never merge it into `develop` yourself —
+   the coordinator merges it into the lane the work belongs to.
+3. **Sources stay in the primary tree.** A temp tree has no `inbox/sources`, and anything written
+   there dies at teardown. `tools/find_source.js` searches the three named lanes only.
+4. **Merge conflicts are the POINT.** A conflict means two agents genuinely touched one line and a
+   human has to choose. In a shared tree that same collision is silent and one side simply loses.
+
+**When it is worth it:** two or more agents whose work touches the same file, or any agent whose
+task will run a browser gate while another is working. **When it is not:** a single agent, or
+tasks in genuinely separate files — the primary tree is simpler and the merge step is real work.

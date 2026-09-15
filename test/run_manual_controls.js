@@ -93,26 +93,225 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
 // deleted from CONTROL_LABEL_MAP as much as when one is invented in a procedure.
 // ============================================================================
 (function highlightLabels() {
+  /* THE EARLY RETURN WAS A SILENT SKIP OF ~300 CHECKS (#748 quality pass). The board driver is
+   * loaded only as a SIDE EFFECT of `map.controlOnView` in the loop above firing `manual_ui_map`'s
+   * lazy `pwrLabels()` getter — nothing here asks for it. So a refactor that stops calling
+   * `controlOnView` leaves this whole section returning at the door and the runner printing OK.
+   * `run_all`'s score baseline would catch it; a standalone run would not, which is precisely the
+   * hollow-check shape this file's own #745 note warns about. Ask for the driver, then ASSERT it. */
+  try { map.controlOnView('pwr2', 'board', 'Withdraw'); } catch (e) { /* the ck below is the report */ }
+  ck('the pwr board driver is loaded, so the highlight checks below actually run',
+     !!(globalThis.RD && globalThis.RD.PwrBoardDriver && globalThis.RD.PwrBoardDriver.controlLabels),
+     'RD.PwrBoardDriver is absent — every highlight check in this file was SKIPPED, not passed');
   if (!globalThis.RD || !globalThis.RD.PwrBoardDriver) return;
   var DRV = globalThis.RD.PwrBoardDriver;
   if (!DRV.controlLabels) return;
   var known = {};
   DRV.controlLabels().forEach(function (l) { known[l] = true; });
+
+  /* ============================ THE RESOLVED-ID CHECK (#745) ============================
+   * The disjoint check below compares LABEL STRINGS. `Turbine Load` and `Main Breaker` are
+   * different strings and the same board element (`imro8k5pzem`), so a step naming both got
+   * ONE ring, the control it named first glowed not at all, and every gate agreed the step
+   * was correctly authored. Fourteen steps were doing it, eight in the live pwr2 pool.
+   *
+   * RESOLVE THE WAY THE RENDERER DOES, OR THIS LIES. Two corrections, both filed as prior
+   * measurements on #745/#747 and both REPRODUCED here before anything was built on them —
+   * cited that way on purpose, because every agent in this repo comments under the owner's
+   * account and authorship on an issue is not evidence of who measured what:
+   *
+   *   1. `controlLabelItem` IS NOT THE RENDERER'S RESOLVER. `ui/app.js`'s `hlTarget` calls
+   *      `RD.Highlight.resolve`, which tries the SHELL overrides FIRST and only then falls
+   *      back to the board map. #735 registered `Plot point` as a shell target precisely
+   *      because it was landing on `bdOneOverM`, the button that OPENS the plot. Resolving
+   *      through the board map alone reports `pwr_startup` 4 as a collision when the board
+   *      paints two distinct elements — a false positive that would have bought a fix for a
+   *      step that never had the defect. A shell target is namespaced `shell:<selector>` here
+   *      so it can never collide with a board id.
+   *   2. A STEP'S PRESS LIST IS NOT ALWAYS `hl`. `stepHlLabels` (ui/app.js) uses `hl` when it
+   *      has entries, ELSE the step's own `control`, skipping the "(observe…)" placeholders.
+   *      `pwr_raise_power` 9 authors no `hl` at all: its press target is `control: 'Boron
+   *      control'` and its `hl_watch` carries `'Boron'` — one element, and `applyCklWatchGlow`
+   *      drops the steady ring on it. A check walking only `hl` and `hl_watch` never sees that
+   *      whole sub-class. Fold `control` in exactly as the renderer does.
+   *
+   * ⚠ THE MODEL IS EXACT FOR THE ONE SHELL TARGET THERE IS, AND THAT WAS MEASURED, NOT REASONED.
+   * The obvious worry is that a shell target FALLS BACK to the board map when its selector
+   * matches nothing — which would make `1/M Plot Tool` and `Plot point` collide whenever the 1/M
+   * window is shut, and this check optimistic. IT DOES NOT HAPPEN. Measured in headless Chromium
+   * 2026-09-14, `?engine=pwr2`: `#oomWin` is built at INIT and merely `display:none` until
+   * opened, `document.querySelector` matches hidden elements, and `RD.Highlight.resolve` returns
+   * the plot button in BOTH states — `same: false` closed and open, against `same: true` for
+   * `Boron`/`Boron control` and `Turbine Load`/`Main Breaker` probed in the same run as controls.
+   * So the namespacing below matches the renderer exactly rather than approximating it.
+   *
+   * What IS true in the closed state is a different thing and not this check's subject: the ring
+   * lands on a 0x0 `display:none` button, so the player sees no pulse for that label until they
+   * open the tool. On `pwr_startup` 4 that is arguably right — the step tells them to open it
+   * first — but a class-COUNT gate cannot tell an invisible ring from a visible one.
+   * ==================================================================================== */
+  /* The bus is a plain global-namespace script and its SHELL_TARGETS is a plain object;
+   * nothing on this path touches `document`. Required here rather than at the top of the
+   * file so this stays the only section that depends on it. */
+  /* ⚠ If this ever throws, SHELL is empty and the check degrades to the BOARD-MAP resolution
+   * corrected against above — i.e. it reds on `pwr_startup` 4 for a defect that is not there.
+   * That is a loud failure, not a silent one, and the message names the labels, so the next
+   * reader can get here. Do not "fix" such a red by relaxing the check. */
+  try { require('../ui/highlight_bus.js'); } catch (e) { /* fall through with SHELL empty */ }
+  var SHELL = (globalThis.RD.Highlight && globalThis.RD.Highlight.SHELL_TARGETS) || {};
+  function resolveLabel(lab) {
+    if (SHELL[lab]) return 'shell:' + SHELL[lab];
+    return DRV.controlLabelItem ? (DRV.controlLabelItem(lab) || null) : null;
+  }
+  function pressLabels(st) {
+    if (st.hl && st.hl.length) return st.hl;
+    if (st.control && !/^\(observe/i.test(st.control)) return [st.control];
+    return [];
+  }
+  /* ---- "can the player act on this?" (#748) — see the long note after this IIFE ---- */
+  var ITEM = {};
+  ((globalThis.window && globalThis.window.RD_PWR_BOARD_DOC &&
+    globalThis.window.RD_PWR_BOARD_DOC.items) || []).forEach(function (it) { ITEM[it.id] = it; });
+  (DRV.extraItems ? DRV.extraItems() : []).forEach(function (it) { ITEM[it.id] = it; });
+  function kindOf(id) { return (ITEM[id] && ITEM[id].kind) || 'board item'; }
+  var INSP = globalThis.RD.PwrBoardInspect;
+  var ACT = {}, ACT_OR_INSIDE = {};
+  (DRV.actionableIds ? DRV.actionableIds() : DRV.pressableIds()).forEach(function (id) {
+    ACT[id] = true;
+    var cur = id, guard = 0;
+    while (cur && guard++ < 8) { ACT_OR_INSIDE[cur] = true; cur = (INSP && INSP.parentOf) ? INSP.parentOf(cur) : null; }
+  });
+  // A CARD earns its ring from what it contains; every other kind answers for itself.
+  function workable(id) { return !!(ACT[id] || (kindOf(id) === 'box' && ACT_OR_INSIDE[id])); }
   /* The pwr board's vocabulary answers for the pwr pools only. A plant with its own board
    * (rbmk/bwr use the process-diagram labels) is checked by run_campaign's own pool. */
+  var retiredPoolPulseOnReadout = 0;
   ['pwr', 'pwr2'].forEach(function (prof) {
     (RD.MANUAL_PROCEDURES[prof] || []).forEach(function (proc) {
       (proc.steps || []).forEach(function (st, idx) {
-        if (!st.hl || !st.hl.length) return;
-        st.hl.forEach(function (lab) {
-          ck(prof + ' · ' + proc.id + ' step ' + (idx + 1) + ' hl',
+        var where = prof + ' · ' + proc.id + ' step ' + (idx + 1);
+        (st.hl || []).forEach(function (lab) {
+          ck(where + ' hl',
              known[lab] === true,
              '"' + lab + '" is not in the board highlight vocabulary — this step glows nothing');
+        });
+        /* THE SECOND LIST IS CHECKED THE SAME WAY OR IT IS NOT CHECKED AT ALL (#685).
+         * `hl_watch` is "watch this indication" to `hl`'s "press this control" and it resolves
+         * through the SAME `revealControl` lookup, so it fails the same silent way: a label the
+         * board does not carry glows nothing and looks exactly like a step that asked for no
+         * watch target. A new field with no gate is how the twelve dead `hl` labels in #598
+         * item 14 survived. */
+        (st.hl_watch || []).forEach(function (lab) {
+          ck(where + ' hl_watch',
+             known[lab] === true,
+             '"' + lab + '" is not in the board highlight vocabulary — this step watches nothing');
+        });
+        /* ONE LABEL, ONE TREATMENT. A label in both lists resolves to ONE board element, which
+         * can only wear one ring — so the author has asked for a pulse and a steady dash on the
+         * same thing and will get whichever the renderer applies last. It is an authoring
+         * defect, not a rendering one, and nothing else can see it. */
+        if (st.hl && st.hl.length && st.hl_watch && st.hl_watch.length) {
+          var both = st.hl.filter(function (l) { return st.hl_watch.indexOf(l) >= 0; });
+          ck(where + ' hl/hl_watch are disjoint', both.length === 0,
+             '"' + both.join('", "') + '" is in BOTH lists — one element cannot be both the ' +
+             'control to press and the indication to watch');
+        }
+        /* …AND THE SAME CLAIM ON RESOLVED IDS (#745). One check per step, so the count is
+         * DERIVED from the pool rather than typed: add a step and the tally moves by one. */
+        var byId = {}, shared = [];
+        pressLabels(st).concat(st.hl_watch || []).forEach(function (lab) {
+          var id = resolveLabel(lab);
+          if (!id) return;                       // unknown labels are the check above's job
+          (byId[id] = byId[id] || []).push(lab);
+        });
+        Object.keys(byId).forEach(function (id) {
+          if (byId[id].length > 1) shared.push('"' + byId[id].join('" + "') + '" -> ' + id);
+        });
+        ck(where + ' hl/hl_watch resolve to distinct elements', shared.length === 0,
+           shared.join('; ') + ' — two labels, ONE board element: it can wear one ring, so ' +
+           'the first is silently dropped');
+        /* ============ THE PULSING RING MEANS "PRESS THIS" (#748) ==========================
+         * See the block above this IIFE's end for what this asserts, what it does NOT, and
+         * why the obvious version of it is born wrong. */
+        pressLabels(st).forEach(function (lab) {
+          var id = resolveLabel(lab);
+          if (!id || /^shell:/.test(id)) return;   // unknown / shell-owned: not this check's subject
+          if (prof !== 'pwr2') { if (!workable(id)) retiredPoolPulseOnReadout++; return; }
+          ck(where + ' pulses only on something the player can work',
+             workable(id),
+             '"' + lab + '" -> ' + id + ' is a ' + kindOf(id) + ' and the board wires no player ' +
+             'action to it' + (/^(value|readout|component)$/.test(kindOf(id)) ? ' — it is a pure readout' : '') +
+             '. The pulsing ring is the "press this" affordance; move the label to hl_watch, or ' +
+             'wire the control (PwrBoardDriver.actionableIds is what this reads)');
         });
       });
     });
   });
+  console.log('\n' + B + 'Pulse-vs-watch scan' + X + D + '  (#748 — hl rings a control, hl_watch rings an indication)' + X);
+  console.log('  board items the player can work: ' + (DRV.actionableIds ? DRV.actionableIds().length : 0) +
+    '   of which press/hold buttons: ' + DRV.pressableIds().length);
+  console.log('  retired `pwr` pool, NOT GATED (see the note below): ' + retiredPoolPulseOnReadout +
+    ' pulsing rings on a pure readout');
 })();
+
+/* ============================================================================
+ * WHAT THE PULSE CHECK ABOVE ASSERTS, AND WHAT IT DOES NOT (#748)
+ *
+ * THE RULING IT ENFORCES: pulsing (`hl`) = a control to press, steady (`hl_watch`) = an
+ * indication to watch. A fresh-context layman playing `pwr_startup` end to end reported the
+ * split did not hold. MEASURED on the pool as it stood: 13 pure-readout labels across 7 steps —
+ * `SOURCE RANGE` and `STARTUP RATE` wearing the same animated ring as `WITHDRAW` on SIX
+ * consecutive `pwr_startup` steps (5 to 10), plus `PRIMARY PRESSURE` on `pwr_cooldown` 5.
+ *
+ * ⚠ THE OBVIOUS CHECK IS BORN WRONG, AND THIS IS THE HOUSE TRAP (CLAUDE.md: "ASK WHAT A GATE
+ * READS, not only what it asserts"). "Every `hl` id is in `pressableIds()`" reds on four
+ * correctly-authored steps: `pressableIds()` reads `BUTTONS`, so a TYPED NUMBER BOX — `Boron
+ * Target`, `Pressure SP`, `Dump Setpoint`, `Load Setpoint` — comes back read-only, as do the
+ * clickable valve symbols and SCRAM, which render from their own kinds. A first sweep built on
+ * it reported 27 offenders; the authority, not the pool, was wrong. The fix was to widen the
+ * BOARD's own introspection — `PwrBoardDriver.actionableIds()` reads `BUTTONS`, `NUMBERS`,
+ * `VALVE_TOGGLE` and the `scram` kind, i.e. every map the renderer dispatches a player action
+ * from — so the invariant is answerable rather than approximated, and wiring a new number box
+ * widens it in the same edit.
+ *
+ * LEAF RULE, NOT AN ANCESTOR WALK. `workable()` credits a container (`kind: 'box'` — a CARD)
+ * for holding something actionable, because `hl: ['Steam Dump']` legitimately rings the whole
+ * card; every other kind is judged on ITSELF. The #304 scan below walks ancestors instead, and
+ * that is right for its question and wrong for this one: `SOURCE RANGE` sits inside the NUC
+ * INSTR card, so the day anyone puts a button on that card an ancestor walk would go quietly
+ * blind to exactly the defect this check exists for.
+ *
+ * WHAT IT DOES NOT COVER, measured rather than guessed:
+ *   1. THE REVERSE DIRECTION IS NOT GATED. 22 pwr2 sites put a steady ring on something
+ *      actionable, and they were adjudicated site by site as CORRECT: 18 are cards (watch the
+ *      STEAM DUMP card, the RHR card, the BORON card), and `pwr_tmi2_incident` 6 and 8 watch
+ *      the PORV — a clickable valve the player is being taught NOT to trust. "hl_watch must not
+ *      be actionable" would red all of them. There is no rule here to enforce.
+ *   2. THE RETIRED `pwr` POOL IS OUT OF SCOPE. Measured on this tree: 56 sites in
+ *      `RD.MANUAL_PROCEDURES.pwr` fail the same invariant (`Plant Pressure`, `Tavg`, `SG Level`,
+ *      `Source Range` in `hl`). That pool drives the retired engine, it is a separate
+ *      adjudication, and gating it here would only invite a mass edit of steps nobody measured.
+ *      The count is PRINTED below every run so it cannot quietly grow.
+ *   3. IT SAYS NOTHING ABOUT WHETHER THE RING IS VISIBLE — a ring on a `display:none` element
+ *      is still a resolved id (the #745 block above has the same blind spot, for the same
+ *      reason: a static check cannot see the rendered board). The one live instance is narrow
+ *      and was MEASURED, so do not write it up as the broad claim: with the 1/M window OPEN,
+ *      `Plot point` rings correctly at 107x24; with the window SHUT it rings at 0x0 at (0,0).
+ *      "Nothing inside a floating window can be ringed" is REFUTED. Separately, step 12's ✕
+ *      (`[data-oom="close"]`, 27x22) can be ringed by no label at all, because `SHELL_TARGETS`
+ *      holds exactly one entry — a vocabulary gap, not a rendering one.
+ *   4. IT SAYS NOTHING ABOUT WHETHER THE STEP SHOULD BE PRESSING THAT CONTROL AT ALL. A step
+ *      whose text forbids the press it rings passes here; that is a reading, not a wiring. Nor
+ *      whether the RIGHT control on a card is ringed: `pwr_startup` 12 says "Close the 1/M PLOT
+ *      window" and rings `bdOneOverM`, whose handler OPENS it — pressable, so green. The ITEM
+ *      this needs (`#oomWin [data-oom="close"]`) is in no vocabulary; SHELL_TARGETS holds one
+ *      entry.
+ *   5. THE BOX CREDIT IS A ONE-WAY DOOR, AND IT COVERS A THIRD OF THE VOCABULARY. MEASURED: 35
+ *      of the board's 92 highlight labels resolve to a `box`, and 20 of the 36 boxes hold
+ *      something actionable — so for those labels this check can never fail, in either
+ *      direction. That is the price of letting `hl: ['Steam Dump']` ring a whole card, and it
+ *      is why the rule is "a pure READOUT may not pulse", not "every pulse is a control".
+ * ============================================================================ */
 
 // ============================================================================
 // INOPERABLE-CLAIM CHECK (#304) — a manual may not call a control read-only
@@ -151,8 +350,16 @@ var INOPERABLE_PHRASES = [
   if (!DRV.pressableIds) return;
 
   // Every id that is, or is inside, something pressable.
+  /* NOW READS `actionableIds()`, NOT `pressableIds()` (#748 quality pass). The comment above
+   * said the narrowness of `pressableIds` was load-bearing here — "it must not call a decoration
+   * a control". MEASURED, it was not: widening takes the operable list from 46 labels to 55, and
+   * every one of the nine gained is a real control the player works — `Pressure SP`, `Boron
+   * Target`, `Dump Setpoint`, `Load Setpoint` (typed boxes), `SCRAM`, and the four clickable
+   * valves `MSIV`, `PORV Block Valve`, `Accumulator valve`, `Relief Valve (PORV)`. Nothing is
+   * lost and the manual scan stays at 0 hits. Under the old authority a chapter could have
+   * called any of those nine "read-only" and this gate would have agreed. */
   var operableIds = {};
-  DRV.pressableIds().forEach(function (id) {
+  (DRV.actionableIds ? DRV.actionableIds() : DRV.pressableIds()).forEach(function (id) {
     var cur = id, guard = 0;
     while (cur && guard++ < 8) { operableIds[cur] = true; cur = I.parentOf(cur); }
   });

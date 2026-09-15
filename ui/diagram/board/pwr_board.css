@@ -6,11 +6,29 @@
  * .bd-frozen below still freezes them — the ticker checks for it and holds its clock.
  */
 
+/* `overflow: clip`, NOT `hidden`, and the difference is the whole of issue #717.
+ * `overflow: hidden` makes this element a SCROLLPORT — clipped visually, but live and
+ * unclamped underneath. The stage below is the full 2400x1600 world canvas while
+ * layout() fits only the CONTENT bounding box inside this wrap, so the stage's
+ * transformed box is always far larger than the wrap (measured at 1400x900:
+ * wrap 997x589 px, stage 1762x1175 px, scrollHeight 1154 / scrollWidth 1533). Every
+ * one of those overflow pixels is empty canvas margin, so any scroll can only ever pan
+ * the diagram OUT of view — there is no legitimate scroll case at any viewport size.
+ * A mouse wheel over the board did exactly that in a real browser (Firefox permits
+ * wheel-scrolling an overflow:hidden box; Chromium suppresses it), with no scrollbar,
+ * no reset control and no recovery short of a page reload.
+ * `overflow: clip` clips identically but creates NO scrollport at all: scrollTop is
+ * permanently 0 and cannot be set, by wheel, touch, keyboard or script. It also closes
+ * the descendant-scrollIntoView path (the hazard ui/app.js:5623 already documents).
+ * The `hidden` line is kept FIRST on purpose — an engine too old for `clip` drops the
+ * second declaration and keeps the old behaviour, which is what the JS scroll backstop
+ * in pwr_board.js mount() is there to catch. Gate: test/verify_board_scroll.js. */
 .pwr-board-wrap {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+  overflow: clip;
   background: #0a0e13;
 }
 
@@ -48,14 +66,45 @@
  * resolve to OPAQUE box panels (BORON among them), which at z-index 4 paint over their
  * own buttons, the vessel and their neighbours until the step changes (#598 item 12).
  *
+ * The #685 watch glow (.ckl-watch-glow, the "watch this indication" ring as opposed to the
+ * "press this control" pulse) is in the list from the day it was written, which is the first
+ * time that has been true.
+ *
  * ADDING A GLOW CLASS? It goes in this list. `test/run_glow_stacking.js` now asserts
  * that — every class in shell.css that carries both a glow box-shadow and a z-index
  * must appear here — because a comment saying so did not stop it happening twice. */
 .pwr-board-stage .bd-tile.ckl-glow,
 .pwr-board-stage .bd-tile.ckl-step-glow,
+.pwr-board-stage .bd-tile.ckl-watch-glow,
 .pwr-board-stage .bd-tile.instr-glow,
 .pwr-board-stage .bd-tile.hl-glow,
 .pwr-board-stage .bd-tile.hl-pin { z-index: auto; }
+
+/* ---- highlight halo (#684) ----------------------------------------------------------
+ * The glow is drawn on the ART, not on the tile box: 20 of the board's 202 measured tiles
+ * have art hanging outside their authored rect (the pressurizer by 80 px, the PORV by 19 px
+ * left and 16 px right), so a ring on the tile box points next to the thing it names.
+ * `revealControl` therefore returns this child instead of the tile, sized by
+ * measureHalos() in pwr_board.js — see the long note there for how "visible art" is decided
+ * and why it is measured once per mount rather than live.
+ *
+ * IT IS NOT INK. No background, no border, no pointer events; the only thing it ever paints
+ * is the box-shadow a glow class puts on it, and shell.css keeps the single copy of those
+ * colours. Its offsets are set inline, in canvas px, and are 0 for the ~90 % of tiles whose
+ * art fits — those look exactly as they did.
+ *
+ * The z-index pin above applies here too, for the same #202/#509/#598 reason: shell.css
+ * lifts a glowed element to z-index 5 and `.bd-tile` is not a stacking context, so an
+ * unpinned halo would escape its tile and draw its ring over the vessel. The `.bd-tile`
+ * list is KEPT — `run_glow_stacking` reads it, and it stays correct for any future caller
+ * that classes a tile directly. */
+.pwr-board-stage .bd-halo { position: absolute; pointer-events: none; }
+.pwr-board-stage .bd-halo.ckl-glow,
+.pwr-board-stage .bd-halo.ckl-step-glow,
+.pwr-board-stage .bd-halo.ckl-watch-glow,
+.pwr-board-stage .bd-halo.instr-glow,
+.pwr-board-stage .bd-halo.hl-glow,
+.pwr-board-stage .bd-halo.hl-pin { z-index: auto; }
 .bd-box-title {
   position: absolute; left: 10px; top: 7px; color: #6b8598;
   letter-spacing: 0.16em; white-space: nowrap;
@@ -120,13 +169,154 @@
 /* The board's reduced-motion answer, same as the highlight bus's: a standing cue rather than a
    pulse. The colour still says everything the flash does; only the attention-grab is dropped. */
 @media (prefers-reduced-motion: reduce) {
-  .bd-btn.bd-actuated { animation: none; }
+  /* SOLID, 2px, offset out — the middle weight of the three (#740, owner ruling option A). Not
+     merely `animation: none`, which is what this was: with the pulse gone, an ACTUATED button and a
+     MESSAGE button differed only by hue (orange against amber), and those two are a pair a
+     red/green deficiency compresses. Geometry is the difference now; see the vocabulary note in
+     ui/shell.css's reduced-motion block. */
+  .bd-btn.bd-actuated { animation: none; outline: 2px solid #ff9e57; outline-offset: 2px; }
 }
 /* Informational/neutral state (grey) — a non-alarm condition the operator has deliberately
    set, e.g. reactor trips intentionally BLOCKED as part of a startup/shutdown lineup. Grey
    keeps it OFF the green(normal)/yellow(attention)/red(alarm) severity scale — it's a
    standing lineup note, not something wrong. */
 .bd-btn.bd-info { background: #1b2229; border-color: #7c8b98; color: #b8c4cd; }
+/* A MESSAGE IS WAITING IN THIS BUTTON'S CARD (#738/#716) *(OWNER RULING, 2026-09-13: "flash the
+   permissive button amber when there's a message and put the permissive messages and status inside
+   the popup permissive card. When the user opens the card and then closes it the permissive card
+   opening button stops flashing.")*.
+
+   THE GRAMMAR IS THE ALARM PANEL'S, DELIBERATELY. `ui/shell.css` already rules that only UNACKED
+   tiles flash and acked ones stay solid, so this is the same split rather than a second
+   convention: `.bd-msg` is the amber and `.bd-unack` is the motion. A board with two different
+   meanings for "flashing" is a board nobody can read.
+
+   ⚠ ON THIS BUTTON THE TWO CLASSES ARRIVE AND LEAVE TOGETHER, and the sentence that used to sit
+   here — "`.bd-msg` persists for as long as the message does" — was the #755 item 17 defect
+   written down as a design note. The acknowledge stopped the animation and left the amber
+   standing for ever, MEASURED on a real P-11 revoke as `bd-btn bd-msg` /
+   `color: rgb(255, 209, 102)` after open-and-close *(OWNER, 2026-09-14, #755 item 17: "The TRIP
+   BLOCKS button stayed yellow after opening and closing the card.")*. An alarm tile's colour
+   reports a CONDITION that is still live; a trip-block message reports an EVENT that has already
+   happened, and the standing facts live in `bd-info`'s grey, the count badge and the card's text.
+   `buttonMsg` in pwr_board_wiring.js now returns the UNACKED predicate; these two rules are
+   unchanged and still correct for any future button whose state really does outlast its motion.
+
+   AMBER, NOT RED, and not `bd-actuated`'s orange. This is "the plant changed your lineup and you
+   should know", which is the caution scale — `bd-warn`'s exact yellow, reused so the colour keeps
+   meaning one thing. bd-actuated's orange is reserved for "a protection latch is holding this
+   system", a different and louder fact.
+
+   OPACITY IS WHAT PULSES, for the reason the bd-actuated note above gives at length: #596 measured
+   this board render-bound with ~100 elements animating properties that never composite. opacity
+   composites. This is one element, so it would not have mattered — but the property choice costs
+   nothing and settles the question.
+
+   IT MUST BEAT bd-info, AND IT DID NOT ON THE FIRST CUT. The TRIP BLOCKS button is grey
+   (`bd-info`) whenever any trip is blocked, which is exactly when a message is most likely. These
+   two rules have the SAME specificity, so the later one wins — and this block was written above
+   bd-info, which left the button flashing in bd-info's grey: MEASURED in the browser,
+   `animation: bdMsgFlash` with `color: rgb(184, 196, 205)`, a pulsing button that never turned
+   amber. It now sits immediately after bd-info. DO NOT SORT THESE RULES ALPHABETICALLY OR BY
+   NAME; their order is the cascade and the cascade is the behaviour. */
+.bd-btn.bd-msg { background: #3a2408; border-color: #ffd166; color: #ffd166; }
+.bd-btn.bd-msg.bd-unack { animation: bdMsgFlash 1.0s ease-in-out infinite; }
+@keyframes bdMsgFlash { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+/* THE REDUCED-MOTION ANSWER, AND IT HAS TO SIT *AFTER* THE ANIMATION RULE. Same answer as
+   bd-actuated's and the highlight bus's — a standing cue rather than a pulse; the amber still says
+   there is a message and only the attention-grab is dropped.
+
+   ⚠ IT WAS DEAD ON THE FIRST CUT, in the same way and one rule later than the bd-info bug this
+   file already records. A media query adds NO specificity, so `@media (prefers-reduced-motion) {
+   .bd-btn.bd-msg.bd-unack { animation: none } }` placed ABOVE the rule that sets the animation
+   loses to it outright, and the button went on pulsing for a player who had asked it not to.
+   `.bd-actuated` gets this right only because its animation happens to be declared above the media
+   block. Found by the #738 quality pass. IT IS GATED NOW — `test/verify_reduced_motion.js` (#740)
+   asserts that nothing animates under the preference AND that each signal keeps a distinct static
+   shape; this comment said "nothing gates it" until that runner existed. */
+@media (prefers-reduced-motion: reduce) {
+  /* DOTTED — and the first cut of this was DASHED, which would have collided (#740).
+     A box-shadow ring, which is what this was, is the same GEOMETRY as bd-actuated's fallback and
+     differed from it only in hue. But dashed was no better: `.ckl-watch-glow` is ALREADY
+     `1px dashed` at `outline-offset: 3px` — all but identical — and it means something else
+     entirely ("your current step wants you watching this"). Both land on board tiles through
+     `revealControl`, so under reduced motion one dash pattern would have meant two things. No step
+     names TRIP BLOCKS in an `hl_watch` list today, but 59 steps use one, and adjacency on the same
+     board is enough for the vocabulary to blur.
+
+     The board's static vocabulary is therefore FOUR distinct line styles, not three:
+       double  5px  — critical alarm            (ui/shell.css)
+       solid   2px  — a protection latch is holding this system
+       dotted  2px  — there is a message in this control's card   <- this rule
+       dashed  1/3px — the walkthrough is pointing at this (watch it / act on it)
+     Four styles, no hue needed to tell any pair apart. */
+  .bd-btn.bd-msg.bd-unack {
+    animation: none; box-shadow: none;
+    outline: 2px dotted #ffd166; outline-offset: 3px;
+  }
+}
+
+
+/* ==================================================================================
+   YOUR PRESS DID NOTHING - THE BANK IS AGAINST ITS STOP (#752)
+   *(OWNER, 2026-09-14: "what if we have the rod insert/withdraw buttons flash red a few times
+   if to indicate no more rod travel when the rod reaches the end or is at the end of travel and
+   the user hits the button??")*
+
+   MEASURED, full stack, 2026-09-14 (issue #752, Diagnostic/XENON_ROD_AUTHORITY_2026-09-14.md): six
+   plant-hours of xenon trimming ran the control bank to 627 of 627 and the board said NOTHING -
+   358 WITHDRAW presses, 0 refused, 0 rod_stop ticks, 0 alarm transitions, no alarm standing. At the
+   stop `rod_nudge` returns a normal snapshot, throws nothing and moves 0.00 steps (re-measured for
+   this change against pwr2_shell: 627/627 delta 0.0000, and 0/627 delta 0.0000 on the insert end).
+
+   RED, NOT AMBER, AND THE DIFFERENCE IS THE WHOLE POINT. Amber on this board already means "the
+   plant took something away from you" - `bd-actuated` (a protection latch is holding this system),
+   `bd-msg` (the plant changed your lineup and you should know), and shell.css's WARP dropout flash
+   (#619 item 7). This one is the opposite direction: the plant did nothing at all, YOU asked for
+   something that is not there. A second amber would have made the board's loudest colour mean two
+   unrelated things, which is the exact failure the bd-msg note above spends a paragraph avoiding.
+
+   A DECLARED HMI DEPARTURE, NOT A PROTOTYPICALITY CLAIM (Blueprint/DESIGN_CRITERIA.md Q2/Q3). A
+   real Westinghouse board reports rod position through annunciator windows and the IN-OUT lamps
+   (WTSM 8.1 section 8.1.7, ML11223A252 - already cited by rodDriving in pwr_board_wiring.js); the
+   PUSHBUTTON itself does not change colour when you press it into a stop. We flash the button
+   because this board has no annunciator window for rod-at-limit and the coupling the player is
+   standing in - rod authority exhausted while Tavg sits 24 degF below programme - is the lesson.
+   UNVERIFIED: no document in this lane's corpus describes a press-refusal cue on a real rod
+   controller (`node tools/find_source.js` run for this change; see the commit message).
+
+   THE NON-COLOUR CHANNEL IS TYPOGRAPHIC, DELIBERATELY (#740: a signal may not separate itself by
+   colour and blink alone). The board's static OUTLINE vocabulary is already full - double 5px
+   (critical alarm), solid 2px (protection latch), dotted 2px (message), dashed 1/3px (the
+   walkthrough pointing at something), ridge 3px (an armed button, shell.css). A sixth line style
+   would be a hair split on a geometry that is already carrying five meanings. `line-through` is a
+   different CHANNEL: it survives greyscale and any hue collapse, it needs no motion, it sits on the
+   LABEL rather than around the button so it can never collide with an outline that is present at
+   the same time, and "WITHDRAW, crossed out" is the sentence this cue is trying to say.
+
+   FINITE, NOT INFINITE - the owner asked for "a few times". Three hard `steps(1, end)` blinks over
+   0.66 s, then the red and the strike STAND for the rest of the 1100 ms the class is held
+   (REFUSE_MS in pwr_board_wiring.js). The two numbers are independent on purpose: the standing tail
+   is what a player who blinked at the wrong moment still sees, and it is what a reduced-motion
+   viewer gets for the whole 1100 ms. OPACITY is what moves, for the reason bd-actuated's note
+   above gives at length - it composites, and this board has been render-bound before (#596). */
+.bd-btn.bd-refused {
+  background: #3a0d0d; border-color: #ff6b6b; color: #ff6b6b;
+  text-decoration: line-through; text-decoration-thickness: 2px;
+  animation: bdRefusedFlash 0.22s steps(1, end) 3;
+}
+@keyframes bdRefusedFlash { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* AND IT MUST SIT *AFTER* THE RULE THAT SETS THE ANIMATION. A media query adds NO specificity, so
+   the same block written above `.bd-refused` would lose outright and go on flashing for a player
+   who asked it not to - the defect this file already records twice (`.bd-info`, then `bdMsgFlash`).
+   Nothing else changes: the red and the line-through are the whole message, and only the
+   attention-grab is dropped. No outline is added here on purpose - see the vocabulary note above. */
+@media (prefers-reduced-motion: reduce) {
+  .bd-btn.bd-refused { animation: none; }
+}
+
 /* Count badge on a button (e.g. number of trips blocked). */
 .bd-btn { position: relative; }
 .bd-badge {
@@ -148,6 +338,15 @@
   box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.55);
 }
 .bd-scram:active { transform: translateY(1px); }
+/* THE SCRAM BUTTON'S ARMED PULSE. ⚠ ITS ONLY CALLER IS JAVASCRIPT — `pwr_board.js` sets
+   `rec.btn.style.animation = 'bdScramPulse …'` as an INLINE style when the button is armed. A grep
+   for `animation:.*bdScramPulse` across the stylesheets therefore finds nothing and this reads as
+   an orphan keyframe; it was deleted on exactly that reasoning at #740 and restored the same hour.
+   DO NOT DELETE IT ON A CSS-ONLY SEARCH.
+
+   The same fact is why its reduced-motion answer is in the JS and not in a media query here: an
+   inline style beats any stylesheet rule, so `@media (prefers-reduced-motion) { … animation: none }`
+   could never have stopped it. See buildScram in pwr_board.js. */
 @keyframes bdScramPulse {
   0%, 100% { box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.55), 0 0 0 0 rgba(255, 180, 0, 0.55); }
   50%      { box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.55), 0 0 14px 3px rgba(255, 180, 0, 0.35); }
@@ -199,6 +398,52 @@
 .bd-value .bd-unit { color: #7f96a8; margin-left: -0.18em; }
 .bd-text { padding: 2px 4px; letter-spacing: 0.06em; white-space: pre-wrap; }
 
+/* ---- the two rod-step readings' state cues (#752) ---------------------------------------------
+   THE GRAMMAR, in one line, because the next person will meet the colours before the code:
+   YELLOW = this bank is MOVING, on EITHER bank; RED = your press did NOTHING, control bank ONLY.
+   *(OWNER, 2026-09-14: "The shutdown bank button and indication should be yellow when in
+   motion.")*, over *(OWNER RULING, 2026-09-14: "Do not alarm or color code the shutdown bank since
+   it's used differently")* — the ruling excludes the red and the alarm, the later line lets the
+   yellow through on both banks. See ROD_MOVING_READOUT in pwr_board_wiring.js.
+
+   `!important` IS LOAD-BEARING HERE AND NOWHERE ELSE ON THIS BOARD. buildValue writes the item's
+   authored colour as an INLINE style on this very element (`el.style.color = it.color`), and an
+   inline declaration beats any selector. Without `!important` these two rules parse, apply, and
+   change nothing — the silent kind of dead style.
+
+   ORDER IS THE PRECEDENCE, and it is stated rather than left to chance. Both rules are `color` at
+   equal specificity, so the LATER one wins: the refusal flash out-ranks the moving tint whenever
+   both are on the element, which is precisely the case that matters — a hold at the stop can leave
+   a bank reporting `moving` while every press is being refused. The tint therefore cannot strand
+   the flash, and the flash removes itself on its own timer (flashRefused) rather than waiting for
+   the tint to clear. */
+.bd-value.bd-val-moving { color: #ffd166 !important; }
+
+/* THE REFUSAL FLASH ON THE READING — the same cue as the button's `.bd-refused`, on the number the
+   dead button was about *(OWNER, 2026-09-14: "We could flash the step indication red as well to
+   show the relationship.")*. Same keyframe, same 3 finite blinks, same standing red tail for the
+   rest of REFUSE_MS, for the reasons written out at `.bd-refused` above.
+
+   NO `line-through` HERE, and that is the one deliberate difference from the button. The button's
+   label is the WORD "WITHDRAW" and crossing it out says "not that, not now"; a struck-through
+   NUMBER reads as "this reading is void", which is a different and false claim — the step count is
+   perfectly correct, it is simply not changing. So the non-colour channel is a RING instead, and it
+   is on the BASE rule rather than inside the reduced-motion block (#740's principle: a fallback
+   that only exists for the player who asked for it is a fallback nobody else's colour-vision gets).
+   1px at 2px offset is a tuple no other signal on this board carries — the protection latch is the
+   nearest at solid 2px, and the width is what separates them. */
+.bd-value.bd-val-refused {
+  color: #ff6b6b !important;
+  outline: 1px solid #ff6b6b; outline-offset: 2px;
+  animation: bdRefusedFlash 0.22s steps(1, end) 3;
+}
+/* AFTER the rule that sets the animation — a media query adds NO specificity, so the same block
+   written above would lose outright and go on flashing for a player who asked it not to. That
+   defect is recorded three times in this file already (`.bd-info`, `bdMsgFlash`, `.bd-refused`). */
+@media (prefers-reduced-motion: reduce) {
+  .bd-value.bd-val-refused { animation: none; }
+}
+
 /* ---- readout (caption + reading as one item; see buildReadout) ----
    Left-anchored, unlike .bd-value: a readout carries its own width from the
    diagram, so it is NOT pulled back by translateX(-100%). */
@@ -213,8 +458,22 @@
 .bd-readout .bd-unit { color: #7f96a8; margin-left: -0.18em; }
 
 /* ---- popover menus (TRIP BLOCKS etc.) ---- */
+/* MAX-WIDTH IS LOAD-BEARING, NOT COSMETIC (#670 operator pass, S-1). The popover is
+   shrink-to-fit, and one row's caption is 90 characters when a blocked trip arms for release
+   ("RELEASING THIS WILL TRIP THE REACTOR NOW - the setpoint is crossed. Press again to
+   confirm.", pwr_board_wiring.js tripBlockRows). MEASURED at 1600x1000: the panel goes
+   393.9 -> 519.0 rendered px on that one caption, its right edge 440.0 -> 565.0, and it then
+   covers the PORV block valve's own hit circle (rendered x 466.7-506.9, y 183.2-223.3) -
+   `document.elementFromPoint` at the valve centre returns the panel's row, so the click is
+   swallowed while the System Scanner still hovers the valve THROUGH the overlay. The RELEASE?
+   button lands at x 488-555, y 220-237 and OVERLAPS the valve, so a player hunting for the
+   valve is one slip from a press that trips the reactor. AFTER: the armed panel measures
+   405.5 rendered px, right edge 451.5, 15.2 px clear, and elementFromPoint at the valve centre
+   returns `circle.vlv-hit` in BOTH states. The unarmed panel is 447 CSS px and is UNCHANGED
+   (393.9 rendered) - only the armed caption wraps, which it can because `.sub` is already
+   white-space: normal. Raising this number puts the panel back on the board. */
 .bd-pop {
-  position: absolute; z-index: 40; min-width: 240px;
+  position: absolute; z-index: 40; min-width: 240px; max-width: 460px;
   background: #0e1620; border: 1px solid #3a4c58; border-radius: 8px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6); padding: 10px;
   font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
@@ -227,6 +486,21 @@
 }
 .bd-pop .bd-pop-row .lbl { color: #9fb3c4; font-size: 11px; white-space: nowrap; }
 .bd-pop .bd-pop-row .sub { color: #6b8598; font-size: 9px; }
+/* THE CARD'S STATUS BLOCK (#738/#716) — "put the permissive messages and status inside the popup
+   permissive card". It sits under the title and above the rows, because it answers the question
+   the player opened the card WITH ("what is my lineup, and can I put back what I lost") before
+   they start reading four rows to work it out. Amber only when the plant has released something;
+   otherwise it is ordinary caption grey, so a normal lineup does not read as a warning. */
+.bd-pop .bd-pop-status {
+  color: #9fb3c4; font-size: 9px; letter-spacing: 0.04em; line-height: 1.45;
+  padding: 0 0 6px; margin: -4px 0 4px; border-bottom: 1px solid #22323c;
+}
+.bd-pop .bd-pop-status.bd-pop-status-msg { color: #ffd166; }
+/* A row carrying a message the PLANT raised. The standing note for a release the player made
+   keeps the ordinary grey — they know, and colouring it would make their own action look like a
+   fault. */
+.bd-pop .bd-pop-row .sub.bd-sub-msg { color: #ffd166; }
+
 .bd-pop button {
   background: #10161d; border: 1px solid #2a3a46; color: #6b8598; border-radius: 4px;
   font-family: inherit; font-size: 10px; letter-spacing: 0.1em; padding: 3px 10px; cursor: pointer;

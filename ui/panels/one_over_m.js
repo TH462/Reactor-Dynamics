@@ -57,13 +57,98 @@
   var win = null, svg = null, msgEl = null;
   var points = [];           // [{ x: rod fraction withdrawn 0–1, counts, y: C0/counts }]
   var C0 = null;
-  var maxSteps = 912;        // control-group full-withdrawal steps (for the steps axis; self-updates from the snapshot on plot)
   var lastPlant = null, lastCaptureT = null;
 
-  // Plot geometry (viewBox units).
-  var W = 340, H = 240, L = 40, R = 12, T = 14, B = 30;
+  /* THE STEPS AXIS READS THE BANK LIVE, AND THE NUMBER IS NEVER TYPED HERE (#746, the #707
+   * resolution; same ladder as `bankFullScale` in ui/diagram/board/pwr_board_wiring.js).
+   *
+   * This was `var maxSteps = 912` — the RETIRED engine's control-group bank — and it
+   * self-corrected at `plotPoint` from `g.max_steps`. Only there: from the moment the panel
+   * opened until the first point was plotted, the four x ticks, the "predicted criticality ≈
+   * step N" readout and the "critical N" label were all drawn on a 912-step scale against a
+   * plant whose bank is 627. `pwr2:pwr_startup` step 4 tells the player to open the tool and
+   * THEN press "Plot point", so the wrong scale sat on the authored route.
+   *
+   * HARD-CODING 627 WOULD BE THE SAME DEFECT WITH A FRESHER NUMBER — 912 was right when it was
+   * written too. Both engines publish `max_steps` on every `control_state.rod_groups[]` record,
+   * so the scale travels with the data and a replay is drawn on the scale of the engine that
+   * produced it. Resolved LAZILY, at draw time, off the live snapshot: `plotPoint` is not the
+   * only thing that can change the bank, and a value captured on the first plot is a second
+   * copy free to go stale the way the literal did.
+   *
+   * ⚠ typeof FIRST — `isFinite(null)` is TRUE (the #555 trap) and a JSON round trip writes a
+   * dead channel out as null, which would put a plausible 0 on the axis. The last-ditch literal
+   * fires only when no snapshot AND no plant module is reachable (a bare page, a fixture), so
+   * the panel still draws a sensible axis rather than dividing by nothing. */
+  function bankFullScale() {
+    var s = getSnap && getSnap();
+    var g = s ? controlGroup(s) : null;
+    var n = g && g.max_steps;
+    if (typeof n === 'number' && isFinite(n) && n > 0) return n;
+    /* `RD` is this module's IIFE parameter — the SAME object as `globalThis.RD`, so a table
+     * attached by a plant module that loads AFTER this file is still visible through it. */
+    var k = RD && RD.pwr2 && RD.pwr2.kinetics && RD.pwr2.kinetics.RODS;
+    if (k && typeof k.max_steps === 'number' && k.max_steps > 0) return k.max_steps;
+    var c = RD && RD.PWR_CONFIG && RD.PWR_CONFIG.rods;
+    if (c && typeof c.max_steps === 'number' && c.max_steps > 0) return c.max_steps;
+    return 627;
+  }
+
+  /* Plot geometry (viewBox units).
+   *
+   * THE GUTTERS ARE MEASURED, NOT GUESSED (#713 pass 2). L/R/T/B are the margins the axis
+   * ticks and labels live in, and they were costing 15.3 % of the width and 18.3 % of the
+   * height. getBBox() of every text node the plot emits (scratchpad probe, Chromium, viewBox
+   * units) says what each one actually needs:
+   *   R — the last x tick is CENTRED on px(1.0) and its bbox ended at 335.58 of 340, i.e. 4.4
+   *       spare. Half the tick's 14.05-unit width plus a hair -> 9. ⚠ THAT WAS MEASURED ON
+   *       "912" AND R IS THEREFORE A THREE-DIGIT BUDGET (#746 — the tick is `bankFullScale()`
+   *       now, "627" on the shipped plant, and the panel's font has tabular figures so three
+   *       digits is three digits; NOT re-measured for 627, and a bank of 1000+ steps would
+   *       need R measured again).
+   *   L — the rotated y-axis label occupies x 0.51..12.71 after its rotate(-90 10 y) (that
+   *       span is the text's HEIGHT, so it cannot be moved left: x >= 9.49 or it clips), and
+   *       the y ticks ("0.25") are 17.14 wide ending at L-2.9. 12.71 + 17.14 + 2.9 + a 2-unit
+   *       gap -> 35.
+   *   T — NOTHING is drawn above the frame; the topmost text was the "1.00" tick at y 26.68,
+   *       inside it. T was pure margin -> 4 (a point at the 1.1 ceiling has r=3.2).
+   *   B — the x ticks and the "rod position" label stack under the frame. Pulling the tick
+   *       baseline to H-B+10 and the label to H-3 (bbox bottom H-0.29) leaves >=1 unit of
+   *       clearance at every seam at B=25.
+   * Net: the plotted-data rectangle goes from 84.7 % x 81.7 % of the viewBox to 87.5 % x 87.9 %.
+   *
+   * W AND H ARE BOTH FIXED. They were briefly adaptive, for a docked form that had to fill a CSS
+   * grid cell of someone else's shape (#713 / #724 item 7); the owner has since ruled the window
+   * floating again (see the header), and a floating window sizes ITSELF — `width: 100%` on the svg
+   * with no height given, so the rendered height follows this aspect. There is no foreign cell to
+   * match and nothing to letterbox. */
+  var W_BASE = 340, H = 240, L = 35, R = 9, T = 4, B = 25;
+  var W = W_BASE;
   function px(x) { return L + x * (W - L - R); }               // x: 0..1 fraction withdrawn
   function py(y) { return T + (1.1 - y) / 1.1 * (H - T - B); } // y: 0..1.1 (C0/C)
+
+  /* THE WINDOW IS FLOATING AND DRAGGABLE, ALWAYS *(OWNER RULING, 2026-09-13: "let's make the
+   * card floating and dragable like it was originally")*.
+   *
+   * THIS SUPERSEDES #724 ITEM 7's LAYOUT, AND THE RULING IS RECORDED HERE BECAUSE THE ITEM IS NOT.
+   * That playtest note reads *"lets put it below the right hand column in the corner"*, and an
+   * agent who finds it without this line will re-implement the dock — the same trap as the 1/M fit
+   * at FIT_WINDOW below. The dock existed for one day: it docked into `.right-col`, and before
+   * that (#660 item 13) into `.bottom-row`. Both are gone.
+   *
+   * WHAT THE OWNER WAS ACTUALLY COMPLAINING ABOUT SURVIVES, because the dock was only ever the
+   * means. Item 7's other two sentences — *"The 1/m plot is too small"* and *"make the predicted
+   * criticality text large enough to read and obvious"* — are answered by the panel's own layout
+   * and are unchanged by this ruling: the buttons stay a ROW ABOVE the plot, the readout keeps its
+   * size and weight, and the plot is LARGER floating than it ever was docked (measured: the
+   * plotted-data rect is 308x220 px floating against 321x160 docked — 68,000 px^2 against 51,000,
+   * because a floating window's height is its own and is not a share of somebody's column).
+   *
+   * There is nothing to resolve and nothing to re-home: build() appends to document.body once, and
+   * the window stays there. No dock target, no breakpoint, no parent that another rule is allowed
+   * to hide — which also retires, by construction, the board-focus defect the #724 quality pass
+   * found (the dock lived in `.right-col`, and the board-focus button hides that column, so an open
+   * plot went to 0x0 while still believing itself open). */
 
   function controlGroup(s) {
     var gs = (s.control_state && s.control_state.rod_groups) || [];
@@ -94,6 +179,46 @@
   // predicted critical position far PAST actual (the danger side: it tells the
   // operator they have ~2× the margin they really do). Fitting only the trailing
   // window tracks the local slope and tightens toward the true point each plot.
+  //
+  /* CHALLENGED AND RE-AFFIRMED, WITH THE MEASUREMENT THAT SETTLED IT (#725, GitHub issue #724
+   * item 8 of the RC19 playtest). The owner asked for the all-points fit, on the stated premise
+   * that the curvature above is gone: *"make the 1/m plot best fit line use all points not just
+   * the last three. using the last three was a bandaid for a larger problem where the points were
+   * curved but with the current streight line we can use all points."* The premise is checkable,
+   * so it was checked before anything was changed — and it is false.
+   *
+   * MEASURED on the authored `pwr_startup` route (full stack, PWR2, `hot_zero_power`, seed 7, 10×,
+   * the checklist's own 94 / 63 / 31 / 14 / 9-step bursts, each plotted after its authored hold;
+   * harness in this lane's inbox/724/item8_fit.js). Control group full travel 627 steps, TRUE
+   * critical step 208 (first tick with `true_state.reactivity_pcm >= 0`, +5.6 pcm, t = 784 s):
+   *
+   *   pt  rod step  SOURCE RANGE   1/M      trailing-3      all-points
+   *    1     0        503.1 cps   1.0000        —                —
+   *    2    94        733.9       0.6855      298.9            298.9
+   *    3   157      1,422.6       0.3537      251.2            251.2
+   *    4   188      3,435.0       0.1465      216.1  (+8.1)    231.9  (+23.9)
+   *    5   202      8,660.4       0.0581      210.6  (+2.6)    224.2  (+16.2)
+   *    6   211     31,838.2       0.0158      213.1  (+5.1)    220.9  (+12.9)
+   *
+   * A prediction HIGHER than true critical is the danger side — it tells the operator they have
+   * more margin than they have — and all-points is 8 to 24 steps further out at every point where
+   * the two differ. The toe is still flat: per-step slope of 1/M runs −0.00334 (pt1→2), −0.00527,
+   * −0.00668, −0.00631, −0.00470, so the first segment is HALF the slope of the steepest.
+   *
+   * The owner's own figure corroborates the trailing fit rather than the proposal — in the same
+   * playtest he reported withdrawing to "the position the 1/m plot tells me to (216 steps)", which
+   * is what trailing-3 reads over points 4–6. All-points would have sent him to 224–232.
+   *
+   * *(OWNER RULING, 2026-09-13, on the measurement above and a recommendation to keep the
+   * trailing fit: "725 leave as is")*. So FIT_WINDOW stays 3. **Do not re-open this on the
+   * strength of the 2026-09-12 request alone** — it was made against a premise that has been
+   * measured and disproved, and re-running the harness above is the price of re-arguing it.
+   *
+   * ⚠ THE ROUTE ABOVE IS THE #725 ROUTE, NOT TODAY'S. #750 removed the sixth point — the 9-step
+   * burst to 211, plotted on an already-critical core — so the authored ladder is 94/63/31/14 and
+   * the approach now ENDS at pt 5. Re-measured on the shortened ladder, four seeds: trailing-3
+   * reads 210.3-212.1 (panel: "step 211") against 212.6-213.4 before, true critical still 208.
+   * The table is left as the record of what settled FIT_WINDOW; it is not the current ladder. */
   var FIT_WINDOW = 3;
   function fit() {
     if (points.length < 2) return null;
@@ -116,12 +241,44 @@
   // ------------------------------------------------------------------ render
   function render() {
     if (!svg) return;
+
+    /* THE READOUT IS WRITTEN BEFORE THE GEOMETRY IS MEASURED (#713 / #724 item 7).
+     *
+     * It used to be the LAST thing render() did, after `svg.innerHTML = h`. That was harmless
+     * while the readout shared a row with the buttons; it is not harmless now that it owns a
+     * grid row of its own that is `auto`-height and `display:none` while empty. The order was:
+     * measure the cell (readout empty, so the svg row is ~29 px TALLER than it is about to be)
+     * -> compute W from that cell -> draw -> write the readout -> the row appears, the svg row
+     * shrinks, and `preserveAspectRatio` letterboxes the difference off the WIDTH. Nothing
+     * throws; the plot is simply narrower than its cell for ever after.
+     *
+     * MEASURED at 1500x950 with the write last: viewBox 403x240 into a 354 px-wide cell, plot
+     * rect 272.62x160.23. With the write first: 315.54x160.16 — 43 px of width the old order
+     * threw away, on the axis this whole relocation was made to win.
+     *
+     * The fit is pure arithmetic on `points` and owes the layout nothing, so there is no
+     * circularity in computing it first — which is exactly why it can be hoisted and the cell
+     * measurement cannot. */
+    var f = fit(), pred = null, xc = null;
+    var maxSteps = bankFullScale();   /* #746 — resolved per draw, never cached */
+    if (f && f.b < -1e-6) {
+      xc = -f.a / f.b;
+      if (xc > points[points.length - 1].x - 1e-9 && xc <= 1.2) pred = xc;
+    }
+    var predEl = win && win.querySelector ? win.querySelector('#oomPred') : null;
+    if (predEl) {
+      predEl.textContent = pred != null
+        ? 'predicted criticality ≈ step ' + Math.round(pred * maxSteps) +
+          ' (' + (pred * 100).toFixed(1) + '% withdrawn)'
+        : (points.length >= 2 ? 'insufficient trend — keep plotting' : '');
+    }
+
     var h = '';
     // frame + gridlines
     h += '<rect x="' + L + '" y="' + T + '" width="' + (W - L - R) + '" height="' + (H - T - B) + '" class="oom-frame"/>';
     [0.25, 0.5, 0.75, 1.0].forEach(function (g) {
       h += '<line x1="' + px(g) + '" y1="' + T + '" x2="' + px(g) + '" y2="' + (H - B) + '" class="oom-grid"/>';
-      h += '<text x="' + px(g) + '" y="' + (H - B + 12) + '" class="oom-tick" text-anchor="middle">' + Math.round(g * maxSteps) + '</text>';
+      h += '<text x="' + px(g) + '" y="' + (H - B + 10) + '" class="oom-tick" text-anchor="middle">' + Math.round(g * maxSteps) + '</text>';
     });
     [0.25, 0.5, 0.75, 1.0].forEach(function (g) {
       h += '<line x1="' + L + '" y1="' + py(g) + '" x2="' + (W - R) + '" y2="' + py(g) + '" class="oom-grid"/>';
@@ -131,21 +288,16 @@
     h += '<line x1="' + L + '" y1="' + py(0) + '" x2="' + (W - R) + '" y2="' + py(0) + '" class="oom-zero"/>';
     h += '<text x="' + (L - 4) + '" y="' + (py(0) + 3) + '" class="oom-tick" text-anchor="end">0</text>';
     // axis labels
-    h += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 4) + '" class="oom-lab" text-anchor="middle">rod position (steps withdrawn)</text>';
+    h += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 3) + '" class="oom-lab" text-anchor="middle">rod position (steps withdrawn)</text>';
     h += '<text x="10" y="' + ((T + H - B) / 2) + '" class="oom-lab" text-anchor="middle" transform="rotate(-90 10 ' + ((T + H - B) / 2) + ')">1/M  (C₀/C)</text>';
 
-    // fit line, extrapolated to y=0
-    var f = fit(), pred = null;
+    // fit line, extrapolated to y=0 (`f`/`xc`/`pred` computed above, before the measurement)
     if (f && f.b < -1e-6) {
-      var xc = -f.a / f.b;
       var xEnd = Math.min(Math.max(xc, points[points.length - 1].x), 1.0);
       h += '<line x1="' + px(f.x0) + '" y1="' + py(f.a + f.b * f.x0) + '" x2="' + px(xEnd) + '" y2="' + py(f.a + f.b * xEnd) + '" class="oom-fit"/>';
-      if (xc > points[points.length - 1].x - 1e-9 && xc <= 1.2) {
-        pred = xc;
-        if (xc <= 1.0) {
-          h += '<line x1="' + px(xc) + '" y1="' + T + '" x2="' + px(xc) + '" y2="' + (H - B) + '" class="oom-crit"/>';
-          h += '<text x="' + px(Math.min(xc, 0.88)) + '" y="' + (T + 10) + '" class="oom-critlab" text-anchor="middle">critical ' + Math.round(xc * maxSteps) + '</text>';
-        }
+      if (pred != null && xc <= 1.0) {
+        h += '<line x1="' + px(xc) + '" y1="' + T + '" x2="' + px(xc) + '" y2="' + (H - B) + '" class="oom-crit"/>';
+        h += '<text x="' + px(Math.min(xc, 0.88)) + '" y="' + (T + 10) + '" class="oom-critlab" text-anchor="middle">critical ' + Math.round(xc * maxSteps) + '</text>';
       }
     }
     // points (baseline square, later captures circles)
@@ -155,17 +307,6 @@
         : '<circle cx="' + px(p.x) + '" cy="' + py(p.y) + '" r="3.2" class="oom-pt"/>';
     });
     svg.innerHTML = h;
-
-    // prediction readout
-    var predEl = win.querySelector('#oomPred');
-    if (predEl) {
-      if (pred != null) {
-        var steps = Math.round(pred * maxSteps);
-        predEl.textContent = 'predicted criticality ≈ step ' + steps + ' (' + (pred * 100).toFixed(1) + '% withdrawn)';
-      } else {
-        predEl.textContent = points.length >= 2 ? 'insufficient trend — keep plotting' : '';
-      }
-    }
   }
 
   // ------------------------------------------------------------------ actions
@@ -174,13 +315,19 @@
     if (!s) return;
     if (!supported(s)) { setMsg('no source-range channel on this plant', true); return; }
     var ins = s.instruments || {};
-    if (!ins.sr_energized) { setMsg('SR detector is de-energized — no counts to plot', true); return; }
+    /* The refusal says what it MEANS, not only what it is (#641): the source range secures
+     * itself above 1e5 cps on this plant, so a de-energized channel here is the player past
+     * the approach, not a switch to find. The live checklist marks its plot steps overtaken on
+     * the same condition. */
+    if (!ins.sr_energized) { setMsg('Source range de-energized — the approach is past 1/M territory; nothing to plot. Watch the startup rate and the intermediate range.', true); return; }
     var counts = ins.source_range;
     if (counts == null || !isFinite(counts) || counts < 1) { setMsg('no source-range reading', true); return; }
     if (counts > 9e5) { setMsg('SR pegged near full scale — past 1/M territory', true); return; }
     var g = controlGroup(s);
     if (!g) return;
-    if (g.max_steps) maxSteps = g.max_steps;
+    /* The `maxSteps = g.max_steps` capture that used to live here is GONE (#746). It was the
+     * only thing correcting the 912 literal, and it corrected it one press too late; the axis
+     * reads the bank live at draw time now, so there is nothing to capture. */
     var x = (g.position_pct || 0) / 100;
     if (points.length === 0) {
       C0 = counts;
@@ -250,7 +397,7 @@
     win.className = 'oom-win';
     win.hidden = true;
     win.innerHTML =
-      '<div class="oom-head" data-scanner-hint="1/M startup plot — drag to move. Plot inverse count-rate points against rod position; the line’s zero crossing predicts the critical rod position.">' +
+      '<div class="oom-head" data-scanner-hint="1/M startup plot, a draggable window — drag its title bar to move it. Plot inverse count-rate points against rod position; the line’s zero crossing predicts the critical rod position.">' +
       '<span>1/M Startup Plot</span><button class="btn oom-x" data-oom="close" title="Close">✕</button></div>' +
       '<svg viewBox="0 0 ' + W + ' ' + H + '" class="oom-svg"></svg>' +
       '<div class="oom-foot">' +
@@ -258,12 +405,94 @@
       '<button class="btn" data-oom="clear" data-scanner-hint="Clear all plotted points (new baseline on the next plot).">Clear</button>' +
       '<button class="btn oom-help-btn" data-oom="help" aria-expanded="false" ' +
         'data-scanner-hint="What 1/M is and how to read this plot.">Help</button>' +
-      '<span class="oom-pred" id="oomPred"></span></div>' +
+      '</div>' +
+      /* THE PREDICTION IS ITS OWN LINE, NOT A TAIL ON THE BUTTON BAR *(OWNER, #724 item 7:
+       * "make the predicted criticality text large enough to read and obvious")*. It was an
+       * 11 px span sharing a row with three buttons, which is both the smallest type in the
+       * panel and the least prominent slot in it — for the one number the whole tool exists to
+       * produce. As a sibling it gets a row of its own in the docked grid and can be sized and
+       * wrapped independently of the bar. #713.
+       *
+       * THE WORDING IS UNCHANGED on purpose: `run_oneoverm.js` asserts
+       * /predicted criticality|insufficient trend/ against this element's textContent, and this
+       * is a move plus a type size, not a rewrite — a reworded readout would have made the gate
+       * agree with whatever I typed instead of with what it was written to check. */
+      '<div class="oom-pred" id="oomPred"></div>' +
       '<div class="oom-msg" id="oomMsg"></div>' + HELP_HTML;
     document.body.appendChild(win);
     svg = win.querySelector('svg');
     msgEl = win.querySelector('#oomMsg');
     makeDraggable(win, win.querySelector('.oom-head'));
+    /* TWO LISTENERS, WATCHING TWO DIFFERENT THINGS. Read them together — the older comment here
+     * said "NOT a ResizeObserver", and there is now one thirty lines below, which reads as a
+     * contradiction until you see that they answer different questions.
+     *
+     *   `resize` (here)            — the WINDOW changed, so the column, the breakpoint or the
+     *                                board's splitter did. It is the event pwr_board.js already
+     *                                dispatches on every splitter pointermove and reset
+     *                                (beginDrag/resetSplit), and that ui/app.js now dispatches
+     *                                when ⛶ hides the column. A ResizeObserver would not be
+     *                                wrong here, merely redundant.
+     *   `ResizeObserver` (below)   — the WINDOW did not change and the plot's cell moved anyway,
+     *                                because a SIBLING ROW grew a line. No window event exists
+     *                                for that, which is the whole reason it is there.
+     *
+     * Both coalesce onto one animation frame, so a drag redraws ~20 svg nodes once per frame
+     * rather than once per event, and both skip entirely when the panel is closed. render()
+     * dispatches nothing, so neither can re-enter.
+     *
+     * The `resize` handler runs for the FLOATING window too — not because that one letterboxes
+     * (it cannot), but so a window that was docked and is no longer gets W_BASE back rather than
+     * keeping the last cell's aspect, and so it re-homes across the dock/float boundary. */
+    var rafPending = 0;
+    /* THE READOUT-HEIGHT OBSERVER IS GONE WITH THE DOCK, and that is a deletion worth explaining
+     * rather than a tidy-up. Docked, the svg sat in a CSS grid cell between two `auto` rows, so
+     * every line the prediction or the message gained came straight OUT OF THE PLOT — measured at
+     * its worst, svg box 354x171 against a viewBox of 390x240, 77 px of dead width, a fifth of the
+     * plot, silently. A ResizeObserver on those two rows was the answer because no window event
+     * fires when a sibling grows a line.
+     *
+     * FLOATING, THE ARITHMETIC RUNS THE OTHER WAY: the svg's height is its own (width 100 %, no
+     * height, so it follows the viewBox aspect) and a longer readout makes the WINDOW taller
+     * instead of the plot shorter. There is no cell to lose, so there is nothing to observe.
+     *
+     * WHAT REPLACES IT IS A DIFFERENT GUARD FOR A DIFFERENT HAZARD. A floating window keeps the
+     * position the player dragged it to, in viewport coordinates — and a viewport can shrink out
+     * from under it. Drag it to the right-hand side of a wide screen, then narrow the window, and
+     * it is off-screen with no handle left to drag back: the same class of defect as the -296 px
+     * left edge the #724 quality pass found, arriving by a different route. So `resize` re-clamps
+     * a DRAGGED window back inside the viewport, using makeDraggable's own bounds so the two
+     * cannot disagree, and touches nothing when the window has never been dragged (no inline
+     * `left`, so the stylesheet still owns its position).
+     *
+     * Coalesced onto one animation frame, skipped while the panel is closed, and it re-renders
+     * NOTHING — the drawing is viewport-independent now, so a resize cannot change it. */
+    if (typeof window.addEventListener === 'function' && typeof requestAnimationFrame === 'function') {
+      window.addEventListener('resize', function () {
+        if (rafPending || !win || win.hidden || !win.style || !win.style.left) return;
+        rafPending = requestAnimationFrame(function () {
+          rafPending = 0;
+          if (!win || win.hidden || !win.style.left) return;
+          var r = win.getBoundingClientRect();
+          if (!r || !isFinite(r.left) || !r.width) return;
+          /* A RESIZE CLAMPS HARDER THAN A DRAG DOES, and the asymmetry is deliberate. Dragging
+           * allows the window part-way off the edge — makeDraggable keeps only 80 px of it on
+           * screen — because the player put it there and can put it back. A shrinking viewport is
+           * not a choice, so this pulls the window FULLY into view whenever it still fits.
+           *
+           * MEASURED with the drag's own looser bound used here instead: dragged to left 504 on a
+           * 1500 px screen, then narrowed to 700 px, the window sat at 504..860 — 160 px of it,
+           * including a third of the plot, hanging off the right edge, and only the 80 px rule
+           * stopping it being worse. `innerWidth - width` puts it at 344..700 instead.
+           *
+           * The outer Math.max(0, …) is for the case where the window is WIDER than the viewport:
+           * pin its left edge to 0 rather than computing a negative target. */
+          var x = Math.min(Math.max(0, r.left), Math.max(0, window.innerWidth - r.width));
+          var y = Math.min(Math.max(0, r.top), Math.max(0, window.innerHeight - r.height));
+          win.style.left = x + 'px'; win.style.top = y + 'px';
+        });
+      });
+    }
     win.addEventListener('click', function (e) {
       var b = e.target.closest('[data-oom]');
       if (!b) return;

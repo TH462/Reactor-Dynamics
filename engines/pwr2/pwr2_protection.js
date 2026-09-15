@@ -117,9 +117,32 @@
     hi_pzr_level_frac:  0.87,
     src: 'Ginna UFSAR ch15 (ML20339A101) Table 15.0-6; hi level Ginna TS Bases B 3.4.9 + WTSM 10.3.4.3'
   };
-  /* P-7, the at-power permissive gating the high-level trip. UNLIKE P-10 there is no operator
-   * request anywhere in it -- below 10 % power the function is simply not active, above it is
-   * -- so it is a plain automatic gate, not a revoked request. WTSM 10.3.4.3 verbatim. */
+  /* P-7, the at-power permissive gating the high-level and low-flow trips. UNLIKE P-10 there is
+   * no operator request anywhere in it -- below the permissive the function is simply not active,
+   * above it is -- so it is a plain automatic gate, not a revoked request.
+   *
+   * 0.10 -> 0.08, RE-SOURCED TO THE ANCHOR PLANT (#753, OWNER RULING, 2026-09-14: "1. Yes, 0.08").
+   * It carried the GENERIC Westinghouse 10 % (WTSM 10.3 sec 10.3.4.3) while P-10 four hundred
+   * lines below carried Ginna's 8 % -- two permissives, one plant, two crossings, and the anchor
+   * plant puts BOTH at the same number. Ginna TS Bases B 3.3.1 (ML20339A221), verbatim, on
+   * Reactor Coolant Flow-Low -- which is one of the two rows this gate arms:
+   *
+   *   *"The Reactor Coolant Flow-Low (Single Loop) and (Two Loops) trip Functions utilize three
+   *    common flow transmitters per RCS loop to generate a reactor trip above approximately 8%
+   *    RTP (P-7 setpoint)."*
+   *
+   * and on Pressurizer Pressure-Low: *"Function is automatically enabled on increasing power by
+   * the P-7 interlock (approximately 8% RTP)."* The same Bases treats every permissive value as
+   * nominal ("In situations where the Applicability is associated with a Reactor Trip System
+   * Interlock/Permissive (P-6, P-7, P-8, P-9, and P-10), the Applicability value is to be treated
+   * as a Nominal value") -- so 8 % is carried as the nominal it is, exactly as P-10 is.
+   *
+   * WHAT MOVING IT BOUGHT, MEASURED (#753, the shipped `low_power` initial condition, 600 s):
+   * indicated power-range mean 9.572 %, min 8.713 %, max 10.472 % -- the channel straddles 10 %
+   * and never approaches 8 %. At 0.10 this gate CHATTERED: `p7_met` took 92 transitions in 600 s
+   * (one every 6.5 s) and `lo_flow` and `hi_pzr_level` armed and disarmed with it, on a settled
+   * plant nobody was touching. At 0.08 both rows sit steadily armed. A permissive whose channel
+   * noise spans the setpoint is not a permissive; it is a flicker. */
   /* [adopted] the P-11 pressurizer-pressure permissive — pwr1's ~1970 psig / 13.6 MPa pair
    * (its lo_press/si_trip block permissive); Ginna's own installed figure is not in corpus.
    * Below it the operator MAY block the low-pressure trip and the SI actuation (the
@@ -127,8 +150,8 @@
   var P11 = { kind: '[adopted]', mpa: 13.6 };
   var P7 = {
     kind: '[sourced]',
-    frac: 0.10,
-    src: 'WTSM 10.3 (ML11223A290) sec 10.3.4.3'
+    frac: 0.08,
+    src: 'Ginna TS Bases B 3.3.1 (ML20339A221), Reactor Coolant Flow-Low + Pressurizer Pressure-Low'
   };
   var ESFAS = {
     kind: '[sourced]',
@@ -250,7 +273,47 @@
   var P10 = {
     kind: '[sourced]',
     frac: 0.08,
-    src: 'Ginna TS Bases B 3.3.1 (ML20339A221), Power Range Neutron Flux-Low'
+    src: 'Ginna TS Bases B 3.3.1 (ML20339A221), Power Range Neutron Flux-Low',
+    /* ---- THE CONFIRMATION TIME ON THE REVOKE (#752) [derived] -------------------------------
+     * OWNER RULING, 2026-09-14, on options put as confirmation time / deadband / document only:
+     * *"Confirmation time (Recommended)"*. It is what a bistable plus a relay does, it invents no
+     * second setpoint, and it reuses the continuous-hold idiom `held_s` already runs on.
+     *
+     * WHY IT IS NEEDED. The revoke above acts on `drivers.power_frac`, which pwr2_engine feeds
+     * from `ins.reading.power_range` — the INSTRUMENT (HR1), sigma 0.3 % power, AR(1) with a
+     * 0.05 s correlation. Before this, ONE stray sample below 8 % removed a standing block.
+     * MEASURED on the shipped channel (24 plant-hours per row, DT 0.02 s, true power held):
+     *     true power   first reading below 8.0 %   longest CONTINUOUS sub-8.0 run in 24 h
+     *       8.02 %              ~0.2 s                          0.94 s
+     *       8.05 %               0.18 s                         0.82 s
+     *       8.19 %               0.20 s                         0.60 s
+     *       8.50 %               0.20 s                         0.28 s
+     *       9.36 %             855.2 s                          0.02 s
+     * and on the REAL PLANT (low_power IC, rods trimmed to park true power at 8.250 %, both
+     * requests taken): the low-flux and IR-high blocks were both gone 0.04 s later — two
+     * protection steps — with true power still 8.245 %, well inside the block window.
+     *
+     * WHY 2.0 s AND NOT 0.5 OR 1.0. The number has to beat the worst SPURIOUS excursion and
+     * still clear promptly on a genuine ride-down. 0.94 s is the worst continuous sub-8 run
+     * measured in 24 plant-hours of sitting essentially ON the setpoint (8.02 %, 0.07 sigma
+     * above it), so 1.0 s clears it by 0.06 s — inside its own scatter — while 2.0 s clears it
+     * by better than 2x. The cost of the extra second is small and was measured too: ramping
+     * down through 8 % at 5 %/min (the rate a hand rod insertion actually produces here —
+     * measured 5.277 %/min on the plant above), the block reinstates at 7.500 % true power with
+     * 1.0 s and 7.417 % with 2.0 s. 2.0 s is also the module's own dominant analysis delay
+     * (DELAY below: the pressure, level, flow and delta-T rows all carry Ginna Table 15.0-6's
+     * 2.0 s), so it is a figure this file already lives with rather than a new one.
+     *
+     * IT IS NOT SOURCED AND THAT IS DECLARED. `node tools/find_source.js` finds no
+     * confirmation or time-delay figure for P-10 in any lane's corpus — the Bases describe the
+     * unblock as three-out-of-four COINCIDENCE, which is the real plant's noise immunity and
+     * which this one lumped flux signal cannot carry (the same collapse P10.frac already
+     * declares). A confirmation time is the single-channel stand-in for it. The one nearby
+     * sourced permissive delay is C-20's *"preset time delay for at least 30 sec"* (Ginna UFSAR
+     * ch7, ML20339A027) — a different permissive and a different job, quoted here only so the
+     * next reader does not have to go and find it to rule it out. */
+    confirm_kind: '[derived]',
+    confirm_s: 2.0
   };
   /* ---- SOURCED: the INTERMEDIATE RANGE high flux reactor trip (#601) -------------------------
    * The SECOND trip in the startup net, and it was missing: this table carried only the power
@@ -308,6 +371,49 @@
     frac_dumps: 0.50,
     frac_no_dumps: 0.08,
     src: 'Ginna TS Bases B 3.3.1 (ML20339A221), P-9 Permissive'
+  };
+  /* ---- SOURCED: the P-6 permissive, and IT WAS THE WRONG SENTENCE OF THE RIGHT DOCUMENT (#642)
+   * Ginna TS Bases B 3.3.1 (ML20339A221), Intermediate Range Neutron Flux, P-6 Permissive:
+   *
+   *   *"The Intermediate Range Neutron Flux, P-6 permissive is actuated when any NIS
+   *    intermediate range channel goes approximately one decade (1 E-10 amps) above the minimum
+   *    channel reading. If both channels drop below the setpoint, the permissive will
+   *    automatically be defeated."*
+   *
+   * ⚠ 5E-11 A IS A DIFFERENT POINT IN THE SAME PASSAGE, and this plant carried it as P-6 for
+   * three weeks. The Bases lists the permissive's two directions, and only the second names
+   * that number: *"on decreasing power, the P-6 interlock automatically energizes the NIS
+   * source range detectors and enables the Source Range Neutron Flux reactor trip at 5E-11
+   * amps."* The quote `pwr2_true_state` cited instead — *"In MODE 2 when both intermediate
+   * range channels are < 5E-11 amps (BELOW THE P-6 SETPOINT)"* — says in its own parenthesis
+   * that 5E-11 is below the setpoint, not the setpoint. Same trap as #643's uprate artifact and
+   * the "(Rate sensitive)" cell: a sourced number that is not the WHOLE source. The manual and
+   * `pwr_control.js` had 1e-10 A all along, unsourced and right; the engine had the marker and
+   * was wrong, so the number does not move on the board — the PROVENANCE does.
+   *
+   * MEASURED at the corrected value (facade, hot_zero_power, control bank withdrawn one step at
+   * a time): P-6 is met at bank 184/627, ρ = −171 pcm, 3,121 cps, IR 1.000e-10 A. Hot standby
+   * (bank 0) reads 1.61e-11 A — still UNMET, so the argument that picked the installed source
+   * strength survives the correction with margin, which is the thing that had to be re-checked.
+   * At the old 5e-11 A it was bank 157/627 and ρ = −355 pcm.
+   *
+   * ⚠ A DECLARED DEPARTURE, and it is why this permissive PERMITS NOTHING on this plant. The
+   * Bases' P-6 function is *"allows the manual block of the NIS Source Range, Neutron Flux
+   * reactor trip by use of two defeat push buttons"* — a real plant has that lever. This one
+   * does not *(OWNER DIRECTIVE, 2026-09-01, #598 item 7: "The SR DET button is greyed out. I
+   * think we should remove this button and have the SOURCE RANGE disable itself
+   * automatically.")*: the source range de-energizes on flux alone at
+   * SR_SECURE_CPS, `set_sr_detector` is REFUSED by the shell by name, and the board button was
+   * deleted. That cue sits at IR 3.21e-9 A, 32x above P-6, so the handoff this plant performs is
+   * NOT at P-6 and the manual must not say it is. What P-6 does do here is real and visible:
+   * it is the bottom of the intermediate range's in-use band on the NIS card
+   * (`pwr2_true_state`'s nis_ir_inuse_a), the point below which the operator should be reading
+   * the source range instead. Expressed in AMPS because that is the channel's own currency and
+   * the source's; the amps<->power mapping stays in `pwr2_true_state` (K_IR), one copy. */
+  var P6 = {
+    kind: '[sourced]',
+    amps: 1.0e-10,
+    src: 'Ginna TS Bases B 3.3.1 (ML20339A221), Intermediate Range Neutron Flux, P-6 Permissive'
   };
 
   /* ---- SOURCED: the two FLUX rod stops (#572) ------------------------------------------------
@@ -488,6 +594,10 @@
     for (var i = 0; i < fns.length; i++) held[fns[i].id] = 0;
     return {
       held_s: held,                         /* how long each function has been asserted */
+      /* how long the power-range reading has been CONTINUOUSLY below P-10 (#752). The revoke's
+       * confirmation timer, the same rule as held_s above and reset by any sample back above
+       * the permissive. Live signal, not a latch — `reset(pr)` deliberately leaves it alone. */
+      p10_below_s: 0,
       blockLowFlux: !!opts.blockLowFlux,
       /* THE INTERMEDIATE-RANGE BLOCK (#601) — its OWN request, not a share of the one above.
        * Same P-10 law, same asymmetry; two levers because WTSM 12.2's P-10 list is two
@@ -578,8 +688,21 @@
      * low" would leave a stale request that silently re-arms as power rises, which is the
      * defeatable-trip shape the sources do not have. */
     var p10Met = drivers.power_frac >= P10.frac;
-    if (!p10Met && pr.blockLowFlux) pr.blockLowFlux = false;
-    if (!p10Met && pr.blockIrHigh) pr.blockIrHigh = false;   /* the second request, same law (#601) */
+    /* ⚠ THE REVOKE IS CONFIRMED, NOT INSTANTANEOUS (#752, owner-ruled — see P10.confirm_s for
+     * the ruling, the measurements and why 2.0 s). `power_frac` is an INSTRUMENT reading and one
+     * stray sample below 8 % used to take a standing block away; the timer is the same
+     * continuous-hold rule `held_s` runs below, so a reading that dips and recovers starts it
+     * over. It is NOT a latch and NOT a gate: below the permissive for confirm_s the REQUEST
+     * itself is still destroyed, which is what keeps the #295 F1/F2 defeatable-trip shape out.
+     *   `|| 0` is the MIGRATION: pwr2_shell restores `pt` wholesale from the save, so a save
+     * written before this field existed lands here with it undefined, and undefined + dt is NaN
+     * — a timer that can never reach confirm_s, i.e. a block that never revokes again. That is
+     * the #555 shape (a plausible value no guard rejects) with the failure on the UNSAFE side,
+     * so it is handled at the read rather than left to a migration nobody runs. */
+    pr.p10_below_s = p10Met ? 0 : (pr.p10_below_s || 0) + (dt > 0 ? dt : 0);
+    var p10Revoke = pr.p10_below_s >= P10.confirm_s;
+    if (p10Revoke && pr.blockLowFlux) pr.blockLowFlux = false;
+    if (p10Revoke && pr.blockIrHigh) pr.blockIrHigh = false;   /* the second request, same law (#601) */
     /* ---- P-11, THE SHUTDOWN PERMISSIVE (#507 wave 10) — the mirror of P-10's law in the
      * other direction: the low-pressure trip block and the SI block are OPERATOR REQUESTS
      * permitted only BELOW P-11, and climbing back above it REVOKES both requests
@@ -930,6 +1053,14 @@
     OTDT: OTDT,
     RPS: RPS, ESFAS: ESFAS, SGLL: SGLL, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10, P7: P7,
     P11: P11, RESET: RESET,
+    /* P-6 and P-9 EXPORTED (#642). Both were locals, and both were consequently unpinnable:
+     * `run_manual_setpoints` had to carry their manual rows as `narrative` — "no single plant
+     * constant to check against" — which is how the P-6 row kept a figure the engine disagreed
+     * with by 2x, and how P-9's two-valued setpoint went unchecked while the chapter quoted one
+     * of them. P-6 has one consumer beyond the gate (`pwr2_true_state`'s in-use band), P-9 has
+     * none yet; a constant that only a gate reads is still worth exporting, because the
+     * alternative is a manual row nothing can contradict. */
+    P6: P6, P9: P9,
     /* the board reads ROD_STOP.pr_frac / ir_frac so its rod-stop marks come from the PLANT and
      * not from a literal — the #572 defect was exactly a board band drawn from a fallback */
     ROD_STOP: ROD_STOP, IR_TRIP: IR_TRIP,

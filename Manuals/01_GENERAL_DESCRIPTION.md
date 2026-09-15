@@ -4,7 +4,7 @@
 **Plant:** Pressurized Water Reactor (PWR)  
 **Plant:** **SLS-100** (Single Loop Simulated, 100 MWe)
 **Rating:** ≈ 100 MWe / ≈ 300 MWt — a compact **single-loop experimental PWR** (one reactor coolant pump, one U-tube steam generator, one main steam line). Small and generously margined by design, and reactor trips are reserved for genuine limits. The steam dump is sized at **40 %** of rated steam flow, the prototypical Westinghouse capacity: a **50 % loss of load** is absorbed with no trip and no relief lift, and a larger rejection is ridden out by the reactor itself running back, with the PORV as the backstop.  
-**Revision:** 18  
+**Revision:** 19  
 
 ---
 
@@ -24,7 +24,7 @@ A **Pressurized Water Reactor** keeps primary coolant water under high pressure 
 | Primary pressure | **2235 psi (15.41 MPa)** |
 | Average coolant temperature (Tavg) | ≈ **579.2 °F (304 °C)** |
 | Hot leg / cold leg | ≈ 609.8 / 550.4 °F (321 / 288 °C) (ΔT ≈ 59.4 °F / 33 °C at rated) |
-| Pressurizer (PZR) level | ≈ **55 %** |
+| Pressurizer (PZR) level | ≈ **61.5 %** |
 | Steam Generator level | ≈ **65 %** |
 | Secondary steam pressure | ≈ **819 psi (5.65 MPa)** |
 | Subcooling margin | ≈ **73.8 °F** (41 °C) |

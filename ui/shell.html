@@ -153,19 +153,8 @@
           </div>
           <div class="clock mono" id="clock">T+00:00:00</div>
         </div>
-        <div class="sim-row">
-          <button class="play paused attention" id="playBtn" data-scanner-hint="Play / Pause — starts or stops the simulation. Separate from the speed selector."
-              data-scanner-detail="Paused, the plant is frozen but the board stays live and controls still queue commands. Time acceleration is a separate control: pausing does not reset it, and a paused plant at 60x is still paused.">▶</button>
-          <div class="speed" id="speed" data-scanner-hint="Speed — time acceleration in two tiers. PLAY (1× to 60×) runs the full physics; WARP (600× and 3600×) steps the same physics at a coarser 0.5 s step for the long, quiet evolutions — xenon, decay heat, boron, a heatup — and is unavailable while the plant is in a transient. Keys 1 to 6 select the rungs."
-              data-scanner-detail="WARP drops back to 60× on its own the moment the plant moves fast — a trip, a new failure, a new alarm on a quiet board, power or pressure running away — and the buttons stay dark for 30 plant-seconds of quiet afterwards. The readout to the right shows the rate actually achieved: amber when the physics cannot keep up with the request (the honest ceiling of this machine), red when the page itself is stalling. Fast-forward dropout (a Settings option) still drops the clock to real time on a scram, a new failure, or the first alarm on a quiet board.">
-            <!-- 5x added #619 item 18 (OWNER, 2026-09-03: "Add a 5x sim speed."). The service
-                 accepts ANY value (simulation_service.js set_speed is unclamped), so this is a
-                 UI rung only. The buttons carry no whitespace between them on purpose — .speed
-                 lays them out edge to edge. Adding a rung is safe for verify_e2e_ui, which
-                 clicks by [data-speed="N"]; REORDERING or renaming is not. -->
-            <button class="on" data-speed="1">1×</button><button data-speed="5">5×</button><button data-speed="10">10×</button><button data-speed="60">60×</button><button class="warp" data-speed="600" title="WARP — coarser physics step; long quiet evolutions only">600×</button><button class="warp" data-speed="3600" title="WARP — coarser physics step; long quiet evolutions only">3600×</button>
-          </div>
-          <span class="ff-rate mono" id="ffRate" hidden title="Achieved rate — the plant-time actually passing per second of wall clock"></span>
+        <!-- TOOLS ABOVE THE SPEED CONTROLS, SPEED ON ONE LINE, STATUS STRIP BELOW (OWNER, 2026-09-08, #660: "Keep speed controls on one line, put status strip below it. Manual, Help, Feedback, settings should be on one line above the speed controls.") -->
+        <div class="sim-row sim-tools">
           <button class="btn" id="manualBtn" data-scanner-hint="Operator's Manual — reference (controls, indications, setpoints, normal values) and engine-validated procedures for the selected plant."
               data-scanner-detail="The manual set is written in commercial operator-manual format: general description, controls and indications, normal and emergency procedures, alarm response, setpoints and a glossary. Its procedures are replayed against the engine by the test suite, so the steps match the plant you are operating.">Manual</button>
           <button class="btn text-btn" id="helpBtn" title="How this control room works" data-scanner-hint="Help — a short guide to the board, the right-hand panels, and where to learn next.">Help</button>
@@ -175,26 +164,61 @@
           <button class="btn text-btn" id="fbHeaderBtn" title="Report a problem or send feedback" data-scanner-hint="Feedback — report a bug or send a suggestion. A recording of this session can be attached so what you saw can be replayed.">Feedback</button>
           <button class="btn text-btn" id="settingsBtn" title="Settings — units, fast-forward dropout, save/load" data-scanner-hint="Settings — units, fast-forward dropout, save and load. It pauses the plant while it is open, because none of it is operating."
               data-scanner-detail="The chart's own controls are NOT here — they have a window of their own, behind the ⚙ on the strip chart, which lists every channel you can plot with its current reading. This one covers the things that are true of the whole simulator: units, the fast-forward dropout, and saving or loading a run.">Settings</button>
+          <!-- MAIN MENU, TO THE RIGHT OF SETTINGS *(OWNER, 2026-09-09, #675 section A / #689:
+               "Add a Main Menu button to the right of settings. Change the SELECT PLANT,
+               MISSION & RESET menu to this button and get rid of the old button.")*. It
+               REPLACES the full-width .sim-status bar that used to sit under the speed
+               controls — one entry point, and it sits with the other chrome buttons instead of
+               being mixed in with the simulation controls. ⛶ stays the row's end-cap: it is an
+               icon toggle rather than a named tool, and "to the right of settings" is where
+               this one was asked for. -->
+          <button class="btn text-btn" id="mainMenuBtn" title="Main Menu — select plant, mission and reset" data-scanner-hint="Main Menu — click to change what you are running or restart the plant from a clean initial condition."
+              data-scanner-detail="One window covers both choices: free play (with a starting plant condition) or a guided walkthrough. Starting either one restarts the simulation from a fresh initial condition, and Reset is in the same window.">Main Menu</button>
           <button class="btn demo-btn" id="demoBtn" title="Board focus — hide the side panel and enlarge the plant diagram" data-scanner-hint="Board focus — hides the simulator panel on the right and moves the time controls atop the alarms/graph column, giving the plant diagram more room. Click again to bring the panel back.">⛶</button>
         </div>
-        <!-- What's running now — the always-visible mission entry point -->
-        <button class="sim-status" id="simStatus" data-scanner-hint="Select Plant, Mission &amp; Reset — click to switch reactors, change what you are running, or restart the plant from a clean initial condition."
-              data-scanner-detail="One window covers both choices: which reactor, and whether you are in free play (with a starting plant condition) or running guided content. Switching either one restarts the simulation from a fresh initial condition.">
-          <!-- The label NAMES ALL THREE THINGS THE WINDOW DOES (#516 item 3, owner playtest
-               2026-08-29: "The plant and mission button isn't obvious what it does. it should say
-               something like select plant and mission and reset."). It read "Plant &amp; Mission",
-               which names the window rather than the action, and RESET — the one irreversible
-               thing behind it — was not on the button at all. -->
-          <span class="ss-lbl">Select Plant, Mission &amp; Reset</span>
-          <span class="ss-txt" id="simStatusText">—</span><span class="ss-chev">›</span>
-        </button>
         <!-- Points at the button that reopens the Plant &amp; Mission window, for a few
              seconds after it is closed *(OWNER DIRECTIVE, 2026-08-11)*. It supersedes the
              persistent unvisited dot the spec asked for on this one control: the window is
              now UP on load, so the first close is the moment the player needs to be told
              where it went, and a marker that waits for curiosity is answering a question
-             they are no longer asking. -->
-        <div class="ss-tip" id="simStatusTip" hidden>▲ Reopen it here any time</div>
+             they are no longer asking.
+             DIRECTLY UNDER .sim-tools since #689 — the ▲ has to point at the button that
+             reopens the window, and that button moved up into the tools row.
+             AND THE ▲ IS NOW AIMED, not centred (quality pass, 2026-09-11). The bubble spans
+             the whole 338 px tools row while Main Menu sits at its right end, so a centred
+             glyph measured 128 px to the LEFT of the button it names — see the note in
+             shell.css and aimMainMenuTip() in app.js. -->
+        <div class="mm-tip" id="mainMenuTip" hidden><span class="mm-arrow" aria-hidden="true">▲</span>Reopen it here any time</div>
+        <div class="sim-row">
+          <button class="play paused attention" id="playBtn" data-scanner-hint="Play / Pause — starts or stops the simulation. Separate from the speed selector."
+              data-scanner-detail="Paused, the plant is frozen but the board stays live and controls still queue commands. Pausing clears the lit speed button — a stopped plant is not accelerating at any rate — and pressing play again always resumes at 1×, never the speed that was showing when you paused (#691).">▶</button>
+          <div class="speed" id="speed" data-scanner-hint="Speed — time acceleration in two tiers. PLAY (1× to 60×) runs the full physics; WARP (600× and 3600×) steps the same physics at a coarser 0.5 s step for the long, quiet evolutions — xenon, decay heat, boron, a heatup — and is unavailable while the plant is in a transient. Keys 1 to 6 select the rungs."
+              data-scanner-detail="WARP drops back to 60× on its own the moment the plant moves fast — a trip, a new failure, a new alarm on a quiet board, power or pressure running away — and the buttons stay dark for 30 plant-seconds of quiet afterwards. The readout to the right shows the rate actually achieved: amber when the physics cannot keep up with the request (the honest ceiling of this machine), red when the page itself is stalling. Fast-forward dropout (a Settings option) still drops the clock to real time on a scram, a new failure, or the first alarm on a quiet board.">
+            <!-- 5x added #619 item 18 (OWNER, 2026-09-03: "Add a 5x sim speed."). The service
+                 accepts ANY value (simulation_service.js set_speed is unclamped), so this is a
+                 UI rung only. The buttons carry no whitespace between them on purpose — .speed
+                 lays them out edge to edge. Adding a rung is safe for verify_e2e_ui, which
+                 clicks by [data-speed="N"]; REORDERING or renaming is not. -->
+<!-- TWO ROWS SINCE #655 (OWNER, 2026-09-08: "put the warp buttons on their own line with the
+                 other buttons underneath it. Leave a space between them for warp info text"). WARP
+                 on top, the info line between (why WARP is locked and for how long, what it is
+                 achieving, why the clock last dropped), PLAY underneath. DOM order is warp-first;
+                 every reader of [data-speed] sorts or looks up by value, so the order is free. -->
+            <button class="on" data-speed="1">1×</button><button data-speed="5">5×</button><button data-speed="10">10×</button><button data-speed="60">60×</button><button class="warp" data-speed="600" title="WARP — coarser physics step; long quiet evolutions only">600×</button><button class="warp" data-speed="3600" title="WARP — coarser physics step; long quiet evolutions only">3600×</button>
+          </div>
+          <span class="ff-rate mono" id="ffRate" hidden title="Achieved rate — the plant-time actually passing per second of wall clock"></span>
+
+        </div>
+        <div class="warp-info mono" id="warpInfo" aria-live="polite"></div>
+        <!-- THE .sim-status BAR THAT STOOD HERE IS GONE (#689, owner 2026-09-09: "Change the
+             SELECT PLANT, MISSION & RESET menu to this button and get rid of the old button.").
+             It was a full-width button reading "SELECT PLANT, MISSION & RESET" plus a live
+             "plant · mode" readout in #simStatusText; #mainMenuBtn in .sim-tools above replaces
+             it, and the readout was DROPPED (option A of the three #689 costed). Two reasons,
+             the second measured: the walkthrough card already names the leg it is running, and
+             the readout HAD ALREADY BEEN DEAD — updateSimSummary() returned on its first line
+             because #simPlantLbl left with the old Settings panel, so the button showed a
+             literal "—" on every load. -->
       </div>
 
       <div class="panel tools expanded" id="toolsCard">
@@ -212,7 +236,7 @@
                separate card above this strip, in a two-card accordion where expanding one
                collapsed the other. One strip, one visible pane, no accordion. -->
           <button class="on" data-tab="instructor">Instructor</button
-          ><button data-tab="checklists">Checklists</button>
+          ><button data-tab="checklists">Walkthroughs</button>
           <button data-tab="indications">Indications</button>
           <button data-tab="failures">Inject Failure</button>
         </div>
@@ -224,6 +248,9 @@
             <span class="instr-badge" id="instrBadge" hidden></span>
           </div>
           <div class="instr-body">
+            <!-- THE RUNNING WALKTHROUGH lives here since #660 (one step at a time, Rewind and
+                 Continue under it). Same id the checklist renderer always wrote to. -->
+            <div id="cklRun" hidden></div>
             <div class="instr-prev" id="instrPrev" hidden></div>
             <!-- THE TRANSCRIPT *(OWNER DIRECTIVE, 2026-08-11: "Instructor and other messages
                  like walkthroughs should be like teams messages. They should be persistent and
@@ -240,6 +267,16 @@
                  panel rather than a flash on the header (#439, spec §4). The message is
                  already on screen; flashing for it would spend the signal on nothing. -->
             <button class="instr-newbelow" id="instrNewBelow" hidden>▾ New message below</button>
+            <!-- END WALKTHROUGH / NEXT LEG, AT THE FOOT OF THE WHOLE PANEL (#687 item 2,
+                 OWNER 2026-09-09: "Put 'End Walkthrough' at the very bottom of the space").
+                 It was the last thing inside #cklRun, which is only the FIRST child of
+                 .instr-body — #instrLog sits below it, so "last in its card" was two blocks
+                 short of the bottom of the space. Rendered by renderChecklist into here
+                 instead, as the last child of .instr-body: #instrLog above it is the flex-GROWING
+                 child, so it takes the free space and this row is what is left at the panel floor.
+                 (`margin-top: auto` is on it as a fallback and measures INERT today — computed
+                 marginTop is 0px at every viewport height. See the note in shell.css.) -->
+            <div class="ckl-btns" id="cklBtns" hidden></div>
           </div>
           <!-- Walkthrough (follow) nav — shown only while following a procedure -->
           <div class="instr-nav" id="instrNav" hidden>
@@ -334,14 +371,16 @@
                — the manual serves depth-seekers, the average player wants a procedure to
                follow (spec §9). -->
           <div class="tabpane" data-pane="checklists">
+            <!-- WALKTHROUGHS (owner, 2026-09-08, #660 items 14-15): this tab is the LIST; a running
+                 walkthrough is shown in the Instructor tab, one step at a time. The pane, menu
+                 and data attributes keep their `ckl` ids — four gates address them by id. -->
             <div class="ckl-picker" id="instrCklRow">
-              <div class="phys-note">Follow a real procedure step by step. Each step checks
-                <b>itself</b> off the instruments while you operate, and hovering a step glows
-                the controls it names on the board.</div>
-              <div class="ckl-menu" id="cklMenu" data-scanner-hint="Checklists — pick a procedure and it runs as a checklist in this tab; each step checks itself off the instruments while you operate."
-                  data-scanner-detail="The checklist watches the plant rather than trusting you: a step marks itself complete when the instruments say the action took effect. Hovering a step glows the controls and indications it names on the board, which is the fastest way to find a control you have not used before. The list is always in the same order, so a procedure is where you last saw it. A running checklist stays in this tab when you leave and come back."></div>
+              <div class="phys-note">Pick a walkthrough. It runs in the <b>Instructor</b> tab one
+                step at a time: each step checks itself off the instruments, and <b>Continue</b>
+                lights up when the step is done.</div>
+              <div class="ckl-menu" id="cklMenu" data-scanner-hint="Walkthroughs — pick a procedure and it runs one step at a time in the Instructor tab; each step checks itself off the instruments while you operate."
+                  data-scanner-detail="The walkthrough watches the plant rather than trusting you: a step marks itself complete when the instruments say the action took effect. Hovering a step glows the controls and indications it names on the board, which is the fastest way to find a control you have not used before. The list is always in the same order, so a procedure is where you last saw it. A running walkthrough stays where it is when you leave this tab and come back."></div>
             </div>
-            <div id="cklRun" hidden></div>
           </div>
           <input type="file" id="loadFile" accept="application/json" style="display:none">
         </div>
@@ -479,11 +518,24 @@
       <div class="mission-overlay" id="missionOverlay" hidden>
         <div class="mission-modal">
           <div class="mission-head">
-            <div class="mission-title">Plant &amp; Mission</div>
+            <!-- ONE NAME FOR ONE WINDOW (#748, layman playthrough). The player reached this
+                 window by three different names: the button they press is engraved "Main Menu"
+                 (#689), this heading said "Plant & Mission", and the help text and the idle
+                 Instructor list pointed at "Plant & Mission (the bar under the clock)" — a bar
+                 that has not existed since #689 retired #simStatus. The button's engraving wins,
+                 per the walkthrough guide's N1/N3: name a thing by the string on it, and use one
+                 name everywhere. The element id stays `missionOverlay` — identifiers are not
+                 player-facing and four gates navigate by it. -->
+            <div class="mission-title">Main Menu</div>
             <button class="btn" id="missionClose" aria-label="Close">✕ Close</button>
           </div>
-          <div class="mission-body">
-            <div class="mp-plants" id="mpPlants"></div>
+          <!-- NO PLANT COLUMN *(OWNER, 2026-09-09, #675 section A / #688: "Remove the plant
+               selection column from the plant and mission menu.")*. It held one selectable
+               card and three greyed COMING SOON placards; on a published build the retired
+               PWR card is not even built, so the column offered exactly one choice. `mp-body`
+               collapses .mission-body's 260px|1fr grid to one track — the grid default stays
+               as it is because the chart-settings window reuses it with a real left column. -->
+          <div class="mission-body mp-body">
             <div class="mp-right">
               <div class="mp-modes" id="mpModes"></div>
               <div class="mp-content" id="mpContent"></div>
@@ -553,9 +605,9 @@
               <h4>Where to start</h4>
               <p><b>Play</b> starts the clock — the ▶ button flashes whenever the plant is stopped. <b>F11</b> goes fullscreen, which suits the board.<br>
               <b>Instructor</b> (right column) — free-play coaching and, later, guided voices. Use <b>−</b> to minimize it.<br>
-              <b>Checklists</b> (first tab) — interactive procedures that check themselves off the instruments.<br>
+              <b>Walkthroughs</b> (first tab) — interactive procedures that check themselves off the instruments.<br>
               <b>Manual</b> — full operator reference and written procedures.<br>
-              <b>Plant &amp; Mission</b> (the bar under the clock) — starting condition, courses and reset.<br>
+              <b>Main Menu</b> (in the tools row, beside Settings) — starting condition, courses and reset.<br>
               <b>System Scanner</b> (the line under the board) — hover anything for what it is and how to use it.</p>
             </div>
             <div class="help-sec">
@@ -657,31 +709,24 @@
               <button class="btn" id="fbCopy">Copy address</button>
               <span class="fb-msg" id="fbStatus"></span>
             </div>
-            <!-- GITHUB, FOR PEOPLE WHO WOULD RATHER USE IT (owner, 2026-08-09: "In the contact
-                 form page in the sim it should also direct people to the github issues if they
-                 want to use that"). Same wording as the site footer, so the two routes read as
-                 one offer rather than two policies.
-
-                 target="_blank" IS LOAD-BEARING, not house style. This is the FIRST outbound
-                 link in the control room — the only other anchor here is a mailto, which does
-                 not navigate — and there is no autosave and no beforeunload guard: `rd_progress`
-                 stores campaign progress, never plant state. A same-tab click therefore destroys
-                 the running plant, which on a BUG-REPORT link would take the session the player
-                 came here to report. Keep the attribute if this block is ever restyled. -->
-            <div class="fb-hint fb-gh">Would rather use GitHub? <a
-              href="https://github.com/TH462/Reactor-Dynamics/issues" target="_blank"
-              rel="noopener">Open an issue</a> — public and tracked, and you can read what is
-              already known before you write. It opens in a new tab; your plant keeps running.</div>
+            <!-- THE GITHUB ROUTE WAS REMOVED HERE *(OWNER, 2026-09-14, #755 item 5: "also
+                 remove the github paragraph from it.")*. It offered the issue tracker as a
+                 second route (owner, 2026-08-09) and was the only outbound link in the control
+                 room; the send-from-here form below has since made the in-sim route the one
+                 that gets used, and the site footer still carries the tracker for anyone who
+                 wants it. If a link is ever put back here it needs target="_blank" again:
+                 there is no autosave, so a same-tab navigation destroys the running plant —
+                 on a BUG-REPORT link, the very session being reported. -->
             <div class="fb-hint">What makes a report easy to act on: what you were doing, what you
               expected, and what the board actually showed. If it is a physics or procedure
               question, the plant mode and the readings you were reading it from.</div>
-            <!-- ABOVE the input, deliberately (#438, spec §10): a warning under a text box is
-                 read after typing. The audience includes working nuclear professionals — name
-                 the categories; a generic "no confidential information" gets skimmed past. -->
-            <div class="fb-warn" id="fbWarn"><strong>Do not include restricted information.</strong>
-              No proprietary plant data, no safeguards or security information, no
-              export-controlled technical data, no personal information. Describe the simulator,
-              not a real facility.</div>
+            <!-- THE "DO NOT INCLUDE RESTRICTED INFORMATION" WARNING WAS REMOVED *(OWNER,
+                 2026-09-14, #755 item 5: "Remove the \"do not include restricted information\"
+                 warning from the feedback window.")*. It named the categories — proprietary
+                 plant data, safeguards, export-controlled data, personal information — above
+                 the box, deliberately (#438, spec §10), because a warning under a text box is
+                 read after typing. The same ground is covered by privacy.html and by what the
+                 form actually collects, which is disclosed below the attach box. -->
             <!-- SEND IT FROM HERE. The whole point (owner, 2026-08-07: "If it's that easy
                  to send people might actually do it") — a report that needs an email client,
                  a file attachment and a paragraph of context is a report nobody writes. The
@@ -710,8 +755,7 @@
                  turns "broken" into "not on this build, here is the route that works". -->
             <div class="fb-field fb-nosend" id="fbNoSend" hidden>
               <div class="fb-hint">Sending a report from inside the simulator is not available on
-                this build — use the address above, or the GitHub link. The diagnostics file below
-                attaches to either.</div>
+                this build — use the address above. The diagnostics file below attaches to it.</div>
             </div>
             <div class="fb-field fb-diag">
               <button class="btn" id="fbDiag">Download session diagnostics ⭳</button>
@@ -719,7 +763,14 @@
                 commands you issued this session, so what you saw can be replayed. Nothing about
                 you or your device. Attach the file to your email.</div>
             </div>
-            <div class="fb-hint fb-ver" id="fbVer"></div>
+            <!-- THE BUILD-STAMP LINE WAS REMOVED *(OWNER, 2026-09-14, #755 item 5: "also remove
+                 \"Build alpha · dev — quoting this in a bug report says exactly which version you
+                 were on.\" since it should already tell me what version they are on when they
+                 send a report.")*. It is true and it is redundant: every report sent from this
+                 form carries `RD_RELEASE` and `RD_VERSION` in its payload, and the diagnostics
+                 bundle carries them too, so the player never has to quote anything. `openFeedback`
+                 in ui/app.js no longer writes it — if a stamp is ever wanted back, put the element
+                 back FIRST: that writer used to assume it existed. -->
           </div>
         </div>
       </div>

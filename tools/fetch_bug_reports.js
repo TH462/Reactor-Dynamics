@@ -206,6 +206,10 @@ function unwrap(doc) {
  *        can fall between two of them (#432, and the reason 1.1 exists).
  *   1.1  columnar, `{ fields, t, accel, v[], lo[], hi[] }`, sampled on the service's fine
  *        seam with MIN/MAX folded over each bucket.
+ *   1.2  the same SHAPE as 1.1 — nothing here needs a branch for it — with the values
+ *        rounded on the way out (#681) and two new manifest keys: `precision`, and
+ *        `trimmed` when the wire budget cut the oldest rows off. The shape is what this
+ *        function keys off, deliberately, so 1.1 and 1.2 read through one path.
  *
  * Returns `{ rows, fields, t, accel, at(field) -> {v, lo, hi} }` with lo/hi null on 1.0 —
  * null rather than a copy of `v`, because "no extremes were recorded" and "the value never
@@ -269,6 +273,13 @@ function summarise(doc, label) {
   if (m.follow_procedure_id) console.log(`  following procedure ${m.follow_procedure_id}`);
   console.log(`  sim time ${clock(m.exported_sim_time)} (${(m.exported_sim_time || 0).toFixed(0)} s), exported ${bundle.exported_at || '?'}`);
   console.log(`  ${ts.rows} samples · ${ev.length} events · ${cmds.length} commands`);
+  // SAY WHEN THE WINDOW WAS CUT (#681). Without this a trimmed bundle reads as a SHORT
+  // session — the same class of mistake as #432's 211 rows reading as a recording — and the
+  // rows that went are exactly the ones a "it was fine and then it wasn't" report is about.
+  if (m.trimmed && m.trimmed.rows_dropped) {
+    console.log(`  ${C.y}window trimmed to fit the 2 MB wire cap: ${m.trimmed.rows_dropped} oldest rows dropped` +
+      `${m.trimmed.dropped_from_sim_time != null ? `, session began at ${clock(m.trimmed.dropped_from_sim_time)}` : ''}${C.x}`);
+  }
 
   // SAMPLING, PRINTED EVERY TIME. The absence of exactly this line is what let #432 hide:
   // 211 rows over 6 h 21 m reads as a recording until you divide, and the manifest said

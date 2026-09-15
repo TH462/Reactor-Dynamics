@@ -2799,6 +2799,14 @@
                'rcp_secured', 'plant_mode',
                'hpi_active', 'station_blackout',
                'steam_demand_low', 'rod_at_limit', 'sr_energized', 'msiv_open', 'sg_safety_open',
+               // The OTHER end of the control bank's travel (#752) — the top stop, where the
+               // operator has no rod authority left in the withdraw direction. `rod_at_limit`
+               // beside it is the INSERTION limit. Declared here, not in pwr2_shell's status
+               // override, because `run_m7` asserts that every alarm's instrument exists in
+               // the plant's declared set and the ROD BANK FULL OUT row lives in the shared
+               // protection table. A STATUS passthrough, so it draws no PRNG number and the
+               // cross-step instrument noise stream is unchanged.
+               'rod_at_max_travel',
                // Rod bottom (#75) — read by the RPS-reset permissive in pwr_control.js, so
                // the board can say whether a reset will be accepted before it is attempted.
                'rods_fully_in',
@@ -2814,6 +2822,16 @@
                'sg_imbalance_active',
                // §8.8 synoptic status — system-active booleans the diagram animates from (HR1)
                'afw_active', 'afw_pump_running', 'afw_block_open', 'rhr_active', 'rhr_valve_open', 'accumulators_discharging',
+               // RHR PUMPS DELIVERING — the ALIGNMENT and the DELIVERY are different facts, and
+               // the board needs the second one (#699). `rhr_active`/`rhr_valve_open` above are
+               // both the hot-leg suction VALVE; this is `valve_open && powered`, i.e. the same
+               // `rh.running` the engine gates the heat-exchanger duty and the forced-circulation
+               // floor on. It exists because the ECCS impeller was drawn STOPPED through the whole
+               // of Mode 4 and Mode 5 — it keyed on injection flow, which is zero on a cooldown —
+               // and because keying it on the valve instead would spin a rotor on a dead bus, the
+               // exact defect #350 items 7/13/15 removed from four other pumps. A status
+               // passthrough, so it draws no PRNG number and the instrument stream is unchanged.
+               'rhr_running',
                // SI accumulator discharge isolation valve position (#273) — what the
                // `accum_aligned` annunciator is gated on. Position, not flow: by the time
                // `accumulators_discharging` goes true the tanks are already emptying.

@@ -45,13 +45,20 @@ complaint. Everything under it is evidence for or against that statement:
 | `manifest` | which plant, which IC, which scenario, the seed — enough to reproduce |
 | `commands` | what they actually did, with `blocked` / `error` flags |
 | `events` | alarms, scrams and trip reasons on the plant clock |
-| `timeseries` | 1 Hz true-state history — the shape of the transient |
+| `timeseries` | true-state history on the recorder's grid — the shape of the transient |
 | `performance` | fps and render/step percentiles, for "it flickers on my PC" |
 | `snapshot_end` | the full engine state at the moment they reported |
 
 **The bundle is NESTED**: the stored object is `{v, kind, note, bundle}` and everything above
 except `note` is one level down under `.bundle`. Ad-hoc `jq` against the flat shape reads
 `null` and looks like an empty report.
+
+**A SHORT RECORDING MAY BE A TRIMMED ONE, NOT A SHORT SESSION** (#681, schema 1.2). Values are
+rounded on the way out and, if the payload still would not fit the Worker's 2 MB cap, the OLDEST
+rows are dropped until it does. When that happened `manifest.trimmed` says so and the tool prints
+a line — read the row count against `manifest.session_start_sim_time`, never as the length of the
+session. Schemas 1.0, 1.1 and 1.2 all read through the same path; the tool keys off the SHAPE of
+`timeseries`, not the version string.
 
 ## 4. Then treat it like any other claim
 

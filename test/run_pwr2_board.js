@@ -37,6 +37,7 @@
 'use strict';
 var fs = require('fs');
 var path = require('path');
+var MUT = require('./mut_flags.js');   /* requireCleanRun (#644); this runner takes no --mut flags */
 var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 
 global.window = global;
@@ -139,6 +140,40 @@ function runSuite(quietRec) {
   q('every pump prop is finite (running boolean, speed number-or-null)', badPump.length === 0,
     badPump.join(',') || 'rcp speed ' + D.compProps({ id: 'imrobpq4a70' }, w.snap()).speed.toFixed(2));
 
+
+  /* ---- 1b. THE ECCS PUMP ON THE RHR BRANCH (#699) ------------------------------------------
+   * RHR has no pump of its own — it is a suction alignment on this shared ECCS train — and the
+   * impeller keyed on injection flow, which is zero on a cooldown. So the ONE pump on the mimic
+   * was drawn STOPPED through the whole of Mode 4 and Mode 5, the back half of the authored
+   * round trip. Measured on the shipped wiring: cold_shutdown, RHR aligned, HX split 25 %,
+   * `rhr_active` true, `eccs_mode` 'rhr', `hpi_flow` 0, `pumpProps` running FALSE.
+   *
+   * TWO CHECKS, AND THE SECOND IS THE LOAD-BEARING ONE. Gating on the alignment BUTTON would
+   * satisfy the first and re-create the defect #350 items 7/13/15 took out of three other pumps
+   * — a rotor turning on a dead bus. So the blackout leg asserts the impeller stops WHILE
+   * `rhr_valve_open` is still true: the valve does not move in a blackout, only the power does,
+   * which makes the two signals separable in exactly the way a commanded-flag regression is not. */
+  if (!rec) head('ECCS PUMP / RHR  [RHR is an alignment on the ECCS train — the impeller must follow DELIVERY, #699]');
+  var wRhr = mkWorld('cold_shutdown');
+  wRhr.cmd({ action: 'set_rhr', active: true }); wRhr.tick(5);
+  wRhr.cmd({ action: 'set_rhr_hx', pct: 25 }); wRhr.tick(20);
+  var sRhr = wRhr.snap(), pRhr = D.compProps({ id: 'imrobnzlha1' }, sRhr);
+  var hpiRhr = sRhr.instruments.hpi_flow || 0;
+  q('the ECCS pump TURNS on a shutdown cooldown with no injection at all',
+    !!(pRhr && pRhr.running) && hpiRhr <= 1e-4 &&
+    sRhr.instruments.rhr_running === true && (sRhr.control_state || {}).eccs_mode === 'rhr',
+    'running ' + (pRhr && pRhr.running) + ', speed ' + (pRhr && pRhr.speed) +
+    ', hpi_flow ' + hpiRhr + ', eccs_mode ' + (sRhr.control_state || {}).eccs_mode);
+
+  wRhr.cmd({ action: 'inject_failure', failure_id: 'station_blackout' }); wRhr.tick(30);
+  var sBo = wRhr.snap(), pBo = D.compProps({ id: 'imrobnzlha1' }, sBo);
+  q('...and it STOPS on a dead bus, with the suction valve still showing OPEN (the discriminator)',
+    !!(pBo && pBo.running === false) && sBo.instruments.rhr_valve_open === true &&
+    sBo.instruments.rhr_running === false,
+    'running ' + (pBo && pBo.running) + ', rhr_valve_open ' + sBo.instruments.rhr_valve_open +
+    ', rhr_running ' + sBo.instruments.rhr_running);
+  bindWorld(w);                    /* PUT THE DRIVER BACK — see bindWorld and the note above */
+
   /* ---- 2. the power tile ------------------------------------------------------------------ */
   if (!rec) head('POWER TILE  [authored bands — the 25 % startup trip is not armed here, #506.7]');
   var tile = D.compProps({ id: 'imrzl4b7g9m' }, w.snap());
@@ -184,8 +219,15 @@ function runSuite(quietRec) {
     opRow && ('board ' + sD.instruments.opdt_setpoint.toFixed(2) + ' vs trip ' +
       (opRow.setpoint * 100).toFixed(2)));
   /* And the DENOMINATOR, which is the half a setpoint check cannot see: loop delta-T is
-   * normalized on 31.1 degC here, not the retired 33.0, so the two channels agree in LEVEL too. */
-  q('loop delta-T is normalized on THIS plant\'s rated split (31.1 degC), not the retired 33.0',
+   * normalized on THIS plant's own rated split, not the retired plant's 33.0 degC, so the two
+   * channels agree in LEVEL too.
+   * ⚠ THE SPLIT IS READ, NOT TYPED (#650). This line and the comment above used to name it as
+   * "31.1 degC" — and that constant turned out to be sourced to nothing and 5 % below what the
+   * plant reads, so a check whose whole subject is the denominator was quoting the defect in its
+   * own title while its assertion, which compares two live channels, was correctly indifferent
+   * to it. The number now comes from the one place it is defined. */
+  q('loop delta-T is normalized on THIS plant\'s rated split (' +
+    RD.pwr2.sources.DESIGN.dt_c.toFixed(2) + ' degC), not the retired 33.0',
     otRow && Math.abs(sD.instruments.loop_delta_t - otRow.value * 100) < 2.0,
     otRow && ('board ' + sD.instruments.loop_delta_t.toFixed(2) + ' vs trip ' +
       (otRow.value * 100).toFixed(2)));
@@ -269,6 +311,23 @@ function runSuite(quietRec) {
     Math.abs(pz.alarmLo - (progAtPower + lowSp.setpoint)) < 0.51,
     pz && ('alarmLo ' + pz.alarmLo + ' vs program ' +
       (progAtPower == null ? '?' : progAtPower.toFixed(1)) + ' + ' + lowSp.setpoint));
+  /* THE HIGH EDGE, same claim mirrored (#706). It was a fixed 75 % — the absolute PZR LVL HI,
+   * which is LIVE (forcing the channel to 76 % lights it) but fifty points above a plant running
+   * genuinely high on a 25 % program. The shipped Mode 5 -> Mode 3 heatup ran +20.4 points above
+   * program for 11.6 of its 13.4 plant-hours inside that gap. The edge is now the same
+   * program-relative construction as the low one, capped by the absolute row so it can never
+   * arrive after PZR LVL HI. Asserted as MOVEMENT, not a number, for the #500 reason: a fixed
+   * setpoint satisfies a number by existing. The Mode 5 case below is the discriminator. */
+  var devHiSp = (w.svc.layer.config.alarms.filter(function (a) {
+    return a.id === 'pzr_level_dev_high'; })[0] || {});
+  var absHiSp = (w.svc.layer.config.alarms.filter(function (a) {
+    return a.id === 'pzr_level_high'; })[0] || {});
+  q('the high ALARM edge is the PROGRAM plus its own deviation setpoint, capped by the absolute rung',
+    pz && devHiSp.instrument === 'pzr_level_dev' && absHiSp.instrument === 'pzr_level' &&
+    progAtPower != null &&
+    Math.abs(pz.alarmHi - Math.min(absHiSp.setpoint, progAtPower + devHiSp.setpoint)) < 0.51,
+    pz && ('alarmHi ' + pz.alarmHi + ' vs min(' + absHiSp.setpoint + ', program ' +
+      (progAtPower == null ? '?' : progAtPower.toFixed(1)) + ' + ' + devHiSp.setpoint + ')'));
   /* AND THE NORMAL BAND MOVES WITH THE PROGRAM TOO (#598 item 11). The authored band is a flat
    * 40-70 %, a FULL-POWER band applied to every mode — so a Mode 3 or Mode 5 plant whose level
    * program is 25 % drew its perfectly-on-program level 15 points BELOW "normal", and the owner
@@ -299,6 +358,16 @@ function runSuite(quietRec) {
     pzC && ('Mode 5: level ' + (lvlCold == null ? '?' : lvlCold.toFixed(1)) + ' %, program ' +
       (progCold == null ? '?' : progCold.toFixed(1)) + ' %, band ' + pzC.normLo + '..' +
       pzC.normHi + ' (authored was 40..70)'));
+  /* …and the same discriminator for the HIGH ALARM edge (#706). The shipped edge is a fixed 75,
+   * which is ALSO what the capped rule returns at any program above 65 — so full power alone
+   * cannot tell the two apart once the program is near its ceiling. Mode 5 can: program 25 puts
+   * the edge at 35, forty points below the absolute row, and no fixed number reads both. */
+  q('and the high alarm edge moves with it — Mode 5 program 25 % puts it at 35, not 75',
+    pzC && progCold != null && devHiSp.setpoint != null &&
+    Math.abs(pzC.alarmHi - (progCold + devHiSp.setpoint)) < 0.51 && pzC.alarmHi < 40,
+    pzC && ('Mode 5: alarmHi ' + pzC.alarmHi + ' against a program of ' +
+      (progCold == null ? '?' : progCold.toFixed(1)) + ' % (the absolute rung is ' +
+      absHiSp.setpoint + ')'));
 
   /* PRIMARY PRESSURE TILE (#576c). run_pwr2_board's only band assertion used to be the power
    * tile's, so nothing in the tree ever checked this one against a PWR2 plant — and the half
@@ -338,7 +407,8 @@ function runSuite(quietRec) {
    * The owner read "0-60 gpm" off the board and found the box refused anything over 30. Both
    * halves came from `RD.PWR_CONFIG.reactivity.charging_max` captured at script load — the
    * RETIRED engine — while `set_charging_flow` clamps the demand to [0,1] against THIS plant's
-   * 30.14 gpm, so the top half of the range was one indistinguishable value. */
+   * 26.31 gpm (#679 corrected the scale basis; was 30.14), so the top half of the range was
+   * one indistinguishable value. */
   if (!rec) head('CHARGING SETPOINT BOX  [the ceiling belongs to THIS plant, #516 item 11]');
   var CVC = globalThis.RD.pwr2.cvcs.CVCS;
   var chgMax = CVC.charging_max_gpm();
@@ -784,10 +854,10 @@ function runSuite(quietRec) {
 
   /* rod speed reaches the engine: S/F selections give measurably different slew */
   w.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -30, speed: 'slow' });
-  w.tick(5);                                     /* 5 s at slow 0.117: ~0.6 steps */
+  w.tick(5);                                     /* 5 s at slow (8 steps/min): ~0.7 steps */
   var slowPos = w.snap().control_state.rod_groups[0].steps;
   w.cmd({ action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'fast' });
-  w.tick(5);                                     /* 5 s at fast 1.053: ~5 steps */
+  w.tick(5);                                     /* 5 s at fast (72 steps/min): ~6 steps */
   var fastPos = w.snap().control_state.rod_groups[0].steps;
   w.cmd({ action: 'rod_stop', group_id: 'control_rods' });
   q('rod S/F speeds are DIFFERENT rates through the stack (selection was discarded)',
@@ -1082,6 +1152,188 @@ function runSuite(quietRec) {
     'held ' + preHeld + ' (si_t ' + e4.pt.si_t.toFixed(0) + ') -> si ' + e4.pt.si +
     ', running ' + e4.ec.hhsiRunning + ', re-arm blocked at reset ' + rearmSet);
 
+  /* ---- 7. THE TRIP-BLOCK MESSAGE (#738 / #716) ---------------------------------------------
+   * *(OWNER RULING, 2026-09-13: "flash the permissive button amber when there's a message and put
+   * the permissive messages and status inside the popup permissive card. When the user opens the
+   * card and then closes it the permissive card opening button stops flashing.")*
+   *
+   * WHY THE TRANSITIONS ARE SYNTHETIC AND THE FIELD IS NOT, stated plainly because the split is
+   * the only thing that makes this affordable. The rule is "a block went away and the player did
+   * not do it", which is a claim about a TRANSITION between two broadcasts. Producing a real one
+   * costs thousands of ticks — the plant has to be depressurized below P-11, blocked, and then
+   * driven back up through it (measured in inbox/738/deviation.js, which does exactly that and is
+   * far too slow to live in a gate). So the RULE is driven with crafted snapshots through the real
+   * `afterRender`, which is the same entry point the live board uses, and the PLANT half — that
+   * `permissive` is published, and is not merely `can_block` under another name — is asserted
+   * against the real running plant, where it is free.
+   *
+   * What that does NOT cover is stated rather than implied: no check here rides a real revoke end
+   * to end. inbox/738/deviation.js and inbox/738/probe_routes.js do, and their numbers are in
+   * TUNING_LOG. */
+  if (!rec) head('TRIP-BLOCK MESSAGE  [#738/#716 — the plant took your block and said nothing]');
+  (function () {
+    /* A FRESH WORLD, AND THE FIRST DRAFT DID NOT HAVE ONE. By this point in the suite section 6
+     * has ridden a trip and moved blocks, so `w` is a scrammed plant with ir_high unblocked —
+     * `blocked false permissive false can_block false`, which made the "permissive is not
+     * can_block" check fail for a reason that had nothing to do with the field. The plant half of
+     * this section needs the settled at-power lineup it is describing. `bindWorld` is put back at
+     * the end for the reason this file's own header gives: the driver keeps ONE ctxRef and
+     * leaving it pointed at a newcomer costs five "silent" buttons in the no-orphan sweep. */
+    var w7 = mkWorld();
+    /* START FROM A KNOWN MESSAGE STATE. The module-level message vars outlive a `runSuite()` call,
+     * and the mutation self-test calls runSuite once per mutant — so a lineup left behind by the
+     * previous mutant leaked in and made 10 of 33 mutations carry a spurious red that had nothing
+     * to do with them (measured, #738 quality pass). None was FALSELY caught, but three were down
+     * to a single genuine red, so the next refactor that blinded that one would have been reported
+     * as caught. Production gets the same reset from `onMount`; this is the harness end of it. */
+    RD.PwrBoardDriver.__resetTripBlocks();
+    var snapNow = w7.snap();
+    var st = (snapNow.rps_state && snapNow.rps_state.trip_block_status) || {};
+
+    /* (1) THE PLANT HALF, on the real plant. `permissive` has to be a DIFFERENT question from
+     * `can_block`, and at hot_full_power the flux rows prove it: both are BLOCKED, so can_block is
+     * false by construction, while the interlock plainly still permits them. Before this field
+     * existed the card could not tell that from "the interlock has gone", which is the half of
+     * #716 the player needed. */
+    q('msg: the plant publishes a per-row `permissive` for every blockable trip',
+      ['lo_press', 'ir_high', 'pr_low_setpoint', 'si_trip'].every(function (id) {
+        return st[id] && typeof st[id].permissive === 'boolean';
+      }),
+      JSON.stringify(Object.keys(st).map(function (k) { return k + ':' + (st[k] || {}).permissive; })));
+    q('msg: …and it is NOT a copy of can_block — a blocked row with a live interlock reads permissive TRUE, can_block FALSE',
+      !!(st.ir_high && st.ir_high.blocked === true && st.ir_high.permissive === true &&
+         st.ir_high.can_block === false),
+      st.ir_high ? ('blocked ' + st.ir_high.blocked + ' permissive ' + st.ir_high.permissive +
+                    ' can_block ' + st.ir_high.can_block) : 'no ir_high row');
+
+    /* (2) THE RULE, on crafted transitions through the real afterRender. */
+    /* THE FIXTURE CARRIES STATE FORWARD, and the first draft did not — it reset every row not
+     * named in the call back to the real plant's value, so an unmentioned row flipped on every
+     * feed and raised messages of its own. A transition fixture whose unmentioned rows move is
+     * not a fixture, it is a second source of events. `held` is the lineup; a feed mutates it. */
+    var held = {};
+    Object.keys(st).forEach(function (id) { held[id] = (st[id] || {}).blocked === true; });
+    function snapWith(blocks) {
+      Object.keys(blocks).forEach(function (id) { held[id] = blocks[id]; });
+      var c = { metadata: snapNow.metadata, instruments: snapNow.instruments,
+                true_state: snapNow.true_state, control_state: snapNow.control_state,
+                automation: snapNow.automation, alarms: snapNow.alarms,
+                rps_state: { scrammed: false, trip_blocks: {}, trip_block_status: {} } };
+      Object.keys(st).forEach(function (id) {
+        var src = st[id] || {}, b = held[id] === true;
+        c.rps_state.trip_block_status[id] = { blocked: b, asserted: false, permissive: src.permissive,
+                                              can_block: !b && src.permissive, can_clear: b, setpoint: src.setpoint };
+        if (b) c.rps_state.trip_blocks[id] = true;
+      });
+      return c;
+    }
+    var D2 = RD.PwrBoardDriver;
+    function feed(blocks) { D2.afterRender(snapWith(blocks)); }
+    function msgFor(id) {
+      var m = D2.tripBlockMessages().filter(function (r) { return r.id === id; })[0];
+      return m || null;
+    }
+
+    /* settle two identical broadcasts first — a rule keyed on a transition must not fire on the
+     * first snapshot it ever sees, when there is no previous one to compare against. */
+    feed({ lo_press: true }); feed({ lo_press: true });
+    var quiet = D2.tripBlockMessages().length;
+    q('msg: a steady lineup raises nothing (the rule is an EDGE, not a level)', quiet === 0,
+      quiet + ' messages on two identical broadcasts');
+
+    feed({ lo_press: false });                       /* the plant took it — nobody pressed anything */
+    var m1 = msgFor('lo_press');
+    q('msg: a block released BY THE PLANT raises a message naming the interlock',
+      !!(m1 && m1.msg && /P-11/.test(m1.msg) && /RELEASED BY THE PLANT/.test(m1.msg)),
+      m1 ? m1.msg : 'no message');
+    q('msg: …and it names the CONDITION, never the setpoint (the revoke fires at 1965 psia indicated against a 1972 psia setpoint — HR1)',
+      !!(m1 && m1.msg && !/\d{3,}/.test(m1.msg)), m1 ? m1.msg : 'no message');
+    q('msg: …and the button is UNACKNOWLEDGED, which is what flashes', D2.tripBlockUnacked() === true);
+
+    /* (3) THE ACKNOWLEDGE. Closing the card stops the flash and KEEPS the message — the row must
+     * go on saying the trip is live after the player has looked at it. */
+    D2.__ackTripBlocks();
+    var m2 = msgFor('lo_press');
+    q('msg: acknowledging stops the flash', D2.tripBlockUnacked() === false);
+    q('msg: …but the message SURVIVES it — an acked message still says the trip is live',
+      !!(m2 && m2.msg), m2 ? m2.msg : 'message was destroyed by the acknowledge');
+
+    /* (4) A NEW EVENT AFTER AN ACKNOWLEDGE FLASHES AGAIN. This is the check that fails if the
+     * acknowledge is ever written as a time window or as a global "seen" flag. */
+    feed({ lo_press: true, si_trip: true }); feed({ lo_press: true, si_trip: true });
+    feed({ lo_press: true, si_trip: false });
+    q('msg: a NEW release after an acknowledge is unacknowledged again (a sequence, not a window)',
+      D2.tripBlockUnacked() === true && !!msgFor('si_trip'),
+      'unacked ' + D2.tripBlockUnacked() + ', si_trip ' + JSON.stringify(msgFor('si_trip')));
+
+    /* (5) THE PLAYER'S OWN RELEASE IS NOT A MESSAGE. They did it a second ago; flashing at them
+     * is the noise the incidence measurement disqualified rule (d) for. It becomes standing
+     * status instead, because #738's harm is a release the player made and then FORGOT. */
+    D2.__ackTripBlocks();
+    feed({ pr_low_setpoint: true }); feed({ pr_low_setpoint: true });
+    D2.__markTripBlockSelf('pr_low_setpoint');
+    feed({ pr_low_setpoint: false });
+    var m3 = msgFor('pr_low_setpoint');
+    q('msg: a release the PLAYER made raises no message and does not flash',
+      !!(m3 && !m3.msg) && D2.tripBlockUnacked() === false,
+      m3 ? JSON.stringify(m3) : 'no row at all');
+    q('msg: …but it leaves standing status saying the trip is live again (#738 — the green step that stopped being true)',
+      !!(m3 && m3.note && /live again/i.test(m3.note)), m3 ? m3.note : 'no note');
+
+    /* (6) RE-BLOCKING CLEARS THE ROW. The lineup is what the player asked for again. */
+    feed({ pr_low_setpoint: true });
+    q('msg: re-blocking a row clears what it was saying', !msgFor('pr_low_setpoint'),
+      JSON.stringify(msgFor('pr_low_setpoint')));
+    /* ============ THE WORLD SEAM (#738 quality pass) ============
+     * The message state is session state over ONE world and must be dropped when the world is
+     * replaced. MEASURED before `tbReset` existed: a board on `cold_shutdown` with all four trips
+     * blocked, then a plant switch to `hot_full_power` and one render, raised TWO false messages
+     * ("RELEASED BY THE PLANT — pressure rose above the shutdown permissive (P-11)"),
+     * unacknowledged, so the button flashed amber on a brand-new plant for an event that never
+     * happened. Reachable in production by the RESET button and by any plant or engine switch —
+     * both go reset -> rebuildPlantUI -> render — and by loading a save.
+     *
+     * The fixture has to go from a MORE-blocked plant to a LESS-blocked one or there is no false
+     * transition to raise: cold_shutdown blocks all four, hot_full_power holds two. Asserting the
+     * precondition rather than trusting it, because a seam check between two identical lineups
+     * would pass on a completely broken reset. */
+    (function () {
+      var cold = mkWorld('cold_shutdown');
+      D2.__resetTripBlocks();
+      D2.afterRender(cold.snap()); D2.afterRender(cold.snap());
+      /* COUNT TRUTHY VALUES, NOT KEYS. `trip_blocks` always carries all four ids — the shell
+       * publishes `{ pr_low_setpoint: <bool>, ir_high: <bool>, lo_press: <bool>, si_trip: <bool> }`
+       * — so `Object.keys().length` is 4 on every plant in every state, and the first cut of this
+       * precondition compared 4 against 4 and reddened. A key count over a map of booleans is not
+       * a count of anything. */
+      function blockedIds(w2) {
+        var tb = (w2.snap().rps_state || {}).trip_blocks || {};
+        return Object.keys(tb).filter(function (k) { return !!tb[k]; }).sort();
+      }
+      var idsCold = blockedIds(cold);
+      var hot = mkWorld();
+      var idsHot = blockedIds(hot);
+      /* THE REQUIREMENT IS A ROW THAT WAS BLOCKED AND IS NOT, not a smaller count — and the two
+       * are different here in a way that would have made a count precondition pass while testing
+       * nothing. Both plants block exactly TWO rows: cold_shutdown holds the pressure pair
+       * (lo_press, si_trip) below P-11, hot_full_power holds the flux pair (ir_high,
+       * pr_low_setpoint) above P-10. 2 -> 2, and every row in the old lineup still drops. */
+      var dropped = idsCold.filter(function (id) { return idsHot.indexOf(id) < 0; });
+      q('msg: the seam fixture really does drop blocks across the switch (no dropped row would prove nothing)',
+        dropped.length > 0,
+        'cold [' + idsCold.join(',') + '] -> hot [' + idsHot.join(',') + '], dropped [' + dropped.join(',') + ']');
+      bindWorld(hot);                      /* onMount — the production seam */
+      D2.afterRender(hot.snap());
+      q('msg: a new world clears the message state — no false "the plant took your block" at a reset or plant switch',
+        D2.tripBlockMessages().length === 0 && D2.tripBlockUnacked() === false,
+        JSON.stringify(D2.tripBlockMessages()));
+    })();
+
+    D2.__ackTripBlocks();
+    bindWorld(w);                 /* put the driver back on the suite's world — see above */
+  })();
+
+
   return rec;
 }
 
@@ -1097,6 +1349,71 @@ var KSRC = fs.readFileSync(KPATH, 'utf8').replace(/\r\n/g, '\n');
 var PTPATH = path.join(SRC, 'pwr2_protection.js');
 var PTSRC = fs.readFileSync(PTPATH, 'utf8').replace(/\r\n/g, '\n');
 var MUTS = [
+  /* THE WORLD SEAM (#738 quality pass). Without the reset at onMount the message state from the
+   * previous plant is compared against the new one, which raised two false "RELEASED BY THE PLANT"
+   * messages and a flashing button on a brand-new plant. Reachable from the RESET button. */
+  ['the message state survives a plant switch (false "the plant took your block" on a new plant)',
+   WIRING_PATH, WSRC,
+   '      tbReset();      // a new world',
+   '      // a new world'],
+
+
+  /* ============ #738/#716, the trip-block message. Four mutations, one per claim. ============
+   * The feature is a RULE, not a rendering, so every mutation below breaks the rule rather than
+   * the class it eventually sets. A check that could only read `bd-unack` off a button would be
+   * testing the renderer, which is how #727's row glow shipped with no gate at all. */
+
+  /* THE DISCRIMINATION IS THE WHOLE FEATURE. With `tbSelf` always truthy every plant revoke reads
+   * as a release the player made, so nothing ever flashes — the shipped defect exactly, and the
+   * one the owner reported as "nothing on the board saying the trip is live". */
+  ['the board can no longer tell a plant revoke from the player releasing it (nothing ever flashes)',
+   WIRING_PATH, WSRC,
+   '        var mine = !!(tbSelf[id] && tbSelf[id].want === false);',
+   '        var mine = true;'],
+
+  /* AN ACKNOWLEDGE THAT DESTROYS THE MESSAGE. Plausible, smaller, and wrong: the flash must stop
+   * while the row goes on saying the trip is live. This is the difference between an
+   * acknowledgement and a dismissal. */
+  ['acknowledging DESTROYS the message instead of only stopping the flash',
+   WIRING_PATH, WSRC,
+   '    __ackTripBlocks: function () { tbAck = tbSeq; },',
+   '    __ackTripBlocks: function () { tbAck = tbSeq; tbMsg = {}; },'],
+
+  /* THE SEQUENCE, REPLACED BY A LATCH. `tbAck` as a boolean "the player has looked once" passes
+   * every check about the first message and fails the one that matters: a NEW release after an
+   * acknowledge must flash again. This is the mutation that would catch a rewrite to a time
+   * window, which is the shape the design note warns against. */
+  ['the acknowledge becomes a one-shot latch, so a NEW release after it never flashes',
+   WIRING_PATH, WSRC,
+   '      if (m && m.seq > tbAck) return true;',
+   '      if (m && tbAck === 0) return true;'],
+
+  /* THE PLANT END. The board can only tell "you may put this back" from "the interlock has gone"
+   * because pwr2_shell publishes `permissive` separately from `can_block`; severing it puts the
+   * card back to where #716 found it. Mutated at the PUBLISH, not at the consumer, for the reason
+   * every paired publish/consume mutation in this file is separate — a consumer that happened to
+   * agree by luck still has to redden. */
+  ['the plant stops publishing `permissive` (the card cannot tell "you may re-block" from "you may not")',
+   SHPATH, SHSRC,
+   'permissive: rp.p10_met === true,',
+   ''],
+
+
+  /* #699, the BOARD end: the ECCS impeller goes back to keying on injection flow alone, which
+   * is the shipped defect exactly — a pump drawn stopped through the whole shutdown cooldown. */
+  ['the ECCS impeller keys on injection flow only again (stopped through all of Mode 4/5)',
+   WIRING_PATH, WSRC,
+   '      var rhr = IN(s).rhr_running === true;',
+   '      var rhr = false;'],
+  /* #699, the PLANT end, and it is the one that matters: the shell stops publishing the
+   * DELIVERED flag, so the board has nothing but the alignment button to key on. Distinct from
+   * the board mutation above for the reason every paired publish/consume mutation in this file
+   * is distinct — a board that agreed with the valve by luck would still have to redden, and
+   * the blackout leg is what makes it. */
+  ['the plant stops publishing rhr_running (only the alignment button is left to key on)',
+   SHPATH, SHSRC,
+   '    ex.rhr_running = e.rh ? e.rh.running === true : undefined;',
+   '    ex.rhr_running = e.rh ? e.rh.valve_open === true : undefined;'],
   /* RETIRED (#507 wave 7): the tile-presence mutation went blind the day the kernel began
    * MERGING the engine-owned block status — the live pwr2 snapshot always carries
    * pr_low_setpoint now (with its own 35 % setpoint overriding the static row), so deleting
@@ -1164,7 +1481,8 @@ var MUTS = [
    '      pressure_band_psi: [PZ.CONTROL.backup_on_psi, PZ.CONTROL.spray_start_psi],',
    '      pressure_band_psi: undefined,'],
   /* #516 item 11: the plant stops publishing its charging ceiling, so the setpoint box falls
-   * back on the RETIRED engine's 60 gpm against PWR2's 30.14 — the exact shipped defect, and
+   * back on the RETIRED engine's 60 gpm against PWR2's 26.31 (#679; was 30.14) — the exact
+   * shipped defect, and
    * invisible to a source read for the same reason #576c was: the fallback IS the old code. */
   ['the plant stops publishing its charging ceiling (the box reverts to 60 gpm)',
    SHPATH, SHSRC,
@@ -1297,6 +1615,16 @@ var MUTS = [
    "    if (ltdnIsolated(s)) return { text: 'ISOLATED', color: BD_WARN };",
    '']
 ];
+/* ---- THE CLEAN-RUN GUARD (#644) -------------------------------------------------------------
+ * REFUSE TO SCORE on a red clean run. The replay below counts ABSOLUTE reds in the mutant, so an
+ * already-red check is red in every mutant too and EVERY mutation reads as caught — the coverage
+ * instrument reporting full coverage exactly when the runner is not green. This runner keeps
+ * COUNTERS rather than a record for its clean pass, so the guard gets the count and the banner
+ * names no checks; the FAIL lines are already on screen above it. Rationale, the measured case
+ * and the refuse-vs-subtract ruling: mut_flags.requireCleanRun's header. */
+MUT.requireCleanRun(nFail, '  run_pwr2_board: ' + nPass + ' passed, ' + nFail +
+  ' failed  (' + (nPass + nFail) + ' checks)');
+
 /* Counted, not written down: the number went stale the first time a mutation was added. */
 console.log('\ninjection self-test (' + MUTS.length + ' mutations):');
 var blind = 0;

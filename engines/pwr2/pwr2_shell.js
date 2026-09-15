@@ -827,13 +827,30 @@
      * initial condition boots `dump_mode: 'off'`, so a player heating the plant up had no route
      * to the mode the source calls the heatup/cooldown/hot-standby mode — and the DUMP SETPOINT
      * box was an orphan on every plant a player produces. MEASURED on the heatup checklist's own
-     * ride (full stack, 600x): pressing AUTO changed NOTHING (byte-identical trace, ADV 7.6 %,
-     * dumps 0.0 %), because the tavg-mode turbine-trip controller only opens above
-     * `tavg_noload_c` = 557 °F (291.67 °C) and the ATMOSPHERIC DUMP VALVE is already relieving
-     * at 1040 psig / 551.6 °F below it. The plant therefore parked 4.4 °F (2.4 °C) ABOVE the
-     * no-load band with the ADV modulating at 7-9 % as its heat sink, where selecting pressure
-     * mode parks it at 547.2 °F / 1005 psig with the ADV shut and the condenser dumps carrying
-     * 0.4-2.9 %.
+     * ride (full stack, 600x): pressing AUTO changed NOTHING — a byte-identical trace, ADV 7.6 %,
+     * dumps 0.0 %.
+     *
+     * ⚠ THE REASON #629 GAVE FOR THAT NO-OP IS REFUTED — RE-MEASURED 2026-09-08 (#646). It read:
+     * the tavg-mode turbine-trip controller only opens above `tavg_noload_c` = 557 °F (291.67 °C),
+     * which is ABOVE the ATMOSPHERIC DUMP VALVE already relieving at 1040 psig / 551.6 °F, so Tavg
+     * mode is a dump that never opens on a heating plant. #508 and #645 moved that anchor to
+     * 547 °F (286.11 °C) — 4.2 °F (2.3 °C) BELOW the valve's 551.2 °F saturation — and the
+     * ORDERING INVERTED. Same heatup ride, three lineups, cold plant to Mode 3 plus two
+     * plant-hours of hands-off park (`inbox/646/heatup.js`):
+     *
+     *     pressure mode    547.2 °F / 1005 psig · ADV SHUT   · dumps 0.0-3.4 % ·      0 lbm vented
+     *     tavg mode        547.4 °F / 1006 psig · ADV SHUT   · dumps 0.1-2.5 % ·      0 lbm vented
+     *     never selected   551.6 °F / 1042 psig · ADV 8.1 %  · dumps 0.0 %     · 11,005 lbm vented
+     *
+     * The two modes now park 0.2 °F (0.1 °C) apart and NEITHER rides the valve. What rides it is a
+     * dump left OUT OF SERVICE — which is what the Mode 5 IC boots, and what the old unconditional
+     * mapping was indistinguishable from, because below 557 °F that controller had no output. So
+     * the mapping below is still right and the argument it shipped with is not.
+     *
+     * WHAT KEEPS IT RIGHT is the source plus one thing the park cannot show: pressure mode is the
+     * ONLY mode that reads the DUMP SETPOINT box, so walking that setpoint down is how a cooldown
+     * is driven. Tavg mode has no setpoint to walk — it would hold the plant on the no-load knot
+     * and nothing else.
      *
      * SOURCED, not chosen for convenience: WTSM 11.2 (ML11223A294) — "Tavg mode at power, steam
      * pressure mode at hot standby / startup / cooldown" (quoted in pwr2_dumpctl.js's header).
@@ -991,8 +1008,11 @@
     failure_to_scram: function (e, c) { EN.command(e, 'scram_block', c !== false); },
     stuck_open_spray: function (e, c) { EN.command(e, 'spray_stick', c !== false); },
     rod_withdrawal_runaway: function (e, c) {
+      /* #662: the drive's own band, not a fraction of travel — EN.runawayRodSpeed carries the
+       * two sources. One derivation, two callers (this REHOMED effect name and the casualty
+       * row below); they used to be two copies of the same arithmetic. */
       EN.command(e, 'rod_runaway',
-                 (c && c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * bankSteps());
+                 EN.runawayRodSpeed(c && c.severity !== undefined ? c.severity : 0.5));
     },
     /* the old command toggled a discrete pump; PWR2's actuator is charging DEMAND — OFF is
      * demand 0 in manual, ON restores nothing by itself (dial a flow or re-select AUTO).
@@ -1060,12 +1080,17 @@
       else if (c.failure_id === 'failed_pzr_heaters') EN.command(e, 'pzr_heaters_failed', true);
       else if (c.failure_id === 'stuck_open_spray') EN.command(e, 'spray_stick', true);
       else if (c.failure_id === 'continuous_rod_withdrawal') {
-        /* sev × the old ceiling as a FRACTION OF TRAVEL: 24/912 of the old fine bank =
-         * 5.26 steps/s on this 200-step bank [adopted]. NOTE: the shipped hot-full-power IC
-         * parks the bank at 200/200, so the failure only has travel on a plant whose rods
-         * are inserted — declared, not hidden. */
-        EN.command(e, 'rod_runaway',
-                   (c.severity !== undefined ? c.severity : 0.5) * (24 / 912) * bankSteps());
+        /* THE RATE IS A SPEED THE DRIVE CAN RUN AT (#662) — severity across ROD_SPEEDS'
+         * slow→fast band, sourced in EN.runawayRodSpeed (NRC HRTD ML11216A094 Transients
+         * 5.22/5.23: *"Rod control system controller failure withdraws bank D rods at 72
+         * steps/min"*). Since #668 severity 1.0 lands EXACTLY on that sourced 72, because the
+         * drive's own fast setting is now the sourced maximum rather than 12.25 % under it —
+         * no edit here, which is what reading the band off ROD_SPEEDS bought.
+         * It replaces a fraction-of-travel scaling of the retired engine's
+         * fine-step ceiling that ran 495 steps/min at severity 0.5. NOTE: the shipped
+         * hot-full-power IC parks the bank fully out, so the failure only has travel on a
+         * plant whose rods are inserted — declared, not hidden. */
+        EN.command(e, 'rod_runaway', EN.runawayRodSpeed(c.severity));
       }
       else if (c.failure_id === 'sgtr') {
         /* A break AT the sg_primary node — the facade routes it into the SECONDARY with the
@@ -1248,6 +1273,32 @@
      * is overridden to the sourced RIL+10 in this currency — see getProtectionConfig) */
     ex.rod_at_limit = e._rodAtLimit === true;
     ex.rod_limit_margin = e._rodLimitMargin === undefined ? bankSteps() : e._rodLimitMargin;
+    /* THE HIGH END OF THE SAME BANK (#752) — the control bank on its TOP stop, which is the
+     * half of the travel nothing on this board has ever indicated. The two lines above are
+     * the INSERTION limit; this one says the operator has no rod authority left in the
+     * withdraw direction. See the ROD BANK FULL OUT row in layers/control/pwr_control.js for
+     * why this plant annunciates a position a real board treats as normal.
+     *
+     * `e.rodSteps`, RAW, against `bankSteps()` — the SAME predicate the refused-press flash
+     * uses (`rodPressRefused` in pwr_board_wiring.js: `position_pct >= 100`, and position_pct
+     * is `100 * e.rodSteps / bankSteps()` unrounded). They must agree: a press crossed out in
+     * red while the annunciator is dark, or lit while the press still moves the bank, is the
+     * board disagreeing with itself about the same fact. NOT the shell's `steps`, which is
+     * `Math.round(e.rodSteps)` and reads 627 with half a step of travel still there.
+     *
+     * The equality is EXACT and that is measured, not assumed: driven out in 10-step nudges
+     * from hot_full_power, `e.rodSteps === bankSteps()` is true (627 === 627) — the drive
+     * clamps its target at BANK() and the last move lands on it, so no epsilon is needed and
+     * none is added, because an epsilon here would light the lamp over travel that remains.
+     *
+     * THE CONTROL BANK ONLY, BY RULING *(OWNER RULING, 2026-09-14: "Do not alarm or color
+     * code the shutdown bank since it's used differently")*. The shutdown bank is parked
+     * fully withdrawn by design — Ginna Tech Spec Bases (ML20339A221): it *"is maintained
+     * either in the fully inserted or fully withdrawn position"* — and measures 627/627 in
+     * four of the six initial conditions (hot_full_power, 50_percent, low_power,
+     * hot_zero_power), so a row on it would stand through normal operation: a nuisance alarm
+     * that annunciates correct practice, which is worse than the silence it would replace. */
+    ex.rod_at_max_travel = e.rodSteps >= bankSteps();
     /* BOTH BANKS (#545). The retired engine has had this right since #75 —
      * `this.rod_groups.every(g => g.position_pct <= RODS_IN_PCT)` — and this was a second
      * copy that lost the `every`, so the kernel's RODS_NOT_INSERTED reset permissive was
@@ -1267,6 +1318,13 @@
                                                      * real state; the pinned `true` here kept
                                                      * the valve icon OPEN forever (#509 item 6) */
     ex.accum_valve_open = ts.accumulator_valve_open === true;   /* LIVE since #511 */
+    /* THE RHR PUMPS ARE TURNING (#699). `rh.running` is the engine's own `valve_open &&
+     * powered` (pwr2_rhr.js), the same flag it gates the heat-exchanger duty and the
+     * forced-circulation floor on — read, not recomputed, so the board cannot drift from the
+     * physics. It is NOT `rhr_valve_open`: WTSM 5.7.5's blackout takes every decay-heat
+     * removal system except the turbine-driven AFW pump, and an impeller drawn off the
+     * alignment button would keep spinning on a dead bus. */
+    ex.rhr_running = e.rh ? e.rh.running === true : undefined;
     ex.safety_relief_active = !!e.pz.safetyOpen;
     ex.mfw_isolated = this.eng.fw.isolated === true;   /* REAL since the feed train (2026-08-21) */
     /* LIVE since #507 wave 1 — the CVCS lab sample (they were pinned null/false/0 while no
@@ -1294,11 +1352,17 @@
     /* …and the OVERTEMPERATURE / OVERPOWER SETPOINT EQUATION (#561), for the same reason and by
      * the same route. The reused instrument layer drew its delta-T margin gauge from the retired
      * plant's fitted DNB surface on a 33.0 degC rated split, while THIS plant's trip is the
-     * sourced Ginna Table 15.0-7 form on a 31.1 degC split — so the tile went red with 13.70
-     * margin points still standing and the "OTdT ROD STOP" annunciator, which reads the same
-     * channel, latched 436 s before the trip. Same coefficients the trip uses, read from the
-     * protection module rather than retyped; the layer feeds them the INDICATED Tavg and
-     * pressure, so HR1 is untouched. */
+     * sourced Ginna Table 15.0-7 form on what was then a 31.1 degC split — so the tile went red
+     * with 13.70 margin points still standing and the "OTdT ROD STOP" annunciator, which reads
+     * the same channel, latched 436 s before the trip. Same coefficients the trip uses, read
+     * from the protection module rather than retyped; the layer feeds them the INDICATED Tavg
+     * and pressure, so HR1 is untouched.
+     *
+     * ⚠ THE SPLIT IS NOW 32.71 degC (#650) and this line needs no edit BECAUSE IT READS THE
+     * CONSTANT — the second-copy trap, avoided by construction. Worth noting what the 33.0 above
+     * actually was: the retired engine's `delta_T_rated`, and the number THIS engine's own
+     * `PUMP.mdot_rated` was derived from. The 31.1 was the outlier all along, and this comment
+     * had the two figures side by side for nine days without either of us seeing it. */
     var OT = root.RD.pwr2.protection.OTDT, PSIA = root.RD.pwr2.protection.PSIA_PER_MPA;
     ex.otdt_form = {
       delta_t_rated_c: root.RD.pwr2.sources.DESIGN.dt_c,
@@ -1345,6 +1409,19 @@
       var base = root.RD.PWR_CONFIG.protection;
       this._protCfg = Object.assign({}, base, {
         trips: [], actuations: [], interlocks: [], runbacks: [],
+        /* ONE HOME FOR P-10 (#753, 2026-09-14). The pwr table's own `trip_block_permissive` is
+         * `power_range high 10.0` -- the RETIRED plant's kernel-trip datum -- and it rode in here
+         * on the Object.assign above, so this plant's config announced a permissive at 10 % while
+         * its RPS revokes the block at 8 % (P10.frac, Ginna TS Bases B 3.3.1). Nothing caught it
+         * because the kernel never TESTS this for PWR2: `trips` is empty one line up, so
+         * set_trip_block forwards to the engine's own door and this row is read only by surfaces
+         * that DRAW the permissive. Derived from the engine's constant, never re-typed -- a
+         * second copy of a permissive is wrong within the hour (the #716 note further down
+         * measured 16 phantom events from exactly that). Same instrument and direction as the
+         * law it mirrors: the RPS reads the INSTRUMENTED power-range channel (pwr2_engine's HR1
+         * driver block), not true power. */
+        trip_block_permissive: { instrument: 'power_range', direction: 'high',
+                                 setpoint: root.RD.pwr2.protection.P10.frac * 100 },
         /* THE RESET'S FIRST PERMISSIVE, RESTORED (#571). The kernel implements this refusal by
          * iterating `trips` — which is empty two lines up, correctly — so TRIP_SIGNAL_PRESENT
          * could never fire on this plant while `Manuals/03` §3.5.1 documented it as one of two.
@@ -1467,6 +1544,32 @@
                   severity_meta: def.severity_meta }
               : def;
           });
+          /* THE ONE SEVERITY_META OVERRIDE (#662) — copied-with-one-override, the same idiom
+           * the alarm table uses at #500. The shared row's slider says *"Withdrawal Rate,
+           * steps/s, 0–24, default 12"*: that is the RETIRED plant's 912-fine-step currency and
+           * it is correct THERE, so the shared table is not touched. On this plant it was the
+           * #580 Break Size trap exactly — the label promised 12 steps/s at the default slider
+           * and the engine drove 8.25, and both numbers were nonsense against a drive whose own
+           * maximum was then 1.053 steps/s (the sourced 1.2 since #668). The band is READ OFF
+           * ROD_SPEEDS — which is why #668's move to 8–72 steps/min needed no edit here — so a
+           * drive retune moves
+           * the label with the plant; the UI renders `min + severity x (max - min)`, which is
+           * runawayRodSpeed's own map in steps/min, so the label and the plant agree by
+           * construction rather than by maintenance. Rounded to 0.1 for display only. */
+          if (out.continuous_rod_withdrawal) {
+            var rs = EN.ROD_SPEEDS;
+            out.continuous_rod_withdrawal = {
+              type: out.continuous_rod_withdrawal.type,
+              category: out.continuous_rod_withdrawal.category,
+              effect: out.continuous_rod_withdrawal.effect,
+              severity_scales: out.continuous_rod_withdrawal.severity_scales,
+              display: out.continuous_rod_withdrawal.display,
+              severity_meta: { label: 'Withdrawal Rate', unit: 'steps/min',
+                               min: +(rs.slow * 60).toFixed(1),
+                               max: +(rs.fast * 60).toFixed(1),
+                               default: +((rs.slow + rs.fast) * 30).toFixed(1) }
+            };
+          }
           return out;
         })()
       });
@@ -1483,6 +1586,7 @@
    * symmetric. */
   PWR2Engine.prototype.getTripBlocks = function () {
     var e = this.eng, rp = e.rpsReport || {};
+    var PROT_P10_PCT = root.RD.pwr2.protection.P10.frac * 100;
     var blocked = !!e.pt.blockLowFlux;
     var asserted = false, sp = 35;
     /* the SECOND P-10 request (#601) — the 25 % intermediate-range trip, its own lever */
@@ -1550,24 +1654,57 @@
       trip_blocks: { pr_low_setpoint: blocked, ir_high: irB, lo_press: loB, si_trip: siB },
       trip_setpoints: tripSetpoints,
       trip_setpoint_instruments: ['pzr_level'],   /* what the list above SPEAKS FOR — see comment */
+      /* `permissive` IS PUBLISHED SEPARATELY FROM `can_block`, AND THE REASON IS THAT
+       * `can_block` CANNOT ANSWER IT (#716/#738, 2026-09-13).
+       *
+       * `can_block` is `!blocked && permissive`. For any row that IS blocked it is therefore
+       * false BY CONSTRUCTION, whatever the permissive is doing — so a consumer holding a block
+       * could not tell "the interlock still permits this" from "the interlock has gone" and had
+       * no way to say either. The TRIP BLOCKS card needs exactly that distinction: #716 is a
+       * player losing a block to the P-11 revoke and being told nothing about whether they may
+       * put it back. Do NOT "simplify" this away by deriving it from can_block again; the two
+       * are different questions and one of them is unanswerable from the other.
+       *
+       * IT IS EXPOSED, NOT RECOMPUTED. `rp.p10_met` / `rp.p11_permit` are the protection
+       * module's own (pwr2_protection.js:945-946) and are the same values `can_block` folds in
+       * two lines below. A SECOND COPY OF A PERMISSIVE IS WRONG WITHIN THE HOUR — measured
+       * 2026-09-13: a harness that re-derived P-10 as "power >= 10 %" against this plant's
+       * sourced 8 % (P10.frac = 0.08, Ginna TS Bases B 3.3.1, ML20339A221) manufactured 16
+       * phantom events on one leg before the constant was checked.
+       *
+       * No `run_contract` obligation: that gate guards §6.3 `true_state` only, and this is a
+       * shell payload under `rps_state`, whose CONTEXT.md §6.2 entry does not enumerate
+       * `trip_block_status` at all. Confirmed against test/run_contract.js, not assumed. */
       trip_block_status: {
         pr_low_setpoint: {
           blocked: blocked, asserted: asserted,
+          permissive: rp.p10_met === true,
           can_block: !blocked && rp.p10_met === true,
           can_clear: blocked,
-          setpoint: sp
+          setpoint: sp,
+          /* THE PERMISSIVE'S OWN NUMBER, in the % the `power_range` instrument speaks (#753).
+           * `permissive` says whether it is satisfied NOW; a surface that draws WHERE it sits --
+           * the power tile's block window -- had no source for the number and read it out of the
+           * retired plant's static table, which says 10 % against this plant's 8 %. Published
+           * from P10.frac like `trip_block_permissive` above, so the band and the law are one
+           * constant. Both P-10 rows carry it; the P-11 rows do not (their permissive is a
+           * PRESSURE and no surface draws it yet -- publish it when one does, with a
+           * measurement, not by looping). */
+          permissive_pct: PROT_P10_PCT
         },
         /* the intermediate-range trip (#601) — SAME permissive as the row above, separate
          * request. The board id is the pwr1 board's `ir_high`, like every other row here. */
         ir_high: {
           blocked: irB, asserted: irAsserted,
+          permissive: rp.p10_met === true,
           can_block: !irB && rp.p10_met === true,
           can_clear: irB,
-          setpoint: spIr
+          setpoint: spIr,
+          permissive_pct: PROT_P10_PCT      /* see the row above */
         },
-        lo_press: { blocked: loB, asserted: loAsserted,
+        lo_press: { blocked: loB, asserted: loAsserted, permissive: p11,
                     can_block: !loB && p11, can_clear: loB, setpoint: spLo },
-        si_trip:  { blocked: siB, asserted: siAsserted,
+        si_trip:  { blocked: siB, asserted: siAsserted, permissive: p11,
                     can_block: !siB && p11, can_clear: siB, setpoint: spSi }
       }
     };
@@ -1787,6 +1924,10 @@
       /* the commanded boron rate — the board's BORATING/DILUTING/HOLD word and the
        * boron_trim channel's read-back both key on this one field (#507 wave 1) */
       boron_adjust: e.cv.boron_rate_cmd || 0,
+      /* what the makeup path is actually DELIVERING, ppm/s signed (#654) — the batch
+       * totalizer counts this, not the command, because the blender clamps at pure water /
+       * the acid tank and the plant then delivers less than it was asked */
+      boron_rate_delivered: e.cv.boron_rate_delivered || 0,
       /* REAL since the feed train (2026-08-21): the delivered main-feed fraction — the
        * "speed" gauge presentation the board's five reader tiles expect (measured) */
       feed_pump_speed_pct: Math.min(120, e.fw.feed_frac * 100),

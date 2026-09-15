@@ -48,6 +48,7 @@
   var pipeTempEls = [];  // [{id, phase, boreEl, flowEl}] — pipes whose fluid color tracks live temp
   var ro = null, scanTimer = null, lastSnap = null;
   var releaseHandler = null;   // board-wide pointerup/cancel/blur → ends any held momentary button
+  var scrollGuard = null;      // #717 backstop — force the board wrap's scrollport back to origin
 
   function driver() { return RD.PwrBoardDriver || null; }
   function h() { return RD.BoardH.h.apply(null, arguments); }
@@ -451,7 +452,20 @@
     rec.btn.style.background = fired ? '#3a0e0e' : (armed ? '#5a1408' : '#0a2417');
     rec.btn.style.border = '3px solid ' + (fired ? '#ff5a4d' : (armed ? '#ffb400' : '#3d7a58'));
     rec.btn.style.color = fired ? '#ff7a6a' : (armed ? '#ffd166' : '#5a9575');
-    rec.btn.style.animation = armed ? 'bdScramPulse 0.8s ease-in-out infinite' : 'none';
+    /* THE ARMED PULSE HONOURS prefers-reduced-motion, AND IT HAS TO BE DONE HERE (#740).
+     * This is an INLINE style, so it beats every stylesheet rule — the `@media
+     * (prefers-reduced-motion: reduce)` blocks that stop the board's other animations cannot touch
+     * it. It was also invisible to the #740 audit twice over: a CSS-only grep finds no user for the
+     * keyframe (so it read as dead code and was briefly deleted), and the class-probe that measured
+     * the other ten signals never reached it because nothing sets a class here.
+     *
+     * The static fallback is a SOLID ring in the armed amber — the same "geometry, not hue"
+     * substitution the stylesheets make for the other three signals, and distinct from them by
+     * being on the SCRAM control, which is the one button on the board nothing else looks like. */
+    var reduceMotion = typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false;
+    rec.btn.style.animation = (armed && !reduceMotion) ? 'bdScramPulse 0.8s ease-in-out infinite' : 'none';
+    rec.btn.style.boxShadow = (armed && reduceMotion) ? '0 0 0 4px rgba(255, 180, 0, 0.85)' : '';
     // A blocked reset is dimmed rather than hidden — the operator can still press it and
     // get the full reason in the scanner bar, which is how they learn what to wait for.
     rec.subEl.style.opacity = (note && !note.ready) ? '0.6' : '0.85';
@@ -964,6 +978,204 @@
     });
   }
 
+
+  // ------------------------------------------------------ highlight halo --
+  /* THE HALO IS DRAWN ON THE ART, NOT ON THE TILE BOX (#684).
+   *
+   * A step highlight, an Instructor beat highlight and the #444 highlight bus all end at
+   * `revealControl(label)` -> an element -> `classList.add('<glow>')`, and the glow is a
+   * box-shadow around that element's border box. That element used to be the TILE, whose
+   * box is the item's AUTHORED rect. For most items the art fills the rect and the ring
+   * lands on the art. For twenty of them it does not:
+   *
+   *   MEASURED 2026-09-10 on eb855cd9 (inbox/684/halo_measurement_2026-09-10.txt), 202
+   *   tiles: 20 have art overflowing the tile box by more than 2 px. The worst FRACTIONAL
+   *   miss is the PORV — the ring covers 45 % of the art's width, which is the one the
+   *   owner reported. The worst ABSOLUTE miss is the PRESSURIZER, which is NOT rotated at
+   *   all: 298 px of art in a 218 px tile, 80 px of vessel hanging below the ring. Also
+   *   the turbine-generator, the condenser, three vertical valves, three tees and two
+   *   horizontal valves.
+   *
+   * So this is NOT the rotation defect the issue was filed as. A `rot`-aware special case
+   * would fix exactly one item (the PORV is the only item on the board that declares a
+   * rotation) and leave the pressurizer to come back as the next playtest report. The fix
+   * has to be art-box aware, which is what this is.
+   *
+   * HOW: each tile gets, lazily, one `.bd-halo` child inset by NEGATIVE offsets equal to
+   * how far the art overhangs, and `revealControl` returns THAT. Nothing else changes —
+   * shell.css keeps the single copy of every glow colour and keyframe, and the callers
+   * still just add a class to whatever they were handed.
+   *
+   * WHAT COUNTS AS VISIBLE ART: an element inside the tile that actually puts ink on the
+   * board — it is laid out, it is not hidden, nothing between it and the tile is
+   * transparent, and it has a visible fill or a visible stroke (SVG) / a background,
+   * a border or text of its own (HTML). A plain union of every descendant rect is WRONG
+   * and the measurement said so: on the PORV it agrees on width (63.5 px vs the 63 px hand
+   * measurement) but not height (61.3 px vs 37 px), because it catches the r=46 transparent
+   * click circle, the opacity-0 hover ring and the display:none vent plume. Sizing the ring
+   * off those would over-size it on the PORV's short axis — a different wrong halo.
+   *
+   * NEVER SMALLER THAN THE TILE. The halo box is the UNION of the tile box and the art box,
+   * so no item's ring can shrink from what shipped; the box only ever grows to cover art
+   * that was hanging outside it.
+   *
+   * MEASURED ONCE PER MOUNT, at the same settle point the ports are re-scanned (fonts and
+   * flange scale have stopped moving by then), and cached. Deliberately not live: the PORV
+   * grows a vent plume when it discharges and the TMI-2 leg highlights the PORV while it is
+   * stuck open, so a live box would make the ring jump every time the valve lifted. The
+   * insets are stored in CANVAS px, so they survive every stage rescale without re-measuring.
+   *
+   * COST: one pass at mount. getComputedStyle is asked ONLY of descendants whose rect
+   * already sticks out of the tile — a few dozen elements, not the ~6,000 the board has.
+   */
+  var haloBox = {};        // itemId -> {l,t,r,b}: canvas px the art overhangs the tile by
+  var haloEls = {};        // itemId -> the .bd-halo child that carries the glow class
+  var halosMeasured = false;
+  var HALO_EPS = 0.5;      // client px; sub-pixel rounding is not overflow
+
+  // Is this paint value ink? `none`, `transparent` and a zero alpha are not; a
+  // gradient/pattern url() is.
+  function visiblePaint(v) {
+    if (!v) return false;
+    v = String(v);
+    if (v === 'none' || v === 'transparent') return false;
+    if (v.indexOf('url(') === 0) return true;
+    var m = v.match(/rgba?\(([^)]+)\)/);
+    if (m) {
+      var p = m[1].split(/[,\/]/);
+      if (p.length >= 4 && parseFloat(p[3]) <= 0.02) return false;
+    }
+    return true;
+  }
+
+  // Does `el` actually put ink on the board right now? Only asked of elements that already
+  // stick out of their tile.
+  function paintsInk(el, tileEl) {
+    var cs;
+    try { cs = window.getComputedStyle(el); } catch (e) { return false; }
+    if (!cs) return false;
+    // `opacity` does not inherit, so a transparent GROUP has to be walked for explicitly.
+    var n = el;
+    while (n && n.nodeType === 1) {
+      var ncs = (n === el) ? cs : window.getComputedStyle(n);
+      if (!ncs) return false;
+      if (ncs.display === 'none' || ncs.visibility === 'hidden' || ncs.visibility === 'collapse') return false;
+      if (parseFloat(ncs.opacity) <= 0.02) return false;
+      if (n === tileEl) break;
+      n = n.parentNode;
+    }
+    if (el.namespaceURI === RD.BoardH.svgNS) {
+      if (visiblePaint(cs.fill)) return true;
+      return visiblePaint(cs.stroke) && parseFloat(cs.strokeWidth || 0) > 0;
+    }
+    if (visiblePaint(cs.backgroundColor)) return true;
+    var bw = ['borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'];
+    for (var i = 0; i < bw.length; i++) if (parseFloat(cs[bw[i]] || 0) > 0) return true;
+    for (var c = el.firstChild; c; c = c.nextSibling) {
+      if (c.nodeType === 3 && /\S/.test(c.nodeValue)) return true;
+    }
+    return false;
+  }
+
+  // One pass over every tile: how far does its visible art hang outside its box?
+  function measureHalos() {
+    var ss = stage && stageScale();
+    if (!ss || !ss.scale) return false;
+    var sc = ss.scale;
+    haloBox = {};
+    Object.keys(tiles).forEach(function (id) {
+      var el = tiles[id];
+      if (!el || !el.getBoundingClientRect) return;
+      var tr = el.getBoundingClientRect();
+      if (!tr.width || !tr.height) return;      // auto-sized text/value tiles before paint
+      var l = 0, t = 0, r = 0, b = 0;
+      var kids = el.querySelectorAll('*');
+      for (var i = 0; i < kids.length; i++) {
+        var k = kids[i];
+        /* CHROME THE BOARD DELIBERATELY HANGS OUTSIDE A CONTROL IS NOT THAT CONTROL'S ART
+         * (#727; owner #724 item 12, verbatim: "the glow around TRIP BLOCKS is not correctly
+         * around the button").
+         *
+         * `.bd-halo` was skipped from the start for the obvious reason — the ring cannot size
+         * itself off itself. `.bd-badge` is the same category and was not: it is the count
+         * badge, `position:absolute; top:-6px; right:-6px`, pinned OUTSIDE the button on
+         * purpose, and it paints ink, so #684's union pulled the ring out to cover it.
+         *
+         * MEASURED on TRIP BLOCKS with two trips blocked (inbox/724/probe_halo.js, 1500x950):
+         * button 116.36,302.98 64.62x24.23 · halo 116.36,298.94 68.66x28.27 — 4.04 px proud at
+         * the TOP and 4.04 px proud at the RIGHT, flush at the left and bottom. An asymmetric
+         * ring, and asymmetric is what reads as "not around the button": a ring 4 px larger on
+         * all four sides would have looked deliberate.
+         *
+         * IT ALSO CAME AND WENT WITH THE PLANT, which is why no gate saw it. The badge only
+         * exists while trips are blocked, and the halo box is measured ONCE at mount — so the
+         * ring's size depended on how many trips happened to be blocked at mount time.
+         *
+         * Scoped to `.bd-badge` alone, not to "absolutely positioned children": the PORV's art,
+         * the pressurizer vessel and the eighteen other overhangs #684 exists for are ordinary
+         * art that the tile box simply fails to contain, and excluding them by position would
+         * put all twenty defects back. */
+        if (k.classList && (k.classList.contains('bd-halo') || k.classList.contains('bd-badge'))) continue;
+        var kr = k.getBoundingClientRect();
+        if (!kr.width && !kr.height) continue;
+        var ol = tr.left - kr.left, ot = tr.top - kr.top,
+            orr = kr.right - tr.right, ob = kr.bottom - tr.bottom;
+        if (ol <= HALO_EPS && ot <= HALO_EPS && orr <= HALO_EPS && ob <= HALO_EPS) continue;
+        if (!paintsInk(k, el)) continue;
+        if (ol > l) l = ol;
+        if (ot > t) t = ot;
+        if (orr > r) r = orr;
+        if (ob > b) b = ob;
+      }
+      if (l > HALO_EPS || t > HALO_EPS || r > HALO_EPS || b > HALO_EPS) {
+        haloBox[id] = { l: l / sc, t: t / sc, r: r / sc, b: b / sc };
+      }
+    });
+    halosMeasured = true;
+    Object.keys(haloEls).forEach(applyHaloBox);   // anything already created moves to its box
+    return true;
+  }
+
+  /* An absolutely-positioned child is offset from its container's PADDING box, and box
+   * tiles carry a 1 px border — so `inset: 0` alone drew the ring 1 px INSIDE the tile
+   * edge, i.e. slightly smaller than what shipped, on all 15 bordered panels. Measured
+   * before this was added: halo 361.0 x 172.5 against a 362.9 x 174.4 ECCS panel. Add the
+   * border back so the zero case is byte-for-byte the old geometry. Computed border widths
+   * are untransformed, so they are already in canvas px like `o`. */
+  function applyHaloBox(id) {
+    var el = haloEls[id];
+    if (!el) return;
+    var o = haloBox[id] || { l: 0, t: 0, r: 0, b: 0 };
+    var b = { l: 0, t: 0, r: 0, b: 0 };
+    var tile = tiles[id];
+    if (tile) {
+      var cs = window.getComputedStyle(tile);
+      b.l = parseFloat(cs.borderLeftWidth) || 0;
+      b.t = parseFloat(cs.borderTopWidth) || 0;
+      b.r = parseFloat(cs.borderRightWidth) || 0;
+      b.b = parseFloat(cs.borderBottomWidth) || 0;
+    }
+    el.style.left = (-(o.l + b.l)).toFixed(2) + 'px';
+    el.style.top = (-(o.t + b.t)).toFixed(2) + 'px';
+    el.style.right = (-(o.r + b.r)).toFixed(2) + 'px';
+    el.style.bottom = (-(o.b + b.b)).toFixed(2) + 'px';
+  }
+
+  // The element a highlight glow is drawn on for `id`, created on first ask.
+  function haloFor(id) {
+    var tile = tiles[id];
+    if (!tile) return null;
+    if (!halosMeasured) measureHalos();
+    var el = haloEls[id];
+    if (!el) {
+      el = h('div', { className: 'bd-halo' });
+      haloEls[id] = el;
+      applyHaloBox(id);
+      tile.appendChild(el);
+    }
+    return el;
+  }
+
   // ------------------------------------------------------------ mount/api --
   function mount(hostEl, context) {
     unmount();
@@ -1043,6 +1255,26 @@
     document.addEventListener('pointercancel', releaseHandler);
     window.addEventListener('blur', releaseHandler);
 
+    /* #717 BACKSTOP. The real fix is `overflow: clip` on .pwr-board-wrap (pwr_board.css),
+     * which stops the wrap being a scrollport at all. This catches the cases that CSS
+     * cannot: an engine that does not support `overflow: clip` and silently keeps the old
+     * `overflow: hidden` scrollport, and any FUTURE path to a non-zero offset — a
+     * descendant scrollIntoView, a touch drag, a focus jump, a stylesheet regression.
+     * layout() always fits the content INSIDE the wrap, so a non-zero offset here is never
+     * a user intent: it can only be panning the diagram off-screen.
+     *
+     * A `wheel` preventDefault was considered and REJECTED. Below 860 px shell.css sets
+     * `html, body { overflow: auto; }` and the columns stack, so the PAGE legitimately
+     * scrolls and the board fills most of it — swallowing the wheel there would trap the
+     * reader on the diagram with no way down the page. Resetting the offset costs nothing
+     * on a wrap that is not supposed to have one, and does not touch the page's scroll. */
+    scrollGuard = function () {
+      if (!wrap) return;
+      if (wrap.scrollTop !== 0) wrap.scrollTop = 0;
+      if (wrap.scrollLeft !== 0) wrap.scrollLeft = 0;
+    };
+    wrap.addEventListener('scroll', scrollGuard);
+
     ro = new ResizeObserver(function () { layout(); });
     ro.observe(wrap);
     layout();
@@ -1054,6 +1286,9 @@
       buildPipes();
       scanTimer = setTimeout(function () {
         if (scanPorts()) buildPipes();
+        // Same settle point, same reason (#684): the highlight halo is sized off the
+        // RENDERED art, and the art has stopped moving once the flange scale has.
+        measureHalos();
         scanTimer = null;
       }, 350);
     });
@@ -1070,6 +1305,10 @@
       window.removeEventListener('blur', releaseHandler);
       releaseHandler = null;
     }
+    if (scrollGuard) {
+      if (wrap) wrap.removeEventListener('scroll', scrollGuard);   /* #717 — no leak across rebuilds */
+      scrollGuard = null;
+    }
     if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
     endNumHold();     /* a plant switch mid-hold would otherwise leave the repeat running */
     // The splitters are parented to .app, not to host, so host.innerHTML='' below does not
@@ -1085,6 +1324,7 @@
     host = null; wrap = null; stage = null; underSvg = null; pausedEl = null;
     comps = {}; tiles = {}; valueEls = {}; buttonEls = {}; numberEls = {}; scramEls = {};
     ports = {}; nudge = {}; pipeFlow = []; pipeTempEls = []; lastSnap = null;
+    haloBox = {}; haloEls = {}; halosMeasured = false;
   }
 
   /* Freeze/unfreeze the board. Split out of render() 2026-08-11 because the thing that
@@ -1112,6 +1352,23 @@
       // values
       Object.keys(valueEls).forEach(function (id) {
         var rec = valueEls[id];
+        /* A STATE CLASS ON A READING (#752). Colour is the only channel `valueFor` has, and it
+         * writes INLINE — which no stylesheet can out-rank, so a value could never carry an
+         * animated or layered cue. This hook gives the driver one class per reading.
+         *
+         * BEFORE the `out == null` return, on purpose: a cue must not depend on the driver also
+         * having produced a reading this frame. One class at a time, tracked on the record, so the
+         * renderer only ever touches the class it put there — anything else on the element (the
+         * refusal flash, which is applied by the driver on the press and expires on its own timer)
+         * is none of this loop's business. */
+        if (d.valueCue) {
+          var cue = d.valueCue(rec.item, s) || '';
+          if (rec._cue !== cue) {
+            if (rec._cue) rec.el.classList.remove(rec._cue);
+            if (cue) rec.el.classList.add(cue);
+            rec._cue = cue;
+          }
+        }
         var out = d.valueFor ? d.valueFor(rec.item, s) : null;
         if (out == null) return;
         var text = typeof out === 'object' ? out.text : out;
@@ -1179,6 +1436,16 @@
         // TRIP BLOCKS: grey (with a count badge) while trips are intentionally blocked.
         var info = d.buttonInfo ? !!d.buttonInfo(it, s) : false;
         btn.classList.toggle('bd-info', info);
+        /* MESSAGE (amber) + UNACKNOWLEDGED (the motion) — two classes, the alarm panel's grammar
+         * (#738/#716, owner ruling 2026-09-13: "flash the permissive button amber when there's a
+         * message … When the user opens the card and then closes it the … button stops
+         * flashing"). The state class carries the colour and survives the acknowledge; only
+         * `bd-unack` carries the animation, exactly as `.alarm-tile.unack.crit` does in
+         * shell.css. Splitting them is what lets an acknowledged message keep saying there IS a
+         * message while no longer demanding attention. */
+        var msg = d.buttonMsg ? !!d.buttonMsg(it, s) : false;
+        btn.classList.toggle('bd-msg', msg);
+        btn.classList.toggle('bd-unack', msg && (d.buttonUnack ? !!d.buttonUnack(it, s) : false));
         // Actuated (amber) state (#512, owner design) — a PROTECTION latch is holding this
         // system: distinct from bd-warn ("needs attention") and bd-active (a selection).
         // The panel's own securing click is the unlatch, refused while the signal is live.
@@ -1253,13 +1520,23 @@
       var rec = comps[id];
       return rec ? rec.inst : null;
     },
+    // The element a highlight glow is drawn on for an item, creating it if it does not
+    // exist yet — the same one revealControl hands back, reachable by item id so a harness
+    // can check EVERY tile and not only the ~200 that a control label resolves to (#684).
+    // Same category as ports()/lastSnapshot()/componentInstance(): a read accessor for the
+    // test harness, not a control path.
+    haloElement: function (id) { return haloFor(id); },
     // Instructor-highlight hooks. The driver owns the control-label vocabulary;
     // the renderer resolves it to a board tile to glow.
     revealControl: function (label) {
       var d = driver();
       if (!d || !d.controlLabelItem) return null;
       var id = d.controlLabelItem(label);
-      return (id && tiles[id]) ? tiles[id] : null;
+      // The HALO, not the tile (#684) — the ring has to sit on the art, and for 20 of the
+      // board's tiles the art is not the tile box. Every caller only ever adds a glow class
+      // to what it is handed, and the halo is a pointer-events:none child of the tile, so
+      // itemIdFor() and every hit test still resolve to the same item.
+      return (id && tiles[id]) ? haloFor(id) : null;
     },
     // The maintenance-tag prop (TMI-2): show/hide a TAGGED badge over the AFW valve tile.
     setTag: function (tagId, visible) {

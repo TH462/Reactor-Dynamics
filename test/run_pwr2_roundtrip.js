@@ -191,6 +191,16 @@ var MUTATIONS = [
    'pressure_setpoint: e.pz.setpoint_mpa,',
    'pressure_setpoint: 15.41,']
 ];
+/* ---- THE CLEAN-RUN GUARD (#644) -------------------------------------------------------------
+ * REFUSE TO SCORE on a red clean run. The replay below counts ABSOLUTE reds in the mutant, so an
+ * already-red check is red in every mutant too and EVERY mutation reads as caught — the coverage
+ * instrument reporting full coverage exactly when the runner is not green. This runner keeps
+ * COUNTERS rather than a record for its clean pass (`ck` only fills REC during a replay), so the
+ * guard gets the count and the banner names no checks; the FAIL lines are already on screen
+ * above it. Rationale and the ruling: mut_flags.requireCleanRun's header. */
+MUT.requireCleanRun(nFail, '  run_pwr2_roundtrip: ' + nPass + ' passed, ' + nFail +
+  ' failed  (' + (nPass + nFail) + ' checks)');
+
 console.log('\n' + BOLD + 'injection self-test (' + MUTATIONS.length + ' mutations)' + RST);
 var blind = 0;
 MUT.select(MUTATIONS).forEach(function (m) {

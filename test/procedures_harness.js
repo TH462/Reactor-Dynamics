@@ -33,7 +33,13 @@
 
   // Categories where a scram / standing critical alarm is the intended outcome,
   // not a failure of the procedure.
-  var CASUALTY_CATEGORIES = { emergency: true, accident: true };
+  /* `incident` joins them at #670 Phase 2. An incident walkthrough reconstructs an accident:
+   * the reactor trips on the second step, and REACTOR TRIP plus a shelf of critical alarms
+   * stand for the whole four hours by construction. Without this the two non-casualty
+   * assertions below ("no unexpected scram", "no critical alarm standing at end") would red on
+   * the leg doing exactly what it is authored to do — and the guard checks, which are the ones
+   * that matter here, run either way. */
+  var CASUALTY_CATEGORIES = { emergency: true, accident: true, incident: true };
 
   // Commands that deliberately trip the reactor. A shutdown procedure scrams ON
   // PURPOSE, so a scram at or after one of these is expected and REACTOR TRIP
@@ -192,16 +198,95 @@
       }
       // cmd-kind multi-check-off entries (#244 item 8) are operator actions of this step
       // — the replay performs them the way the player would (the 1/M "Plot point" case).
-      if (st.accs && st.accs.length) {
+      //
+      // ⚠ AN `accs_ordered` STEP HOLDS THEM BACK (#756). The live runtime makes a cmd entry DEAF
+      // until its predecessors are met, so issuing them all at step entry would drive a route the
+      // player cannot take — and the replay would certify a plot taken before the counts settle,
+      // which is the very defect the flag exists to stop. They are issued inside the tick loop
+      // below, each on the first tick its predecessors come true.
+      if (st.accs && st.accs.length && !st.accs_ordered) {
         st.accs.forEach(function (en) {
           if (en && en.cmd) issue(typeof en.cmd === 'string' ? { action: en.cmd }
                                                             : JSON.parse(JSON.stringify(en.cmd)));
         });
       }
+      /* BEHIND-THE-SCENES FAILURES (#670 Phase 1). An incident walkthrough's step may author
+       * `inject` / `clear`; the live runtime fires them out of the instructor
+       * (`_checklistFire`), and the replay must issue them too or the leg is driven against a
+       * plant the player never gets — the same reason `cmd` and the cmd-kind `accs` entries are
+       * issued here. Issued AFTER the step's command, which is the live order: the instructor
+       * fires one broadcast into the step, by which time the player has usually acted.
+       *
+       * ⚠ KNOWN DIVERGENCE, and it is the harness's existing one rather than a new one: `when`
+       * is graded here through `pred` → `paramValue` (true_state / control_state), where the
+       * live runtime grades it INSTRUMENT-FIRST through `_grade`. A trigger authored on a lagged
+       * or failed channel therefore fires a beat earlier here than on the board. Same split this
+       * harness already carries for `acc`/`saw`; if a walkthrough ever turns on the difference,
+       * the fix is to grade through `_grade` in both places, not to widen a tolerance. */
+      var pendingFail = [];
+      function failCmd(spec, kind) {
+        if (kind !== 'i') return { action: 'clear_failure', failure_id: spec.failure };
+        var fc = { action: 'inject_failure', failure_id: spec.failure };
+        if (spec.severity != null) fc.severity = spec.severity;
+        return fc;
+      }
+      function queueFailures(list, kind) {
+        (list || []).forEach(function (e) {
+          var spec = (typeof e === 'string') ? { failure: e } : e;
+          if (!spec || !spec.failure) return;
+          if (spec.when && spec.when.p) pendingFail.push({ spec: spec, kind: kind });
+          else issue(failCmd(spec, kind));
+        });
+      }
+      queueFailures(st.inject, 'i');
+      queueFailures(st.clear, 'c');
+
       // `saw` may be ONE predicate or a LIST of them (#348) — see the note in
       // run_procedures.js. Kept identical here on purpose: this runner exists to assert the
       // SAME predicates through the stack, so a schema the two disagree on is worse than none.
       var sawList = st.saw ? (Array.isArray(st.saw) ? st.saw : [st.saw]) : [];
+      /* STEADINESS (#755, `op: 'steady'`) — a trailing-window claim, so it cannot be read off
+       * the step's last snapshot the way every other predicate here can. It is sampled EVERY
+       * tick through `InstructorLayer.gradeSteady`, the same static the live runtimes call with
+       * a bag of their own, and the verdict standing at the end of the step is what the check
+       * asserts. Bags are per step: the window starts when the step does, exactly as it does
+       * live, which is what makes the authored `hold` and the player's wait the same test. */
+      var steadyBags = {};
+      function steadyOf(pred, key) {
+        if (!steadyBags[key]) steadyBags[key] = { bag: { s: [] }, pred: pred, last: null };
+        return steadyBags[key];
+      }
+      function steadyKeys() {
+        var ks = [];
+        if (st.acc && st.acc.op === 'steady') ks.push({ p: st.acc, k: 'acc' });
+        (st.accs || []).forEach(function (en, k) {
+          if (en && en.op === 'steady') ks.push({ p: en, k: 'accs' + k });
+        });
+        return ks;
+      }
+      var steadyList = steadyKeys();
+      /* the ordered-entry tracker (#756): `ordMet[i]` is this entry's standing verdict, and a
+       * cmd entry's verdict is "the replay has issued it". Predicate entries are read live here
+       * rather than only at the step's end, because the ISSUE ORDER is what this models. */
+      var ordMet = (st.accs_ordered && st.accs) ? st.accs.map(function () { return false; }) : null;
+      var ordUnissued = [];
+      function ordAdvance(s) {
+        for (var i = 0; i < st.accs.length; i++) {
+          var en = st.accs[i];
+          if (i > 0 && !ordMet[i - 1]) break;          // blocked — nothing past here is live
+          if (ordMet[i]) continue;
+          if (en && en.cmd) {
+            issue(typeof en.cmd === 'string' ? { action: en.cmd } : JSON.parse(JSON.stringify(en.cmd)));
+            ordMet[i] = true;
+          } else if (en && en.op === 'steady') {
+            var h = steadyBags['accs' + i];
+            ordMet[i] = !!(h && h.last && h.last.met);
+          } else if (en && en.p) {
+            ordMet[i] = pred(s, en);
+          } else ordMet[i] = true;
+          if (!ordMet[i]) break;
+        }
+      }
       var sawHits = [], ticks = Math.round((st.hold || 0) / SEC_PER_TICK);
       for (var i = 0; i < ticks; i++) {
         if (st.ramp && (i % RAMP_EVERY === 0)) {
@@ -211,6 +296,8 @@
         var s = svc.tick();
         if (!s) continue;
         lastSnap = s;
+        steadyList.forEach(function (e) { var h = steadyOf(e.p, e.k); h.last = RD.InstructorLayer.gradeSteady(h.bag, s, e.p); });
+        if (ordMet) ordAdvance(s);
         if (s.metadata && s.metadata.time_acceleration < ACCEL) {
           if (!slowTicks) firstSlow = 'step ' + curStep + ' @ t=' + s.metadata.sim_time.toFixed(1) +
             ' → ' + s.metadata.time_acceleration + '×' +
@@ -218,6 +305,13 @@
           slowTicks++;
         }
         observe(s);
+        // a `when`-gated inject/clear fires on the first tick its predicate holds (#670)
+        for (var pf = pendingFail.length - 1; pf >= 0; pf--) {
+          if (pred(s, pendingFail[pf].spec.when)) {
+            issue(failCmd(pendingFail[pf].spec, pendingFail[pf].kind));
+            pendingFail.splice(pf, 1);
+          }
+        }
         sawList.forEach(function (sw, k) { if (pred(s, sw)) sawHits[k] = true; });
       }
       // Land the ramp exactly on its last point: `f` never quite reaches 1 when
@@ -228,8 +322,18 @@
       sawList.forEach(function (sw, k) {
         checks.push({ d: 'step ' + curStep + ' saw ' + sw.p + ' ' + sw.op + ' ' + sw.v, pass: !!sawHits[k], obs: !!sawHits[k] });
       });
+      function accVerdict(c, key) {
+        if (c.op !== 'steady') return { pass: pred(lastSnap, c), obs: pv(lastSnap, c.p) };
+        var h = steadyBags[key];
+        var last = h && h.last;
+        return { pass: !!(last && last.met),
+                 obs: last ? ((last.drift == null ? 'window not covered' : (last.drift * 100).toFixed(2) + '% drift')
+                              + ' @ ' + (last.value == null ? '?' : Number(last.value).toFixed(0)))
+                           : 'never sampled (hold is 0)' };
+      }
       if (st.acc) {
-        checks.push({ d: 'step ' + curStep + ' ' + st.acc.p + ' ' + st.acc.op + ' ' + st.acc.v, pass: pred(lastSnap, st.acc), obs: pv(lastSnap, st.acc.p) });
+        var av = accVerdict(st.acc, 'acc');
+        checks.push({ d: 'step ' + curStep + ' ' + st.acc.p + ' ' + st.acc.op + ' ' + st.acc.v, pass: av.pass, obs: av.obs });
       }
       /* MULTI-CHECK-OFF steps (#244 item 8): predicate entries are asserted at the step's
        * end exactly like `acc`; cmd-kind entries were issued above as operator actions of
@@ -237,10 +341,29 @@
        * latches them off the command watch — that half is run_checklist's subject). */
       if (st.accs && st.accs.length) {
         st.accs.forEach(function (en, k) {
-          if (en && en.p) checks.push({
+          if (!en || !en.p) return;
+          var ev = accVerdict(en, 'accs' + k);
+          checks.push({
             d: 'step ' + curStep + ' accs[' + k + '] ' + en.p + ' ' + en.op + ' ' + en.v,
-            pass: pred(lastSnap, en), obs: pv(lastSnap, en.p) });
+            pass: ev.pass, obs: ev.obs });
         });
+        /* THE OTHER HALF OF THE SEQUENCER (#756). A gate that only asserts "the plot cannot be
+         * taken early" is satisfied by a sequencer that never opens at all, so an ordered step
+         * also asserts that every cmd entry DID get issued inside the authored hold — i.e. the
+         * route the player is forced onto is one the plant actually completes. This is what
+         * reddens if a settle predicate is tightened past what its hold delivers. */
+        if (st.accs_ordered) {
+          for (var oi = 0; oi < st.accs.length; oi++) {
+            if (!st.accs[oi] || !st.accs[oi].cmd) continue;
+            ordUnissued.push({ i: oi, done: !!ordMet[oi] });
+          }
+          var bad = ordUnissued.filter(function (e) { return !e.done; });
+          checks.push({ d: 'step ' + curStep + ' ordered accs: every cmd entry reached inside the hold',
+            pass: bad.length === 0,
+            obs: bad.length ? 'never issued: [' + bad.map(function (e) { return e.i; }).join(',') + '] of ' +
+                              st.accs.length + ' (met ' + ordMet.map(function (m) { return m ? 1 : 0; }).join('') + ')'
+                            : 'met ' + ordMet.map(function (m) { return m ? 1 : 0; }).join('') + ' within ' + (st.hold || 0) + ' s' });
+        }
       }
     });
     if (!lastSnap) lastSnap = svc._assembleWithInstructor();

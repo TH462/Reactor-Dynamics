@@ -653,6 +653,12 @@
       // instruments from truth anyway).
       above_p9: (s._ins_power_pct != null ? s._ins_power_pct : (s.power_pct || 0)) > 50,
       rod_at_limit: this._controlGroup().at_insertion_limit,
+      // The TOP stop of the same bank (#752) — see the ROD BANK FULL OUT row in
+      // layers/control/pwr_control.js for why this plant annunciates a position a real board
+      // treats as normal. PWR2 publishes its own (pwr2_shell `_instrExtras`); this is the
+      // retired engine's copy, so the shared alarm row is live on both plants rather than a
+      // dark wire on one of them.
+      rod_at_max_travel: (function (g) { return g.steps >= g.max_steps; })(this._controlGroup()),
       // Steps of travel the control bank has left ABOVE its rod insertion limit — the
       // "authority remaining" signal, and what the ROD LIMIT LO annunciator reads (#306).
       // A real board carries TWO insertion-limit alarms, not one: *"Rod Limit Low setpoint
@@ -687,6 +693,10 @@
       afw_block_open: !s.afw_blocked,   // AFW discharge/block valve open? (independent of pump demand)
       rhr_active: s.rhr_active,
       rhr_valve_open: !!s.rhr_valve_open,
+      // DELIVERING, not merely aligned (#699) — `ac_available` is the question every motor
+      // load has to ask, and the RHR pumps are motor loads. The two lines above are the
+      // suction valve; this is the rotor.
+      rhr_running: !!(s.rhr_active && s.ac_available),
       accumulators_discharging: s.accumulators_discharging,
       // SI accumulator discharge isolation valve POSITION (#273). `accumulators_discharging`
       // above is flow — it only goes true once the tanks are already emptying, which is one

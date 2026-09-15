@@ -55,10 +55,33 @@
       steam_pressure_mpa: 'steam_pressure', boron_ppm: 'boron_analyzer',
       startup_rate_dpm: 'startup_rate', pump_flow_pct: 'rcs_flow',
       mwe_output: 'mwe_output', fw_flow_normalized: 'fw_flow',
+      /* PRESSURIZER SPRAY FLOW (#729, added 2026-09-13). `pwr_cooldown` grades the spray on
+       * DELIVERED flow, not on the AUTO lamp — the leg puts the spray in MANUAL at 50 %, so no
+       * lamp is lit and `spray_auto` has nothing to say. It was grading `true_state`; the board
+       * shows the operator `pzr_spray_flow` (pwr_instruments, 1.0 s lag, noise 0), so HR1 says
+       * grade what they can see. The divergence is one second, which is why nothing caught it. */
+      spray_flow_pct: 'pzr_spray_flow',
       /* the atmospheric dump valve (#629) — the heatup's Mode 3 confirmation asserts it is
        * SHUT, which is a claim about the heat sink the plant is riding on. Graded on the
        * board's own channel, per HR1: the player sees `adv_valve`, not `adv_valve_pct`. */
       adv_valve_pct: 'adv_valve',
+      /* SUBCOOLING MARGIN (#670 Phase 1) — the tile the TMI-2 walkthrough is graded against,
+       * and the one number that says whether the coolant is water or is about to be steam.
+       * `subcooling_margin` is a DERIVED channel of the reused pwr instrument layer
+       * (`pwr_instruments.js`: Tsat(primary_pressure) − tavg, both of them instrument
+       * readings), which is exactly why grading on it is HR1-honest: the operator's margin is
+       * built out of the two gauges they can see, and it diverges from `true_state.subcooling_c`
+       * — which is Tsat(TRUE P) − TRUE T-hot — under precisely the conditions an incident
+       * walkthrough is about. */
+      subcooling_c: 'subcooling_margin',
+      /* THE PORV TAILPIPE (#670 Phase 2) — the one honest tell in the TMI-2 sequence, and the
+       * reading the incident walkthrough's step 4 is graded on. Instrument-first per HR1 and
+       * that is the whole point of the step: the operator's tailpipe reading is a lagged,
+       * noisy pipe-clamp thermocouple (`pwr2_instruments.js`, tau 5 s), and it is the ONLY
+       * channel that disagrees with the PORV lamp — which the same walkthrough has failed
+       * stuck-closed. Grading on `true_state.porv_open` instead would tick the step off a
+       * truth the player cannot see. */
+      porv_tailpipe_temp_c: 'porv_tailpipe_temp',
     },
     rbmk: {
       power_pct: 'power_range', steam_pressure_mpa: 'steam_pressure', drum_level_pct: 'drum_level',
@@ -82,6 +105,54 @@
   // Seconds of SIM time an observation step stands before it checks itself off. Long
   // enough to read a line and look at the board, short enough not to feel stuck.
   var OBSERVE_DWELL_S = 12;
+
+  /* STEADINESS — `op: 'steady'` *(OWNER RULING, 2026-09-15: selected "add a steadiness
+   * predicate" from three options put to him — raise the last 1/M step's count target to
+   * 12,000, add a "counts steady" predicate, or leave it as prose — taking the one that needed
+   * new plumbing over the one-number change. A SELECTION, not verbatim words; the rationale
+   * relayed with it is that a steady count rate is what an operator actually looks for and an
+   * absolute threshold is only a stand-in for it.)*
+   *
+   * `{ p, op:'steady', v: <fractional drift>, window: <trailing seconds> }` — "this indication
+   * has stopped moving". The reading is sampled into a trailing ring; the mean of the window's
+   * OLDER half is compared with the mean of its NEWER half, and the predicate holds when the
+   * relative difference is at or under `v`. The window must be FULLY COVERED before it can hold
+   * at all, and the ring is reset when the step changes, so the window doubles as the minimum
+   * dwell: a step carrying one cannot complete inside `window` seconds of becoming active.
+   *
+   * WHY TWO HALF-MEANS AND NOT "unchanged since the last sample". Two reasons, both measured:
+   *   · A per-sample difference is a function of the SAMPLE SPACING, which is the player's speed
+   *     control — 0.1 s of plant per broadcast at 1x, 6 s at 60x. A trailing window in SIM time
+   *     is the same claim at every acceleration. Measured on `pwr_startup` step 8 at its
+   *     authored 3 % / 120 s: the accept lands 506 s after the rods stop with 1 s samples and
+   *     within about a minute of that with 0.1 s and 10 s samples — the 1/M prediction across
+   *     that whole spread is 208.8 to 208.6, against a true critical of 208.
+   *   · Averaging each half divides any channel noise by root-n, which is what keeps one noise
+   *     sample from deciding a latch — the #752 trap. The channel step 8 actually grades,
+   *     `sr_counts_cps`, is the documented no-instrument-twin case and its measured detrended
+   *     scatter is 0.0019 % of reading (max residual 0.0062 %) — its 3 % tolerance clears that
+   *     by a factor of 480 — but the predicate is general and instrument channels are not.
+   *
+   * `v` IS RELATIVE, to the window mean, because the channel this was built for spans decades.
+   * An author wanting an absolute band on a linear channel wants `~`, not this. A window mean of
+   * (near) zero has no meaningful relative drift, so the comparison falls back to the absolute
+   * difference there rather than dividing by nothing.
+   *
+   * IT RE-GRADES, it does not latch — same rule and same reason as `op: '~'` in `_gradeAccs`
+   * below: "steady" is a HOLD claim, and a plant that starts climbing again has left it.
+   *
+   * SUPPORTED IN `acc` AND `accs` ONLY (both runtimes), because those are the two that own a
+   * per-step state bag. `run_checklist_pwr2` §2w reddens on a `steady` authored anywhere else —
+   * `saw`, `overtaken`, `precond`, a `when` gate — rather than letting it read false for ever. */
+  var STEADY_WINDOW_S = 120;        // default trailing window when a step authors none
+
+  // #715 — a completion banner's `outcome` text is an AUTHORED plant-state claim
+  // (e.g. "stable near 15 %, 15 MWe"); nothing checked it before showing it, so a
+  // leg whose own step acceptances can be satisfied for free (a scram, say) drew
+  // the claim over a dead board. Shown instead of the authored text whenever a
+  // leg's `outcome_guard` fails to verify — see `_gradeOutcomeGuard`.
+  var OUTCOME_UNVERIFIED_TEXT = "Steps checked off, but the board does not match this leg's " +
+    'expected finish. Read the board, not this banner.';
 
   // ================================================================ constructor
   // Signature and connect() must match the placeholder — M5 constructs with null
@@ -116,9 +187,14 @@
     this._checkpointRequested = false;
     this._rewindRequested = null;     // { steps, scope } — beat-driven world rewind
     this._speedRequested = null;      // beat-driven time acceleration (number)
+    this._pauseRequested = false;     // a checklist step's fired event wants the clock stopped (#694)
     // Checklist mode (Path 3): a procedure run as a PASSIVE checklist against the
     // live plant — no reset, no gating; steps auto-check off the instruments.
     this.checklist = null;
+    // Can the walkthrough's "Rewind step" actually land? DERIVED, not owned: M5 writes
+    // it before every snapshot assemble because only M5 can see the rewind ring (#660
+    // items 17-18). Never trust a stale value — it is rewritten every broadcast.
+    this._rewindReady = false;
   };
 
   // Re-point at the (possibly rebuilt) layer below. Deliberately does NOT clear
@@ -167,20 +243,27 @@
   // it lives in free play; loading a scenario/walkthrough clears it (_clear).
   InstructorLayer.prototype.loadChecklist = function (proc, meta) {
     if (!proc || !proc.steps || !proc.steps.length) return;
+    this._checkpointRequested = true;   // checkpoint 0 for the walkthrough's step rewind (#660 item 17)
     this.checklist = {
       proc: proc,
       procedure_id: (meta && meta.procedure_id) || proc.id,
       profile_key: (meta && meta.profile_key) || null,
       idx: 0,
       done: proc.steps.map(function () { return false; }),
-      doneBy: proc.steps.map(function () { return null; }),   // 'auto' | 'manual'
+      doneBy: proc.steps.map(function () { return null; }),   // 'auto' | 'manual' | 'observed' | 'caught_up' | 'overtaken' (#641)
       cmdSeen: false, sawSeen: false, accStreak: 0, accMetNow: false,
       gradedBy: null, complete: false,
       // Precondition verdicts (#395) — evaluated on the first step() tick, never
       // here: load has no snapshot. null = no `precond` authored or not yet graded.
       precond: null,
       precondMsg: false,   // an unmet-precondition instructor comment is standing
+      precondSaid: false,  // #732 — it has been said ONCE for this run and will not be said again
+                           //   (restored by loadState too: a REWIND is not a new run)
       catchUp: true,       // first _stepChecklist tick walks past already-done steps (#607)
+      // Behind-the-scenes failures fired on the CURRENT step (#670): `fired` is the once-per-
+      // entry keys, `injected` the failure ids the snapshot publishes. Both reset per step.
+      fired: [], injected: [],
+      paused: false,   // #694 — this step's own fire has requested (and landed) a sim pause
     };
   };
 
@@ -198,7 +281,10 @@
     var c = this.checklist;
     if (!c || c.complete) return;
     if (index != null && index !== c.idx) return;
-    this._checklistCheckOff('manual');
+    /* Continue on a step the instruments already satisfied is a confirmation, not a hand
+     * tick: the record keeps 'auto' (HR1 — graded off the instrument). 'manual' is only a
+     * step ticked before its acceptance was met (harnesses; the board's Continue is dark). */
+    this._checklistCheckOff(c.awaitingAck ? 'auto' : 'manual');
   };
 
   // Back to free-play. M5 calls this on stop_scenario/stop_follow and on every
@@ -214,6 +300,7 @@
   // undefined (the placeholder contract). Beats/steps fire here, never in load().
   InstructorLayer.prototype.step = function (snapshot, simTime) {
     this._lastSimTime = simTime;
+    this._lastSnapshot = snapshot;    // #715 — outcome_guard re-grades off this, not a latch
     if (this.mode === 'scenario') this._stepScenario(snapshot, simTime);
     else if (this.mode === 'follow') this._stepFollow(snapshot, simTime);
     if (this.checklist) this._stepChecklist(snapshot);
@@ -525,7 +612,7 @@
       f.gradedBy = null;
       f.accMetNow = this._gradeAccs(f, st, snapshot);
     } else if (st.acc) {
-      var g = this._grade(snapshot, st.acc);
+      var g = this._gradeOne(f, snapshot, st.acc, 'acc');
       f.gradedBy = g.graded_by;
       f.accStreak = g.met ? f.accStreak + 1 : 0;
       f.accMetNow = f.accStreak >= ACC_STABLE_N;
@@ -551,6 +638,8 @@
     f.idx = next;
     f.cmdSeen = false; f.sawSeen = false; f.accStreak = 0; f.accMetNow = false; f.gradedBy = null;
     f.accsState = null;           // per-entry multi-check-off latches (#244 item 8)
+    f.outOfTurn = null;           // #759 — as above, per step
+    f.steadyBags = null;          // #755 — the steadiness window is per step, like the latches
     this.pendingMessage = null;   // a new step retires the previous step's feedback
     if (autoAdvanced) this._checkpointRequested = true;   // rewind lands on step boundaries
   };
@@ -559,11 +648,16 @@
     var f = this.follow;
     f.done = true;
     f.idx = f.proc.steps.length - 1;
+    // #715 — an authored `outcome` string is an unmeasured claim in player-facing
+    // copy until something checks it. `outcome_guard` (optional, per-leg) is that
+    // check; unverified, the banner says so instead of repeating the claim.
+    var text = this._gradeOutcomeGuard(f.proc) ? (f.proc.outcome || 'Procedure complete.')
+                                                : OUTCOME_UNVERIFIED_TEXT;
     this.levelComplete = {
       title: f.proc.title,
-      outcome: f.proc.outcome || 'Procedure complete.',
-      outcome_learning: f.proc.outcome || 'Procedure complete.',
-      outcome_industry: f.proc.outcome || 'Procedure complete.',
+      outcome: text,
+      outcome_learning: text,
+      outcome_industry: text,
       actions: ['continue', 'retry'],
     };
   };
@@ -577,7 +671,10 @@
   InstructorLayer.prototype._stepChecklist = function (snapshot) {
     var simTime = (snapshot && snapshot.metadata && snapshot.metadata.sim_time) || 0;
     var c = this.checklist;
-    if (c.complete) return;
+    // #715 — re-graded every tick the banner is shown, not once at the step-off:
+    // the board can be read at any time while the walkthrough sits complete, and
+    // the claim it draws should track the live plant, same as `precond` below.
+    if (c.complete) { c.outcomeVerified = this._gradeOutcomeGuard(c.proc); return; }
 
     // Preconditions (#395) — grade each authored {p, op, v, tol} against the LIVE
     // plant every tick, instrument-first like `acc`, so the banner clears itself
@@ -619,14 +716,34 @@
        * the banner vanished before it could be read. This is the message channel, and it fires
        * on the SAME tick the condition is first seen — before any advance — so the entry window
        * is real rather than a race. */
+      /* ONCE PER RUN, NOT ONCE PER CROSSING (#732, owner playtest #724 item 15: "it gave me a
+       * flickering warning that prerequisites for this checklist are not met").
+       *
+       * The raise was guarded by `!cklMoving`; the CLEAR below was not, so `precondMsg` fell
+       * back to false the moment every row recovered and the next crossing raised the comment
+       * again. A precondition predicate sitting ON its threshold therefore chatters: the
+       * checklist is still on step 0 (`cklMoving` false) for as long as its first step is
+       * ungraded, so the guard above does nothing while the flicker is happening.
+       *
+       * MEASURED BY BACKSHOP, INHERITED HERE (#732, #724 item 15): `power_pct` on the
+       * `low_power` initial condition runs 9.222-10.061 %, a span of 0.840 points, and crosses
+       * `pwr_raise_power`'s authored `> 10 %` row twice in 10 plant-minutes. Their half of the
+       * fix moves that threshold; this half is the mechanism, so the next oscillating predicate
+       * cannot do it again.
+       *
+       * `precondSaid` is never cleared for the life of the run. THE CLEAR STILL CLEARS — a
+       * genuinely recovered precondition still takes the standing comment down on the tick it
+       * recovers, which is what `precondMsg` is for; a latch that never clears is the same
+       * defect facing the other way. */
       var cklMoving = c.idx > 0;
-      if (anyUnmet && !c.precondMsg && !cklMoving) {
+      if (anyUnmet && !c.precondMsg && !c.precondSaid && !cklMoving) {
         // One register-aware comment per unmet episode — the checklist banner
         // carries the row-by-row detail, this just points the operator at it.
         c.precondMsg = true;
+        c.precondSaid = true;
         this.pendingMessage = {
-          learning: 'Before you lean on this checklist: the plant does not match one or more of its prerequisites — the checklist panel lists each one with what the plant actually reads. Nothing is blocked; the steps simply may not verify until the plant is where the procedure assumes.',
-          industry: 'CHECKLIST PRECONDITIONS NOT MET — see the checklist panel for the failed items.',
+          learning: 'Before you lean on this walkthrough: the plant does not match one or more of its prerequisites — the walkthrough panel lists each one with what the plant actually reads. Nothing is blocked; the steps simply may not verify until the plant is where the procedure assumes.',
+          industry: 'WALKTHROUGH PRECONDITIONS NOT MET — see the walkthrough panel for the failed items.',
         };
       } else if (!anyUnmet && c.precondMsg) {
         // All rows recovered — clear OUR message (set under precondMsg only).
@@ -654,7 +771,63 @@
 
     var st = c.proc.steps[c.idx];
     if (!st) { c.complete = true; return; }
-    if (c.stepAt == null) c.stepAt = simTime;   // when this step came up — the dwell's clock
+    var stepEntryTick = (c.stepAt == null);
+    if (stepEntryTick) c.stepAt = simTime;   // when this step came up — the dwell's clock
+
+    /* FAILURES THE STEP FIRES BEHIND THE SCENES (#670 Phase 1, incident walkthroughs). See
+     * `_checklistFire`. NOT on the entry tick, and that is not a detail — see the ordering
+     * note there: firing here would put the failure INSIDE the step's own start checkpoint,
+     * and Rewind would then hand the player back a plant that is already broken. */
+    /* THE PAUSE (#694). "For events that the user does not control... user hits continue
+     * [...] sim pauses" (owner, 2026-09-09). Requested the SAME tick something in `inject`/
+     * `clear` NEWLY fires — `_firedN0` catches the case where the step's fire is still
+     * waiting on a `when` predicate, so a step with `pause` does not freeze the plant before
+     * its event has actually happened. The pause REPLACES ordinary grading for this step
+     * (early return, below `c.awaitingAck = true`): a dwell or `acc` predicate needs sim time
+     * to advance, and stopping the clock is exactly what a pause does, so requiring one would
+     * soft-lock the checklist. One event per step is the authored shape (the owner's own
+     * cascade: polisher / feed pump / turbine as three steps, not three injects on one) —
+     * `_serviceInstructorRequests` (simulation_service.js) is what actually stops the clock;
+     * `ui/app.js` releases the hold on Continue, the checklist's own Rewind, or Stop. */
+    if (!stepEntryTick && (st.inject || st.clear)) {
+      var _firedN0 = c.fired.length;
+      this._checklistFire(snapshot, st);
+      if (st.pause && c.fired.length > _firedN0) {
+        this._pauseRequested = true;
+        c.awaitingAck = true;
+        c.paused = true;
+        return;
+      }
+    }
+
+    /* A STEP THE PLANT HAS MOVED PAST CHECKS ITSELF OFF AS OVERTAKEN (#641, owner playtest
+     * 2026-09-05: "mode 3>1 checklist step 9 the user can get stuck if they accidently go too
+     * high and the source range shuts off. the user can not plot on the 1/m plot making it so
+     * they cant complete that step.").
+     *
+     * A `plot_1m_point` cmd-entry is evidence the player can only produce while the source
+     * range is energized — the tool refuses the press otherwise and sends nothing — and this
+     * plant secures the channel on flux alone at 1e5 cps, twenty seconds past the last plot
+     * step's 20,000 cps target on a hot burst (measured). Sequential grading then waits for a
+     * command that can never come: a soft lock with no skip, because the manual tick was
+     * removed by directive (2026-08-11). So a step may author `overtaken: {p, op, v, text}` —
+     * the plant condition under which the step no longer applies. Graded like `acc` (same
+     * debounce, instrument-first), and when it holds the step is checked off `'overtaken'`,
+     * the text goes out as the instructor's comment, and the checklist moves on. It is the
+     * plant checking the step off on a condition the plant publishes — not a skip button.
+     *
+     * Evaluated BEFORE the acceptance so a step whose count box has already latched still
+     * leaves; and never on a step already met, since `met` below returns first only when
+     * both are true on the same tick, which is the tie the acceptance should win. */
+    if (st.overtaken && st.overtaken.p) {
+      c.overtakenStreak = this._grade(snapshot, st.overtaken).met ? (c.overtakenStreak || 0) + 1 : 0;
+      if (c.overtakenStreak >= ACC_STABLE_N) {
+        var otText = st.overtaken.text || 'The plant has moved past this step.';
+        this.pendingMessage = { learning: otText, industry: st.overtaken.industry || otText };
+        this._checklistCheckOff('overtaken');
+        return;
+      }
+    }
 
     if (st.saw && !c.sawSeen && this._grade(snapshot, st.saw).met) c.sawSeen = true;
 
@@ -662,7 +835,7 @@
       c.gradedBy = null;
       c.accMetNow = this._gradeAccs(c, st, snapshot);
     } else if (st.acc) {
-      var g = this._grade(snapshot, st.acc);
+      var g = this._gradeOne(c, snapshot, st.acc, 'acc');
       c.gradedBy = g.graded_by;
       c.accStreak = g.met ? c.accStreak + 1 : 0;
       c.accMetNow = c.accStreak >= ACC_STABLE_N;
@@ -714,10 +887,90 @@
      * keep updating underneath, so the card shows the step satisfied while it waits. `awaiting_ack`
      * is what the UI draws the flashing button from; `checklistCheck` (the button, and the
      * replay harness) clears it through the ordinary manual path. */
-    var needsAck = !st.cmd && !(st.accs || []).some(function (e) { return e && e.cmd; });
-    c.awaitingAck = !!(met && needsAck);
-    if (met && needsAck) return;
-    if (met) this._checklistCheckOff(hasAccs || st.acc || st.saw || st.cmd ? 'auto' : 'observed');
+    /* EVERY STEP WAITS FOR CONTINUE *(OWNER, 2026-09-08, #660 items 16-18: "Only show one step at
+     * a time … Add a continue button that only lights up when the conditions of the step are
+     * met.")*. The grading is unchanged — `met` is what lights the button — but no step advances
+     * itself any more; the press (`checklist_check`) does. Before this, action steps ticked and
+     * moved on the instant their predicate held and only observation steps held for the
+     * acknowledgement (#619 item 4). The overtaken path (#641) still advances by itself: it is
+     * the plant moving past a step, not the player finishing one. */
+    c.awaitingAck = !!met;
+  };
+
+  /* A STEP MAY FIRE FAILURES BEHIND THE SCENES (#670 Phase 1, incident walkthroughs).
+   *
+   * *(OWNER, 2026-09-08: "These walkthroughs will include another element the last walkthroughs
+   * don't have, these ones will automatically trigger failures behind the scenes.")* — the plant
+   * breaks on the step that needs it, with the player never opening the Failures tab.
+   *
+   *   inject: [{ failure: 'stuck_porv_open', severity: 1.0 }, { failure: 'afw_failure',
+   *              when: { p: 'turbine_tripped', op: '>', v: 0 } }]
+   *   clear:  ['porv_indicator_stuck_closed', { failure: 'x', when: {...} }]
+   *
+   * Both descend through `this.below.handleCommand` — the SAME path the beat engine's
+   * `beat.inject_failures` takes (`_fireBeat` above) — so the control layer places the failure
+   * (Hard Rule 7) and command interception applies. Nothing here reaches into an engine.
+   *
+   * WITHOUT `when` it fires on the step's first tick AFTER the entry tick; WITH `when` on the
+   * first tick that predicate holds, graded by `_grade` — instrument-first, the same evaluator
+   * the acceptance uses, so a walkthrough's trigger reads the board the player reads. NO
+   * DEBOUNCE, unlike `acc`: an acceptance that flickers advances a checklist wrongly and can be
+   * re-earned, where a failure that fires one tick early is simply the failure firing.
+   *
+   * ⚠ THE ORDERING, which is the whole reason this is not on the entry tick. `_checklistCheckOff`
+   * requests the step-boundary checkpoint and M5 services that request in
+   * `_serviceInstructorRequests` — AFTER `instructor.step()` in the same `_assembleWithInstructor`
+   * call (measured at #660: the ring goes 3 → 4 with no tick in between). So an injection fired on
+   * the entry tick lands INSIDE the checkpoint that Rewind restores, and "⏪ Rewind step" would
+   * hand the player back a plant that is already broken with the fired-set saying it had already
+   * happened. One broadcast later (0.1 s of plant time) the checkpoint is on the ring holding the
+   * clean plant, and a rewind genuinely un-does the failure. MEASURED BY INJECTION: firing on the
+   * entry tick reddens three checks of `run_checklist` section 10, one of them the plant reading
+   * ("the plant comes back WITHOUT the injected failure" → active [stuck_porv_open]).
+   *
+   * FIRES ONCE PER STEP ENTRY. `fired` is keyed by kind+index+id — not by id alone, so the same
+   * failure may be cleared and re-injected by two entries of one step — and it is reset in
+   * `_checklistCheckOff` BEFORE the checkpoint request, so a restored checkpoint carries an empty
+   * set and re-entry after a Rewind fires again against the plant it was restored beside.
+   *
+   * A REFUSAL IS SWALLOWED WITH A WARNING, unlike the beat engine, which is scenario content run
+   * by a gate. This runs under a player in free play, and the pwr2 shell refuses by THROWING
+   * (#505): an unknown or beyond-model failure id would otherwise take `tick()` down mid-session.
+   * The id is authored content and `run_style`/the replay are where a bad one should be caught. */
+  InstructorLayer.prototype._checklistFire = function (snapshot, st) {
+    var c = this.checklist, self = this;
+    if (!c.fired) c.fired = [];
+    if (!c.injected) c.injected = [];
+    if (!this.below) return;
+    function fire(list, kind) {
+      for (var i = 0; i < (list || []).length; i++) {
+        var e = list[i];
+        var spec = (typeof e === 'string') ? { failure: e } : e;
+        if (!spec || !spec.failure) continue;
+        var key = kind + i + ':' + spec.failure;
+        if (c.fired.indexOf(key) >= 0) continue;
+        if (spec.when && spec.when.p && !self._grade(snapshot, spec.when).met) continue;
+        c.fired.push(key);
+        var cmd;
+        if (kind === 'i') {
+          cmd = { action: 'inject_failure', failure_id: spec.failure };
+          if (spec.severity != null) cmd.severity = spec.severity;
+        } else {
+          cmd = { action: 'clear_failure', failure_id: spec.failure };
+        }
+        try {
+          self.below.handleCommand(cmd);
+          if (kind === 'i' && c.injected.indexOf(spec.failure) < 0) c.injected.push(spec.failure);
+        } catch (err) {
+          if (typeof console !== 'undefined') {
+            console.warn('InstructorLayer: checklist ' + (kind === 'i' ? 'inject' : 'clear') +
+              ' "' + spec.failure + '" refused — ' + (err && err.message || err));
+          }
+        }
+      }
+    }
+    fire(st.inject, 'i');
+    fire(st.clear, 'c');
   };
 
   /* See the catch-up block in `_stepChecklist`. `past` is one predicate or an array (OR).
@@ -759,9 +1012,23 @@
     c.idx++;
     c.cmdSeen = false; c.sawSeen = false; c.accStreak = 0; c.accMetNow = false; c.gradedBy = null;
     c.accsState = null;                 // per-entry multi-check-off latches (#244 item 8)
+    c.outOfTurn = null;                 // #759 — the out-of-turn note belongs to the step it was pressed on
+    c.steadyBags = null;                // #755 — the new step owes its steadiness window afresh
     c.awaitingAck = false;              // #619 item 4 — cleared with the step it belonged to
     c.stepAt = null;                    // re-stamped on the next tick — see the dwell above
+    c.overtakenStreak = 0;              // #641 — the next step's own predicate starts from zero
+    c.paused = false;                   // #694 — the new step has not fired its own pause yet
+    /* #670 — the fired-set is PER STEP ENTRY, and it is cleared HERE, before the checkpoint
+     * request below, so the checkpoint M5 lays at the start of the step just entered carries an
+     * empty set. A Rewind back onto it therefore re-enters a step that has not fired yet, beside
+     * a plant that has not been broken yet. See `_checklistFire`. */
+    c.fired = []; c.injected = [];
     if (c.idx >= c.proc.steps.length) c.complete = true;
+    /* A CHECKPOINT ON EVERY STEP BOUNDARY (#660 item 17: "Rewind takes the walkthrough and plant
+     * back one step. So it will need to save each step."). M5 consumes this on its next tick and
+     * lays the checkpoint at the START of the step just entered; the walkthrough state rides in
+     * it, so a rewind restores plant and progress together. */
+    this._checkpointRequested = true;
   };
 
   // Grade one {p, op, v [,tol]} predicate. Instrument-first (HR1): if the param
@@ -800,13 +1067,50 @@
    * selected, and mode is control_state — true_state carries the heater's kW and the spray's
    * delivered flow, both of which read the same in AUTO and in a MANUAL demand that happens to
    * match. Grading on kW would tick the step for a player who never touched the card. */
+  /* THE OPERATOR'S TRIP BLOCKS (#731, owner playtest #724 item 13). A manual trip block is a
+   * LINEUP the player sets and the board draws as a lit row on the TRIP BLOCKS panel; it lives
+   * in `rps_state.trip_blocks`, not in true_state and not on any instrument, so a step that
+   * wanted "is this trip blocked?" had nothing to grade on and was authored on the COMMAND
+   * instead. That is the defect: a command-graded step cannot see a block a previous step
+   * already placed, and — until `_cmdEvidence` below learned the sense — an UNBLOCK satisfied
+   * it. Measured on the shipped plant (pwr_startup, hot_zero_power, full stack): entering step
+   * 17 with pr_low_setpoint already blocked left the step unmet for 402 s of plant time, and
+   * issuing the unblock lit its Continue button 6 s later with the trip live at 9.9 % power.
+   *
+   * A block is not the negation of a trip: it is permissive-gated and AUTO-REINSTATES below
+   * P-10, so this must be read live every tick rather than latched once — which is exactly what
+   * grading on state (and not on a command that happened once) gives. Boolean on the wire;
+   * normalised to 1/0 here so the ordinary `{op:'>', v:0}` predicate vocabulary applies. */
+  /* The engine publishes fields of its own called `ir_high_blocked` and `lo_press_blocked`
+   * (pwr2_protection.js) and these param names shadow them in `paramValue`. Traced at the
+   * quality pass: both come from the SAME source — `pwr2_shell.js` builds `trip_blocks` out of
+   * the very flags those fields report — so there is no second copy of the truth here. */
+  var RPS_BLOCK_PARAMS = {
+    ir_high_blocked:         'ir_high',
+    pr_low_setpoint_blocked: 'pr_low_setpoint',
+    lo_press_blocked:        'lo_press',
+    si_trip_blocked:         'si_trip'
+  };
+  function rpsBlockParam(snapshot, p) {
+    var id = RPS_BLOCK_PARAMS[p];
+    if (!id) return undefined;
+    var tb = snapshot && snapshot.rps_state && snapshot.rps_state.trip_blocks;
+    if (!tb) return undefined;
+    return tb[id] ? 1 : 0;
+  }
   var CTL_PARAMS = { feed_coupled: 1, steam_dump_setpoint: 1,
                      letdown_orifice_a: 1, letdown_orifice_b: 1,
                      heater_auto: 1, spray_auto: 1,
                      /* the operator's SELECTION, not the valve (#629) — a dump controller in
                       * service at its setpoint carries 0 % on a plant already on programme,
                       * so the valve position cannot tell AUTO from CLOSED */
-                     steam_dump_auto: 1 };
+                     steam_dump_auto: 1,
+                     /* HX SPLIT (#739) — the cooldown throttle. `getControlState()` is the only
+                      * place it is published (`pwr2_shell.js` :1843, from `e.rh.hx_fraction`);
+                      * `true_state` does not carry it, so without this line `paramValue` returns
+                      * undefined and `pwr_cooldown` step 10's acceptance could never grade. It is
+                      * a FRACTION here (0.07) and per cent on the card. */
+                     rhr_hx_fraction: 1 };
   function rodParam(snapshot, p) {
     var spec = ROD_PARAMS[p];
     if (!spec) return undefined;
@@ -827,6 +1131,7 @@
    * now, so a param added here reaches the gate and the live runtime together. */
   InstructorLayer.paramValue = function (snapshot, p) {
     if (ROD_PARAMS[p]) return rodParam(snapshot, p);
+    if (RPS_BLOCK_PARAMS[p]) return rpsBlockParam(snapshot, p);
     if (CTL_PARAMS[p]) {
       var cv = snapshot && snapshot.control_state ? snapshot.control_state[p] : undefined;
       if (cv == null || (typeof cv === 'number' && isNaN(cv))) return undefined;
@@ -835,28 +1140,114 @@
     return snapshot && snapshot.true_state ? snapshot.true_state[p] : undefined;
   };
 
-  InstructorLayer.prototype._grade = function (snapshot, pred) {
-    if (ROD_PARAMS[pred.p]) {
-      var rv = rodParam(snapshot, pred.p);
-      return { met: this._predMet(rv, pred), graded_by: 'control_state', value: rv };
-    }
-    if (CTL_PARAMS[pred.p]) {
-      var cv = snapshot && snapshot.control_state ? snapshot.control_state[pred.p] : undefined;
+  /* THE READ, split out from `_grade` (#755) so the steadiness evaluator below samples the
+   * SAME channel the acceptance grades — instrument-first, per Hard Rule 1 — rather than
+   * becoming a second sampler of the same truth (the #605/#432 shape). Byte-for-byte the
+   * branches `_grade` used to carry; nothing about resolution changed. */
+  function readParam(snapshot, p) {
+    if (RPS_BLOCK_PARAMS[p]) return { value: rpsBlockParam(snapshot, p), graded_by: 'rps_state' };
+    if (ROD_PARAMS[p]) return { value: rodParam(snapshot, p), graded_by: 'control_state' };
+    if (CTL_PARAMS[p]) {
+      var cv = snapshot && snapshot.control_state ? snapshot.control_state[p] : undefined;
       if (typeof cv === 'boolean') cv = cv ? 1 : 0;
-      return { met: this._predMet(cv, pred), graded_by: 'control_state', value: cv };
+      return { value: cv, graded_by: 'control_state' };
     }
     var plant = (snapshot.metadata && snapshot.metadata.plant_id) || null;
     var map = plant ? PARAM_INSTRUMENT[plant] : null;
-    var iid = map ? map[pred.p] : null;
+    var iid = map ? map[p] : null;
     var v, by;
+    /* RULED (#670) — OWNER RULING, 2026-09-09: "A." This read, which is what `_gradeAccs` grades
+     * a walkthrough step's `acc` on, is the UNDAMPED transmitter, and it stays that way. The
+     * board draws every dimensioned tile through its own filter (`DISPLAY_DAMP` in
+     * pwr_board_wiring.js — #234 indicator damping, sg_level at a time constant of 1.5 s), so on
+     * a fast transient an acceptance can tick with the tile a point the wrong side of the step's
+     * limit: measured, `below 55 %` at 56 % drawn, a 1 percentage point gap. Do NOT regrade on
+     * the drawn value — it is a pool-wide retune of the 58 acceptances that grade on a damped
+     * channel, and it trades Hard Rule 1, instruments versus truth, for cosmetic agreement.
+     * github.com/TH462/Reactor-Dynamics/issues/670#issuecomment-5604928260 */
     if (iid && snapshot.instruments && snapshot.instruments[iid] != null) {
       v = snapshot.instruments[iid]; by = 'instrument';
     } else {
-      v = snapshot.true_state ? snapshot.true_state[pred.p] : undefined; by = 'true_state';
+      v = snapshot.true_state ? snapshot.true_state[p] : undefined; by = 'true_state';
     }
+    return { value: v, graded_by: by };
+  }
+
+  InstructorLayer.prototype._grade = function (snapshot, pred) {
+    var r = readParam(snapshot, pred.p);
     // `value` rides along for consumers that display the reading (#395's
     // precondition banner); met/graded_by callers are unaffected.
-    return { met: this._predMet(v, pred), graded_by: by, value: v };
+    return { met: this._predMet(r.value, pred), graded_by: r.graded_by, value: r.value };
+  };
+
+  /* THE STEADINESS EVALUATOR (#755) — ONE implementation, two callers. The live runtimes reach
+   * it through `_gradeOne` / `_gradeAccs` below with a per-step bag; `test/procedures_harness.js`
+   * (the replay) calls this static directly with a bag of its own, for the same reason `pv()`
+   * there calls `paramValue` — a second sampler of the same claim is worse than none (#605).
+   *
+   * `bag` is opaque per-predicate state, reset by the caller when the step changes. Call it once
+   * per broadcast with the live snapshot: it samples, prunes and returns the verdict together.
+   * `{met, drift, value, graded_by, covered, n}` — `drift` is null until the window is covered. */
+  InstructorLayer.gradeSteady = function (bag, snapshot, pred) {
+    var r = readParam(snapshot, pred.p);
+    var t = snapshot && snapshot.metadata ? snapshot.metadata.sim_time : null;
+    var W = (pred.window > 0) ? pred.window : STEADY_WINDOW_S;
+    var out = { met: false, drift: null, value: r.value, graded_by: r.graded_by, covered: false, n: 0 };
+    if (!bag.s) bag.s = [];
+    var s = bag.s;
+    if (t == null || !isFinite(t) || typeof r.value !== 'number' || !isFinite(r.value)) return out;
+    /* THE CLOCK WENT BACKWARDS — a Rewind, a restored save, a re-selected plant. The ring
+     * describes a plant that no longer exists, so it starts again; the step then owes its
+     * window afresh, which is the conservative direction. */
+    if (s.length && t < s[s.length - 1].t) s.length = 0;
+    var gap = Math.max(0.05, W / 120);          // ~120 samples per window at 1x; cheap at 60x
+    if (!s.length || t - s[s.length - 1].t >= gap) s.push({ t: t, v: r.value });
+    // keep exactly one sample at or before the window's trailing edge, so `covered` is honest
+    while (s.length > 1 && t - s[1].t > W) s.shift();
+    out.n = s.length;
+    out.covered = s.length > 1 && (t - s[0].t) >= W;
+    if (!out.covered) return out;
+    var tm = t - W / 2, a = 0, na = 0, b = 0, nb = 0;
+    for (var i = 0; i < s.length; i++) {
+      if (t - s[i].t > W) continue;             // the one sample outside the window
+      if (s[i].t < tm) { a += s[i].v; na++; } else { b += s[i].v; nb++; }
+    }
+    var lo, hi;
+    if (na >= 2 && nb >= 2) { lo = a / na; hi = b / nb; }
+    else {
+      /* A WINDOW TOO THIN TO HALVE — the WARP tier, where one broadcast can be minutes of plant.
+       * Fall back to the ends of the COVERED SPAN, which is at least `window` long, so the change
+       * it measures is an over-read of the change across the window: conservative, never a false
+       * accept, and it cannot soft-lock a step the way "never met" would. */
+      lo = s[0].v; hi = s[s.length - 1].v;
+    }
+    var mid = Math.abs((lo + hi) / 2);
+    out.drift = mid > 1e-9 ? Math.abs(hi - lo) / mid : Math.abs(hi - lo);
+    out.met = out.drift <= pred.v;
+    return out;
+  };
+
+  /* Grade ONE predicate for a runtime holder (checklist / follow), routing `op:'steady'` to the
+   * holder's own per-step bag. Every other op is stateless and goes straight to `_grade`. */
+  InstructorLayer.prototype._gradeOne = function (holder, snapshot, pred, key) {
+    if (!pred || pred.op !== 'steady') return this._grade(snapshot, pred);
+    if (!holder.steadyBags) holder.steadyBags = {};
+    if (!holder.steadyBags[key]) holder.steadyBags[key] = { s: [] };
+    return InstructorLayer.gradeSteady(holder.steadyBags[key], snapshot, pred);
+  };
+
+  // #715 — re-grades a leg's optional `outcome_guard` (same {p,op,v[,tol]} shape as
+  // `precond`/`accs`) against the LIVE snapshot. No guard authored → unaffected (true).
+  // Instrument-first via `_grade`, same as every other predicate in this file (HR1).
+  InstructorLayer.prototype._gradeOutcomeGuard = function (proc) {
+    var g = proc && proc.outcome_guard;
+    if (!g || !g.length) return true;
+    var snap = this._lastSnapshot;
+    if (!snap) return true;   // nothing graded yet — do not manufacture a false negative
+    for (var i = 0; i < g.length; i++) {
+      if (!this._grade(snap, g[i]).met) return false;
+    }
+    return true;
   };
 
   // Same op vocabulary as the manual/harness: > < >= <= ~ (within tol).
@@ -948,7 +1339,7 @@
       case 'prev':    if (f.done) { f.done = false; this.levelComplete = null; } this._advanceFollow(-1, false); break;
       case 'restart': f.idx = 0; f.done = false; this.levelComplete = null;
                       f.cmdSeen = false; f.sawSeen = false; f.accStreak = 0; f.accMetNow = false;
-                      f.accsState = null; break;
+                      f.accsState = null; f.steadyBags = null; break;
       default: break;
     }
     return null;
@@ -968,11 +1359,26 @@
    * a met check-off stays met, the way a ticked box behaves — and the step completes
    * when every entry is latched. Shared by BOTH runtimes (Path 3 checklist and
    * Path 2 follow), because the Walkthroughs tab and the 📋 checklist run the same
-   * artifact. `holder` is the runtime's own state object (this.checklist / this.follow). */
+   * artifact. `holder` is the runtime's own state object (this.checklist / this.follow).
+   *
+   * ⚠ EXCEPT A TWO-SIDED BAND, WHICH MUST HOLD RATHER THAN MERELY HAVE BEEN TOUCHED (#683).
+   * `op: '~'` is a *hold it here* claim; `>` and `<` are *you got past this* claims. A latched
+   * band is satisfied by a plant that passed THROUGH it and left, which is how the only
+   * two-sided temperature gate in the power ascension came to certify a plant that then walked
+   * 105 degF (58 degC) down at 96.5 % power: measured 581.8 degF at stage 5 and 579.5 degF at
+   * stage 8, inside the 563.4-592.2 degF band long enough to latch, then gone. `~` entries are
+   * therefore RE-GRADED every tick and un-tick when the plant leaves the band.
+   *
+   * THE BLAST RADIUS IS MEASURED, NOT ASSUMED, which is why this is the default rather than an
+   * authored opt-in flag: of 203 predicate acceptances across the whole pool, 20 are two-sided
+   * and exactly TWO of those sit in this latching `accs[]` path — `pwr_raise_power` step 8
+   * (this defect) and `pwr_heatup` step 14's steam-pressure band, which the dumps HOLD on
+   * setpoint rather than pass through. Every `>`/`<` bound and every cmd-kind entry latches
+   * exactly as before, so a ticked box still behaves like a ticked box everywhere it did. */
   InstructorLayer.prototype._ensureAccsState = function (holder, st) {
     if (!holder.accsState || holder.accsState.length !== st.accs.length) {
       holder.accsState = st.accs.map(function () {
-        return { streak: 0, met: false, obs: null, graded_by: null };
+        return { streak: 0, met: false, obs: null, graded_by: null, steady: null };
       });
     }
     return holder.accsState;
@@ -980,31 +1386,73 @@
   InstructorLayer.prototype._gradeAccs = function (holder, st, snapshot) {
     var state = this._ensureAccsState(holder, st);
     var all = true;
+    var ordered = !!st.accs_ordered, blocked = false;
     for (var i = 0; i < st.accs.length; i++) {
       var en = st.accs[i], ax = state[i];
-      if (!ax.met && en && en.p) {
-        var g = this._grade(snapshot, en);
+      /* a two-sided band re-grades for ever; every other kind latches (see the note above).
+       * `steady` joins it (#755) and for the same reason: "it has stopped moving" is a HOLD
+       * claim, and a plant that starts climbing again has left it. */
+      var holds = !!(en && (en.op === '~' || en.op === 'steady'));
+      if ((!ax.met || holds) && en && en.p) {
+        var g;
+        if (en.op === 'steady') {
+          if (!ax.steady) ax.steady = { s: [] };
+          g = InstructorLayer.gradeSteady(ax.steady, snapshot, en);
+        } else g = this._grade(snapshot, en);
         ax.obs = g.value; ax.graded_by = g.graded_by;
         ax.streak = g.met ? ax.streak + 1 : 0;
-        if (ax.streak >= ACC_STABLE_N) ax.met = true;
+        /* ORDERED STEPS (#756): a blocked entry still GRADES — `obs` keeps updating and a
+         * `steady` ring keeps filling from the moment the step became active — it just may not
+         * LATCH. Grading it is not cosmetic: measured on the 1/M ladder, the settle window has
+         * to run from the step's start or the settle row would owe a fresh 120 s after the count
+         * row ticks, and the crossing is at the same wall-clock instant either way. */
+        if (ax.streak >= ACC_STABLE_N && !blocked) ax.met = true;
+        else if (holds) ax.met = false;        // left the band — the check-off comes back off
       }
-      if (!ax.met) all = false;               // cmd-kind entries latch in handleCommand
+      if (!ax.met) { all = false; if (ordered) blocked = true; }   // cmd entries latch in handleCommand
+      /* A LATCHED ENTRY IS NEVER UN-LATCHED BY A PREDECESSOR GOING BACK OFF, and that is
+       * deliberate: "the counts passed 7.0e2" and "you plotted a point" stay true when a later
+       * `steady` row un-ticks because the player pulled more rod. The block only gates NEW
+       * latches, so the step still cannot COMPLETE until every row is met at once. */
     }
     return all;
   };
   // The command half of the watch: latch any unmet cmd-kind entry the command satisfies.
+  // On an `accs_ordered` step a cmd entry is DEAF until its predecessors are met — that is the
+  // half of the sequencer the player actually feels (#756: pressing Plot point early does nothing
+  // instead of latching a stale point), because the press, not the predicate, is what they do.
   InstructorLayer.prototype._accsCmdWatch = function (holder, st, command) {
     if (!st || !st.accs || !st.accs.length) return;
     var state = this._ensureAccsState(holder, st);
+    var ordered = !!st.accs_ordered, blocked = false, blockedBy = -1;
     for (var i = 0; i < st.accs.length; i++) {
       var en = st.accs[i];
-      if (en && en.cmd && !state[i].met &&
-          this._cmdEvidence(typeof en.cmd === 'string' ? { action: en.cmd } : en.cmd, command)) {
-        state[i].met = true;
-      }
+      var matches = en && en.cmd && !state[i].met &&
+        this._cmdEvidence(typeof en.cmd === 'string' ? { action: en.cmd } : en.cmd, command);
+      if (!blocked && matches) state[i].met = true;
+      /* AN OUT-OF-TURN PRESS MUST SAY SO (#759, OWNER RULING 2026-09-15: "Fix the text AND say
+       * why"). Measured on the shipped pool before this: with rung 5a unmet (source range at
+       * 501 counts per second against a 700 target) pressing Plot point added real points —
+       * 1 -> 2 -> 3 circles on the plot, the panel recomputing each press — while the rung
+       * never ticked and NOTHING was said on the card or in the panel. The sim accepted the
+       * player and the walkthrough contradicted them with no way to tell which was in charge.
+       *
+       * Recorded here and not in `_gradeAccs` because the PRESS is the event: the predicate
+       * half never sees a button. It names the ROW THAT IS BLOCKING, not the row that was
+       * pressed, so the card's sentence is derived from the predecessor's own `ask` and no
+       * step's wording is duplicated into the runtime. Cleared at the step boundary, and
+       * suppressed in the snapshot once the blocker latches (see `out_of_turn` there). */
+      if (blocked && matches) holder.outOfTurn = { idx: i, by: blockedBy };
+      if (ordered && !state[i].met && !blocked) { blocked = true; blockedBy = i; }
     }
   };
 
+  /* ON/OFF ACTUATIONS whose whole payload is the sense — see `_cmdEvidence` below. Each drives a
+   * START/STOP or ON/OFF pair on one card, so a family match alone lets either button stand as
+   * evidence for a step that asked for the other. `active !== false` is the shells' own
+   * convention throughout (an absent flag means ON). */
+  var SENSE_ACTIONS = { set_hpi: 1, set_lpi: 1, set_afw: 1, set_rcp: 1, set_rhr: 1,
+                        set_feed_coupled: 1, set_charging_pump: 1 };
   // Does `command` count as having performed the step whose authored command is
   // `stepCmd`? Family match, plus a discriminator for the actions where the family
   // alone is too coarse: several DIFFERENT steps can share one action and would
@@ -1015,7 +1463,37 @@
     if (!stepCmd || !command || !command.action) return false;
     if (!this._sameFamily(stepCmd.action, command.action)) return false;
     if (stepCmd.action === 'inject_failure') return stepCmd.failure_id === command.failure_id;
-    if (stepCmd.action === 'set_trip_block') return stepCmd.trip_id === command.trip_id;
+    /* THE SENSE, NOT JUST THE ROW (#731, owner playtest #724 item 13: "When i unblocked the
+     * trip the step thought i had blocked it and checked off the step. this would have left me
+     * in a condition where the trip would have fired and ended my playthrough."). `trip_id`
+     * alone made `set_trip_block {blocked:false}` evidence for a step that asks for a BLOCK —
+     * the one direction that is unsafe. `blocked !== false` is the shell's own convention
+     * (pwr2_shell.js set_trip_block): an absent flag means block. */
+    if (stepCmd.action === 'set_trip_block') {
+      return stepCmd.trip_id === command.trip_id &&
+             (stepCmd.blocked !== false) === (command.blocked !== false);
+    }
+    /* …AND THE SAME RULE FOR EVERY ON/OFF ACTUATION (#741 quality pass, 2026-09-13). #731 fixed
+     * the sense for trip blocks and left the identical hole one card over: these actions each
+     * drive a pair of buttons that sit side by side, and a family match alone made the WRONG
+     * button evidence for the step.
+     *
+     * FOUND BY REPRODUCTION, not by reading: #739 gave `pwr_cooldown` step 3 a pure `cmd` entry
+     * for `set_hpi {active:false}` ("press STOP on ECCS"), and pressing START — `set_hpi
+     * {active:true}`, the button immediately above it on the same card (pwr_board_wiring :602 /
+     * :603) — ticked the entry green. Worse than #731's case, because that entry deliberately
+     * carries NO predicate sibling (there is nothing observable behind securing an idle pump),
+     * so nothing could contradict the false tick: the player got a green step AND high-pressure
+     * injection running into a cooldown.
+     *
+     * `set_rhr` is in the list for the same reason and `set_spray` is not: spray carries a `pct`
+     * as well as an open/shut sense, and `set_spray {open:true, pct:50}` vs `{open:false}` is
+     * already discriminated by the predicate entries the spray steps carry. Keep this list to
+     * actions whose ONLY payload is the sense — adding one whose payload matters would make the
+     * check narrower than the step and reintroduce the soft-lock #697 is about. */
+    if (SENSE_ACTIONS[stepCmd.action]) {
+      return (stepCmd.active !== false) === (command.active !== false);
+    }
     return true;
   };
 
@@ -1073,6 +1551,10 @@
     var base = this.getMessage();
     var f = this.follow;
     var st = (f && !f.done) ? f.proc.steps[f.idx] : null;
+    // The ACTIVE checklist step, for the narrative block below (#670).
+    var cklStep = (this.checklist && !this.checklist.complete)
+      ? this.checklist.proc.steps[this.checklist.idx] : null;
+    var cklStory = (cklStep && cklStep.story) ? cklStep.story : null;
     return {
       message: base.message,
       message_register: base.message_register,
@@ -1127,24 +1609,72 @@
         acc_met: this.checklist.accMetNow,
         graded_by: this.checklist.gradedBy,
         complete: this.checklist.complete,
+        // #715 — whether the completion banner's `outcome` text is safe to show: re-graded
+        // every tick off the leg's optional `outcome_guard` (see `_gradeOutcomeGuard`). null
+        // while the checklist is still running (the question does not apply yet); true when
+        // no guard is authored, so every leg but the one this fixed is unaffected.
+        outcome_verified: this.checklist.complete ? (this.checklist.outcomeVerified !== false) : null,
         // #619 item 4 — the step is satisfied and is holding for the player to acknowledge.
         awaiting_ack: !!this.checklist.awaitingAck,
+        // #694 — this step's own `pause` fired and the service has been asked to stop the
+        // clock (or already has). Sticky per-step, like `awaitingAck`: ui/app.js watches for
+        // this to rise and calls pauseSim('walkthrough'), since a service-level pause is a
+        // plant fact, not a broadcast the UI can wait on (the clock stopping IS what ends
+        // the broadcasts). Cleared with the step it belonged to in `_checklistCheckOff`.
+        paused: !!this.checklist.paused,
+        /* CAN "REWIND STEP" LAND? (#660 items 17-18). The button used to be drawn on
+         * `step_index > 0` alone, which is a claim about the WALKTHROUGH when the thing it
+         * depends on is the rewind RING — and the two come apart on a loaded save, which
+         * clears the ring while the walkthrough's progress survives (measured 2026-09-08:
+         * step_index 2 restored, checkpoints.length 0, the rewind refused with "no checkpoint
+         * to rewind to" while the button sat lit). M5 fills this in from the ring itself. */
+        rewind_ready: !!this._rewindReady,
         // Multi-check-off verdicts for the ACTIVE step (#244 item 8) — {met, obs,
         // graded_by} order-parallel to the step's `accs`; null on single-acc steps.
         accs: this.checklist.accsState ? this.checklist.accsState.map(function (a) {
           return { met: a.met, obs: a.obs, graded_by: a.graded_by };
         }) : null,
+        /* THE LAST OUT-OF-TURN PRESS ON THIS STEP (#759) — `{ acc_index, blocked_by }`, both
+         * indices into the step's own `accs`. `acc_index` is the row the press WOULD have
+         * latched; `blocked_by` is the row that has to be met first, and is what the card
+         * builds its sentence from. Null when nothing has been pressed out of turn.
+         *
+         * SUPPRESSED THE MOMENT THE BLOCKER LATCHES, here rather than by a second clear in the
+         * runtime: the reason the note gives ("the counts are still rising") stops being true
+         * at the same instant that row ticks, and re-deriving it from the live verdicts is the
+         * only way the card cannot disagree with the grading — the same rule the ordered-row
+         * muting already follows in ui/app.js. */
+        out_of_turn: (function (c) {
+          var o = c.outOfTurn, st8 = c.accsState;
+          if (!o || !st8 || !st8[o.by] || st8[o.by].met) return null;
+          return { acc_index: o.idx, blocked_by: o.by };
+        })(this.checklist),
         // Precondition verdicts (#395): {met, obs, graded_by} order-parallel to
         // the procedure's `precond` array; null until first graded or when the
         // procedure authors none. Row text is NOT duplicated (same rule as steps).
         preconditions: this.checklist.precond
           ? this.checklist.precond.map(function (p) { return { met: p.met, obs: p.obs, graded_by: p.graded_by }; })
           : null,
+        // Failure ids this step has fired behind the scenes (#670) — reset on every step
+        // boundary, so it answers "what did THIS step break", not "what is broken".
+        // `active_failures` remains the plant's own answer to the second question.
+        injected: (this.checklist.injected || []).slice(),
+        /* THE NARRATIVE BLOCK (#670) — the one place step CONTENT is duplicated into the
+         * snapshot, and it is a deliberate exception to the rule two comments up. The renderer
+         * reads `story` off the pool exactly as it reads `text`/`why`; this copy exists so a
+         * gate, a headless probe or any non-pool consumer can see what the card is showing
+         * without re-resolving the procedure artifact. ACTIVE STEP ONLY. */
+        story: cklStory ? { clock: cklStory.clock || null, saw: cklStory.saw || null,
+                            knew: cklStory.knew || null, did: cklStory.did || null } : null,
+        crew: !!(cklStep && cklStep.crew),
       } : null,
     };
   };
 
   InstructorLayer.prototype.setRegister = function (value) { this.register = value; };
+  // M5 → M6, written just before each snapshot assemble (#660 items 17-18). The rewind ring
+  // is M5's; whether the walkthrough may offer "back one step" is a fact about that ring.
+  InstructorLayer.prototype.setRewindReady = function (v) { this._rewindReady = !!v; };
 
   // ---------------------------------------------------- M5 consume-flags (no upward calls)
   // M5 polls these right after step(): layering stays snapshots-up/commands-down.
@@ -1156,6 +1686,12 @@
   };
   InstructorLayer.prototype.consumeSpeedRequest = function () {
     var r = this._speedRequested; this._speedRequested = null; return r;
+  };
+  // #694 — a checklist step's fired event wants the clock stopped. One-shot like the
+  // three above; the SERVICE decides how (simulation_service.js `_serviceInstructorRequests`
+  // calls `this.stop()` directly — never through `_setSpeed`, which clamps 0 to 1).
+  InstructorLayer.prototype.consumePauseRequest = function () {
+    var r = this._pauseRequested; this._pauseRequested = false; return r;
   };
   // After a world-scope rewind sim time has moved backwards under a live scenario;
   // clamp the time anchors so time/delay triggers don't wait for time to re-elapse
@@ -1221,6 +1757,16 @@
         complete: this.checklist.complete,
         accs_met: this.checklist.accsState
           ? this.checklist.accsState.map(function (a) { return !!a.met; }) : null,
+        /* #670 — the per-step-entry fired-set RIDES IN THE CHECKPOINT. A `scope:'full'` rewind
+         * is a loadState of a saved checkpoint, so this is what makes "Rewind un-does the
+         * injection and the step fires it again" true rather than an assumption. */
+        fired: (this.checklist.fired || []).slice(),
+        injected: (this.checklist.injected || []).slice(),
+        /* #732 — the once-per-run precondition latch rides with them, for the same reason. The
+         * REWIND button is a loadState of a checkpoint, so without this every rewind re-armed the
+         * comment and the flicker came back one press at a time. Absent in an old save reads as
+         * false, which is exactly the pre-#732 behaviour. */
+        precond_said: !!this.checklist.precondSaid,
       } : null,
     };
   };
@@ -1250,11 +1796,20 @@
           accsState: cs.accs_met ? cs.accs_met.map(function (m) {
             return { streak: 0, met: !!m, obs: null, graded_by: null };
           }) : null,
-          // Precondition verdicts are DERIVED state — never saved; the first
-          // step() tick after a restore regrades them against the live plant
-          // (and re-raises the comment if rows are still unmet, which is right:
-          // a fresh session deserves the warning again).
-          precond: null, precondMsg: false,
+          // Precondition VERDICTS are DERIVED state — never saved; the first step() tick
+          // after a restore regrades them against the live plant.
+          //
+          // THE LATCH IS NOT DERIVED AND IS RESTORED (#732, quality pass 2026-09-12). The
+          // comment above used to argue that re-raising is right because "a fresh session
+          // deserves the warning again" — true of a file load, and WRONG of the path this
+          // actually is most of the time: the walkthrough's own Rewind button goes through
+          // loadState (simulation_service.js `_restoreCheckpoint`), so an undefined flag meant
+          // every rewind re-armed the comment and handed the player the flicker back one press
+          // at a time. A save written before this field restores false, i.e. unchanged.
+          precond: null, precondMsg: false, precondSaid: !!cs.precond_said,
+          // #670 — restored, not re-derived: a save written before this field is an empty set,
+          // which is exactly what it used to behave as.
+          fired: (cs.fired || []).slice(), injected: (cs.injected || []).slice(),
         };
       } else if (typeof console !== 'undefined') {
         console.warn('InstructorLayer.loadState: checklist procedure "' + cs.procedure_id + '" not found — dropped.');

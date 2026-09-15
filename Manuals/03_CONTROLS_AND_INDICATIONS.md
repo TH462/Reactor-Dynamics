@@ -2,7 +2,7 @@
 
 **Document:** PWR-CI-01  
 **Title:** Control Station Inventory and Operating Instructions  
-**Revision:** 18  
+**Revision:** 19  
 
 ---
 
@@ -40,8 +40,8 @@ Describe every operator control and major indication on the PWR board, with purp
 | **Direction** | Raise = withdraw = add reactivity; Lower = insert = remove reactivity |
 | **Quick click** | Steps the bank **one step** |
 | **Hold** | Drives continuously at the selected **Rod Speed**; release to halt |
-| **Indication** | Vertical bar + step count (0 = fully inserted, max **627** steps fully withdrawn — a fine-step drive: one step is **8.1 pcm ≈ 1.24 ¢** in the startup critical band, 4.15 off the bottom and 8.82 at mid-travel). **While the reactor is subcritical, read reactivity from the source range count rate, not from this bar** — bank position becomes the better reactivity indication once the reactor is critical (Ginna UFSAR §7.7.3.1, ML20339A027) |
-| **Operating position** | ≈ 92 % withdrawn at hot full power |
+| **Indication** | Vertical bar + step count (0 = fully inserted, max **627** steps fully withdrawn — a fine-step drive: one step is **7.76 pcm ≈ 1.19 ¢** in the startup critical band, 4.15 off the bottom and 8.82 at mid-travel). **While the reactor is subcritical, read reactivity from the source range count rate, not from this bar** — bank position becomes the better reactivity indication once the reactor is critical (Ginna UFSAR §7.7.3.1, ML20339A027) |
+| **Operating position** | **96.7 % withdrawn — 606 of 627 steps** — at hot full power, and the plant boots there. Sourced: NUREG-1431 Rev 4 STS Bases B 3.2.3A (ML12100A228), control bank D *"near its normal position (i.e., 210 steps withdrawn)"* at high power, on this plant's bank-overlap step scale. **You have 21 steps of withdrawal left** — worth about **+4.7 °F (+2.6 °C)** of T-avg — and the whole bank below you. See **09** §11.0 |
 
 **Procedure — move rods**
 
@@ -56,11 +56,17 @@ Describe every operator control and major indication on the PWR board, with purp
 
 ### 3.2 Rod Speed
 
-| Speed | Use |
-|-------|-----|
-| **Slow** | Final approach to criticality; fine power trim |
-| **Normal** | Routine power maneuvering |
-| **Fast** | Large intentional moves (watch SUR) |
+| Speed | Rate | Use |
+|-------|------|-----|
+| **Slow** | **8 steps/min** | Final approach to criticality; fine power trim |
+| **Normal** | **48 steps/min** | Routine power maneuvering |
+| **Fast** | **72 steps/min** | Large intentional moves (watch SUR) |
+
+Slow and fast are the two ends of the real rod speed program (WTSM 8.1, ML11223A252 — a minimum
+of eight steps per minute, and a maximum of 72 that the source calls a physical limit of the
+drive mechanism); normal is this simulator's own middle setting. On the real plant the automatic
+controller runs continuously between those limits; the three-position selector here is the
+operator's switch. Full travel — 627 steps — is **8.7 minutes at Fast**, 13 at Normal.
 
 ### 3.3 Shutdown Bank — Withdraw / Insert
 
@@ -79,6 +85,15 @@ Describe every operator control and major indication on the PWR board, with purp
 - Power-dependent floor on control bank withdrawal position.  
 - Alarm **ROD INS LIMIT** when at/below limit.  
 - Do not park rods below the limit during power operation without a plan to restore.
+
+### 3.4a Top of Travel
+
+- Ceiling on control bank withdrawal: **627 of 627 steps**, the full travel of the bank.
+- Alarm **ROD BANK FULL OUT** when the control bank reaches it. The WITHDRAW button is also
+  crossed out in red on a press that cannot move the bank.
+- At the top stop there is no rod authority left; boron is the only reactivity lever. Dilute.
+- Control bank only. The shutdown bank sits fully withdrawn as its normal hot position and
+  carries no such alarm.
 
 ### 3.5 SCRAM
 
@@ -182,13 +197,13 @@ the heat sink is restored. **Recovery is procedural, not a button.**
 
 | Control | Purpose |
 |---------|---------|
-| **SR detector On/Off** | Energize / secure source-range counter |
+| *(none)* | **There is no source-range On/Off switch on this plant.** The channel energizes and de-energizes itself on flux alone — see §5 and the handoff below |
 
-**Handoff rules (P-6):**
+**Handoff rules (P-6) — what the plant does, and what it does not:**
 
-1. Do **not** switch SR **OFF** until Intermediate Range ≥ **1e-10 A** (on scale).  
-2. Do **not** switch SR **ON** at high flux (IR ≥ **1e-6 A**) — detector protection.  
-3. Secure SR during power rise **before** SR high-flux trip (**1e5 cps**).  
+1. **The source range secures itself at 1e5 cps.** That is the de-energization point, not a trip: the counter switches off and reads zero above it. Nothing for the operator to press, and nothing to press it too early.  
+2. **P-6 — Intermediate Range ≥ 1e-10 A — is the point the INTER RANGE display comes into use**, and the NIS card marks it. Below it, read the source range. On a real plant P-6 is also the permissive that lets the operator block the source-range trip and secure the detector; **this plant has neither the trip nor the switch**, so P-6 here is an indication cue.  
+3. The handoff the plant actually performs is therefore at **1e5 cps**, which is IR ≈ **3.2e-9 A** — about **32×** above P-6. Expect the intermediate range to be well on scale before the source range goes dark.  
 
 ### 4.4 Startup trip blocks
 
@@ -320,7 +335,7 @@ AUTO at **PWR-N01 step 5b**, after the pumps are started at step 2.
 
 ### 5.4 PZR Level
 
-- Normal ≈ **55 %** at HFP.  
+- Normal ≈ **61.5 %** at HFP; **25 %** at no load — the program rides the Tavg span (**09** §11.0).  
 - Controlled primarily by **CVCS** charging/letdown.  
 - **TMI trap:** level can **rise** while total inventory **falls** (void surge).  
 
@@ -1040,7 +1055,7 @@ These topics appear as dedicated **campaign** missions; manuals cover them here 
 ### 17.1 1/M and NIS handoff (Mode 3 → Mode 2)
 
 - Source Range counts show subcritical multiplication as rods withdraw (1/M idea: counts rise as you approach criticality).  
-- When Intermediate Range ≥ **1e-10 A** (P-6), secure **SR detector** — see **PWR-T13** / **PWR-N03**.  
+- When Intermediate Range ≥ **1e-10 A** (P-6) the intermediate range is on scale and is the instrument to read. **You do not secure the SR detector — there is no switch**; it de-energizes itself at 1e5 cps, further up. See **PWR-T13** / **PWR-N03**.  
 - Campaign mission `pwr_startup` / `pwr_startup_challenge` grade this path; manuals do not auto-grade.
 
 ### 17.2 Holding Tavg by hand (Mode 1)
@@ -1159,7 +1174,7 @@ Listed for cross-reference — normal operation never requires typing a command.
 | Generator **OFF** — planned offline (§12.1) | `disconnect_grid` | — |
 | Turbine load (§12.2) | `set_load_target` | `{mwe}` |
 | CW inlet temperature (§13.1) | **CW INLET TEMP** box on the CONDENSER COOLING card, 35 – 85 °F | `set_condenser_cw_temp` |
-| Steam dump / bypass (§12.3) | `set_steam_dump` | `{mode}` — **`auto` or `closed` only** from the board; there is no manual position lever, and `open` and a bare `pct` are refused by name. **`auto` resolves to one of two control modes on the turbine latch**: steam-pressure mode when the turbine is tripped, Tavg mode when it is on line (§12.3). `pressure` and `tavg` are accepted explicitly as the checklist/scenario API for saying which one you mean |
+| Steam dump / bypass (§12.3) | `set_steam_dump` | `{mode}` — **`auto` or `closed` only** from the board; there is no manual position lever, and `open` and a bare `pct` are refused by name. **`auto` resolves to one of two control modes on the turbine latch**: steam-pressure mode when the turbine is tripped, Tavg mode when it is on line (§12.3). `pressure` and `tavg` are accepted explicitly as the walkthrough/scenario API for saying which one you mean |
 | Pressure setpoint box (§5) | `set_pressure_setpoint` | `{mpa}` |
 | Steam-dump setpoint box (§12.3) | `set_steam_dump_setpoint` | `{mpa}` |
 | HPI/LPI (§11.0) | `set_hpi` | `{active}` |
