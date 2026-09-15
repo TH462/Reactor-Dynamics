@@ -3172,21 +3172,46 @@
     var el = $('warpInfo');
     if (!el) return;
     var text = '', cls = '';
-    if (warpNote && warpNote.reason === 'hold') {
-      cls = 'dropped';
-      text = warpNote.text;
-    } else {
-      var ck = s.instructor && s.instructor.checklist;
-      var pr = ck && !ck.complete && ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || [])
-        .filter(function (x) { return x.id === ck.procedure_id; })[0];
-      var st = pr ? pr.steps[ck.step_index] : null;
-      var holdS = st ? (+st.hold || 0) : 0;
-      if (st && holdS >= 180 && st.wait_hint !== false) {
-        var span = cklWaitSpan(st, holdS);
-        var rung = RD.CklSpeedHint(holdS);
-        text = (span ? 'About ' + span + ' left at 1× — s' : 'A wait whose length depends on the plant — s') +
+    /* THE ACTIVE STEP'S OWN FAST-FORWARD ADVICE — computed first now, because it is no longer
+     * the only thing this line can say and the drop reason has to be able to sit in front of
+     * it (see below). Unchanged in what it says or when it qualifies. */
+    var advice = '';
+    var ck = s.instructor && s.instructor.checklist;
+    var pr = ck && !ck.complete && ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || [])
+      .filter(function (x) { return x.id === ck.procedure_id; })[0];
+    var st = pr ? pr.steps[ck.step_index] : null;
+    var holdS = st ? (+st.hold || 0) : 0;
+    if (st && holdS >= 180 && st.wait_hint !== false) {
+      var span = cklWaitSpan(st, holdS);
+      var rung = RD.CklSpeedHint(holdS);
+      advice = (span ? 'About ' + span + ' left at 1× — s' : 'A wait whose length depends on the plant — s') +
                'et the speed control to ' + rung.speed + '×.';
-      }
+    }
+    /* EVERY DROP STATES ITS OWN REASON, not just the held-at-real-time one (2026-09-15 layman
+     * pass, #653). This branch read `warpNote.reason === 'hold'` and fell through for the other
+     * four — alarm, scram, failure and step — printing the step's fast-forward advice instead.
+     * MEASURED: the clock dropped on a new unacknowledged warning and `#warpInfo` then read
+     * "About 50 plant-minutes left at 1× — set the speed control to 600×" while the plant
+     * crawled 596 to 600 psia (4.11 to 4.14 MPa) over 200 s of real time. The line was advising
+     * the button that had just failed, and it is STRUCTURAL: four of five reasons land here.
+     *
+     * IT DOES NOT REOPEN #686. That ruling's concern was this line growing back into a
+     * four-state paragraph that says something on every step; the reason is written only while
+     * a drop is STANDING, and `retireWarpNote` already clears the four momentary reasons on the
+     * player's very next speed act (the `hold` exception is #710's and is untouched). So the
+     * line still says nothing on an ordinary step, and the toast and the button flash are still
+     * the moment-of-event cue — this is the explanation that has to survive until the player
+     * looks at the speed bar, which is exactly where they look when the clock has changed.
+     *
+     * The advice RIDES ALONG behind the reason rather than being replaced by it, because both
+     * facts are wanted at once: why it stopped, and what to press now. Not under `hold` — the
+     * service REFUSES `set_speed` above 1× while that stands, so offering the rung there is the
+     * same contradiction one level down (the speed-rung glow already stands down for it). */
+    if (warpNote) {
+      cls = 'dropped';
+      text = warpNote.text + (warpNote.reason !== 'hold' && advice ? '. ' + advice : '');
+    } else {
+      text = advice;
     }
     if (el.textContent !== text) el.textContent = text;
     el.hidden = !text;
@@ -4268,6 +4293,16 @@
        * defect 4) and a value outside the key never repaints. Rounding is what keeps it
        * off the per-broadcast churn list: five values over a whole evolution. */
       (s && s.true_state && typeof s.true_state.plant_mode === 'number') ? Math.round(s.true_state.plant_mode) : '',
+      /* THE OUT-OF-TURN NOTE (#759). A value outside the key never repaints — this file's own
+       * lesson twice already (#392's precondition banner, #653 defect 4's mode line) and it bit
+       * a third time here. MEASURED in headless Chromium with the renderer and the runtime both
+       * finished and the key untouched: two real Plot point presses on `pwr_startup` step 5 at
+       * 538 counts per second, the service recording `out_of_turn {acc_index: 3, blocked_by: 0}`,
+       * and the card drawing NOTHING. Every other component of the key sits still on an
+       * out-of-turn press — no row latches, no index moves, no acceptance changes — which is
+       * precisely what makes the press out of turn, so this is the one case the key could never
+       * have covered by accident. */
+      ck.out_of_turn ? ck.out_of_turn.blocked_by : '',
       cklState.view].join('|');
     if (key === cklState.key) return;
     var firstBuild = !cklState.key;
@@ -4520,6 +4555,33 @@
                * still waiting its turn (#756) — a done-when for a row nothing is grading yet. */
               (en.ask && !ordWait ? '<div class="ckl-crit-when">' + mesc(enTxt) + '</div>' : '') +
               '</div>';
+          }
+          /* A PRESS THAT LANDED OUT OF TURN GETS A REASON ON THE CARD (#759, OWNER RULING
+           * 2026-09-15: "Fix the text AND say why"). The sim ACCEPTS the press — measured, the
+           * 1/M plot took three real points at 501 counts per second against a 700 target — and
+           * the walkthrough silently declines to count it, so the player is told two things at
+           * once and neither of them out loud.
+           *
+           * DERIVED FROM THE BLOCKING ROW, never authored per step: the runtime reports which
+           * `accs` index is holding the sequence (`out_of_turn.blocked_by`) and this reads that
+           * row's own `ask` — or its done-when when it carries none — so a step whose wording
+           * changes cannot leave a stale sentence behind, and every ordered step gets the
+           * behaviour without an author touching it. The letter is recomputed over VISIBLE
+           * entries for the same reason the row tags are (a hidden cmd twin must not consume
+           * one), and is dropped when the blocker is itself hidden. */
+          var oot = ck.out_of_turn;
+          var bEn = oot ? st.accs[oot.blocked_by] : null;
+          if (bEn) {
+            var bTag = '';
+            if (visN > 1 && !bEn.hidden) {
+              var bSeen = 0;
+              for (var bi = 0; bi < oot.blocked_by; bi++) if (!st.accs[bi].hidden) bSeen++;
+              bTag = (i + 1) + String.fromCharCode(97 + bSeen);
+            }
+            var bTxt = bEn.ask || (bEn.label ? bEn.label
+              : (bEn.p ? fmtPredicate(bEn) + modeLiveNote(bEn, s) : String(bEn.cmd || '')));
+            h += '<div class="ckl-oot">Not yet — ' +
+              (bTag ? mesc(bTag) + ' comes first: ' : 'this comes first: ') + mesc(bTxt) + '</div>';
           }
         } else if (st.acc) {
           h += '<div class="ckl-crit' + (ck.acc_met ? ' ckl-crit-met' : '') + '">' +
@@ -4835,7 +4897,28 @@
           if (act) {
             var top = act.offsetTop - log.offsetTop;
             var bot = top + act.offsetHeight;
+            /* A STEP MUST OPEN SHOWING ITS OWN BEGINNING (#653, layman pass 2026-09-15).
+             *
+             * The three lines below are the MINIMAL-SCROLL idiom — move the view the least
+             * distance that brings the step into view — which is what #612 wrote in place of
+             * `scrollIntoView` (whose default `block: 'nearest'` does exactly this, but walks
+             * up and scrolls every ancestor). It is right, and it is kept: on a step that FITS,
+             * bottom-aligning is what leaves the most of the preceding step on screen and puts
+             * the check-off rows at the panel floor where the eye already is.
+             *
+             * It is only right while the step fits. Advancing forward, `top >= scrollTop`
+             * always, so the first branch never runs and a step TALLER than the log is
+             * bottom-aligned — it opens scrolled PAST its own number, heading and instruction.
+             * MEASURED on the shipped pool, leg 2 step 9 (note 2,103 characters): scrollTop
+             * 144 of a 995 px step in a 728 px log, first visible words "...stop, and the step
+             * to use the speed buttons on...", mid-sentence. The player had to force the panel
+             * to the top and read it twice.
+             *
+             * So overflow takes the other alignment, and nothing else changes. Not a clamp on
+             * `bot - clientHeight`: the two cases want opposite ends of the same box, and
+             * saying so is what keeps a future edit from collapsing them again. */
             if (top < log.scrollTop) log.scrollTop = top;
+            else if (act.offsetHeight > log.clientHeight) log.scrollTop = top;
             else if (bot > log.scrollTop + log.clientHeight) log.scrollTop = bot - log.clientHeight;
           }
         }

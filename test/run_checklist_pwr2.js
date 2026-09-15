@@ -2057,6 +2057,82 @@ if (!only) {
   })();
 }
 
+
+/* 12. AN ALARM THE STEP DECLARED DOES NOT DROP THE CLOCK *(OWNER RULING, 2026-09-14: "Only
+ * alarms the step is not expecting")*. A walkthrough step declares the alarms its own evolution
+ * causes in `expect_alarms`; those do not break fast-forward, anything else does.
+ *
+ * MEASURED ON A REAL SERVICE with a real running plant, through the real `_attentionStop` — the
+ * same call `_assembleWithInstructor` makes every broadcast. Only the ALARM ROW is synthetic,
+ * and it has to be: driving the plant to the shutdown-cooling tile that produced the ruling
+ * takes a plant-hour of heatup, and what is under test is the DECISION, not the annunciator.
+ * The row is the registry's own shape ({id, label, priority, state}) and is fed through the
+ * prev/next pair the service itself keeps, so the quiet-board rule, the priority rule and the
+ * unacknowledged rule all still have to pass before the new gate is reached at all.
+ *
+ * THE FOURTH CHECK IS THE ONE THAT KEEPS THIS HONEST: a declaration is a statement about ONE
+ * evolution, so the step index moving must re-arm the same alarm. Without it the other three
+ * pass just as well on an implementation that reads the whole procedure, which would hand a leg
+ * a permanent exemption from its own casualties.
+ *
+ * INJECTION-PROVEN, each red for its own reason and no other:
+ *   - deleting `if (this._stepExpectsAlarm(a)) continue;` in `_newAlarmOfPriority`
+ *       -> checks 2 and 5 red, 1/3/4 green;
+ *   - `_stepExpectsAlarm` returning true unconditionally
+ *       -> checks 1, 3, 4 and 5 red, 2 green. */
+(function () {
+  function svcWithStep(expect) {
+    var svc = new RD.SimulationService({ seed: 7 });
+    svc.selectPlant('pwr2', 'hot_full_power', null, undefined);
+    svc.running = true; svc.attentionStops = true; svc.timeAcceleration = 10;
+    // a two-step synthetic procedure: only step 0 declares anything
+    svc.instructor.checklist = {
+      procedure_id: 'probe', profile_key: 'pwr2', idx: 0, complete: false,
+      proc: { id: 'probe', steps: [{ text: 'declaring step', expect_alarms: expect || [] },
+                                   { text: 'the next step' }] },
+      done: [false, false], doneBy: [null, null],
+    };
+    var s = null; for (var i = 0; i < 3; i++) s = svc.tick();
+    return { svc: svc, snap: s };
+  }
+  function alarm(id, label) { return { id: id, label: label, priority: 'warning', state: 'active_unacknowledged' }; }
+  var RHR = alarm('rhr_not_in_service', 'Shutdown Cooling Not In Service - RCS Is Below the RHR Entry Pressure');
+  var OTHER = alarm('sg_level_lo', 'Steam Generator Level Low');
+  /* THE BOARD THE ALARM ARRIVES ON IS QUIET, so #655's own rule cannot be what decides this,
+   * and the step index is held still so `stepMoved` cannot answer instead of the alarm. */
+  function verdict(w, a) {
+    w.svc._prevTrueState = w.svc._prevTrueState || w.snap.true_state;
+    w.svc._prevAlarms = [];
+    w.svc._prevScrammed = false;
+    w.svc._prevCklStep = w.svc.instructor.checklist.idx;
+    w.snap.alarms = [a];
+    return w.svc._attentionStop(w.snap);
+  }
+  var undeclared = svcWithStep([]);
+  ck('12. an alarm the active step does NOT declare still drops fast-forward (the control)',
+     verdict(undeclared, RHR) === 'alarm', 'verdict ' + verdict(undeclared, RHR));
+  var declared = svcWithStep(['rhr_not_in_service']);
+  ck('12. ...and the SAME alarm, declared in that step’s expect_alarms, does not (2026-09-14 ruling)',
+     verdict(declared, RHR) === null, 'verdict ' + verdict(declared, RHR));
+  var declared2 = svcWithStep(['rhr_not_in_service']);
+  ck('12. ...while a DIFFERENT alarm on the same step still does ("only alarms it is not expecting")',
+     verdict(declared2, OTHER) === 'alarm', 'verdict ' + verdict(declared2, OTHER));
+  var moved = svcWithStep(['rhr_not_in_service']);
+  moved.svc.instructor.checklist.idx = 1;         // the next step declares nothing
+  ck('12. ...and the declaration is scoped to the ACTIVE step - the next step re-arms it',
+     verdict(moved, RHR) === 'alarm', 'verdict ' + verdict(moved, RHR));
+  /* THE SHARED SEAM: the WARP tier drop (`_warpBlocked`) reads the same helper, so it inherits
+   * this and the two halves cannot disagree - the failure shape the `speed_hold` split already
+   * cost us once. Asserted on the helper rather than by re-driving WARP, because the claim is
+   * that there is ONE decision, not two that happen to agree today. */
+  var shared = svcWithStep(['rhr_not_in_service']);
+  ck('12. ...and the WARP drop inherits it through the one shared `_newAlarmOfPriority` (#655 terms)',
+     shared.svc._newAlarmOfPriority([RHR], []) === null &&
+     shared.svc._newAlarmOfPriority([OTHER], []) === OTHER,
+     'declared -> ' + shared.svc._newAlarmOfPriority([RHR], []) +
+     ', undeclared -> ' + (shared.svc._newAlarmOfPriority([OTHER], []) || {}).id);
+})();
+
 console.log('\n' + '='.repeat(74));
 console.log('  run_checklist_pwr2: ' + nPass + ' passed, ' + nFail + ' failed  (' + (nPass + nFail) + ' checks)');
 console.log('='.repeat(74) + '\n');

@@ -1065,6 +1065,9 @@
     /* …and, since #655, one whose PRIORITY asks for it: critical or warning. A caution or a
      * status tile arriving on a quiet board used to yank the clock to 1x for a lineup the
      * checklist had just told the player to make. The quiet-board rule above it stays. */
+    /* …and, since the 2026-09-14 ruling, one the ACTIVE WALKTHROUGH STEP DID NOT DECLARE. The
+     * filter lives inside `_newAlarmOfPriority` so the WARP drop inherits it unchanged — see
+     * `_stepExpectsAlarm` below for the ruling, the measurement and why it is a declaration. */
     var newAlarm = this._boardQuiet(this._prevAlarms) ? this._newAlarmOfPriority(snap.alarms, this._prevAlarms) : null;
     if (newAlarm) { this._attnAlarmLabel = newAlarm.label || newAlarm.id; return 'alarm'; }
     /* A CHECKLIST STEP CHECKING OFF *(OWNER, 2026-09-03, #619 item 6: "when a step is checked
@@ -1153,9 +1156,53 @@
       var wasClear = !prevState[a.id] || prevState[a.id] === 'clear';
       if (!wasClear || a.state !== 'active_unacknowledged') continue;
       if (!ALARM_DROP_PRIORITIES[a.priority]) continue;
+      if (this._stepExpectsAlarm(a)) continue;      // the active walkthrough step declared it
       return a;
     }
     return null;
+  };
+
+  /* AN ALARM THE ACTIVE WALKTHROUGH STEP DECLARED IS NOT AN INTERRUPTION *(OWNER RULING,
+   * 2026-09-14: "Only alarms the step is not expecting")*. A step declares the alarms its own
+   * evolution causes in `expect_alarms`; those do not break fast-forward, anything else does.
+   *
+   * WHY IT HAD TO BE A DECLARATION AND NOT A HEURISTIC. The board's own quiet rule is `#655`'s
+   * (`_boardQuiet`): the FIRST warning or critical on a quiet board drops the clock, and every
+   * one after it is free while that one stands. Acknowledgement is not in the test — measured
+   * 2026-09-15, 3600× held through FOUR unacknowledged alarms on a later step — so "any unacked
+   * alarm drops warp" was never the rule, and no reading of the board can tell a cooldown's own
+   * low-pressure warning from a casualty. Only the step knows which one it is about to cause.
+   *
+   * MEASURED, the case that produced the ruling: on the heatup leg 600× held about 5 s then fell
+   * to 1×, on "Shutdown Cooling Not In Service — RCS Is Below the RHR Entry Pressure" — a tile
+   * the step itself brings on. Pressure then crawled 596 to 600 psia (4.11 to 4.14 MPa) over
+   * 200 s of real time, about four minutes lost, and the player escaped it by guessing at Ack
+   * All.
+   *
+   * MATCHED ON THE ID, OR ON A SUBSTRING OF THE LABEL, case-insensitively. Ids are exact and are
+   * what an author should write; the label form exists because the alarm registry renames labels
+   * far more often than ids, and a declaration that silently stops matching re-creates the defect
+   * while reading as a fix. It is scoped to the ACTIVE step only: a declaration is a statement
+   * about one evolution, and letting it outlive the step turns it into a permanent exemption.
+   *
+   * IT IS DELIBERATELY INSIDE `_newAlarmOfPriority`, so BOTH callers inherit it — the fast-forward
+   * drop (`_attentionStop`) and the WARP tier drop (`_warpBlocked`), which #655 already wrote to
+   * the same terms. Splitting them would leave WARP dropping on a step's own alarm while
+   * fast-forward held, which is the disagreement the `speed_hold` half already cost us once. */
+  SimulationService.prototype._stepExpectsAlarm = function (a) {
+    var ckl = this.instructor && this.instructor.checklist;
+    if (!a || !ckl || ckl.complete || !ckl.proc || !ckl.proc.steps) return false;
+    var st = ckl.proc.steps[ckl.idx];
+    var list = st && st.expect_alarms;
+    if (!list || !list.length) return false;
+    var id = String(a.id || ''), label = String(a.label || '').toLowerCase();
+    for (var i = 0; i < list.length; i++) {
+      var w = String(list[i] || '');
+      if (!w) continue;
+      if (w === id) return true;
+      if (label && label.indexOf(w.toLowerCase()) !== -1) return true;
+    }
+    return false;
   };
 
   SimulationService.prototype._anyAlarmNewlyFiring = function (now, prev, requireUnacked) {

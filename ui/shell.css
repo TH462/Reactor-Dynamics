@@ -2492,6 +2492,13 @@ select.num-input { width: auto; }
    move .ckl-sub.muted makes for a note, rather than a new colour on a card that already carries
    three (DESIGN_CRITERIA question 4). */
 .ckl-crit-wait { color: var(--muted); font-weight: 600; }
+/* THE OUT-OF-TURN REASON (#759, owner ruling 2026-09-15). Amber, not red: the press was not an
+   error — the plant accepted it and the point really was plotted — it simply does not count
+   toward a rung whose turn has not come. Red would say "you broke something", which is the
+   misreading the line exists to prevent. Sits directly under the rows it is about. */
+.ckl-oot { margin: 4px 0 0; padding: 3px 7px; border-radius: 4px; font-size: 11px; line-height: 1.35;
+           color: var(--caution); background: rgba(217, 164, 65, 0.10);
+           border-left: 2px solid rgba(217, 164, 65, 0.55); }
 /* WHICH CONTROL, AND WHAT YOU ARE DRIVING IT TO (#598 item 13, owner ruling 2026-09-02).
    Promoted back out of the Details fold: measured, only 41 % of the steps carrying a control
    name it in their instruction text, so folding this away left 27 of them with no visible

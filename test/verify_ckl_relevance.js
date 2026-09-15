@@ -655,6 +655,151 @@ function sig(rows) {
                 '; UNORDERED row 1c wait=' + base[2].wait : 'no rows');
     })();
 
+
+    /* ---- 7. A STEP OPENS SHOWING ITS OWN BEGINNING (#653, layman pass 2026-09-15) ------
+     *
+     * Reported and then re-measured on the SHIPPED pool: `pwr_startup` step 9 (note 2,103
+     * characters) opened at `scrollTop 144` in a 728 px log, first visible words mid-sentence
+     * ("...stop, and the step to use the speed buttons on..."), with the step number, the
+     * instruction and the done-when all above the fold. The cause is the minimal-scroll idiom in
+     * `renderChecklist`: advancing forward, the new step is always BELOW the viewport, so the
+     * bottom-align branch is the only one that can run — correct while the step FITS, and
+     * exactly wrong once it does not.
+     *
+     * A SYNTHETIC TWO-STEP LEG, for the same reason section 6 uses one: this needs a real step
+     * ADVANCE (the scroll fires on nothing else) and a step TALLER than the log, and no shipped
+     * leg offers both inside one click. Step 1 is met on any plant, so Continue lights; step 2
+     * carries a 4,000-character note, which overflows every viewport this gate runs at.
+     *
+     * THE FIRST ASSERTION IS THE ANTI-VACUITY ONE. If the fixture stops overflowing — a wider
+     * panel, a smaller font — the alignment claim becomes trivially true and would certify the
+     * old behaviour, so the overflow is asserted before the alignment is.
+     *
+     * INJECTION-PROVEN on the production renderer: restoring the pre-fix pair (deleting the
+     * `act.offsetHeight > log.clientHeight` branch in ui/app.js) reds the alignment check
+     * naming the offset it landed at, and nothing else in this runner moves. */
+    await (async function () {
+      await page.goto(url, { waitUntil: 'load' });
+      await page.waitForTimeout(1200);
+      await page.evaluate(function () {
+        var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_tall_probe'; });
+        window.RD.MANUAL_PROCEDURES.pwr2 = P;
+        var note = [];
+        for (var i = 0; i < 40; i++) note.push('Sentence ' + i + ' of a deliberately long note, written to make this step taller than the panel that draws it.');
+        P.push({ id: 'zz_tall_probe', category: 'control', manual_ref: 'ZZ-02',
+                 title: 'Tall step probe', purpose: 'Render fixture.', from: 'hot_full_power',
+                 steps: [{ text: 'A step that is met the moment it starts.', control: '(observe)',
+                           accs: [{ p: 'power_pct', op: '>', v: -1, label: 'Already met' }] },
+                         { text: 'THE TALL STEP — its number and instruction must be visible.',
+                           why: 'Fixture.', control: '(observe)', note: note.join(' '),
+                           accs: [{ p: 'power_pct', op: '<', v: -1, label: 'Never met' }] }] });
+      });
+      await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(200);
+      await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(2600);
+      await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
+      await page.waitForTimeout(700);
+      await page.click('button[data-ckl-start="zz_tall_probe"]', { timeout: 4000 });
+      await page.waitForTimeout(2200);
+      /* THE REAL CONTINUE BUTTON, once the step's own acceptance has lit it — the app's own
+       * advance path, so the scroll under test is the one a player triggers.
+       *
+       * DISPATCHED WITHOUT MOVING THE POINTER, and that is not a shortcut. `page.click` drives
+       * the real mouse INTO the log, and the auto-scroll stands down while `pointerInside(log)`
+       * — #605's guard, kept by #612 — so the first cut of this check measured scrollTop 0 on a
+       * step top of 25 and reddened against a working fix. The player this is about has their
+       * mouse on the BOARD, which is #612's own words for why the hover guard was never enough,
+       * so the pointer belongs outside the log and a synthesised click is how it stays there. */
+      await page.waitForSelector('.ckl-step.ckl-active .ckl-ack:not([disabled])', { timeout: 15000 }).catch(function () {});
+      await page.evaluate(function () {
+        var b = document.querySelector('.ckl-step.ckl-active .ckl-ack');
+        if (b) b.click();
+      });
+      await page.waitForTimeout(1800);
+      var geo = await page.evaluate(function () {
+        var log = document.querySelector('#cklRun .ckl-log') || document.querySelector('.ckl-log');
+        var act = log ? log.querySelector('.ckl-active') : null;
+        if (!log || !act) return null;
+        return { scrollTop: log.scrollTop, clientH: log.clientHeight,
+                 actTop: act.offsetTop - log.offsetTop, actH: act.offsetHeight,
+                 head: ((act.querySelector('.ckl-txt') || {}).textContent || '').trim().slice(0, 40) };
+      });
+      ck('#653 scroll: the fixture step really does overflow the panel (anti-vacuity)',
+         !!geo && geo.actH > geo.clientH + 40 && /^2\./.test(geo.head),
+         geo ? 'step ' + JSON.stringify(geo.head) + ' is ' + geo.actH + ' px in a ' + geo.clientH + ' px log'
+             : 'the tall fixture did not advance to step 2');
+      ck('...and it opens at its OWN top, not scrolled past its number and instruction',
+         !!geo && Math.abs(geo.scrollTop - geo.actTop) <= 2,
+         geo ? 'scrollTop ' + Math.round(geo.scrollTop) + ' vs step top ' + geo.actTop +
+               ' (pre-fix would be ' + Math.round(geo.actTop + geo.actH - geo.clientH) + ')'
+             : 'no geometry');
+    })();
+
+    /* ---- 8. AN OUT-OF-TURN PRESS SAYS WHY (#759) ---------------------------------------
+     * *(OWNER RULING, 2026-09-15: "Fix the text AND say why")*.
+     *
+     * Measured on the shipped pool before this: `pwr_startup` step 5 with rung 5a unmet (source
+     * range 501 counts per second against a 700 target), Plot point pressed — the plot took the
+     * points, 1 -> 2 -> 3 circles, the panel recomputing each press — while the rung never
+     * ticked and NOTHING was said on the card, the panel or anywhere else.
+     *
+     * A REAL PRESS ON A REAL BUTTON. The fixture is the leg, not the press: an ordered step
+     * whose first row can never be met and whose second row is a `plot_1m_point` cmd entry, run
+     * from Hot Standby (Mode 3) because the 1/M tool refuses the press outright while the source
+     * range is de-energized — at Hot Full Power there would be no command at all and the check
+     * would pass on a plant that never produced the event.
+     *
+     * THE SENTENCE IS DERIVED, NOT AUTHORED, so the assertion is that it quotes the BLOCKING
+     * row's own `ask` — a check pinned to a string would pass on a hard-coded one.
+     *
+     * INJECTION-PROVEN three ways, each red for its own reason and no other: dropping
+     * `holder.outOfTurn` in `_accsCmdWatch` (nothing recorded); dropping `ck.out_of_turn` from
+     * `renderChecklist`'s key (recorded, never repainted — the failure this was actually built
+     * through); and dropping the `.ckl-oot` block itself. */
+    await (async function () {
+      await page.goto(url, { waitUntil: 'load' });
+      await page.waitForTimeout(1200);
+      await page.evaluate(function () {
+        var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_oot_probe'; });
+        window.RD.MANUAL_PROCEDURES.pwr2 = P;
+        P.push({ id: 'zz_oot_probe', category: 'control', manual_ref: 'ZZ-03',
+                 title: 'Out-of-turn probe', purpose: 'Render fixture.', from: 'hot_zero_power',
+                 steps: [{ text: 'An ordered step whose first rung is not met.', control: '(observe)',
+                           accs_ordered: true,
+                           accs: [{ p: 'power_pct', op: '<', v: -1, ask: 'Wait for the counts to pass the target.', label: 'Never met' },
+                                  { cmd: 'plot_1m_point', ask: 'Press Plot point on the 1/M PLOT panel.' }] }] });
+      });
+      await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(200);
+      await page.click('[data-minit="hot_zero_power"]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(250);
+      await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(3000);
+      await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
+      await page.waitForTimeout(700);
+      await page.click('button[data-ckl-start="zz_oot_probe"]', { timeout: 4000 });
+      await page.waitForTimeout(1800);
+      await page.evaluate(function () { if (window.RD.OneOverM) window.RD.OneOverM.open(); });
+      await page.waitForTimeout(500);
+      await page.click('[data-oom="plot"]', { timeout: 6000 }).catch(function () {});
+      await page.waitForTimeout(1500);
+      var out = await page.evaluate(function () {
+        var card = document.querySelector('.ckl-step.ckl-active');
+        var line = card ? card.querySelector('.ckl-oot') : null;
+        return { line: line ? line.textContent.replace(/\s+/g, ' ').trim() : null,
+                 msg: ((document.getElementById('oomMsg') || {}).textContent || '').slice(0, 60),
+                 rows: card ? card.querySelectorAll('.ckl-crit').length : 0 };
+      });
+      ck('#759: the press really landed — the 1/M tool took the sample (the event this is about)',
+         !!out && /cps|C₀|C =/.test(out.msg), out ? 'oomMsg ' + JSON.stringify(out.msg) : 'no panel');
+      ck('...and the card prints a reason, derived from the BLOCKING rung, not the pressed one',
+         !!out && !!out.line && /^Not yet/.test(out.line) &&
+         out.line.indexOf('Wait for the counts to pass the target.') > 0 &&
+         out.line.indexOf('Plot point') < 0,
+         out ? JSON.stringify(out.line) : 'no .ckl-oot line');
+    })();
+
   } catch (err) {
     ck('the gate ran to completion', false, String((err && err.message) || err).slice(0, 160));
   }

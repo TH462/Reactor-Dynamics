@@ -638,6 +638,7 @@
     f.idx = next;
     f.cmdSeen = false; f.sawSeen = false; f.accStreak = 0; f.accMetNow = false; f.gradedBy = null;
     f.accsState = null;           // per-entry multi-check-off latches (#244 item 8)
+    f.outOfTurn = null;           // #759 — as above, per step
     f.steadyBags = null;          // #755 — the steadiness window is per step, like the latches
     this.pendingMessage = null;   // a new step retires the previous step's feedback
     if (autoAdvanced) this._checkpointRequested = true;   // rewind lands on step boundaries
@@ -1011,6 +1012,7 @@
     c.idx++;
     c.cmdSeen = false; c.sawSeen = false; c.accStreak = 0; c.accMetNow = false; c.gradedBy = null;
     c.accsState = null;                 // per-entry multi-check-off latches (#244 item 8)
+    c.outOfTurn = null;                 // #759 — the out-of-turn note belongs to the step it was pressed on
     c.steadyBags = null;                // #755 — the new step owes its steadiness window afresh
     c.awaitingAck = false;              // #619 item 4 — cleared with the step it belonged to
     c.stepAt = null;                    // re-stamped on the next tick — see the dwell above
@@ -1422,14 +1424,26 @@
   InstructorLayer.prototype._accsCmdWatch = function (holder, st, command) {
     if (!st || !st.accs || !st.accs.length) return;
     var state = this._ensureAccsState(holder, st);
-    var ordered = !!st.accs_ordered, blocked = false;
+    var ordered = !!st.accs_ordered, blocked = false, blockedBy = -1;
     for (var i = 0; i < st.accs.length; i++) {
       var en = st.accs[i];
-      if (!blocked && en && en.cmd && !state[i].met &&
-          this._cmdEvidence(typeof en.cmd === 'string' ? { action: en.cmd } : en.cmd, command)) {
-        state[i].met = true;
-      }
-      if (ordered && !state[i].met) blocked = true;
+      var matches = en && en.cmd && !state[i].met &&
+        this._cmdEvidence(typeof en.cmd === 'string' ? { action: en.cmd } : en.cmd, command);
+      if (!blocked && matches) state[i].met = true;
+      /* AN OUT-OF-TURN PRESS MUST SAY SO (#759, OWNER RULING 2026-09-15: "Fix the text AND say
+       * why"). Measured on the shipped pool before this: with rung 5a unmet (source range at
+       * 501 counts per second against a 700 target) pressing Plot point added real points —
+       * 1 -> 2 -> 3 circles on the plot, the panel recomputing each press — while the rung
+       * never ticked and NOTHING was said on the card or in the panel. The sim accepted the
+       * player and the walkthrough contradicted them with no way to tell which was in charge.
+       *
+       * Recorded here and not in `_gradeAccs` because the PRESS is the event: the predicate
+       * half never sees a button. It names the ROW THAT IS BLOCKING, not the row that was
+       * pressed, so the card's sentence is derived from the predecessor's own `ask` and no
+       * step's wording is duplicated into the runtime. Cleared at the step boundary, and
+       * suppressed in the snapshot once the blocker latches (see `out_of_turn` there). */
+      if (blocked && matches) holder.outOfTurn = { idx: i, by: blockedBy };
+      if (ordered && !state[i].met && !blocked) { blocked = true; blockedBy = i; }
     }
   };
 
@@ -1620,6 +1634,21 @@
         accs: this.checklist.accsState ? this.checklist.accsState.map(function (a) {
           return { met: a.met, obs: a.obs, graded_by: a.graded_by };
         }) : null,
+        /* THE LAST OUT-OF-TURN PRESS ON THIS STEP (#759) — `{ acc_index, blocked_by }`, both
+         * indices into the step's own `accs`. `acc_index` is the row the press WOULD have
+         * latched; `blocked_by` is the row that has to be met first, and is what the card
+         * builds its sentence from. Null when nothing has been pressed out of turn.
+         *
+         * SUPPRESSED THE MOMENT THE BLOCKER LATCHES, here rather than by a second clear in the
+         * runtime: the reason the note gives ("the counts are still rising") stops being true
+         * at the same instant that row ticks, and re-deriving it from the live verdicts is the
+         * only way the card cannot disagree with the grading — the same rule the ordered-row
+         * muting already follows in ui/app.js. */
+        out_of_turn: (function (c) {
+          var o = c.outOfTurn, st8 = c.accsState;
+          if (!o || !st8 || !st8[o.by] || st8[o.by].met) return null;
+          return { acc_index: o.idx, blocked_by: o.by };
+        })(this.checklist),
         // Precondition verdicts (#395): {met, obs, graded_by} order-parallel to
         // the procedure's `precond` array; null until first graded or when the
         // procedure authors none. Row text is NOT duplicated (same rule as steps).
