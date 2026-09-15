@@ -105,9 +105,9 @@ Give it these facts and no more. They are the scaffolding, not the game.
   tools row beside Settings) (it is NOT open on load); its
   **Walkthroughs** tab (`[data-mmode="walkthroughs"]`) lists all six with **`▶ Start`**
   (`[data-wtstart="<leg id>"]`), which loads that leg's own starting condition and starts it.
-- Speed buttons are `[data-speed="1|5|10|60|600|3600"]`; 600× and 3600× are WARP. **The status
-  line under the bar (`#warpInfo`) says why WARP was refused or dropped** — read it rather than
-  guessing.
+- Speed buttons are `[data-speed="1|5|10|60|600|3600"]`; 600× and 3600× are WARP. The status
+  line under the bar is `#warpInfo`. **It names the cause for ONE drop reason out of five, so
+  when it does not, say what you SAW rather than what it told you** — see §10.
 - Board buttons take ordinary clicks. Rod `WITHDRAW`/`INSERT` are momentary: a tap is one step,
   a hold drives (`page.mouse.down` / wait / `up`). Number boxes need a typed value **and
   Enter** — `fill()` alone does not commit. Some things on the diagram are clickable symbols,
@@ -277,9 +277,18 @@ reporting a screen. Do it claim by claim.
 
 ## 10. Known traps
 
-- **3600× needs a quiet board.** A new unacknowledged critical or warning alarm drops WARP;
-  a caution does not. Press **Ack All** on the alarms panel first. `#warpInfo` prints the
-  reason for every refusal and every drop — quote that line rather than diagnosing the clock.
+- **WARP drops on the first WARNING or CRITICAL alarm raised on a QUIET board — not on any
+  unacknowledged alarm** (measured 2026-09-15, #653). `_attentionStop` fires only when
+  `_boardQuiet(prevAlarms)` held beforehand, and **acknowledgement is not in the test**, which is
+  why one pass lost 600× to a single new warning and a later step held **3600× through four
+  unacknowledged alarms**. Press **Ack All** first anyway; a caution never drops it.
+- **`#warpInfo` DOES NOT print the reason for every drop — it prints one of five.** This bullet
+  said it did, and it was wrong for as long as it stood. `syncWarpInfo` emits a cause only for
+  `warpNote.reason === 'hold'`; for **alarm, scram, failure and step** it falls through and prints
+  the STEP'S OWN fast-forward advice instead — so after an alarm-drop it cheerfully re-advises the
+  button that just failed, and a reviewer reading it in good faith reports the clock as broken.
+  **Quote it, but never treat it as the cause.** An owner ruling to fix this is open
+  *(OWNER RULING, 2026-09-14: "Only alarms the step is not expecting")*.
 - **A step checking off drops the clock**, by design (#619). It looks exactly like the speed
   reverting on its own, and it is the single most-repeated wrong diagnosis in these reports.
 - **Rod buttons are momentary.** A tap is one step; driving takes a hold. `MED` at 1× is about
