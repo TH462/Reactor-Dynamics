@@ -6,11 +6,14 @@ The steps should not include elements not included in my manual edits below exce
 
 - **The 100 °F/hr heatup-rate limit stays OUT of the Mode 5 → Mode 3 walkthrough** *(OWNER RULING, 2026-09-14, on options put as "put it back in a step / put it in a note / leave it out": selected "Leave it out of the walkthrough")*. It used to live in that leg's leg-level cautions, which were retired from the pool; it did not go missing, it was ruled out. **The cooldown leg keeps its own 100 °F/hr** and the manuals are unchanged — do not "restore" the heatup one as a missing-content defect.
 - **Step 8 of Mode 3 → Mode 1 gets a "counts steady" check-off** *(OWNER RULING, 2026-09-15: selected "add a steadiness predicate" from three options put to him — raise the count target to 12,000 / add a steadiness predicate / leave it as text — taking the one that needed new plumbing over the one-number change. A selection, not verbatim words; the rationale relayed with it is that a steady count rate is what an operator actually looks for and an absolute threshold is only a stand-in for it)*. The 7,000 counts per second target is HIS number and stays as the floor; 8b is added beside it, and the old 8a ("Point plotted") is now 8c. Measured: the live step used to accept 47 s after the rods stop with the 1/M prediction reading 213.7 against a true critical of 208; it now accepts at 506 s, prediction 208.8, and the authored 600 s replay hold clears the same predicate with 72 s to spare. Do not "simplify" 8b back out.
-- **The four 1/M ladder steps are SEQUENCED SUBSTEPS: pull to the count, watch STARTUP RATE fall to zero, wait for the counts to flatten, plot** *(OWNER DIRECTIVE, 2026-09-15: "For the early-plot hole, we could have instructions for substeps not just one line of instruction then multiple substeps. We could give a line of instruction per substep. We instruct to pull rods to a count/however many steps. The next substep says to wait for the startup rate to stabilize. Once the startup rate hits a predetermined number that step checks off. Then have another substep to plot the 1/m point."; and on the sequence, *(OWNER, 2026-09-15: "the operator watches the counts to get the count level then watches for the startup rate to get near zero.")*, and on the physics, *(OWNER, 2026-09-15: "Our plant decays to near zero after burst and the counts flatten. It takes longer the closer to criticality we are.")*)*. Each rung carries four lettered rows, each with its own instruction, and the rows go live **one at a time** (`accs_ordered`) — Plot point is deaf until the rows above it are met, so an early press does nothing instead of banking a stale point.
+- **The four 1/M ladder steps are SEQUENCED SUBSTEPS: pull to the count, watch STARTUP RATE fall to zero, wait for the counts to flatten, plot** *(OWNER DIRECTIVE, 2026-09-15: "For the early-plot hole, we could have instructions for substeps not just one line of instruction then multiple substeps. We could give a line of instruction per substep. We instruct to pull rods to a count/however many steps. The next substep says to wait for the startup rate to stabilize. Once the startup rate hits a predetermined number that step checks off. Then have another substep to plot the 1/m point."; and on the sequence, *(OWNER, 2026-09-15: "the operator watches the counts to get the count level then watches for the startup rate to get near zero.")*, and on the physics, *(OWNER, 2026-09-15: "Our plant decays to near zero after burst and the counts flatten. It takes longer the closer to criticality we are.")*)*. Each rung carries four lettered rows, each with its own instruction, and the rows go live **one at a time** (`accs_ordered`), so a press out of turn cannot CHECK THE ROW OFF. **It does NOT make the button deaf, and this line used to say it did** — REFUTED and corrected 2026-09-15 (#759): measured on the live card, pressing Plot point with the settle row unmet adds real points (1 → 2 → 3 circles, the panel refitting each time) at rod position 0, inside the trailing-three fit, removable only with `Clear`. The step's own note repeated the wrong claim to the player and has been rewritten.
   - **His observation is VERIFIED on this plant, both halves.** STARTUP RATE decays to zero after every burst (settled instrument mean 0.0004 / -0.0001 / -0.0003 / 0.0027 DPM) and both the rate and the counts take longer to settle nearer criticality: counts-steady at **223 / 226 / 281 / 507 s** after each burst, startup rate inside 0.02 DPM at **141 / 151 / 202 / 345 s**.
   - **STARTUP RATE is the row the player READS; the counts row is the row the plot WAITS on.** Measured: the rate enters its band **75 to 162 s before** the counts flatten on every rung, and the gap is widest on the last rung — the point the panel's trailing-three fit weights most. So grading the plot on the rate alone would reopen the early-plot hole. Both rows are kept, in his order, with the stronger one underneath.
   - **The 0.02 DPM band is the channel's own scatter, not a round number**: the instrument's detrended standard deviation over a settled 300 s tail is 0.0040 to 0.0043 DPM, so 0.02 is five standard deviations. A 0.08 or 0.10 band is satisfied 5 s after the burst on the first two rungs, before the rods have stopped, because the rate never exceeds 0.131 / 0.283 DPM there.
   - Holds grew from 150 s to **300 / 300 / 420 / 600 s** to cover the settle. Do not "simplify" the four rows back into one line.
+- **A VERIFY STEP STILL WEARS THE "PRESS ME" HALO ON MODE 5 → 3 STEPS 4 AND 6, AND THAT IS YOUR CALL, NOT AN AUTHORING SLIP** (raised 2026-09-15, #653 S-3b). The 2026-09-15 layman reviewer nearly pressed TRIP on step 4. MEASURED on the built pool: both steps carry no command, and `hl` draws the pulsing `.ckl-step-glow` — the same cue a step that really wants a press uses — on TRIP (step 4) and CLOSE (step 6). **Both rings are YOUR drawings**, recorded below as *"[HIGHLIGHTED: TURBINE-GENERATOR CARD (steady), TRIP (pulsing)]"* and *"[HIGHLIGHTED: STEAM DUMP CARD (steady), CLOSE (pulsing) …]"*, so they were not changed. **What changed is the TEXT**: both steps now open "Verify …, nothing to press", and the note says the ring marks a lamp to read. (The first draft read "— there is nothing to press here" on both and reddened `run_style`'s **W2** check, which caps a step's instruction line at twenty words: 22 and 24. Shortened, not waived.)
+  - **What you are deciding:** whether a verify step may use the pulsing ring at all. **Options:** (a) leave it — the ring marks the lamp, and the new wording says so; (b) give `hl_watch` (steady dashed) these two labels, which needs a third ring state or an app.js change, because `stepHlLabels` falls back to the step's own `control` when `hl` is empty and both these steps would then pulse a different control; (c) add a "verify" ring of its own. **Recommendation: (b), via the app.js fallback fix** — the pulse/steady split is already the ruled vocabulary (#748) and a verify step is exactly the case the split exists for; the wording fix is a patch over a cue that still says the wrong thing. Absent a ruling the text fix stands and the rings stay.
+  - The same shape on **Mode 1 power ascension step 9** cannot be fixed from the step data either: it authors no `hl`, and the fallback pulses its `control`. Two of the pool's nine surviving cases are this fallback.
 - **The `Use <control>: <target>` rung is no longer drawn on the walkthrough card** *(OWNER RULING, 2026-09-14: "Hide it in the renderer")*. This file carries that rung on exactly one of the nineteen steps that name a control (Mode 5 → 3 step 2), so it was the renderer's addition. The step data still carries `control` on every step — it is the coverage key for the browser gate that checks the manual's control pill — and an observation step still draws its "Watch for:" line. This supersedes the 2026-09-02 ruling that the control had to sit outside the details fold.
 
 
@@ -73,13 +76,13 @@ In a PWR, shutdown rod groups (shutdown banks) stay fully withdrawn during norma
 
 
 
-4\. Verify the turbine is tripped: TRIP lit on the TURBINE-GENERATOR card, OUTPUT 0 MWe.
+4\. Verify the turbine is tripped, nothing to press: TRIP lit on the TURBINE-GENERATOR card, OUTPUT 0 MWe.
 
 ✓ When the turbine is tripped
 
 
 
-*If LOAD reads anything but 0, press UNLOAD. UNLOAD is not TRIP: UNLOAD walks the load setting to zero, TRIP shuts the steam valves.*
+*The ring on TRIP marks the lamp to read, not a button to push. If LOAD reads anything but 0, press UNLOAD. UNLOAD is not TRIP: UNLOAD walks the load setting to zero, TRIP shuts the steam valves.*
 
 
 
@@ -109,9 +112,12 @@ The steam generator is the boiler: reactor water heats it on one side and steam 
 
 
 
-6\. Verify the STEAM DUMP is closed: CLOSE lit on the STEAM DUMP card, status reading MANUAL.
+6\. Verify the STEAM DUMP is closed, nothing to press: CLOSE lit on the STEAM DUMP card, status reading MANUAL.
 
 ✓ When STEAM DUMP opening < 1 %
+
+*The ring on CLOSE marks the lamp to read, not a button to push.*
+
 
 
 
@@ -191,7 +197,9 @@ Pressure goes up in two stages because of an automatic gate at 1972 psi: above i
 
 
 
-10\. Open the accumulator valve: click the valve symbol in the green ring while PRIMARY PRESSURE is 665 to 1615 psi.
+10\. Open the accumulator valve: click the valve symbol inside the pulsing ring while PRIMARY PRESSURE is 665 to 1615 psi.
+
+REVISED 2026-09-15 (#653 S-8): it said "the green ring". There is no green in the highlight vocabulary — `hl` draws a CYAN pulsing halo, rgba(90,240,255,…), since #743. Named by behaviour rather than colour so a palette change cannot make it wrong again. The cooldown leg's sibling step (not in this file) had the same sentence and the same fix.
 
 ✓ When the accumulator valve is open (the ACCUMULATORS tile no longer reads ISOLATED)
 
@@ -301,7 +309,9 @@ Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. Th
 
 
 
-Net reactivity reads on the Indications tab, not the board.
+The done-when line reads NET REACTIVITY in pcm — hundredths of a percent of reactivity, a computed diagnostic on the Indications tab, not a board gauge. Below zero means shut down, and −300 pcm is a long way below. On the board the same fact is SOURCE RANGE steady and STARTUP RATE at 0.00.
+
+REVISED 2026-09-15 (#653 S-9): `pcm` appears exactly ONCE in both legs — here — on a step graded on a quantity that is not on the board, and the unit was never defined. The done-when LINE itself is rendered by `PRED_DISPLAY` in ui/app.js from `acc.p` and is not authorable from the step, so the note is where the unit gets defined. **The acceptance is deliberately untouched**: your note above it asks for this step to grade on SOURCE RANGE and STARTUP RATE instead, and that is a grading change owing its own measurement — still open.
 
 
 
@@ -339,7 +349,9 @@ Power at zero is the whole point of a pump-heat heatup: the friction of the runn
 
 
 
-*SOURCE RANGE counts should be steady, not climbing. One alarm is already up and belongs here: Turbine Trip / Low Steam Demand on the ALARMS list, short form TURB TRIP. The turbine is off and the plant is making no steam. Press ACKNOWLEDGE and leave it.*
+*SOURCE RANGE counts should be steady, not climbing. One alarm is already up and belongs here: Turbine Trip / Low Steam Demand on the ALARMS list, short form TURB TRIP. The turbine is off and the plant is making no steam. Press ACK on the ALARMS list and leave it.*
+
+REVISED 2026-09-15 (#653 S-7): the step said "Press ACKNOWLEDGE"; the board control is labelled **ACK** (and `Ack All`).
 
 
 
@@ -423,11 +435,15 @@ The 1/M plot predicts where the rods will be when the reactor goes critical, bef
 
 
 
-*Stop when CONTROL ROD POSITION reads about 80 to 100. Holding WITHDRAW drives the bank at the selected speed and releasing it stops; a single tap moves one step. MED moves 48 steps a minute at 1×, SLOW 8, FAST 72. Work the four lines below in order — Plot point does nothing until the counts are steady.*
+*Stop when CONTROL ROD POSITION reads about 80 to 100. Holding WITHDRAW drives the bank at the selected speed and releasing it stops; a single tap moves one step. MED moves 48 steps a minute at 1×, SLOW 8, FAST 72. Work the four lines below in order. Plot point will take a press at any time, but a point plotted before the counts are steady is a bad point: it goes on the plot, drags the prediction, and only Clear takes it off again.*
 
 
 
-⏩ Set the speed control to 10x if you don't want to wait in real time for the rod movement.
+⏩ About 5 plant-minutes at 1× — set the speed control to 10×.
+
+
+
+REVISED 2026-09-15, TWO DEFECTS ON ONE CARD. **(#759)** the old sentence *"Plot point does nothing until the counts are steady"* was FALSE — measured, an out-of-turn press adds real points at rod position 0 and only `Clear` removes them *(OWNER RULING, 2026-09-15: selected "Fix the text AND say why (Recommended)")*; the card's one-line reason on an out-of-turn press is ui/app.js and is not this file's half. **(#653 S-5)** the ⏩ line is GENERATED from the step's 300 s hold and already said "set the speed control to 10×"; the authored hint said 10× a second time in the same line, so the card read *"About 5 plant-minutes at 1× — set the speed control to 10x. Set the speed control to 10x if you don't want to wait…"*. The authored hint is deleted; only the generated line remains.
 
 
 
@@ -459,7 +475,11 @@ The first two points always predict too high: near the bottom the rods are worth
 
 
 
-⏩ Set the speed control to 10x if you don't want to wait in real time for the rod movement.
+⏩ About 5 plant-minutes at 1× — set the speed control to 10×.
+
+
+
+REVISED 2026-09-15 (#653 S-5): same duplication as step 5 — the authored hint repeated the generated line's 10×. Deleted.
 
 
 
@@ -487,11 +507,15 @@ Each new point is taken closer to critical, where a step is worth more, so the l
 
 
 
-*Stop when CONTROL ROD POSITION reads about 180 to 205 steps. The four lines below run in order, and the settle takes longer at every rung.*
+*Stop when CONTROL ROD POSITION reads about 180 to 205 steps. The four lines below run in order.*
 
 
 
-⏩ Set the speed control to 10x if you don't want to wait in real time for the rod movement.
+⏩ About 7 plant-minutes at 1× — set the speed control to 60×. The 60× is for the settle, not the pull: at MED the bank runs through this 25-step rung in well under a second there. Come back to 10× or 1× before you hold WITHDRAW.
+
+
+
+REVISED 2026-09-15, TWO DEFECTS. **(#653 S-11)** *"and the settle takes longer at every rung"* was an unmeasured claim in player copy: measured on the built pool, **all four settle rungs on steps 5–8 carry IDENTICAL acceptances** — `startup_rate ~0 ±0.02`, then counts `steady` at 3 % over a 120 s window. The PLANT does settle more slowly nearer criticality (your own observation, verified above: counts-steady at 223 / 226 / 281 / 507 s), but the live durations were not re-measured in this pass, so the sentence is removed rather than replaced with a number nobody has taken. **(#653 S-5)** this step's hold is 420 s, so the GENERATED line offers **60×** while the authored hint said **10×** — one line, two speeds, and 60× is wrong for the rod pull this step opens with (the rung is 25 steps wide, 180 to 205, and MED is 48 steps a minute at 1× — this file's own step-5 figure — i.e. 48 a second at 60×). The hint now says which rung is for which half.
 
 
 
@@ -545,13 +569,21 @@ STARTUP RATE is the speedometer: 1.0 means power is multiplying by ten every min
 
 
 
-This is a twenty-five plant-minute wait once the rods stop, and the step to use the speed buttons on: put the clock on 10×, and come back to 1× before you move a rod again. The 1/M panel predicts a CONTROL ROD POSITION, in steps — that is the number on the ROD CONTROL card — and it reads HIGH, never low: the reactor goes critical at that position or a step or two below it. Stop below the prediction and walk up in single taps, waiting after each one. Critical is when the counts keep climbing and STARTUP RATE stays positive with the rods still. STARTUP RATE runs high while a rod is moving and goes on falling for about five minutes after it stops, so read it once it has stopped falling, not while it is: settled around 0.15 is this approach going as written, and around 0.5 means you are about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher. Over 1.0 with the rods already still, tap INSERT once and wait. PERIOD, under the instrument card, is the same fact in seconds — how long power takes to multiply by ten: about 150 seconds on plan, under 60 seconds says you are out too far. From your last tap onward, watch INTER RANGE and STARTUP RATE rather than REACTOR POWER: REACTOR POWER reads 0.0 % for about twenty-five plant-minutes while INTER RANGE climbs three decades, so INTER RANGE is what shows you the reactor is working. SOURCE RANGE will switch itself off part way through this step, above 1.0e5 (100,000 counts per second); that is normal and there is no button for it. The two detectors overlap on purpose — the source-range counters would wear out at power, so the plant secures them once INTER RANGE has a reading, and losing the counts is the plant telling you the approach worked. The plant does exactly the same thing at 1×, 5× or 10× — the climb still stops itself just over 4 % — so the speed costs you nothing here. Not 60×: there a 2 ½ second glance away is two and a half plant-minutes of reactor. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
+Do this first: press SLOW, hold WITHDRAW until CONTROL ROD POSITION is 3 steps short of the 1/M panel's predicted position, release, then tap single steps and wait after each one. The prediction reads HIGH, never low, so stopping short of it is the point. Put the clock on 10× for the waiting — about twenty-five plant-minutes once the rods stop — and come back to 1× before you move a rod again; never 60×, where a 2 ½ second glance away is two and a half plant-minutes of reactor. Then read STARTUP RATE with the rods still and the rate no longer falling, about five minutes after the last tap. Around 0.15, with PERIOD 150 to 200 seconds, is this approach going as written. Around 0.5, or PERIOD under 60 seconds, is about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher; over 1.0, tap INSERT once and wait. Near 0.01, with PERIOD in the thousands of seconds and nothing moving, means you have stopped short of critical — tap one more step out and wait. From your last tap onward, watch INTER RANGE and STARTUP RATE rather than REACTOR POWER. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
+
+Watch for: STARTUP RATE positive and steady around 0.15 with the rods stopped; PERIOD 150 to 200 s
+
+REVISED 2026-09-15, THE NOTE SPLIT BY KIND (#653 S-12 and S-10). MEASURED on the built pool before the edit: note **2,103 characters**, Background 502, step text 107 — eleven numeric thresholds and three conditional remedies at the same visual weight as the five actions. The 2026-09-15 layman reviewer read it twice, retained the lesson ("watch INTER RANGE, not REACTOR POWER") and **lost the action** ("stop 3 steps short"), which is the wrong half to lose. The note now carries only what the player DOES and the readings that tell them to do something else; everything that explains the plant moved to the END of the note, behind "Behind the readings:". **Nothing was deleted — every number is still on this step.**
+
+**THE LENGTH BARELY MOVED AND THAT IS A GATE, NOT A CHOICE — and it is the one thing here you may want to rule on.** 2,103 → 2,023 characters. The plan was to move the teaching into the step's Background block, but `run_style`'s **W-detail** check caps a details paragraph at **three sentences**, so Background could take only the core (502 → 595) and the rest had to stay in the note. What DID change is the ORDER, which is the half the reviewer lost: actions first, then the four rate/PERIOD remedies, then the instrument teaching. **A real shrink needs one of two things from you:** relax W-detail for the Background block (it is supplemental context, not an instruction, and this step is the only one that strains it), or turn the actions into lettered `accs_ordered` rungs the way steps 5–8 now are — which is a GRADING change and owes its own measurement. **Recommendation: the `accs_ordered` rungs**, because they fix the lost-action complaint structurally rather than by moving prose around, and the machinery shipped yesterday; relaxing a style cap to make one long note legal is the weaker of the two.
+
+ONE REMEDY WAS ADDED (#653 S-10): the note gave three remedies for a startup rate too HIGH and none for too LOW. The reviewer settled at **+0.01 decades per minute with PERIOD reading 2,391 s** and stalled, having to infer "tap more". The on-plan figures are this step's own pre-existing measurement (about 0.15 settled, five steps above critical; PERIOD 150 to 200 s; under 60 s means too far out) and the "Watch for" line widens from "about 150 s" to "150 to 200 s" to match. **The acceptance is untouched** — this is a copy change; turning the single done-when into a rung sequence would be a grading change and owes its own measurement.
 
 
 
 Background — not an action
 
-Critical means the chain reaction sustains itself: power keeps rising with nothing pushing it, and a positive STARTUP RATE with the rods still is the sign. No single step is dramatic, but ten of them are — below the point of adding heat nothing in the plant takes that reactivity back out for you, so how far past criticality you stop is what sets how fast power climbs. REACTOR POWER is the last instrument to show any of it, which is why STARTUP RATE, PERIOD and INTER RANGE are the ones to steer on.
+Critical means the chain reaction sustains itself: power keeps rising with nothing pushing it, and a positive STARTUP RATE with the rods still is the sign. No single step is dramatic, but ten of them are — below the point of adding heat nothing in the plant takes that reactivity back out for you, so how far past criticality you stop is what sets how fast power climbs. REACTOR POWER is the last instrument to show any of it: it reads 0.0 % for about twenty-five plant-minutes while INTER RANGE climbs three decades, which is why STARTUP RATE, PERIOD and INTER RANGE are the ones to steer on. STARTUP RATE runs high while a rod is moving and goes on falling for about five minutes after it stops, so it is only worth reading once it has stopped falling; PERIOD, under the instrument card, is the same fact in seconds — how long power takes to multiply by ten. SOURCE RANGE switches itself off part way through this step, above 1.0e5 (100,000 counts per second); that is normal and there is no button for it. The two detectors overlap on purpose — the source-range counters would wear out at power, so the plant secures them once INTER RANGE has a reading, and losing the counts is the plant telling you the approach worked. The plant does exactly the same thing at 1×, 5× or 10× — the climb still stops itself just over 4 % — so the speed costs you nothing here.
 
 
 
