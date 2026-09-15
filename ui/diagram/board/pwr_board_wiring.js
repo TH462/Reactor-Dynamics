@@ -2281,7 +2281,7 @@
   // scram at a fifth of the indicated trip.
   //
   // Armed, the tile reads as the startup ladder the plant actually enforces:
-  //   green to P-10 (10 %) | amber P-10 → 25 % — block the startup trips HERE | red above.
+  //   green to P-10 (8 % on PWR2, read live) | amber P-10 → 25 % — block HERE | red above.
   // The amber band is not decoration: it is the window in which blocking is permitted, so
   // its width is the operator's margin. Blocking the trip collapses it and the tile reopens
   // to the at-power scale; dropping back below P-10 auto-reinstates the block and the band
@@ -2291,7 +2291,17 @@
     var b = TILE_BANDS.imrzl4b7g9m;
     var lim = limitingArmedTrip('power_range', 'high', s);
     if (!lim || !(lim.setpoint < b.tripHi)) return null;   // backstop only → authored bands stand
-    var p10 = (_PROT.trip_block_permissive || {}).setpoint;
+    /* THE ENGINE'S OWN PERMISSIVE WINS, same rule as the setpoint above (#753). `_PROT` is the
+     * RETIRED plant's table and its `trip_block_permissive` is 10 %; PWR2 opens the block window
+     * at P-10 = 8 %, so the amber band — which IS the operator's margin — was drawn 2 points
+     * narrow on the shipped plant, and the tile invited the press later than the board accepts
+     * it. `permissive_pct` is published per blockable row through `trip_block_status`
+     * (pwr2_shell.js:1693); a row without one leaves the static datum standing, bit-identical
+     * for the retired engine and every old recording. */
+    var tbsPerm = s && s.rps_state && s.rps_state.trip_block_status;
+    var p10 = (tbsPerm && lim.id && tbsPerm[lim.id] && typeof tbsPerm[lim.id].permissive_pct === 'number')
+      ? tbsPerm[lim.id].permissive_pct
+      : (_PROT.trip_block_permissive || {}).setpoint;
     if (p10 == null || !isFinite(p10) || !(p10 < lim.setpoint)) p10 = lim.setpoint;
     // normHi === alarmHi collapses the grey "acceptable" band to nothing, so the region
     // above P-10 reads amber rather than as more headroom.
@@ -2315,7 +2325,7 @@
    * THE RULE. A red edge is drawn only where the running plant publishes an ARMED row. `armed`
    * is the protection module's own flag, not a permissive re-tested here — re-testing P-7 on the
    * board would be the second copy of a threshold, which is the defect this whole change is
-   * about. An unarmed high row (below the at-power permissive P-7, 10 % power) has no line to
+   * about. An unarmed high row (below the at-power permissive P-7, 8 % power — #753) has no line to
    * draw, so the top region collapses at the meter top.
    *
    * NO NOTE, deliberately. pressureBand's "LO TRIP BLKD" is right there because an OPERATOR

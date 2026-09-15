@@ -30,6 +30,23 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (the power tile drew the block window at the RETIRED plant's permissive — #753, #752)
+
+- **`powerBand()` read `_PROT.trip_block_permissive.setpoint`, the retired plant's static 10 %,**
+  while PWR2 opens the window at P-10 = **8 %**. The amber band *is* the operator's margin, so it
+  was drawn **2 points narrow** on the shipped plant — the tile said "not yet" at a power where the
+  board already accepts the press. Found by the #753 agent from the engine side, which could not
+  fix it (not its file) and handed it over.
+- **Resolved the same way as the setpoint three lines above it**, which has preferred the engine's
+  own published value over the static table since #507 wave 7: the permissive now reads
+  `permissive_pct` off `trip_block_status.<row>` (`pwr2_shell.js:1693`). A row that publishes none
+  leaves the static datum standing, so the retired engine and every old recording are
+  **bit-identical**.
+- **Two comments in the same file still said 10 %** — the band ladder at `:2284` and the
+  unarmed-row note at `:2328` — corrected in the same change. A comment contradicting the code
+  three lines away is how the 223-vs-208 criticality figure survived eleven days.
+- Gated: `run_pwr2_board` **98/0 unmoved**, `run_inspect` 11/11 62/62, `verify_board_cues` 29/29.
+
 ### Changed (the at-power permissive P-7 is the anchor plant's 8 %, and P-10 has one home — #753)
 
 - **P-7, the at-power permissive, moves 10 % → 8 %** *(OWNER RULING, 2026-09-14, #753: "1. Yes,
