@@ -80,6 +80,11 @@ var SIGNALS = [
   { key: 'protection latch (ACTUATED)',   tag: 'button', cls: ['bd-btn', 'bd-actuated'],       anim: 'bdActuatedFlash' },
   { key: 'trip-block message',            tag: 'button', cls: ['bd-btn', 'bd-msg', 'bd-unack'], anim: 'bdMsgFlash' },
   { key: 'walkthrough: act on this',      tag: 'div',    cls: ['ckl-step-glow'],               anim: 'cklGlow' },
+  /* #755 item 19 (2026-09-14). The PRESSED state is a third walkthrough signal and it had to be
+   * declared here or it would have been invisible to both claims — the house trap this file's own
+   * header names, and the one `bd-refused` fell through. Under reduced motion "act on this" and
+   * "you did it" are both static, so without a width of its own the pair would be identical. */
+  { key: 'walkthrough: act on this (pressed)', tag: 'div', cls: ['ckl-step-glow', 'ckl-step-done'], anim: null },
   { key: 'walkthrough: watch this',       tag: 'div',    cls: ['ckl-watch-glow'],              anim: null },
   { key: 'highlight bus',                 tag: 'div',    cls: ['instr-glow'],                  anim: 'instrGlow' },
   /* #743. The recommended speed rung is the one signal here whose treatment is an INSET, and that
