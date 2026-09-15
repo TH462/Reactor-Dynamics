@@ -29,6 +29,162 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-14-develop-c (#752 — the P-10 revoke had no noise immunity, and the brief pointed at the wrong file)
+
+**The task named `layers/control/control_kernel.js` as where the defect lives. It is not, for the
+shipped plant, and the file itself says so.** `layers/control/pwr_control.js:246-262` records
+(#753, the day before) that `getProtectionConfig` hands PWR2 an **empty trips list**, that
+`setTripBlock` forwards to the engine's own door, and that **`_permTest` is never reached on that
+plant**. PWR2's P-10 lives at `engines/pwr2/pwr2_protection.js:646-648` and its setpoint is the
+8 % the issue quotes; the kernel's is the retired engine's static 10 %. The inherited pointer was
+right about the mechanism and wrong about the address — the standing trap about a specification
+being the stale second copy, one file over.
+
+**Both were fixed.** The engine is the shipped plant; the kernel carries the identical one-sample
+revoke for the retired engine and the preview channel.
+
+### The defect, re-measured (it is real, and worse than filed)
+
+`pwr2_engine.js:1624` feeds `stepProtection` from `ins.reading.power_range` — the INSTRUMENT (HR1),
+sigma **0.3 % power**, AR(1) with a **0.05 s** correlation (`noiseTau` = `tau_s` 0.2 × `NOISE_TAU_FRAC`
+0.25). The revoke was `if (!p10Met) blockLowFlux = false`, i.e. one sample.
+
+**On the channel alone** (shipped `pwr2_instruments`, DT 0.02 s, constant true power, one plant-hour
+per row; 24 h for the longest-run column):
+
+| true power | first reading below 8.0 % | longest CONTINUOUS sub-8.0 run in 24 h |
+|---|---|---|
+| 8.02 % | ~0.2 s | **0.94 s** |
+| 8.05 % | 0.18 s | 0.82 s |
+| 8.19 % | **0.20 s** | 0.60 s |
+| 8.50 % | 0.20 s | 0.28 s |
+| 9.00 % | 22.74 s | 0.06 s |
+| 9.36 % | **855.2 s** | 0.02 s |
+| 9.50 % | none in 1 h | 0.00 s |
+
+The filed figures ("survived 1 s at 8.19 %", "more than 900 s from 9.36 %") reproduce — 0.20 s and
+855 s are the same facts measured on the channel with no transient on top.
+
+**On the real plant** (`low_power` IC, settled, control bank trimmed from 227 to 221.4 steps to park
+true power at **8.250 %**, both startup-net requests then taken):
+
+- **both blocks were gone 0.04 s later — two protection steps — with true power still 8.245 %.**
+- Held for 600 s at 7.91–8.25 % true power, **1303 of 30 000 readings** fell below 8.0 %.
+
+### CONFIRM_S = 2.0 s, and why not 0.5 or 1.0
+
+*(OWNER RULING, 2026-09-14: "Confirmation time (Recommended)".)* Implemented as the module's own
+continuous-hold idiom: `p10_below_s = p10Met ? 0 : p10_below_s + dt`, revoke at `>= confirm_s`.
+
+**The number has to beat the worst spurious excursion and still clear promptly on a genuine
+ride-down.** Time to a spurious revoke, held above P-10, 24 plant-hours per cell:
+
+| true power | C=0.5 s | C=1.0 s | C=2.0 s |
+|---|---|---|---|
+| 8.05 % | **70.0 s** | none in 24 h | none in 24 h |
+| 8.10 % | 311.9 s | none in 24 h | none in 24 h |
+| 8.19 % | 10 465 s | none in 24 h | none in 24 h |
+| 8.30 % | 62 160 s | none in 24 h | none in 24 h |
+
+**0.5 s is out on measurement** — a spurious revoke inside two minutes at 8.05 %. 1.0 s and 2.0 s are
+indistinguishable at 24 h, so the discriminator is the **longest continuous run**, not the
+recurrence: **0.94 s**, at 8.02 % true power — 0.07 sigma above the setpoint, 43 % of samples below
+it. **1.0 s clears that by 0.06 s, which is inside its own scatter. 2.0 s clears it by better than
+2x.**
+
+**The cost was measured, not assumed.** Ramping down through 8 % — power at which the block
+reinstates, against the 8.000 % a noiseless channel would give:
+
+| ramp | C=0.5 s | C=1.0 s | C=2.0 s | C=5.0 s |
+|---|---|---|---|---|
+| 1 %/min | 7.933 % | 7.673 % | **7.657 %** | 7.250 % |
+| 5 %/min | 7.542 % | 7.500 % | **7.417 %** | 6.768 % |
+| 10 %/min | 7.517 % | 7.190 % | **7.023 %** | 6.523 % |
+| 30 %/min | 7.490 % | 6.780 % | **6.280 %** | 4.780 % |
+
+At the slow rates 1.0 s and 2.0 s differ by **0.016 points of power** — the noise dominates, not the
+dwell. **The rate tested against is the plant's own**: a hand rod insertion near P-10 measured
+**5.277 %/min** on the way to the park and **5.699 %/min** on the ride-down, and at that rate the
+reinstate arrives **7.48 s** after the true crossing, at **7.257 %** true power. That is the whole
+cost of the fix.
+
+2.0 s is also the module's dominant analysis delay already (`DELAY`: every pressure, level, flow and
+ΔT row carries Ginna Table 15.0-6's 2.0 s), so it is a figure the file already lives with.
+
+**It is [derived] and the code declares it.** `node tools/find_source.js` finds **no** P-10
+confirmation or time-delay figure in any lane's corpus (exit 0 on 'P-10' with six hits, none a
+delay; zero hits on 'bistable.{0,120}delay', 'coincidence.{0,60}delay',
+'two-out-of-four.{0,100}delay'). The Bases give the real plant's noise immunity as
+**three-out-of-four coincidence**, which this one lumped flux signal cannot carry — the same
+collapse `P10.frac` already declares. The only nearby sourced permissive delay is C-20's *"preset
+time delay for at least 30 sec"* (Ginna UFSAR ch7, ML20339A027), a different permissive doing a
+different job; it is quoted in the code so the next reader does not have to go and rule it out.
+
+### The retired engine's own numbers
+
+`pwr_config.js` gives `power_range` noise 0.2 with `noise_ref` 25, so **sigma is 0.08 % at its 10 %
+permissive**, and `instrument_noise_tau_s` is 0 — **white, not band-limited**. At DT 0.1 s
+(`PROTECTION_DT`) over 24 plant-hours: at a true 10.02 % the first sub-10 reading arrives in
+**0.30 s** and the longest continuous run is **1.50 s**; at 10.10 %, 5.00 s and 0.50 s. 2.0 s beats
+it. One number for one law, deliberately — the 8 %/10 % setpoint pair already drifted apart once.
+
+### After the fix, on the same plant
+
+- Block taken at true 8.250 %: **held through the whole 600 s**, 1303 sub-8 readings and all.
+- Re-taken and ridden down at 5.699 %/min: **reinstated 7.48 s after the true crossing, at 7.257 %**,
+  both requests, provenance with them.
+
+### Proved red before it was proved green
+
+Engine half (`run_pwr2_protection`, 68 → 72 mutations, all caught):
+
+| injection | reds |
+|---|---|
+| `confirm_s: 0` — the shipped defect restored | **41** |
+| `confirm_s: 60` — the block strands below its permissive | caught |
+| the dwell measured from FIRST SEEN, not continuously | caught |
+| the `\|\| 0` migration dropped (undefined + dt is NaN) | caught |
+
+Kernel half (`run_m4`, injected by hand and restored):
+
+| injection | reds |
+|---|---|
+| `trip_block_revoke_confirm_s: 0` | 3 |
+| `= 1e9` | 5 — including the pre-existing #295 F2 reinstate checks |
+| `= 0.5` (under the measured 1.50 s worst run) | 1 |
+| the timer's reset severed (`permBelowS[t.id] = 0` removed) | 1 |
+
+### Three traps worth the next agent's time
+
+1. **A fixture written in terms of the constant cannot see the constant move.** Every ride here is
+   `confirm_s + 1` so it tracks the number — which is right, and is exactly why none of them reds
+   when the number changes. **One check per gate retypes the MEASUREMENT instead** (the dwell must
+   be 1.0–5.0 s on PWR2, 1.5–5.0 s on the kernel's plant). Without it, `confirm_s: 60` was invisible.
+2. **A mutation of `1e9` HANGS a gate instead of reddening it.** My dwell-length fixture loops
+   `(confirm_s + 2)/DT` — 5e10 iterations — and killed both the protection replay and a `run_m4`
+   injection at the timeout before I understood why the output stopped mid-list. Every
+   confirm-derived loop now carries an **absolute** cap, and the mutation is `60`, not `1e9`.
+3. **A confirmation-time fixture that does not zero the timer it inherits is measuring the previous
+   check's leftovers.** The `run_m4` continuity check went red on its first run: the single-sample
+   check above it had left **0.02 s** on the clock, so the first "one step short of the dwell" spell
+   reached it exactly. The clearing `evaluate` between them is load-bearing.
+
+### The no-dt decision, declared
+
+`evaluate(ins)` is called **without** a dt by several harnesses (`run_m4`'s P-11 suite among them).
+A timer that cannot accumulate would leave a block standing **for ever** — #433's degenerate latch,
+failing on the *unsafe* side. **With no dt the kernel revokes immediately, i.e. exactly what it did
+before**, so no harness silently gains a defeated reinstate. Production always has one
+(`simulation_service.js:476`, `:502` both pass `sinceEval`). A check pins it.
+
+### Gates
+
+`run_pwr2_protection` **127 → 134** (+7, `BASELINES` updated) · `run_m4` **46/46 316 → 47/47 323**
+(+1 suite, +7, updated) · `run_hardrules` 560 / 0 · `run_autoctl` 31/31 · `run_ops` 59/70 360passed
+12failed (the tracked red, unmoved) · `run_pwr2_kernel` 36/36 · `run_pwr2_shell` 169/169.
+
+---
+
 ## Session log — 2026-09-14-develop-b (#749 — four sources, one rod position, and the one that was right was two hours old)
 
 **The question: at 719 ppm, what CONTROL ROD POSITION does this plant go critical at?** Four

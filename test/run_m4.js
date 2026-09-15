@@ -322,6 +322,76 @@ T.push(test('#295 F1/F2 — reactor trips are not defeatable at power, and block
     f.layer.manualTripBlocks.ir_high === undefined, '{}');
 }));
 
+/* #752 — THE REVOKE IS CONFIRMED, NOT TAKEN ON ONE SAMPLE (OWNER RULING 2026-09-14:
+ * "Confirmation time (Recommended)"). `_permTest` reads an INSTRUMENT (HR1); this plant's
+ * power_range channel carries sigma 0.2 x power/25, so 0.08 % at the 10 % permissive, and one
+ * stray sample below it used to remove a standing block. MEASURED on the shipped channel at
+ * DT 0.1 s over 24 plant-hours: at a true 10.02 % the first sub-10 reading arrives in 0.30 s
+ * and the longest CONTINUOUS sub-10 run is 1.50 s; at 10.10 % they are 5.00 s and 0.50 s.
+ * config.trip_block_revoke_confirm_s is 2.0 s and beats all of them.
+ *
+ * THE PAIR IS THE POINT. "Survives one sample" is satisfied by a revoke that never happens,
+ * and "revokes" is satisfied by the shipped defect; neither alone can tell the fix from either
+ * failure. The instruments are doctored rather than the plant ridden down, because the real
+ * ride-down takes the power through the permissive in a way that cannot isolate ONE sample. */
+T.push(test('#752 — a single sub-P-10 sample does not revoke a trip block, but the dwell does', function (ck) {
+  var s = new Stack('hot_full_power');
+  s.run(1);
+  var conf = s.layer.config.trip_block_revoke_confirm_s;
+  /* the LENGTH, not just the existence — the same measured band pwr2_protection's gate pins,
+   * on this plant's own channel: worst continuous sub-10 run 1.50 s in 24 plant-hours at a
+   * true 10.02 %, DT 0.1 s. A CONF-derived fixture cannot see the constant move; this can. */
+  ck('the plant declares a confirmation time inside the measured band', String(conf),
+    conf >= 1.5 && conf <= 5.0, '1.5 s to 5.0 s');
+  ['ir_high', 'pr_low_setpoint'].forEach(function (id) { s.cmd({ action: 'set_trip_block', trip_id: id, blocked: true }); });
+  ck('both startup-net blocks are standing at power',
+    JSON.stringify(s.layer.getRpsState().trip_blocks),
+    s.layer.tripBlocks.ir_high === true && s.layer.tripBlocks.pr_low_setpoint === true, 'both blocked');
+  /* one sample below the permissive — the defect's whole input */
+  function lowOnce() {
+    var ins = Object.assign({}, s.engine.getInstruments());
+    ins.power_range = 5.0;                       /* half the permissive: unambiguously below */
+    s.layer.evaluate(ins, s.dt);
+  }
+  lowOnce();
+  ck('ONE reading below P-10 leaves both blocks standing',
+    JSON.stringify(s.layer.getRpsState().trip_blocks),
+    s.layer.tripBlocks.ir_high === true && s.layer.tripBlocks.pr_low_setpoint === true, 'both still blocked');
+  /* and a dip that RECOVERS starts the dwell over — twenty spells each one step short of it.
+   * The clearing evaluate below is LOAD-BEARING and the first draft went red without it: the
+   * single sample above left 0.02 s already on the clock, so the first spell reached the dwell
+   * exactly and revoked. A confirmation-time fixture that does not zero the timer it inherits
+   * is measuring the previous check's leftovers. */
+  s.layer.evaluate(s.engine.getInstruments(), s.dt);
+  for (var k = 0; k < 20; k++) {
+    for (var i = 0; i < Math.round(Math.min(conf - s.dt, 30) / s.dt); i++) lowOnce();
+    s.layer.evaluate(s.engine.getInstruments(), s.dt);
+  }
+  ck('...and twenty interrupted spells, each a step short of the dwell, leave them standing',
+    JSON.stringify(s.layer.getRpsState().trip_blocks),
+    s.layer.tripBlocks.ir_high === true && s.layer.tripBlocks.pr_low_setpoint === true,
+    'both still blocked — the dwell is continuous, not elapsed-since-first-seen');
+  /* the paired positive: hold it and the reinstate the checklist promises still happens */
+  for (var j = 0; j < Math.round((Math.min(conf, 30) + 1) / s.dt); j++) lowOnce();
+  ck('...but holding below P-10 for the dwell reinstates both',
+    JSON.stringify(s.layer.getRpsState().trip_blocks),
+    !s.layer.tripBlocks.ir_high && !s.layer.tripBlocks.pr_low_setpoint, '{}');
+  ck('...and the provenance went with them', JSON.stringify(s.layer.manualTripBlocks),
+    s.layer.manualTripBlocks.ir_high === undefined &&
+    s.layer.manualTripBlocks.pr_low_setpoint === undefined, '{}');
+  /* NO dt, NO CONFIRMATION — declared, and the direction is the safe one. A harness that
+   * omits dt keeps the pre-#752 one-sample revoke rather than a timer that can never
+   * accumulate (#433's degenerate latch, failing on the unsafe side). */
+  var s2 = new Stack('hot_full_power');
+  s2.run(1);
+  ['ir_high', 'pr_low_setpoint'].forEach(function (id) { s2.cmd({ action: 'set_trip_block', trip_id: id, blocked: true }); });
+  var ins2 = Object.assign({}, s2.engine.getInstruments()); ins2.power_range = 5.0;
+  s2.layer.evaluate(ins2);                       /* no dt, deliberately */
+  ck('a no-dt evaluate revokes at once (the pre-#752 behaviour, never a block that cannot clear)',
+    JSON.stringify(s2.layer.getRpsState().trip_blocks),
+    !s2.layer.tripBlocks.ir_high && !s2.layer.tripBlocks.pr_low_setpoint, '{}');
+}));
+
 T.push(test('P-11/P-7 trip bypass — cold init blocks, auto-reinstate on repressurization', function (ck) {
   var s = new Stack('cold_shutdown');
   s.run(1);

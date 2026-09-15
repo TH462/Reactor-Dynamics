@@ -2032,6 +2032,26 @@
   var PWR_PROTECTION = {
     trips: PWR_TRIPS,
     trip_block_permissive: PWR_TRIP_BLOCK_PERMISSIVE,
+    // CONFIRMATION TIME on the trip-block revoke, sim seconds (#752, OWNER RULING 2026-09-14:
+    // "Confirmation time (Recommended)"). The kernel's auto-reinstate reads an INSTRUMENT (HR1)
+    // and used to act on ONE sample, so a stray reading below the permissive removed a standing
+    // block. [derived], not sourced: `node tools/find_source.js` finds no confirmation or
+    // time-delay figure for P-10 anywhere in the corpus — the Bases give the real plant's noise
+    // immunity as three-out-of-four COINCIDENCE, which one lumped flux signal cannot carry.
+    //
+    // MEASURED on THIS plant's own power_range channel (sigma 0.2 x power/25, so 0.08 % at the
+    // 10 % permissive; noise_tau 0, i.e. white; DT 0.1 s = PROTECTION_DT, 24 plant-hours a row):
+    //   true power   first reading below 10.0 %   longest CONTINUOUS sub-10.0 run in 24 h
+    //     10.02 %            0.30 s                            1.50 s
+    //     10.05 %            0.50 s                            0.90 s
+    //     10.10 %            5.00 s                            0.50 s
+    //     10.20 %           26.20 s                            0.20 s
+    // 2.0 s beats the worst of those. It is the same number PWR2's engine-side P-10 carries
+    // (engines/pwr2/pwr2_protection.js P10.confirm_s), where it was chosen on that plant's own
+    // measurements — deliberately one figure for one law, not two that drift apart the way the
+    // 8 %/10 % setpoint pair above already did. A plant that declares NO confirm time keeps the
+    // one-sample behaviour exactly, which is why RBMK and BWR do not move.
+    trip_block_revoke_confirm_s: 2.0,
     rps_reset_permissive: PWR_RPS_RESET_PERMISSIVE,
     instrument_labels: PWR_INSTRUMENT_LABELS,
     actuations: PWR_ACTUATIONS,

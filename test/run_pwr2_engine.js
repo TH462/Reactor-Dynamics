@@ -2104,14 +2104,30 @@ function runSuite(RD, rec, quiet, only) {
       'critical leg ' + p84.toFixed(2) + ' %, blocked at ' + pBlk.toFixed(1) +
       ' %, now ' + tsS2.power_pct.toFixed(1) + ' % unscrammed');
 
-  /* P-10 owns the request: a block taken at source level is revoked on the next step */
+  /* P-10 owns the request: a block taken at source level is revoked automatically.
+   *
+   * ⚠ RE-TIMED 2026-09-14 (#752, OWNER RULING "Confirmation time (Recommended)"). This read
+   * `EN.step(); revoked on the NEXT STEP` — it was pinning the one-sample revoke itself, which
+   * is the defect: `power_frac` is an instrument reading and ONE stray sample below 8 % took a
+   * standing block away (measured on the real plant, a block taken at 8.250 % true power was
+   * gone 0.04 s later). The CLAIM is unchanged and is the sourced asymmetry — the operator has
+   * no say in the unblock — so the revoke half is asserted over the plant's own dwell rather
+   * than at a step count, and is written in terms of P10.confirm_s so it tracks it.
+   *
+   * THE SINGLE-STEP HALF IS NEW AND FAILS ON THE OLD BUILD, deliberately (HR10: say when a
+   * check is asserting the change). Without it the re-timed half passes on the defect too. */
   var engR2 = EN.createEngine({ initial_state: 'hot_zero_power' });
   EN.step(engR2, DT);
   EN.command(engR2, 'low_flux_block', true);
   var reqAt = engR2.pt.blockLowFlux;
   EN.step(engR2, DT);
+  var afterOne = engR2.pt.blockLowFlux;
+  var confS = globalThis.RD.pwr2.protection.P10.confirm_s;
+  for (var iR2 = 0; iR2 < Math.round((Math.min(confS, 30) + 1) / DT); iR2++) EN.step(engR2, DT);
   ckT('below P-10 the block request is AUTO-REVOKED (the sourced asymmetric gate)',
-      reqAt === true && engR2.pt.blockLowFlux === false, '');
+      reqAt === true && afterOne === true && engR2.pt.blockLowFlux === false,
+      'one step does not do it (#752: that was a single noisy sample defeating a block); ' +
+      (Math.min(confS, 30) + 1).toFixed(2) + ' s of continuous sub-P-10 does');
 
   /* RE-AIMED 2026-08-31 (#524): `cold_shutdown` EXISTS now — the old form of this check
    * pinned the refusal to that name and flipped red the day the IC landed. The claim is the

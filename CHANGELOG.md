@@ -30,6 +30,33 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed (a standing trip block could be taken away by ONE noisy instrument sample — #752)
+
+- **The P-10 revoke now confirms over 2.0 s instead of acting on a single reading**
+  *(OWNER RULING, 2026-09-14: "Confirmation time (Recommended)")*. `power_frac` is an
+  INSTRUMENT (Hard Rule 1, instruments not truth) and PWR2's power-range channel carries
+  sigma 0.3 % power, so one stray sample below the 8 % permissive removed a block the
+  operator had taken. **MEASURED on the plant**: a block taken with true power parked at
+  **8.250 %** was gone **0.04 s** later with true power still **8.245 %** — inside the
+  block window the whole time. After the fix the same plant holds both startup-net blocks
+  through **600 s** with 1303 of 30 000 readings below 8 %.
+- **The reinstate the startup checklist promises is unchanged in kind, only de-bounced.**
+  On a genuine ride-down at **5.7 %/min** (a hand rod insertion, measured) both blocks
+  reinstate **7.48 s** after true power crosses 8 %, at **7.257 %**. The request itself is
+  still destroyed — a block that re-armed by itself on the way back up is the #295
+  defeatable-trip shape and stays out.
+- **2.0 s is [derived], not sourced, and the code says so.** `tools/find_source.js` finds no
+  P-10 confirmation or time-delay figure in any lane's corpus; the Bases give the real
+  plant's noise immunity as three-out-of-four **coincidence**, which one lumped flux signal
+  cannot carry. The number beats the worst spurious excursion measured in 24 plant-hours of
+  sitting on the setpoint (**0.94 s** at 8.02 % true power) by better than 2x, and matches
+  the module's own dominant analysis delay.
+- **Same fix on the control kernel's generic trip-block reinstate**, for the retired engine
+  and any plant that declares `trip_block_revoke_confirm_s` (PWR: 2.0 s; RBMK and BWR
+  declare none and do not move). **A caller that passes no `dt` revokes immediately** — the
+  pre-fix behaviour — deliberately, because a timer that can never accumulate would leave a
+  block standing for ever, which is #433's degenerate latch failing on the unsafe side.
+
 ### Fixed (the power tile drew the block window at the RETIRED plant's permissive — #753, #752)
 
 - **`powerBand()` read `_PROT.trip_block_permissive.setpoint`, the retired plant's static 10 %,**

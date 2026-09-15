@@ -273,7 +273,47 @@
   var P10 = {
     kind: '[sourced]',
     frac: 0.08,
-    src: 'Ginna TS Bases B 3.3.1 (ML20339A221), Power Range Neutron Flux-Low'
+    src: 'Ginna TS Bases B 3.3.1 (ML20339A221), Power Range Neutron Flux-Low',
+    /* ---- THE CONFIRMATION TIME ON THE REVOKE (#752) [derived] -------------------------------
+     * OWNER RULING, 2026-09-14, on options put as confirmation time / deadband / document only:
+     * *"Confirmation time (Recommended)"*. It is what a bistable plus a relay does, it invents no
+     * second setpoint, and it reuses the continuous-hold idiom `held_s` already runs on.
+     *
+     * WHY IT IS NEEDED. The revoke above acts on `drivers.power_frac`, which pwr2_engine feeds
+     * from `ins.reading.power_range` — the INSTRUMENT (HR1), sigma 0.3 % power, AR(1) with a
+     * 0.05 s correlation. Before this, ONE stray sample below 8 % removed a standing block.
+     * MEASURED on the shipped channel (24 plant-hours per row, DT 0.02 s, true power held):
+     *     true power   first reading below 8.0 %   longest CONTINUOUS sub-8.0 run in 24 h
+     *       8.02 %              ~0.2 s                          0.94 s
+     *       8.05 %               0.18 s                         0.82 s
+     *       8.19 %               0.20 s                         0.60 s
+     *       8.50 %               0.20 s                         0.28 s
+     *       9.36 %             855.2 s                          0.02 s
+     * and on the REAL PLANT (low_power IC, rods trimmed to park true power at 8.250 %, both
+     * requests taken): the low-flux and IR-high blocks were both gone 0.04 s later — two
+     * protection steps — with true power still 8.245 %, well inside the block window.
+     *
+     * WHY 2.0 s AND NOT 0.5 OR 1.0. The number has to beat the worst SPURIOUS excursion and
+     * still clear promptly on a genuine ride-down. 0.94 s is the worst continuous sub-8 run
+     * measured in 24 plant-hours of sitting essentially ON the setpoint (8.02 %, 0.07 sigma
+     * above it), so 1.0 s clears it by 0.06 s — inside its own scatter — while 2.0 s clears it
+     * by better than 2x. The cost of the extra second is small and was measured too: ramping
+     * down through 8 % at 5 %/min (the rate a hand rod insertion actually produces here —
+     * measured 5.277 %/min on the plant above), the block reinstates at 7.500 % true power with
+     * 1.0 s and 7.417 % with 2.0 s. 2.0 s is also the module's own dominant analysis delay
+     * (DELAY below: the pressure, level, flow and delta-T rows all carry Ginna Table 15.0-6's
+     * 2.0 s), so it is a figure this file already lives with rather than a new one.
+     *
+     * IT IS NOT SOURCED AND THAT IS DECLARED. `node tools/find_source.js` finds no
+     * confirmation or time-delay figure for P-10 in any lane's corpus — the Bases describe the
+     * unblock as three-out-of-four COINCIDENCE, which is the real plant's noise immunity and
+     * which this one lumped flux signal cannot carry (the same collapse P10.frac already
+     * declares). A confirmation time is the single-channel stand-in for it. The one nearby
+     * sourced permissive delay is C-20's *"preset time delay for at least 30 sec"* (Ginna UFSAR
+     * ch7, ML20339A027) — a different permissive and a different job, quoted here only so the
+     * next reader does not have to go and find it to rule it out. */
+    confirm_kind: '[derived]',
+    confirm_s: 2.0
   };
   /* ---- SOURCED: the INTERMEDIATE RANGE high flux reactor trip (#601) -------------------------
    * The SECOND trip in the startup net, and it was missing: this table carried only the power
@@ -554,6 +594,10 @@
     for (var i = 0; i < fns.length; i++) held[fns[i].id] = 0;
     return {
       held_s: held,                         /* how long each function has been asserted */
+      /* how long the power-range reading has been CONTINUOUSLY below P-10 (#752). The revoke's
+       * confirmation timer, the same rule as held_s above and reset by any sample back above
+       * the permissive. Live signal, not a latch — `reset(pr)` deliberately leaves it alone. */
+      p10_below_s: 0,
       blockLowFlux: !!opts.blockLowFlux,
       /* THE INTERMEDIATE-RANGE BLOCK (#601) — its OWN request, not a share of the one above.
        * Same P-10 law, same asymmetry; two levers because WTSM 12.2's P-10 list is two
@@ -644,8 +688,21 @@
      * low" would leave a stale request that silently re-arms as power rises, which is the
      * defeatable-trip shape the sources do not have. */
     var p10Met = drivers.power_frac >= P10.frac;
-    if (!p10Met && pr.blockLowFlux) pr.blockLowFlux = false;
-    if (!p10Met && pr.blockIrHigh) pr.blockIrHigh = false;   /* the second request, same law (#601) */
+    /* ⚠ THE REVOKE IS CONFIRMED, NOT INSTANTANEOUS (#752, owner-ruled — see P10.confirm_s for
+     * the ruling, the measurements and why 2.0 s). `power_frac` is an INSTRUMENT reading and one
+     * stray sample below 8 % used to take a standing block away; the timer is the same
+     * continuous-hold rule `held_s` runs below, so a reading that dips and recovers starts it
+     * over. It is NOT a latch and NOT a gate: below the permissive for confirm_s the REQUEST
+     * itself is still destroyed, which is what keeps the #295 F1/F2 defeatable-trip shape out.
+     *   `|| 0` is the MIGRATION: pwr2_shell restores `pt` wholesale from the save, so a save
+     * written before this field existed lands here with it undefined, and undefined + dt is NaN
+     * — a timer that can never reach confirm_s, i.e. a block that never revokes again. That is
+     * the #555 shape (a plausible value no guard rejects) with the failure on the UNSAFE side,
+     * so it is handled at the read rather than left to a migration nobody runs. */
+    pr.p10_below_s = p10Met ? 0 : (pr.p10_below_s || 0) + (dt > 0 ? dt : 0);
+    var p10Revoke = pr.p10_below_s >= P10.confirm_s;
+    if (p10Revoke && pr.blockLowFlux) pr.blockLowFlux = false;
+    if (p10Revoke && pr.blockIrHigh) pr.blockIrHigh = false;   /* the second request, same law (#601) */
     /* ---- P-11, THE SHUTDOWN PERMISSIVE (#507 wave 10) — the mirror of P-10's law in the
      * other direction: the low-pressure trip block and the SI block are OPERATOR REQUESTS
      * permitted only BELOW P-11, and climbing back above it REVOKES both requests
