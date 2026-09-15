@@ -30,7 +30,22 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-### Changed (five owner rulings on the walkthroughs — 2026-09-14/15)
+### Changed (six owner rulings on the walkthroughs — 2026-09-14/15)
+
+- **The last inverse-count-rate (1/M) step now waits for SOURCE RANGE to stop moving, not just to
+  pass a number** *(OWNER RULING, 2026-09-15: selected "add a steadiness predicate" from three
+  options put to him — raise that step's count target to 12,000 counts per second / add a "counts
+  steady" predicate / leave it as prose — taking the one that needed new plumbing over the
+  one-number change. A selection, not verbatim words.)* The 600 s settle in the bullet below
+  governs the REPLAY only: live, Continue lit on the count rate passing 7,000 a second, which the
+  authored route crosses **47 s** after the rods stop with the count still climbing — the 1/M panel
+  reading **step 213.7** against a true critical control bank of **208 of 627**. A step acceptance
+  can now say `op: 'steady'` — *this indication has stopped moving* — and step 8 carries one beside
+  the owner's 7,000 floor, which is unchanged: **under 3 % drift across a trailing 120 s window**.
+  **MEASURED**: the live step now accepts **506 s** after the rods stop with the prediction at
+  **208.8**, and the authored 600 s replay hold clears the same predicate with 72 s to spare.
+  Still open, and said plainly: check-off ORDERING is not expressible, so a player who presses Plot
+  point early keeps that early point — Continue still will not light until the counts are steady.
 
 - **The Mode 3 → Mode 1 approach settles for 10 plant-minutes before the last 1/M point, and
   step 9 is rewritten on the measurements** *(OWNER RULING: "Rewrite both")*. The final

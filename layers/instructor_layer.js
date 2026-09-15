@@ -106,6 +106,46 @@
   // enough to read a line and look at the board, short enough not to feel stuck.
   var OBSERVE_DWELL_S = 12;
 
+  /* STEADINESS — `op: 'steady'` *(OWNER RULING, 2026-09-15: selected "add a steadiness
+   * predicate" from three options put to him — raise the last 1/M step's count target to
+   * 12,000, add a "counts steady" predicate, or leave it as prose — taking the one that needed
+   * new plumbing over the one-number change. A SELECTION, not verbatim words; the rationale
+   * relayed with it is that a steady count rate is what an operator actually looks for and an
+   * absolute threshold is only a stand-in for it.)*
+   *
+   * `{ p, op:'steady', v: <fractional drift>, window: <trailing seconds> }` — "this indication
+   * has stopped moving". The reading is sampled into a trailing ring; the mean of the window's
+   * OLDER half is compared with the mean of its NEWER half, and the predicate holds when the
+   * relative difference is at or under `v`. The window must be FULLY COVERED before it can hold
+   * at all, and the ring is reset when the step changes, so the window doubles as the minimum
+   * dwell: a step carrying one cannot complete inside `window` seconds of becoming active.
+   *
+   * WHY TWO HALF-MEANS AND NOT "unchanged since the last sample". Two reasons, both measured:
+   *   · A per-sample difference is a function of the SAMPLE SPACING, which is the player's speed
+   *     control — 0.1 s of plant per broadcast at 1x, 6 s at 60x. A trailing window in SIM time
+   *     is the same claim at every acceleration. Measured on `pwr_startup` step 8 at its
+   *     authored 3 % / 120 s: the accept lands 506 s after the rods stop with 1 s samples and
+   *     within about a minute of that with 0.1 s and 10 s samples — the 1/M prediction across
+   *     that whole spread is 208.8 to 208.6, against a true critical of 208.
+   *   · Averaging each half divides any channel noise by root-n, which is what keeps one noise
+   *     sample from deciding a latch — the #752 trap. The channel step 8 actually grades,
+   *     `sr_counts_cps`, is the documented no-instrument-twin case and its measured detrended
+   *     scatter is 0.0019 % of reading (max residual 0.0062 %) — its 3 % tolerance clears that
+   *     by a factor of 480 — but the predicate is general and instrument channels are not.
+   *
+   * `v` IS RELATIVE, to the window mean, because the channel this was built for spans decades.
+   * An author wanting an absolute band on a linear channel wants `~`, not this. A window mean of
+   * (near) zero has no meaningful relative drift, so the comparison falls back to the absolute
+   * difference there rather than dividing by nothing.
+   *
+   * IT RE-GRADES, it does not latch — same rule and same reason as `op: '~'` in `_gradeAccs`
+   * below: "steady" is a HOLD claim, and a plant that starts climbing again has left it.
+   *
+   * SUPPORTED IN `acc` AND `accs` ONLY (both runtimes), because those are the two that own a
+   * per-step state bag. `run_checklist_pwr2` §2w reddens on a `steady` authored anywhere else —
+   * `saw`, `overtaken`, `precond`, a `when` gate — rather than letting it read false for ever. */
+  var STEADY_WINDOW_S = 120;        // default trailing window when a step authors none
+
   // #715 — a completion banner's `outcome` text is an AUTHORED plant-state claim
   // (e.g. "stable near 15 %, 15 MWe"); nothing checked it before showing it, so a
   // leg whose own step acceptances can be satisfied for free (a scram, say) drew
@@ -572,7 +612,7 @@
       f.gradedBy = null;
       f.accMetNow = this._gradeAccs(f, st, snapshot);
     } else if (st.acc) {
-      var g = this._grade(snapshot, st.acc);
+      var g = this._gradeOne(f, snapshot, st.acc, 'acc');
       f.gradedBy = g.graded_by;
       f.accStreak = g.met ? f.accStreak + 1 : 0;
       f.accMetNow = f.accStreak >= ACC_STABLE_N;
@@ -598,6 +638,7 @@
     f.idx = next;
     f.cmdSeen = false; f.sawSeen = false; f.accStreak = 0; f.accMetNow = false; f.gradedBy = null;
     f.accsState = null;           // per-entry multi-check-off latches (#244 item 8)
+    f.steadyBags = null;          // #755 — the steadiness window is per step, like the latches
     this.pendingMessage = null;   // a new step retires the previous step's feedback
     if (autoAdvanced) this._checkpointRequested = true;   // rewind lands on step boundaries
   };
@@ -793,7 +834,7 @@
       c.gradedBy = null;
       c.accMetNow = this._gradeAccs(c, st, snapshot);
     } else if (st.acc) {
-      var g = this._grade(snapshot, st.acc);
+      var g = this._gradeOne(c, snapshot, st.acc, 'acc');
       c.gradedBy = g.graded_by;
       c.accStreak = g.met ? c.accStreak + 1 : 0;
       c.accMetNow = c.accStreak >= ACC_STABLE_N;
@@ -970,6 +1011,7 @@
     c.idx++;
     c.cmdSeen = false; c.sawSeen = false; c.accStreak = 0; c.accMetNow = false; c.gradedBy = null;
     c.accsState = null;                 // per-entry multi-check-off latches (#244 item 8)
+    c.steadyBags = null;                // #755 — the new step owes its steadiness window afresh
     c.awaitingAck = false;              // #619 item 4 — cleared with the step it belonged to
     c.stepAt = null;                    // re-stamped on the next tick — see the dwell above
     c.overtakenStreak = 0;              // #641 — the next step's own predicate starts from zero
@@ -1096,23 +1138,21 @@
     return snapshot && snapshot.true_state ? snapshot.true_state[p] : undefined;
   };
 
-  InstructorLayer.prototype._grade = function (snapshot, pred) {
-    if (RPS_BLOCK_PARAMS[pred.p]) {
-      var bv = rpsBlockParam(snapshot, pred.p);
-      return { met: this._predMet(bv, pred), graded_by: 'rps_state', value: bv };
-    }
-    if (ROD_PARAMS[pred.p]) {
-      var rv = rodParam(snapshot, pred.p);
-      return { met: this._predMet(rv, pred), graded_by: 'control_state', value: rv };
-    }
-    if (CTL_PARAMS[pred.p]) {
-      var cv = snapshot && snapshot.control_state ? snapshot.control_state[pred.p] : undefined;
+  /* THE READ, split out from `_grade` (#755) so the steadiness evaluator below samples the
+   * SAME channel the acceptance grades — instrument-first, per Hard Rule 1 — rather than
+   * becoming a second sampler of the same truth (the #605/#432 shape). Byte-for-byte the
+   * branches `_grade` used to carry; nothing about resolution changed. */
+  function readParam(snapshot, p) {
+    if (RPS_BLOCK_PARAMS[p]) return { value: rpsBlockParam(snapshot, p), graded_by: 'rps_state' };
+    if (ROD_PARAMS[p]) return { value: rodParam(snapshot, p), graded_by: 'control_state' };
+    if (CTL_PARAMS[p]) {
+      var cv = snapshot && snapshot.control_state ? snapshot.control_state[p] : undefined;
       if (typeof cv === 'boolean') cv = cv ? 1 : 0;
-      return { met: this._predMet(cv, pred), graded_by: 'control_state', value: cv };
+      return { value: cv, graded_by: 'control_state' };
     }
     var plant = (snapshot.metadata && snapshot.metadata.plant_id) || null;
     var map = plant ? PARAM_INSTRUMENT[plant] : null;
-    var iid = map ? map[pred.p] : null;
+    var iid = map ? map[p] : null;
     var v, by;
     /* RULED (#670) — OWNER RULING, 2026-09-09: "A." This read, which is what `_gradeAccs` grades
      * a walkthrough step's `acc` on, is the UNDAMPED transmitter, and it stays that way. The
@@ -1126,11 +1166,72 @@
     if (iid && snapshot.instruments && snapshot.instruments[iid] != null) {
       v = snapshot.instruments[iid]; by = 'instrument';
     } else {
-      v = snapshot.true_state ? snapshot.true_state[pred.p] : undefined; by = 'true_state';
+      v = snapshot.true_state ? snapshot.true_state[p] : undefined; by = 'true_state';
     }
+    return { value: v, graded_by: by };
+  }
+
+  InstructorLayer.prototype._grade = function (snapshot, pred) {
+    var r = readParam(snapshot, pred.p);
     // `value` rides along for consumers that display the reading (#395's
     // precondition banner); met/graded_by callers are unaffected.
-    return { met: this._predMet(v, pred), graded_by: by, value: v };
+    return { met: this._predMet(r.value, pred), graded_by: r.graded_by, value: r.value };
+  };
+
+  /* THE STEADINESS EVALUATOR (#755) — ONE implementation, two callers. The live runtimes reach
+   * it through `_gradeOne` / `_gradeAccs` below with a per-step bag; `test/procedures_harness.js`
+   * (the replay) calls this static directly with a bag of its own, for the same reason `pv()`
+   * there calls `paramValue` — a second sampler of the same claim is worse than none (#605).
+   *
+   * `bag` is opaque per-predicate state, reset by the caller when the step changes. Call it once
+   * per broadcast with the live snapshot: it samples, prunes and returns the verdict together.
+   * `{met, drift, value, graded_by, covered, n}` — `drift` is null until the window is covered. */
+  InstructorLayer.gradeSteady = function (bag, snapshot, pred) {
+    var r = readParam(snapshot, pred.p);
+    var t = snapshot && snapshot.metadata ? snapshot.metadata.sim_time : null;
+    var W = (pred.window > 0) ? pred.window : STEADY_WINDOW_S;
+    var out = { met: false, drift: null, value: r.value, graded_by: r.graded_by, covered: false, n: 0 };
+    if (!bag.s) bag.s = [];
+    var s = bag.s;
+    if (t == null || !isFinite(t) || typeof r.value !== 'number' || !isFinite(r.value)) return out;
+    /* THE CLOCK WENT BACKWARDS — a Rewind, a restored save, a re-selected plant. The ring
+     * describes a plant that no longer exists, so it starts again; the step then owes its
+     * window afresh, which is the conservative direction. */
+    if (s.length && t < s[s.length - 1].t) s.length = 0;
+    var gap = Math.max(0.05, W / 120);          // ~120 samples per window at 1x; cheap at 60x
+    if (!s.length || t - s[s.length - 1].t >= gap) s.push({ t: t, v: r.value });
+    // keep exactly one sample at or before the window's trailing edge, so `covered` is honest
+    while (s.length > 1 && t - s[1].t > W) s.shift();
+    out.n = s.length;
+    out.covered = s.length > 1 && (t - s[0].t) >= W;
+    if (!out.covered) return out;
+    var tm = t - W / 2, a = 0, na = 0, b = 0, nb = 0;
+    for (var i = 0; i < s.length; i++) {
+      if (t - s[i].t > W) continue;             // the one sample outside the window
+      if (s[i].t < tm) { a += s[i].v; na++; } else { b += s[i].v; nb++; }
+    }
+    var lo, hi;
+    if (na >= 2 && nb >= 2) { lo = a / na; hi = b / nb; }
+    else {
+      /* A WINDOW TOO THIN TO HALVE — the WARP tier, where one broadcast can be minutes of plant.
+       * Fall back to the ends of the COVERED SPAN, which is at least `window` long, so the change
+       * it measures is an over-read of the change across the window: conservative, never a false
+       * accept, and it cannot soft-lock a step the way "never met" would. */
+      lo = s[0].v; hi = s[s.length - 1].v;
+    }
+    var mid = Math.abs((lo + hi) / 2);
+    out.drift = mid > 1e-9 ? Math.abs(hi - lo) / mid : Math.abs(hi - lo);
+    out.met = out.drift <= pred.v;
+    return out;
+  };
+
+  /* Grade ONE predicate for a runtime holder (checklist / follow), routing `op:'steady'` to the
+   * holder's own per-step bag. Every other op is stateless and goes straight to `_grade`. */
+  InstructorLayer.prototype._gradeOne = function (holder, snapshot, pred, key) {
+    if (!pred || pred.op !== 'steady') return this._grade(snapshot, pred);
+    if (!holder.steadyBags) holder.steadyBags = {};
+    if (!holder.steadyBags[key]) holder.steadyBags[key] = { s: [] };
+    return InstructorLayer.gradeSteady(holder.steadyBags[key], snapshot, pred);
   };
 
   // #715 — re-grades a leg's optional `outcome_guard` (same {p,op,v[,tol]} shape as
@@ -1236,7 +1337,7 @@
       case 'prev':    if (f.done) { f.done = false; this.levelComplete = null; } this._advanceFollow(-1, false); break;
       case 'restart': f.idx = 0; f.done = false; this.levelComplete = null;
                       f.cmdSeen = false; f.sawSeen = false; f.accStreak = 0; f.accMetNow = false;
-                      f.accsState = null; break;
+                      f.accsState = null; f.steadyBags = null; break;
       default: break;
     }
     return null;
@@ -1275,7 +1376,7 @@
   InstructorLayer.prototype._ensureAccsState = function (holder, st) {
     if (!holder.accsState || holder.accsState.length !== st.accs.length) {
       holder.accsState = st.accs.map(function () {
-        return { streak: 0, met: false, obs: null, graded_by: null };
+        return { streak: 0, met: false, obs: null, graded_by: null, steady: null };
       });
     }
     return holder.accsState;
@@ -1285,10 +1386,16 @@
     var all = true;
     for (var i = 0; i < st.accs.length; i++) {
       var en = st.accs[i], ax = state[i];
-      /* a two-sided band re-grades for ever; every other kind latches (see the note above) */
-      var holds = !!(en && en.op === '~');
+      /* a two-sided band re-grades for ever; every other kind latches (see the note above).
+       * `steady` joins it (#755) and for the same reason: "it has stopped moving" is a HOLD
+       * claim, and a plant that starts climbing again has left it. */
+      var holds = !!(en && (en.op === '~' || en.op === 'steady'));
       if ((!ax.met || holds) && en && en.p) {
-        var g = this._grade(snapshot, en);
+        var g;
+        if (en.op === 'steady') {
+          if (!ax.steady) ax.steady = { s: [] };
+          g = InstructorLayer.gradeSteady(ax.steady, snapshot, en);
+        } else g = this._grade(snapshot, en);
         ax.obs = g.value; ax.graded_by = g.graded_by;
         ax.streak = g.met ? ax.streak + 1 : 0;
         if (ax.streak >= ACC_STABLE_N) ax.met = true;

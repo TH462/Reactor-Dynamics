@@ -4152,6 +4152,17 @@
                                             : 'not: ' + pd.bool;
     }
     var label = pd ? pd.label : pred.p;
+    /* STEADINESS (#755) has no value to print — the claim is about CHANGE, not about a reading,
+     * so neither the band form below nor the "label op value" form at the bottom says it. An
+     * authored `label` on an `accs` entry still wins (that is the path step 8 takes); this is
+     * what an unlabelled entry or a bare `acc` draws. Per cent and minutes, no SI to carry. */
+    if (pred.op === 'steady') {
+      var sw = (pred.window > 0) ? pred.window : 120;
+      var swTxt = (sw % 60 === 0) ? (sw / 60) + (sw === 60 ? ' minute' : ' minutes') : sw + ' seconds';
+      var swPct = +pred.v * 100;
+      return label + ' steady — under ' + (swPct < 1 ? swPct.toFixed(1) : String(Math.round(swPct))) +
+             ' % change over the last ' + swTxt;
+    }
     if (pred.op === '~') {
       var tol = pred.tol != null ? pred.tol : 1;
       /* A BAND, NOT A SUM THE PLAYER HAS TO DO (#653 product defect 3). It printed

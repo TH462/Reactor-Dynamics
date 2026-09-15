@@ -13,9 +13,10 @@
  *                     flagship suite owns its physics, CONTEXT §9).
  * Step: { text, control, target, cmd, hold, acc, saw, note, ramp, why, accs, wait_hint,
  *          overtaken, hl, hl_watch, past, story, crew, inject, clear, pause, wrong, wait_est_s }
- *   (SCHEMA HEADER OWED FIXING #694 — this list documented 12 of the 19 fields that ship;
- *   whoever adds a field here should fix this line in the same change, not the next agent.
- *   20 fields as of #685.)
+ *   (THE DEBT #694 LEFT IS PAID (#755): all 23 names on that line are documented below. MEASURED
+ *   on the built pool rather than counted by hand — which is how this note came to claim 12 of
+ *   19, then 20 — 21 of them are in use; `clear` and `wrong` are implemented and unused. A step
+ *   field not on this line does not exist; add yours here, with a paragraph, in the same change.)
  *   text    integrated-voice instruction     control  on-screen control to use
  *   target  the value/limit to drive to      cmd      command issued (rod group 'control'/'shutdown' resolved)
  *   hold    seconds to run after the command  acc      {p,op,v[,tol]} checked at END of the step
@@ -111,6 +112,9 @@
  *           drives the plant. Replay-side only: the live checklist never issues `cmd`
  *           either (ui/app.js renders text + highlights and grades off `acc`), so a
  *           ramp costs the UI nothing. Both procedure gates implement it.
+ *   NOTHING ELSE IS A STEP FIELD. `target` and `control` are the two-column lines above;
+ *           `next`, `guard`, `precond`, `outcome`, `outcome_guard`, `prereq`, `cautions`,
+ *           `from`, `category`, `manual_ref` and `narrative` are PROCEDURE-level, not per step.
  * guard: { never_melted, never:[{p,op,v}] } checked across the whole run.
  * precond: [{p, op, v, tol, text}] — ENTRY conditions (#395), the machine-checkable
  *   layer under the `prereq` prose: graded live, instrument-first, by the Instructor
@@ -120,7 +124,20 @@
  *   options put to him — a selection, not verbatim words)*. Distinct from `guard`
  *   (a whole-run invariant) and from `from:` (a harness/reset input, not a check).
  *   `text` is the banner's human line; verdicts ship in the snapshot, prose here.
- * op ∈ >,<,>=,<=,~ (~ within tol of v).
+ * op ∈ >,<,>=,<=,~ (~ within tol of v), and `steady`.
+ *   `steady` — {p, op:'steady', v:<fractional drift>, window:<trailing seconds>} — "this
+ *   indication has STOPPED MOVING" *(OWNER RULING, 2026-09-15; #755)*. The reading is sampled
+ *   into a trailing ring and the mean of the window's older half is compared with the mean of
+ *   its newer half; it holds when the relative difference is at or under `v`. The window must be
+ *   fully covered before it can hold at all and the ring resets when the step changes, so the
+ *   window is also a MINIMUM DWELL — a step carrying one cannot complete inside `window`
+ *   seconds. It RE-GRADES rather than latching, like `~`, because "steady" is a hold claim.
+ *   `v` is RELATIVE to the window mean (the channel it was built for spans decades); an author
+ *   wanting an absolute band wants `~`. LEGAL IN `acc` AND `accs` ONLY — those are the two that
+ *   own a per-step state bag; `run_checklist_pwr2` §2w reddens on one authored into `saw`,
+ *   `overtaken`, `precond` or a `when` gate rather than letting it read false for ever. The
+ *   evaluator is `InstructorLayer.gradeSteady` and BOTH the live runtime and the replay harness
+ *   call that one static — see its header for why the halves are averaged.
  */
 ;(function (RD) {
   'use strict';
@@ -2035,15 +2052,61 @@
            * is the danger side — the whole point of the trailing-3 fit is that it never does).
            * So this hold is the knee, not a round number.
            *
-           * ⚠ WHAT THIS DOES **NOT** FIX, and it is the honest gap: the hold governs the REPLAY.
-           * A live player's step lights Continue on `sr_counts_cps > 7000`, which is crossed while
-           * the count is still climbing, so the acceptance does not make him wait — only the step
-           * line and the `note` do. Closing that needs either a higher count target (measured:
-           * 12,000 cps is crossed around 450–500 s after the rods stop) or a steadiness predicate
-           * the schema does not have. The count target is the OWNER'S OWN authored number in
-           * `Blueprint/WALKTHROUGH_STEPS_OWNER.md` step 8, so it was not moved here. */
+           * THE LIVE PLAYER IS NOW HELD BY THE SAME PHYSICS, NOT BY THE PROSE *(OWNER RULING,
+           * 2026-09-15: selected "add a steadiness predicate" from three ways to close the gap
+           * this note used to describe — raise the count target to 12,000, add a "counts steady"
+           * predicate, or leave it as text. A SELECTION, not verbatim words; the rationale
+           * relayed with it is that a steady count rate is what an operator actually looks for
+           * and an absolute threshold is only a stand-in for it)*.
+           *
+           * The hold above governs the REPLAY. A live player's Continue used to light on
+           * `sr_counts_cps > 7000` alone, which this route crosses 47 s after the rods stop with
+           * the count still climbing hard — so the acceptance did not make him wait and only this
+           * step's own line and `note` did. The second check-off below is the operator's actual
+           * cue: the source range has STOPPED MOVING. The owner's 7,000 target is untouched and
+           * stands as the floor (it is his own authored number in
+           * `Blueprint/WALKTHROUGH_STEPS_OWNER.md` step 8); steadiness is added beside it.
+           *
+           * THE THREE NUMBERS, EACH MEASURED (full stack, hot_zero_power, tick()-driven, the
+           * authored 94/63/31/14 ladder, panel fit copied from ui/panels/one_over_m.js; true
+           * critical 208 of 627; the settle clock starts when the last burst stops the bank at
+           * 202, which is 22 s after this step becomes active):
+           *
+           *   accept condition                  settle   counts   1/M prediction
+           *   counts > 7,000 alone (WAS)          47 s    7,025     213.7   (+5.7)
+           *   steady 3 % / 120 s (THIS)          506 s   13,309     208.8   (+0.8)
+           *   the ruled `hold: 600` above        578 s   13,617     208.7   (+0.7)
+           *
+           * WINDOW = 120 s, the shortest window that resolves this settle at all: at 60 s the
+           * metric is 2 % as early as 395 s with the prediction still at 209.1, and at 180 s and
+           * 240 s it accepts LATER than the replay's own hold for 0.1 step of accuracy.
+           * TOLERANCE = 3 %. First crossing at this window: 4 % at 421 s (209.0), 3 % at 506 s
+           * (208.8), 2.5 % at 546 s (208.8), 2 % at 593 s (208.7). Every one of them lands on
+           * the knee — the whole band is worth 0.3 of a bank step — so the tolerance is picked
+           * for MARGIN, not for accuracy.
+           * ⚠ WHY NOT 2 %, WHICH LOOKS LIKE THE BETTER NUMBER. `hold: 600` is measured from the
+           * step becoming ACTIVE and 22 s of it is the rod burst, so the replay delivers 578 s of
+           * settle, where the drift is 2.16 % — 0.16 of a percentage point the WRONG SIDE of a
+           * 2 % threshold. A 2 % predicate therefore reddens the replay of the very step it is
+           * authored on, and a fixture standing 0.16 points from a cliff is #543 again. At 3 %
+           * the predicate is satisfied 72 s before the authored hold expires and the drift at the
+           * hold's end is 0.84 points clear of the threshold.
+           * DWELL = the window itself. The ring is reset when the step becomes active, so this
+           * step cannot complete inside 120 s however the player drives it, and the runtime's
+           * ordinary five-evaluation acceptance debounce sits on top.
+           * NOT A CHATTERING LATCH (the #752 trap): the metric crosses EXACTLY ONCE over the
+           * 1,800 s tail, and the channel's own detrended scatter is 0.0019 % of reading — the
+           * tolerance clears one noise sample by a factor of 480.
+           *
+           * ⚠ WHAT IT STILL DOES NOT FIX: check-off ORDERING is not expressible (#741), so a
+           * player who presses Plot point early latches that entry and then waits out the
+           * steadiness row with an early POINT already on the plot. Continue will not light until
+           * the counts are steady either way, and the unticked "Counts steady" row is the cue not
+           * to plot yet — but the press itself is not gated. */
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 14, speed: 'normal' }, hold: 600,
-          accs: [{ p: 'sr_counts_cps', op: '>', v: 7000, label: 'Counts settled above 7.0e3 (7,000 counts per second)' },
+          accs: [{ p: 'sr_counts_cps', op: '>', v: 7000, label: 'Counts above 7.0e3 (7,000 counts per second)' },
+                 { p: 'sr_counts_cps', op: 'steady', v: 0.03, window: 120,
+                   label: 'Counts steady — under 3 % change over the last two minutes' },
                  { cmd: 'plot_1m_point', label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', 'Plot point'],

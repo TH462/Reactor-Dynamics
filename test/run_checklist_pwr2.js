@@ -1772,6 +1772,168 @@ if (!only) {
     ck('...and the RIGHT button still is (the rule did not just refuse everything)',
        rightRefused.length === 0, rightRefused.join(', ') || 'all latch on their own sense');
   })();
+
+  /* 2aa. THE STEADINESS PREDICATE, `op: 'steady'` (#755, OWNER RULING 2026-09-15).
+   *
+   * He was given three ways to stop a hasty player plotting `pwr_startup`'s last 1/M point while
+   * the source range was still climbing — raise the count target to 12,000, add a "counts steady"
+   * predicate, or leave it as prose — and took the predicate over the one-number change, because
+   * a steady count rate is what an operator actually looks for.
+   *
+   * WHAT WAS WRONG. The step's `hold: 600` governs the REPLAY only. Live, Continue lit on
+   * `sr_counts_cps > 7000`, which this route crosses 47 s after the rods stop with the count still
+   * climbing hard: measured, the 1/M panel then read 213.7 against a true critical of 208.
+   *
+   * THE PROOF IS A PAIR, AND IT IS DRIVEN ON THE PLANT, NOT ON A FIXTURE. A predicate that never
+   * accepts satisfies "does not accept early" all by itself, and one that always accepts satisfies
+   * "accepts once settled" — so the same authored predicate the step ships is run against the real
+   * source-range trace of the authored ladder and must be RED where the old acceptance fired and
+   * GREEN at the ruled 600 s settle. */
+  (function () {
+    var proc = null;
+    POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
+    var step8 = proc && proc.steps[7];
+    var floorEn = null, steadyEn = null;
+    ((step8 && step8.accs) || []).forEach(function (en) {
+      if (en.p === 'sr_counts_cps' && en.op === '>') floorEn = en;
+      if (en.p === 'sr_counts_cps' && en.op === 'steady') steadyEn = en;
+    });
+    ck("pwr_startup step 8 keeps the owner's 7,000 counts floor AND carries a steadiness entry (#755)",
+       !!(floorEn && floorEn.v === 7000 && steadyEn && steadyEn.v > 0 && steadyEn.window > 0),
+       steadyEn ? ('floor ' + (floorEn && floorEn.v) + ', steady ' + (steadyEn.v * 100).toFixed(0) +
+                   '% over ' + steadyEn.window + ' s') : 'no steady entry on step 8');
+
+    /* `steady` is only legal where a per-step state bag exists — `acc` and `accs`. Authored into
+     * `saw`, `overtaken`, `precond` or a `when` gate it reads FALSE FOR EVER and nothing says so,
+     * which is the hollow-check shape CLAUDE.md's standing list names. This is the gate for it. */
+    var illegal = [];
+    function scanPred(where, pr) {
+      if (Array.isArray(pr)) { pr.forEach(function (q, i) { scanPred(where + '[' + i + ']', q); }); return; }
+      if (pr && pr.op === 'steady') illegal.push(where);
+    }
+    var nSteady = 0, malformed = [];
+    Object.keys(RD.MANUAL_PROCEDURES).forEach(function (key) {
+      (RD.MANUAL_PROCEDURES[key] || []).forEach(function (pr) {
+        (pr.precond || []).forEach(function (c, i) { scanPred(key + ':' + pr.id + ' precond[' + i + ']', c); });
+        ((pr.guard && pr.guard.never) || []).forEach(function (c, i) { scanPred(key + ':' + pr.id + ' guard[' + i + ']', c); });
+        scanPred(key + ':' + pr.id + ' outcome_guard', pr.outcome_guard);
+        (pr.steps || []).forEach(function (st, si) {
+          var w = key + ':' + pr.id + ' step ' + (si + 1);
+          scanPred(w + ' saw', st.saw);
+          scanPred(w + ' overtaken', st.overtaken);
+          scanPred(w + ' past', st.past);
+          [].concat(st.inject || [], st.clear || []).forEach(function (sp) {
+            if (sp && typeof sp !== 'string') scanPred(w + ' inject.when', sp.when);
+          });
+          [].concat(st.acc ? [st.acc] : [], st.accs || []).forEach(function (en) {
+            if (!en || en.op !== 'steady') return;
+            nSteady++;
+            if (!(en.v > 0) || !(en.window > 0) || !en.p) malformed.push(w);
+          });
+        });
+      });
+    });
+    ck('`steady` is authored ONLY where a per-step bag exists — acc / accs (#755)',
+       illegal.length === 0, illegal.join(', ') || nSteady + ' steady predicate(s) in the pool, all in acc/accs');
+    ck('...and every one declares a param, a drift and a window',
+       nSteady > 0 && malformed.length === 0, malformed.join(', ') || nSteady + ' well formed');
+
+    /* THE PLANT RUN. The authored 94/63/31/14 ladder on `hot_zero_power`, the step-8 predicate
+     * sampled through `InstructorLayer.gradeSteady` exactly as both runtimes sample it. */
+    if (steadyEn) {
+      var svc = mkSvc('hot_zero_power');
+      var s = null, i;
+      for (i = 0; i < 5; i++) s = svc.tick();
+      var runFor = function (secs) { var t0 = s.metadata.sim_time; while (s.metadata.sim_time - t0 < secs) s = svc.tick(); };
+      var ctlBank = function () {
+        var gs = (s.control_state && s.control_state.rod_groups) || [];
+        for (var j = 0; j < gs.length; j++) if (gs[j].function === 'control') return gs[j].steps;
+        return null;
+      };
+      [94, 63, 31, 14].forEach(function (n, k) {
+        svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: n, speed: 'normal' });
+        if (k < 3) runFor(150);
+      });
+      var prev = ctlBank(), still = 0;
+      while (still < 5) { s = svc.tick(); var b = ctlBank(); if (b === prev) still++; else still = 0; prev = b; }
+      var tStop = s.metadata.sim_time, bankStop = ctlBank();
+      var bag = { s: [] }, firstFloor = null, firstSteady = null, countsAtFloor = null, countsAtSteady = null;
+      var steadyAtFloor = false, streak = 0;
+      while (s.metadata.sim_time - tStop < 900) {
+        s = svc.tick();
+        var el = s.metadata.sim_time - tStop, c = s.true_state.sr_counts_cps;
+        var v = RD.InstructorLayer.gradeSteady(bag, s, steadyEn);
+        if (firstFloor === null && c > 7000) { firstFloor = el; countsAtFloor = c; steadyAtFloor = !!v.met; }
+        if (firstSteady === null) {
+          streak = v.met ? streak + 1 : 0;      // the runtime's own five-evaluation acceptance debounce
+          if (streak >= 5) { firstSteady = el; countsAtSteady = c; }
+        }
+      }
+      ck('the steadiness entry is RED where the old acceptance fired — the counts are still climbing (#755)',
+         firstFloor !== null && !steadyAtFloor && firstSteady !== null && firstSteady > firstFloor + 300,
+         'floor crossed at ' + (firstFloor === null ? '?' : firstFloor.toFixed(0)) + ' s (' +
+         (countsAtFloor || 0).toFixed(0) + ' counts, steady=' + steadyAtFloor + '), steady at ' +
+         (firstSteady === null ? 'NEVER within 900 s' : firstSteady.toFixed(0) + ' s') +
+         ', bank ' + bankStop);
+      /* GREEN WELL INSIDE THE AUTHORED HOLD, which is the claim that matters: `hold: 600` is
+       * measured from the step becoming active and 22 s of it is the rod burst, so the replay
+       * delivers 578 s of settle. A predicate the replay cannot satisfy would redden the very
+       * step it is authored on — which is exactly what a 2 % tolerance did (drift at 578 s is
+       * 2.16 %). The band is wide on purpose: it is pinning "on the knee, with margin", not a
+       * number, and a retune of the ladder should move it rather than break it. */
+      ck('...and GREEN on the knee, with room inside the authored 600 s hold (#755)',
+         firstSteady !== null && firstSteady >= 420 && firstSteady <= 560,
+         firstSteady === null ? 'never met' : (firstSteady.toFixed(0) + ' s of settle, ' +
+           (countsAtSteady || 0).toFixed(0) + " counts; the replay's hold delivers 578 s"));
+    }
+
+    /* THE RUNTIME HALF, BOTH SIDES, through `_gradeAccs` — the path the live card actually grades
+     * on. A climbing plant must not tick it, a flat one must, and a plant that STARTS CLIMBING
+     * AGAIN must UN-tick it: `steady` re-grades like `~` rather than latching, and a latching
+     * version would pass the first two halves on its own. */
+    (function () {
+      var il = Object.create(RD.InstructorLayer.prototype);
+      var en = { p: 'sr_counts_cps', op: 'steady', v: 0.03, window: 120 };
+      var st = { accs: [en] }, holder = {};
+      var t = 0, c = 9000;
+      var metEarly = false, metFlat = false, metBeforeWindow = false, unticked = false;
+      function feed(secs, perSec, cb) {
+        for (var k = 0; k < secs; k++) {
+          t += 1; c *= (1 + perSec);
+          var snap = { metadata: { sim_time: t, plant_id: 'pwr2' },
+                       true_state: { sr_counts_cps: c }, instruments: {} };
+          cb(il._gradeAccs(holder, st, snap), t);
+        }
+      }
+      feed(400, 0.002, function (m) { if (m) metEarly = true; });            // +0.2 %/s, still climbing
+      feed(400, 0, function (m) { if (m) metFlat = true; });                  // flattened
+      feed(400, 0.002, function (m) { if (metFlat && !m) unticked = true; }); // climbing again
+      ck('a plant whose counts are still climbing does NOT tick the steadiness entry (#755)',
+         !metEarly, metEarly ? 'ticked while climbing at 0.2 %/s' : '400 s of +0.2 %/s, never met');
+      ck('...a plant whose counts have flattened DOES (the pair, not one side of it)', metFlat,
+         metFlat ? 'met once the window filled' : 'never met on a dead-flat channel — unsatisfiable');
+      ck('...and it UN-ticks when the plant starts climbing again (it re-grades, like ~)', unticked,
+         unticked ? 'came back off' : 'stayed latched — a hold claim that cannot be lost');
+      /* THE DWELL, on its OWN holder — a STEP ENTRY, which is the only thing that resets the ring.
+       * Asserted on a DEAD FLAT channel, the most favourable case there is: if even that cannot be
+       * met before the window has passed, nothing can. (The first draft of this check reused the
+       * holder above and asserted the dwell from the moment the channel flattened, which the design
+       * never claimed — the window is a dwell from STEP ENTRY, not from the plant settling.) */
+      (function () {
+        var il2 = Object.create(RD.InstructorLayer.prototype);
+        var st2 = { accs: [{ p: 'sr_counts_cps', op: 'steady', v: 0.03, window: 120 }] }, h2 = {};
+        var firstMet = null;
+        for (var k = 1; k <= 300; k++) {
+          var snap = { metadata: { sim_time: k, plant_id: 'pwr2' },
+                       true_state: { sr_counts_cps: 13000 }, instruments: {} };
+          if (il2._gradeAccs(h2, st2, snap) && firstMet === null) firstMet = k;
+        }
+        ck('...and it cannot be met inside its own window — the window IS the dwell, from step entry',
+           firstMet !== null && firstMet >= 120,
+           firstMet === null ? 'never met on a dead-flat channel' : 'first met at ' + firstMet + ' s of a 120 s window');
+      })();
+    })();
+  })();
 }
 
 console.log('\n' + '='.repeat(74));

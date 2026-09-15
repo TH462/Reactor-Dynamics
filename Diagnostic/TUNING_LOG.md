@@ -29,6 +29,103 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-15-develop-a (#755 — the 1/M settle was a REPLAY hold; the live player now waits on a steadiness predicate)
+
+**The ruling.** Three options were put to the owner for the last inverse-count-rate (1/M) step of
+the Mode 3, Hot Standby → Mode 1, At Power walkthrough: raise its count target to 12,000 counts a
+second, add a "counts steady" predicate, or leave it as prose. He selected the predicate — the one
+that needed new plumbing over the one-number change.
+
+**What was actually wrong.** The 600 s hold shipped in `28f5c14f` is the REPLAY's dwell. The live
+player's Continue lit on `sr_counts_cps > 7000` alone. Measured on this tree (full stack,
+`hot_zero_power`, `tick()`-driven, the authored 94/63/31/14 ladder, the panel's own trailing-three
+fit, true critical control bank 208 of 627; the settle clock starts when the last burst stops the
+bank at 202, which is **22 s** after the step becomes active):
+
+| accept condition | settle | counts | 1/M prediction |
+|---|---|---|---|
+| counts > 7,000 alone (was) | 47 s | 7,025 | 213.7 (+5.7) |
+| steady 3 % over 120 s (now) | 506 s | 13,309 | 208.8 (+0.8) |
+| the authored `hold: 600` | 578 s | 13,617 | 208.7 (+0.7) |
+
+**The settling curve** after the rods stop (5,182 counts at the stop), read at the instants the
+metric crossed a tolerance: 47 s 7,025 · 421 s 12,796 · 506 s 13,309 · 546 s 13,499 · 593 s 13,656 ·
+979 s 14,290, settling near 14,460 beyond 1,500 s. The knee is the owner's 600 s: from 578 s to
+979 s the count rate rises another 4.9 % and the prediction moves 0.2 of a bank step.
+
+**Window and tolerance, each from measurement.** Half-window means, older half against newer,
+trailing window W; first accept after the runtime's five-evaluation debounce, prediction in
+brackets:
+
+| W | 5 % | 3 % | 2 % | 1 % |
+|---|---|---|---|---|
+| 60 s | 227 s (210.0) | 324 s (209.4) | 395 s (209.1) | 573 s (208.7) |
+| **120 s** | 388 s (209.1) | **512 s (208.8)** | 599 s (208.7) | 707 s (208.6) |
+| 180 s | 508 s (208.8) | 626 s (208.7) | 692 s (208.6) | 891 s (208.5) |
+| 240 s | 611 s (208.7) | 706 s (208.6) | 786 s (208.6) | 1,027 s (208.5) |
+
+120 s is the shortest window that resolves this settle at all — at 60 s the metric reads 2 % as
+early as 395 s with the prediction still at 209.1 — and 180 s and 240 s accept LATER than the
+replay's own hold for a tenth of a bank step.
+
+**THE TOLERANCE IS PICKED FOR MARGIN, NOT ACCURACY, AND THE GATE IS WHAT TAUGHT ME THAT.** The
+whole 2 %–4 % band lands on the knee and is worth 0.3 of a bank step, so accuracy cannot choose
+between them. 2 % was authored first because its crossing sits on the ruled 600 s. `run_checklist_pwr2`
+then went red on the REPLAY of the very step the predicate is authored on: `hold: 600` is measured
+from the step becoming ACTIVE and 22 s of it is the rod burst, so the replay delivers 578 s of
+settle, where the drift is **2.16 %** — 0.16 of a percentage point the wrong side of a 2 % line.
+That is a fixture standing on a cliff (#543). At 3 % the predicate is satisfied 72 s before the
+authored hold expires and the drift at the hold's end is 0.84 points clear.
+
+**The noise argument, and the brief's premise refuted.** The brief said the count rate "is an
+instrument reading and carries noise". It is not: `sr_counts_cps` has no instrument twin in
+`PARAM_INSTRUMENT.pwr2` (the documented exception) so the acceptance grades `true_state`, and its
+measured detrended scatter over the deep tail is **0.0019 % of reading, max residual 0.0062 %** —
+four seeds produce byte-identical traces. The 3 % tolerance clears one sample by a factor of 480.
+The half-window MEAN form is kept anyway, because the predicate is general and instrument channels
+are not: averaging divides channel noise by root-n, which is the #752 lesson in the other runtime.
+The metric crosses **exactly once** over the 1,800 s tail, so this is not a chattering latch.
+
+**Acceleration independence, measured.** With a 2 % threshold the accept moved from 599 s at 0.1 s
+samples (1x) to 661 s at 10 s samples (100x), predictions 208.7 and 208.6. A per-sample "has it
+changed since the last tick" test would instead have been a function of the speed control. Above
+the point where a half-window holds fewer than two samples (the WARP tier, where one broadcast can
+be minutes of plant) the evaluator falls back to the ends of the covered span — an over-read of the
+change, so conservative, and it cannot soft-lock the step the way "never met" would.
+
+**Where it lives.** `InstructorLayer.gradeSteady` (`layers/instructor_layer.js`) is ONE static and
+both callers use it: the live runtimes through `_gradeOne` / `_gradeAccs` with a per-step bag, and
+the replay (`test/procedures_harness.js`) with a bag of its own, sampled every tick because a
+trailing-window claim cannot be read off the step's last snapshot. `readParam` was split out of
+`_grade` so the evaluator samples the same instrument-first channel the acceptance grades rather
+than becoming a second sampler of it (#605/#432).
+
+**Proved red before green**, `run_checklist_pwr2` §2aa: the SHIPPED step-8 predicate is run against
+the real ladder trace and must be unmet where the old acceptance fired (47 s) and met on the knee;
+and through `_gradeAccs`, a climbing plant must not tick it, a flat one must, it must UN-tick when
+the plant climbs again (it re-grades like `~` — "steady" is a hold claim), and on a fresh holder it
+must not tick inside its own window. A structural check reddens on a `steady` authored anywhere a
+per-step bag does not exist (`saw`, `overtaken`, `precond`, a `when` gate), where it would read
+false for ever.
+
+**Two traps worth the next agent's time.**
+1. **A DWELL CLAIM HAS AN ANCHOR, AND THE FIRST DRAFT OF THE CHECK USED THE WRONG ONE.** "The window
+   is also the dwell" is anchored on STEP ENTRY — the only thing that resets the ring — not on the
+   plant flattening. The first draft asserted it from the moment the synthetic channel went flat, on
+   a holder that already carried 400 s of climbing samples, and went red against a correct runtime.
+2. **A PREDICATE AUTHORED ON A STEP MUST BE SATISFIED BY THAT STEP'S OWN REPLAY**, and the replay's
+   clock is not the physics clock: `hold` runs from step entry and includes the rod motion. 22 s of
+   difference is what put 2 % on the wrong side of the line.
+
+**Still open, and not hidden.** Check-off ORDERING is not expressible (#741). A player who presses
+Plot point early latches that entry and then waits out the steadiness row with an early point
+already on the plot. Continue does not light until the counts are steady either way, and the
+unticked "Counts steady" row is the cue not to plot yet, but the press itself is not gated. The
+cheap general fix is a `when` gate on a cmd-kind `accs` entry — the press only counts while a plant
+condition holds — which is three lines in `_accsCmdWatch`, and was left out of scope here.
+
+---
+
 ## Session log — 2026-09-14-develop-c (#752 — the P-10 revoke had no noise immunity, and the brief pointed at the wrong file)
 
 **The task named `layers/control/control_kernel.js` as where the defect lives. It is not, for the

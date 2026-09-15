@@ -239,6 +239,26 @@
       // run_procedures.js. Kept identical here on purpose: this runner exists to assert the
       // SAME predicates through the stack, so a schema the two disagree on is worse than none.
       var sawList = st.saw ? (Array.isArray(st.saw) ? st.saw : [st.saw]) : [];
+      /* STEADINESS (#755, `op: 'steady'`) — a trailing-window claim, so it cannot be read off
+       * the step's last snapshot the way every other predicate here can. It is sampled EVERY
+       * tick through `InstructorLayer.gradeSteady`, the same static the live runtimes call with
+       * a bag of their own, and the verdict standing at the end of the step is what the check
+       * asserts. Bags are per step: the window starts when the step does, exactly as it does
+       * live, which is what makes the authored `hold` and the player's wait the same test. */
+      var steadyBags = {};
+      function steadyOf(pred, key) {
+        if (!steadyBags[key]) steadyBags[key] = { bag: { s: [] }, pred: pred, last: null };
+        return steadyBags[key];
+      }
+      function steadyKeys() {
+        var ks = [];
+        if (st.acc && st.acc.op === 'steady') ks.push({ p: st.acc, k: 'acc' });
+        (st.accs || []).forEach(function (en, k) {
+          if (en && en.op === 'steady') ks.push({ p: en, k: 'accs' + k });
+        });
+        return ks;
+      }
+      var steadyList = steadyKeys();
       var sawHits = [], ticks = Math.round((st.hold || 0) / SEC_PER_TICK);
       for (var i = 0; i < ticks; i++) {
         if (st.ramp && (i % RAMP_EVERY === 0)) {
@@ -248,6 +268,7 @@
         var s = svc.tick();
         if (!s) continue;
         lastSnap = s;
+        steadyList.forEach(function (e) { var h = steadyOf(e.p, e.k); h.last = RD.InstructorLayer.gradeSteady(h.bag, s, e.p); });
         if (s.metadata && s.metadata.time_acceleration < ACCEL) {
           if (!slowTicks) firstSlow = 'step ' + curStep + ' @ t=' + s.metadata.sim_time.toFixed(1) +
             ' → ' + s.metadata.time_acceleration + '×' +
@@ -272,8 +293,18 @@
       sawList.forEach(function (sw, k) {
         checks.push({ d: 'step ' + curStep + ' saw ' + sw.p + ' ' + sw.op + ' ' + sw.v, pass: !!sawHits[k], obs: !!sawHits[k] });
       });
+      function accVerdict(c, key) {
+        if (c.op !== 'steady') return { pass: pred(lastSnap, c), obs: pv(lastSnap, c.p) };
+        var h = steadyBags[key];
+        var last = h && h.last;
+        return { pass: !!(last && last.met),
+                 obs: last ? ((last.drift == null ? 'window not covered' : (last.drift * 100).toFixed(2) + '% drift')
+                              + ' @ ' + (last.value == null ? '?' : Number(last.value).toFixed(0)))
+                           : 'never sampled (hold is 0)' };
+      }
       if (st.acc) {
-        checks.push({ d: 'step ' + curStep + ' ' + st.acc.p + ' ' + st.acc.op + ' ' + st.acc.v, pass: pred(lastSnap, st.acc), obs: pv(lastSnap, st.acc.p) });
+        var av = accVerdict(st.acc, 'acc');
+        checks.push({ d: 'step ' + curStep + ' ' + st.acc.p + ' ' + st.acc.op + ' ' + st.acc.v, pass: av.pass, obs: av.obs });
       }
       /* MULTI-CHECK-OFF steps (#244 item 8): predicate entries are asserted at the step's
        * end exactly like `acc`; cmd-kind entries were issued above as operator actions of
@@ -281,9 +312,11 @@
        * latches them off the command watch — that half is run_checklist's subject). */
       if (st.accs && st.accs.length) {
         st.accs.forEach(function (en, k) {
-          if (en && en.p) checks.push({
+          if (!en || !en.p) return;
+          var ev = accVerdict(en, 'accs' + k);
+          checks.push({
             d: 'step ' + curStep + ' accs[' + k + '] ' + en.p + ' ' + en.op + ' ' + en.v,
-            pass: pred(lastSnap, en), obs: pv(lastSnap, en.p) });
+            pass: ev.pass, obs: ev.obs });
         });
       }
     });
