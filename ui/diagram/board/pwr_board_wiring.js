@@ -4873,6 +4873,14 @@
       var p = Math.pow(10, m.d);
       return [Math.ceil(m.to(b[0]) * p) / p, Math.floor(m.to(b[1]) * p) / p];
     },
+    /* THE BOX SAYS NO OUT LOUD (#755 item 11) — `boundsFor` above already refuses an
+     * out-of-span entry, and until now it did it silently: the number the player typed was
+     * replaced by the nearest legal one with nothing to say a limit had been met. Same
+     * flasher as the refused rod press (#752), so the board has ONE answer to "that did not
+     * take" rather than two that drift apart. The renderer decides WHEN (it is the only thing
+     * that knows the clamp bit); the driver owns WHAT IT LOOKS LIKE, which is why this is a
+     * hook and not a class name hard-coded in pwr_board.js. */
+    cueNumberRefusal: function (item, el) { return flashRefused(el, 'bd-num-refused'); },
     // ▲/▼ step for an editable number box (null = use the authored it.step). NUM_STEP is an
     // absolute override and outranks the family — both boxes in it are unit-neutral.
     stepFor: function (item) {

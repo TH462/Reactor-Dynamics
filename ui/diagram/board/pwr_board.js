@@ -512,9 +512,31 @@
       // Clamp to the control's valid range and auto-correct an out-of-bounds entry to the
       // nearest acceptable value (both min and max). Bounds come from the plant driver.
       var b = d && d.boundsFor && d.boundsFor(it);
-      if (b) { if (v < b[0]) v = b[0]; else if (v > b[1]) v = b[1]; }
+      var refused = false;
+      if (b) { if (v < b[0]) { v = b[0]; refused = true; } else if (v > b[1]) { v = b[1]; refused = true; } }
       rec.editing = false;
       input.value = v.toFixed(rec.digits);
+      /* A CLAMP IS A REFUSAL AND IT HAS TO SAY SO *(OWNER, 2026-09-14, #755 item 11: "since i cant
+       * set the SET PZR PRESSURE box to below 1700, why dont we not allow this number to go belopw
+       * 1700 psi.")*. The box ALREADY would not go below 1700 — measured 2026-09-15 in headless
+       * chromium on `shell.html?engine=pwr2`: boundsFor reads the running plant's published
+       * `pressure_setpoint_range_mpa` and returns [1700, 2500] psi, so a typed 1000 became 1700 and
+       * a typed 2800 became 2500. It did it in SILENCE, with no class, no cue and no caption, which
+       * is why the owner read it as the sim ignoring him rather than the box refusing him.
+       *
+       * THE IDIOM IS THE REFUSED ROD PRESS (#752) — same flasher, same REFUSE_MS, same
+       * restart-the-finite-animation trick; see `flashRefused` in pwr_board_wiring.js. Two
+       * differences from that cue, both deliberate: it fires on an OBSERVED refusal (the clamp
+       * happened right here) rather than an inference off plant state, and the corrected number is
+       * already written into the box, so the flash names the answer instead of only the no.
+       *
+       * IT NEVER SUPPRESSES THE COMMAND, exactly as the rod cue does not. The clamped value goes
+       * down as before; the cue is decoration on a command path that must keep working whatever
+       * the driver does with it — hence the `d.cueNumberRefusal` guard rather than a direct call.
+       *
+       * THE FRAME, NOT THE INPUT: the frame carries the box's border, so an outline on it reads as
+       * the whole control answering. `rec.frameEl` is set in buildNumber below. */
+      if (refused && d && d.cueNumberRefusal) d.cueNumberRefusal(it, rec.frameEl || input, b);
       /* THE ENTRY MUST SURVIVE UNTIL THE PLANT ANSWERS (#605, the other half of the owner's
        * "I couldn't type into the PZR pressure set point box"). Measured: type 2235, press
        * Enter, and the box reads 363 again — the OLD setpoint. The command descends fine, but
@@ -634,6 +656,7 @@
       rec.unitEl = u;
     }
     frame.appendChild(stepBox);
+    rec.frameEl = frame;        // the refusal flash goes on the frame — see commit() above
     el.appendChild(frame);
     /* THE WHOLE TILE IS THE TARGET, NOT JUST THE FRAME (#615, owner playtest 2026-09-03: "I'm
      * unable to type into any field (number boxes and the feedback form)").
@@ -1409,6 +1432,19 @@
         if (rec.labelEl && d.numberHint) {
           var nh = d.numberHint(rec.item);
           if (nh != null && rec.labelEl.textContent !== nh) rec.labelEl.textContent = nh;
+        }
+        /* THE SPAN ON HOVER, for the boxes that carry no printed caption (#755 item 11). The
+         * Pressure SP box has an EMPTY authored label, so nothing on the board names its
+         * 1700-2500 psi span and the refusal flash is the player's first sight of it. A `title`
+         * is the only place to say it that cannot move the input: giving an unlabelled box a
+         * printed caption inserts a ~13 px line ABOVE the frame and walks the input down into
+         * whatever is under it, and this board's geometry is pinned. LIVE, not built once — the
+         * span is the running plant's (boundsFor), and it converts with the unit layer. */
+        if (d.boundsFor && rec.input) {
+          var tb = d.boundsFor(rec.item);
+          var tu = (d.numberUnit ? d.numberUnit(rec.item) : rec.item.unit) || '';
+          var tt = tb ? (tb[0] + '–' + tb[1] + (tu ? ' ' + tu : '')) : '';
+          if (tt && rec.input.title !== tt) rec.input.title = tt;
         }
         if (rec.editing) return;
         var v = d.numberFor ? d.numberFor(rec.item, s) : null;
