@@ -41,6 +41,7 @@ and keep the instructions, rulings, etc. within it.")*
 | `04_lower_power.md` | `pwr_lower_power` | 6 | extracted from the built pool, not yet authored |
 | `05_shutdown.md` | `pwr_shutdown` | 3 | extracted from the built pool, not yet authored |
 | `06_cooldown.md` | `pwr_cooldown` | 15 | extracted from the built pool, not yet authored |
+| `07_tmi2_incident.md` | `pwr_tmi2_incident` | 20 | extracted from the built pool, not yet authored |
 
 **The two AUTHORED files carry his text byte-for-byte** — the move reworded nothing. They are
 what a reconcile brings `ui/manual_procedures.js` DOWN to.
@@ -54,5 +55,12 @@ let an agent "restore" the pool to a snapshot nobody authored.
 
 **This file keeps the instructions, the rulings and the open decisions above.** It is still the
 place a ruling about walkthrough STEP TEXT gets recorded; it is no longer the place the text
-itself lives. `pwr_tmi2_incident` has no file here — it is a narrative accident walkthrough, not
-an operating leg, and he has never authored steps for it.
+itself lives. **`07_tmi2_incident.md` IS NOT LIKE THE OTHER SIX** *(OWNER, 2026-09-15: "add the tmi2
+incident. i need to go through this one too.")*. It is a NARRATIVE walkthrough: every step
+carries a story block — the clock time, and what the crew SAW, KNEW and DID — and the engine
+flagship suite owns its physics, so the procedures harness never runs it. Three steps are
+tagged **AS TAKEN** (`crew: true`): they record what the operators actually did that morning,
+so a wrong decision can be shown without being taught as correct. Four steps fire failures
+behind the scenes and two pause the sim on an event the player does not control. Its extract
+renders all of that, because dropping the story block would leave the half that is not the
+walkthrough.
