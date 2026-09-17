@@ -79,6 +79,30 @@ that is one sample every ten broadcasts; at 10x one per broadcast. The ring hold
 samples over the same 120 plant-seconds either way, which is exactly what the predicate's own
 design note claims and what this measurement confirms independently.
 
+## 4b. 60x and 600x, measured
+
+Live path, authored bursts, seed 42, seconds from rod-stop to the steady row:
+
+| accel | broadcast = | rung 5 | rung 6 | rung 7 | rung 8 | leg sim time | wall per rung |
+|---|---|---|---|---|---|---|---|
+| 1x | 0.1 s | 106 | 148 | 244 | 497 | 1,250 s | 106–497 s |
+| 10x | 1.0 s | 109 | 153 | 247 | 506 | 1,295 s | 11–51 s |
+| 60x | 6.0 s | 132 | 168 | 270 | 528 | 1,518 s | 4–9 s |
+| 600x | 60 s | 480 | 480 | 660 | 1,020 | 4,560 s | 1–2 s |
+
+**60x agrees with 10x within 23 s**, and that gap is about the size of the timing resolution — one
+broadcast is 6 plant-seconds and the rate row's `~0 ± 0.02` band is sampled at that spacing. So the
+layman's 60x step 8 is not a different regime in any way that matters.
+
+**600x is a different regime and the numbers double.** At 60 s per broadcast the 120 s window holds
+two or three samples, `gradeSteady`'s `na >= 2 && nb >= 2` half-mean test fails, and the deliberate
+fallback compares the ends of the covered span — which the evaluator's own note says is an over-read
+of the change, conservative by design. Measured cost: the four rungs burn **4,560 s of plant** instead
+of 1,295 s. **Not a player-facing defect** — wall time still falls to 1–2 s per rung, and a longer
+settle makes the 1/M prediction's inputs better, not worse — but it is worth knowing that the fallback
+roughly doubles the plant time the ladder consumes, and the 60 s resolution means those four figures
+are quantised, not precise.
+
 ## 5. Where the layman's ~1,000 s came from
 
 Five routes measured; **none produces a step-6 settle near 1,000 s.** Step 6, from burst:
@@ -197,18 +221,17 @@ touch the ruled predicate.
 
 ## 8. What was NOT verified
 
-- **Not measured above 10x.** Everything here is 1x and 10x. At 60x and in the WARP tier a
-  broadcast is 6 s or more of plant, `gradeSteady`'s `na >= 2 && nb >= 2` half-mean test fails and
-  it falls back to the ends of the covered span. The layman's step 8 was at 60x. That regime is
-  untested here.
+- ~~Not measured above 10x~~ — **measured after the first draft, see §4b.** What remains untested
+  is the WARP tier's own lockout behaviour, which is `run_warp_tier`'s subject, not this pass's.
 - **Not measured in a browser.** All of this is Node, full stack, `tick()`-driven. The rendered
   panel, the speed bar's green-fill-versus-cyan-outline confusion, and the checklist log's scroll
   position are untouched by this pass.
 - **The layman's button timings were not reproduced.** They held WITHDRAW for 20 / 7 / 6 s of wall
   at a claimed 10x; this pass drove to their *reported end positions* (146 / 152 / 199) instead, so
   it reproduces where their rods ended up, not how they got there.
-- **Two seeds only (7 and 42).** Rung 8 is the seed-sensitive one: 452 to 506 s from rod-stop
-  across the two seeds and the two routes. Rungs 5 to 7 vary by under 6 s.
+- **Three seeds only (1, 7 and 42).** Rung 8 is the seed-sensitive one: **452 to 506 s** from
+  rod-stop across the three seeds and the two routes (replay 475 / 452 / 491, live 10x 495 / 463 /
+  506). Rungs 5 to 7 vary by under 6 s across all three — replay rung 5 is 105 s on every seed.
 - **The `'step'` speed snap was measured on this tree with the default settings; it was not
   confirmed to be what the layman actually hit.** Their report says they misread the bar; it does
   not say why.
