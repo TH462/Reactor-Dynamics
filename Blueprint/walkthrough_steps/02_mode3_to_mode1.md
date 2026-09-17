@@ -1,25 +1,25 @@
 # Mode 3, Hot Standby to Mode 1, At Power
 
-**Walkthrough id: `pwr_startup`  ·  17 steps**
+**Walkthrough id: `pwr\_startup`  ·  17 steps**
 
-> **This file is YOUR authored step text and it is the AUTHORITY for this walkthrough.**
-> The built pool (`ui/manual_procedures.js`) comes DOWN to it — including prose an agent added.
+> \*\*This file is YOUR authored step text and it is the AUTHORITY for this walkthrough.\*\*
+> The built pool (`ui/manual\_procedures.js`) comes DOWN to it — including prose an agent added.
 > Highlights are the exception: a step with no highlight entry here keeps the highlights the
 > pool has, per your standing instruction.
 >
-> Split out of `Blueprint/WALKTHROUGH_STEPS_OWNER.md` on 2026-09-15 *(OWNER DIRECTIVE,
+> Split out of `Blueprint/WALKTHROUGH\_STEPS\_OWNER.md` on 2026-09-15 \*(OWNER DIRECTIVE,
 > 2026-09-15: "I want to be able to manually review and edit the steps for the walkthroughs
-> easier. can you make a folder within blueprints/ and create a new file for each walkthrough.")*.
-> **The text below is byte-for-byte what that file carried** — nothing was reworded in the move.
+> easier. can you make a folder within blueprints/ and create a new file for each walkthrough.")\*.
+> \*\*The text below is byte-for-byte what that file carried\*\* — nothing was reworded in the move.
 > The instructions, rulings and open decisions stay in the parent file; this one is steps only.
 
----
+\---
 
 \*\*\* WALKTHROUGH MODE 3 to MODE 1
 
 
 
-1\. Verify the plant is hot and shut down: AVG COOLANT TEMPERATURE 547 °F, PRIMARY PRESSURE 2235 psi, RCP FLOW on.
+1\. Verify the plant is hot and shut down: AVG COOLANT TEMPERATURE 547 °F, PRIMARY PRESSURE 2235 psi, Reactor Coolant Pump (RCP) FLOW on.
 
 ✓ When AVG COOLANT TEMPERATURE 532 to 561 °F
 
@@ -191,7 +191,7 @@ Each new point is taken closer to critical, where a step is worth more, so the l
 
 
 
-REVISED 2026-09-15, TWO DEFECTS. **(#653 S-11)** *"and the settle takes longer at every rung"* was an unmeasured claim in player copy: measured on the built pool, **all four settle rungs on steps 5–8 carry IDENTICAL acceptances** — `startup\_rate \~0 ±0.02`, then counts `steady` at 3 % over a 120 s window. The PLANT does settle more slowly nearer criticality (your own observation, verified above: counts-steady at 223 / 226 / 281 / 507 s), but the live durations were not re-measured in this pass, so the sentence is removed rather than replaced with a number nobody has taken. **(#653 S-5)** this step's hold is 420 s, so the GENERATED line offers **60×** while the authored hint said **10×** — one line, two speeds, and 60× is wrong for the rod pull this step opens with (the rung is 25 steps wide, 180 to 205, and MED is 48 steps a minute at 1× — this file's own step-5 figure — i.e. 48 a second at 60×). The hint now says which rung is for which half.
+REVISED 2026-09-15, TWO DEFECTS. **(#653 S-11)** *"and the settle takes longer at every rung"* was an unmeasured claim in player copy: measured on the built pool, **all four settle rungs on steps 5–8 carry IDENTICAL acceptances** — `startup\\\_rate \\\~0 ±0.02`, then counts `steady` at 3 % over a 120 s window. The PLANT does settle more slowly nearer criticality (your own observation, verified above: counts-steady at 223 / 226 / 281 / 507 s), but the live durations were not re-measured in this pass, so the sentence is removed rather than replaced with a number nobody has taken. **(#653 S-5)** this step's hold is 420 s, so the GENERATED line offers **60×** while the authored hint said **10×** — one line, two speeds, and 60× is wrong for the rod pull this step opens with (the rung is 25 steps wide, 180 to 205, and MED is 48 steps a minute at 1× — this file's own step-5 figure — i.e. 48 a second at 60×). The hint now says which rung is for which half.
 
 
 
@@ -251,7 +251,7 @@ Watch for: STARTUP RATE positive and steady around 0.15 with the rods stopped; P
 
 REVISED 2026-09-15, THE NOTE SPLIT BY KIND (#653 S-12 and S-10). MEASURED on the built pool before the edit: note **2,103 characters**, Background 502, step text 107 — eleven numeric thresholds and three conditional remedies at the same visual weight as the five actions. The 2026-09-15 layman reviewer read it twice, retained the lesson ("watch INTER RANGE, not REACTOR POWER") and **lost the action** ("stop 3 steps short"), which is the wrong half to lose. The note now carries only what the player DOES and the readings that tell them to do something else; everything that explains the plant moved to the END of the note, behind "Behind the readings:". **Nothing was deleted — every number is still on this step.**
 
-**THE LENGTH BARELY MOVED AND THAT IS A GATE, NOT A CHOICE — and it is the one thing here you may want to rule on.** 2,103 → 2,023 characters. The plan was to move the teaching into the step's Background block, but `run\_style`'s **W-detail** check caps a details paragraph at **three sentences**, so Background could take only the core (502 → 595) and the rest had to stay in the note. What DID change is the ORDER, which is the half the reviewer lost: actions first, then the four rate/PERIOD remedies, then the instrument teaching. **A real shrink needs one of two things from you:** relax W-detail for the Background block (it is supplemental context, not an instruction, and this step is the only one that strains it), or turn the actions into lettered `accs\_ordered` rungs the way steps 5–8 now are — which is a GRADING change and owes its own measurement. **Recommendation: the `accs\_ordered` rungs**, because they fix the lost-action complaint structurally rather than by moving prose around, and the machinery shipped yesterday; relaxing a style cap to make one long note legal is the weaker of the two.
+**THE LENGTH BARELY MOVED AND THAT IS A GATE, NOT A CHOICE — and it is the one thing here you may want to rule on.** 2,103 → 2,023 characters. The plan was to move the teaching into the step's Background block, but `run\\\_style`'s **W-detail** check caps a details paragraph at **three sentences**, so Background could take only the core (502 → 595) and the rest had to stay in the note. What DID change is the ORDER, which is the half the reviewer lost: actions first, then the four rate/PERIOD remedies, then the instrument teaching. **A real shrink needs one of two things from you:** relax W-detail for the Background block (it is supplemental context, not an instruction, and this step is the only one that strains it), or turn the actions into lettered `accs\\\_ordered` rungs the way steps 5–8 now are — which is a GRADING change and owes its own measurement. **Recommendation: the `accs\\\_ordered` rungs**, because they fix the lost-action complaint structurally rather than by moving prose around, and the machinery shipped yesterday; relaxing a style cap to make one long note legal is the weaker of the two.
 
 ONE REMEDY WAS ADDED (#653 S-10): the note gave three remedies for a startup rate too HIGH and none for too LOW. The reviewer settled at **+0.01 decades per minute with PERIOD reading 2,391 s** and stalled, having to infer "tap more". The on-plan figures are this step's own pre-existing measurement (about 0.15 settled, five steps above critical; PERIOD 150 to 200 s; under 60 s means too far out) and the "Watch for" line widens from "about 150 s" to "150 to 200 s" to match. **The acceptance is untouched** — this is a copy change; turning the single done-when into a rung sequence would be a grading change and owes its own measurement.
 

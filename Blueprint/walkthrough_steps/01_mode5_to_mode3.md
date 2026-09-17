@@ -1,19 +1,19 @@
 # Mode 5, Cold Shutdown to Mode 3, Hot Standby
 
-**Walkthrough id: `pwr_heatup`  ·  17 steps**
+**Walkthrough id: `pwr\\\\\\\_heatup`  ·  17 steps**
 
-> **This file is YOUR authored step text and it is the AUTHORITY for this walkthrough.**
-> The built pool (`ui/manual_procedures.js`) comes DOWN to it — including prose an agent added.
+> \\\\\\\*\\\\\\\*This file is YOUR authored step text and it is the AUTHORITY for this walkthrough.\\\\\\\*\\\\\\\*
+> The built pool (`ui/manual\\\\\\\_procedures.js`) comes DOWN to it — including prose an agent added.
 > Highlights are the exception: a step with no highlight entry here keeps the highlights the
 > pool has, per your standing instruction.
 >
-> Split out of `Blueprint/WALKTHROUGH_STEPS_OWNER.md` on 2026-09-15 *(OWNER DIRECTIVE,
+> Split out of `Blueprint/WALKTHROUGH\\\\\\\_STEPS\\\\\\\_OWNER.md` on 2026-09-15 \\\\\\\*(OWNER DIRECTIVE,
 > 2026-09-15: "I want to be able to manually review and edit the steps for the walkthroughs
-> easier. can you make a folder within blueprints/ and create a new file for each walkthrough.")*.
-> **The text below is byte-for-byte what that file carried** — nothing was reworded in the move.
+> easier. can you make a folder within blueprints/ and create a new file for each walkthrough.")\\\\\\\*.
+> \\\\\\\*\\\\\\\*The text below is byte-for-byte what that file carried\\\\\\\*\\\\\\\* — nothing was reworded in the move.
 > The instructions, rulings and open decisions stay in the parent file; this one is steps only.
 
----
+\---
 
 \*\*\* MODE 5 -> 3
 
@@ -35,17 +35,17 @@ In Cold Shutdown (Mode 5) the water is far below boiling, pressure is low, the R
 
 
 
-2\. Start the reactor coolant pumps: press ON on the RCP FLOW card.
+2\. Start the Reactor Coolant Pump (RCP): press ON on the RCP FLOW card.
 
 ○ When RCP FLOW > 90 %
 
-Use RCP ON/OFF: RCP FLOW above 90 %
+
 
 
 
 Background
 
-A shut-down reactor makes very little heat compared to a critical reactor, but the running pumps put about half a percent of full power into the water as friction. That is enough to warm the whole plant. Real crews heat up exactly this way, with the reactor never critical.
+A shut-down reactor makes very little heat compared to a critical reactor, but the running pumps put about half a percent of full power into the water as friction. That is enough to warm the whole plant with the reactor never critical.
 
 
 
@@ -57,17 +57,17 @@ A shut-down reactor makes very little heat compared to a critical reactor, but t
 
 
 
-⏩ About 11 plant-minutes at 1× — set the speed control to 600×.
+⏩ About 10 plant-minutes at 1× — set the speed control to 600×.
 
 
 
-*One click starts the shutdown bank and it runs to 627 of 627 by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early. Watch SHUTDOWN ROD POSITION count up.*
+*One click starts the shutdown bank and it runs to 627 of 627 steps by itself, about 10 plant-minutes. Clicking WITHDRAW again stops it early. Watch SHUTDOWN ROD POSITION count up.*
 
 
 
 Background
 
-In a PWR, shutdown rod groups (shutdown banks) stay fully withdrawn during normal power operation. Their purpose is to supply a large, rapid insertion of negative reactivity on a reactor trip (SCRAM) so the core goes subcritical and stays that way. They are withdrawn first during startup and are not used for routine power or temperature (Tavg) control.
+In a Pressurized Water Reactor (PWR), shutdown rod groups (shutdown banks) stay fully withdrawn during normal power operation. Their purpose is to supply a large, rapid insertion of negative reactivity on a reactor trip (SCRAM) so the core goes subcritical and stays that way. They are withdrawn first during startup and are not used for routine power or temperature (Tavg) control.
 
 
 
@@ -79,7 +79,7 @@ In a PWR, shutdown rod groups (shutdown banks) stay fully withdrawn during norma
 
 
 
-*The ring on TRIP marks the lamp to read, not a button to push. If LOAD reads anything but 0, press UNLOAD. UNLOAD is not TRIP: UNLOAD walks the load setting to zero, TRIP shuts the steam valves.*
+*If LOAD reads anything but 0, press UNLOAD. UNLOAD is not TRIP: UNLOAD walks the load setting to zero, TRIP shuts the steam valves.*
 
 
 
@@ -95,7 +95,7 @@ The cold plant starts with the turbine tripped. It matters because a turbine tak
 
 
 
-5\. Set SG FEED to AUTO.
+5\. Set the Steam Generator feed system \[SG FEED] to AUTO.
 
 ○ When SG FEED is in AUTO
 
@@ -103,7 +103,7 @@ The cold plant starts with the turbine tripped. It matters because a turbine tak
 
 Background
 
-The steam generator is the boiler: reactor water heats it on one side and steam comes off the other. Nothing is boiling yet, so the feed pumps start out stopped. Putting level control in AUTO now, while the plant is quiet, means it is already holding level when the water starts to boil later in the heatup.
+The steam generator (SG) is the boiler: reactor water heats it on one side and steam comes off the other. Nothing is boiling yet, so the feed pumps start out stopped. Putting level control in AUTO now, while the plant is quiet, means it is already holding level when the water starts to boil later in the heatup.
 
 
 
@@ -112,8 +112,6 @@ The steam generator is the boiler: reactor water heats it on one side and steam 
 6\. Verify the STEAM DUMP is closed, nothing to press: CLOSE lit on the STEAM DUMP card, status reading MANUAL.
 
 ✓ When STEAM DUMP opening < 1 %
-
-*The ring on CLOSE marks the lamp to read, not a button to push.*
 
 
 
@@ -189,15 +187,13 @@ The pressurizer is a tank of half water, half steam that sets the pressure of th
 
 Background
 
-Pressure goes up in two stages because of an automatic gate at 1972 psi: above it, the emergency injection pumps re-arm, and with the steam side still cold they would fire on a healthy plant. So the first stage stops under that gate. Raising the setpoint also starts the climb toward the accumulator window in the next step, which opens at 665 psi about 44 plant-minutes from now. <<<THIS BACKGROUND NEEDS A REWRITE AND A THOUGH AS TO WHAT WE WANT THE USER TO LEARN FROM THIS STEP>>>
+Pressure goes up in two stages because of an automatic safety gate at 1972 psi: above it, the emergency injection pumps re-arm, and with the steam side still cold they would fire on a healthy plant. So the first stage stops under that gate. Raising the setpoint also starts the climb toward the accumulator window in the next step, which opens at 665 psi about 44 plant-minutes from now.
 
 
 
 
 
-10\. Open the accumulator valve: click the valve symbol inside the pulsing ring while PRIMARY PRESSURE is 665 to 1615 psi.
-
-REVISED 2026-09-15 (#653 S-8): it said "the green ring". There is no green in the highlight vocabulary — `hl` draws a CYAN pulsing halo, rgba(90,240,255,…), since #743. Named by behaviour rather than colour so a palette change cannot make it wrong again. The cooldown leg's sibling step (not in this file) had the same sentence and the same fix.
+10\. Open the ACCUMULATOR valve: click the valve symbol to open it while PRIMARY PRESSURE is 665 to 1615 psi.
 
 ✓ When the accumulator valve is open (the ACCUMULATORS tile no longer reads ISOLATED)
 
@@ -209,7 +205,7 @@ REVISED 2026-09-15 (#653 S-8): it said "the green ring". There is no green in th
 
 Background
 
-The accumulators are tanks of borated water pushed by nitrogen gas at 665 psi. They fire by themselves if loop pressure ever falls below that pressure, which is why they are kept isolated while the plant is cold. Above 1615 psi the plant removes power from the valve, so it has to be opened before that point.
+The accumulators are tanks of borated water pushed by nitrogen gas at 665 psi. They fire by themselves if loop pressure ever falls below 600 psi, which is why they are kept isolated while the plant is cold. Above 1615 psi the plant removes power from the valve, so it has to be opened before that point.
 
 
 
@@ -231,7 +227,7 @@ The pumps are doing the work now. Watch AVG COOLANT TEMPERATURE, PRESSURIZER LEV
 
 
 
-12\. Verify ISOLATE is lit on the RHR card and LETDOWN reads above 0 gpm.
+12\. Verify ISOLATE is lit on the Residual Heat Removal (RHR) card and LETDOWN reads above 0 gpm.
 
 12a✓ ISOLATE lit on the RHR card (the suction valve shut itself)
 
@@ -241,7 +237,7 @@ The pumps are doing the work now. Watch AVG COOLANT TEMPERATURE, PRESSURIZER LEV
 
 Background
 
-The Residual Heat Removal (RHR) suction valve shut itself when PRIMARY PRESSURE passed 600 psi during the climb; that is an interlock, not something you do. Letdown now leaves only through the orifices you opened earlier, about 11 gpm at this pressure. If it reads zero, water is going in and nothing is coming out.
+The Residual Heat Removal (RHR) suction valve shut itself when PRIMARY PRESSURE passed 600 psi during the climb; that is an automatic interlock, not something you do. Letdown now leaves only through the orifices you opened earlier, about 11 gpm at this pressure. If it reads zero, water is going in and nothing is coming out.
 
 
 
@@ -295,7 +291,7 @@ The second stage of the pressurization. Crossing the 1972 psi gate re-arms the e
 
 Background
 
-Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. The control bank never moved: the pumps did all the heating. STEAM PRESS holding near 1020 psi with the ATMOS DUMP shut says the steam dump is carrying the heat, not the sky.
+Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. The control rod bank never moved: the pumps did all the heating. STEAM PRESS holding near 1020 psi with the ATMOS DUMP shut says the steam dump is carrying the heat.  
 
 
 
@@ -309,11 +305,11 @@ Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. Th
 
 The done-when line reads NET REACTIVITY in pcm — hundredths of a percent of reactivity, a computed diagnostic on the Indications tab, not a board gauge. Below zero means shut down, and −300 pcm is a long way below. On the board the same fact is SOURCE RANGE steady and STARTUP RATE at 0.00.
 
-REVISED 2026-09-15 (#653 S-9): `pcm` appears exactly ONCE in both legs — here — on a step graded on a quantity that is not on the board, and the unit was never defined. The done-when LINE itself is rendered by `PRED\_DISPLAY` in ui/app.js from `acc.p` and is not authorable from the step, so the note is where the unit gets defined. **The acceptance is deliberately untouched**: your note above it asks for this step to grade on SOURCE RANGE and STARTUP RATE instead, and that is a grading change owing its own measurement — still open.
+REVISED 2026-09-15 (#653 S-9): `pcm` appears exactly ONCE in both legs — here — on a step graded on a quantity that is not on the board, and the unit was never defined. The done-when LINE itself is rendered by `PRED\\\\\\\\\\\\\\\_DISPLAY` in ui/app.js from `acc.p` and is not authorable from the step, so the note is where the unit gets defined. **The acceptance is deliberately untouched**: your note above it asks for this step to grade on SOURCE RANGE and STARTUP RATE instead, and that is a grading change owing its own measurement — still open.
 
 
 
-Background — not an action
+Background
 
 There is no gauge for "how shut down" a reactor is. The signs are SOURCE RANGE counts holding at a steady background instead of climbing, and STARTUP RATE sitting at zero. With the control bank in and boron at the cold concentration, the core is a long way from critical.
 
@@ -334,6 +330,4 @@ There is no gauge for "how shut down" a reactor is. The signs are SOURCE RANGE c
 Background
 
 Power at zero is the whole point of a pump-heat heatup: the friction of the running pumps warmed the plant, not a chain reaction. Power above 0% means something pulled the control bank or diluted the boron.
-
-
 
