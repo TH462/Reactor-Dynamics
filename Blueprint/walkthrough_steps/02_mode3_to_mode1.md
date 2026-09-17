@@ -13,6 +13,16 @@
 > \*\*The text below is byte-for-byte what that file carried\*\* — nothing was reworded in the move.
 > The instructions, rulings and open decisions stay in the parent file; this one is steps only.
 
+> **THE TICK AND CIRCLE MARKS IN THIS FILE CARRY NO MEANING** *(OWNER, 2026-09-17: "The tick vs
+> circle in my writing was because I was copy/pasting from the sim and what needed up in the
+> document was whatever state it happened to be in the sim at the time. It has no special
+> meaning.")*. A row drawn with a tick was simply a row that happened to be CHECKED OFF on his
+> screen when he copied it; a circle was one that was not. **Do not read them as authored
+> intent, do not preserve them, and never change a step's kind to match one.** The step's kind
+> is decided by what it asks the player to do — action or verify — not by the glyph.
+> The same goes for the backslash escaping throughout: that is his editor's round-trip, not
+> content. Leave it; do not "clean" it.
+
 \---
 
 \*\*\* WALKTHROUGH MODE 3 to MODE 1

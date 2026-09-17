@@ -14,6 +14,16 @@
 > 2026-09-15: "Release and unlock only the mode 5 to 3 walkthrough. I still need to test the
 > mode 3 to 1 and other walkthroughs.")* — so it is still playable on the tester site.
 
+> **THE TICK AND CIRCLE MARKS IN THIS FILE CARRY NO MEANING** *(OWNER, 2026-09-17: "The tick vs
+> circle in my writing was because I was copy/pasting from the sim and what needed up in the
+> document was whatever state it happened to be in the sim at the time. It has no special
+> meaning.")*. A row drawn with a tick was simply a row that happened to be CHECKED OFF on his
+> screen when he copied it; a circle was one that was not. **Do not read them as authored
+> intent, do not preserve them, and never change a step's kind to match one.** The step's kind
+> is decided by what it asks the player to do — action or verify — not by the glyph.
+> The same goes for the backslash escaping throughout: that is his editor's round-trip, not
+> content. Leave it; do not "clean" it.
+
 ---
 
 1\. Set LOAD to 0 MWe and wait for OUTPUT to fall below 5 MWe.
