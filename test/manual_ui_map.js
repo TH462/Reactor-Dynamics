@@ -133,8 +133,14 @@ var STEP_UI = {
      * step at 14, which is the INSERTION signature run_all.js's note describes. RENUMBER, DO NOT
      * RE-DERIVE. */
     { i: 6, view: 'board', control: 'Letdown Orifices (CVCS)' },
-    { i: 7, view: 'board', control: 'Pressurizer Heaters (PZR)' },
-    { i: 8, view: 'board', control: 'Pressure SP' },
+    /* i:7 and i:8 RENAMED IN PLACE, not inserted or deleted (#755 item 11, 2026-09-15). The one
+     * "place pressure control in service" step became two — i:7 presses SPRAY, i:8 presses
+     * HEATER — and the SET PZR PRESSURE dial step is retired, so 'Pressure SP' leaves i:8 while
+     * the step COUNT is unchanged and every row below stays where it is. This is the one edit
+     * shape the four cascade notes above do NOT warn about: nothing shifts, so do not renumber.
+     * The gate names both halves if you get it wrong ("pill X != STEP_UI Y" on 7 and 8). */
+    { i: 7, view: 'board', control: 'Pressurizer Spray (PZR)' },
+    { i: 8, view: 'board', control: 'Pressurizer Heaters (PZR)' },
     { i: 9, view: 'board', control: 'Accumulator valve' },
     { i: 12, view: 'board', control: 'Steam Dump' },
     { i: 13, view: 'board', control: 'Pressure SP' },

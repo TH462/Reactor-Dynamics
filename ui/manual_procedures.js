@@ -1477,7 +1477,7 @@
          * ride, which reads the flow AND the RHR lineup together. A `letdown_orifice_a` tick
          * alone would pass on a plant whose cross-connect was still carrying everything. */
         { text: 'Press A+B 7 % on the LETDOWN card to open the letdown path.',
-          why: 'Water is always being pumped into the reactor loop (charging), so it always needs a way out (letdown). Right now letdown leaves through the RHR loop, and that path closes itself at 600 psi on the next step\'s pressure climb. The letdown orifices, two fixed holes, are the only way out after that; with them shut the plant would slowly fill solid.',
+          why: 'Water is always being pumped into the reactor loop (charging), so it always needs a way out (letdown). Right now letdown leaves through the RHR loop, and that path closes itself at 600 psi once the heaters start the pressure climb. The letdown orifices, two fixed holes, are the only way out after that; with them shut the plant would slowly fill solid.',
           control: 'Letdown Orifices (CVCS)', target: 'A+B 7 % lit; LETDOWN reads above 0 gpm',
           cmd: { action: 'set_letdown_orifices', a: true, b: true }, hold: 10,
           accs: [
@@ -1493,11 +1493,14 @@
          * spray in hand and shut — the lineup `pwr_cooldown` leaves behind, so the picker's
          * plant and a player's own cooled-down plant finally agree.
          *
-         * THE NEXT STEP IS INERT WITHOUT THIS ONE, and that is the whole justification —
-         * measured, not argued: from the cold boot, dialling the Pressure SP to 1700 psig with
-         * the heaters off moves the plant 0.048 psi in 10 plant-minutes at 0.0 kW, against
-         * +133.4 psi at 157.8 kW once AUTO is pressed. Deleting this step reds the Pressure SP
-         * step's own acceptance (see the injection number in the #624 write-up).
+         * THE NEXT STEP WAS INERT WITHOUT THIS ONE — history since #755 item 11 split the two
+         * cards apart (2026-09-15). It read: "measured, not argued: from the cold boot, dialling
+         * the Pressure SP to 1700 psig with the heaters off moves the plant 0.048 psi in 10
+         * plant-minutes at 0.0 kW, against +133.4 psi at 157.8 kW once AUTO is pressed." Both
+         * numbers stand; the ARRANGEMENT they justified does not. The dial is gone, this step is
+         * the SPRAY, and the step it precedes is the HEATER press, which needs nothing from it —
+         * so deleting this step no longer reds a neighbour's acceptance. What deleting it costs
+         * is the brake: the climb next door would run with the spray still in hand.
          *
          * ⚠ THE STEP IS NOT HERE BECAUSE THE BUBBLE BLEEDS. `pwr2_engine`'s old pzDrivers note
          * claimed a surge-line bleed of ~16 kW / -68 psi/hr and the build plan for this change
@@ -1506,25 +1509,48 @@
          * There is no standing conduction path out of the vessel in this model, so a still
          * isothermal plant has nothing to bleed. The prose below says what is true instead.
          *
-         * TWO CARDS, THREE CHECK-OFFS. The step's own `cmd` is the heaters; the spray is a
-         * `cmd`-kind accs entry so the replay presses it too (procedures_harness issues those),
-         * and each card then has a `p`-kind entry asserting the EFFECT on the board's own lamp.
-         * `set_heater` and `set_spray` are different command families, so the two cannot tick
-         * each other off. */
-        { text: 'On the PRESSURIZER (PZR) card press AUTO under HEATER, then AUTO under SPRAY.',
-          why: 'The pressurizer is a tank of half water, half steam that sets the pressure of the reactor loop: heaters inside the pressurizer boil water to create steam and raise pressure, spray condenses steam to lower it. The cold plant starts with both off, so nothing is holding pressure. In AUTO they follow the SET PZR PRESSURE box, which the next step raises; with the heaters off that box does nothing.',
-          control: 'Pressurizer Heaters (PZR)', target: 'AUTO lit under both HEATER and SPRAY',
-          cmd: { action: 'set_heater', auto: true }, hold: 10,
-          accs: [
-            { p: 'heater_auto', op: '>', v: 0, label: 'AUTO lit under HEATER' },
-            { cmd: { action: 'set_spray', auto: true }, label: 'AUTO pressed under SPRAY', hidden: true },
-            { p: 'spray_auto', op: '>', v: 0, label: 'AUTO lit under SPRAY' },
-          ],
-          /* Both cards ARE pressed here, so both stay pulsing; what was missing is where the
-           * result is read. The sibling step in `pwr_cooldown` already watches Primary Pressure
-           * on this same pair — the two now agree (#744 template pass). */
-          hl: ['Pressurizer Heaters (PZR)', 'Pressurizer Spray (PZR)'], hl_watch: ['Primary Pressure'] },
-        /* "UP", NOT "DOWN" *(OWNER, 2026-09-02 playtest, #608 item 2: "Step 7 says to dial the
+         * THE TWO CARDS ARE NOW TWO STEPS, AND THE DIAL STEP IS RETIRED (#755 item 11)
+         * *(OWNER RULING, 2026-09-15: selected "Floor the Mode 5 seed to 1700 psi" from three
+         * options — "since i cant set the SET PZR PRESSURE box to below 1700, why dont we not
+         * allow this number to go belopw 1700 psi. Then hen we activate the heater during
+         * startup it will start raising pressure right away. this will require a rewrite of
+         * these steps. we could have step 8 start the spray and step 9 start the heater and
+         * increase pressure to 665 psi instead of upping the set pressure.")*.
+         * `pwr2_engine` now seats the cold setpoint at `PZ.CONTROL.setpoint_min_mpa`, so the box
+         * reads 1700 psi — inside the 1700-2500 span it publishes, which the old 362.6 psia seed
+         * was not — and the heaters have somewhere to drive the moment AUTO is pressed. Nothing
+         * in this leg types a pressure now until the second stage at 2235 psi.
+         *
+         * SPRAY FIRST, AND IT IS AN ARMING STEP — GRADED ON THE LAMP, WHICH IS HONEST.
+         * MEASURED 2026-09-17, full stack from `cold_shutdown` with steps 1-7 replayed, SPRAY
+         * AUTO pressed alone at the top of this step: 363.14 -> 363.19 psia over 10
+         * plant-minutes, `spray_valve_pct` 0.00 on every sample — the same two numbers the plant
+         * gives with NOTHING pressed. The valve cannot open: the spray ladder starts 25 psi
+         * ABOVE setpoint and the cold plant sits ~1337 psi below it. So there is no effect to
+         * grade, and the step says so in its own `note` rather than implying one.
+         *
+         * WHY SPRAY BEFORE HEAT: the spray is the only brake on the climb the next step starts,
+         * so it goes in service while nothing is happening. That is also the lineup order
+         * `pwr_cooldown` leaves the plant in (#624). */
+        { text: 'On the PRESSURIZER (PZR) card press AUTO under SPRAY.',
+          note: 'Nothing moves yet. The spray only opens when pressure runs above the SET PZR PRESSURE box, and the cold plant is about 1340 psi below it.',
+          why: 'The pressurizer is a tank of half water, half steam that sets the pressure of the reactor loop: heaters inside the pressurizer boil water to create steam and raise pressure, spray condenses steam to lower it. The cold plant starts with both off. Spray goes in first because it is the only brake on the climb the next step starts, and a control you want in service before you need it is one you put in service while nothing is happening.',
+          control: 'Pressurizer Spray (PZR)', target: 'AUTO lit under SPRAY',
+          cmd: { action: 'set_spray', auto: true }, hold: 10,
+          acc: { p: 'spray_auto', op: '>', v: 0 },
+          /* No `hl_watch` on Primary Pressure here, deliberately: this step moves it 0.05 psi in
+           * 10 plant-minutes, so pointing the player at the gauge would promise a change the
+           * plant does not make. The NEXT step watches it, where it climbs 8 psi a minute. */
+          hl: ['Pressurizer Spray (PZR)'] },
+        /* ⚠ THE FOUR PARAGRAPHS THAT FOLLOW ARE THE RETIRED DIAL STEP'S RECORD, KEPT BECAUSE THE
+         * RULINGS IN THEM STILL BIND THE STEP THAT REPLACED IT (#755 item 11, 2026-09-15). The
+         * step below is no longer "Raise SET PZR PRESSURE to 1700 psi" — it is the HEATER press,
+         * and it inherited BOTH of this step's acceptances unchanged: the action check-off (was
+         * the setpoint dialled, now the AUTO lamp) and the 4.585 MPa cover-gas crossing. #608's
+         * "not below the cover gas" and #627's "the tick and the clock hold are the same
+         * crossing" therefore still hold, on the step that now carries them. Read on.
+         *
+         * "UP", NOT "DOWN" *(OWNER, 2026-09-02 playtest, #608 item 2: "Step 7 says to dial the
          * pressurizer pressure setpoint DOWN to its 1700 psig floor. the problem is the mode 5
          * pressure set point is 363 so you are actually driving it UP not down")*. Measured: the
          * Mode 5 initial condition seeds `pressure_setpoint` at 2.5 MPa = 363 psi, so the dial
@@ -1569,23 +1595,44 @@
          * still short (4.554 MPa), 45.0 plant-minutes past it (4.669 MPa). The crossing is a plant
          * fact, not a test fixture (Hard Rule 9): the step's authored dwell is what was stale, so
          * the step is what moved, not `run_checklist_pwr2`. */
-        { text: 'Raise SET PZR PRESSURE to 1700 psi.',
-          /* THE OWNER'S OWN CUT (#755 item 1, 2026-09-14). His authored source keeps ONE
-           * sentence of this step's supplementary prose — the clock behaviour — and moves it
-           * to the `note`, leaving the ⏩ line as the GENERATED span and rung alone ("About 50
-           * plant-minutes at 1× — set the speed control to 600×", off `hold: 3000`). The
-           * authored `wait_hint` is gone with it: it opened by restating the same wait as
-           * "about 44 plant-minutes", which is the same fact written twice beside a `hold`
-           * — the duplication ui/app.js's own wait-line comment warns about. */
+        /* THE CLIMB STARTS HERE NOW, OFF THE HEATERS ALONE, AND NOTHING IS TYPED (#755 item 11).
+         * MEASURED 2026-09-17, full stack from `cold_shutdown` with steps 1-7 replayed and the
+         * floored seed: pressing AUTO under HEATER takes the bank to 100 % (157.8 kW) and holds
+         * it there, and the plant crosses the 664.7 psia accumulator cover gas at t+37.5
+         * plant-minutes (669.3 psia; mean 8.17 psi/plant-minute, read on 60 s broadcasts at
+         * 600x, so +-0.5 min).
+         *
+         * ⚠ AND THE UNFLOORED PLANT IS WHY THIS STEP COULD NOT HAVE BEEN WRITTEN BEFORE. Same
+         * press, same route, seed left at 2.5 MPa: 363.14 -> 375.12 psia in 130 plant-minutes
+         * (0.092 psi/plant-minute) and the window is NEVER reached, because the heaters idle at
+         * 11.3 % (17.8 kW) already on setpoint. A step whose stated effect depends on a
+         * constructor seed is one line away from being a no-op that reads as an instruction.
+         *
+         * `hold: 3000 -> 2700` (50 -> 45 plant-minutes), by the same rule #679 used in the other
+         * direction: the crossing is a plant fact and the authored dwell follows it, not the
+         * reverse (Hard Rule 9). 2700 s clears the measured 37.5-minute crossing by 7.5 minutes
+         * — more margin than the 5 minutes #679 left on its own 45.0-minute crossing — and the
+         * generated ⏩ line now says "About 45 plant-minutes" instead of over-promising the wait
+         * by a third. It is still a REPLAY DWELL, not a prediction (ui/app.js says so at the
+         * wait-line); do not read it as one.
+         *
+         * TWO CHECK-OFFS, and BOTH are inherited, not new. The lamp ticks the moment AUTO is
+         * pressed — the action acknowledged before the ride starts, which is #627's "important
+         * part to wait for" now attached to a press instead of a dial. The pressure ticks at
+         * 4.585 MPa, a hair above `RD.pwr2.eccs.ACC.p0_mpa` (4.583 MPa, 664.7 psia), so 2e's
+         * strict "accepts ABOVE the cover gas" still holds and the step active while the clock
+         * is held is still the one that says open the valve. Neither number is re-litigated
+         * here — read the #608 and #627 paragraphs above before moving either. */
+        { text: 'On the PRESSURIZER (PZR) card press AUTO under HEATER. PRIMARY PRESSURE climbs to 665 psi.',
           note: 'At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open.',
-          why: 'Pressure goes up in two stages because of an automatic gate at 1972 psi: above it, the emergency injection pumps re-arm, and with the steam side still cold they would fire on a healthy plant. So the first stage stops under that gate. Raising the setpoint also starts the climb toward the accumulator window in the next step, which opens at 665 psi about 44 plant-minutes from now.',
-          control: 'Pressure SP', target: 'SET PZR PRESSURE 1700 psi; PRIMARY PRESSURE climbing',
-          cmd: { action: 'set_pressure_setpoint', mpa: 11.72 }, hold: 3000,
+          why: 'The heaters boil water in the pressurizer, and that steam sets the pressure of the whole reactor loop; the SET PZR PRESSURE box is already sitting at 1700 psi, the lowest it goes, so they go to full power and stay there until the plant gets near it. Pressure stops at 1700 rather than going straight to normal because of an automatic gate at 1972 psi: above that gate the emergency injection pumps re-arm, and with the steam side still cold they would fire on a healthy plant. On the way up the plant passes 665 psi, the accumulator window the next step needs.',
+          control: 'Pressurizer Heaters (PZR)', target: 'AUTO lit under HEATER; PRIMARY PRESSURE climbing to 665 psi',
+          cmd: { action: 'set_heater', auto: true }, hold: 2700,
           accs: [
-            { cmd: { action: 'set_pressure_setpoint', mpa: 11.72 }, label: 'SET PZR PRESSURE set to 1700 psi' },
+            { p: 'heater_auto', op: '>', v: 0, label: 'AUTO lit under HEATER' },
             { p: 'pressure_mpa', op: '>', v: 4.585, label: 'PRIMARY PRESSURE at 665 psi, the accumulator window' },
           ],
-          hl: ['Pressure SP'], hl_watch: ['Primary Pressure'] },
+          hl: ['Pressurizer Heaters (PZR)'], hl_watch: ['Primary Pressure'] },
         /* THE WINDOW IS A TRANSIT, AND THE NUMBERS WERE STALE *(OWNER, 2026-09-02 playtest, #608
          * item 3, filed as a BLOCKER: "I couldnt open the valve, something was blocking it and the
          * step wasnt clear as to what i need to do")*.
@@ -1620,9 +1667,14 @@
          * row is the opposite polarity (it fires when the valve is OPEN below 1000 psi), so it can
          * never say the window is closing. The board cue is the CLOCK (#619 item 13 / #627): the
          * plant drops to real time at the cover gas and refuses to accelerate until the valve is
-         * open, and since #627 this step is the ACTIVE one while it does — the setpoint step
-         * ticks at the same crossing. The clock is still stated in the setpoint step's why and
-         * wait_hint, because a player reads those before the ride, not during it. */
+         * open, and since #627 this step is the ACTIVE one while it does — its predecessor ticks
+         * at the same crossing. The clock is still stated in that predecessor's `note`, because a
+         * player reads it before the ride, not during it.
+         *
+         * (That predecessor was the SET PZR PRESSURE dial step until #755 item 11 retired it,
+         * 2026-09-15. It is now the HEATER press, and the 4.585 MPa cover-gas acceptance moved
+         * onto it unchanged — so #608's and #627's rulings still hold, on the step that carries
+         * them now.) */
         /* NOT "the green ring" (#653 S-8, 2026-09-15 layman playtest): there is no green in the
          * highlight vocabulary — `hl` draws a CYAN pulsing halo, rgba(90,240,255,…), since #743.
          * Named by BEHAVIOUR rather than colour so a palette change cannot make it wrong again. */

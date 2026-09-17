@@ -149,35 +149,36 @@ Water is always being pumped into the reactor loop (charging), so it always need
 
 
 
-8\. On the PRESSURIZER (PZR) card press AUTO under HEATER, then AUTO under SPRAY.
+8\. On the PRESSURIZER (PZR) card press AUTO under SPRAY.
 
-8a○ AUTO lit under HEATER
+○ When AUTO lit under SPRAY
 
-8b○ AUTO lit under SPRAY
+
+
+*Nothing moves yet. The spray only opens when pressure runs above the SET PZR PRESSURE box, and the cold plant is about 1340 psi below it.*
 
 
 
 Background
 
-The pressurizer is a tank of half water, half steam that sets the pressure of the reactor loop: heaters inside the pressurizer boil water to create steam and raise pressure, spray condenses steam to lower it. The cold plant starts with both off, so nothing is holding pressure. In AUTO they follow the SET PZR PRESSURE box, which the next step raises; with the heaters off that box does nothing.
+The pressurizer is a tank of half water, half steam that sets the pressure of the reactor loop: heaters inside the pressurizer boil water to create steam and raise pressure, spray condenses steam to lower it. The cold plant starts with both off. Spray goes in first because it is the only brake on the climb the next step starts, and a control you want in service before you need it is one you put in service while nothing is happening.
 
 
 
-\[HIGHLIGHT: SPRAY and HEATER CARDS (steady), AUTO buttons (pulsing)]
+\[HIGHLIGHT: SPRAY CARD (steady), AUTO button (pulsing)]
 
 
 
 
+9\. On the PRESSURIZER (PZR) card press AUTO under HEATER. PRIMARY PRESSURE climbs to 665 psi.
 
-9\. Raise SET PZR PRESSURE to 1700 psi.
+9a○ AUTO lit under HEATER
 
-9a✓ SET PZR PRESSURE set to 1700 psi
-
-9b✓ PRIMARY PRESSURE at 665 psi, the accumulator window
-
+9b○ PRIMARY PRESSURE at 665 psi, the accumulator window
 
 
-⏩ About 50 plant-minutes at 1× to reach 665 psi — set the speed control to 600×.
+
+⏩ About 45 plant-minutes at 1× to reach 665 psi — set the speed control to 600×.
 
 
 
@@ -187,7 +188,11 @@ The pressurizer is a tank of half water, half steam that sets the pressure of th
 
 Background
 
-Pressure goes up in two stages because of an automatic safety gate at 1972 psi: above it, the emergency injection pumps re-arm, and with the steam side still cold they would fire on a healthy plant. So the first stage stops under that gate. Raising the setpoint also starts the climb toward the accumulator window in the next step, which opens at 665 psi about 44 plant-minutes from now.
+The heaters boil water in the pressurizer, and that steam sets the pressure of the whole reactor loop; the SET PZR PRESSURE box is already sitting at 1700 psi, the lowest it goes, so they go to full power and stay there until the plant gets near it. Pressure stops at 1700 rather than going straight to normal because of an automatic safety gate at 1972 psi: above that gate the emergency injection pumps re-arm, and with the steam side still cold they would fire on a healthy plant. On the way up the plant passes 665 psi, the accumulator window the next step needs.
+
+
+
+\[HIGHLIGHT: HEATER CARD (steady), AUTO button (pulsing), PRIMARY PRESSURE (watch)]
 
 
 

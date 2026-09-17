@@ -564,10 +564,16 @@ if (!only) {
     var accIdx = -1, spIdx = -1;
     proc.steps.forEach(function (st, k) {
       if (/Open the accumulator valve/i.test(st.text)) accIdx = k;
-      if (/Raise SET PZR PRESSURE to 1700/.test(st.text)) spIdx = k;
+      /* the step that STARTS the climb, and its FIRST check-off is the operator's ACTION. It was
+       * `Raise SET PZR PRESSURE to 1700` until #755 item 11 floored the Mode 5 seed at the board
+       * span's own bottom (2026-09-15) and retired the dial step — the HEATER press now carries
+       * both the climb and the cover-gas acceptance, so it is the one to read. `>= 0` is asserted
+       * below rather than left to `spIdx === -1` quietly matching nothing. */
+      if (/press AUTO under HEATER/.test(st.text)) spIdx = k;
     });
     var s = null, issued = {}, issuedAt = {}, holdTick = null, stepAtHold = null, ticksToAcc = null;
-    var pAtHold = 0, pAtAcc = 0, chatter = 0, refused = 0, accepted = 0, spDialledBox = null;
+    var pAtHold = 0, pAtAcc = 0, chatter = 0, refused = 0, accepted = 0;
+    var spActionTick = null, pAtAction = 0;
     for (var n = 0; n < 60000 && accIdx >= 0; n++) {
       s = svc.tick();
       var ck2 = s.instructor && s.instructor.checklist; if (!ck2 || ck2.complete) break;
@@ -580,12 +586,21 @@ if (!only) {
         (st.accs || []).forEach(function (e) { if (e.cmd) svc.handleCommand(e.cmd); });
         // no `inject`/`clear` here — the LIVE instructor fires those itself (#670; see 2b).
       }
-      /* the setpoint action is its own check-off, ticked the moment it is dialled. Read it on a
-       * LATER tick than the one that issued the command (#660 item 16: every step now waits for
-       * Continue, so the step's first snapshot already carries `accs` and arrives BEFORE the
-       * command — sampling it there would grade the box on a setpoint nobody had dialled yet). */
-      if (i === spIdx && spDialledBox === null && ck2.accs && ck2.accs[0] &&
-          issuedAt[spIdx] !== undefined && n > issuedAt[spIdx]) spDialledBox = ck2.accs[0].met;
+      /* the operator's ACTION is its own check-off, and the claim (#627) is that it ticks
+       * BEFORE the ride is over — not on one nominated broadcast.
+       *
+       * ⚠ IT USED TO SAMPLE EXACTLY ONE TICK, `n > issuedAt[spIdx]`, and that worked only
+       * because the entry was CMD-KIND: a cmd entry latches on the command itself. #755 item 11
+       * made it a `p`-kind lamp, which goes through the instructor's grading, and MEASURED
+       * 2026-09-17 on this very loop the two are NOT the same broadcast — `control_state
+       * .heater_auto` flips on broadcast +1 while `accs[0].met` latches on **+5**, at 420 psia.
+       * The one-tick sample read `false` and reddened a check whose claim was true by 33
+       * broadcasts. So record WHEN it latches and assert the ORDER, which is what #627 asked
+       * for; a sample cannot tell a four-broadcast grading lag from a box that never ticks. */
+      if (i === spIdx && spActionTick === null && ck2.accs && ck2.accs[0] && ck2.accs[0].met &&
+          issuedAt[spIdx] !== undefined && n > issuedAt[spIdx]) {
+        spActionTick = n; pAtAction = s.true_state.pressure_mpa * 145.038;
+      }
       if (holdTick === null) {
         if (s.true_state.speed_hold) { holdTick = n; stepAtHold = i; pAtHold = s.true_state.pressure_mpa * 145.038; }
         else if (svc.timeAcceleration < 600) svc.handleCommand({ action: 'set_speed', value: 600 });
@@ -607,8 +622,12 @@ if (!only) {
        holdTick !== null && ticksToAcc !== null && ticksToAcc <= 50 && (stepAtHold === spIdx || stepAtHold === accIdx),
        'hold rose on step ' + (stepAtHold + 1) + ' at ' + pAtHold.toFixed(1) + ' psia; accumulator step active ' +
          ticksToAcc + ' broadcasts later at ' + pAtAcc.toFixed(1) + ' psia');
-    ck('...and the Pressure SP step shows the DIALLED setpoint as its own ticked box before the pressure arrives',
-       spDialledBox === true, 'first check-off of step ' + (spIdx + 1) + ' read ' + spDialledBox + ' on the broadcast after the command');
+    ck('...and the HEATER step ticks the PRESS as its own box BEFORE the clock hold rises',
+       spIdx >= 0 && spActionTick !== null && holdTick !== null && spActionTick < holdTick,
+       'step ' + (spIdx + 1) + ' (spIdx ' + spIdx + '): action box ticked ' +
+         (spActionTick === null ? 'NEVER' : (spActionTick - issuedAt[spIdx]) + ' broadcasts after the press, at ' +
+           pAtAction.toFixed(1) + ' psia') + '; clock hold rose ' +
+         (holdTick === null ? 'NEVER' : (holdTick - issuedAt[spIdx]) + ' broadcasts after, at ' + pAtHold.toFixed(1) + ' psia'));
   })();
 
   /* 2h. catch-up (#607 item 7): starting heatup with RCPs already running skips the
