@@ -349,7 +349,9 @@ doing regardless of B or C, because the current coupling is itself a defect in t
   indistinguishable within seed scatter**, and that is itself the answer to his question.
 - **Only the AUTHORED rod ladder.** 94 / 63 / 31 / 14 steps at MED. A player who overshoots, or who
   dribbles the rods out a few steps at a time, was not measured — and §8 names that as the one case
-  where the steady row might be earning its keep.
+  where the steady row might be earning its keep. **CLOSED 2026-09-17 by §12**, which measures the
+  dribbled and small-burst routes: the case reproduces on rungs 5 and 6, and is worth 0.6 of a bank
+  step in the conservative direction.
 - **Not measured in a browser.** All of this is Node, full stack, `tick()`-driven. What the panel
   *renders*, the speed bar's own legibility, and the checklist log are untouched by this pass.
 - **The heatup's step-9 non-step attention stops were seen, not attributed.** One `alarm` and one
@@ -360,4 +362,153 @@ doing regardless of B or C, because the current coupling is itself a defect in t
 - **`ui/manual_procedures.js` step 8 still carries the wrong reference point** — *"the accept lands
   506 s after the rods stop"*, measured here at 497 s from rod-stop / 515 s from the burst on seed
   42. That correction was owed by `SETTLE_DURATIONS_2026-09-17.md` §3 and is still owed; this pass
-  did not make it either.
+  did not make it either. **MADE 2026-09-17**, in the pass that added §12: re-measured independently
+  at **496 s from rod-stop / 513 s from the burst command** (seed 42), and every duration in those
+  four steps' comments now states its reference point. The same comment block's *"true critical 208
+  of 627"* was stale for the same reason and is corrected to §3's 207.07 / 207.33 / 207.73.
+
+---
+
+## 12. THE UNMEASURED CASE, NOW MEASURED — a dribbled-rod route and a small-burst route
+
+**Tree `1baf3fef` (develop), 2026-09-17, a later pass.** §11 named this as the one case where the
+steady row might be earning its keep, and §8's recommendation was made without it. It is measured
+here. Full stack, `hot_zero_power`, `tick()`-driven at 10x (one broadcast = 1.0 s of plant time),
+the **instrument** startup-rate channel because that is what grades (Hard Rule 1, instruments not
+truth), with the runtime's own five-evaluation acceptance debounce applied to every row.
+
+**Every duration in this section is seconds of plant time from ROD-STOP** unless the column says
+otherwise.
+
+### 12.1 The question, stated so it can be answered yes or no
+
+The steadiness row exists for the route where **STARTUP RATE reads inside its 0.02 DPM band while
+the SOURCE RANGE counts are still climbing**. The rung's acceptance is ordered, so the row is only
+reachable after the count floor has latched. The precise question is therefore:
+
+> Is there a window, **after the rung's count floor latches and before the rods stop**, in which
+> the absolute startup rate stays at or under 0.02 DPM for five consecutive evaluations?
+
+If there is, a player can plot a point with the bank still moving and the counts still rising.
+
+### 12.2 Yes — and the threshold ratio says it had to be
+
+Steadiness at 3 % over a 120 s window is a **tighter** claim than 0.02 DPM. A startup rate of
+0.02 decades per minute is 4.7 %/min, i.e. **9.6 % over a 120 s window**. So the band between 3 %
+and 9.6 % per two minutes is a count-rate climb that the startup-rate row calls settled and the
+steadiness row does not — **on any route, by arithmetic, not by luck**. What the route decides is
+only whether the player is *in* that band while still moving rods.
+
+### 12.3 Where it reproduces (seed 42)
+
+Bank positions are on the 627-step control bank. "of final" is the count at the accept as a
+percentage of the count the rung eventually settles at.
+
+| route | rung | floor latches at | both rows satisfiable with the rods still moving? |
+|---|---|---|---|
+| authored bursts 94/63/31/14 | 5, 6, 7, 8 | bank 84 / 157 / 188 / 202 | **no** — on all four |
+| small bursts, 10 steps / 30 s | 5 | bank 80 | **YES** — 3 samples, bank 80-90, 715 cps = 89.9 % of final |
+| small bursts, 10 steps / 30 s | 6, 7, 8 | bank 154 / 188 / 202 | no |
+| dribble, 1 step / 2 s and / 5 s | 5, 6, 7, 8 | — | no |
+| dribble, 1 step / 10 s | 5 | bank 76 | **YES** — 46 samples, bank 76-92, 702 cps = 88.4 % of final |
+| dribble, 1 step / 10 s | 6, 7, 8 | bank 151 / 185 / 202 | no |
+| dribble, 1 step / 20 s | 5 | bank 75 | **YES** — 315 samples, bank 75-93, 701 cps = 88.2 % of final |
+| dribble, 1 step / 20 s | 6 | bank 150 | **YES** — 45 samples, bank 150-156, 1,409 cps = 87.5 % of final |
+| dribble, 1 step / 20 s | 7, 8 | bank 183 / 200 | no |
+
+**Three seeds reproduce the small-burst row** — 42 / 7 / 1 give 3 / 11 / 6 samples, all at bank 80
+and all at 89.9 / 89.8 / 89.9 % of final. The window is a property of the route, not of the seed;
+only its width moves.
+
+**So the case is real.** It needs a slow route — one rod step every 10 to 20 s, or 10-step bursts
+30 s apart — and it reaches **rung 6, which is inside the trailing-three fit window** (§2). Rung 5
+is outside that window and cannot affect the number step 9 acts on.
+
+### 12.4 AND THE STEADINESS ROW IS DEFEATED BY THE SAME ROUTE
+
+The row does not hold the line it was added to hold. On the **20 s dribble, rung 5**, the shipped
+steadiness row is itself satisfiable **368 s before rod-stop, at bank 75 and 701 cps — the
+identical 88.2 % of final** that defeats the startup-rate row. A dribble slow enough to keep the
+startup rate in band is also slow enough to keep the 120 s count drift under 3 %.
+
+**Five seeds (42 / 7 / 1 / 123 / 99) give the identical picture on both decisive rows** — rung 5 at a 20 s
+dribble defeats BOTH rows at bank 75 / 701 cps / 88.2 % of final on all five, the steadiness row
+for exactly 368 samples on all five; rung 6 at a 20 s dribble defeats the startup-rate row at bank
+150 / ~1,409 cps / 87.5 % of final on all five, and the steadiness row holds on all five.
+
+It does hold on the 10 s dribble at rung 5 and on the 20 s dribble at rung 6. **That is the whole
+of what it buys**, and §12.5 prices it.
+
+### 12.5 What it costs the player who acts on it — the end-to-end number
+
+The **hasty dribbler**: taps one rod step every 20 s, watches the count cue, stops the moment the
+rung's floor latches, plots the instant the policy row allows. Four rungs, the panel's own
+trailing-three fit (`FIT_WINDOW = 3`, `ui/panels/one_over_m.js`), three seeds.
+
+| route | acceptance policy | predicted critical bank, seeds 42 / 7 / 1 | total settle wait |
+|---|---|---|---|
+| dribble 1 step / 20 s | STARTUP RATE only (proposed) | 209.5 / 209.5 / 209.5 | **246 s** |
+| dribble 1 step / 20 s | + steadiness 3 %/120 s (shipped) | 208.9 / 208.9 / 208.9 | 691 s |
+| authored bursts | STARTUP RATE only (proposed) | 208.9 / 209.0 / 208.8 | 518 s |
+| authored bursts | + steadiness 3 %/120 s (shipped) | 208.5 / 208.5 / 208.5 | 938 s |
+
+True criticality, re-measured in §3 of this document: **207.07 / 207.33 / 207.73**.
+
+**Five further seeds reproduce it** — 123, 99, 555, 2024 and 31337. Across all eight seeds run, the
+four rows read **209.4 to 209.8** / **208.9 every time** / **208.8 to 209.0** / **208.5 every
+time**. The five extra seeds' own true criticalities were not measured (§3 took three), so they
+corroborate the SPREAD BETWEEN POLICIES rather than adding error figures — and that spread is what
+the verdict turns on: **the gap between the two policies is 0.6 of a bank step on every seed, and
+it never changes sign.**
+
+**The steadiness row buys 0.6 of a bank step on the worst route measured, for 445 s of extra
+wait.** At 7.58 pcm per step (§1) that is **4.5 pcm**. Every one of the runs in the table predicts
+**above** true criticality — the conservative direction — and the worst error in it, **+2.4
+steps**, is inside what the step's own instruction allows for ("stop 3 short and walk up in single
+taps"). For scale, the shipped configuration's own seed-to-seed spread on the authored route is 2
+bank steps (§3: 210 / 208 / 209).
+
+### 12.6 Verdict
+
+The case the row exists for **does reproduce**. It is also **worth less than the seed scatter of
+the configuration it is defending**, it is **defeated by the slowest version of the very route it
+is meant to catch**, and it errs in the conservative direction when it is defeated. On the evidence
+this section adds, it does not change §8's recommendation — but it is new evidence about the
+mechanism the owner ruled on, so the removal is held pending his word.
+
+### 12.7 If the removal proceeds — the `hold` values it needs, measured
+
+The brief for the removal says the replay's dwell should follow the new acceptance rather than
+over-promise a wait (#679: the crossing is a plant fact and the dwell follows it). `hold` is
+measured from the step becoming ACTIVE, and the replay issues the rung's burst on that same tick,
+so **these are seconds from the BURST COMMAND**, not from rod-stop. Seed 42, authored ladder, the
+proposed two-row acceptance (count floor, then startup rate within 0.02 DPM), the runtime's
+five-evaluation debounce applied.
+
+| rung | accept, from BURST COMMAND | accept, from ROD-STOP | `hold` as shipped | suggested `hold` |
+|---|---|---|---|---|
+| 5 | 136 s | 19 s | 300 s | 180 s |
+| 6 | 151 s | 72 s | 300 s | 200 s |
+| 7 | 194 s | 155 s | 420 s | 250 s |
+| 8 | 364 s | 347 s | 600 s | 460 s |
+
+The suggested column is the measured requirement plus about 30 %, rounded — margin for seed
+scatter, not a second measurement. **Anyone landing these must re-measure on three seeds before
+committing them**, because a `hold` shorter than the acceptance reddens the replay of the very
+step it is authored on, which is the trap the 2 % tolerance hit in #755.
+
+Total replay dwell over the four rungs would fall from 1,620 s to 1,090 s — a 33 % cut, distinct
+from (and smaller than) the 47 % cut in the player's own settle wait reported in §4.
+
+### 12.8 What §12 did NOT verify
+
+- **One cadence family.** Taps at 2, 5, 10 and 20 s and bursts of 10 steps at 30 s. A player who
+  mixes cadences, overshoots and reverses, or pauses mid-rung was not measured.
+- **All four cadences were run on all four rungs** — that gap is closed. What was not run is any
+  cadence slower than 20 s per tap; the trend across 2 / 5 / 10 / 20 s is monotonic (slower is
+  worse), so a 30 s or 60 s dribble would very likely widen the window further. Not measured.
+- **The plot points are taken at the first instant the policy allows.** A real player takes a
+  moment to press, and that delay can only move the reading toward the settled value, so this is
+  the pessimistic end.
+- **Node, not a browser.** What the panel renders and what the card says were not observed.
+- **True criticality is carried from §3, not re-measured here.**

@@ -2092,9 +2092,12 @@
            * the count level then watches for the startup rate to get near zero.")*, with the
            * counts-steady row kept UNDER it as the gate. MEASURED, hot_zero_power, the authored
            * bursts, seed 42, 1 s samples, the INSTRUMENT channel (which is what grades, Hard Rule
-           * 1, instruments not truth):
+           * 1, instruments not truth). ⚠ BOTH DURATION COLUMNS ARE SECONDS FROM ROD-STOP, not
+           * from the burst command and not from step entry (#761, 2026-09-17 — the reference
+           * point was omitted here and four figures were later read against the wrong clock):
            *
            *   burst  peak SUR   |SUR| <= 0.02   counts steady (3 %/120 s)   gap
+           *                     (from rod-stop)     (from rod-stop)
            *     94     0.131      141 s              223 s                  82 s
            *     63     0.283      151 s              226 s                  75 s
            *     31     0.458      202 s              281 s                  79 s
@@ -2172,7 +2175,8 @@
            * (#653 S-11, 2026-09-15). MEASURED on the built pool: all four settle rungs on steps
            * 5-8 carry IDENTICAL acceptances — `startup_rate ~0 ±0.02`, then counts `steady` at
            * 3 % over a 120 s window. The PLANT does take longer nearer criticality (the owner's
-           * own observation, verified 2026-09-15: counts-steady at 223 / 226 / 281 / 507 s), but
+           * own observation, verified 2026-09-15: counts-steady at 223 / 226 / 281 / 507 s, each
+           * SECONDS FROM ROD-STOP — #761), but
            * the live durations were not re-measured in this pass, so the sentence is removed
            * rather than replaced with a number nobody has taken. */
           note: 'Stop when CONTROL ROD POSITION reads about 180 to 205 steps. The four lines below run in order.',
@@ -2277,20 +2281,37 @@
            * `Blueprint/WALKTHROUGH_STEPS_OWNER.md` step 8); steadiness is added beside it.
            *
            * THE THREE NUMBERS, EACH MEASURED (full stack, hot_zero_power, tick()-driven, the
-           * authored 94/63/31/14 ladder, panel fit copied from ui/panels/one_over_m.js; true
-           * critical 208 of 627; the settle clock starts when the last burst stops the bank at
-           * 202, which is 22 s after this step becomes active):
+           * authored 94/63/31/14 ladder, panel fit copied from ui/panels/one_over_m.js).
            *
-           *   accept condition                  settle   counts   1/M prediction
-           *   counts > 7,000 alone (WAS)          47 s    7,025     213.7   (+5.7)
-           *   steady 3 % / 120 s (THIS)          506 s   13,309     208.8   (+0.8)
-           *   the ruled `hold: 600` above        578 s   13,617     208.7   (+0.7)
+           * ⚠ EVERY DURATION HERE IS SECONDS FROM ROD-STOP — the last broadcast on which the
+           * control bank moved — and the column now SAYS SO (#761, 2026-09-17). It did not, and
+           * a reader cannot tell a rod-stop figure from a burst-command figure by looking: the
+           * burst is 17 s of bank motion plus command latency, so the same accept is 496 s from
+           * rod-stop and 513 s from the burst. Four figures in #761 were read as rod-stop-
+           * referenced when they were burst-referenced because of exactly this omission. State
+           * the reference point on any duration you add below.
+           *
+           *   accept condition                  settle from ROD-STOP   counts   1/M prediction
+           *   counts > 7,000 alone (WAS)               47 s             7,025    213.7
+           *   steady 3 % / 120 s (THIS)               496 s            13,248    208.5
+           *   the ruled `hold: 600` above             578 s            13,617    208.7
+           *
+           * The steady row was filed at "506 s" and re-measured at 496 s on seed 42 (513 s from
+           * the burst command) — the harnesses differ by how they debounce, not by the plant.
+           *
+           * ⚠ AND THE "+0.8 / +0.7" ERRORS THAT USED TO SIT IN THAT LAST COLUMN WERE AGAINST A
+           * TRUE CRITICALITY OF "208 of 627", WHICH HAS MOVED. #761 re-measured it at 207.07 /
+           * 207.33 / 207.73 on seeds 42 / 7 / 1, so the errors are ~1.4 steps, not 0.7. The
+           * errors are dropped rather than restated: they are a property of the reference, and
+           * the reference is now maintained in `Diagnostic/ACCURACY_VS_WAIT_2026-09-17.md`.
            *
            * WINDOW = 120 s, the shortest window that resolves this settle at all: at 60 s the
            * metric is 2 % as early as 395 s with the prediction still at 209.1, and at 180 s and
            * 240 s it accepts LATER than the replay's own hold for 0.1 step of accuracy.
-           * TOLERANCE = 3 %. First crossing at this window: 4 % at 421 s (209.0), 3 % at 506 s
-           * (208.8), 2.5 % at 546 s (208.8), 2 % at 593 s (208.7). Every one of them lands on
+           * TOLERANCE = 3 %. First crossing at this window, ALL SECONDS FROM ROD-STOP and all
+           * UNDEBOUNCED (the runtime's five-evaluation acceptance debounce adds ~5 s, which is
+           * the whole of the gap to the 496 s figure in the table above): 4 % at 421 s (209.0),
+           * 3 % at 506 s (208.8), 2.5 % at 546 s (208.8), 2 % at 593 s (208.7). Every one of them lands on
            * the knee — the whole band is worth 0.3 of a bank step — so the tolerance is picked
            * for MARGIN, not for accuracy.
            * ⚠ WHY NOT 2 %, WHICH LOOKS LIKE THE BETTER NUMBER. `hold: 600` is measured from the
