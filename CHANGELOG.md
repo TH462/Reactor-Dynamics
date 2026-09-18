@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.7.6-rc1] — 2026-09-18
+
 ### Fixed — three measurement tools that could not fail loudly (#763, #769, #665)
 
 - **The release deploy check asked about the wrong commit, at the one moment it is trusted**

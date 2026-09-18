@@ -166,6 +166,22 @@
 
   <details class="log-entry" open>
     <summary class="log-head">
+      <h2>Startup steps grade on the number the board actually prints</h2>
+      <span class="log-ver mono">Alpha 1.7.6-rc1</span>
+      <time class="log-date mono" datetime="2026-09-18">18 September 2026</time>
+    </summary>
+    <ul>
+      <li><span class="log-tag fixed">Fixed</span><strong>Four startup steps waited on a number you could not read.</strong> Each graded against a threshold sitting in the middle of the band its own tile rounds to, so a tile already showing the target left Continue dark &mdash; 107.4&nbsp;seconds of it on one step. The steps now grade the floor of the band the tile draws.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The criticality step shows progress.</strong> An INTER RANGE row joins it, ticking at roughly 57&nbsp;per&nbsp;cent of the wait, so something on the card moves through a stare that was otherwise static.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>A walkthrough row you can break no longer takes the step with it.</strong></li>
+      <li><span class="log-tag fixed">Fixed</span><strong>A secured SOURCE RANGE drew <code>1.0e0&nbsp;cps</code>.</strong> A de-energized channel read as a live count rate one step from criticality; it now reads as secured.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The Mode&nbsp;3 to Mode&nbsp;1 walkthrough is reconciled to the step file it was written from.</strong></li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The manuals&rsquo; startup-rate timeline was measured at an older rod speed.</strong> Chapters 09 and 12 put the intermediate-range rod stop 44.9&nbsp;seconds later than the plant reaches it. Both re-measured, and both now state which instant the times are counted from &mdash; the start of withdrawal, not engine start.</li>
+    </ul>
+  </details>
+
+  <details class="log-entry" open>
+    <summary class="log-head">
       <h2>A locked walkthrough can no longer be started from the one before it, and fast-forward carries across steps</h2>
       <span class="log-ver mono">Alpha 1.7.5</span>
       <time class="log-date mono" datetime="2026-09-17">17 September 2026</time>
