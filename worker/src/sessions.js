@@ -87,12 +87,12 @@ function detailOf(r) {
   }
 }
 
-export async function sessionList(env, url, token) {
+export async function sessionList(env, url) {
   const apiToken = env.CF_ANALYTICS_TOKEN;
   const days = Math.max(1, Math.min(90, Number(url.searchParams.get('days')) || 30));
   const since = `timestamp > NOW() - INTERVAL '${days}' DAY`;
   const head = '<!doctype html><html><head>' + PAGE_HEAD
-    + '<title>Sessions — Reactor Dynamics</title></head><body>' + nav(token, 'sessions');
+    + '<title>Sessions — Reactor Dynamics</title></head><body>' + nav('sessions');
 
   if (!apiToken) return html(head + '<h1>Sessions</h1><p class="warn">No '
     + '<span class="mono">CF_ANALYTICS_TOKEN</span> secret is set on this Worker.</p></body></html>');
@@ -152,7 +152,7 @@ export async function sessionList(env, url, token) {
     const rows = counts.map((r) => {
       const end = endBy[r.session];
       const start = startBy[r.session] || {};
-      const href = '?token=' + encodeURIComponent(token) + '&view=session&sid=' + encodeURIComponent(r.session);
+      const href = '?view=session&sid=' + encodeURIComponent(r.session);
       return {
         session: r.session,
         link: '<a href="' + href + '">' + esc(r.session) + '</a>',
@@ -209,14 +209,18 @@ export async function sessionList(env, url, token) {
     + 'entirely when a tab did not close cleanly. <b>Rows</b> is what was stored, '
     + '<b>Est</b> what was sampled away — where they differ, presses are missing. '
     + 'Times are <b>Eastern</b>.</p>'
+    // The per-view source line (#764) — see the note in usage.js for why this page's
+    // wording is not the traffic page's.
+    + '<p class="muted">Source: <b>Cloudflare Analytics Engine</b> — sampled '
+    + '(session counts are a floor), 3-month retention.</p>'
     + body + '</body></html>');
 }
 
-export async function sessionDetail(env, url, token, sid) {
+export async function sessionDetail(env, url, sid) {
   const apiToken = env.CF_ANALYTICS_TOKEN;
   const head = '<!doctype html><html><head>' + PAGE_HEAD
-    + '<title>Session ' + esc(sid) + '</title></head><body>' + nav(token, 'sessions');
-  const backHref = '?token=' + encodeURIComponent(token) + '&view=sessions';
+    + '<title>Session ' + esc(sid) + '</title></head><body>' + nav('sessions');
+  const backHref = '?view=sessions';
 
   if (!apiToken) return html(head + '<p class="warn">No CF_ANALYTICS_TOKEN secret set.</p></body></html>');
 

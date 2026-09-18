@@ -1,44 +1,47 @@
 /* Reactor Dynamics — the analytics half of the ops dashboard.
  *
- * ONE source since #674: Web Analytics RUM, over GraphQL — pageloads, visits, pages,
- * referrers, and Core Web Vitals. Everything that came off ANALYTICS ENGINE (what people
- * do once inside the sim) moved to `usage.js` at `&view=usage` *(OWNER, 2026-09-09: "move
- * some of the feature tracking from the statistics page on the tracking site to this new
- * feature tracking page")*.
+ * #764 UNIT 2b REWRITE. Two owner requirements drove this: an ARBITRARY date-range window
+ * instead of fixed 7/14/30 presets, and a TREND graph that shows growth or drop. Both are
+ * only possible because Unit 2a (`stats.js`) gave this file a first-party reader for
+ * `traffic_daily` — before that, every table here queried Cloudflare, which is exact for
+ * 7 days and rounds to the nearest 10 after.
  *
- * That split is worth keeping clean, because the two APIs' sampling conventions are
- * OPPOSITE and mixing them on one page is what made the trap below easy to fall into.
- * The transport lives in `cfapi.js` — read its header for why a token is involved at all.
+ * THE SPLIT THIS FILE NOW MAKES (final round, all nine `stats.js` dimensions migrated):
+ *   - The BY-DAY headline (tiles, chart, table, trailing mean, period-over-period) reads
+ *     `stats.js` for every CLOSED Eastern day in the selected range, and Cloudflare RUM for
+ *     TODAY only (the nightly rollup captures yesterday, so today has no first-party row).
+ *     Today is drawn HOLLOW and labelled partial — see `barChart`'s header for why a
+ *     half-finished day must never look like a finished one.
+ *   - NINE breakdown sections — top pages, countries, devices, browser, OS, how the page was
+ *     reached, bots, and the internal/external referrer split (via `stats.referrerBreakdown`,
+ *     never a client-side recomputation of the kind — see `hybridReferrer`'s header) — read
+ *     the SAME split: closed days from `stats.js`, today folded in live from Cloudflare, each
+ *     printing its own source note and its own literal span so a section cannot silently
+ *     drift onto a different window than the one the picker shows.
+ *   - ONE section, "Country × referrer × day", has no first-party equivalent — `stats.groupBy`
+ *     is single-dimension only — and stays Cloudflare-only, over the picked window, saying so.
+ *   - Web Vitals is Cloudflare-only, fixed to a trailing 7 days, and says so — `traffic_daily`
+ *     stores no percentiles, so it can never become a trend (#764 Unit 2b, section E).
  *
- * ⚠ IF YOU ADD AN ANALYTICS ENGINE SECTION HERE, you are re-mixing them. Put it on the
- * usage page, whose header carries the `sum(_sample_interval)` rule.
- *
- * ------------------------------------------------ THE TWO SAMPLING CONVENTIONS ARE OPPOSITE
- * This cost a 15× error once (RD_Ops/runbook.md, measured 2026-08-10), and the rule stays
- * stated here even though only the second line now applies to this file:
+ * ⚠ IF YOU ADD AN ANALYTICS ENGINE SECTION HERE, you are re-mixing two opposite sampling
+ * conventions. Put it on the usage page (`usage.js`), whose header carries the
+ * `sum(_sample_interval)` rule:
  *
  *   Analytics Engine   `count()` is the RAW stored rows, an UNDERCOUNT.
  *                      The true number is `sum(_sample_interval)`.   (-> usage.js)
  *   Web Analytics RUM  `count` is ALREADY sample-adjusted. DO NOT multiply it.
  *
- * And RUM changes granularity with the window: full resolution is held for a FIXED
- * 7-day retention edge and everything older comes from a coarser pre-aggregated tier
- * that rounds. The edge is 00:00 UTC of (today - 7), and it is a cliff, not a slope —
- * measured 2026-08-17 on the live dataset, one second either side of it:
- *
- *     datetime_geq 2026-08-09T23:59:59Z  ->  sampleInterval 10,  50 pageloads
- *     datetime_geq 2026-08-10T00:00:00Z  ->  sampleInterval  1,  67 pageloads
- *
- * `windowStartMs` in render.js is what keeps the 7d window on the near side of it; see
- * its note, and the window block below, for the four hours a day that used not to be.
- * Every RUM row below carries the interval it was answered at, so a rounded figure says
- * so on the page instead of being quoted as exact.
+ * The transport lives in `cfapi.js`; the first-party reader is `stats.js` — both carry the
+ * detailed traps (Eastern-day arithmetic, the non-additive `usage_daily.sessions` column,
+ * why every day string is strictly parsed). This file does not repeat them.
  */
 
 import { html, PAGE_HEAD, nav, table, errBlock, dayLabel, etDay, etDayStartMs,
-         windowStartMs, RUM_FULL_RES_DAYS, barChart, bucketDays, section } from './render.js';
+         windowStartMs, RUM_FULL_RES_DAYS, barChart, bucketDays, section, esc } from './render.js';
 import { gql, ACCOUNT, SITE_TAG } from './cfapi.js';
 import { referrerKind } from './rollup.js';
+import { parseDay, storeRange, dailyTotals, groupBy, referrerBreakdown, trailingMean,
+         periodDelta, priorRange, dayRange, prevDay, nextDay } from './stats.js';
 
 // ---------------------------------------------------------------- RUM helpers
 const num = (v) => (v == null || v === '' ? 0 : Number(v));
@@ -55,39 +58,37 @@ function rumGroup(dims, order, limit, from, to) {
     } } } }`;
 }
 
-/* WEB VITALS — an entire dataset that was never queried (#604).
+/* WEB VITALS — an entire dataset that was never queried (#604), and until this change never
+ * queried for the number the section's own title claimed: `count` on this dataset is a
+ * SAMPLE COUNT, not a p75. The `quantiles { …P75 }` block is what actually answers "how bad
+ * was the worst-affecting-most-visits page", and it exists on this dataset — confirmed by
+ * GraphQL introspection against the live account 2026-09-18 (`__type(name:
+ * "AccountRumWebVitalsEventsAdaptiveGroups")`), not assumed:
  *
- * WHY IT EARNS A SECTION HERE. #596 was the sim render-bound at 4.7 fps, and it was found
- * because the owner played it and said so. INP is exactly that measurement, taken on every
- * real visit, and `interactionToNextPaintPath` names the page it happened on. The next
- * regression of that shape should reach this page before it reaches him.
+ *   quantiles { largestContentfulPaintP75 interactionToNextPaintP75 cumulativeLayoutShiftP75 }
  *
- * The `*Path` / `*Element` dimensions are the reason this is worth more than a score: they
- * name WHAT caused the worst paint or the worst shift, not just how bad it was.
+ * LCP and INP come back in MICROSECONDS (measured live: largestContentfulPaintP75 1316000 on
+ * "/" — 1316 ms, a normal LCP), so both are divided by 1000 before they reach the page. CLS
+ * is already the unitless score (measured 0.909 on "/ui/shell", which is POOR — matching the
+ * render-bound history this section exists to catch) and is never scaled.
  */
-function vitalsGroup(dims, order, limit, from, to) {
+function vitalsGroup(dims, order, limit, from, to, quantileField) {
   return `{ viewer { accounts(filter: {accountTag: "${ACCOUNT}"}) {
     rumWebVitalsEventsAdaptiveGroups(limit: ${limit},
       filter: {datetime_geq: "${from}", datetime_leq: "${to}", siteTag: "${SITE_TAG}"},
       orderBy: [${order}]) {
       count
       avg { sampleInterval }
+      ${quantileField ? 'quantiles { ' + quantileField + ' }' : ''}
       dimensions { ${dims} }
     } } } }`;
 }
 
 // Returns {rows, coarse} — `coarse` is the largest sampleInterval seen, i.e. how rounded
-// these numbers are. 1 means exact.
-//
-// `si` is the row's own interval as a NUMBER, alongside the `exact` string the tables
-// render. The by-day view re-buckets rows and has to combine intervals, and parsing them
-// back out of "±10" would be reading a display string as data.
-/* ⚠ `key` NAMES THE DATASET, and defaulting it is what made this a trap. This read
- * `group.rumPageloadEventsAdaptiveGroups` unconditionally, so the first Web Vitals section
- * pointed at it rendered "(none)" — against a query that was returning 70 and 60. An empty
- * section and a dataset with no rows are the same page, which is #485's lesson in a new
- * place: a rendering that cannot fail loudly has to be checked against the source. It was
- * caught by running the query by hand and finding data the page had not shown. */
+// these numbers are. 1 means exact. `si` is the row's own interval as a NUMBER, needed here
+// even though it is no longer rendered as a per-row column (#764 Unit 1 killed that) — the
+// by-day view combines intervals across a bucket and reading "±10" back out of a display
+// string would be reading a rendering as data.
 function rumRows(group, map, key) {
   let coarse = 0;
   const rows = (group[key || 'rumPageloadEventsAdaptiveGroups'] || []).map((r) => {
@@ -97,297 +98,526 @@ function rumRows(group, map, key) {
       pageloads: num(r.count),
       visits: num((r.sum || {}).visits),
       si,
-      exact: si === 1 ? 'yes' : '±' + si,
     });
   });
   return { rows, coarse: coarse || 1 };
 }
 
+// Same shape, for the Web Vitals dataset: a sample count and a p75, never a raw average —
+// an average is dragged by the tail exactly where a Core Web Vital cares about the tail.
+function vitalsRows(group, map, quantileField, key) {
+  return (group[key || 'rumWebVitalsEventsAdaptiveGroups'] || []).map((r) => {
+    const q = (r.quantiles || {})[quantileField];
+    return Object.assign(map(r.dimensions || {}), {
+      samples: num(r.count),
+      p75: q == null ? null : Number(q),
+    });
+  });
+}
+
+/* D1 "LANDING VISITS", NOT "VISITS" (#764). A Web Analytics visit is attributed to the
+ * page a session STARTED on, so an internal hop from the homepage into the control room
+ * is a pageload with ZERO visits. Labelled "Visits", that produced a false reading the
+ * owner acted on — "almost nobody enters the sim", which was really "almost nobody LANDS
+ * on the shell". The column is the same number; the label now says what it counts. */
 const RUM_COLS = [
   { key: 'pageloads', label: 'Pageloads', num: true },
-  { key: 'visits', label: 'Visits', num: true },
-  { key: 'exact', label: 'Exact', num: true },
+  { key: 'visits', label: 'Landing visits', num: true },
 ];
 
+/* ONE LINE PER VIEW, saying where the figures came from and how exact they are. Three forms:
+ * the two Cloudflare ones (unchanged), and the new first-party one for the by-day headline,
+ * which since #764 Unit 2b is genuinely produced (closed Eastern days come from
+ * `traffic_daily`, which is exact for ever once a day is captured inside the window). */
+function sourceNote(coarse) {
+  return '<p class="muted">Source: ' + (coarse > 1
+    ? '<b>Cloudflare coarse</b> — rounded to the nearest ' + coarse
+    : '<b>Cloudflare exact</b> — 7 days or fewer') + '.</p>';
+}
+
+function sourceNoteFirstParty(anyCoarse, anyMissing) {
+  return '<p class="muted">Source: <b>first-party exact</b> for every closed day'
+    + (anyCoarse ? ' (a day marked <b>coarse</b> below was captured late and is Cloudflare-'
+        + 'rounded, not first-party)' : '')
+    + (anyMissing ? ', <b>no data captured</b> marks a day the nightly job never ran for'
+        + ' (not the same as a real zero)' : '')
+    + '; <b>today</b> is Cloudflare, live, and partial.</p>';
+}
+
+/* THREE GRAINS, THREE NAMES, PRINTED WHERE THE NUMBERS ARE. Every confusion this page has
+ * caused was someone reading one grain's number as another's. */
+const GLOSSARY = '<div class="muted" style="margin:0 0 16px">'
+  + '<div><b>Landing visit</b> — the page a session started on</div>'
+  + '<div><b>Pageload</b> — any load, including moving around inside the app</div>'
+  + '<div><b>In-sim session</b> — the Usage/Sessions grain (sampled, a floor)</div></div>';
+
+// `n` Eastern days before `day` — used to build both the default window and the preset
+// buttons. Small `n` always (<=90 in this file), so a day-by-day walk costs nothing; it is
+// the same walk `stats.dayRange` already does internally.
+function stepBack(day, n) {
+  let d = day;
+  for (let i = 0; i < n; i++) d = prevDay(d);
+  return d;
+}
+
+/* Resolve the requested window into an inclusive Eastern [from, to], or an error string.
+ * Three sources, checked in order: an explicit ?from=&to= (the new, arbitrary picker), a
+ * legacy ?days=N (translated so a bookmark from before this change keeps resolving instead
+ * of 404ing or silently drawing the wrong span), or the default — the last 7 days.
+ *
+ * NEITHER an <input type="date"> NOR a `days` query param is trusted as typed: both go
+ * through `stats.parseDay` / a numeric clamp before touching anything, because the result
+ * becomes half of a SQL range one call later. */
+function resolveWindow(url, today) {
+  const qFrom = url.searchParams.get('from');
+  const qTo = url.searchParams.get('to');
+  const qDays = url.searchParams.get('days');
+  let from, to;
+  if (qFrom != null || qTo != null) {
+    from = parseDay(qFrom);
+    to = parseDay(qTo);
+    if (!from || !to) return { error: 'from/to must both be dates in the form YYYY-MM-DD.' };
+    if (from > to) return { error: 'the range ends (' + to + ') before it begins (' + from + ').' };
+  } else if (qDays != null) {
+    const n = Math.max(1, Math.min(90, Math.floor(Number(qDays)) || 7));
+    to = today;
+    from = stepBack(to, n - 1);
+  } else {
+    to = today;
+    from = stepBack(to, 6);
+  }
+  // Nobody can select the future; a `to` past today is silently pulled back rather than
+  // rejected, since it usually means "today" landed here from a clock a few minutes fast.
+  if (to > today) to = today;
+  try { dayRange(from, to); }         // throws on an absurd span; the reversed case is caught above
+  catch (e) { return { error: e.message }; }
+  return { from, to };
+}
+
 // ---------------------------------------------------------------- the page
-export async function analyticsPage(env, url, token) {
+export async function analyticsPage(env, url) {
   const apiToken = env.CF_ANALYTICS_TOKEN;
-  const days = Math.max(1, Math.min(90, Number(url.searchParams.get('days')) || 7));
-  /* THE WINDOW. Aligned to EASTERN midnight, not UTC midnight — otherwise the oldest row
-   * of the by-day table is the last 19 or 20 hours of its day and reads as a quiet
-   * morning (2026-08-13). CLAMPED to the full-resolution edge — otherwise, for the four
-   * hours a day between 8pm and midnight Eastern, that alignment reaches twenty hours
-   * past it and every table on this page comes back rounded (2026-08-17).
-   *
-   * Measured at 01:39 UTC on 2026-08-17, which is how it was found — same instant, the
-   * two starts side by side, against a true 67 pageloads / 50 visits:
-   *
-   *     start 2026-08-09T04:00Z (Eastern midnight, unclamped)  ->  ±10,  60 / 40
-   *     start 2026-08-10T00:00Z (clamped to the edge)          ->  exact, 67 / 50
-   *
-   * The grouping was NOT the cause and was cleared before this was written: `date`,
-   * `datetimeHour` and `requestPath` all returned the same interval at the same window
-   * (1 at a 169.7h span, 10 at 189.7h). It is the start instant alone.
-   *
-   * The filter is still sent as UTC, which is the only thing the API accepts; only the
-   * CHOICE of instant is Eastern. See `windowStartMs`.
-   */
+  const db = env.STATS;
   const nowMs = Date.now();
-  const fromMs = windowStartMs(nowMs, days);
-  const from = new Date(fromMs).toISOString();
-  const to = new Date(nowMs).toISOString();
-  /* Which Eastern day the window opens PARTWAY into, if any — the price of the clamp,
-   * and the thing #480 removed, so it is named on the row rather than left to read as a
-   * quiet evening. Null whenever the start is a clean Eastern midnight, which is every
-   * window except a clamped one. */
-  const partialDay = fromMs > etDayStartMs(fromMs) ? etDay(fromMs) : null;
+  const today = etDay(nowMs);
 
   const head = '<!doctype html><html><head>' + PAGE_HEAD
-    + '<title>Analytics — Reactor Dynamics</title></head><body>' + nav(token, 'analytics');
+    + '<title>Analytics — Reactor Dynamics</title></head><body>' + nav('analytics');
 
+  if (!db) {
+    return html(head + '<h1>Analytics</h1>'
+      + '<p class="warn">No <span class="mono">STATS</span> D1 binding is configured on this '
+      + 'Worker, so the first-party daily store cannot be read. The nightly rollup writes it; '
+      + 'nothing here can show more than a live Cloudflare snapshot of today without it.</p>'
+      + '</body></html>');
+  }
   if (!apiToken) {
     return html(head
       + '<h1>Analytics</h1>'
       + '<p class="warn">No <span class="mono">CF_ANALYTICS_TOKEN</span> secret is set on this Worker, '
-      + 'so traffic and in-sim usage cannot be read.</p>'
+      + 'so today’s live figures and Web Vitals cannot be read (closed-day history would still '
+      + 'come from the first-party store).</p>'
       + '<pre>cd worker\nwrangler secret put CF_ANALYTICS_TOKEN   # Account Analytics / Read\nwrangler deploy</pre>'
       + '</body></html>');
   }
 
-  const windowLink = (n) => {
-    const href = '?token=' + encodeURIComponent(token) + '&view=analytics&days=' + n;
-    return n === days ? '<b>' + n + 'd</b>' : '<a href="' + href + '">' + n + 'd</a>';
-  };
+  const w = resolveWindow(url, today);
+  const sr = await storeRange(db);   // { first, last } | null — clamps the picker
 
-  // The headline tiles. RUM `count` is already sample-adjusted — summing the hourly rows
-  // is correct here; multiplying by sampleInterval would double-count.
-  let tiles = '', coarseNote = '';
-  let byDay = '<p class="muted">(none)</p>';
-  try {
-    /* GROUPED BY HOUR AND RE-SUMMED INTO EASTERN DAYS (2026-08-13). Asking RUM for `date`
-     * gets UTC calendar days, and there is no way to relabel those "ET" honestly — the
-     * bucket marked 2026-08-11 holds 20:00 on the 10th to 20:00 on the 11th Eastern, so a
-     * relabel silently moves four or five hours of every day's traffic into the wrong row.
-     * `datetimeHour` is the finest grouping this endpoint offers that still aggregates,
-     * and an hour never straddles an Eastern midnight, so the sum is exact.
-     *
-     * Measured on the live dataset before the change (see render.js's Eastern block):
-     * hourly and daily grouping return the same totals at the same sampleInterval over
-     * 7/30/90 days, so this buys the correct buckets for nothing.
-     *
-     * The limit must cover every hour in the window or the tail is silently dropped —
-     * `days * 24` plus a day's slack for the partial hours at both ends.
-     */
-    const g = rumRows(await gql(apiToken,
-      rumGroup('datetimeHour', 'datetimeHour_ASC', Math.min(10000, days * 24 + 48), from, to)),
-      (d) => ({ day: etDay(d.datetimeHour) }));
-    const pageloads = g.rows.reduce((a, r) => a + r.pageloads, 0);
-    const visits = g.rows.reduce((a, r) => a + r.visits, 0);
-    tiles = '<div class="tiles">'
-      + '<div class="tile"><div class="v">' + pageloads + '</div><div class="k">Pageloads</div></div>'
-      + '<div class="tile"><div class="v">' + visits + '</div><div class="k">Visits</div></div>'
-      + '<div class="tile"><div class="v">' + days + 'd</div><div class="k">Window</div></div>'
-      + '</div>';
-    // The day's `exact` is the COARSEST of its hours, not an average: one rounded hour
-    // makes the whole day's figure rounded, and claiming otherwise would overstate it.
-    const byEtDay = new Map();
-    g.rows.forEach((r) => {
-      const cur = byEtDay.get(r.day) || { date: r.day, pageloads: 0, visits: 0, si: 1 };
-      cur.pageloads += r.pageloads;
-      cur.visits += r.visits;
-      if (r.si > cur.si) cur.si = r.si;
-      byEtDay.set(r.day, cur);
-    });
-    const dayRows = [...byEtDay.values()].sort((a, b) => (a.date < b.date ? -1 : 1))
-      .map((r) => ({ date: dayLabel(r.date, partialDay),
-                     pageloads: r.pageloads, visits: r.visits,
-                     exact: r.si === 1 ? 'yes' : '±' + r.si }));
-    /* The chart goes ABOVE its own table, and the table keeps every exact figure. The
-     * chart is shape; the numbers are the table's job — which is also why no bar carries a
-     * printed value (`<title>` gives it on hover instead of eight labels competing). */
-    const b = bucketDays([...byEtDay.values()].sort((a, c) => (a.date < c.date ? -1 : 1)), days);
-    byDay = barChart(b.rows, { labelA: 'Pageloads', labelB: 'Visits', bucket: b.bucket })
-      /* ⚠ SAY IT UNDER THE CHART, not only in the tiles at the top. A bar's height reads as
-       * precision whatever a note three sections away says, and past the 7-day edge these
-       * are rounded to the nearest 10 or 100 — at this site's volume one bar may be one
-       * visit. This is the caveat the daily rollup exists to retire: rows captured inside
-       * the window stay exact for ever, so in time these bars stop needing it. */
-      + (g.coarse > 1
-          ? '<p class="warn">These bars are rounded to the nearest ' + g.coarse + ' — the '
-            + 'window reaches past the ' + RUM_FULL_RES_DAYS + '-day full-resolution edge. '
-            + 'Read the shape, not the heights.</p>' : '')
-      + (b.rows.some((r) => r.short)
-          ? '<p class="muted">A bucket marked <b>*</b> is short — the window does not divide '
-            + 'evenly into weeks, so its bar covers fewer days than the others.</p>' : '')
-      + table(dayRows, [{ key: 'date', label: 'Date (ET)' }, ...RUM_COLS])
-      + (partialDay ? '<p class="muted">The oldest row is marked <b>(partial)</b>. Full '
-        + 'resolution is held for a fixed ' + RUM_FULL_RES_DAYS + '-day window that opens '
-        + 'partway through that Eastern day, so the row is exact but covers only the part '
-        + 'of the day inside it. The window is trimmed to that edge rather than reaching '
-        + 'past it, which would round every figure on this page.</p>' : '');
-    /* The warning used to open "Window > 7 days:", which was a claim about the WINDOW and
-     * was false the whole time the 7d view was rounding. Report what came back. */
-    if (g.coarse > 1) {
-      coarseNote = '<p class="warn">Cloudflare answered this window from a coarser '
-        + 'pre-aggregated tier, so these counts are rounded to the nearest ' + g.coarse
-        + '. Only the last ' + RUM_FULL_RES_DAYS + ' days are held at full resolution — '
-        + 'the 7d window is exact.</p>';
-    }
-  } catch (e) {
-    tiles = errBlock(e.message);
+  const pickerMin = sr ? sr.first : null;
+  const picker = (fromV, toV) => '<form method="get" style="margin:0 0 8px">'
+    + '<input type="hidden" name="view" value="analytics">'
+    + '<label>From <input type="date" name="from" value="' + esc(fromV) + '"'
+      + (pickerMin ? ' min="' + esc(pickerMin) + '"' : '') + ' max="' + esc(today) + '"></label> '
+    + '<label>To <input type="date" name="to" value="' + esc(toV) + '"'
+      + (pickerMin ? ' min="' + esc(pickerMin) + '"' : '') + ' max="' + esc(today) + '"></label> '
+    + '<button type="submit">Go</button> '
+    + '<span class="muted">Presets:</span> '
+    + [7, 14, 30].map((n) => '<button type="submit" formaction="?view=analytics&from='
+        + stepBack(today, n - 1) + '&to=' + today + '">' + n + 'd</button>').join(' ')
+    + '</form>'
+    + '<p class="muted">' + (sr
+      ? 'Recorded history begins <b>' + esc(sr.first) + '</b>.'
+      : 'No first-party history recorded yet — every figure below is Cloudflare-only.') + '</p>';
+
+  if (w.error) {
+    return html(head + '<h1>Analytics</h1>' + picker(today, today)
+      + errBlock(w.error) + '</body></html>');
   }
 
-  const sections = await Promise.all([
-    section('By day', async () => byDay),
-    section('Top pages', async () => table(
-      rumRows(await gql(apiToken, rumGroup('requestPath', 'count_DESC', 15, from, to)),
-        (d) => ({ path: d.requestPath })).rows,
-      [{ key: 'path', label: 'Path' }, ...RUM_COLS])),
+  let { from, to } = w;
+  // The WHOLE selection predates recorded history: clamping `from` alone here would leave
+  // `from > to`, which every day-arithmetic call downstream treats as a reversed range and
+  // throws on — and even if it did not throw, showing a window that opens AFTER it closes
+  // is worse than saying plainly there is nothing to show yet.
+  if (sr && to < sr.first) {
+    return html(head + '<h1>Analytics</h1>' + picker(from, to)
+      + '<p class="warn">The selected range (' + esc(from) + ' to ' + esc(to) + ') ends '
+      + 'before the recorded history begins (' + esc(sr.first) + ') — there is nothing to '
+      + 'show yet.</p>' + '</body></html>');
+  }
+  let clampNote = '';
+  if (sr && from < sr.first) {
+    clampNote = '<p class="warn">The picked start (' + esc(from) + ') is before the recorded '
+      + 'history begins (' + esc(sr.first) + '); the window opens there instead — an earlier '
+      + 'start would return zero rows, which reads as zero traffic rather than as no data.</p>';
+    from = sr.first;
+  }
+
+  const includesToday = to === today;
+  const closedTo = includesToday ? prevDay(today) : to;
+  // Six extra days of lookback so the trailing mean is FULL on day one of the display range,
+  // not null for the first six rows of every window (`stats.trailingMean`'s own rule).
+  const meanFrom = stepBack(from, 6);
+  const closedRows = meanFrom <= closedTo ? await dailyTotals(db, meanFrom, closedTo) : [];
+  const closedByDay = new Map(closedRows.map((r) => [r.day, r]));
+  const meanSeries = trailingMean(closedRows, 7, 'visits');
+  const meanByDay = new Map(meanSeries.map((m) => [m.day, m.mean]));
+
+  const priorR = priorRange(from, to);
+  const prevDays = await dailyTotals(db, priorR.from, priorR.to);   // same length as [from,to]
+
+  // ---- today, live (only when the window reaches it) ------------------------------------
+  let liveToday = { pageloads: 0, visits: 0, coarse: false };
+  let liveErr = null;
+  if (includesToday) {
+    try {
+      const g = rumRows(await gql(apiToken, rumGroup('datetimeHour', 'datetimeHour_ASC', 26,
+        new Date(etDayStartMs(today)).toISOString(), new Date(nowMs).toISOString())),
+        (d) => ({}));
+      liveToday = {
+        pageloads: g.rows.reduce((s, r) => s + r.pageloads, 0),
+        visits: g.rows.reduce((s, r) => s + r.visits, 0),
+        coarse: g.coarse > 1,
+      };
+    } catch (e) { liveErr = e.message; }
+  }
+
+  // ---- the display rows: one per Eastern day in [from, to], today live and hollow -------
+  const allDays = dayRange(from, to);
+  const rows = allDays.map((day, i) => {
+    const ghostSrc = prevDays[i];
+    const ghost = (ghostSrc && !ghostSrc.missing && !ghostSrc.coarse) ? ghostSrc.visits : null;
+    if (day === today) {
+      return { day, pageloads: liveToday.pageloads, visits: liveToday.visits,
+               coarse: liveToday.coarse, missing: false, partial: true, mean: null, ghost };
+    }
+    const c = closedByDay.get(day) || { pageloads: 0, visits: 0, coarse: false, missing: true };
+    return { day, pageloads: c.pageloads, visits: c.visits, coarse: c.coarse, missing: c.missing,
+             partial: false, mean: meanByDay.has(day) ? meanByDay.get(day) : null, ghost };
+  });
+
+  const curTotalVisits = rows.reduce((s, r) => s + r.visits, 0);
+  const curTotalPageloads = rows.reduce((s, r) => s + r.pageloads, 0);
+  const delta = periodDelta(curTotalVisits, prevDays, rows,
+    { storeFirst: sr && sr.first, metric: 'visits' });
+
+  const anyCoarse = rows.some((r) => r.coarse);
+  const anyMissing = rows.some((r) => r.missing);
+
+  const tiles = '<div class="tiles">'
+    + '<div class="tile"><div class="v">' + curTotalPageloads + '</div><div class="k">Pageloads</div></div>'
+    + '<div class="tile"><div class="v">' + curTotalVisits + '</div><div class="k">Landing visits</div></div>'
+    + '<div class="tile"><div class="v">' + allDays.length + '</div><div class="k">Days</div></div>'
+    + '</div>';
+
+  const deltaLine = '<p>' + (delta.ok
+    ? (delta.direction === 'flat'
+        ? 'Flat versus the prior ' + allDays.length + ' days'
+        : '<b>' + delta.direction + ' ' + Math.abs(delta.pct) + '%</b> on the prior '
+          + allDays.length + ' days (' + esc(priorR.from) + ' to ' + esc(priorR.to) + ', '
+          + delta.prevTotal + ' landing visits then vs ' + curTotalVisits + ' now)')
+    : '<span class="muted">No comparable prior period — ' + esc(delta.reason) + '.</span>')
+    + '</p>';
+
+  const b = bucketDays(rows);
+  const chart = barChart(b.rows, {
+    labelA: 'Pageloads', labelB: 'Landing visits', labelMean: '7d mean', labelGhost: 'prior period',
+    bucket: b.bucket,
+  });
+  const legend = chart ? '<p class="muted">Hollow bar = today, live and partial · faded bar = '
+    + 'Cloudflare-coarse (±10) · dashed tick at the baseline = no data captured · solid '
+    + 'line = 7-day trailing mean of landing visits · dashed muted line = the prior, equal-'
+    + 'length period.' + (b.rows.some((r) => r.short) ? ' A bar marked <b>*</b> is short — the '
+    + 'window does not divide evenly into ' + b.bucket + 's.' : '') + '</p>' : '';
+
+  const dayTable = table(rows.map((r) => ({
+    dateLabel: dayLabel(r.day, r.partial ? r.day : null),
+    pageloads: r.pageloads,
+    visits: r.visits,
+    status: r.missing ? 'no data captured' : r.coarse ? 'coarse (±10)' : r.partial ? 'today, live' : '',
+  })), [{ key: 'dateLabel', label: 'Date (ET)' }, ...RUM_COLS, { key: 'status', label: 'Note' }]);
+
+  /* ---- the breakdown sections, MIGRATED (coordinator follow-up, item 1): closed days from
+   * the first-party store, today folded in live — the SAME split as the by-day headline
+   * above, and deliberately reusing `from`/`closedTo`/`today` rather than re-deriving them,
+   * so a section cannot quietly drift onto a different window from the one the picker shows
+   * (coordinator's item 2). `stats.groupBy` supports exactly seven dimensions; five map
+   * straight onto a section (path/country/device/browser/os) and two more (referrer_host,
+   * referrer_kind) combine into the two referrer views. Three sections below have NO first-
+   * party equivalent — `nav_type` and `bot` are stored in `traffic_daily` but are not in
+   * `stats.js`'s exposed `DIMENSIONS` allowlist, and the three-way country/referrer/day cut
+   * has no single-dimension `groupBy` at all — so they stay on Cloudflare, each saying so
+   * itself rather than inheriting a page-level claim.
+   *
+   * Before this, a 30-day pick drew an EXACT chart directly above tables still rounded to
+   * the nearest 10 (Cloudflare's coarse tier past 7 days) — the two halves disagreed and
+   * nothing on screen said why. */
+  const todayFromIso = new Date(etDayStartMs(today)).toISOString();
+  const todayToIso = new Date(nowMs).toISOString();
+
+  /* One D1 dimension (`stats.groupBy`), merged with today's live Cloudflare slice for the
+   * matching RUM field. Per-KEY coarseness survives the merge unchanged — `stats.groupBy`'s
+   * own definition: a key whose only appearance in the window is a rounded day is a rounded
+   * ROW, not a rounded table, so one noisy country does not paint the whole section coarse. */
+  async function hybridBreakdown(dim, cfDims, cfKey, limit) {
+    const closed = from <= closedTo ? await groupBy(db, dim, from, closedTo, Math.max(limit, 200)) : [];
+    const by = new Map(closed.map((r) => [r.key, { key: r.key, pageloads: r.pageloads, visits: r.visits, coarse: r.coarse }]));
+    if (includesToday) {
+      const g = rumRows(await gql(apiToken, rumGroup(cfDims, 'count_DESC', Math.max(limit, 200), todayFromIso, todayToIso)),
+        (d) => ({ key: cfKey(d) }));
+      // "Today" sits inside Cloudflare's 7-day full-resolution edge in practice, but that is
+      // measured elsewhere, never assumed here — a coarse live slice still marks its rows.
+      g.rows.forEach((r) => {
+        const cur = by.get(r.key) || { key: r.key, pageloads: 0, visits: 0, coarse: false };
+        cur.pageloads += r.pageloads; cur.visits += r.visits;
+        if (g.coarse > 1) cur.coarse = true;
+        by.set(r.key, cur);
+      });
+    }
+    const rows = [...by.values()].sort((a, b2) => b2.pageloads - a.pageloads).slice(0, limit);
+    return { rows, anyCoarse: rows.some((r) => r.coarse) };
+  }
+
+  /* THE SPAN, PRINTED LITERALLY, on every migrated section — the coordinator's item 2. If a
+   * future edit makes one section derive its own window instead of reusing `from`/`closedTo`,
+   * the mismatch is readable on the page, not just theoretically possible. */
+  function hybridSourceNote(anyCoarse) {
+    return '<p class="muted">Source: <b>first-party exact</b> (' + esc(from) + ' to ' + esc(closedTo) + ')'
+      + (anyCoarse ? ', a row marked <b>coarse</b> below was captured late and is Cloudflare-rounded' : '')
+      + (includesToday ? ', plus <b>today</b> (' + esc(today) + ') live from Cloudflare' : '') + '.</p>';
+  }
+  function breakdownTable(rows, keyLabel, emptyLabel) {
+    return table(rows.map((r) => ({
+      key: r.key === '' || r.key == null ? (emptyLabel || '(unknown)') : r.key,
+      pageloads: r.pageloads, visits: r.visits, note: r.coarse ? 'coarse (±10)' : '',
+    })), [{ key: 'key', label: keyLabel }, ...RUM_COLS, { key: 'note', label: 'Note' }]);
+  }
+
+  const migrated = await Promise.all([
+    section('Top pages', async () => {
+      const h = await hybridBreakdown('path', 'requestPath', (d) => d.requestPath || '', 15);
+      return hybridSourceNote(h.anyCoarse) + breakdownTable(h.rows, 'Path');
+    }),
+    section('Countries', async () => {
+      const h = await hybridBreakdown('country', 'countryName', (d) => d.countryName || '', 15);
+      return hybridSourceNote(h.anyCoarse) + breakdownTable(h.rows, 'Country');
+    }),
+    section('Devices', async () => {
+      const h = await hybridBreakdown('device', 'deviceType', (d) => d.deviceType || '', 10);
+      return hybridSourceNote(h.anyCoarse) + breakdownTable(h.rows, 'Device');
+    }),
+    section('Browser', async () => {
+      const h = await hybridBreakdown('browser', 'userAgentBrowser', (d) => d.userAgentBrowser || '', 10);
+      return hybridSourceNote(h.anyCoarse) + breakdownTable(h.rows, 'Browser');
+    }),
+    section('Operating system', async () => {
+      const h = await hybridBreakdown('os', 'userAgentOS', (d) => d.userAgentOS || '', 10);
+      return hybridSourceNote(h.anyCoarse) + breakdownTable(h.rows, 'OS');
+    }),
+    // `nav_type` and `bot` were added to `stats.js`'s allowlist in the follow-up round —
+    // the last two sections that had no first-party equivalent, now migrated too.
+    section('How the page was reached', async () => {
+      const h = await hybridBreakdown('nav_type', 'navigationType', (d) => d.navigationType || '', 10);
+      return hybridSourceNote(h.anyCoarse) + breakdownTable(h.rows, 'Navigation');
+    }),
+    /* BOTS — the one section on the page that INCLUDES bot traffic. `stats.groupBy('bot', …)`
+     * cannot filter bots out and group by that same column (it would return exactly one
+     * row), so it does neither — every OTHER section here is bots-excluded and this one is
+     * not, and its totals are not comparable with any other section's. Said on the page
+     * itself, not just in this comment (coordinator item 3). The key is the INTEGER 0 or 1;
+     * `stats.js` deliberately does not name the rows, so the label is written here. */
+    section('Bots', async () => {
+      const h = await hybridBreakdown('bot', 'bot', (d) => (d.bot ? 1 : 0), 10);
+      return hybridSourceNote(h.anyCoarse)
+        + '<p class="warn">Unlike every other section on this page, THIS ONE INCLUDES BOT '
+        + 'TRAFFIC — grouping by bot status cannot also filter it out. Do not compare these '
+        + 'totals against Top pages, Countries, or any other section above.</p>'
+        + table(h.rows.map((r) => ({
+            who: r.key === 1 ? 'Bot' : 'Human', pageloads: r.pageloads, visits: r.visits,
+            note: r.coarse ? 'coarse (±10)' : '',
+          })), [{ key: 'who', label: 'Traffic' }, ...RUM_COLS, { key: 'note', label: 'Note' }]);
+    }),
+  ]);
+
+  /* THE REFERRER SPLIT — `stats.referrerBreakdown` reads host AND kind together for closed
+   * days, so the kind is the STORED value (computed at rollup time with the real
+   * requestHost), never recomputed from the host alone. Recomputing it was tried in the
+   * prior round and retired: `referrerKind(host, null)` loses the exact-host-match rule and
+   * classifies a host referring to itself under a name neither suffix rule covers as
+   * EXTERNAL — the #604 finding inverted, own navigation read as discovery. Fetched ONCE and
+   * classified into the two views below, rather than two independent round trips. */
+  async function hybridReferrer(limit) {
+    const closed = from <= closedTo ? await referrerBreakdown(db, from, closedTo, 1000) : [];
+    const by = new Map(closed.map((r) => [r.host, { host: r.host, kind: r.kind,
+      pageloads: r.pageloads, visits: r.visits, coarse: r.coarse }]));
+    if (includesToday) {
+      // TODAY has no stored kind yet — it is classified here, but WITH the real requestHost
+      // this live row actually carries, which is the accurate half of `referrerKind`, not
+      // the lossy host-alone call this section used to make on already-aggregated data.
+      const g = rumRows(await gql(apiToken, rumGroup('refererHost requestHost', 'count_DESC',
+        1000, todayFromIso, todayToIso)),
+        (d) => ({ host: d.refererHost || '', kind: referrerKind(d.refererHost, d.requestHost) }));
+      g.rows.forEach((r) => {
+        // A host the store already has keeps its STORED kind; only a host today introduces
+        // for the first time falls back to today's own (still fully-informed) classification.
+        const cur = by.get(r.host) || { host: r.host, kind: r.kind, pageloads: 0, visits: 0, coarse: false };
+        cur.pageloads += r.pageloads; cur.visits += r.visits;
+        if (g.coarse > 1) cur.coarse = true;
+        by.set(r.host, cur);
+      });
+    }
+    const rows = [...by.values()].sort((a, b2) => b2.pageloads - a.pageloads).slice(0, limit);
+    return { rows, anyCoarse: rows.some((r) => r.coarse) };
+  }
+  const referrerHybrid = await hybridReferrer(1000);
+  const referrerRows = referrerHybrid.rows;
+  const referrerTable = (rows, label) => table(rows.map((r) => ({
+    referer: r.host || '(direct)', kind: r.kind, pageloads: r.pageloads, visits: r.visits,
+    note: r.coarse ? 'coarse (±10)' : '',
+  })), [{ key: 'referer', label: label }, { key: 'kind', label: 'Kind' }, ...RUM_COLS,
+        { key: 'note', label: 'Note' }]);
+
+  const referrerSections = await Promise.all([
     /* HOW PEOPLE ARRIVE — external referrers and direct, which is the question this
-     * section is for. It used to be one undivided "Where they came from" table, and that
-     * conflated discovery with INTERNAL NAVIGATION: measured on the live account
-     * 2026-09-02, `reactordynamics.com` was the referrer on 6 of 12 rows over 30 days,
-     * and every one of them was one of our own pages linking to another. The honest
-     * reading of that window is that there was NO external referrer at all — which is a
-     * real and useful finding, and the old table hid it behind our own name at the top. */
+     * section is for; it excludes our own pages linking to each other (measured 2026-09-02:
+     * 6 of 12 rows over 30 days were `reactordynamics.com` referring itself). */
     section('How people arrive', async () => {
-      const rows = rumRows(await gql(apiToken, rumGroup('refererHost requestHost', 'count_DESC', 40, from, to)),
-        (d) => ({ referer: d.refererHost || '(direct)',
-                  kind: referrerKind(d.refererHost, d.requestHost) })).rows;
-      const ext = rows.filter((r) => r.kind !== 'internal');
-      return table(ext, [{ key: 'referer', label: 'Referrer' }, { key: 'kind', label: 'Kind' }, ...RUM_COLS])
+      const ext = referrerRows.filter((r) => r.kind !== 'internal').slice(0, 40);
+      return hybridSourceNote(ext.some((r) => r.coarse)) + referrerTable(ext, 'Referrer')
         + (ext.every((r) => r.kind === 'direct')
             ? '<p class="muted">Every arrival in this window is direct or internal — nothing '
               + 'external referred anyone. That is a finding, not a gap in the data.</p>' : '');
     }),
-    section('Internal navigation', async () => table(
-      rumRows(await gql(apiToken, rumGroup('refererHost requestHost', 'count_DESC', 40, from, to)),
-        (d) => ({ referer: d.refererHost || '', kind: referrerKind(d.refererHost, d.requestHost) }))
-        .rows.filter((r) => r.kind === 'internal'),
-      [{ key: 'referer', label: 'From' }, ...RUM_COLS])),
-    section('Countries', async () => table(
-      rumRows(await gql(apiToken, rumGroup('countryName', 'count_DESC', 15, from, to)),
-        (d) => ({ country: d.countryName })).rows,
-      [{ key: 'country', label: 'Country' }, ...RUM_COLS])),
-    /* THE CORRELATION (#604, the owner's own question: how do different countries find
-     * their way here, and on what days). One query — `rumGroup` interpolates its dimension
-     * list, so this needed no new transport.
-     *
-     * ⚠ READ THE ± COLUMN BEFORE READING THE NUMBERS. Past the 7-day edge every figure is
-     * rounded to the nearest 10, and at this site's volume (28 pageloads / 12 visits a
-     * week, measured) a "10" may be one person. Cross-cutting three dimensions makes the
-     * cells smaller and the rounding proportionally louder, which is exactly why the
-     * daily rollup exists: rows captured inside the window are exact for ever. */
+    section('Internal navigation', async () => {
+      const inter = referrerRows.filter((r) => r.kind === 'internal').slice(0, 40);
+      return hybridSourceNote(inter.some((r) => r.coarse)) + referrerTable(inter, 'From');
+    }),
+  ]);
+
+  /* ---- the one section with NO first-party equivalent — genuinely three-dimensional, and
+   * `stats.groupBy` is single-dimension only (coordinator: "stays on Cloudflare"). Names its
+   * own span, never the page default. */
+  const cfFrom = new Date(etDayStartMs(from)).toISOString();
+  const cfTo = new Date(includesToday ? nowMs : etDayStartMs(nextDay(to))).toISOString();
+  // `breakdownCoarse`, not a shorter name: it is the per-SECTION rounding factor for the
+  // one section that still reads Cloudflare directly, named so the note below reports the
+  // actual number Cloudflare returned rather than a bare "it's rounded".
+  function cfOnlyNote(breakdownCoarse) {
+    return '<p class="muted">Source: ' + (breakdownCoarse > 1
+      ? '<b>Cloudflare coarse</b> — rounded to the nearest ' + breakdownCoarse
+      : '<b>Cloudflare exact</b> — 7 days or fewer') + ' (' + esc(from) + ' to ' + esc(to)
+      + '). No first-party equivalent for this dimension.</p>';
+  }
+  const cfOnlySections = await Promise.all([
     section('Country × referrer × day', async () => {
-      /* ⚠ GROUPED BY HOUR AND RE-BUCKETED, NOT BY THE API'S OWN `date` DIMENSION. `date` is
-       * UTC, and this dashboard reads Eastern *(OWNER DIRECTIVE, 2026-08-13)* — so using it
-       * would put four or five hours of every day in the wrong row while the column heading
-       * still said the day. The first cut of this section did exactly that and
-       * `run_dashboard_time.js` caught it on the label: that gate exists because relabelling
-       * a bucket without re-grouping its query is the failure mode here, and it has now
-       * caught the same mistake twice, in the two different views. Same re-bucketing as the
-       * by-day table above, and the same rule for the interval — the day's ± is the COARSEST
-       * of its hours, because one rounded hour makes the whole cell rounded. */
       const g = rumRows(await gql(apiToken,
         rumGroup('countryName refererHost requestHost datetimeHour', 'count_DESC',
-                 Math.min(10000, days * 24 + 48), from, to)),
+                 Math.min(10000, allDays.length * 24 + 48), cfFrom, cfTo)),
         (d) => ({ country: d.countryName, referer: d.refererHost || '(direct)',
                   kind: referrerKind(d.refererHost, d.requestHost), day: etDay(d.datetimeHour) }));
       const by = new Map();
       g.rows.forEach((r) => {
-        // A separator that cannot occur inside any of the three parts. '|' can appear in a
-        // path or a referrer; a control character cannot.
-        const k = [r.day, r.country, r.referer].join('\u0001');
+        const k = [r.day, r.country, r.referer].join('');
         const cur = by.get(k) || { day: r.day, country: r.country, referer: r.referer,
                                    kind: r.kind, pageloads: 0, visits: 0, si: 1 };
         cur.pageloads += r.pageloads; cur.visits += r.visits;
         if (r.si > cur.si) cur.si = r.si;
         by.set(k, cur);
       });
-      const rows = [...by.values()]
-        .sort((a, b) => (a.day === b.day ? b.pageloads - a.pageloads : (a.day < b.day ? 1 : -1)))
-        .map((r) => Object.assign(r, { exact: r.si === 1 ? 'yes' : '±' + r.si }));
-      return table(rows, [{ key: 'day', label: 'Date (ET)' }, { key: 'country', label: 'Country' },
-        { key: 'referer', label: 'Referrer' }, { key: 'kind', label: 'Kind' }, ...RUM_COLS]);
+      const rows2 = [...by.values()]
+        .sort((a, b2) => (a.day === b2.day ? b2.pageloads - a.pageloads : (a.day < b2.day ? 1 : -1)));
+      return cfOnlyNote(g.coarse) + table(rows2, [{ key: 'day', label: 'Date (ET)' },
+        { key: 'country', label: 'Country' }, { key: 'referer', label: 'Referrer' },
+        { key: 'kind', label: 'Kind' }, ...RUM_COLS]);
     }),
-    section('Devices', async () => table(
-      rumRows(await gql(apiToken, rumGroup('deviceType', 'count_DESC', 10, from, to)),
-        (d) => ({ device: d.deviceType })).rows,
-      [{ key: 'device', label: 'Device' }, ...RUM_COLS])),
-    /* FOUR DIMENSIONS THAT WERE COLLECTED AND NEVER SHOWN (#604). `bot` is the one worth
-     * having on the page even when it is boring: measured 0 across the window, which means
-     * the pageload and visit tiles are real people — an assumption the page was making
-     * silently and can now keep checking. `navigationType` is the closest thing this data
-     * has to a returning visitor (navigate vs reload vs back_forward). */
-    section('Browser', async () => table(
-      rumRows(await gql(apiToken, rumGroup('userAgentBrowser', 'count_DESC', 10, from, to)),
-        (d) => ({ browser: d.userAgentBrowser })).rows,
-      [{ key: 'browser', label: 'Browser' }, ...RUM_COLS])),
-    section('Operating system', async () => table(
-      rumRows(await gql(apiToken, rumGroup('userAgentOS', 'count_DESC', 10, from, to)),
-        (d) => ({ os: d.userAgentOS })).rows,
-      [{ key: 'os', label: 'OS' }, ...RUM_COLS])),
-    section('How the page was reached', async () => table(
-      rumRows(await gql(apiToken, rumGroup('navigationType', 'count_DESC', 10, from, to)),
-        (d) => ({ nav: d.navigationType || '(unknown)' })).rows,
-      [{ key: 'nav', label: 'Navigation' }, ...RUM_COLS])),
-    section('Host, and bots', async () => table(
-      rumRows(await gql(apiToken, rumGroup('requestHost bot', 'count_DESC', 10, from, to)),
-        (d) => ({ host: d.requestHost, bot: d.bot ? 'BOT' : 'human' })).rows,
-      [{ key: 'host', label: 'Host' }, { key: 'bot', label: 'Bot?' }, ...RUM_COLS])),
   ]);
 
-  // ---- in-sim usage. sum(_sample_interval), never count() — see the header.
-  /* ---- real-user performance. See vitalsGroup's header for why this is here. --------- */
+  /* ---- Web Vitals — Cloudflare-only, fixed 7 days, never a trend (section E). The picker
+   * above never touches this: `traffic_daily` stores no percentiles, so a longer or older
+   * window would not make these more historical, only more likely to be a stale cache of
+   * "the last 7 days" quietly relabelled. `windowStartMs` is the reason this stays exact —
+   * it is the helper this file used to compute EVERY window with, kept here for the one
+   * window that still needs its coarse-tier-edge clamp (see render.js's header). */
+  const vFrom = new Date(windowStartMs(nowMs, RUM_FULL_RES_DAYS)).toISOString();
+  const vTo = new Date(nowMs).toISOString();
   const vitals = await Promise.all([
-    section('Slowest paint, by page (LCP)', async () => table(
-      rumRows(await gql(apiToken,
-        vitalsGroup('largestContentfulPaintPath', 'count_DESC', 10, from, to)),
+    section('Slowest paint, by page — Largest Contentful Paint (LCP)', async () => {
+      const rows2 = vitalsRows(await gql(apiToken,
+        vitalsGroup('largestContentfulPaintPath', 'count_DESC', 10, vFrom, vTo, 'largestContentfulPaintP75')),
         (d) => ({ page: d.largestContentfulPaintPath || '(none reported)' }),
-        'rumWebVitalsEventsAdaptiveGroups').rows,
-      [{ key: 'page', label: 'Page' }, { key: 'pageloads', label: 'Samples', num: true },
-       { key: 'exact', label: '±' }])),
+        'largestContentfulPaintP75').filter((r) => r.p75 != null)
+        .map((r) => ({ page: r.page, p75: Math.round(r.p75 / 1000), samples: r.samples }));
+      if (!rows2.length) return '<p class="muted">No LCP p75 samples in the last 7 days.</p>';
+      return table(rows2, [{ key: 'page', label: 'Page' }, { key: 'p75', label: 'p75 (ms)', num: true },
+        { key: 'samples', label: 'Samples', num: true }]);
+    }),
     /* INP is the one that would have shown #596 — a page that responds slowly to a click
      * is a page whose frame loop is saturated, which is what "4.7 fps" means from the
      * outside. The ELEMENT is the payload: it names the control that felt slow. */
-    section('Slowest response to an interaction (INP)', async () => table(
-      rumRows(await gql(apiToken,
-        vitalsGroup('interactionToNextPaintPath interactionToNextPaintElement', 'count_DESC', 10, from, to)),
+    section('Slowest response to an interaction — Interaction to Next Paint (INP)', async () => {
+      const rows2 = vitalsRows(await gql(apiToken,
+        vitalsGroup('interactionToNextPaintPath interactionToNextPaintElement', 'count_DESC', 10, vFrom, vTo,
+          'interactionToNextPaintP75')),
         (d) => ({ page: d.interactionToNextPaintPath || '(none reported)',
                   element: d.interactionToNextPaintElement || '' }),
-        'rumWebVitalsEventsAdaptiveGroups').rows,
-      [{ key: 'page', label: 'Page' }, { key: 'element', label: 'Element' },
-       { key: 'pageloads', label: 'Samples', num: true }, { key: 'exact', label: '±' }])),
-    section('Layout shift, by element (CLS)', async () => table(
-      rumRows(await gql(apiToken,
-        vitalsGroup('cumulativeLayoutShiftPath cumulativeLayoutShiftElement', 'count_DESC', 10, from, to)),
+        'interactionToNextPaintP75').filter((r) => r.p75 != null)
+        .map((r) => ({ page: r.page, element: r.element, p75: Math.round(r.p75 / 1000), samples: r.samples }));
+      if (!rows2.length) return '<p class="muted">No INP p75 samples in the last 7 days.</p>';
+      return table(rows2, [{ key: 'page', label: 'Page' }, { key: 'element', label: 'Element' },
+        { key: 'p75', label: 'p75 (ms)', num: true }, { key: 'samples', label: 'Samples', num: true }]);
+    }),
+    section('Layout shift, by element — Cumulative Layout Shift (CLS)', async () => {
+      const rows2 = vitalsRows(await gql(apiToken,
+        vitalsGroup('cumulativeLayoutShiftPath cumulativeLayoutShiftElement', 'count_DESC', 10, vFrom, vTo,
+          'cumulativeLayoutShiftP75')),
         (d) => ({ page: d.cumulativeLayoutShiftPath || '(none reported)',
                   element: d.cumulativeLayoutShiftElement || '' }),
-        'rumWebVitalsEventsAdaptiveGroups').rows,
-      [{ key: 'page', label: 'Page' }, { key: 'element', label: 'Element' },
-       { key: 'pageloads', label: 'Samples', num: true }, { key: 'exact', label: '±' }])),
+        'cumulativeLayoutShiftP75').filter((r) => r.p75 != null)
+        .map((r) => ({ page: r.page, element: r.element, p75: Math.round(r.p75 * 1000) / 1000, samples: r.samples }));
+      if (!rows2.length) return '<p class="muted">No CLS p75 samples in the last 7 days.</p>';
+      return table(rows2, [{ key: 'page', label: 'Page' }, { key: 'element', label: 'Element' },
+        { key: 'p75', label: 'p75 (score)', num: true }, { key: 'samples', label: 'Samples', num: true }]);
+    }),
   ]);
 
   return html(head
-    + '<h1>Analytics <span class="muted">— last ' + days + ' days</span></h1>'
-    + '<p class="muted">Window: ' + windowLink(7) + ' · ' + windowLink(14) + ' · ' + windowLink(30)
-    + ' · every date and time here is <b>Eastern</b>, and the rows below are Eastern days '
-    + 'measured midnight to midnight.</p>'
-    + tiles + coarseNote
-    + '<h2>Traffic <span class="muted">— real browsers, bots excluded</span></h2>'
-    + sections.join('')
-    + '<h2>Performance <span class="muted">— what real visitors actually experienced</span></h2>'
-    + '<p class="muted">Core Web Vitals from real page loads. #596 (the control room '
-    + 'render-bound at 4.7 fps) was found by playing the sim and noticing; INP is the same '
-    + 'measurement taken automatically, and the element column names what felt slow.</p>'
+    + '<h1>Analytics <span class="muted">— ' + esc(from) + ' to ' + esc(to)
+      + ' ET, ' + allDays.length + ' day' + (allDays.length === 1 ? '' : 's')
+      + ', ' + rows.length + ' row' + (rows.length === 1 ? '' : 's') + '</span></h1>'
+    + '<p class="muted">Every date and time on this page is <b>Eastern</b>, measured '
+    + 'midnight to midnight.</p>'
+    + picker(from, to) + clampNote
+    + GLOSSARY
+    + tiles + deltaLine
+    + sourceNoteFirstParty(anyCoarse, anyMissing)
+    + (liveErr ? '<p class="warn">Today’s live figure failed to load: ' + esc(liveErr) + '</p>' : '')
+    + '<h2>By day</h2>' + chart + legend + dayTable
+    + '<h2>Traffic breakdown <span class="muted">— first-party for closed days, Cloudflare live for today</span></h2>'
+    + migrated.join('') + referrerSections.join('')
+    + '<h2>Traffic breakdown — Cloudflare only <span class="muted">— no first-party equivalent</span></h2>'
+    + '<p class="muted">`stats.groupBy`, the first-party reader, is single-dimension only — a '
+    + 'three-way country/referrer/day cut has no equivalent there. This section below reads '
+    + 'Cloudflare directly for the window you picked and says so itself.</p>'
+    + cfOnlySections.join('')
+    + '<h2>Performance <span class="muted">— real visitors, last 7 days, Cloudflare-only</span></h2>'
+    + '<p class="muted">Core Web Vitals from real page loads, at the 75th percentile — the '
+    + 'figure Google’s own ranking uses, and the one that would have shown #596 (the control '
+    + 'room render-bound at 4.7 fps) before a player had to say so. <span class="warn">'
+    + '`traffic_daily` stores no percentiles, so this section cannot become a trend and does '
+    + 'not follow the picker above</span> — it is always the trailing 7 days.</p>'
     + vitals.join('')
-    /* IN-SIM USAGE MOVED OUT (#674, owner: "move some of the feature tracking from the
-     * statistics page on the tracking site to this new feature tracking page"). Six
-     * sections went to `usage.js` whole — time per session, starting condition, startup
-     * depth, most-used controls, refused controls, panels opened — leaving this page the
-     * two halves that come from Web Analytics rather than from Analytics Engine. */
     + '<p class="muted">In-sim usage — what people do once inside the sim, and how the '
-    + 'walkthroughs go — is on <a href="?token=' + encodeURIComponent(token)
-    + '&view=usage">Feature usage</a>.</p>'
+    + 'walkthroughs go — is on <a href="?view=usage">Feature usage</a>.</p>'
     + '</body></html>');
 }

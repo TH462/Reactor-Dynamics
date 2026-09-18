@@ -1,6 +1,6 @@
 /* Reactor Dynamics — the FEATURE USAGE page of the ops dashboard. (#674)
  *
- *   GET /dashboard?token=T&view=usage
+ *   GET /dashboard?view=usage
  *
  * *(OWNER, 2026-09-09: "I need to update my telemetry site for tracking usage of the
  * walk-throughs. I'd like to be able to figure out if people get stuck on one or how far
@@ -90,13 +90,13 @@ function quantile(sorted, q) {
 }
 
 // ---------------------------------------------------------------- the page
-export async function usagePage(env, url, token) {
+export async function usagePage(env, url) {
   const apiToken = env.CF_ANALYTICS_TOKEN;
   const days = Math.max(1, Math.min(90, Number(url.searchParams.get('days')) || 30));
   const since = `timestamp > NOW() - INTERVAL '${days}' DAY`;
 
   const head = '<!doctype html><html><head>' + PAGE_HEAD
-    + '<title>Feature usage — Reactor Dynamics</title></head><body>' + nav(token, 'usage');
+    + '<title>Feature usage — Reactor Dynamics</title></head><body>' + nav('usage');
 
   if (!apiToken) {
     return html(head
@@ -108,7 +108,7 @@ export async function usagePage(env, url, token) {
   }
 
   const windowLink = (n) => {
-    const href = '?token=' + encodeURIComponent(token) + '&view=usage&days=' + n;
+    const href = '?view=usage&days=' + n;
     return n === days ? '<b>' + n + 'd</b>' : '<a href="' + href + '">' + n + 'd</a>';
   };
 
@@ -137,7 +137,13 @@ export async function usagePage(env, url, token) {
     + '<h1>Feature usage <span class="muted">— last ' + days + ' days</span></h1>'
     + '<p class="muted">Window: ' + windowLink(7) + ' · ' + windowLink(30) + ' · ' + windowLink(90)
     + ' · in-sim usage only. Traffic and page performance are on '
-    + '<a href="?token=' + encodeURIComponent(token) + '&view=analytics">Analytics</a>.</p>'
+    + '<a href="?view=analytics">Analytics</a>.</p>'
+    /* The source line every view now carries instead of an `Exact` column (#764). This
+     * page is not Web Analytics and has no coarse tier — it is the sampled Analytics
+     * Engine dataset, whose grain is the IN-SIM SESSION, so it says so rather than
+     * borrowing the traffic page's wording. */
+    + '<p class="muted">Source: <b>Cloudflare Analytics Engine</b> — sampled '
+    + '(session counts are a floor), 3-month retention.</p>'
     + '<h2>Walkthroughs <span class="muted">— how far people get, and where they stall</span></h2>'
     + '<p class="muted">Session counts are a <b>FLOOR</b>: this dataset is sampled, whole '
     + 'rows are dropped, and no weighting recovers a session that vanished entirely. '

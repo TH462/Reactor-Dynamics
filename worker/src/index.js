@@ -11,10 +11,12 @@
  *
  * A third route reads back what the second one stored:
  *
- *   GET /dashboard?token=T   a token-gated feedback viewer — see dashboard.js
+ *   GET  /dashboard    the ops console — see dashboard.js
+ *   POST /dashboard    sign in, sign out, and the one feature-flag write
  *
- * It is GET, token-gated instead of origin-gated, and not part of the
- * CORS-fronted API below — it is meant to be opened directly in a browser.
+ * It is gated by a signed session cookie instead of by origin, and is not part of the
+ * CORS-fronted API below — it is meant to be opened directly in a browser. The cookie is
+ * scoped `Path=/dashboard` precisely so it is never attached to the ingest POST at `/`.
  *
  * ---------------------------------------------------------------- what is NOT stored
  * The client is careful about what it sends. This end has to be equally careful
@@ -273,9 +275,11 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // The dashboard, and the one write it owns. Both token-gated inside; neither is
-    // part of the CORS-fronted ingest below, and the POST here is a form submit from
-    // the dashboard page rather than anything the sim can reach.
+    /* The dashboard, and the writes it owns. Authentication is INSIDE handleDashboard
+     * (a signed cookie since #764), and this stays a SINGLE route on purpose: sign-in and
+     * sign-out are POSTs to this same path carrying an `action` field. A `/dashboard/login`
+     * route would have to be added here, to the cookie's Path, and to the CORS boundary
+     * below — every POST that is not this one falls through into the ingest handler. */
     if (url.pathname === '/dashboard' && (request.method === 'GET' || request.method === 'POST')) {
       return handleDashboard(env, url, request);
     }
@@ -283,7 +287,7 @@ export default {
     /* The site BUILD reads this to stamp flag stages. Open and unauthenticated on
      * purpose: a stage is not a secret — every one of them ships inside site/flags.js
      * to every visitor — so gating it would protect nothing while forcing a token into
-     * the Pages build environment. Writing stays behind DASHBOARD_TOKEN. */
+     * the Pages build environment. Writing stays behind the dashboard session. */
     if (request.method === 'GET' && url.pathname === '/flags-stages') {
       return stagesEndpoint(env);
     }

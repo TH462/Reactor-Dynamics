@@ -109,3 +109,32 @@ namespace_id = "1001"
   [ratelimits.simple]
   limit = 60
   period = 60
+
+# THE LOGIN THROTTLE (#764). Separate namespace, separate budget: the ingest limiter above
+# is sized for a telemetry client that beacons every 15 seconds, and a password form that
+# allowed 60 guesses a minute would be no throttle at all.
+#
+# 5 per 60 s, keyed on CF-Connecting-IP, and CHARGED ONLY BY A FAILED `action=login`. That
+# asymmetry is the point: a correct password never spends budget, so the owner cannot lock
+# himself out by signing in on several devices at once, while a brute force runs out after
+# five guesses a minute.
+#
+# NOT A KV COUNTER, and this was considered rather than overlooked. KV is eventually
+# consistent ACROSS COLOS: a read in one data centre does not see a write made in another
+# for some seconds, so an attacker spreading guesses over Cloudflare's edge would get many
+# times the intended allowance while the counter caught up -- a rate limiter whose count is
+# approximately right is not a rate limiter. It also costs a write per attempt, i.e. the
+# attacker sets our bill. The ratelimit binding is colo-local, synchronous and free.
+#
+# THE IP IS THE KEY AND IS NEVER WRITTEN ANYWHERE -- not to R2, not to Analytics Engine,
+# not to a log (observability is off above, for exactly this reason). src/index.js makes
+# the same promise for the ingest endpoint and privacy.html is written on the strength of
+# it, so if a future change needs to COUNT failures per address, it does not get to store
+# the address to do it.
+[[ratelimits]]
+name = "LOGIN_LIMITER"
+namespace_id = "1002"
+
+  [ratelimits.simple]
+  limit = 5
+  period = 60

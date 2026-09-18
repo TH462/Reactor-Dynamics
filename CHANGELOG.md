@@ -30,6 +30,73 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the ops dashboard: password auth, the first-party store on screen, an arbitrary window and a trend (#764)
+
+Internal tooling, not the simulator, so there is **no `changelog.html` entry and no version
+bump** — the site the player touches is unchanged by all of this.
+
+- **The secret is out of the URL.** `?token=T` was rewritten onto every internal href, so the
+  bookmark *was* the credential: it sat in browser history, in any screenshot of the address bar,
+  and one outbound link from a `Referer` header — `html()` set no `Referrer-Policy`. The same token
+  gated the Features write, so a leaked URL could mutate the live sim. Now a password form and an
+  HMAC-signed `HttpOnly` cookie, `Path=/dashboard` so it can never reach the ingest route at `/`.
+  Login and logout are `POST /dashboard` with an `action` field rather than new top-level routes,
+  which would have fallen through into the CORS-fronted ingest handler. Failed logins throttle on a
+  second rate-limit binding, not KV — a KV counter is eventually consistent across colos, which
+  makes it a poor rate limiter. **Rotating `DASHBOARD_HMAC_KEY` is the revoke-all-devices switch**;
+  there is no other way to log out a lost phone.
+- **Cutover, stage 1 of 2.** A `GET` carrying a matching `?token=` mints the cookie and redirects to
+  the same path with the token stripped, so an existing bookmark rewrites itself on first use. The
+  original plan rotated the secret *and* promised that migration — mutually exclusive, since a
+  rotated secret burns every old bookmark. **Stage 2 after 2026-09-25:** delete the
+  `LEGACY_TOKEN_EXCHANGE` block and rotate `DASHBOARD_TOKEN`.
+- **`worker/src/stats.js` — the read side of the first-party store, which did not exist.**
+  `rollup.js` has written `traffic_daily` since 2026-09-02 and `env.STATS` appeared in no other
+  file: a writer with no reader, so every figure on screen still came from Cloudflare and went to
+  multiples of 10 past 7 days. The module is built around the ways those rows turn into a confident
+  wrong number — a day the cron missed writes no rows and so does a quiet day (`rollup_runs` is the
+  only thing that tells them apart); a late capture is rounded to the nearest 10 and must not be
+  averaged into a trend; `usage_daily.sessions` is `count(DISTINCT blob4)` **per tuple** and summing
+  it over-counts, so `sessionsInPeriod()` throws rather than obliging.
+- **An arbitrary `?from=&to=` window** *(OWNER, 2026-09-18: "I should be able to select the window,
+  not just arbitrary seven or 30 or whatever days.")*. The 7/14/30 presets only ever existed because
+  Cloudflare's coarse tier punishes older windows; on closed days in the store that constraint is
+  gone. The picker is clamped to the store's first day and says when history begins — a date before
+  it returns no rows, which would draw as *zero traffic* rather than *no data*. Legacy `?days=N`
+  still resolves.
+- **A trend** *(OWNER, 2026-09-18: "I would also like to see trend graph so that I can see the growth
+  or drop of the traffic.")*: daily bars, a 7-day trailing mean, a dashed prior-period ghost, and a
+  period-over-period figure. At about 5 landing visits a day the weekday effect dominates the bars,
+  so the line is the trend and the bars are the data. **A refused comparison prints its reason and
+  never a digit** — no 0 %, no infinity — because the store begins about 2026-09-01 and the first
+  weeks would otherwise show enormous growth that is only the store starting. Today has no
+  first-party row, is fetched live and drawn hollow: a half-finished day drawn solid makes every
+  morning look like a collapse.
+- **9 of 10 breakdown sections read the first-party store**, each with its own source note naming its
+  own span and source. Country × referrer × day stays on Cloudflare — genuinely three-dimensional.
+  The referrer views now read the **stored** `referrer_kind`, computed at rollup time with the real
+  `requestHost`; the page had been recomputing it with `requestHost` as `null`, which discards the
+  exact-match rule and would classify a new preview domain as *discovery* rather than in-app
+  navigation — the #604 finding inverted. `groupBy('bot')` deliberately drops the `bot = 0` filter,
+  because filtering a column to one value and grouping by it returns one row that looks like data
+  and is half the answer; that section is labelled non-comparable on the page.
+- **"Visits" is now "Landing visits"** everywhere, with a glossary strip. A visit is attributed to
+  the *landing* path, so internal hops show 0 — which already produced the false reading "almost
+  nobody enters the sim", when the truth was "almost nobody *lands* on the shell". The `EXACT`
+  column, an implementation detail of Cloudflare's tiering, is deleted. Web Vitals now show real
+  p75 LCP / INP / CLS instead of sample counts and CSS selectors, and say on the page that they can
+  never become a trend, because `traffic_daily` stores no percentiles.
+- **Four new gates, 142 checks, 55 injections, all caught.** `run_dashboard_auth` (25),
+  `run_dashboard_stats` (80), `run_dashboard_trend` (37); `run_dashboard_time` moved 88 → 87 and the
+  drop is adjudicated per check in `BASELINES`. Three lessons are recorded there rather than here:
+  an injection anchored across two lines matches nothing against these CRLF files and silently never
+  fires; an injection into a module can never redden a cross-engine comparison, because the same
+  module drives both sides, so that check is proved by planting the defect in the runner's own
+  interpreter; and an unscoped page regex matches the *next* section — two checks were hollow that
+  way and both were caught by re-injecting after the change that hollowed them.
+- **`worker/README.md`** documented `?token=T` bookmarks on four lines and now carries the
+  password/cookie model, the three secrets and the two-stage cutover.
+
 ### Changed — the Mode 3 → Mode 1 walkthrough is reconciled to the owner's step file
 
 - `pwr_startup`'s player-facing text now comes down to `Blueprint/walkthrough_steps/02_mode3_to_mode1.md`,

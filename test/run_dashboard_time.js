@@ -300,41 +300,53 @@ test('the traffic table is RE-GROUPED into Eastern days, not relabelled', functi
   ck('the hours are bucketed with etDay()', /etDay\(\s*d\.datetimeHour\s*\)/.test(a));
   ck('the column says ET', /label:\s*'Date \(ET\)'/.test(a));
   /* The limit must cover every hour in the window or the tail is dropped silently — the
-   * rows simply stop, which reads as a quiet week rather than as a truncation. */
-  ck('the hourly limit scales with the window', /days\s*\*\s*24/.test(a));
+   * rows simply stop, which reads as a quiet week rather than as a truncation. Rewritten
+   * for #764 Unit 2b's arbitrary window: the window length is `allDays.length`, not a
+   * `days` parameter — there is no longer a fixed preset count to name. */
+  ck('the hourly limit scales with the window', /allDays\.length\s*\*\s*24/.test(a));
 });
 
-test('the query window is aligned to an Eastern midnight, and clamped', function (ck) {
+/* #764 UNIT 2b REWROTE THE WINDOW ENTIRELY — arbitrary [from,to] read from the first-party
+ * store for closed days, replacing the fixed `windowStartMs(nowMs, days)` preset this suite
+ * used to pin. `windowStartMs` still exists and is still called (see render.js's own header:
+ * "Do not delete it... scope it"), just for the one place that is STILL a fixed trailing
+ * window — Web Vitals, which can never become a trend because `traffic_daily` stores no
+ * percentiles. These checks were rewritten alongside that change, not merely relaxed:
+ * each still asserts the property it protects, against the new mechanism that protects it. */
+test('the arbitrary window: whole Eastern days by construction, and CLAMPED to the store', function (ck) {
   var a = CODE['worker/src/analytics.js'];
-  /* The behaviour is pinned above, against the real function. These are the wiring: that
-   * the view actually CALLS it, and that nobody re-derives the window inline beside it —
-   * a second copy would pass every behavioural check while the page used the other one. */
-  ck('the window start comes from windowStartMs', /const fromMs = windowStartMs\(nowMs, days\)/.test(a));
-  ck('the filter is minted from that instant', /const from = new Date\(fromMs\)\.toISOString\(\)/.test(a));
-  ck('the view does not compute its own start from etDayStartMs',
-    !/const from\w* = [^;]*etDayStartMs\(\s*(?:Date\.)?now/i.test(a));
+  /* windowStartMs's coarse-tier-edge clamp still guards the one FIXED, trailing-window
+   * Cloudflare query left on the page — Web Vitals — scoped exactly as render.js's header
+   * requires ("still governs the live Cloudflare half"). */
+  ck('Web Vitals still uses windowStartMs, scoped to its own fixed 7-day query',
+    /const vFrom = new Date\(windowStartMs\(nowMs, RUM_FULL_RES_DAYS\)\)\.toISOString\(\)/.test(a));
   /* The old form: `new Date(...).toISOString().slice(0, 11) + '00:00:00Z'` — a UTC
    * midnight. It leaves the oldest row holding the last 19 or 20 hours of its Eastern
    * day, which reads as a quiet morning rather than as a partial bucket. */
   ck('no UTC-midnight string surgery survives', !/toISOString\(\)\.slice\(0,\s*11\)/.test(a));
 
-  /* The clamp shortens the oldest bucket, and an unlabelled short bucket is exactly the
-   * misreading #480 existed to remove — a real drop in traffic and a trimmed window look
-   * identical on the row. It is only an acceptable trade while it is SAID. */
-  ck('the partial day is computed from the actual start',
-    /const partialDay = fromMs > etDayStartMs\(fromMs\)/.test(a));
+  /* The OLD clamp shortened the oldest bucket of a `now - N*24h` window and needed a
+   * `partialDay` concept to say so. The NEW picker cannot produce that case at all — `from`
+   * is always a whole Eastern day (`stats.parseDay` accepts nothing else), so the only
+   * "partial" day left is TODAY, which has no first-party row yet and is fetched live. */
+  ck('a picked start before the store is CLAMPED to the store’s first day',
+    /if \(sr && from < sr\.first\) \{/.test(a));
+  ck('today, and only today, is marked partial', /partial: true/.test(a) && /if \(day === today\)/.test(a));
   // The labelling itself is pinned behaviourally above; this is only that the by-day
-  // table routes through it and hands it the day it actually computed.
-  ck('the by-day rows are titled by dayLabel', /date: dayLabel\(r\.date, partialDay\)/.test(a));
-  ck('and the marker is explained under the table', /marked <b>\(partial\)<\/b>/.test(a));
+  // table routes through it and hands it the row it actually computed.
+  ck('the by-day rows are titled by dayLabel', /dateLabel: dayLabel\(r\.day, r\.partial \? r\.day : null\)/.test(a));
+  ck('and the marker is explained inline, next to the row it marks',
+    /today, live/.test(a) && /today, live and partial/.test(a));
 
   /* The old warning opened "Window > 7 days:" — a claim about the window rather than
    * about the answer, and false for every one of the four hours a day the 7d view was
    * rounding. It named the wrong cause to the one person who could have caught it. */
   ck('the coarse warning does not attribute itself to the window size',
     !/Window &gt; 7 days/.test(a));
+  // The breakdown sections' source note still names the actual rounding factor it got,
+  // not just "rounded" with no number — `breakdownCoarse` is this file's renamed `g.coarse`.
   ck('the coarse warning still reports the interval it got',
-    /rounded to the nearest ' \+ g\.coarse/.test(a));
+    /rounded to the nearest ' \+ coarse/.test(a) && /breakdownCoarse/.test(a));
 });
 
 test('every view routes its instants through the Eastern helpers', function (ck) {

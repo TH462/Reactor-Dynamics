@@ -46,7 +46,7 @@ export async function readStages(env) {
 /* The build reads this. Open, and unauthenticated on purpose: a stage is not a secret —
  * every one of them ships inside site/flags.js to every visitor, so gating the read
  * would protect nothing while adding a token to the Pages build environment. WRITING is
- * a different matter and stays behind DASHBOARD_TOKEN.
+ * a different matter and stays behind the dashboard session cookie (#764).
  */
 export async function stagesEndpoint(env) {
   const { stages, updated } = await readStages(env);
@@ -76,15 +76,18 @@ async function writeStage(env, id, stage) {
   }));
 }
 
-export async function featuresAction(env, url, token, form) {
+export async function featuresAction(env, url, form) {
   const id = String(form.get('id') || '');
   const stage = String(form.get('stage') || '');
   let err = '';
   try { await writeStage(env, id, stage); }
   catch (e) { err = e.message; }
-  const back = '?token=' + encodeURIComponent(token) + '&view=features'
+  const back = '?view=features'
     + (err ? '&err=' + encodeURIComponent(err) : '&ok=' + encodeURIComponent(id));
-  return new Response(null, { status: 303, headers: { Location: back } });
+  return new Response(null, {
+    status: 303,
+    headers: { Location: back, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
+  });
 }
 
 async function text(url) {
@@ -136,19 +139,19 @@ const visibleOn = (stage, channel) =>
  * page showing a stage that was never stored. A form submit either navigates or
  * visibly does not.
  */
-function stageControl(id, current, token, floored) {
+function stageControl(id, current, floored) {
   if (floored) return '<span class="muted">locked public</span>';
   const opts = ['public', 'preview', 'off'].map((s) =>
     '<option value="' + s + '"' + (s === current ? ' selected' : '') + '>' + s + '</option>').join('');
-  return '<form method="POST" action="?token=' + esc(token) + '&view=features" class="inline">'
+  return '<form method="POST" action="?view=features" class="inline">'
     + '<input type="hidden" name="id" value="' + esc(id) + '">'
     + '<select name="stage">' + opts + '</select>'
     + '<button type="submit">set</button></form>';
 }
 
-export async function featuresPage(env, url, token) {
+export async function featuresPage(env, url) {
   const head = '<!doctype html><html><head>' + PAGE_HEAD
-    + '<title>Features — Reactor Dynamics</title></head><body>' + nav(token, 'features');
+    + '<title>Features — Reactor Dynamics</title></head><body>' + nav('features');
 
   let body;
   try {
@@ -179,7 +182,7 @@ export async function featuresPage(env, url, token) {
         live_stage: a.stage,
         live: visibleOn(a.stage, chan) ? 'yes' : 'no',
         next_stage: next === a.stage ? '—' : next,
-        control: stageControl(a.id, next, token, !!FLOOR[a.id]),
+        control: stageControl(a.id, next, !!FLOOR[a.id]),
       };
     });
 
@@ -220,7 +223,7 @@ export async function featuresPage(env, url, token) {
         return '<tr><td class="mono">' + esc(i.id) + '</td>'
           + '<td class="mono">' + esc(i.stage) + '</td>'
           + '<td class="mono">' + esc(next === i.stage ? '—' : next) + '</td>'
-          + '<td>' + stageControl(key, next, token, false) + '</td></tr>';
+          + '<td>' + stageControl(key, next, false) + '</td></tr>';
       }).join('');
       return '<details><summary>' + esc(k) + ' — ' + list.length + ' entries'
         + (queued ? ', <b>' + queued + ' queued</b>' : '') + '</summary>'
