@@ -385,10 +385,13 @@ an S: least effective at either end, most effective mid-travel.
 > **P-10 (8 % power)** is one caution and then two flux functions, in this order: **SUR HI at
 > 1 DPM** — an annunciator, not an interlock — then the **intermediate-range high-flux rod stop
 > at 20 % current equivalent**, then the **intermediate-range high-flux trip at 25 %**. Measured
-> on a runaway withdrawal from hot zero power (2026-09-08, #661; engine under the control kernel,
-> 0.02 s step, normal drive speed): SUR HI at **367 s**, the rod stop at **442 s**, the trip at
-> **444 s**. **The annunciator is the whole of your early warning** — nothing acts for you before
-> the rod stop.
+> on a runaway withdrawal from hot zero power (2026-09-18, #665; full stack, normal drive speed
+> **0.800 steps/s** — `ROD_SPEEDS.normal`, since #668 — times given **relative to the start of
+> withdrawal**, i.e. the `rod_start` command, not engine boot): SUR HI at **267 s**, the rod stop
+> at **338 s**, the trip at **339 s**. **The annunciator is the whole of your early warning** —
+> nothing acts for you before the rod stop. *(A 2026-09-08 pass, #661, filed 367 / 442 / 444 s
+> against engine simTime including a 60 s settle, at the drive speed then in force, 0.702 steps/s
+> — both changed since; see `Diagnostic/PWR2_HARNESS_RECONCILIATION_2026-09-18.md`.)*
 
 **The acceptance band.** Attachment 2.2-1 line Q brackets the prediction at **±750 pcm**
 around the estimated critical position, or the rod insertion limit, whichever is tighter. On
