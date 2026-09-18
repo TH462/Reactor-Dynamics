@@ -2363,11 +2363,19 @@ if (!only) {
       var boardDoc = fs.readFileSync(path.join(ROOT, 'ui', 'diagram', 'board', 'pwr_board_data.js'), 'utf8');
       var dm = /"label":"REACTOR POWER"[^}]*?"digits":(\d+)/.exec(boardDoc);
       var digits = dm ? +dm[1] : null;
-      var step = null, si = -1;
+      /* THE CRITICALITY STEP IS FOUND BY ITS PREDICATE, not by its index, and it is found in
+       * `acc` OR `accs`: it became a two-row step at #749 item 2 (the INTER RANGE progress row
+       * went in beside the power row), and a finder that only read `acc` walked straight past it
+       * onto the Mode 1 step's `power_pct > 5` and scored that instead — green, on the wrong
+       * step. Hunt the ENTRIES, and take the first power row at or after index 8. */
+      var pv = null, si = -1;
       (proc ? proc.steps : []).forEach(function (st, i) {
-        if (st.acc && st.acc.p === 'power_pct' && si === -1 && i >= 8) { step = st; si = i; }
+        if (si !== -1 || i < 8) return;
+        [].concat(st.acc ? [st.acc] : [], st.accs || []).forEach(function (en) {
+          if (si === -1 && en && en.p === 'power_pct') { pv = en.v; si = i; }
+        });
       });
-      var v = step && step.acc.v;
+      var v = pv;
       /* `digits` null would coerce through toFixed(null) to toFixed(0) — the check still goes
        * red, but the note would read "the tile (null digit) draws 0" and send the next reader
        * after the wrong thing. Named explicitly instead. */
@@ -2376,7 +2384,7 @@ if (!only) {
                     v.toFixed(digits) === (v * (1 + 1e-9)).toFixed(digits);
       ck('2ab.4 the criticality step waits for the FIRST power the tile prints as 0.1 %, not the middle of that digit (#749 item 2)',
          okFloor && v.toFixed(digits) === '0.1',
-         v == null ? 'no power_pct acc found at or after step 9'
+         v == null ? 'no power_pct acceptance found at or after step 9'
                    : digits == null ? 'could not read the REACTOR POWER tile\'s `digits` out of pwr_board_data.js'
                    : 'step ' + (si + 1) + ' acc power_pct > ' + v + '; the tile (' + digits +
                      ' digit) draws ' + v.toFixed(digits) + ' there and ' +
@@ -2426,8 +2434,229 @@ if (!only) {
                            '; the card read ' + drawnStr + ' (' + drawnAtLatch +
                            ') against a target of ' + name + ' (' + target + ')');
     })();
+
+    /* --- 6. THE INTER RANGE PROGRESS ROW (#749 item 2, 2026-09-18). Same two rules as the count
+     * rungs, on the same board formatter: graded on the channel the card draws, thresholded at
+     * the floor of the band the card draws it in. `intermediate_range` carries no DISPLAY_DAMP
+     * entry either, which is what keeps this clear of the #670 ruling exactly as check 2 does
+     * for the source range. `fmtExp(1e-7 - ulp)` is `10.0e-8` — the formatter's own quirk at a
+     * mantissa of ten — so for this one the band floor IS the target. */
+    (function () {
+      var st = null, si = -1;
+      (proc ? proc.steps : []).forEach(function (s2, i) {
+        if (si !== -1 || i < 8) return;
+        (s2.accs || []).forEach(function (en) { if (si === -1 && en && en.p === 'ir_amps') { st = s2; si = i; } });
+      });
+      var en = null;
+      (st ? st.accs : []).forEach(function (e) { if (e.p === 'ir_amps') en = e; });
+      var dampM = /var DISPLAY_DAMP = \{([\s\S]*?)\};/.exec(wiring);
+      var damped = !!dampM && /(^|[\s,{])intermediate_range\s*:/.test(dampM[1]);
+      var svc = mkSvc('hot_zero_power');
+      var s = null; for (var i = 0; i < 20; i++) s = svc.tick();
+      var il = Object.create(RD.InstructorLayer.prototype);
+      var g = en ? il._grade(s, en) : { graded_by: 'no row' };
+      var v = en && en.v;
+      var floorOK = v != null && fmtExp(v * (1 - 1e-9)) !== fmtExp(v) && fmtExp(v * (1 + 1e-9)) === fmtExp(v);
+      ck('2ab.6 the INTER RANGE progress row grades the drawn channel, undamped, at its band floor (#749 item 2)',
+         !!en && en.op === '>=' && floorOK && !damped &&
+         g.graded_by === 'instrument' && g.value === s.instruments.intermediate_range,
+         !en ? 'no ir_amps row found at or after step 9'
+             : 'step ' + (si + 1) + ' ' + en.op + ' ' + v + ' -> the card draws ' + fmtExp(v) +
+               ' (one ulp below: ' + fmtExp(v * (1 - 1e-9)) + '); graded_by ' + g.graded_by +
+               '; damped ' + damped);
+      ck('2ab.6 ...and the row prints the SHORTHAND, never the raw threshold (#724 item 6)',
+         !!en && String(en.label || '').indexOf(fmtExp(v)) !== -1 &&
+         String(en.label || '').indexOf(String(v)) === -1,
+         en ? JSON.stringify(en.label) : 'no row');
+    })();
+
+    /* --- 7. AND IT ONLY EARNS ITS PLACE IF IT MOVES FIRST. `accs` is a CONJUNCTION: this row
+     * cannot shorten the wait by a second, so the ONLY thing it buys is that something on the
+     * card ticks part-way through a 21.8-minute stare. If it landed on the power row it would be
+     * one more line to read for nothing and DESIGN_CRITERIA Q4 would veto it — so the margin is
+     * the acceptance criterion, and it is asserted on the plant rather than assumed.
+     *
+     * Driven at 10x through the authored route, both rows graded through the real `_gradeAccs`,
+     * one bag each so neither can mask the other. MEASURED at 1x on two seeds when the row was
+     * authored: the INTER RANGE row ticks at +742 s / +851 s against +1306 s / +1499 s for the
+     * power row — 57 % of the wait on both. The bound below is deliberately loose (a fifth of the
+     * step, and before the power row) because it pins "a player sees this happen mid-wait", not a
+     * number; a retune of the creep should move it, not break it. */
+    (function () {
+      var st = null, si = -1;
+      (proc ? proc.steps : []).forEach(function (s2, i) {
+        if (si !== -1 || i < 8) return;
+        (s2.accs || []).forEach(function (en) { if (si === -1 && en && en.p === 'ir_amps') { st = s2; si = i; } });
+      });
+      if (!st) { ck('2ab.7 the criticality step carries an ir_amps row', false, 'none found'); return; }
+      var irEn = null, pwEn = null;
+      st.accs.forEach(function (e) { if (e.p === 'ir_amps') irEn = e; if (e.p === 'power_pct') pwEn = e; });
+      var svc = mkSvc('hot_zero_power');
+      var s = null, i;
+      for (i = 0; i < 5; i++) s = svc.tick();
+      var runFor = function (secs) { var t0 = s.metadata.sim_time; while (s.metadata.sim_time - t0 < secs) s = svc.tick(); };
+      for (i = 0; i <= si; i++) {
+        var step = proc.steps[i];
+        if (step.cmd) svc.handleCommand(step.cmd);
+        if (i === si) break;
+        runFor(step.hold != null ? step.hold : 2);
+      }
+      var t0 = s.metadata.sim_time;
+      var il = Object.create(RD.InstructorLayer.prototype);
+      var irH = {}, pwH = {}, irSt = { accs: [irEn] }, pwSt = { accs: [pwEn] };
+      var tIR = null, tPW = null;
+      while (s.metadata.sim_time - t0 < (st.hold || 1800) && tPW === null) {
+        s = svc.tick();
+        if (tIR === null && il._gradeAccs(irH, irSt, s)) tIR = s.metadata.sim_time - t0;
+        if (tPW === null && il._gradeAccs(pwH, pwSt, s)) tPW = s.metadata.sim_time - t0;
+      }
+      var span = st.hold || 1800;
+      ck('2ab.7 the INTER RANGE row ticks MID-WAIT, well before the power row — the reason it ships (#749 item 2)',
+         tIR !== null && tPW !== null && tIR < tPW && (tPW - tIR) >= span * 0.2,
+         (tIR === null ? 'the INTER RANGE row never ticked' : 'INTER RANGE at +' + tIR.toFixed(0) + ' s') +
+         ', ' + (tPW === null ? 'REACTOR POWER never ticked within the step' : 'REACTOR POWER at +' + tPW.toFixed(0) + ' s') +
+         (tIR !== null && tPW !== null ? ' — a margin of ' + (tPW - tIR).toFixed(0) + ' s against a bound of ' +
+                                         (span * 0.2).toFixed(0) : ''));
+    })();
+
+    /* --- 8. THE BRACKET STAYS OUT OF THE WAY BELOW ONE (#749 item 2). `fmtPredValue`'s `sci`
+     * branch prints the meter's shorthand with the plain number beside it — the owner's own
+     * accepted form (#724 item 6) — and `Math.round(1e-7)` is 0, so an INTER RANGE criteria line
+     * would have read "1.0e-7 A (0 A)": a bracket saying the channel reads nothing beside a
+     * shorthand saying it does not. The formatter is LIFTED out of ui/app.js and run, not
+     * source-scanned: a scan tells you the guard is written, never that it is reached. Its `dim`
+     * branch (the only part with outside dependencies) is unreachable for a `sci` entry. */
+    (function () {
+      var appSrc = fs.readFileSync(path.join(ROOT, 'ui', 'app.js'), 'utf8');
+      var a2 = appSrc.indexOf('function fmtPredValue(');
+      var b2 = a2 < 0 ? -1 : appSrc.indexOf('\n  }\n', a2);
+      var fpv = null;
+      try {
+        if (a2 >= 0 && b2 > a2) fpv = new Function('return (' + appSrc.slice(a2, b2 + 4).trim() + ');')();
+      } catch (e) { fpv = null; }
+      if (typeof fpv !== 'function') {
+        ck('2ab.8 `fmtPredValue` was lifted out of ui/app.js and run (#749 item 2)', false,
+           'could not lift `function fmtPredValue(` — has it moved or been reformatted?');
+        return;
+      }
+      var ir = fpv({ label: 'INTER RANGE', u: 'A', sci: true }, 1e-7);
+      var sr = fpv({ label: 'SOURCE RANGE', u: 'counts per second', sci: true }, 1400);
+      ck('2ab.8 a sub-unit `sci` reading drops the bracket instead of printing a rounded zero (#749 item 2)',
+         ir === '1.0e-7 A' && sr === '1.4e3 (1,400 counts per second)',
+         'ir_amps 1e-7 -> ' + JSON.stringify(ir) + ' · sr_counts_cps 1400 -> ' + JSON.stringify(sr));
+    })();
   })();
 
+
+  /* 2ac. A MESSAGE RAISED ON A WALKTHROUGH STEP DIES WITH THAT STEP (#749 item 4, 2026-09-18).
+   *
+   * `_advanceFollow` has cleared `pendingMessage` on every step change since it was written;
+   * `_checklistCheckOff` — the Path 3 advance that the Continue button AND the overtaken skip
+   * both run through — reset eleven per-step fields and never touched it. MEASURED on the live
+   * runtime before the fix: step 6's overtaken text stood at steps 9, 10, 11, 12, 13, 14, 15, 16,
+   * 17 and on the COMPLETE snapshot — TEN of the ten later states, the last of them telling a
+   * finished player to "Stop withdrawing".
+   *
+   * THIS IS DRIVEN, NOT UNIT-TESTED, AND THAT IS THE POINT. The defect was nine step advances and
+   * a completion card; a single-advance probe on the layer would have passed on a fix that only
+   * worked once. So the first two checks play the whole leg: start the walkthrough, Continue up
+   * to a 1/M rung, overshoot the bank until the plant secures the source range itself, then
+   * Continue to the end reading `snapshot.instructor.message` at every step.
+   *
+   * THE TWO HALVES ARE OPPOSITE FAILURES AND BOTH ARE REAL. Clearing the message inside
+   * `_checklistCheckOff` deletes the very message the overtaken path calls it to deliver (that
+   * path used to set it first); NOT clearing it leaves it on every later card. A check for one
+   * passes on a build that has the other, which is why neither is written alone.
+   *
+   * INJECTION, both directions, proven in place:
+   *   · delete `this.pendingMessage = null;` from `_checklistCheckOff` -> 2ac.2 and 2ac.3 red
+   *   · swap the overtaken path back to set-then-check-off                -> 2ac.1 red */
+  (function () {
+    var svc = mkSvc('hot_zero_power');
+    var s = null, i;
+    for (i = 0; i < 5; i++) s = svc.tick();
+    svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
+    for (i = 0; i < 5; i++) s = svc.tick();
+    function ckl() { return s.instructor && s.instructor.checklist; }
+    function msg() { return (s.instructor && s.instructor.message) || null; }
+
+    /* up to a rung that authors `overtaken` — the lower 1/M points are the only steps that do */
+    var rung = -1;
+    (function () {
+      var p2 = null;
+      POOL.forEach(function (p) { if (p.id === 'pwr_startup') p2 = p; });
+      (p2 ? p2.steps : []).forEach(function (st, k) { if (rung === -1 && st.overtaken && st.overtaken.p) rung = k; });
+    })();
+    var guard = 0;
+    while (ckl() && ckl().step_index < rung + 1 && guard++ < 500) {
+      svc.handleCommand({ action: 'checklist_check', index: ckl().step_index });
+      s = svc.tick();
+    }
+    var startedAt = ckl() ? ckl().step_index : -1;
+
+    /* the overshoot: drive the bank out until the plant secures the source range on its own */
+    svc.handleCommand({ action: 'rod_start', group_id: 'control', direction: 1, speed: 'normal' });
+    guard = 0;
+    while (guard++ < 300000 && s.true_state.sr_energized) s = svc.tick();
+    svc.handleCommand({ action: 'rod_stop', group_id: 'control' });
+    var securedBank = s.true_state.rod_steps;
+    for (i = 0; i < 20; i++) s = svc.tick();          // let the overtaken debounce land and skip
+
+    var landedAt = ckl() ? ckl().step_index : -1;
+    var landedMsg = msg();
+    ck('2ac.1 the overtaken note is DELIVERED on the step the skip lands on (#749 item 4 — the ordering half)',
+       landedAt > startedAt && !!landedMsg && /overtaken/i.test(String(landedMsg)),
+       'entered the overshoot on step ' + (startedAt + 1) + ', the plant secured the source range at bank ' +
+       (securedBank == null ? '?' : securedBank.toFixed(0)) + ' and the walkthrough skipped to step ' +
+       (landedAt + 1) + '; message ' + (landedMsg ? JSON.stringify(String(landedMsg).slice(0, 48) + '…') : 'NONE'));
+
+    /* Continue to the end, reading the card at every step */
+    var later = [], carried = [], lastIdx = landedAt;
+    guard = 0;
+    while (ckl() && !ckl().complete && guard++ < 4000) {
+      var c = ckl();
+      if (c.step_index !== lastIdx) {
+        lastIdx = c.step_index;
+        later.push(c.step_index + 1);
+        if (msg() != null) carried.push(c.step_index + 1);
+      }
+      svc.handleCommand({ action: 'checklist_check', index: c.step_index });
+      s = svc.tick();
+    }
+    var doneMsg = msg();
+    if (doneMsg != null) carried.push('COMPLETE');
+    ck('2ac.2 ...and it is GONE from every LATER step and from the COMPLETE card (#749 item 4 — the clear half)',
+       ckl() && ckl().complete && later.length >= 5 && carried.length === 0,
+       !ckl() || !ckl().complete ? 'the leg never completed — ' + later.length + ' steps walked'
+                                 : later.length + ' later steps walked (' + later.join(', ') + ') plus the ' +
+                                   'COMPLETE card; ' + (carried.length ? 'STILL CARRYING A MESSAGE AT: ' + carried.join(', ')
+                                                                       : 'every one of them clear'));
+
+    /* AND IT IS NOT SPECIFIC TO THE OVERTAKEN NOTE, which is the issue's own point: ANY message
+     * standing when the player presses Continue belonged to the step they are leaving. Raised by
+     * hand here rather than by finding a step that happens to speak, because the claim is about
+     * the ADVANCE and not about any one message. */
+    (function () {
+      var svc2 = mkSvc('hot_zero_power');
+      var s2 = null, k;
+      for (k = 0; k < 5; k++) s2 = svc2.tick();
+      svc2.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
+      for (k = 0; k < 5; k++) s2 = svc2.tick();
+      var il = svc2.instructor;
+      var before = il && il.checklist ? il.checklist.idx : -1;
+      il.pendingMessage = { learning: 'a message raised on this step', industry: 'A MESSAGE RAISED ON THIS STEP' };
+      s2 = svc2.tick();
+      var drawnBefore = s2.instructor && s2.instructor.message;
+      svc2.handleCommand({ action: 'checklist_check', index: il.checklist.idx });
+      s2 = svc2.tick();
+      var after = il.checklist ? il.checklist.idx : -1;
+      var drawnAfter = s2.instructor && s2.instructor.message;
+      ck('2ac.3 ...and ANY message dies on a plain Continue, not just the overtaken note (#749 item 4)',
+         drawnBefore === 'a message raised on this step' && after === before + 1 && !drawnAfter,
+         'step ' + (before + 1) + ' -> ' + (after + 1) + '; card read ' + JSON.stringify(drawnBefore) +
+         ' before Continue and ' + JSON.stringify(drawnAfter || null) + ' after');
+    })();
+  })();
 }
 
 

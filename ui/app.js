@@ -4024,6 +4024,12 @@
     /* #735 / #724 item 6 — the count rate renders the way the meter writes it: "7.0e2
      * (700 counts per second)". See `sci` in fmtPredValue. */
     sr_counts_cps:          { label: 'SOURCE RANGE', u: 'counts per second', sci: true },
+    /* #749 item 2 — the criticality step's progress row. Same `sci` form as the count rate,
+     * because the NIS card prints this channel through the same `fmtExp`. Its values are
+     * FRACTIONS OF A MICROAMP, which is why `fmtPredValue`'s bracketed plain number has to
+     * know when to stay out of the way: `Math.round(1e-7)` is 0, and "1.0e-7 A (0 A)" is
+     * worse than no bracket at all. See the guard in the `sci` branch below. */
+    ir_amps:                { label: 'INTER RANGE', u: 'A', sci: true },
     startup_rate_dpm:       { label: 'STARTUP RATE', u: 'DPM' },
     reactivity_pcm:         { label: 'Net reactivity', u: 'pcm' },
     boron_ppm:              { label: 'Boron in the loop (BORON CHEM after a sample)', u: 'ppm' },
@@ -4160,6 +4166,14 @@
       var mant = vv, exp = 0;
       while (Math.abs(mant) >= 10) { mant /= 10; exp++; }
       while (mant !== 0 && Math.abs(mant) < 1) { mant *= 10; exp--; }
+      /* THE BRACKET IS AN AID, AND BELOW 1 IT STOPS BEING ONE (#749 item 2, 2026-09-18). The
+       * owner's form is "7.0e2 (700 counts per second)" — the meter's notation with the plain
+       * number beside it — and the plain number is what makes it an aid. `Math.round` on a
+       * sub-unit reading returns 0, so an INTER RANGE row would have drawn "1.0e-7 A (0 A)":
+       * a bracket claiming the channel reads nothing, next to a shorthand saying it does not.
+       * The shorthand is the part the directive requires (#724 item 6) and it is unchanged;
+       * only the bracket is dropped, and only where it would print a rounded zero. */
+      if (Math.abs(vv) < 0.5) return mant.toFixed(1) + 'e' + exp + (pd.u ? ' ' + pd.u : '');
       return mant.toFixed(1) + 'e' + exp + ' (' + Math.round(vv).toLocaleString('en-US') +
              (pd.u ? ' ' + pd.u : '') + ')';
     }

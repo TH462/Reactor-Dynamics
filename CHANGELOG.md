@@ -30,6 +30,34 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — the criticality step shows progress, and a walkthrough comment dies with its step (#749 items 2, 4)
+
+- **An INTER RANGE row joins the criticality step, and it shipped only because it was measured
+  first.** `accs` is a conjunction, so it cannot shorten the 21.8-plant-minute wait by a second —
+  what it buys is that something on the card MOVES through the stare, and that the card names a
+  number the player can watch approach. MEASURED, authored route: the INTER RANGE row ticks at
+  **+742 s (seed 42) / +851 s (seed 7)** against **+1306 s / +1499 s** for the REACTOR POWER row —
+  **57 % of the wait on both**. Had it landed next to the power row it would have been one more
+  line to read for nothing and `DESIGN_CRITERIA` Q4 would have vetoed it; the gate asserts that
+  margin, so it stays a criterion rather than a preference.
+- **The threshold is a declared progress milestone, not a plant setpoint.** There is no sourced
+  setpoint in this window — P-6 is 1.0e-10 A and the step *opens* at 4.7e-10 — so 1.0e-7 A is the
+  round decade that lands mid-wait on every route measured. It obeys the same render-band rule as
+  the count rungs, and it cannot soft-lock: `ir_amps` and `power_pct` are both `K x pFrac` of the
+  same flux, so the two rows are strictly ordered by construction.
+- **A criteria line for a sub-unit reading no longer prints a rounded zero.** `Math.round(1e-7)` is
+  0, so the meter-notation form would have drawn `1.0e-7 A (0 A)` — a bracket saying the channel
+  reads nothing beside a shorthand saying it does not. The bracket is dropped below one; the
+  shorthand form the owner asked for is untouched.
+- **A message raised on a walkthrough step no longer outlives it.** MEASURED on the live runtime
+  (`pwr_startup`, a real overshoot until the plant secured the source range at bank 242, then
+  Continue to the end): step 6's overtaken note — *"Stop withdrawing and go to the criticality
+  step"* — stood at steps **9, 10, 11, 12, 13, 14, 15, 16, 17 and on the COMPLETE card**, ten of
+  the ten later states. The Path 3 advance reset eleven per-step fields and never touched the
+  comment. It is retired with its step now, and the one caller that speaks *through* that advance —
+  the overtaken skip — raises its message after the move instead of before it, so the note still
+  lands on the step the player is dropped on.
+
 ### Fixed — the number a startup step is graded on is the number the board prints (#749 items 1, 2)
 
 - **The four 1/M count rungs of `pwr_startup` grade the SOURCE RANGE instrument the card draws,

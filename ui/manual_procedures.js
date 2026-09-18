@@ -2635,9 +2635,43 @@
            * `>` LATCHES, so the transient positive rate of a rod still moving would tick it for a
            * player who is not critical at all. (2) GRADING ON INTER RANGE, which is the honest
            * candidate, needs a `PRED_DISPLAY.ir_amps` entry in ui/app.js — there is none, and
-           * §2d reddens on a predicate param the natural-language map does not cover. Filed
-           * rather than smuggled in here. */
-          acc: { p: 'power_pct', op: '>', v: 0.05 },
+           * §2d reddens on a predicate param the natural-language map does not cover.
+           *
+           * ⚠ (2) IS NOW DONE, AND IT SHIPPED ONLY BECAUSE IT WAS MEASURED FIRST. `accs` is a
+           * CONJUNCTION, so an INTER RANGE row cannot shorten the wait by a second — the Continue
+           * stays dark exactly as long. What it buys is that something on the card MOVES through
+           * the stare, and that the card names a number the player can watch approach, which
+           * "REACTOR POWER > 0.1 %" is not for 21.8 plant-minutes. MEASURED before authoring it,
+           * authored route, seconds from this step becoming active:
+           *
+           *   seed        INTER RANGE row (1.0e-7 A)        REACTOR POWER row      through
+           *     42            +742 s (12.4 min)               +1306 s (21.8)         57 %
+           *      7            +851 s (14.2 min)               +1499 s (25.0)         57 %
+           *
+           * So the first row ticks 9.4 and 10.8 plant-minutes before the second, at 57 % of the
+           * wait on BOTH seeds. Had it landed near the power row it would have been one more line
+           * to read for nothing and DESIGN_CRITERIA Q4 would have vetoed it.
+           *
+           * THE THRESHOLD IS A DECLARED PROGRESS MILESTONE, NOT A PLANT SETPOINT, and saying so
+           * is the point: there is no sourced setpoint in this window. P-6 is 1.0e-10 A (Ginna TS
+           * Bases, via `pwr2_protection`) and this step OPENS at 4.7e-10, so the permissive is
+           * already met and cannot serve. 1.0e-7 A is the round decade that lands mid-wait on
+           * every route measured. It follows the same render-band rule as everything else here:
+           * the tile draws `fmtExp(intermediate_range)`, and 1.0e-7 is the FIRST value drawn as
+           * `1.0e-7` — one ulp below prints `10.0e-8`, which is the formatter's own quirk at a
+           * mantissa of 10 and is why the edge coincides with the target for this one.
+           *
+           * IT CANNOT SOFT-LOCK, and the reason is structural rather than empirical: `ir_amps`
+           * and `power_pct` are both `K × pFrac` of the SAME flux (pwr2_true_state), so the rows
+           * are strictly ordered by construction — 1.0e-7 A is about 0.001 % power, a factor of
+           * 47 below where the power row sits, far outside the channels' 0.02-decade noise. Any
+           * route that reaches the power row passed this one long before, and a route that
+           * reaches neither was subcritical under the single `acc` too. The row gates nothing;
+           * it reports. */
+          accs: [{ p: 'ir_amps', op: '>=', v: 1e-7,
+                   label: 'INTER RANGE reads 1.0e-7 A or more' },
+                 { p: 'power_pct', op: '>', v: 0.05,
+                   label: 'REACTOR POWER reads 0.1 %' }],
           /* THE HAND-OFF IS INSIDE THIS STEP, AND THE STEP DID NOT SAY SO (#735, owner playtest
            * #724 item 10: "In this step the SOURCE RANGE will shut off and the step doesnt address
            * it. We need a better handoff from SOURCE RANGE to INTER RANGE. users will be confuesd

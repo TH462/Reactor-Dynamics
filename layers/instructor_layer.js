@@ -106,6 +106,13 @@
        * `source_range` carries no DISPLAY_DAMP entry, so the transmitter reading and the drawn
        * reading are the same number — the board only formats it (`fmtExp`). */
       sr_counts_cps: 'source_range',
+      /* THE INTERMEDIATE RANGE (#749 item 2) — the one tile that MOVES through the criticality
+       * step's 21.8-minute wait, and the channel that step's own note tells the player to watch
+       * ("From your last tap onward, watch INTER RANGE and STARTUP RATE rather than REACTOR
+       * POWER"). Same shell instrument layer and same argument as `source_range` above:
+       * `intermediate_range` carries no DISPLAY_DAMP entry, so the transmitter reading and the
+       * drawn reading are the same number and the board only formats it (`fmtExp`). */
+      ir_amps: 'intermediate_range',
     },
     rbmk: {
       power_pct: 'power_range', steam_pressure_mpa: 'steam_pressure', drum_level_pct: 'drum_level',
@@ -898,8 +905,15 @@
       c.overtakenStreak = this._grade(snapshot, st.overtaken).met ? (c.overtakenStreak || 0) + 1 : 0;
       if (c.overtakenStreak >= ACC_STABLE_N) {
         var otText = st.overtaken.text || 'The plant has moved past this step.';
-        this.pendingMessage = { learning: otText, industry: st.overtaken.industry || otText };
+        /* ⚠ CHECK OFF FIRST, THEN SPEAK (#749 item 4, 2026-09-18). `_checklistCheckOff` now
+         * retires the outgoing step's comment, so setting `pendingMessage` BEFORE this call —
+         * which is what this site used to do — hands it a message and then deletes it on the
+         * same tick. The message belongs to the step being ENTERED (it explains why the player
+         * is suddenly there), so it is raised after the move, and it is retired when THAT step
+         * is checked off. Any future caller that wants to speak through a check-off owes the
+         * same order; `run_checklist_pwr2` §2ac reddens if this pair is swapped back. */
         this._checklistCheckOff('overtaken');
+        this.pendingMessage = { learning: otText, industry: st.overtaken.industry || otText };
         return;
       }
     }
@@ -1082,6 +1096,36 @@
 
   InstructorLayer.prototype._checklistCheckOff = function (by) {
     var c = this.checklist;
+    /* THE OUTGOING STEP'S COMMENT GOES WITH THE STEP (#749 item 4, measured 2026-09-18).
+     *
+     * `_advanceFollow` has cleared `pendingMessage` on every step change since it was written —
+     * "a new step retires the previous step's feedback" — and this, the Path 3 advance the
+     * Continue button AND the overtaken skip both run through, reset eleven per-step fields and
+     * never touched it. MEASURED on the live runtime (`start_checklist pwr_startup`, a real
+     * overshoot to `sr_energized < 1` at bank 242, then Continue to the end): step 6's overtaken
+     * text — "This point is overtaken: SOURCE RANGE switched itself off… Stop withdrawing and go
+     * to the criticality step." — stood at steps 9, 10, 11, 12, 13, 14, 15, 16, 17 AND on the
+     * COMPLETE snapshot. TEN of the ten later states, the last of them telling a finished player
+     * to stop withdrawing. `ui/app.js` paints it into `#instrCurrent`, so it is on the card for
+     * all of them. NOT specific to the overtaken note: any message raised on a walkthrough step
+     * outlived every later step.
+     *
+     * ⚠ THE ORDERING IS THE TRAP AND IT IS WHY THIS LINE IS NOT ENOUGH ON ITS OWN. The overtaken
+     * path SET the message and then called this — so an unconditional clear here deletes the very
+     * message that call was made to deliver. The form chosen is the one with the smallest surface
+     * and no new serialized state: this clears unconditionally, and the ONE caller that speaks
+     * through a check-off now raises its message AFTER the call. The alternative — stamping each
+     * message with the step index it belongs to — buys the same behaviour for a new field in
+     * `serialize`/`restore` and a second rule to keep in step; declined. The other two callers
+     * (`checklistCheck`, the Continue button; and the `caught_up` loop) raise no message at all.
+     *
+     * `precondMsg` COMES DOWN WITH IT, and that is deliberate rather than incidental: it is the
+     * flag saying "the standing comment is OURS to clear", so leaving it true over a cleared
+     * message would let a later recovery null out somebody else's comment instead — the same
+     * defect facing the other way. The precondition ROWS are unaffected; the walkthrough panel
+     * still lists every failed one, which is where that detail has always lived. */
+    this.pendingMessage = null;
+    c.precondMsg = false;
     c.done[c.idx] = true;
     c.doneBy[c.idx] = by;
     c.idx++;
