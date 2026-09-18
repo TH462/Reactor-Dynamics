@@ -30,6 +30,26 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the 1/M settle rungs gate on the RODS, not on a settling indication (#761)
+
+- **`pwr_startup` steps 5–8 now read: counts floor → the control bank has not moved for a minute
+  → STARTUP RATE back to zero → plot the point** *(OWNER RULING, 2026-09-17: selected "Gate on rods
+  stopped + startup rate" from three options put to him)*. The "counts steady" row added in
+  `Alpha 1.7.4` is removed. Both of the old rows were proxies for "the operator has stopped
+  pulling" and one route defeated both: measured, a bank step withdrawn every 20 s satisfies the
+  startup-rate row with the rods still moving at rungs 5 and 6, and the counts-steady row with the
+  rods still moving at rung 5 — and rung 6 is inside the panel's trailing-three fit window.
+- **New acceptance operator `op: 'stopped'`** — "this control has not moved for N seconds", exact
+  rather than inferred, legal only on control-class params (the rod banks, the flat `control_state`
+  lineup fields, the operator's trip blocks) and only in `acc`/`accs`. The 60 s is derived, not
+  round: measured at taps of 2 / 5 / 10 / 20 / 30 / 45 / 60 / 75 s, the predicate can be satisfied
+  with the control still moving if and only if the tap cadence is at or above its own quiet time.
+- **`op: 'steady'` stays in the schema** and is now authored nowhere; its behaviour is gated on a
+  synthetic channel instead of on an authored use.
+- Step text, `ask` lines and step 8's note now name what actually gates the plot. The four `hold`
+  values (300 / 300 / 420 / 600 s, replay-side) are unchanged and were re-measured against the new
+  rows — every rung is satisfied 1.66x to 2.13x inside its own hold.
+
 ## [Alpha 1.7.4] — 2026-09-15
 
 ### Fixed (a fresh-context layman played BOTH legs end to end, and four of its diagnoses were wrong — 2026-09-15, #653, #758, #759)

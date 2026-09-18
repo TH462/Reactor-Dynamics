@@ -29,6 +29,89 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-17-develop-b (#761 — the 1/M settle rungs stop grading a PROXY: `op: 'stopped'`)
+
+**Issue:** #761. **Nothing pushed.**
+
+### The ruling
+
+*(OWNER RULING, 2026-09-17: selected "Gate on rods stopped + startup rate" from three options put
+to him — gate on rod-stop plus startup rate, remove the steady row and keep startup rate alone, or
+keep the steady row.)* The four inverse-count-rate (1/M) settle rungs, `pwr_startup` steps 5–8, now
+read: counts floor → **the bank has not moved for 60 s** → startup rate back to zero → plot.
+`accs_ordered` is unchanged. The counts-steady row is GONE from the pool; `op: 'steady'` STAYS in
+the schema.
+
+### Why both shipped rows were proxies, and one route defeated both
+
+MEASURED, `hot_zero_power`, one bank step withdrawn every 20 s (a dribble — a real way to work a
+rung, not an exploit), rung bank targets 94 and 157:
+
+| row | rung 5 | rung 6 |
+|---|---|---|
+| `startup_rate_dpm ~0 ±0.02` | satisfied with the rods still moving | satisfied with the rods still moving |
+| `sr_counts_cps steady 3 %/120 s` | **latches with the rods still moving** | holds |
+| `control_bank_steps stopped 60 s` | never satisfied while moving | never satisfied while moving |
+
+Rung 6 is inside the panel's trailing-three fit window. The rate row's hole is arithmetic, not
+tuning: 0.02 decades a minute is 9.6 % of drift over a 120 s window, so any climb between 3 % and
+9.6 % per two minutes reads settled to it on any route.
+
+### The 60 s is DERIVED, not round
+
+Measured at taps of 2 / 5 / 10 / 20 / 30 / 45 / 60 / 75 s on rungs 5 and 6: `stopped` latches with
+the bank still moving **if and only if** the tap cadence is at or above its own quiet time. The
+quiet time therefore IS "the slowest tap cadence this rung refuses" and has no other free
+parameter. The dribble family that defeated both shipped rows tops out at 20 s a tap; 60 s is
+three times that and refuses a 45 s dribble (measured false at 45, true at 60).
+
+### What it costs on the authored ladder — 49 s, and nothing past rung 6
+
+Seconds FROM ROD-STOP, authored 94/63/31/14 bursts, graded through `_gradeAccs`:
+
+| rung | startup rate in band | rod-stop row met | whole rung met | cost of the row |
+|---|---|---|---|---|
+| 5 | 17 s | 64 s | 64 s | **+47 s** |
+| 6 | 62 s | 64 s | 64 s | +2 s |
+| 7 | 141 s | 64 s | 141 s | 0 |
+| 8 | 341 s | 64 s | 341 s | 0 |
+
+6 % of the 813 s the rate row alone would need. From rung 7 on the startup rate is the long pole
+and the rod-stop row is free.
+
+### The `hold` values are UNCHANGED, and that is a decision
+
+Re-measured against the new rows: the rung is satisfied **181 / 143 / 197 / 350 s** after the burst
+command against shipped holds of 300 / 300 / 420 / 600 — margins of 1.66x / 2.10x / 2.13x / 1.71x,
+so no hold is shorter than its own step's acceptance and the #755 tolerance trap does not bite.
+`ACCURACY_VS_WAIT_2026-09-17.md` §12.7 suggests lowering them; DECLINED here, for three reasons.
+(1) `hold: 600` on step 8 is a RULED ACCURACY number — the knee of the counts-versus-prediction
+curve — not a dwell grown to cover the steadiness window, so lowering it re-decides a ruling on
+accuracy grounds. (2) `hold` drives the GENERATED speed hint (≥ 180 s offers a faster rung) and
+steps 6–8 carry authored copy naming those speeds. (3) `run_oneoverm`, `run_reactivity`,
+`verify_e2e_ui` and `verify_flags_ui` all read `hold` or the ladder's plotted points and none was
+in this session's permitted gate list. MEASURED if it is ever taken: holds of 240 / 200 / 260 / 600
+satisfy every rung with ≥ 1.27x margin and move the final trailing-three prediction from **208.24
+to 208.35** — 0.11 of a bank step, still above the true critical of 207.1–207.7.
+
+### THE SEED DOES NOT REACH THE PWR2 ENGINE — "three seeds" here is one seed three times
+
+`SimulationService.selectPlant` passes `seed: this.seed` into the engine constructor and
+`engine.seed` comes back **undefined** on pwr2. Seeds 42 / 7 / 1 produced byte-identical rod
+positions, count rates and accept times on the whole ladder. Every "four seeds" figure in the 1/M
+comments should be re-read with that in mind; not chased here.
+
+### The trap
+
+**A PREDICATE THAT GRADES AN INDICATION IS GRADING A PROXY FOR THE OPERATOR'S ACTION, AND A SLOW
+ENOUGH ACTION DEFEATS EVERY PROXY.** Two independent rows — one on the rate, one on the counts —
+were both satisfied with the rods still moving on the same 20 s dribble. When the thing you mean is
+"the player has stopped", grade the control, not the plant's answer to it. The corollary is the
+reason `stopped` is legal only on control-class params: it compares readings for EQUALITY, which is
+honest on a quantized control-state field and would read false for ever on a noisy gauge — a check
+that can only fail is as hollow as one that can only pass, and `run_checklist_pwr2` §2aa now gates
+both halves plus the dead-channel case.
+
 ## Session log — 2026-09-17-develop-a (#755 item 13 — the spray reads the LAGGED error; the parked draft's "0.0 cycles/min" was wrong at BOTH regimes)
 
 **Issue:** #755 item 13. **Commit:** `e43da8f0`. Nothing pushed. Part B of

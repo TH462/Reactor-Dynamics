@@ -245,26 +245,27 @@
       // run_procedures.js. Kept identical here on purpose: this runner exists to assert the
       // SAME predicates through the stack, so a schema the two disagree on is worse than none.
       var sawList = st.saw ? (Array.isArray(st.saw) ? st.saw : [st.saw]) : [];
-      /* STEADINESS (#755, `op: 'steady'`) — a trailing-window claim, so it cannot be read off
-       * the step's last snapshot the way every other predicate here can. It is sampled EVERY
-       * tick through `InstructorLayer.gradeSteady`, the same static the live runtimes call with
-       * a bag of their own, and the verdict standing at the end of the step is what the check
-       * asserts. Bags are per step: the window starts when the step does, exactly as it does
-       * live, which is what makes the authored `hold` and the player's wait the same test. */
-      var steadyBags = {};
-      function steadyOf(pred, key) {
-        if (!steadyBags[key]) steadyBags[key] = { bag: { s: [] }, pred: pred, last: null };
-        return steadyBags[key];
+      /* BAGGED PREDICATES (`op: 'steady'` #755, `op: 'stopped'` #761) — each is a claim about a
+       * TRAILING WINDOW of plant, so neither can be read off the step's last snapshot the way
+       * every other predicate here can. Both are sampled EVERY tick through
+       * `InstructorLayer.gradeBagged`, the same static the live runtimes call with a bag of
+       * their own, and the verdict standing at the end of the step is what the check asserts.
+       * Bags are per step: the window starts when the step does, exactly as it does live, which
+       * is what makes the authored `hold` and the player's wait the same test. */
+      var predBags = {};
+      function bagOf(pred, key) {
+        if (!predBags[key]) predBags[key] = { bag: { s: [] }, pred: pred, last: null };
+        return predBags[key];
       }
-      function steadyKeys() {
+      function baggedKeys() {
         var ks = [];
-        if (st.acc && st.acc.op === 'steady') ks.push({ p: st.acc, k: 'acc' });
+        if (st.acc && RD.InstructorLayer.isBagOp(st.acc.op)) ks.push({ p: st.acc, k: 'acc' });
         (st.accs || []).forEach(function (en, k) {
-          if (en && en.op === 'steady') ks.push({ p: en, k: 'accs' + k });
+          if (en && RD.InstructorLayer.isBagOp(en.op)) ks.push({ p: en, k: 'accs' + k });
         });
         return ks;
       }
-      var steadyList = steadyKeys();
+      var baggedList = baggedKeys();
       /* the ordered-entry tracker (#756): `ordMet[i]` is this entry's standing verdict, and a
        * cmd entry's verdict is "the replay has issued it". Predicate entries are read live here
        * rather than only at the step's end, because the ISSUE ORDER is what this models. */
@@ -278,8 +279,8 @@
           if (en && en.cmd) {
             issue(typeof en.cmd === 'string' ? { action: en.cmd } : JSON.parse(JSON.stringify(en.cmd)));
             ordMet[i] = true;
-          } else if (en && en.op === 'steady') {
-            var h = steadyBags['accs' + i];
+          } else if (en && RD.InstructorLayer.isBagOp(en.op)) {
+            var h = predBags['accs' + i];
             ordMet[i] = !!(h && h.last && h.last.met);
           } else if (en && en.p) {
             ordMet[i] = pred(s, en);
@@ -296,7 +297,7 @@
         var s = svc.tick();
         if (!s) continue;
         lastSnap = s;
-        steadyList.forEach(function (e) { var h = steadyOf(e.p, e.k); h.last = RD.InstructorLayer.gradeSteady(h.bag, s, e.p); });
+        baggedList.forEach(function (e) { var h = bagOf(e.p, e.k); h.last = RD.InstructorLayer.gradeBagged(h.bag, s, e.p); });
         if (ordMet) ordAdvance(s);
         if (s.metadata && s.metadata.time_acceleration < ACCEL) {
           if (!slowTicks) firstSlow = 'step ' + curStep + ' @ t=' + s.metadata.sim_time.toFixed(1) +
@@ -323,13 +324,19 @@
         checks.push({ d: 'step ' + curStep + ' saw ' + sw.p + ' ' + sw.op + ' ' + sw.v, pass: !!sawHits[k], obs: !!sawHits[k] });
       });
       function accVerdict(c, key) {
-        if (c.op !== 'steady') return { pass: pred(lastSnap, c), obs: pv(lastSnap, c.p) };
-        var h = steadyBags[key];
+        if (!RD.InstructorLayer.isBagOp(c.op)) return { pass: pred(lastSnap, c), obs: pv(lastSnap, c.p) };
+        var h = predBags[key];
         var last = h && h.last;
-        return { pass: !!(last && last.met),
-                 obs: last ? ((last.drift == null ? 'window not covered' : (last.drift * 100).toFixed(2) + '% drift')
-                              + ' @ ' + (last.value == null ? '?' : Number(last.value).toFixed(0)))
-                           : 'never sampled (hold is 0)' };
+        if (!last) return { pass: false, obs: 'never sampled (hold is 0)' };
+        var reading = (last.value == null ? '?' : Number(last.value).toFixed(0));
+        if (c.op === 'stopped') {
+          return { pass: !!last.met,
+                   obs: (last.still == null ? 'nothing to read' : last.still.toFixed(0) + ' s unchanged') +
+                        ' @ ' + reading };
+        }
+        return { pass: !!last.met,
+                 obs: (last.drift == null ? 'window not covered' : (last.drift * 100).toFixed(2) + '% drift')
+                      + ' @ ' + reading };
       }
       if (st.acc) {
         var av = accVerdict(st.acc, 'acc');

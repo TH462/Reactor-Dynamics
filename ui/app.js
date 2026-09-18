@@ -4181,6 +4181,14 @@
      * so neither the band form below nor the "label op value" form at the bottom says it. An
      * authored `label` on an `accs` entry still wins (that is the path step 8 takes); this is
      * what an unlabelled entry or a bare `acc` draws. Per cent and minutes, no SI to carry. */
+    /* `stopped` (#761) has no value to print either, and its claim is about the CONTROL rather
+     * than an indication: "not moved for N seconds". Minutes where the quiet time divides,
+     * seconds otherwise — same shape as the steadiness line below, no SI to carry. */
+    if (pred.op === 'stopped') {
+      var qs = (pred.v > 0) ? pred.v : 60;
+      var qTxt = (qs % 60 === 0) ? (qs / 60) + (qs === 60 ? ' minute' : ' minutes') : qs + ' seconds';
+      return label + ' has not moved for ' + qTxt;
+    }
     if (pred.op === 'steady') {
       var sw = (pred.window > 0) ? pred.window : 120;
       var swTxt = (sw % 60 === 0) ? (sw / 60) + (sw === 60 ? ' minute' : ' minutes') : sw + ' seconds';

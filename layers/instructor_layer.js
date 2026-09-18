@@ -146,6 +146,57 @@
    * `saw`, `overtaken`, `precond`, a `when` gate — rather than letting it read false for ever. */
   var STEADY_WINDOW_S = 120;        // default trailing window when a step authors none
 
+  /* HAS THE CONTROL STOPPED MOVING — `op: 'stopped'` *(OWNER RULING, 2026-09-17: selected
+   * "Gate on rods stopped + startup rate" from three options put to him — gate on rod-stop plus
+   * startup rate, remove the steady row and keep startup rate alone, or keep the steady row. A
+   * SELECTION, not verbatim words.)*
+   *
+   * `{ p, op:'stopped', v: <seconds of no motion> }` — "this control has not moved for `v`
+   * seconds". Exact, not inferred: the bag remembers the last reading and the sim time it
+   * changed, and the predicate holds once `v` seconds of plant have passed with the reading
+   * unchanged. Any change at all restarts the clock; there is deliberately no tolerance, because
+   * a tolerance turns a slow ramp into a "stopped" control (each sample inside the band, the
+   * clock never restarting) — the degenerate-latch shape.
+   *
+   * WHY IT EXISTS, AND WHY IT IS NOT `steady`. `steady` is a claim about an INDICATION settling
+   * and is therefore a proxy for the operator's action; `stopped` is the action itself.
+   * MEASURED on the four inverse-count-rate (1/M) settle rungs of `pwr_startup`, `hot_zero_power`,
+   * one step withdrawn every 20 s (a "dribble" — a real way to work a rung, not an exploit):
+   * the startup-rate row (`startup_rate_dpm ~0 ±0.02`) is satisfied with the bank STILL MOVING at
+   * rung 5 and rung 6, and `sr_counts_cps steady 3 %/120 s` latches with the bank still moving at
+   * rung 5. Both are proxies and one dribble defeats both. `stopped` cannot be satisfied while the
+   * control is moving, because that is the thing it reads.
+   *
+   * `v` IS DERIVED FROM THE DRIBBLE CADENCE, not picked round. Measured, rungs 5 and 6, taps at
+   * 2 / 5 / 10 / 20 / 30 / 45 / 60 / 75 s: the predicate latches while the bank is still moving
+   * IF AND ONLY IF the tap cadence is at or above `v`. So `v` is exactly "the slowest tap
+   * cadence this rung refuses", and it has no other free parameter.
+   *
+   * LEGAL ONLY ON A CONTROL-CLASS PARAM (`InstructorLayer.isControlParam`) — the rod banks, the
+   * flat `control_state` lineup fields, the operator's trip blocks. Those are read off the
+   * operator's own control state, exactly and without noise, so "unchanged" is a fact. On a
+   * noisy instrument channel exact equality would essentially never hold and the predicate would
+   * read FALSE FOR EVER, which is the hollow-check shape; an author who wants "this INDICATION
+   * has settled" on such a channel wants `steady`. `run_checklist_pwr2` §2aa reddens on both
+   * halves of that rule.
+   *
+   * IT RE-GRADES, it does not latch — same rule and same reason as `~` and `steady`: "the rods
+   * have stopped" is a HOLD claim, and a player who pulls again has left it.
+   *
+   * SUPPORTED IN `acc` AND `accs` ONLY, for the same reason as `steady`: those are the two that
+   * own a per-step state bag. The bag is cleared when the step changes, so `v` doubles as a
+   * minimum dwell — a step carrying one cannot complete inside `v` seconds of becoming active. */
+  var STOPPED_DEFAULT_S = 60;       // default quiet time when a step authors none
+
+  /* The two ops that need per-step state, and the ONE dispatcher both runtimes and the replay
+   * harness route through. Adding a third bagged op means adding it here and nowhere else. */
+  var BAG_OPS = { steady: 1, stopped: 1 };
+  InstructorLayer.isBagOp = function (op) { return !!BAG_OPS[op]; };
+  InstructorLayer.gradeBagged = function (bag, snapshot, pred) {
+    return (pred && pred.op === 'stopped') ? InstructorLayer.gradeStopped(bag, snapshot, pred)
+                                           : InstructorLayer.gradeSteady(bag, snapshot, pred);
+  };
+
   // #715 — a completion banner's `outcome` text is an AUTHORED plant-state claim
   // (e.g. "stable near 15 %, 15 MWe"); nothing checked it before showing it, so a
   // leg whose own step acceptances can be satisfied for free (a scram, say) drew
@@ -639,7 +690,7 @@
     f.cmdSeen = false; f.sawSeen = false; f.accStreak = 0; f.accMetNow = false; f.gradedBy = null;
     f.accsState = null;           // per-entry multi-check-off latches (#244 item 8)
     f.outOfTurn = null;           // #759 — as above, per step
-    f.steadyBags = null;          // #755 — the steadiness window is per step, like the latches
+    f.predBags = null;          // #755/#761 — a bagged predicate's window is per step, like the latches
     this.pendingMessage = null;   // a new step retires the previous step's feedback
     if (autoAdvanced) this._checkpointRequested = true;   // rewind lands on step boundaries
   };
@@ -1013,7 +1064,7 @@
     c.cmdSeen = false; c.sawSeen = false; c.accStreak = 0; c.accMetNow = false; c.gradedBy = null;
     c.accsState = null;                 // per-entry multi-check-off latches (#244 item 8)
     c.outOfTurn = null;                 // #759 — the out-of-turn note belongs to the step it was pressed on
-    c.steadyBags = null;                // #755 — the new step owes its steadiness window afresh
+    c.predBags = null;                // #755/#761 — the new step owes its steadiness / quiet window afresh
     c.awaitingAck = false;              // #619 item 4 — cleared with the step it belonged to
     c.stepAt = null;                    // re-stamped on the next tick — see the dwell above
     c.overtakenStreak = 0;              // #641 — the next step's own predicate starts from zero
@@ -1227,13 +1278,48 @@
     return out;
   };
 
-  /* Grade ONE predicate for a runtime holder (checklist / follow), routing `op:'steady'` to the
-   * holder's own per-step bag. Every other op is stateless and goes straight to `_grade`. */
+  /* THE "IT HAS STOPPED MOVING" EVALUATOR (#761) — ONE implementation, the same two callers as
+   * `gradeSteady`, for the same reason (#605: a second sampler of the same claim is worse than
+   * none). `bag` is opaque per-predicate state, cleared by the caller when the step changes.
+   * `{met, still, value, graded_by}` — `still` is the seconds the reading has been unchanged. */
+  InstructorLayer.gradeStopped = function (bag, snapshot, pred) {
+    var r = readParam(snapshot, pred.p);
+    var t = snapshot && snapshot.metadata ? snapshot.metadata.sim_time : null;
+    var need = (pred.v > 0) ? pred.v : STOPPED_DEFAULT_S;
+    var out = { met: false, still: null, value: r.value, graded_by: r.graded_by };
+    /* NOTHING TO READ is never "stopped". A channel that does not publish would otherwise sit
+     * unchanged at `undefined` for ever and read as a control at rest — a check that can only
+     * pass. The bag is cleared too, so the quiet clock restarts when the channel comes back. */
+    if (t == null || !isFinite(t) || typeof r.value !== 'number' || !isFinite(r.value)) {
+      bag.last = null; bag.since = null; return out;
+    }
+    /* THE CLOCK WENT BACKWARDS — a Rewind, a restored save, a re-selected plant. Same rule as
+     * `gradeSteady`: the bag describes a plant that no longer exists, so the quiet time starts
+     * again and the step owes `v` afresh, which is the conservative direction. */
+    if (bag.t != null && t < bag.t) { bag.last = null; bag.since = null; }
+    bag.t = t;
+    if (bag.last == null || r.value !== bag.last) { bag.last = r.value; bag.since = t; }
+    out.still = t - bag.since;
+    out.met = out.still >= need;
+    return out;
+  };
+
+  /* Is this param read off the OPERATOR'S OWN CONTROL STATE (exact, quantized, no instrument in
+   * the path) rather than off a gauge? Derived from the same three maps `readParam` dispatches
+   * on — never a hand-kept second list, which is the shape that certifies a map instead of a
+   * plant. `op: 'stopped'` is legal only on these; `run_checklist_pwr2` §2aa is the gate. */
+  InstructorLayer.isControlParam = function (p) {
+    return !!(ROD_PARAMS[p] || CTL_PARAMS[p] || RPS_BLOCK_PARAMS[p]);
+  };
+
+  /* Grade ONE predicate for a runtime holder (checklist / follow), routing a BAGGED op
+   * (`steady`, `stopped`) to the holder's own per-step bag. Every other op is stateless and
+   * goes straight to `_grade`. */
   InstructorLayer.prototype._gradeOne = function (holder, snapshot, pred, key) {
-    if (!pred || pred.op !== 'steady') return this._grade(snapshot, pred);
-    if (!holder.steadyBags) holder.steadyBags = {};
-    if (!holder.steadyBags[key]) holder.steadyBags[key] = { s: [] };
-    return InstructorLayer.gradeSteady(holder.steadyBags[key], snapshot, pred);
+    if (!pred || !BAG_OPS[pred.op]) return this._grade(snapshot, pred);
+    if (!holder.predBags) holder.predBags = {};
+    if (!holder.predBags[key]) holder.predBags[key] = { s: [] };
+    return InstructorLayer.gradeBagged(holder.predBags[key], snapshot, pred);
   };
 
   // #715 — re-grades a leg's optional `outcome_guard` (same {p,op,v[,tol]} shape as
@@ -1339,7 +1425,7 @@
       case 'prev':    if (f.done) { f.done = false; this.levelComplete = null; } this._advanceFollow(-1, false); break;
       case 'restart': f.idx = 0; f.done = false; this.levelComplete = null;
                       f.cmdSeen = false; f.sawSeen = false; f.accStreak = 0; f.accMetNow = false;
-                      f.accsState = null; f.steadyBags = null; break;
+                      f.accsState = null; f.predBags = null; break;
       default: break;
     }
     return null;
@@ -1378,7 +1464,7 @@
   InstructorLayer.prototype._ensureAccsState = function (holder, st) {
     if (!holder.accsState || holder.accsState.length !== st.accs.length) {
       holder.accsState = st.accs.map(function () {
-        return { streak: 0, met: false, obs: null, graded_by: null, steady: null };
+        return { streak: 0, met: false, obs: null, graded_by: null, bag: null };
       });
     }
     return holder.accsState;
@@ -1390,14 +1476,15 @@
     for (var i = 0; i < st.accs.length; i++) {
       var en = st.accs[i], ax = state[i];
       /* a two-sided band re-grades for ever; every other kind latches (see the note above).
-       * `steady` joins it (#755) and for the same reason: "it has stopped moving" is a HOLD
-       * claim, and a plant that starts climbing again has left it. */
-      var holds = !!(en && (en.op === '~' || en.op === 'steady'));
+       * `steady` and `stopped` join it (#755, #761) and for the same reason: "it has stopped
+       * moving" is a HOLD claim, and a plant — or a player — that starts moving again has left
+       * it. */
+      var holds = !!(en && (en.op === '~' || BAG_OPS[en.op]));
       if ((!ax.met || holds) && en && en.p) {
         var g;
-        if (en.op === 'steady') {
-          if (!ax.steady) ax.steady = { s: [] };
-          g = InstructorLayer.gradeSteady(ax.steady, snapshot, en);
+        if (BAG_OPS[en.op]) {
+          if (!ax.bag) ax.bag = { s: [] };
+          g = InstructorLayer.gradeBagged(ax.bag, snapshot, en);
         } else g = this._grade(snapshot, en);
         ax.obs = g.value; ax.graded_by = g.graded_by;
         ax.streak = g.met ? ax.streak + 1 : 0;

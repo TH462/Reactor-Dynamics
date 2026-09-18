@@ -144,7 +144,17 @@
  *   options put to him — a selection, not verbatim words)*. Distinct from `guard`
  *   (a whole-run invariant) and from `from:` (a harness/reset input, not a check).
  *   `text` is the banner's human line; verdicts ship in the snapshot, prose here.
- * op ∈ >,<,>=,<=,~ (~ within tol of v), and `steady`.
+ * op ∈ >,<,>=,<=,~ (~ within tol of v), and the two BAGGED ops `steady` and `stopped`.
+ *   `stopped` — {p, op:'stopped', v:<seconds of no motion>} — "this CONTROL has not moved for
+ *   `v` seconds" *(OWNER RULING, 2026-09-17; #761)*. Exact, not inferred: the bag remembers the
+ *   last reading and the sim time it changed, and any change at all restarts the clock — there is
+ *   deliberately no tolerance, because a tolerance turns a slow ramp into a parked control. LEGAL
+ *   ONLY ON A CONTROL-CLASS PARAM (`InstructorLayer.isControlParam`: the rod banks, the flat
+ *   `control_state` lineup fields, the operator's trip blocks), because it compares readings for
+ *   EQUALITY and only those channels are exact; on a noisy gauge it would read false for ever.
+ *   Use `steady` for "this INDICATION has settled". Same `acc`/`accs`-only rule, same re-grading
+ *   (a hold claim), and `v` doubles as a minimum dwell from step entry. `run_checklist_pwr2`
+ *   §2aa gates both halves. The evaluator is `InstructorLayer.gradeStopped`.
  *   `steady` — {p, op:'steady', v:<fractional drift>, window:<trailing seconds>} — "this
  *   indication has STOPPED MOVING" *(OWNER RULING, 2026-09-15; #755)*. The reading is sampled
  *   into a trailing ring and the mean of the window's older half is compared with the mean of
@@ -2051,7 +2061,7 @@
          * #618 removed hours earlier: the step still steers on the count rate and the acceptance
          * is unchanged. The numbers are the replay's own `cmd.steps` — 94 / 63 / 31 / 14 / 9,
          * rounded — so they cannot drift from what the harness drives. */
-        { text: 'Raise SOURCE RANGE past 7.0e2, let the counts level off, then plot the point.',
+        { text: 'Raise SOURCE RANGE past 7.0e2, stop the rods, let STARTUP RATE fall to zero, then plot the point.',
           /* ⚠ "PLOT POINT DOES NOTHING UNTIL THE COUNTS ARE STEADY" WAS FALSE AND SHIPPED ON THIS
            * CARD (#759, verified 2026-09-15). MEASURED: pressing Plot point with rung 5c unmet
            * ADDS REAL POINTS — 1 -> 2 -> 3 SVG circles, the panel refitting each time — the rung
@@ -2060,7 +2070,7 @@
            * `accs_ordered` gates the CHECK-OFF, not the button. *(OWNER RULING, 2026-09-15:
            * selected "Fix the text AND say why (Recommended)")* — this is the text half; the
            * card's one-line reason on an out-of-turn press is ui/app.js. */
-          note: 'Stop when CONTROL ROD POSITION reads about 80 to 100. Holding WITHDRAW drives the bank at the selected speed and releasing it stops; a single tap moves one step. MED moves 48 steps a minute at 1×, SLOW 8, FAST 72. Work the four lines below in order. Plot point will take a press at any time, but a point plotted before the counts are steady is a bad point: it goes on the plot, drags the prediction, and only Clear takes it off again.',
+          note: 'Stop when CONTROL ROD POSITION reads about 80 to 100. Holding WITHDRAW drives the bank at the selected speed and releasing it stops; a single tap moves one step. MED moves 48 steps a minute at 1×, SLOW 8, FAST 72. Work the four lines below in order. Plot point will take a press at any time, but a point plotted before the rods have stopped and STARTUP RATE has settled is a bad point: it goes on the plot, drags the prediction, and only Clear takes it off again.',
           why: 'The first two points always predict too high: near the bottom the rods are worth little per step, so the line they draw crosses zero far past the real critical position. That is expected. While the reactor is shut down, SOURCE RANGE counts are the only thing that tells you how close you are; the rod position does not.',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e2 (700 counts a second); point 2 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 94, speed: 'normal' }, hold: 300,
@@ -2087,54 +2097,66 @@
            * only with `Clear`. The claim was copied into the step's own note and shipped to the
            * player as fact; see the note above.
            *
-           * ⚠ THE PLAYER READS STARTUP RATE; THE PLOT IS GATED ON THE COUNTS. Four rows, and the
-           * order is the owner's own *(OWNER, 2026-09-15: "the operator watches the counts to get
-           * the count level then watches for the startup rate to get near zero.")*, with the
-           * counts-steady row kept UNDER it as the gate. MEASURED, hot_zero_power, the authored
-           * bursts, seed 42, 1 s samples, the INSTRUMENT channel (which is what grades, Hard Rule
-           * 1, instruments not truth). ⚠ BOTH DURATION COLUMNS ARE SECONDS FROM ROD-STOP, not
-           * from the burst command and not from step entry (#761, 2026-09-17 — the reference
-           * point was omitted here and four figures were later read against the wrong clock):
+           * ⚠ THE PLOT IS GATED ON ROD-STOP, THEN ON STARTUP RATE *(OWNER RULING, 2026-09-17: selected
+           * "Gate on rods stopped + startup rate" from three options put to him — gate on rod-stop
+           * plus startup rate, remove the steady row and keep startup rate alone, or keep the steady
+           * row. A SELECTION, not verbatim words.)* Four rows: the owner's counts floor (the cue to
+           * STOP pulling), then the rods have stopped, then STARTUP RATE back to zero, then plot.
+           * The counts-steady row that used to sit third is GONE — see below for what it was doing.
            *
-           *   burst  peak SUR   |SUR| <= 0.02   counts steady (3 %/120 s)   gap
-           *                     (from rod-stop)     (from rod-stop)
-           *     94     0.131      141 s              223 s                  82 s
-           *     63     0.283      151 s              226 s                  75 s
-           *     31     0.458      202 s              281 s                  79 s
-           *     14     0.552      345 s              507 s                 162 s
+           * WHY THE STEADINESS ROW WENT. It was a PROXY for "the operator has stopped pulling", and
+           * a slow dribble defeats a proxy. MEASURED (#761, hot_zero_power, one bank step withdrawn
+           * every 20 s, the rung's own bank target): the counts-steady row latches with the bank
+           * STILL MOVING at rung 5, and the startup-rate row does the same at rungs 5 AND 6 — rung 6
+           * is inside the panel's trailing-three fit window. The arithmetic makes it inevitable:
+           * 0.02 decades a minute is 9.6 % of drift over a 120 s window, so any climb between 3 %
+           * and 9.6 % per two minutes reads settled to the rate row on any route. It also bought
+           * 0.6 of a bank step (4.5 pcm at 7.58 pcm/step) for 445 s of waiting, against a ladder
+           * whose own spread is 2 bank steps (`Diagnostic/ACCURACY_VS_WAIT_2026-09-17.md`).
            *
-           *   · STARTUP RATE DOES DECAY TO ZERO after every burst — settled instrument mean
-           *     0.0004 / -0.0001 / -0.0003 / 0.0027 DPM — and BOTH criteria stretch as the ladder
-           *     approaches critical, which is the owner's second observation and it holds on both
-           *     channels (223 -> 507 s on the counts, 141 -> 345 s on the rate).
-           *   · STARTUP RATE IS THE WEAKER GATE AT EVERY BAND THAT CLEARS THE NOISE. It enters
-           *     its band 75-162 s BEFORE the counts flatten on all four rungs, and the gap is
-           *     WIDEST on the last rung — the point the panel's trailing-three fit weights most.
-           *     So it cannot be the thing the plot waits on: that reopens the early-plot hole
-           *     this change exists to close. The counts row stays the gate.
-           *   · THE BAND IS 0.02 DPM AND IT COMES FROM THE CHANNEL'S OWN SCATTER, not from what a
-           *     startup rate "ought" to read: the instrument's detrended standard deviation over a
-           *     settled 300 s tail is 0.0040-0.0043 DPM, so 0.02 is 5 sigma (3 sigma is 0.012).
-           *     0.08 and 0.10 are DISQUALIFIED outright — on the first two rungs SUR never exceeds
-           *     0.131 / 0.283, so those bands are satisfied 5 s after the burst, before the rods
-           *     have even stopped.
-           *   · `steady` on the rate would be meaningless: `v` is RELATIVE to the window mean and
-           *     this channel settles to zero, so the metric reads 14 %, 410 %, 3,390 % on a plant
-           *     that is not moving. A two-sided `~` band is the right form for a hold claim.
-           *   · AND THE FIXED 120 s / 3 % WINDOW IS NOT DOING NOTHING ON THE EARLY RUNGS, which
-           *     was the worry: it accepts at 223 / 226 / 281 / 507 s against authored holds of
-           *     300 / 300 / 420 / 600, and it self-scales because the drift is relative to the
-           *     window mean. Holds grew from 150 s to cover it: 300 / 300 / 420 / 600 s. */
+           * WHY 60 SECONDS OF NO ROD MOTION, AND NOT A ROUND NUMBER. MEASURED, rungs 5 and 6, taps
+           * at 2 / 5 / 10 / 20 / 30 / 45 / 60 / 75 s: `stopped` latches while the bank is still
+           * moving IF AND ONLY IF the tap cadence is at or above its `v`. So `v` is exactly "the
+           * slowest tap cadence this rung refuses" and has no other free parameter. The dribble
+           * family that defeated both shipped rows tops out at 20 s a tap; 60 s is three times
+           * that, and it refuses a 45 s dribble (measured) as well.
+           *
+           * AND IT COSTS ALMOST NOTHING ON THE AUTHORED ROUTE, which is the other half of the
+           * choice. MEASURED, the authored 94/63/31/14 bursts, seconds FROM ROD-STOP — the last
+           * broadcast on which the bank moved, which is the reference point for every figure here:
+           *
+           *   rung   startup rate in band   rod-stop row met   whole rung met   cost of the row
+           *     5            17 s                 64 s              64 s            +47 s
+           *     6            62 s                 64 s              64 s             +2 s
+           *     7           141 s                 64 s             141 s              0
+           *     8           341 s                 64 s             341 s              0
+           *
+           * 49 s over the four rungs, 6 % of the 813 s the rate row alone would need. From rung 7
+           * on, the startup rate is the long pole and the rod-stop row is free.
+           *
+           * ⚠ THE STARTUP-RATE BAND IS 0.02 DPM AND IT COMES FROM THE CHANNEL'S OWN SCATTER, not
+           * from what a startup rate "ought" to read: the instrument's detrended standard deviation
+           * over a settled 300 s tail is 0.0040-0.0043 DPM, so 0.02 is 5 sigma (3 sigma is 0.012).
+           * 0.08 and 0.10 are DISQUALIFIED outright — on the first two rungs the rate never exceeds
+           * 0.131 / 0.283 DPM, so those bands are satisfied 5 s after the burst, before the rods
+           * have even stopped. Peak rate by rung: 0.131 / 0.283 / 0.458 / 0.552 DPM.
+           * ⚠ `steady` ON THE RATE WOULD BE MEANINGLESS: `v` is RELATIVE to the window mean and this
+           * channel settles to zero, so the metric reads 14 %, 410 %, 3,390 % on a plant that is not
+           * moving. A two-sided `~` band is the right form for a hold claim on it.
+           * ⚠ THE `hold` VALUES (300 / 300 / 420 / 600) ARE UNCHANGED and were re-measured against
+           * the new rows: the rung is satisfied 181 / 143 / 197 / 350 s after the burst command, so
+           * every hold clears its own step's acceptance by 1.66x to 2.13x and none reddens the
+           * replay. Lowering them was measured and DECLINED here — see step 8. */
           accs_ordered: true,
           accs: [{ p: 'sr_counts_cps', op: '>', v: 700,
                    ask: 'Press MED, then hold WITHDRAW under CONTROL until SOURCE RANGE passes 7.0e2.',
                    label: 'Counts above 7.0e2 (700 counts per second)' },
+                 { p: 'control_bank_steps', op: 'stopped', v: 60,
+                   ask: 'Release WITHDRAW and let CONTROL ROD POSITION sit still for a minute.',
+                   label: 'Rods stopped — CONTROL ROD POSITION unchanged for a minute' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.02,
-                   ask: 'Release WITHDRAW and watch STARTUP RATE fall back toward zero.',
+                   ask: 'Now watch STARTUP RATE fall back toward zero.',
                    label: 'STARTUP RATE back to zero (within 0.02 DPM)' },
-                 { p: 'sr_counts_cps', op: 'steady', v: 0.03, window: 120,
-                   ask: 'Keep waiting until SOURCE RANGE has stopped climbing as well.',
-                   label: 'Counts steady — under 3 % change over the last two minutes' },
                  { cmd: 'plot_1m_point',
                    ask: 'Press Plot point on the 1/M PLOT panel.',
                    label: 'Point plotted' }],
@@ -2144,7 +2166,7 @@
            * step the first time we mvoe the rods as well"). This is that first move. */
           hl: ['Rod Speed — Normal', 'Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
-        { text: 'Raise SOURCE RANGE past 1.4e3, let it level off, plot the point, then read the 1/M prediction.',
+        { text: 'Raise SOURCE RANGE past 1.4e3, stop the rods, let STARTUP RATE settle, plot, then read the prediction.',
           note: 'Stop when CONTROL ROD POSITION reads about 150 to 175 steps. The four lines below run in order.',
           /* NO AUTHORED `wait_hint` (#653 S-5, 2026-09-15): `hold` is 300 s, so ui/app.js already
            * prints "About 5 plant-minutes at 1× — set the speed control to 10×." on this card, and
@@ -2158,27 +2180,27 @@
           accs: [{ p: 'sr_counts_cps', op: '>', v: 1400,
                    ask: 'Hold WITHDRAW at MED until SOURCE RANGE passes 1.4e3.',
                    label: 'Counts above 1.4e3 (1,400 counts per second)' },
+                 { p: 'control_bank_steps', op: 'stopped', v: 60,
+                   ask: 'Release WITHDRAW and let CONTROL ROD POSITION sit still for a minute.',
+                   label: 'Rods stopped — CONTROL ROD POSITION unchanged for a minute' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.02,
-                   ask: 'Release WITHDRAW and watch STARTUP RATE fall back toward zero.',
+                   ask: 'Now watch STARTUP RATE fall back toward zero.',
                    label: 'STARTUP RATE back to zero (within 0.02 DPM)' },
-                 { p: 'sr_counts_cps', op: 'steady', v: 0.03, window: 120,
-                   ask: 'Keep waiting until SOURCE RANGE has stopped climbing as well.',
-                   label: 'Counts steady — under 3 % change over the last two minutes' },
                  { cmd: 'plot_1m_point',
                    ask: 'Press Plot point, then read the predicted critical position on the panel.',
                    label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
-        { text: 'Raise SOURCE RANGE past 3.0e3, let it level off, plot the point, and read the prediction again.',
+        { text: 'Raise SOURCE RANGE past 3.0e3, stop the rods, let STARTUP RATE settle, plot, and read the prediction again.',
           /* ⚠ "THE SETTLE TAKES LONGER AT EVERY RUNG" WAS AN UNMEASURED CLAIM IN PLAYER COPY
            * (#653 S-11, 2026-09-15). MEASURED on the built pool: all four settle rungs on steps
-           * 5-8 carry IDENTICAL acceptances — `startup_rate ~0 ±0.02`, then counts `steady` at
-           * 3 % over a 120 s window. The PLANT does take longer nearer criticality (the owner's
-           * own observation, verified 2026-09-15: counts-steady at 223 / 226 / 281 / 507 s, each
-           * SECONDS FROM ROD-STOP — #761), but
-           * the live durations were not re-measured in this pass, so the sentence is removed
-           * rather than replaced with a number nobody has taken. */
+           * 5-8 carry IDENTICAL acceptances — the bank stopped for 60 s, then `startup_rate ~0
+           * ±0.02`. The PLANT does take longer nearer criticality (the owner's own observation),
+           * and since #761 the live durations ARE measured: the rung is met 64 / 64 / 141 / 341 s
+           * after ROD-STOP, so the settle genuinely does stretch — but only from rung 7 on, where
+           * the startup rate becomes the long pole. The removed sentence is still not restored
+           * here, because it would be false of rungs 5 and 6. */
           note: 'Stop when CONTROL ROD POSITION reads about 180 to 205 steps. The four lines below run in order.',
           /* THIS ONE KEEPS ITS `wait_hint`, AND IT SAYS THE OPPOSITE OF WHAT IT USED TO. `hold` is
            * 420 s here, so the generated line offers 60× — right for the settle, WRONG for the
@@ -2194,12 +2216,12 @@
           accs: [{ p: 'sr_counts_cps', op: '>', v: 3000,
                    ask: 'Hold WITHDRAW at MED until SOURCE RANGE passes 3.0e3.',
                    label: 'Counts above 3.0e3 (3,000 counts per second)' },
+                 { p: 'control_bank_steps', op: 'stopped', v: 60,
+                   ask: 'Release WITHDRAW and let CONTROL ROD POSITION sit still for a minute.',
+                   label: 'Rods stopped — CONTROL ROD POSITION unchanged for a minute' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.02,
-                   ask: 'Release WITHDRAW and watch STARTUP RATE fall back toward zero.',
+                   ask: 'Now watch STARTUP RATE fall back toward zero.',
                    label: 'STARTUP RATE back to zero (within 0.02 DPM)' },
-                 { p: 'sr_counts_cps', op: 'steady', v: 0.03, window: 120,
-                   ask: 'Keep waiting until SOURCE RANGE has stopped climbing as well.',
-                   label: 'Counts steady — under 3 % change over the last two minutes' },
                  { cmd: 'plot_1m_point',
                    ask: 'Press Plot point, then read the prediction again.',
                    label: 'Point plotted' }],
@@ -2238,9 +2260,9 @@
          * supercritical point the ruling removes. 205 is the highest bank in the band that is
          * still subcritical (ρ −12.5 static, −15 measured), so the band ends there. The cue is
          * unchanged and is still the count rate: 7,000 a second lands the authored burst at 202. */
-        { text: 'Hold WITHDRAW at MED until SOURCE RANGE settles above 7.0e3. Settle, press Plot point. This is the last point.',
-          note: 'Stop when CONTROL ROD POSITION reads about 195 to 205 steps. This is the point the prediction is built on, so give it the time: SOURCE RANGE goes on climbing for about ten plant-minutes after the rods stop, and a point plotted while it is still rising throws the predicted position two or three steps too far out. Plot it when the counts have levelled off. Note the rod position at criticality the 1/M panel predicts — the reactor goes critical at it or just below, so you stop short of it and tap from there.',
-          wait_hint: 'The counts are still climbing when the rods stop, and the prediction is only as good as the wait you give them. Come back to 10× before the next step, where the reactor starts making power.',
+        { text: 'Hold WITHDRAW at MED past 7.0e3. Stop the rods, let STARTUP RATE settle, then plot the last point.',
+          note: 'Stop when CONTROL ROD POSITION reads about 195 to 205 steps. This is the point the prediction is built on, so give it the time: STARTUP RATE takes about six plant-minutes to come back to zero here, and a point plotted before it does throws the predicted position two or three steps too far out. The four lines below run in order; plot when the fourth one is the only one left. Note the rod position at criticality the 1/M panel predicts — the reactor goes critical at it or just below, so you stop short of it and tap from there.',
+          wait_hint: 'STARTUP RATE is still falling when the rods stop, and the prediction is only as good as the wait you give it. Come back to 10× before the next step, where the reactor starts making power.',
           why: 'STARTUP RATE is the speedometer: 1.0 means power is multiplying by ten every minute, and any positive reading means reactivity is above zero and the chain reaction is growing. Under 1.0 is a comfortable climb; above it you are outrunning the plot, and nothing in the plant slows the rise for you yet. This is the last plotted point: from here single steps beat one more fitted number, and another burst would land you past criticality — plotting a point on a reactor that is already critical.',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e3 (7,000 counts a second); point 5 plotted; STARTUP RATE under 1.0',
           /* THE SETTLE IS 600 s, NOT 150 *(OWNER RULING, 2026-09-14/15, on options put as
@@ -2265,85 +2287,69 @@
            * is the danger side — the whole point of the trailing-3 fit is that it never does).
            * So this hold is the knee, not a round number.
            *
-           * THE LIVE PLAYER IS NOW HELD BY THE SAME PHYSICS, NOT BY THE PROSE *(OWNER RULING,
-           * 2026-09-15: selected "add a steadiness predicate" from three ways to close the gap
-           * this note used to describe — raise the count target to 12,000, add a "counts steady"
-           * predicate, or leave it as text. A SELECTION, not verbatim words; the rationale
-           * relayed with it is that a steady count rate is what an operator actually looks for
-           * and an absolute threshold is only a stand-in for it)*.
+           * THE LIVE PLAYER IS HELD BY THE ROD-STOP ROW, NOT BY THE PROSE AND NOT BY THE COUNTS
+           * *(OWNER RULING, 2026-09-17: selected "Gate on rods stopped + startup rate" from three
+           * options put to him — gate on rod-stop plus startup rate, remove the steady row and keep
+           * startup rate alone, or keep the steady row. A SELECTION, not verbatim words.)*
            *
            * The hold above governs the REPLAY. A live player's Continue used to light on
-           * `sr_counts_cps > 7000` alone, which this route crosses 47 s after the rods stop with
-           * the count still climbing hard — so the acceptance did not make him wait and only this
-           * step's own line and `note` did. The second check-off below is the operator's actual
-           * cue: the source range has STOPPED MOVING. The owner's 7,000 target is untouched and
-           * stands as the floor (it is his own authored number in
-           * `Blueprint/WALKTHROUGH_STEPS_OWNER.md` step 8); steadiness is added beside it.
+           * `sr_counts_cps > 7000` alone, which this route crosses 47 s after the rods stop with the
+           * count still climbing hard. #755 closed that with a counts-STEADY row; #761 measured that
+           * row and found it is a proxy a 20 s dribble defeats (see step 5's block), so the gate is
+           * now the fact itself — the bank has not moved for 60 s — and then the startup rate.
+           * The owner's 7,000 target is untouched and stands as the floor (his own authored number
+           * in `Blueprint/WALKTHROUGH_STEPS_OWNER.md` step 8); the rod-stop row is added under it.
            *
-           * THE THREE NUMBERS, EACH MEASURED (full stack, hot_zero_power, tick()-driven, the
-           * authored 94/63/31/14 ladder, panel fit copied from ui/panels/one_over_m.js).
+           * ⚠ EVERY DURATION BELOW IS SECONDS FROM ROD-STOP — the last broadcast on which the
+           * control bank moved — and the column SAYS SO (#761, 2026-09-17). It did not, and a
+           * reader cannot tell a rod-stop figure from a burst-command figure by looking: this
+           * rung's burst is 17 s of bank motion plus command latency. State the reference point on
+           * any duration you add here.
            *
-           * ⚠ EVERY DURATION HERE IS SECONDS FROM ROD-STOP — the last broadcast on which the
-           * control bank moved — and the column now SAYS SO (#761, 2026-09-17). It did not, and
-           * a reader cannot tell a rod-stop figure from a burst-command figure by looking: the
-           * burst is 17 s of bank motion plus command latency, so the same accept is 496 s from
-           * rod-stop and 513 s from the burst. Four figures in #761 were read as rod-stop-
-           * referenced when they were burst-referenced because of exactly this omission. State
-           * the reference point on any duration you add below.
+           *   accept condition                      settle from ROD-STOP   counts   1/M prediction
+           *   counts > 7,000 alone (2 rulings ago)          47 s            7,025    213.7
+           *   counts steady 3 % / 120 s (#755)             496 s           13,248    208.5
+           *   rods stopped 60 s + rate ±0.02 (THIS)       333 s           ~12,900    ~208.4
+           *   the ruled `hold: 600` above                  578 s           13,618    208.2
            *
-           *   accept condition                  settle from ROD-STOP   counts   1/M prediction
-           *   counts > 7,000 alone (WAS)               47 s             7,025    213.7
-           *   steady 3 % / 120 s (THIS)               496 s            13,248    208.5
-           *   the ruled `hold: 600` above             578 s            13,617    208.7
+           * The rod-stop row costs NOTHING here — the bank is still 60 s after rod-stop and the
+           * startup rate does not fall into its band until 341 s, so the rate row is the gate on
+           * this rung and the plot waits on the plant, not on a window. The player now plots 163 s
+           * earlier than under the steadiness row, which `Diagnostic/ACCURACY_VS_WAIT_2026-09-17.md`
+           * measured to be worth 0.6 of a bank step against a 2-step seed spread.
            *
-           * The steady row was filed at "506 s" and re-measured at 496 s on seed 42 (513 s from
-           * the burst command) — the harnesses differ by how they debounce, not by the plant.
+           * ⚠ TRUE CRITICALITY IS 207.07 / 207.33 / 207.73 on seeds 42 / 7 / 1 (#761 re-measured it
+           * from "208 of 627"), so the predictions above run ~1 step HIGH — the conservative side,
+           * which is what the trailing-three fit exists to guarantee. The reference is maintained in
+           * `Diagnostic/ACCURACY_VS_WAIT_2026-09-17.md`, not here.
            *
-           * ⚠ AND THE "+0.8 / +0.7" ERRORS THAT USED TO SIT IN THAT LAST COLUMN WERE AGAINST A
-           * TRUE CRITICALITY OF "208 of 627", WHICH HAS MOVED. #761 re-measured it at 207.07 /
-           * 207.33 / 207.73 on seeds 42 / 7 / 1, so the errors are ~1.4 steps, not 0.7. The
-           * errors are dropped rather than restated: they are a property of the reference, and
-           * the reference is now maintained in `Diagnostic/ACCURACY_VS_WAIT_2026-09-17.md`.
+           * WHY `hold: 600` DOES NOT COME DOWN WITH THE ACCEPTANCE, although #761 §12.7 suggests a
+           * column that would. Three reasons, and the first is the one that binds: 600 s is a RULED
+           * ACCURACY number — the knee of the counts-versus-prediction curve in the table above this
+           * one — not a dwell grown to cover the steadiness window, so lowering it re-decides a
+           * ruling on accuracy grounds. Second, the replay still satisfies every row with room: the
+           * whole rung is met 350 s after the burst command, 1.71x inside the hold. Third, `hold`
+           * drives the GENERATED speed hint (>= 180 s offers a faster rung) and steps 6-8 carry
+           * authored copy naming those speeds, so a hold change drags player text and the
+           * `verify_e2e_ui` / `verify_flags_ui` / `run_oneoverm` / `run_reactivity` gates with it.
+           * MEASURED if it is ever taken: holds of 240 / 200 / 260 / 600 satisfy every rung with
+           * >= 1.27x margin and move the final prediction 208.24 -> 208.35, still above critical.
            *
-           * WINDOW = 120 s, the shortest window that resolves this settle at all: at 60 s the
-           * metric is 2 % as early as 395 s with the prediction still at 209.1, and at 180 s and
-           * 240 s it accepts LATER than the replay's own hold for 0.1 step of accuracy.
-           * TOLERANCE = 3 %. First crossing at this window, ALL SECONDS FROM ROD-STOP and all
-           * UNDEBOUNCED (the runtime's five-evaluation acceptance debounce adds ~5 s, which is
-           * the whole of the gap to the 496 s figure in the table above): 4 % at 421 s (209.0),
-           * 3 % at 506 s (208.8), 2.5 % at 546 s (208.8), 2 % at 593 s (208.7). Every one of them lands on
-           * the knee — the whole band is worth 0.3 of a bank step — so the tolerance is picked
-           * for MARGIN, not for accuracy.
-           * ⚠ WHY NOT 2 %, WHICH LOOKS LIKE THE BETTER NUMBER. `hold: 600` is measured from the
-           * step becoming ACTIVE and 22 s of it is the rod burst, so the replay delivers 578 s of
-           * settle, where the drift is 2.16 % — 0.16 of a percentage point the WRONG SIDE of a
-           * 2 % threshold. A 2 % predicate therefore reddens the replay of the very step it is
-           * authored on, and a fixture standing 0.16 points from a cliff is #543 again. At 3 %
-           * the predicate is satisfied 72 s before the authored hold expires and the drift at the
-           * hold's end is 0.84 points clear of the threshold.
-           * DWELL = the window itself. The ring is reset when the step becomes active, so this
-           * step cannot complete inside 120 s however the player drives it, and the runtime's
-           * ordinary five-evaluation acceptance debounce sits on top.
-           * NOT A CHATTERING LATCH (the #752 trap): the metric crosses EXACTLY ONCE over the
-           * 1,800 s tail, and the channel's own detrended scatter is 0.0019 % of reading — the
-           * tolerance clears one noise sample by a factor of 480.
-           *
-           * ⚠ WHAT IT STILL DOES NOT FIX: check-off ORDERING is not expressible (#741), so a
-           * player who presses Plot point early latches that entry and then waits out the
-           * steadiness row with an early POINT already on the plot. Continue will not light until
-           * the counts are steady either way, and the unticked "Counts steady" row is the cue not
-           * to plot yet — but the press itself is not gated. */
+           * ⚠ WHAT IT STILL DOES NOT FIX: a player may press Plot point before the rung's rows are
+           * met. The press is not gated — `accs_ordered` (#756) stops the entry LATCHING out of
+           * turn, and the unticked "Rods stopped" row is the cue not to plot yet, but an out-of-turn
+           * press still puts a real point on the plot and only Clear takes it off (#759). */
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 14, speed: 'normal' }, hold: 600,
           accs_ordered: true,
           accs: [{ p: 'sr_counts_cps', op: '>', v: 7000,
                    ask: 'Hold WITHDRAW at MED until SOURCE RANGE passes 7.0e3.',
                    label: 'Counts above 7.0e3 (7,000 counts per second)' },
+                 { p: 'control_bank_steps', op: 'stopped', v: 60,
+                   ask: 'Release WITHDRAW and let CONTROL ROD POSITION sit still for a minute.',
+                   label: 'Rods stopped — CONTROL ROD POSITION unchanged for a minute' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.02,
-                   ask: 'Release WITHDRAW and watch STARTUP RATE fall back toward zero.',
+                   ask: 'Now watch STARTUP RATE fall back toward zero, about six plant-minutes.',
                    label: 'STARTUP RATE back to zero (within 0.02 DPM)' },
-                 { p: 'sr_counts_cps', op: 'steady', v: 0.03, window: 120,
-                   ask: 'Keep waiting — about ten plant-minutes here — for SOURCE RANGE to flatten.',
-                   label: 'Counts steady — under 3 % change over the last two minutes' },
                  { cmd: 'plot_1m_point',
                    ask: 'Press Plot point. Note the critical position the panel predicts.',
                    label: 'Point plotted' }],
