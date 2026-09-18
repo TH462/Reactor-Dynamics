@@ -64,3 +64,37 @@ so a wrong decision can be shown without being taught as correct. Four steps fir
 behind the scenes and two pause the sim on an event the player does not control. Its extract
 renders all of that, because dropping the story block would leave the half that is not the
 walkthrough.
+
+---
+
+## How to treat the files in `Blueprint/walkthrough_steps/`
+
+**THEY ARE FOR STEP TEXT. KEEP THEM CLEAN.** *(OWNER, 2026-09-17: "the .md files with the text
+from the walkthroughs are almost unreadable now with all the notes. These exist so that I can
+easily edit what the AI creates for the walkthroughs, they are not intended to keep notes. You
+can add a notes section to the end if you want but keep the text clean so i can easily edit
+them.")*
+
+They exist so he can read and edit the steps quickly. By 2026-09-17 agents had put a
+fourteen-line header on every one and ten note paragraphs between the steps of the startup leg,
+each recording a measurement or a ruling — individually defensible, collectively unreadable, and
+they buried the only thing the file is for.
+
+- **Never write a note between the steps.** If a change needs recording, put it under a
+  `## Notes — agent record, NOT step text` heading at the END of the file.
+- **The header is two lines.** Title, walkthrough id, and the one-line reminder. Nothing else.
+- **A measurement belongs in `Diagnostic/`, a ruling belongs in THIS file, and a trap belongs in
+  the code comment where someone would trip over it.** The step file is the last place any of
+  them should live — it is the one document he reads to do his own work.
+
+**Two things in the step files are NOT content and must never be "cleaned":**
+
+- **The backslash escaping** (`pwr\_startup`, `\*\*bold\*\*`) — his editor's round-trip.
+- **The tick and circle glyphs** *(OWNER, 2026-09-17: "The tick vs circle in my writing was
+  because I was copy/pasting from the sim and what needed up in the document was whatever state
+  it happened to be in the sim at the time. It has no special meaning.")*. A tick meant the row
+  was checked off on his screen when he copied it. **Do not read them as intent, do not preserve
+  them, and never change a step's kind to match one** — the kind is decided by what the step asks
+  the player to do.
+
+The step TEXT remains authority: the built pool comes down to it, and nobody reformats his prose.

@@ -2,34 +2,8 @@
 
 **Walkthrough id: `pwr_tmi2_incident`  ·  20 steps  ·  narrative**
 
-> **⚠ NOT YET AUTHORED BY YOU. This is an extract of what currently SHIPS**, taken from
-> the built pool (`RD.MANUAL_PROCEDURES.pwr2`) on 2026-09-15 so there is something to read
-> and mark up *(OWNER, 2026-09-15: "add the tmi2 incident. i need to go through this one
-> too.")*. It is a rendering, not the source: the source is still `ui/manual_procedures.js`.
->
-> **Edit it freely — and once you do, say so**, because that is what makes this file the
-> authority for this leg. Until then an agent treats the POOL as current and this file as a
-> possibly-stale copy, never the reverse.
->
-> **THIS LEG IS NOT LIKE THE OTHER SIX.** It is a NARRATIVE walkthrough: each step carries a
-> story block — the clock time, what the crew SAW, what they KNEW, and what they DID — and
-> the engine flagship suite owns its physics, so the procedures harness does not run it.
-> Three steps are marked **AS TAKEN** (`crew: true`): they record what the operators
-> actually did that morning, and the card tags them so a wrong decision can be shown
-> without being taught as correct. Four steps fire failures behind the scenes and two
-> pause the sim on an event the player does not control.
->
-> It is **`preview`** and has never been offered publicly.
-
-> **THE TICK AND CIRCLE MARKS IN THIS FILE CARRY NO MEANING** *(OWNER, 2026-09-17: "The tick vs
-> circle in my writing was because I was copy/pasting from the sim and what needed up in the
-> document was whatever state it happened to be in the sim at the time. It has no special
-> meaning.")*. A row drawn with a tick was simply a row that happened to be CHECKED OFF on his
-> screen when he copied it; a circle was one that was not. **Do not read them as authored
-> intent, do not preserve them, and never change a step's kind to match one.** The step's kind
-> is decided by what it asks the player to do — action or verify — not by the glyph.
-> The same goes for the backslash escaping throughout: that is his editor's round-trip, not
-> content. Leave it; do not "clean" it.
+> Edit this freely — it is the step text, and it is what the sim is brought down to.
+> Agent notes go at the END of the file, never between the steps.
 
 ---
 
@@ -430,4 +404,3 @@ Background
 Forced flow returns within 40 seconds, but the margin and the inventory follow slowly — expect to hand the plant back with alarms still standing. Fuel damage, the containment radiation alarms and the hydrogen burn are outside this model and are told here rather than run. That gap is the fuel temperature: uncovering 94 % of this core never gets the fuel above 1130 °F, where the real one went far past 2500 °F.
 
 [HIGHLIGHTED: RCP Run/Stop (pulsing); Subcooling Margin (steady)]
-
