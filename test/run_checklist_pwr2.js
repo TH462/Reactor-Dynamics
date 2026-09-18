@@ -2260,11 +2260,22 @@ if (!only) {
      * rounding is the thing under test. */
     var wiring = fs.readFileSync(path.join(ROOT, 'ui', 'diagram', 'board', 'pwr_board_wiring.js'), 'utf8');
     var fmtSrc = /function fmtExp\s*\([\s\S]*?\n/.exec(wiring);
-    var fmtExp = fmtSrc ? new Function('return (' + fmtSrc[0].trim().replace(/;\s*$/, '') + ');')() : null;
+    /* WRAPPED, because the regex stops at the first newline and `fmtExp` is a ONE-LINE function
+     * today: reformat it across lines and the capture is a brace-unbalanced fragment. Without
+     * the catch, `new Function` throws a raw SyntaxError and takes the whole runner down — a
+     * reformat would read as a crash rather than as this check going red, which is the wrong
+     * failure mode for a check whose whole job is to notice the board changing. */
+    var fmtExp = null;
+    try {
+      if (fmtSrc) fmtExp = new Function('return (' + fmtSrc[0].trim().replace(/;\s*$/, '') + ');')();
+    } catch (e) { fmtExp = null; }
+    var lifted = typeof fmtExp === 'function';
+    if (!lifted) fmtExp = function () { return '(not lifted)'; };   // keep the checks below RED, not crashed
     ck('2ab. `fmtExp` was lifted out of pwr_board_wiring.js, not re-typed here (#749)',
-       typeof fmtExp === 'function' && fmtExp(1400) === '1.4e3' && fmtExp(1349) === '1.3e3',
-       typeof fmtExp === 'function' ? 'fmtExp(1400)=' + fmtExp(1400) + ', fmtExp(1349)=' + fmtExp(1349)
-                                    : 'could not find `function fmtExp(` in the wiring');
+       lifted && fmtExp(1400) === '1.4e3' && fmtExp(1349) === '1.3e3',
+       !fmtSrc ? 'could not find `function fmtExp(` in the wiring'
+               : !lifted ? 'found `fmtExp` but could not evaluate the capture — has it been reformatted across lines?'
+                         : 'fmtExp(1400)=' + fmtExp(1400) + ', fmtExp(1349)=' + fmtExp(1349));
 
     /* --- 1. THE CHANNEL. Instrument-first, on a live broadcast, through the real evaluator. */
     (function () {
@@ -2336,7 +2347,18 @@ if (!only) {
     /* --- 4. THE SAME RULE ON REACTOR POWER (#749 item 2). The tile is `digits: 1` in
      * pwr_board_data.js and is rendered `toFixed(digits)`, so it prints "0.1" from 0.05 up. The
      * digit count is READ OUT OF THE BOARD DOCUMENT, not asserted here, for the same reason
-     * `fmtExp` is lifted above. */
+     * `fmtExp` is lifted above.
+     *
+     * ⚠ AND THE ASYMMETRY WITH CHECK 2 IS DELIBERATE, not an omission (quality pass, 2026-09-18).
+     * `power_range` IS in DISPLAY_DAMP (2 s), unlike `source_range` — so item 2 does NOT get item
+     * 1's "the graded reading is the drawn reading" argument and is not claiming it. This check
+     * makes the narrower claim, which is the one that was wrong: the acceptance LITERAL must be
+     * the floor of the digit the tile prints, not its middle. The damping is a separate, standing
+     * tolerance the owner has already ruled on (#670: the acceptance reads the undamped
+     * transmitter and does not regrade on the filtered value), and it is worth 1.1 s here —
+     * MEASURED on the authored route, the row latching 1.1 s BEFORE the tile's first "0.1". A
+     * faster ramp would widen that, and widening it is the #670 ruling's business, not this
+     * check's. */
     (function () {
       var boardDoc = fs.readFileSync(path.join(ROOT, 'ui', 'diagram', 'board', 'pwr_board_data.js'), 'utf8');
       var dm = /"label":"REACTOR POWER"[^}]*?"digits":(\d+)/.exec(boardDoc);
@@ -2346,12 +2368,16 @@ if (!only) {
         if (st.acc && st.acc.p === 'power_pct' && si === -1 && i >= 8) { step = st; si = i; }
       });
       var v = step && step.acc.v;
+      /* `digits` null would coerce through toFixed(null) to toFixed(0) — the check still goes
+       * red, but the note would read "the tile (null digit) draws 0" and send the next reader
+       * after the wrong thing. Named explicitly instead. */
       var okFloor = v != null && digits != null &&
                     v.toFixed(digits) !== (v * (1 - 1e-9)).toFixed(digits) &&
                     v.toFixed(digits) === (v * (1 + 1e-9)).toFixed(digits);
       ck('2ab.4 the criticality step waits for the FIRST power the tile prints as 0.1 %, not the middle of that digit (#749 item 2)',
          okFloor && v.toFixed(digits) === '0.1',
          v == null ? 'no power_pct acc found at or after step 9'
+                   : digits == null ? 'could not read the REACTOR POWER tile\'s `digits` out of pwr_board_data.js'
                    : 'step ' + (si + 1) + ' acc power_pct > ' + v + '; the tile (' + digits +
                      ' digit) draws ' + v.toFixed(digits) + ' there and ' +
                      (v * (1 - 1e-9)).toFixed(digits) + ' one ulp below');
