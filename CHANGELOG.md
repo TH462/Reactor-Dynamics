@@ -30,6 +30,22 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — fast-forward carries across walkthrough step boundaries (#761)
+
+- **A walkthrough step advancing no longer drops the clock to 1×** *(OWNER RULING, 2026-09-17:
+  "Release with the step snap.")*. The selected speed now carries from one step to the next.
+  `SimulationService._attentionStop` returned `'step'` on every checklist index move (#619 item 6,
+  #622); it was a reading pause, not a protection, and it clamped the speed seventeen times a leg.
+- **Measured on `pwr_startup`, seed 42, the player selecting a speed once:** at 10×, 29,054
+  broadcasts = **48.4 min of real time → 3,005 broadcasts = 5.0 min**. At 60×, **48.4 min → 0.9 min**
+  — before the change, selecting 60× instead of 10× bought nothing, because the plant sat at 1×
+  either way. Seventeen involuntary re-presses per leg are gone.
+- **Every other fast-forward dropout is unchanged**: a reactor trip, a new equipment failure, a new
+  warning or critical alarm on a quiet board, the plant-declared hold that refuses to be accelerated
+  past the accumulator arming window, and WARP's own lockout all still drop the clock.
+- Steps whose dwell is already under about a second (the verification steps) are unaffected —
+  measured identical at 0.2–0.6 s of real time before and after, at both 10× and 60×.
+
 ### Changed — the 1/M settle rungs gate on the RODS, not on a settling indication (#761)
 
 - **`pwr_startup` steps 5–8 now read: counts floor → the control bank has not moved for a minute

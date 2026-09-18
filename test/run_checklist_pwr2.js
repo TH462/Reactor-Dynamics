@@ -2257,13 +2257,14 @@ if (!only) {
   function alarm(id, label) { return { id: id, label: label, priority: 'warning', state: 'active_unacknowledged' }; }
   var RHR = alarm('rhr_not_in_service', 'Shutdown Cooling Not In Service - RCS Is Below the RHR Entry Pressure');
   var OTHER = alarm('sg_level_lo', 'Steam Generator Level Low');
-  /* THE BOARD THE ALARM ARRIVES ON IS QUIET, so #655's own rule cannot be what decides this,
-   * and the step index is held still so `stepMoved` cannot answer instead of the alarm. */
+  /* THE BOARD THE ALARM ARRIVES ON IS QUIET, so #655's own rule cannot be what decides this.
+   * The step index used to be held still here too, so the #619 item 6 step dropout could not
+   * answer instead of the alarm; that dropout was removed 2026-09-17 *(OWNER RULING: "Release
+   * with the step snap.")* and the fixture line went with it. */
   function verdict(w, a) {
     w.svc._prevTrueState = w.svc._prevTrueState || w.snap.true_state;
     w.svc._prevAlarms = [];
     w.svc._prevScrammed = false;
-    w.svc._prevCklStep = w.svc.instructor.checklist.idx;
     w.snap.alarms = [a];
     return w.svc._attentionStop(w.snap);
   }

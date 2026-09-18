@@ -233,11 +233,21 @@ ck('MID-RUN the broken row is still graded and shown in the panel',
   pcv(c, 1).met === false, 'obs ' + pcv(c, 1).obs);
 ck('...but the instructor comment does NOT re-raise once the run is moving (#619 item 3)',
   !(snap.instructor && snap.instructor.message), snap.instructor && String(snap.instructor.message).slice(0, 50));
-/* CHECKING A STEP OFF DROPS THE CLOCK BACK TO 1x (#619 item 6, owner: "when a step is checked
- * off, drop out of warp."). Asserted here rather than on the command path because the service
- * reads the checklist's step INDEX, not the check-off command — most steps tick themselves off
- * the instruments and never issue one. The reason string matters as much as the speed: the UI
- * toasts off it and flashes the speed buttons (item 7). */
+/* CHECKING A STEP OFF NO LONGER TOUCHES THE CLOCK *(OWNER RULING, 2026-09-17: "Release with the
+ * step snap." — given on being shown that the drop costs 48.8 minutes of real time per startup
+ * leg and makes 10x and 60x identical)*. #619 item 6 dropped fast-forward on every checklist
+ * index move; it was a READING pause, never a safety mechanism, and it clamped the player's
+ * selected speed seventeen times a leg. Measured on `16046d86` before removal, `pwr_startup` at
+ * a selected 10x: 29,054 broadcasts = 48.4 min of the player's life for 2,909 s of plant time.
+ *
+ * THESE READ THE OTHER WAY NOW, and that is the injection proof: restoring
+ * `if (stepMoved) return 'step';` in `_attentionStop` (with its `_prevCklStep` bookkeeping)
+ * turns the three check-off checks below red (accel 1, reason `step`) and leaves the three
+ * "still drops" checks after them green — which is why those three are worth having.
+ *
+ * Asserted on the command's OWN return value, not a later frame: `checklist_check` calls
+ * `_assembleWithInstructor` inside `handleCommand`, so that snapshot is the one a drop would
+ * have stamped. Reading a later tick would pass on a service that dropped and re-armed. */
 svc3.handleCommand({ action: 'stop_checklist' });
 run(svc3, 1);
 svc3.handleCommand({ action: 'start_checklist', procedure_id: 'zz_precond_probe' });
@@ -245,24 +255,40 @@ svc3.handleCommand({ action: 'set_speed', value: 600 });
 snap = run(svc3, 2);
 ck('warp fixture: the clock is at 600x with a checklist running',
   snap.metadata.time_acceleration === 600, 'accel ' + snap.metadata.time_acceleration);
-// A NON-FINAL step, so this covers the ordinary case rather than completion. (Completion
-// fires too — `idx` runs to steps.length — and gating it out made the last step of every
-// checklist the one that kept racing.)
-// `speed_snap` is stamped on the ONE snapshot where the drop happens, and handleCommand
-// assembles its own — so the reason rides back on the check-off's return value, not on the
-// next tick. Reading a later frame finds the speed at 1x and the reason already gone, which
-// is exactly the "sampled the wrong frame" shape, so both are read from the same snapshot.
+// A NON-FINAL step, so this covers the ordinary case rather than completion — the removed
+// dropout fired on completion too (`idx` runs to steps.length), so both cases had to stop.
 snap = svc3.handleCommand({ action: 'checklist_check', index: 0 });
-ck('a step checking off drops the clock to 1x (#619 item 6)',
-  snap.metadata.time_acceleration === 1, 'accel ' + snap.metadata.time_acceleration);
-ck('...and says WHY, so the UI can toast it and flash the speed buttons',
-  !!(snap.metadata.speed_snap && snap.metadata.speed_snap.reason === 'step'),
-  snap.metadata.speed_snap ? snap.metadata.speed_snap.reason : 'no speed_snap');
-// The clock must STAY down — a dropout that re-armed itself would be a phantom stop the next
-// time anything advanced. One more broadcast with no step movement, no new snap.
+ck('a step checking off does NOT drop the clock (2026-09-17 ruling)',
+  snap.metadata.time_acceleration === 600, 'accel ' + snap.metadata.time_acceleration);
+ck('...and stamps no speed_snap, so nothing toasts and the speed buttons do not flash',
+  !snap.metadata.speed_snap, snap.metadata.speed_snap ? snap.metadata.speed_snap.reason : 'no speed_snap');
+// The selected speed must still be carrying two broadcasts later — a drop that landed one
+// frame late would read as "no snap" on the command's own return and 1x immediately after.
 snap = run(svc3, 2);
-ck('the dropout does not re-fire while the step index sits still',
-  !snap.metadata.speed_snap, snap.metadata.speed_snap ? snap.metadata.speed_snap.reason : 'none');
+ck('the selected speed is still carrying two broadcasts later',
+  snap.metadata.time_acceleration === 600 && !snap.metadata.speed_snap,
+  'accel ' + snap.metadata.time_acceleration + ', snap ' +
+  (snap.metadata.speed_snap ? snap.metadata.speed_snap.reason : 'none'));
+/* BOTH SIDES, AGAINST THE SAME SERVICE. A service that never drops at all satisfies the three
+ * checks above equally well, so the reasons that MUST survive are asserted here on svc3 itself
+ * through the real `_attentionStop`. The snapshots are synthetic: each of the three costs a
+ * plant evolution to reach and it is the DECISION that is under test, not the route to it —
+ * the same idiom as `run_checklist_pwr2` section 12. Edge state is reset before each so the
+ * previous verdict cannot answer for the next one. */
+function attnVerdict(sn) {
+  svc3._prevTrueState = {}; svc3._prevAlarms = []; svc3._prevScrammed = false;
+  svc3._prevSpeedHold = null; svc3._prevFailureIds = {};
+  return svc3._attentionStop(sn);
+}
+var vAlarm = attnVerdict({ alarms: [{ id: 'sg_level_lo', label: 'Steam Generator Level Low',
+  priority: 'warning', state: 'active_unacknowledged' }], active_failures: [], true_state: {}, rps_state: {} });
+ck('...but a NEW WARNING on a quiet board still drops the clock (#655 untouched)',
+  vAlarm === 'alarm', 'verdict ' + vAlarm);
+var vScram = attnVerdict({ alarms: [], active_failures: [], true_state: { scrammed: true }, rps_state: {} });
+ck('...and a reactor trip still drops it', vScram === 'scram', 'verdict ' + vScram);
+var vHold = attnVerdict({ alarms: [], active_failures: [],
+  true_state: { speed_hold: 'accumulator arming window' }, rps_state: {} });
+ck('...and a plant-declared speed_hold still drops it (#619 item 13)', vHold === 'hold', 'verdict ' + vHold);
 
 snap = svc3.handleCommand({ action: 'stop_checklist' });
 snap = run(svc3, 1);

@@ -3115,9 +3115,9 @@
     // #625: the WARP tier let go (60x) or was refused; the service names the plant's reason.
     transient: 'WARP dropped to 60× — ',
     warp_locked: 'WARP unavailable — ',
-    // #619 item 6. Not an emergency, so it toasts 'info' rather than 'error' below — the
-    // other three are the plant interrupting you; this one is the checklist keeping pace.
-    step: 'Dropped to real time — walkthrough step complete',
+    // NO `step` REASON since 2026-09-17 *(OWNER RULING: "Release with the step snap.")* — the
+    // service no longer drops fast-forward when the walkthrough step index moves, so nothing
+    // can stamp that reason and a string for it would be a dangling mechanism.
     // #619 item 13 — the plant is holding the clock down (the accumulator arming window).
     // The service also REFUSES set_speed while it stands, so this is not merely advisory.
     hold: 'Held at real time — the plant needs you here',
@@ -3144,7 +3144,7 @@
    *
    * Everything else the old paragraph drew is gone, on purpose, and each has a home already:
    * WARP's achieved rate is `#ffRate` (`syncPacingUI` below); a WARP lock's reason is the WARP
-   * buttons' own `title`; every momentary drop (scram/failure/alarm/transient/warp_locked/step)
+   * buttons' own `title`; every momentary drop (scram/failure/alarm/transient/warp_locked)
    * is already toasted AND flashed (`syncSpeedUI` above) at the moment it happens — #655 must
    * not be reopened, and #675 §E leaves nothing here worth restating for those.
    *
@@ -3189,7 +3189,8 @@
     }
     /* EVERY DROP STATES ITS OWN REASON, not just the held-at-real-time one (2026-09-15 layman
      * pass, #653). This branch read `warpNote.reason === 'hold'` and fell through for the other
-     * four — alarm, scram, failure and step — printing the step's fast-forward advice instead.
+     * reasons — alarm, scram and failure (and, until 2026-09-17, step) — printing the step's
+     * fast-forward advice instead.
      * MEASURED: the clock dropped on a new unacknowledged warning and `#warpInfo` then read
      * "About 50 plant-minutes left at 1× — set the speed control to 600×" while the plant
      * crawled 596 to 600 psia (4.11 to 4.14 MPa) over 200 s of real time. The line was advising
@@ -3197,7 +3198,7 @@
      *
      * IT DOES NOT REOPEN #686. That ruling's concern was this line growing back into a
      * four-state paragraph that says something on every step; the reason is written only while
-     * a drop is STANDING, and `retireWarpNote` already clears the four momentary reasons on the
+     * a drop is STANDING, and `retireWarpNote` already clears the momentary reasons on the
      * player's very next speed act (the `hold` exception is #710's and is untouched). So the
      * line still says nothing on an ordinary step, and the toast and the button flash are still
      * the moment-of-event cue — this is the explanation that has to survive until the player
@@ -3273,12 +3274,13 @@
     // Toast the reason so the operator knows why the clock changed under them.
     var snap = s && s.metadata ? s.metadata.speed_snap : null;
     if (snap) {
-      /* Severity by kind: a checklist step completing is information (#619 item 6); a WARP
-       * refusal is a caution (#625); everything else is the plant interrupting you. */
+      /* Severity by kind: a WARP refusal is a caution (#625); everything else is the plant
+       * interrupting you. The 'info' case was the checklist-step drop and went with it
+       * (OWNER RULING, 2026-09-17: "Release with the step snap."). */
       showToast(speedSnapText(snap),
-        snap.reason === 'step' ? 'info' : snap.reason === 'warp_locked' ? 'warn' : 'error');
+        snap.reason === 'warp_locked' ? 'warn' : 'error');
       /* …and, ONLY for the held-at-real-time reason (#686 ruling 3), it stays written under the
-       * speed buttons until the player next acts — the other five reasons rely on the toast +
+       * speed buttons until the player next acts — the other reasons rely on the toast +
        * flash above since #686; carrying `reason` is what lets `syncWarpInfo` single out this
        * one case without re-deriving it from the text. */
       warpNote = { text: speedSnapText(snap), reason: snap.reason };
