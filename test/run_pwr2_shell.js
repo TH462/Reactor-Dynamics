@@ -53,7 +53,9 @@ var DT = 0.02;
  * 'K' the shutdown preset, 'L' the operator's rate-limited load dial (#624 item 24),
  * 'N' the SUR HI annunciator (#661), 'O' the continuous-withdrawal casualty's RATE (#662),
  * 'S' the save contract, 'T' the AFW throttle on a real drain
- * (#582 — full channel runtime under the control kernel). The CLEAN pass runs everything;
+ * (#582 — full channel runtime under the control kernel), 'U' the seed is LIVE (#769 —
+ * engine.seed is not a silent undefined and actually drives the PRNG, across construction,
+ * reset() and a save/load round trip). The CLEAN pass runs everything;
  * each named group is preflighted ALONE on the clean build before the replays. */
 function runSuite(SH, rec, quiet, only) {
   /* THE BANK'S OWN CURRENCY (#602 phase 2) — the same helpers the engine gate carries, for the
@@ -2282,6 +2284,69 @@ function runSuite(SH, rec, quiet, only) {
      (cgT1 * 9 / 5 + 32).toFixed(1) + ' degF (air term dropped: ~+90 degF)');
   }
 
+  if (grp('U')) {
+  /* ---- 5. THE SEED IS LIVE (#769) -------------------------------------------------------------
+   * `engine.seed` used to be a silent `undefined` — the seed reached the instrument
+   * constructor (`new RD.PWRInstruments(cfg, opts.seed)`) and was never stored on the engine.
+   * A harness that read or set `engine.seed` directly (rather than seeding through
+   * `new SimulationService({seed})`) silently measured ONE noise stream no matter how many
+   * "different seeds" it thought it was running — a dead input whose failure mode is a
+   * believable, PERFECTLY REPRODUCIBLE number (the #555 plausible-zero class). This is the
+   * assertion that would have caught it. */
+  head('THE SEED IS LIVE  [engine.seed is not a silent undefined, and it drives the PRNG]');
+  var su42a = new SH.PWR2Engine({ seed: 42 });
+  var su42b = new SH.PWR2Engine({ seed: 42 });
+  var su7 = new SH.PWR2Engine({ seed: 7 });
+  var suSecs = quiet ? 20 : 40;
+  run(su42a, suSecs); run(su42b, suSecs); run(su7, suSecs);
+  var p42a = su42a.getInstruments().primary_pressure;
+  var p42b = su42b.getInstruments().primary_pressure;
+  var p7 = su7.getInstruments().primary_pressure;
+  ck('two engines at the SAME initial condition, DIFFERENT seeds, read DIFFERENT on a ' +
+     'noise-carrying instrument',
+     p42a !== p7,
+     'seed 42: ' + p42a.toFixed(6) + ' MPa, seed 7: ' + p7.toFixed(6) + ' MPa');
+  ck('the SAME seed reproduces BIT-EXACTLY across two independently constructed engines',
+     p42a === p42b,
+     'seed 42, two instances: ' + p42a.toFixed(6) + ' MPa both');
+  ck('engine.seed is a NUMBER and equals instruments.seed -- the assertion that would have ' +
+     'caught #769',
+     typeof su42a.seed === 'number' && su42a.seed === su42a.instruments.seed &&
+     typeof su7.seed === 'number' && su7.seed === su7.instruments.seed,
+     'seed 42 -> engine.seed ' + su42a.seed + ', seed 7 -> engine.seed ' + su7.seed);
+  /* a falsy seed (0) falls through PWRInstruments' own `(seed >>> 0) || 0x9E3779B9` default
+   * (pwr_instruments.js:117, untouched by this fix) -- engine.seed must reflect that EFFECTIVE
+   * value, not the raw 0 that was asked for, or it would be a second, differently-wrong number. */
+  var suZero = new SH.PWR2Engine({ seed: 0 });
+  ck('a seed of 0 reads back as the EFFECTIVE (defaulted) seed, not the raw 0 asked for',
+     suZero.seed === 0x9E3779B9 && suZero.seed === suZero.instruments.seed,
+     'engine.seed ' + suZero.seed + ' (0x9E3779B9 = ' + 0x9E3779B9 + ')');
+  /* the two paths besides the constructor that touch instruments.seed: reset() reconstructs
+   * the instruments, loadState() calls instruments.load(). Either can leave engine.seed a
+   * STALE second copy -- the exact defect class CLAUDE.md's standing list warns about. */
+  var suR = new SH.PWR2Engine({ seed: 123 });
+  var seedBeforeReset = suR.seed;
+  suR._opts.seed = 456;   /* white-box: prove reset() re-reads the CURRENT opts, not a stale
+                            * copy carried from construction -- reset() always uses the SAME
+                            * seed in normal play, which is exactly why a plain before/after
+                            * comparison at the unchanged seed cannot tell a synced copy from a
+                            * stale one */
+  suR.reset();
+  ck('reset() keeps engine.seed in sync with the freshly reconstructed instruments (not a ' +
+     'stale copy from construction)',
+     suR.seed === suR.instruments.seed && suR.seed !== seedBeforeReset,
+     'engine.seed ' + seedBeforeReset + ' (seed 123) before, ' + suR.seed +
+     ' (seed 456) after reset()');
+  var suS = new SH.PWR2Engine({ seed: 321 });
+  run(suS, quiet ? 10 : 20);
+  var suL = new SH.PWR2Engine({ seed: 999 });   /* a DIFFERENT seed, so load must overwrite it */
+  suL.loadState(suS.saveState());
+  ck('loadState() keeps engine.seed in sync with the RESTORED instruments, not the pre-load seed',
+     suL.seed === suL.instruments.seed && suL.seed === suS.seed,
+     'pre-load seed 999, post-load engine.seed ' + suL.seed + ' (source engine\'s seed ' +
+     suS.seed + ')');
+  }
+
   if (grp('N')) {
   /* ---- 4n. THE STARTUP-RATE ANNUNCIATOR REACHES PWR2 (#661) ----------------------------------
    * *(OWNER RULING, 2026-09-08: "B — leave the trip declared absent; build a 1 DPM startup-rate
@@ -2880,7 +2945,30 @@ var MUTATIONS = [
   ['the slider label falls back to the shared pwr row (0-24 steps/s, the retired plant\'s ' +
    'fine-step currency) while the plant drives correctly',
    '          if (out.continuous_rod_withdrawal) {',
-   '          if (false && out.continuous_rod_withdrawal) {', { grp: 'O' }]
+   '          if (false && out.continuous_rod_withdrawal) {', { grp: 'O' }],
+  /* #769 — engine.seed goes back to a silent undefined at each of the three sites that set it.
+   * Three separate anchors because the three sync sites fail separately: the constructor's is
+   * the one every harness hits by default; reset()'s and loadState()'s are the "stale second
+   * copy" failure mode CLAUDE.md's standing list warns about, and neither is visible unless the
+   * effective seed genuinely changes across the call (which is why the group's own checks
+   * mutate _opts.seed / use a different construction seed before asserting). */
+  ['engine.seed goes back to a silent undefined at construction',
+   '      this.seed = this.instruments.seed;\n    } else {',
+   '    } else {', { grp: 'U' }],
+  ['engine.seed is left STALE across reset() (the freshly reconstructed instruments\' seed is ' +
+   'never read back)',
+   '    this.instruments.reset(this._ts, this._instrExtras());\n' +
+   '    this.instruments.update(this._ts, 0.02, this._instrExtras());\n' +
+   '    this.seed = this.instruments.seed;   // #769: keep the stored copy in sync with a reset\n' +
+   '  };',
+   '    this.instruments.reset(this._ts, this._instrExtras());\n' +
+   '    this.instruments.update(this._ts, 0.02, this._instrExtras());\n' +
+   '  };', { grp: 'U' }],
+  ['engine.seed is left STALE across loadState() (the restored instruments\' seed is never ' +
+   'read back)',
+   '    this.instruments.load(st.shellIns);\n' +
+   '    this.seed = this.instruments.seed;   // #769: keep the stored copy in sync with a restore',
+   '    this.instruments.load(st.shellIns);', { grp: 'U' }]
 ];
 
 /* ---- SCOPED-CLEAN-PASS PREFLIGHT (#513) ------------------------------------------------

@@ -1222,6 +1222,12 @@
        * branch integrating from undefined (measured: every reading NaN) */
       this.instruments.reset(this._ts, this._instrExtras());
       this.instruments.update(this._ts, 0.02, this._instrExtras());
+      // #769: engine.seed used to be a silent `undefined` — the seed was consumed by the
+      // instrument constructor and never stored on the engine. Read back the EFFECTIVE
+      // seed (post-defaulting: PWRInstruments falls through `(seed >>> 0) || 0x9E3779B9`
+      // on a falsy seed) rather than opts.seed, so this is never a second, differently-wrong
+      // number.
+      this.seed = this.instruments.seed;
     } else {
       throw new Error('pwr2_shell: RD.PWRInstruments/RD.PWR_CONFIG not loaded — the shell ' +
         'class REUSES the published instrument layer (D4) and cannot honestly run without it');
@@ -2123,6 +2129,7 @@
     this.instruments = new root.RD.PWRInstruments(root.RD.PWR_CONFIG, opts.seed);
     this.instruments.reset(this._ts, this._instrExtras());
     this.instruments.update(this._ts, 0.02, this._instrExtras());
+    this.seed = this.instruments.seed;   // #769: keep the stored copy in sync with a reset
   };
 
   /* ---- save/load: schema pwr2-1.0 (see header — pwr-1.0 is deliberately NOT loadable) ---- */
@@ -2269,6 +2276,7 @@
     }
     this._ts = st.ts;                          /* the same step's own snapshot — no re-derive */
     this.instruments.load(st.shellIns);
+    this.seed = this.instruments.seed;   // #769: keep the stored copy in sync with a restore
     /* #548 (and the #511 migration pattern): an old save carries no shell block — 0 is the
      * pre-fix state. The service always restores into a FRESHLY CONSTRUCTED shell, so
      * leaving this alone means undefined, and the swell term is simply missing. */

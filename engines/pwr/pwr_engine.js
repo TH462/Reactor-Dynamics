@@ -61,6 +61,10 @@
     this.cfg = CFG;
     this.dt_nominal = 0.02;
     this.instruments = new RD.PWRInstruments(this.cfg, opts.seed != null ? opts.seed : 0x9E3779B9);
+    // #769: the EFFECTIVE seed, read back off the instruments after their own defaulting
+    // (PWRInstruments falls through `(seed >>> 0) || 0x9E3779B9` on a falsy seed, e.g. 0) —
+    // not opts.seed, which would be a second, differently-wrong number for that case.
+    this.seed = this.instruments.seed;
     this.reset({ plant_id: 'pwr', initial_state: opts.initial_state || 'hot_full_power' });
   }
 
@@ -2228,6 +2232,7 @@
     }
     this.active_failures = st.active_failures.slice();
     this.instruments.load(st.instruments);
+    this.seed = this.instruments.seed;   // #769: keep the stored copy in sync with a restore
     this.T_fuel_ref = st.refs.Tf; this.T_coolant_ref = st.refs.Tavg;
     this._X_eq = st.refs.X_eq; this._hfp_refs = st.refs.hfp;
   };
@@ -3332,6 +3337,53 @@
       });
     },
 
+    seed_is_live: function () {
+      return test('#769 — engine.seed is not a silent undefined, and it drives the PRNG', function (ck) {
+        // engine.seed used to be a silent `undefined` -- the seed reached the instrument
+        // constructor (line 63: `new RD.PWRInstruments(this.cfg, opts.seed != null ? opts.seed
+        // : 0x9E3779B9)`) and was never stored on the engine. A harness that read or set
+        // `engine.seed` directly (rather than passing seed through the constructor, which
+        // always worked) silently measured ONE noise stream no matter how many "different
+        // seeds" it thought it was running.
+        var a = new Harness('hot_zero_power', 42);
+        var b = new Harness('hot_zero_power', 42);
+        var c = new Harness('hot_zero_power', 7);
+        a.run(20); b.run(20); c.run(20);
+        var pa = a.ins().primary_pressure, pb = b.ins().primary_pressure, pc = c.ins().primary_pressure;
+        ck('two engines at the SAME IC, DIFFERENT seeds, read DIFFERENT on a noise-carrying instrument',
+           'seed 42: ' + pa.toFixed(6) + ' MPa, seed 7: ' + pc.toFixed(6) + ' MPa',
+           pa !== pc, 'must differ');
+        ck('the SAME seed reproduces bit-exactly across two independently constructed engines',
+           'seed 42, two instances: ' + pa.toFixed(6) + ' vs ' + pb.toFixed(6) + ' MPa',
+           pa === pb, 'identical');
+        ck('engine.seed is a NUMBER and equals instruments.seed -- the assertion that would have caught #769',
+           'seed 42 -> engine.seed ' + a.eng.seed + ' (instruments.seed ' + a.eng.instruments.seed +
+           '), seed 7 -> engine.seed ' + c.eng.seed + ' (instruments.seed ' + c.eng.instruments.seed + ')',
+           typeof a.eng.seed === 'number' && a.eng.seed === a.eng.instruments.seed &&
+           typeof c.eng.seed === 'number' && c.eng.seed === c.eng.instruments.seed,
+           'both a number, each equal to its own instruments.seed');
+        // a falsy seed (0) falls through PWRInstruments' own `(seed >>> 0) || 0x9E3779B9`
+        // default (pwr_instruments.js:117, untouched by this fix) -- engine.seed must reflect
+        // that EFFECTIVE value, not the raw 0 that was asked for.
+        var z = new Harness('hot_zero_power', 0);
+        ck('a seed of 0 reads back as the EFFECTIVE (defaulted) seed, not the raw 0 asked for',
+           'engine.seed ' + z.eng.seed + ', instruments.seed ' + z.eng.instruments.seed,
+           z.eng.seed === 0x9E3779B9 && z.eng.seed === z.eng.instruments.seed,
+           '0x9E3779B9 (' + 0x9E3779B9 + ')');
+        // the save/restore path: loadState() calls instruments.load(), which must leave
+        // engine.seed in sync with the RESTORED instruments, not the pre-load seed (a stale
+        // second copy -- CLAUDE.md's standing list names this exact failure class).
+        var src = new Harness('hot_full_power', 321);
+        src.run(5);
+        var dst = new Harness('hot_full_power', 999);   // a DIFFERENT seed, so load must overwrite it
+        dst.eng.loadState(src.eng.saveState());
+        ck('loadState() keeps engine.seed in sync with the RESTORED instruments, not the pre-load seed',
+           'pre-load seed 999, post-load engine.seed ' + dst.eng.seed + ' (source engine\'s seed ' + src.eng.seed + ')',
+           dst.eng.seed === dst.eng.instruments.seed && dst.eng.seed === src.eng.seed,
+           'post-load engine.seed == instruments.seed == source engine\'s seed');
+      });
+    },
+
     msiv_closure_at_power: function () {
       return test('MSIV closure at power — SG bottles to its safeties, plant stabilizes', function (ck) {
         var h = new Harness('hot_full_power');
@@ -4254,7 +4306,7 @@
       'cold_shutdown_hold', 'mode5_to_mode1_roundtrip', 'mode5_heatup_paced', 'control_response', 'shutdown_scram',
       'load_mode_follow', 'load_above_rated_hold',
       'transient_loss_feedwater', 'transient_rcp_trip', 'transient_turbine_trip',
-      'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore',
+      'transient_loss_vacuum', 'flagship_tmi', 'physics_failures', 'save_restore', 'seed_is_live',
       'merged_injection_curve', 'rhr_valve_and_mode', 'msiv_closure_at_power', 'rcp_cavitation',
       'eccs_boration', 'eccs_cold_injection', 'loop_pressure_nodes', 'letdown_orifice_lineup', 'save_migration', 'mode5_controls',
       'cvcs_level_control', 'pressure_saturation_bounds', 'feedwater_isolation',
