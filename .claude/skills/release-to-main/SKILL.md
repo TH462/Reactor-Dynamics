@@ -295,7 +295,16 @@ production domain went on serving the *previous* release for half an hour, and n
 said so.
 
 ```bash
-node tools/verify_release_deploy.js          # exit 0 = live, exit 1 = not. Defaults to HEAD.
+node tools/verify_release_deploy.js          # exit 0 = live, exit 1 = not.
+                                              # Defaults to origin/main (fetched fresh) — NOT
+                                              # local HEAD. At this point in §5b, local HEAD is
+                                              # still `develop` on the RELEASE COMMIT while
+                                              # Cloudflare built `main`'s MERGE COMMIT one commit
+                                              # later; checking HEAD read the wrong sha and
+                                              # reported a live release as NOT LIVE (#763,
+                                              # 2026-09-15). Pass a sha explicitly only to
+                                              # override the default, e.g. to re-check an older
+                                              # release.
 ```
 
 **It is a script rather than a command to paste because the pasted version failed twice**,
