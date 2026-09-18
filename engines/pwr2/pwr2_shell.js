@@ -1037,7 +1037,14 @@
        * the operator lifts it, then it never reseats — pwr2_pressurizer step 3 */
       else if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', true);
       else if (c.failure_id === 'primary_leak') REHOMED.primary_leak(e, c);
-      else if (c.failure_id === 'rcp_trip') EN.command(e, 'pump_trip', true);
+      else if (c.failure_id === 'rcp_trip') {
+        EN.command(e, 'pump_trip', true);
+        /* #671: the SEAT, same precedent as #551's turbine row (:1743). `sys.pumpTripped`
+         * alone cannot tell this casualty from a LOOP/blackout trip or the operator's own
+         * stop_pump/set_rcp OFF (all three set the same flag) — inferring the casualty from
+         * that shared state would never fire once any of those held it first. */
+        e._rcpTripInjected = true;
+      }
       else if (c.failure_id === 'turbine_trip') EN.command(e, 'turbine_trip_failed', true);
       else if (c.failure_id === 'loss_of_feedwater') MAPPED.loss_of_feedwater(e, c);
       /* #507 wave 3 — the rows PWR2's existing machinery honestly injects */
@@ -1063,6 +1070,12 @@
       }
       else if (c.failure_id === 'large_loca') {
         REHOMED.primary_leak(e, { severity: c.severity !== undefined ? c.severity : 1.0 });
+        /* #671: TAG the break with the catalog id that opened it. A plain `primary_leak`
+         * injection (no catalog def, menu-invisible — see the `keep` comment at ~:1498) lands
+         * on the same cold_leg node with the same area formula, so the node alone cannot
+         * tell them apart; the detector below reads this to report the id the Failures tab
+         * row is actually keyed on. */
+        if (e.brk) e.brk.injected_id = 'large_loca';
       }
       else if (c.failure_id === 'rcp_seal_leak') {
         /* [derived] scale, MEASURED: 8e-6 m2 leaks ~1.2 kg/s at operating pressure against
@@ -1133,6 +1146,14 @@
       else if (c.failure_id === 'loss_of_feedwater') {
         EN.command(e, 'feed_pump_a_avail', 1); EN.command(e, 'feed_pump_b_avail', 1);
       }
+      /* #671: unset the SEAT only — do NOT restart the pump. `pump_trip` is unconditional and
+       * shared with the operator's own stop_pump/set_rcp OFF, and the real restart (rcp_start)
+       * is gated on live offsite power; auto-restoring here would either throw on a dead bus
+       * or silently un-secure a pump the operator (or a standing LOOP/blackout) independently
+       * stopped. Same rule the LOOP/blackout clears already follow one function up (:1055 "the
+       * operator restarts with rcp_start") — the board's rcp-run handler (ui/app.js) already
+       * follows this clear with a real set_rcp {running:true}, which stays the restart path. */
+      else if (c.failure_id === 'rcp_trip') e._rcpTripInjected = false;
       else if (c.failure_id === 'sg_overfeed') EN.command(e, 'feed_overfeed', false);
       else if (c.failure_id === 'loss_of_condenser_vacuum') EN.command(e, 'cw_pumps', true);
       /* #551: this row fell off the end of the chain — the instructor could inject a turbine
@@ -1725,8 +1746,14 @@
     /* the break family reports by NODE — a seal leak is the rcp node's break (#507 wave 3),
      * a tube rupture the sg_primary node's (#507 wave 5) */
     if (eng.brk && eng.brk.open) {
+      /* #671: `large_loca` was landing here as `primary_leak` — an id with no catalog def
+       * and no menu row (~:1498) — because the cold_leg branch reported by NODE alone and
+       * both ids open the same node. `injected_id` (set at injection, above) breaks the tie;
+       * a break opened some other way (a plain `primary_leak` command, a scenario script)
+       * carries no tag and still falls back to `primary_leak`, unchanged. */
       out.push(eng.brk.node === 'rcp' ? 'rcp_seal_leak'
-             : eng.brk.node === 'sg_primary' ? 'sgtr' : 'primary_leak');
+             : eng.brk.node === 'sg_primary' ? 'sgtr'
+             : (eng.brk.injected_id || 'primary_leak'));
     }
     if (!eng.fw.pumpA && !eng.fw.pumpB) out.push('loss_of_feedwater');
     if (eng.fw.overfeed) out.push('sg_overfeed');   /* the seat reports (#510 M-12) */
@@ -1740,6 +1767,11 @@
     if (eng.aw.blocked) out.push('afw_failure');
     if (eng.scramBlocked) out.push('failure_to_scram');
     if (eng.p9Defeated) out.push('anticipatory_trip_failure');
+    /* THE RCP ROW (#671, same precedent as the turbine row below). Read the SEAT (was
+     * `rcp_trip` injected), not `sys.pumpTripped` — the plant reaches a tripped pump by
+     * itself (LOOP, blackout, the operator's own stop_pump/set_rcp OFF), so inferring the
+     * casualty from that shared state would never fire once any of those held it first. */
+    if (eng._rcpTripInjected) out.push('rcp_trip');
     /* THE TURBINE ROW (#551, the half buried in its verification note). `inject_failure
      * {turbine_trip}` has been in the keep-list and has set the trip since the menu was built,
      * but this detector had NO turbine branch — so the row never appeared in the Failures tab

@@ -775,6 +775,48 @@ function runSuite(SH, rec, quiet, only) {
        eF.getActiveFailures().indexOf('turbine_trip') === -1, '');
   })();
 
+  /* ---- 1e-ia2. THE RCP TRIP SEAT (#671) ---------------------------------------------------------
+   * SAME SHAPE AS #551's turbine row above: `pump_trip` sets `sys.pumpTripped`, a flag also
+   * reached by a LOOP, a blackout, or the operator's own stop_pump/set_rcp OFF — so the
+   * detector cannot read the trip state and must read whether THIS injection made it. */
+  head('THE RCP TRIP SEAT  [#671 — invisible + unclearable until it reads a seat, not sys.pumpTripped]');
+  (function () {
+    var i;
+    var eG = new SH.PWR2Engine({});
+    for (i = 0; i < 3000; i++) eG.step(0.02);
+    eG.applyCommand({ action: 'inject_failure', failure_id: 'rcp_trip' });
+    for (i = 0; i < 100; i++) eG.step(0.02);
+    ck('#671: an INJECTED rcp_trip appears in the failures list, breaker open',
+       eG.getActiveFailures().indexOf('rcp_trip') !== -1 && eG.eng.sys.pumpTripped === true,
+       '[' + eG.getActiveFailures().join(',') + '], pumpTripped ' + eG.eng.sys.pumpTripped);
+    eG.applyCommand({ action: 'clear_failure', failure_id: 'rcp_trip' });
+    ck('...and clear_failure clears the SEAT without throwing, and without restarting the ' +
+       'pump on its own — the operator\'s own rcp_start/set_rcp stays the real restart path',
+       eG.getActiveFailures().indexOf('rcp_trip') === -1 && eG.eng.sys.pumpTripped === true,
+       '[' + eG.getActiveFailures().join(',') + '], pumpTripped ' + eG.eng.sys.pumpTripped);
+  })();
+
+  /* ---- 1e-ia3. LARGE_LOCA REPORTS AS ITSELF (#671) -----------------------------------------------
+   * `large_loca` and a plain `primary_leak` both open a cold_leg-node break with the same area
+   * formula, so the detector could not tell them apart by node alone and reported EVERY
+   * cold_leg break as `primary_leak` — an id with no catalog def and no menu row. */
+  head('LARGE_LOCA REPORTS AS ITSELF  [#671 — was reporting as primary_leak, no catalog id]');
+  (function () {
+    var i;
+    var eH = new SH.PWR2Engine({});
+    for (i = 0; i < 3000; i++) eH.step(0.02);
+    eH.applyCommand({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
+    for (i = 0; i < 100; i++) eH.step(0.02);
+    var actH = eH.getActiveFailures();
+    ck('#671: an INJECTED large_loca reports as ITSELF, not primary_leak',
+       actH.indexOf('large_loca') !== -1 && actH.indexOf('primary_leak') === -1 &&
+       eH.eng.brk && eH.eng.brk.open === true,
+       '[' + actH.join(',') + ']');
+    eH.applyCommand({ action: 'clear_failure', failure_id: 'large_loca' });
+    ck('...and clear_failure still clears it (both ids were always handled there)',
+       eH.getActiveFailures().indexOf('large_loca') === -1 && eH.eng.brk.open === false, '');
+  })();
+
   /* ---- 1e-ib. THE ROD DRIVE UNDER A LATCHED TRIP (#545) --------------------------------------
    * THE SAME LATCH-INTEGRITY CLASS AS THE BLOCK ABOVE, one system over, and it lives HERE
    * because the operator's rod verbs are the SHELL's — `rod_start`, `rod_nudge`, `rod_stop`

@@ -1307,6 +1307,17 @@
       // anything missing from this table under a trailing heading rather than dropping it.
       // A new failure therefore SHOWS UP misfiled instead of disappearing, and
       // `run_inspect` asserts every catalog entry is placed.
+      // #671: `stuck_rod_on_scram`, `steam_line_break` and `steam_line_break_upstream` are
+      // PLACEHOLDERS on PWR2 and are deliberately KEPT here. PWR2's own keep-list
+      // (pwr2_shell.js REHOMED wrapper, ~:1504) filters all three out, so on the shipped
+      // plant they are dead membership — but this table is SHARED: `PROFILES.pwr` serves
+      // both engines (the `pwr2` entry at ~:456 is `plant: 'pwr'`), the retired engine's
+      // catalog really does carry all three, and `run_inspect`'s "every failure is placed"
+      // check reads that catalog. Dropping them was tried and reddened it 61/62, misfiling
+      // three live rows under the trailing catch-all on the plant that still has them.
+      // They cost nothing while filtered — `buildFailures` renders from the CATALOG, so a
+      // group id with no catalog entry simply draws no row. #530 is what lands the
+      // steam-line break on PWR2; `stuck_rod_on_scram` has no PWR2 issue yet.
       failGroups: [
         { title: 'Reactivity & rods',        ids: ['continuous_rod_withdrawal', 'stuck_rod_on_scram', 'failure_to_scram', 'anticipatory_trip_failure'] },
         { title: 'Reactor coolant system',   ids: ['large_loca', 'sgtr', 'rcp_seal_leak', 'stuck_porv_open', 'rcp_trip'] },
