@@ -388,3 +388,11 @@ REVISED 2026-09-15 *(OWNER RULING, 2026-09-14: "Rewrite both")*, answering "the 
 
 MEASURED on this tree, full stack, the authored route driven end to end (ladder at MED with the new 600 s last settle, then the creep at SLOW), true critical control bank 208 of 627:
 
+
+RECONCILED 2026-09-18 — THE SIM WAS BROUGHT DOWN TO THIS FILE. 17 steps in, 17 out: no step added, none dropped, none re-ordered. **20 fields changed** — one step line (step 1), two notes (steps 1 and 9, both pure trailing deletions) and **all 17 Backgrounds**. Everything else already matched byte for byte and was left alone: every lettered acceptance row on steps 5–8, 12 and 14, every ⏩ line, and step 9's "Watch for:" line. The runtime plumbing this file does not carry — `acc`, `accs`, `accs_ordered`, `cmd`, `hold`, `overtaken`, `hl`, `hl_watch` — was not touched, so every highlight the pool had it still has.
+
+ONE LINE OF YOURS DID NOT FIT A GATE AND WAS SHORTENED BY THREE WORDS. Your step 1 reads "Verify the plant is hot and shut down: … Reactor Coolant Pump (RCP) FLOW on." — **23 words** against `run_style`'s scored 20-word cap on a step's instruction line. The old line sat at exactly 20 and spelling the pump out costs three. What ships is "Verify hot and shut down: … Reactor Coolant Pump (RCP) FLOW on." — your addition kept, the filler "the plant is" cut. Same remedy as Mode 5 → 3 steps 4 and 6. If you want the longer opening back, a clause has to move into the italic note instead.
+
+STEPS 5–8 DESCRIBE THE SHIPPED GRADING CORRECTLY — checked, because they were re-gated the day before. The third row on all four rungs grades on the bank not having moved for a minute, not on the counts flattening, and your rows say exactly that.
+
+WHAT THE DELETIONS COST, so it is on the record and not rediscovered as a defect: step 1's note lost its "BORON CHEM is the live loop concentration…" tail and its Background lost the boron clause; step 9's note lost the "Behind the readings:" instrument-teaching tail (2,023 → 1,222 characters); step 15's Background lost "This one also clears a rod stop at 20 %." Nothing else left the leg.

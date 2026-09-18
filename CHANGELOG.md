@@ -30,6 +30,22 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the Mode 3 → Mode 1 walkthrough is reconciled to the owner's step file
+
+- `pwr_startup`'s player-facing text now comes down to `Blueprint/walkthrough_steps/02_mode3_to_mode1.md`,
+  the owner's own authored file. **17 steps in, 17 out** — no step added, dropped or re-ordered.
+  **20 fields changed**: one step line, two notes (steps 1 and 9, both pure trailing deletions) and
+  **all 17 Backgrounds**, including substantially new boron and steam-generator coupling prose.
+- **Nothing in the grading moved.** `acc`, `accs`, `accs_ordered`, `cmd`, `hold`, `overtaken`, `hl`
+  and `hl_watch` are untouched, so the 1/M ladder's sequenced rungs on steps 5–8 and every
+  highlight are exactly as they shipped. Every lettered acceptance row, every fast-forward hint and
+  step 9's "Watch for:" line already matched his file byte for byte.
+- Step 1's line is **shortened by three words** against his file: his spelling-out of the Reactor
+  Coolant Pump takes a 20-word line to 23, over `run_style`'s scored W2 cap. His addition is kept and
+  the filler "the plant is" is cut — shortened, not waived. Recorded in his file and at the step.
+- Two source comments that described text the reconcile deleted (step 1's BORON CHEM tail, step 9's
+  "Behind the readings:" block) are corrected in place rather than left asserting what no longer ships.
+
 ## [Alpha 1.7.5] — 2026-09-17
 
 ### Changed — fast-forward carries across walkthrough step boundaries (#761)
