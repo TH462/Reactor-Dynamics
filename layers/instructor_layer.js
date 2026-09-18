@@ -1123,9 +1123,27 @@
      * flag saying "the standing comment is OURS to clear", so leaving it true over a cleared
      * message would let a later recovery null out somebody else's comment instead — the same
      * defect facing the other way. The precondition ROWS are unaffected; the walkthrough panel
-     * still lists every failed one, which is where that detail has always lived. */
-    this.pendingMessage = null;
-    c.precondMsg = false;
+     * still lists every failed one, which is where that detail has always lived.
+     *
+     * ⚠ EXCEPT ON THE CATCH-UP, AND THE REASON THE FIRST DRAFT MISSED IT IS IN THE PARAGRAPH
+     * ABOVE: it enumerated the CALLERS ("the caught_up loop raises no message at all") when the
+     * question is what is STANDING when the caller runs. The catch-up loop is not a player
+     * action — it is the runtime fast-forwarding past steps the plant has already done, on the
+     * first `_stepChecklist` pass — and the precondition comment is raised EARLIER IN THAT SAME
+     * PASS, a few lines up. So an unconditional clear ate it before it was ever drawn, and
+     * `precondSaid` latches for the life of the run, so it could never come back.
+     *
+     * MEASURED (quality pass, 2026-09-18), `start_checklist pwr_shutdown` on `hot_zero_power` —
+     * preconditions unmet (REACTOR POWER above 10 %: the plant reads 1.9e-7 %) and step 1's own
+     * acceptance already true, so the catch-up fires: before this guard `instructor.message` was
+     * NULL on every broadcast; with it the comment stands, exactly as it did before #749 item 4.
+     * The case is not exotic — it is precisely "the plant is not where the procedure assumes",
+     * which is the only case that comment exists for. A plain Continue on step 0 still retires
+     * it (the author's stated intent, and §2ac.3 pins it). */
+    if (by !== 'caught_up') {
+      this.pendingMessage = null;
+      c.precondMsg = false;
+    }
     c.done[c.idx] = true;
     c.doneBy[c.idx] = by;
     c.idx++;

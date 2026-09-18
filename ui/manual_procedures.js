@@ -2661,17 +2661,33 @@
            * `1.0e-7` — one ulp below prints `10.0e-8`, which is the formatter's own quirk at a
            * mantissa of 10 and is why the edge coincides with the target for this one.
            *
-           * IT CANNOT SOFT-LOCK, and the reason is structural rather than empirical: `ir_amps`
-           * and `power_pct` are both `K × pFrac` of the SAME flux (pwr2_true_state), so the rows
-           * are strictly ordered by construction — 1.0e-7 A is about 0.001 % power, a factor of
-           * 47 below where the power row sits, far outside the channels' 0.02-decade noise. Any
-           * route that reaches the power row passed this one long before, and a route that
-           * reaches neither was subcritical under the single `acc` too. The row gates nothing;
-           * it reports. */
+           * ON A HEALTHY BOARD IT CANNOT GATE: `ir_amps` and `power_pct` are both `K × pFrac` of
+           * the SAME flux (pwr2_true_state), so on TRUE STATE the rows are strictly ordered by
+           * construction — 1.0e-7 A is about 0.001 % power, a factor of 47 below where the power
+           * row sits, far outside the channels' 0.02-decade noise. Any route that reaches the
+           * power row passed this one long before, and a route that reaches neither was
+           * subcritical under the single `acc` too.
+           *
+           * ⚠ BUT BOTH ROWS ARE GRADED ON INSTRUMENTS, AND AN INSTRUMENT CAN BE FAILED — so
+           * "it can never gate" is TRUE OF THE PLANT and FALSE OF THE BOARD, and the earlier
+           * wording here claimed the second (quality pass, 2026-09-18). MEASURED: with
+           * `set_instrument_failure {instrument_id:'intermediate_range', mode:'dead'}` — which
+           * the Failures tab offers for this channel, `intermediate_range` being in the manual
+           * profile's indications — the channel publishes its range floor, 1.0e-11 A, against a
+           * true 8.3e-3 A, and this row reads `met:false` for ever while REACTOR POWER reads
+           * 99.7 % and meets. The step then has no `overtaken`, so Continue stays dark.
+           * The four 1/M count rungs acquired the same exposure in the same change (a `dead`
+           * `source_range` publishes 1 cps against a true 501). That is the ordinary price of
+           * Hard Rule 1 grading — every instrument-graded row in the pool carries it — and it is
+           * NOT a reason to grade truth; it is a reason not to write "cannot" here. Tracked on
+           * #772 with the rest of the #749 residuals. */
           accs: [{ p: 'ir_amps', op: '>=', v: 1e-7,
                    label: 'INTER RANGE reads 1.0e-7 A or more' },
                  { p: 'power_pct', op: '>', v: 0.05,
-                   label: 'REACTOR POWER reads 0.1 %' }],
+                   /* "or more", to match the row above it and the four count rungs — and because
+                    * the bare form was a claim the row outlives: it stays ticked at 0.3 %, where
+                    * the tile reads 0.3 and "REACTOR POWER reads 0.1 %" is simply false. */
+                   label: 'REACTOR POWER reads 0.1 % or more' }],
           /* THE HAND-OFF IS INSIDE THIS STEP, AND THE STEP DID NOT SAY SO (#735, owner playtest
            * #724 item 10: "In this step the SOURCE RANGE will shut off and the step doesnt address
            * it. We need a better handoff from SOURCE RANGE to INTER RANGE. users will be confuesd

@@ -43,8 +43,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 - **The threshold is a declared progress milestone, not a plant setpoint.** There is no sourced
   setpoint in this window — P-6 is 1.0e-10 A and the step *opens* at 4.7e-10 — so 1.0e-7 A is the
   round decade that lands mid-wait on every route measured. It obeys the same render-band rule as
-  the count rungs, and it cannot soft-lock: `ir_amps` and `power_pct` are both `K x pFrac` of the
-  same flux, so the two rows are strictly ordered by construction.
+  the count rungs, and **on a healthy board it cannot gate**: `ir_amps` and `power_pct` are both
+  `K x pFrac` of the same flux, so on TRUE STATE the two rows are strictly ordered by
+  construction. **Both rows are graded on INSTRUMENTS, though, so that is a statement about the
+  plant and not about the board** — MEASURED (quality pass): a `dead` failure injected on
+  `intermediate_range` from the Failures tab publishes the channel's range floor, 1.0e-11 A,
+  against a true 8.3e-3 A, and this row then never meets while REACTOR POWER reads 99.7 % and
+  does. The four count rungs took on the same exposure in the same change. That is the ordinary
+  price of Hard Rule 1 grading, which every instrument-graded row in the pool already pays;
+  it is tracked with the rest of the #749 residuals on #772.
 - **A criteria line for a sub-unit reading no longer prints a rounded zero.** `Math.round(1e-7)` is
   0, so the meter-notation form would have drawn `1.0e-7 A (0 A)` — a bracket saying the channel
   reads nothing beside a shorthand saying it does not. The bracket is dropped below one; the
@@ -57,6 +64,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   comment. It is retired with its step now, and the one caller that speaks *through* that advance —
   the overtaken skip — raises its message after the move instead of before it, so the note still
   lands on the step the player is dropped on.
+- **…and the catch-up fast-forward does not eat the preconditions comment** (quality pass). That
+  clear was unconditional at first, and the catch-up is not a player action: `_stepChecklist`
+  raises the "the plant does not match one or more of its prerequisites" comment and then runs
+  the catch-up in the SAME pass, so the clear deleted it before any broadcast drew it — and the
+  raise latches for the run, so it never came back. MEASURED on the shipped case (open the plant
+  shutdown walkthrough on a shut-down plant): the comment was gone entirely; it stands again now.
+  A plain Continue still retires it.
 
 ### Fixed — the number a startup step is graded on is the number the board prints (#749 items 1, 2)
 
@@ -76,7 +90,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 - **The criticality step's `REACTOR POWER > 0.1 %` was the same defect on a `toFixed(1)` tile** —
   "0.1" is drawn from 0.05 up. The acceptance is the band floor now, so the step no longer holds
   a dark Continue beside a tile already reading the target: MEASURED, **107.4 s** of that, gone.
-  The card's line is byte-identical (`fmtPredValue` rounds a power to one decimal either way).
+  The generated line was byte-identical at that point (`fmtPredValue` rounds a power to one
+  decimal either way, so 0.05 and 0.1 both draw "0.1 %"); the row then gained an authored label
+  alongside the INTER RANGE row above, and the card now reads *"REACTOR POWER reads 0.1 % or
+  more"*.
 - `test/run_checklist_pwr2.js` §2ab pins all of it — seven checks, with the four band edges
   re-derived out of the board's own `fmtExp` rather than copied, each proven red by injection.
 

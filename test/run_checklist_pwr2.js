@@ -2656,6 +2656,38 @@ if (!only) {
          'step ' + (before + 1) + ' -> ' + (after + 1) + '; card read ' + JSON.stringify(drawnBefore) +
          ' before Continue and ' + JSON.stringify(drawnAfter || null) + ' after');
     })();
+
+    /* ...BUT THE CATCH-UP IS NOT A CONTINUE, and the first draft of the clear ate the one comment
+     * the player most needs (quality pass, 2026-09-18). `_stepChecklist` raises the
+     * PRECONDITIONS-NOT-MET comment and THEN runs the catch-up fast-forward, in the same pass —
+     * so an unconditional clear inside `_checklistCheckOff` deleted it before any broadcast drew
+     * it, and `precondSaid` latches for the run, so it never came back.
+     *
+     * `pwr_shutdown` on `hot_zero_power` is the shipped case: its first precondition is REACTOR
+     * POWER above 10 % (the plant reads about 1.9e-7 %) and step 1's acceptance — OUTPUT below
+     * 5 MWe — is already true, so the catch-up fires on the first pass. This is the walkthrough
+     * equivalent of the player opening the wrong procedure, which is exactly when the comment has
+     * something to say.
+     *
+     * INJECTION: drop the `by !== 'caught_up'` guard in `_checklistCheckOff` -> this check red
+     * (message NULL on every broadcast), 2ac.1-2ac.3 all still green — which is why it is written
+     * as its own check and not folded into one of them. */
+    (function () {
+      var svc3 = mkSvc('hot_zero_power');
+      var s3 = null, k;
+      for (k = 0; k < 5; k++) s3 = svc3.tick();
+      svc3.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_shutdown' });
+      for (k = 0; k < 4; k++) s3 = svc3.tick();
+      var c3 = (s3.instructor && s3.instructor.checklist) || null;
+      var caughtUp = !!c3 && (c3.done_by || []).indexOf('caught_up') !== -1;
+      var unmet = c3 && c3.preconditions ? c3.preconditions.filter(function (r) { return !r.met; }).length : 0;
+      var m3 = (s3.instructor && s3.instructor.message) || null;
+      ck('2ac.4 ...and the catch-up fast-forward does NOT eat the preconditions comment (#749 item 4)',
+         caughtUp && unmet > 0 && !!m3 && /prerequisite/i.test(String(m3)),
+         !c3 ? 'no checklist' : 'caught_up ' + caughtUp + ' (done_by ' + JSON.stringify(c3.done_by) +
+           '), ' + unmet + ' precondition row(s) unmet, message ' +
+           (m3 ? JSON.stringify(String(m3).slice(0, 48) + '…') : 'NONE'));
+    })();
   })();
 }
 
