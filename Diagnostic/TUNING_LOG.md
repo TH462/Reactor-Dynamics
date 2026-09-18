@@ -29,6 +29,76 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-18-develop-b (#749 follow-up — a row the player can break must not take the step with it)
+
+**The ruling.** *(OWNER RULING, 2026-09-18: selected option "B" of four — A keep the INTER RANGE
+row as shipped; **B keep it and close the soft-lock**; C revert the row; D build a non-grading
+"what to watch" row kind. A SELECTION, not verbatim words.)*
+
+**The defect, re-measured before acting.** `pwr_startup` step 9 grades criticality on two rows and
+since #749 item 1 **both grade on INSTRUMENTS**. `accs` is a conjunction, so a channel the player
+can break takes the step with it. MEASURED on this tree, `hot_full_power`, seed 7, through the real
+`_gradeAccs` — `set_instrument_failure {intermediate_range, dead}`, which the Failures tab offers:
+
+| | INTER RANGE row | REACTOR POWER row | step |
+|---|---|---|---|
+| healthy | met, reading **2.0e-3 A** | met, **99.6 %** | **ticks** |
+| dead channel | **never met**, reading **1.0e-11 A** (true 8.3e-3) | met, **99.6 %** | **never ticks** |
+
+The step authors no `overtaken`, so Continue stays dark for ever. The #667 class.
+
+**What the snapshot publishes — the question that decided the mechanism.** MEASURED:
+`snapshot.active_failures` is **`[]`** with the channel dead. The declaration exists one layer
+down — `PWR2Engine.getActiveFailures()` returns `instrument:intermediate_range` — and **nothing
+consumes it**: `ControlLayer.getActiveFailures()` returns only kernel-injected rows, and the
+service publishes that. So the instructor layer cannot see an instrument failure at all.
+
+**The mechanism: `implied_by`, an IMPLICATION — not a fail-open on a broken gauge.** A row may name
+a sibling in the same `accs` array whose own threshold already answers it; while that sibling is
+met, this row latches too and is flagged `implied`, and the card draws *"Covered by 9b: REACTOR
+POWER reads 0.1 % or more — this gauge did not get there."*
+
+**Fail-open was the leading candidate and was rejected on two grounds, the second the load-bearing
+one.** (1) The signal is not published, and publishing it means `control_kernel` + a decision about
+`simulation_service`'s new-failure attention stop — outside the brief's file scope. (2) **Even with
+the bit, standing a row down BECAUSE its gauge broke says nothing about whether anything still
+asserts the step.** On a single-row step it would tick the step off a dead instrument — "you are
+done because your meter died". The honest condition is REDUNDANCY, which is what `implied_by`
+names, and it works for any cause (a stuck channel, a lost failure list) rather than only a
+declared `dead`. `overtaken` was also weighed and rejected: it checks the WHOLE STEP off on a
+plant condition, and a dead instrument is not the plant moving past anything — it would skip the
+criticality confirmation because a gauge broke.
+
+**The implication is ARITHMETIC on this plant, not a fit.** `pwr2_true_state` computes
+`ir_amps = 8.333e-3 x power_frac`, so the power row's own 0.05 % threshold puts INTER RANGE at
+**4.17e-6 A — 41.7x** the covered row's 1.0e-7 A. It therefore cannot fire on a healthy board: the
+covered row ticks at **+742 s / +851 s** against **+1306 s / +1499 s** for the sibling that could
+imply it (INHERITED from the authoring pass; §2ab.7 re-measures it every run).
+
+**Gate.** `run_checklist_pwr2` **319 -> 324**, new section §2ad, five checks. Injection-proven
+three ways, each reddening a different pair: delete `implied_by` -> 2ad.1 and 2ad.3 (*"step graded
+false"* — the strand itself); drop the `state[ni].met` test -> 2ad.4 and 2ad.5 (the row ticks with
+nothing asserting the step); move the threshold to 1.0e-5 -> 2ad.2 at 0.4x. All 19 touched runners
+green: `run_checklist` · `run_procedures_stack` 29/29 262/262 · `run_procedures_chain` 50/50 ·
+`run_m5` · `run_m6` · `run_m6ph` · `run_m7` · `run_autoctl` · `run_campaign` A/B/C · `run_scenarios`
+· `run_procdocs` · `run_style` · `run_manual_units` · `verify_ckl_relevance` · `verify_e2e_ui` ·
+`verify_manual_follow`.
+
+**IS IT GENERAL? Yes, and it was NOT applied pool-wide — that is its own decision.** MEASURED on
+the built pwr2 pool: **84 graded steps, 135 predicate acceptance rows, 87 of them graded on an
+instrument, 27 of those the ONLY row of their step.** A pool-wide *fail-open* grading rule would
+touch all 87 — and those 27 are exactly where it would tick a step off a broken gauge with nothing
+else asserting it, which is the argument for redundancy over fail-open in one number.
+
+**NOT VERIFIED.** The rendered card — the "Covered by" line is not asserted in a browser by any
+gate; `verify_ckl_relevance` and `verify_manual_follow` are green but neither reads it. The
+save/restore path drops `implied` (the save format carries one boolean per entry), so a reloaded
+run keeps the tick and loses the note. Whether any OTHER walkthrough step becomes unsatisfiable
+under a single `dead` instrument — the 87 rows were counted, not swept. `run_all` unfiltered — not
+run; the coordinator owns the aggregate.
+
+---
+
 ## Session log — 2026-09-18-develop-a (#749 · #757 · #759 · #766 — the graded number vs the number on the board)
 
 **Issues:** #749 (four items), #757, #759 (verified), #766 (closed), #772 (filed). **Nothing pushed.

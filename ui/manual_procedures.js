@@ -94,6 +94,22 @@
  *           order is only a drawing order. `pwr_startup` 14 reads "press LATCH, THEN set LOAD"
  *           while the replay issues LOAD first and nothing notices — an unordered step where the
  *           prose implies one, left as it is (#756 retrofits nothing; see that note).
+ *   accs[].implied_by  OPTIONAL — the `p` of ANOTHER entry in the same `accs` array whose
+ *           own threshold already answers this row. While that entry is met, this one latches
+ *           too and is flagged `implied` so the card can say "covered by" instead of pretending
+ *           the gauge read the number. *(OWNER RULING, 2026-09-18, option B: keep the INTER
+ *           RANGE progress row on `pwr_startup` 9 and close the soft-lock it opened.)*
+ *           WHAT IT IS FOR: `accs` is a CONJUNCTION, so a row graded on an instrument the player
+ *           can break takes the whole step with it — MEASURED, `set_instrument_failure
+ *           {intermediate_range, dead}` publishes 1.0e-11 A against a true 8.3e-3 A and step 9
+ *           stayed ungradeable with REACTOR POWER reading 99.6 %.
+ *           WHAT IT IS NOT: a fail-open on a broken gauge. Nothing here asks whether the channel
+ *           is healthy (nothing in the snapshot could answer — `active_failures` is empty under
+ *           an instrument failure); it asks whether a NAMED sibling still asserts the step. So
+ *           author it only where the implication is a property of the plant you can quote, and
+ *           never on the row that carries the step's real acceptance — a step whose ONLY row is
+ *           implied grades nothing at all. Ignored on an `accs_ordered` step, where position is
+ *           meaning; `run_checklist_pwr2` §2ad reddens if one is authored there.
  *   accs_ordered OPTIONAL boolean, OPT-IN, meaningless without `accs` — THE ENTRIES BECOME
  *           LIVE ONE AT A TIME *(OWNER DIRECTIVE, 2026-09-15: "For the early-plot hole, we could
  *           have instructions for substeps not just one line of instruction then multiple
@@ -2682,7 +2698,26 @@
            * NOT a reason to grade truth; it is a reason not to write "cannot" here. Tracked on
            * #772 with the rest of the #749 residuals. */
           accs: [{ p: 'ir_amps', op: '>=', v: 1e-7,
-                   label: 'INTER RANGE reads 1.0e-7 A or more' },
+                   label: 'INTER RANGE reads 1.0e-7 A or more',
+                   /* AND THE SOFT-LOCK THE PARAGRAPH ABOVE MEASURED IS CLOSED HERE *(OWNER
+                    * RULING, 2026-09-18: option B of four — keep the row, close the soft-lock;
+                    * reverting the row and building a separate non-grading "what to watch"
+                    * affordance were both declined)*. `implied_by` says this row's question is
+                    * already answered by the REACTOR POWER row's own threshold, so a player
+                    * whose INTER RANGE channel is dead is not stranded on a step the board says
+                    * is finished. It is an IMPLICATION, not a fail-open on a broken gauge: the
+                    * relief needs a named sibling that still asserts the step, and that sibling
+                    * is graded on an instrument too, so Hard Rule 1 is untouched.
+                    *
+                    * THE IMPLICATION IS ARITHMETIC ON THIS PLANT, not a fit. `pwr2_true_state`
+                    * computes `ir_amps = 8.333e-3 x power_frac`, so REACTOR POWER above 0.05 %
+                    * puts INTER RANGE at 4.17e-6 A — 41.7x this row's 1.0e-7 A. It can never
+                    * fire on a healthy board (MEASURED, authored route: this row ticks at
+                    * +742 s / +851 s, the power row at +1306 s / +1499 s, so this one is met
+                    * long before the sibling that could imply it), which is exactly why it is
+                    * safe. `run_checklist_pwr2` §2ad re-derives the ratio out of the engine and
+                    * reddens if a retune closes it. */
+                   implied_by: 'power_pct' },
                  { p: 'power_pct', op: '>', v: 0.05,
                    /* "or more", to match the row above it and the four count rungs — and because
                     * the bare form was a claim the row outlives: it stays ticked at 0.3 %, where

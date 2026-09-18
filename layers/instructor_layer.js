@@ -1550,7 +1550,10 @@
   InstructorLayer.prototype._ensureAccsState = function (holder, st) {
     if (!holder.accsState || holder.accsState.length !== st.accs.length) {
       holder.accsState = st.accs.map(function () {
-        return { streak: 0, met: false, obs: null, graded_by: null, bag: null };
+        // `implied` — latched by a sibling's threshold rather than this row's own (see
+        // `implied_by` in _gradeAccs). Initialised here so the shape is stable across
+        // serialize/restore and the card can read it on the first broadcast.
+        return { streak: 0, met: false, obs: null, graded_by: null, bag: null, implied: false };
       });
     }
     return holder.accsState;
@@ -1588,6 +1591,59 @@
        * `steady` row un-ticks because the player pulled more rod. The block only gates NEW
        * latches, so the step still cannot COMPLETE until every row is met at once. */
     }
+    /* ---------------------------------------------------------------- `implied_by` (#749
+     * follow-up, OWNER RULING 2026-09-18, option B: "the INTER RANGE row stays — close the
+     * soft-lock it opened").
+     *
+     * A ROW MAY NAME A SIBLING WHOSE OWN THRESHOLD ALREADY ANSWERS IT, and then the sibling
+     * being met is enough. `implied_by` holds the `p` of another entry in the SAME `accs`
+     * array; when that entry is met and this one is not, this one latches and is flagged
+     * `implied` so the card can say so.
+     *
+     * WHY IT EXISTS. `pwr_startup` step 9 grades criticality on two instrument rows — INTER
+     * RANGE at or above 1.0e-7 A, and REACTOR POWER above 0.05 %. `accs` is a CONJUNCTION, so
+     * a channel the player can break takes the step with it: MEASURED on this tree,
+     * `hot_full_power`, seed 7, through this function — `set_instrument_failure
+     * {intermediate_range, dead}`, which the Failures tab offers, publishes the channel's range
+     * floor 1.0e-11 A against a true 8.3e-3 A, and the INTER RANGE row read `met:false` for
+     * ever while REACTOR POWER read 99.6 % and met. The step authors no `overtaken`, so
+     * Continue stayed dark: a stranded leg, the #667 class.
+     *
+     * WHY IT IS AN IMPLICATION AND NOT A FAIL-OPEN ON A BROKEN GAUGE, which was the obvious
+     * candidate and is the WRONG SHAPE. (1) Nothing the instructor layer can see declares the
+     * failure — MEASURED, `snapshot.active_failures` is `[]` with the channel dead; the engine
+     * knows (`PWR2Engine.getActiveFailures` returns `instrument:intermediate_range`) and
+     * nothing publishes it. (2) Even with that bit published, standing a row down BECAUSE its
+     * gauge broke says nothing about whether anything still asserts the step — on a
+     * single-row step it would tick the step off a broken instrument, which is "you are done
+     * because your meter died". The honest condition is REDUNDANCY, and that is what this
+     * names: the row stands down only when a NAMED sibling, itself graded on an instrument,
+     * has already answered the same question. Hard Rule 1 is untouched — no true_state is
+     * read on either side — and the relief works for any cause, a stuck channel or a lost
+     * failure list included, because it is a plant-and-board condition, not a failure flag.
+     *
+     * IT IS SAFE ONLY WHERE THE IMPLICATION IS REAL, AND THAT IS THE AUTHOR'S CLAIM TO MAKE.
+     * For step 9 it is arithmetic, not a fit: `pwr2_true_state` computes `ir_amps = 8.333e-3 ×
+     * power_frac`, so the power row's own 0.05 % threshold puts INTER RANGE at 4.17e-6 A —
+     * 41.7x the row's 1.0e-7 A. `run_checklist_pwr2` §2ad re-derives that ratio out of the
+     * engine rather than trusting this paragraph.
+     *
+     * NOT ON AN `accs_ordered` STEP. There a row's POSITION is its meaning, and letting a
+     * later row's latch stand an earlier one down would open the sequencer from the far end.
+     * §2ad reddens if one is ever authored. */
+    for (var mi = 0; mi < st.accs.length; mi++) {
+      var me = st.accs[mi], mx = state[mi];
+      if (ordered || !me || !me.implied_by || mx.met) continue;
+      for (var ni = 0; ni < st.accs.length; ni++) {
+        if (ni === mi || !st.accs[ni] || st.accs[ni].p !== me.implied_by) continue;
+        if (state[ni].met) { mx.met = true; mx.implied = true; }
+      }
+    }
+    /* recomputed over the SAME bits the loop above set, so an implication cannot be masked by
+     * an `all` taken before it resolved — and identical to the loop's own accumulation when no
+     * entry carries `implied_by`, which is every step in the pool but one. */
+    all = true;
+    for (var qi = 0; qi < state.length; qi++) if (!state[qi].met) { all = false; break; }
     return all;
   };
   // The command half of the watch: latch any unmet cmd-kind entry the command satisfies.
@@ -1751,10 +1807,11 @@
         acc_met: f.accMetNow,
         graded_by: f.gradedBy,
         done: f.done,
-        // Multi-check-off verdicts for the ACTIVE step ({met, obs, graded_by} per
-        // entry, order-parallel to the step's `accs`), or null on single-acc steps.
+        // Multi-check-off verdicts for the ACTIVE step ({met, obs, graded_by, implied}
+        // per entry, order-parallel to the step's `accs`), or null on single-acc steps.
+        // `implied` — this row latched on a sibling's threshold, not its own (`implied_by`).
         accs: f.accsState ? f.accsState.map(function (a) {
-          return { met: a.met, obs: a.obs, graded_by: a.graded_by };
+          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied };
         }) : null,
       } : null,
       level_complete: this.levelComplete ? {
@@ -1803,9 +1860,10 @@
          * to rewind to" while the button sat lit). M5 fills this in from the ring itself. */
         rewind_ready: !!this._rewindReady,
         // Multi-check-off verdicts for the ACTIVE step (#244 item 8) — {met, obs,
-        // graded_by} order-parallel to the step's `accs`; null on single-acc steps.
+        // graded_by, implied} order-parallel to the step's `accs`; null on single-acc
+        // steps. `implied` — latched on a sibling's threshold (`implied_by`), not its own.
         accs: this.checklist.accsState ? this.checklist.accsState.map(function (a) {
-          return { met: a.met, obs: a.obs, graded_by: a.graded_by };
+          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied };
         }) : null,
         /* THE LAST OUT-OF-TURN PRESS ON THIS STEP (#759) — `{ acc_index, blocked_by }`, both
          * indices into the step's own `accs`. `acc_index` is the row the press WOULD have
@@ -1965,9 +2023,13 @@
           cmdSeen: !!cs.cmdSeen, sawSeen: !!cs.sawSeen,
           accStreak: cStreak, accMetNow: cStreak >= ACC_STABLE_N,
           gradedBy: null, complete: !!cs.complete,
-          // restore the per-entry latches; streaks/obs regrade live (#244 item 8)
+          /* restore the per-entry latches; streaks/obs regrade live (#244 item 8). `implied`
+           * is NOT saved and restores false: the save format carries one boolean per entry,
+           * and a latch taken by `implied_by` restores as the latch it is — the card loses
+           * only the "covered by" note under that row until the run ends. Widening
+           * `accs_met` to carry it is a save-format change for a note. */
           accsState: cs.accs_met ? cs.accs_met.map(function (m) {
-            return { streak: 0, met: !!m, obs: null, graded_by: null };
+            return { streak: 0, met: !!m, obs: null, graded_by: null, implied: false };
           }) : null,
           // Precondition VERDICTS are DERIVED state — never saved; the first step() tick
           // after a restore regrades them against the live plant.
@@ -2034,9 +2096,10 @@
         idx: fs.idx, cmdSeen: fs.cmdSeen, sawSeen: fs.sawSeen,
         accStreak: fStreak, accMetNow: fStreak >= ACC_STABLE_N,
         gradedBy: null, done: fs.done,
-        // restore the per-entry latches; streaks/obs regrade live (#244 item 8)
+        // restore the per-entry latches; streaks/obs regrade live (#244 item 8); `implied`
+        // is not saved — see the checklist half above.
         accsState: fs.accs_met ? fs.accs_met.map(function (m) {
-          return { streak: 0, met: !!m, obs: null, graded_by: null };
+          return { streak: 0, met: !!m, obs: null, graded_by: null, implied: false };
         }) : null,
       };
       this.scenarioStartTime = state.scenario_start_time;

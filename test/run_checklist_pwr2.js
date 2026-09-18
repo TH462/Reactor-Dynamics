@@ -2548,6 +2548,145 @@ if (!only) {
   })();
 
 
+  /* 2ad. A ROW THE PLAYER CAN BREAK MUST NOT TAKE THE STEP WITH IT (#749 follow-up,
+   * OWNER RULING 2026-09-18, option B of four: "the INTER RANGE row stays — close the
+   * soft-lock it opened"; reverting the row and building a separate non-grading affordance
+   * were both put and declined).
+   *
+   * THE DEFECT. `accs` is a CONJUNCTION and since #749 item 1 both of the criticality step's
+   * rows grade on INSTRUMENTS. MEASURED on this tree, `hot_full_power`, seed 7, through the
+   * real `_gradeAccs`: `set_instrument_failure {intermediate_range, dead}` — reachable by the
+   * player from the Failures tab — publishes the channel's range floor 1.0e-11 A against a
+   * true 8.3e-3 A, the INTER RANGE row reads `met:false` for ever while REACTOR POWER reads
+   * 99.6 % and meets, and the step authors no `overtaken`. Continue dark, leg stranded.
+   *
+   * THE MECHANISM IS AN IMPLICATION, NOT A FAIL-OPEN, and check 4 is what holds that line.
+   * The obvious candidate — stand a row down when its channel is known bad — cannot be built
+   * honestly here and would be the wrong shape if it could: (a) MEASURED, nothing the
+   * instructor layer can see declares the failure, `snapshot.active_failures` is `[]` with the
+   * channel dead (the engine knows; nothing publishes it); (b) standing a row down BECAUSE a
+   * gauge broke says nothing about whether anything still asserts the step. `implied_by` names
+   * a SIBLING that does, and that sibling is graded on an instrument too — Hard Rule 1 intact,
+   * no true_state read on either side.
+   *
+   * INJECTION (each proven in place, 2026-09-18):
+   *   · delete `implied_by: 'power_pct'` from the step        -> 2ad.1 and 2ad.3 red
+   *   · drop the `state[ni].met` test in the implication pass -> 2ad.4 red (it ticks a step
+   *                                                              whose real acceptance is unmet)
+   *   · the `ordered` half of 2ad.1 is an AUTHORING gate and cannot be reddened by a code
+   *     change: no shipped ordered step carries an `implied_by`, which is the state it pins. */
+  (function () {
+    var proc = null;
+    POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
+
+    /* --- 1. THE AUTHORING SHAPE, swept over the WHOLE pool rather than the one step: an
+     * `implied_by` that names nothing, names itself, sits on an ordered step, or covers every
+     * row of a step (a step that then grades nothing at all) is a defect wherever it appears. */
+    (function () {
+      var bad = [], carriers = [];
+      POOL.forEach(function (pr) {
+        (pr.steps || []).forEach(function (st2, i) {
+          var accs = st2.accs || [];
+          var impl = 0;
+          accs.forEach(function (en) {
+            if (!en || !en.implied_by) return;
+            impl++;
+            carriers.push(pr.id + ' step ' + (i + 1) + ' ' + en.p + ' <- ' + en.implied_by);
+            if (en.implied_by === en.p) bad.push(pr.id + ':' + (i + 1) + ' names itself');
+            if (!accs.some(function (o) { return o !== en && o.p === en.implied_by; }))
+              bad.push(pr.id + ':' + (i + 1) + ' names a sibling that is not there (' + en.implied_by + ')');
+            if (st2.accs_ordered) bad.push(pr.id + ':' + (i + 1) + ' is on an accs_ordered step');
+            if (!en.label) bad.push(pr.id + ':' + (i + 1) + ' has no label to draw under');
+          });
+          if (impl && impl === accs.length) bad.push(pr.id + ':' + (i + 1) + ' has EVERY row implied — it grades nothing');
+        });
+      });
+      ck('2ad.1 every authored `implied_by` names a real sibling, on an unordered step, and never covers the whole step (#749)',
+         bad.length === 0 && carriers.length >= 1,
+         bad.length ? bad.join('; ') : (carriers.length ? carriers.join(' · ') : 'NO step authors implied_by — has the row been reverted?'));
+    })();
+
+    /* --- 2. THE IMPLICATION IS ARITHMETIC ON THIS PLANT, and the constant is LIFTED out of the
+     * engine rather than quoted here: `pwr2_true_state` computes `ir_amps = K_IR x power_frac`,
+     * so the power row's own threshold pins where INTER RANGE must already be. A retune of
+     * either number that closes the margin reddens this instead of quietly making the
+     * implication a guess. Bound at 10x, measured at 41.7x. */
+    (function () {
+      var tsSrc = fs.readFileSync(path.join(ROOT, 'engines', 'pwr2', 'pwr2_true_state.js'), 'utf8');
+      var kM = /K_IR\s*=\s*([0-9.eE+-]+)/.exec(tsSrc);
+      var K_IR = kM ? parseFloat(kM[1]) : NaN;
+      var st2 = proc ? proc.steps[8] : null;
+      var irEn = null, pwEn = null;
+      ((st2 && st2.accs) || []).forEach(function (e) { if (e.p === 'ir_amps') irEn = e; if (e.p === 'power_pct') pwEn = e; });
+      var atPower = (irEn && pwEn && isFinite(K_IR)) ? K_IR * (pwEn.v / 100) : NaN;
+      var ratio = atPower / (irEn ? irEn.v : NaN);
+      ck('2ad.2 the covering row threshold puts INTER RANGE far above the covered row (#749)',
+         isFinite(ratio) && ratio >= 10,
+         !kM ? 'could not lift K_IR out of pwr2_true_state.js — has it been renamed?'
+             : 'K_IR ' + K_IR + '; REACTOR POWER ' + (pwEn ? pwEn.v : '?') + ' % puts ir_amps at ' +
+               (isFinite(atPower) ? atPower.toExponential(2) : '?') + ' A against the row ' +
+               (irEn ? irEn.v.toExponential(1) : '?') + ' A — ' +
+               (isFinite(ratio) ? ratio.toFixed(1) : '?') + 'x, bound 10x');
+    })();
+
+    /* --- 3 / 4 / 5. THE PLANT. One helper, three fixtures — the soft-lock closed, the relief
+     * refusing to fire when nothing else asserts the step, and the healthy board unchanged.
+     * `hot_full_power` is the fixture the defect was measured on: it is the cheapest plant on
+     * which the covering row is true and the covered one can be broken. */
+    function gradeStep(ic, dead, ticks) {
+      var svc = mkSvc(ic);
+      var s = null, i;
+      for (i = 0; i < 10; i++) s = svc.tick();
+      if (dead) svc.handleCommand({ action: 'set_instrument_failure', instrument_id: dead, mode: 'dead' });
+      var il = Object.create(RD.InstructorLayer.prototype);
+      var holder = {}, all = false;
+      for (i = 0; i < (ticks || 40); i++) { s = svc.tick(); all = il._gradeAccs(holder, proc.steps[8], s); }
+      return { all: all, rows: holder.accsState, s: s };
+    }
+
+    (function () {
+      var r = gradeStep('hot_full_power', 'intermediate_range');
+      var ir = r.rows ? r.rows[0] : null, pw = r.rows ? r.rows[1] : null;
+      ck('2ad.3 a dead INTER RANGE no longer strands the criticality step — the step completes (#749)',
+         r.all === true && !!ir && ir.met === true && ir.implied === true &&
+         ir.obs === r.s.instruments.intermediate_range && ir.obs < 1e-7,
+         'step graded ' + r.all + '; INTER RANGE met ' + (ir && ir.met) + ' implied ' + (ir && ir.implied) +
+         ' reading ' + (ir && ir.obs != null ? ir.obs.toExponential(1) : '?') + ' A against a true ' +
+         (r.s.true_state.ir_amps != null ? r.s.true_state.ir_amps.toExponential(1) : '?') +
+         ' A; REACTOR POWER met ' + (pw && pw.met) + ' at ' + (pw && pw.obs != null ? pw.obs.toFixed(1) : '?') + ' %');
+    })();
+
+    (function () {
+      /* THE LINE THIS CHECK HOLDS. The relief is redundancy, not sympathy for a broken gauge:
+       * on a plant where the COVERING row is also unmet, a dead INTER RANGE must strand exactly
+       * as before. Mode 3 at hot zero power is that plant — REACTOR POWER reads about 1.9e-7 %
+       * against the row's 0.05 %. It also proves the mechanism is not reading a failure bit,
+       * because the same injection is standing and the step does not tick. */
+      var r = gradeStep('hot_zero_power', 'intermediate_range');
+      var ir = r.rows ? r.rows[0] : null, pw = r.rows ? r.rows[1] : null;
+      ck('2ad.4 ...and it is NOT a fail-open: with the covering row unmet the same dead channel still holds the step (#749)',
+         r.all === false && !!ir && ir.met === false && !!pw && pw.met === false &&
+         (r.s.active_failures || []).length === 0,
+         'step graded ' + r.all + '; INTER RANGE met ' + (ir && ir.met) + ', REACTOR POWER met ' +
+         (pw && pw.met) + ' at ' + (pw && pw.obs != null ? pw.obs.toExponential(1) : '?') +
+         ' %; the snapshot declares ' + (r.s.active_failures || []).length +
+         ' active failures with the channel dead — which is why the relief cannot read one');
+    })();
+
+    (function () {
+      /* AND ON A HEALTHY BOARD IT CHANGES NOTHING. The covered row meets on its OWN reading and
+       * `implied` stays false, which is the claim that keeps this from being the report-only
+       * row kind the owner declined. */
+      var r = gradeStep('hot_full_power', null, 20);
+      var ir = r.rows ? r.rows[0] : null;
+      ck('2ad.5 on a healthy board the covered row still ticks on its own reading, unimplied (#749)',
+         r.all === true && !!ir && ir.met === true && ir.implied === false &&
+         ir.obs >= 1e-7 && ir.graded_by === 'instrument',
+         'INTER RANGE met ' + (ir && ir.met) + ' implied ' + (ir && ir.implied) + ' reading ' +
+         (ir && ir.obs != null ? ir.obs.toExponential(1) : '?') + ' A by ' + (ir && ir.graded_by));
+    })();
+  })();
+
   /* 2ac. A MESSAGE RAISED ON A WALKTHROUGH STEP DIES WITH THAT STEP (#749 item 4, 2026-09-18).
    *
    * `_advanceFollow` has cleared `pendingMessage` on every step change since it was written;

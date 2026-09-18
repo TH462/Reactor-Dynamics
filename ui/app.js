@@ -4271,6 +4271,26 @@
     return '  — the plant reads ' + (MODE_NAMES[Math.round(m)] || ('Mode ' + m)) + ' (true value)';
   }
 
+
+  /* The sibling an `implied_by` row was covered by, as the player sees it: its own letter when
+   * the step draws letters, else its done-when line. Mirrors the out-of-turn line's derivation
+   * (#759) — letters count VISIBLE entries, so a hidden cmd twin does not consume one. */
+  function impliedSay(st, en, stepNo) {
+    var accs = st.accs || [], j = -1, visN = 0, i;
+    for (i = 0; i < accs.length; i++) {
+      if (!accs[i].hidden) visN++;
+      if (j === -1 && accs[i] !== en && accs[i].p === en.implied_by) j = i;
+    }
+    if (j === -1) return 'another line on this step';
+    var lbl = accs[j].label || (accs[j].p ? fmtPredicate(accs[j]) : String(accs[j].cmd || ''));
+    if (visN > 1 && !accs[j].hidden) {
+      var seen = 0;
+      for (i = 0; i < j; i++) if (!accs[i].hidden) seen++;
+      return String(stepNo) + String.fromCharCode(97 + seen) + ': ' + lbl;
+    }
+    return lbl;
+  }
+
   function renderChecklist(s, ck) {
     var cur = $('cklRun');
     if (!cur) return;
@@ -4299,7 +4319,11 @@
       ck.step_index, ck.acc_met ? 1 : 0, ck.graded_by || '', ck.complete ? 1 : 0, pcKey, ui.register,
       // #244 additions: per-entry check-off states, the why-toggle states, and the display
       // units all change what the card shows, so they join the render key.
-      (ck.accs || []).map(function (a) { return a.met ? 1 : 0; }).join(''),
+      /* `implied` is a THIRD state, not a second spelling of met (#749 follow-up): a row
+       * covered by a sibling draws an extra line, and in every case seen so far it flips
+       * met in the same broadcast — but a key that cannot tell 1 from 2 would go dark the
+       * first time it does not, which is this file's own thrice-learned lesson. */
+      (ck.accs || []).map(function (a) { return a.met ? (a.implied ? 2 : 1) : 0; }).join(''),
       /* #660 items 17-18: BOTH BUTTONS' LIT STATES BELONG IN THE KEY. `awaiting_ack` is what
        * lights Continue and draws its note, and `rewind_ready` is what enables Rewind — neither
        * was here, and neither is implied by the rest of the key: `rewind_ready` can flip while
@@ -4578,6 +4602,16 @@
                * its own line, so the imperative is what the eye lands on. Not on a row that is
                * still waiting its turn (#756) — a done-when for a row nothing is grading yet. */
               (en.ask && !ordWait ? '<div class="ckl-crit-when">' + mesc(enTxt) + '</div>' : '') +
+              /* A ROW TICKED BY A SIBLING SAYS SO (`implied_by`, #749 follow-up, OWNER RULING
+               * 2026-09-18). Without this the card draws "INTER RANGE reads 1.0e-7 A or more
+               * ✓" beside a tile bottomed out at 1.0e-11 — a tick standing for a reading the
+               * board never showed, which is the #757 class. The sentence names the row that
+               * DID answer, derived from the entry's own `implied_by` and that row's letter, so
+               * a re-worded or re-ordered step cannot leave a stale one behind. Drawn only when
+               * the runtime actually latched it that way: `implied` is a snapshot verdict, not
+               * a re-derivation here. */
+              (av.implied ? '<div class="ckl-crit-when">Covered by ' +
+                 mesc(impliedSay(st, en, i + 1)) + ' — this gauge did not get there.</div>' : '') +
               '</div>';
           }
           /* A PRESS THAT LANDED OUT OF TURN GETS A REASON ON THE CARD (#759, OWNER RULING
