@@ -110,6 +110,14 @@
  *           never on the row that carries the step's real acceptance — a step whose ONLY row is
  *           implied grades nothing at all. Ignored on an `accs_ordered` step, where position is
  *           meaning; `run_checklist_pwr2` §2ad reddens if one is authored there.
+ *           TWO CONSTRAINTS ON THE SIBLING, neither of which any gate can enforce and both of
+ *           which the one shipped instance satisfies (quality pass, 2026-09-18). (a) NAME A
+ *           LATCHING SIBLING, not a `~` band or a `steady`/`stopped` row: those re-grade and can
+ *           un-tick, and a latch taken by implication is never given back, so the implied row
+ *           would stay ticked after the row that justified it had gone off. (b) DO NOT CHAIN. An
+ *           implication resolves against the sibling's state in the same pass, so a row implied
+ *           by a row that is ITSELF implied lands one broadcast late; author every `implied_by`
+ *           against a row that grades its own predicate.
  *   accs_ordered OPTIONAL boolean, OPT-IN, meaningless without `accs` — THE ENTRIES BECOME
  *           LIVE ONE AT A TIME *(OWNER DIRECTIVE, 2026-09-15: "For the early-plot hole, we could
  *           have instructions for substeps not just one line of instruction then multiple

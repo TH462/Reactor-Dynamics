@@ -1630,7 +1630,15 @@
      *
      * NOT ON AN `accs_ordered` STEP. There a row's POSITION is its meaning, and letting a
      * later row's latch stand an earlier one down would open the sequencer from the far end.
-     * §2ad reddens if one is ever authored. */
+     * §2ad reddens if one is ever authored.
+     *
+     * WHAT THIS PASS DOES NOT DO, and why it is the AUTHOR's constraint rather than a check
+     * (quality pass, 2026-09-18; neither is reachable from the one shipped instance). It does
+     * not give the latch back: once implied-met the row is skipped by both loops for ever, so a
+     * `~` band or a `steady`/`stopped` sibling that later un-ticks leaves the implied row
+     * standing -- name a LATCHING sibling. And it resolves in ONE forward pass, so a row implied
+     * by a row that is itself implied lands a broadcast late -- do not chain. Both are written
+     * into the `implied_by` paragraph in ui/manual_procedures.js, where authors read. */
     for (var mi = 0; mi < st.accs.length; mi++) {
       var me = st.accs[mi], mx = state[mi];
       if (ordered || !me || !me.implied_by || mx.met) continue;
