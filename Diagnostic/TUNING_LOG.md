@@ -292,6 +292,71 @@ rule is satisfied and only the tally was stale. `BASELINES` updated with the der
   acceptance's clothes, a shape this pool has no precedent for. One commit deep and reversible if
   the owner would rather have a separate non-grading "what to watch" affordance.
 
+### ADDENDUM, same session — the INTER RANGE row's soft-lock, ruled and closed (`1a94d5e2`, `40365eb7`)
+
+*(OWNER RULING, 2026-09-18: selected "B" from four options — A keep the row as shipped; **B keep it,
+and close the soft-lock**; C revert the row; D build a non-grading "what to watch" row kind. A
+SELECTION, not verbatim words.)*
+
+**The mechanism is `implied_by`, and it is an IMPLICATION, not a fail-open.** An `accs` entry may name
+a **sibling in its own array whose threshold already answers it**; while that sibling is met this
+entry latches too and is flagged `implied`, and the card draws *"Covered by 9b: REACTOR POWER reads
+0.1 % or more — this gauge did not get there."* rather than a bare tick standing for a reading the
+board never showed. Authored on exactly one row: `pwr_startup` step 9's INTER RANGE row,
+`implied_by: 'power_pct'`.
+
+**FAIL-OPEN WAS THE OBVIOUS IDEA AND IT IS WRONG TWICE.** First, the signal does not exist where the
+instructor can see it — MEASURED, `hot_full_power`, seed 7, channel dead: `snapshot.active_failures`
+is **`[]`**. The declaration lives one layer down and nothing consumes it
+(`PWR2Engine.getActiveFailures()` at `pwr2_shell.js:1761` returns `instrument:intermediate_range`;
+`ControlLayer.getActiveFailures()` at `control_kernel.js:1217` returns only kernel-injected rows, and
+that is what `simulation_service.js:949` publishes). **Second, and this is the load-bearing one: even
+with the bit it is the wrong shape.** Standing a row down *because its gauge broke* says nothing about
+whether anything still asserts the step — and MEASURED on the built pool, **27 of the 87
+instrument-graded rows are the ONLY row of their step**, so a blanket fail-open would tick those off a
+broken gauge. The honest condition is **redundancy**, which also covers a stuck channel or a lost
+failure list rather than only a declared `dead`. `overtaken` rejected for the reason in the brief: it
+checks the WHOLE STEP off on a plant condition, and a dead instrument is not the plant moving past
+anything. **HR1 intact — neither row reads `true_state`.**
+
+**Numbers.** Dead channel publishes **1.0e-11 A** against a true **8.3e-3 A**. Before: `all:false` for
+ever with REACTOR POWER at **99.6 %** met. After: `all:true`, INTER RANGE `met:true implied:true`.
+`K_IR` is **8.333e-3** A per unit rated fraction (`pwr2_true_state.js:592`), so the power row's 0.05 %
+puts INTER RANGE at **4.17e-6 A** — **41.7×** the covered row's 1.0e-7 A, and that ratio is gated
+(move the row to 1.0e-5 and §2ad.2 reds at **0.4×** against a 10× bound).
+
+**Two constraints on `implied_by` that NO GATE CAN ENFORCE** — found by the quality pass, latent from
+the one shipped instance, now written at the mechanism: **(a) the latch is never given back, so name a
+LATCHING sibling — never a `~` band, `steady` or `stopped` row**; **(b) the pass resolves in ONE
+FORWARD PASS, so do not chain.** A third finding was declined and reported: §2ad.1 does not enforce
+that the named sibling be instrument-graded, and a gate checking the channel still could not check
+that the implication is *real*.
+
+`run_checklist_pwr2` **319 → 324** (§2ad, five checks; the replay count is unmoved because the replay
+asserts each entry's own predicate and `implied_by` is invisible to it). `run_hardrules` **592 → 593**,
+HR11 site count 576 → 577, the new ruling citation. 19 touched runners green.
+
+**PROCESS TRAP, and it cost a re-run: `run_hardrules` was not in the first change's per-change batch,
+and only the re-run caught the drift. ADD `run_hardrules` TO THE BATCH WHENEVER A COMMENT CITES A
+RULING** — the citation is the thing that moves the tally, and a comment is the easiest place to
+forget you wrote one.
+
+**The class is filed as #773**, with the 87 / 27 measurement in the body so it is a yes/no rather than
+an investigation: sweep the instrument-graded rows for steps that strand under a single `dead`
+instrument and author `implied_by`, `overtaken`, or nothing, case by case. Recommended — but not next,
+and split by leg rather than run as one 87-row pass.
+
+**Not verified:** the rendered "Covered by" line has never been seen in a browser (no gate reads it);
+save/restore carries one boolean per entry, so a reloaded run keeps the tick and **loses the note**
+(declined as a save-format change for a note, written into the file); the 87 rows were **counted, not
+swept**; the +742/+851 s margins are inherited from the authoring pass, not re-measured here.
+
+**A COST NOTE, because CLAUDE.md's ceiling exists for this:** the agent that did this work ran
+**1,842 tool calls** against the ~150 ceiling its brief set, and reported nothing until the end. The
+work is sound and the quality pass found no live defect in it — the failure is that no check-in
+happened at the point where re-scoping was still possible. Same shape as the 1231/2274-call runs the
+efficiency directive records. **A ceiling in a brief is not self-enforcing; only a check-in is.**
+
 ### Not verified
 
 The rendered card — everything here is measured on the built pool and on live broadcasts through
