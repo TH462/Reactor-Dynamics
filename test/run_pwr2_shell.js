@@ -2373,12 +2373,34 @@ function runSuite(SH, rec, quiet, only) {
    *     442.48 s   intermediate-range high-flux ROD STOP, 20 % current equivalent
    *     444.32 s   reactor trip, intermediate-range high flux, 25 %
    *
-   * The annunciator is 1.82 s behind TRUTH and 0.00 s behind its own INSTRUMENT, which is HR1
-   * working exactly as written: the alarm reads the indicated channel, so its whole delay is the
-   * meter's. (The #661 comment's 366.0 / 368.0 s are the same events measured full-stack through
-   * the service at 10x; the two harnesses differ by ~1 s and the issue's earlier engine-flag ride
-   * differs by ~55 s at the rod stop. Unreconciled, and deliberately not papered over — this
-   * block quotes ITS OWN layer's ride and nothing else.)
+   * THOSE SIX TIMES ARE HISTORY, NOT THE PLANT (#665, 2026-09-18). `950fbad2` (#668) moved
+   * `ROD_SPEEDS.normal` 0.702 -> 0.800 steps/s at 22:13 THAT SAME NIGHT and every time above
+   * scaled with it; restoring the old constant reproduces all six to the digit, which is how the
+   * drift was identified rather than guessed. The table is kept because it is what the #661 and
+   * #665 threads quote — DO NOT cite it as current. This block's ASSERTIONS never typed any of
+   * it (they read the row and the plant), so they went green through the whole drift; today the
+   * note prints **325.10 s true / 326.76 s indicated**, MEASURED. The remaining three events at
+   * THIS layer were not re-measured — `Diagnostic/PWR2_HARNESS_RECONCILIATION_2026-09-18.md`
+   * carries the full current timeline and says which layer each figure came from.
+   *
+   * The annunciator is 1.66 s behind TRUTH (was 1.82 s at the old drive speed) and 0.00 s behind
+   * its own INSTRUMENT, which is HR1 working exactly as written: the alarm reads the indicated
+   * channel, so its whole delay is the meter's.
+   *
+   * THE THREE HARNESSES ARE NOW RECONCILED (#665) — the note that stood here calling them
+   * "unreconciled" is retired. They were never measuring a different plant; they were reporting
+   * a different CLOCK. The ~60 s was the REFERENCE POINT (#661's ride reported relative to
+   * `rod_start`, this block and the alarm probe report absolute engine simTime — all three
+   * settled 60 s), and the residual ~4.5 s was a TICK-COUNTED clock: that ride assumed
+   * "50 steps per tick = 1.000 s", but `SimulationService` halves `broadcastMs` to 50 ms during
+   * an active transient, so a tick buys 0.5 s once the plant goes transient. 55.5 = 60 - 4.5.
+   * The LAYER carried 0.44 s of it and the SEED 0.20 s, so this block quoting its own layer was
+   * right, and was never the thing that differed.
+   *
+   * THIS FIXTURE PASSES NO SEED (#774) — `new SH.PWR2Engine({initial_state})` below has no
+   * `seed:` key, so it rides `PWRInstruments`'s default `0x9E3779B9`, NOT the `0x1234` the #665
+   * thread's fixture description claims. Measured worth on these events: 0.20 s indicated,
+   * 0.00 s on truth, the rod stop and the trip.
    *
    * THE SETPOINT IS READ OFF THE ROW, NEVER TYPED. A hard 1.0 here would silently desynchronise
    * from a retuned table and then assert a timing relationship between two different numbers.
@@ -2389,7 +2411,7 @@ function runSuite(SH, rec, quiet, only) {
    * IT IS A `caution` AND THAT IS A CLAIM, not a label: since #655 only `critical` and `warning`
    * arrivals drop the clock (`simulation_service.js` ALARM_DROP_PRIORITIES), so this alarm
    * warns a player walking a startup at speed WITHOUT yanking them out of WARP for a rate they
-   * were deliberately building. Promote it and every startup at 600x stops dead at 367 s. */
+   * were deliberately building. Promote it and every startup at 600x stops dead at 326.76 s. */
   head('SUR HI ON PWR2  [#661: the 1 DPM caution the ruling asked to be BUILT was already here]');
   (function () {
     var eN = new SH.PWR2Engine({ initial_state: 'hot_zero_power' });

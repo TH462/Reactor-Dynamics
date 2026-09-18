@@ -29,6 +29,121 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-18-develop-c (#763 #769 #665 — three tools that lied at the moment they were trusted)
+
+**One bundle, one theme: a measurement tool whose failure mode is a believable number.** All three
+issues are the class #555 named (the plausible zero) wearing different costumes — a flag that does
+nothing, a subject that is the wrong commit, a clock that runs fast. None of them could fail loudly.
+
+**#763 — `verify_release_deploy.js` checked LOCAL HEAD, which is `develop`.** `:206` was
+`process.argv[2] || git rev-parse HEAD`, and the release skill's §5b runs it BEFORE the `develop`
+fast-forward — deliberately, since that ordering is the Alpha 1.0.0 fix. So at the one moment the
+tool is trusted, HEAD is the release commit on `develop` while Cloudflare built `main`'s MERGE
+commit. **Reproduced live on this tree, 2026-09-18**, which is better evidence than the self-test:
+
+| subject | verdict |
+|---|---|
+| `origin/main` = `fce63efa` (the fix) | **LIVE** — production deployment found, origin serving `alpha · fce63ef` |
+| local HEAD = `168205e4` (the old default) | **NOT LIVE** — "0 for this sha, 18 production deployment(s) total" |
+
+**The trap is that the false negative is indistinguishable from the real one, and the file's own
+remedy text walks you toward the cliff**: it says to WAIT and re-run (waiting never clears a wrong
+subject), then warns against the one action people reach for next. Now resolves `origin/main` after
+a fetch; an explicit argument still wins; on fetch failure it uses the stale ref and SAYS so; with
+no `origin/main` at all it REFUSES rather than falling back to HEAD. Prints `differs from local
+HEAD  HEAD=168205e  checking=fce63ef` — the one line that would have ended the 2026-09-15
+confusion in a single read. Self-test 20 → 29 checks, injection-proven four ways (reintroducing the
+actual defect reds 6).
+
+`tools/verify_worker_deploy.js` is **NOT** the same defect (measured): it compares `git log -1`
+TIMESTAMPS on whatever is checked out, and §5c runs it only AFTER the `--ff-only` merge has made
+`develop` and `main` the same commit. It is the same FAMILY — an ordering dependency — but not
+currently exploitable. Whether the false negative ever passed silently before is **unknowable from
+the record**: the documented remedy leaves no trace distinguishable from a slow deploy.
+
+**#769 — `engine.seed` was a silent `undefined` on BOTH engines.** `pwr2_shell.js:1202/:2123` and
+`pwr_engine.js:63` passed `opts.seed` into `PWRInstruments` and never stored it. The issue listed
+"does the retired engine have the same shape" as unmeasured; **it does**. `engine.seed` is now
+assigned from `this.instruments.seed` — read back AFTER the instrument constructor's own defaulting,
+never from raw `opts.seed`, or it is a second differently-wrong number. Verified with seed `0`:
+`(seed >>> 0) || 0x9E3779B9` defaults it, and `engine.seed` correctly reads `2654435769`.
+
+**Sync sites are where this recurs**: `loadState()` on both engines and `reset()` on the shell.
+`pwr_engine.reset()` needed nothing — it calls `instruments.reset()` and does not reconstruct.
+**A sync check comparing `engine.seed` to itself at an unchanged value passes with the sync line
+DELETED**, because `reset()` reuses the same `_opts.seed` in normal play — so the check mutates
+`_opts.seed` between construction and reset to make the effective seed genuinely change. That is
+what made the mutation go red for the right reason. New `seed_is_live` in `run_pwr` (37/37 260 →
+38/38 265) and GROUP U in `run_pwr2_shell` (169 → 175, mutations 62 → 65, 3 new, no blind spots).
+
+**A harness bug worth keeping**: `pwr_engine.js`'s `ck(desc, observed, pass, expected)` has a
+DIFFERENT signature from `run_pwr2_shell.js`'s `ck(name, cond, note)`. A 3-arg call into the 4-arg
+harness puts a non-empty string in the `pass` slot — `!!string` is `true`, so every check passes
+while printing a literal `(false)` beside a green tick. Same shape as TR-17's `!range(bool).max`.
+**Check the `ck` arity of the file you are writing into.**
+
+**The grep that mattered more than the fix.** #761's published conclusion — *"the spread between
+configurations is no larger than the spread between seeds"* — depended on whether its harness seeded
+the engine or the service. Traced: `ACCURACY_VS_WAIT_2026-09-17.md` and `SETTLE_DURATIONS_2026-09-17.md`
+both used `SimulationService`, and `procedures_harness.js:122` seeds the service too. **The
+conclusion stands.** No harness in `test/` or `tools/` reads `engine.seed` back. The constructor-arg
+path (`behavior_pwr.js`, `ops_harness.js`, `measure_pwr2_ab.js`, `run_m4.js`) was never affected —
+`opts.seed` always reached the instruments regardless.
+
+**#665 item 2 — `measure_stack.js` now takes `--plant=pwr2`.** Chose teaching the existing tool over
+a second `measure_pwr2.js`: a second implementation is a second plant. `engineCtor` already accepted
+`pwr2` (`simulation_service.js:224`), so only the load list was missing. Added `--settle=<dur>`,
+STAMPED in the header whether or not given, with every sample and `--cmd` timed from the end of it —
+because an unstamped settle is what made two harnesses look 60 s apart for ten days. Also stamps the
+engine constructor and the command path. **Cost on PWR2 is ~23.9 s wall per plant-hour at 60x,
+roughly 7x the retired engine's ~3.3 s.**
+
+Three defects fell out of building it, all the bundle's own class: **`--seed=0x1234` parsed as `0`**
+via `parseInt(s, 10)` — the #665 fixture's OWN seed, and since `0` is falsy `PWRInstruments` then
+substituted its DEFAULT, so the misreading was not even seed 0; `--nudge`/`--pzr2` silently targeted
+the retired engine's config under `--plant=pwr2` (now hard errors); and `selectPlant`'s error return
+was unchecked, leaving `svc.engine` undefined to crash later.
+
+**#665 item 1 — the three harnesses RECONCILED, and the cause was not on the candidate list.**
+Full write-up `Diagnostic/PWR2_HARNESS_RECONCILIATION_2026-09-18.md`. They were not measuring a
+different plant; they were reporting a different CLOCK, in two layers:
+
+1. **The 60 s was the REFERENCE POINT, not settle handling.** All three settled 60 s. #661's ride
+   reported relative to `rod_start`; the other two reported absolute engine time. **This is #761's
+   pattern repeating** — the fifth cause, added because #761 had just been the same thing.
+2. **The residual 4.5 s was a TICK-COUNTED CLOCK** — the cause nobody listed. #661's ride assumed
+   "50 steps per tick = 1.000 s", but `SimulationService` halves `broadcastMs` to 50 ms during a
+   transient, so a tick buys **0.5 s once the plant goes transient**. That is why the first gap was
+   a clean 60 s and the rod-stop gap was 55: **55.5 = 60 − 4.5.**
+
+**Demonstrated by turning one knob back.** `ROD_SPEEDS.normal` restored to 0.702 steps/s reproduced
+every filed figure to the digit (365.24 / 367.06 / 396.80 / 442.48 / 444.32), and re-reporting that
+same run as ticks-since-`rod_start` gave **306 / 387 / 391** — #661's three numbers, from a clock
+built to TEST the hypothesis rather than fitted to them. Four of six candidate causes were refuted
+as carriers: the LAYER is worth 0.44 s at the rod stop, the SEED 0.20 s on the indicated crossing
+and 0.00 s on truth, and the attention-stop dropout changes sim-seconds-per-tick but not the plant,
+so anything reading `svc.simTime` is immune.
+
+**The rod-speed lead was tree drift, not harness error**: `950fbad2` (#668) moved the drive 0.702 →
+0.800 steps/s at 22:13 that same night, AFTER all three measurements. Everything downstream scaled.
+
+**Side finding: `run_pwr2_shell` group N passes NO seed at all**, so "one fixture, seed `0x1234`"
+was never true of it. Not the #769 defect class — it never misreads a seed, it just never supplies
+one — but it means that fixture is one default stream. Backlogged, not fixed.
+
+**#665's drift reached the player (HR9).** `Manuals/09 §7.5.1` and `Manuals/12 §4.4` both cited the
+2026-09-08 ride, with the rod stop **44.9 s** off. Re-measured independently before editing (agreed
+within one 2 s sampling interval), then corrected to **SUR HI 267 s, rod stop 338 s, trip 339 s**,
+published RELATIVE to the start of withdrawal and **saying so in the sentence** — the old text
+published absolute time silently, and that silence is the whole defect. The old figures survive only
+in a provenance parenthetical naming the constant that moved. Manual 12's instrument-lag note also
+moved **1.82 s → 1.66 s**, a real change rather than a restamp. Pending Rev 19 row extended (item
+`ddd`), stamped and packed; packed copy grepped to confirm it reached the player.
+
+**No scenario or checklist hard-codes the old figures** (grepped). `Diagnostic/` and `CHANGELOG.md`
+keep theirs — they are dated record, and record is not policy.
+
+
 ## Session log — 2026-09-18-develop-b (#749 follow-up — a row the player can break must not take the step with it)
 
 **The ruling.** *(OWNER RULING, 2026-09-18: selected option "B" of four — A keep the INTER RANGE

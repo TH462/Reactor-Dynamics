@@ -30,6 +30,35 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — three measurement tools that could not fail loudly (#763, #769, #665)
+
+- **The release deploy check asked about the wrong commit, at the one moment it is trusted**
+  (#763). `tools/verify_release_deploy.js` defaulted to local HEAD, and the release procedure runs
+  it deliberately *before* the `develop` fast-forward — so HEAD is the release commit on `develop`
+  while Cloudflare Pages built `main`'s merge commit. Reproduced live: `origin/main` reports LIVE,
+  local HEAD reports `NOT LIVE — 0 for this sha, 18 production deployment(s) total`, for the same
+  correct, already-serving site. It now resolves `origin/main` after a fetch, announces which
+  commit it chose and when that differs from HEAD, marks a stale ref as stale, and **refuses**
+  rather than falling back to HEAD. Self-test 20 → 29 checks.
+- **`engine.seed` was a silent `undefined` on both engines** (#769) — the seed reached the
+  instruments but was never stored, so a harness reading it back measured one noise stream while
+  believing it measured several. The failure mode is perfect reproducibility, which is the most
+  convincing possible evidence. Now stored as the *effective* seed (read back after the instrument
+  constructor's own defaulting) and kept in sync across `reset()` and `loadState()`, with new
+  checks that make a changed seed prove itself.
+- **`measure_stack.js` now measures PWR2** (#665) — `--plant=pwr2`, plus a `--settle` that is
+  stamped into the output whether or not it was given. Building it turned up `--seed=0x1234`
+  parsing as `0`, `--nudge`/`--pzr2` silently targeting the retired engine, and an unchecked
+  plant-selection error; all three are hard errors now.
+- **Three harnesses that disagreed by 55 seconds about the same plant are reconciled** (#665) —
+  they were reporting different clocks, not measuring different plants: one published times
+  relative to the rod withdrawal and the others absolute, and one counted ticks as a fixed second
+  when the service halves its broadcast period during a transient.
+- **The startup-rate timeline in the manuals matched a superseded rod drive speed** — `09` and
+  `12` cited a rod stop 44.9 s later than the plant now does. Both corrected, re-measured first,
+  and they now state which instant the times are measured from.
+
+
 ### Fixed — the criticality step shows progress, and a walkthrough comment dies with its step (#749 items 2, 4)
 
 - **An INTER RANGE row joins the criticality step, and it shipped only because it was measured
