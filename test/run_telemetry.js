@@ -526,6 +526,186 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
     'the in-sim consent row is back — one setting, two controls');
 }());
 
+/* ================================================ the site pages (#764)
+ *
+ * The client used to load ONLY in ui/shell.html, so a visitor who read the homepage and
+ * left was invisible — which is why the console could not tell "nobody enters the sim"
+ * from "nobody LANDS on the shell", and reported the first when it was the second.
+ *
+ * Widening its reach widens what is collected from people who never open the simulator,
+ * and there is no consent prompt anywhere by owner ruling. So the guards below are not
+ * about whether the events arrive; they are about the events staying INCAPABLE of
+ * carrying more than was disclosed. Every one of them was written against an injection
+ * that made it red first — INJ3 below in particular went GREEN on the first pass, which
+ * is what these exist for.
+ */
+(function () {
+  // `fs` is declared per-suite in this runner, not at module scope. Without this line the
+  // read below throws a ReferenceError INSIDE the try/catch and every page reports "no
+  // endpoint tag" — a wrong diagnosis that looks exactly like the defect being guarded.
+  var fs = require('fs');
+  var T = globalThis.RD.Telemetry;
+  var EV = T.EVENTS;
+  var PAGES = T.PAGES;
+
+  /* CLOSED ENUMS, NOT OPEN ONES. `clean()`'s 'enum' kind accepts any identifier-shaped
+   * string up to 48 characters; an ARRAY accepts only what is listed. The difference is
+   * the whole privacy claim for these two events: an open `page` prop would take
+   * `index.html` — a real path, disclosed as nothing — and an open `width` would take the
+   * pixel count this deliberately buckets away. MEASURED: switching page_view.page from
+   * PAGES to 'enum' left the suite at 169/0 before this check existed. */
+  var closed = function (spec) { return Object.prototype.toString.call(spec) === '[object Array]'; };
+  ck('page_view.page is a CLOSED enum, not an open one',
+    closed(EV.page_view && EV.page_view.props.page),
+    'an open enum here takes a real path and discloses none of it');
+  ['to', 'device', 'width'].forEach(function (k) {
+    ck('cta_click.' + k + ' is a CLOSED enum',
+      closed(EV.cta_click && EV.cta_click.props[k]),
+      'an open enum here takes more than the four buckets that were disclosed');
+  });
+
+  /* THE CLASSIFIER CANNOT EMIT A PATH. Driven through the real pageId() rather than read
+   * out of the source, because what matters is the value it RETURNS, and a source scan
+   * for a closed list cannot tell you the function honours it. The corpus is deliberately
+   * hostile: a query string and a fragment are the two ways a path smuggles free text. */
+  var paths = ['/', '/index.html', '/about.html', '/404.html', '/ui/shell.html',
+    '/ui/shell.html?engine=pwr2', '/privacy.html#usage', '/some/unknown/page.html',
+    '/index.html?utm_source=a_marketing_campaign', '', '/WEIRD.HtMl'];
+  var out = paths.map(function (p) { return T.pageId(p); });
+  var escaped = out.filter(function (v) { return PAGES.indexOf(v) === -1; });
+  ck('pageId() returns nothing outside the declared page set', escaped.length === 0,
+    'escaped: ' + JSON.stringify(escaped));
+  ck('a query string cannot ride in on the page id',
+    T.pageId('/index.html?utm_source=a_marketing_campaign') === 'home',
+    String(T.pageId('/index.html?utm_source=a_marketing_campaign')));
+  ck('an unknown page is "other", never its own path',
+    T.pageId('/some/unknown/page.html') === 'other',
+    String(T.pageId('/some/unknown/page.html')));
+  ck('widthBucket() returns one of the four declared bands',
+    [0, 320, 599, 600, 899, 900, 1279, 1280, 4000].every(function (w) {
+      return EV.cta_click.props.width.indexOf(T.widthBucket(w)) !== -1;
+    }));
+  // A bucket that collapses to one value discloses nothing and would pass the check above.
+  ck('the width bands actually discriminate',
+    T.widthBucket(390) !== T.widthBucket(1920),
+    'every width lands in the same band — the bucket is decorative');
+
+  /* THE SHELL IS NOT DOUBLE-WIRED. ui/app.js already owns that page's lifecycle
+   * (session_start, session_end, and a pagehide beacon at app.js:8703). A second set of
+   * listeners there would add a page_view nothing asked for and a second flush racing the
+   * one that carries session_end — the most valuable row in the set. */
+  /* DRIVEN THROUGH THE REAL autoInit, not asserted off pageId(). The first draft of these
+   * two checks tested what pageId() RETURNS for the shell path, which is the ingredient
+   * and not the behaviour: deleting autoInit's `pageId() === 'shell'` guard reddened
+   * NOTHING, measured. What follows wires a fake document and asks what actually happens. */
+  function fakeDoc() {
+    var h = {};
+    return {
+      visibilityState: 'visible',
+      addEventListener: function (t, fn) { (h[t] = h[t] || []).push(fn); },
+      _handlers: h,
+      _click: function (href) {
+        var a = { tagName: 'A', getAttribute: function (k) { return k === 'href' ? href : null; },
+                  parentNode: null };
+        (h.click || []).forEach(function (fn) { fn({ target: a }); });
+      },
+    };
+  }
+  function at(pathname, fn) {
+    var prev = globalThis.location;
+    globalThis.location = { pathname: pathname };
+    try { return fn(); } finally { globalThis.location = prev; }
+  }
+
+  var site = load();
+  at('/index.html', function () {
+    var doc = fakeDoc();
+    ck('autoInit runs on a site page', site.T._autoInit(doc) === true);
+    var before = site.sent.length;
+    /* THE CLICK NAVIGATES AWAY INSIDE THE 15-SECOND BATCH WINDOW, so a queued cta_click
+     * dies with the page. That would report ZERO clicks on a button people press — the
+     * most confidently wrong number this change could produce — so the send must happen
+     * on the click itself, with no flush() call from the test. */
+    doc._click('ui/shell.html?engine=pwr2');
+    ck('a call-to-action click is sent immediately, not left in the batch',
+      site.sent.length === before + 1, 'sent delta ' + (site.sent.length - before));
+    // DEFENSIVE ABOUT AN EMPTY WIRE. Without this the same defect the check above catches
+    // makes this line THROW on `sent[-1]`, and the runner dies with a stack trace and no
+    // tally — a broken module reported as neither pass nor fail.
+    var last = site.sent[site.sent.length - 1];
+    var rows = last ? JSON.parse(last.body).events.map(function (e) { return e.e; }) : [];
+    ck('that send carries both the page_view and the cta_click',
+      rows.indexOf('page_view') !== -1 && rows.indexOf('cta_click') !== -1,
+      last ? rows.join(',') : 'nothing was sent at all');
+    // An ordinary navigation link is a page_view already; counting it as a call-to-action
+    // too would make the funnel's own denominator meaningless.
+    var n = site.sent.length;
+    doc._click('about.html');
+    ck('an ordinary link is not counted as a call-to-action', site.sent.length === n);
+  });
+
+  /* NO ENDPOINT, NO WIRING. The offline single-file build is not called shell.html, so the
+   * shell guard does not catch it; without an endpoint check it would wire listeners and
+   * queue events on a build whose entire promise is that it never touches the network. */
+  var offline = load({ endpoint: null });
+  at('/Reactor_Dynamics_Alpha_1.7.5.html', function () {
+    var doc = fakeDoc(), win = fakeDoc();
+    ck('autoInit refuses when no endpoint is stamped', offline.T._autoInit(doc, win) === false);
+    ck('and wires nothing in the offline build',
+      Object.keys(doc._handlers).length === 0 && Object.keys(win._handlers).length === 0);
+  });
+
+  /* THE BOUNCE IS THE VISITOR THIS EXISTS TO COUNT. Site pages have no session_end, so
+   * without a pagehide beacon someone who reads the homepage and closes the tab inside the
+   * 15-second batch window sends nothing at all — and "arrived, left immediately" is
+   * exactly the row the funnel needs. Proved by driving the registered handler, because a
+   * check that the LISTENER exists says nothing about whether it flushes. */
+  var bounce = load();
+  at('/about.html', function () {
+    var doc = fakeDoc(), win = fakeDoc();
+    bounce.T._autoInit(doc, win);
+    ck('a pagehide handler is registered on the window', !!(win._handlers.pagehide || []).length);
+    var before = bounce.sent.length;
+    (win._handlers.pagehide || []).forEach(function (fn) { fn(); });
+    ck('leaving the page sends what was queued', bounce.sent.length === before + 1,
+      'sent delta ' + (bounce.sent.length - before));
+    // flush() empties the queue, so the second call must be a no-op and not a duplicate row.
+    var after = bounce.sent.length;
+    (win._handlers.pagehide || []).forEach(function (fn) { fn(); });
+    ck('a second pagehide does not duplicate the send', bounce.sent.length === after);
+  });
+
+  /* THE SHELL IS NOT DOUBLE-WIRED. ui/app.js already owns that page's lifecycle
+   * (session_start, session_end, and a pagehide beacon at app.js:8703). A second set of
+   * listeners there would add a page_view nothing asked for and a second flush racing the
+   * one that carries session_end — the most valuable row in the set. */
+  var shellClient = load();
+  at('/ui/shell.html', function () {
+    var doc = fakeDoc();
+    ck('autoInit REFUSES to run on the shell', shellClient.T._autoInit(doc) === false);
+    ck('and wires no listeners there', Object.keys(doc._handlers).length === 0,
+      Object.keys(doc._handlers).join(','));
+    ck('and sends nothing there', shellClient.sent.length === 0,
+      String(shellClient.sent.length));
+  });
+
+  /* LOAD ORDER ON EVERY SITE PAGE. telemetry.js reads window.RD_TELEMETRY_ENDPOINT at
+   * load, so the endpoint file must come FIRST. Reversed, the client silently collects
+   * nothing for ever — invariant (b) makes that the correct behaviour for an unset
+   * endpoint, which is exactly why the mistake would never announce itself. */
+  var SITE_PAGES = ['index.html', 'about.html', 'physics.html', 'roadmap.html',
+    'changelog.html', 'download.html', 'privacy.html', 'legal.html', '404.html'];
+  SITE_PAGES.forEach(function (f) {
+    var src = '';
+    try { src = fs.readFileSync(path.join(ROOT, f), 'utf8'); } catch (e) { /* reported below */ }
+    var ep = src.indexOf('<script src="site/telemetry_endpoint.js">');
+    var tel = src.indexOf('<script src="site/telemetry.js">');
+    ck(f + ' loads the client, endpoint first',
+      ep !== -1 && tel !== -1 && ep < tel,
+      ep === -1 ? 'no endpoint tag' : (tel === -1 ? 'no telemetry tag' : 'endpoint loads AFTER the client'));
+  });
+}());
+
 // ======================================================= path 2 is a separate path
 // Run WITHOUT compression first: the body is plain JSON and can be read directly.
 // Consent is deliberately left UNDECIDED throughout — pressing send in the feedback

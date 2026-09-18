@@ -74,6 +74,17 @@
   'use strict';
   var RD = G.RD = G.RD || {};
 
+  /* THE SITE PAGES, as a CLOSED set (#764). A raw `location.pathname` is unbounded free
+   * text and invariant (d) rejects it — correctly: a path can carry a query, a fragment,
+   * a typo'd URL someone was sent, and none of that is a usage fact. So the path is mapped
+   * to one of these here, and anything unrecognised becomes 'other' rather than travelling.
+   *
+   * 'shell' is in the list because `pageId()` must be able to NAME the shell in order to
+   * skip it (see the auto-init at the foot of this file); no page_view is ever sent for it.
+   * The shell's arrival is `session_start`, which it already sends and which carries more. */
+  var PAGES = ['home', 'about', 'physics', 'roadmap', 'changelog', 'download',
+               'privacy', 'legal', 'notfound', 'shell', 'other'];
+
   // ============================================================ the event registry
   // Every automatic event, declared. `props` lists the keys it may carry and the
   // shape each is allowed to take: 'num', 'bool', or an array of permitted strings.
@@ -148,6 +159,35 @@
     // on_grid from mwe_output first going positive, scram from the existing recorder,
     // core_damage from true_state.fuel_damaged, which the engine latches itself.
     milestone:     { props: { name: ['on_grid', 'scram', 'core_damage'], sim_seconds: 'num' } },
+
+    /* --- the way in (#764) --------------------------------------------------
+     * THE QUESTION THESE TWO ANSWER, and why neither existed: `/` is the landing
+     * door and `/ui/shell` pageloads roughly equal homepage pageloads, but a VISIT
+     * is attributed by Cloudflare to the page a session STARTED on — so an internal
+     * hop into the sim is a pageload with zero visits, and the console could not
+     * distinguish "nobody goes in" from "nobody LANDS on the shell". It reported the
+     * first, and it was the second.
+     *
+     * `page_view` fires on every site page but NEVER on the shell, whose arrival is
+     * already `session_start` and carries more. Since the session id lives in
+     * sessionStorage and survives same-tab navigation, a session holding
+     * `page_view{home}` and then `session_start` IS the click-through, with no cookie,
+     * no new identifier and nothing that links two visits (invariant e untouched). */
+    page_view:     { props: { page: PAGES } },
+
+    /* DID THEY PRESS THE BUTTON. The homepage says "desktop or laptop only" and leaves
+     * the button enabled, so "mobile visitors click and give up" is a plausible story
+     * we have never been able to test — mobile is only about 5 of about 35 weekly
+     * landing visits, so the disclaimer cannot explain the gap on its own.
+     *
+     * EVERY PROP IS A CLOSED ENUM, including the width. A raw viewport width in pixels
+     * is a number invariant (d) would happily accept, and it is also a fingerprinting
+     * surface that buys nothing over the bucket: the question is "was this a phone",
+     * not "was this 393 pixels". Deciding that here rather than at the query end is the
+     * point — what is not collected cannot leak. */
+    cta_click:     { props: { to: ['shell', 'download', 'github', 'other'],
+                              device: ['fine', 'coarse'],
+                              width: ['xs', 'sm', 'md', 'lg'] } },
   };
 
   var CONSENT_KEY = 'rd_telemetry_consent';   // 'granted' | 'denied' — localStorage
@@ -507,8 +547,120 @@
     sendResultMessage: sendResultMessage,
     WIRE_CAP: WIRE_CAP,
     WIRE_BUDGET: WIRE_BUDGET,
+    pageId: pageId,
+    widthBucket: widthBucket,
     // Test seams. Not for production callers.
     _clean: clean,
     _queue: function () { return queue; },
+    _autoInit: autoInit,
+    PAGES: PAGES,
   };
+
+  /* ======================================================== the site pages (#764)
+   *
+   * Everything below runs on the SITE pages and is skipped on the shell, which has its
+   * own lifecycle in ui/app.js — `session_start`, `session_end` and a `pagehide` beacon.
+   * Adding a second set there would double-wire the one page that was already correct.
+   */
+
+  // Path -> one of PAGES. Closed by construction: an unlisted page is 'other', never its
+  // own path. Matching on the BASENAME so a sub-path deployment or a preview host does not
+  // reclassify every page as 'other' — and the empty basename (a bare '/') is 'home'.
+  function pageId(pathname) {
+    var p = String(pathname == null ? ((G.location && G.location.pathname) || '') : pathname);
+    var base = p.replace(/[?#].*$/, '').split('/').pop().toLowerCase();
+    if (/(^|\/)shell\.html$/.test(base) || base === 'shell.html') return 'shell';
+    if (base === '' || base === 'index.html') return 'home';
+    if (base === '404.html') return 'notfound';
+    var name = base.replace(/\.html$/, '');
+    return PAGES.indexOf(name) !== -1 && name !== 'shell' ? name : 'other';
+  }
+
+  /* Viewport width as a BUCKET, never the pixel count — see the cta_click comment. The
+   * edges are the ordinary responsive ones and nothing downstream depends on their exact
+   * values; what matters is that 'xs' means a phone held upright. */
+  function widthBucket(w) {
+    var n = (typeof w === 'number' && isFinite(w)) ? w
+      : (G.innerWidth || (G.document && G.document.documentElement && G.document.documentElement.clientWidth) || 0);
+    if (n < 600) return 'xs';
+    if (n < 900) return 'sm';
+    if (n < 1280) return 'md';
+    return 'lg';
+  }
+
+  function coarsePointer() {
+    try {
+      return !!(G.matchMedia && G.matchMedia('(pointer: coarse)').matches);
+    } catch (e) { return false; }   // no matchMedia, or a UA that throws on the query
+  }
+
+  // Where a link goes, as a closed enum. Read off the href rather than off markup the
+  // page author has to remember to add, so a new call-to-action is classified the day it
+  // ships instead of the day someone notices it was never tagged.
+  function linkTarget(href) {
+    var h = String(href || '').toLowerCase();
+    if (h.indexOf('shell.html') !== -1) return 'shell';
+    if (h.indexOf('download') !== -1) return 'download';
+    if (h.indexOf('github.com') !== -1) return 'github';
+    return 'other';
+  }
+
+  // `win` is a parameter so the pagehide/visibility wiring is TESTABLE: globalThis in Node
+  // is not an EventTarget, so a handler registered on it can be neither observed nor
+  // proved, and deleting the pagehide flush reddened nothing until this became an argument.
+  function autoInit(doc, win) {
+    doc = doc || G.document;
+    win = win || G;
+    if (!doc) return false;
+    if (pageId() === 'shell') return false;      // ui/app.js owns that page
+    /* THE OFFLINE BUILD. tools/make_portable.js collapses the control room into one file
+     * whose whole promise is that it never touches the network, and it blanks the endpoint
+     * to keep that true. The filename is not `shell.html`, so the guard above does not
+     * catch it — without this one, that build would wire listeners and queue events it can
+     * never send. Invariant (b) already makes them silent; this makes them absent. */
+    if (!endpoint()) return false;
+
+    event('page_view', { page: pageId() });
+
+    /* A DELEGATED listener, not one per element: the nav is injected by site/nav.js after
+     * this file runs, so anything bound to the elements present at load would miss every
+     * link in it. Capture phase, because a handler elsewhere may stop propagation. */
+    doc.addEventListener('click', function (ev) {
+      var el = ev && ev.target;
+      while (el && el !== doc && !(el.tagName === 'A' && el.getAttribute)) el = el.parentNode;
+      if (!el || el === doc || !el.getAttribute) return;
+      // Only the ways IN to the product. An ordinary navigation link is a page_view
+      // already, and counting it twice would make the funnel's denominator meaningless.
+      var to = linkTarget(el.getAttribute('href'));
+      if (to === 'other') return;
+      event('cta_click', { to: to, device: coarsePointer() ? 'coarse' : 'fine', width: widthBucket() });
+      /* FLUSH IMMEDIATELY, WITH A BEACON. The click navigates away inside the 15-second
+       * batch window, so a queued cta_click would die with the page — which would report
+       * zero clicks on a button people press, the most confidently wrong number this
+       * whole change could produce. sendBeacon is the only transport that survives it. */
+      flush(true);
+    }, true);
+
+    /* The site pages have no session_end, so without this a visitor who reads the
+     * homepage and closes the tab inside 15 seconds sends nothing at all — and a bounce
+     * is exactly the visitor this event exists to count. `flush` empties the queue, so a
+     * second call is a no-op rather than a duplicate. */
+    if (win && win.addEventListener) win.addEventListener('pagehide', function () { flush(true); });
+    if (doc.addEventListener) {
+      doc.addEventListener('visibilitychange', function () {
+        if (doc.visibilityState === 'hidden') flush(true);
+      });
+    }
+    return true;
+  }
+
+  // Fire on load. Guarded so a page that loads this file twice does not double-count.
+  if (!G.__rdTelemetryAutoInit) {
+    G.__rdTelemetryAutoInit = true;
+    if (G.document && G.document.readyState === 'loading' && G.document.addEventListener) {
+      G.document.addEventListener('DOMContentLoaded', function () { autoInit(); });
+    } else if (G.document) {
+      autoInit();
+    }
+  }
 }(typeof globalThis !== 'undefined' ? globalThis : this));

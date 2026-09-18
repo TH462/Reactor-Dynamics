@@ -178,6 +178,18 @@ const KEY_OF = {
   walkthrough_step: ['id', 'step', 'by'],
   walkthrough_rewind: ['id', 'step'],
   walkthrough_end: ['id', 'reason'],
+  /* THE WAY IN (#764). Both ride ENTIRELY in this string and claim no new column, which
+   * is deliberate rather than thrifty: `usage_daily` keys on
+   * [day, channel, release, event, key_str, plant] and carries no numeric columns, so a
+   * funnel encoded in doubles would evaporate at the three-month Analytics Engine edge —
+   * and "is the click-through rate improving" is a question about months, not weeks.
+   *
+   * `cta_click`'s three parts give `shell:coarse:xs`, which is the whole question in one
+   * groupable string: did a phone press the button that the homepage says is not for
+   * phones. Every part is a closed enum on the client, so this key cannot be widened by
+   * anything a page sends. */
+  page_view: 'page',
+  cta_click: ['to', 'device', 'width'],
 };
 
 function keyPart(v) {

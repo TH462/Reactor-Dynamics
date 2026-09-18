@@ -87,10 +87,12 @@
   We keep them so we can tell whether the site is growing, which is not a question a
   seven-day window can answer.</p>
 
-  <h2>Usage data in the simulator</h2>
-  <p>The simulator sends anonymous usage data while you use it.</p>
+  <h2>Usage data</h2>
+  <p>The simulator sends anonymous usage data while you use it, and the pages of this
+  site send a small amount of the same kind.</p>
   <p>Almost nobody sends feedback, so this is the only way to find out which parts
-  of the plant are confusing. What it sends is counts, and how long things took:</p>
+  of the plant are confusing — and, on the site, whether people who arrive here ever
+  reach the simulator at all. What it sends is counts, and how long things took:</p>
   <ul>
     <li data-collects="session_start.plant session_start.initial_state session_start.channel session_end.seconds session_end.sim_seconds">which
     plant and starting condition you chose, which build you are on, and how long the
@@ -109,6 +111,11 @@
     walkthrough you are following, which step you are on, how long each step took,
     whether the step checked itself off or you ticked it by hand, when you rewind a
     step, and where you were if you stopped part way through</li>
+    <li data-collects="page_view.page cta_click.to cta_click.device cta_click.width">which
+    page of this site you are reading, and — if you press a button that opens the
+    simulator or the download — that you pressed it, whether your device has a touch
+    screen, and roughly how wide your window is (one of four size bands, never the
+    pixel measurement)</li>
   </ul>
   <p>Each of those carries the time it happened, measured from when the page opened —
   enough to put one visit's actions in order and see where the time went, and not
@@ -175,6 +182,11 @@
 
 <script src="site/version.js"></script>
   <script src="site/release.js"></script>
+<!-- Usage data (#764). ENDPOINT FIRST: telemetry.js reads it at load. Both are
+     generated at deploy, so a clone or a local checkout has no endpoint and sends
+     nothing. See privacy.html and the header of site/telemetry.js. -->
+<script src="site/telemetry_endpoint.js"></script>
+<script src="site/telemetry.js"></script>
 <script src="site/nav.js"></script>
 </body>
 </html>

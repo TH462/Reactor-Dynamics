@@ -30,6 +30,29 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added — the site pages report whether anyone reaches the simulator (#764)
+
+Still internal measurement, not the simulator: no `changelog.html` entry, no version bump.
+
+- **`site/telemetry.js` loaded only in `ui/shell.html`.** A visitor who read the homepage and
+  left was invisible, which is why the console could not tell "nobody enters the sim" from
+  "nobody *lands* on the shell" — it reported the first, and the truth was the second. The
+  client now loads on all nine site pages.
+- **Two events, both closed enums end to end.** `page_view` carries a page name from a fixed
+  list — a raw `location.pathname` is unbounded free text and invariant (d) rejects it,
+  correctly. `cta_click` carries where the button goes, whether the pointer is coarse, and a
+  **viewport size band, never the pixel width**: a pixel count is a number the validator would
+  happily accept and a fingerprinting surface that buys nothing over the bucket. The question
+  is "was this a phone", not "was this 393 pixels".
+- **Both ride entirely in the Analytics Engine key string and claim no new column**, so they
+  survive the three-month retention edge into `usage_daily`. "Is the click-through rate
+  improving" is a question about months.
+- **No consent surface was added**, per the standing ruling that there is no opt-out anywhere.
+  `privacy.html`'s `data-collects` markup — which `run_telemetry` reads and reddens on —
+  declares the new collection in the same commit.
+- The shell is not double-wired (`ui/app.js` owns its lifecycle) and the offline single-file
+  build wires nothing, since it has no endpoint stamped.
+
 ### Changed — the ops dashboard: password auth, the first-party store on screen, an arbitrary window and a trend (#764)
 
 Internal tooling, not the simulator, so there is **no `changelog.html` entry and no version
