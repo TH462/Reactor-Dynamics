@@ -340,6 +340,17 @@
 
   // Auto-actuation — reads instruments, issues commands (which pass through M4
   // interception, so a stuck PORV defeats the reclose).
+  //
+  // ⚠ THE WHOLE ARRAY IS PWR-ENGINE-ONLY, MEASURED (#778) — not just some rows. It is
+  // exported as `PWR_PROTECTION.actuations` below, but `pwr2_shell.getProtectionConfig`
+  // Object.assigns `actuations: []` over that base, so the array PWR2's control kernel
+  // holds is a DIFFERENT, EMPTY one: 21 rows here, 0 there. PWR2's actuations live inside
+  // its own engine. Measured full stack, hot full power, large loss-of-coolant accident:
+  // moving CTMT_HIHI_MPA from 0.3081 to 99.0 MPa (321x out of reach) stops the retired
+  // engine closing its MSIV (12.60 s -> never) and starting containment spray (12.66 s ->
+  // never), and changes PWR2's ride by NOTHING — same 0.6427147749359522 MPa containment
+  // peak to the last digit, same hi-hi crossing at 58.64 s. ADDING A ROW HERE DOES NOT
+  // GIVE PWR2 A PROTECTION. Gated: run_pwr2_kernel band 5 (group A), both legs injected.
   var PWR_ACTUATIONS = [
     { instrument: 'primary_pressure', direction: 'high', setpoint: 16.20,
       action: 'open_porv', reset_below: 15.86, reset_action: 'close_porv' },
@@ -1402,6 +1413,16 @@
     message_learning: 'Containment spray started automatically on high-high building pressure and stays in until pressure falls back below the safety-injection signal.',
     message_industry: 'CTMT SPRAY SECURE BLOCKED — hi-hi actuation sealed in',
   };
+  // ⚠ ALL FOUR ROWS BELOW ARE DEAD FOR PWR2, MEASURED (#778) — the array declaration at the
+  // top of this file says why, and the statement is the WHOLE array, not this section.
+  // Full stack, hot full power, large loss-of-coolant accident: the retired engine crosses
+  // the sourced 30 psig hi-hi at 11.52 s and realigns the fans at 3.72 s, closes the MSIV at
+  // 12.60 s and starts spray at 12.66 s (peak 51.2 psia / 0.353 MPa = 36.5 psig). PWR2 under
+  // the identical casualty crosses hi-hi at 58.64 s and peaks 93.2 psia (0.643 MPa) = 78.5
+  // psig — higher, because NONE of these fire: `msiv_open` stays true, `ctmt_spray_active`
+  // and `ctmt_fan_active` stay false throughout. PWR2 declares spray, fan coolers and
+  // recombiners static 0 (#672); whether it should MODEL them is an open scope question for
+  // the owner, not a wiring defect to fix here.
   PWR_ACTUATIONS.push(
     // (a) SI backup on high containment pressure. NO `arm` — in this kernel that IS
     // "cannot be blocked by the operator" (the MSLI/FWI reasoning above): it fires
@@ -1453,6 +1474,8 @@
     message_learning: 'Hydrogen recombiners started automatically on rising containment hydrogen and stay in service until the concentration falls back to the securing point.',
     message_industry: 'H2 RECOMBINER SECURE BLOCKED — auto-start sealed in',
   };
+  // ⚠ DEAD FOR PWR2 too (#778) — same reason as every other row in this array; see the
+  // declaration at the top of the file. PWR2's recombiners are a static 0 (#672).
   PWR_ACTUATIONS.push(
     { instrument: 'ctmt_h2', direction: 'high',
       setpoint: (RD.PWR_CONFIG.containment && RD.PWR_CONFIG.containment.h2_recomb_on_pct) || 0.5,

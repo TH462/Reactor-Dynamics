@@ -67,8 +67,12 @@ require(path.join(__dirname, '..', 'engines', 'load_mode.js'));
 require(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_config.js'));
 require(KPATH);
 require(CPATH);
-require(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_instruments.js'));
-require(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_engine.js'));
+/* the retired engine's own physics files load too (#778 band 5 RIDES it — it is the leg of the
+ * bifurcation that must FIRE, and a PWREngine cannot be constructed without them) */
+['pwr_thermal', 'pwr_pressurizer', 'pwr_pressurizer2', 'pwr_primary', 'pwr_steam_generator',
+ 'pwr_instruments', 'pwr_engine'].forEach(function (f) {
+  require(path.join(__dirname, '..', 'engines', 'pwr', f + '.js'));
+});
 ['pwr2_water', 'pwr2_vtable', 'pwr2_geometry', 'pwr2_core', 'pwr2_loop', 'pwr2_kinetics',
  'pwr2_fuel', 'pwr2_reactor', 'pwr2_sources', 'pwr2_sg', 'pwr2_turbine', 'pwr2_relief',
  'pwr2_condenser', 'pwr2_cvcs', 'pwr2_eccs', 'pwr2_afw', 'pwr2_damage', 'pwr2_protection',
@@ -574,6 +578,91 @@ function runSuite(rec, quiet, only) {
        unknown.length === 0, unknown.length ? unknown.join(',') : names.length + ' actions');
   }
 
+  /* ------------------------------------------------------- band 5: THE ACTUATION ARRAY (A)
+   * #778. `pwr_control.js` is shared, and its `PWR_ACTUATIONS` rows are pushed onto ONE
+   * module-level array that `PWR_PROTECTION.actuations` exports — but pwr2_shell's
+   * getProtectionConfig Object.assigns `actuations: []` over that base, so the array PWR2's
+   * kernel holds is a DIFFERENT, EMPTY one. The WHOLE retired actuation set is inert on this
+   * plant, not merely its containment half, and the next reader should not have to re-measure.
+   *
+   * SHAPED AS A BIFURCATION, because an absence-assertion on its own pins a non-event — the
+   * standing trap. The SAME casualty is ridden on BOTH plants and each leg can go red:
+   *   - the retired engine FIRES (MSIV closes, spray starts). The 'C' mutation below moves
+   *     the containment setpoints out of reach and this leg reddens, which is what says the
+   *     probe can still see a firing at all.
+   *   - PWR2 is INERT under a containment pressure that goes HIGHER. The 'SH' mutation below
+   *     stops the shell emptying the array and this leg reddens.
+   * Neither leg is worth anything alone: the first alone certifies the retired plant, the
+   * second alone passes on any plant that never gets its containment anywhere. */
+  if (grp('A')) {
+    head('5 -- THE ACTUATION ARRAY IS PWR-ENGINE-ONLY (#778): one casualty, two plants');
+    var baseActs = RD.PWR_CONFIG.protection.actuations || [];
+    /* PRECONDITION. Without a live containment hi-hi row in the retired table the ride below
+     * asserts nothing, and would keep saying so in green for ever. */
+    var hihiRows = baseActs.filter(function (a) {
+      return a.instrument === 'containment_pressure' && a.direction === 'high' &&
+             (a.action === 'close_msiv' || a.action === 'set_containment_spray');
+    });
+    ck('act-retired-rows', 'the retired table still carries >=15 actuations incl. the 2 containment hi-hi rows',
+       baseActs.length >= 15 && hihiRows.length === 2,
+       baseActs.length + ' rows, ' + hihiRows.length + '/2 hi-hi');
+
+    var p2cfg = new RD.pwr2.shell.PWR2Engine({ initial_state: 'hot_full_power' }).getProtectionConfig();
+    ck('act-pwr2-empty', 'PWR2 getProtectionConfig hands the kernel ZERO actuations, a different array',
+       (p2cfg.actuations || []).length === 0 && p2cfg.actuations !== baseActs,
+       (p2cfg.actuations || []).length + ' rows (retired: ' + baseActs.length + ')');
+
+    /* ONE CASUALTY, BOTH PLANTS. Full stack — `_evalActuations` only ticks under M5. */
+    function loca(plant, secs) {
+      var svc = new RD.SimulationService({ seed: 0xB0A2D });
+      svc.selectPlant(plant, 'hot_full_power', null, undefined);
+      svc.running = true; svc.timeAcceleration = 1; svc.attentionStops = false;
+      for (var k = 0; k < 20; k++) svc.tick();
+      svc.handleCommand({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
+      var o = { peak: 0, hihi: null, msiv: null, spray: null, fan: null, layerActs: null };
+      var lay = svc.layer || null;                    /* simulation_service.js:346 */
+      if (lay && lay.config) o.layerActs = (lay.config.actuations || []).length;
+      for (var i = 0; i < Math.round(secs / 0.1); i++) {
+        svc.tick();
+        var ts = svc.engine.getTrueState();
+        if (ts.containment_pressure_mpa > o.peak) o.peak = ts.containment_pressure_mpa;
+        if (o.hihi === null && ts.containment_pressure_mpa >= 0.3081) o.hihi = svc.simTime;
+        if (o.msiv === null && ts.msiv_open === false) o.msiv = svc.simTime;
+        if (o.spray === null && ts.ctmt_spray_active === true) o.spray = svc.simTime;
+        if (o.fan === null && ts.ctmt_fan_active === true) o.fan = svc.simTime;
+      }
+      return o;
+    }
+    var r1 = loca('pwr', 90), r2 = loca('pwr2', 180);
+    var PSIA = function (m) { return (m * 145.038).toFixed(1); };
+
+    /* LEG 1 — the firing side. If the retired engine ever stops closing its MSIV and starting
+     * spray on this casualty, this reds, and leg 2 stops meaning anything. */
+    ck('act-pwr1-fires', 'the RETIRED engine crosses containment hi-hi and the rows FIRE (MSIV shut + spray in)',
+       r1.hihi !== null && r1.msiv !== null && r1.spray !== null && r1.msiv > r1.hihi,
+       'hi-hi ' + (r1.hihi === null ? 'never' : r1.hihi.toFixed(2) + ' s') +
+       ', MSIV ' + (r1.msiv === null ? 'never' : r1.msiv.toFixed(2) + ' s') +
+       ', spray ' + (r1.spray === null ? 'never' : r1.spray.toFixed(2) + ' s') +
+       ', peak ' + PSIA(r1.peak) + ' psia');
+
+    /* LEG 2 — the inert side, under a HIGHER containment pressure than the one that fired. */
+    ck('act-pwr2-inert', 'PWR2 goes FURTHER past hi-hi and fires NONE of them',
+       r2.hihi !== null && r2.peak > r1.peak && r2.msiv === null && r2.spray === null && r2.fan === null,
+       'hi-hi ' + (r2.hihi === null ? 'never' : r2.hihi.toFixed(2) + ' s') + ', peak ' +
+       PSIA(r2.peak) + ' psia vs the retired ' + PSIA(r1.peak) +
+       '; MSIV ' + (r2.msiv === null ? 'never' : r2.msiv.toFixed(2) + ' s') +
+       ', spray ' + (r2.spray === null ? 'never' : r2.spray.toFixed(2) + ' s') +
+       ', fans ' + (r2.fan === null ? 'never' : r2.fan.toFixed(2) + ' s'));
+
+    /* THE CONSUMER, not the write. The array the LIVE kernel over PWR2 is holding — a shell
+     * that publishes an empty array while the layer was built from the retired one would pass
+     * `act-pwr2-empty` and fail here. Skipped rather than faked if the service renames it. */
+    if (r2.layerActs !== null) {
+      ck('act-pwr2-layer', 'the live control layer over PWR2 holds zero actuation rows',
+         r2.layerActs === 0, r2.layerActs + ' rows in the running kernel');
+    }
+  }
+
   return nX;
 }
 
@@ -643,7 +732,34 @@ var MUTS = [
 
   ['the menu\'s PORV stick never latches the valve (the close would then really shut it)', 'SH',
    "      else if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', true);",
-   '', { grp: 'B2' }]
+   '', { grp: 'B2' }],
+
+  /* #778 — one mutation per LEG of band 5's bifurcation, so neither half can be a non-event.
+   * The first takes the containment setpoints 321x out of reach: the retired engine stops
+   * firing (act-pwr1-fires reds) and PWR2's ride is byte-identical, which is the measurement
+   * the declaration in pwr_control.js quotes. The second stops the shell emptying the array,
+   * and PWR2's kernel starts evaluating the retired plant's rows (act-pwr2-empty,
+   * act-pwr2-layer and act-pwr2-inert red, or the whole band throws on a verb PWR2 refuses —
+   * which is itself the reason the strip exists). */
+  ['the containment hi-hi setpoints move out of reach — the retired engine stops firing', 'C',
+   'var CTMT_SI_MPA = 0.1254, CTMT_HIHI_MPA = 0.3081;',
+   'var CTMT_SI_MPA = 99.0, CTMT_HIHI_MPA = 99.0;', { grp: 'A' }],
+
+  ['the shell stops emptying `actuations` — PWR2 inherits the retired plant\'s ESF rows', 'SH',
+   'trips: [], actuations: [], interlocks: [], runbacks: [],',
+   'trips: [], actuations: base.actuations, interlocks: [], runbacks: [],', { grp: 'A' }],
+
+  /* AND THE SAME LEAK NARROWED TO A VERB PWR2 ACTUALLY WIRES. The mutation above reds the
+   * array check and then THROWS — PWR2 refuses `set_containment_spray` and `set_ctmt_fans`,
+   * which is exactly why the shell empties the array — so the BEHAVIOURAL half of leg 2 never
+   * gets to run under it. Leaking only the `close_msiv` rows (a mapped command on this plant,
+   * pwr2_shell:442) lets the ride finish and reds `act-pwr2-inert` itself. Without this the
+   * inert leg would be proven only at the array, and a shell that published an empty array
+   * while the rows fired anyway would pass. */
+  ['only the close_msiv containment rows leak — PWR2\'s MSIV shuts on hi-hi', 'SH',
+   'trips: [], actuations: [], interlocks: [], runbacks: [],',
+   "trips: [], actuations: base.actuations.filter(function (a) { return a.action === 'close_msiv'; }), interlocks: [], runbacks: [],",
+   { grp: 'A' }]
 ];
 
 /* re-execute a module's source into RD; every consumer looks its constructor up live */
@@ -675,11 +791,15 @@ MUTS.forEach(function (m) {
   try { install(mutated); runSuite(r2, true, m[4].grp); }
   catch (e) { crashed = true; }
   install(S.text);                                   /* restore before the next mutation */
+  /* REDS FIRST, THE CRASH ONLY AS A FALLBACK. A crash counts as caught — a mutant that cannot
+   * run has certainly been noticed — but it is the WEAK form: it says nothing about whether
+   * any check can SEE the defect, so a band that throws early would stand in for coverage it
+   * does not have. Count whatever went red before the throw and say which kind it was. */
   var reds = r2.filter(function (r) { return !r.ok && r.verdict !== 'XFAIL'; }).length;
-  var caught = crashed ? 1 : reds;
+  var caught = reds || (crashed ? 1 : 0);
   if (!caught) { blind++; console.log('  BLIND TO  ' + m[0] + '   <-- THIS GATE CANNOT SEE IT'); }
   else console.log('  caught    ' + m[0].slice(0, 72).padEnd(74) +
-                   (crashed ? 'threw' : reds + ' red'));
+                   (reds ? reds + ' red' + (crashed ? ' + threw' : '') : 'threw ONLY'));
 });
 
 console.log('\n' + '='.repeat(74));
