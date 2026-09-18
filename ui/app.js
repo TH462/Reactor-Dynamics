@@ -3115,9 +3115,9 @@
     // #625: the WARP tier let go (60x) or was refused; the service names the plant's reason.
     transient: 'WARP dropped to 60× — ',
     warp_locked: 'WARP unavailable — ',
-    // #619 item 6. Not an emergency, so it toasts 'info' rather than 'error' below — the
-    // other three are the plant interrupting you; this one is the checklist keeping pace.
-    step: 'Dropped to real time — walkthrough step complete',
+    // NO `step` REASON since 2026-09-17 *(OWNER RULING: "Release with the step snap.")* — the
+    // service no longer drops fast-forward when the walkthrough step index moves, so nothing
+    // can stamp that reason and a string for it would be a dangling mechanism.
     // #619 item 13 — the plant is holding the clock down (the accumulator arming window).
     // The service also REFUSES set_speed while it stands, so this is not merely advisory.
     hold: 'Held at real time — the plant needs you here',
@@ -3144,7 +3144,7 @@
    *
    * Everything else the old paragraph drew is gone, on purpose, and each has a home already:
    * WARP's achieved rate is `#ffRate` (`syncPacingUI` below); a WARP lock's reason is the WARP
-   * buttons' own `title`; every momentary drop (scram/failure/alarm/transient/warp_locked/step)
+   * buttons' own `title`; every momentary drop (scram/failure/alarm/transient/warp_locked)
    * is already toasted AND flashed (`syncSpeedUI` above) at the moment it happens — #655 must
    * not be reopened, and #675 §E leaves nothing here worth restating for those.
    *
@@ -3189,7 +3189,8 @@
     }
     /* EVERY DROP STATES ITS OWN REASON, not just the held-at-real-time one (2026-09-15 layman
      * pass, #653). This branch read `warpNote.reason === 'hold'` and fell through for the other
-     * four — alarm, scram, failure and step — printing the step's fast-forward advice instead.
+     * reasons — alarm, scram and failure (and, until 2026-09-17, step) — printing the step's
+     * fast-forward advice instead.
      * MEASURED: the clock dropped on a new unacknowledged warning and `#warpInfo` then read
      * "About 50 plant-minutes left at 1× — set the speed control to 600×" while the plant
      * crawled 596 to 600 psia (4.11 to 4.14 MPa) over 200 s of real time. The line was advising
@@ -3197,7 +3198,7 @@
      *
      * IT DOES NOT REOPEN #686. That ruling's concern was this line growing back into a
      * four-state paragraph that says something on every step; the reason is written only while
-     * a drop is STANDING, and `retireWarpNote` already clears the four momentary reasons on the
+     * a drop is STANDING, and `retireWarpNote` already clears the momentary reasons on the
      * player's very next speed act (the `hold` exception is #710's and is untouched). So the
      * line still says nothing on an ordinary step, and the toast and the button flash are still
      * the moment-of-event cue — this is the explanation that has to survive until the player
@@ -3273,12 +3274,13 @@
     // Toast the reason so the operator knows why the clock changed under them.
     var snap = s && s.metadata ? s.metadata.speed_snap : null;
     if (snap) {
-      /* Severity by kind: a checklist step completing is information (#619 item 6); a WARP
-       * refusal is a caution (#625); everything else is the plant interrupting you. */
+      /* Severity by kind: a WARP refusal is a caution (#625); everything else is the plant
+       * interrupting you. The 'info' case was the checklist-step drop and went with it
+       * (OWNER RULING, 2026-09-17: "Release with the step snap."). */
       showToast(speedSnapText(snap),
-        snap.reason === 'step' ? 'info' : snap.reason === 'warp_locked' ? 'warn' : 'error');
+        snap.reason === 'warp_locked' ? 'warn' : 'error');
       /* …and, ONLY for the held-at-real-time reason (#686 ruling 3), it stays written under the
-       * speed buttons until the player next acts — the other five reasons rely on the toast +
+       * speed buttons until the player next acts — the other reasons rely on the toast +
        * flash above since #686; carrying `reason` is what lets `syncWarpInfo` single out this
        * one case without re-deriving it from the text. */
       warpNote = { text: speedSnapText(snap), reason: snap.reason };
@@ -4181,6 +4183,14 @@
      * so neither the band form below nor the "label op value" form at the bottom says it. An
      * authored `label` on an `accs` entry still wins (that is the path step 8 takes); this is
      * what an unlabelled entry or a bare `acc` draws. Per cent and minutes, no SI to carry. */
+    /* `stopped` (#761) has no value to print either, and its claim is about the CONTROL rather
+     * than an indication: "not moved for N seconds". Minutes where the quiet time divides,
+     * seconds otherwise — same shape as the steadiness line below, no SI to carry. */
+    if (pred.op === 'stopped') {
+      var qs = (pred.v > 0) ? pred.v : 60;
+      var qTxt = (qs % 60 === 0) ? (qs / 60) + (qs === 60 ? ' minute' : ' minutes') : qs + ' seconds';
+      return label + ' has not moved for ' + qTxt;
+    }
     if (pred.op === 'steady') {
       var sw = (pred.window > 0) ? pred.window : 120;
       var swTxt = (sw % 60 === 0) ? (sw / 60) + (sw === 60 ? ' minute' : ' minutes') : sw + ' seconds';
@@ -4783,9 +4793,7 @@
     h += '</div>';
     // Chain handoff (#244, the Mode 5 → full power → Mode 5 round trip): a finished leg
     // offers the next one by name, so the whole evolution is guided end to end.
-    var nextPr = ck.complete && pr.next
-      ? ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === pr.next; })[0]
-      : null;
+    var nextPr = nextLegFor(pr, ck.complete);
     /* THE BUTTON ROW IS RENDERED OUTSIDE THIS CARD (#687 item 2, OWNER 2026-09-09: "Put 'End
      * Walkthrough' at the very bottom of the space"). It used to be appended to `h` and so ended
      * up the last child of `#cklRun` — which is only the FIRST child of `.instr-body`, with
@@ -5599,6 +5607,32 @@
   // the pre-#241 behaviour.
   function flagOn(id) { return !RD.Flags || RD.Flags.on(id); }
   function missionOn(m) { return flagOn(m.kind + ':' + m.id); }
+  /* THE CHAIN HANDOFF IS A ROUTE INTO A WALKTHROUGH AND IT WAS THE ONE THAT WAS NOT GATED
+   * *(OWNER, 2026-09-15: "I found a way to play the locked walkthroughs in the live version.
+   * when finishing the mode 5-3 walkthrough it produces a button at the bottom that brings you
+   * to the next walkthrough. it works and brings up the mode 3-1 walkthrough which should be
+   * locked.")*. `3dd462f7` put five of the six legs back on `preview` *(OWNER DIRECTIVE,
+   * 2026-09-15: "Release and unlock only the mode 5 to 3 walkthrough. I still need to test the
+   * mode 3 to 1 and other walkthroughs.")* — and that gating only ever filtered the LISTS.
+   * Measured on the public channel: `RD.Flags.on('procedure:pwr_startup')` is FALSE while
+   * `pwr_heatup.next` is `'pwr_startup'`, and the finished card resolved it straight out of the
+   * pool by id, so the second leg was one button press away in Alpha 1.7.4.
+   *
+   * THE BUTTON SIMPLY IS NOT DRAWN. No placeholder, no "coming soon" row: `site/flags.js`'s
+   * whole contract is that a gated item is not OFFERED, and a panel naming the locked leg inside
+   * the run card would advertise exactly what the gate exists to withhold — as well as being new
+   * UI nobody asked for. The finished card keeps its `Close` button and reads as an ending.
+   *
+   * A FUNCTION, NOT AN INLINE CONDITION, and that is the #485 rule rather than tidiness: a
+   * gating claim spelled into a render expression can only be checked by reading the source,
+   * and a source scan cannot tell you the branch is REACHABLE. `RD.__dev` exposes this under
+   * `?dev=1` so `verify_flags_ui` can put the real decision under both channels. */
+  function nextLegFor(pr, complete) {
+    if (!complete || !pr || !pr.next) return null;
+    if (!flagOn('procedure:' + pr.next)) return null;
+    return ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || [])
+      .filter(function (x) { return x.id === pr.next; })[0] || null;
+  }
   function soonPanel(area) {
     return '<div class="mp-soon"><div class="mp-soon-tag">COMING SOON</div>' +
       '<div class="m-note">' + mesc(RD.Flags ? RD.Flags.soon(area) : '') + '</div></div>';
@@ -10512,6 +10546,10 @@
         service: function () { return service; },
         tripCauseLabel: tripCauseLabel,
         tripCauses: function () { return TRIP_CAUSE; },
+        /* The finished card's chain handoff, as the renderer calls it — see nextLegFor.
+         * `verify_flags_ui` drives it on both channels; exposing the real function rather
+         * than a copy is the point, the same reason tripCauses() hands over the real map. */
+        nextLegFor: nextLegFor,
       };
     }
     // Fine strip-chart sampling. The service calls this on a fixed SIM-time interval inside

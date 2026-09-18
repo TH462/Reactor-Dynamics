@@ -319,8 +319,43 @@
      * same controller-chases-its-own-instrument class as #590's feed loop. A real
      * proportional heater controller has electronics/actuation lag on this order; the
      * backup bistable reads the same lagged signal (its 8 psi hysteresis is 2.8 sigma of
-     * the raw noise, 11 sigma of the lagged); spray and the PORV auto-open keep the RAW
-     * error — see the bistable comment. MEASURED at 2.0 s, hot full power, 300 s: the
+     * the raw noise, 11 sigma of the lagged).
+     *   THE SPRAY BAND JOINED THEM 2026-09-15 *(OWNER RULING, 2026-09-15: "The pressurizer
+     * spray logic needs to be adjusted so it doesn't rapidly cycle.")*, #755 item 13 — the
+     * other half of the same 2026-08-31 report, and this comment used to read "spray and the
+     * PORV auto-open keep the RAW error", which is how the omission stayed documented and
+     * unfixed for a fortnight. The spray's toe (+25 psi) has NO differential at all, so a
+     * closed loop that spray itself holds parks its mean error a psi or two under the toe and
+     * the +-2 psi channel noise carries it across, tens of times a minute, on a signal whose
+     * TRUE motion is under 1 psi.
+     *   RE-MEASURED 2026-09-17 on a QUIET tree, full shell, both ladders built from the SAME
+     * file one line apart, sampled at the player's 0.1 s broadcast over 300 s after a
+     * 20-minute settle. ⚠ AN EARLIER DRAFT OF THIS COMMENT CLAIMED "0.0 cycles/min AFTER" AT
+     * BOTH REGIMES AND BOTH FIGURES ARE WRONG — it was arithmetic on a recorded trace, taken
+     * on a tree another agent was editing. The plant's own numbers:
+     *     hot zero power, dial at the 1700 psig stop   100.8 -> 7.4 cycles/min,
+     *       board AMBER flips 896 -> 148, peak demand 17.09 -> 4.76 %
+     *     hot full power, setpoint parked 40 psi low    10.0 -> 1.4 cycles/min,
+     *       board AMBER flips 48 -> 0
+     *     pwr_heatup step 11, the WHOLE 5.81-plant-hour climb from 122 degF to 542 degF,
+     *       which is the leg the report came from:      15.2 -> 0.0 cycles/min
+     *       (5,284 open/close cycles -> 6)
+     * DUTY GOES UP, NOT DOWN — 44.6 -> 91.3 % at hot zero power — and that is the fix working,
+     * not a side effect: a MODULATING valve is supposed to sit open at a small steady demand,
+     * and the mean demand barely moves (1.89 -> 1.81 %), so the same heat leaves the vessel.
+     * What stops is the slamming. A check that only counted cycles would also pass on a spray
+     * welded shut, so the gate below asserts the valve still opens, at its ladder fraction.
+     *   WHAT ELSE MOVED — the coupled-regime question, measured rather than assumed. On the
+     * heatup leg: 542 degF at 5.805 -> 5.806 plant-hours, 72.35 -> 72.34 degF/hr, 235.4 ->
+     * 235.3 psi/hr, and the pressure track agrees within 0.4 psi at every half-hour mark. On a
+     * REAL rise the ladder handover does NOT move: ramped at 4 / 30 / 100 / 600 psi/min with
+     * the noise off, the PORV lifts at 100.00 psi every time on both sides, and the spray still
+     * reaches FULL before it (75.00 -> 94.80 psi at the 600 psi/min extreme). The cost is
+     * ~1.96 s of spray delay = +0.13 psi of overshoot at 4 psi/min, +3.3 psi at 100.
+     *   The counterfactual that makes it a defect and not a look: the same
+     * ladder on TRUE pressure cycles 0 times. The PORV auto-open is the one actuation still on
+     * the raw error — see the bistable comment for why it stays there.
+     *   MEASURED at 2.0 s, hot full power, 300 s: the
      * 0.1-resolution readback moves 7.2/s +/-3 points before, 2.4/s +/-0.5 after, and the
      * backup bank makes 0 on/off transitions even parked 21 psi below setpoint (the
      * chatter regime). The delay this buys on a real error is ~2 s against a bank whose
@@ -898,17 +933,29 @@
     /* The proportional bank reads the LAGGED error (CONTROL.prop_filter_tau_s — the
      * derivation and the measured flip counts are on the constant). Old saves carry no
      * filter state and seed from the live error, which is the pre-filter plant exactly. */
-    if (pz.errFiltPsi === undefined || !isFinite(pz.errFiltPsi)) pz.errFiltPsi = err_psi;
+    /* `== null` CATCHES BOTH undefined AND null, and the null is the one that matters: `pz` is
+     * serialized WHOLE (pwr2_engine's snapshot `pz: pz`), a JSON round trip writes NaN out as
+     * null, and `isFinite(null)` is TRUE (#555) — so a dead channel would seed a plausible
+     * near-zero error instead of re-seeding from the plant. Was `=== undefined` while only the
+     * heaters read this; since #755 item 13 the SPRAY reads it too, which is why it is worth
+     * the word. */
+    if (pz.errFiltPsi == null || !isFinite(pz.errFiltPsi)) pz.errFiltPsi = err_psi;
     pz.errFiltPsi += (err_psi - pz.errFiltPsi) *
                      clip(dt / Math.max(dt, CONTROL.prop_filter_tau_s), 0, 1);
     var prop = clip((CONTROL.prop_off_psi - pz.errFiltPsi) /
                     (CONTROL.prop_off_psi - CONTROL.prop_full_on_psi), 0, 1);
     /* The backup bistable reads the SAME lagged signal as the proportional bank: its 8 psi
      * hysteresis is 2.8 sigma of the raw channel noise (2.9 psi) but 11 sigma of the lagged
-     * one, which is what lets a latched contactor near its threshold stay latched. Spray and
-     * the PORV auto-open below deliberately keep the RAW error — neither was reported
-     * cycling, and lagging the PORV's control-open would trade a noise fix for a 2 s delay
-     * on a +100 psi excursion. */
+     * one, which is what lets a latched contactor near its threshold stay latched. THE SPRAY
+     * BAND READS IT TOO since 2026-09-15 (#755 item 13 — see the ladder below); the PORV
+     * auto-open is the one actuation that deliberately keeps the RAW error. That is not an
+     * oversight and the reason is the DIFFERENCE IN KIND: the PORV is PROTECTION, not
+     * modulation — it sits 75 psi above the spray's toe, nothing has ever reported it
+     * cycling — it carries a 15 psi reseat deadband of its own, RELIEF.porv_reseat_psi = +85,
+     * which is 5.2 sigma of the raw channel noise where the spray's toe had none —
+     * and lagging it would trade a noise fix this valve does not need for ~2 s of delay on a
+     * +100 psi excursion. A relief valve that answers late is a different risk from a spray
+     * valve that chatters. */
     if (pz.errFiltPsi <= CONTROL.backup_on_psi || backupOnLevel) pz.backupOn = true;
     else if (pz.errFiltPsi >= CONTROL.backup_off_psi && !backupOnLevel) pz.backupOn = false;
 
@@ -1002,7 +1049,13 @@
      * from the other end. The readback must stay an identity. */
     var Q_heat_kW = Q_energized_kW * wetted;
 
-    var sprayAuto = clip((err_psi - CONTROL.spray_start_psi) /
+    /* THE SPRAY READS THE LAGGED ERROR, the same signal the proportional bank and the backup
+     * bistable read *(OWNER RULING, 2026-09-15: "The pressurizer spray logic needs to be
+     * adjusted so it doesn't rapidly cycle." — #755 item 13, ruled after three measured
+     * options: lag the error, a reset differential, or leave it)*. It was RAW until this
+     * change, and the constant's own comment named that as the omission. The PORV auto-open
+     * below still reads RAW — see the bistable comment for why the two part company here. */
+    var sprayAuto = clip((pz.errFiltPsi - CONTROL.spray_start_psi) /
                          (CONTROL.spray_full_psi - CONTROL.spray_start_psi), 0, 1);
     var sprayFrac = drivers.spray_manual !== undefined ? clip(drivers.spray_manual, 0, 1)
                                                        : sprayAuto;

@@ -30,6 +30,72 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.7.5] — 2026-09-17
+
+### Changed — fast-forward carries across walkthrough step boundaries (#761)
+
+- **A walkthrough step advancing no longer drops the clock to 1×** *(OWNER RULING, 2026-09-17:
+  "Release with the step snap.")*. The selected speed now carries from one step to the next.
+  `SimulationService._attentionStop` returned `'step'` on every checklist index move (#619 item 6,
+  #622); it was a reading pause, not a protection, and it clamped the speed seventeen times a leg.
+- **Measured on `pwr_startup`, seed 42, the player selecting a speed once:** at 10×, 29,054
+  broadcasts = **48.4 min of real time → 3,005 broadcasts = 5.0 min**. At 60×, **48.4 min → 0.9 min**
+  — before the change, selecting 60× instead of 10× bought nothing, because the plant sat at 1×
+  either way. Seventeen involuntary re-presses per leg are gone.
+- **Every other fast-forward dropout is unchanged**: a reactor trip, a new equipment failure, a new
+  warning or critical alarm on a quiet board, the plant-declared hold that refuses to be accelerated
+  past the accumulator arming window, and WARP's own lockout all still drop the clock.
+- Steps whose dwell is already under about a second (the verification steps) are unaffected —
+  measured identical at 0.2–0.6 s of real time before and after, at both 10× and 60×.
+
+### Changed — the 1/M settle rungs gate on the RODS, not on a settling indication (#761)
+
+- **`pwr_startup` steps 5–8 now read: counts floor → the control bank has not moved for a minute
+  → STARTUP RATE back to zero → plot the point** *(OWNER RULING, 2026-09-17: selected "Gate on rods
+  stopped + startup rate" from three options put to him)*. The "counts steady" row added in
+  `Alpha 1.7.4` is removed. Both of the old rows were proxies for "the operator has stopped
+  pulling" and one route defeated both: measured, a bank step withdrawn every 20 s satisfies the
+  startup-rate row with the rods still moving at rungs 5 and 6, and the counts-steady row with the
+  rods still moving at rung 5 — and rung 6 is inside the panel's trailing-three fit window.
+- **New acceptance operator `op: 'stopped'`** — "this control has not moved for N seconds", exact
+  rather than inferred, legal only on control-class params (the rod banks, the flat `control_state`
+  lineup fields, the operator's trip blocks) and only in `acc`/`accs`. The 60 s is derived, not
+  round: measured at taps of 2 / 5 / 10 / 20 / 30 / 45 / 60 / 75 s, the predicate can be satisfied
+  with the control still moving if and only if the tap cadence is at or above its own quiet time.
+- **`op: 'steady'` stays in the schema** and is now authored nowhere; its behaviour is gated on a
+  synthetic channel instead of on an authored use.
+- Step text, `ask` lines and step 8's note now name what actually gates the plot. The four `hold`
+  values (300 / 300 / 420 / 600 s, replay-side) are unchanged and were re-measured against the new
+  rows — every rung is satisfied 1.66x to 2.13x inside its own hold.
+
+### Fixed — the Mode 5 pressure setpoint seats at the floor the box enforces (#755 item 11)
+
+- The cold-shutdown initial condition seeded the operator's pressurizer pressure setpoint at
+  **363 psia (2.50 MPa)**, below the **1700 psig (11.72 MPa)** floor the setpoint box itself
+  refuses to go under. The board therefore displayed a value it would not accept, and pressing
+  HEATER AUTO raised **0.0 psi in 45 plant-minutes** — the controller was already on setpoint.
+- The seed is floored. The Mode 5 to Mode 3 heatup's steps 8 and 9 are rewritten around it: the
+  spray is armed and the heaters are allowed to climb, with no number typed.
+
+### Fixed — the pressurizer spray reads the LAGGED pressure error (#755 item 13)
+
+- The spray ladder read the **raw** indicated pressure error while the heaters read the lagged one,
+  so instrument noise alone drove the valve. Measured: **100.8 cycles/min → 7.4** at the
+  1700 psi (11.72 MPa) stop, and **15.2 → 0.0** across the whole heatup climb.
+- Heatup rate is unmoved and the PORV/relief ladder is untouched.
+
+### Fixed — the finished-walkthrough handoff is flag-gated (#766)
+
+- The finished-walkthrough card resolved the next leg and started it with **no release-flag check**.
+  Six routes start a walkthrough; five were gated and this one was not, so a player on the live
+  site could finish the Mode 5 to Mode 3 leg and press straight into a locked walkthrough.
+- `verify_flags_ui` 53 → 55 (the two new checks cover the card's button and its resolver).
+
+### Changed — a clamped number-box entry flashes instead of correcting itself silently
+
+- Typing a setpoint outside a control's range used to be rewritten with no indication that the
+  plant had refused what was typed. The box now flashes when it clamps.
+
 ## [Alpha 1.7.4] — 2026-09-15
 
 ### Fixed (a fresh-context layman played BOTH legs end to end, and four of its diagnoses were wrong — 2026-09-15, #653, #758, #759)

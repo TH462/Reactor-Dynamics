@@ -564,10 +564,16 @@ if (!only) {
     var accIdx = -1, spIdx = -1;
     proc.steps.forEach(function (st, k) {
       if (/Open the accumulator valve/i.test(st.text)) accIdx = k;
-      if (/Raise SET PZR PRESSURE to 1700/.test(st.text)) spIdx = k;
+      /* the step that STARTS the climb, and its FIRST check-off is the operator's ACTION. It was
+       * `Raise SET PZR PRESSURE to 1700` until #755 item 11 floored the Mode 5 seed at the board
+       * span's own bottom (2026-09-15) and retired the dial step — the HEATER press now carries
+       * both the climb and the cover-gas acceptance, so it is the one to read. `>= 0` is asserted
+       * below rather than left to `spIdx === -1` quietly matching nothing. */
+      if (/press AUTO under HEATER/.test(st.text)) spIdx = k;
     });
     var s = null, issued = {}, issuedAt = {}, holdTick = null, stepAtHold = null, ticksToAcc = null;
-    var pAtHold = 0, pAtAcc = 0, chatter = 0, refused = 0, accepted = 0, spDialledBox = null;
+    var pAtHold = 0, pAtAcc = 0, chatter = 0, refused = 0, accepted = 0;
+    var spActionTick = null, pAtAction = 0;
     for (var n = 0; n < 60000 && accIdx >= 0; n++) {
       s = svc.tick();
       var ck2 = s.instructor && s.instructor.checklist; if (!ck2 || ck2.complete) break;
@@ -580,12 +586,21 @@ if (!only) {
         (st.accs || []).forEach(function (e) { if (e.cmd) svc.handleCommand(e.cmd); });
         // no `inject`/`clear` here — the LIVE instructor fires those itself (#670; see 2b).
       }
-      /* the setpoint action is its own check-off, ticked the moment it is dialled. Read it on a
-       * LATER tick than the one that issued the command (#660 item 16: every step now waits for
-       * Continue, so the step's first snapshot already carries `accs` and arrives BEFORE the
-       * command — sampling it there would grade the box on a setpoint nobody had dialled yet). */
-      if (i === spIdx && spDialledBox === null && ck2.accs && ck2.accs[0] &&
-          issuedAt[spIdx] !== undefined && n > issuedAt[spIdx]) spDialledBox = ck2.accs[0].met;
+      /* the operator's ACTION is its own check-off, and the claim (#627) is that it ticks
+       * BEFORE the ride is over — not on one nominated broadcast.
+       *
+       * ⚠ IT USED TO SAMPLE EXACTLY ONE TICK, `n > issuedAt[spIdx]`, and that worked only
+       * because the entry was CMD-KIND: a cmd entry latches on the command itself. #755 item 11
+       * made it a `p`-kind lamp, which goes through the instructor's grading, and MEASURED
+       * 2026-09-17 on this very loop the two are NOT the same broadcast — `control_state
+       * .heater_auto` flips on broadcast +1 while `accs[0].met` latches on **+5**, at 420 psia.
+       * The one-tick sample read `false` and reddened a check whose claim was true by 33
+       * broadcasts. So record WHEN it latches and assert the ORDER, which is what #627 asked
+       * for; a sample cannot tell a four-broadcast grading lag from a box that never ticks. */
+      if (i === spIdx && spActionTick === null && ck2.accs && ck2.accs[0] && ck2.accs[0].met &&
+          issuedAt[spIdx] !== undefined && n > issuedAt[spIdx]) {
+        spActionTick = n; pAtAction = s.true_state.pressure_mpa * 145.038;
+      }
       if (holdTick === null) {
         if (s.true_state.speed_hold) { holdTick = n; stepAtHold = i; pAtHold = s.true_state.pressure_mpa * 145.038; }
         else if (svc.timeAcceleration < 600) svc.handleCommand({ action: 'set_speed', value: 600 });
@@ -607,8 +622,12 @@ if (!only) {
        holdTick !== null && ticksToAcc !== null && ticksToAcc <= 50 && (stepAtHold === spIdx || stepAtHold === accIdx),
        'hold rose on step ' + (stepAtHold + 1) + ' at ' + pAtHold.toFixed(1) + ' psia; accumulator step active ' +
          ticksToAcc + ' broadcasts later at ' + pAtAcc.toFixed(1) + ' psia');
-    ck('...and the Pressure SP step shows the DIALLED setpoint as its own ticked box before the pressure arrives',
-       spDialledBox === true, 'first check-off of step ' + (spIdx + 1) + ' read ' + spDialledBox + ' on the broadcast after the command');
+    ck('...and the HEATER step ticks the PRESS as its own box BEFORE the clock hold rises',
+       spIdx >= 0 && spActionTick !== null && holdTick !== null && spActionTick < holdTick,
+       'step ' + (spIdx + 1) + ' (spIdx ' + spIdx + '): action box ticked ' +
+         (spActionTick === null ? 'NEVER' : (spActionTick - issuedAt[spIdx]) + ' broadcasts after the press, at ' +
+           pAtAction.toFixed(1) + ' psia') + '; clock hold rose ' +
+         (holdTick === null ? 'NEVER' : (holdTick - issuedAt[spIdx]) + ' broadcasts after, at ' + pAtHold.toFixed(1) + ' psia'));
   })();
 
   /* 2h. catch-up (#607 item 7): starting heatup with RCPs already running skips the
@@ -1894,45 +1913,60 @@ if (!only) {
        rightRefused.length === 0, rightRefused.join(', ') || 'all latch on their own sense');
   })();
 
-  /* 2aa. THE STEADINESS PREDICATE, `op: 'steady'` (#755, OWNER RULING 2026-09-15).
+  /* 2aa. THE TWO BAGGED PREDICATES — `op: 'steady'` (#755) and `op: 'stopped'` (#761).
    *
-   * He was given three ways to stop a hasty player plotting `pwr_startup`'s last 1/M point while
-   * the source range was still climbing — raise the count target to 12,000, add a "counts steady"
-   * predicate, or leave it as prose — and took the predicate over the one-number change, because
-   * a steady count rate is what an operator actually looks for.
+   * *(OWNER RULING, 2026-09-17: selected "Gate on rods stopped + startup rate" from three options
+   * put to him — gate on rod-stop plus startup rate, remove the steady row and keep startup rate
+   * alone, or keep the steady row. A SELECTION, not verbatim words.)*
    *
-   * WHAT WAS WRONG. The step's `hold: 600` governs the REPLAY only. Live, Continue lit on
-   * `sr_counts_cps > 7000`, which this route crosses 47 s after the rods stop with the count still
-   * climbing hard: measured, the 1/M panel then read 213.7 against a true critical of 208.
+   * WHAT WAS WRONG WITH THE STEADINESS ROW, MEASURED. `sr_counts_cps steady 3 %/120 s` is a proxy
+   * for "the operator has stopped pulling", and a SLOW DRIBBLE defeats a proxy: one bank step
+   * withdrawn every 20 s satisfies it with the rods STILL MOVING at rung 5, and satisfies the
+   * startup-rate row with the rods still moving at rungs 5 and 6. Both rows are proxies, one
+   * route defeats both, so the ruling replaces the proxy with the fact the plant actually knows —
+   * has the bank moved. The four rungs keep FOUR rows: counts floor, rods stopped, startup rate,
+   * point plotted, in that order, `accs_ordered`.
    *
-   * THE PROOF IS A PAIR, AND IT IS DRIVEN ON THE PLANT, NOT ON A FIXTURE. A predicate that never
-   * accepts satisfies "does not accept early" all by itself, and one that always accepts satisfies
-   * "accepts once settled" — so the same authored predicate the step ships is run against the real
-   * source-range trace of the authored ladder and must be RED where the old acceptance fired and
-   * GREEN at the ruled 600 s settle. */
+   * `op: 'steady'` STAYS IN THE SCHEMA and is now authored NOWHERE, which is exactly the
+   * "population goes to zero" trap CLAUDE.md's standing list names: the checks below therefore
+   * assert the BAGGED population rather than the steady one, and `steady`'s own behaviour is
+   * proven on a synthetic channel, which needs no authored use to be honest.
+   *
+   * THE PROOFS ARE PAIRS, DRIVEN ON THE PLANT. A predicate that never latches satisfies "cannot
+   * plot while the rods are moving" all by itself, so every negative below has its positive. */
   (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
-    var step8 = proc && proc.steps[7];
-    var floorEn = null, steadyEn = null;
-    ((step8 && step8.accs) || []).forEach(function (en) {
-      if (en.p === 'sr_counts_cps' && en.op === '>') floorEn = en;
-      if (en.p === 'sr_counts_cps' && en.op === 'steady') steadyEn = en;
-    });
-    ck("pwr_startup step 8 keeps the owner's 7,000 counts floor AND carries a steadiness entry (#755)",
-       !!(floorEn && floorEn.v === 7000 && steadyEn && steadyEn.v > 0 && steadyEn.window > 0),
-       steadyEn ? ('floor ' + (floorEn && floorEn.v) + ', steady ' + (steadyEn.v * 100).toFixed(0) +
-                   '% over ' + steadyEn.window + ' s') : 'no steady entry on step 8');
+    var RUNGS = [4, 5, 6, 7];                 // pwr_startup steps 5-8, zero-based
+    var FLOORS = [700, 1400, 3000, 7000];
 
-    /* `steady` is only legal where a per-step state bag exists — `acc` and `accs`. Authored into
-     * `saw`, `overtaken`, `precond` or a `when` gate it reads FALSE FOR EVER and nothing says so,
-     * which is the hollow-check shape CLAUDE.md's standing list names. This is the gate for it. */
-    var illegal = [];
+    /* --- 1. the authored shape of the four rungs -------------------------------------- */
+    var shapeBad = [], stopN = null;
+    RUNGS.forEach(function (idx, k) {
+      var st = proc && proc.steps[idx], w = 'step ' + (idx + 1);
+      var en = (st && st.accs) || [];
+      var iFloor = -1, iStop = -1, iRate = -1, iPlot = -1;
+      en.forEach(function (e, i) {
+        if (e.p === 'sr_counts_cps' && e.op === '>' && e.v === FLOORS[k]) iFloor = i;
+        if (e.p === 'control_bank_steps' && e.op === 'stopped') { iStop = i; stopN = e.v; }
+        if (e.p === 'startup_rate_dpm' && e.op === '~') iRate = i;
+        if (e.cmd === 'plot_1m_point' || (e.cmd && e.cmd.action === 'plot_1m_point')) iPlot = i;
+      });
+      if (!st || !st.accs_ordered) shapeBad.push(w + ' not accs_ordered');
+      else if (iFloor !== 0 || iStop !== 1 || iRate !== 2 || iPlot !== 3)
+        shapeBad.push(w + ' order floor/stop/rate/plot = ' + [iFloor, iStop, iRate, iPlot].join('/'));
+    });
+    ck('all four 1/M rungs gate the plot on ROD-STOP, then startup rate — the counts floor first (#761)',
+       shapeBad.length === 0 && stopN > 0,
+       shapeBad.join('; ') || 'steps 5-8: counts floor, control_bank_steps stopped ' + stopN +
+       ' s, startup rate, plot — ordered');
+
+    /* --- 2. legality, both halves of it ----------------------------------------------- */
+    var illegal = [], malformed = [], notControl = [], nBagged = 0, byOp = {};
     function scanPred(where, pr) {
       if (Array.isArray(pr)) { pr.forEach(function (q, i) { scanPred(where + '[' + i + ']', q); }); return; }
-      if (pr && pr.op === 'steady') illegal.push(where);
+      if (pr && RD.InstructorLayer.isBagOp(pr.op)) illegal.push(where + ' (' + pr.op + ')');
     }
-    var nSteady = 0, malformed = [];
     Object.keys(RD.MANUAL_PROCEDURES).forEach(function (key) {
       (RD.MANUAL_PROCEDURES[key] || []).forEach(function (pr) {
         (pr.precond || []).forEach(function (c, i) { scanPred(key + ':' + pr.id + ' precond[' + i + ']', c); });
@@ -1947,21 +1981,33 @@ if (!only) {
             if (sp && typeof sp !== 'string') scanPred(w + ' inject.when', sp.when);
           });
           [].concat(st.acc ? [st.acc] : [], st.accs || []).forEach(function (en) {
-            if (!en || en.op !== 'steady') return;
-            nSteady++;
-            if (!(en.v > 0) || !(en.window > 0) || !en.p) malformed.push(w);
+            if (!en || !RD.InstructorLayer.isBagOp(en.op)) return;
+            nBagged++; byOp[en.op] = (byOp[en.op] || 0) + 1;
+            if (!en.p || !(en.v > 0)) malformed.push(w + ' (' + en.op + ')');
+            if (en.op === 'steady' && !(en.window > 0)) malformed.push(w + ' (steady, no window)');
+            /* `stopped` compares readings for EQUALITY, so it is honest only on a channel that
+             * is exact and quantized — the operator's own control state. On a noisy instrument
+             * it would read false for ever: a check that can only fail is as hollow as one that
+             * can only pass, and nothing would say so. */
+            if (en.op === 'stopped' && !RD.InstructorLayer.isControlParam(en.p))
+              notControl.push(w + ' (' + en.p + ')');
           });
         });
       });
     });
-    ck('`steady` is authored ONLY where a per-step bag exists — acc / accs (#755)',
-       illegal.length === 0, illegal.join(', ') || nSteady + ' steady predicate(s) in the pool, all in acc/accs');
-    ck('...and every one declares a param, a drift and a window',
-       nSteady > 0 && malformed.length === 0, malformed.join(', ') || nSteady + ' well formed');
+    ck('a BAGGED predicate is authored ONLY where a per-step bag exists — acc / accs (#755, #761)',
+       illegal.length === 0, illegal.join(', ') || nBagged + ' bagged predicate(s) in the pool, all in acc/accs');
+    ck('...and every one is well formed (param + threshold, and a window if it is `steady`)',
+       nBagged > 0 && malformed.length === 0,
+       malformed.join(', ') || nBagged + ' well formed: ' + JSON.stringify(byOp));
+    ck('...and `stopped` is authored only on a CONTROL-class param, where equality is exact (#761)',
+       notControl.length === 0,
+       notControl.join(', ') || (byOp.stopped || 0) + ' stopped predicate(s), all control-class');
 
-    /* THE PLANT RUN. The authored 94/63/31/14 ladder on `hot_zero_power`, the step-8 predicate
-     * sampled through `InstructorLayer.gradeSteady` exactly as both runtimes sample it. */
-    if (steadyEn) {
+    /* --- 3. THE PLANT RUN. The authored 94/63/31/14 ladder on `hot_zero_power`, the step-8 rows
+     * graded through `_gradeAccs` — the path the live card actually grades on. */
+    var step8 = proc && proc.steps[7];
+    if (step8 && step8.accs) {
       var svc = mkSvc('hot_zero_power');
       var s = null, i;
       for (i = 0; i < 5; i++) s = svc.tick();
@@ -1978,46 +2024,89 @@ if (!only) {
       var prev = ctlBank(), still = 0;
       while (still < 5) { s = svc.tick(); var b = ctlBank(); if (b === prev) still++; else still = 0; prev = b; }
       var tStop = s.metadata.sim_time, bankStop = ctlBank();
-      var bag = { s: [] }, firstFloor = null, firstSteady = null, countsAtFloor = null, countsAtSteady = null;
-      var steadyAtFloor = false, streak = 0;
+      var il8 = Object.create(RD.InstructorLayer.prototype);
+      var graded = { accs: step8.accs.filter(function (e) { return e && e.p; }), accs_ordered: true };
+      var holder = {}, firstFloor = null, firstAll = null, stoppedAtFloor = false, countsAtFloor = null;
       while (s.metadata.sim_time - tStop < 900) {
         s = svc.tick();
         var el = s.metadata.sim_time - tStop, c = s.true_state.sr_counts_cps;
-        var v = RD.InstructorLayer.gradeSteady(bag, s, steadyEn);
-        if (firstFloor === null && c > 7000) { firstFloor = el; countsAtFloor = c; steadyAtFloor = !!v.met; }
-        if (firstSteady === null) {
-          streak = v.met ? streak + 1 : 0;      // the runtime's own five-evaluation acceptance debounce
-          if (streak >= 5) { firstSteady = el; countsAtSteady = c; }
-        }
+        var all = il8._gradeAccs(holder, graded, s);
+        if (firstFloor === null && c > 7000) { firstFloor = el; countsAtFloor = c; stoppedAtFloor = !!all; }
+        if (firstAll === null && all) firstAll = el;
       }
-      ck('the steadiness entry is RED where the old acceptance fired — the counts are still climbing (#755)',
-         firstFloor !== null && !steadyAtFloor && firstSteady !== null && firstSteady > firstFloor + 300,
+      ck('the rod-stop rung is RED where the OLD acceptance fired — the counts floor is not the gate (#761)',
+         firstFloor !== null && !stoppedAtFloor && firstAll !== null && firstAll > firstFloor,
          'floor crossed at ' + (firstFloor === null ? '?' : firstFloor.toFixed(0)) + ' s (' +
-         (countsAtFloor || 0).toFixed(0) + ' counts, steady=' + steadyAtFloor + '), steady at ' +
-         (firstSteady === null ? 'NEVER within 900 s' : firstSteady.toFixed(0) + ' s') +
-         ', bank ' + bankStop);
-      /* GREEN WELL INSIDE THE AUTHORED HOLD, which is the claim that matters: `hold: 600` is
-       * measured from the step becoming active and 22 s of it is the rod burst, so the replay
-       * delivers 578 s of settle. A predicate the replay cannot satisfy would redden the very
-       * step it is authored on — which is exactly what a 2 % tolerance did (drift at 578 s is
-       * 2.16 %). The band is wide on purpose: it is pinning "on the knee, with margin", not a
-       * number, and a retune of the ladder should move it rather than break it. */
-      ck('...and GREEN on the knee, with room inside the authored 600 s hold (#755)',
-         firstSteady !== null && firstSteady >= 420 && firstSteady <= 560,
-         firstSteady === null ? 'never met' : (firstSteady.toFixed(0) + ' s of settle, ' +
-           (countsAtSteady || 0).toFixed(0) + " counts; the replay's hold delivers 578 s"));
+         (countsAtFloor || 0).toFixed(0) + ' counts, rung met=' + stoppedAtFloor + '), rung met at ' +
+         (firstAll === null ? 'NEVER within 900 s' : firstAll.toFixed(0) + ' s') + ', bank ' + bankStop);
+      /* GREEN, AND WELL INSIDE THE AUTHORED HOLD. `hold: 600` is measured from the step becoming
+       * ACTIVE and 17-22 s of it is the rod burst, so the replay delivers ~580 s of settle; a
+       * rung the replay cannot satisfy reddens the very step it is authored on, which is the trap
+       * #755's 2 % tolerance hit. Measured here: the rung is met 333 s after rod-stop. The band is
+       * wide on purpose — it pins "after the rods stop and after the rate falls in, with room",
+       * not a number, and a retune of the ladder should move it rather than break it. */
+      ck('...and GREEN once the bank has been still and the startup rate has fallen in (#761)',
+         firstAll !== null && firstAll >= 120 && firstAll <= 500,
+         firstAll === null ? 'never met within 900 s of rod-stop'
+                           : firstAll.toFixed(0) + " s from rod-stop; the replay's hold delivers ~580 s");
     }
 
-    /* THE RUNTIME HALF, BOTH SIDES, through `_gradeAccs` — the path the live card actually grades
-     * on. A climbing plant must not tick it, a flat one must, and a plant that STARTS CLIMBING
-     * AGAIN must UN-tick it: `steady` re-grades like `~` rather than latching, and a latching
-     * version would pass the first two halves on its own. */
+    /* --- 4. THE DRIBBLE ROUTE, WHICH IS WHY THIS CHANGE EXISTS. One bank step every 20 s up to
+     * the rung's own target: the rung must NOT be satisfiable while the bank is still moving. The
+     * control is the OLD steadiness row driven on the SAME tick stream — it DID latch while the
+     * rods moved at rung 5, which is the defect the ruling names, and a proof that the new rung is
+     * refusing a route that was genuinely open rather than a route nothing could take. */
+    (function () {
+      var svc = mkSvc('hot_zero_power'), s = null, i;
+      for (i = 0; i < 5; i++) s = svc.tick();
+      var ctlBank = function () {
+        var gs = (s.control_state && s.control_state.rod_groups) || [];
+        for (var j = 0; j < gs.length; j++) if (gs[j].function === 'control') return gs[j].steps;
+        return null;
+      };
+      var oldSteady = { p: 'sr_counts_cps', op: 'steady', v: 0.03, window: 120 };
+      [0, 1].forEach(function (k) {
+        var idx = RUNGS[k], st = proc && proc.steps[idx];
+        if (!st || !st.accs) return;
+        var target = ctlBank() + [94, 63][k];
+        var il = Object.create(RD.InstructorLayer.prototype);
+        var graded = { accs: st.accs.filter(function (e) { return e && e.p; }), accs_ordered: true };
+        var oldGraded = { accs: [ { p: 'sr_counts_cps', op: '>', v: FLOORS[k] }, oldSteady ],
+                          accs_ordered: true };
+        var holder = {}, oldHolder = {};
+        var newLatchedMoving = false, oldLatchedMoving = false;
+        var lastTap = -1e9, guard = 0;
+        while (ctlBank() < target && guard++ < 400000) {
+          var t = s.metadata.sim_time;
+          if (t - lastTap >= 20) { svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 1, speed: 'normal' }); lastTap = t; }
+          s = svc.tick();
+          var moving = ctlBank() < target;
+          if (il._gradeAccs(holder, graded, s) && moving) newLatchedMoving = true;
+          if (il._gradeAccs(oldHolder, oldGraded, s) && moving) oldLatchedMoving = true;
+        }
+        ck('DRIBBLE, rung ' + (idx + 1) + ': one step every 20 s cannot satisfy the rung while the bank still moves (#761)',
+           !newLatchedMoving,
+           newLatchedMoving ? 'the rung latched with the bank at ' + ctlBank() + ' of ' + target
+                            : 'never met before bank ' + target + ' (' +
+                              Math.round(s.true_state.sr_counts_cps) + ' counts)');
+        if (k === 0) {
+          ck('...and the OLD steadiness row DID latch on that same route — the hole was real (#761)',
+             oldLatchedMoving,
+             oldLatchedMoving ? 'counts-steady ticked with the bank still moving'
+                              : 'the old row did not latch either — this route proves nothing');
+        }
+      });
+    })();
+
+    /* --- 5. THE RUNTIME HALVES, on synthetic channels. `steady` is authored nowhere now, so this
+     * is the only thing keeping it honest; `stopped` gets the same treatment plus the two traps
+     * that are specific to it (a dead channel, and the quiet window as a dwell). */
     (function () {
       var il = Object.create(RD.InstructorLayer.prototype);
       var en = { p: 'sr_counts_cps', op: 'steady', v: 0.03, window: 120 };
       var st = { accs: [en] }, holder = {};
       var t = 0, c = 9000;
-      var metEarly = false, metFlat = false, metBeforeWindow = false, unticked = false;
+      var metEarly = false, metFlat = false, unticked = false;
       function feed(secs, perSec, cb) {
         for (var k = 0; k < secs; k++) {
           t += 1; c *= (1 + perSec);
@@ -2029,17 +2118,12 @@ if (!only) {
       feed(400, 0.002, function (m) { if (m) metEarly = true; });            // +0.2 %/s, still climbing
       feed(400, 0, function (m) { if (m) metFlat = true; });                  // flattened
       feed(400, 0.002, function (m) { if (metFlat && !m) unticked = true; }); // climbing again
-      ck('a plant whose counts are still climbing does NOT tick the steadiness entry (#755)',
+      ck('`steady`: a channel still climbing does NOT tick it (#755 — still supported, now unauthored)',
          !metEarly, metEarly ? 'ticked while climbing at 0.2 %/s' : '400 s of +0.2 %/s, never met');
-      ck('...a plant whose counts have flattened DOES (the pair, not one side of it)', metFlat,
+      ck('...a channel that has flattened DOES (the pair, not one side of it)', metFlat,
          metFlat ? 'met once the window filled' : 'never met on a dead-flat channel — unsatisfiable');
-      ck('...and it UN-ticks when the plant starts climbing again (it re-grades, like ~)', unticked,
+      ck('...and it UN-ticks when the channel climbs again (it re-grades, like ~)', unticked,
          unticked ? 'came back off' : 'stayed latched — a hold claim that cannot be lost');
-      /* THE DWELL, on its OWN holder — a STEP ENTRY, which is the only thing that resets the ring.
-       * Asserted on a DEAD FLAT channel, the most favourable case there is: if even that cannot be
-       * met before the window has passed, nothing can. (The first draft of this check reused the
-       * holder above and asserted the dwell from the moment the channel flattened, which the design
-       * never claimed — the window is a dwell from STEP ENTRY, not from the plant settling.) */
       (function () {
         var il2 = Object.create(RD.InstructorLayer.prototype);
         var st2 = { accs: [{ p: 'sr_counts_cps', op: 'steady', v: 0.03, window: 120 }] }, h2 = {};
@@ -2052,6 +2136,81 @@ if (!only) {
         ck('...and it cannot be met inside its own window — the window IS the dwell, from step entry',
            firstMet !== null && firstMet >= 120,
            firstMet === null ? 'never met on a dead-flat channel' : 'first met at ' + firstMet + ' s of a 120 s window');
+      })();
+    })();
+
+    (function () {
+      /* `stopped` on a control channel. `control_bank_steps` reads through ROD_PARAMS, which
+       * matches the rod group by `id` — NOT by `function`, which is what the board draws with.
+       * A snapshot built the wrong way reads as NO VALUE, and the first draft of this block did
+       * exactly that: three checks failed for the shape, not for the predicate. That miss is
+       * itself the dead-channel proof at the bottom of this section. */
+      function snapAt(t, steps) {
+        return { metadata: { sim_time: t, plant_id: 'pwr2' },
+                 control_state: { rod_groups: [{ id: 'control_rods', function: 'control',
+                                                 steps: steps, position_pct: steps / 627 * 100 }] },
+                 true_state: {}, instruments: {} };
+      }
+      var il = Object.create(RD.InstructorLayer.prototype);
+      var st = { accs: [{ p: 'control_bank_steps', op: 'stopped', v: 60 }] }, holder = {};
+      var t = 0, steps = 100, lastTap = 0, metMoving = false, firstStill = null, unticked = false;
+      for (var k = 0; k < 200; k++) {               // a 20 s dribble, ten taps
+        t += 1;
+        if (t % 20 === 0) { steps++; lastTap = t; }
+        if (il._gradeAccs(holder, st, snapAt(t, steps))) metMoving = true;
+      }
+      var tapEnd = lastTap;
+      for (k = 0; k < 200; k++) {                    // rods parked
+        t += 1;
+        if (il._gradeAccs(holder, st, snapAt(t, steps)) && firstStill === null) firstStill = t;
+      }
+      for (k = 0; k < 200; k++) {                    // pulling again
+        t += 1;
+        if (t % 20 === 0) steps++;
+        if (firstStill !== null && !il._gradeAccs(holder, st, snapAt(t, steps))) unticked = true;
+      }
+      var quiet = firstStill === null ? null : firstStill - tapEnd;
+      ck('`stopped`: a bank tapped every 20 s never satisfies a 60 s quiet time (#761)',
+         !metMoving, metMoving ? 'latched mid-dribble' : '200 s of 20 s taps, never met');
+      ck('...a bank that has been parked DOES satisfy it (the pair, not one side of it)',
+         firstStill !== null, firstStill === null ? 'never met on a parked bank — unsatisfiable'
+                                                  : 'met ' + quiet + ' s after the last tap');
+      /* THE QUIET TIME IS THE DWELL, measured from the last MOTION and not from step entry, which
+       * is the one way `stopped` differs from `steady`: a step entered with the control already
+       * at rest still owes `v`, because the bag is empty and its first reading starts the clock. */
+      ck('...and it cannot be met inside its own quiet time — `v` IS the dwell (#761)',
+         quiet !== null && quiet >= 60 && quiet <= 65,
+         quiet === null ? 'never met' : quiet + ' s after the last tap, against a 60 s quiet time');
+      ck('...and it UN-ticks when the bank moves again (it re-grades, like ~)', unticked,
+         unticked ? 'came back off' : 'stayed latched — a hold claim that cannot be lost');
+      /* A CHANNEL THAT IS NOT A NUMBER IS NEVER "STOPPED". Two cases, and only the second one
+       * actually needs the guard in `gradeStopped` — which is why both are here. An ABSENT param
+       * reads `undefined`, and `bag.last == null` is true of `undefined`, so the quiet clock
+       * restarts every sample and the predicate never latches even with the guard deleted. A
+       * param that publishes a CONSTANT NON-NUMBER (a mode selector, a lineup string) does not:
+       * `'AUTO' !== 'AUTO'` is false, the clock never restarts, and without the guard the
+       * predicate latches after `v` seconds and reads as a control at rest. That is a check that
+       * could only pass, on any step that names a string-valued channel. INJECTION-PROVEN:
+       * dropping `typeof r.value !== 'number'` from the guard reddens the second case and only
+       * the second case. */
+      (function () {
+        var il3 = Object.create(RD.InstructorLayer.prototype);
+        var absent = { accs: [{ p: 'control_bank_steps', op: 'stopped', v: 60 }] }, h3 = {};
+        var str = { accs: [{ p: 'steam_dump_setpoint', op: 'stopped', v: 60 }] }, h4 = {};
+        var metAbsent = false, metStr = false;
+        for (var k = 1; k <= 400; k++) {
+          var base = { metadata: { sim_time: k, plant_id: 'pwr2' }, true_state: {}, instruments: {} };
+          if (il3._gradeAccs(h3, absent, base)) metAbsent = true;
+          var withStr = { metadata: { sim_time: k, plant_id: 'pwr2' },
+                          control_state: { steam_dump_setpoint: 'AUTO' },
+                          true_state: {}, instruments: {} };
+          if (il3._gradeAccs(h4, str, withStr)) metStr = true;
+        }
+        ck('...and a channel that is absent, or not a number, is NEVER "stopped" (#761)',
+           !metAbsent && !metStr,
+           (metAbsent ? 'an ABSENT param read as a parked control; ' : '') +
+           (metStr ? "a constant 'AUTO' read as a parked control" : '') ||
+           '400 s of no reading and 400 s of a constant string, never met');
       })();
     })();
   })();
@@ -2098,13 +2257,14 @@ if (!only) {
   function alarm(id, label) { return { id: id, label: label, priority: 'warning', state: 'active_unacknowledged' }; }
   var RHR = alarm('rhr_not_in_service', 'Shutdown Cooling Not In Service - RCS Is Below the RHR Entry Pressure');
   var OTHER = alarm('sg_level_lo', 'Steam Generator Level Low');
-  /* THE BOARD THE ALARM ARRIVES ON IS QUIET, so #655's own rule cannot be what decides this,
-   * and the step index is held still so `stepMoved` cannot answer instead of the alarm. */
+  /* THE BOARD THE ALARM ARRIVES ON IS QUIET, so #655's own rule cannot be what decides this.
+   * The step index used to be held still here too, so the #619 item 6 step dropout could not
+   * answer instead of the alarm; that dropout was removed 2026-09-17 *(OWNER RULING: "Release
+   * with the step snap.")* and the fixture line went with it. */
   function verdict(w, a) {
     w.svc._prevTrueState = w.svc._prevTrueState || w.snap.true_state;
     w.svc._prevAlarms = [];
     w.svc._prevScrammed = false;
-    w.svc._prevCklStep = w.svc.instructor.checklist.idx;
     w.snap.alarms = [a];
     return w.svc._attentionStop(w.snap);
   }

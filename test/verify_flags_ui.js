@@ -643,6 +643,62 @@ function pinChannel(ch) {
     pubWalkIds.join(','));
   await b.ctx.close();
 
+  /* ---- THE CHAIN HANDOFF, THE SECOND ROUTE INTO A WALKTHROUGH (2026-09-15) ------------------
+   * *(OWNER, 2026-09-15: "I found a way to play the locked walkthroughs in the live version.
+   * when finishing the mode 5-3 walkthrough it produces a button at the bottom that brings you
+   * to the next walkthrough. it works and brings up the mode 3-1 walkthrough which should be
+   * locked.")*
+   *
+   * THIS FILE PASSED 53/53 WHILE THAT SHIPPED, and that is the interesting half. Every
+   * walkthrough check above reads what `[data-wtstart]` renders in the Plant & Mission LIST —
+   * one route. The finished card resolves `pr.next` out of the pool by id on a completely
+   * separate path, so the defect took the route nothing here was watching. A list check cannot
+   * cover a handoff; only the handoff can.
+   *
+   * IT DRIVES THE RENDERER'S OWN FUNCTION, not a copy and not a source scan. `nextLegFor` is
+   * exactly what the finished card calls to decide whether to draw the button, exposed on
+   * `RD.__dev` under `?dev=1` beside `tripCauses()` for the same reason that one is: a copy in
+   * this file goes stale the day the decision changes. A source scan could not do this job at
+   * all — `/flagOn/` matching in a render expression is the `(false ? ' (partial)' : '')` shape
+   * (#485), green on a branch nothing can reach.
+   *
+   * BOTH CHANNELS, so the check cannot pass by the button never existing. `pwr_heatup` is public
+   * and its `next` (`pwr_startup`) is not, which is the shipped asymmetry; on dev both are on and
+   * the handoff must still resolve, or a "fix" that simply deleted the chain would read green.
+   *
+   * NOT COVERED BY THE `?follow=` DEEP LINK a few lines of app.js away: that is a hand-typed URL
+   * in the `?inject=` / `?ff=` family and `site/flags.js` says plainly that gating is not access
+   * control. This is a button the app DREW for the player, which is a different claim. */
+  async function chainLeg(channel) {
+    var c = await build(channel, WT2.replace('?engine=pwr2', '?engine=pwr2&dev=1'));
+    var r = await c.page.evaluate(function () {
+      var pool = (RD.MANUAL_PROCEDURES || {}).pwr2 || [];
+      var heatup = pool.filter(function (x) { return x.id === 'pwr_heatup'; })[0] || null;
+      var nl = RD.__dev && RD.__dev.nextLegFor ? RD.__dev.nextLegFor(heatup, true) : 'NO HOOK';
+      return {
+        channel: RD.Flags.baseChannel(),
+        next: heatup ? heatup.next : null,
+        nextOn: heatup && heatup.next ? RD.Flags.on('procedure:' + heatup.next) : null,
+        offered: nl === 'NO HOOK' ? 'NO HOOK' : (nl ? nl.id : null),
+        /* the NEGATIVE control on the same call: an unfinished leg never offers a handoff,
+         * so a fix that returned null unconditionally cannot pass the dev half below. */
+        offeredWhileRunning: (RD.__dev && RD.__dev.nextLegFor && RD.__dev.nextLegFor(heatup, false)) ? 'yes' : null,
+      };
+    });
+    await c.ctx.close();
+    return r;
+  }
+  var chainPub = await chainLeg('public');
+  ck('public: a finished pwr_heatup does NOT offer the gated next leg (the chain handoff is gated, owner 2026-09-15)',
+    chainPub.channel === 'public' && chainPub.next === 'pwr_startup' &&
+    chainPub.nextOn === false && chainPub.offered === null,
+    JSON.stringify(chainPub));
+  var chainDev = await chainLeg(null);
+  ck('dev: the same finished leg DOES offer it — the handoff still works where the next leg is on',
+    chainDev.channel === 'dev' && chainDev.nextOn === true &&
+    chainDev.offered === 'pwr_startup' && chainDev.offeredWhileRunning === null,
+    JSON.stringify(chainDev));
+
   b = await build('public', SHELL + '&flags=%2Bcampaign');
   /* Area and item flags are independent by design: opening the AREA alone does not open a
    * mission that is still gated on its own entry.

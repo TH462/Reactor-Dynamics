@@ -29,6 +29,141 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-17-develop-b (#761 — the 1/M settle rungs stop grading a PROXY: `op: 'stopped'`)
+
+**Issue:** #761. **Nothing pushed.**
+
+### The ruling
+
+*(OWNER RULING, 2026-09-17: selected "Gate on rods stopped + startup rate" from three options put
+to him — gate on rod-stop plus startup rate, remove the steady row and keep startup rate alone, or
+keep the steady row.)* The four inverse-count-rate (1/M) settle rungs, `pwr_startup` steps 5–8, now
+read: counts floor → **the bank has not moved for 60 s** → startup rate back to zero → plot.
+`accs_ordered` is unchanged. The counts-steady row is GONE from the pool; `op: 'steady'` STAYS in
+the schema.
+
+### Why both shipped rows were proxies, and one route defeated both
+
+MEASURED, `hot_zero_power`, one bank step withdrawn every 20 s (a dribble — a real way to work a
+rung, not an exploit), rung bank targets 94 and 157:
+
+| row | rung 5 | rung 6 |
+|---|---|---|
+| `startup_rate_dpm ~0 ±0.02` | satisfied with the rods still moving | satisfied with the rods still moving |
+| `sr_counts_cps steady 3 %/120 s` | **latches with the rods still moving** | holds |
+| `control_bank_steps stopped 60 s` | never satisfied while moving | never satisfied while moving |
+
+Rung 6 is inside the panel's trailing-three fit window. The rate row's hole is arithmetic, not
+tuning: 0.02 decades a minute is 9.6 % of drift over a 120 s window, so any climb between 3 % and
+9.6 % per two minutes reads settled to it on any route.
+
+### The 60 s is DERIVED, not round
+
+Measured at taps of 2 / 5 / 10 / 20 / 30 / 45 / 60 / 75 s on rungs 5 and 6: `stopped` latches with
+the bank still moving **if and only if** the tap cadence is at or above its own quiet time. The
+quiet time therefore IS "the slowest tap cadence this rung refuses" and has no other free
+parameter. The dribble family that defeated both shipped rows tops out at 20 s a tap; 60 s is
+three times that and refuses a 45 s dribble (measured false at 45, true at 60).
+
+### What it costs on the authored ladder — 49 s, and nothing past rung 6
+
+Seconds FROM ROD-STOP, authored 94/63/31/14 bursts, graded through `_gradeAccs`:
+
+| rung | startup rate in band | rod-stop row met | whole rung met | cost of the row |
+|---|---|---|---|---|
+| 5 | 17 s | 64 s | 64 s | **+47 s** |
+| 6 | 62 s | 64 s | 64 s | +2 s |
+| 7 | 141 s | 64 s | 141 s | 0 |
+| 8 | 341 s | 64 s | 341 s | 0 |
+
+6 % of the 813 s the rate row alone would need. From rung 7 on the startup rate is the long pole
+and the rod-stop row is free.
+
+### The `hold` values are UNCHANGED, and that is a decision
+
+Re-measured against the new rows: the rung is satisfied **181 / 143 / 197 / 350 s** after the burst
+command against shipped holds of 300 / 300 / 420 / 600 — margins of 1.66x / 2.10x / 2.13x / 1.71x,
+so no hold is shorter than its own step's acceptance and the #755 tolerance trap does not bite.
+`ACCURACY_VS_WAIT_2026-09-17.md` §12.7 suggests lowering them; DECLINED here, for three reasons.
+(1) `hold: 600` on step 8 is a RULED ACCURACY number — the knee of the counts-versus-prediction
+curve — not a dwell grown to cover the steadiness window, so lowering it re-decides a ruling on
+accuracy grounds. (2) `hold` drives the GENERATED speed hint (≥ 180 s offers a faster rung) and
+steps 6–8 carry authored copy naming those speeds. (3) `run_oneoverm`, `run_reactivity`,
+`verify_e2e_ui` and `verify_flags_ui` all read `hold` or the ladder's plotted points and none was
+in this session's permitted gate list. MEASURED if it is ever taken: holds of 240 / 200 / 260 / 600
+satisfy every rung with ≥ 1.27x margin and move the final trailing-three prediction from **208.24
+to 208.35** — 0.11 of a bank step, still above the true critical of 207.1–207.7.
+
+### THE SEED DOES NOT REACH THE PWR2 ENGINE — "three seeds" here is one seed three times
+
+`SimulationService.selectPlant` passes `seed: this.seed` into the engine constructor and
+`engine.seed` comes back **undefined** on pwr2. Seeds 42 / 7 / 1 produced byte-identical rod
+positions, count rates and accept times on the whole ladder. Every "four seeds" figure in the 1/M
+comments should be re-read with that in mind; not chased here.
+
+### The trap
+
+**A PREDICATE THAT GRADES AN INDICATION IS GRADING A PROXY FOR THE OPERATOR'S ACTION, AND A SLOW
+ENOUGH ACTION DEFEATS EVERY PROXY.** Two independent rows — one on the rate, one on the counts —
+were both satisfied with the rods still moving on the same 20 s dribble. When the thing you mean is
+"the player has stopped", grade the control, not the plant's answer to it. The corollary is the
+reason `stopped` is legal only on control-class params: it compares readings for EQUALITY, which is
+honest on a quantized control-state field and would read false for ever on a noisy gauge — a check
+that can only fail is as hollow as one that can only pass, and `run_checklist_pwr2` §2aa now gates
+both halves plus the dead-channel case.
+
+## Session log — 2026-09-17-develop-a (#755 item 13 — the spray reads the LAGGED error; the parked draft's "0.0 cycles/min" was wrong at BOTH regimes)
+
+**Issue:** #755 item 13. **Commit:** `e43da8f0`. Nothing pushed. Part B of
+`wip/755-spray-and-seed` (item 11, the Mode 5 setpoint seed) deliberately NOT brought across.
+
+**The change is one line.** `pwr2_pressurizer.js:sprayAuto` reads `pz.errFiltPsi` instead of
+`err_psi` — the 2.0 s `prop_filter_tau_s` signal the proportional heaters and the backup bistable
+have read since the 2026-08-31 chatter fix *(OWNER RULING, 2026-09-15: "The pressurizer spray
+logic needs to be adjusted so it doesn't rapidly cycle.")*. No constant added.
+
+**THE TRAP WORTH KEEPING: a number measured on a tree another agent was editing survives into a
+comment, a gate note and an issue, and reads exactly like a measurement.** The parked work stated
+`0.0 cycles/min AFTER` at hot zero power and at hot full power. Re-ridden on a quiet tree with
+both ladders built from ONE file a line apart, the real figures are **7.4** and **1.4**. Nothing
+about the source code said which was right; only re-riding did. The 15-psi-inside-the-band check
+exists for the mirror-image failure — **a spray welded shut also satisfies "does not chatter"**.
+
+| regime | before | after |
+|---|---|---|
+| hot zero power, 1700 psi (11.72 MPa) dial | 100.8 cyc/min, 44.6 % duty, 896 board AMBER flips | **7.4**, 91.3 %, 148 |
+| hot full power, setpoint 40 psi (0.28 MPa) low | 10.0 cyc/min, 48 AMBER flips | **1.4**, **0** |
+| `pwr_heatup` step 11, the whole 5.81-plant-hour climb | 15.2 cyc/min (5,284 cycles) | **0.0** (6) |
+
+**DUTY GOES UP AND THAT IS THE FIX.** 44.6 → 91.3 % at hot zero power: a modulating valve sits
+open at a small steady demand. Peak demand 17.09 → 4.76 %, mean demand 1.89 → 1.81 % — the same
+heat leaves the vessel; the slamming stops. A cycles-only check would have called this a
+regression.
+
+**What else moved (the coupled-regime question, measured):** the heatup leg reaches 542 °F
+(283 °C) at **5.805 → 5.806 plant-hours**, 72.35 → 72.34 °F/hr, 235.4 → 235.3 psi/hr, pressure
+track within 0.4 psi (0.003 MPa) at every half-hour mark. Ramped at 4/30/100/600 psi/min with the
+noise off, **the PORV lifts at 100.00 psi of error on both sides at every rate** and the spray
+still reaches FULL before it (75.00 psi; 94.80 at the 600 psi/min extreme) — the ladder never
+inverts. Cost of the lag on a real rise: +0.13 psi overshoot at 4 psi/min, +3.3 psi at 100.
+
+**`flagship_tmi` cannot see this change** — `test/run_pwr.js` contains no "pwr2", so that ride is
+the retired engine's pressurizer. And the PWR2 route that looked equivalent is a dead end: a
+loss-of-heat-sink at power scrams promptly and pressure **falls** 2237 → 2122 psia (15.43 →
+14.63 MPa), never reaching the spray band. The handover is a controller property and the ramps are
+where it is measurable.
+
+**The PORV keeps the RAW error, deliberately** — protection, not modulation; 75 psi above the
+spray toe; a 15 psi reseat deadband of its own (5.2 sigma of the raw noise, where the spray toe
+had none); never reported cycling. Lagging it would buy nothing and cost ~2 s on a +100 psi
+excursion.
+
+**Gate:** `run_pwr2_pressurizer` 103 → **106**, mutations 49 → **50**. Injection proof run by
+hand: restoring `err_psi` reds the claim at 98.6 cyc/min (1.0× the raw ladder) and reds the
+still-opens check at 50.6 % peak demand against a 30 % ladder. Rest of the permitted set at
+baseline, `run_ops` at its ruled 59/70. **Aggregate not run** (standing rule). **No browser pass**
+— the AMBER counts are the predicate, not the pixel.
+
 ## Session log — 2026-09-15-develop-c (a fresh-context layman finished BOTH legs, and four of its diagnoses were wrong)
 
 **Issues:** #653 (umbrella), #758 (highlights, new), #759 (Plot point, new), #760 and #761 (filed,

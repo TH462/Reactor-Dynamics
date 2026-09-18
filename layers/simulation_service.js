@@ -297,7 +297,7 @@
     this._prevTrueState = null;
     this._prevAlarms = null;
     this._prevScrammed = false;        // attention-stop edge detection (auto-decelerate)
-    this._prevCklStep = null;          // checklist step index, for the #619 item 6 dropout
+    /* no _prevCklStep since 2026-09-17: the step-advance dropout is gone (_attentionStop) */
     this._prevSpeedHold = null;        // plant-declared speed hold, #619 item 13
     this._prevFailureIds = null;
     this._timer = null;
@@ -358,7 +358,6 @@
     this._prevTrueState = null;
     this._prevAlarms = null;
     this._prevScrammed = false;
-    this._prevCklStep = null;
     this._prevSpeedHold = null;
     this._prevFailureIds = null;
     this.broadcastMs = NORMAL_MS;
@@ -1021,19 +1020,25 @@
      precisely when a long fast-forward is the point. A scram or a new failure still
      gets through regardless. */
   SimulationService.prototype._attentionStop = function (snap) {
-    /* Checklist-step tracking is updated FIRST, above every early return. Put it beside the
-     * `return 'step'` below and it goes stale exactly when it matters: a scram returns before
-     * reaching it, and with dropouts switched off it never runs at all — so the next time
-     * either changed, the index it compared against was minutes old and fired a phantom
-     * dropout. Edge state has to advance on every broadcast, whatever the verdict. */
-    var ckl = this.instructor && this.instructor.checklist;
-    /* `complete` is NOT excluded: finishing the last step is the check-off that most deserves
-     * the clock back, and gating on it made the final step the one case that kept racing.
-     * `idx` runs to steps.length on completion, so the move fires once and then sits still. */
-    var cklStep = ckl ? ckl.idx : null;
-    var stepMoved = cklStep !== null && this._prevCklStep !== null && cklStep > this._prevCklStep;
-    this._prevCklStep = cklStep;
-    /* Same rule as the step index: the hold's edge state advances above every early return, or
+    /* NO STEP-ADVANCE DROP *(OWNER RULING, 2026-09-17: "Release with the step snap." — given on
+     * being shown that the drop costs 48.8 minutes of real time per startup leg and makes 10x
+     * and 60x identical)*. #619 item 6 / #622 used to return 'step' here on every checklist
+     * index move, so the selected speed was clamped to 1x seventeen times a leg and the player
+     * had to re-press to get it back. It was a READING pause, never a safety mechanism, which
+     * is why it could go: the fast-forward drops that protect the player are the scram, the new
+     * failure, the new alarm on a quiet board and — the only one that is a genuine plant refusal
+     * — `true_state.speed_hold`, all of them below and none of them touched.
+     *
+     * MEASURED on `16046d86`, seed 42, `pwr_startup`, the player selecting a speed once. At 10x:
+     * 29,054 broadcasts = 48.4 min of the player's life BEFORE, 3,005 = 5.0 min AFTER. At 60x:
+     * 48.4 min BEFORE (the plant sat at 1x either way, so a higher rung bought nothing), 562
+     * broadcasts = 0.9 min AFTER. Nine of seventeen steps carry the whole difference; the eight
+     * short ones are floored by their acceptance debounce in BROADCASTS, not plant time, and
+     * measure an identical 0.2-0.6 s of real time before and after at both speeds. The 54.4 min
+     * figure in `Diagnostic/ACCURACY_VS_WAIT_2026-09-17.md` §9 is the same measurement on
+     * `ed98c7bc`, before #761 shortened the 1/M settle rungs.
+     *
+     * Same rule as the step index: the hold's edge state advances above every early return, or
      * a scram (or dropouts switched off) leaves it stale and the next hold either never toasts
      * or toasts long after the fact. */
     var holdNow = (snap && snap.true_state && snap.true_state.speed_hold) || null;
@@ -1070,25 +1075,10 @@
      * `_stepExpectsAlarm` below for the ruling, the measurement and why it is a declaration. */
     var newAlarm = this._boardQuiet(this._prevAlarms) ? this._newAlarmOfPriority(snap.alarms, this._prevAlarms) : null;
     if (newAlarm) { this._attnAlarmLabel = newAlarm.label || newAlarm.id; return 'alarm'; }
-    /* A CHECKLIST STEP CHECKING OFF *(OWNER, 2026-09-03, #619 item 6: "when a step is checked
-     * off, drop out of warp.")*. Walking a checklist at 600x, the step you were waiting for
-     * completes and the plant keeps racing while you read the next one — so the clock comes
-     * back to 1x the moment the step index moves.
-     *
-     * SERVICE-SIDE, NOT ON THE CHECK-OFF COMMAND, and that is the whole reason it works: most
-     * steps tick themselves off the instruments (instructor_layer `_stepChecklist`), never
-     * passing through `checklist_check`, so a hook on the command would catch only the handful
-     * a player ticks by hand. Reading the index here catches every path, and inherits
-     * `speed_snap`, its toast and the `_authoredSpeed` reset for free.
-     *
-     * Read off the LAYER rather than the snapshot because `snap.instructor` is assembled after
-     * this runs (see _assembleWithInstructor) — the same ordering that puts `speed_snap` on the
-     * snapshot that already reads 1x.
-     *
-     * INSIDE the `attentionStops` gate above, deliberately: a player who turned fast-forward
-     * dropout off has said they do not want the clock yanked. Flagged on #622 — if the owner
-     * wants this one unconditional it moves above that early return. */
-    if (stepMoved) return 'step';
+    /* The checklist step index is deliberately NOT consulted here — see the ruling at the top
+     * of this function. The reasons above are the plant interrupting you; a step advancing is
+     * not, and the walkthrough's own pacing cue (the `.ckl-wait` line and the speed rung it
+     * names) is what tells the player when to change speed now. */
     /* A PLANT-DECLARED HOLD (#619 item 13). `true_state.speed_hold` is a reason string the
      * ENGINE sets when the plant is somewhere the clock must not run away from — today the
      * accumulator arming window on the heatup, which is the one irreversible trap in the chain.

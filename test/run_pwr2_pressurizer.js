@@ -283,6 +283,77 @@ function runSuite(RD, rec, quiet) {
   ckT('+75 psi: spray full; +100: PORV OPEN',
       once(75).spray_frac >= 1 - 1e-9 && once(100.5).porv_open === true &&
       once(100.5).relief_kgs > 0, '');
+  /* ---- THE SPRAY DOES NOT CHATTER ON CHANNEL NOISE (#755 item 13, 2026-09-15) ------------
+   * *(OWNER RULING, 2026-09-15: "The pressurizer spray logic needs to be adjusted so it
+   * doesn't rapidly cycle.")* The spray band read the RAW indicated error until that ruling.
+   * Its toe (+25 psi) has NO differential, so a loop parked a psi or two under it is carried
+   * across by noise alone, tens of times a minute, on a signal whose TRUE motion is under
+   * 1 psi. MEASURED on the full shell, re-measured on a quiet tree 2026-09-17 with both
+   * ladders built from ONE file a line apart: hot zero power at the 1700 psig stop, 100.8
+   * open/close cycles per minute over 300 s BEFORE, 7.4 AFTER; hot full power parked 40 psi
+   * low, 10.0 -> 1.4. The figure that decided it is the LEG, not a 300 s window — the WHOLE
+   * 5.81-plant-hour `pwr_heatup` step 11 climb from 122 degF to 542 degF went 5,284 open/close
+   * cycles to 6, i.e. 15.2 -> 0.0 per minute, while reaching 542 degF at 5.805 -> 5.806
+   * plant-hours. NOT ZERO at the two shorter windows: an earlier ungated draft of this work
+   * claimed 0.0 at both and both figures were wrong.
+   *
+   * THE FIXTURE IS ITS OWN CONTROL, and that is the point. A check that only asserted "few
+   * cycles" would pass on any fixture whose noise had gone missing -- the hollow-check shape
+   * this file's header is about. So the SAME seeded noise stream is scored TWICE: once
+   * through the shipped ladder (the lagged error) and once through a RAW-error ladder
+   * recomputed here from the published `err_psi`. The claim is the RATIO: the raw ladder must
+   * chatter on this stream and the shipped one must not. Neuter the noise and BOTH go to
+   * zero, and the ratio check reds. */
+  var NOISE_SIG = 2.9 / PSI, NOISE_A = Math.exp(-DT / 0.125);   /* pwr2_instruments' channel */
+  var seed = 20260915;
+  function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+  function gauss() { return Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd()); }
+  /* Park the CONTROL channel at `parkPsi` above setpoint and shake it with the channel's own
+   * AR(1) noise for `secs`, sampling the demand at the player's 0.1 s broadcast. Returns the
+   * shipped ladder's open/close cycles per minute and the raw ladder's, on ONE stream. */
+  function shake(parkPsi, secs) {
+    var pzN = PZ.createPressurizer({}), P0n = PZ.CONTROL.setpoint_default_mpa;
+    var nz = 0, onS = null, onR = null, cS = 0, cR = 0, k = Math.round(0.1 / DT);
+    var sMax = 0, rMax = 0;
+    for (var i = 1; i <= Math.round(secs / DT); i++) {
+      nz = NOISE_A * nz + Math.sqrt(1 - NOISE_A * NOISE_A) * NOISE_SIG * gauss();
+      var Pind = P0n + parkPsi / PSI + nz;
+      /* the PLANT is dead steady at the park point; only the CHANNEL moves (the counterfactual
+       * the report turned on -- TRUE pressure alone gives zero cycles either way) */
+      var r = PZ.stepPressurizer(pzN, stub(P0n + parkPsi / PSI), DT,
+                                 { indicated_pressure_mpa: Pind });
+      if (i % k) continue;
+      var sOn = r.spray_frac > 0;
+      var rawFrac = Math.max(0, Math.min(1, (r.err_psi - PZ.CONTROL.spray_start_psi) /
+        (PZ.CONTROL.spray_full_psi - PZ.CONTROL.spray_start_psi)));
+      var rOn = rawFrac > 0;
+      if (onS !== null && sOn !== onS) cS++;
+      if (onR !== null && rOn !== onR) cR++;
+      onS = sOn; onR = rOn;
+      if (r.spray_frac > sMax) sMax = r.spray_frac;
+      if (rawFrac > rMax) rMax = rawFrac;
+    }
+    return { shipped: (cS / 2) / (secs / 60), raw: (cR / 2) / (secs / 60),
+             sMax: sMax, rMax: rMax };
+  }
+  var shk = shake(24, 300);
+  ckT('parked 1 psi UNDER the spray toe, the RAW-error ladder chatters -- the fixture is live',
+      shk.raw >= 20,
+      shk.raw.toFixed(1) + ' cycles/min on the raw error. THIS IS THE VACUITY GUARD: if the ' +
+      'noise stream ever goes missing this reds before the claim below can pass on nothing');
+  ckT('...and the SHIPPED ladder does not -- the spray reads the LAGGED error (#755 item 13)',
+      shk.shipped <= shk.raw / 5 && shk.shipped <= 20,
+      shk.shipped.toFixed(1) + ' cycles/min against the raw ladder\'s ' + shk.raw.toFixed(1) +
+      ' on the SAME stream -- ' + (shk.raw / Math.max(shk.shipped, 0.01)).toFixed(1) + 'x. ' +
+      'Restore `err_psi` in the sprayAuto line and this reds at the raw figure');
+  /* A SPRAY THAT NEVER OPENS ALSO SATISFIES "DOES NOT CHATTER". Both halves against the same
+   * object: shaken a clear 15 psi INSIDE the band the valve must sit steady AND open, at the
+   * proportional fraction the ladder gives (+40 psi -> (40-25)/50 = 0.30), not at a stop. */
+  var shkIn = shake(40, 120);
+  ckT('...while a park INSIDE the band still opens the valve, steadily, at its ladder fraction',
+      shkIn.shipped <= 1 && shkIn.sMax > 0.2 && shkIn.sMax < 0.45,
+      'peak demand ' + (shkIn.sMax * 100).toFixed(1) + ' % at +40 psi (ladder says 30 %), ' +
+      shkIn.shipped.toFixed(1) + ' cycles/min -- a lag that CLOSED the valve reds here');
   /* ⚠ THIS CHECK WAS TURNED AROUND (#537, 2026-08-28) — it used to assert "stopped loop, no
    * spray", which was NEVER what the plant did: the gate read loop flow against an untagged
    * 100 kg/s literal, and this fixture handed it exactly 0, so it passed under any gate at
@@ -1115,8 +1186,13 @@ var MUTATIONS = [
    'if (Q_heat_kW > 0) {',
    'if (false) {'],
   ['the spray band opens at the backup-heater point (a sign confusion on the ladder)',
-   'var sprayAuto = clip((err_psi - CONTROL.spray_start_psi) /',
-   'var sprayAuto = clip((err_psi - CONTROL.backup_on_psi) /'],
+   'var sprayAuto = clip((pz.errFiltPsi - CONTROL.spray_start_psi) /',
+   'var sprayAuto = clip((pz.errFiltPsi - CONTROL.backup_on_psi) /'],
+  /* #755 item 13, 2026-09-15 — the ruling itself, injected. Restoring the RAW error is
+   * exactly the plant the owner reported, so this mutation IS the defect. */
+  ['the spray reads the RAW error again -- #755 item 13 re-armed (the chatter comes back)',
+   'var sprayAuto = clip((pz.errFiltPsi - CONTROL.spray_start_psi) /',
+   'var sprayAuto = clip((err_psi - CONTROL.spray_start_psi) /'],
   ['water-solid never flags (the regime transition clipped away)',
    'if (pz.m_stm <= STRATIFY.m_stm_floor_kg) {',
    'if (false) {'],

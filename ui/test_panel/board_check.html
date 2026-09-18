@@ -454,6 +454,37 @@
       clickBtn('imrppquqg16'); ck('func: steam dump OPEN -> not auto', cs().steam_dump_auto === false);
       setNum('imrsg8b7b9o', 2100); ck('func: pressure setpoint 2100 psi -> ~14.48 MPa', Math.abs(cs().pressure_setpoint - 2100 / 145.038) < 0.05);
 
+      /* A CLAMPED ENTRY FLASHES THE BOX (#755 item 11, 2026-09-15). `boundsFor` has refused
+       * out-of-span entries since #598 and did it in SILENCE — the typed number was replaced by
+       * the nearest legal one with no cue, which is what the owner read as the sim ignoring him.
+       * Asserted on the MECHANISM, not on 1700: this page mounts the RETIRED pwr engine, which
+       * publishes no `pressure_setpoint_range_mpa`, so the box falls back to the authored
+       * 15..2484 psi. The shipped plant's 1700..2500 is measured in a pwr2 browser instead.
+       *
+       * THE CLASS IS CLEARED FIRST, and that is the whole reason for the helper. The cue stands
+       * REFUSE_MS (1100 ms) and these checks run microseconds apart, so an in-range entry
+       * immediately after a refused one would find the previous flash still on the frame and the
+       * negative check would pass for the wrong reason — it would be pinning a leftover, not an
+       * absence. Killing the element's own timer as well, or it would strip the class again mid-run. */
+      function numRefused(id, v) {
+        var i = document.querySelector('[data-item="' + id + '"] input');
+        if (!i) return null;
+        var f = i.closest('.bd-num-frame');
+        if (f._rdRefuseT) { clearTimeout(f._rdRefuseT); f._rdRefuseT = null; }
+        f.classList.remove('bd-num-refused');
+        setNum(id, v);
+        return { cue: f.classList.contains('bd-num-refused'), box: i.value };
+      }
+      (function () {
+        var lo = numRefused('imrsg8b7b9o', 5);
+        ck('refuse: a below-span entry is corrected AND the box flashes', lo && lo.cue === true && +lo.box === 15, lo && (lo.box + ' / cue=' + lo.cue));
+        var hi = numRefused('imrsg8b7b9o', 9000);
+        ck('refuse: an above-span entry is corrected AND the box flashes', hi && hi.cue === true && +hi.box === 2484, hi && (hi.box + ' / cue=' + hi.cue));
+        var ok = numRefused('imrsg8b7b9o', 2100);
+        ck('refuse: an IN-span entry takes with no cue at all', ok && ok.cue === false && +ok.box === 2100, ok && (ok.box + ' / cue=' + ok.cue));
+      })();
+      setNum('imrsg8b7b9o', 2100);
+
       // --- ADV (#371). The condenser-independent steam path — the only cooldown
       // route once the condenser is gone, so its controls are pinned like the
       // dump's. The shipped lineup is AUTO *(OWNER, 2026-08-06: "Amos dump should

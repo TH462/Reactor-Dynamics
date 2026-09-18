@@ -371,9 +371,48 @@
      * cold lineups boot them OFF — the seed is what the ladder comes back to when the heatup
      * step presses AUTO. This comment used to end "without a hold the bubble bleeds down against
      * the surge-line exchange (~16 kW measured) at ~68 psi/hr": measured 2026-09-04, it does
-     * not — +0.3 psi/hr over 60 plant-minutes with the heaters off. See the pzDrivers note. */
+     * not — +0.3 psi/hr over 60 plant-minutes with the heaters off. See the pzDrivers note.
+     *
+     * AND THE SEED IS NOW FLOORED AT THE BOARD SPAN'S OWN BOTTOM (#755 item 11)
+     * *(OWNER RULING, 2026-09-15: selected "Floor the Mode 5 seed to 1700 psi" from three
+     * options, on his report "since i cant set the SET PZR PRESSURE box to below 1700, why
+     * dont we not allow this number to go belopw 1700 psi. Then hen we activate the heater
+     * during startup it will start raising pressure right away.")*. The paragraph above is
+     * exactly the argument that let a CONSTRUCTOR seed sit under the span its own board box
+     * refuses: the box drew 362.6 psia while publishing a 1700-2500 psia span (measured on the
+     * cold boot), and `pwr_cooldown`'s ramp down to 2.50 MPa CLAMPS at 11.72, so the one plant
+     * state disagreed with itself by ~1337 psi depending how the player reached it. The floor
+     * is READ from `PZ.CONTROL.setpoint_min_mpa`, never retyped, so this seat and the clamp at
+     * stepPressurizer cannot drift apart.
+     *
+     * IT MOVES NOTHING UNTIL THE PLAYER ACTS — the property the ruling rests on, MEASURED, not
+     * argued (2026-09-17, full stack from `cold_shutdown` with heatup steps 1-7 replayed, at
+     * the start of step 8): both cold lineups still boot `heaters_manual: 0` / `spray_manual: 0`
+     * (see the pzDrivers line below), so the seat has no actuator. Nothing pressed, 10
+     * plant-minutes: 363.14 -> 363.19 psia, heater 0.0 %, spray 0.00 % — the same two numbers
+     * the unfloored seed gives. SPRAY AUTO alone, 10 plant-minutes: 363.14 -> 363.19 psia,
+     * `spray_valve_pct` 0.00 throughout, because the spray ladder opens 25 psi ABOVE setpoint
+     * and the cold plant sits ~1337 psi below it.
+     *
+     * WHAT IT DOES CHANGE is the one press the ruling is about. HEATER AUTO, floored: the bank
+     * goes to 100 % (157.8 kW) and stays there, and the plant crosses the 664.7 psia accumulator
+     * cover gas at t+37.5 plant-minutes (669.3 psia, mean 8.17 psi/plant-minute; the crossing is
+     * read on 60 s broadcasts at 600x, so +-0.5 min). UNFLOORED, the identical press moves
+     * 363.14 -> 375.12 psia in 130 plant-minutes (0.092 psi/plant-minute) and NEVER reaches the
+     * window, because the heaters idle at 11.3 % (17.8 kW) already on setpoint.
+     *
+     * THE SWEEP FOR OTHER CONSUMERS (owed by the parked work, done 2026-09-17). `pz.setpoint_mpa`
+     * is read in exactly three places: the heater/spray error at `pwr2_pressurizer.js` ~931, the
+     * clamp above it, and `pwr2_shell.js`'s `control_state.pressure_setpoint` publish. NO
+     * protection, alarm, instrument or scenario reads it. Board-side, the publish feeds the SET
+     * PZR PRESSURE box (now inside its own published span, which was the report) and the PRIMARY
+     * PRESSURE tile's NORMAL band, which on the cold board moves 338-413 -> 1675-1725 psia: the
+     * cold plant now reads BELOW its normal band instead of inside it, which is the true reading
+     * and is the same thing the heaters going to 100 % says. A pre-change SAVE still restores its
+     * own 2.5 MPa setpoint — `pz` is snapshotted whole and the setpoint is the player's value,
+     * so that is restore working, not a migration gap. */
     var pz = PZ.createPressurizer({ P: icP,
-      setpoint_mpa: ic.cold ? ic.P_mpa : undefined,
+      setpoint_mpa: ic.cold ? Math.max(ic.P_mpa, PZ.CONTROL.setpoint_min_mpa) : undefined,
       level_frac: ic.cold ? ic.pzr_level : PZ.levelProgram(tavg0) });
     var hmap = designHmap(tavg0, dT0, icP);
     /* the shutdown IC boots with its RCPs SECURED and the loop still (natural circulation

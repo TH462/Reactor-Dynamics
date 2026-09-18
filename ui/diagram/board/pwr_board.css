@@ -375,6 +375,30 @@
 .bd-num-steps button:first-child { border-bottom: 1px solid #2a3a46; }
 .bd-num-steps button:hover { color: #e8f2f8; }
 
+/* THE REFUSED ENTRY — a typed or nudged value the box would not take *(OWNER, 2026-09-14, #755
+   item 11: "since i cant set the SET PZR PRESSURE box to below 1700, why dont we not allow this
+   number to go belopw 1700 psi.")*. Same keyframe and same three finite blinks as `.bd-refused`
+   and `.bd-val-refused`, because the board should have one answer to "that did not take".
+
+   ON THE FRAME, and the non-colour channel is the frame's OWN BORDER going red rather than the
+   outline ring the reading uses: the frame already draws a border, so re-colouring it needs no
+   second geometry and cannot collide with the cyan hover ring (a box-shadow) that lives on the
+   same element. `!important` because the hover rule sets border-color too and a player who
+   over-types with the pointer still resting on the box is the normal case, not the odd one. */
+.bd-num-frame.bd-num-refused {
+  border-color: #ff6b6b !important;
+  box-shadow: 0 0 0 1px rgba(255, 107, 107, 0.55) !important;
+  animation: bdRefusedFlash 0.22s steps(1, end) 3;
+}
+.bd-num-frame.bd-num-refused input { color: #ff6b6b !important; }
+/* AFTER the rule that sets the animation — a media query adds NO specificity, so the same block
+   written above would lose outright and go on flashing for a player who asked it not to. The red
+   border and the red digits are the WHOLE cue under reduced motion, which is why neither of them
+   lives inside the animation. */
+@media (prefers-reduced-motion: reduce) {
+  .bd-num-frame.bd-num-refused { animation: none; }
+}
+
 /* ---- hover affordance ----
    Every clickable control gets a cyan glow on mouse-over, matching the valve/PORV
    hover ring, so it's obvious at a glance what's actionable. The box-shadow ring sits
