@@ -78,10 +78,16 @@
  *   --ic=<initial_state>      default hot_full_power. An unknown name is a HARD ERROR naming
  *                             the plant's own list (each engine throws it; this file surfaces
  *                             the message cleanly instead of an uncaught stack trace) — pwr2's
- *                             list, verified 2026-09-18 against `engines/pwr2/pwr2_engine.js`:
- *                             hot_full_power, 50_percent, hot_zero_power, hot_shutdown,
- *                             cold_shutdown. cold_shutdown EXISTS on pwr2 (since #524/wave 10)
- *                             — a stale note elsewhere in this repo says pwr2 has none.
+ *                             list, read off the engine's OWN thrown message 2026-09-18 — all
+ *                             SIX: hot_full_power, 50_percent, low_power, hot_zero_power,
+ *                             hot_shutdown, cold_shutdown. cold_shutdown EXISTS on pwr2 (since
+ *                             #524/wave 10) — a stale note elsewhere in this repo says none.
+ *                             `low_power` was MISSING from this list on the day this file
+ *                             learned pwr2 (#661 re-measure, same day): the list was typed from
+ *                             a source read of the ICS map instead of from the engine, and it is
+ *                             the IC of a ride in the very thread that caught it. A hand-typed
+ *                             copy of a machine-readable list is a second authority — ask the
+ *                             engine (`createEngine({initial_state:'nope'})` names them all).
  *   --for=<dur>               PLANT time to cover: 90s / 30m / 12h. default 1h
  *   --every=<dur>             sample interval in plant time. default: 12 rows
  *   --settle=<dur>            step the plant this much PLANT time BEFORE t=0 (default 0,
