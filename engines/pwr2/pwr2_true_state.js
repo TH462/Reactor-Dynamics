@@ -748,9 +748,22 @@
      * published 0.12 flow beside a discharge pressure that decayed to a denormal float and
      * never recovered — an impossible pair on the board. `pumpKgs` is `undefined` only when
      * `ec.total_kgs` was itself undefined at line 373, i.e. no ECCS layer in the fixture; the
-     * `> 0` test below reads that as false, same as no flow. */
+     * `> 0` test below reads that as false, same as no flow.
+     *
+     * ⚠ AND IT IS THE UNION, NOT `pumpKgs` ALONE — the first draft of #782 traded one
+     * impossible pair for its MIRROR. `pumpKgs` is DELIVERED flow, which is 0 whenever the RCS
+     * sits above the shutoff head, and that is the state an actuated injection is IN at
+     * pressure: measured 2026-09-18 on the `tsArmed` fixture below (safety injection actuated,
+     * both pumps running, RCS 15.41 MPa / 2235 psia), `pumpKgs > 0` alone published 0.00 MPa
+     * (0 psia) where the pre-#782 gate published the sourced 9.58 MPa (1390 psia) dead-head —
+     * a running pump with no discharge head, which is exactly the shut-check-valve branch the
+     * paragraph at the top of this block exists to model. `hpi_active` (the SI signal) is the
+     * only "the pumps have been started and latch in" reading this shim can see — the ECCS
+     * step RESULT carries no run flags — so the two together answer "is a pump running":
+     * actuated, or delivering. DECLARED GAP: pumps hand-started with SI reset AND the RCS back
+     * above the shutoff head still read 0; that case read 0 before #782 as well. */
     put('hpi_discharge_pressure_mpa',
-        pumpKgs > 0 ? Math.min(9.58, Math.max(sys.P, 0.101)) : 0);
+        (pumpKgs > 0 || ts.hpi_active === true) ? Math.min(9.58, Math.max(sys.P, 0.101)) : 0);
     put('afw_discharge_pressure_mpa',
         ts.afw_active === true && ts.steam_pressure_mpa !== undefined
           ? Math.min(8.3, Math.max(ts.steam_pressure_mpa, 0.101)) : 0);

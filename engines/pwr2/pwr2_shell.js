@@ -2237,6 +2237,16 @@
         /* the wave-6 failure levers (#507) — old saves land on the healthy defaults;
          * aw.blocked and the pzDrivers seats ride their own saved objects */
         scramBlocked: e.scramBlocked, runaway: e.runaway,
+        /* THE TWO CASUALTY SEATS THAT READ NOTHING ELSE (#551, #671 — added on the #671
+         * quality pass, 2026-09-18). Every other row in `engineActiveFailures` is derived from
+         * plant state that is already in this blob; these two are seats PRECISELY because the
+         * state they stand for (`tb.tripped`, `sys.pumpTripped`) is reached by the plant on its
+         * own, so a save that dropped them came back with the casualty INVISIBLE and its row
+         * gone from the Failures tab while the pump stayed tripped and the turbine stayed
+         * latched. MEASURED before the fix: inject -> ["rcp_trip"] / ["turbine_trip"], save,
+         * load -> [] for both, pumpTripped still true. An old save without them lands on
+         * undefined, i.e. the pre-seat state exactly. */
+        _rcpTripInjected: e._rcpTripInjected, tbTripFailed: e.tbTripFailed,
         _Qox: e._Qox, _cdAvail: e._cdAvail, _plcsAuto: e._plcsAuto,
         _pwrRate: e._pwrRate, _prevPower: e._prevPower,
         _tavgPrev: e._tavgPrev, _tavgRate: e._tavgRate, advDemand: e.advDemand,

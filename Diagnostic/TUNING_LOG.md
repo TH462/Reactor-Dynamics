@@ -31,6 +31,54 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ## Session log — 2026-09-18-develop-d (#782 · #778 · #671 · #765 — four channels that read a value the plant was not at)
 
+### ADDENDUM — the quality pass on this bundle (2026-09-18, same lane)
+
+Two of the three fixes above needed a correction, and one claim in this entry is REFUTED. Both
+corrections are measured; neither re-opens a ruling.
+
+**1. #782 traded the impossible pair for its MIRROR.** `pumpKgs` is DELIVERED flow, which is 0
+whenever the reactor coolant system sits above the pump shutoff head — the state an *actuated*
+injection is in at pressure, and the state `run_pwr2_true_state`'s own `tsArmed` fixture holds
+(safety injection actuated, both pumps running, 2235 psia). Measured there:
+
+| gate on that line | `tsArmed` discharge |
+|---|---|
+| `hpi_active` (before #782) | 1390 psia (9.58 MPa) — the sourced shutoff head |
+| `pumpKgs > 0` (as shipped) | **0.0 psia** — a running pump with no discharge head |
+| `pumpKgs > 0 \|\| hpi_active` (now) | 1390 psia (9.58 MPa) |
+
+Nothing asserted that state's discharge, which is why the shipped gate passed: the check that
+claims the dead-head branch reads it off `tsLow`, whose ECCS is stepped at 1.0 MPa while its `sys`
+sits at 15.41 — the fixture split #603's own comment flags as artificial. A check now pins the
+dead-headed leg, with one mutation per leg of the union.
+
+**2. REFUTED: "`afw_discharge_pressure_mpa` does NOT share the shape."** That was a source read,
+and the reasoning is circular — "`afw_active` is `total_kgs > 0`, already a delivery reading" is
+exactly the gate #782 exists to remove from a discharge gauge. MEASURED on PWR2, `afw_failure`
+injected and both aux-feed pumps started by hand: `afw_pump_running` **true**, delivered flow 0,
+`afw_discharge_pressure_mpa` **0.000 MPa (0.0 psia)** — the identical impossible pair. NOT fixed:
+`afw_pump_running` is published two lines above and would be the honest gate, but what a blocked
+pump's gauge should then read (its 8.3 MPa / 1204 psia dead-head, or steam-generator pressure
+through the existing `min()`) is a plant question this pass did not rule on.
+
+**3. The two casualty SEATS were not in the save.** `_rcpTripInjected` (#671) and `tbTripFailed`
+(#551) are seats precisely because the state they stand for is reachable without the casualty —
+and neither rode `pwr2-1.0`. Measured before the fix: inject, save, load into a fresh shell →
+`getActiveFailures()` **[]** for both, `sys.pumpTripped` still true. A rewind or a service restore
+un-filed a live casualty. Both keys added to `scalars`, with the migration asserted.
+
+**4. The 175 → 179 note claimed two mutations it never added.** "Two mutations (both reverts),
+both caught" — the array held neither, and the mutation count did not move (65 before, 65 after).
+The reverts had been run by hand, which is a session's memory, not the gate's. Both are now in
+`MUTS`, plus one for the save. Independently re-proved by hand on the shipped tree first: dropping
+the seat reds the rcp check only, dropping `injected_id` reds the LOCA check only, and reverting
+#782's line reds exactly its own check (flow 0.337 beside 0.00 MPa).
+
+Gates after the pass: `run_pwr2_true_state` 83/83 (33/33 mutations) · `run_pwr2_shell` 181/181
+(68 mutations) · `run_pwr2_kernel` 41/41 (10/10) · `run_inspect` 62/62 · `run_contract` 180/180 ·
+`run_manual_rev` 15/15 · `run_manual_units` clean. `BASELINES`: `run_pwr2_true_state` 82 → 83,
+`run_pwr2_shell` 179 → 181.
+
 Bundled on one class: a published channel, or a wired row, whose reading is produced by a
 quantity that cannot carry the answer. Three defects, one non-defect, one new issue.
 

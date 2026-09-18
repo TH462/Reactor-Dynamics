@@ -391,6 +391,22 @@ function runSuite(TS, rec, quiet) {
      ts.hpi_discharge_pressure_mpa === 0,
      tsLow.hpi_discharge_pressure_mpa.toFixed(2) + ' MPa injecting-side, 0 on the healthy ' +
      'plant whose pumps are in standby');
+  /* THE DEAD-HEADED ACTUATION, the MIRROR of the check below (added on the #782 quality pass,
+   * 2026-09-18). `tsArmed` above is the state an actuated injection is in AT PRESSURE: both
+   * pumps running, RCS above both shutoff heads, delivered flow exactly 0. Nothing asserted its
+   * DISCHARGE, and #782's first draft gated the gauge on delivered flow alone — so this state
+   * published 0.00 MPa (0 psia) for a running pump, the mirror of the impossible pair #782
+   * removed. The check below and this one pin the two legs of the union; either gate alone reds
+   * one of them. The 9.58 MPa here is the SOURCED shutoff head, and the fixture reaches it the
+   * honest way (sys at 15.41 MPa, its own eccs stepped at the same 15.41), unlike `tsLow`. */
+  ck('an ACTUATED injection that is DEAD-HEADED still reads its shutoff head, not zero -- a ' +
+     'running pump has a discharge pressure (#782 mirror)',
+     tsArmed.hpi_flow_normalized === 0 && tsArmed.hpi_active === true &&
+     Math.abs(tsArmed.hpi_discharge_pressure_mpa - 9.58) < 1e-9,
+     'flow=' + tsArmed.hpi_flow_normalized + ', discharge=' +
+     tsArmed.hpi_discharge_pressure_mpa.toFixed(2) + ' MPa (' +
+     (tsArmed.hpi_discharge_pressure_mpa * 145.038).toFixed(1) + ' psia) against the RCS at ' +
+     (B.sys.P * 145.038).toFixed(0) + ' psia -- gating on delivered flow alone reads 0.00 MPa here');
   /* THE OPERATOR-RESTORED PATH (#782) — every check above this line runs the pumps WHILE the SI
    * signal is active (`protection: siOn`), which is exactly the one case that could never expose
    * this defect: `hpi_active` and pump operation happen to agree there, so gating the discharge
@@ -944,6 +960,15 @@ var MUTATIONS = [
    "    put('fuel_temp_c',    rx.T_fuel_c);", "    put('fuel_temp_c',    sg.T_sec);"],
   ['the one-pressure simplification is hidden by perturbing the three readings',
    "    put('p_pumpsuction', sys.P);", "    put('p_pumpsuction', sys.P * 0.98);"],
+  /* #782's UNION, one mutation per leg (quality pass 2026-09-18). Either half alone is a
+   * half-gauge: delivered flow alone blanks the dead-headed actuation, the SI signal alone
+   * blanks the operator-restored injection. Both were shipped states of this line. */
+  ['the discharge gauge is gated on DELIVERED FLOW alone -- a dead-headed actuation reads 0',
+   "        (pumpKgs > 0 || ts.hpi_active === true) ? Math.min(9.58, Math.max(sys.P, 0.101)) : 0);",
+   "        pumpKgs > 0 ? Math.min(9.58, Math.max(sys.P, 0.101)) : 0);"],
+  ['the discharge gauge is gated on the SI SIGNAL alone -- an operator-restored injection reads 0',
+   "        (pumpKgs > 0 || ts.hpi_active === true) ? Math.min(9.58, Math.max(sys.P, 0.101)) : 0);",
+   "        ts.hpi_active === true ? Math.min(9.58, Math.max(sys.P, 0.101)) : 0);"],
   ['the shim invents a plant instead of refusing',
    "      throw new Error('pwr2_true_state: ctx.sys is REQUIRED — this layer translates a plant, it ' +\n                      'does not build one.');",
    '      sys = { P: 15.41, nodes: [] };']

@@ -36,11 +36,24 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `hpi_discharge_pressure_mpa` was gated on `hpi_active`, which ruling #603 defines as the
   injection SIGNAL, not pump operation. An operator who secured injection and restarted the pumps
   below the actuation setpoint got 12 % of rated flow beside a discharge pressure that decayed to
-  a denormal float — 0 psi on the board. Re-gated on `pumpKgs`, the quantity the flow reading
-  beside it already uses: the operator-restored point now reads **1069 psi (7.37 MPa)** where it
-  read 0, with the automatic-actuation path unchanged at 1160 psi (8.00 MPa). `hpi_active` itself
-  is untouched. `afw_discharge_pressure_mpa` was checked in the same pass and does not share the
-  shape. `Manuals/07` PWR-E06 step 3b loses its "known defect" caveat (pending Rev 20, item l).
+  a denormal float — 0 psi on the board. Re-gated on **delivered flow OR the injection signal**:
+  the operator-restored point now reads **1069 psi (7.37 MPa)** where it read 0, with the
+  automatic-actuation path unchanged at 1160 psi (8.00 MPa). `hpi_active` itself is untouched.
+  `Manuals/07` PWR-E06 step 3b loses its "known defect" caveat (pending Rev 20, item l).
+  **Corrected on the quality pass:** the first fix gated on delivered flow ALONE, which is 0
+  whenever the plant is above the pump shutoff head — the state an *actuated* injection is in at
+  pressure — so it published 0 psi for a running, dead-headed pump where the old gate published
+  the sourced 1390 psi (9.58 MPa). The union restores that and keeps the fix. The same pass
+  measured `afw_discharge_pressure_mpa`, which the entry above had cleared by source read: with
+  `afw_failure` injected and both pumps started by hand it reads **0 psia with the run lamp lit**,
+  so it does share the shape. Left alone deliberately — what a blocked aux-feed pump's gauge
+  should read (its 1204 psi shutoff head, or steam-generator pressure) is a plant question, not a
+  wiring one.
+
+- **Two injected casualties did not survive a rewind** (quality pass on #671/#551). The `rcp_trip`
+  and `turbine_trip` seats were not in the `pwr2-1.0` save, so a save/restore came back with the
+  row gone from the Failures tab while the pump stayed tripped and the turbine stayed latched.
+  Both now ride the save; an older save without them loads unchanged.
 
 - **The retired engine's whole actuation table is inert on PWR2 — 21 rows against 0** (#778).
   Filed as two containment rows that never fire; measured as the entire set. `pwr_control.js`

@@ -2302,6 +2302,40 @@ function runSuite(SH, rec, quiet, only) {
              : 'rated_steam ' + mgB.eng.rated_steam.toFixed(4) + ', _pwrRate 0, plant at ' +
                (tsMg.pressure_mpa * 145.038).toFixed(1) + ' psia after 10 s');
 
+  /* THE CASUALTY SEATS RIDE THE SAVE (added on the #671 quality pass, 2026-09-18). Every other
+   * row `engineActiveFailures` reports is derived from plant state this blob already carries;
+   * `rcp_trip` (#671) and `turbine_trip` (#551) are SEATS exactly because the state they stand
+   * for is reachable without the casualty, so they had to be saved explicitly and were not.
+   * MEASURED on the shipped code before the fix: inject, save, load into a fresh shell ->
+   * getActiveFailures() [] for both while `sys.pumpTripped` was still true and the turbine
+   * still latched, i.e. a rewind or a service restore silently un-filed a live casualty and
+   * left the Failures tab with nothing to clear. Asserted THROUGH the load, not after a ride. */
+  var stA = new SH.PWR2Engine({});
+  run(stA, quiet ? 30 : 60);
+  stA.applyCommand({ action: 'inject_failure', failure_id: 'rcp_trip' });
+  stA.applyCommand({ action: 'inject_failure', failure_id: 'turbine_trip' });
+  run(stA, 2);
+  var stB = new SH.PWR2Engine({});
+  stB.loadState(stA.saveState());
+  var stAf = stA.getActiveFailures(), stBf = stB.getActiveFailures();
+  ck('an injected rcp_trip AND turbine_trip survive a save/load round trip -- the seats are ' +
+     'in the blob (#671/#551)',
+     stAf.indexOf('rcp_trip') !== -1 && stAf.indexOf('turbine_trip') !== -1 &&
+     stBf.indexOf('rcp_trip') !== -1 && stBf.indexOf('turbine_trip') !== -1,
+     'before [' + stAf.join(',') + '] -> after [' + stBf.join(',') + ']');
+  /* THE MIGRATION half, same shape as the pre-cluster check above: a save written before the
+   * seats joined pwr2-1.0 carries neither key and must load onto a plant with no casualty
+   * filed, rather than throwing or inventing one. */
+  var stOld = stA.saveState();
+  delete stOld.state.scalars._rcpTripInjected;
+  delete stOld.state.scalars.tbTripFailed;
+  var stC = new SH.PWR2Engine({}), stThrew = '';
+  try { stC.loadState(stOld); } catch (err) { stThrew = err.message; }
+  var stCf = stThrew ? [] : stC.getActiveFailures();
+  ck('...and a PRE-SEAT save still loads, with neither casualty filed (the pre-fix state)',
+     !stThrew && stCf.indexOf('rcp_trip') === -1 && stCf.indexOf('turbine_trip') === -1,
+     stThrew ? 'THREW: ' + stThrew : '[' + stCf.join(',') + ']');
+
   /* #544: a PRE-AIR-LEDGER save carries the containment ledger water-only under its old name.
    * Hand-build that shape (the rename makes it detectable), load, and require the SAME
    * containment temperature on the next step — the migration reconstructs the total at the
@@ -2750,6 +2784,13 @@ var MUTATIONS = [
   ['the kernel loses its reset permissive row (the board caption goes dark again)',
    '        }].concat(base.rps_reset_permissive || []),',
    '        }].slice(0, 0).concat(base.rps_reset_permissive || []),', { grp: 'E' }],
+  /* #671, ADDED ON THE QUALITY PASS — the 175 -> 179 note claimed "two mutations (both
+   * reverts), both caught" and the array held neither; the reverts had been run by hand. One
+   * per fix, so the claim is the gate's rather than a session's memory. */
+  ['the RCP trip seat is never set (an injected pump trip is invisible in the failures list)',
+   '        e._rcpTripInjected = true;', '', { grp: 'E' }],
+  ['the break carries no injected id again (a large LOCA reports as menu-invisible primary_leak)',
+   "        if (e.brk) e.brk.injected_id = 'large_loca';", '', { grp: 'E' }],
   ['a REFUSED command is silently swallowed (reads exactly like a plant that survived it)',
    "    if (REFUSED[a] !== undefined) {\n      throw new Error('pwr2_shell: \"' + a + '\" REFUSED — ' + REFUSED[a]);\n    }",
    '    if (REFUSED[a] !== undefined) { return { ok: true, action: a }; }', { grp: 'A' }],
@@ -2767,6 +2808,11 @@ var MUTATIONS = [
   ['the initial-condition scales leave the save again (a Mode 4 restore wears HFP constants)',
    '        rated_steam: e.rated_steam, M_nominal: e.M_nominal',
    '        _icScalesNotSaved: 0', { grp: 'S' }],
+  /* the two casualty seats leave the save (added on the #671 quality pass) — the shipped
+   * defect, replayed: a rewind or a service restore un-files a live casualty. */
+  ['the casualty SEATS leave the save (an injected RCP/turbine trip vanishes on a rewind)',
+   '        _rcpTripInjected: e._rcpTripInjected, tbTripFailed: e.tbTripFailed,',
+   '', { grp: 'S' }],
   ['the non-finite readings are not re-installed (a dead channel comes back a hard zero)',
    '    (st.ins.nonFinite || []).forEach(function (id) { e.ins.reading[id] = NaN; });',
    '', { grp: 'S' }],
