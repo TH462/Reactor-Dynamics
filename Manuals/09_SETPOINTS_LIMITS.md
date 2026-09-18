@@ -368,8 +368,9 @@ an S: least effective at either end, most effective mid-travel.
 ### 7.5.1 Reading the table — and the one rule that matters
 
 > **WARNING — do not dilute toward a hot boron figure while the plant is cold.** Read the
-> first column of the table again: with the bank inserted, critical boron is **806 ppm at
-> 122 °F** and only **588 ppm at 566.6 °F**. A number that is comfortably subcritical hot is
+> first column of the table again: with the bank inserted, critical boron is **811 ppm at
+> 122 °F (50.0 °C)** and only **619 ppm at 547.0 °F (286.1 °C)**, this plant's no-load
+> temperature. A number that is comfortably subcritical hot is
 > **critical, or worse, cold.** This is not a modelling quirk — cold water is a better
 > moderator, so a cold core needs *more* poison to stay shut down. Reaching Mode 3 at the
 > no-load temperature **before** you dilute is what makes the dilution safe.
