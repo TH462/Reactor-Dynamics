@@ -1264,6 +1264,44 @@ var BASELINES = {
   // author to rewrite the number without reading it. Coverage is printed on the
   // line above the tally, out of the scraper's reach.
   'run_manual_setpoints.js': { code: 0, score: '18passed 0failed 18checks', secs: 30 },   // 15 -> 18 (#659, 2026-09-08): THE ADV ROW'S CAPACITY CLAIM IS GATED. Manuals/09 §3.0 said 'capacity 10 % of rated steam flow' -- Ginna's per-STEAM-GENERATOR fraction carried onto a one-generator plant; the engine's ADV is Ginna's 329,000 lb/hr per valve x 300/1520 = 8.18 kg/s = 4.98 % of this plant's 164.25 kg/s, which is the source's own 'approximately 4% of RTP'. Both figures are the same valve described two ways; *(OWNER RULING, 2026-09-08: 'Keep 4.98 % - scale by thermal power; fix the manual')* -- the method: a stated sizing RULE wins (#643); absent one, scale by the quantity the component's sourced FUNCTION depends on (decay-heat removal ~ thermal power, not generator count). +3: rated-steam sanity, the percentage is present, the percentage matches RELIEF.adv_kgs / rated_steam. Red on '10 %' before it was trusted. // 13 -> 15 (#651, 2026-09-08): §1.0, THE NORMAL OPERATING POINT, IS IN SCOPE. The §11.0 locator requires a backticked IC name in the header (a guard against picking the wrong '| Parameter |' table) and that excluded §1.0 permanently -- six of its twelve rows were stale when #650 first measured it. Now located by its section heading, all 12 rows mapped to true_state fields or plant constants at §11.0's own tolerances, an unmapped row FAILS (coverage asserted), and a wrong Tavg reds naming the row. Two rows read CONSTANTS, not settled readings, by design: primary pressure is the control setpoint (2235 psi, against a settled 2247 -- §3.0's psi-vs-psig note), and decay heat is sum(DECAY.H0) = 6.248 % exactly, the groups being seeded at equilibrium. // 9 -> 13 (#532 phase 3b/3c, 2026-08-30): the chapter has THREE tables and the runner read two. §3.0 (engineered safeguards) and §11.0 (normal values by IC) are now in scope; §11.0's check BOOTS ALL FOUR INITIAL CONDITIONS and compares 24 cells against a settled plant, with the IC list read from the engine's own refusal message. It found a column for cold_shutdown, which this engine refuses by name.   // NEW (#532, 2026-08-30): DOES THE SETPOINT CHAPTER DESCRIBE THE PLANT WE SHIP? `Manuals/09` is the chapter that tells a player what the plant TRIPS AT and nothing checked a figure in it — `run_manual_units` cross-checks the BOARD against the RETIRED `pwr_config` and never reads the manual's numbers. Measured on arrival: EIGHT wrong setpoints (power range 120 vs 118 %, low setting 25 vs 35 %, pressure high 2384 vs 2425 psia, low 1800 vs 1775, RCS flow 90 vs 87 %, SI trip 1798 vs 1715 psia, PZR level 97 vs 87 %, P-10 10 vs 8 %) plus a high-Tavg trip and a low-pressurizer-level trip THIS PLANT DOES NOT HAVE. Every plant-side value is READ from `pwr2_protection`'s own objects, never retyped. COVERAGE IS ASSERTED — an unmapped manual row fails rather than going silently unchecked, which is the one failure this design is exposed to — and the NOT MODELLED marker is checked in BOTH directions so it cannot become a hiding place.
+  // NEW (#626, 2026-09-18): THE CLASS #532 KEPT RE-HAPPENING, CLOSED AT THE SOURCE. Chapter 09
+  // marks a protection NOT MODELLED and nothing checked whether another chapter still teaches it
+  // live -- #626 found `06` PWR-A13a/A14 teaching a 12 % reactor trip and an SI-on-low-level path
+  // the same day 09 §2.0/§3.0 declared both absent. This runner parses every `**NOT MODELLED**`
+  // row out of 09 (never hand-copied -- a new one is picked up automatically), bridges each to
+  // the phrasing another chapter would use to teach it live, and asserts coverage BOTH ways (an
+  // unclaimed 09 row fails; a bridge entry pointing at nothing -- because the row stopped being
+  // NOT MODELLED, e.g. #601, #624 -- fails too).
+  //
+  // *** THE BASELINE BELOW IS THE POST-BUNDLE TARGET (16/16, clean), NOT WHAT THE RUNNER SCORES
+  // ON THIS SESSION'S TREE TODAY. *** Per CLAUDE.md's own rule against baselining a red you did
+  // not cause: written and gated while FOUR other agents were live on `04`, `06`, `07` and `12`
+  // for this same #626 bundle, so pinning today's number would bake in whatever those strands
+  // have not reached yet.
+  //
+  // SETTLED BY THE COORDINATOR once the whole #626 bundle landed (2026-09-18). The runner's
+  // first pass read 10 passed / 6 failed, and FIVE OF THOSE SIX WERE THE GATE'S OWN FALSE
+  // POSITIVES, not manual defects: it matched line-by-line and cleared a live-signal match only
+  // with a hedge on that SAME line, so four markdown HEADINGS ("## PWR-A38 -- Containment Spray
+  // Running", which names a board tile and asserts nothing) and two `| Setpoint |` rows naming
+  // the sourced REAL-plant signal all fired, while the chapter hedged correctly two lines below.
+  // Fixed in the runner: a heading never matches, and the hedge scope is the BLOCK (a run of
+  // consecutive non-blank lines, i.e. one markdown table), NOT the line and NOT the section.
+  // Scoping it to the `###` section was tried first, turned this gate green at 16/16, and took a
+  // REAL defect with it -- see the runner's own header for that worked case; it is why the block
+  // is the widest scope allowed here.
+  //
+  // ONE TRACKED RED, KEPT ON PURPOSE -- see `note`. It is a genuine, open manual/engine
+  // disagreement, not a fixture: do NOT re-band it green to make this entry tidy.
+  'run_manual_notmodelled.js': { code: 1, score: '15passed 1failed 16checks', secs: 1,
+    note: 'TRACKED RED (#626/#672, 2026-09-18): 12_SIM_PHYSICS.md:779 teaches automatic main ' +
+          'steam line isolation on high steam flow coincident with low steam pressure, which ' +
+          '09 SETPOINTS_LIMITS §3.0 marks NOT MODELLED on EVERY signal. The containment leg of ' +
+          'that paragraph WAS disproved by injection and struck; this flow/pressure leg could ' +
+          'not be, because producing it needs a steam-line break and pwr2_shell refuses both ' +
+          'secondary_depressurize verbs with "no steam-line break model yet". So it is unknown ' +
+          'which side is wrong -- 09 or 12 -- and the red stands until one of them is measured. ' +
+          'Turning this green means MEASURING that leg, not editing either chapter to match.' },
   'run_manual_units.js':   { code: 0, score: '0failed' },
   // New 2026-07-30 — the manual set's revision history. UNLIKE run_manual_units above,
   // this one IS baselined on its check count: the checks are structural (table shape,
