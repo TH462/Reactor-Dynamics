@@ -166,6 +166,23 @@
 
   <details class="log-entry" open>
     <summary class="log-head">
+      <h2>A locked walkthrough can no longer be started from the one before it, and fast-forward carries across steps</h2>
+      <span class="log-ver mono">Alpha 1.7.5</span>
+      <time class="log-date mono" datetime="2026-09-17">17 September 2026</time>
+    </summary>
+    <ul>
+      <li><span class="log-tag fixed">Fixed</span><strong>Finishing a walkthrough started the next one even when that one was locked.</strong> The finished-walkthrough card&rsquo;s next-leg button was the one route of six that did not check whether the walkthrough it was opening is released.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Fast-forward now carries from one walkthrough step to the next.</strong> Every step advance used to drop the clock back to 1&times;, so selecting a higher speed bought nothing. Measured on the Mode&nbsp;3 to Mode&nbsp;1 startup: at 10&times;, 48.4&nbsp;minutes of real time becomes 5.0; at 60&times;, 0.9. Seventeen involuntary re-presses a leg are gone. A reactor trip, a new failure, a new alarm on a quiet board and a step&rsquo;s own declared hold all still drop the clock.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The pressurizer spray cycled on instrument noise.</strong> The spray ladder read the raw indicated pressure error rather than the lagged one the heaters use: 100.8 open/shut cycles a minute at the 1700&nbsp;psi step, now 7.4, and 15.2 across the whole heatup, now 0.0. Heatup rate and the relief valves are unchanged.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Pressurizer pressure control did nothing in Mode&nbsp;5.</strong> The cold plant loaded with the operator&rsquo;s pressure setpoint at 363&nbsp;psia, below the 1700&nbsp;psig floor the box itself enforces, so the board showed a number it would refuse and HEATER AUTO raised 0.0&nbsp;psi in 45&nbsp;plant-minutes. The setpoint now loads at the floor, and the heatup&rsquo;s two pressure steps arm the spray and let the heaters climb instead of asking for a number.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The 1/M startup rungs wait on the rods, not on a settling reading.</strong> Each rung now waits until the control bank has not moved for a minute; both previous checks were proxies for &ldquo;the operator has stopped pulling&rdquo;, and a slow dribble of single taps satisfied them with the bank still moving. It costs 49&nbsp;seconds of plant time across the ladder.</li>
+      <li><span class="log-tag changed">Changed</span><strong>A setpoint box flashes when it clamps your entry.</strong> Typing a value outside a control&rsquo;s range used to be corrected silently.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Walkthrough text corrected.</strong> A claim that Plot point had done nothing when it had, a ring called green that is cyan, an ACKNOWLEDGE that reads ACK on the board, an undefined unit, four steps whose speed advice contradicted itself, and a missing remedy for a startup rate that is too low.</li>
+    </ul>
+  </details>
+
+  <details class="log-entry">
+    <summary class="log-head">
       <h2>Rod control has authority at power, the board warns when the plant runs off its program, and the checklists are now Walkthroughs</h2>
       <span class="log-ver mono">Alpha 1.7.4</span>
       <time class="log-date mono" datetime="2026-09-15">15 September 2026</time>
