@@ -132,6 +132,38 @@ Sources include `Diagnostic/SPEC_AUDIT_2026-07-16.md` and campaign playtest note
 
 ---
 
+## 9a. Known board defects referenced by a procedure step
+
+### HPI DISCHARGE PRESSURE reads zero on an operator-restored injection (2026-09-18)
+
+**Referenced by `07_ABNORMAL_EMERGENCY.md` PWR-E06 step 3b.**
+
+`engines/pwr2/pwr2_true_state.js:741-742` publishes the high-pressure-injection discharge
+pressure gated on `ts.hpi_active`, while the comment directly above it states the intended
+meaning as *"min(dead-head, system P) **while running**"*. Those are not the same condition.
+By ruling (#603, recorded in that file) `hpi_active` is the **safety-injection signal** — "has
+the plant fired" — and deliberately *not* a reading of delivered flow.
+
+So when the operator restarts the pumps themselves, below the actuation setpoint, the board
+shows an impossible pair. Measured 2026-09-18, full stack, `hot_full_power`, 40 % tube rupture,
+injection secured at ten minutes and restored at fifteen:
+
+| | HPI FLOW | HPI ACTUATED | HPI DISCH PRESS |
+|---|---|---|---|
+| automatic actuation (3 min) | 0.1034 | true | 7.89 MPa (1144 psi) |
+| operator-restored (17 min) | 0.1223 | false | **5.93e-323 MPa** |
+
+The flow reading is correct and is what step 3b tells the operator to verify. The discharge
+gauge is not: it decays to a denormal float and never recovers, so it reads as a dead pump
+beside a pump that is delivering 12 % of rated flow.
+
+**The `hpi_active` half is correct and must not be "fixed"** — that is the #603 ruling, and
+reverting it re-breaks the case where injection actuates above the shutoff head and delivers
+nothing. **The defect is one field over**: the discharge-pressure line should key on pump
+operation (the same `pumpKgs` the flow reading already uses), not on the actuation signal.
+
+---
+
 ## 10. Change control
 
 | Date | Change |
