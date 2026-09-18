@@ -391,6 +391,25 @@ function runSuite(TS, rec, quiet) {
      ts.hpi_discharge_pressure_mpa === 0,
      tsLow.hpi_discharge_pressure_mpa.toFixed(2) + ' MPa injecting-side, 0 on the healthy ' +
      'plant whose pumps are in standby');
+  /* THE OPERATOR-RESTORED PATH (#782) — every check above this line runs the pumps WHILE the SI
+   * signal is active (`protection: siOn`), which is exactly the one case that could never expose
+   * this defect: `hpi_active` and pump operation happen to agree there, so gating the discharge
+   * pressure on either one reads the same number. The real defect is an operator who SECURES
+   * injection (SI signal clears, `hpi_active` -> false) and then RESTARTS the pumps by hand below
+   * the actuation setpoint — flow resumes, the signal stays false. No `protection` context here
+   * is deliberate: it leaves `pt.si` false, same as a plant where SI has been reset. */
+  var ecRestored = RD.eccs.stepECCS(RD.eccs.createECCS({ hhsiRunning: true, lhsiRunning: true }),
+                                     { P: 1.0 }, 0.02);
+  var tsRestored = TS.buildTrueState({ sys: B.sys, eccs: ecRestored });
+  ck('operator-restored injection: SI signal false, pumps running -- flow AND discharge ' +
+     'pressure read non-zero TOGETHER (#782)',
+     tsRestored.hpi_active === false &&
+     tsRestored.hpi_flow_normalized > 0 &&
+     tsRestored.hpi_discharge_pressure_mpa > 0,
+     'active=' + tsRestored.hpi_active + '  flow=' + tsRestored.hpi_flow_normalized.toFixed(3) +
+     '  discharge=' + tsRestored.hpi_discharge_pressure_mpa.toFixed(2) + ' MPa -- gating the ' +
+     'gauge on the SI SIGNAL instead of pump operation reads 0 MPa here beside real flow, the ' +
+     'impossible pair measured on the board 2026-09-18');
   ck('AFW pump-running and flow-normalized are SUPPLIED once a train is lined up',
      ts.afw_pump_running === true && ts.afw_active === true &&
      ts.afw_flow_normalized !== undefined && ts.afw_flow_normalized > 0,

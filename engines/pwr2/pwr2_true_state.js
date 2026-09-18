@@ -737,9 +737,20 @@
 
     /* --- pump discharge pressures: min(dead-head, system P) while running — with flow the
      * discharge sits at the injection point; against a shut check valve it sits at dead-head.
-     * HHSI dead-head 9.58 MPa [sourced, the shutoff head]; AFW dead-head 8.3 MPa [open]. --- */
+     * HHSI dead-head 9.58 MPa [sourced, the shutoff head]; AFW dead-head 8.3 MPa [open].
+     *
+     * ⚠ GATED ON PUMP OPERATION, NOT `hpi_active` (#782). `hpi_active` is the safety-injection
+     * SIGNAL by ruling #603, above — deliberately not a reading of delivered flow, and that
+     * ruling is correct and untouched here. But this field is a discharge-pressure GAUGE: it
+     * has to ask "is the pump running", the same question `hpi_flow_normalized` two lines above
+     * already asks via `pumpKgs`. Gating it on the SI signal instead meant an operator-restored
+     * injection (pumps running, but below the actuation setpoint so `hpi_active` is false)
+     * published 0.12 flow beside a discharge pressure that decayed to a denormal float and
+     * never recovered — an impossible pair on the board. `pumpKgs` is `undefined` only when
+     * `ec.total_kgs` was itself undefined at line 373, i.e. no ECCS layer in the fixture; the
+     * `> 0` test below reads that as false, same as no flow. */
     put('hpi_discharge_pressure_mpa',
-        ts.hpi_active === true ? Math.min(9.58, Math.max(sys.P, 0.101)) : 0);
+        pumpKgs > 0 ? Math.min(9.58, Math.max(sys.P, 0.101)) : 0);
     put('afw_discharge_pressure_mpa',
         ts.afw_active === true && ts.steam_pressure_mpa !== undefined
           ? Math.min(8.3, Math.max(ts.steam_pressure_mpa, 0.101)) : 0);
