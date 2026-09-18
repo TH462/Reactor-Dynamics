@@ -767,8 +767,6 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 > "Can we save the gate until just before pushing instead of doing it after every change?")*.
 > Measured that day: `run_all` is **34 min**, FOUR ran for one bundle, ~100 minutes of it waste.
 > - **Per change, run only the runners it touches** — `run_all.js --only run_flags,verify_flags_ui`.
->   **A subagent never runs the aggregate**: per-change gates say what YOU broke, the aggregate what
->   someone else did, and it is the coordinator who needs that.
 > - **Run it ONCE, immediately before the push, tree settled, NOTHING else live in it.** A commit
 >   landing mid-run VOIDS it — the drift is the tree moving, not the code (cost a 34 min run,
 >   2026-09-12). Same trap as stashing under a background gate.
@@ -777,23 +775,20 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 
 > **NEVER PUSH UNTIL HE SAYS SO** *(OWNER DIRECTIVE, 2026-09-14: "Let's change the rule to don't
 > push until I tell you to.")*, which supersedes the same day's "push once a session, at the end"
-> — that rule came from *(OWNER, 2026-09-14: "Why are you running the aggregate gate and pushing
-> right now when you have a lot more work to do this is just a waste of time if nobody is going to
-> be play testing it right now")* and did not go far enough. **Same shape as the never-merge rule:
+> — that rule did not go far enough. **Same shape as the never-merge rule:
 > a clean tree and a green gate are not permission.** "Committed on the lane, gated, waiting" is
 > the correct end state, and so is ending a session with nothing pushed.
 > - **THE PUSH IS WHAT TRIGGERS THE AGGREGATE, so no push means NO `run_all`.** Per-change gates
 >   still run and still bind. When he calls for a push: settle the tree, run it ONCE, then the
 >   release-candidate bump and the changelog extension, then push. **Do not run it speculatively
->   "so it is ready"** — that is the 34 min run abandoned mid-flight on 2026-09-14, plus a whole
->   second release cycle, because a finished work unit was read as a finished session.
-> - **The cost of holding is that cross-effects go uncertified** — per-change gates say what YOU
->   broke, the aggregate what someone else did. **Say when it is overdue; never run it to fix
->   that on your own.**
+>   "so it is ready"** — a finished work unit is not a finished session (cost a 34 min run
+>   abandoned mid-flight and a second release cycle, 2026-09-14).
+> - **The cost of holding is that cross-effects go uncertified.** Say when it is overdue; never
+>   run it to fix that on your own.
 > - **Give every subagent a tool-call ceiling: past ~150 calls, STOP and report what remains.**
 >   Cost is tool calls, not brief length (the rule below), and the tail is where it goes: measured
->   the same day, seven agents ran 84 · 101 · 132 · 139 · 156 · **1231** · **2274**. The two long
->   ones were not scoped worse — they ground, and a check-in would have let the coordinator
+>   the same day, seven agents ran 84–156 for five of them, then **1231** and **2274**. The two
+>   long ones were not scoped worse — they ground, and a check-in would have let the coordinator
 >   re-scope instead. **An agent that EDITS BEFORE IT PLANS pays for the rework twice**: the
 >   2274-call run hit a contradiction its own change had created.
 
@@ -825,6 +820,12 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 > - **No agent where no judgement is required and the facts are in hand** — a ruling record, a
 >   cross-link, a version bump. One such cost **112 k tokens for three string edits**. No size
 >   threshold: size is not the axis.
+> - **SONNET BY DEFAULT; OPUS WHERE JUDGEMENT IS THE WORK** *(OWNER DIRECTIVE, 2026-09-18: "change
+>   our standard practice to use sonnet agents for well scoped work and only use opus agents for
+>   Work that needs more intelligence")*. **Narrows** the 2026-09-08 "have opus agents do it" — the
+>   coordinator half stands, the model does not. **Well-scoped = the brief already names the files,
+>   the interface and the checks.** Opus buys an open diagnosis or per-probe adjudication. Guessing
+>   low is cheap — re-dispatch on Opus.
 > - **A brief carries constraints and numbers, not rationale.** The *why* is for the owner.
 > - **One doc-budget pass**: compute what the block costs, cut that much in the same edit, measure
 >   once.
