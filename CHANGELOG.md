@@ -30,6 +30,28 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — the number a startup step is graded on is the number the board prints (#749 items 1, 2)
+
+- **The four 1/M count rungs of `pwr_startup` grade the SOURCE RANGE instrument the card draws,
+  not `true_state`.** `sr_counts_cps` had no `PARAM_INSTRUMENT.pwr2` entry because the map's own
+  comment said PWR2 has no source-range channel; it has none of its *own*, but the shell carries
+  a reused `RD.PWRInstruments` and the board has drawn `instruments.source_range` all along.
+  MEASURED over the authored ladder, instrument / truth ran **0.83 to 1.18**.
+- **Every count target moved off the CENTRE of its own render band onto the band's LOWER EDGE.**
+  The card prints the count through `fmtExp`, so `1.4e3` is drawn for anything in [1350, 1450) —
+  the target was the middle of a 100-count band and the tile read it for fifty counts before the
+  step could tick. The thresholds are now `>= 695 / 1350 / 2950 / 6950`; **every player-facing
+  string still says 7.0e2 / 1.4e3 / 3.0e3 / 7.0e3** and the edge number is never shown.
+  MEASURED on the player's route (release WITHDRAW the instant the tile first prints the target,
+  `hot_zero_power`): the 1.4e3 rung closed in **173.2 s** on seed 42 and **236.0 s** on seed 7;
+  it now closes in **46.4 s** and **47.1 s**.
+- **The criticality step's `REACTOR POWER > 0.1 %` was the same defect on a `toFixed(1)` tile** —
+  "0.1" is drawn from 0.05 up. The acceptance is the band floor now, so the step no longer holds
+  a dark Continue beside a tile already reading the target: MEASURED, **107.4 s** of that, gone.
+  The card's line is byte-identical (`fmtPredValue` rounds a power to one decimal either way).
+- `test/run_checklist_pwr2.js` §2ab pins all of it — seven checks, with the four band edges
+  re-derived out of the board's own `fmtExp` rather than copied, each proven red by injection.
+
 ### Fixed — a secured SOURCE RANGE no longer draws a false live reading (#757)
 
 - **`imro6qutiht` (the SOURCE RANGE tile) blanks to `—` once the detector is secured**, instead

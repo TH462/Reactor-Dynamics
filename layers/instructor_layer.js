@@ -45,10 +45,22 @@
       steam_pressure_mpa: 'steam_pressure', boron_ppm: 'boron_analyzer',
     },
     /* THE SHIPPED PLANT (#526/#244, 2026-08-31). Authored against pwr2_instruments.js's
-     * own channel ids — NOT copied from pwr (its `boron_analyzer` is `boron` here, and
-     * PWR2 has no SR/IR channels, so sr_counts_cps grades true_state, the documented
-     * exception). Every id verified present in a live pwr2 broadcast by
-     * test/run_checklist_pwr2.js, which reddens if one goes missing. */
+     * own channel ids — NOT copied from pwr (its `boron_analyzer` is `boron` here).
+     * Every id verified present in a live pwr2 broadcast by test/run_checklist_pwr2.js,
+     * which reddens if one goes missing.
+     *
+     * ⚠ THIS COMMENT USED TO SAY "PWR2 has no SR/IR channels, so sr_counts_cps grades
+     * true_state, the documented exception" AND THAT WAS STALE (#749 item 1, measured
+     * 2026-09-18). PWR2 has no SR/IR channel of its OWN — pwr2_instruments.js serves the
+     * internal reactor protection system and defines neither — but the SHELL carries a
+     * reused `RD.PWRInstruments` (pwr2_shell.js: "reuse pwr_instruments.js unchanged"),
+     * and that layer is where `source_range` lives. MEASURED on a live pwr2 broadcast,
+     * `hot_zero_power`, seed 42, 2.0 s in: `instruments.source_range` = 499.0 against
+     * `true_state.sr_counts_cps` = 502.0, one of 88 channels present. The board has drawn
+     * that reading the whole time (`IN(s).source_range`, pwr_board_wiring), so the tile and
+     * the acceptance were on different channels — measured divergence over the authored
+     * 1/M ladder, instrument/truth 0.83 to 1.18. The map entry below closes it. Same class
+     * as `subcooling_margin` and `pzr_spray_flow` above, which were already mapped that way. */
     pwr2: {
       power_pct: 'power_range', pressure_mpa: 'primary_pressure', sg_level_pct: 'sg_level',
       pzr_level_pct: 'pzr_level', tavg_c: 'tavg', thot_c: 'thot', tcold_c: 'tcold',
@@ -82,6 +94,18 @@
        * stuck-closed. Grading on `true_state.porv_open` instead would tick the step off a
        * truth the player cannot see. */
       porv_tailpipe_temp_c: 'porv_tailpipe_temp',
+      /* THE SOURCE RANGE COUNT RATE (#749 item 1) — the channel the 1/M ladder's four count
+       * rungs are graded on, and the one the NIS card prints. It graded `true_state` until
+       * 2026-09-18 while the tile drew the instrument, so the board could read the step's own
+       * target while the step refused: MEASURED on the player's route (release WITHDRAW the
+       * instant the tile first prints the target), rung 6 at `hot_zero_power` seed 42 — released
+       * at truth 1254 counts a second against an instrument reading 1366, and the old
+       * `true_state > 1400` row did not close for another 173.2 s while the tile printed 1.4e3
+       * or higher on 2,046 of the next 3,000 broadcasts. Graded here it closes in 46.4 s.
+       * Instrument-first is HR1, and this is NOT the #670 "regrade on the drawn value" case:
+       * `source_range` carries no DISPLAY_DAMP entry, so the transmitter reading and the drawn
+       * reading are the same number — the board only formats it (`fmtExp`). */
+      sr_counts_cps: 'source_range',
     },
     rbmk: {
       power_pct: 'power_range', steam_pressure_mpa: 'steam_pressure', drum_level_pct: 'drum_level',

@@ -2164,10 +2164,38 @@
            * the new rows: the rung is satisfied 181 / 143 / 197 / 350 s after the burst command, so
            * every hold clears its own step's acceptance by 1.66x to 2.13x and none reddens the
            * replay. Lowering them was measured and DECLINED here — see step 8. */
+          /* ⚠ THE COUNT TARGET IS THE BOTTOM OF ITS OWN RENDER BAND, NOT THE MIDDLE OF IT
+           * (#749 item 1, measured 2026-09-18). THIS RULE GOVERNS ALL FOUR RUNGS.
+           *
+           * The NIS card prints the source range through `fmtExp` (pwr_board_wiring):
+           * `mantissa.toFixed(1) + 'e' + exponent`. So the string `1.4e3` is drawn for
+           * ANYTHING in [1350, 1450) — the target the step tells the player to watch for is
+           * the CENTRE of a 100-count band, and the tile reads it for fifty counts before the
+           * old `> 1400` row could tick. Measured, the player's route (release WITHDRAW the
+           * instant the tile first prints the target, `hot_zero_power`, seed 42): the release
+           * lands at truth 1254 / instrument 1366, the old row closes 173.2 s later, and over
+           * those 300 s the tile printed 1.4e3 or higher on 2,046 of 3,000 broadcasts.
+           *
+           * So every count threshold here is `>=` the band's LOWER EDGE, T − 0.05·10^E:
+           *     7.0e2 -> 695      1.4e3 -> 1350      3.0e3 -> 2950      7.0e3 -> 6950
+           * The edge value itself renders as the target string (`fmtExp(695)` is `7.0e2`,
+           * `fmtExp(695 − ε)` is `6.9e2`), which is why the op is `>=` and not `>`.
+           * `test/run_checklist_pwr2.js` §2ab re-derives all four out of `fmtExp` and reddens
+           * if one drifts back to the centre.
+           *
+           * THE PLAYER STILL ONLY EVER SEES THE SHORTHAND *(OWNER, #724 item 6: "Whenever the
+           * SOURCE RANGE is referenced it should be in the format of 7.0e2 not 700cps")* — the
+           * edge number is never printed. It does not need to be: at the tick the tile IS
+           * reading 7.0e2, which is what the label now says.
+           *
+           * THE OTHER HALF OF THE FIX IS THE CHANNEL, and it is in instructor_layer.js:
+           * `sr_counts_cps` now maps to the `source_range` instrument, so the row grades the
+           * same number the tile formats. Moving the edge without that leaves the two on
+           * different channels and half the defect standing. */
           accs_ordered: true,
-          accs: [{ p: 'sr_counts_cps', op: '>', v: 700,
+          accs: [{ p: 'sr_counts_cps', op: '>=', v: 695,
                    ask: 'Press MED, then hold WITHDRAW under CONTROL until SOURCE RANGE passes 7.0e2.',
-                   label: 'Counts above 7.0e2 (700 counts per second)' },
+                   label: 'SOURCE RANGE reads 7.0e2 (700 counts per second) or more' },
                  { p: 'control_bank_steps', op: 'stopped', v: 60,
                    ask: 'Release WITHDRAW and let CONTROL ROD POSITION sit still for a minute.',
                    label: 'Rods stopped — CONTROL ROD POSITION unchanged for a minute' },
@@ -2194,9 +2222,9 @@
           control: 'Control Bank', target: 'SOURCE RANGE above 1.4e3 (1,400 counts a second); point 3 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 63, speed: 'normal' }, hold: 300,
           accs_ordered: true,
-          accs: [{ p: 'sr_counts_cps', op: '>', v: 1400,
+          accs: [{ p: 'sr_counts_cps', op: '>=', v: 1350,   // the 1.4e3 band's lower edge — see step 5's RENDER BAND block
                    ask: 'Hold WITHDRAW at MED until SOURCE RANGE passes 1.4e3.',
-                   label: 'Counts above 1.4e3 (1,400 counts per second)' },
+                   label: 'SOURCE RANGE reads 1.4e3 (1,400 counts per second) or more' },
                  { p: 'control_bank_steps', op: 'stopped', v: 60,
                    ask: 'Release WITHDRAW and let CONTROL ROD POSITION sit still for a minute.',
                    label: 'Rods stopped — CONTROL ROD POSITION unchanged for a minute' },
@@ -2230,9 +2258,9 @@
           control: 'Control Bank', target: 'SOURCE RANGE above 3.0e3 (3,000 counts a second); point 4 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 31, speed: 'normal' }, hold: 420,
           accs_ordered: true,
-          accs: [{ p: 'sr_counts_cps', op: '>', v: 3000,
+          accs: [{ p: 'sr_counts_cps', op: '>=', v: 2950,   // the 3.0e3 band's lower edge — see step 5's RENDER BAND block
                    ask: 'Hold WITHDRAW at MED until SOURCE RANGE passes 3.0e3.',
-                   label: 'Counts above 3.0e3 (3,000 counts per second)' },
+                   label: 'SOURCE RANGE reads 3.0e3 (3,000 counts per second) or more' },
                  { p: 'control_bank_steps', op: 'stopped', v: 60,
                    ask: 'Release WITHDRAW and let CONTROL ROD POSITION sit still for a minute.',
                    label: 'Rods stopped — CONTROL ROD POSITION unchanged for a minute' },
@@ -2317,6 +2345,11 @@
            * The owner's 7,000 target is untouched and stands as the floor (his own authored number
            * in `Blueprint/WALKTHROUGH_STEPS_OWNER.md` step 8); the rod-stop row is added under it.
            *
+           * ⚠ THE FLOOR'S LITERAL IS 6950 SINCE #749 AND THAT IS NOT A RETUNE OF HIS NUMBER. The
+           * board prints 7.0e3 for anything in [6950, 7050) (`fmtExp`), so 6950 is the reading
+           * "7.0e3" and 7000 was the middle of it — see the RENDER BAND block on step 5. His
+           * target is what the player reads and it is unchanged in every visible string.
+           *
            * ⚠ EVERY DURATION BELOW IS SECONDS FROM ROD-STOP — the last broadcast on which the
            * control bank moved — and the column SAYS SO (#761, 2026-09-17). It did not, and a
            * reader cannot tell a rod-stop figure from a burst-command figure by looking: this
@@ -2358,9 +2391,9 @@
            * press still puts a real point on the plot and only Clear takes it off (#759). */
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 14, speed: 'normal' }, hold: 600,
           accs_ordered: true,
-          accs: [{ p: 'sr_counts_cps', op: '>', v: 7000,
+          accs: [{ p: 'sr_counts_cps', op: '>=', v: 6950,   // the 7.0e3 band's lower edge — see step 5's RENDER BAND block
                    ask: 'Hold WITHDRAW at MED until SOURCE RANGE passes 7.0e3.',
-                   label: 'Counts above 7.0e3 (7,000 counts per second)' },
+                   label: 'SOURCE RANGE reads 7.0e3 (7,000 counts per second) or more' },
                  { p: 'control_bank_steps', op: 'stopped', v: 60,
                    ask: 'Release WITHDRAW and let CONTROL ROD POSITION sit still for a minute.',
                    label: 'Rods stopped — CONTROL ROD POSITION unchanged for a minute' },
@@ -2565,8 +2598,46 @@
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 11, speed: 'slow' }, hold: 1800,
           /* 0.1, not 0.02: the done-when renders at the tile's resolution, and 0.02 drew "When
            * Reactor power ≥ 0 %" beside a tile reading 0.0 — true of every plant, unmet for four
-           * minutes (layman playtest pass 2, #653 S-5). 0.1 is the first digit the tile shows. */
-          acc: { p: 'power_pct', op: '>', v: 0.1 },
+           * minutes (layman playtest pass 2, #653 S-5). 0.1 is the first digit the tile shows.
+           *
+           * ⚠ AND 0.1 WAS THE MIDDLE OF THAT DIGIT, NOT THE START OF IT (#749 item 2, measured
+           * 2026-09-18). REACTOR POWER is a `digits: 1` tile rendered `toFixed(1)`, so it prints
+           * "0.1" for anything in [0.05, 0.15) — the same render-band trap as the source-range
+           * count targets on steps 5-8 (the RENDER BAND block on step 5 states the rule). The
+           * literal is therefore the band's LOWER EDGE, and the card's line does not change:
+           * `fmtPredValue` rounds a power to one decimal, so 0.05 still draws "REACTOR POWER
+           * > 0.1 %". The player-facing string is byte-identical; what moves is when it becomes
+           * true of the board.
+           *
+           * MEASURED, full stack, `hot_zero_power`, seed 42, the authored route driven end to end
+           * (this step becomes active at t = 1689.4 s):
+           *   the tile first prints "0.1"                       +1307.5 s
+           *   OLD  `power_range > 0.10` latched                 +1414.9 s   (107.4 s of dark
+           *                                                                  Continue beside a
+           *                                                                  tile reading 0.1)
+           *   THIS `power_range > 0.05` latches                 +1306.4 s   (1.1 s BEFORE the
+           *                                                                  first print — the
+           *                                                                  board's own 2 s
+           *                                                                  display damping,
+           *                                                                  which #670 rules the
+           *                                                                  acceptance does not
+           *                                                                  read)
+           *
+           * WHAT THIS DOES NOT FIX, and the two things that were measured and NOT done. The stare
+           * itself is 21.8 plant-minutes of "0.0" and it is the tile's one-decimal resolution, not
+           * the threshold: only INTER RANGE moves during it (three decades), which is exactly what
+           * this step's `note` and `why` already tell the player to watch, and they already state
+           * the wait ("about twenty-five plant-minutes"; measured 21.8 to the first print, so the
+           * copy is conservative, which is the right side). (1) GRADING THE STEP ON ITS OWN WORDS
+           * — "STARTUP RATE positive with the rods stopped" — was measured and DECLINED: it is
+           * satisfied at +0.4 s on this route, so it would tick the step the instant the creep
+           * ends and relocate the identical stare onto the next step's `power_pct > 0.5`; worse,
+           * `>` LATCHES, so the transient positive rate of a rod still moving would tick it for a
+           * player who is not critical at all. (2) GRADING ON INTER RANGE, which is the honest
+           * candidate, needs a `PRED_DISPLAY.ir_amps` entry in ui/app.js — there is none, and
+           * §2d reddens on a predicate param the natural-language map does not cover. Filed
+           * rather than smuggled in here. */
+          acc: { p: 'power_pct', op: '>', v: 0.05 },
           /* THE HAND-OFF IS INSIDE THIS STEP, AND THE STEP DID NOT SAY SO (#735, owner playtest
            * #724 item 10: "In this step the SOURCE RANGE will shut off and the step doesnt address
            * it. We need a better handoff from SOURCE RANGE to INTER RANGE. users will be confuesd

@@ -1938,7 +1938,11 @@ if (!only) {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     var RUNGS = [4, 5, 6, 7];                 // pwr_startup steps 5-8, zero-based
-    var FLOORS = [700, 1400, 3000, 7000];
+    /* THE AUTHORED FLOORS, and since #749 they are the LOWER EDGE of each target's render band
+     * rather than the target itself (695 / 1350 / 2950 / 6950 for 7.0e2 / 1.4e3 / 3.0e3 / 7.0e3),
+     * graded `>=`. §2ab below is what re-derives those four numbers out of `fmtExp`; this section
+     * only needs to find the row, so it reads them as data. */
+    var FLOORS = [695, 1350, 2950, 6950];
 
     /* --- 1. the authored shape of the four rungs -------------------------------------- */
     var shapeBad = [], stopN = null;
@@ -1947,7 +1951,7 @@ if (!only) {
       var en = (st && st.accs) || [];
       var iFloor = -1, iStop = -1, iRate = -1, iPlot = -1;
       en.forEach(function (e, i) {
-        if (e.p === 'sr_counts_cps' && e.op === '>' && e.v === FLOORS[k]) iFloor = i;
+        if (e.p === 'sr_counts_cps' && e.op === '>=' && e.v === FLOORS[k]) iFloor = i;
         if (e.p === 'control_bank_steps' && e.op === 'stopped') { iStop = i; stopN = e.v; }
         if (e.p === 'startup_rate_dpm' && e.op === '~') iRate = i;
         if (e.cmd === 'plot_1m_point' || (e.cmd && e.cmd.action === 'plot_1m_point')) iPlot = i;
@@ -2214,6 +2218,190 @@ if (!only) {
       })();
     })();
   })();
+
+  /* 2ab. THE GRADED NUMBER AND THE DRAWN NUMBER ARE THE SAME NUMBER (#749 items 1 and 2,
+   * 2026-09-18).
+   *
+   * TWO DEFECTS, ONE SHAPE: a step's acceptance was a threshold the player could not tell they
+   * had crossed, because the board rounds and the acceptance did not.
+   *
+   *   1. THE CHANNEL. `sr_counts_cps` had no PARAM_INSTRUMENT.pwr2 entry, so the four 1/M count
+   *      rungs graded `true_state` while the NIS card drew `instruments.source_range` — the
+   *      reused pwr instrument layer (lag 0.5 s, noise 0.02 decades). MEASURED over the authored
+   *      ladder, instrument / truth ran 0.83 to 1.18, so the tile could read ABOVE the target
+   *      while the step refused, indefinitely.
+   *   2. THE BAND. Every count target sat at the CENTRE of the band `fmtExp` draws it in —
+   *      `1.4e3` is drawn for [1350, 1450) — and REACTOR POWER's 0.1 % sat at the centre of the
+   *      `toFixed(1)` band [0.05, 0.15). Half of each band reads the target and fails it.
+   *
+   * WHY THIS IS NOT THE #670 "do NOT regrade on the drawn value" CASE, which forbids exactly
+   * this-looking change. #670 is about DISPLAY_DAMP: the board runs dimensioned tiles through a
+   * first-order filter, and grading the filtered value trades Hard Rule 1 for cosmetic agreement.
+   * `source_range` carries NO DISPLAY_DAMP entry (check 2 below pins that), so the transmitter
+   * reading and the drawn reading are the same number and the board only FORMATS it. What moves
+   * here is the threshold, to the edge of the format's own band — not the reading.
+   *
+   * THE FOUR EDGES ARE RE-DERIVED OUT OF `fmtExp` ITSELF, lifted from pwr_board_wiring.js rather
+   * than copied, so a change to the board's formatter reddens this instead of silently dating it.
+   *
+   * INJECTION (each proven in place, 2026-09-18):
+   *   · delete `sr_counts_cps: 'source_range'` from PARAM_INSTRUMENT.pwr2 -> checks 1 and 5 red
+   *   · put a `source_range` entry in DISPLAY_DAMP                       -> check 2 red
+   *   · put any rung's threshold back on its band centre (1350 -> 1400)  -> check 3 red
+   *   · put the criticality step's `power_pct` back to 0.1               -> check 4 red */
+  (function () {
+    var proc = null;
+    POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
+    var RUNGS = [4, 5, 6, 7];
+
+    /* fmtExp, LIFTED from the board rather than re-typed: the one-line function is pulled out of
+     * pwr_board_wiring.js by name and evaluated here. A copy would be a second implementation of
+     * the claim, which is the #605 shape — and this check exists precisely because the board's
+     * rounding is the thing under test. */
+    var wiring = fs.readFileSync(path.join(ROOT, 'ui', 'diagram', 'board', 'pwr_board_wiring.js'), 'utf8');
+    var fmtSrc = /function fmtExp\s*\([\s\S]*?\n/.exec(wiring);
+    var fmtExp = fmtSrc ? new Function('return (' + fmtSrc[0].trim().replace(/;\s*$/, '') + ');')() : null;
+    ck('2ab. `fmtExp` was lifted out of pwr_board_wiring.js, not re-typed here (#749)',
+       typeof fmtExp === 'function' && fmtExp(1400) === '1.4e3' && fmtExp(1349) === '1.3e3',
+       typeof fmtExp === 'function' ? 'fmtExp(1400)=' + fmtExp(1400) + ', fmtExp(1349)=' + fmtExp(1349)
+                                    : 'could not find `function fmtExp(` in the wiring');
+
+    /* --- 1. THE CHANNEL. Instrument-first, on a live broadcast, through the real evaluator. */
+    (function () {
+      var svc = mkSvc('hot_zero_power');
+      var s = null; for (var i = 0; i < 20; i++) s = svc.tick();
+      var il = Object.create(RD.InstructorLayer.prototype);
+      var g = il._grade(s, { p: 'sr_counts_cps', op: '>', v: 0 });
+      var inst = s.instruments && s.instruments.source_range;
+      var truth = s.true_state && s.true_state.sr_counts_cps;
+      ck('2ab.1 the 1/M count rungs grade the SOURCE RANGE instrument the card draws, not truth (#749 item 1)',
+         g.graded_by === 'instrument' && inst != null && g.value === inst && inst !== truth,
+         'graded_by ' + g.graded_by + ', value ' + (g.value == null ? 'none' : g.value.toFixed(1)) +
+         ' vs instruments.source_range ' + (inst == null ? 'ABSENT' : inst.toFixed(1)) +
+         ' vs true_state ' + (truth == null ? 'ABSENT' : truth.toFixed(1)));
+    })();
+
+    /* --- 2. AND THE DRAWN NUMBER IS THE UNFILTERED ONE, which is what keeps check 1 clear of the
+     * #670 ruling. If `source_range` ever joins DISPLAY_DAMP, the acceptance and the tile part
+     * company again and the argument above stops holding — so the absence is asserted, not
+     * assumed. */
+    (function () {
+      var m = /var DISPLAY_DAMP = \{([\s\S]*?)\};/.exec(wiring);
+      var body = m ? m[1] : null;
+      var damped = !!body && /(^|[\s,{])source_range\s*:/.test(body);
+      ck('2ab.2 `source_range` carries NO display damping — the graded reading IS the drawn reading (#670 boundary)',
+         !!body && !damped,
+         !body ? 'could not find DISPLAY_DAMP in the wiring'
+               : damped ? 'source_range is damped — check 1 now regrades a filtered value'
+                        : 'DISPLAY_DAMP names ' + (body.match(/[a-z_0-9]+\s*:/g) || []).length + ' channels, not this one');
+    })();
+
+    /* --- 3. THE BAND EDGE, for all four rungs. `v` must be the FIRST value the board draws as
+     * the step's own shorthand: one ulp below it must draw a different string. `>=` and not `>`
+     * for exactly that reason — the edge value itself is inside the band. */
+    (function () {
+      var bad = [], seen = [];
+      RUNGS.forEach(function (idx) {
+        var st = proc && proc.steps[idx];
+        var en = st && st.accs && st.accs[0];
+        if (!en || en.p !== 'sr_counts_cps') { bad.push('step ' + (idx + 1) + ': no counts row first'); return; }
+        var v = en.v, below = v * (1 - 1e-9), above = v * (1 + 1e-9);
+        var here = fmtExp(v);
+        if (en.op !== '>=') bad.push('step ' + (idx + 1) + ' op ' + en.op + ' (must be >=, the edge is in the band)');
+        if (fmtExp(below) === here) bad.push('step ' + (idx + 1) + ' v=' + v + ' is NOT the band floor — ' + below + ' also draws ' + here);
+        if (fmtExp(above) !== here) bad.push('step ' + (idx + 1) + ' v=' + v + ' is not inside its own band');
+        seen.push(here + '@' + v);
+      });
+      ck('2ab.3 every 1/M count threshold is the LOWER EDGE of the band the board draws it in (#749 item 1)',
+         bad.length === 0 && seen.length === 4, bad.join('; ') || seen.join(', '));
+
+      /* ...AND THE PLAYER ONLY EVER SEES THE SHORTHAND *(OWNER, #724 item 6)*. The edge number is
+       * an implementation detail; the step's text, its target line and the row's own label all
+       * carry the band's name, and that name is what the tile prints at the tick. */
+      var strBad = [];
+      RUNGS.forEach(function (idx) {
+        var st = proc && proc.steps[idx], en = st && st.accs && st.accs[0];
+        if (!en) return;
+        var name = fmtExp(en.v);
+        ['text', 'target'].forEach(function (f) {
+          if (String(st[f] || '').indexOf(name) === -1) strBad.push('step ' + (idx + 1) + ' ' + f + ' does not print ' + name);
+        });
+        if (String(en.label || '').indexOf(name) === -1) strBad.push('step ' + (idx + 1) + ' label does not print ' + name);
+        if (String(en.label || '').indexOf(String(en.v)) !== -1) strBad.push('step ' + (idx + 1) + ' label prints the raw edge ' + en.v);
+      });
+      ck('2ab.3 ...and every rung prints the SHORTHAND, never the edge number (#724 item 6)',
+         strBad.length === 0, strBad.join('; ') || 'all four: text, target and label carry the band name only');
+    })();
+
+    /* --- 4. THE SAME RULE ON REACTOR POWER (#749 item 2). The tile is `digits: 1` in
+     * pwr_board_data.js and is rendered `toFixed(digits)`, so it prints "0.1" from 0.05 up. The
+     * digit count is READ OUT OF THE BOARD DOCUMENT, not asserted here, for the same reason
+     * `fmtExp` is lifted above. */
+    (function () {
+      var boardDoc = fs.readFileSync(path.join(ROOT, 'ui', 'diagram', 'board', 'pwr_board_data.js'), 'utf8');
+      var dm = /"label":"REACTOR POWER"[^}]*?"digits":(\d+)/.exec(boardDoc);
+      var digits = dm ? +dm[1] : null;
+      var step = null, si = -1;
+      (proc ? proc.steps : []).forEach(function (st, i) {
+        if (st.acc && st.acc.p === 'power_pct' && si === -1 && i >= 8) { step = st; si = i; }
+      });
+      var v = step && step.acc.v;
+      var okFloor = v != null && digits != null &&
+                    v.toFixed(digits) !== (v * (1 - 1e-9)).toFixed(digits) &&
+                    v.toFixed(digits) === (v * (1 + 1e-9)).toFixed(digits);
+      ck('2ab.4 the criticality step waits for the FIRST power the tile prints as 0.1 %, not the middle of that digit (#749 item 2)',
+         okFloor && v.toFixed(digits) === '0.1',
+         v == null ? 'no power_pct acc found at or after step 9'
+                   : 'step ' + (si + 1) + ' acc power_pct > ' + v + '; the tile (' + digits +
+                     ' digit) draws ' + v.toFixed(digits) + ' there and ' +
+                     (v * (1 - 1e-9)).toFixed(digits) + ' one ulp below');
+    })();
+
+    /* --- 5. THE WHOLE CLAIM, ON THE PLANT. Drive the authored 94 + 63 ladder and grade rung 6's
+     * own counts row through `_gradeAccs` — the live path — then read the board's formatter on
+     * the SAME broadcast the row latches. With the fix that is an identity, not a coincidence:
+     * the row needs the instrument at or above the band floor, and the band floor is the first
+     * value that draws the target string. Graded on truth (the shipped state until today) it is
+     * neither, and the tile can be a band low at the tick. */
+    (function () {
+      var st = proc && proc.steps[5];
+      var en = st && st.accs && st.accs[0];
+      if (!en) { ck('2ab.5 the rung-6 count row exists', false, 'step 6 has no counts row'); return; }
+      var name = fmtExp(en.v), target = +name.split('e')[0] * Math.pow(10, +name.split('e')[1]);
+      var svc = mkSvc('hot_zero_power');
+      var s = null, i;
+      for (i = 0; i < 5; i++) s = svc.tick();
+      var runFor = function (secs) { var t0 = s.metadata.sim_time; while (s.metadata.sim_time - t0 < secs) s = svc.tick(); };
+      svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 94, speed: 'normal' });
+      runFor(300);
+      svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 63, speed: 'normal' });
+      var il = Object.create(RD.InstructorLayer.prototype);
+      var graded = { accs: [en] }, holder = {};
+      var drawnAtLatch = null, latchT = null, drawnStr = null, byAtLatch = null, t0 = s.metadata.sim_time;
+      while (s.metadata.sim_time - t0 < 600 && latchT === null) {
+        s = svc.tick();
+        if (il._gradeAccs(holder, graded, s)) {
+          latchT = s.metadata.sim_time - t0;
+          drawnStr = fmtExp(s.instruments.source_range);
+          drawnAtLatch = +drawnStr.split('e')[0] * Math.pow(10, +drawnStr.split('e')[1]);
+          byAtLatch = il._grade(s, en).graded_by;
+        }
+      }
+      /* BOTH HALVES AT THE SAME INSTANT, because either alone is satisfiable by accident. "The
+       * tile reads the target or more" passes on a truth-graded row whenever the noise happens to
+       * be on the high side — MEASURED under injection: with the map entry removed this rung
+       * still latched with the card reading 1.5e3, one band ABOVE the target. What cannot happen
+       * by accident is the pair: the row that latched was graded on the channel the card draws,
+       * and the card was printing the target. */
+      ck('2ab.5 when the rung ticks, it was graded on the drawn channel AND the tile was printing the target — on the plant (#749 item 1)',
+         latchT !== null && drawnAtLatch !== null && drawnAtLatch >= target && byAtLatch === 'instrument',
+         latchT === null ? 'the rung never latched within 600 s of the burst'
+                         : 'latched ' + latchT.toFixed(0) + ' s in, graded_by ' + byAtLatch +
+                           '; the card read ' + drawnStr + ' (' + drawnAtLatch +
+                           ') against a target of ' + name + ' (' + target + ')');
+    })();
+  })();
+
 }
 
 
