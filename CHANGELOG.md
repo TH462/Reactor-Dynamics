@@ -30,6 +30,50 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — four channels that read a value the plant was not at (#782, #778, #671, #765, #783)
+
+- **The safety-injection discharge gauge read a dead pump through a live injection** (#782).
+  `hpi_discharge_pressure_mpa` was gated on `hpi_active`, which ruling #603 defines as the
+  injection SIGNAL, not pump operation. An operator who secured injection and restarted the pumps
+  below the actuation setpoint got 12 % of rated flow beside a discharge pressure that decayed to
+  a denormal float — 0 psi on the board. Re-gated on `pumpKgs`, the quantity the flow reading
+  beside it already uses: the operator-restored point now reads **1069 psi (7.37 MPa)** where it
+  read 0, with the automatic-actuation path unchanged at 1160 psi (8.00 MPa). `hpi_active` itself
+  is untouched. `afw_discharge_pressure_mpa` was checked in the same pass and does not share the
+  shape. `Manuals/07` PWR-E06 step 3b loses its "known defect" caveat (pending Rev 20, item l).
+
+- **The retired engine's whole actuation table is inert on PWR2 — 21 rows against 0** (#778).
+  Filed as two containment rows that never fire; measured as the entire set. `pwr_control.js`
+  pushes every row onto one module-level array, and PWR2's `getProtectionConfig` assigns an empty
+  one over it, so the array the kernel holds is a different object. Same large loss-of-coolant
+  accident on both plants: the retired engine realigns fan coolers at 3.72 s, shuts the main steam
+  isolation valves at 12.60 s and starts containment spray at 12.66 s, peaking at 36.5 psig
+  (0.353 MPa); PWR2 crosses the same high-high setpoint at 58.64 s, fires nothing, and reaches
+  **78.5 psig (0.643 MPa)**. No behaviour change — the fact is now declared at three sites in the
+  kernel ("adding a row here does not give PWR2 a protection") and gated as a bifurcation that can
+  see both a firing and its absence. The `run_manual_notmodelled` red from #626 is explicitly NOT
+  cleared: its remaining leg needs a steam-line break, which PWR2 refuses to inject (#530).
+
+- **The casualty registry reported by a quantity that could not tell casualties apart** (#671).
+  `rcp_trip` was injectable but never appeared in the Failures tab and could not be cleared — the
+  detector had no branch for it, because the trip flag it would have read is shared with a loss of
+  offsite power, a station blackout and the operator's own pump stop. It now reads a seat set at
+  injection, the same precedent as the turbine row; clearing it releases the casualty without
+  restarting the pump, which stays the operator's action. `large_loca` reported itself as
+  `primary_leak`, an id with no catalog row, so injecting it from the menu never lit its own row;
+  the break now carries the id it was opened with.
+
+- **Charging and letdown flow were not dead** (#765). Filed as reading 0.0 through 12.6
+  plant-minutes of maximum charging. Measured: 26 gpm (99.6 L/min) charging and 12 gpm
+  (44.8 L/min) letdown, matching the pump's own computed maximum to three significant figures and
+  drawn correctly on the board. The report came from a harness printing a small-fraction channel
+  at a precision that rounds to zero. No change; closed with the numbers.
+
+- **Filed, not fixed:** PWR2's containment high-high annunciator is live and critical while the
+  actuations behind it are not, so it names containment spray and steam-line isolation — neither
+  of which the plant performs (#783).
+
+
 ## [Alpha 1.7.6-rc1] — 2026-09-18
 
 ### Fixed — three measurement tools that could not fail loudly (#763, #769, #665)

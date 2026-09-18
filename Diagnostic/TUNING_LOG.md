@@ -29,6 +29,142 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-18-develop-d (#782 · #778 · #671 · #765 — four channels that read a value the plant was not at)
+
+Bundled on one class: a published channel, or a wired row, whose reading is produced by a
+quantity that cannot carry the answer. Three defects, one non-defect, one new issue.
+
+### #782 — the discharge gauge read a dead pump through a live injection
+
+`hpi_discharge_pressure_mpa` was gated on `ts.hpi_active`, which ruling #603 defines as the
+safety-injection SIGNAL — "has the plant fired" — deliberately not a reading of delivered flow.
+The line above it already used the right quantity (`pumpKgs`). So an operator who secures
+injection and restarts the pumps below the actuation setpoint got 12 % of rated flow beside a
+discharge pressure that decayed to a denormal float:
+
+| | HPI FLOW | HPI ACTUATED | HPI DISCH PRESS |
+|---|---|---|---|
+| automatic actuation (3 min) | 0.0987 | true | 1160 psi (8.00 MPa) |
+| operator-restored (17 min), before | 0.1216 | false | **0 psi (0 MPa)** |
+| operator-restored (17 min), after | 0.1216 | false | **1069 psi (7.37 MPa)** |
+
+**THE TRAP: a correct ruling one field over.** #603 is right, and the neighbouring line inherited
+its gate anyway. `afw_discharge_pressure_mpa` was checked in the same pass and does NOT share the
+shape — `afw_active` is `total_kgs > 0`, already a delivery reading. Having a ruling in the file
+is not the same as the ruling applying to every line near it.
+
+The probe that existed could never have caught it: every prior HPI-discharge check ran the pumps
+*while* the signal was also active, the one case where the two quantities agree. The new probe
+runs the operator-restored path and asserts flow and discharge pressure non-zero TOGETHER.
+
+### #778 — the dark actuation rows are the WHOLE table, not the containment half
+
+The issue reported two containment rows wired at both ends and never firing, and asked whether
+the retired engine's actuation set was inert on PWR2 "or only its containment half". Measured:
+**the whole table.** `pwr_control.js` pushes every row onto one module-level `PWR_ACTUATIONS`
+array; `pwr2_shell.getProtectionConfig` `Object.assign`s `actuations: []` over that base, so the
+array PWR2's kernel holds is a *different, empty* one — **21 rows on the retired engine, 0 on
+PWR2**.
+
+Same casualty, both plants (large loss-of-coolant accident, severity 1.0):
+
+| | retired PWR | PWR2 |
+|---|---|---|
+| containment high-high (30 psig) crossed | 11.52 s | 58.64 s |
+| containment peak | 36.5 psig (0.353 MPa) | **78.5 psig (0.643 MPa)** @600 s |
+| fan coolers realign · MSIV shut · spray start | 3.72 s · 12.60 s · 12.66 s | **never** |
+
+PWR2 goes further past the setpoint that fires the retired plant and fires nothing.
+
+**Proof it is the ARRAY, not the rows** (the #642 pattern): moving `CTMT_HIHI_MPA` 321× out of
+reach stops the retired engine closing its MSIV and starting spray, and changes PWR2's ride by
+nothing — same 0.6427147749359522 MPa peak to the last digit.
+
+**THE TRAP: an absence-assertion pins a non-event.** The check is shaped as a BIFURCATION — one
+casualty, two plants, both legs red-able: the firing leg genuinely sees a firing (the 321×
+mutation reds it), the inert leg sees PWR2 at higher pressure firing nothing. Two mutations were
+not enough: emptying the shell's `actuations` reds the count check and then THROWS on a verb PWR2
+refuses, so a third mutation leaks only `close_msiv` — a verb PWR2 *does* wire — and that one
+reds the inert leg itself. Without it the inert leg was proven only at the array count.
+
+**And the self-test's counter was itself hollow**: `caught = crashed ? 1 : reds` let a crash stand
+in for coverage *and discarded genuine reds recorded before the throw*. Reds now count first.
+That is what exposed the missing behavioural coverage.
+
+Declared at three sites in `pwr_control.js`, the authoritative one above the array: **adding a row
+there does not give PWR2 a protection.**
+
+The #626 `run_manual_notmodelled` red STANDS and was not claimed. Its remaining leg needs a
+steam-line break, which `pwr2_shell.js` refuses outright ("no steam-line break model yet"), so it
+is unknown which of `Manuals/09` §3.0 and `Manuals/12` §8.5 is wrong. #530 is what unblocks it.
+
+### #671 — the registry reported by a quantity that could not tell casualties apart
+
+Three defects, and **the third fix was wrong and a gate caught it**.
+
+`rcp_trip` was injectable but never reported and never clearable. Fixed with a SEAT
+(`_rcpTripInjected`), the #551 turbine precedent: read whether the casualty was injected, never
+`sys.pumpTripped` — a loss of offsite power, a station blackout and the operator's own
+`stop_pump` all set that flag, so a detector reading it would never fire once any of those held
+it first. The clear unsets the seat and does NOT restart the pump: `rcp_start` is gated on live
+offsite power, so auto-restoring would either throw on a dead bus or silently un-secure a pump
+someone else stopped.
+
+`large_loca` reported as `primary_leak` — an id with no catalog def and no menu row — because the
+cold-leg branch read the break's NODE alone and both ids open the same node. The break now carries
+`injected_id`.
+
+**THE TRAP, and it is the one worth keeping: the dead membership was not dead.** `failGroups`
+listed three ids PWR2's keep-list filters out, so they were dropped as a promise of rows that
+cannot exist. That reddened `run_inspect` at **61/62** — `PROFILES.pwr` is SHARED by both engines
+(the `pwr2` profile entry is `plant: 'pwr'`), the retired engine's catalog really carries all
+three, and the gate asserts every catalog entry is placed. The drop misfiled three live rows under
+the trailing catch-all on the plant that still has them. They stay, commented as placeholders;
+a group id with no catalog entry simply draws no row, so they cost nothing while filtered.
+**Ask which plant a shared table serves before you prune it for one of them.**
+
+### #765 — not a defect, and the measurement is the deliverable
+
+`charging_flow_actual` and `letdown_flow_actual` were filed as reading 0.0 through 12.6
+plant-minutes of maximum charging that moved level 37 points. They never read zero. The channel's
+currency is a fraction of 450,000 gpm, so the real value is ~1e-5: settled charging **5.8500e-5 =
+26 gpm (99.6 L/min)**, matching `CVCS.charging_max_gpm()` computed independently to three
+significant figures; letdown 12 gpm (44.8 L/min); level 25.0 → 63.5 % in 13.05 plant-minutes,
+reproducing the filed 37 points. The original harness printed a 1e-5 quantity at a precision that
+rounds to 0.0. The board draws 26 gpm and 12 gpm — legible, correct.
+
+Coverage was proven by injection rather than asserted: forcing both `put()` calls to literal 0 in
+a sandboxed reload was caught by the existing `run_pwr2_true_state` assertion. No probe added,
+because one already covers the effect.
+
+### Filed, not fixed — #783
+
+The shell empties `actuations` but KEEPS `alarms`, deliberately (annunciators only read
+instruments). So on the same large-LOCA ride, `ctmt_press_hihi` goes active at ~65 s and stays lit
+**1154 of 1800 ticks** at priority *critical*, labelled **"Containment Pressure High-High
+(spray/MSLI)"** — naming containment spray and main steam line isolation, neither of which
+happens. The dark wire is not merely invisible; it is announced. The label is shared text and is
+correct on the retired engine, so the fix is a player-facing decision, not a word change.
+
+### Gates
+
+`run_pwr2_true_state` 82/82 (31/31 mutations) · `run_pwr2_kernel` 41/41 (10/10) ·
+`run_pwr2_shell` 179/179 (65/65 injection self-test, no blind spots) · `run_pwr2_containment`
+27/27 · `run_pwr2_eccs` 39/39 · `run_pwr2_roundtrip` 20/20 · `run_pwr2_forwarding` 11/11 ·
+`run_autoctl` 31/31 · `run_m4` 47/47 · `run_pwr` 265/265 · `run_inspect` 62/62 · `run_flags`
+344/344 · `run_contract` 180/180 · `run_hr3` 32/32 · `run_ops` 59/70 at baseline ·
+`run_manual_rev` 15/15 · `run_manual_units` clean.
+
+`BASELINES` moved four ways, all better-than-baseline: `run_pwr2_true_state` 81 → 82,
+`run_pwr2_kernel` 36 → 41, `run_pwr2_shell` 175 → 179, `run_hardrules` 595 → 597 (two new Hard
+Rule 11 citation sites, from #778's declarations).
+
+**A gate run against a moving tree is void, and it happened twice here.** Four agents held
+uncommitted edits in one working directory; `run_pwr2_shell` first reported DRIFT and then timed
+out at 599 s against a file being edited under it, and a BASELINES line was rewritten mid-run so
+`run_all` compared against a number that no longer existed. Both re-run on a settled tree. The
+per-agent file ownership held — no work was lost — but the GATES cannot be parallelised that way.
+
 ## Session log — 2026-09-18-develop-c (#763 #769 #665 — three tools that lied at the moment they were trusted)
 
 **One bundle, one theme: a measurement tool whose failure mode is a believable number.** All three
