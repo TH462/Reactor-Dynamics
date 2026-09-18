@@ -1389,6 +1389,20 @@
                 : !inUse ? NIS_IDLE_COLOR
                 : (sr != null && isFinite(sr) && sr >= SR_HANDOFF_CPS) ? SR_HANDOFF_COLOR
                 : SR_NORMAL_COLOR;
+      /* OUT OF SERVICE READS AS A DASH, NOT A LIVE 1.0 cps (#757). De-energized, the true
+       * count rate is 0 (`sr_counts_cps`, pwr2_true_state.js), but the log-scale instrument
+       * model floors its PUBLISHED reading at the channel's own range minimum — `source_range:
+       * {range:[1,1e6], log:true}` in pwr_config.js, because a log scale cannot carry zero —
+       * so the tile was handed a real `1` and drew it as a plausible live count. `live`
+       * (`sr_energized`) already told this function the channel is secured; only the TEXT
+       * was ignoring it. MEASURED headless on `hot_full_power` (SR long since secured):
+       * before, "1.0e0 cps"; after, "—". Unit blanked too, same idiom as `ims2jva1ff5`
+       * (boron) and `bdRhrCooldownRate` above — a dash does not get a stray unit hung off it.
+       * This is NOT the `dead`-instrument-failure case (any instrument can be failed dead via
+       * the Failures tab, bottoming at its own range floor) — that is the taught HR1
+       * deception and is deliberately left showing the fabricated reading; `sr_energized`
+       * only ever reflects the plant's own de-energization, never an injected failure. */
+      if (!live) return { text: '—', unit: '', color: color };
       return { text: fmtExp(sr), color: color };
     },
     // IR amps (log scale, like SR). The `ir_high` trip at 1.67e-3 A is the middle rung of the
@@ -5684,6 +5698,18 @@
       ck('driver: SR readout goes neutral once the detector is secured',
         nis('imro6qutiht', { source_range: 6e4, sr_energized: false }).color === NIS_IDLE_COLOR,
         nis('imro6qutiht', { source_range: 6e4, sr_energized: false }).color);
+      /* #757: a secured channel must not draw the log instrument's range-floor reading as a
+       * live count. `source_range: 1` here is exactly what `pwr_instruments.js` publishes for
+       * a de-energized SR (`Math.max(trueVal, spec.range[0])`, floor 1 cps) — MEASURED live on
+       * `hot_full_power`: before this fix the tile drew "1.0e0 cps", after it draws "—". A
+       * `dead`-instrument FAILURE (any channel, `sr_energized` unaffected) still shows its
+       * floor — that is the taught HR1 deception, not this defect, so it is deliberately not
+       * asserted here. */
+      ck('driver: SR readout blanks the fabricated floor reading once secured (#757)',
+        nis('imro6qutiht', { source_range: 1, sr_energized: false }).text === '—' &&
+        nis('imro6qutiht', { source_range: 1, sr_energized: false }).unit === '',
+        'text ' + JSON.stringify(nis('imro6qutiht', { source_range: 1, sr_energized: false }).text) +
+        ', unit ' + JSON.stringify(nis('imro6qutiht', { source_range: 1, sr_energized: false }).unit));
       ck('driver: IR readout marks its trip and warns within half a decade',
         nis('imro6rctcgm', { intermediate_range: 2e-3 }).color === NIS_TRIP_COLOR &&
         nis('imro6rctcgm', { intermediate_range: 8e-4 }).color === SR_HANDOFF_COLOR &&

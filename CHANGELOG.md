@@ -30,6 +30,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — a secured SOURCE RANGE no longer draws a false live reading (#757)
+
+- **`imro6qutiht` (the SOURCE RANGE tile) blanks to `—` once the detector is secured**, instead
+  of drawing `1.0e0 cps`. De-energized, the true count rate is 0 (`sr_counts_cps`), but the
+  log-scale instrument model floors its published reading at the channel's own range minimum
+  (1 cps — a log scale cannot carry zero), so the tile was handed a real `1` and drew it as a
+  plausible live count one control-bank step from criticality, exactly where a startup player
+  has been taught to watch it. MEASURED headless on `hot_full_power`: before, `1.0e0 cps`;
+  after, `—` (unit blanked too, same idiom as the boron/cooldown-rate tiles). Trip/caution/normal
+  colouring is unchanged. Swept every other instrument that can secure or fail: only
+  `source_range` combines a log-scale floor with a real de-energization switch (`intermediate_range`
+  is the only other log-scale channel and is always live). A `dead`-instrument FAILURE on any
+  channel still shows its range floor deliberately (the taught HR1 deception, a different case).
+
 ### Added — the site pages report whether anyone reaches the simulator (#764)
 
 Still internal measurement, not the simulator: no `changelog.html` entry, no version bump.
