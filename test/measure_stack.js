@@ -61,11 +61,37 @@
  *        --watch=power_pct,tavg_c --cmd='0s:{"action":"set_rcp","running":true}'
  *   node test/measure_stack.js --list                     # field names, by source
  *
- *   --plant=pwr|rbmk|bwr      default pwr
+ *   --plant=pwr|pwr2|rbmk|bwr default pwr. pwr2 is the parallel-phase engine (#479 Option B,
+ *                             `RD.pwr2.shell.PWR2Engine`) — `simulation_service.js`'s
+ *                             `engineCtor` already routed it; this file only lacked the
+ *                             loader (#665). Full stack same as every other plant here:
+ *                             M4+M5+M6 through `SimulationService`, commands via
+ *                             `svc.handleCommand`, never the engine's own `applyCommand`
+ *                             directly (candidate causes #3/#4 in #665 — stamped in the
+ *                             header so a wrong-layer or wrong-command-path figure is
+ *                             visible, not found a day later).
+ *                             --nudge and --pzr2 read/patch the RETIRED pwr engine's
+ *                             `PWR_CONFIG` / rebuilt pressurizer and mean nothing on pwr2's
+ *                             own config — combined with --plant=pwr2 they are a HARD ERROR
+ *                             (#665, the #769 silent-no-op class), not a quietly-ignored flag.
  *   --version=<id>            engine design version (rbmk: pre_chernobyl / post_chernobyl)
- *   --ic=<initial_state>      default hot_full_power
+ *   --ic=<initial_state>      default hot_full_power. An unknown name is a HARD ERROR naming
+ *                             the plant's own list (each engine throws it; this file surfaces
+ *                             the message cleanly instead of an uncaught stack trace) — pwr2's
+ *                             list, verified 2026-09-18 against `engines/pwr2/pwr2_engine.js`:
+ *                             hot_full_power, 50_percent, hot_zero_power, hot_shutdown,
+ *                             cold_shutdown. cold_shutdown EXISTS on pwr2 (since #524/wave 10)
+ *                             — a stale note elsewhere in this repo says pwr2 has none.
  *   --for=<dur>               PLANT time to cover: 90s / 30m / 12h. default 1h
  *   --every=<dur>             sample interval in plant time. default: 12 rows
+ *   --settle=<dur>            step the plant this much PLANT time BEFORE t=0 (default 0,
+ *                             always stamped). --for/--every/--cmd all count from the END of
+ *                             the settle; the header also prints the absolute engine simTime
+ *                             where measurement begins, to reconcile against a harness that
+ *                             counts from boot. #665: two of three hand-rolled pwr2 harnesses
+ *                             on one fixture disagreed by 60 s, the exact size of one
+ *                             harness's settle and the other's absence of one — an unstamped
+ *                             settle is a wrong-layer figure in a new costume.
  *   --accel=<n>               time acceleration. default 60. Protection is evaluated once
  *                             per broadcast, so a HIGH value coarsens trip latency (#153) —
  *                             use 10 or less if the number you want depends on when a trip
@@ -114,6 +140,22 @@ process.argv.slice(2).forEach(function (a) {
   var m = /^--nudge=(.*)$/.exec(a);
   if (m) NUDGE = m[1];
 });
+// --plant=pwr2 — scanned here for the same reason as --nudge/--pzr2: the pre-load block
+// below is the only place a plant's file set can be chosen BEFORE anything reads it. #665.
+var PLANT_ARG = null;
+process.argv.slice(2).forEach(function (a) {
+  var m = /^--plant=(.*)$/.exec(a);
+  if (m) PLANT_ARG = m[1];
+});
+var IS_PWR2 = PLANT_ARG === 'pwr2';
+// --nudge targets `RD.PWR_CONFIG` (the RETIRED pwr engine's config) and --pzr2 targets that
+// engine's own rebuilt-pressurizer flag (#472) — pwr2 has neither a `PWR_CONFIG` nor a
+// `pressurizer2` toggle (its constants live inline across engines/pwr2/*.js). Combined with
+// --plant=pwr2 either flag would silently do nothing to the plant actually selected below —
+// exactly the #769 defect class this file's own header warns against — so it is a HARD ERROR
+// here, before either flag is even applied, rather than a quietly-ignored combination.
+if (IS_PWR2 && NUDGE) { console.error('\x1b[31mmeasure_stack: --nudge targets the retired pwr engine\'s PWR_CONFIG — meaningless with --plant=pwr2\x1b[0m'); process.exit(2); }
+if (IS_PWR2 && process.argv.slice(2).indexOf('--pzr2') >= 0) { console.error('\x1b[31mmeasure_stack: --pzr2 selects the retired pwr engine\'s rebuilt pressurizer (#472) — meaningless with --plant=pwr2\x1b[0m'); process.exit(2); }
 if (NUDGE) {
   try { NUDGED = require('../tools/_config_nudge.js').applyNudge(globalThis.RD.PWR_CONFIG, NUDGE); }
   catch (e) { console.error('\x1b[31mmeasure_stack: ' + e.message + '\x1b[0m'); process.exit(2); }
@@ -131,6 +173,21 @@ if (PZR2) globalThis.RD.PWR_CONFIG.pressurizer2.enabled = 1;
  'engines/rbmk/rbmk_rods.js', 'engines/rbmk/rbmk_instruments.js', 'engines/rbmk/rbmk_engine.js',
  'engines/bwr/bwr_config.js', 'layers/control/bwr_control.js', 'engines/bwr/bwr_vessel.js', 'engines/bwr/bwr_recirculation.js',
  'engines/bwr/bwr_safety_systems.js', 'engines/bwr/bwr_instruments.js', 'engines/bwr/bwr_engine.js',
+ // PWR2 (#479 Option B) — same load order as `test/run_pwr2_shell.js`'s `loadAll()` and
+ // `test/measure_pwr2_ab.js` (copied rather than invented: load order is load-bearing —
+ // pwr2_water/pwr2_vtable before the rest, pwr2_shell.js last). `pwr_control.js` and
+ // `pwr_instruments.js` above satisfy pwr2's REUSED-instrument-contract dependency; loading
+ // `control_kernel.js` again below is a harmless re-require (Node caches it).
+ 'engines/pwr2/pwr2_water.js', 'engines/pwr2/pwr2_vtable.js', 'engines/pwr2/pwr2_geometry.js',
+ 'engines/pwr2/pwr2_core.js', 'engines/pwr2/pwr2_loop.js', 'engines/pwr2/pwr2_kinetics.js',
+ 'engines/pwr2/pwr2_fuel.js', 'engines/pwr2/pwr2_reactor.js', 'engines/pwr2/pwr2_sources.js',
+ 'engines/pwr2/pwr2_sg.js', 'engines/pwr2/pwr2_turbine.js', 'engines/pwr2/pwr2_relief.js',
+ 'engines/pwr2/pwr2_condenser.js', 'engines/pwr2/pwr2_cvcs.js', 'engines/pwr2/pwr2_eccs.js',
+ 'engines/pwr2/pwr2_afw.js', 'engines/pwr2/pwr2_damage.js', 'engines/pwr2/pwr2_protection.js',
+ 'engines/pwr2/pwr2_pressurizer.js', 'engines/pwr2/pwr2_dumpctl.js', 'engines/pwr2/pwr2_break.js',
+ 'engines/pwr2/pwr2_containment.js', 'engines/pwr2/pwr2_rhr.js', 'engines/pwr2/pwr2_true_state.js',
+ 'engines/pwr2/pwr2_instruments.js', 'engines/pwr2/pwr2_feedwater.js', 'engines/pwr2/pwr2_engine.js',
+ 'engines/pwr2/pwr2_shell.js',
  'layers/control/control_kernel.js', 'layers/instructor_layer.js', 'layers/simulation_service.js'
 ].forEach(function (f) { require('../' + f); });
 var RD = globalThis.RD;
@@ -198,7 +255,7 @@ function die(msg) { console.error(R + 'measure_stack: ' + msg + X); process.exit
 // Whitelisted, and a typo is a HARD ERROR rather than a silent default. `--wach=tavg_c`
 // accepted as an unknown key would have run the default field set and printed a table that
 // looks entirely correct — the quiet-wrong-answer class this harness exists to stop.
-var KNOWN = { plant: 1, version: 1, ic: 1, for: 1, every: 1, accel: 1, lineup: 1, watch: 1,
+var KNOWN = { plant: 1, version: 1, ic: 1, for: 1, every: 1, settle: 1, accel: 1, lineup: 1, watch: 1,
               cmd: 1, seed: 1, 'attention-stops': 1, csv: 1, quiet: 1, list: 1, help: 1, nudge: 1,
               pzr2: 1 };   // #472 A/B selector — consumed in the pre-load block above
 var argv = process.argv.slice(2), OPT = { cmds: [] };
@@ -219,6 +276,11 @@ var ACCEL = OPT.accel != null ? parseFloat(OPT.accel) : 60;
 var BARE = OPT.lineup === 'bare';
 var FOR = dur(OPT.for, 3600);
 var EVERY = OPT.every != null ? dur(OPT.every) : Math.max(1, FOR / 12);
+// #665: PLANT time driven before t=0, discarded. --for/--every/--cmd all count from the END
+// of this — the header stamps both the length and the absolute engine simTime where
+// measurement begins, since an unstamped settle is exactly what made two #665 harnesses on
+// the SAME fixture disagree by 60 s (one settled, one counted from boot).
+var SETTLE = dur(OPT.settle, 0);
 var WATCH = (OPT.watch || 'power_pct,tavg_c,pressure_mpa,sg_level_pct').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
 // The instrument PRNG seed. Default 4242 — the value this harness has always used, so an
 // un-seeded command reproduces every number ever taken with it. It is NOT the probe default:
@@ -227,7 +289,10 @@ var WATCH = (OPT.watch || 'power_pct,tavg_c,pressure_mpa,sg_level_pct').split(',
 // (#394/#378: the limit cycle's amplitude reads 1.83-4.89 pts across seeds — a one-seed
 // verdict on a noise-excited instability is one PRNG's opinion). Printed in the header for
 // the same reason the layer is: a wrong-seed figure must be visible in the artifact.
-var SEED = OPT.seed != null ? parseInt(OPT.seed, 10) : 4242;
+// parseInt(_, 10) silently read "0x1234" as 0 — the #665 fixture's own seed — which is
+// exactly the quiet-wrong-answer class this file exists to stop; radix now follows a leading
+// 0x the way every other JS number literal does.
+var SEED = OPT.seed != null ? parseInt(OPT.seed, /^0x/i.test(String(OPT.seed)) ? 16 : 10) : 4242;
 if (!isFinite(SEED)) die('--seed needs an integer, got "' + OPT.seed + '"');
 
 if (OPT.list) {
@@ -244,17 +309,40 @@ if (OPT.list) {
 
 // ------------------------------------------------------------------------ build the stack
 var svc = new RD.SimulationService({ seed: SEED });
-svc.selectPlant(PLANT, IC, VERSION, BARE ? { noDefaults: true } : undefined);
+// selectPlant can either RETURN an error object (unknown plant_id) or THROW (pwr2's engine
+// on an unknown initial_state, naming its own valid list — #665). Both are a HARD ERROR
+// through this file's own die(), never an uncaught stack trace or a silent fall-through to
+// whatever `svc.engine` was left holding.
+var selRes;
+try { selRes = svc.selectPlant(PLANT, IC, VERSION, BARE ? { noDefaults: true } : undefined); }
+catch (e) { die(e.message); }
+if (selRes && selRes.type === 'error') die((selRes.message || 'selectPlant refused') + ' (received "' + selRes.received + '")');
 // Drive tick() directly. NEVER svc.start() — see the header table: start() is timer-driven
 // and advances in wall time, which is what made #266 believe this was impossible.
 svc.running = true;
 svc.timeAcceleration = ACCEL;
 svc.attentionStops = !!OPT.attention_stops;
+var accelDropped = false, scrammedAt = null;
 
-// Resolve each watched field to a source ONCE, against the initial snapshot, so a field
-// that only appears later cannot silently switch source mid-run and change what the column
-// means. An unresolvable field is a hard error — a column of dashes reads as "the plant did
-// nothing", which is exactly the kind of quiet wrong answer this harness exists to stop.
+// ---- SETTLE (#665): drive PLANT time before t=0, discarded, same tick()/SCHED discipline
+// as the measurement loop below (settle accepts no commands of its own — it is a quiescence
+// prefix, not a second scheduled window). EPOCH is the engine's OWN absolute simTime where
+// the settle ends and is stamped in the header for reconciliation; every sample/command time
+// below is relative to it, so SETTLE=0 (the default) reproduces the pre-#665 behaviour
+// exactly (EPOCH=0).
+var settleT0 = process.hrtime.bigint();
+while (svc.simTime < SETTLE) {
+  svc.tick();
+  if (svc.timeAcceleration !== ACCEL && !accelDropped) accelDropped = true;
+}
+var settleWallMs = Number(process.hrtime.bigint() - settleT0) / 1e6;
+var EPOCH = svc.simTime;
+
+// Resolve each watched field to a source ONCE, against the initial (post-settle) snapshot,
+// so a field that only appears later cannot silently switch source mid-run and change what
+// the column means. An unresolvable field is a hard error — a column of dashes reads as "the
+// plant did nothing", which is exactly the kind of quiet wrong answer this harness exists to
+// stop.
 var snap0 = svc.assembleSnapshot();
 var SRC = {};
 WATCH.forEach(function (f) {
@@ -289,31 +377,44 @@ if (!OPT.quiet) {
   console.log('  acceleration   ' + ACCEL + 'x   ' + D + '(' + stepsPerTick + ' physics steps per broadcast; protection ' +
     'evaluated every ' + (protMs / 1000).toFixed(2) + ' sim-s — #153)' + X);
   console.log('  attention stop ' + (svc.attentionStops ? Y + 'ON — a trip will drop acceleration mid-run (#245)' + X : 'off'));
+  // ENGINE + COMMAND PATH (#665 candidate causes #3/#4): which constructor answered
+  // `engineCtor` and how commands reach it. A wrong-layer or wrong-path figure must be
+  // visible in the artifact, same reason the layer/seed lines exist (#266).
+  console.log('  engine         ' + (svc.engine && svc.engine.constructor && svc.engine.constructor.name || '?') +
+    D + '   commands via svc.handleCommand -> instructor -> ControlLayer -> engine.applyCommand ' +
+    '(never the engine directly)' + X);
+  // SETTLE (#665): the length AND the absolute engine simTime it ends at, so a reader can
+  // convert every relative time below back to the other harness's absolute clock.
+  console.log('  settle         ' + (SETTLE ? SETTLE.toFixed(1) + ' s' : '0 s (default — no settle)') +
+    D + '   measurement t=0 is engine simTime ' + EPOCH.toFixed(2) + ' s' +
+    (SETTLE ? ' (' + settleWallMs.toFixed(0) + ' ms wall)' : '') + X);
   // A PERTURBED PLANT MUST BE VISIBLE IN ITS OWN ARTIFACT, same rule as the layer stamp
   // (#266). Prints the REALISED from→to, not just the spec: "K_heater*0.18" does not tell a
   // later reader what the constant actually was when the number was taken.
   if (PZR2) console.log('  ' + Y + 'MODEL          pressurizer2 (v2, #472) — NOT THE SHIPPED PLANT' + X);
   if (NUDGED) console.log('  ' + Y + 'nudge          ' + NUDGED.path + ' ×' + NUDGED.factor +
     '  (' + NUDGED.from + ' → ' + NUDGED.to + ')  — NOT THE SHIPPED PLANT' + X);
-  console.log('  covering       ' + (FOR / 3600).toFixed(2) + ' plant-hours, sampled every ' + (EVERY >= 60 ? (EVERY / 60).toFixed(1) + ' min' : EVERY + ' s'));
+  console.log('  covering       ' + (FOR / 3600).toFixed(2) + ' plant-hours, sampled every ' + (EVERY >= 60 ? (EVERY / 60).toFixed(1) + ' min' : EVERY + ' s') +
+    D + '   (times below are relative to t=0 above)' + X);
   if (SCHED.length) SCHED.forEach(function (c) { console.log('  command @' + c.at + 's  ' + JSON.stringify(c.body)); });
   console.log('  units          ' + D + 'US customary first, SI in parentheses' + X);
   console.log('');
 }
 
 // ------------------------------------------------------------------------ run
+// t0 is taken AFTER settle: the footer's plant-hours/wall-clock ratio prices the MEASURED
+// window only, the settle's own cost is the separate "wall" figure in the header above.
 var rows = [], nextSample = 0, t0 = process.hrtime.bigint();
-var accelDropped = false, scrammedAt = null;
 function sample(snap) {
-  var r = { t: svc.simTime };
+  var r = { t: svc.simTime - EPOCH };
   WATCH.forEach(function (f) { r[f] = read(snap, f); });
   rows.push(r);
 }
 sample(snap0);
 nextSample = EVERY;
-while (svc.simTime < FOR) {
+while (svc.simTime < EPOCH + FOR) {
   SCHED.forEach(function (c) {
-    if (!c.sent && svc.simTime >= c.at) {
+    if (!c.sent && svc.simTime >= EPOCH + c.at) {
       c.sent = true;
       // The return is the only evidence the command LANDED (#376). A rejected
       // command with the run allowed to continue prints a clean table of a plant
@@ -330,16 +431,17 @@ while (svc.simTime < FOR) {
   });
   var snap = svc.tick();
   if (svc.timeAcceleration !== ACCEL && !accelDropped) { accelDropped = true; }
-  if (scrammedAt == null && snap && snap.rps_state && snap.rps_state.scrammed) scrammedAt = svc.simTime;
-  if (svc.simTime >= nextSample) { sample(snap); nextSample += EVERY; }
+  if (scrammedAt == null && snap && snap.rps_state && snap.rps_state.scrammed) scrammedAt = svc.simTime - EPOCH;
+  if (svc.simTime >= EPOCH + nextSample) { sample(snap); nextSample += EVERY; }
 }
 // A command scheduled at or past --for never fires, while the header above already
 // promised it (#376). That run is not a measurement of the commanded evolution.
 SCHED.forEach(function (c) {
-  if (!c.sent) die('command @' + c.at + 's never fired — the run ends at ' + FOR + 's; schedule commands strictly before --for');
+  if (!c.sent) die('command @' + c.at + 's never fired — the run ends at ' + FOR + 's after t=0' +
+    (SETTLE ? ' (settle end, engine simTime ' + EPOCH.toFixed(2) + 's)' : '') + '; schedule commands strictly before --for');
 });
 var finalSnap = svc.assembleSnapshot();
-if (rows[rows.length - 1].t < svc.simTime) sample(finalSnap);
+if (rows[rows.length - 1].t < svc.simTime - EPOCH) sample(finalSnap);
 var wallMs = Number(process.hrtime.bigint() - t0) / 1e6;
 
 // ------------------------------------------------------------------------ output
