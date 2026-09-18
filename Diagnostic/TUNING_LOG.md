@@ -29,6 +29,210 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-18-develop-a (#749 · #757 · #759 · #766 — the graded number vs the number on the board)
+
+**Issues:** #749 (four items), #757, #759 (verified), #766 (closed), #772 (filed). **Nothing pushed.
+Nothing merged.** Five commits on `develop`: `4c2be582`, `dbae62ca`, `04317660`, `e21d7e90`,
+`73416410`.
+
+### The bundle, and the one class underneath it
+
+Four issues were picked because they share a shape: **the number a walkthrough step is graded on is
+not the number the player can read.** Working them together turned two of them into one fix.
+
+**The class, stated so it can be applied again:** *an acceptance threshold must be the LOWER EDGE of
+the render band of the number the card prints, on the channel the card draws.* A threshold at the
+band's CENTRE means the tile prints the target for the whole lower half of the band while the row
+refuses — the board cannot tell the player when the step is satisfiable.
+
+### #749 item 1 — the count rungs
+
+- **The channel.** `PARAM_INSTRUMENT.pwr2` carried the comment *"PWR2 has no SR/IR channels"*. It has
+  none of its **own** — `pwr2_instruments.js` defines neither — but `pwr2_shell.js` hands the kernel
+  a reused `RD.PWRInstruments`, and `source_range` lives there. MEASURED, live pwr2 broadcast,
+  `hot_zero_power`, seed 42, t = 2.0 s: `instruments.source_range` **499.0** against
+  `true_state.sr_counts_cps` **502.0**, one of **88** channels present; over the authored ladder the
+  ratio ran **0.83–1.18**. `sr_counts_cps: 'source_range'` added; the comment rewritten. This is the
+  inherited-claim trap in CLAUDE.md's standing list — a module header that had aged.
+- **Not the #670 "regrade on the drawn value" case, and it was PINNED rather than asserted:**
+  `source_range` carries **no `DISPLAY_DAMP` entry**, so the transmitter reading and the drawn
+  reading are the same number and the board only *formats* it. Same for `intermediate_range`.
+- **The band.** `fmtExp` is `mantissa.toFixed(1)`, so `1.4e3` is drawn for **[1350, 1450)**.
+  Thresholds are now `>=` the band **floor** — **695 / 1350 / 2950 / 6950**. `>=` not `>`, because
+  the edge value itself renders as the target string. MEASURED, authored route, both seeds, all four
+  rungs: the first broadcast the tile prints the target or higher and the first broadcast the new
+  predicate holds are **the same broadcast — gap 0.0 s** (seed 42 138.6 / 437.8 / 712.7 / 1125.8 s).
+- **Where it actually buys something is the PLAYER's route**, not the replay's. Release WITHDRAW the
+  instant the tile first prints the target, then hold — the 1.4e3 rung went **+173.2 s → +46.4 s**
+  (seed 42) and **+236.0 s → +47.1 s** (seed 7). Over those 300 s the tile printed `1.4e3` or higher
+  on **2,046 of 3,000** broadcasts while the old row refused. On the authored route the change buys
+  10–29 s against 11–31 s — nearly nothing, which is why measuring only the replay would have made
+  this look not worth doing.
+- **The residual is `ACC_STABLE_N`, not the band**: five consecutive broadcasts against a channel
+  carrying 0.02 decades (±4.7 %) of noise.
+
+### #749 item 2 — REACTOR POWER, the same defect on a `toFixed(1)` tile
+
+`digits: 1` prints "0.1" for **[0.05, 0.15)** and the acceptance sat at 0.1, the middle of its own
+digit. MEASURED, authored route, seed 42, step opens t = 1689.4 s: the tile first prints "0.1" at
+**+1307.5 s**; the old `power_pct > 0.10` latched **+1414.9 s** — **107.4 s of dark Continue beside a
+tile already reading the target**. Now `> 0.05`, latching **+1306.4 s**.
+
+**Two candidate fixes were declined WITH the measurement, which is the part worth keeping.** Moving
+the acceptance onto the step's own stated test — *"STARTUP RATE positive and steady with the rods
+stopped"* — is satisfied at **+0.4 s**, so it would tick this step instantly and **relocate the
+identical stare onto the next step's `power_pct > 0.5`**; and `>` latches, so a rod still moving
+would tick it for a player who is not critical. Re-stating the wait in prose was already shipped
+(#753) and re-measures at **21.8 min** against a copy saying "about twenty-five", so it is
+conservative and was left alone.
+
+### #749 item 2's second half — an INTER RANGE row, shipped because it was measured first
+
+`accs` is a **conjunction**, so a second row cannot shorten the wait by a second. What it can buy is
+that something on the card MOVES through the stare. The criterion was set before the work and the
+row had to clear it: MEASURED, authored route — INTER RANGE ticks **+742 s (seed 42) / +851 s
+(seed 7)** against **+1306 s / +1499 s** for the power row, **57 % of the wait on both**, 9.4 and
+10.8 plant-minutes of margin. **The margin is the GATE's criterion, not a preference:** moving the
+row to 4.0e-6 collapses it to 7 s and reds `2ab.7` — Q4 of `DESIGN_CRITERIA` firing by measurement.
+
+**1.0e-7 A is a DECLARED progress milestone, not a plant setpoint** — there is no sourced setpoint in
+this window (P-6 is 1.0e-10 A; the step opens at 4.7e-10) — and it says so on the step rather than
+dressing it as a plant number. `fmtExp` quirk worth knowing: one ulp below 1e-7 prints `10.0e-8` at a
+mantissa of ten, so here the band floor IS the target.
+
+**⚠ THE "IT CANNOT GATE" CLAIM WAS TRUE ABOUT THE PLANT AND FALSE ABOUT THE BOARD**, and the quality
+pass caught it. On TRUE STATE the rows are strictly ordered by construction (`ir_amps` and
+`power_pct` are both `K × pFrac` of the same flux, a factor of 47 apart). But **item 1 is the change
+that put both rows on INSTRUMENTS**, and an instrument is independently failable: MEASURED,
+`hot_full_power`, seed 7, `set_instrument_failure {intermediate_range, dead}` — reachable from the
+Failures tab — publishes the range floor **1.0e-11 A** against a true **8.3e-3 A**, and the row then
+never meets while REACTOR POWER reads **99.7 %** and does. The step authors no `overtaken`, so
+Continue stays dark. **Not regraded** — instrument-first is HR1, and every instrument-graded row in
+the pool already pays this — but the claim was corrected in the step comment and the CHANGELOG, and
+the exposure is tracked on **#772**. The four count rungs took the same exposure in the same change.
+
+### #749 item 3 — verified closed, no edit
+
+Now step index 11 (the leg shortened when #750 removed the sixth 1/M point). Graded through the real
+`_gradeAccs`: 4.91 % at −0.60 DPM **refuses** · 4.98 % at −0.308 **refuses** · 1.94 % at +0.183
+**refuses** · settled 4.01 % at −0.0012 **ticks** · 5.4 % at −0.00 **refuses**. Both halves of its
+own sentence are graded.
+
+### #749 item 4 — a message raised on a walkthrough step outlived it
+
+MEASURED on the live Path 3 runtime before the fix (`start_checklist pwr_startup`, Continue to a 1/M
+rung, real overshoot until the plant secured the source range itself at bank **242**, then Continue
+to the end): step 6's overtaken note — *"Stop withdrawing and go to the criticality step"* — stood at
+steps **9, 10, 11, 12, 13, 14, 15, 16, 17 and on the COMPLETE snapshot**, ten of ten later states,
+the last of them telling a finished player to stop withdrawing. `_advanceFollow` clears
+`pendingMessage`; `_checklistCheckOff` reset eleven per-step fields and never touched it.
+
+**⚠ THE ORDERING TRAP.** The `overtaken` path SET the message and THEN called `_checklistCheckOff`,
+so a naive clear inside that function deletes the message the call was made to deliver. The form
+chosen: `_checklistCheckOff` clears unconditionally, and the one caller that speaks *through* it
+raises its message **after** the call — which is also where that message belongs, since the note
+explains the step the player has **landed on**. The alternative (stamping each message with its step
+index) buys identical behaviour for a new `serialize`/`restore` field and a second rule to keep in
+step; declined. After: the note is on step 9 and steps 10–17 plus COMPLETE are all `null`.
+
+### #757 — a secured SOURCE RANGE drew `1.0e0 cps`
+
+**The root cause was one level below the filed one.** `sr_counts_cps` truth is **0** when
+de-energized, but `pwr_instruments.js` floors the *published* reading at the channel's own range
+minimum (`source_range: {range:[1,1e6], log:true}` — a log scale cannot carry zero). So the tile was
+handed a real **1** and drew it honestly; the defect is that the tile had no representation for *out
+of service*. MEASURED headless, `hot_full_power`: before `{"text":"1.0e0 cps"}`, after `{"text":"— "}`
+with the unit span empty, colour unchanged at idle grey `#7f95a5`.
+
+**The sweep** (the issue's own "the bug is the missing state, not the number 1"):
+`intermediate_range` has the log floor (1e-11 A) but **no de-energization switch** — always live, and
+its low reading is a real chamber current. Every other channel in `pwr_instruments.js`'s SOURCE map
+floors at 0 (a secured pump genuinely reads 0) or at a real physical minimum (tavg/thot/tcold 30 °C).
+`source_range` is **the only tile with this shape**: a log-scale floor plus a real, non-injected
+securing switch.
+
+**Deliberately NOT fixed:** an *injected* `dead` failure on the source range still draws `1.0e0 cps`
+in green. That is modelled instrument deception (HR1), a different case from a display gap, and
+`sr_energized` is untouched by an injected failure so the two paths never overlap.
+
+### #759 — verified, not rebuilt
+
+**BOTH halves were already shipped** (`fd5750c9`, 2026-09-15) and the issue was simply never closed.
+The trap for the next reader: the source comment at `ui/manual_procedures.js:2083` reads *"the card's
+one-line reason on an out-of-turn press is ui/app.js"* — that is a **pointer to where it lives**, not
+a TODO, and reading it as a TODO cost an agent a full run. Re-driven live rather than inherited: at
+step 5 with rung 5a unmet, two out-of-turn presses leave the rows at `5a○ 5b· 5c· 5d·`, take both
+points on the plot (C = 491 then 459 cps), and draw
+`Not yet — 5a comes first: Press MED, then hold WITHDRAW under CONTROL until SOURCE RANGE passes 7.0e2.`
+which clears when a real WITHDRAW satisfies 5a. `ui/app.js` had zero net diff.
+
+### #766 — closed
+
+`nextLegFor` gate live at `ui/app.js:5630`, `verify_flags_ui` baselined 55/55, and
+`git tag --contains 33983f33` returns **v1.7.5** — on `main` and live, not just on the lane.
+
+### The quality pass found a defect the fix itself introduced
+
+CLAUDE.md's fresh-agent directive earned its keep here. `e21d7e90`'s note reasoned about the
+**callers** of `_checklistCheckOff` — *"the other two raise no message at all"* — when the question is
+what is **standing** when the caller runs. `_stepChecklist` raises the PRECONDITIONS-NOT-MET comment
+and **then** runs the catch-up fast-forward, in the same pass, a few lines apart; the unconditional
+clear deleted it before any broadcast drew it, and `precondSaid` latches for the life of the run, so
+it never came back. MEASURED, `start_checklist pwr_shutdown` on `hot_zero_power`, seed 7 (a shipped
+case — first precondition is REACTOR POWER above 10 %, plant reads 1.9e-7 %, and step 1 is already
+true so the catch-up fires): `instructor.message` **NULL on every broadcast**, in precisely the one
+case that comment exists for. Fixed with `if (by !== 'caught_up')`. **Generalise it:** *"the callers
+raise no message"* is not the same claim as *"no message is standing"*.
+
+Two further corrections from the same pass: *"the card's line is byte-identical"* stopped being true
+at `e21d7e90`, because the new row got an authored `label` and `ui/app.js:4565` prefers `label` over
+`fmtPredicate`; and `'REACTOR POWER reads 0.1 %'` became `'… or more'`, the bare form being false at
+0.3 % while the row is still ticked.
+
+### Checks — and the one that was hollow on its first draft
+
+`run_checklist_pwr2` **303 → 319**, two new sections. Everything is injection-proven, red text on the
+issues. The one worth reading twice:
+
+> **§2ab.5's first draft asserted only "at the tick the tile prints the target or higher" — and its
+> injection PASSED.** With the map entry gone the rung still latched with the card reading `1.5e3`,
+> one band *above* target. One half was satisfiable by accident; it is written as a conjunction with
+> `graded_by === 'instrument'` for that reason.
+
+The band edges in the gate are **re-derived out of the board's own `fmtExp`**, lifted by name and
+evaluated, not copied — and `04317660` exists because the lift threw a raw `SyntaxError` and killed
+the runner instead of reddening, which is the wrong failure mode for a check that exists to notice a
+reformat of the board's formatter.
+
+### `run_hardrules` 590 → 591 — pre-existing, adjudicated here
+
+Not caused by this bundle: reproduced red at `088048ae`, and the five bundle commits add zero sites.
+DERIVED — the marker diff over the six scanned roots across `768b8dc3..088048ae` yields exactly one
+`+` and zero `-`, and it is CLAUDE.md's `SONNET BY DEFAULT; OPUS WHERE JUDGEMENT IS THE WORK`
+*(OWNER DIRECTIVE, 2026-09-18: "change our standard practice to use sonnet agents for well scoped
+work and only use opus agents for Work that needs more intelligence")* from `ca2c5a6e`. HR11 site count 574 → 575, **0 undeclared** — the
+rule is satisfied and only the tally was stale. `BASELINES` updated with the derivation.
+
+### Still open, on the owner
+
+- **#772** carries three residuals, all with options and a recommendation: the 7.0e2 rung's ±4.7 %
+  noise (recommend: leave it), the unmeasured `<`-direction mirror case on damped channels, and the
+  instrument-failure exposure above (recommend: leave it).
+- **The INTER RANGE row gates nothing on a healthy board** — progress feedback wearing an
+  acceptance's clothes, a shape this pool has no precedent for. One commit deep and reversible if
+  the owner would rather have a separate non-grading "what to watch" affordance.
+
+### Not verified
+
+The rendered card — everything here is measured on the built pool and on live broadcasts through
+`_grade` / `_gradeAccs`, and `verify_e2e_ui` / `verify_manual_follow` are green but neither reads the
+new two-row done-when block's drawn text. More than two seeds for the 57 % margin. The
+`DISPLAY_DAMP` injection for §2ab.2 and §2ab.6 (it needs an edit to a file another agent held).
+Whether any *other* walkthrough step becomes unsatisfiable under a single `dead` instrument — the two
+channels this change touched were measured, the pool was not swept.
+
+---
+
 ## Session log — 2026-09-17-develop-b (#761 — the 1/M settle rungs stop grading a PROXY: `op: 'stopped'`)
 
 **Issue:** #761. **Nothing pushed.**

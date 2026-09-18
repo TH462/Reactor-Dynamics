@@ -336,7 +336,7 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-09-09**._
+_Last updated: **2026-09-18**._
 
 **What is open, and where the plant stands: `gh issue list --state open` is the authority, and
 `Blueprint/PWR2_VALIDATION.md` is the engineering record.** This section carried ~820 words of
@@ -360,6 +360,14 @@ standing procedure rather than news belongs in the list below. **Evicting one: R
 FIRST** — ask what in it would still burn someone in a month, move that to the standing list as
 ONE line, drop the rest. **A bullet is ~80 words.**
 
+- **AN ACCEPTANCE THRESHOLD AT THE CENTRE OF ITS OWN RENDER BAND IS A STEP THE BOARD CANNOT TELL
+  THE PLAYER IS MET** (2026-09-18, #749). `fmtExp` is `toFixed(1)`, so `1.4e3` draws for
+  [1350, 1450) while `> 1400` refused the whole lower half; REACTOR POWER's `digits: 1` did the
+  same at 0.1 — **107.4 s of dark Continue beside a tile already reading the target**. Grade the
+  band FLOOR, on the channel the tile DRAWS: the map's "PWR2 has no SR/IR channels" was stale, 88
+  reused channels. **Measure the PLAYER's route — the same fix buys 1 s on the replay, 127 on
+  theirs.**
+
 - **A LATCHING FAILURE ARMED AFTER THE EVENT IT LATCHES ON IS A NO-OP THAT READS AS A WORKING
   INJECTION** (2026-09-09, #670 Phase 2): `stuck_porv_open` latches on the first lift; the lift is
   at 5.5 s and the reseat near 25 s, so armed at 0–20 s the accident follows, at 30–60 s the valve
@@ -372,13 +380,6 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   target, the authored route peaking at 9.91e4. Steps now author `overtaken: {p,op,v,text}`, the
   condition under which they no longer apply. **Grep every `{cmd:…}` acceptance for the plant state
   that makes its control refuse.**
-- **THE PAUSE LOOP EXCLUDED ONE CLASS BY DESIGN AND THAT CLASS WAS THE FRAME PRODUCER**
-  (2026-09-04, #613). `tickAnimations` paused ~90 keyframe animations and skipped CSSTransition as
-  "short, one-shot" — but 150 ms transitions on level rects, restarted by every 100 ms broadcast,
-  never finish. Measured at 10×: ZERO keyframe animations running, 6–7 transitions running at every
-  sampled instant, 904 compositor draws per 15 s against 265 app paints. Removing them: −51 %.
-  Three waves throttled the class already stopped — the fps in the bundle is the APP’s own cadence.
-
 - **TWO CORRECT MECHANISMS TWO DAYS APART CAN DISAGREE BY 17 psi — AND A HOLD RE-DECIDED EVERY
   STEP CHATTERS AT 1×** (2026-09-04, #627). #608 ticked the Pressure SP step at 682 psia to clear the
   cover gas; #622 held the clock AT the 665 psia cover gas. Between them the checklist waited on a
