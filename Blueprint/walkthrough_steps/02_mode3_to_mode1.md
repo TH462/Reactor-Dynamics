@@ -23,7 +23,7 @@
 
 Background
 
-This is the plant the heatup hands over: hot, at pressure, pumps running, still shut down. Steady SOURCE RANGE counts mean nothing is drifting toward critical yet. The shutdown bank is already out, and the next step trims whatever boron the route in left behind.
+Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down: the pumps are running, the shutdown rods are already fully out, and SOURCE RANGE counts sitting still means nothing is drifting toward critical yet.
 
 
 
@@ -43,7 +43,7 @@ This is the plant the heatup hands over: hot, at pressure, pumps running, still 
 
 Background
 
-Boron dissolved in the water soaks up neutrons. At 918 ppm the control bank has to come most of the way out before the reactor will go critical — 490 of 627 steps; at 719 ppm it goes critical about 208 of 627 steps out, low in the bank with plenty of travel left.
+Boron dissolved in the water soaks up neutrons, so the control rods do not have to come as far out before the reactor goes critical. At 719 ppm it goes critical around 208 of 627 steps — low in the bank, with travel left. At 918 ppm the same bank has to come about four-fifths of the way out, around 490 steps.
 
 
 
@@ -55,7 +55,7 @@ Boron dissolved in the water soaks up neutrons. At 918 ppm the control bank has 
 
 Background
 
-Nothing happens until the reactor starts making heat, and then the steam generator boils down fast. The steam generator feed system is what refills it. Both routes into this walkthrough normally arrive with AUTO already lit; check anyway.
+The steam generator is the boiler: reactor water heats it on one side and steam comes off the other. Once the reactor starts making heat, that steam comes off fast, and AUTO on the feed system is what holds the level.
 
 
 
@@ -71,7 +71,7 @@ Nothing happens until the reactor starts making heat, and then the steam generat
 
 Background
 
-The 1/M plot predicts where the rods will be when the reactor goes critical, before you get there. It divides the starting count rate by the current one: as counts climb the result falls toward zero, and where the line crosses zero is the predicted critical position. It fits the last three points, so each new point sharpens it.
+1/M means one-over-multiplication: the plot divides the starting SOURCE RANGE count by the current one. As counts climb that number falls toward zero, and where the line would cross zero is the rod position at which the reactor goes critical. It fits the last three points, so each new point sharpens the prediction.
 
 
 
@@ -101,7 +101,7 @@ The 1/M plot predicts where the rods will be when the reactor goes critical, bef
 
 Background
 
-The first two points always predict too high: near the bottom the rods are worth little per step, so the line they draw crosses zero far past the real critical position. That is expected. While the reactor is shut down, SOURCE RANGE counts are the only thing that tells you how close you are; the rod position does not.
+The first two points always predict too high: near the bottom the rods are worth little per step, so the line they draw crosses zero far past the real critical position. That is expected. While the reactor is shut down, SOURCE RANGE counts are the only thing that tells how close the core is; rod position does not.
 
 
 
@@ -131,7 +131,7 @@ The first two points always predict too high: near the bottom the rods are worth
 
 Background
 
-Each new point is taken closer to critical, where a step is worth more, so the line steepens and the predicted crossing walks toward you. The panel prints "predicted criticality ≈ step N" with a marker on the plot. Treat it as too high for now; it improves with every point.
+Each new point is taken closer to critical, where a step is worth more, so the line steepens and the predicted crossing walks in. The panel prints the crossing as a rod step with a marker on the plot. That number still reads high; it improves with every point.
 
 
 
@@ -161,7 +161,7 @@ Each new point is taken closer to critical, where a step is worth more, so the l
 
 Background
 
-Each step now buys more reactivity than the last, so the pulls get smaller from here. The prediction is starting to be useful. Keep waiting for STARTUP RATE to settle before each point.
+Each step now buys more reactivity than the last, so the pulls get smaller from here. The prediction is starting to be useful. STARTUP RATE still falling means the counts are still climbing, and a point taken then puts the predicted crossing too far out.
 
 
 
@@ -191,7 +191,7 @@ Each step now buys more reactivity than the last, so the pulls get smaller from 
 
 Background
 
-STARTUP RATE is the speedometer: 1.0 means power is multiplying by ten every minute, and any positive reading means reactivity is above zero and the chain reaction is growing. Under 1.0 is a comfortable climb; above it you are outrunning the plot, and nothing in the plant slows the rise for you yet. This is the last plotted point: from here single steps beat one more fitted number, and another burst would land you past criticality — plotting a point on a reactor that is already critical.
+This is the last plotted point: from here single steps beat one more fitted number, because another burst would land past critical. STARTUP RATE is the speedometer — 1.0 means power is multiplying by ten every minute, and any positive reading with the rods still means the chain reaction is growing. Under 1.0 is a comfortable climb; above it, nothing in the plant slows the rise yet.
 
 
 
@@ -201,32 +201,139 @@ STARTUP RATE is the speedometer: 1.0 means power is multiplying by ten every min
 
 
 
-Do this first: press SLOW, hold WITHDRAW until CONTROL ROD POSITION is 3 steps short of the 1/M panel's predicted position, release, then tap single steps and wait after each one. The prediction reads HIGH, never low, so stopping short of it is the point. Put the clock on 10× for the waiting — about twenty-five plant-minutes once the rods stop — and come back to 1× before you move a rod again; never 60×, where a 2 ½ second glance away is two and a half plant-minutes of reactor. Then read STARTUP RATE with the rods still and the rate no longer falling, about five minutes after the last tap. Around 0.15, with PERIOD 150 to 200 seconds, is this approach going as written. Around 0.5, or PERIOD under 60 seconds, is about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher; over 1.0, tap INSERT once and wait. Near 0.01, with PERIOD in the thousands of seconds and nothing moving, means you have stopped short of critical — tap one more step out and wait. From your last tap onward, watch INTER RANGE and STARTUP RATE rather than REACTOR POWER. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
+*Do this first: press SLOW, hold WITHDRAW until CONTROL ROD POSITION is 3 steps short of the 1/M panel's predicted position, release, then tap single steps and wait after each one. The prediction reads HIGH, never low, so stopping short of it is the point. Put the clock on 10× for the waiting — about twenty-five plant-minutes once the rods stop — and come back to 1× before you move a rod again; never 60×, where a 2 ½ second glance away is two and a half plant-minutes of reactor. Then read STARTUP RATE with the rods still and the rate no longer falling, about five minutes after the last tap. Around 0.15, with PERIOD 150 to 200 seconds, is this approach going as written. Around 0.5, or PERIOD under 60 seconds, is about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher; over 1.0, tap INSERT once and wait. Near 0.01, with PERIOD in the thousands of seconds and nothing moving, means you have stopped short of critical — tap one more step out and wait. From your last tap onward, watch INTER RANGE and STARTUP RATE rather than REACTOR POWER. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.*
 
 Watch for: STARTUP RATE positive and steady around 0.15 with the rods stopped; PERIOD 150 to 200 s
 
-**THE LENGTH BARELY MOVED AND THAT IS A GATE, NOT A CHOICE — and it is the one thing here you may want to rule on.** 2,103 → 2,023 characters. The plan was to move the teaching into the step's Background block, but `run\\\\\\\_style`'s **W-detail** check caps a details paragraph at **three sentences**, so Background could take only the core (502 → 595) and the rest had to stay in the note. What DID change is the ORDER, which is the half the reviewer lost: actions first, then the four rate/PERIOD remedies, then the instrument teaching. **A real shrink needs one of two things from you:** relax W-detail for the Background block (it is supplemental context, not an instruction, and this step is the only one that strains it), or turn the actions into lettered `accs\\\\\\\_ordered` rungs the way steps 5–8 now are — which is a GRADING change and owes its own measurement. **Recommendation: the `accs\\\\\\\_ordered` rungs**, because they fix the lost-action complaint structurally rather than by moving prose around, and the machinery shipped yesterday; relaxing a style cap to make one long note legal is the weaker of the two.
-
-ONE REMEDY WAS ADDED (#653 S-10): the note gave three remedies for a startup rate too HIGH and none for too LOW. The reviewer settled at **+0.01 decades per minute with PERIOD reading 2,391 s** and stalled, having to infer "tap more". The on-plan figures are this step's own pre-existing measurement (about 0.15 settled, five steps above critical; PERIOD 150 to 200 s; under 60 s means too far out) and the "Watch for" line widens from "about 150 s" to "150 to 200 s" to match. **The acceptance is untouched** — this is a copy change; turning the single done-when into a rung sequence would be a grading change and owes its own measurement.
 
 
+Background
 
-Background — not an action
-
-Critical means the chain reaction sustains itself: power keeps rising with nothing pushing it, and a positive STARTUP RATE with the rods still is the sign. No single step is dramatic, but ten of them are — below the point of adding heat nothing in the plant takes that reactivity back out for you, so how far past criticality you stop is what sets how fast power climbs. REACTOR POWER is the last instrument to show any of it: it reads 0.0 % for about twenty-five plant-minutes while INTER RANGE climbs three decades, which is why STARTUP RATE, PERIOD and INTER RANGE are the ones to steer on. STARTUP RATE runs high while a rod is moving and goes on falling for about five minutes after it stops, so it is only worth reading once it has stopped falling; PERIOD, under the instrument card, is the same fact in seconds — how long power takes to multiply by ten. SOURCE RANGE switches itself off part way through this step, above 1.0e5 (100,000 counts per second); that is normal and there is no button for it. The two detectors overlap on purpose — the source-range counters would wear out at power, so the plant secures them once INTER RANGE has a reading, and losing the counts is the plant telling you the approach worked. The plant does exactly the same thing at 1×, 5× or 10× — the climb still stops itself just over 4 % — so the speed costs you nothing here.
+Critical means the chain reaction keeps itself going: power rises with the rods still, and a positive STARTUP RATE is the sign. Below about 1 % power — the point where the reactor starts warming the water — nothing in the plant takes extra reactivity back out, so how far past critical the rods stop is what sets how fast power climbs. REACTOR POWER reads 0.0 % for about twenty-five plant-minutes while INTER RANGE climbs three decades, which is why STARTUP RATE, PERIOD and INTER RANGE are the ones to steer on.
 
 
 
-|after the rods stop|+11 creep → bank 213 (+5)|+19 creep → bank 221 (+13)|
-|-|-|-|
-|STARTUP RATE at 12 s|0.255|0.568|
-|STARTUP RATE settled|0.163|0.525|
-|PERIOD settled|158 s|49 s|
-|REACTOR POWER first reads 0.1 %|1396 s (23.3 plant-minutes)|400 s (6.7 plant-minutes)|
-|INTER RANGE over that window|9.7e-10 → 2.5e-6 A|3.3e-9 → 5.7e-4 A|
-|power levels at|about 4 %|7.0 %|
+10\. Let power climb on its own. Tap WITHDRAW once only if STARTUP RATE falls back to 0.00.
 
-Two things deliberately NOT said, because they did not reproduce: the first reading after a single TAP is **1.3×** the settled value (0.137 → 0.187 → 0.16), not the seven times an earlier report proposed — that seven came from a continuous withdrawal, not a tap; and power arrives about **three** times sooner when over-withdrawn, not six. There is also no startup-rate rod block on this plant, so the step never implies one exists.
+○ When REACTOR POWER > 0.5 %
+
+
+
+*While STARTUP RATE is positive, leave the rods alone. Only if it falls back to 0.00 with REACTOR POWER still below 0.5 %, tap WITHDRAW one step at SLOW and wait again. SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE takes over. About 15 plant-minutes. 5× is the speed for it: the plant behaves the same at any speed, but this is the step that may want a tap, and at 10× a tap has landed before you have read the rate. Come back to 1× to tap.*
+
+
+
+Background
+
+With the reactor just critical, power climbs by itself and every extra rod step adds to a rise that is already under way. Below about 1 % the water is not yet warm enough to hold that climb back, which is why a high STARTUP RATE is a signal to wait, not to pull.
+
+
+
+11\. Verify SOURCE RANGE has switched itself off and INTER RANGE is reading. Close the 1/M PLOT window.
+
+✓ When SOURCE RANGE is off
+
+
+
+*Close it with the ✕ in its corner; its work is done.*
+
+
+
+Background
+
+The SOURCE RANGE detectors would wear out if they stayed on at power, so the plant switches them off by itself once INTER RANGE is reading. There is no button for it.
+
+
+
+12\. Watch REACTOR POWER stop rising on its own, below 5 %. If it does not, press MED and hold INSERT.
+
+12a○ REACTOR POWER below 5 %
+
+12b○ STARTUP RATE settled between -0.10 and 0.10
+
+
+
+*The climb stops by itself near 4 %, about twenty plant-minutes after the rods stop, and STARTUP RATE comes back to 0.00 on the way. The step checks off once the rate is under 0.10, which comes about fifteen minutes before power finally levels — leave the rods alone and let it. If power instead runs past 5 %, press MED and hold INSERT until it comes back — about 14 steps — then release and let the plant settle before you read it: while the bank is driving in, STARTUP RATE is well below zero and power has not finished falling.*
+
+
+
+Background
+
+Warmer water slows this reactor down, so the heat the climb makes is what stops the climb. Power finds a level for the rod position it was left at, and no further rod motion is needed to hold it. Below about 1 % that feedback was too weak to feel; from here it is what makes the plant steady.
+
+
+
+13\. Press SLOW, then hold WITHDRAW until REACTOR POWER passes 5 %, about 13 steps. That is Mode 1, At Power.
+
+○ When REACTOR POWER > 5 %
+
+
+
+Background
+
+Mode 1, At Power, begins at 5 % power. The warming water now holds power back, so each rod step buys a new steady level rather than a runaway — about half a percent of power per step. The extra steps past 5 % are for the turbine: it needs REACTOR POWER above 10 % before the startup trips will stay switched off.
+
+
+
+14\. Press LATCH on the TURBINE-GENERATOR card, then set LOAD to 10 MWe.
+
+14a○ Turbine latched
+
+14b○ Generator above 8 MWe
+
+
+
+Background
+
+LATCH resets the turbine so it can take steam; LOAD is how much electricity the generator is asked for. As the generator picks up load, more steam is drawn, the water cools, and cooler water raises power — the reactor follows the turbine up to about 11 % by itself. That coupling is the central idea of this plant.
+
+
+
+15\. Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the IR HIGH FLUX row.
+
+○ When IR HIGH FLUX is blocked
+
+
+
+*Do this the moment REACTOR POWER is above 10 %: at 25 % this trip fires. Below 8 % power the BLOCK button is dead and will not take the press at all; between there and about 9 ½ % it takes it and the block then goes out again by itself, because the permissive is read off the power-range meter, which wanders about ± 0.3 % and keeps dipping back under. If that happens, let power come up and press it again. The reactor keeps climbing while the panel is open.*
+
+
+
+Background
+
+Two automatic shutdowns exist only to protect a startup, one at 25 % power and one at 35 %. Once power is up they would trip the reactor on the way to full power, so they are switched off one at a time. The plant keeps checking power is still up there, and switches them back on by itself if it falls, whoever switched them off.
+
+
+
+16\. On the TRIP BLOCKS panel press BLOCK on the PR HIGH (LOW SETPT) row, then close the panel.
+
+○ When PR HIGH (LOW SETPT) is blocked
+
+
+
+*This switches off the second startup shutdown, at 35 %. Check both rows read lit — IR HIGH FLUX and PR HIGH (LOW SETPT) — while the panel is still open, then close it with TRIP BLOCKS again: it covers the rod buttons.*
+
+
+
+Background
+
+The second startup shutdown fires at 35 % if it is still live. Above 10 % the shutdown at 118 % power takes over the job of catching a runaway. Two separate presses on purpose: on a real board, switching one off never quietly switches off the other.
+
+
+
+17\. Verify Mode 1: REACTOR POWER above 10 % and OUTPUT 10 MWe.
+
+✓ When the plant is in Mode 1, At Power
+
+
+
+*IR HIGH FLUX and PR HIGH (LOW SETPT) were checked lit in the last step, before the TRIP BLOCKS panel was closed.*
+
+
+
+Background
+
+The reactor is critical, the generator is carrying load, and both startup shutdowns are switched off. The plant is in Mode 1, At Power. From here the climb to full power is rods leading and the turbine following.
 
 
 
@@ -241,6 +348,25 @@ edit them."). Nothing here is instruction to a player. Add new notes HERE.*
 **THE FILE IS THE AUTHORITY FOR THIS WALKTHROUGH.** The built pool (`ui/manual\\\_procedures.js`) comes DOWN to the step text above. Highlights are the exception: a step with no highlight entry there keeps the highlights the pool has, per your standing instruction. Split out of `Blueprint/WALKTHROUGH\\\_STEPS\\\_OWNER.md` on 2026-09-15 *(OWNER DIRECTIVE, 2026-09-15: "I want to be able to manually review and edit the steps for the walkthroughs easier. can you make a folder within blueprints/ and create a new file for each walkthrough.")*.
 
 **THE TICK AND CIRCLE MARKS IN THIS FILE CARRY NO MEANING** *(OWNER, 2026-09-17: "The tick vs circle in my writing was because I was copy/pasting from the sim and what needed up in the document was whatever state it happened to be in the sim at the time. It has no special meaning.")*. A row drawn with a tick was simply a row that happened to be CHECKED OFF on his screen when he copied it; a circle was one that was not. **Do not read them as authored intent, do not preserve them, and never change a step's kind to match one.** The step's kind is decided by what it asks the player to do — action or verify — not by the glyph. The same goes for the backslash escaping throughout: that is his editor's round-trip, not content. Leave it; do not "clean" it.
+
+REVISED 2026-09-17, BACKGROUNDS. Every Background rewritten to the Mode 5 → 3 voice: plant-concept first, why this action here, 2–3 sentences, no instruction, no walkthrough commentary. Step 9's agent dump (length/gate argument, measurement table, "two things not said") moved here from the card. Steps 10–17 pasted from the built pool so the remaining Backgrounds have a home; their step lines are the pool's, not a fresh authoring. The built pool is not updated until he says to bring the sim down to this file.
+
+Moved off step 9's card:
+
+**THE LENGTH BARELY MOVED AND THAT IS A GATE, NOT A CHOICE.** 2,103 → 2,023 characters. `run_style`'s W-detail check caps a details paragraph at three sentences, so Background could take only the core and the rest had to stay in the note. A real shrink needs either that cap relaxed for Background, or the actions turned into lettered `accs_ordered` rungs the way steps 5–8 now are — a grading change that owes its own measurement. Recommendation: the `accs_ordered` rungs.
+
+ONE REMEDY WAS ADDED (#653 S-10): the note gave three remedies for a startup rate too HIGH and none for too LOW. The reviewer settled at +0.01 decades per minute with PERIOD reading 2,391 s and stalled. On-plan figures: about 0.15 settled, PERIOD 150 to 200 s; under 60 s means too far out.
+
+|after the rods stop|+11 creep → bank 213 (+5)|+19 creep → bank 221 (+13)|
+|-|-|-|
+|STARTUP RATE at 12 s|0.255|0.568|
+|STARTUP RATE settled|0.163|0.525|
+|PERIOD settled|158 s|49 s|
+|REACTOR POWER first reads 0.1 %|1396 s (23.3 plant-minutes)|400 s (6.7 plant-minutes)|
+|INTER RANGE over that window|9.7e-10 → 2.5e-6 A|3.3e-9 → 5.7e-4 A|
+|power levels at|about 4 %|7.0 %|
+
+Two things deliberately NOT said, because they did not reproduce: the first reading after a single TAP is **1.3×** the settled value (0.137 → 0.187 → 0.16), not the seven times an earlier report proposed — that seven came from a continuous withdrawal, not a tap; and power arrives about **three** times sooner when over-withdrawn, not six. There is also no startup-rate rod block on this plant, so the step never implies one exists.
 
 REVISED 2026-09-15 (#653 S-7): the step said "Press ACKNOWLEDGE"; the board control is labelled **ACK** (and `Ack All`).
 
