@@ -534,6 +534,12 @@ Mode 1: critical, power > 5 %, turbine on line, stable.
   megawatts the generator is actually making, not against the number you typed, and expect a
   20 MWe leg to be four minutes of walking. The ramp is there because a load increase delivered
   instantly shrinks the pressurizer onto its **17 %** low-level isolation (**12** §7.3).
+- **Above the P-9 interlock, a turbine trip is a reactor trip — not a ride-out.** It arms at
+  power ≥ **50 %** with the steam dumps available, ≥ **8 %** if they are not — condenser lost,
+  vacuum or MSIV shut (**09** §2.0; engine `P9` permissive, sourced Ginna TS Bases B 3.3.1).
+  Below P-9 there is no reactor trip; the steam dump carries the transient instead. A turbine
+  trip with the dumps also gone leaves nothing to hold power — watch condenser vacuum and MSIV
+  status through the leg, not just MWe.
 
 ### Procedure
 
