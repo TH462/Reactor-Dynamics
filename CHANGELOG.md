@@ -30,6 +30,28 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added — a walkthrough now says so when the reactor trips under it (#709)
+
+- **The player's only cue was that nothing happened.** A walkthrough is a sequential list with
+  one active step; trip the reactor part-way through a leg and the plant is in a state the leg
+  never scripted, so the same step stayed active, its done-when waited on a number the plant
+  would not reach again, and the panel said nothing at all (layman playthrough 2026-09-07,
+  finding S-15). The leg now **detects the trip and says so**: one instructor comment and a
+  banner on the walkthrough panel, in both the Learning and Industry registers.
+- **It informs; it does not rescue.** The step does not move, nothing is checked off and no
+  acceptance is relieved — that is the ruling's boundary against the #788 casualty relief, and
+  it is pinned by an A/B that runs the same leg and the same trip with the mechanism neutered
+  and asserts every graded output is identical. Per-step re-entry and a post-trip emergency leg
+  are the other two options and are not built.
+- **It fires on the five legs a trip is not the point of, and on neither of the two it is.**
+  `pwr_shutdown` sends a scram command at its step 2; `pwr_tmi2_incident` sends none at all and
+  trips out of the loss-of-feedwater transient its earlier steps inject. The exemption is
+  derived from the authored content and re-discovered by driving each leg, not kept as a list.
+- **Nothing latches.** The notice is recomputed from the live plant every broadcast, so
+  SCRAM · PRESS TO RESET takes it down, and so does a Rewind to before the trip. It is gone from
+  the completion card.
+- `run_checklist_pwr2` 351 → 359 (new section 2ai, eight checks).
+
 ### Fixed — the auxiliary feedwater discharge gauge read 0 psia on a running pump (#786)
 
 - **`afw_discharge_pressure_mpa` was gated on `afw_active`, which is `total_kgs > 0` — DELIVERED

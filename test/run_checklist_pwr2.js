@@ -100,10 +100,18 @@ INCIDENT.forEach(function (p) {
        ' over ' + clocks.length + ' steps');
 });
 
+/* WHICH LEGS TRIP AS PART OF THEIR OWN AUTHORED ROUTE (#709) — harvested from the replay
+ * that is already running above, so §2ai's rediscovery costs nothing. The replay drives the
+ * leg's authored commands and nothing else, so a trip standing at the end of one is the leg's
+ * own doing. `rps_state.scrammed` is the protection system's LATCH, so this cannot miss a trip
+ * the way an end-state power reading could. */
+var REPLAY_TRIP = {};
 POOL.forEach(function (proc) {
   if (only && proc.id !== only) return;
   console.log(D + '\n  — ' + proc.id + ' (' + proc.manual_ref + ', from ' + proc.from + ') —' + X);
   var res = RD.ProceduresHarness.runProcedure('pwr2', proc, { seed: 42 });
+  REPLAY_TRIP[proc.id] = !!(res.lastSnap && ((res.lastSnap.rps_state && res.lastSnap.rps_state.scrammed) ||
+                                             (res.lastSnap.true_state && res.lastSnap.true_state.scrammed)));
   var fails = res.checks.filter(function (c) { return !c.pass; });
   res.checks.forEach(function (c) { ck(proc.id + ': ' + c.d, c.pass,
     c.obs !== undefined ? String(typeof c.obs === 'number' ? c.obs.toFixed(2) : c.obs).slice(0, 90) : undefined); });
@@ -4438,6 +4446,251 @@ if (!only) {
      'declared -> ' + shared.svc._newAlarmOfPriority([RHR], []) +
      ', undeclared -> ' + (shared.svc._newAlarmOfPriority([OTHER], []) || {}).id);
 })();
+
+
+/* ========================================================================================
+ * 2ai. THE WALKTHROUGH REACTS TO A REACTOR TRIP (#709, layman playthrough 2026-09-07
+ * finding S-15: "The checklist does not react to a reactor trip.")
+ *
+ * OPTION A ONLY. The leg DETECTS the trip and SAYS SO, without moving: one instructor
+ * comment plus a panel banner. It is not per-step re-entry and it is not a post-trip
+ * emergency leg — neither is built and neither is ruled. So the claim under test here is
+ * two-sided and the second side is the important one: the notice APPEARS where it should,
+ * and it CHANGES NOTHING (2ai.4 is the A/B that pins that).
+ *
+ * HARD RULE 1. The detection reads `rps_state.scrammed` / `true_state.scrammed` to decide
+ * whether to INFORM the player. Nothing here grades on it, and 2ai.4 is what proves that
+ * rather than asserting it.
+ * ====================================================================================== */
+if (!only) {
+  console.log(B + '\n2ai. A REACTOR TRIP UNDER A WALKTHROUGH  [#709 — the leg says so, and moves nothing]' + X);
+
+  function mkSvcT(ic) {
+    var svc = new RD.SimulationService({ seed: 7 });
+    svc.selectPlant('pwr2', ic, null, undefined);
+    svc.running = true; svc.timeAcceleration = 10; svc.attentionStops = false;
+    return svc;
+  }
+  function tickN(svc, n) { var s = null; for (var i = 0; i < n; i++) { var t = svc.tick(); if (t) s = t; } return s; }
+  function isTripMsg(s) {
+    var m = s && s.instructor && s.instructor.message;
+    return !!(m && /reactor (has )?trip/i.test(m));
+  }
+  var SCRIPTS = {};
+  POOL.forEach(function (p) { SCRIPTS[p.id] = RD.InstructorLayer.legScriptsScram(p); });
+
+  /* 2ai.1 — THE EXEMPT SET IS RE-DISCOVERED BY DRIVING, NOT READ OFF THE SCANNER.
+   *
+   * A banner reading "this walkthrough cannot continue" on the step that just told the player
+   * to scram is worse than silence, so the legs whose own route trips the reactor are exempt.
+   * The exemption is derived from the authored content (`InstructorLayer.legScriptsScram`),
+   * and this check asks the PLANT the same question: the replay above drove every leg's
+   * authored commands and nothing else, so a trip standing at the end of one is that leg's own
+   * doing. The two sets must be equal — a hand-kept list of ids would certify the list.
+   *
+   * The two legs are reached by DIFFERENT clauses of the scanner, which is why both exist:
+   * `pwr_shutdown` sends `cmd {action:'scram'}`; `pwr_tmi2_incident` sends no scram at all and
+   * is caught by its step-7 `acc {p:'scrammed'}`, the trip arriving out of the loss-of-feedwater
+   * transient its earlier steps inject. Delete either clause and this reddens. */
+  (function () {
+    var derived = POOL.filter(function (p) { return SCRIPTS[p.id]; }).map(function (p) { return p.id; }).sort();
+    var driven = POOL.filter(function (p) { return REPLAY_TRIP[p.id]; }).map(function (p) { return p.id; }).sort();
+    ck('2ai.1 the legs the scanner exempts are exactly the legs whose OWN authored replay trips (#709)',
+       derived.length >= 2 && derived.join(',') === driven.join(','),
+       'scanner: [' + derived.join(', ') + ']  replay: [' + driven.join(', ') + ']  of ' + POOL.length + ' legs');
+  })();
+
+  /* 2ai.2 — THE HEALTHY-PLANT NEGATIVE, and it is the check that matters most. A notice that
+   * fires on a plant nobody tripped is worse than no notice: every leg, at its own initial
+   * condition, walked with nothing injected and nothing scrammed, and `trip_notice` must be
+   * false on EVERY broadcast — not merely at the end. The instructor's comment is asserted
+   * separately, because the two halves are published through different channels. */
+  (function () {
+    var lit = [], spoke = [];
+    POOL.forEach(function (p) {
+      var svc = mkSvcT(p.from);
+      svc.handleCommand({ action: 'start_checklist', procedure_id: p.id });
+      for (var i = 0; i < 120; i++) {
+        var s = svc.tick(); if (!s) continue;
+        var c = s.instructor && s.instructor.checklist;
+        if (c && c.trip_notice) { lit.push(p.id + ' @tick ' + i); break; }
+        if (isTripMsg(s)) { spoke.push(p.id + ' @tick ' + i); break; }
+      }
+    });
+    ck('2ai.2 nothing tripped: trip_notice is false on every broadcast of every leg (#709)',
+       lit.length === 0, lit.length ? 'LIT: ' + lit.join('; ') : POOL.length + ' legs x 120 broadcasts, 0 lit');
+    ck('2ai.2 ...and the instructor never says the reactor has tripped on a healthy plant',
+       spoke.length === 0, spoke.length ? 'SPOKE: ' + spoke.join('; ') : '0 of ' + POOL.length + ' legs');
+  })();
+
+  /* 2ai.3 — A TRIP MID-LEG IS SEEN AND SAID, ON EVERY LEG THE TRIP IS NOT THE POINT OF.
+   * A trip can land on ANY leg, heatup and cooldown included, where the turbine is not in the
+   * picture at all — so this drives all seven rather than the ascension, and asserts the
+   * exempt pair STAYS SILENT in the same sweep. Both halves of the notice are asserted: the
+   * banner flag the panel draws, and the instructor comment.
+   *
+   * The comment's deference rule is what this check found: with a plain "defer to any standing
+   * comment" guard, `pwr_raise_power` and `pwr_lower_power` raised no comment at all, because
+   * the precondition warning was still standing at their own initial conditions. */
+  (function () {
+    var bad = [];
+    POOL.forEach(function (p) {
+      var svc = mkSvcT(p.from);
+      svc.handleCommand({ action: 'start_checklist', procedure_id: p.id });
+      tickN(svc, 40);
+      svc.handleCommand({ action: 'scram' });
+      var s = tickN(svc, 60);
+      var c = s.instructor.checklist;
+      var want = !SCRIPTS[p.id];
+      var saidIt = isTripMsg(s);
+      if (!!c.trip_notice !== want) bad.push(p.id + ': banner ' + !!c.trip_notice + ', wanted ' + want);
+      if (saidIt !== want) bad.push(p.id + ': comment ' + saidIt + ', wanted ' + want);
+      if (!s.true_state.scrammed) bad.push(p.id + ': the scram did not take');
+    });
+    ck('2ai.3 a trip lights the banner AND the comment on all 5 covered legs, and on NEITHER exempt leg (#709)',
+       bad.length === 0,
+       bad.length ? bad.join('; ')
+                  : 'covered: ' + POOL.filter(function (p) { return !SCRIPTS[p.id]; }).map(function (p) { return p.id; }).join(', ') +
+                    '  |  exempt and silent: ' + POOL.filter(function (p) { return SCRIPTS[p.id]; }).map(function (p) { return p.id; }).join(', '));
+  })();
+
+  /* 2ai.4 — IT INFORMS; IT DOES NOT RESCUE. The player is being TOLD, not carried: the step
+   * does not move, nothing is checked off, no acceptance is relieved and no row is graded
+   * differently. That is the ruling's own boundary against the #788 casualty relief, which
+   * DOES stand rows down, and against the per-step re-entry that was explicitly not built.
+   *
+   * ASSERTED BY A/B, not by reading the code. The same leg, same seed, same commands, same
+   * tick counts, run twice — once normally and once with the mechanism neutered at its only
+   * entry point (`legScriptsScram` forced true, so every leg is exempt and no notice is ever
+   * raised). Every graded output must be IDENTICAL: step index, the whole done vector, the
+   * acceptance verdict and the per-row verdicts. A one-sided check ("the step index did not
+   * move") could not tell a mechanism that changes nothing from one that changes something the
+   * probe was not watching. */
+  (function () {
+    var LEG = 'pwr_raise_power';
+    function walk() {
+      var svc = mkSvcT(POOL.filter(function (p) { return p.id === LEG; })[0].from);
+      svc.handleCommand({ action: 'start_checklist', procedure_id: LEG });
+      tickN(svc, 40);
+      svc.handleCommand({ action: 'scram' });
+      var s = tickN(svc, 120);
+      var c = s.instructor.checklist;
+      return { notice: !!c.trip_notice,
+               sig: [c.step_index, (c.steps_done || []).map(function (d) { return d ? 1 : 0; }).join(''),
+                     c.acc_met ? 1 : 0, c.graded_by || '', c.complete ? 1 : 0, c.awaiting_ack ? 1 : 0,
+                     (c.accs || []).map(function (a) { return (a.met ? 1 : 0) + '' + (a.voided ? 'v' : ''); }).join(',')].join('|') };
+    }
+    var withNotice = walk();
+    var real = RD.InstructorLayer.legScriptsScram;
+    RD.InstructorLayer.legScriptsScram = function () { return true; };
+    var without;
+    try { without = walk(); } finally { RD.InstructorLayer.legScriptsScram = real; }
+    ck('2ai.4 the notice changes NO grading — same leg, trip, A/B with the mechanism neutered (#709)',
+       withNotice.notice === true && without.notice === false && withNotice.sig === without.sig,
+       'notice on: ' + withNotice.sig + '   notice off: ' + without.sig);
+  })();
+
+  /* 2ai.5 — IT CLEARS ON PRESS TO RESET, AND NOTHING LATCHES. `trip_notice` is recomputed from
+   * the live plant every tick, so the reset takes it straight back; latch it and this reddens.
+   * Measured healthy -> tripped -> reset IN THAT ORDER on one service, because a check that
+   * only samples the end state cannot tell a notice that cleared from one that never lit.
+   *
+   * `pwr_heatup` is the leg used because `reset_rps` carries a rods-in interlock and actually
+   * takes there — measured: on `pwr_startup` and `pwr_cooldown` the reset is refused and the
+   * plant stays tripped, where the notice correctly STAYS UP. That is the mechanism working,
+   * not a leg to test the clear on. */
+  (function () {
+    var svc = mkSvcT('cold_shutdown');
+    svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+    var s0 = tickN(svc, 40);
+    var healthy = !s0.instructor.checklist.trip_notice && !isTripMsg(s0);
+    svc.handleCommand({ action: 'scram' });
+    var s1 = tickN(svc, 60);
+    var lit = !!s1.instructor.checklist.trip_notice && isTripMsg(s1);
+    svc.handleCommand({ action: 'reset_rps' });
+    var s2 = tickN(svc, 30);
+    var cleared = !s2.instructor.checklist.trip_notice && !isTripMsg(s2) && !s2.true_state.scrammed;
+    ck('2ai.5 healthy -> tripped -> PRESS TO RESET clears both the banner and the comment (#709)',
+       healthy && lit && cleared,
+       'healthy ' + healthy + ' -> lit ' + lit + ' -> cleared ' + cleared +
+       ' (scrammed ' + s2.true_state.scrammed + ')');
+  })();
+
+  /* 2ai.6 — AND IT CLEARS ON REWIND, which is the other route out the banner offers. The
+   * walkthrough's own Rewind button is `{action:'rewind', steps:2, scope:'full', exact:true}`
+   * (ui/app.js) — a loadState of a checkpoint, so it restores the INSTRUCTOR as well as the
+   * plant, which is exactly where a latched notice would survive its own cause.
+   *
+   * The rewind actually LANDING is asserted first and separately. Without that clause a
+   * refused rewind would leave the plant untripped-by-accident or the notice down for the
+   * wrong reason, and the check could pass while testing nothing. */
+  (function () {
+    var svc = mkSvcT('cold_shutdown');
+    svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+    tickN(svc, 40);
+    svc.handleCommand({ action: 'scram' });
+    var s1 = tickN(svc, 60);
+    var lit = !!s1.instructor.checklist.trip_notice;
+    svc.handleCommand({ action: 'rewind', steps: 1, scope: 'full', exact: true });
+    var s2 = tickN(svc, 20);
+    var landed = !s2.true_state.scrammed;
+    var cleared = !s2.instructor.checklist.trip_notice && !isTripMsg(s2);
+    ck('2ai.6 Rewind lands on a pre-trip plant and the notice goes with it (#709)',
+       lit && landed && cleared,
+       'lit ' + lit + ' -> rewind landed (scrammed ' + s2.true_state.scrammed + ') ' + landed +
+       ' -> cleared ' + cleared);
+  })();
+
+  /* 2ai.7 — A MESSAGE RAISED ON A STEP MUST NOT OUTLIVE IT (#749 item 2, not re-opened).
+   * Step 6's overtaken note stood at steps 9-17 AND on the completion card, telling a finished
+   * player to stop withdrawing. The trip notice is a fact about the PLANT rather than about one
+   * step, so it is re-raised on each step for as long as the trip stands — but a FINISHED
+   * walkthrough has nothing left that "cannot continue", and the notice must be gone from the
+   * completion card. Both halves are asserted here, because fixing one by hand breaks the other:
+   * clearing the flag without re-raising retires the notice for good the first time any step
+   * ticks while tripped, and re-raising without the completion branch puts it on the card.
+   *
+   * DRIVEN ON THE LAYER with a synthetic three-step procedure and hand-built snapshots. That is
+   * legitimate HERE and nowhere else in this section: the detection reads `rps_state.scrammed` /
+   * `true_state.scrammed` DIRECTLY, not through `readParam`, so a hand-built snapshot grades
+   * exactly what the shipped path grades. The synthetic steps carry no `acc`/`saw`/`cmd` at all,
+   * so nothing in them is graded through the instrument map either. Reaching the completion card
+   * on a real leg would mean completing one while the reactor is tripped, which is the state the
+   * whole finding says cannot be reached. */
+  (function () {
+    var inst = new RD.InstructorLayer();
+    var SYN = { id: 'syn_trip_notice', title: 'synthetic', from: 'hot_full_power',
+                steps: [{ text: 'one' }, { text: 'two' }, { text: 'three' }] };
+    inst.loadChecklist(SYN, { procedure_id: 'syn_trip_notice', profile_key: 'pwr2' });
+    var t = 0;
+    function snap(tripped) {
+      t += 1;
+      return { metadata: { sim_time: t, plant_id: 'pwr2' },
+               true_state: { scrammed: tripped }, rps_state: { scrammed: tripped } };
+    }
+    inst._stepChecklist(snap(false));            // arm on a healthy plant
+    inst._stepChecklist(snap(false));
+    var quiet = inst.pendingMessage === null && inst.checklist.scramSeen === false;
+    inst._stepChecklist(snap(true));             // the trip
+    var onStep1 = !!inst.pendingMessage && /reactor has tripped/i.test(inst.pendingMessage.learning);
+    inst._checklistCheckOff('manual');           // the player presses Continue anyway
+    var retired = inst.pendingMessage === null;  // the outgoing step's comment goes with the step
+    inst._stepChecklist(snap(true));
+    var onStep2 = !!inst.pendingMessage && /reactor has tripped/i.test(inst.pendingMessage.learning);
+    inst._checklistCheckOff('manual');
+    inst._stepChecklist(snap(true));
+    var onStep3 = !!inst.pendingMessage;
+    inst._checklistCheckOff('manual');           // idx now past the last step
+    inst._stepChecklist(snap(true));             // the completion tick
+    var done = inst.checklist.complete === true;
+    var offCard = inst.pendingMessage === null && inst.checklist.scramSeen === false;
+    ck('2ai.7 the notice is re-raised per step while the trip stands, and is GONE from the completion card (#749 item 2)',
+       quiet && onStep1 && retired && onStep2 && onStep3 && done && offCard,
+       'quiet ' + quiet + ' | step1 ' + onStep1 + ' | retired at check-off ' + retired +
+       ' | step2 ' + onStep2 + ' | step3 ' + onStep3 + ' | complete ' + done +
+       ' | off the completion card ' + offCard);
+  })();
+}
 
 console.log('\n' + '='.repeat(74));
 console.log('  run_checklist_pwr2: ' + nPass + ' passed, ' + nFail + ' failed  (' + (nPass + nFail) + ' checks)');

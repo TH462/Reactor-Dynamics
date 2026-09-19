@@ -4302,6 +4302,16 @@
     return lbl;
   }
 
+  /* THE TRIP BANNER'S WORDS, both registers (#709). The shorter twin of the instructor's
+   * comment in `layers/instructor_layer.js` (`SCRAM_NOTICE_MSG`), which carries the WHY; this
+   * is a banner and says what happened and what the player can do. Board words only — the two
+   * routes out are the card's own buttons, "⏪ Rewind step" and "← All walkthroughs". No units,
+   * so the no-SI-in-walkthroughs ruling (2026-09-06) has nothing to bite on. */
+  var CKL_TRIP_NOTICE = {
+    learning: 'The reactor has tripped. This walkthrough cannot carry on from here — the step you are on will not check off. Press ⏪ Rewind step to go back to before the trip, or ← All walkthroughs to leave this one.',
+    industry: 'REACTOR TRIP — this procedure is not valid post-trip and the active step will not advance. Rewind to a pre-trip checkpoint, or exit the procedure.',
+  };
+
   function renderChecklist(s, ck) {
     var cur = $('cklRun');
     if (!cur) return;
@@ -4339,6 +4349,13 @@
        * row `acc_met` flips to true with nothing else in the key moving at all. */
       (ck.accs || []).map(function (a) { return a.voided ? 3 : (a.met ? (a.implied ? 2 : 1) : 0); }).join(''),
       ck.acc_voided || '', ck.saw_voided || '',
+      /* THE REACTOR-TRIP BANNER JOINS THE KEY (#709) — this file's four-times-learned lesson
+       * (#392's precondition banner, #653 defect 4's mode line, #759's out-of-turn note,
+       * #788's voided rows). A trip moves nothing else in this key by construction: the whole
+       * point of the finding is that the step index sits still, no row latches and no
+       * acceptance changes, which is precisely the case the key could never cover by accident.
+       * Outside it the banner would never be drawn at all. */
+      ck.trip_notice ? 1 : 0,
       /* #660 items 17-18: BOTH BUTTONS' LIT STATES BELONG IN THE KEY. `awaiting_ack` is what
        * lights Continue and draws its note, and `rewind_ready` is what enables Rewind — neither
        * was here, and neither is implied by the rest of the key: `rewind_ready` can flip while
@@ -4383,6 +4400,24 @@
     h += '<div class="ckl-head"><b>' + mesc(pr.title) + '</b>' +
       '<span class="ckl-stepno">' + (ck.complete ? 'Complete' : ('Step ' + (ck.step_index + 1) + ' of ' + pr.steps.length)) +
       (headClock ? ' · ' + mesc(headClock) : '') + '</span></div>';
+    /* THE WALKTHROUGH SAYS SO WHEN THE REACTOR TRIPS UNDER IT (#709, layman playthrough
+     * 2026-09-07 finding S-15: "The checklist does not react to a reactor trip.")
+     *
+     * A trip part-way through a leg leaves the same step active waiting on a number the plant
+     * will not reach again, and the panel said nothing at all — the player's only cue was that
+     * nothing happened. This is the banner half; the instructor's comment is the other. It
+     * INFORMS ONLY: the step does not move, nothing is checked off and no acceptance is
+     * relieved. The runtime decides whether it applies (`trip_notice` is false on a leg that
+     * scripts its own scram, and false once the leg is complete); this draws its verdict and
+     * never re-derives it, the same rule the voided-row lines below follow.
+     *
+     * It sits ABOVE the precondition banner because it is about the plant as it is now, while
+     * that one is about whether opening this walkthrough was sensible — and unlike that one it
+     * is deliberately NOT latched at entry: it comes and goes with the trip, so PRESS TO RESET
+     * or a Rewind to before the trip takes it down on the next broadcast. */
+    if (ck.trip_notice) {
+      h += '<div class="m-caution ckl-trip"><b>' + mesc(CKL_TRIP_NOTICE[ui.register] || CKL_TRIP_NOTICE.learning) + '</b></div>';
+    }
     // Precondition banner (#395) — WARN, NEVER BLOCK: unmet rows are listed with
     // measured-vs-expected and everything below still runs. Row text comes from
     // the procedure artifact (`precond[i].text`); the snapshot ships verdicts only.

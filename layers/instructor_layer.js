@@ -344,6 +344,14 @@
       precondSaid: false,  // #732 — it has been said ONCE for this run and will not be said again
                            //   (restored by loadState too: a REWIND is not a new run)
       catchUp: true,       // first _stepChecklist tick walks past already-done steps (#607)
+      /* THE REACTOR-TRIP NOTICE (#709) — see `_stepChecklist`. `scramExempt` is a property of
+       * the CONTENT and so is recomputed from the proc here and on restore, never serialized;
+       * `scramArmed` is per-RUN and does ride the save (a rewind is not a new run, same rule as
+       * `precondSaid`). `scramSeen` is recomputed every tick and latches nothing. */
+      scramExempt: InstructorLayer.legScriptsScram(proc),
+      scramArmed: false,   // this run has seen the plant NOT tripped at least once
+      scramSeen: false,    // the notice is standing RIGHT NOW (published as `trip_notice`)
+      scramMsg: false,     // the standing instructor comment is OURS to take down
       // Behind-the-scenes failures fired on the CURRENT step (#670): `fired` is the once-per-
       // entry keys, `injected` the failure ids the snapshot publishes. Both reset per step.
       fired: [], injected: [],
@@ -354,7 +362,8 @@
   InstructorLayer.prototype.stopChecklist = function () {
     // Take our own precondition comment down with the checklist (it names a
     // banner that no longer exists); anyone else's message is left alone.
-    if (this.checklist && this.checklist.precondMsg) this.pendingMessage = null;
+    // #709 — the trip notice goes the same way: it names a panel that no longer exists.
+    if (this.checklist && (this.checklist.precondMsg || this.checklist.scramMsg)) this.pendingMessage = null;
     this.checklist = null;
   };
 
@@ -752,13 +761,77 @@
   // outcome is the verification, the keystroke path doesn't matter; or, with no
   // acc, its saw latching; or, with neither, its command family being observed.
   // Pure observation steps only check by hand (checklistCheck).
+  /* ==================================================================================
+   * DOES THIS LEG SCRIPT A REACTOR TRIP OF ITS OWN? (#709)
+   *
+   * A trip can land on ANY leg, so the notice below is deliberately not special-cased to the
+   * ascension — but on a leg where the trip IS the authored point, a banner reading "this
+   * walkthrough cannot continue" printed on the step that just told the player to scram is
+   * worse than silence. So the exemption is DERIVED FROM THE AUTHORED CONTENT rather than kept
+   * as a list of leg ids here, which is the shape that certifies a map instead of a plant: a
+   * leg is exempt when one of its steps sends a scram command, or grades the `scrammed` param.
+   *
+   * MEASURED on the shipped pwr2 pool (2026-09-19), and the two mechanisms are different, which
+   * is why both clauses are needed:
+   *   · `pwr_shutdown` step 2 — `cmd {action:'scram'}`, the planned trip.
+   *   · `pwr_tmi2_incident` step 7 — `acc {p:'scrammed', op:'>', v:0}`. It sends NO scram
+   *     command; the trip arrives out of the loss-of-feedwater transient its earlier steps
+   *     inject, and the step's acceptance is what says the leg expects it.
+   * The other five legs (`pwr_heatup`, `pwr_startup`, `pwr_raise_power`, `pwr_lower_power`,
+   * `pwr_cooldown`) carry neither and are covered by the notice. `run_checklist_pwr2` §2ai
+   * re-discovers this set by DRIVING each leg rather than by reading this scan.
+   *
+   * Static and pool-agnostic on purpose — the retired `pwr` pool and the other plants' pools go
+   * through the same runtime and get the same treatment with no per-pool list to maintain. */
+  var SCRAM_CMD_RE = /scram/i;
+  function stepCmdAction(c) { return !c ? null : (typeof c === 'string' ? c : c.action) || null; }
+  InstructorLayer.legScriptsScram = function (proc) {
+    var steps = (proc && proc.steps) || [];
+    for (var i = 0; i < steps.length; i++) {
+      var st = steps[i] || {};
+      if (SCRAM_CMD_RE.test(stepCmdAction(st.cmd) || '')) return true;
+      if (st.acc && st.acc.p === 'scrammed') return true;
+      if (st.saw && st.saw.p === 'scrammed') return true;
+      if (st.overtaken && st.overtaken.p === 'scrammed') return true;
+      var accs = st.accs || [];
+      for (var j = 0; j < accs.length; j++) {
+        var en = accs[j] || {};
+        if (SCRAM_CMD_RE.test(stepCmdAction(en.cmd) || '')) return true;
+        if (en.p === 'scrammed') return true;
+      }
+    }
+    return false;
+  };
+
+  /* THE WORDS THE NOTICE SPEAKS, in both registers (#709). Kept beside the mechanism rather
+   * than in the pool: it is not authored content, it belongs to no leg, and every leg that is
+   * not exempt gets the same sentence. The panel banner in `ui/app.js` is the shorter twin —
+   * this is the instructor's comment, which is the teaching channel and says WHY. No units, so
+   * the no-SI-in-walkthroughs ruling (2026-09-06) has nothing to bite on. */
+  var SCRAM_NOTICE_MSG = {
+    learning: 'The reactor has tripped, and this walkthrough was written for a reactor that keeps running. It cannot carry on from here: the step you are on is waiting for a reading the plant will not give again. Nothing is broken and nothing is blocked — press ⏪ Rewind step to go back to before the trip, or ← All walkthroughs to leave this one.',
+    industry: 'REACTOR TRIP — this procedure is not valid post-trip. The active step\'s acceptance cannot be satisfied in the present plant condition. Rewind to a pre-trip checkpoint, or exit the procedure.',
+  };
+
   InstructorLayer.prototype._stepChecklist = function (snapshot) {
     var simTime = (snapshot && snapshot.metadata && snapshot.metadata.sim_time) || 0;
     var c = this.checklist;
     // #715 — re-graded every tick the banner is shown, not once at the step-off:
     // the board can be read at any time while the walkthrough sits complete, and
     // the claim it draws should track the live plant, same as `precond` below.
-    if (c.complete) { c.outcomeVerified = this._gradeOutcomeGuard(c.proc); return; }
+    if (c.complete) {
+      c.outcomeVerified = this._gradeOutcomeGuard(c.proc);
+      /* THE TRIP NOTICE DIES WITH THE RUN (#709), and THIS is the site that matters — the one
+       * below, in the `!st` branch, is the door almost nobody comes through. `_checklistCheckOff`
+       * sets `complete` itself when the last step ticks, so a finished walkthrough returns HERE
+       * every tick and never reaches the step body at all. Measured by §2ai.7 on the first draft,
+       * which had only the other copy: the banner flag stayed lit on the completion card, which
+       * is #749 item 2 exactly — a message raised on a step outliving it, on the very card that
+       * caught it last time. A finished walkthrough has nothing left that "cannot continue". */
+      if (c.scramMsg) { this.pendingMessage = null; c.scramMsg = false; }
+      c.scramSeen = false;
+      return;
+    }
 
     // Preconditions (#395) — grade each authored {p, op, v, tol} against the LIVE
     // plant every tick, instrument-first like `acc`, so the banner clears itself
@@ -854,9 +927,82 @@
     }
 
     var st = c.proc.steps[c.idx];
-    if (!st) { c.complete = true; return; }
+    if (!st) {
+      c.complete = true;
+      /* The same three lines as the `c.complete` early return above, for the same reason and
+       * for the other way into this state — an index already past the end when the tick
+       * arrives (a restored save, a proc whose steps shrank under it). Kept as a second copy
+       * rather than shared, because the alternative is to let the notice stand for one
+       * broadcast on the completion card while `complete` takes effect. */
+      if (c.scramMsg) { this.pendingMessage = null; c.scramMsg = false; }
+      c.scramSeen = false;
+      return;
+    }
     var stepEntryTick = (c.stepAt == null);
-    if (stepEntryTick) c.stepAt = simTime;   // when this step came up — the dwell's clock
+    if (stepEntryTick) c.stepAt = simTime;
+
+    /* ================================================================================
+     * THE REACTOR TRIPPED AND THE WALKTHROUGH SAID NOTHING (#709, layman playthrough
+     * 2026-09-07 finding S-15: "The checklist does not react to a reactor trip.")
+     *
+     * A walkthrough is a sequential list with one active step. Trip the reactor part-way
+     * through a leg and the plant is in a state the leg never scripted: the same step stays
+     * active, its done-when waits on a number the plant will not reach again, and the panel
+     * says nothing at all. The player's only cue is that nothing happens.
+     *
+     * THIS TELLS THEM. IT DOES NOT RESCUE THEM. The step does not move, nothing is checked
+     * off, no row is graded differently, and no acceptance is relieved — compare the #788
+     * casualty relief a few hundred lines down, which DOES stand rows down. This writes one
+     * instructor comment and one banner flag and changes the grading not at all. Per-step
+     * re-entry and a post-trip emergency leg were the other two options and are NOT built.
+     *
+     * ⚠ HARD RULE 1. `scrammed` is `true_state` (and `rps_state`, the protection system's own
+     * latch). Reading it to decide whether to INFORM THE PLAYER is not the same act as grading
+     * an acceptance on it, and nothing here grades: the verdict goes to `pendingMessage` and to
+     * `trip_notice`, both of which are prose on a card. HR1 governs what the plant's
+     * INSTRUMENTS may be used to decide; the instructor is allowed to know what actually
+     * happened, exactly as `_evalTrigger`'s `scram` case already does — and the spelling here
+     * is that same expression, deliberately, so there is one definition of "tripped".
+     *
+     * ARMED BY A HEALTHY PLANT, NOT BY A BASELINE AT START. Measured across all seven pwr2
+     * legs at their own initial conditions (2026-09-19): none boots tripped. But a player can
+     * open a walkthrough on a plant that is ALREADY tripped, and "the reactor has tripped" is
+     * an event, not a condition — so the notice is armed only once this run has seen the plant
+     * untripped, and a run that begins tripped stays quiet until the trip is reset and a NEW
+     * one arrives. `scramArmed` is the only latch here.
+     *
+     * NOTHING ELSE LATCHES, so it clears by construction. `scramSeen` is recomputed from the
+     * live plant every tick: PRESS TO RESET drops `rps_state.scrammed` and the banner and the
+     * comment go with it on the next broadcast, and a Rewind restores a pre-trip plant and
+     * does the same. There is no "clear the notice" path to get wrong because there is no
+     * stored notice.
+     *
+     * THE COMMENT DEFERS TO A STANDING COMMENT, WITH ONE EXCEPTION, AND THE EXCEPTION WAS
+     * MEASURED RATHER THAN REASONED. The overtaken skip's note belongs to the step the player
+     * has just been moved to and must not be stamped over. The PRECONDITION comment is the
+     * opposite case: it answers "was it sensible to OPEN this walkthrough", which is an entry
+     * question and by then history, and it is raised once per run and never again. A plain
+     * `!this.pendingMessage` guard therefore lost the trip notice on TWO of the five covered
+     * legs — `pwr_raise_power` and `pwr_lower_power`, whose preconditions are unmet at their
+     * own initial conditions, so the entry comment was still standing when the reactor tripped
+     * (measured 2026-09-19). So the trip notice takes the channel from that one comment, and
+     * clears its ownership flag with it, or a later precondition recovery would null OURS.
+     * The BANNER is unconditional either way and is the primary cue. */
+    var tripped = !!((snapshot.rps_state && snapshot.rps_state.scrammed) ||
+                     (snapshot.true_state && snapshot.true_state.scrammed));
+    if (!tripped) c.scramArmed = true;
+    c.scramSeen = tripped && !!c.scramArmed && !c.scramExempt;
+    if (c.scramSeen && !c.scramMsg && (!this.pendingMessage || c.precondMsg)) {
+      c.scramMsg = true;
+      c.precondMsg = false;
+      this.pendingMessage = { learning: SCRAM_NOTICE_MSG.learning, industry: SCRAM_NOTICE_MSG.industry };
+    } else if (!c.scramSeen && c.scramMsg) {
+      /* `scramMsg` is the flag saying the standing comment is OURS to clear — the same
+       * ownership idiom `precondMsg` uses, and for the same reason: an unconditional clear
+       * here would null out somebody else's comment. */
+      c.scramMsg = false;
+      this.pendingMessage = null;
+    }   // when this step came up — the dwell's clock
 
     /* FAILURES THE STEP FIRES BEHIND THE SCENES (#670 Phase 1, incident walkthroughs). See
      * `_checklistFire`. NOT on the entry tick, and that is not a detail — see the ordering
@@ -1164,6 +1310,13 @@
     if (by !== 'caught_up') {
       this.pendingMessage = null;
       c.precondMsg = false;
+      /* #709 — and this is the half that is easy to forget. The trip notice is a fact about
+       * the PLANT, not about the outgoing step, so clearing the comment without clearing its
+       * ownership flag would retire it for good the first time any step ticked while the
+       * reactor was tripped. Cleared, it is re-raised on the next tick for as long as the trip
+       * stands — and on the LAST step the `!st` branch above takes it down instead, so it
+       * never reaches the completion card. */
+      c.scramMsg = false;
     }
     c.done[c.idx] = true;
     c.doneBy[c.idx] = by;
@@ -1982,6 +2135,12 @@
          * for the step's `saw` latch, which no other relief in this file can reach. */
         acc_voided: this.checklist.accVoided || null,
         saw_voided: this.checklist.sawVoided || null,
+        /* THE REACTOR HAS TRIPPED AND THIS LEG DID NOT SCRIPT IT (#709). Recomputed every
+         * tick, never latched, false on an exempt leg and false once the run is complete —
+         * see `_stepChecklist`. `ui/app.js` draws the panel banner off this and joins it to
+         * the card's render key; the instructor's comment is the other half. It changes NO
+         * grading: `acc_met`, the per-row verdicts and the step index are untouched. */
+        trip_notice: !!this.checklist.scramSeen,
         graded_by: this.checklist.gradedBy,
         complete: this.checklist.complete,
         // #715 — whether the completion banner's `outcome` text is safe to show: re-graded
@@ -2145,6 +2304,11 @@
          * comment and the flicker came back one press at a time. Absent in an old save reads as
          * false, which is exactly the pre-#732 behaviour. */
         precond_said: !!this.checklist.precondSaid,
+        /* #709 — the trip notice is armed by having seen the plant untripped during THIS run,
+         * and a rewind is not a new run, so the arming rides the checkpoint for the same
+         * reason `precond_said` does. Absent in an old save reads as false, which simply
+         * re-arms on the first untripped broadcast — the conservative direction. */
+        scram_armed: !!this.checklist.scramArmed,
       } : null,
     };
   };
@@ -2192,6 +2356,13 @@
           // #670 — restored, not re-derived: a save written before this field is an empty set,
           // which is exactly what it used to behave as.
           fired: (cs.fired || []).slice(), injected: (cs.injected || []).slice(),
+          /* #709 — `scramExempt` is a property of the CONTENT, so it is recomputed from the
+           * re-resolved proc rather than restored from the save: an edit to a leg must take
+           * effect on an old save, and a stale exemption riding a checkpoint is exactly the
+           * "certify the map, not the plant" shape. The arming IS per-run and is restored;
+           * `scramSeen`/`scramMsg` are recomputed on the first tick after the load. */
+          scramExempt: InstructorLayer.legScriptsScram(cproc),
+          scramArmed: !!cs.scram_armed, scramSeen: false, scramMsg: false,
         };
       } else if (typeof console !== 'undefined') {
         console.warn('InstructorLayer.loadState: checklist procedure "' + cs.procedure_id + '" not found — dropped.');
