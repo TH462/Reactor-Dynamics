@@ -2828,6 +2828,487 @@ if (!only) {
            (m3 ? JSON.stringify(String(m3).slice(0, 48) + '…') : 'NONE'));
     })();
   })();
+
+  /* 2ae. A DEAD GAUGE STRANDS THE LEG — THE WHOLE-POOL SWEEP (#773, 2026-09-19).
+   *
+   * §2ad above closed ONE instance by hand (`pwr_startup` step 9's INTER RANGE row, by
+   * `implied_by`). This is the same question asked of every acceptance row in the pool, because
+   * `accs` is a CONJUNCTION and `_gradeAccs` conjoins everything: a row graded on an instrument
+   * the player can break from the Failures tab takes its whole step with it, and with no
+   * `overtaken` and no `implied_by` the Continue button never lights again.
+   *
+   * THE ISSUE COUNTED; THIS SWEEPS. #773 filed 84 graded steps / 135 predicate rows / 87 graded
+   * on an instrument / 27 of those the only row of their step, and said plainly that they were
+   * COUNTED, not swept. Re-measured here on the built pool: 84 / 135 / 87 / 27, identical. What
+   * a count cannot tell you is which of the 87 actually strand, and the measured answer is that
+   * FEWER THAN HALF do — 46 of the 87, plus 3 more from the four `saw` rows the issue did not
+   * count at all, 49 in total — for three reasons the sweep decides per row rather than by list:
+   *
+   *   (a) THE DIRECTION OF THE COMPARISON DECIDES IT, and that is the finding the count could
+   *       not carry. `dead` publishes the channel's RANGE FLOOR, so it can only ever fail a row
+   *       that reads UPWARD. MEASURED at each leg's own `from`: 49 rows read `met:false` under
+   *       the dead channel and STRAND; 30 rows read `met:TRUE` — a `<`/`<=` row that the floor
+   *       satisfies — and those do not strand, they FALSE-TICK. `pwr_shutdown` step 1 is the
+   *       clean example: `mwe_output < 5` against a dead gauge reading 0.000 MWe while the
+   *       generator truly makes 100.0 MWe, the step ticks off and the leg walks on. Both sets
+   *       are pinned below; which is the worse defect is the content pass's question, not this
+   *       gate's. (A `stuck` failure with a typed value breaks a row in EITHER direction — the
+   *       panel offers one — so the 30 are unsafe too; `dead` is pinned because it is the
+   *       one-click mode with no value to type, and it is what #773 and #749 both measured.)
+   *   (b) A CHANNEL THE PLAYER CANNOT ACTUALLY BREAK DOES NOT STRAND, and one of the nineteen
+   *       is not breakable at all. MEASURED, `hot_full_power`, seed 7, 3.0 s after the command:
+   *       `set_instrument_failure {subcooling_margin, stuck, value: 12.040}` (21.7 °F of margin)
+   *       returns `ok` and SUBCOOLING MARGIN goes on reading 43.5 °F (24.140 °C) of margin — the injection is a
+   *       silent no-op, because `subcooling_margin` is DERIVED inside the instrument layer
+   *       (Tsat(primary_pressure) − tavg) and has no transmitter of its own to fail. The other
+   *       eighteen all take the stuck value exactly. That is a defect in its own right — the
+   *       Failures tab lists the channel and the click does nothing — and it is filed rather
+   *       than fixed here; what it means for THIS sweep is that the three TMI-2 subcooling rows
+   *       are not strandable by a direct injection. They ARE strandable INDIRECTLY: measured,
+   *       `{primary_pressure, dead}` drags the derived margin to −50.4 °F (−28.000 °C) against
+   *       a true +85.9 °F (+47.711 °C), which false-ticks step 17 (−50.0 °F, `<= −27.778`) and
+   *       strands step 19 (+10.0 °F, `> 5.56`).
+   *       The sweep is deliberately DIRECT-ONLY — one channel, the one the row grades on — so
+   *       that its set is a property of the authoring and not of the whole instrument graph.
+   *   (c) RELIEF THE AUTHOR ALREADY WROTE. Nine rows carry it: `pwr_startup` 5-8's eight 1/M
+   *       rows sit on steps with `overtaken: {sr_energized}`, graded on true_state and therefore
+   *       untouched by any instrument failure (measured: `sr_energized` reads the same healthy
+   *       and with SOURCE RANGE dead), so the plant can still check the step off; and step 9's
+   *       INTER RANGE row is #749's `implied_by`, which names a sibling on a DIFFERENT channel.
+   *       Relief on the SAME channel would be no relief at all, which is why both tests compare
+   *       channels rather than parameter names.
+   *
+   * WHAT THIS CHECK IS FOR. Not to say the 49 are acceptable — that is the content pass, split
+   * by leg, and the set below is grouped that way for it. It is to make the set KNOWN and
+   * FROZEN, in the §2n idiom: a new acceptance row that strands cannot join the pool unnoticed,
+   * and a row that is fixed must be taken out of the list by hand, where the removal is read.
+   *
+   * INJECTION — every check below made to FAIL deliberately and restored, 2026-09-19, and what
+   * each one printed:
+   *   · rename `pwr2:` to `pwrZZ:` in the scan regex        -> 2ae.1 red, "SCAN MISSED:
+   *     pump_flow_pct, pressure_mpa, tavg_c, …" (16 params), and 2ae.1b/.2/.3/.4/.5 red with it —
+   *     the scan is load-bearing for the whole section, which is why 2ae.1 exists
+   *   · delete `'pwr_heatup:2:pump_flow_pct'` from STRAND_EXPECTED -> 2ae.2 red, "UNPINNED:
+   *     pwr_heatup:2:pump_flow_pct. 49 row(s) …"
+   *   · add `'pwr_nonesuch:1:power_pct'` to STRAND_EXPECTED  -> 2ae.2 red, "PINNED BUT NOT SEEN"
+   *   · add `tavg` to UNBREAKABLE_EXPECTED                   -> 2ae.3 red (tavg took the stuck
+   *     value 152.409, so only one no-op was found against two pinned)
+   *   · delete `'pwr_shutdown:1:mwe_output'` from TICK_EXPECTED    -> 2ae.4 red, "UNPINNED"
+   *   · delete `'pwr_startup:9:ir_amps'` from RELIEVED_EXPECTED    -> 2ae.5 red, "UNPINNED"
+   *   · point 2ae.6's probe at `sr_counts_cps` instead of `sr_energized` -> 2ae.6 red,
+   *     "528.87 healthy / 1 with SOURCE RANGE dead, graded_by instrument" — i.e. the check does
+   *     discriminate a true_state relief from an instrument one */
+  (function () {
+    var grader = Object.create(RD.InstructorLayer.prototype);
+
+    /* THE PARAM -> CHANNEL MAP, scanned from the layer the way §2a scans it, because the map is
+     * module-private. A SCAN CAN MISS AN ENTRY SILENTLY, so check 2ae.1 closes that by asking
+     * the LAYER, on a live snapshot, which pool params actually grade `instrument` — the scan
+     * has to cover every one of them or the sweep is looking at the wrong rows. */
+    var isrc = fs.readFileSync(path.join(ROOT, 'layers', 'instructor_layer.js'), 'utf8');
+    var pm = /\n    pwr2:\s*\{([\s\S]*?)\n    \},/.exec(isrc);
+    var MAP = {};
+    (pm ? pm[1] : '').replace(/([a-z_0-9]+)\s*:\s*'([a-z_0-9]+)'/g,
+      function (_, p, id) { MAP[p] = id; return ''; });
+
+    function boot(ic) {
+      var svc = mkSvc(ic); var s = null;
+      for (var i = 0; i < 30; i++) s = svc.tick();
+      return { svc: svc, snap: s };
+    }
+    var healthy = {};
+    function snapHealthy(from) {
+      if (!healthy[from]) healthy[from] = boot(from).snap;
+      return healthy[from];
+    }
+    var deadCache = {};
+    function snapDead(from, chan) {
+      var k = from + '|' + chan;
+      if (deadCache[k]) return deadCache[k];
+      var w = boot(from);
+      w.svc.handleCommand({ action: 'set_instrument_failure', instrument_id: chan, mode: 'dead' });
+      var s = null; for (var i = 0; i < 30; i++) s = w.svc.tick();
+      return (deadCache[k] = s);
+    }
+
+    /* --- the rows. `accs` when present, else the single `acc`; predicate rows only.
+     *
+     * …AND `saw`, WHICH #773 DID NOT COUNT AND WHICH STRANDS THE SAME WAY. `_stepChecklist`
+     * latches `sawSeen` the first tick the predicate holds and a step with a `saw` cannot
+     * complete until it has, so a channel dead from the step's first tick is a lock with no
+     * relief at all — `implied_by` lives inside `accs` and cannot reach a `saw`. Four exist in
+     * the pool, all four graded on instruments, and TWO of them are on a channel their own
+     * step's acceptance does NOT use, so they are stranding vectors the 87 could not see:
+     * `pwr_startup` 10 (`startup_rate_dpm > 0` beside an acceptance on REACTOR POWER) and
+     * `pwr_tmi2_incident` 3 (`pressure_mpa > 16`, the step's ONLY grading of any kind). Counted
+     * apart from the 87 so that 2ae.1b still measures exactly what the issue counted. */
+    var rows = [], sawRows = [], gradedSteps = 0, predRows = 0, soleInst = 0;
+    POOL.forEach(function (proc) {
+      (proc.steps || []).forEach(function (st, idx) {
+        var accs = (st.accs && st.accs.length) ? st.accs : (st.acc ? [st.acc] : []);
+        var preds = accs.filter(function (e) { return e && e.p; });
+        if (st.saw && st.saw.p && MAP[st.saw.p]) {
+          sawRows.push({ key: proc.id + ':' + (idx + 1) + ':saw:' + st.saw.p, proc: proc.id,
+                         from: proc.from, step: idx + 1, en: st.saw, chan: MAP[st.saw.p],
+                         sole: !preds.length, isSaw: true, sib: [], ot: st.overtaken || null });
+        }
+        if (!preds.length) return;
+        gradedSteps++; predRows += preds.length;
+        preds.forEach(function (en) {
+          var chan = MAP[en.p]; if (!chan) return;
+          if (preds.length === 1) soleInst++;
+          rows.push({ key: proc.id + ':' + (idx + 1) + ':' + en.p, proc: proc.id, from: proc.from,
+                      step: idx + 1, en: en, chan: chan, sole: preds.length === 1,
+                      sib: preds.filter(function (o) { return o !== en; }), ot: st.overtaken || null });
+        });
+      });
+    });
+
+    /* --- 2ae.1 the scan covers every instrument-graded param the pool actually uses. */
+    (function () {
+      var seen = {}, missing = [];
+      POOL.forEach(function (proc) {
+        (proc.steps || []).forEach(function (st) {
+          var accs = (st.accs && st.accs.length) ? st.accs : (st.acc ? [st.acc] : []);
+          accs.concat(st.saw ? [st.saw] : []).forEach(function (en) {
+            if (!en || !en.p || seen[en.p]) return; seen[en.p] = 1;
+            var g = grader._grade(snapHealthy(proc.from), en);
+            if (g.graded_by === 'instrument' && !MAP[en.p]) missing.push(en.p);
+          });
+        });
+      });
+      ck('2ae.1 the scanned PARAM_INSTRUMENT.pwr2 map covers every param the layer grades on an instrument (#773)',
+         Object.keys(MAP).length >= 19 && missing.length === 0,
+         missing.length ? 'SCAN MISSED: ' + missing.join(', ')
+           : Object.keys(MAP).length + ' mapped params, ' + Object.keys(seen).length +
+             ' distinct pool params, none graded `instrument` outside the map');
+      ck('2ae.1b the re-measured pool counts are the ones #773 counted (84 / 135 / 87 / 27)',
+         gradedSteps === 84 && predRows === 135 && rows.length === 87 && soleInst === 27,
+         gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
+         ' instrument-graded, ' + soleInst + ' of them the only row of their step');
+    })();
+
+    /* --- which of the channels can the player actually break? ONE BOOT PER CHANNEL, stuck at
+     * half its live reading; the failure switch returns the stuck value directly, so a channel
+     * whose reading does not become that value has no transmitter to fail and the injection is
+     * a silent no-op. ONE AT A TIME ON PURPOSE, not batched: a DERIVED channel is computed from
+     * its neighbours, so breaking sixteen at once moves it too — measured, the batched form put
+     * SUBCOOLING MARGIN at −4.0208 °C instead of its healthy 24.140, which still is not the
+     * 12.040 asked for but could collide with it on some other plant state and report a derived
+     * channel as breakable. Isolation is what makes the answer about the channel. */
+    var UNBREAKABLE_EXPECTED = { subcooling_margin: 1 };
+    var breakable = {}, breakNote = {};
+    (function () {
+      var chans = {};
+      rows.concat(sawRows).forEach(function (r) { chans[r.chan] = 1; });
+      var noop = [];
+      Object.keys(chans).forEach(function (c) {
+        var w = boot('hot_full_power');
+        var lv = w.snap.instruments[c];
+        var t = (typeof lv === 'number' && lv !== 0) ? lv * 0.5 : 0.5;
+        w.svc.handleCommand({ action: 'set_instrument_failure', instrument_id: c, mode: 'stuck', value: t });
+        var s = null; for (var i = 0; i < 30; i++) s = w.svc.tick();
+        var got = s.instruments[c];
+        breakable[c] = Math.abs(got - t) < Math.max(1e-9, Math.abs(t) * 1e-6);
+        breakNote[c] = c + ' live ' + Number(lv).toPrecision(5) + ' stuck@' + Number(t).toPrecision(5) +
+                       ' -> ' + Number(got).toPrecision(5);
+        if (!breakable[c]) noop.push(breakNote[c]);
+      });
+      var keys = Object.keys(UNBREAKABLE_EXPECTED);
+      ck('2ae.3 exactly the known DERIVED channel refuses an instrument failure silently (#773)',
+         noop.length === keys.length && keys.every(function (k) { return breakable[k] === false; }),
+         (noop.length ? 'NO-OP: ' + noop.join('; ') + '. ' : '') + Object.keys(chans).length +
+         ' channels probed, ' + (Object.keys(chans).length - noop.length) + ' took the stuck value');
+    })();
+
+    /* --- the sweep. Per row: relief first (it costs nothing), then the injection. */
+    var strand = [], ticks = [], relieved = [], skipped = [];
+    rows.concat(sawRows).forEach(function (r) {
+      if (!breakable[r.chan]) { skipped.push(r.key); return; }
+      var impl = r.en.implied_by
+        ? r.sib.filter(function (o) { return o.p === r.en.implied_by; })[0] : null;
+      if (impl && MAP[impl.p] !== r.chan) { relieved.push(r.key + ' implied_by ' + impl.p); return; }
+      if (r.ot && r.ot.p && MAP[r.ot.p] !== r.chan) { relieved.push(r.key + ' overtaken ' + r.ot.p); return; }
+      var d = snapDead(r.from, r.chan);
+      var g = grader._grade(d, r.en);
+      r.read = d.instruments[r.chan]; r.truth = d.true_state[r.en.p];
+      (g.met ? ticks : strand).push(r);
+    });
+
+    /* THE STRANDING SET — MEASURED, one `dead` injection per row at that row's own leg `from`.
+     * Grouped by leg because the content pass is split that way. `[SOLE]` marks a row that is
+     * the only acceptance on its step, where no `implied_by` could ever reach it. */
+    var STRAND_EXPECTED = {
+      /* pwr_heatup [cold_shutdown] */
+      'pwr_heatup:2:pump_flow_pct': 'rcs_flow',              // > 90 [SOLE]   dead 0.000 vs true 3.867 %
+      'pwr_heatup:9:pressure_mpa': 'primary_pressure',       // > 4.585       dead 0.000 vs true 2.500 MPa
+      'pwr_heatup:11:tavg_c': 'tavg',                        // > 283 [SOLE]  dead 30.00 vs true 50.00 degC
+      'pwr_heatup:14:pressure_mpa': 'primary_pressure',      // > 15 [SOLE]   dead 0.000 vs true 2.500 MPa
+      'pwr_heatup:15:steam_pressure_mpa': 'steam_pressure',  // ~ 7.03        dead 0.000 vs true 0.0124 MPa
+      /* pwr_startup [hot_zero_power] */
+      'pwr_startup:1:tavg_c': 'tavg',                        // ~ 286 [SOLE]  dead 30.00 vs true 286.3 degC
+      'pwr_startup:2:boron_ppm': 'boron_analyzer',           // ~ 719 [SOLE]  dead 0.000 vs true 718.9 ppm
+      'pwr_startup:9:power_pct': 'power_range',              // > 0.05        the row #749's relief leans ON
+      'pwr_startup:10:power_pct': 'power_range',             // > 0.5 [SOLE]
+      'pwr_startup:12:startup_rate_dpm': 'startup_rate',     // ~ 0           dead -5.000 DPM (range floor)
+      'pwr_startup:13:power_pct': 'power_range',             // > 5 [SOLE]
+      'pwr_startup:14:mwe_output': 'mwe_output',             // > 8 [SOLE]
+      /* pwr_raise_power [low_power] */
+      'pwr_raise_power:2:mwe_output': 'mwe_output',          // > 8           dead 0.000 vs true 10.00 MWe
+      'pwr_raise_power:4:mwe_output': 'mwe_output',          // > 28
+      'pwr_raise_power:4:power_pct': 'power_range',          // > 28
+      'pwr_raise_power:4:tavg_c': 'tavg',                    // ~ 294.75      dead 30.00 vs true 288.2 degC
+      'pwr_raise_power:5:mwe_output': 'mwe_output',          // > 48
+      'pwr_raise_power:5:power_pct': 'power_range',          // > 47
+      'pwr_raise_power:5:tavg_c': 'tavg',                    // ~ 297
+      'pwr_raise_power:6:mwe_output': 'mwe_output',          // > 72
+      'pwr_raise_power:6:power_pct': 'power_range',          // > 70
+      'pwr_raise_power:6:tavg_c': 'tavg',                    // ~ 300
+      'pwr_raise_power:7:mwe_output': 'mwe_output',          // > 86
+      'pwr_raise_power:7:tavg_c': 'tavg',                    // ~ 301.5
+      'pwr_raise_power:8:mwe_output': 'mwe_output',          // > 97
+      'pwr_raise_power:8:tavg_c': 'tavg',                    // ~ 303.2
+      'pwr_raise_power:9:power_pct': 'power_range',          // > 96
+      'pwr_raise_power:9:tavg_c': 'tavg',                    // ~ 303.2
+      'pwr_raise_power:10:mwe_output': 'mwe_output',         // > 97
+      'pwr_raise_power:10:tavg_c': 'tavg',                   // ~ 304.4
+      'pwr_raise_power:11:mwe_output': 'mwe_output',         // ~ 100
+      'pwr_raise_power:12:mwe_output': 'mwe_output',         // > 97 [SOLE]   the #667 shape exactly
+      /* pwr_lower_power [hot_full_power] */
+      'pwr_lower_power:2:mwe_output': 'mwe_output',          // ~ 75          dead 0.000 vs true 100.0 MWe
+      'pwr_lower_power:3:mwe_output': 'mwe_output',          // ~ 75
+      'pwr_lower_power:4:mwe_output': 'mwe_output',          // ~ 50
+      'pwr_lower_power:5:mwe_output': 'mwe_output',          // ~ 30
+      'pwr_lower_power:6:mwe_output': 'mwe_output',          // ~ 15
+      /* pwr_cooldown [hot_zero_power] */
+      'pwr_cooldown:1:boron_ppm': 'boron_analyzer',          // > 880 [SOLE]  dead 0.000 vs true 718.9 ppm
+      'pwr_cooldown:6:spray_flow_pct': 'pzr_spray_flow',     // ~ 50          dead 0.000 %
+      'pwr_cooldown:10:spray_flow_pct': 'pzr_spray_flow',    // ~ 50
+      /* pwr_tmi2_incident [hot_full_power] */
+      'pwr_tmi2_incident:1:power_pct': 'power_range',        // > 90 [SOLE]   dead 0.000 vs true 99.56 %
+      'pwr_tmi2_incident:8:porv_tailpipe_temp_c': 'porv_tailpipe_temp', // > 115.56 [SOLE]  dead 0.000 degC
+      'pwr_tmi2_incident:12:pzr_level_pct': 'pzr_level',     // >= 99 [SOLE]  dead 0.000 vs true 63.66 %
+      'pwr_tmi2_incident:14:sg_level_pct': 'sg_level',       // > 5 [SOLE]    dead 0.000 vs true 98.08 %
+      'pwr_tmi2_incident:18:pressure_mpa': 'primary_pressure', // > 5.17      dead 0.000 vs true 14.59 MPa
+      'pwr_tmi2_incident:20:pump_flow_pct': 'rcs_flow',      // > 80 [SOLE]   dead 0.000 vs true 100.5 %
+      /* the three `saw` rows — no `implied_by` can reach a `saw`, so these have no relief at all */
+      'pwr_heatup:11:saw:tavg_c': 'tavg',                    // > 150         same channel as the step's acc
+      'pwr_startup:10:saw:startup_rate_dpm': 'startup_rate', // > 0           a channel the step's acc does NOT use
+      'pwr_tmi2_incident:3:saw:pressure_mpa': 'primary_pressure', // > 16 [SOLE]  the step's only grading
+    };
+    /* THE OTHER HALF: a row that reads DOWNWARD is not stranded by a dead gauge, it is TICKED by
+     * one — the floor satisfies it. Pinned for the same reason, and it is the larger set. */
+    var TICK_EXPECTED = {
+      'pwr_heatup:15:adv_valve_pct': 1, 'pwr_heatup:17:power_pct': 1,
+      'pwr_startup:12:power_pct': 1,
+      'pwr_raise_power:9:boron_ppm': 1, 'pwr_raise_power:11:boron_ppm': 1,
+      'pwr_lower_power:2:power_pct': 1, 'pwr_lower_power:3:tavg_c': 1,
+      'pwr_lower_power:3:power_pct': 1, 'pwr_lower_power:4:power_pct': 1,
+      'pwr_lower_power:4:tavg_c': 1, 'pwr_lower_power:5:power_pct': 1,
+      'pwr_lower_power:5:tavg_c': 1, 'pwr_lower_power:6:power_pct': 1,
+      'pwr_lower_power:6:tavg_c': 1,
+      'pwr_shutdown:1:mwe_output': 1, 'pwr_shutdown:2:power_pct': 1, 'pwr_shutdown:3:power_pct': 1,
+      'pwr_cooldown:2:pressure_mpa': 1, 'pwr_cooldown:4:tavg_c': 1, 'pwr_cooldown:5:pressure_mpa': 1,
+      'pwr_cooldown:6:pressure_mpa': 1, 'pwr_cooldown:8:pressure_mpa': 1,
+      'pwr_cooldown:10:pump_flow_pct': 1, 'pwr_cooldown:11:tavg_c': 1,
+      'pwr_cooldown:12:spray_flow_pct': 1,
+      'pwr_tmi2_incident:5:sg_level_pct': 1, 'pwr_tmi2_incident:15:pzr_level_pct': 1,
+      'pwr_tmi2_incident:16:pzr_level_pct': 1, 'pwr_tmi2_incident:18:porv_tailpipe_temp_c': 1,
+      'pwr_cooldown:4:saw:tavg_c': 1,   // `saw tavg_c < 250` — a dead tavg reads 30.00 and is "seen"
+    };
+    var RELIEVED_EXPECTED = {
+      'pwr_startup:5:sr_counts_cps': 1, 'pwr_startup:5:startup_rate_dpm': 1,
+      'pwr_startup:6:sr_counts_cps': 1, 'pwr_startup:6:startup_rate_dpm': 1,
+      'pwr_startup:7:sr_counts_cps': 1, 'pwr_startup:7:startup_rate_dpm': 1,
+      'pwr_startup:8:sr_counts_cps': 1, 'pwr_startup:8:startup_rate_dpm': 1,
+      'pwr_startup:9:ir_amps': 1,
+    };
+
+    function diffSet(got, want) {
+      var extra = got.filter(function (k) { return !want[k]; });
+      var gone = Object.keys(want).filter(function (k) { return got.indexOf(k) < 0; });
+      return { ok: extra.length === 0 && gone.length === 0,
+        note: (extra.length ? 'UNPINNED: ' + extra.join(', ') + '. ' : '') +
+              (gone.length ? 'PINNED BUT NOT SEEN: ' + gone.join(', ') + '. ' : '') };
+    }
+    var sKeys = strand.map(function (r) { return r.key; });
+    var dS = diffSet(sKeys, STRAND_EXPECTED);
+    ck('2ae.2 the MEASURED stranding set is exactly the pinned one (#773)', dS.ok,
+       dS.note + sKeys.length + ' row(s) read met:false under a dead channel at their own leg IC, ' +
+       strand.filter(function (r) { return r.sole && !r.isSaw; }).length + ' of them the only row of their step, ' +
+       strand.filter(function (r) { return r.isSaw; }).length + ' of them a `saw` row');
+
+    var dT = diffSet(ticks.map(function (r) { return r.key; }), TICK_EXPECTED);
+    /* the worst of them by the gap between the dead reading and the truth it is lying about —
+     * picked by measurement rather than by naming a row, so the example cannot go stale */
+    var worst = ticks.slice().sort(function (x, y) {
+      return Math.abs(Number(y.truth) - Number(y.read)) - Math.abs(Number(x.truth) - Number(x.read));
+    })[0];
+    ck('2ae.4 the rows a dead gauge TICKS instead of stranding are exactly the pinned ones (#773)', dT.ok,
+       dT.note + ticks.length + ' row(s); worst gap ' + (worst ? worst.key + ' reads ' +
+         Number(worst.read).toPrecision(4) + ' dead against a true ' +
+         Number(worst.truth).toPrecision(4) : 'none'));
+
+    var dR = diffSet(relieved.map(function (x) { return x.split(' ')[0]; }), RELIEVED_EXPECTED);
+    ck('2ae.5 the rows the author already relieved are exactly the pinned ones, and the relief is off-channel (#773)',
+       dR.ok && skipped.length === 3,
+       dR.note + relieved.length + ' relieved (' + relieved.join('; ') + '); ' +
+       skipped.length + ' row(s) skipped on an unbreakable channel');
+
+    /* AND THE OVERTAKEN RELIEF SURVIVES THE INJECTION, which is the whole of its claim: the
+     * eight 1/M rows lean on `sr_energized`, and if that were graded on the same broken channel
+     * the relief would be decoration. MEASURED both ways at `hot_zero_power`. */
+    (function () {
+      var h = snapHealthy('hot_zero_power'), d = snapDead('hot_zero_power', 'source_range');
+      var pred = { p: 'sr_energized', op: '<', v: 1 };
+      var gh = grader._grade(h, pred), gd = grader._grade(d, pred);
+      ck('2ae.6 the 1/M steps’ `overtaken` reads true_state, so a dead SOURCE RANGE cannot take it too (#773)',
+         gh.graded_by === 'true_state' && gd.graded_by === 'true_state' &&
+         gh.value === gd.value && gd.met === false,
+         'sr_energized ' + gh.value + ' healthy / ' + gd.value + ' with SOURCE RANGE dead (' +
+         d.instruments.source_range + ' cps published), graded_by ' + gd.graded_by);
+    })();
+  })();
+
+  /* 2af. AN OBSERVATION STEP GRADED ON A QUANTITY THE PLANT CAN LOSE (#667 item 1, 2026-09-19).
+   *
+   * An OBSERVATION-kind step is one that authors no operator action — no `cmd`, and no cmd-kind
+   * `accs` entry (`instructor_layer.js`, "THE TEST IS DOES THE STEP AUTHOR AN OPERATOR ACTION").
+   * Nobody presses anything on it; it stands until the plant says the thing it asks the player
+   * to confirm is true. So when it grades a LIVE QUANTITY rather than a mode or a lineup fact,
+   * and the plant loses that quantity after the leg was authored, the step is unsatisfiable with
+   * nothing to press — a silent lock with no button, which is what makes it different from the
+   * dead-gauge class above.
+   *
+   * THE WORKED INSTANCE, already fixed (`6075748f`): `pwr_raise_power`'s opening confirm graded
+   * `mwe_output > 5`, so a player arriving with the turbine tripped sat on step 1 for ever. It
+   * grades `plant_mode` now — a MODE fact, which the plant does not take away while the leg
+   * runs.
+   *
+   * THE DISCRIMINATOR IS MEASURED, NOT LISTED, and that is deliberate — a hand-kept list of
+   * "losable parameters" would be a gate that tests its own map. Each row is graded on a live
+   * broadcast at the leg's own `from` and the LAYER is asked what it read it off:
+   *   `control_state` / `rps_state` -> the operator's own switch or block position, a LINEUP
+   *       fact, which nothing but the operator changes (1 row: `pwr_startup` 3, SG FEED AUTO).
+   *   `instrument` -> a gauge reading the PLANT drives. Losable by construction: every one of
+   *       these is a number the plant is free to walk away from (16 steps below).
+   *   `true_state` -> the grey band, and it is genuinely mixed: `plant_mode`, `scrammed` and
+   *       `turbine_tripped` are mode/latched facts while `letdown_flow_actual`,
+   *       `accumulator_volume_pct` and `rcp_cavitating` are quantities. Pinned as a set rather
+   *       than adjudicated here, so a new one lands in front of a reader (16 rows below).
+   *
+   * WHAT THE CHECK ASSERTS. (1) The set of observation steps grading a live quantity is exactly
+   * the pinned one, so a new one cannot join unnoticed. (2) Every one of them carries a `why` —
+   * the expandable paragraph that tells the player what to do when the confirmation does not
+   * verify, which is the only thing standing between them and a dark Continue. MEASURED on the
+   * built pool today: 31 graded observation-kind steps, 16 of them with at least one
+   * instrument-graded row, and ALL 31 already carry a `why`. So check 2af.2 is green on arrival
+   * and is a RATCHET, not a discovery — which is exactly why it is proven by injection below
+   * rather than by its own pass.
+   *
+   * INJECTION — each made to FAIL deliberately and restored, 2026-09-19:
+   *   · delete the `why` line from `pwr_raise_power` step 9 in ui/manual_procedures.js
+   *                                                          -> 2af.2 red, "NO `why`:
+   *                                                             pwr_raise_power:9"
+   *   · delete `'pwr_cooldown:8'` from LIVE_QUANTITY_EXPECTED -> 2af.1 red, "UNPINNED:
+   *                                                             pwr_cooldown:8"
+   *   · delete `'pwr_tmi2_incident:9'` from TRUE_STATE_EXPECTED -> 2af.3 red, "UNPINNED:
+   *                                                             pwr_tmi2_incident:9" */
+  (function () {
+    var grader = Object.create(RD.InstructorLayer.prototype);
+    var snaps = {};
+    function snapOf(from) {
+      if (snaps[from]) return snaps[from];
+      var svc = mkSvc(from); var s = null;
+      for (var i = 0; i < 30; i++) s = svc.tick();
+      return (snaps[from] = s);
+    }
+
+    var LIVE_QUANTITY_EXPECTED = {
+      'pwr_heatup:11': 'tavg_c',                              // "wait until AVG COOLANT reaches 542 degF"
+      'pwr_heatup:15': 'adv_valve_pct,steam_pressure_mpa',    // the Hot Standby confirm
+      'pwr_heatup:17': 'power_pct',
+      'pwr_startup:1': 'tavg_c',
+      'pwr_startup:12': 'power_pct,startup_rate_dpm',
+      'pwr_raise_power:9': 'power_pct,boron_ppm,tavg_c',
+      'pwr_raise_power:12': 'mwe_output',                     // the #667 shape, one leg later
+      'pwr_cooldown:8': 'pressure_mpa',
+      'pwr_tmi2_incident:1': 'power_pct',
+      'pwr_tmi2_incident:3': 'pressure_mpa',                  // a `saw` row, not an `acc`
+      'pwr_tmi2_incident:5': 'sg_level_pct',
+      'pwr_tmi2_incident:8': 'porv_tailpipe_temp_c',
+      'pwr_tmi2_incident:12': 'pzr_level_pct',
+      'pwr_tmi2_incident:13': 'subcooling_c',
+      'pwr_tmi2_incident:16': 'pzr_level_pct',
+      'pwr_tmi2_incident:17': 'subcooling_c',
+    };
+    var TRUE_STATE_EXPECTED = {
+      'pwr_heatup:1': 'plant_mode', 'pwr_heatup:4': 'turbine_tripped',
+      'pwr_heatup:6': 'steam_dump_valve_pct', 'pwr_heatup:12': 'rhr_active,letdown_flow_actual',
+      'pwr_heatup:15': 'plant_mode', 'pwr_heatup:16': 'reactivity_pcm',
+      'pwr_startup:11': 'sr_energized', 'pwr_startup:17': 'plant_mode',
+      'pwr_raise_power:1': 'plant_mode',
+      'pwr_cooldown:13': 'plant_mode', 'pwr_cooldown:14': 'accumulator_volume_pct',
+      'pwr_cooldown:15': 'rhr_valve_open',
+      'pwr_tmi2_incident:4': 'turbine_tripped', 'pwr_tmi2_incident:7': 'scrammed',
+      'pwr_tmi2_incident:9': 'hpi_active', 'pwr_tmi2_incident:13': 'rcp_cavitating',
+    };
+
+    var live = {}, ts = {}, lineup = {}, nObs = 0, noWhy = [];
+    POOL.forEach(function (proc) {
+      (proc.steps || []).forEach(function (st, idx) {
+        var accs = (st.accs && st.accs.length) ? st.accs : (st.acc ? [st.acc] : []);
+        if (st.cmd || accs.some(function (e) { return e && e.cmd; })) return;   // an ACTION step
+        var preds = accs.filter(function (e) { return e && e.p; });
+        if (st.saw) preds = preds.concat([st.saw]);
+        if (!preds.length) return;      // a pure dwell observation — nothing graded, nothing to lose
+        nObs++;
+        var s = snapOf(proc.from), key = proc.id + ':' + (idx + 1), bins = {};
+        preds.forEach(function (e) {
+          var by = grader._grade(s, e).graded_by;
+          (bins[by] = bins[by] || []).push(e.p);
+        });
+        if (bins.instrument) {
+          /* de-duplicated: `pwr_heatup` 11 grades tavg_c in both `acc` and `saw` */
+          var ps = bins.instrument.filter(function (p, i) { return bins.instrument.indexOf(p) === i; });
+          live[key] = ps.join(',');
+          if (!st.why) noWhy.push(key);
+        }
+        if (bins.true_state) ts[key] = bins.true_state.join(',');
+        if (bins.control_state || bins.rps_state) {
+          lineup[key] = (bins.control_state || []).concat(bins.rps_state || []).join(',');
+        }
+      });
+    });
+
+    function cmpMap(got, want) {
+      var gk = Object.keys(got), wk = Object.keys(want);
+      var extra = gk.filter(function (k) { return want[k] === undefined; });
+      var gone = wk.filter(function (k) { return got[k] === undefined; });
+      var moved = gk.filter(function (k) { return want[k] !== undefined && want[k] !== got[k]; })
+                    .map(function (k) { return k + ' now grades ' + got[k] + ' (pinned ' + want[k] + ')'; });
+      return { ok: !extra.length && !gone.length && !moved.length,
+        note: (extra.length ? 'UNPINNED: ' + extra.join(', ') + '. ' : '') +
+              (gone.length ? 'PINNED BUT NOT SEEN: ' + gone.join(', ') + '. ' : '') +
+              (moved.length ? 'CHANGED: ' + moved.join('; ') + '. ' : '') };
+    }
+
+    var dL = cmpMap(live, LIVE_QUANTITY_EXPECTED);
+    ck('2af.1 the observation steps graded on a LIVE QUANTITY are exactly the pinned set (#667 item 1)',
+       dL.ok, dL.note + Object.keys(live).length + ' of ' + nObs +
+       ' graded observation-kind steps grade at least one instrument row; ' +
+       Object.keys(lineup).length + ' grade a lineup fact, ' + Object.keys(ts).length +
+       ' a true_state field');
+
+    ck('2af.2 every observation step graded on a live quantity carries a `why` for when it does not verify (#667 item 1)',
+       noWhy.length === 0,
+       noWhy.length ? 'NO `why`: ' + noWhy.join(', ')
+         : 'all ' + Object.keys(live).length + ' carry one (e.g. pwr_raise_power step 12, the #667 shape)');
+
+    var dTS = cmpMap(ts, TRUE_STATE_EXPECTED);
+    ck('2af.3 the true_state-graded observation rows — the grey band — are the pinned set (#667 item 1)',
+       dTS.ok, dTS.note + Object.keys(ts).length + ' row(s), mode/latched facts and quantities mixed');
+  })();
 }
 
 
