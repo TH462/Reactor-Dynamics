@@ -2825,6 +2825,7 @@ function runSuite(SH, rec, quiet, only) {
     eT.applyCommand({ action: 'isolate_feedwater', value: true });
     eT.applyCommand({ action: 'set_afw', on: true });
     var t = 0, worstFlowAbove = 0, sawAbove = false, sawTaper = false, ts = null;
+    var worstDischAbove = 1e9, zeroDelivSec = 0;   /* #786 */
     while (t < 1100) {
       layT.stepAutomation(DT); ts = eT.step(DT); t += DT;
       var lvl = eT.getInstruments().sg_level;
@@ -2833,6 +2834,10 @@ function runSuite(SH, rec, quiet, only) {
       if (t > 20 && lvl > 40 && ts.afw_pump_running) {
         sawAbove = true;
         if (ts.afw_flow_normalized > worstFlowAbove) worstFlowAbove = ts.afw_flow_normalized;
+        /* #786: the gauge beside that run light, on the PLAYER's ordinary route */
+        if (ts.afw_discharge_pressure_mpa < worstDischAbove)
+          worstDischAbove = ts.afw_discharge_pressure_mpa;
+        zeroDelivSec += DT;
       }
       if (lvl < 37.5 && lvl > 33 && ts.afw_flow_normalized > 0.02 &&
           ts.afw_flow_normalized < 0.98) sawTaper = true;
@@ -2841,6 +2846,21 @@ function runSuite(SH, rec, quiet, only) {
     ck('above the band the pumps RUN and the valve delivers NOTHING — throttled shut, not secured',
        sawAbove && worstFlowAbove < 0.05 && ts.afw_pump_running === true,
        'max delivered above 40 % NR: ' + worstFlowAbove.toFixed(3) + ' of rated');
+    /* #786 — THE GAUGE BESIDE THAT RUN LIGHT, ON THE PLAYER'S OWN ROUTE. The check above is
+     * what made this a plant defect rather than a casualty corner: it states that the ordinary
+     * post-trip band runs the pumps at 0.000 of rated, and the discharge gauge was gated on
+     * DELIVERED flow, so the board drew a running pump at 0.0 psia for every second of it —
+     * MEASURED on this very fixture, 496.6 s of the first 1100 s, 45.1 % of the ride. A probe
+     * written only on the `afw_failure` injection would have passed on that plant. The value is
+     * the pump's shutoff head, because the throttle valve is downstream of both pumps and a
+     * centrifugal pump against a shut discharge sits at shutoff. */
+    ck('...and the DISCHARGE GAUGE reads the pump shutoff head through all of it — a running ' +
+       'pump always has head, on the ORDINARY route, not just under a casualty (#786)',
+       worstDischAbove > 8.0 && zeroDelivSec > 300,
+       'lowest discharge while running above the band: ' +
+       (worstDischAbove * 145.038).toFixed(1) + ' psia (' + worstDischAbove.toFixed(3) +
+       ' MPa) over ' + zeroDelivSec.toFixed(1) + ' s of pumps-running/zero-delivered ' +
+       '(the delivery gate read 0.0 psia for every one of those seconds)');
     ck('the delivery TAPERS across the sourced 33 +/- 5 % NR band — a ramp, not a step',
        sawTaper, 'partial flow observed inside the band on the way down');
     ck('the drain settles INSIDE the band with the flow throttled off both rails — the ' +

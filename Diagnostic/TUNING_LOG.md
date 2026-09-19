@@ -29,6 +29,155 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-19-develop-a (#786 — the AFW discharge gauge, and the plant question underneath it)
+
+**THE DEFECT.** `pwr2_true_state.js` published `afw_discharge_pressure_mpa` as
+`ts.afw_active === true ? Math.min(8.3, max(steam_pressure, 0.101)) : 0`, and `afw_active` is
+`aw.total_kgs > 0` — DELIVERED flow. A running auxiliary feedwater pump with its discharge path
+shut therefore read **0.0 psia (0.000 MPa)** beside a lit run light. It is the identical shape
+#782 removed from the high-head safety injection gauge one line above, and #782's own comment
+cleared this field by source read on the grounds that it *"was never wired to the signal
+pattern"* — circular, because being gated on delivery is the defect #782 removed, not an
+exemption from it.
+
+**THE MEASUREMENT THAT DECIDED IT WAS NOT A CORNER CASE.** Full stack (shell engine +
+`ControlLayer.stepAutomation`, DT 0.02), the ordinary post-trip ride: reactor trip, main feed
+isolated, both pumps started by hand — the fixture `run_pwr2_shell` group T already rides.
+
+| route | pumps running | of which zero delivered | gauge dark |
+|---|---|---|---|
+| operator: trip + isolate + hand-start (1100 s) | 1100.0 s | **496.6 s — 45.1 %** | **496.6 s** |
+| automatic: lo-lo level starts them (3000 s) | 2072.1 s | 0.0 s | 0.0 s |
+
+The flow control valve (#562) holds shut whenever narrow-range level is above its sourced
+33 ± 5 % band, so the whole recovery from above the band is pumps-running/zero-delivered. The
+automatic start fires at t=928 s with the level already BELOW the band, delivers at once, and
+never enters the regime — **the defect belonged to the route the operator actually takes**, and a
+probe written on the `afw_failure` injection alone would have passed on a plant that drew 0 psia
+through every normal post-trip hold.
+
+**THE PLANT QUESTION, AND WHY IT WAS ALREADY ANSWERED.** The issue asked whether a running pump
+with a shut discharge should read its dead-head or the steam-generator pressure through the
+existing `min()`. Three independent answers agree, and none of them is mine:
+
+1. **`Blueprint/CONTEXT.md` §6.3 has always said it** — *"AFW discharge head: SG pressure + margin
+   while delivering, pinned at SHUTOFF when demanded into a blocked discharge, 0 when not
+   demanded. Deadheaded-at-shutoff is the tell that separates `afw_blocked` from
+   `afw_active=false`."*
+2. **The RETIRED engine implemented exactly that** — `s.afw_discharge_pressure_mpa = s.afw_blocked
+   ? sg.afw_shutoff_mpa : clip(steam_pressure + margin, 0, shutoff)`, gated on `afw_pump_demand`.
+   PWR2 kept the contract line and dropped the mechanism: the #562 shape again, a spec that is the
+   surviving copy of a mechanism the shipped plant never had.
+3. **`Manuals/12` §8.4 TEACHES it** — *"AFW pumps can run against a shut discharge valve. When
+   they do, discharge pressure sits at shutoff head rather than at SG-plus-margin."* The manual has
+   been documenting behaviour the plant did not have. Hard Rule 9 runs the other way here: the
+   plant caught up to the content rather than the content following the plant, because the content
+   was the last surviving statement of the ruled design.
+
+The physics agrees and is the reason the three agree: a centrifugal pump against a shut discharge
+sits at its shutoff head, and the `min()` against steam-generator pressure is only right while the
+path to the generator is OPEN. In this plant the throttle valve (#562) and the tagged-shut block
+(#507 wave 6) are **both downstream of both pumps**, so either one shut is that boundary.
+
+**WHY THE `min()` COULD NEVER PRODUCE THE DEAD-HEAD BRANCH, unlike the HHSI line beside it.** The
+high-head injection gauge is `min(9.58, RCS pressure)` and the RCS at power is 15.41 MPa
+(2235 psia), so its `min()` *returns* the shutoff head — the dead-head case falls out for free.
+Auxiliary feedwater pumps into a generator at ~7.03 MPa (1020 psia) against an 8.3 MPa (1204 psia)
+ceiling, so this `min()` returns the generator pressure **always** and the shutoff branch was
+unreachable by construction. Two gauges one line apart, the same expression, and only one of them
+had a working dead-head.
+
+**THE EVIDENCE PASS — what it found and what it did not.** `node tools/find_source.js`, all three
+lanes, 41 documents:
+
+- **`'auxiliary feedwater pump.{0,120}(psig|psia|ft head)'` → EXIT 1, genuine zero.**
+  **`'AFW.{0,80}shutoff'` → EXIT 1, genuine zero.** There is **no auxiliary feedwater pump curve,
+  shutoff head or discharge-pressure figure in the corpus.** The 8.3 MPa is therefore **UNVERIFIED**
+  and is labelled so in the plant, the manual and the validation record. It was NOT invented for
+  this fix: it is the ceiling the contract shim already clipped this gauge at, moved to
+  `AFW.shutoff_mpa` where the plant owns it.
+- **The gauge IS prototypical** — Ginna UFSAR ch10 §10.4 (ML20339A040) lists *"Preferred auxiliary
+  feedwater pump discharge pressure"* and *"Standby auxiliary feedwater pump (SAFW) high discharge
+  pressure"* among the control-room indications. Design criterion 2 is satisfied for the channel
+  even though its VALUE is not sourced.
+- **The minimum-flow recirculation line: NOT FOUND for auxiliary feedwater.**
+  `'AFW pump.{0,80}recirc'` and `'recirculation.{0,120}AFW'` both return zero hits. The corpus has
+  recirculation lines for the **safety injection, residual heat removal and containment spray**
+  pumps (Ginna Technical Specification Bases ML20339A221: *"ensure each pump can maintain minimum
+  flow requirements when operating at or near shutoff head conditions"*), which is the shape the
+  issue anticipated — but it is not evidence about the auxiliary feedwater pumps and I am not
+  extending it to them. **UNVERIFIED claim, recorded and not acted on:** a real auxiliary feedwater
+  pump is generally fitted with a minimum-flow recirculation line so it is never truly dead-headed.
+  Even if sourced it would **not change this gauge** — at minimum flow a centrifugal pump still
+  sits at essentially its shutoff head. It would change pump SURVIVAL on a long dead-head, which
+  this model does not represent at all (no pump damage, bearing or seal model). Worth an issue if
+  the dead-head should have a consequence.
+- The retired engine's `afw_shutoff_mpa: 10.34` was commented *"≈ 1500 psi pump shutoff head"* —
+  1500 psi is the **safety injection** pump's figure from Ginna ch15, borrowed for the wrong pump.
+  The board's inspect copy still taught that number and now teaches the plant's.
+
+**WHAT LANDED.**
+
+- `engines/pwr2/pwr2_afw.js` — `AFW.shutoff_mpa` (8.3 MPa, `[open, UNVERIFIED]`, with the evidence
+  pass's verdict written in); `stepAFW` returns **`pump_turning`** and **`shutoff_mpa`**.
+  `pump_turning` is the THIRD reading beside demand and delivery: the run flag is DEMAND and stands
+  true on a dead motor (#200), `total_kgs > 0` is DELIVERY and dies behind a shut valve on a
+  healthy plant, and a discharge gauge needs neither. The constant travels with the step result
+  rather than being imported — the `adv_rated_kgs` idiom, and the reason is structural: the
+  runner's sandbox in `run_pwr2_true_state.js` supplies only the modules the shim legitimately
+  calls into, so an imported constant failed the gate immediately. The boundary caught it.
+- `engines/pwr2/pwr2_true_state.js` — the gauge reads shutoff when the path is shut, the injection
+  point while delivering, 0 when no shaft turns. **No margin term**: this plant has no pump curve,
+  so it models the two ENDS of the curve and declares the absent line.
+- Latent fix: an absent pump availability was `Math.max(0, undefined)` = **NaN**, which would
+  poison the entire secondary feed term for a hand-built Layer 5 fixture. `createAFW` always sets
+  it, so no engine-built state ever saw it.
+- The stale header in `pwr2_afw.js` and the stale `PWR2_VALIDATION.md` §31.4 line both claimed
+  `afw_discharge_pressure_mpa` was *"left declared-missing rather than invented"*. It has been
+  published for as long as the shim has existed. Both corrected, both called out as the
+  inherited-claim trap — a module header is exactly the sentence nobody re-measures.
+
+**THE CHECKS, and the injection proof for each.** Every one has a permanent entry in its runner's
+mutation array; no hand-run reverts.
+
+| runner | checks | mutations | new mutation → red |
+|---|---|---|---|
+| `run_pwr2_true_state` | 83 → **87** | 33 → **37** | delivery gate restored → **2 red**; gate falls back to demand → **1 red**; shut-path branch unreachable → **2 red**; pinned at shutoff always → **2 red** |
+| `run_pwr2_afw` | 35 → **43** | 15 → **21** | `pump_turning` from demand → **2 red**; from delivery → **2 red**; power gate reaches the turbine train → **1 red**; shutoff stops travelling → **1 red**; shutoff below the safety pop → **1 red**; absent availability back to NaN → **1 red** |
+| `run_pwr2_shell` | 192 → **193** | 75 | group T's ordinary ride; no new mutation — that array anchors `pwr2_shell.js`, and the mechanism is covered by the eight above |
+
+The four `run_pwr2_true_state` checks deliberately pin **all three branches plus the delivering
+one** — that last is the mirror #782 shipped when it re-gated a discharge gauge on `pumpKgs` and
+zero came out the other side. The group T check is the one that matters most: it asserts the gauge
+on the PLAYER's route, on a fixture that already asserted the pumps run at 0.000 of rated there.
+
+**FIVE MUTATION ANCHORS WENT BLIND AND WERE RE-POINTED.** Introducing the `mdAvail`/`tdAvail`
+locals orphaned five existing anchors in `run_pwr2_afw.js` that named `Math.max(0, af.mdafwAvail)`
+verbatim. The runner reports `ERROR anchor not found` and counts them blind, so the gate failed
+loudly rather than silently losing coverage — the file's own comment warns about exactly this. Read
+the self-test line, not just the checks tally.
+
+**MANUAL GREP** (standing rule: grep the manual for the subject of every board change).
+`Manuals/12` §8.4 already taught this behaviour and gains the measured number, the 1204 psia
+(8.3 MPa) value, the no-margin declaration and the UNVERIFIED flag; revision row 20 extended with
+item **(m)**, which also records that row 20's item **(l)** — #782's — carried the wrong clearance.
+`Manuals/06` and `Manuals/08` need nothing. **The fix makes two pieces of authored content true
+that were not:** `Manuals/08`'s TMI-2 cue *"low OTSG level, low steam pressure, high emergency
+feedwater discharge pressure"* and the walkthrough beat in `ui/manual_procedures.js` naming *"high
+auxiliary feed discharge pressure"* as one of three cues to a blocked line — on the shipped plant
+that gauge read **zero** when the line was blocked, so the cue pointed the player at an indication
+saying the opposite.
+
+**WHAT I DID NOT VERIFY.** The `afw_failure` injection was not driven end to end through the
+control failure layer — my `injectFailure('afw_failure')` call left `afw_blocked` false, so I
+measured the shut-path branch through the throttle valve and through a Layer 5 `blocked: true`
+fixture instead, both of which exercise the same `afwOpen` term. The board was not opened in a
+browser; the gauge's rendering is unverified beyond the published field, and `verify_e2e_ui` was
+not run. No claim is made that 8.3 MPa is the right shutoff head — only that it is the number this
+code already used, now owned by the plant and labelled unverified.
+
+---
+
 ## Session log — 2026-09-18-develop-g (#787 — the AFW block seat, the fourth of this shape)
 
 **THE TRAP, restated because this is the FOURTH row of it (#551's turbine row, #671's

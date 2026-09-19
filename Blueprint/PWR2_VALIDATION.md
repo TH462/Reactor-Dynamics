@@ -1348,8 +1348,14 @@ MDAFW-rated, **3.63 kg/s** TDAFW-rated — `test/run_pwr2_afw.js`, 19/19 checks,
 no blind spots.
 
 **Declared, not modelled**: no pump curve (the corpus gives one rated point per pump, not a
-head-flow curve, so `afw_discharge_pressure_mpa` stays declared-missing rather than invented — same
-reasoning as ECCS's `hpi_discharge_pressure_mpa`); no CST inventory (`afw_blocked` stays
+head-flow curve — **but `afw_discharge_pressure_mpa` is NOT declared-missing and never was**, and
+this sentence said so until #786 (2026-09-19): `pwr2_true_state.js` has published it for as long as
+that shim has existed. What the missing curve costs is the LINE, not the ends: the gauge models
+shutoff head when the discharge path is shut and the generator pressure while delivering, with no
+margin term between them. The shutoff head itself is **UNVERIFIED** — no auxiliary feedwater pump
+curve or shutoff figure exists in any lane's corpus (`find_source` exit 1) — and it lives on
+`AFW.shutoff_mpa`, riding down on the step result; same shape as ECCS's
+`hpi_discharge_pressure_mpa`, whose 9.58 MPa *is* sourced); no CST inventory (`afw_blocked` stays
 declared-missing — a real tank can run dry, this model's cannot). `pwr2_true_state.js` coverage:
 **49/109 supplied, 60 declared missing, 0 unaccounted** — the second rise today, 46 → 49, three
 fields (`afw_pump_running`, `afw_active`, `afw_flow_normalized`).

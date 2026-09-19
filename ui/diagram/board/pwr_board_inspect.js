@@ -876,8 +876,9 @@
       'If this is zero with the pump running, water is not reaching the generator.', CI, '10.0'),
     imrmsu1bl4r: e('Auxiliary Feedwater (AFW) Discharge Pressure',
       'AFW pump discharge pressure — read it against AFW FLOW, never alone.',
-      'A pump with nowhere to send water pins at its shutoff head — around 1500 psi (10.34 MPa). High discharge ' +
-      'with zero flow is the signature of a shut block valve.', CI, '10.0'),
+      'A pump with nowhere to send water pins at its shutoff head — 1204 psia (8.3 MPa). High discharge ' +
+      'with zero flow is the signature of a shut block valve, and it is also the ordinary ' +
+      'post-trip picture once the level controller throttles the valve shut.', CI, '10.0'),
     ims3xw3vue6: e('Auxiliary Feedwater (AFW) Status',
       'RUNNING, STANDBY or SECURED.',
       'RUNNING reads pump demand, not delivery — deliberately, because that is the divergence the ' +

@@ -764,9 +764,44 @@
      * above the shutoff head still read 0; that case read 0 before #782 as well. */
     put('hpi_discharge_pressure_mpa',
         (pumpKgs > 0 || ts.hpi_active === true) ? Math.min(9.58, Math.max(sys.P, 0.101)) : 0);
-    put('afw_discharge_pressure_mpa',
-        ts.afw_active === true && ts.steam_pressure_mpa !== undefined
-          ? Math.min(8.3, Math.max(ts.steam_pressure_mpa, 0.101)) : 0);
+    /* ⚠ AFW: GATED ON A TURNING SHAFT, AND IT READS SHUTOFF WHEN THE PATH IS SHUT (#786).
+     * This line was `ts.afw_active === true ? Math.min(8.3, SG pressure) : 0`, and `afw_active`
+     * is `total_kgs > 0` — DELIVERED flow. That is the same delivery gate on a discharge gauge
+     * #782 removed from HHSI one line up, and #782's own comment wrongly cleared this field on
+     * the grounds that it "was never wired to the signal pattern": being gated on delivery is
+     * the defect, not an exemption from it. It is ALSO not a casualty corner: MEASURED
+     * 2026-09-19 on the ordinary post-trip ride (trip, main feed isolated, both pumps started by
+     * hand — `run_pwr2_shell` group T's own fixture), the throttle valve holds shut above the
+     * sourced 33 +/- 5 % narrow-range band for 496.6 s of the first 1100 s — 45.1 % of the ride
+     * drew a RUNNING pump at 0.0 psia (0.000 MPa).
+     *
+     * THE FORM IS THE CONTRACT'S, NOT A NEW CALL. `Blueprint/CONTEXT.md` §6.3 has always read
+     * "SG pressure + margin while delivering, pinned at SHUTOFF when demanded into a blocked
+     * discharge, 0 when not demanded", and the RETIRED engine implemented exactly that
+     * (`afw_blocked ? afw_shutoff_mpa : clip(steam_pressure + margin, 0, shutoff)`). PWR2 kept
+     * the contract line and dropped the mechanism — the #562 shape. The physics agrees: a
+     * centrifugal pump running against a shut discharge sits at its shutoff head, and the
+     * `min()` against SG pressure is only right while the path to the generator is OPEN. Here
+     * the throttle valve (#562) and the tagged-shut block (#507 wave 6) are BOTH downstream of
+     * both pumps, so either one shut is that boundary. DECLARED, no margin term: this plant has
+     * no pump curve (`pwr2_afw.js` header) so a delivering pump reads the injection point
+     * exactly, the two ENDS of the curve without the line between them.
+     *
+     * The shutoff constant is UNVERIFIED and lives with the PLANT — `pwr2_afw.js`'s
+     * `AFW.shutoff_mpa` carries the evidence pass's genuine zero — and it RIDES DOWN ON THE STEP
+     * RESULT rather than being imported, so this file still calls into no layer (the same reason
+     * `adv_rated_kgs` is on the relief result two blocks above). `pump_turning` is likewise the
+     * pump's own answer to "is a shaft spinning": a station blackout leaves `afw_pump_running`
+     * (DEMAND) true on a dead motor, and that must not publish a head. */
+    if (aw.total_kgs !== undefined && aw.shutoff_mpa !== undefined) {
+      var afwShut = aw.shutoff_mpa;
+      var afwOpen = aw.blocked !== true && (aw.throttle === undefined ? 1 : aw.throttle) > 0;
+      put('afw_discharge_pressure_mpa',
+          aw.pump_turning !== true ? 0
+            : (afwOpen && ts.steam_pressure_mpa !== undefined
+                ? Math.min(afwShut, Math.max(ts.steam_pressure_mpa, 0.101))
+                : afwShut));
+    }
 
     /* --- rates and imbalances --- */
     if (typeof ctx.tavg_rate_c_per_hr === 'number') {

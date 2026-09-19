@@ -30,6 +30,47 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — the auxiliary feedwater discharge gauge read 0 psia on a running pump (#786)
+
+- **`afw_discharge_pressure_mpa` was gated on `afw_active`, which is `total_kgs > 0` — DELIVERED
+  flow.** So any state that ran the auxiliary feedwater pumps into a shut discharge path published
+  **0.0 psia (0.000 MPa)** beside a lit run light: the same impossible pair #782 removed from the
+  high-head safety injection gauge one line above, and the one #782's own comment wrongly cleared
+  on the grounds that the field "was never wired to the signal pattern". Being gated on delivery is
+  the defect, not an exemption from it.
+- **It was never casualty-only, which is what made it matter.** MEASURED 2026-09-19 on the ordinary
+  post-trip ride (reactor trip, main feed isolated, both pumps started by hand, full control layer
+  — the fixture `run_pwr2_shell` group T already rides): the flow control valve holds shut above
+  the sourced 33 ± 5 % narrow-range level band for **496.6 s of the first 1100 s, 45.1 % of the
+  ride**, every second of it drawing a running pump at zero. The automatic (lo-lo level) start is
+  the contrast — it starts the pumps with the level already below the band, delivers immediately,
+  and spends **0.0 s** there over 3000 s. The defect belonged to the route the operator takes.
+- **The gauge is now the form the contract has always specified** (`Blueprint/CONTEXT.md` §6.3, and
+  what the retired engine implemented): **shutoff head, 1204 psia (8.3 MPa), when the discharge
+  path is shut** — throttle valve or tagged-shut block, both downstream of both pumps — **the
+  generator pressure while delivering**, and **zero only when no shaft is turning**. A centrifugal
+  pump against a shut discharge sits at its shutoff head; the `min()` against steam-generator
+  pressure is only physically right while the path to the generator is open.
+- **`pwr2_afw.js` gained `pump_turning`**, the third reading beside demand and delivery. Neither of
+  the other two answers "is a shaft spinning": the run flag is DEMAND and stands true on a dead
+  motor through a station blackout, delivery dies behind a shut valve on a healthy one. The gauge
+  reads this, so a blacked-out motor-driven pump draws no head while the steam-driven train still
+  does (WTSM 5.7.5).
+- **The shutoff head moved to the plant and is declared UNVERIFIED.** An evidence pass across all
+  three lanes' corpora found no auxiliary feedwater pump curve, shutoff head or discharge-pressure
+  figure (`node tools/find_source.js` exit 1 on both probes). 8.3 MPa is the ceiling the contract
+  shim already clipped this gauge at — moved to `AFW.shutoff_mpa` and ridden down on the step
+  result, not invented and not changed. The corpus does confirm the gauge is prototypical: Ginna
+  UFSAR ch10 §10.4 lists auxiliary feedwater pump discharge pressure among the control-room
+  indications.
+- **Board copy corrected.** The AFW DISCHARGE PRESSURE inspect note taught the **retired** engine's
+  1500 psi (10.34 MPa) — itself the safety-injection pump's figure, borrowed — against a plant that
+  publishes 1204 psia (8.3 MPa).
+- Also fixed in passing: an absent pump availability read as `NaN` rather than full, which would
+  silently poison the whole secondary feed term for a hand-built Layer 5 fixture.
+- Gates: `run_pwr2_true_state` 83 → **87** (mutations 33 → **37**), `run_pwr2_afw` 35 → **43**
+  (mutations 15 → **21**), `run_pwr2_shell` 192 → **193**. `Manuals/12` §8.4 documented this
+  behaviour before the plant had it; it now carries the measured number and the unverified flag.
 
 ## [Alpha 1.7.6-rc2] — 2026-09-18
 
