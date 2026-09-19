@@ -29,6 +29,73 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-18-develop-e (#783 — the annunciator that promised what the plant will not do)
+
+*(OWNER RULING, 2026-09-18: "Containment as you recommend"* — option A only: fix the caption,
+keep the containment engineered safety features declared static 0 (#672), model spray and the fan
+coolers auto-only as a separately scoped #784, no player controls.*)*
+
+**THE OPEN QUESTION WAS THE `high` ROW, AND IT HAD TO BE MEASURED.** The high-high caption names
+containment spray and main steam line isolation, which #778 already measured do not happen. The
+HIGH caption names the safety-injection signal — and PWR2's protection is its OWN
+(`engines/pwr2/pwr2_protection.js`), so the shared row could have been shadowing a real channel.
+It is not shadowing anything:
+
+- **Containment pressure alone, on an otherwise healthy plant** (the atmosphere's air mass
+  inflated 4×, so containment pressure is the only thing that moved — a break would confound it
+  with a primary depressurization): the building reaches **35.3 psig (50.0 psia, 0.345 MPa)** with
+  the reactor coolant system still at **2244 psia (15.47 MPa)**. `CTMT PRESS HI` lights at
+  **31.0 s**, `CTMT PRESS HI HI` at **32.5 s**, and **safety injection never latches** — nor spray,
+  nor the fan realign, nor the isolation valves.
+- **PWR2's engineered-safeguards actuation is three functions** — low pressurizer pressure, low
+  steam pressure, high-high steam flow. **Zero** rows read containment, and containment pressure is
+  not even among the drivers `stepProtection` is handed (`pwr2_engine.js:1663`).
+- **On the large loss-of-coolant accident the injection that does occur is low-pressurizer-pressure
+  at 27.02 s**, with containment at 6.85 psig — **51.5 s before** the high-high alarm at 78.5 s.
+  A reader watching that ride would credit the containment signal for an injection it did not
+  cause, which is the second reason the caption had to go.
+
+**THE WORDING.** Both learning captions now state the condition and the line it crossed:
+`Containment Pressure High (3.5 psig)` / `Containment Pressure High-High (30 psig)`. The industry
+register named nothing and is unchanged. The override is the SECOND one in
+`pwr2_shell.getProtectionConfig`'s alarm map, beside `rod_limit_approach` — **not** an edit to
+`layers/control/pwr_control.js`, where the text is correct because that plant fires all three.
+
+**THE CHECK — `run_pwr2_kernel` band 6, and it is NOT a word ban.** *A caption a row LIGHTS may not
+name a mitigation the same ride failed to produce.* `saw` is measured on the ride, so
+`CTMT SPRAY ON`'s own caption naming spray is fine (the only ride that lights it is one where
+spray runs) and #784 building spray would lift that word's ban with no edit here. It grades
+`tile_label` off the SNAPSHOT for rows the ride actually lit — a source scan for the new wording
+proves nothing about reachability, and one for the old wording passes on a caption nothing draws.
+Injection-proven both ways: reverting the override reds `cap-no-false-promise` naming all three
+promises; putting the hi-hi ANNUNCIATOR setpoint (its own number, not the actuation constants) out
+of reach reds `cap-rows-lit`, so the ban cannot be green by grading nothing.
+
+**THE MANUAL WAS ALREADY RIGHT — a result, not a non-event.** `Manuals/06` PWR-A36/A37 say *"On
+this plant nothing acts on this signal"* and list the same three engineered-safeguards setpoints
+this session measured; A38/A39 say their tiles can never light. No manual edit, so no revision row
+and no repack. `ui/manual_data.js` carries the alarm IDs only; `ui/manual_procedures.js` and
+`pwr_board_inspect.js` mention neither caption.
+
+**A SECOND GATE HAD TO LEARN THE NEW OVERRIDE SET.** `run_pwr2_shell`'s
+`getProtectionConfig` check enumerates *which* alarm rows diverge and reds on a silent new one —
+it did exactly that here, correctly. It now carries three, and the containment arms assert that
+only the LEARNING CAPTION moved: setpoint, direction, priority, instrument and the industry string
+are pinned identical to the shared row, so a per-plant setpoint smuggled in behind a caption edit
+still reds. Two of its mutation anchors named the old `alarms:` map body and had to be re-cut —
+**an anchor that no longer matches is a BLIND mutation, not a passing one**, which is the trap that
+file's own comment already records.
+
+### Gates
+
+`run_pwr2_kernel` 45/45 (12/12 mutations) · `run_pwr2_shell` 181/181 (69/69) ·
+`run_pwr2_containment` 27/27 · `run_inspect` 11/11 62/62 · `run_autoctl` 31/31 ·
+`run_pwr2_board` 98/98. `BASELINES` updated for `run_pwr2_kernel` (41 → 45).
+**NOT run:** the aggregate (the coordinator owns it) and `run_checklist_pwr2`, which exceeds the
+600 s tool ceiling — nothing in `ui/` or `scenarios/` references either caption id (grepped).
+
+---
+
 ## Session log — 2026-09-18-develop-d (#782 · #778 · #671 · #765 — four channels that read a value the plant was not at)
 
 ### ADDENDUM — the quality pass on this bundle (2026-09-18, same lane)

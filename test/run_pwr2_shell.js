@@ -203,9 +203,15 @@ function runSuite(SH, rec, quiet, only) {
    * the annunciator shape adopted, the failures menu exactly the injectable levers. */
   var pc = eng.getProtectionConfig();
   var baseAlarms = globalThis.RD.PWR_CONFIG.protection.alarms;
-  /* ONE override since #500 closed (2026-08-29) — was two. `rod_limit_approach` 40 -> 10 (the
-   * sourced RIL+10 in this bank's own step currency) is the survivor; every other row must
-   * stay shared BY REFERENCE, and a second silent divergence reds here.
+  /* THREE overrides since #783 (2026-09-18) — was one. `rod_limit_approach` 40 -> 10 (the
+   * sourced RIL+10 in this bank's own step currency), and the two containment-pressure
+   * CAPTIONS, which on the shared table name mitigations this plant does not perform — spray,
+   * the fan realign, steam-line isolation, and (MEASURED for #783) a containment safety
+   * injection PWR2's own protection has no channel for. Every other row must stay shared BY
+   * REFERENCE, and a FOURTH silent divergence reds here. The containment arms pin that only
+   * the LEARNING CAPTION moved: setpoint, direction, priority, instrument and the industry
+   * string are asserted identical to the shared row, so a per-plant setpoint smuggled in
+   * behind a caption edit still reds.
    *
    * ⚠ THE #500 OVERRIDE IS GONE AND THAT IS THE POINT OF THIS CHANGE, not an omission. It
    * rebuilt `pzr_level_low` at 17 % because the shared table's FIXED 25.0 % is this plant's
@@ -217,11 +223,25 @@ function runSuite(SH, rec, quiet, only) {
    * shared by reference is therefore a real claim here — re-introducing a per-plant copy reds
    * it — and the second clause below pins the shape so "shared" cannot mean "shared and
    * absolute again". */
+  function capOnly(a, b, want, wasRe) {
+    return a.label_learning === want && wasRe.test(b.label_learning || '') &&
+           a.setpoint === b.setpoint && a.priority === b.priority &&
+           a.instrument === b.instrument && a.direction === b.direction &&
+           a.label_industry === b.label_industry;
+  }
+  var OVERRIDDEN = {
+    rod_limit_approach: function (a, b) { return a.setpoint === 10 && b.setpoint === 40; },
+    ctmt_press_hi: function (a, b) {
+      return capOnly(a, b, 'Containment Pressure High (3.5 psig)', /\(SI signal\)/);
+    },
+    ctmt_press_hihi: function (a, b) {
+      return capOnly(a, b, 'Containment Pressure High-High (30 psig)', /\(spray\/MSLI\)/);
+    }
+  };
   var alarmsOk = Array.isArray(pc.alarms) && pc.alarms.length === baseAlarms.length &&
     pc.alarms.every(function (a, i) {
-      return a.id === 'rod_limit_approach'
-        ? (a.setpoint === 10 && baseAlarms[i].id === 'rod_limit_approach' && baseAlarms[i].setpoint === 40)
-        : a === baseAlarms[i];
+      if (a.id !== baseAlarms[i].id) return false;
+      return OVERRIDDEN[a.id] ? OVERRIDDEN[a.id](a, baseAlarms[i]) : a === baseAlarms[i];
     }) &&
     (function () {
       var lo = pc.alarms.filter(function (a) { return a.id === 'pzr_level_low'; })[0];
@@ -270,7 +290,8 @@ function runSuite(SH, rec, quiet, only) {
      !!pc.failures.continuous_rod_withdrawal &&
      !!pc.failures.tavg_sensor_failure && !!pc.failures.porv_indicator_stuck_closed,
      'M4 gets a shape it can hold; the level ladder is program-relative on both plants ' +
-     '(#500) so no alarm row is overridden but rod_limit_approach; boron_conc by reference');
+     '(#500) so the only overridden rows are rod_limit_approach and the two containment ' +
+     'captions (#783, caption only); boron_conc by reference');
   /* THE ONE ESF ENTRY (2026-08-20, the AFAS build). The board's AUX FEED word needs
    * automation.esf.afw === 'auto' to say STANDBY, and the kernel only emits that for a
    * listed system — before this entry the tile read SECURED over an armed AFAS. commands
@@ -2916,8 +2937,16 @@ var MUTATIONS = [
    * so the mutation ADDS one. It reds both halves: the shared-by-reference sweep and the
    * ladder-shape clause beside it. */
   ['a per-plant ABSOLUTE pzr_level_low override is re-introduced (the #500 shape undone)',
-   "          return a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;",
-   "          return a.id === 'pzr_level_low'\n            ? Object.assign({}, a, { instrument: 'pzr_level', setpoint: 17.0 })\n            : a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;", { grp: 'A' }],
+   "          if (a.id === 'rod_limit_approach') return Object.assign({}, a, { setpoint: 10 });",
+   "          if (a.id === 'pzr_level_low') return Object.assign({}, a, { instrument: 'pzr_level', setpoint: 17.0 });\n          if (a.id === 'rod_limit_approach') return Object.assign({}, a, { setpoint: 10 });", { grp: 'A' }],
+  /* #783 — the containment CAPTION override dropped: PWR2 takes back the shared text naming
+   * containment spray, the steam-line isolation and a safety-injection signal it has none of.
+   * The sweep above then finds the rows shared by reference and the arm that says only the
+   * caption may move reds. run_pwr2_kernel band 6 owns the PLANT half (the mitigations
+   * measurably do not happen); this is the config half. */
+  ['the containment caption override is dropped (the shared spray/MSLI text comes back)',
+   "          if (a.id === 'ctmt_press_hi') {\n            return Object.assign({}, a, { label_learning: 'Containment Pressure High (3.5 psig)' });\n          }",
+   '', { grp: 'A' }],
   ['the shutdown group reverts to the pre-#506 snap (200 -> 0 in one frame on scram)',
    "          steps: Math.round(e.sdSteps), max_steps: bankSteps()," + NL_ +
    "          position_pct: 100 * e.sdSteps / bankSteps(),",
@@ -2966,8 +2995,8 @@ var MUTATIONS = [
    /* anchor re-cut when #500's override left the map (2026-08-29) — it used to open with the
     * `: ` that chained off the pzr_level_low arm, and an anchor that no longer matches is a
     * BLIND mutation, not a passing one. The runner's ANCHOR MISS report is what caught it. */
-   "          return a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;",
-   '          return a;', { grp: 'I' }],
+   "          if (a.id === 'rod_limit_approach') return Object.assign({}, a, { setpoint: 10 });",
+   '', { grp: 'I' }],
   ['the SECURED latch is dropped (an operator-stopped pump reads LOST) -- #507 wave 9',
    "        e._rcpSecured = true;               /* the OPERATOR stopped it — the handswitch\n                                             * reads SECURED, not LOST (#200's split) */",
    '', { grp: 'J' }],

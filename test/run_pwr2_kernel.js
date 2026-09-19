@@ -663,6 +663,104 @@ function runSuite(rec, quiet, only) {
     }
   }
 
+  /* ------------------------------------------- band 6: annunciator captions (M) (#783) */
+  /* THE INVARIANT: a caption PWR2 LIGHTS may not name a mitigation PWR2 did not perform.
+   *
+   * ⚠ IT IS NOT A WORD BAN, and that is the whole design. `saw` below is MEASURED on the
+   * ride, so a caption may name a mitigation exactly when the ride produced it — the
+   * 'Containment Spray Running' status row names spray and is fine, because the only ride
+   * that lights it is one where spray runs. Build containment spray inside this engine
+   * (#784) and the ban on that word lifts itself, with no edit here.
+   *
+   * ⚠ THE STIMULUS IS THE ATMOSPHERE'S AIR MASS, NOT A BREAK. Containment pressure is then
+   * the ONLY thing that moved, so anything that fires can only have fired on it. A
+   * loss-of-coolant accident cannot be used: it hands the plant a low-pressurizer-pressure
+   * safety injection (measured, `si_lo_pzr_press` at 27.02 s — 51.5 s BEFORE containment
+   * reaches hi-hi) and the ride could no longer say which signal caused what.
+   *
+   * ⚠ AND IT GRADES `tile_label` OFF THE SNAPSHOT, not the config string. A source scan for
+   * the new wording proves nothing about reachability, and a scan for the old wording passes
+   * on a caption nothing ever draws — the `(partial)` trap. Only rows this ride actually lit
+   * are examined, so every string graded here is one a player saw. */
+  if (grp('M')) {
+    head('6 -- CAPTIONS: a lit row may not promise a mitigation THIS ride did not produce (#783)');
+    var MITIG = [
+      { id: 'safety injection',     re: /\bSI\b|safety injection/i,             saw: false },
+      { id: 'containment spray',    re: /spray/i,                               saw: false },
+      { id: 'fan coolers',          re: /fan cooler|\bCRFC\b/i,                 saw: false },
+      { id: 'steam-line isolation', re: /\bMSLI\b|\bMSIV\b|steam[- ]line isolation/i, saw: false }
+    ];
+    var svcM = new RD.SimulationService({ seed: 0xB0A2D });
+    svcM.selectPlant('pwr2', 'hot_full_power', null, undefined);
+    svcM.running = true; svcM.timeAcceleration = 10; svcM.attentionStops = false;
+    var snapM = null, kM;
+    for (kM = 0; kM < 30; kM++) snapM = svcM.tick();
+    svcM.engine.eng.ctm.m_air *= 4.0;                /* the excursion — see the note above */
+    var litM = {}, pkM = 0, tLitM = { ctmt_press_hi: null, ctmt_press_hihi: null };
+    for (kM = 0; kM < 400; kM++) {
+      snapM = svcM.tick();
+      var tsM = svcM.engine.getTrueState(), engM = svcM.engine.eng;
+      if (tsM.containment_pressure_mpa > pkM) pkM = tsM.containment_pressure_mpa;
+      (snapM.alarms || []).forEach(function (al) {
+        if (!al.state || al.state === 'clear') return;
+        if (!litM[al.id]) litM[al.id] = { label: al.tile_label };
+        if (tLitM[al.id] === null) tLitM[al.id] = svcM.simTime;
+      });
+      if (tsM.si_actuated === true || (engM.pt && engM.pt.si === true)) MITIG[0].saw = true;
+      if (tsM.ctmt_spray_active === true) MITIG[1].saw = true;
+      if (tsM.ctmt_fan_active === true) MITIG[2].saw = true;
+      if (tsM.msiv_open === false) MITIG[3].saw = true;
+    }
+    var PSIG = function (m) { return (m * 145.038 - 14.696).toFixed(1); };
+
+    /* PRECONDITION 1 — REACHABILITY. Without both rows lit every check under this head is
+     * grading text nobody ever saw, and would keep saying so in green for ever. */
+    ck('cap-rows-lit', 'both containment captions are REACHED — the rows light on the excursion',
+       !!litM.ctmt_press_hi && !!litM.ctmt_press_hihi,
+       'peak ' + PSIG(pkM) + ' psig (' + (pkM * 145.038).toFixed(1) + ' psia), hi at ' +
+       (tLitM.ctmt_press_hi === null ? 'never' : tLitM.ctmt_press_hi.toFixed(1) + ' s') +
+       ', hi-hi at ' + (tLitM.ctmt_press_hihi === null ? 'never' : tLitM.ctmt_press_hihi.toFixed(1) + ' s'));
+
+    /* PRECONDITION 2 — THE VOCABULARY MATCHES SOMETHING REAL. The shared table's own two
+     * captions are what these regexes were written against; if a rewording there stopped
+     * matching, the ban below would pass by matching nothing. */
+    var vocabHit = (RD.PWR_CONFIG.protection.alarms || []).filter(function (a) {
+      if (a.id !== 'ctmt_press_hi' && a.id !== 'ctmt_press_hihi') return false;
+      var t = (a.label_learning || '') + ' | ' + (a.label_industry || '');
+      return MITIG.some(function (m) { return m.re.test(t); });
+    }).length;
+    ck('cap-vocab-not-vacuous', 'the vocabulary still matches the SHARED rows it was written against',
+       vocabHit === 2, vocabHit + '/2 shared containment captions name a mitigation');
+
+    /* THE MEASUREMENT the ban rests on: what containment pressure ALONE actuates here. */
+    ck('cap-ride-inert', 'containment pressure alone actuates NONE of the four on PWR2',
+       !MITIG[0].saw && !MITIG[1].saw && !MITIG[2].saw && !MITIG[3].saw,
+       MITIG.map(function (m) { return m.id + '=' + (m.saw ? 'FIRED' : 'never'); }).join(', ') +
+       ' at ' + PSIG(pkM) + ' psig');
+
+    /* THE INVARIANT. Both registers: `tile_label` is the string DRAWN in the register this
+     * kernel is in, and the live layer's own row carries the other one. */
+    var cfgM = (svcM.layer && svcM.layer.config && svcM.layer.config.alarms) ||
+               new RD.pwr2.shell.PWR2Engine({ initial_state: 'hot_full_power' })
+                 .getProtectionConfig().alarms || [];
+    var badM = [], nGraded = 0;
+    cfgM.forEach(function (a) {
+      if (!litM[a.id]) return;                        /* only rows this ride RENDERED */
+      nGraded++;
+      var txt = (litM[a.id].label || '') + ' | ' + (a.label_learning || '') + ' | ' +
+                (a.label_industry || '');
+      MITIG.forEach(function (m) {
+        if (!m.saw && m.re.test(txt)) {
+          badM.push(a.id + ' promises ' + m.id + ': "' + litM[a.id].label + '"');
+        }
+      });
+    });
+    ck('cap-no-false-promise',
+       'no caption PWR2 lit names a mitigation this plant did not perform',
+       badM.length === 0 && nGraded > 0,
+       badM.length ? badM.join(' ; ') : nGraded + ' lit rows graded against 4 mitigations');
+  }
+
   return nX;
 }
 
@@ -759,7 +857,25 @@ var MUTS = [
   ['only the close_msiv containment rows leak — PWR2\'s MSIV shuts on hi-hi', 'SH',
    'trips: [], actuations: [], interlocks: [], runbacks: [],',
    "trips: [], actuations: base.actuations.filter(function (a) { return a.action === 'close_msiv'; }), interlocks: [], runbacks: [],",
-   { grp: 'A' }]
+   { grp: 'A' }],
+
+  /* #783 — one mutation per LEG of band 6. The first reverts the caption override, so PWR2
+   * takes the shared "(SI signal)" / "(spray/MSLI)" text back and `cap-no-false-promise`
+   * reds on rows the ride proved it lights. The second puts the hi-hi ANNUNCIATOR setpoint
+   * (its own number, not the actuation constants) out of reach, so the row never lights and
+   * `cap-rows-lit` reds — without it the ban could be green by grading nothing. */
+  ['the PWR2 caption override is reverted — the shared containment text comes back', 'SH',
+   "          if (a.id === 'ctmt_press_hi') {\n" +
+   "            return Object.assign({}, a, { label_learning: 'Containment Pressure High (3.5 psig)' });\n" +
+   "          }\n" +
+   "          if (a.id === 'ctmt_press_hihi') {\n" +
+   "            return Object.assign({}, a, { label_learning: 'Containment Pressure High-High (30 psig)' });\n" +
+   "          }\n",
+   '', { grp: 'M' }],
+
+  ['the hi-hi ANNUNCIATOR setpoint goes out of reach — the caption is never drawn', 'C',
+   "direction: 'high',    setpoint: 0.3081, priority: 'critical'",
+   "direction: 'high',    setpoint: 99.0, priority: 'critical'", { grp: 'M' }]
 ];
 
 /* re-execute a module's source into RD; every consumer looks its constructor up live */

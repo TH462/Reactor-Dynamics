@@ -82,9 +82,26 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   drawn correctly on the board. The report came from a harness printing a small-fraction channel
   at a precision that rounds to zero. No change; closed with the numbers.
 
-- **Filed, not fixed:** PWR2's containment high-high annunciator is live and critical while the
-  actuations behind it are not, so it names containment spray and steam-line isolation — neither
-  of which the plant performs (#783).
+- **PWR2's containment annunciators promised mitigations the plant does not perform** (#783;
+  *OWNER RULING, 2026-09-18: "Containment as you recommend"* — caption only, the physics build
+  scoped separately as #784). The shared rows read *"Containment Pressure High (SI signal)"* and
+  *"…High-High (spray/MSLI)"*, which is true on the retired engine and false here: #778's inert
+  actuation array means containment spray, the fan-cooler realign and the steam-line isolation
+  never happen. The `high` row was **measured rather than assumed**, because PWR2's protection is
+  its own and could have carried a containment safety-injection channel — it does not.
+  Pressurizing the building to **35.3 psig (50.0 psia, 0.345 MPa)** on an otherwise healthy plant
+  lights both annunciators (31.0 s and 32.5 s) and latches **no** safety injection at all; this
+  plant's engineered-safeguards actuation is three functions — low pressurizer pressure, low steam
+  pressure, high-high steam flow — and none of them reads containment. On a large loss-of-coolant
+  accident the injection that does occur is caused by low pressurizer pressure at **27.02 s**,
+  **51.5 s before** containment reaches high-high. Both captions now state the condition and the
+  line it crossed — *"Containment Pressure High (3.5 psig)"*, *"…High-High (30 psig)"* — overridden
+  per-plant in `pwr2_shell.getProtectionConfig`; the shared text is untouched because it is correct
+  where the rows fire. The industry captions (`CTMT PRESS HI`, `CTMT PRESS HI HI`) named nothing
+  and did not change, and `Manuals/06` already documented the absence correctly. New gate band
+  (`run_pwr2_kernel` 41 → 45): **a caption a row lights may not name a mitigation the same ride
+  failed to produce** — measured per ride, not a word ban, so building the mitigation lifts the
+  ban by itself.
 
 
 ## [Alpha 1.7.6-rc1] — 2026-09-18

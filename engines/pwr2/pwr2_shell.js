@@ -1508,9 +1508,40 @@
           /* rod_limit_approach 40 -> 10 (#507 wave 8): the shared 40 is the sourced
            * "RIL + 10 steps" in pwr1's FINE-step currency (4 fine per step) — this bank's
            * steps ARE the currency, so the same physical number is 10. */
-          return a.id === 'rod_limit_approach'
-            ? Object.assign({}, a, { setpoint: 10 })
-            : a;
+          if (a.id === 'rod_limit_approach') return Object.assign({}, a, { setpoint: 10 });
+          /* THE SECOND OVERRIDE (#783, OWNER RULING 2026-09-18 "Containment as you
+           * recommend"): the two containment-pressure captions, which on the shared table
+           * name their own mitigations — "(SI signal)" and "(spray/MSLI)". On the RETIRED
+           * engine that is TRUE and must stay: its actuation table fires the safety-injection
+           * backup, containment spray, the fan-cooler realign and the steam-line isolation
+           * off exactly these two setpoints. On PWR2 not one of the four happens. #778
+           * measured why — `actuations: []` three lines up hands this plant's kernel a
+           * different, EMPTY array — and a large loss-of-coolant accident rides to 78.5 psig
+           * (0.643 MPa) with spray, fans and the main steam isolation valves all untouched.
+           *
+           * ⚠ AND THE `hi` ROW IS WRONG THE SAME WAY — MEASURED for this issue, not assumed.
+           * PWR2's protection is its own (pwr2_protection.js) and could have carried a
+           * containment safety-injection channel the retired row was merely shadowing. It
+           * does not. Pressurizing the building to 35.3 psig (49.98 psia, 0.345 MPa) on an
+           * otherwise healthy plant lights BOTH annunciators (31.0 s and 32.5 s) and latches
+           * NO safety injection: this plant's ESFAS is three rows — low pressurizer pressure,
+           * low steam pressure, high-high steam flow — and nothing in it reads containment at
+           * all. On the large loss-of-coolant accident the safety injection that does occur is
+           * caused by `si_lo_pzr_press` at 27.02 s, 51.5 s BEFORE containment reaches hi-hi.
+           *
+           * So both captions state the CONDITION and the line it crossed, and promise nothing.
+           * The industry register is bare already ('CTMT PRESS HI' / 'CTMT PRESS HI HI') and
+           * needs no override. Do NOT "fix" this in pwr_control.js — the shared text is
+           * correct on the plant that fires the rows. If #784 models spray and the fan coolers
+           * inside this engine the parenthetical is earned back, and run_pwr2_kernel band 6
+           * grades the PLANT rather than the string, so it will say so. */
+          if (a.id === 'ctmt_press_hi') {
+            return Object.assign({}, a, { label_learning: 'Containment Pressure High (3.5 psig)' });
+          }
+          if (a.id === 'ctmt_press_hihi') {
+            return Object.assign({}, a, { label_learning: 'Containment Pressure High-High (30 psig)' });
+          }
+          return a;
         }),
         failures: (function () {
           /* the pwr failures table is an OBJECT keyed by id (measured — an array filter
