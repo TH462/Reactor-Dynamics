@@ -665,6 +665,39 @@ function runSuite(SH, rec, quiet, only) {
        'active [' + eLF.getActiveFailures().join(',') + '], pumpA ' + eLF.eng.fw.pumpA +
        ', pumpB ' + eLF.eng.fw.pumpB);
   })();
+
+  /* ---- THE AFW (Auxiliary FeedWater) BLOCK SEAT (#787) -----------------------------------------
+   * SAME SHAPE AS #785's LOFW row and #671's RCP row: `eng.aw.blocked` is shared by the
+   * `afw_failure` injection AND the board's own AFW block valve (`set_afw_block`/`block_afw`, an
+   * ordinary VALVE_TOGGLE at ui/diagram/board/pwr_board_wiring.js:2706) — both drive it through
+   * the SAME `afw_block` command. Both directions, because a probe written for only one would
+   * pass on a detector that still gets the other wrong. */
+  head('THE AFW BLOCK SEAT  [#787 — filed for free when the player closes the block valve by hand]');
+  (function () {
+    var i;
+    var eAI = new SH.PWR2Engine({});
+    eAI.applyCommand({ action: 'inject_failure', failure_id: 'afw_failure' });
+    ck('#787: an INJECTED afw_failure appears in the failures list',
+       eAI.getActiveFailures().indexOf('afw_failure') !== -1,
+       'active [' + eAI.getActiveFailures().join(',') + ']');
+    eAI.applyCommand({ action: 'clear_failure', failure_id: 'afw_failure' });
+    ck('...and clear_failure clears the SEAT without throwing',
+       eAI.getActiveFailures().indexOf('afw_failure') === -1, '');
+
+    /* THE FALSE POSITIVE, measured: set_afw_block {open:false} with no injection ->
+     * getActiveFailures() ["afw_failure"]; reopening -> []. This is the TMI-2 walkthrough's
+     * own valve (Three Mile Island Unit 2) — closing and reopening it must file nothing. */
+    var eAB = new SH.PWR2Engine({});
+    eAB.applyCommand({ action: 'set_afw_block', open: false });
+    ck('#787: closing the AFW block valve BY HAND (set_afw_block {open:false}, no injection) ' +
+       'files NOTHING — the pre-fix detector reported ["afw_failure"] here',
+       eAB.getActiveFailures().indexOf('afw_failure') === -1,
+       'active [' + eAB.getActiveFailures().join(',') + '], aw.blocked ' + eAB.eng.aw.blocked);
+    eAB.applyCommand({ action: 'set_afw_block', open: true });
+    ck('...and reopening it BY HAND still files nothing',
+       eAB.getActiveFailures().indexOf('afw_failure') === -1,
+       'active [' + eAB.getActiveFailures().join(',') + '], aw.blocked ' + eAB.eng.aw.blocked);
+  })();
   }
 
   if (grp('E')) {
@@ -2423,6 +2456,26 @@ function runSuite(SH, rec, quiet, only) {
      !lwThrew && lwCf.indexOf('loss_of_feedwater') === -1,
      lwThrew ? 'THREW: ' + lwThrew : '[' + lwCf.join(',') + ']');
 
+  /* THE AFW (Auxiliary FeedWater) BLOCK SEAT RIDES THE SAVE TOO (#787, same trap #785 and #671
+   * caught: a seat added without its save key comes back un-filed while the underlying state
+   * is still exactly as injected). Asserted through the load, plus the migration half. */
+  var abA = new SH.PWR2Engine({});
+  abA.applyCommand({ action: 'inject_failure', failure_id: 'afw_failure' });
+  var abB = new SH.PWR2Engine({});
+  abB.loadState(abA.saveState());
+  var abAf = abA.getActiveFailures(), abBf = abB.getActiveFailures();
+  ck('an injected afw_failure survives a save/load round trip -- the seat is in the blob (#787)',
+     abAf.indexOf('afw_failure') !== -1 && abBf.indexOf('afw_failure') !== -1,
+     'before [' + abAf.join(',') + '] -> after [' + abBf.join(',') + ']');
+  var abOld = abA.saveState();
+  delete abOld.state.scalars._afwFailureInjected;
+  var abC = new SH.PWR2Engine({}), abThrew = '';
+  try { abC.loadState(abOld); } catch (errAb) { abThrew = errAb.message; }
+  var abCf = abThrew ? [] : abC.getActiveFailures();
+  ck('...and a PRE-SEAT save still loads, with no casualty filed (the pre-fix state)',
+     !abThrew && abCf.indexOf('afw_failure') === -1,
+     abThrew ? 'THREW: ' + abThrew : '[' + abCf.join(',') + ']');
+
   /* #544: a PRE-AIR-LEDGER save carries the containment ledger water-only under its old name.
    * Hand-build that shape (the rename makes it detectable), load, and require the SAME
    * containment temperature on the next step — the migration reconstructs the total at the
@@ -2893,6 +2946,25 @@ var MUTATIONS = [
   ['the LOFW seat is never SAVED (set correctly, but dropped from the scalars blob -- a save/load ' +
    'silently un-files a live casualty, same trap the #671 quality pass found by hand)',
    '        _lofwInjected: e._lofwInjected,', '', { grp: 'S' }],
+  /* #787 — the AFW (Auxiliary FeedWater) block seat, same shape and same two-anchor split as the
+   * LOFW one above: sever the SET and an injected afw_failure goes invisible; revert the
+   * detector to `eng.aw.blocked` and the board's own block-valve VALVE_TOGGLE files a casualty
+   * nobody injected (caught by the false-positive half of the D5 check, not the injected-appears
+   * half). */
+  ['the AFW block seat is never set (an injected afw_failure is invisible in the failures list)',
+   '        e._afwFailureInjected = true;', '', { grp: 'D5' }],
+  ['the AFW block row reads eng.aw.blocked again (the board\'s own block valve files a ' +
+   'casualty nobody injected)',
+   "    if (eng._afwFailureInjected) out.push('afw_failure');",
+   "    if (eng.aw.blocked) out.push('afw_failure');", { grp: 'D5' }],
+  /* THE SAVE-KEY GAP, closed rather than inherited, same pattern as the LOFW entry above: this
+   * mutation strips ONLY the `_afwFailureInjected` half of the combined scalars line (the
+   * `_lofwInjected` half stays intact) so the S group's save-round-trip check has its own red
+   * proof. */
+  ['the AFW block seat is never SAVED (set correctly, but dropped from the scalars blob -- a ' +
+   'save/load silently un-files a live casualty)',
+   '        _lofwInjected: e._lofwInjected, _afwFailureInjected: e._afwFailureInjected,',
+   '        _lofwInjected: e._lofwInjected,', { grp: 'S' }],
   ['the break carries no injected id again (a large LOCA reports as menu-invisible primary_leak)',
    "        if (e.brk) e.brk.injected_id = 'large_loca';", '', { grp: 'E' }],
   ['a REFUSED command is silently swallowed (reads exactly like a plant that survived it)',

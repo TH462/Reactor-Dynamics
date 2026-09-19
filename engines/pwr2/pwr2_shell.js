@@ -1098,7 +1098,19 @@
         EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevS * 1.2e-5), node: 'rcp' });
       }
       /* ---- the wave-6 rows (#507): each an engine lever, each with its own probe ---- */
-      else if (c.failure_id === 'afw_failure') EN.command(e, 'afw_block', true);
+      else if (c.failure_id === 'afw_failure') {
+        EN.command(e, 'afw_block', true);
+        /* #787: the SEAT, same precedent as #785's `_lofwInjected` and #671's `_rcpTripInjected`
+         * (:1046, :1059). `eng.aw.blocked` cannot tell this casualty from the board's own AFW
+         * (Auxiliary FeedWater) block valve — an ordinary VALVE_TOGGLE at
+         * ui/diagram/board/pwr_board_wiring.js:2706, reachable via `set_afw_block`/`block_afw` —
+         * which sets the SAME flag through the SAME `afw_block` command. MEASURED before the
+         * fix: `set_afw_block {open:false}` with no injection -> getActiveFailures()
+         * ["afw_failure"]; reopening -> []. The TMI-2 (Three Mile Island Unit 2) walkthrough has
+         * the player close and reopen this exact valve, so every normal use of it filed a
+         * casualty against the player. */
+        e._afwFailureInjected = true;
+      }
       else if (c.failure_id === 'failure_to_scram') EN.command(e, 'scram_block', true);
       else if (c.failure_id === 'anticipatory_trip_failure') EN.command(e, 'p9_defeat', true);
       else if (c.failure_id === 'failed_pzr_heaters') EN.command(e, 'pzr_heaters_failed', true);
@@ -1180,7 +1192,14 @@
         if (EN.turbineTripCauses(e).length === 0) EN.command(e, 'turbine_trip', false);
       }
       else if (c.failure_id === 'degraded_hpi') e.ec.hhsiAvail = 1;
-      else if (c.failure_id === 'afw_failure') EN.command(e, 'afw_block', false);
+      else if (c.failure_id === 'afw_failure') {
+        EN.command(e, 'afw_block', false);
+        /* #787: unset the SEAT only — leaves the operator's own valve position untouched, same
+         * rule as loss_of_feedwater's and rcp_trip's clears above. If the operator independently
+         * blocked the valve by hand, this clear (correctly) reopens it too, same as the
+         * pre-#787 behavior, because `afw_block` is one lever shared by both. */
+        e._afwFailureInjected = false;
+      }
       else if (c.failure_id === 'failure_to_scram') EN.command(e, 'scram_block', false);
       else if (c.failure_id === 'anticipatory_trip_failure') EN.command(e, 'p9_defeat', false);
       else if (c.failure_id === 'failed_pzr_heaters') EN.command(e, 'pzr_heaters_failed', false);
@@ -1814,8 +1833,13 @@
      * stacking with it (it IS a LOOP plus dead diesels; one row, the worse one) */
     if (eng.elec.blackout) out.push('station_blackout');
     else if (!eng.elec.offsite) out.push('loss_of_offsite_power');
-    /* the wave-6 levers (#507) */
-    if (eng.aw.blocked) out.push('afw_failure');
+    /* THE AFW (Auxiliary FeedWater) BLOCK ROW (#787, same precedent as the LOFW and RCP rows
+     * above). Read the SEAT (was `afw_failure` injected), not `eng.aw.blocked` — that flag is
+     * set by the SAME `afw_block` command the board's own AFW block valve uses
+     * (`set_afw_block`/`block_afw`, an ordinary VALVE_TOGGLE), so reading it here filed a
+     * casualty against a normal operator action (the TMI-2 walkthrough closes and reopens this
+     * exact valve). */
+    if (eng._afwFailureInjected) out.push('afw_failure');
     if (eng.scramBlocked) out.push('failure_to_scram');
     if (eng.p9Defeated) out.push('anticipatory_trip_failure');
     /* THE RCP ROW (#671, same precedent as the turbine row below). Read the SEAT (was
@@ -2289,17 +2313,18 @@
          * aw.blocked and the pzDrivers seats ride their own saved objects */
         scramBlocked: e.scramBlocked, runaway: e.runaway,
         /* THE CASUALTY SEATS THAT READ NOTHING ELSE (#551, #671 — added on the #671 quality
-         * pass, 2026-09-18; joined by `_lofwInjected` on #785, 2026-09-18). Every other row in
-         * `engineActiveFailures` is derived from plant state that is already in this blob;
-         * these three are seats PRECISELY because the state they stand for (`tb.tripped`,
-         * `sys.pumpTripped`, `fw.pumpA`/`pumpB`) is reached by the plant — or the operator — on
-         * its own, so a save that dropped them came back with the casualty INVISIBLE and its
-         * row gone from the Failures tab while the underlying state stayed exactly as injected.
+         * pass, 2026-09-18; joined by `_lofwInjected` on #785 and `_afwFailureInjected` on #787,
+         * both 2026-09-18). Every other row in `engineActiveFailures` is derived from plant
+         * state that is already in this blob; these four are seats PRECISELY because the state
+         * they stand for (`tb.tripped`, `sys.pumpTripped`, `fw.pumpA`/`pumpB`, `aw.blocked`) is
+         * reached by the plant — or the operator — on its own, so a save that dropped them came
+         * back with the casualty INVISIBLE and its row gone from the Failures tab while the
+         * underlying state stayed exactly as injected.
          * MEASURED before the #671 fix: inject -> ["rcp_trip"] / ["turbine_trip"], save, load ->
          * [] for both, pumpTripped still true. An old save without them lands on undefined,
          * i.e. the pre-seat state exactly. */
         _rcpTripInjected: e._rcpTripInjected, tbTripFailed: e.tbTripFailed,
-        _lofwInjected: e._lofwInjected,
+        _lofwInjected: e._lofwInjected, _afwFailureInjected: e._afwFailureInjected,
         _Qox: e._Qox, _cdAvail: e._cdAvail, _plcsAuto: e._plcsAuto,
         _pwrRate: e._pwrRate, _prevPower: e._prevPower,
         _tavgPrev: e._tavgPrev, _tavgRate: e._tavgRate, advDemand: e.advDemand,

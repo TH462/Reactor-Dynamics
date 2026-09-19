@@ -29,6 +29,69 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-18-develop-g (#787 — the AFW block seat, the fourth of this shape)
+
+**THE TRAP, restated because this is the FOURTH row of it (#551's turbine row, #671's
+`rcp_trip`, #785's `loss_of_feedwater`, now `afw_failure`): a detector inferred from state a
+normal board action can reach files a casualty against the player.** `engineActiveFailures` read
+`eng.aw.blocked` — the flag both the `afw_failure` injection AND the board's own AFW (Auxiliary
+FeedWater) block valve (`set_afw_block`/`block_afw`, an ordinary VALVE_TOGGLE at
+`ui/diagram/board/pwr_board_wiring.js:2706`) set through the SAME `afw_block` command. MEASURED,
+re-confirming #785's sweep finding rather than assuming it still held:
+
+- **Close the valve by hand**, no injection -> `getActiveFailures()` = `["afw_failure"]`.
+- **Reopen it** -> `getActiveFailures()` = `[]`.
+
+This is not an edge case: the TMI-2 (Three Mile Island Unit 2) incident walkthrough has the
+player close and reopen this exact valve, so every normal use of it filed a casualty against
+them and would raise a `failure` attention stop via `_anyNewFailure`.
+
+**THE FIX — a seat, `e._afwFailureInjected`, same precedent as #785's `_lofwInjected` and #671's
+`_rcpTripInjected`.** Set `true` alongside the existing `EN.command(e, 'afw_block', true)` call in
+`inject_failure`, `false` in `clear_failure` without touching the valve, read by
+`engineActiveFailures` in place of `eng.aw.blocked`. **Added to the `scalars` save blob in the
+SAME change** — the combined line now carries both `_lofwInjected` and `_afwFailureInjected`.
+
+**SIX PERMANENT CHECKS, new checks in `grp('D5')` plus two additions to `grp('S')` in
+`test/run_pwr2_shell.js`**, each injection-proven (red on a dedicated mutation, green after):
+1. Inject -> appears in the list -> clear -> gone.
+2. `set_afw_block {open:false}` with NO injection -> nothing filed (the false-positive
+   direction).
+3. Reopen the same valve by hand -> still nothing filed.
+4. Save/load round trip: inject -> save -> load into a fresh shell -> still reported. Dedicated
+   mutation (strip only the `_afwFailureInjected` half of the combined scalars line): **1 red**.
+5. Migration: a pre-seat save (key stripped) loads without throwing, at the falsy default.
+
+**MUTATIONS: 72 -> 75** (`+3`: seat-set severed, detector reverted to `eng.aw.blocked`,
+save-key dropped — all CAUGHT, all scoped `grp('D5')`/`grp('S')` so the replay sees them).
+
+**THE SWEEP, re-run rather than trusted from #785's write-up.** Grepped every consumer of
+`getActiveFailures()`/`active_failures` beyond the Failures tab and `clear_all_failures` (#510
+M-3): `ui/app.js`'s `hasFail()` never keys on `afw_failure` (its four call sites are RBMK/BWR
+ids — `rcic_failure`, `ic_failure`, `hpci_failure`, `msiv_closure`, all ON HOLD plants); the
+scenario files (`pwr_tmi.js`, `pwr_tmi2_common.js`, `pwr_tmi2_p3.js`) and
+`ui/manual_procedures.js:4304` only INJECT/CLEAR `afw_failure` as setup — none reads it back as
+a grading or acceptance condition. **The false positive's only damage was the Failures tab row
+and the attention stop, not a broken walkthrough grade — but that is still a casualty filed
+against the player for a documented, correct action.**
+
+**Do I believe any of this shape remain? No — checked, not assumed.** Re-verified #785's list of
+the other ten `engineActiveFailures` levers (`cw_pumps`, `hhsiAvail`, `scram_block`, `p9_defeat`,
+`pzr_heaters_failed`, `spray_stick`, `station_blackout`, `offsite_power`, `rod_runaway`,
+`porv_stick`, `break_open`) — all still written ONLY inside `inject_failure`/`clear_failure`, no
+ordinary board command reaches any of them. `afw_failure` was the one instance #785's sweep
+found and filed separately as #787; with it fixed, the sweep is now exhausted for this shell.
+
+### Gates
+
+`run_pwr2_shell` **192/192 (75/75 mutations, no blind spots)** — was 186/186 (72/72); `+6`
+checks, `+3` mutations. `BASELINES` updated in `test/run_all.js`.
+`run_pwr2_afw`, `run_pwr2_forwarding`, `run_pwr2_roundtrip`, `run_inspect` — all at recorded
+baseline, unmoved.
+**NOT run:** the aggregate (the coordinator owns it).
+
+---
+
 ## Session log — 2026-09-18-develop-f (#785 — the LOFW seat, and the same false-positive shape found once more)
 
 **THE TRAP, restated because it is the second time this class shipped in one day (#671

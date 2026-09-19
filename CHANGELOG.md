@@ -87,6 +87,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   pass found two seats that shipped without that, caught by hand, not a gate — this one has its
   own mutation).
 
+- **Closing the auxiliary feedwater block valve by hand filed a casualty against the player —
+  the exact valve the TMI-2 (Three Mile Island Unit 2) walkthrough asks them to close and
+  reopen** (#787, fourth instance of the #671/#785 shape). The detector read `aw.blocked`, which
+  the `afw_failure` injection and the board's own AFW block valve (`set_afw_block`/`block_afw`,
+  an ordinary valve toggle) both set through the same `afw_block` command: closing the valve with
+  no injection filed `["afw_failure"]`, reopening it cleared to `[]`. Now reads a seat set at
+  injection and cleared without touching the valve, added to the save blob in the same change.
+  Swept every remaining row in the detector (all ten other levers) — none shares this shape.
+
 - **Charging and letdown flow were not dead** (#765). Filed as reading 0.0 through 12.6
   plant-minutes of maximum charging. Measured: 26 gpm (99.6 L/min) charging and 12 gpm
   (44.8 L/min) letdown, matching the pump's own computed maximum to three significant figures and
