@@ -294,7 +294,7 @@ Press OFF on the reactor coolant pumps to secure them.
 
 Control: RCP ON/OFF  ·  Target: the pump cavitation alarm clears
 
-15a. PRESSURIZER LEVEL below 80 %, off the top of the scale at last
+15a. SUBCOOLING MARGIN pegged on the bottom of its scale at -50 °F
 15b. the pump cavitation alarm clears
 
 Note: One handswitch here for all the pumps. The crew stopped the loop B pumps at 1 hour 13 minutes and the loop A pumps 28 minutes later.

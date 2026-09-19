@@ -3112,7 +3112,15 @@ if (!only) {
       'pwr_cooldown:6:pressure_mpa': 1, 'pwr_cooldown:8:pressure_mpa': 1,
       'pwr_cooldown:10:pump_flow_pct': 1, 'pwr_cooldown:11:tavg_c': 1,
       'pwr_cooldown:12:spray_flow_pct': 1,
-      'pwr_tmi2_incident:5:sg_level_pct': 1, 'pwr_tmi2_incident:15:pzr_level_pct': 1,
+      /* STEP 15 USED TO BE HERE, on `pzr_level_pct < 80` (#788's content pass, 2026-09-19). The
+       * entry was the pressurizer level gauge doing a clock's job on the one leg two of the four
+       * named casualties can freeze, and it broke in BOTH directions depending on when the player
+       * clicked — see the step's own note for the measurement and for why no `implied_by` could
+       * reach it (the board carries no second measurement of pressurizer level). It now grades
+       * SUBCOOLING MARGIN, the cue that actually decides the action, which is the DERIVED channel
+       * 2ae.3 pins as unbreakable — so the row is SKIPPED here rather than pinned, and that is the
+       * `skipped.length === 4` in 2ae.5 below. */
+      'pwr_tmi2_incident:5:sg_level_pct': 1,
       'pwr_tmi2_incident:16:pzr_level_pct': 1, 'pwr_tmi2_incident:18:porv_tailpipe_temp_c': 1,
       'pwr_cooldown:4:saw:tavg_c': 1,   // `saw tavg_c < 250` — a dead tavg reads 30.00 and is "seen"
     };
@@ -3151,7 +3159,7 @@ if (!only) {
 
     var dR = diffSet(relieved.map(function (x) { return x.split(' ')[0]; }), RELIEVED_EXPECTED);
     ck('2ae.5 the rows the author already relieved are exactly the pinned ones, and the relief is off-channel (#773)',
-       dR.ok && skipped.length === 3,
+       dR.ok && skipped.length === 4,
        dR.note + relieved.length + ' relieved (' + relieved.join('; ') + '); ' +
        skipped.length + ' row(s) skipped on an unbreakable channel');
 
@@ -3362,6 +3370,40 @@ if (!only) {
    *       degC (658.4 degF) on a plant that is truly 50.01 degC (122.0 degF), so `pwr_heatup`
    *       step 11 — "Mode 3, Hot Standby reached" — ticks off on a COLD plant.
    *
+   * THE CONTENT PASS ON WHAT THIS SECTION MEASURED (2026-09-19, #773/#788). Sixteen rows, and
+   * ONE of them had an honest relief available. The adjudication, so it is not re-opened blind:
+   *   · `pwr_tmi2_incident` 15 — FIXED, and by moving the row rather than covering it. Its
+   *     `pzr_level_pct < 80` entry was a WAIT GATE: the step's own note said so ("what makes the
+   *     player wait rather than securing the pumps at ten minutes"). The cue that decides this
+   *     action is loss of subcooling, not pressurizer level, so the entry is now SUBCOOLING
+   *     MARGIN at the bottom of its scale — a channel no named casualty can freeze. 2ag.8.
+   *   · `pwr_tmi2_incident` 12 and 16 — LEFT, and the reason is the board rather than the author.
+   *     Both are SOLE rows on the gauge that IS their subject ("verify PRESSURIZER LEVEL has gone
+   *     to the top of its scale"; "verify it is falling below 50 %"), and MEASURED on a live
+   *     broadcast only two of the 88 channels carry pressurizer level — `pzr_level` and
+   *     `pzr_level_dev`, and `pwr_instruments._levelDev` builds the second out of the first
+   *     READING, so both die together. An `implied_by` needs a sibling whose own threshold
+   *     ARITHMETICALLY answers the covered row (the 2ad.2 standard); nothing on this board
+   *     computes pressurizer liquid volume, so every candidate would be a correlation. Worse, a
+   *     covering row that implies the covered one is necessarily met at or BEFORE it, and every
+   *     independent channel here is met FIRST — measured on the authored replay, the level pegs
+   *     at t = 220 s with the subcooling margin already at zero since t = 170 s and the tailpipe
+   *     on its 250 degC rail since t = 120 s — so the relief would tick the deception step off
+   *     before the deception appeared, which is #749's defect inverted.
+   *   · the five `tavg_c` rows — LEFT. `tavg_c` IS `(thot_c + tcold_c)/2` exactly
+   *     (`pwr2_sg.primaryTavg`), and tcold <= thot, so `thot_c < V` implies `tavg_c < V` by
+   *     arithmetic — the one real implication in this family. It is unusable: THOT runs half a
+   *     leg delta-T ABOVE Tavg, so a `thot_c < V` row at the same threshold is FALSE on the
+   *     authored route and would red the replay. MEASURED on `pwr_lower_power` 4, whose row is
+   *     `tavg_c < 298.1`: the authored route settles Tavg at 295.76 degC (564.4 degF) with the
+   *     leg split near 10.3 degC at full power, so THOT is about 300.9 degC. The two-sided
+   *     bound that would work (`tcold_c < 298.1 - 10.3`) needs a SECOND row, and `implied_by`
+   *     names one sibling and does not chain. `pwr_startup` 1 and `pwr_heatup` 11 are SOLE rows
+   *     besides, where no `implied_by` can reach at all.
+   * WHAT WOULD ACTUALLY CLOSE THE REMAINING SEVEN is not an implication: it is a declared relief
+   * keyed on the casualty itself, which 2ag.7 measured is already published by name in
+   * `snapshot.active_failures` for all four. That is a mechanism change and owes a ruling.
+   *
    *   pzr_level_sensor_low — STRANDS THE TMI-2 DECEPTION STEP. Step 12 is the one that teaches
    *       A4, level is not inventory: `pzr_level_pct >= 99`, the step's ONLY acceptance. Frozen
    *       at 20.0 % the gauge can never say 99, and MEASURED on the driven leg the plant's own
@@ -3404,7 +3446,8 @@ if (!only) {
    *   · pin its mode as `dead` instead of `stuck`     -> 2ag.1 red, "MISMATCH
    *     pzr_level_sensor_low: pinned pzr_level|dead|20, built pzr_level|stuck|20"
    *   · point 2ag.2's channel at `pzr_level`          -> 2ag.2 red, "3 pool row(s) grade it:
-   *     pwr_tmi2_incident:12/15/16:pzr_level_pct"
+   *     pwr_tmi2_incident:12/15/16:pzr_level_pct" (TWO since the 2026-09-19 content pass moved
+   *     step 15's entry off the channel — steps 12 and 16 are what is left)
    *   · delete `'pwr_lower_power:3:tavg_c'` from DRIFT_STRAND -> 2ag.3 red, "UNPINNED:
    *     pwr_lower_power:3:tavg_c. 5 row(s) strand, 8 false-tick, of 17 graded on the channel"
    *   · delete `'pwr_heatup:11:tavg_c'` from DRIFT_TICK      -> 2ag.3 red, "UNPINNED:
@@ -3672,8 +3715,11 @@ if (!only) {
      * verdict does not depend on when the player clicked. */
     (function () {
       var LOW_STRAND = { 'pwr_tmi2_incident:12:pzr_level_pct': 1 };
-      var LOW_TICK = { 'pwr_tmi2_incident:15:pzr_level_pct': 1,
-                       'pwr_tmi2_incident:16:pzr_level_pct': 1 };
+      /* STEP 15 LEFT THIS SET on 2026-09-19 — its `pzr_level_pct < 80` entry is gone, replaced by
+       * SUBCOOLING MARGIN at the bottom of its scale (2ag.8 is the measurement). Steps 12 and 16
+       * stay: both are SOLE rows on the gauge whose reading is the step's whole subject, and the
+       * pool has nothing to relieve them with — see the header's adjudication. */
+      var LOW_TICK = { 'pwr_tmi2_incident:16:pzr_level_pct': 1 };
       var base = tmiSweep(null, 0), low = tmiSweep('pzr_level_sensor_low', 0);
       var dS = diffSet(low.strand, LOW_STRAND), dT = diffSet(low.tick, LOW_TICK);
       /* THE CONTROL: on the same rig with nothing injected NO row strands and step 12's
@@ -3708,19 +3754,22 @@ if (!only) {
     (function () {
       var early = tmiSweep('pzr_level_sensor_stuck', 0);
       var late = tmiSweep('pzr_level_sensor_stuck', 150);
-      var K12 = 'pwr_tmi2_incident:12:pzr_level_pct', K15 = 'pwr_tmi2_incident:15:pzr_level_pct',
+      var K12 = 'pwr_tmi2_incident:12:pzr_level_pct',
           K16 = 'pwr_tmi2_incident:16:pzr_level_pct';
-      var earlyOk = early.froze < 80 && early.endMet[K12] === false && early.endMet[K15] === true;
-      var lateOk = late.froze >= 99 && late.endMet[K12] === true &&
-                   late.endMet[K15] === false && late.endMet[K16] === false;
+      /* STEP 15 IS NO LONGER IN THIS MEASUREMENT (2026-09-19): it authors no pzr_level row, so
+       * `tmiSweep` cannot see it and neither casualty can reach it. 2ag.8 is the check that says
+       * so, and it asserts the OLD entry would still have broken on this same rig — otherwise
+       * "the casualty no longer breaks step 15" would be true of a rig that had stopped driving. */
+      var earlyOk = early.froze < 80 && early.endMet[K12] === false && early.endMet[K16] === false;
+      var lateOk = late.froze >= 99 && late.endMet[K12] === true && late.endMet[K16] === false;
       ck('2ag.5 ...and a STUCK gauge breaks a DIFFERENT set depending on when it was clicked (#788)',
          earlyOk && lateOk,
          'clicked at ' + Number(early.froze).toFixed(2) + ' % -> step 12 ' + early.endMet[K12] +
-         ', 15 ' + early.endMet[K15] + ', 16 ' + early.endMet[K16] +
+         ', 16 ' + early.endMet[K16] +
          '  |  clicked at ' + Number(late.froze).toFixed(2) + ' % -> step 12 ' + late.endMet[K12] +
-         ', 15 ' + late.endMet[K15] + ', 16 ' + late.endMet[K16] +
-         ' - steps 15 and 16 are permanently unmet on a gauge stuck high, and 2ae pins both in ' +
-         'TICK_EXPECTED because a DEAD gauge reads 0.0 % and satisfies them');
+         ', 16 ' + late.endMet[K16] +
+         ' - step 16 is permanently unmet on a gauge stuck high, and 2ae pins it in ' +
+         'TICK_EXPECTED because a DEAD gauge reads 0.0 % and satisfies it');
     })();
 
     /* --- 2ag.6 THE FAILURE MODEL'S OWN DEFECT, pinned as a canary (see the header). `drift`
@@ -3781,6 +3830,152 @@ if (!only) {
          '; panel dead pzr_level reads ' + panel.reading + ' with active_failures ' +
          JSON.stringify(panel.published) + ' and engine.getActiveFailures() ' +
          JSON.stringify(panel.engine));
+    })();
+
+    /* --- 2ag.8 THE RELIEF #788 ACTUALLY SHIPPED: step 15's wait entry is off the breakable
+     * channel (content pass, 2026-09-19).
+     *
+     * The step asks the player to secure the reactor coolant pumps at 1 h 13 min, and the entry
+     * that made them WAIT for it was `pzr_level_pct < 80`. That is the pressurizer level gauge
+     * keeping a clock, on the one leg two of the four named casualties freeze, and it broke in
+     * both directions at once: frozen at 20.0 % it is satisfied from the injection onward (the
+     * player secures at ten minutes, which is what the entry existed to stop); frozen while the
+     * gauge is pegged it can never be satisfied at all and the step is a soft lock. The step now
+     * grades SUBCOOLING MARGIN at the bottom of its scale — the cue that decides this action,
+     * and the DERIVED channel 2ae.3 measures as refusing an instrument failure silently.
+     *
+     * THREE CLAIMS, because the first two are hollow apart. (1) No entry of the step grades a
+     * param the layer maps to `pzr_level` — asked of the MAP, not of a list. (2) THE OLD ENTRY
+     * WOULD STILL BREAK ON THIS RIG: graded alongside, it false-ticks on hundreds of the same
+     * broadcasts, so "the casualty no longer reaches step 15" is a fact about the step and not
+     * about a rig that has stopped driving the plant into the deception. (3) The wait is still a
+     * wait: the new entry is unmet through all 300 broadcasts on BOTH rigs — measured on the
+     * authored replay, the margin reaches its -28.00 degC (-50.4 degF) floor at t = 3420 s
+     * (57.0 min) against the old entry's 3980 s (66.3 min) and the replay's own press at 4400 s.
+     *
+     * INJECTION (2026-09-19): restore `{p:'pzr_level_pct',op:'<',v:80}` as the step's first entry
+     * -> 2ag.8 red, "step 15 grades pzr_level on 1 entry"; and 2ae.4 red with it, "UNPINNED:
+     * pwr_tmi2_incident:15:pzr_level_pct", and 2ag.4 red, same key. Raise the new entry's
+     * threshold to `<= 0` (a margin the plant reaches in three minutes) -> 2ag.8 red, "the wait
+     * entry is met on 300/300 broadcasts". */
+    (function () {
+      var st = null;
+      POOL.forEach(function (p) {
+        if (p.id === 'pwr_tmi2_incident') st = (p.steps || [])[14];
+      });
+      var accs = (st && st.accs) || [];
+      var onLevel = accs.filter(function (e) { return e && e.p && MAP[e.p] === 'pzr_level'; });
+      var wait = accs.filter(function (e) { return e && e.p === 'subcooling_c'; })[0];
+      var OLD = { p: 'pzr_level_pct', op: '<', v: 80 };
+      function drive(fid) {
+        var w = boot('hot_full_power', 60), s = w.snap, i;
+        w.svc.handleCommand({ action: 'inject_failure', failure_id: 'anticipatory_trip_failure' });
+        for (i = 0; i < 20; i++) s = w.svc.tick();
+        w.svc.handleCommand({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
+        w.svc.handleCommand({ action: 'inject_failure', failure_id: 'stuck_porv_open' });
+        if (fid) w.svc.handleCommand({ action: 'inject_failure', failure_id: fid });
+        var old = 0, met = 0, N = 300;
+        for (i = 0; i < N; i++) {
+          s = w.svc.tick();
+          if (grader._grade(s, OLD).met && !grader._predMet(s.true_state.pzr_level_pct, OLD)) old++;
+          if (wait && grader._grade(s, wait).met) met++;
+        }
+        return { old: old, met: met, N: N, gauge: s.instruments.pzr_level,
+                 margin: s.instruments.subcooling_margin };
+      }
+      var base = drive(null), low = drive('pzr_level_sensor_low');
+      ck('2ag.8 step 15’s wait entry is off the channel the casualty freezes, and it is still a wait (#788)',
+         onLevel.length === 0 && !!wait && low.old >= 200 && base.old <= 5 &&
+         low.met === 0 && base.met === 0,
+         (onLevel.length ? 'step 15 grades pzr_level on ' + onLevel.length + ' entry(ies): ' +
+            onLevel.map(function (e) { return e.p; }).join(', ') + '. '
+                         : 'no entry of step 15 grades pzr_level; ') +
+         (wait ? 'the wait entry is ' + wait.p + ' ' + wait.op + ' ' + wait.v + ', met on ' +
+            low.met + '/' + low.N + ' broadcasts with the casualty in and ' + base.met + '/' +
+            base.N + ' without (the margin reads ' + Number(low.margin).toFixed(2) +
+            ' degC at the end of the window, its floor is -28.00 and it arrives at 57.0 plant-min); '
+               : 'NO SUBCOOLING ENTRY ON STEP 15; ') +
+         'CONTROL: the OLD `pzr_level_pct < 80` entry false-ticks on ' + low.old + '/' + low.N +
+         ' broadcasts with the gauge frozen at ' + Number(low.gauge).toFixed(2) + ' % against ' +
+         base.old + '/' + base.N + ' un-injected');
+    })();
+
+    /* --- 2ag.9 THE DRIFT SWEEP'S BLIND SPOT: A DERIVED CHANNEL INHERITS ITS INPUTS' CASUALTIES
+     * (#788 content pass, 2026-09-19 — found while adjudicating step 15, not looked for).
+     *
+     * 2ag.3 answers "what does `tavg_sensor_failure` break?" by sweeping the rows whose channel
+     * is `tavg`. SUBCOOLING MARGIN is Tsat(primary_pressure) - tavg, both instrument readings
+     * (`pwr_instruments`), so a drifting T-avg drags it too — and its rows have channel
+     * `subcooling_margin`, which that filter cannot see. FOUR rows on the TMI-2 leg grade it and
+     * a drifting T-avg breaks EVERY ONE, three by false-tick and one by soft lock. So 2ag.3's
+     * "5 strand, 8 false-tick of 17" is the count for the rows named after the channel, not the
+     * count for the casualty.
+     *
+     * MEASURED on the leg driven by its own injections (`hot_full_power`, seed 7, 60x, 300
+     * broadcasts, drift injected with the accident): the gauge reads 1004.69 degC (1840.4 degF)
+     * at the end of the window against a true 131.69 degC (269.0 degF), and the margin it feeds
+     * reads -28.00 degC (-50.4 degF) against a true +88.02 degC (+158.4 degF).
+     *   step 13  `subcooling_c <= 0.56`      false-ticks 286/300, first at broadcast 14
+     *   step 15  `subcooling_c <= -27.778`   false-ticks 276/300, first at broadcast 24
+     *   step 17  `subcooling_c <= -27.778`   false-ticks 276/300
+     *   step 19  `subcooling_c > 5.56`       STRANDS     289/300 — an unrecorded soft lock
+     * Un-injected control on the same rig: 0, 0, 0, and 1 broadcast on step 19, which is the
+     * instrument lag straddle PERSIST exists for.
+     *
+     * PINNED, NOT FIXED. Three of the four rows predate this pass and the fourth is step 15's
+     * new entry; every one of them is the honest reading of a tile the player is told to watch,
+     * and the relief they need is the same one steps 12 and 16 need — a declaration keyed on the
+     * casualty, which 2ag.7 measured is already published by name.
+     *
+     * INJECTION (2026-09-19): drop step 19's key from SUB_STRAND -> red, "UNPINNED:
+     * pwr_tmi2_incident:19:subcooling_c"; pin step 13 in SUB_STRAND as well -> red, "PINNED BUT
+     * NOT SEEN". Grading `subcooling_c` on true_state instead of the instrument would clear the
+     * whole set, which is why the control below asserts the un-injected rig stays quiet. */
+    (function () {
+      var SUB_TICK = { 'pwr_tmi2_incident:13:subcooling_c': 1, 'pwr_tmi2_incident:15:subcooling_c': 1,
+                       'pwr_tmi2_incident:17:subcooling_c': 1 };
+      var SUB_STRAND = { 'pwr_tmi2_incident:19:subcooling_c': 1 };
+      var mine = rows.filter(function (r) { return r.chan === 'subcooling_margin'; });
+      function sweep(fid) {
+        var w = boot('hot_full_power', 60), s = w.snap, i;
+        w.svc.handleCommand({ action: 'inject_failure', failure_id: 'anticipatory_trip_failure' });
+        for (i = 0; i < 20; i++) s = w.svc.tick();
+        w.svc.handleCommand({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
+        w.svc.handleCommand({ action: 'inject_failure', failure_id: 'stuck_porv_open' });
+        if (fid) w.svc.handleCommand({ action: 'inject_failure', failure_id: fid });
+        var acc = {}; mine.forEach(function (r) { acc[r.key] = { s: 0, t: 0 }; });
+        var N = 300;
+        for (i = 0; i < N; i++) {
+          s = w.svc.tick();
+          mine.forEach(function (r) {
+            var g = grader._grade(s, r.en).met, tm = truthMet(s, r.en);
+            if (!g && tm) acc[r.key].s++;
+            if (g && !tm) acc[r.key].t++;
+          });
+        }
+        var strand = [], tick = [];
+        mine.forEach(function (r) {
+          if (acc[r.key].s >= PERSIST) strand.push(r.key);
+          if (acc[r.key].t >= PERSIST) tick.push(r.key);
+        });
+        return { strand: strand, tick: tick, acc: acc, N: N,
+                 tavg: s.instruments.tavg, ttavg: s.true_state.tavg_c,
+                 marg: s.instruments.subcooling_margin, tmarg: s.true_state.subcooling_c };
+      }
+      var base = sweep(null), dr = sweep('tavg_sensor_failure');
+      var dS = diffSet(dr.strand, SUB_STRAND), dT = diffSet(dr.tick, SUB_TICK);
+      var control = base.strand.length === 0 && base.tick.length === 0;
+      ck('2ag.9 a DRIFTING T-avg breaks every SUBCOOLING MARGIN row, which 2ag.3’s channel filter cannot see (#788)',
+         mine.length === 4 && dS.ok && dT.ok && control,
+         dS.note + dT.note + mine.length + ' pool row(s) grade the derived channel, ' +
+         dr.tick.length + ' false-tick and ' + dr.strand.length + ' strand under the drift; ' +
+         (control ? 'control: the un-injected rig does neither on any of them. '
+                  : 'CONTROL FAILED: un-injected rig strands [' + base.strand.join(', ') +
+                    '] and false-ticks [' + base.tick.join(', ') + ']. ') +
+         'T-avg reads ' + Number(dr.tavg).toFixed(2) + ' degC (' +
+         (dr.tavg * 9 / 5 + 32).toFixed(1) + ' degF) against a true ' + Number(dr.ttavg).toFixed(2) +
+         ', and the margin it feeds reads ' + Number(dr.marg).toFixed(2) + ' degC against a true ' +
+         Number(dr.tmarg).toFixed(2));
     })();
   })();
 }

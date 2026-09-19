@@ -4167,8 +4167,10 @@
      *  5. RCP FLOW IS USELESS AS THE SECURING'S ACCEPTANCE. It reads 16.4 % before the press
      *     and 16.3 % after (the void has already taken it), and only falls under 10 % at
      *     209 min. What changes at the press is the cavitation alarm, which clears on the next
-     *     broadcast — so the step is graded on that plus the pressurizer level finally leaving
-     *     the top of the scale, which is what makes the wait real.
+     *     broadcast — so the step is graded on that plus SUBCOOLING MARGIN reaching the bottom
+     *     of its scale, which is what makes the wait real. That second entry was PRESSURIZER
+     *     LEVEL below 80 % until #788; see step 15's own note for the measurement that moved it
+     *     off a channel two of the four named casualties freeze.
      *
      * PREVIEW-ONLY *(plan R4, ruled)*: `site/flags.js` carries
      * `procedure:pwr_tmi2_incident: 'preview'` until a layman and an operator playthrough both
@@ -4437,7 +4439,25 @@
           hl: ['ECCS', 'HPI/LPI'] },
         /* 12 — 04:06:28. App. II.1 E43, "Pressurizer level goes offscale high (greater than 400
          * inches)". MEASURED: pzr_level pegs at 100 % from t+205 s and holds it to 51.3 min.
-         * Manuals/08 §3. */
+         * Manuals/08 §3.
+         *
+         * THIS ROW HAS NO RELIEF AND THAT IS A FACT ABOUT THE BOARD, NOT AN OVERSIGHT (#788
+         * adjudication, 2026-09-19 — do not re-open it without reading this). It is the step's
+         * ONLY acceptance, so `implied_by` cannot reach it at all, and two of the four named
+         * instrument casualties freeze the channel it grades: at 20.0 % the step is a soft lock
+         * (MEASURED on the leg driven by its own injections, the criterion is met on 259 of 300
+         * broadcasts and the frozen gauge refuses every one, against a true 100.00 %). Nothing
+         * can cover it: of the 88 channels in a live broadcast only `pzr_level` and the derived
+         * `pzr_level_dev` carry pressurizer level, `pwr_instruments._levelDev` builds the second
+         * out of the FIRST READING so both die together, and MEASURED on the authored replay
+         * `pzr_level_dev` is pinned at its +40-point range rail through the whole deception and
+         * carries no information anyway. Every independent channel is already past its own
+         * threshold BEFORE the level pegs — the margin has been at zero since t = 170 s and the
+         * tailpipe on its 250 degC rail since t = 120 s against the peg at t = 220 s — so a
+         * covering row would tick the deception step off before the deception appeared. The
+         * honest fix is a relief declared against the named casualty itself, which
+         * `run_checklist_pwr2` 2ag.7 measured is published in `active_failures`; that is a
+         * mechanism and owes a ruling. */
         { text: 'Verify PRESSURIZER LEVEL has gone to the top of its scale and is sitting there.',
           why: 'The one gauge the crew had for how much water was in the plant now reads full while the plant empties. Level is not inventory: steam in the hot legs drives water up the surge line, so the pressurizer fills as the core loses water.',
           /* THE VESSEL IS DRAWN FULL HERE AND THAT IS CORRECT (#670 Phase 3, layman pass S-8).
@@ -4518,28 +4538,81 @@
         /* 15 — 05:13:37. App. II.1 E99 (loop B) and E111 (loop A, 1 h 41 min). ONE HANDSWITCH
          * on this board — trap 4 in the header. MEASURED: `rcp_cavitating` clears on the next
          * broadcast after the press (4380 -> 4381 s); RCP FLOW does NOT move (16.4 % -> 16.3 %,
-         * trap 5), so it is not the acceptance. PRESSURIZER LEVEL leaves 99.5 % at 51.3 min and
-         * is below 80 % near 65 min, 72 % at this step's own clock — that entry is what makes
-         * the player wait rather than securing the pumps at ten minutes. Manuals/08 §4. */
+         * trap 5), so it is not the acceptance. Manuals/08 §4.
+         *
+         * THE WAIT ENTRY WAS `pzr_level_pct < 80` UNTIL #788, AND IT WAS THE PRESSURIZER LEVEL
+         * GAUGE DOING A CLOCK'S JOB. Two of the four named instrument casualties freeze that one
+         * channel — `pzr_level_sensor_low` at 20.0 % and `pzr_level_sensor_stuck` at whatever the
+         * gauge reads when the player clicks — so the entry broke in BOTH directions and the
+         * direction depended only on the moment of the click. MEASURED on the leg driven by its
+         * own injections (`hot_full_power`, seed 7, 60x, 300 broadcasts): frozen at 20.0 % the
+         * entry is satisfied from the injection onward and ticks on 267 broadcasts the plant's own
+         * truth did not satisfy — the player secures the pumps at ten minutes, which is exactly
+         * what the entry existed to prevent; frozen while the gauge is pegged at 99.97 % it is
+         * PERMANENTLY unmet and the step is a soft lock. No `implied_by` can relieve it: of the 88
+         * channels in a live broadcast only `pzr_level` and the derived `pzr_level_dev` carry
+         * pressurizer level (`pwr_instruments._levelDev` builds the second out of the first
+         * reading), so the board has no second measurement of the quantity and any covering row
+         * would be asserting something it cannot see.
+         *
+         * SO THE WAIT IS GRADED ON THE CUE THAT ACTUALLY DECIDES THIS ACTION. The step's own `why`
+         * already says it — the pumps are pushing steam — and loss of subcooling, not pressurizer
+         * level, is what tells an operator a reactor coolant pump has to come off. SUBCOOLING
+         * MARGIN is a DERIVED channel (Tsat of the pressure gauge minus the T-avg gauge) and
+         * refuses an instrument failure aimed AT IT silently, which `run_checklist_pwr2` 2ae.3
+         * measures and pins — so neither pressurizer-level casualty can reach this entry.
+         *
+         * MEASURED on the authored replay (seed 42, 1 s per tick):
+         *     SUBCOOLING MARGIN reaches its -28.00 degC (-50.4 degF) floor  t = 3420 s, 57.0 min
+         *     PRESSURIZER LEVEL first below 80 %                            t = 3980 s, 66.3 min
+         *     the cavitation alarm clears — the replay's press              t = 4400 s, 73.3 min
+         * so both readings are long since met when the replay presses, the replay is unchanged,
+         * and a live player who advances on the criteria waits 57.0 plant-minutes instead of 66.3.
+         * The 9.3-minute difference is recorded rather than hidden: it is the price of grading a
+         * channel the player cannot break, and it is still six times the ten-minute press the old
+         * entry was written to stop.
+         *
+         * ⚠ IT IS NOT IMMUNE TO ALL FOUR CASUALTIES, AND THAT IS STATED HERE RATHER THAN
+         * DISCOVERED LATER. A DERIVED channel inherits its INPUTS' casualties:
+         * `tavg_sensor_failure` drifts the T-avg gauge upward without bound and the margin is
+         * built out of it. MEASURED on the same driven rig with the drift injected at the
+         * accident: this entry false-ticks from broadcast 24 (about 144 s in) and on 276 of 300
+         * broadcasts the plant's own truth did not satisfy. THE LEG ALREADY CARRIED THAT EXPOSURE
+         * ON THREE OTHER ROWS — steps 13 (286/300), 17 (276/300) and 19, which STRANDS on 289/300
+         * — so this entry joins an existing family rather than opening a new one, and the trade
+         * is a FALSE-TICK under one casualty for a SOFT LOCK under two. `run_checklist_pwr2`
+         * 2ag.9 pins all four; 2ag.3's drift sweep could never see them, because it filters on
+         * the `tavg` channel and these rows grade `subcooling_margin`. */
         { text: 'Press OFF on the reactor coolant pumps to secure them.',
           crew: true,
           control: 'RCP ON/OFF', target: 'the pump cavitation alarm clears',
           why: 'The pumps have been shaking for over an hour because they are pumping steam as much as water. Securing them is the right answer to a cavitating pump, and it also removes the only thing stirring the core.',
           note: 'One handswitch here for all the pumps. The crew stopped the loop B pumps at 1 hour 13 minutes and the loop A pumps 28 minutes later.',
-          wait_hint: 'PRESSURIZER LEVEL comes off the top of its scale near 65 plant-minutes. That is the reading to wait for before securing the pumps.',
+          wait_hint: 'SUBCOOLING MARGIN reaches the bottom of its scale near 57 plant-minutes. That is the reading to wait for before securing the pumps.',
           story: { clock: '05:13:37',
             saw: 'Rising vibration on the loop B pumps, with flow and amperage falling away.',
             knew: '"Further operation could cause severe damage." The pumps had been running without suction head for an hour.',
             did: 'They stopped the loop B pumps, and the loop A pumps 28 minutes later.' },
           cmd: { action: 'set_rcp', running: false }, hold: 1680,
-          accs: [{ p: 'pzr_level_pct', op: '<', v: 80, label: 'PRESSURIZER LEVEL below 80 %, off the top of the scale at last' },
+          accs: [{ p: 'subcooling_c', op: '<=', v: -27.778, label: 'SUBCOOLING MARGIN pegged on the bottom of its scale at -50 °F' },
                  { p: 'rcp_cavitating', op: '<', v: 1, label: 'the pump cavitation alarm clears' }],
-          hl: ['RCP Run/Stop'], hl_watch: ['Pressurizer Level'] },
+          hl: ['RCP Run/Stop'], hl_watch: ['Subcooling Margin'] },
         /* 16 — 05:41:37, loop A's clock (E111) and §II.A's "circulation of coolant decreased
          * drastically, because natural circulation was blocked by steam". A VERIFY, and it
          * carries no `crew` tag — see trap 4. MEASURED: PRESSURIZER LEVEL crosses 50 % at
          * 94.9 min (72 % at 73 min, 45 % at 101 min), so this is the deception reversing.
-         * Manuals/08 §4. */
+         * Manuals/08 §4.
+         *
+         * SAME NO-RELIEF VERDICT AS STEP 12 (#788, 2026-09-19), and for the same reason: a SOLE
+         * row on the one channel that measures the thing the step exists to observe. Frozen at
+         * 20.0 % it FALSE-TICKS on 290 of 300 broadcasts the truth did not satisfy; frozen while
+         * the gauge is pegged it is permanently unmet. A corroborating sibling would close the
+         * false-tick half only if it arrived near the crossing, and MEASURED on the authored
+         * replay the level reaches 50 % at t = 5800 s with every independent candidate either
+         * long past its own threshold (SUBCOOLING MARGIN on its floor since t = 3420 s) or
+         * separated from the crossing only by a number chosen to fit it (PRIMARY PRESSURE
+         * 3.89 MPa / 564 psia here, 4.14 MPa / 600 psia 14 plant-minutes earlier). Read step 15's
+         * note for the one row on this leg that COULD honestly move, and why this one cannot. */
         { text: 'Verify PRESSURIZER LEVEL is falling: below 50 % and still going down.',
           why: 'The gauge that read full for 48 minutes is falling now, and nothing has been put right: the plant is too empty to hold the pressurizer up any longer. From here the core boils and uncovers with the relief valve still open.',
           story: { clock: '05:41:37',
