@@ -888,6 +888,48 @@ The **setpoint is 87 % of rated, blocked below P-7 (8 % power)**. Measured on th
 > **Note what this plant does NOT do**, because the difference is the point: the core still does not void (peak 0.000) and peak fuel reaches **1292 °F (700 °C)**, far below any damage threshold. The ΔT protection is fast enough here that a lying flow channel costs about four seconds and a different trip, not a damaged core. On a plant with weaker ΔT protection the same lie is far more expensive.
 
 *(These two figures are read from the protection layer directly, which is where the trip logic lives; the board's own channels are published through the reused instrument layer and are one step removed from them.)*
+### 10.8 Pressurizer pressure is ONE channel too — and its two failure directions do opposite things
+
+**DECLARED SIMPLIFICATION** *(OWNER RULING, 2026-09-19)*. **This plant carries one pressurizer-pressure channel.** A real Westinghouse unit separates the *controlling* channel from the *protection* channels and acts on coincidence, so one lying transmitter can neither cause nor defeat a protective action:
+
+> "The same sensors (PT-429, PT-430, and PT-431) provide input to the Pressurizer Pressure-High and -Low trips and the Overtemperature ΔT trip with the exception that the Pressurizer Pressure-Low and Overtemperature ΔT trips also receive input from PT-449. Since the Pressurizer Pressure channels are also used for other control functions, **the actuation logic must be able to withstand an input failure to the control system**, which may then require the protection function actuation, and a single failure in the other channels providing the protection function actuation." — Ginna Technical Specification Bases B 3.3.1 (ML20339A221); the Pressurizer Pressure-Low LCO requires **four** channels.
+
+The training manual for the same failure makes the separation visible: on a real unit the controlling channel failing high sends the *control* system to maximum spray while "the decreasing pressure on **the three 'good' channels** is lowering the Overtemperature ΔT trip and runback setpoints" — the protection keeps telling the truth and eventually trips the plant (Westinghouse Technology Advanced Manual, WAT 05 *Transients*, ML11216A094, Transient 5.41, *Controlling Pressurizer Pressure Channel Fails High*, p. 5-131).
+
+**Here there is no second channel to be right.** This is the same departure §10.7 declares for RCS loop flow, and it is the wider one, because more hangs off this channel than any other on the board:
+
+| What reads the pressurizer-pressure channel | What it does |
+|---|---|
+| Heater and spray proportional ladder | Holds pressure on the operator's setpoint |
+| **PORV automatic lift**, at setpoint **+100 psi (+0.69 MPa)** | The first stage of the relief ladder (§7.4) |
+| **Pressurizer Pressure — High** reactor trip | Trips the reactor |
+| **Pressurizer Pressure — Low** reactor trip | Trips the reactor |
+| **Safety injection on low pressurizer pressure** | Starts injection; sheds the pressurizer heaters |
+| The pressure term of the **Overtemperature ΔT** setpoint | Biases a different trip |
+
+Indicated subcooling margin inherits it as well (§10.2).
+
+**What this does NOT reach: the code safety valves.** They read **true** pressure unconditionally and lift at **2485 psig (2500 psia / 17.24 MPa)**, with no isolation and no operator lever (§7.4, §11.0). **A lying pressure channel costs this plant the FIRST stage of its relief ladder — not its overpressure protection.**
+
+#### What each failure direction actually costs
+
+Measured 2026-09-19, full stack (control, service and instructor layers), initial condition *hot full power*, instrument seed 7, sampled every 0.5 s. The event is the sourced overpressure case — a complete loss of steam load with **no** anticipatory reactor trip (Ginna UFSAR ch15 §15.2.2): turbine tripped, main feedwater lost, steam dump closed, the turbine-trip reactor trip failed.
+
+| Pressure channel | PORV lifts? | High-pressure reactor trip? | Code safeties? | Peak TRUE pressure |
+|---|---|---|---|---|
+| **Healthy** | yes, at **4.0 s**, then cycles | no — the PORV holds pressure below it | never lift | **2357 psia (16.25 MPa)** at 4.0 s |
+| **Dead** (rails to zero) | no | — the plant already tripped at **2.0 s** on pressurizer pressure **LOW** | never lift | **2304 psia (15.89 MPa)** at 4.0 s |
+| **Stuck** at its healthy 2237 psia (15.43 MPa) | **no** | **no** | **lift at 7.5 s**, and again at 11 s | **2497 psia (17.22 MPa)** at 16.0 s |
+
+**The two failure directions are not symmetric, and that is the lesson.** A channel that fails **low** is fail-safe on this plant: measured on an otherwise healthy plant at full power with no other fault, a dead pressurizer-pressure channel **trips the reactor at 2.0 s** on pressurizer pressure low, actuates **safety injection**, and **sheds the pressurizer heaters** — before anything else has happened. What the operator gets is a violent, obvious and entirely spurious event.
+
+A channel **stuck at a plausible number** is the expensive one. Nothing annunciates, the gauge reads normal, and the two automatic actions that would have answered the transient — the PORV lift and the high-pressure reactor trip — are both blind, because they are the same channel. The plant rides **140 psi (0.965 MPa)** higher than it otherwise would and parks on its code safeties. That is where a single-channel design ends up when its single channel lies, and it is exactly the single failure the Technical Specification Bases quoted above requires a real plant's logic to withstand.
+
+#### What the player sees
+
+The **PZR PRESS** gauge sits still. **PORV OPEN never annunciates**, because the valve genuinely never opens. What moves is everything that is *not* on that channel — average coolant temperature, steam pressure, pressurizer level, and the code-safety indication, which comes up at 7.5 s in the case above. **The instrument that is lying is the one that looks calmest**, and the symptom is not any single reading but the pressure, level and temperature channels ceasing to agree with one another.
+
+
 
 ---
 
