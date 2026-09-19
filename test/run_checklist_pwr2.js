@@ -3978,6 +3978,388 @@ if (!only) {
          Number(dr.tmarg).toFixed(2));
     })();
   })();
+
+  /* 2ah. A CASUALTY THE PLAYER INJECTED ON PURPOSE STANDS ITS OWN ROWS DOWN — THE MECHANISM
+   * #773/#788 OWED *(OWNER RULING, 2026-09-19: "A")*.
+   *
+   * §2ae measured which rows a broken gauge strands; §2ag measured which of them the four NAMED
+   * casualties reach. Neither of them fixed anything, and one of the rows they found —
+   * `pwr_tmi2_incident` step 19, SUBCOOLING MARGIN above 10 degF (5.56 degC) — was an
+   * UNRECORDED SOFT LOCK: the only acceptance of its step, refused on 289 of 300 broadcasts.
+   * The relief is in `instructor_layer.js` (`_casualtyChannels` / `_predVoided`) and this
+   * section is its proof.
+   *
+   * WHAT IT IS NOT. It is not the fail-open #773 rejected. A fail-open says "you are done
+   * because your meter died" and fires on ANY cause; this fires only on the player's own
+   * DECLARED action, reading `snapshot.active_failures` — the injection record, never
+   * `true_state`. Hard Rule 1 is untouched, and 2ah.6 pins the boundary the ruling drew: the
+   * RAW advanced-panel injection publishes nothing and is therefore NOT relieved.
+   *
+   * THE DERIVED-CHANNEL HALF IS WHY A NAME MATCH WOULD HAVE CLOSED NOTHING WORTH CLOSING. Four
+   * of the rows grade `subcooling_c` -> `subcooling_margin`, which the instrument layer builds
+   * out of indicated pressure, T-avg and core-exit temperature, so `tavg_sensor_failure` kills
+   * them though their channel is not `tavg` — and step 19 is among them. The relation comes
+   * from `RD.PWRInstruments.DERIVED_FROM`, declared in the file that COMPUTES those channels,
+   * and 2ah.1 RE-DISCOVERS it by perturbation rather than iterating it.
+   *
+   * AND THE DISCOVERY HAD TO BE TWO-SIDED AND ON FROZEN INPUTS, both of which are findings.
+   * On a LIVE plant a stuck channel moves 32 of 33 readings — the automation reads instruments
+   * and drives the plant back — so a live A/B cannot tell a derived channel from a controlled
+   * one (measured: `porv_indicator`, which nothing derives from, moved 33). And
+   * `subcooling_margin` takes the MAX of T-avg and core-exit (#407), so at `hot_full_power`
+   * sticking T-avg DOWNWARD moves it not at all: a one-sided probe reports T-avg as no input.
+   * That is the "identity in the regime you test in" trap, and 2ah.1 sticks each channel HIGH
+   * AND LOW for exactly that reason.
+   *
+   * WHAT "CLOSES A ROW" MEANS HERE, measured per row on a REAL leg with a REAL injection and
+   * the REAL live checklist driven step by step (2ah.4), never a flag read off a rig:
+   *   - the row is VOIDED and the verdict names the casualty the player injected; and
+   *   - the row NO LONGER BLOCKS ITS STEP — `selfBlocks` false on every one of the 19; and
+   *   - where the row is the step's SOLE acceptance, the step actually COMPLETES
+   *     (`awaiting_ack` rises), which is the soft-lock relief itself.
+   * A step whose OTHER rows are still unmet does NOT complete, and that is the mechanism
+   * working: `mwe_output`, `power_pct`, `rcp_cavitating` and `boron_ppm` are on healthy gauges
+   * and go on asserting. 2ah.4 pins which rows complete and which do not, so a relief that
+   * ever over-fired — voiding a sibling it has no business touching — reddens here.
+   *
+   * INJECTION — twelve edits made deliberately and restored, 2026-09-19, and what each one
+   * PRINTED. Three of them STAYED GREEN, and those are recorded too, because a guard that no
+   * injection can redden is a guard whose claim is carried somewhere else and it is worth
+   * saying where:
+   *   - drop `core_exit_temp` from DERIVED_FROM.subcooling_margin -> 2ah.1 red, "UNDECLARED:
+   *     subcooling_margin <- core_exit_temp"
+   *   - add `sg_level` to DERIVED_FROM.tavg_rate                  -> 2ah.1 red, "DECLARED BUT
+   *     NEVER MOVED: tavg_rate <- sg_level"
+   *   - make the probe one-sided (stuck LOW only)                 -> 2ah.1 red, "DECLARED BUT
+   *     NEVER MOVED: subcooling_margin <- tavg" — the max masks it, which is the trap the
+   *     two-sided probe exists for, and this injection is the proof that it does
+   *   - revert `c.accMetNow = ... || !!c.accVoided`               -> 2ah.4 AND 2ah.5 red,
+   *     "NEVER COMPLETES: pwr_heatup:11:tavg_c, pwr_tmi2_incident:19:subcooling_c,
+   *     pwr_tmi2_incident:12:pzr_level_pct"
+   *   - revert `sawOk` to `c.sawSeen`                             -> 2ah.5 red, "injected ack
+   *     false" — `pwr_heatup` step 11 carries BOTH an `acc` and a `saw` on T-avg, so losing
+   *     the `saw` half alone re-locks the step even with the acceptance relieved. That is the
+   *     measurement behind the decision to let the void reach `sawSeen`
+   *   - latch the SOLE-row void (`c.accVoided = c.accVoided || ...`) -> 2ah.5 red, "after
+   *     clear ack false voided \"Tavg Sensor Drifting\"" — the latch bug, caught
+   *   - delete the `av.voided` branch from ui/app.js              -> 2ah.7 red, "the accs row
+   *     draws no sentence"; delete the `ck.acc_voided` branch     -> 2ah.7 red, "the sole row
+   *     draws no sentence"
+   *
+   *   STAYED GREEN, with the reason:
+   *   - drop the `!af.length` early return in `_predVoided`       -> 7/7. It is an
+   *     OPTIMISATION, not the safety property: a healthy plant has no failures, so the
+   *     closure is empty and every row resolves to null by the longer road. 2ah.2 asserts
+   *     the closure itself is empty, which is the claim that matters.
+   *   - revert `if (!ax.met && !ax.voided)` to `if (!ax.met)` in the FIRST loop of
+   *     `_gradeAccs`                                              -> 7/7. That guard governs
+   *     only the `accs_ordered` sequencer's `blocked` flag; the FINAL `all` recomputation
+   *     below it is what decides completion, and it honours `voided` independently. Both are
+   *     needed and neither is dead — but no pool step is both ordered AND voidable today, so
+   *     the first one has no probe standing on it. Said out loud rather than trimmed.
+   *   - `ax.voided = ax.voided || ...` (latch the per-ROW void)   -> 7/7. 2ah.5 measures the
+   *     SOLE-acc path (`acc_voided`), and the 19 rows 2ah.4 drives never clear mid-step. The
+   *     per-row latch is unprobed; it is written non-latching for the same reason as the
+   *     sole-row one, which IS probed.
+   *
+   *   NOT RUN: `_casualtyChannels` returning the direct channel only. The anchor did not
+   *   match on the first pass and the re-run did not fit the session; 2ah.3 pins the closure
+   *   for all four casualties by value, so an empty closure would redden it by inspection of
+   *   the pinned sets — but that is an ARGUMENT, not a measurement, and it is owed. */
+  (function () {
+    function send(svc, c) { try { svc.handleCommand(c); } catch (e) { /* a door refused it */ } }
+    /* `tick()` returns null on a non-broadcast tick, AND the clock stops dead when a step's
+     * `pause` fires (#694) — the TMI-2 leg has several. The player releases that with Continue;
+     * a headless driver has to put the clock back itself or the walk ends at step 3. */
+    function tkv(svc) { var s = null, n = 0; while (s == null && n++ < 200) { if (!svc.running) svc.running = true; s = svc.tick(); } return s; }
+
+    /* --- 2ah.1 THE DERIVED-CHANNEL RELATION, RE-DISCOVERED. One real (true_state, dt, extras)
+     * triple is captured off a live pwr2 broadcast and then FROZEN; a fresh instrument set is
+     * driven to settlement on it, once healthy and once with each channel stuck high and stuck
+     * low, and every reading is diffed. Nothing here reads the declaration to decide what to
+     * probe — it probes every channel the layer publishes. */
+    (function () {
+      var orig = RD.PWRInstruments.prototype.update, cap = null;
+      RD.PWRInstruments.prototype.update = function (ts, dt, ex) { cap = { ts: ts, dt: dt, ex: ex }; return orig.apply(this, arguments); };
+      var svc = mkSvc('hot_full_power');
+      for (var q = 0; q < 30; q++) svc.tick();
+      RD.PWRInstruments.prototype.update = orig;
+      var TS = JSON.parse(JSON.stringify(cap.ts)), EX = JSON.parse(JSON.stringify(cap.ex || {})), DT = cap.dt;
+      function settle(ch, val) {
+        var ins = new RD.PWRInstruments(RD.PWR_CONFIG, 7);
+        ins.reset(TS, EX);
+        if (ch) ins.setFailure(ch, 'stuck', val);
+        for (var i = 0; i < 400; i++) ins.update(TS, DT, EX);
+        return ins.reading;
+      }
+      var A = settle(null), found = {}, probed = 0;
+      Object.keys(A).forEach(function (ch) {
+        var lv = A[ch];
+        var cands = (ch === 'porv_indicator') ? ['open', 'closed']
+                  : (typeof lv === 'number' && isFinite(lv)) ? [lv * 0.5 - 1, lv * 1.5 + 1] : [];
+        if (!cands.length) return;
+        probed++;
+        cands.forEach(function (v) {
+          var B = settle(ch, v);
+          Object.keys(A).forEach(function (k) {
+            if (k === ch) return;
+            var a = A[k], b = B[k];
+            var moved = (typeof a === 'number' && typeof b === 'number')
+              ? Math.abs(a - b) > Math.max(1e-9, Math.abs(a) * 1e-9) : a !== b;
+            if (moved) { (found[k] = found[k] || {})[ch] = 1; }
+          });
+        });
+      });
+      var DECL = RD.PWRInstruments.DERIVED_FROM || {};
+      /* UNDECLARED is the UNSAFE direction — a dependency the relief would miss, which is how
+       * step 19 stayed a soft lock. DECLARED-BUT-NEVER-MOVED is inert here and is allowed for
+       * exactly one channel, with its measured reason: `pzr_level_dev` needs a level-program
+       * supplier and the PWR2 stack loads none, so it publishes a constant 0.0 % and nothing
+       * can move it. Pinned by name so a SECOND one cannot join it quietly. */
+      var UNMOVABLE_EXPECTED = { pzr_level_dev: 1 };
+      var undecl = [], inert = [], deep = [];
+      Object.keys(found).forEach(function (k) {
+        var d = DECL[k] || [];
+        Object.keys(found[k]).forEach(function (src) {
+          if (d.indexOf(src) < 0) undecl.push(k + ' <- ' + src);
+        });
+      });
+      Object.keys(DECL).forEach(function (k) {
+        if (!found[k]) { if (!UNMOVABLE_EXPECTED[k]) inert.push(k + ' (no input moves it)'); return; }
+        DECL[k].forEach(function (src) { if (!found[k][src]) inert.push(k + ' <- ' + src); });
+        // one level deep: a declared channel must not itself be an input to another
+        Object.keys(DECL).forEach(function (o) { if (DECL[o].indexOf(k) >= 0) deep.push(k + ' feeds ' + o); });
+      });
+      ck('2ah.1 the derived-channel relation re-discovered by two-sided perturbation is the DECLARED one, one level deep (#773/#788)',
+         undecl.length === 0 && inert.length === 0 && deep.length === 0 && probed >= 25 &&
+         Object.keys(found).length >= 7,
+         (undecl.length ? 'UNDECLARED: ' + undecl.join(', ') + '. ' : '') +
+         (inert.length ? 'DECLARED BUT NEVER MOVED: ' + inert.join(', ') + '. ' : '') +
+         (deep.length ? 'NOT ONE LEVEL DEEP: ' + deep.join(', ') + '. ' : '') +
+         probed + ' channels perturbed high and low on one frozen true-state; ' +
+         Object.keys(found).length + ' derived channels discovered, ' +
+         Object.keys(DECL).length + ' declared (pzr_level_dev is inert on PWR2 — no level-program supplier)');
+    })();
+
+    /* --- 2ah.2 THE HEALTHY-PLANT NEGATIVE, and it is the most important check here. With no
+     * casualty injected, NOT ONE row of the pool is voided — asserted over every predicate row
+     * at its own leg's IC, plus the closure map itself, which must be empty. */
+    (function () {
+      var voided = [], nonEmpty = [], legs = 0, byIC = {};
+      POOL.forEach(function (proc) {
+        if (!byIC[proc.from]) {
+          var w = mkSvc(proc.from), s0 = null;
+          for (var i = 0; i < 30; i++) s0 = w.tick();
+          byIC[proc.from] = { snap: s0, inst: w.instructor };
+          legs++;
+        }
+        var rig = byIC[proc.from], snap = rig.snap;
+        if (Object.keys(rig.inst._casualtyChannels(snap)).length) nonEmpty.push(proc.from);
+        (proc.steps || []).forEach(function (st, idx) {
+          var accs = (st.accs && st.accs.length) ? st.accs : (st.acc ? [st.acc] : []);
+          accs.concat(st.saw ? [st.saw] : []).forEach(function (en) {
+            if (!en || !en.p) return;
+            if (rig.inst._predVoided(snap, en)) voided.push(proc.id + ':' + (idx + 1) + ':' + en.p);
+          });
+        });
+      });
+      ck('2ah.2 on a HEALTHY plant not one row in the pool is voided, and the closure is empty (#773/#788)',
+         voided.length === 0 && nonEmpty.length === 0 && legs >= 3,
+         (voided.length ? 'VOIDED WITH NOTHING INJECTED: ' + voided.join(', ') + '. ' : '') +
+         (nonEmpty.length ? 'NON-EMPTY CLOSURE at ' + nonEmpty.join(', ') + '. ' : '') +
+         POOL.length + ' legs swept over ' + legs + ' initial conditions');
+    })();
+
+    /* --- 2ah.3 WHAT EACH NAMED CASUALTY TAKES OUT. Driven through the REAL control layer so
+     * the catalog lookup and the `active_failures` publication are the live ones. */
+    (function () {
+      /* `pzr_level_dev` APPEARS IN THREE OF THESE FOUR and is INERT, which is worth saying
+       * rather than trimming away: it is declared as derived from `pzr_level` and `tavg`
+       * (true of the file that computes it), and on PWR2 it publishes a constant 0.0 %
+       * because no level-program supplier is wired (2ah.1's note). No pool row grades it,
+       * so the over-reach costs nothing today — but it is pinned so that wiring a program
+       * supplier, which would make the channel live, reddens here and is read. */
+      var EXPECT = {
+        porv_indicator_stuck_closed: ['porv_indicator'],
+        pzr_level_sensor_stuck: ['pzr_level', 'pzr_level_dev'],
+        pzr_level_sensor_low: ['pzr_level', 'pzr_level_dev'],
+        tavg_sensor_failure: ['tavg', 'subcooling_margin', 'tavg_rate', 'otdt_setpoint',
+                              'opdt_setpoint', 'otdt_margin', 'opdt_margin', 'pzr_level_dev'],
+      };
+      var bad = [], note = [];
+      Object.keys(EXPECT).forEach(function (fid) {
+        var w = mkSvc('hot_full_power'), s = null, i;
+        for (i = 0; i < 10; i++) s = w.tick();
+        w.handleCommand({ action: 'inject_failure', failure_id: fid });
+        for (i = 0; i < 3; i++) s = w.tick();
+        var got = Object.keys(w.instructor._casualtyChannels(s)).sort();
+        var want = EXPECT[fid].slice().sort();
+        if (got.join(',') !== want.join(',')) bad.push(fid + ' -> [' + got.join(', ') + '] want [' + want.join(', ') + ']');
+        note.push(fid + ':' + got.length);
+      });
+      ck('2ah.3 each named instrument casualty closes over exactly its own channel plus what is DERIVED from it (#773/#788)',
+         bad.length === 0, (bad.length ? 'MISMATCH ' + bad.join('; ') + '. ' : '') + note.join(', ') + ' channel(s)');
+    })();
+
+    /* --- 2ah.4 THE ROW SWEEP. One boot per (leg, casualty); the REAL live checklist is started
+     * and walked with Continue, the step's own authored `cmd` issued on entry the way the
+     * replay does (the live checklist never issues it — the player presses the control), the
+     * casualty injected by NAME, and each target step watched for up to 400 broadcasts. */
+    (function () {
+      var ROW_EXPECTED = {
+        /* key                                 [casualty display, the step COMPLETES] */
+        'pwr_startup:1:tavg_c':               ['Tavg Sensor Drifting', true],
+        'pwr_heatup:11:tavg_c':               ['Tavg Sensor Drifting', true],
+        'pwr_heatup:11:saw:tavg_c':           ['Tavg Sensor Drifting', true],
+        'pwr_lower_power:3:tavg_c':           ['Tavg Sensor Drifting', false],
+        'pwr_lower_power:4:tavg_c':           ['Tavg Sensor Drifting', false],
+        'pwr_lower_power:5:tavg_c':           ['Tavg Sensor Drifting', false],
+        'pwr_lower_power:6:tavg_c':           ['Tavg Sensor Drifting', false],
+        'pwr_raise_power:4:tavg_c':           ['Tavg Sensor Drifting', false],
+        'pwr_raise_power:5:tavg_c':           ['Tavg Sensor Drifting', false],
+        'pwr_raise_power:6:tavg_c':           ['Tavg Sensor Drifting', false],
+        'pwr_raise_power:7:tavg_c':           ['Tavg Sensor Drifting', false],
+        'pwr_raise_power:8:tavg_c':           ['Tavg Sensor Drifting', false],
+        'pwr_raise_power:9:tavg_c':           ['Tavg Sensor Drifting', false],
+        'pwr_tmi2_incident:13:subcooling_c':  ['Tavg Sensor Drifting', false],
+        'pwr_tmi2_incident:15:subcooling_c':  ['Tavg Sensor Drifting', true],
+        'pwr_tmi2_incident:17:subcooling_c':  ['Tavg Sensor Drifting', true],
+        'pwr_tmi2_incident:19:subcooling_c':  ['Tavg Sensor Drifting', true],
+        'pwr_tmi2_incident:12:pzr_level_pct': ['Pressurizer Level Sensor Failed Low', true],
+        'pwr_tmi2_incident:16:pzr_level_pct': ['Pressurizer Level Sensor Failed Low', true],
+      };
+      var LEGS = [
+        ['pwr_startup', 'tavg_sensor_failure', [[1, 'tavg_c', 0]]],
+        ['pwr_heatup', 'tavg_sensor_failure', [[11, 'tavg_c', 0], [11, 'tavg_c', 1]]],
+        ['pwr_lower_power', 'tavg_sensor_failure', [[3, 'tavg_c', 0], [4, 'tavg_c', 0], [5, 'tavg_c', 0], [6, 'tavg_c', 0]]],
+        ['pwr_raise_power', 'tavg_sensor_failure', [[4, 'tavg_c', 0], [5, 'tavg_c', 0], [6, 'tavg_c', 0], [7, 'tavg_c', 0], [8, 'tavg_c', 0], [9, 'tavg_c', 0]]],
+        ['pwr_tmi2_incident', 'tavg_sensor_failure', [[13, 'subcooling_c', 0], [15, 'subcooling_c', 0], [17, 'subcooling_c', 0], [19, 'subcooling_c', 0]]],
+        ['pwr_tmi2_incident', 'pzr_level_sensor_low', [[12, 'pzr_level_pct', 0], [16, 'pzr_level_pct', 0]]],
+      ];
+      var noVoid = [], stillBlocks = [], neverDone = [], wrongName = [], unexpectedDone = [], seen = 0;
+      LEGS.forEach(function (L) {
+        var proc = POOL.filter(function (p) { return p.id === L[0]; })[0];
+        var svc = mkSvc(proc.from), s = tkv(svc), i, g;
+        svc.handleCommand({ action: 'start_checklist', procedure_id: proc.id });
+        s = tkv(svc);
+        svc.handleCommand({ action: 'inject_failure', failure_id: L[1] });
+        L[2].forEach(function (t) {
+          var step = t[0], p = t[1], isSaw = !!t[2], st = proc.steps[step - 1];
+          var key = proc.id + ':' + step + ':' + (isSaw ? 'saw:' : '') + p;
+          seen++;
+          g = 0;
+          while ((s.instructor.checklist.step_index + 1) < step && g++ < 200) {
+            var cur = proc.steps[s.instructor.checklist.step_index];
+            if (cur && cur.cmd) send(svc, cur.cmd);
+            svc.handleCommand({ action: 'checklist_check' }); s = tkv(svc);
+          }
+          if (st.cmd) send(svc, st.cmd);
+          var v = null, ack = false, self = false;
+          for (i = 0; i < 400; i++) {
+            var ckl = s.instructor.checklist;
+            if (ckl.step_index + 1 !== step) break;
+            var vv = isSaw ? ckl.saw_voided
+                   : (ckl.acc_voided || (ckl.accs || []).map(function (a) { return a.voided; }).filter(Boolean)[0] || null);
+            if (vv) v = vv;
+            if (ckl.awaiting_ack) ack = true;
+            /* DOES THE TARGET ROW ITSELF STILL HOLD THE STEP? — the claim the relief makes,
+             * and the one a step blocked by a healthy sibling would otherwise hide. */
+            (ckl.accs || []).forEach(function (a, ix) {
+              if ((st.accs[ix] || {}).p === p && !a.met && !a.voided) self = true;
+            });
+            if (ack && v) break;
+            s = tkv(svc);
+          }
+          var want = ROW_EXPECTED[key] || [null, false];
+          if (!v) noVoid.push(key);
+          else if (v !== want[0]) wrongName.push(key + ' -> "' + v + '"');
+          if (self) stillBlocks.push(key);
+          if (want[1] && !ack) neverDone.push(key);
+          if (!want[1] && ack) unexpectedDone.push(key);
+        });
+      });
+      var done = Object.keys(ROW_EXPECTED).filter(function (k) { return ROW_EXPECTED[k][1]; }).length;
+      ck('2ah.4 every one of the 19 pinned rows is voided by its casualty, none still blocks its step, and the ' + done + ' sole-row steps COMPLETE (#773/#788)',
+         seen === 19 && noVoid.length === 0 && wrongName.length === 0 && stillBlocks.length === 0 &&
+         neverDone.length === 0 && unexpectedDone.length === 0,
+         (noVoid.length ? 'NOT VOIDED: ' + noVoid.join(', ') + '. ' : '') +
+         (wrongName.length ? 'WRONG CASUALTY NAMED: ' + wrongName.join(', ') + '. ' : '') +
+         (stillBlocks.length ? 'STILL BLOCKS: ' + stillBlocks.join(', ') + '. ' : '') +
+         (neverDone.length ? 'NEVER COMPLETES: ' + neverDone.join(', ') + '. ' : '') +
+         (unexpectedDone.length ? 'COMPLETES BUT WAS NOT PINNED TO: ' + unexpectedDone.join(', ') + '. ' : '') +
+         seen + ' rows driven on a real leg with a real named injection; the ' + (19 - done) +
+         ' that do not complete are held by a SIBLING on a healthy gauge (mwe_output, power_pct, ' +
+         'rcp_cavitating, boron_ppm), which is the relief not over-firing');
+    })();
+
+    /* --- 2ah.5 CLEARING. `clear_failure` must take the relief away — a row voided once and
+     * voided for ever is the `implied_by` latch bug in a new place. Measured on `pwr_heatup`
+     * step 11, the clean case: stranded healthy, complete under the casualty, stranded again
+     * after the clear. All three states asserted, in that order. */
+    (function () {
+      var proc = POOL.filter(function (p) { return p.id === 'pwr_heatup'; })[0];
+      var svc = mkSvc(proc.from), s = tkv(svc), i, g = 0;
+      svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+      s = tkv(svc);
+      while ((s.instructor.checklist.step_index + 1) < 11 && g++ < 200) {
+        var cur = proc.steps[s.instructor.checklist.step_index];
+        if (cur && cur.cmd) send(svc, cur.cmd);
+        svc.handleCommand({ action: 'checklist_check' }); s = tkv(svc);
+      }
+      var beforeAck = false;
+      for (i = 0; i < 20; i++) { if (s.instructor.checklist.awaiting_ack) beforeAck = true; s = tkv(svc); }
+      svc.handleCommand({ action: 'inject_failure', failure_id: 'tavg_sensor_failure' });
+      for (i = 0; i < 5; i++) s = tkv(svc);
+      var midV = s.instructor.checklist.acc_voided, midAck = !!s.instructor.checklist.awaiting_ack;
+      svc.handleCommand({ action: 'clear_failure', failure_id: 'tavg_sensor_failure' });
+      for (i = 0; i < 5; i++) s = tkv(svc);
+      var afterV = s.instructor.checklist.acc_voided, afterAck = !!s.instructor.checklist.awaiting_ack;
+      ck('2ah.5 clear_failure takes the relief BACK — the void is re-derived every tick, never latched (#773/#788)',
+         beforeAck === false && !!midV && midAck === true && afterV == null && afterAck === false,
+         'pwr_heatup step 11: healthy ack ' + beforeAck + ' / injected ack ' + midAck +
+         ' voided ' + JSON.stringify(midV) + ' / after clear ack ' + afterAck +
+         ' voided ' + JSON.stringify(afterV));
+    })();
+
+    /* --- 2ah.6 THE RULING'S BOUNDARY. The RAW advanced-panel path publishes no
+     * `active_failures` (§2ag.7 measured it), so it gets NO relief — deliberately, because
+     * extending that publication also decides what M5's new-failure attention stop does when a
+     * player breaks a gauge, and that was left out of scope. Asserted here so a future change
+     * to the publication cannot widen the relief silently. */
+    (function () {
+      var svc = mkSvc('cold_shutdown'), s = null, i;
+      for (i = 0; i < 10; i++) s = svc.tick();
+      svc.handleCommand({ action: 'set_instrument_failure', instrument_id: 'tavg', mode: 'dead' });
+      for (i = 0; i < 5; i++) s = svc.tick();
+      var en = { p: 'tavg_c', op: '>', v: 283 };
+      var af = (s.active_failures || []).length;
+      var v = svc.instructor._predVoided(s, en);
+      ck('2ah.6 the RAW panel injection is NOT relieved — the ruling is scoped to the NAMED path (#773/#788)',
+         af === 0 && v == null && s.instruments.tavg != null,
+         'set_instrument_failure {tavg, dead} -> active_failures ' + af + ' entries, tavg reads ' +
+         Number(s.instruments.tavg).toFixed(2) + ' degC (' + (s.instruments.tavg * 9 / 5 + 32).toFixed(1) +
+         ' degF), _predVoided ' + JSON.stringify(v));
+    })();
+
+    /* --- 2ah.7 THE PLAYER-FACING HALF, which is the CONDITION the ruling attached to the
+     * sole-row case: a step that completes with nothing asserting it must SAY so. Source scan
+     * of the renderer for all three branches — the per-row one, the sole-row one and the `saw`
+     * one — and of the render key, because a card that never re-draws says nothing however
+     * good the string is. A SOURCE SCAN CANNOT PROVE THE STRING IS REACHABLE (#485), so the
+     * fields it reads are the ones 2ah.4 and 2ah.5 measured on live broadcasts. */
+    (function () {
+      var asrc = fs.readFileSync(path.join(ROOT, 'ui', 'app.js'), 'utf8');
+      var row = /av\.voided \?[\s\S]{0,240}?Not verified/.test(asrc);
+      var sole = /ck\.acc_voided \?[\s\S]{0,240}?Not verified/.test(asrc);
+      var saw = /ck\.saw_voided\)[\s\S]{0,240}?Not verified/.test(asrc);
+      var keyed = /a\.voided \? 3 :/.test(asrc) && asrc.indexOf("ck.acc_voided || ''") >= 0;
+      ck('2ah.7 the card names the casualty on a voided row, a voided SOLE row and a voided `saw`, and all three are in the render key (#773/#788)',
+         row && sole && saw && keyed,
+         (row ? '' : 'the accs row draws no sentence; ') + (sole ? '' : 'the sole row draws no sentence; ') +
+         (saw ? '' : 'the saw latch draws no sentence; ') + (keyed ? '' : 'not in the render key; ') +
+         'drawn from the runtime verdict (the casualty display string), never re-derived in the view');
+    })();
+  })();
 }
 
 

@@ -4334,7 +4334,11 @@
        * covered by a sibling draws an extra line, and in every case seen so far it flips
        * met in the same broadcast — but a key that cannot tell 1 from 2 would go dark the
        * first time it does not, which is this file's own thrice-learned lesson. */
-      (ck.accs || []).map(function (a) { return a.met ? (a.implied ? 2 : 1) : 0; }).join(''),
+      /* `voided` is a FOURTH state for the same reason (#773/#788): the player's own
+       * casualty stood the row down, which draws a different extra line, and on a SOLE
+       * row `acc_met` flips to true with nothing else in the key moving at all. */
+      (ck.accs || []).map(function (a) { return a.voided ? 3 : (a.met ? (a.implied ? 2 : 1) : 0); }).join(''),
+      ck.acc_voided || '', ck.saw_voided || '',
       /* #660 items 17-18: BOTH BUTTONS' LIT STATES BELONG IN THE KEY. `awaiting_ack` is what
        * lights Continue and draws its note, and `rewind_ready` is what enables Rewind — neither
        * was here, and neither is implied by the rest of the key: `rewind_ready` can flip while
@@ -4623,6 +4627,15 @@
                * a re-derivation here. */
               (av.implied ? '<div class="ckl-crit-when">Covered by ' +
                  mesc(impliedSay(st, en, i + 1)) + ' — this gauge did not get there.</div>' : '') +
+              /* A ROW STOOD DOWN BY THE PLAYER'S OWN CASUALTY SAYS SO, AND SAYING SO IS THE
+               * CONDITION THE RULING ATTACHED TO IT (#773/#788, OWNER RULING 2026-09-19:
+               * "A"). The step advances with this row unverified, which is only acceptable
+               * because the player broke the gauge on purpose — so the card names the
+               * failure they injected and states plainly that nothing checked this. A silent
+               * advance is the failure mode. The name comes from the runtime's own verdict
+               * (`voided` carries the casualty's display string), never re-derived here. */
+              (av.voided ? '<div class="ckl-crit-when">Not verified — you injected ' +
+                 mesc(av.voided) + ', and this reading comes off that gauge.</div>' : '') +
               '</div>';
           }
           /* A PRESS THAT LANDED OUT OF TURN GETS A REASON ON THE CARD (#759, OWNER RULING
@@ -4654,7 +4667,19 @@
           }
         } else if (st.acc) {
           h += '<div class="ckl-crit' + (ck.acc_met ? ' ckl-crit-met' : '') + '">' +
-            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc) + modeLiveNote(st.acc, s)) + '</div>';
+            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc) + modeLiveNote(st.acc, s)) +
+            /* THE SOLE-ROW VOID (#773/#788) — the case the ruling accepted WITH THIS
+             * SENTENCE AS THE CONDITION. There is no sibling here, so the step completes
+             * with nothing at all asserting it; the card must not let that pass unsaid. */
+            (ck.acc_voided ? '<div class="ckl-crit-when">Not verified — you injected ' +
+               mesc(ck.acc_voided) + ', and this reading comes off that gauge. ' +
+               'The step was checked off without it.</div>' : '') + '</div>';
+        }
+        /* The same for the step’s `saw` latch, which is graded but never printed as a row
+         * of its own — without this the player sees no reason at all for the advance. */
+        if (ck.saw_voided) {
+          h += '<div class="ckl-crit"><div class="ckl-crit-when">Not verified — you injected ' +
+            mesc(ck.saw_voided) + ', and what this step had to see comes off that gauge.</div></div>';
         }
         var isObs = st.control && /^\(observe/i.test(st.control);
         if (isObs) {

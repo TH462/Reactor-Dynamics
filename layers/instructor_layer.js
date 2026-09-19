@@ -310,6 +310,7 @@
       profile_key: (meta && meta.profile_key) || null,
       idx: 0,
       cmdSeen: false, sawSeen: false, accStreak: 0, accMetNow: false,
+      accVoided: null, sawVoided: null,
       gradedBy: null, done: false,
     };
     this._checkpointRequested = true;
@@ -334,6 +335,7 @@
       done: proc.steps.map(function () { return false; }),
       doneBy: proc.steps.map(function () { return null; }),   // 'auto' | 'manual' | 'observed' | 'caught_up' | 'overtaken' (#641)
       cmdSeen: false, sawSeen: false, accStreak: 0, accMetNow: false,
+      accVoided: null, sawVoided: null,
       gradedBy: null, complete: false,
       // Precondition verdicts (#395) — evaluated on the first step() tick, never
       // here: load has no snapshot. null = no `precond` authored or not yet graded.
@@ -919,18 +921,36 @@
     }
 
     if (st.saw && !c.sawSeen && this._grade(snapshot, st.saw).met) c.sawSeen = true;
+    /* THE VOID REACHES `saw`, AND IT IS DECIDED HERE RATHER THAN LEFT TO FALL OUT
+     * (#773/#788). `implied_by` cannot reach a `saw` — it lives inside `accs` — so a
+     * `saw` on a channel the player has broken is the ONE construct in the pool with no
+     * relief of any kind: three exist, and `pwr_heatup` step 11's is on the same channel
+     * as its own acceptance, so the step would be relieved on one half and locked on the
+     * other. It is computed BESIDE the latch and never INTO it: writing `c.sawSeen = true`
+     * would make the void permanent and survive `clear_failure`, which is exactly the bug
+     * this whole mechanism is written to avoid. */
+    c.sawVoided = st.saw ? this._predVoided(snapshot, st.saw) : null;
 
     if (st.accs && st.accs.length) {          // multi-check-off (#244 item 8)
       c.gradedBy = null;
+      c.accVoided = null;                     // per-row, in `accsState[].voided`
       c.accMetNow = this._gradeAccs(c, st, snapshot);
     } else if (st.acc) {
       var g = this._gradeOne(c, snapshot, st.acc, 'acc');
       c.gradedBy = g.graded_by;
       c.accStreak = g.met ? c.accStreak + 1 : 0;
-      c.accMetNow = c.accStreak >= ACC_STABLE_N;
+      /* THE SOLE-ROW CASE, WHICH THE RULING ACCEPTED WITH A CONDITION. Standing down the
+       * ONLY acceptance of a step means the step completes with nothing asserting it —
+       * the shape #773 rejected — and it is allowed here only because the player caused
+       * it AND THE CARD SAYS SO. A silent advance is the failure mode; the string is
+       * rendered from `acc_voided` in ui/app.js. No `ACC_STABLE_N` debounce: an injection
+       * is a discrete declared event, not a reading that can flicker across a threshold. */
+      c.accVoided = this._predVoided(snapshot, st.acc);
+      c.accMetNow = c.accStreak >= ACC_STABLE_N || !!c.accVoided;
     } else {
       c.gradedBy = null;
       c.accMetNow = false;
+      c.accVoided = null;
     }
 
     /* A step with NOTHING GRADABLE is an OBSERVATION, and it completes on time spent.
@@ -948,8 +968,9 @@
      * `checklist_check` survives as a command — save/restore and the tests still use it —
      * it simply has no button any more. */
     var hasAccs = !!(st.accs && st.accs.length);
-    var met = (hasAccs || st.acc) ? (c.accMetNow && (!st.saw || c.sawSeen))
-            : st.saw ? c.sawSeen
+    var sawOk = !st.saw || c.sawSeen || !!c.sawVoided;            // #773/#788, see above
+    var met = (hasAccs || st.acc) ? (c.accMetNow && sawOk)
+            : st.saw ? sawOk
             : st.cmd ? c.cmdSeen
             : (simTime - (c.stepAt == null ? simTime : c.stepAt)) >= OBSERVE_DWELL_S;
     /* A STEP THE PLAYER NEVER TOUCHES WAITS FOR AN ACKNOWLEDGEMENT *(OWNER, 2026-09-03, #619
@@ -1148,6 +1169,7 @@
     c.doneBy[c.idx] = by;
     c.idx++;
     c.cmdSeen = false; c.sawSeen = false; c.accStreak = 0; c.accMetNow = false; c.gradedBy = null;
+    c.accVoided = null; c.sawVoided = null;
     c.accsState = null;                 // per-entry multi-check-off latches (#244 item 8)
     c.outOfTurn = null;                 // #759 — the out-of-turn note belongs to the step it was pressed on
     c.predBags = null;                // #755/#761 — the new step owes its steadiness / quiet window afresh
@@ -1315,6 +1337,103 @@
     // `value` rides along for consumers that display the reading (#395's
     // precondition banner); met/graded_by callers are unaffected.
     return { met: this._predMet(r.value, pred), graded_by: r.graded_by, value: r.value };
+  };
+
+  /* ==================================================================================
+   * A CASUALTY THE PLAYER INJECTED ON PURPOSE STANDS ITS OWN ROWS DOWN
+   * *(OWNER RULING, 2026-09-19: "A", on #788/#773)*.
+   *
+   * THE RULE: a walkthrough step may stand an acceptance row down because the player
+   * DELIBERATELY INJECTED A NAMED CASUALTY on the channel that row grades.
+   *
+   * WHY THIS IS NOT THE FAIL-OPEN #773 REJECTED, and the distinction is the whole
+   * design. A fail-open says *"you are done because your meter died"* and fires on ANY
+   * cause — a lag, a range floor, a channel that never published, a failure the player
+   * did not choose. This fires ONLY on the player's own declared action: *"you broke this
+   * on purpose, so this observation is void."* It reads `snapshot.active_failures`, which
+   * is the INJECTION RECORD — a list of ids the operator (or an authored `inject`) sent
+   * down — and never `true_state`. HARD RULE 1 IS UNTOUCHED: nothing here consults plant
+   * truth to decide whether a row stands, and a gauge that is merely lying, lagging or
+   * railed is still graded exactly as before.
+   *
+   * THE SCOPE IS THE NAMED PATH, AND THAT IS THE RULING'S OWN BOUNDARY. `inject_failure
+   * {failure_id}` publishes `active_failures = [{id, severity}]`; the raw advanced-panel
+   * `set_instrument_failure {instrument_id, mode}` publishes NOTHING (measured, #788
+   * §2ag.7 — the engine knows, the snapshot does not). So a channel broken from the
+   * advanced panel is NOT relieved here, deliberately: extending the publication also
+   * decides what M5's new-failure attention stop does when a player breaks a gauge, which
+   * is a separate decision and was left out of scope.
+   *
+   * THE DERIVED-CHANNEL HALF IS THE HARD ONE, and a name match closes none of it. The
+   * TMI-2 leg's four SUBCOOLING MARGIN rows grade `subcooling_margin`, which is built
+   * inside the instrument layer out of indicated pressure, T-avg and core-exit temperature
+   * — so `tavg_sensor_failure` kills them though their channel is not `tavg`, and one of
+   * them (step 19) was an unrecorded soft lock. The relation is therefore taken from
+   * `RD.PWRInstruments.DERIVED_FROM`, which is declared in the file that COMPUTES those
+   * channels and re-discovered by perturbation in `run_checklist_pwr2.js` §2ah.1 — not a
+   * list kept here, which is the shape that certifies a map instead of a plant.
+   *
+   * IT IS RE-EVALUATED EVERY TICK AND NEVER LATCHED. `clear_failure` empties
+   * `active_failures`, the row comes straight back, and the step owes its own criterion
+   * again. Latching it would be the `implied_by` latch bug in a new place.
+   *
+   * WHAT IT DOES NOT TOUCH: `precond` (a leg's ENTRY gate — standing it down would let a
+   * player start a leg the plant is not lined up for), `overtaken` (a plant condition, not
+   * an acceptance) and the outcome guard. */
+  InstructorLayer.prototype._casualtyChannels = function (snapshot) {
+    var af = (snapshot && snapshot.active_failures) || [];
+    var plant = (snapshot && snapshot.metadata && snapshot.metadata.plant_id) || '';
+    var sig = plant + '::' + af.map(function (f) { return f && f.id; }).join('|');
+    if (this._voidSig === sig && this._voidMap) return this._voidMap;
+    /* THE CATALOG IS THE CONTROL LAYER'S OWN (`config.failures`), not a copy: it is what
+     * says which ids are `type:'instrument'` and which channel each one holds. Reached
+     * through `this.below`, the layer this one is constructed over — the same downward
+     * reference `_checklistFire` already uses to place a failure. */
+    var cat = (this.below && this.below.config && this.below.config.failures) || {};
+    var direct = {}, any = false;
+    for (var i = 0; i < af.length; i++) {
+      var def = af[i] && cat[af[i].id];
+      if (!def || def.type !== 'instrument' || !def.instrument_id) continue;
+      direct[def.instrument_id] = def.display || af[i].id;
+      any = true;
+    }
+    var out = {}, k;
+    for (k in direct) out[k] = direct[k];
+    if (any) {
+      var dmap = (RD.PWRInstruments && RD.PWRInstruments.DERIVED_FROM) || {};
+      /* ONE FORWARD PASS IS ENOUGH and the gate says so: no channel in DERIVED_FROM is
+       * itself an input to another (§2ah.1 asserts the relation is one level deep), so a
+       * chain cannot hide behind a single sweep the way `implied_by`'s can. */
+      for (var chan in dmap) {
+        if (out[chan]) continue;
+        var ins = dmap[chan];
+        for (var j = 0; j < ins.length; j++) {
+          if (direct[ins[j]]) { out[chan] = direct[ins[j]]; break; }
+        }
+      }
+    }
+    this._voidSig = sig; this._voidMap = out;
+    return out;
+  };
+
+  /* null, or the DISPLAY NAME of the casualty the player injected that took this row's
+   * gauge out — the string the card shows them, so the void is never silent. */
+  InstructorLayer.prototype._predVoided = function (snapshot, pred) {
+    if (!pred || !pred.p || !snapshot) return null;
+    var af = snapshot.active_failures;
+    if (!af || !af.length) return null;            // the healthy plant: never, for any row
+    var map = this._casualtyChannels(snapshot);
+    var plant = (snapshot.metadata && snapshot.metadata.plant_id) || null;
+    var pm = plant ? PARAM_INSTRUMENT[plant] : null;
+    var iid = pm ? pm[pred.p] : null;
+    if (!iid || !map[iid]) return null;
+    /* AND THE ROW MUST ACTUALLY BE GRADED OFF THAT GAUGE. A param that falls through to
+     * `true_state` — because the channel is absent from this plant's broadcast — is not
+     * affected by any instrument casualty, so voiding it would be the fail-open shape on
+     * a row the failure never touched. Asked of `readParam`, the one resolver, rather
+     * than re-derived here. */
+    if (readParam(snapshot, pred.p).graded_by !== 'instrument') return null;
+    return map[iid];
   };
 
   /* THE STEADINESS EVALUATOR (#755) — ONE implementation, two callers. The live runtimes reach
@@ -1553,7 +1672,10 @@
         // `implied` — latched by a sibling's threshold rather than this row's own (see
         // `implied_by` in _gradeAccs). Initialised here so the shape is stable across
         // serialize/restore and the card can read it on the first broadcast.
-        return { streak: 0, met: false, obs: null, graded_by: null, bag: null, implied: false };
+        // `voided` — the player's own named casualty took this row's gauge out (#773/#788).
+        // NOT a latch: re-derived every tick, so `clear_failure` gives the row back.
+        return { streak: 0, met: false, obs: null, graded_by: null, bag: null, implied: false,
+                 voided: null };
       });
     }
     return holder.accsState;
@@ -1569,6 +1691,11 @@
        * moving" is a HOLD claim, and a plant — or a player — that starts moving again has left
        * it. */
       var holds = !!(en && (en.op === '~' || BAG_OPS[en.op]));
+      /* THE PLAYER'S OWN CASUALTY (#773/#788) — recomputed here every tick for EVERY row,
+       * met or not, so that clearing the failure takes the relief away again. It is kept
+       * OUT of `ax.met` on purpose: `met` is a latch, and a latched void would survive the
+       * clear. The row still grades underneath, so the card keeps showing its reading. */
+      ax.voided = this._predVoided(snapshot, en);
       if ((!ax.met || holds) && en && en.p) {
         var g;
         if (BAG_OPS[en.op]) {
@@ -1585,7 +1712,9 @@
         if (ax.streak >= ACC_STABLE_N && !blocked) ax.met = true;
         else if (holds) ax.met = false;        // left the band — the check-off comes back off
       }
-      if (!ax.met) { all = false; if (ordered) blocked = true; }   // cmd entries latch in handleCommand
+      // a voided row neither holds the step nor blocks its successors — it is an
+      // observation the player deliberately made impossible, not an unmet one.
+      if (!ax.met && !ax.voided) { all = false; if (ordered) blocked = true; }   // cmd entries latch in handleCommand
       /* A LATCHED ENTRY IS NEVER UN-LATCHED BY A PREDECESSOR GOING BACK OFF, and that is
        * deliberate: "the counts passed 7.0e2" and "you plotted a point" stay true when a later
        * `steady` row un-ticks because the player pulled more rod. The block only gates NEW
@@ -1651,7 +1780,7 @@
      * an `all` taken before it resolved — and identical to the loop's own accumulation when no
      * entry carries `implied_by`, which is every step in the pool but one. */
     all = true;
-    for (var qi = 0; qi < state.length; qi++) if (!state[qi].met) { all = false; break; }
+    for (var qi = 0; qi < state.length; qi++) if (!state[qi].met && !state[qi].voided) { all = false; break; }
     return all;
   };
   // The command half of the watch: latch any unmet cmd-kind entry the command satisfies.
@@ -1819,7 +1948,8 @@
         // per entry, order-parallel to the step's `accs`), or null on single-acc steps.
         // `implied` — this row latched on a sibling's threshold, not its own (`implied_by`).
         accs: f.accsState ? f.accsState.map(function (a) {
-          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied };
+          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
+                   voided: a.voided || null };
         }) : null,
       } : null,
       level_complete: this.levelComplete ? {
@@ -1845,6 +1975,13 @@
         steps_done: this.checklist.done.slice(),
         done_by: this.checklist.doneBy.slice(),
         acc_met: this.checklist.accMetNow,
+        /* THE SOLE ROW THE PLAYER'S OWN CASUALTY STOOD DOWN (#773/#788) — the display
+         * name of the failure they injected, or null. `acc_met` is TRUE alongside it, so
+         * without this the step would tick with nothing asserting it and nothing said;
+         * ui/app.js renders the sentence off this field. `saw_voided` is the same fact
+         * for the step's `saw` latch, which no other relief in this file can reach. */
+        acc_voided: this.checklist.accVoided || null,
+        saw_voided: this.checklist.sawVoided || null,
         graded_by: this.checklist.gradedBy,
         complete: this.checklist.complete,
         // #715 — whether the completion banner's `outcome` text is safe to show: re-graded
@@ -1870,8 +2007,10 @@
         // Multi-check-off verdicts for the ACTIVE step (#244 item 8) — {met, obs,
         // graded_by, implied} order-parallel to the step's `accs`; null on single-acc
         // steps. `implied` — latched on a sibling's threshold (`implied_by`), not its own.
+        // `voided` — the player's own named casualty took this row's gauge out (#773/#788).
         accs: this.checklist.accsState ? this.checklist.accsState.map(function (a) {
-          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied };
+          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
+                   voided: a.voided || null };
         }) : null,
         /* THE LAST OUT-OF-TURN PRESS ON THIS STEP (#759) — `{ acc_index, blocked_by }`, both
          * indices into the step's own `accs`. `acc_index` is the row the press WOULD have

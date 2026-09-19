@@ -191,6 +191,52 @@
     return n;
   };
 
+  /* ==================================================================================
+   * WHICH READINGS ARE BUILT OUT OF WHICH OTHER READINGS (#773/#788, 2026-09-19).
+   *
+   * Every entry below is a channel this file COMPUTES from other channels of this same
+   * file rather than lagging from a true-state source — `subcooling_margin` is
+   * Tsat(indicated P) minus the hotter of indicated T-avg and indicated core-exit, the
+   * delta-T channels are built from indicated thot/tcold/tavg/pressure, and so on. Each
+   * one therefore INHERITS its inputs' lag, noise and any injected failure, which every
+   * computation site below already says in its own words; this table is the machine-
+   * readable form of the same fact, and it lives here, in the file that does the
+   * computing, so it cannot be a remote list that rots.
+   *
+   * ⚠ IT IS NOT HAND-VERIFIED AND MUST NOT BECOME SO. `test/run_checklist_pwr2.js` §2ah.1
+   * re-DISCOVERS this relation by perturbation — a fresh instrument set driven to
+   * settlement on ONE FROZEN true-state/extras pair, each channel stuck high AND stuck
+   * low, diffing every reading — and reddens if the measured relation is not this one.
+   * Freezing the inputs is what makes the answer about THIS file: a perturbation on a
+   * LIVE plant moves 32 of 33 channels, because the automation reads instruments and
+   * drives the plant back (measured 2026-09-19).
+   *
+   * ⚠ AND IT IS TWO-SIDED FOR A REASON. `subcooling_margin` takes the MAX of T-avg and
+   * core-exit (#407), so at `hot_full_power` — core exit 610.0 degF (321.0 degC) over a
+   * T-avg of 580.2 degF (304.6 degC) — sticking T-avg DOWNWARD moves nothing at all, and
+   * a one-sided probe reports T-avg as no input to the margin. It is the same shape as
+   * the "identity in the regime you test in" trap: the term is real, the test stood where
+   * it was inert. Stuck HIGH it moves.
+   *
+   * `pzr_level_dev` IS DECLARED BUT NOT DISCOVERABLE ON PWR2, and that is measured, not
+   * assumed: `_levelDev` needs a level-program supplier (`extras.level_program_fn` or
+   * `RD.pwrPressurizer`), the PWR2 stack loads neither, so the channel publishes a
+   * constant 0.0 % there and no perturbation can move it. The dependency is real on the
+   * engine that does supply one — `_levelDev` reads `this.reading.pzr_level` and
+   * `this.reading.tavg` — so it is declared, and §2ah.1 asserts DISCOVERED is a SUBSET of
+   * this table (a missing entry is the unsafe direction) plus exact equality over every
+   * channel the probe can actually move. */
+  var DERIVED_FROM = {
+    subcooling_margin: ['primary_pressure', 'tavg', 'core_exit_temp'],
+    pzr_level_dev:     ['pzr_level', 'tavg'],
+    tavg_rate:         ['tavg'],
+    loop_delta_t:      ['thot', 'tcold'],
+    otdt_setpoint:     ['tavg', 'primary_pressure'],
+    opdt_setpoint:     ['tavg'],
+    otdt_margin:       ['tavg', 'thot', 'tcold', 'primary_pressure'],
+    opdt_margin:       ['tavg', 'thot', 'tcold'],
+  };
+
   // Initialize every reading to the (noise-free) true value — no startup transient.
   // Log instruments (spec.log — the source/intermediate-range nuclear detectors)
   // keep their LAG BUFFER in log10 domain, so lag and noise act per decade.
@@ -497,6 +543,11 @@
     this._rngState = s.rngState >>> 0;
     this.seed = s.seed >>> 0;
   };
+
+  // The derived-channel relation declared above, for consumers that must know which
+  // readings a failure on one channel takes with it (#773/#788 — the instructor layer's
+  // casualty relief). Frozen so a consumer cannot edit the authority.
+  PWRInstruments.DERIVED_FROM = DERIVED_FROM;
 
   RD.PWRInstruments = PWRInstruments;
 
