@@ -3309,6 +3309,480 @@ if (!only) {
     ck('2af.3 the true_state-graded observation rows — the grey band — are the pinned set (#667 item 1)',
        dTS.ok, dTS.note + Object.keys(ts).length + ' row(s), mode/latched facts and quantities mixed');
   })();
+
+  /* 2ag. THE MODE AUTHORED PLAY ACTUALLY INJECTS (#788, the follow-up §2ae owed, 2026-09-19).
+   *
+   * §2ae swept `dead` across the whole pool and pinned 49 stranding rows and 30 false-ticking
+   * ones. THE OWNER THEN ASKED THE QUESTION THAT SECTION DOES NOT ANSWER — "why would a gauge
+   * break?" — and the answer is that on this plant NOTHING breaks a gauge by itself. There are
+   * exactly FOUR named instrument casualties (`pwr_control.js` protection.failures), and NOT ONE
+   * of them is `dead`:
+   *
+   *   porv_indicator_stuck_closed  porv_indicator  stuck @ 'closed'   <- a WALKTHROUGH injects it
+   *   tavg_sensor_failure          tavg            drift  @ 0.5 degC/s (the layer default)
+   *   pzr_level_sensor_stuck       pzr_level       stuck  @ the reading at injection
+   *   pzr_level_sensor_low         pzr_level       stuck  @ 20.0 %
+   *
+   * `dead` is reachable ONLY from the advanced Failures panel, where the player picks a channel
+   * and a mode by hand. So §2ae measured the mode a player has to go out of their way to select
+   * and left the modes authored content injects unmeasured. This section closes that.
+   *
+   * THE MODE CHANGES THE ANSWER, AND IT IS NOT A DETAIL. `dead` rails at the channel's RANGE
+   * FLOOR, which is why §2ae's split fell along the direction of the comparison. The two modes
+   * here do not:
+   *   · `stuck` freezes at ONE value for all time (`pwr_instruments._applyFailure`: `case
+   *     'stuck': return f.value;` — no plant input at all), so the row's verdict is a PROPERTY
+   *     OF THAT VALUE and is fixed from the injection onward. It breaks a row in EITHER
+   *     direction, and which direction depends on WHEN the player clicked.
+   *   · `drift` returns `trueVal + offset` with the offset growing at 0.5 degC/s without bound,
+   *     so the reading MONOTONICALLY LEAVES every threshold: a `>` row false-ticks and stays
+   *     ticked, a `<` row strands and stays stranded, and a `~ v +/- tol` row does BOTH — it
+   *     false-ticks on the way through and strands once it is past. That third shape does not
+   *     exist under `dead` at all.
+   *
+   * WHAT WAS MEASURED (full stack, seed 7, each leg at its own `from`, one injection per boot):
+   *
+   *   porv_indicator_stuck_closed — BREAKS NOTHING. No pool acceptance row grades that channel
+   *       (check 2ag.2 asks the LAYER, it does not read a list), and an A/B at `hot_full_power`
+   *       with the TMI-2 leg's own anticipatory-trip + loss-of-feedwater + stuck PORV running
+   *       moves NOT ONE of the 88 instrument channels and flips NO acceptance verdict among all
+   *       91 swept rows. The one honest tell the leg grades — `porv_tailpipe_temp_c` on step 8
+   *       — is a DIFFERENT channel and reads 250.00 degC (482.0 degF) both ways. The control
+   *       that proves the injection landed is taken at the LIFT, where the lamp still reads
+   *       `open`: see check 2ag.2's own note. The walkthrough's authored failure is clean.
+   *
+   *   tavg_sensor_failure — STRANDS FIVE ROWS AND FALSE-TICKS EIGHT, of the 17 the pool grades
+   *       on that channel, across four legs. NONE of the thirteen has an `implied_by` or an
+   *       `overtaken` (the pool carries exactly one of the former and six of the latter, all
+   *       elsewhere), so every strand is a hard lock with no relief.
+   *       MEASURED at `hot_full_power`: 30 ticks after the injection the gauge reads 311.24 degC
+   *       (592.2 degF) against a true 297.99 degC, and `pwr_lower_power` steps 3 and 4 — whose
+   *       criteria the plant has ALREADY met — read `met:false` and can never read anything
+   *       else. At `cold_shutdown` it is the other way: after 600 ticks the gauge reads 348.01
+   *       degC (658.4 degF) on a plant that is truly 50.01 degC (122.0 degF), so `pwr_heatup`
+   *       step 11 — "Mode 3, Hot Standby reached" — ticks off on a COLD plant.
+   *
+   *   pzr_level_sensor_low — STRANDS THE TMI-2 DECEPTION STEP. Step 12 is the one that teaches
+   *       A4, level is not inventory: `pzr_level_pct >= 99`, the step's ONLY acceptance. Frozen
+   *       at 20.0 % the gauge can never say 99, and MEASURED on the driven leg the plant's own
+   *       truth goes past 99 while the gauge sits at 20.0. The same freeze false-ticks steps 15
+   *       and 16, which ask for the level to come back DOWN.
+   *
+   *   pzr_level_sensor_stuck — the same three rows, and WHICH of them breaks is decided by the
+   *       moment of the click: frozen at the pre-accident 62 % it strands 12 and 16; frozen
+   *       while the gauge is pegged it strands 15 and 16 instead. That is the `stuck`-vs-`dead`
+   *       difference in one row: `dead` reads 0.0 % and TICKS both 15 and 16 (§2ae pins them in
+   *       TICK_EXPECTED); the same two rows STRAND under a stuck gauge pegged high.
+   *
+   * AND ONE DEFECT IN THE FAILURE MODEL ITSELF, found on the way (2ag.6): `drift` and `stuck`
+   * are applied AFTER the range clip in `pwr_instruments.stepInstruments` and are not clipped
+   * themselves, so a drifting Tavg walks straight out of its own transmitter span. MEASURED at
+   * `hot_zero_power`, 600 ticks in: 583.86 degC (1082.9 degF) on a channel declared
+   * [30, 343] degC (86-649 degF) — 240.86 degC (433.5 degF) past the top of the instrument. A
+   * real transmitter pegs. `dead` and `noisy` ARE clipped in the same switch, so this is an
+   * inconsistency inside one function rather than a design position. Pinned as a canary, not
+   * blessed: when it is fixed this check reddens and the fix is read.
+   *
+   * TWO HOLLOW SHAPES CAUGHT WHILE BUILDING THIS, both of which produced confident wrong
+   * answers before they were caught, and both of which the checks below are written to avoid:
+   *   · A HAND-BUILT SNAPSHOT GRADES `true_state`, NOT THE INSTRUMENT. `readParam` picks the
+   *     channel map off `snapshot.metadata.plant_id`; a `{instruments:{pzr_level:20}}` object
+   *     with no metadata falls through to `true_state[p]`, which is undefined, so EVERY row
+   *     reads `met:false` — a sweep that reports the whole pool stranded. Measured both ways in
+   *     2ag.0. Every grade below is taken off a REAL broadcast with a REAL injection.
+   *   · `svc.tick()` RETURNS ONE MUTABLE SNAPSHOT, REUSED. Holding `sA = tick()` and comparing
+   *     it to `sB` 570 ticks later compares the object with itself: the first reading of a
+   *     drift sweep came back identical to the last, at 348.009 both times. Hold VERDICTS, not
+   *     the object — which is what the marks array below does.
+   *
+   * INJECTION — every check driven red by a separate mutation, restored, and re-run clean
+   * (2026-09-19; ten mutations, each reddening EXACTLY ONE check and no other). What printed:
+   *   · 2ag.0's own `metadata: w.snap.metadata` -> `metadata: null`  -> red, "with metadata ->
+   *     true_state/met false (value undefined)" — i.e. the check does discriminate the two reads
+   *   · drop `pzr_level_sensor_low` from NAMED_EXPECTED -> 2ag.1 red, "UNPINNED:
+   *     pzr_level_sensor_low. 4 instrument-type failure(s)"
+   *   · pin its mode as `dead` instead of `stuck`     -> 2ag.1 red, "MISMATCH
+   *     pzr_level_sensor_low: pinned pzr_level|dead|20, built pzr_level|stuck|20"
+   *   · point 2ag.2's channel at `pzr_level`          -> 2ag.2 red, "3 pool row(s) grade it:
+   *     pwr_tmi2_incident:12/15/16:pzr_level_pct"
+   *   · delete `'pwr_lower_power:3:tavg_c'` from DRIFT_STRAND -> 2ag.3 red, "UNPINNED:
+   *     pwr_lower_power:3:tavg_c. 5 row(s) strand, 8 false-tick, of 17 graded on the channel"
+   *   · delete `'pwr_heatup:11:tavg_c'` from DRIFT_TICK      -> 2ag.3 red, "UNPINNED:
+   *     pwr_heatup:11:tavg_c"
+   *   · add step 15 to LOW_STRAND                     -> 2ag.4 red, "PINNED BUT NOT SEEN:
+   *     pwr_tmi2_incident:15:pzr_level_pct"
+   *   · 2ag.5's late injection delay 150 -> 0 ticks   -> 2ag.5 red, both legs report "clicked at
+   *     61.55 %" and the two verdict sets stop differing — the check is measuring the DELAY
+   *   · CLIP the drift return in `pwr_instruments._applyFailure` to `spec.range` (the fix this
+   *     canary is waiting for)                          -> 2ag.6 red, "tavg drifts to 343.00 degC
+   *     (649 degF) … 0.00 degC (0.0 degF) past the top". 2ag.3 STAYED GREEN under that fix,
+   *     which is its own finding: pegging the gauge at 343 degC does not change one strand or
+   *     false-tick verdict, so the unclipped reading is a BOARD defect and not the cause of the
+   *     thirteen broken rows. Fix it for the board's sake, and the rows stay broken.
+   *   · send 2ag.7's panel probe through `inject_failure` instead -> 2ag.7 red
+   * Baseline before the mutations and after the restore: 0 red both times. */
+  (function () {
+    var grader = Object.create(RD.InstructorLayer.prototype);
+
+    /* the param -> channel map, scanned the way §2a and §2ae scan it (module-private) */
+    var isrc = fs.readFileSync(path.join(ROOT, 'layers', 'instructor_layer.js'), 'utf8');
+    var pmm = /\n    pwr2:\s*\{([\s\S]*?)\n    \},/.exec(isrc);
+    var MAP = {};
+    (pmm ? pmm[1] : '').replace(/([a-z_0-9]+)\s*:\s*'([a-z_0-9]+)'/g,
+      function (_, p, id) { MAP[p] = id; return ''; });
+
+    /* the rows — `accs` when present else `acc`, plus `saw`, exactly §2ae's set */
+    var rows = [];
+    POOL.forEach(function (proc) {
+      (proc.steps || []).forEach(function (st, idx) {
+        var accs = (st.accs && st.accs.length) ? st.accs : (st.acc ? [st.acc] : []);
+        var preds = accs.filter(function (e) { return e && e.p; });
+        if (st.saw && st.saw.p && MAP[st.saw.p]) {
+          rows.push({ key: proc.id + ':' + (idx + 1) + ':saw:' + st.saw.p, from: proc.from,
+                      en: st.saw, chan: MAP[st.saw.p], sole: !preds.length, isSaw: true });
+        }
+        preds.forEach(function (en) {
+          if (!MAP[en.p]) return;
+          rows.push({ key: proc.id + ':' + (idx + 1) + ':' + en.p, from: proc.from,
+                      en: en, chan: MAP[en.p], sole: preds.length === 1, isSaw: false });
+        });
+      });
+    });
+    function truthMet(s, en) {
+      return grader._predMet(s.true_state ? s.true_state[en.p] : undefined, en);
+    }
+    function boot(ic, accel) {
+      var svc = new RD.SimulationService({ seed: 7 });
+      svc.selectPlant('pwr2', ic, null, undefined);
+      svc.running = true; svc.timeAcceleration = accel || 10; svc.attentionStops = false;
+      var s = null; for (var i = 0; i < 20; i++) s = svc.tick();
+      return { svc: svc, snap: s };
+    }
+    function diffSet(got, want) {
+      var extra = got.filter(function (k) { return !want[k]; });
+      var gone = Object.keys(want).filter(function (k) { return got.indexOf(k) < 0; });
+      return { ok: extra.length === 0 && gone.length === 0,
+        note: (extra.length ? 'UNPINNED: ' + extra.join(', ') + '. ' : '') +
+              (gone.length ? 'PINNED BUT NOT SEEN: ' + gone.join(', ') + '. ' : '') };
+    }
+
+    /* --- 2ag.0 THE GRADER NEEDS `metadata.plant_id` — the hollow shape, asserted so the next
+     * agent cannot rebuild the sweep on a hand-made snapshot and get a pool-wide false red. */
+    (function () {
+      var w = boot('hot_full_power');
+      var en = { p: 'pzr_level_pct', op: '<', v: 50 };
+      var bare = grader._grade({ instruments: { pzr_level: 20 }, true_state: {} }, en);
+      var real = grader._grade({ instruments: { pzr_level: 20 }, true_state: {},
+                                 metadata: w.snap.metadata }, en);
+      ck('2ag.0 a snapshot with no `metadata.plant_id` grades true_state, not the instrument (#788)',
+         bare.graded_by === 'true_state' && bare.met === false &&
+         real.graded_by === 'instrument' && real.met === true,
+         'bare -> ' + bare.graded_by + '/met ' + bare.met + ', with metadata -> ' +
+         real.graded_by + '/met ' + real.met + ' (value ' + real.value + ')');
+    })();
+
+    /* --- 2ag.1 the four named instrument casualties, and not one of them is `dead` */
+    var NAMED_EXPECTED = {
+      porv_indicator_stuck_closed: 'porv_indicator|stuck|closed',
+      tavg_sensor_failure:         'tavg|drift|-',
+      pzr_level_sensor_stuck:      'pzr_level|stuck|-',
+      pzr_level_sensor_low:        'pzr_level|stuck|20',
+    };
+    (function () {
+      var DEFS = (RD.PWR_CONFIG.protection && RD.PWR_CONFIG.protection.failures) || {};
+      var built = {}, bad = [];
+      Object.keys(DEFS).forEach(function (id) {
+        var d = DEFS[id]; if (!d || d.type !== 'instrument') return;
+        built[id] = d.instrument_id + '|' + d.mode + '|' +
+          (d.stuck_value === undefined ? '-' : String(d.stuck_value));
+      });
+      var d = diffSet(Object.keys(built), NAMED_EXPECTED);
+      Object.keys(NAMED_EXPECTED).forEach(function (id) {
+        if (built[id] && built[id] !== NAMED_EXPECTED[id]) {
+          bad.push('MISMATCH ' + id + ': pinned ' + NAMED_EXPECTED[id] + ', built ' + built[id]);
+        }
+      });
+      var anyDead = Object.keys(built).filter(function (id) { return /\|dead\|/.test(built[id]); });
+      ck('2ag.1 the named instrument casualties are the pinned four, and NONE of them is `dead` (#788)',
+         d.ok && bad.length === 0 && anyDead.length === 0,
+         d.note + (bad.length ? bad.join('; ') + '. ' : '') +
+         (anyDead.length ? 'DEAD: ' + anyDead.join(', ') + '. ' : '') +
+         Object.keys(built).length + ' instrument-type failure(s); `dead` is panel-only');
+    })();
+
+    /* --- 2ag.2 the one the WALKTHROUGH injects breaks nothing. THREE claims, because any two
+     * of them are hollow on their own: no row grades the channel (asked of the LAYER, not of a
+     * list); the injection moves nothing else; and THE INJECTION LANDED AT ALL, which is the
+     * control an absence check owes. The control is the awkward one and it is worth reading:
+     * healthy, the lamp reads `open` for about a second after the valve lifts and then goes
+     * dark on its own as the solenoid de-energizes — MEASURED at `hot_full_power` with the
+     * leg's own anticipatory-trip failure in, `open` at t+5.0 s and `closed` from t+6.0 s over
+     * a valve that is truly open for the rest of the ride. So the deception is already there
+     * without the casualty, and the ONLY window in which the injection changes the lamp is that
+     * first second. The control injects inside it; the sweep uses the authored moment. */
+    (function () {
+      var graded = rows.filter(function (r) { return r.chan === 'porv_indicator'; });
+      function lampAtLift(inject) {
+        var w = boot('hot_full_power', 10), s = w.snap, i;
+        w.svc.handleCommand({ action: 'inject_failure', failure_id: 'anticipatory_trip_failure' });
+        for (i = 0; i < 10; i++) s = w.svc.tick();
+        w.svc.handleCommand({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
+        w.svc.handleCommand({ action: 'inject_failure', failure_id: 'stuck_porv_open' });
+        if (inject) w.svc.handleCommand({ action: 'inject_failure', failure_id: 'porv_indicator_stuck_closed' });
+        var lamp = null;
+        for (i = 0; i < 8; i++) {
+          s = w.svc.tick();
+          if (s.true_state.porv_open && lamp === null) lamp = s.instruments.porv_indicator;
+        }
+        return lamp;
+      }
+      var lampH = lampAtLift(false), lampF = lampAtLift(true);
+      function run(inject) {
+        var w = boot('hot_full_power', 60), s = w.snap, i;
+        w.svc.handleCommand({ action: 'inject_failure', failure_id: 'anticipatory_trip_failure' });
+        w.svc.handleCommand({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
+        w.svc.handleCommand({ action: 'inject_failure', failure_id: 'stuck_porv_open' });
+        for (i = 0; i < 20; i++) s = w.svc.tick();
+        if (inject) w.svc.handleCommand({ action: 'inject_failure', failure_id: 'porv_indicator_stuck_closed' });
+        var v = {};
+        for (i = 0; i < 300; i++) s = w.svc.tick();
+        rows.forEach(function (r) { v[r.key] = grader._grade(s, r.en).met; });
+        var ins = {}; Object.keys(s.instruments).forEach(function (k) { ins[k] = s.instruments[k]; });
+        return { v: v, ins: ins, open: s.true_state.porv_open, tail: s.instruments.porv_tailpipe_temp };
+      }
+      var a = run(false), b = run(true);
+      var moved = Object.keys(a.ins).filter(function (k) {
+        var x = a.ins[k], y = b.ins[k];
+        return (typeof x === 'number' && typeof y === 'number') ? Math.abs(x - y) > 1e-9 : x !== y;
+      });
+      var flipped = rows.filter(function (r) { return a.v[r.key] !== b.v[r.key]; })
+                        .map(function (r) { return r.key; });
+      ck('2ag.2 the TMI-2 leg\u2019s OWN porv_indicator_stuck_closed strands and false-ticks nothing (#788)',
+         graded.length === 0 && moved.length === 0 && flipped.length === 0 &&
+         lampH === 'open' && lampF === 'closed' && a.open === true,
+         (graded.length ? graded.length + ' pool row(s) grade it: ' +
+            graded.map(function (r) { return r.key; }).join(', ') + '. ' : 'no pool row grades it; ') +
+         (moved.length ? moved.length + ' channel(s) differ: ' + moved.slice(0, 6).join(', ') + '. '
+                       : 'no channel of ' + Object.keys(a.ins).length + ' differs; ') +
+         (flipped.length ? 'FLIPPED: ' + flipped.join(', ') + '. '
+                         : 'none of ' + rows.length + ' rows flips; ') +
+         'CONTROL: at the lift the lamp reads ' + JSON.stringify(lampH) + ' healthy / ' +
+         JSON.stringify(lampF) + ' injected, valve truly open ' + a.open +
+         ', and the honest tell PORV TAILPIPE reads ' + Number(a.tail).toFixed(2) + ' degC both ways');
+    })();
+
+    /* --- the drift sweep. ONE boot per leg; verdicts are HELD at each mark, never the
+     * snapshot (see the header's second hollow shape). A row is a STRAND at a mark when the
+     * plant's own truth satisfies it and the gauge refuses, and a FALSE-TICK when the gauge
+     * satisfies it and the truth does not — the two are not exclusive across marks, and the
+     * `~ v +/- tol` rows are exactly the ones that are both. */
+    var DRIFT_STRAND = {
+      /* the gauge refuses a criterion the plant has already met */
+      'pwr_startup:1:tavg_c': 1,                               // ~286 +/-8  [SOLE]
+      'pwr_lower_power:3:tavg_c': 1, 'pwr_lower_power:4:tavg_c': 1,
+      'pwr_lower_power:5:tavg_c': 1, 'pwr_lower_power:6:tavg_c': 1,
+    };
+    var DRIFT_TICK = {
+      /* the gauge satisfies a criterion the plant has NOT met */
+      'pwr_heatup:11:saw:tavg_c': 1, 'pwr_heatup:11:tavg_c': 1,
+      'pwr_raise_power:4:tavg_c': 1, 'pwr_raise_power:5:tavg_c': 1,
+      'pwr_raise_power:6:tavg_c': 1, 'pwr_raise_power:7:tavg_c': 1,
+      'pwr_raise_power:8:tavg_c': 1, 'pwr_raise_power:9:tavg_c': 1,
+    };
+    (function () {
+      var legs = {};
+      rows.filter(function (r) { return r.chan === 'tavg'; })
+          .forEach(function (r) { (legs[r.from] = legs[r.from] || []).push(r); });
+      var strand = [], tick = [], readings = [];
+      Object.keys(legs).forEach(function (from) {
+        var mine = legs[from], w = boot(from), s = w.snap, i, n = 0;
+        w.svc.handleCommand({ action: 'inject_failure', failure_id: 'tavg_sensor_failure' });
+        var seen = {};
+        mine.forEach(function (r) { seen[r.key] = { s: false, t: false }; });
+        var MARKS = [30, 120, 300, 600];
+        MARKS.forEach(function (m) {
+          while (n < m) { s = w.svc.tick(); n++; }
+          mine.forEach(function (r) {
+            var g = grader._grade(s, r.en).met, tm = truthMet(s, r.en);
+            if (!g && tm) seen[r.key].s = true;
+            if (g && !tm) seen[r.key].t = true;
+          });
+        });
+        readings.push(from + ' ' + Number(w.snap.instruments.tavg).toFixed(2) + ' -> ' +
+                      Number(s.instruments.tavg).toFixed(2) + ' degC on a true ' +
+                      Number(s.true_state.tavg_c).toFixed(2));
+        mine.forEach(function (r) {
+          if (seen[r.key].s) strand.push(r.key);
+          if (seen[r.key].t) tick.push(r.key);
+        });
+      });
+      var dS = diffSet(strand, DRIFT_STRAND), dT = diffSet(tick, DRIFT_TICK);
+      ck('2ag.3 the DRIFTING Tavg sensor — the pinned strand and false-tick sets (#788)',
+         dS.ok && dT.ok,
+         dS.note + dT.note + strand.length + ' row(s) strand, ' + tick.length +
+         ' false-tick, of ' + rows.filter(function (r) { return r.chan === 'tavg'; }).length +
+         ' graded on the channel; ' + readings.join('; '));
+    })();
+
+    /* --- the two pzr_level casualties, on the TMI-2 leg DRIVEN by its own injections, so the
+     * plant really does go solid and a refusing gauge is a refusal against the plant's own
+     * truth rather than against a boot that has not got there yet. Counted per broadcast and in
+     * BOTH directions, because a row can be each at different times: `strandN` is the ticks the
+     * plant's truth satisfies the row and the gauge refuses; `tickN` the ticks the gauge
+     * satisfies it and the truth does not. A single verdict per row would have to pick one.
+     * Both are counted against PERSIST below rather than against zero — see the note there. */
+    var PERSIST = 10;              // broadcasts of gauge/truth disagreement that is not the lag
+    function tmiSweep(fid, delayTicks, ticks) {
+      var w = boot('hot_full_power', 60), s = w.snap, i;
+      w.svc.handleCommand({ action: 'inject_failure', failure_id: 'anticipatory_trip_failure' });
+      for (i = 0; i < 20; i++) s = w.svc.tick();
+      w.svc.handleCommand({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
+      w.svc.handleCommand({ action: 'inject_failure', failure_id: 'stuck_porv_open' });
+      for (i = 0; i < (delayTicks || 0); i++) s = w.svc.tick();
+      var froze = s.instruments.pzr_level;
+      if (fid) w.svc.handleCommand({ action: 'inject_failure', failure_id: fid });
+      var mine = rows.filter(function (r) { return r.chan === 'pzr_level'; });
+      var acc = {}; mine.forEach(function (r) { acc[r.key] = { s: 0, t: 0 }; });
+      var N = ticks || 300;
+      for (i = 0; i < N; i++) {
+        s = w.svc.tick();
+        mine.forEach(function (r) {
+          var g = grader._grade(s, r.en).met, tm = truthMet(s, r.en);
+          if (!g && tm) acc[r.key].s++;
+          if (g && !tm) acc[r.key].t++;
+        });
+      }
+      /* PERSIST, not `> 0`. A HEALTHY gauge disagrees with the truth for a broadcast or two
+       * either side of a crossing — that is the instrument lag, HR1, and it is the plant working.
+       * MEASURED on the un-injected rig: 3 broadcasts on step 15 and 1 on step 16, against 259
+       * to 290 for the casualty. Anything under PERSIST is the lag straddle, and check 2ag.4's
+       * control asserts the un-injected rig stays there so this threshold cannot quietly become
+       * the thing that hides a real defect. */
+      var strand = [], tick = [], endMet = {};
+      mine.forEach(function (r) {
+        if (acc[r.key].s >= PERSIST) strand.push(r.key);
+        if (acc[r.key].t >= PERSIST) tick.push(r.key);
+        endMet[r.key] = grader._grade(s, r.en).met;
+      });
+      return { strand: strand, tick: tick, froze: froze, endMet: endMet, acc: acc, N: N,
+               gauge: s.instruments.pzr_level, truth: s.true_state.pzr_level_pct, rows: mine };
+    }
+
+    /* --- 2ag.4 pzr_level_sensor_low: frozen at 20.0 % whatever the plant is doing, so this
+     * verdict does not depend on when the player clicked. */
+    (function () {
+      var LOW_STRAND = { 'pwr_tmi2_incident:12:pzr_level_pct': 1 };
+      var LOW_TICK = { 'pwr_tmi2_incident:15:pzr_level_pct': 1,
+                       'pwr_tmi2_incident:16:pzr_level_pct': 1 };
+      var base = tmiSweep(null, 0), low = tmiSweep('pzr_level_sensor_low', 0);
+      var dS = diffSet(low.strand, LOW_STRAND), dT = diffSet(low.tick, LOW_TICK);
+      /* THE CONTROL: on the same rig with nothing injected NO row strands and step 12's
+       * criterion is genuinely reached, so the strand above is the casualty and not the rig
+       * failing to drive the plant into the deception. */
+      var k12 = 'pwr_tmi2_incident:12:pzr_level_pct';
+      var worst = Math.max.apply(null, Object.keys(base.acc).map(function (k) {
+        return Math.max(base.acc[k].s, base.acc[k].t); }));
+      var control = base.strand.length === 0 && base.tick.length === 0 &&
+                    base.endMet[k12] === true && worst <= 5;
+      ck('2ag.4 pzr_level_sensor_low strands the TMI-2 deception step and false-ticks its reversal (#788)',
+         dS.ok && dT.ok && control,
+         dS.note + dT.note +
+         (control ? 'control: the un-injected rig reaches step 12 and its worst gauge/truth ' +
+            'disagreement is ' + worst + ' broadcast(s), the lag. '
+                   : 'CONTROL FAILED: un-injected rig strands [' + base.strand.join(', ') +
+            '], false-ticks [' + base.tick.join(', ') + '], step 12 met ' + base.endMet[k12] +
+            ', worst disagreement ' + worst + ' broadcast(s). ') +
+         'gauge frozen at ' + Number(low.gauge).toFixed(2) + ' % against a true ' +
+         Number(low.truth).toFixed(2) + ' %; step 12 refused on ' + low.acc[k12].s + '/' + low.N +
+         ' broadcasts its own criterion was met, step 16 ticked on ' +
+         low.acc['pwr_tmi2_incident:16:pzr_level_pct'].t + '/' + low.N + ' it was not');
+    })();
+
+    /* --- 2ag.5 pzr_level_sensor_stuck: the SAME casualty, and WHICH rows it breaks is decided
+     * by the moment of the click. This is the `stuck`-vs-`dead` difference in one measurement.
+     * §2ae pins steps 15 and 16 in TICK_EXPECTED because a DEAD gauge reads 0.0 % and satisfies
+     * `< 80` and `< 50`; a gauge stuck while PEGGED can never satisfy either, for ever.
+     * Asserted on the GAUGE's own verdict rather than on a strand count, because the plant takes
+     * about 95 plant-minutes to bring the true level back under 50 % and a window that long
+     * would be the most expensive check in this file for no extra claim. */
+    (function () {
+      var early = tmiSweep('pzr_level_sensor_stuck', 0);
+      var late = tmiSweep('pzr_level_sensor_stuck', 150);
+      var K12 = 'pwr_tmi2_incident:12:pzr_level_pct', K15 = 'pwr_tmi2_incident:15:pzr_level_pct',
+          K16 = 'pwr_tmi2_incident:16:pzr_level_pct';
+      var earlyOk = early.froze < 80 && early.endMet[K12] === false && early.endMet[K15] === true;
+      var lateOk = late.froze >= 99 && late.endMet[K12] === true &&
+                   late.endMet[K15] === false && late.endMet[K16] === false;
+      ck('2ag.5 ...and a STUCK gauge breaks a DIFFERENT set depending on when it was clicked (#788)',
+         earlyOk && lateOk,
+         'clicked at ' + Number(early.froze).toFixed(2) + ' % -> step 12 ' + early.endMet[K12] +
+         ', 15 ' + early.endMet[K15] + ', 16 ' + early.endMet[K16] +
+         '  |  clicked at ' + Number(late.froze).toFixed(2) + ' % -> step 12 ' + late.endMet[K12] +
+         ', 15 ' + late.endMet[K15] + ', 16 ' + late.endMet[K16] +
+         ' - steps 15 and 16 are permanently unmet on a gauge stuck high, and 2ae pins both in ' +
+         'TICK_EXPECTED because a DEAD gauge reads 0.0 % and satisfies them');
+    })();
+
+    /* --- 2ag.6 THE FAILURE MODEL'S OWN DEFECT, pinned as a canary (see the header). `drift`
+     * and `stuck` return out of `_applyFailure` AFTER the range clip and are not clipped, so
+     * the reading leaves the transmitter's declared span. `dead` and `noisy` are clipped in the
+     * same switch. Asserted as a STRICT excess so a fix reddens it and is read. */
+    (function () {
+      var sp = RD.PWR_CONFIG.instruments.tavg;
+      var w = boot('hot_zero_power'), s = w.snap, i;
+      w.svc.handleCommand({ action: 'inject_failure', failure_id: 'tavg_sensor_failure' });
+      for (i = 0; i < 600; i++) s = w.svc.tick();
+      var drifted = s.instruments.tavg;
+      var w2 = boot('hot_zero_power'), s2 = w2.snap;
+      w2.svc.handleCommand({ action: 'set_instrument_failure', instrument_id: 'tavg', mode: 'dead' });
+      for (i = 0; i < 30; i++) s2 = w2.svc.tick();
+      ck('2ag.6 CANARY — a drifting channel walks out of its own transmitter span, `dead` does not (#788)',
+         drifted > sp.range[1] && Math.abs(s2.instruments.tavg - sp.range[0]) < 1e-9,
+         'tavg drifts to ' + drifted.toFixed(2) + ' degC (' + (drifted * 9 / 5 + 32).toFixed(0) +
+         ' degF) on a channel declared [' + sp.range[0] + ', ' + sp.range[1] + '] degC — ' +
+         (drifted - sp.range[1]).toFixed(2) + ' degC (' + ((drifted - sp.range[1]) * 9 / 5).toFixed(1) +
+         ' degF) past the top; `dead` on the same channel reads ' + s2.instruments.tavg.toFixed(3));
+    })();
+
+    /* --- 2ag.7 IS THE BROKEN GAUGE PUBLISHED WHERE THE INSTRUCTOR COULD READ IT? This is the
+     * question #773 opened and it was filed on a measurement of the PANEL path only, which
+     * gives the wrong answer for the path authored content uses. MEASURED both ways:
+     *
+     *   inject_failure {failure_id: 'tavg_sensor_failure'}  -> snapshot.active_failures
+     *       [{"id":"tavg_sensor_failure","severity":null}]   — PUBLISHED, by name.
+     *   set_instrument_failure {instrument_id:'pzr_level', mode:'dead'} -> active_failures []
+     *       while engine.getActiveFailures() returns ["instrument:pzr_level"] — NOT published.
+     *
+     * So the signal a walkthrough would need already exists for every one of the four named
+     * casualties, and is missing only for the hand-built panel injection. Any mechanism that
+     * names a broken gauge on a stranded step can read `active_failures` today; what it cannot
+     * do is see a channel the player killed from the advanced panel. Pinned so the two halves
+     * cannot drift apart unnoticed, and so the next agent does not re-derive #773's premise. */
+    (function () {
+      var named = {}, panel = {};
+      ['tavg_sensor_failure', 'pzr_level_sensor_low', 'porv_indicator_stuck_closed'].forEach(function (fid) {
+        var w = boot('hot_full_power'), s = w.snap, i;
+        w.svc.handleCommand({ action: 'inject_failure', failure_id: fid });
+        for (i = 0; i < 30; i++) s = w.svc.tick();
+        named[fid] = (s.active_failures || []).map(function (f) { return f && f.id; });
+      });
+      var w2 = boot('hot_full_power'), s2 = w2.snap, j;
+      w2.svc.handleCommand({ action: 'set_instrument_failure', instrument_id: 'pzr_level', mode: 'dead' });
+      for (j = 0; j < 30; j++) s2 = w2.svc.tick();
+      panel.published = (s2.active_failures || []).map(function (f) { return f && f.id; });
+      panel.engine = [];
+      try { panel.engine = w2.svc.engine.getActiveFailures(); } catch (e) { panel.engine = ['THREW ' + e.message]; }
+      panel.reading = s2.instruments.pzr_level;
+      var allNamed = Object.keys(named).every(function (k) { return named[k].indexOf(k) !== -1; });
+      ck('2ag.7 a NAMED casualty is published by id; the PANEL injection is not, though the engine knows (#788)',
+         allNamed && panel.published.length === 0 &&
+         panel.engine.indexOf('instrument:pzr_level') !== -1 && panel.reading === 0,
+         'named -> ' + Object.keys(named).map(function (k) { return JSON.stringify(named[k]); }).join(', ') +
+         '; panel dead pzr_level reads ' + panel.reading + ' with active_failures ' +
+         JSON.stringify(panel.published) + ' and engine.getActiveFailures() ' +
+         JSON.stringify(panel.engine));
+    })();
+  })();
 }
 
 
