@@ -626,6 +626,47 @@ function runSuite(SH, rec, quiet, only) {
   })();
   }
 
+  if (grp('D5')) {
+  /* ---- 1d5. THE LOFW (Loss Of FeedWater) SEAT (#785) -----------------------------------------
+   * SAME SHAPE AS #671's RCP row: `fw.pumpA`/`fw.pumpB` are the operator's own RUN flags
+   * (#605, #200) and the injection deliberately leaves them alone (it zeroes pumpAAvail/
+   * pumpBAvail instead), so the detector cannot read those flags — reading them made an
+   * injected casualty invisible AND made the board's own FEED PUMPS OFF file one nobody
+   * injected. Both directions, because a probe written for only one would pass on a detector
+   * that still gets the other wrong. */
+  head('THE LOFW SEAT  [#785 — invisible+unclearable when injected, filed for free on FEED PUMPS OFF]');
+  (function () {
+    var i;
+    var eLW = new SH.PWR2Engine({});
+    for (i = 0; i < 3000; i++) eLW.step(0.02);
+    var p0 = eLW.getTrueState().power_pct;
+    eLW.applyCommand({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
+    for (i = 0; i < 6000; i++) eLW.step(0.02);
+    var pAfter = eLW.getTrueState().power_pct;
+    ck('#785: an INJECTED loss_of_feedwater appears in the failures list, and the plant ' +
+       'actually loses power on it (99.6 -> 0.1 % measured, no casualty is a slow one)',
+       eLW.getActiveFailures().indexOf('loss_of_feedwater') !== -1 && pAfter < 50,
+       p0.toFixed(1) + ' % -> ' + pAfter.toFixed(1) + ' %, active [' +
+       eLW.getActiveFailures().join(',') + ']');
+    eLW.applyCommand({ action: 'clear_failure', failure_id: 'loss_of_feedwater' });
+    ck('...and clear_failure clears the SEAT without throwing',
+       eLW.getActiveFailures().indexOf('loss_of_feedwater') === -1, '');
+
+    /* THE FALSE POSITIVE. The board's own FEED PUMPS OFF is a normal, un-injected action
+     * (#605: the selector IS the control) and must never file a casualty against the
+     * operator who pressed it. */
+    var eLF = new SH.PWR2Engine({});
+    for (i = 0; i < 3000; i++) eLF.step(0.02);
+    eLF.applyCommand({ action: 'set_feedwater_flow', pct: 0, secure: true });
+    for (i = 0; i < 100; i++) eLF.step(0.02);
+    ck('#785: securing the feed pumps BY HAND (set_feedwater_flow {pct:0, secure:true}, no ' +
+       'injection) files NOTHING — the pre-fix detector reported ["loss_of_feedwater"] here',
+       eLF.getActiveFailures().indexOf('loss_of_feedwater') === -1,
+       'active [' + eLF.getActiveFailures().join(',') + '], pumpA ' + eLF.eng.fw.pumpA +
+       ', pumpB ' + eLF.eng.fw.pumpB);
+  })();
+  }
+
   if (grp('E')) {
   /* ---- 1e. THE ELECTRICAL PAIR (#507 wave 4) ------------------------------------------------ */
   head('THE ELECTRICAL PAIR  [LOOP kills the nonvital bus and clears; SBO kills the vital one too]');
@@ -2357,6 +2398,31 @@ function runSuite(SH, rec, quiet, only) {
      !stThrew && stCf.indexOf('rcp_trip') === -1 && stCf.indexOf('turbine_trip') === -1,
      stThrew ? 'THREW: ' + stThrew : '[' + stCf.join(',') + ']');
 
+  /* THE LOFW (Loss Of FeedWater) SEAT RIDES THE SAVE TOO (#785, same trap the #671 quality pass
+   * caught for rcp_trip/turbine_trip above: `_rcpTripInjected` and `tbTripFailed` were both
+   * added as seats and neither was in the pwr2-1.0 save blob at first, so a rewind or a service
+   * restore silently un-filed a live casualty). Asserted through the load, plus the migration
+   * half. */
+  var lwA = new SH.PWR2Engine({});
+  run(lwA, quiet ? 30 : 60);
+  lwA.applyCommand({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
+  run(lwA, 2);
+  var lwB = new SH.PWR2Engine({});
+  lwB.loadState(lwA.saveState());
+  var lwAf = lwA.getActiveFailures(), lwBf = lwB.getActiveFailures();
+  ck('an injected loss_of_feedwater survives a save/load round trip -- the seat is in the ' +
+     'blob (#785)',
+     lwAf.indexOf('loss_of_feedwater') !== -1 && lwBf.indexOf('loss_of_feedwater') !== -1,
+     'before [' + lwAf.join(',') + '] -> after [' + lwBf.join(',') + ']');
+  var lwOld = lwA.saveState();
+  delete lwOld.state.scalars._lofwInjected;
+  var lwC = new SH.PWR2Engine({}), lwThrew = '';
+  try { lwC.loadState(lwOld); } catch (errLw) { lwThrew = errLw.message; }
+  var lwCf = lwThrew ? [] : lwC.getActiveFailures();
+  ck('...and a PRE-SEAT save still loads, with no casualty filed (the pre-fix state)',
+     !lwThrew && lwCf.indexOf('loss_of_feedwater') === -1,
+     lwThrew ? 'THREW: ' + lwThrew : '[' + lwCf.join(',') + ']');
+
   /* #544: a PRE-AIR-LEDGER save carries the containment ledger water-only under its old name.
    * Hand-build that shape (the rename makes it detectable), load, and require the SAME
    * containment temperature on the next step — the migration reconstructs the total at the
@@ -2810,6 +2876,23 @@ var MUTATIONS = [
    * per fix, so the claim is the gate's rather than a session's memory. */
   ['the RCP trip seat is never set (an injected pump trip is invisible in the failures list)',
    '        e._rcpTripInjected = true;', '', { grp: 'E' }],
+  /* #785 — the LOFW (Loss Of FeedWater) seat, same shape as the RCP one above. Two anchors
+   * because the two directions fail separately: sever the SET and an injected LOFW goes
+   * invisible; revert the detector to the old flags and FEED PUMPS OFF files a casualty on
+   * its own (caught by the D5 false-positive check, not the injected-appears one). */
+  ['the LOFW seat is never set (an injected loss_of_feedwater is invisible in the failures list)',
+   '        e._lofwInjected = true;', '', { grp: 'D5' }],
+  ['the LOFW row reads the operator\'s run flags again (FEED PUMPS OFF files a casualty nobody injected)',
+   "    if (eng._lofwInjected) out.push('loss_of_feedwater');",
+   "    if (!eng.fw.pumpA && !eng.fw.pumpB) out.push('loss_of_feedwater');", { grp: 'D5' }],
+  /* THE SAVE-KEY GAP, closed rather than inherited (#785 follow-up): the #671 quality pass
+   * found `_rcpTripInjected`/`tbTripFailed` shipped as seats that were never added to `scalars`
+   * and so never survived a save — caught by hand, not by a gate. This mutation strips ONLY the
+   * `_lofwInjected` scalars line (the seat itself, in inject_failure, stays intact) so the S
+   * group's save-round-trip check has its own red proof instead of trusting the precedent. */
+  ['the LOFW seat is never SAVED (set correctly, but dropped from the scalars blob -- a save/load ' +
+   'silently un-files a live casualty, same trap the #671 quality pass found by hand)',
+   '        _lofwInjected: e._lofwInjected,', '', { grp: 'S' }],
   ['the break carries no injected id again (a large LOCA reports as menu-invisible primary_leak)',
    "        if (e.brk) e.brk.injected_id = 'large_loca';", '', { grp: 'E' }],
   ['a REFUSED command is silently swallowed (reads exactly like a plant that survived it)',

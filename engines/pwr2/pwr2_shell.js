@@ -1046,7 +1046,18 @@
         e._rcpTripInjected = true;
       }
       else if (c.failure_id === 'turbine_trip') EN.command(e, 'turbine_trip_failed', true);
-      else if (c.failure_id === 'loss_of_feedwater') MAPPED.loss_of_feedwater(e, c);
+      else if (c.failure_id === 'loss_of_feedwater') {
+        MAPPED.loss_of_feedwater(e, c);
+        /* #785: the SEAT, same precedent as #671's rcp_trip (:1046). The detector used to read
+         * `fw.pumpA`/`fw.pumpB` — the operator's RUN flags (#605, #200) — while this injection
+         * deliberately leaves them alone and zeroes `fw.pumpAAvail`/`pumpBAvail` instead, so an
+         * injected LOFW (Loss Of FeedWater) never appeared in the failures list, and the board's
+         * own FEED PUMPS OFF (`set_feedwater_flow {pct:0, secure:true}`, which DOES clear
+         * pumpA/pumpB) filed a casualty nobody injected. MEASURED before the fix: inject ->
+         * getActiveFailures() [], power 99.6 -> 0.1 %, plant trips on SG level; FEED PUMPS OFF
+         * with no injection -> ["loss_of_feedwater"]. */
+        e._lofwInjected = true;
+      }
       /* #507 wave 3 — the rows PWR2's existing machinery honestly injects */
       else if (c.failure_id === 'sg_overfeed') MAPPED.sg_overfeed(e, c);
       else if (c.failure_id === 'loss_of_offsite_power') {
@@ -1145,6 +1156,9 @@
       }
       else if (c.failure_id === 'loss_of_feedwater') {
         EN.command(e, 'feed_pump_a_avail', 1); EN.command(e, 'feed_pump_b_avail', 1);
+        /* #785: unset the SEAT only — the run flags (`fw.pumpA`/`pumpB`) are the operator's, and
+         * this clear does not touch them, same rule as rcp_trip's clear one block down. */
+        e._lofwInjected = false;
       }
       /* #671: unset the SEAT only — do NOT restart the pump. `pump_trip` is unconditional and
        * shared with the operator's own stop_pump/set_rcp OFF, and the real restart (rcp_start)
@@ -1786,7 +1800,13 @@
              : eng.brk.node === 'sg_primary' ? 'sgtr'
              : (eng.brk.injected_id || 'primary_leak'));
     }
-    if (!eng.fw.pumpA && !eng.fw.pumpB) out.push('loss_of_feedwater');
+    /* THE LOFW (Loss Of FeedWater) ROW (#785, same precedent as the RCP row below). Read the
+     * SEAT (was `loss_of_feedwater` injected), not `fw.pumpA`/`fw.pumpB` — those are the
+     * operator's own RUN flags (#605, #200), reachable by the board's FEED PUMPS OFF
+     * (`set_feedwater_flow {pct:0, secure:true}`) with no casualty involved. Reading them here
+     * made an injected LOFW invisible (the injection zeroes pumpAAvail/pumpBAvail instead, by
+     * design) and made the operator's own OFF click file a casualty against itself. */
+    if (eng._lofwInjected) out.push('loss_of_feedwater');
     if (eng.fw.overfeed) out.push('sg_overfeed');   /* the seat reports (#510 M-12) */
     if (!eng.cwPumps) out.push('loss_of_condenser_vacuum');
     if (eng.ec.hhsiAvail < 1) out.push('degraded_hpi');
@@ -2268,16 +2288,18 @@
         /* the wave-6 failure levers (#507) — old saves land on the healthy defaults;
          * aw.blocked and the pzDrivers seats ride their own saved objects */
         scramBlocked: e.scramBlocked, runaway: e.runaway,
-        /* THE TWO CASUALTY SEATS THAT READ NOTHING ELSE (#551, #671 — added on the #671
-         * quality pass, 2026-09-18). Every other row in `engineActiveFailures` is derived from
-         * plant state that is already in this blob; these two are seats PRECISELY because the
-         * state they stand for (`tb.tripped`, `sys.pumpTripped`) is reached by the plant on its
-         * own, so a save that dropped them came back with the casualty INVISIBLE and its row
-         * gone from the Failures tab while the pump stayed tripped and the turbine stayed
-         * latched. MEASURED before the fix: inject -> ["rcp_trip"] / ["turbine_trip"], save,
-         * load -> [] for both, pumpTripped still true. An old save without them lands on
-         * undefined, i.e. the pre-seat state exactly. */
+        /* THE CASUALTY SEATS THAT READ NOTHING ELSE (#551, #671 — added on the #671 quality
+         * pass, 2026-09-18; joined by `_lofwInjected` on #785, 2026-09-18). Every other row in
+         * `engineActiveFailures` is derived from plant state that is already in this blob;
+         * these three are seats PRECISELY because the state they stand for (`tb.tripped`,
+         * `sys.pumpTripped`, `fw.pumpA`/`pumpB`) is reached by the plant — or the operator — on
+         * its own, so a save that dropped them came back with the casualty INVISIBLE and its
+         * row gone from the Failures tab while the underlying state stayed exactly as injected.
+         * MEASURED before the #671 fix: inject -> ["rcp_trip"] / ["turbine_trip"], save, load ->
+         * [] for both, pumpTripped still true. An old save without them lands on undefined,
+         * i.e. the pre-seat state exactly. */
         _rcpTripInjected: e._rcpTripInjected, tbTripFailed: e.tbTripFailed,
+        _lofwInjected: e._lofwInjected,
         _Qox: e._Qox, _cdAvail: e._cdAvail, _plcsAuto: e._plcsAuto,
         _pwrRate: e._pwrRate, _prevPower: e._prevPower,
         _tavgPrev: e._tavgPrev, _tavgRate: e._tavgRate, advDemand: e.advDemand,

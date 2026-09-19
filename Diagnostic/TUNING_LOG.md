@@ -29,6 +29,69 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-18-develop-f (#785 — the LOFW seat, and the same false-positive shape found once more)
+
+**THE TRAP, restated because it is the second time this class shipped in one day (#671
+yesterday's `rcp_trip`, this one's `loss_of_feedwater`): a detector inferred from state the
+OPERATOR can reach with a normal board action files a casualty against the player, and the
+seat that fixes it is worthless unless it rides the save.** `engineActiveFailures` read
+`!fw.pumpA && !fw.pumpB` — the RUN flags `set_feedwater_flow`/`set_feed_pump_speed` own — while
+`inject_failure {loss_of_feedwater}` deliberately leaves those alone (#605/#200: take away
+delivered capability, leave the selector where the operator put it) and zeroes
+`fw.pumpAAvail`/`pumpBAvail` instead. Both directions were live and MEASURED at `4d897f30`:
+
+- **Inject** -> `getActiveFailures()` = `[]` while power runs **99.6 % -> 0.1 %** on an SG-level
+  trip, and `clear_all_failures` cannot touch a row that was never in its list (#510 M-3).
+- **The board's own FEED PUMPS OFF** (`set_feedwater_flow {pct:0, secure:true}`, no injection)
+  -> `getActiveFailures()` = `["loss_of_feedwater"]` — the operator's own click filed a casualty
+  against itself, and `_anyNewFailure` would raise a `failure` attention stop for it.
+
+**THE FIX — a seat, `e._lofwInjected`, same precedent as #671's `rcp_trip`** (nearer than #551's
+turbine row: both are set directly in `pwr2_shell.js`'s `inject_failure`/`clear_failure` switch,
+not through the inner engine's own command handler). Set `true` alongside the existing
+`MAPPED.loss_of_feedwater` call, `false` in the clear branch without touching
+`feed_pump_a_avail`/`b_avail` or the run flags, read by `engineActiveFailures` in place of the
+old flag check. **Added to the `scalars` save blob in the SAME change** — the #671 quality pass
+found `_rcpTripInjected`/`tbTripFailed` shipped as seats that were NOT in the save and were
+caught by hand (inject, save, load, casualty gone, pump still tripped); closing that gap here
+rather than inheriting it a third time was the point, so a DEDICATED mutation stripping only the
+`_lofwInjected` scalars line was added too, proving the save-round-trip check has its own red
+instead of borrowing the #671 precedent's word for it.
+
+**FOUR PERMANENT CHECKS, new `grp('D5')` plus two additions to `grp('S')` in
+`test/run_pwr2_shell.js`**, each injection-proven (red measured before the fix / on the
+dedicated mutation, green after):
+1. Inject -> appears in the list, plant actually loses power (99.6 -> 0.1 %) -> clear -> gone.
+2. `set_feedwater_flow {pct:0, secure:true}` with NO injection -> nothing filed (the
+   false-positive direction — a probe written for #1 alone would have passed a detector that
+   still gets this wrong).
+3. Save/load round trip: inject -> save -> load into a fresh shell -> still reported. Dedicated
+   mutation (strip the `_lofwInjected` scalars line only, seat-set left intact): **1 red**.
+4. Migration: a pre-seat save (key stripped) loads without throwing, at the falsy default —
+   no casualty invented.
+
+**THE FALSE-POSITIVE SWEEP, asked for and run.** Grepped every write site behind every row in
+`engineActiveFailures`: `cw_pumps`, `hhsiAvail`, `scram_block`, `p9_defeat`,
+`pzr_heaters_failed`, `spray_stick`, `station_blackout`, `offsite_power`, `rod_runaway`,
+`porv_stick` and `break_open` are ALL written only inside `inject_failure`/`clear_failure` — no
+ordinary board command reaches them. **One more instance of the same shape found and filed
+separately, not fixed here**: `afw_failure` is inferred from `eng.aw.blocked`, which the board's
+own AFW block valve (`set_afw_block {open:false}`, wired as a normal VALVE_TOGGLE and the exact
+action the TMI-2 walkthrough has the player take) sets through the SAME `afw_block` command the
+`afw_failure` injection uses. MEASURED: closing the valve by hand with no injection ->
+`getActiveFailures()` = `["afw_failure"]`; reopening -> `[]`.
+
+### Gates
+
+`run_pwr2_shell` **186/186 (72/72 mutations, no blind spots)** — was 181/181 (69/69);
+`+5` checks, `+3` mutations (seat-set severed, detector reverted to the old flags, save-key
+dropped — all CAUGHT). `BASELINES` updated in `test/run_all.js`.
+`run_pwr2_forwarding` 11/11 · `run_pwr2_roundtrip` 20/20 · `run_pwr2_feedwater` 30/30 ·
+`run_inspect` 11/11 62/62 — all at recorded baseline, unmoved.
+**NOT run:** the aggregate (the coordinator owns it).
+
+---
+
 ## Session log — 2026-09-18-develop-e (#783 — the annunciator that promised what the plant will not do)
 
 *(OWNER RULING, 2026-09-18: "Containment as you recommend"* — option A only: fix the caption,

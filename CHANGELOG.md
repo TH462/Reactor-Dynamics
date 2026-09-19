@@ -76,6 +76,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `primary_leak`, an id with no catalog row, so injecting it from the menu never lit its own row;
   the break now carries the id it was opened with.
 
+- **An injected loss of feedwater was invisible and unclearable, and the operator's own FEED
+  PUMPS OFF filed a casualty nobody caused** (#785, same class as #671's `rcp_trip`). The
+  detector read `fw.pumpA`/`fw.pumpB` — the operator's own run flags — while the injection
+  deliberately leaves them alone and zeroes availability instead: inject and the plant runs
+  99.6 % → 0.1 % on an empty Failures tab; secure the feed pumps by hand
+  (`set_feedwater_flow {pct:0, secure:true}`, no injection) and the tab reports
+  `loss_of_feedwater` against the operator. Now reads a seat set at injection and cleared
+  without touching the run flags, added to the save blob in the same change (the #671 quality
+  pass found two seats that shipped without that, caught by hand, not a gate — this one has its
+  own mutation).
+
 - **Charging and letdown flow were not dead** (#765). Filed as reading 0.0 through 12.6
   plant-minutes of maximum charging. Measured: 26 gpm (99.6 L/min) charging and 12 gpm
   (44.8 L/min) letdown, matching the pump's own computed maximum to three significant figures and
