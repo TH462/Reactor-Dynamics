@@ -30,6 +30,9 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+
+## [Alpha 1.7.6-rc2] — 2026-09-18
+
 ### Fixed — four channels that read a value the plant was not at (#782, #778, #671, #765, #783)
 
 - **The safety-injection discharge gauge read a dead pump through a live injection** (#782).
@@ -124,7 +127,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   ban by itself.
 
 
-## [Alpha 1.7.6-rc1] — 2026-09-18
 
 ### Fixed — three measurement tools that could not fail loudly (#763, #769, #665)
 

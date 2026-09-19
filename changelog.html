@@ -166,8 +166,8 @@
 
   <details class="log-entry" open>
     <summary class="log-head">
-      <h2>Startup steps grade on the number the board actually prints</h2>
-      <span class="log-ver mono">Alpha 1.7.6-rc1</span>
+      <h2>Startup steps grade on the number the board prints, and the board stops describing a plant that is not there</h2>
+      <span class="log-ver mono">Alpha 1.7.6-rc2</span>
       <time class="log-date mono" datetime="2026-09-18">18 September 2026</time>
     </summary>
     <ul>
@@ -176,7 +176,9 @@
       <li><span class="log-tag fixed">Fixed</span><strong>A walkthrough row you can break no longer takes the step with it.</strong></li>
       <li><span class="log-tag fixed">Fixed</span><strong>A secured SOURCE RANGE drew <code>1.0e0&nbsp;cps</code>.</strong> A de-energized channel read as a live count rate one step from criticality; it now reads as secured.</li>
       <li><span class="log-tag changed">Changed</span><strong>The Mode&nbsp;3 to Mode&nbsp;1 walkthrough is reconciled to the step file it was written from.</strong></li>
-      <li><span class="log-tag fixed">Fixed</span><strong>The manuals&rsquo; startup-rate timeline was measured at an older rod speed.</strong> Chapters 09 and 12 put the intermediate-range rod stop 44.9&nbsp;seconds later than the plant reaches it. Both re-measured, and both now state which instant the times are counted from &mdash; the start of withdrawal, not engine start.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Two indications described things the plant was not doing.</strong> The safety-injection discharge gauge read zero on a running pump whenever you restarted injection yourself &mdash; 12&nbsp;per&nbsp;cent of rated flow beside a dead gauge, now 1069&nbsp;psi (7.37&nbsp;MPa). The two containment alarms named containment spray and steam-line isolation, neither of which this plant performs; they now state the pressure they are at.</li>
+    <li><span class="log-tag fixed">Fixed</span><strong>The Failures tab now matches what was actually injected.</strong> A reactor-coolant-pump trip never appeared and could not be cleared; a large break filed the wrong row; securing the feed pumps or closing the auxiliary feedwater block valve by hand filed casualties nobody injected &mdash; the second of those on a valve the Three Mile Island walkthrough asks you to close. Injected casualties also survive a rewind now, instead of quietly disappearing from the list.</li>
+    <li><span class="log-tag fixed">Fixed</span><strong>The manuals&rsquo; startup-rate timeline was measured at an older rod speed.</strong> Chapters 09 and 12 put the intermediate-range rod stop 44.9&nbsp;seconds later than the plant reaches it. Both re-measured, and both now state which instant the times are counted from &mdash; the start of withdrawal, not engine start.</li>
     </ul>
   </details>
 
