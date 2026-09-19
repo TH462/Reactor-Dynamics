@@ -71,6 +71,17 @@ Injection-proven both ways: reverting the override reds `cap-no-false-promise` n
 promises; putting the hi-hi ANNUNCIATOR setpoint (its own number, not the actuation constants) out
 of reach reds `cap-rows-lit`, so the ban cannot be green by grading nothing.
 
+**THE QUALITY PASS CAUGHT A CHECK THAT WOULD HAVE REDDENED WHEN THE PLANT GOT BETTER.** Band 6's
+safety-injection pattern was `/\bSI\b/`, which also matches the INDUSTRY strings `CTMT FANS SI` and
+`SI ACCUM ALIGNED < 1000 PSI` — neither of which promises an injection; the first names the signal
+the fans realign *on*. Latent today (neither row lights on this ride), and **not latent the day #784
+models the realign**: `ctmt_fans_si` would light with its own mitigation correctly observed and
+still red on this row's pattern, arriving as a mystery red inside someone else's issue. Narrowed to
+`/safety injection|\(SI\b|\bSI signal\b/`; the two containment rows still match it and the
+override-reverted mutation still reds, so **the narrowing did not buy the green**. The general
+shape is worth keeping: *a vocabulary written against one plant's captions will over-match another
+row's, and the failure lands on whoever improves the plant next.*
+
 **THE MANUAL WAS ALREADY RIGHT — a result, not a non-event.** `Manuals/06` PWR-A36/A37 say *"On
 this plant nothing acts on this signal"* and list the same three engineered-safeguards setpoints
 this session measured; A38/A39 say their tiles can never light. No manual edit, so no revision row

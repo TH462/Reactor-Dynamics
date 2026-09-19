@@ -685,7 +685,16 @@ function runSuite(rec, quiet, only) {
   if (grp('M')) {
     head('6 -- CAPTIONS: a lit row may not promise a mitigation THIS ride did not produce (#783)');
     var MITIG = [
-      { id: 'safety injection',     re: /\bSI\b|safety injection/i,             saw: false },
+      /* ⚠ THE SAFETY-INJECTION PATTERN IS NARROWER THAN `\bSI\b`, ON PURPOSE (quality pass,
+       * 2026-09-18). A bare \bSI\b also matches the INDUSTRY strings 'CTMT FANS SI' and
+       * 'SI ACCUM ALIGNED < 1000 PSI', neither of which promises an injection — the first
+       * names the signal the fans realign ON. Today neither row lights on this ride, so the
+       * over-match is latent; the day #784 makes the fan realign fire, `ctmt_fans_si` would
+       * light with its own mitigation correctly observed and still red on THIS row's pattern.
+       * A check that goes red when the plant gets BETTER is a check nobody will trust. The
+       * form kept is the one the shared caption actually uses — '(SI signal)' — plus the
+       * spelled-out name, which is the register this project writes captions in anyway. */
+      { id: 'safety injection',     re: /safety injection|\(SI\b|\bSI signal\b/i, saw: false },
       { id: 'containment spray',    re: /spray/i,                               saw: false },
       { id: 'fan coolers',          re: /fan cooler|\bCRFC\b/i,                 saw: false },
       { id: 'steam-line isolation', re: /\bMSLI\b|\bMSIV\b|steam[- ]line isolation/i, saw: false }
