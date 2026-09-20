@@ -25,12 +25,16 @@
  *   - The IP address is used as the rate-limit key and NEVER written anywhere. It
  *     goes into env.LIMITER.limit({key}) and out of scope on the next line.
  *   - The User-Agent IS READ, and is never stored, never passed on, never logged. It
- *     is reduced on the next line to one of a short list of BOT CLASSES ('' for none)
- *     by botClass() below and the string itself goes out of scope, exactly as the IP
- *     does. This line used to read "not read", and the change is deliberate *(OWNER
- *     RULING, 2026-09-20: "We should also classify bots.")*: a class label is a fact
- *     about the client SOFTWARE, the User-Agent string is a fingerprinting surface, and
- *     only the first is kept.
+ *     is reduced on the next line to a short list of CLASSES -- a bot kind ('' for
+ *     none), and coarse DEVICE / BROWSER / OS labels -- by botClass(), deviceClass(),
+ *     browserClass() and osClass() below, and the string itself goes out of scope,
+ *     exactly as the IP does. This line used to read "not read", and the change is
+ *     deliberate *(OWNER RULING, 2026-09-20: "We should also classify bots."; and "Can
+ *     we start to link device to session along with other info like country, etc?")*:
+ *     a class label is a fact about the client SOFTWARE, the User-Agent string is a
+ *     fingerprinting surface, and only the first is kept. privacy.html already names
+ *     "coarse device info (country, device type, browser, OS)" -- see the classifiers'
+ *     own header for why that page needs no edit.
  *   - The COUNTRY is taken from the EDGE -- request.cf.country, which Cloudflare has
  *     already derived before this code runs. Deriving it here would mean holding the
  *     address to do it, which is the promise above; taking the ANSWER instead of the
@@ -157,15 +161,44 @@ const MAX_EVENTS_PER_BATCH = 250;   // Analytics Engine caps writes per invocati
  *                                   can always answer, so -1 would never be written and
  *                                   a query excluding it would exclude nothing.
  *
+ *   --- 2026-09-20: coarse DEVICE / BROWSER / OS, derived at this Worker ---------------
+ *   blobs[12]   device              OUR classification, from the User-Agent, by
+ *                                   deviceClass() below: mobile | tablet | desktop |
+ *                                   unknown. NEVER '' — 'unknown' covers an absent
+ *                                   User-Agent, and every other case falls to 'desktop'
+ *                                   rather than a blank, which is what keeps this column
+ *                                   its own predates-the-columns marker (see below).
+ *   blobs[13]   browser             OUR classification, by browserClass() below: chrome |
+ *                                   edge | firefox | safari | opera | samsung | other |
+ *                                   unknown. NEVER ''.
+ *   blobs[14]   os                  OUR classification, by osClass() below: windows |
+ *                                   macos | ios | android | linux | chromeos | other |
+ *                                   unknown. NEVER ''.
+ *                                   All three are the CRUDE, User-Agent-substring
+ *                                   equivalent of Cloudflare's own `deviceType` /
+ *                                   `userAgentBrowser` / `userAgentOS` on the RUM-derived
+ *                                   series (rollup.js's `traffic_daily`) — comparable, not
+ *                                   interchangeable, same relationship botClass() has to
+ *                                   Cloudflare's own bot flag. They ride on EVERY event
+ *                                   (not just session_start), so a row can be grouped by
+ *                                   device WITHOUT losing the session id beside it —
+ *                                   session length by device is answered from THIS raw
+ *                                   stream (session_start..session_end per blobs[3]),
+ *                                   not from a daily aggregate, which carries no seconds.
+ *
  * THE 2026-09-20 COLUMNS CARRY THEIR OWN MARKER, which is better than a clock. A row
  * written before they existed reads back '' for a blob and 0 for a double —
  * indistinguishable from "no referrer, not a bot", and the whole reason COLUMNS_SINCE
- * exists for the 2026-08-10 set. `ref_kind` closes it: every row this Worker writes
- * carries one of three non-empty strings, so `ref_kind === ''` IS "this row predates the
- * columns", exactly and with no date in it. rollup.js drops those rows. It ALSO carries
- * a timestamp floor and a probe query (OWN_COLUMNS_SINCE) because naming a column that
- * no matching row carries is a 422 rather than a null — the floor and the probe stop the
- * query FAILING; the marker is what stops it LYING.
+ * exists for the 2026-08-10 set. `ref_kind` closes it for blobs[8..11]/doubles[10]: every
+ * row this Worker writes carries one of three non-empty strings, so `ref_kind === ''` IS
+ * "this row predates the columns", exactly and with no date in it. `device` closes it for
+ * blobs[12..14] THE SAME WAY, independently — deliberately not "ref_kind implies device",
+ * because the referrer/country/bot code and this device/browser/os code are two separate
+ * commits and the Worker could in principle deploy between them, which would populate
+ * ref_kind on rows that carry no device at all. rollup.js drops a row unless BOTH markers
+ * are present. It ALSO carries a timestamp floor and a probe query (OWN_COLUMNS_SINCE)
+ * because naming a column that no matching row carries is a 422 rather than a null — the
+ * floor and the probe stop the query FAILING; the markers are what stop it LYING.
  *
  * ALL FOUR NEW DOUBLES AND THE NEW BLOB ARE WRITTEN ON EVERY ROW FROM THE COMMIT
  * THAT ADDED THEM, even where nothing produces the value yet. A short row reads
@@ -374,6 +407,89 @@ function botClass(ua) {
   return '';
 }
 
+/* OUR OWN DEVICE / BROWSER / OS CLASSIFICATION, AND THEY ARE THE CRUDE ONES, THE SAME
+ * WAY botClass() ABOVE IS *(OWNER, 2026-09-20: "Can we start to link device to session
+ * along with other info like country, etc?")*. Cloudflare's RUM beacon already reports
+ * `deviceType` / `userAgentBrowser` / `userAgentOS` (rollup.js's `traffic_daily`), from
+ * signals this Worker does not have — real device metrics, not a substring match. THESE
+ * THREE ARE USER-AGENT SUBSTRING MATCHES, nothing more, and must never be read as the
+ * same measurement; where the two disagree, Cloudflare's is the better one. The point of
+ * having them here at all is that they ride on OUR OWN stream, so a row already carries a
+ * session id and a country beside them — which is the one thing the RUM series cannot
+ * offer, because it has no shared key with our session data (see the OWNER's question
+ * above: mobile is 34% of pageloads and session duration is ours, on two streams that
+ * cannot be joined without this).
+ *
+ * privacy.html already discloses "coarse device info (country, device type, browser,
+ * OS)" for the RUM series, so nothing here changes what the page promises — it is the
+ * same disclosed dimensions, collected a second, cruder way *(OWNER RULING, 2026-09-20,
+ * given for the referrer/country/bot work and verified to apply unchanged here: "We
+ * don't need to change privacy.html. We are just doing what cloudflare already does.")*.
+ *
+ * The User-Agent is READ and reduced to these three labels; it is NEVER STORED — see the
+ * file header. */
+function deviceClass(ua) {
+  const s = String(ua == null ? '' : ua).toLowerCase();
+  if (!s) return 'unknown';
+  /* iPad FIRST. An iPad that still names itself (an older iPadOS, or "request mobile
+   * site") is the one case this function CAN tell apart from a real Mac — iPadOS's
+   * DEFAULT "request desktop site" UA claims to be a Mac outright and is indistinguishable
+   * from one by substring match; that gap is real and is not fixed by reordering. */
+  if (/ipad/.test(s)) return 'tablet';
+  /* Android tablets are told apart from Android PHONES by the ABSENCE of "mobile" —
+   * Android deliberately encodes the distinction itself, so this has to run before any
+   * generic phone pattern would swallow both. */
+  if (/android/.test(s)) return /mobile/.test(s) ? 'mobile' : 'tablet';
+  if (/iphone|ipod/.test(s)) return 'mobile';
+  // Other tablets that name themselves explicitly.
+  if (/tablet|kindle|silk|playbook/.test(s)) return 'tablet';
+  // Other handhelds that name themselves, or the generic "Mobi" token a browser uses
+  // when "Mobile" is absent (Opera Mini, some Windows Phone builds).
+  if (/mobi|windows phone|blackberry|bb10|iemobile|opera mini/.test(s)) return 'mobile';
+  return 'desktop';
+}
+const BROWSER_PATTERNS = [
+  // Edge, Opera and Samsung Internet are all Chromium — their UA carries "Chrome" AND
+  // "Safari" too — so each must be matched before the generic chrome/safari checks below
+  // or it is misread as the engine it is built on. `edg` alone catches Edg/ (desktop),
+  // Edge/ (legacy EdgeHTML), EdgA/ (Android) and EdgiOS/ (iOS) in one pattern.
+  ['edge', /edg/],
+  ['opera', /(opr\/|opera)/],
+  ['samsung', /samsungbrowser/],
+  // Firefox never carries "Safari" in its UA, so its position relative to the checks
+  // below is not load-bearing — kept here anyway, beside the other named engines.
+  ['firefox', /(firefox|fxios)/],
+  // Chrome (incl. crios, Chrome on iOS) also carries "Safari" — must be checked AFTER
+  // the four browsers above, which all carry "Chrome" too, and BEFORE the generic
+  // Safari check below, which Chrome's own UA would otherwise satisfy.
+  ['chrome', /(chrome|chromium|crios)/],
+  // Real Safari LAST: every Chromium-family browser above also carries "Safari" in its
+  // UA, so this only ever matches once none of them did.
+  ['safari', /safari/],
+];
+function browserClass(ua) {
+  const s = String(ua == null ? '' : ua).toLowerCase();
+  if (!s) return 'unknown';
+  for (const row of BROWSER_PATTERNS) if (row[1].test(s)) return row[0];
+  return 'other';
+}
+function osClass(ua) {
+  const s = String(ua == null ? '' : ua).toLowerCase();
+  if (!s) return 'unknown';
+  // iOS FIRST: an iPhone/iPad UA also carries "like Mac OS X", which the macOS check
+  // below would otherwise claim.
+  if (/iphone|ipad|ipod/.test(s)) return 'ios';
+  // Android FIRST (ahead of Linux): every Android UA also carries the "Linux" token
+  // that names the kernel underneath it.
+  if (/android/.test(s)) return 'android';
+  // ChromeOS FIRST (ahead of Linux, same reason): its UA opens "X11; CrOS ...".
+  if (/cros/.test(s)) return 'chromeos';
+  if (/windows/.test(s)) return 'windows';
+  if (/macintosh|mac os x/.test(s)) return 'macos';
+  if (/linux|x11/.test(s)) return 'linux';
+  return 'other';
+}
+
 // ---------------------------------------------------------------- the Worker
 export default {
   /* THE DAILY ROLLUP (#604). Neither upstream keeps anything for long -- Web Analytics
@@ -456,8 +572,8 @@ async function handleEvents(request, env, origin) {
   const release = String(payload.release || '');
   const session = String(payload.session || '');
 
-  /* THE THREE EDGE FACTS (2026-09-20). Computed ONCE per batch rather than per event:
-   * the country and the User-Agent are properties of the REQUEST, and the referrer is a
+  /* THE EDGE FACTS (2026-09-20). Computed ONCE per batch rather than per event: the
+   * country and the User-Agent are properties of the REQUEST, and the referrer is a
    * property of the page load the batch came from, so a per-event copy would be the same
    * value repeated with somewhere new to drift.
    *
@@ -482,6 +598,12 @@ async function handleEvents(request, env, origin) {
   const refKind = refSent ? referrerKind(refHost, hostOf(origin)) : 'unknown';
   const country = edgeCountry(request);
   const botKind = botClass(request.headers.get('User-Agent'));
+  /* The 2026-09-20(+) device/browser/OS trio — see deviceClass()/browserClass()/
+   * osClass() above for the ordering and why each matters. Same batch-once reasoning as
+   * botKind just above: the User-Agent is a property of the request, not the event. */
+  const deviceKind = deviceClass(request.headers.get('User-Agent'));
+  const browserKind = browserClass(request.headers.get('User-Agent'));
+  const osKind = osClass(request.headers.get('User-Agent'));
 
   let written = 0;
   for (const e of events.slice(0, MAX_EVENTS_PER_BATCH)) {
@@ -516,6 +638,14 @@ async function handleEvents(request, env, origin) {
         refKind,
         country,
         botKind,
+        /* The 2026-09-20(+) device/browser/OS trio. Also constant across the batch and
+         * also written on EVERY row — see deviceClass() above for why NONE of the three
+         * is ever '', which is what makes `device` its own predates-the-columns marker,
+         * independent of ref_kind (rollup.js's column-map comment explains why that
+         * independence matters here specifically). */
+        deviceKind,
+        browserKind,
+        osKind,
       ],
       doubles: [
         Number(p.seconds || 0),

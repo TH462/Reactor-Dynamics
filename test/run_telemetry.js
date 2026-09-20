@@ -103,6 +103,48 @@ var INJECTIONS = {
   // historical row is silently reinterpreted. This is the failure the column map's
   // append-only rule exists for, and it produces no error anywhere.
   'wk-blob-slot-shifted': ['worker/src/index.js', '        refHost,', ''],
+
+  /* --- device / browser / OS (2026-09-20+2): the ORDERING traps named in the task ---- */
+  // Android tablets are told apart from phones by the ABSENCE of "mobile" — dropping the
+  // conditional files every Android tablet as a phone.
+  'wk-device-android-tablet-swallowed': ['worker/src/index.js',
+    "  if (/android/.test(s)) return /mobile/.test(s) ? 'mobile' : 'tablet';",
+    "  if (/android/.test(s)) return 'mobile';"],
+  // An iPad that still names itself falls through to the DESKTOP default once this is
+  // gone — the one case this classifier can tell apart from a real Mac, lost.
+  'wk-device-ipad-swallowed': ['worker/src/index.js',
+    "  if (/ipad/.test(s)) return 'tablet';", ''],
+  // Edge's UA carries "Chrome" AND "Safari" — dropping its own check first files every
+  // Edge visit as Chrome, the engine it happens to be built on.
+  'wk-browser-edge-swallowed-by-chrome': ['worker/src/index.js',
+    "  ['edge', /edg/],", ''],
+  // Chrome's UA carries "Safari" too — dropping Chrome's own check files every Chrome
+  // visit as Safari, which is exactly the ordering trap the task named directly.
+  'wk-browser-chrome-swallowed-by-safari': ['worker/src/index.js',
+    "  ['chrome', /(chrome|chromium|crios)/],", ''],
+  // An iPhone/iPad UA also carries "like Mac OS X" — dropping the iOS check first files
+  // every iOS visit as macOS.
+  'wk-os-ios-swallowed-by-macos': ['worker/src/index.js',
+    "  if (/iphone|ipad|ipod/.test(s)) return 'ios';", ''],
+  // Every Android UA also carries the "Linux" token naming its kernel — dropping the
+  // Android check first files every Android visit as Linux.
+  'wk-os-android-swallowed-by-linux': ['worker/src/index.js',
+    "  if (/android/.test(s)) return 'android';", ''],
+  // ChromeOS's UA opens "X11; CrOS ..." — dropping its own check first files every
+  // ChromeOS visit as Linux.
+  'wk-os-cros-swallowed-by-linux': ['worker/src/index.js',
+    "  if (/cros/.test(s)) return 'chromeos';", ''],
+  // ABSENT, on all three: hits every `if (!s) return 'unknown';` in this file at once,
+  // since the three classifiers share the exact same guard line — a real fact about this
+  // source, not a loosely-aimed injection. 'unknown' is the marker an absent User-Agent
+  // is supposed to carry; '' would merge it with "looked and found nothing".
+  'wk-device-browser-os-absent-not-unknown': ['worker/src/index.js',
+    "  if (!s) return 'unknown';", "  if (!s) return '';"],
+  // The verdicts computed and then not written — the append-only column map's failure
+  // shape, once each, for the three new slots.
+  'wk-device-column-dropped': ['worker/src/index.js', '        deviceKind,', ''],
+  'wk-browser-column-dropped': ['worker/src/index.js', '        browserKind,', ''],
+  'wk-os-column-dropped': ['worker/src/index.js', '        osKind,', ''],
 };
 
 if (/--list-injections/.test(ARG)) {
@@ -1200,6 +1242,74 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
         /not evidence the classifier works/i.test(wsrc), '');
     }
 
+    /* ---- device / browser / OS (2026-09-20+2), EXECUTED the same way as botClass -----
+     * OWNER, 2026-09-20: "Can we start to link device to session along with other info
+     * like country, etc?" Real fixture UAs, one per family, chosen to hit the FOUR
+     * ordering traps the task brief named directly: iPadOS Safari reporting a Mac UA
+     * (device only — this classifier cannot win that one, and MACOS_SAFARI below proves
+     * it does NOT false-positive a real Mac into 'tablet' instead), Edge's UA carrying
+     * "Chrome" AND "Safari", Chrome's UA carrying "Safari", and an Android UA telling a
+     * tablet from a phone by the ABSENCE of "Mobile". */
+    var mDevice = /function deviceClass\(ua\) \{[\s\S]*?\r?\n\}/.exec(wsrc);
+    var mBrowser = /const BROWSER_PATTERNS = \[[\s\S]*?\r?\n\];\r?\nfunction browserClass\(ua\) \{[\s\S]*?\r?\n\}/.exec(wsrc);
+    var mOs = /function osClass\(ua\) \{[\s\S]*?\r?\n\}/.exec(wsrc);
+    ck('the Worker\'s device classifier was found', !!mDevice);
+    ck('the Worker\'s browser classifier was found', !!mBrowser);
+    ck('the Worker\'s OS classifier was found', !!mOs);
+
+    if (mDevice && mBrowser && mOs) {
+      var deviceClass = new Function(mDevice[0] + '; return deviceClass;')();
+      var browserClass = new Function(mBrowser[0] + '; return browserClass;')();
+      var osClass = new Function(mOs[0] + '; return osClass;')();
+
+      var CHROME_WIN = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+      var IPHONE_SAFARI = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+      var FIREFOX_LINUX = 'Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0';
+      var EDGE_WIN = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0';
+      var OPERA_WIN = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 OPR/105.0.0.0';
+      var SAMSUNG_AND = 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/23.0 Chrome/115.0.0.0 Mobile Safari/537.36';
+      var ANDROID_PHONE = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+      var ANDROID_TABLET = 'Mozilla/5.0 (Linux; Android 13; SM-X200) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+      var IPAD_NAMED = 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+      var MACOS_SAFARI = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
+      var CROS_CHROME = 'Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36';
+
+      ck('a desktop Chrome/Windows visit is desktop/chrome/windows',
+        deviceClass(CHROME_WIN) === 'desktop' && browserClass(CHROME_WIN) === 'chrome' && osClass(CHROME_WIN) === 'windows',
+        deviceClass(CHROME_WIN) + '/' + browserClass(CHROME_WIN) + '/' + osClass(CHROME_WIN));
+      ck('an iPhone Safari visit is mobile/safari/ios',
+        deviceClass(IPHONE_SAFARI) === 'mobile' && browserClass(IPHONE_SAFARI) === 'safari' && osClass(IPHONE_SAFARI) === 'ios',
+        deviceClass(IPHONE_SAFARI) + '/' + browserClass(IPHONE_SAFARI) + '/' + osClass(IPHONE_SAFARI));
+      ck('a desktop Firefox/Linux visit is desktop/firefox/linux',
+        deviceClass(FIREFOX_LINUX) === 'desktop' && browserClass(FIREFOX_LINUX) === 'firefox' && osClass(FIREFOX_LINUX) === 'linux',
+        deviceClass(FIREFOX_LINUX) + '/' + browserClass(FIREFOX_LINUX) + '/' + osClass(FIREFOX_LINUX));
+      ck('EDGE IS EDGE, not Chrome — its UA carries "Chrome" AND "Safari" too',
+        browserClass(EDGE_WIN) === 'edge', browserClass(EDGE_WIN));
+      ck('OPERA IS OPERA, same trap',
+        browserClass(OPERA_WIN) === 'opera', browserClass(OPERA_WIN));
+      ck('SAMSUNG INTERNET IS ITS OWN CLASS, same trap, on a real device+OS reading too',
+        browserClass(SAMSUNG_AND) === 'samsung' && deviceClass(SAMSUNG_AND) === 'mobile' && osClass(SAMSUNG_AND) === 'android',
+        browserClass(SAMSUNG_AND) + '/' + deviceClass(SAMSUNG_AND) + '/' + osClass(SAMSUNG_AND));
+      ck('a real Mac Safari visit is desktop/safari/macos — no false tablet or iOS',
+        deviceClass(MACOS_SAFARI) === 'desktop' && browserClass(MACOS_SAFARI) === 'safari' && osClass(MACOS_SAFARI) === 'macos',
+        deviceClass(MACOS_SAFARI) + '/' + browserClass(MACOS_SAFARI) + '/' + osClass(MACOS_SAFARI));
+      ck('AN ANDROID PHONE IS MOBILE — carries "Mobile" in its UA',
+        deviceClass(ANDROID_PHONE) === 'mobile', deviceClass(ANDROID_PHONE));
+      ck('...AND AN ANDROID TABLET IS TABLET — told apart by the ABSENCE of "Mobile", the\n        exact trap the task named',
+        deviceClass(ANDROID_TABLET) === 'tablet', deviceClass(ANDROID_TABLET));
+      ck('an iPad that still names itself is TABLET, the one case this can tell from a Mac',
+        deviceClass(IPAD_NAMED) === 'tablet' && osClass(IPAD_NAMED) === 'ios',
+        deviceClass(IPAD_NAMED) + '/' + osClass(IPAD_NAMED));
+      ck('ChromeOS is its own OS class, not swallowed by the Linux/X11 it also carries',
+        osClass(CROS_CHROME) === 'chromeos', osClass(CROS_CHROME));
+      ck('a command-line tool is desktop/other/other — present but unrecognised, never blank',
+        deviceClass('curl/8.4.0') === 'desktop' && browserClass('curl/8.4.0') === 'other' && osClass('curl/8.4.0') === 'other',
+        deviceClass('curl/8.4.0') + '/' + browserClass('curl/8.4.0') + '/' + osClass('curl/8.4.0'));
+      ck('AN ABSENT User-Agent is "unknown" on all three, never "" — same marker idiom as\n        ref_kind, and it is what makes device its own predates-the-columns signal',
+        deviceClass('') === 'unknown' && deviceClass(null) === 'unknown' && deviceClass(undefined) === 'unknown' &&
+        browserClass('') === 'unknown' && osClass('') === 'unknown', '');
+    }
+
     /* ---- AND THE WIRING IS RUN, not read ------------------------------------------
      * Everything above proves the three helpers. It says nothing about whether
      * handleEvents CALLS them: `const refHost = String(payload.ref || '')` would leave
@@ -1276,14 +1386,24 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
 
     // ---- the column map: APPENDED, documented, and written on every row -------------
     var noCmt = wBody.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-    ck('the four new blobs are APPENDED after the last one, in the documented order',
-      /String\(p\.id \|\| ''\),\s*refHost,\s*refKind,\s*country,\s*botKind,\s*\]/.test(noCmt),
+    ck('the four 2026-09-20 blobs are APPENDED after the last one, in the documented order',
+      /String\(p\.id \|\| ''\),\s*refHost,\s*refKind,\s*country,\s*botKind,\s*/.test(noCmt),
       (noCmt.match(/String\(p\.id[\s\S]{0,120}/) || [''])[0].replace(/\s+/g, ' '));
+    ck('...and device/browser/os are APPENDED after THOSE, not spliced in among them',
+      /country,\s*botKind,\s*deviceKind,\s*browserKind,\s*osKind,\s*\]/.test(noCmt),
+      (noCmt.match(/country,[\s\S]{0,120}/) || [''])[0].replace(/\s+/g, ' '));
     ck('the bot verdict is APPENDED after the last double, not inserted among them',
       /num\(p\.steps\),\s*botKind \? 1 : 0,\s*\]/.test(noCmt),
       (noCmt.match(/num\(p\.steps\)[\s\S]{0,80}/) || [''])[0].replace(/\s+/g, ' '));
+    /* device/browser/os add NO new doubles (unlike bot, which paired a string with a
+     * numeric flag) — Cloudflare's own deviceType/userAgentBrowser/userAgentOS on the
+     * RUM series are plain TEXT columns too, so there is no boolean counterpart to omit. */
+    ck('...and NO new double was added for device/browser/os — TEXT has no boolean twin',
+      !/num\(p\.steps\),\s*botKind \? 1 : 0,\s*(deviceKind|browserKind|osKind)/.test(noCmt), '');
     ['blobs\\[8\\]\\s+ref_host', 'blobs\\[9\\]\\s+ref_kind', 'blobs\\[10\\]\\s+country',
-     'blobs\\[11\\]\\s+bot_kind', 'doubles\\[10\\] bot'].forEach(function (re) {
+     'blobs\\[11\\]\\s+bot_kind', 'doubles\\[10\\] bot',
+     'blobs\\[12\\]\\s+device', 'blobs\\[13\\]\\s+browser', 'blobs\\[14\\]\\s+os'
+    ].forEach(function (re) {
       ck('the column map documents ' + re.replace(/\\\\s\+|\\\\/g, ' ').replace(/\s+/g, ' '),
         new RegExp(re).test(wsrc), 'a slot claimed in code and not in the map is the next collision');
     });

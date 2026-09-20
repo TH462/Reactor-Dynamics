@@ -30,6 +30,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **Device, browser and OS on the site's own telemetry** (2026-09-20), derived at the Worker from
+  the User-Agent it already reads to classify bots — no client change, no new field on the wire,
+  and it takes effect for the deployed site as soon as the Worker ships. They ride on every event,
+  so device is now per-session: "do mobile users leave sooner?" becomes one query instead of an
+  unanswerable join between Cloudflare's RUM and our own stream. Classification is ours and
+  cruder than Cloudflare's; default iPadOS Safari reports a Mac User-Agent, so the tablet count is
+  a floor.
+
 
 ## [Alpha 1.7.6] — 2026-09-20
 
