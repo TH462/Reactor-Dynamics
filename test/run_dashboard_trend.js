@@ -1,6 +1,7 @@
 /*
  * run_dashboard_trend.js — the arbitrary window + trend rewrite of the Analytics view
- * (#764 Unit 2b: `worker/src/analytics.js`, and `barChart`/`bucketDays` in `render.js`).
+ * (#764 Unit 2b: `worker/src/analytics.js`, and `barChart`/`bucketDays`/`lineChart` in
+ * `render.js`).
  *
  * THE TWO THINGS THE OWNER ASKED FOR (2026-09-18): pick an arbitrary date range instead of
  * fixed 7/14/30 presets, and see a trend line, not just a level. Both only became possible
@@ -29,10 +30,18 @@
  *   7. `bucketDays` DRAWS TOO MANY BARS. The old signature took a `days` count and switched
  *      to weekly above 7 because every caller's `days` and row count were the same number;
  *      an arbitrary range has no such guarantee, and a wrong bucket size draws either a wall
- *      of hairline bars or a chart with almost nothing on it.
+ *      of hairline bars or a chart with almost nothing on it. (2026-09-20: `bucketDays` no
+ *      longer buckets AT ALL — see #10 below for what replaced it.)
  *   8. A LEGACY `?days=N` LINK STOPS RESOLVING, or resolves to the wrong span.
  *   9. A CREDENTIAL IN A HREF. Unit 1 moved auth off the URL account-wide; this file adds a
  *      new picker with its own hrefs, which is a new place for the old mistake to recur.
+ *  10. THE LINE JOINS THROUGH A MISSING DAY (2026-09-20, owner: "for the 30 day and all can
+ *      you make them a line graph and show data from every day not the weekly average").
+ *      Past 14 days the by-day chart is now `lineChart`, one point per day, not folded bars
+ *      — and a missing day's STORED value is 0, not null, so the same "joins through as a
+ *      drop to zero" trap as #6 applies to the DATA series too, not just the trend line; it
+ *      needs its own break-by-`missing` logic (value-based nulling would draw a REAL zero
+ *      day as a gap, which is the opposite defect) and its own visible mark at the gap.
  *
  * NO NETWORK. `cfapi.js` is replaced wholesale by a fake `gql` that dispatches on the query
  * TEXT (most specific first) and returns canned, already-unwrapped rows — the same idiom
@@ -341,8 +350,6 @@ var INJECTIONS = {
     "const deltaLine = '<p>' + (delta.ok", "const deltaLine = '<p>' + (true"],
   'mean-draws-to-zero': ['render.js',
     'if (v == null) { if (cur.length > 1) segs.push(cur); cur = []; return; }', ''],
-  'bucket-threshold-widen': ['render.js',
-    "else if (n <= 90) { size = 7; bucket = 'week'; }", "else if (n <= 500) { size = 7; bucket = 'week'; }"],
   'legacy-days-ignored': ['analytics.js',
     'const n = Math.max(1, Math.min(90, Math.floor(Number(qDays)) || 7));', 'const n = 7;'],
   'token-leak': ['analytics.js',
@@ -359,9 +366,19 @@ var INJECTIONS = {
   'breakdown-skips-d1': ['analytics.js',
     'const closed = from <= closedTo ? await groupBy(db, dim, from, closedTo, Math.max(limit, 200)) : [];',
     'const closed = [];'],
+  /* ANCHOR REPAIRED 2026-09-20 (found blind while re-firing every injection for the line-
+   * chart change, unrelated to it): the two-line `if (includesToday) {\n      const g = …`
+   * form broke when an intervening comment (the `dim !== 'bot'` exemption note) landed
+   * between them, so `src.indexOf` never matched and the injection silently never fired.
+   * A multi-line anchor is also exactly the CRLF/LF trap this file's own header warns
+   * about. Re-anchored on the single physical line unique to THIS `rumRows` call (its
+   * `cfDims`/`count_DESC` args distinguish it from the other two `includesToday` blocks in
+   * this file) and short-circuited with `false &&` so the following, unchanged line stays
+   * a valid continuation of the same expression — `gql`/`rumRows` are never called, so
+   * `g.rows` is empty and today's slice never reaches the merge. */
   'breakdown-today-not-merged': ['analytics.js',
-    'if (includesToday) {\n      const g = rumRows(await gql(apiToken, rumGroup(cfDims,',
-    'if (false) {\n      const g = rumRows(await gql(apiToken, rumGroup(cfDims,'],
+    "const g = rumRows(await gql(apiToken, rumGroup(cfDims, 'count_DESC', Math.max(limit, 200), todayFromIso, todayToIso)),",
+    "const g = { rows: [] }; false && rumRows(await gql(apiToken, rumGroup(cfDims, 'count_DESC', Math.max(limit, 200), todayFromIso, todayToIso)),"],
   'breakdown-span-drift': ['analytics.js',
     "+ esc(from) + ' to ' + esc(closedTo) + ')'", "+ esc(from) + ' to ' + esc(nextDay(closedTo)) + ')'"],
   'referrer-kind-recomputed': ['analytics.js',
@@ -379,13 +396,34 @@ var INJECTIONS = {
     "+ (ext.every((r) => r.kind === 'direct')"],
   'batch-coarse-taints-row': ['analytics.js',
     'if (r.si > 1) cur.coarse = true;', 'if (g.coarse > 1) cur.coarse = true;'],
-  'bucket-partial-missing-hidden': ['render.js',
-    'partialMissing: missingCount > 0 && missingCount < chunk.length,', 'partialMissing: false,'],
   'referrer-fetch-crashes-page': ['analytics.js',
     '} catch (e) { referrerErr = e.message; }', '} catch (e) { throw e; }'],
   'all-preset-missing': ['analytics.js',
     "+ (sr ? ' <a class=\"pbtn\" href=\"?view=analytics&amp;from=' + allFrom",
     "+ (false ? ' <a class=\"pbtn\" href=\"?view=analytics&amp;from=' + allFrom"],
+  /* THE LINE CHART (2026-09-20): "for the 30 day and all can you make them a line graph and
+   * show data from every day not the weekly average." Six injections, one per new behaviour. */
+  'line-threshold-wrong': ['analytics.js',
+    'const isLongWindow = rows.length > 14;', 'const isLongWindow = rows.length > 9999;'],
+  'line-joins-through-missing': ['render.js',
+    'if (r.missing) { if (cur.length > 1) segs.push(cur); cur = []; return; }', ''],
+  'line-missing-tick-gone': ['render.js',
+    'if (!r.missing) return;', 'return;'],
+  'line-partial-not-hollow': ['render.js',
+    'const style = r.partial ? \'fill="none" stroke="\' + color + \'" stroke-width="2"\'',
+    'const style = false ? \'fill="none" stroke="\' + color + \'" stroke-width="2"\''],
+  'line-coarse-not-faded': ['render.js',
+    ': \'fill="\' + color + \'"\' + (r.coarse ? \' fill-opacity="0.45"\' : \'\');',
+    ': \'fill="\' + color + \'"\' + (false ? \' fill-opacity="0.45"\' : \'\');'],
+  /* THE OVERPRINT (2026-09-20). Removing the guard restores the state a screenshot caught
+   * and 63 green checks did not: two x-axis labels one slot apart, drawn on top of each
+   * other. Well-formed markup, unreadable render -- which is why 7c asserts the drawn x
+   * geometry rather than a label COUNT. A count check re-derives the implementation's own
+   * formula and follows it into exactly this bug. */
+  'line-labels-overlap': ['render.js',
+    'if (lastForced && i !== n - 1 && (n - 1) - i < 2 * stride) return;', ''],
+  'line-labels-not-thinned': ['render.js',
+    'if (i % stride !== 0 && i !== n - 1) return;', 'if (false) return;'],
 };
 
 if (/--list-injections/.test(ARG)) {
@@ -561,8 +599,10 @@ async function threwAsync(fn) {
       ck('...and the FIRST point sits at day index 6, not day 0', false, 'no polyline to inspect');
     }
 
-    /* =================================================================== 7. bucketing */
-    head('7. bucketDays keys its width off the ROW COUNT, at 7 / 30 / 45 / 400 days');
+    /* =================================================================== 7. no bucketing */
+    head('7. bucketDays NEVER buckets any more, at 7 / 30 / 45 / 400 days (rewritten '
+       + '2026-09-20 — a >14-day window draws lineChart, one point per day, instead of '
+       + 'folding into weekly/monthly bars; see section 7b for what replaced this)');
     function mkRows(n) {
       var rows = [], d = new Date('2026-01-01T00:00:00Z');
       for (var i = 0; i < n; i++) {
@@ -574,16 +614,72 @@ async function threwAsync(fn) {
     }
     var b7 = R.bucketDays(mkRows(7)), b30 = R.bucketDays(mkRows(30)),
         b45 = R.bucketDays(mkRows(45)), b400 = R.bucketDays(mkRows(400));
-    ck('7 days stays DAILY (7 bars)', b7.bucket === 'day' && b7.rows.length === 7,
+    ck('7 days stays daily (7 rows)', b7.bucket === 'day' && b7.rows.length === 7,
        b7.bucket + '/' + b7.rows.length);
-    ck('30 days buckets to WEEKS (5 bars, not 30 hairlines)', b30.bucket === 'week' && b30.rows.length === 5,
-       b30.bucket + '/' + b30.rows.length);
-    ck('45 days also buckets to WEEKS (7 bars)', b45.bucket === 'week' && b45.rows.length === 7,
-       b45.bucket + '/' + b45.rows.length);
-    ck('400 days buckets to MONTHS (14 bars, not 400 or 57)', b400.bucket === 'month' && b400.rows.length === 14,
-       b400.bucket + '/' + b400.rows.length);
-    ck('every bucket width came from the ROW COUNT alone — bucketDays takes no `days` argument',
+    ck('30 days is STILL 30 rows — no fold into 5 weekly bars',
+       b30.bucket === 'day' && b30.rows.length === 30, b30.bucket + '/' + b30.rows.length);
+    ck('45 days is still 45 rows — no fold into weeks',
+       b45.bucket === 'day' && b45.rows.length === 45, b45.bucket + '/' + b45.rows.length);
+    ck('400 days is still 400 rows — no fold into months',
+       b400.bucket === 'day' && b400.rows.length === 400, b400.bucket + '/' + b400.rows.length);
+    ck('bucketDays still takes no `days` argument',
        R.bucketDays.length === 1, R.bucketDays.length + ' declared parameter(s)');
+
+    /* =========================================================== 7b. the line chart ==== */
+    head('7b. past 14 days the by-day chart is a DAILY LINE, not folded bars — and the '
+       + '14-day boundary itself is exercised both sides');
+    var p7bBar = await renderPage('&from=2026-09-01&to=2026-09-14');   // 14 days, exactly at the boundary
+    var p7bLine = await renderPage('&from=2026-08-25&to=2026-09-08');  // 15 days, one past it
+    var barSection = p7bBar.slice(p7bBar.indexOf('<h2>By day</h2>'), p7bBar.indexOf('<h2>', p7bBar.indexOf('<h2>By day</h2>') + 1));
+    var lineSection = p7bLine.slice(p7bLine.indexOf('<h2>By day</h2>'), p7bLine.indexOf('<h2>', p7bLine.indexOf('<h2>By day</h2>') + 1));
+    ck('14 days (the boundary itself) still draws bars — <rect rx="3">, no <circle> markers',
+       /<rect[^>]*rx="3"/.test(barSection) && !/<circle/.test(barSection));
+    ck('15 days (one past the boundary) draws a line — <circle> markers, no <rect rx="3"> bars',
+       /<circle/.test(lineSection) && !/<rect[^>]*rx="3"/.test(lineSection));
+    ck('the 15-day line legend explains the point styles and states the label spacing',
+       /Hollow point = today, live and partial/.test(lineSection)
+       && /faded point = Cloudflare-coarse/.test(lineSection)
+       && /dates are labelled every \d+ day\(s\)/.test(lineSection));
+
+    /* ==================================================== 7c. x-axis label thinning ===== */
+    head('7c. x-axis labels are THINNED at length -- never one per day past 14, the last day',
+       'is always labelled, and no two labels are drawn close enough to overprint');
+    function mkLineRows(n) {
+      var rows = mkRows(n);
+      // One real mean value so the direct-label collision-avoidance path is exercised too.
+      rows[rows.length - 1].mean = 3;
+      return rows;
+    }
+    /* 18 is in the list because it is the case that BROKE: stride 2 over 18 days does not
+     * divide, so forcing the last label put `09-17 Th` one slot from `09-18 F` and they
+     * overprinted as `09-17 TH09-18 F`. Found by screenshotting a render, not by any check
+     * here -- the markup was well-formed with the labels on top of each other, so the
+     * assertion below is on the drawn GEOMETRY (the x attributes) rather than on the count,
+     * which the old form of this check re-derived from the implementation's own formula and
+     * would therefore have followed into the bug. */
+    [15, 18, 30, 90, 400].forEach(function (n) {
+      var svg = R.lineChart(mkLineRows(n), { labelA: 'Pageloads', labelB: 'Landing visits' });
+      var xs = (svg.match(/<text x="([0-9.]+)" y="\d+" fill="#8fa2b3" font-size="10" text-anchor="middle">/g) || [])
+        .map(function (t) { return parseFloat(/x="([0-9.]+)"/.exec(t)[1]); })
+        .sort(function (p, q) { return p - q; });
+      ck(n + ' days: ' + xs.length + ' x-axis labels drawn, fewer than one per day',
+         xs.length > 1 && xs.length < n, xs.length + ' labels for ' + n + ' days');
+      var tightest = Infinity;
+      for (var i = 1; i < xs.length; i++) tightest = Math.min(tightest, xs[i] - xs[i - 1]);
+      /* 44 px is just under the ~46 px a `09-18 F` label occupies at font-size 10, so this
+       * does not assert a pretty layout -- it asserts the labels are not ON TOP of each
+       * other. FIRST CUT OF THIS CHECK USED 24 px AND WAS HOLLOW FOR THE VERY CASE THAT
+       * PROMPTED IT: with the guard injected out, 18 days measures 32.8 px -- overlapping,
+       * since the label is wider than that -- and 24 px passed it. Caught by firing the
+       * injection and reading the numbers per row rather than trusting INJECTION CAUGHT,
+       * which was already true from the 90-day row alone. */
+      ck(n + ' days: no two labels closer than 44 px (tightest ' + tightest.toFixed(1) + ' px)',
+         tightest >= 44, tightest.toFixed(1) + ' px');
+      var lastDrawn = xs[xs.length - 1];
+      var svgLast = /<text x="([0-9.]+)"[^>]*text-anchor="middle">[^<]*<\/text>(?![\s\S]*text-anchor="middle")/.exec(svg);
+      ck(n + ' days: the last day of the window is still labelled',
+         !!svgLast && Math.abs(parseFloat(svgLast[1]) - lastDrawn) < 0.01, 'x=' + lastDrawn);
+    });
 
     /* =================================================================== 8. legacy link */
     head('8. a legacy ?days=20 link still resolves, to the RIGHT span');
@@ -729,25 +825,49 @@ async function threwAsync(fn) {
        /<h2>How people arrive<\/h2>/.test(p16)
        && !/nothing[\s\S]{0,20}external referred anyone/.test(p16));
 
-    /* ================== 17. a bucket with SOME uncaptured days is not a complete bar ===== */
-    head('17. a weekly bucket holding some (not all) uncaptured days draws with a dashed '
-       + 'outline — never a plain bar, never a blank tick');
-    /* 21 days -> weekly buckets (bucketDays: n<=90 -> size 7). Week 1 (08-25..08-31) holds
-     * 2 uncaptured days (08-30 no run at all, 08-31 traffic failed) among 5 real ones; weeks
-     * 2 and 3 (09-01..09-14) are fully clean. The defect was `missing: chunk.every(...)`
-     * with no distinct mark for "some but not all" — a bucket like week 1 drew as an
-     * ordinary solid bar, undercounting with nothing on screen to say so. */
+    /* ====================== 17. a missing day breaks the line, never joins through ====== */
+    head('17. a missing day BREAKS the data line into segments and draws its own baseline '
+       + 'tick — never joined through as a drop to zero (was: a weekly bucket with some '
+       + 'uncaptured days drew a dashed outline; that folding is gone — see bucketDays\' '
+       + 'header)');
+    /* Same 21-day window the old weekly-bucket check used (2026-08-25..2026-09-14), now
+     * >14 days so it draws lineChart. Two CONSECUTIVE missing days sit at indices 5-6
+     * (08-30 no run at all, 08-31 traffic failed) among otherwise-clean days: joining
+     * through them would draw a plunge from the 08-29 point down to zero and back up to
+     * the 09-01 point — a two-day collapse that never happened, since 09-01 opens week A at
+     * the same 4 landing visits/day as every other day in it. */
     var p17 = await renderPage('&from=2026-08-25&to=2026-09-14');
-    var dashedBars17 = (p17.match(/stroke-dasharray="3,2"/g) || []).length;
-    var allBars17 = (p17.match(/<rect[^>]*rx="3"/g) || []).length;
-    ck('at least one bar (week 1, the partially-uncaptured bucket) carries the dashed-'
-     + 'outline marker',
-       dashedBars17 > 0, dashedBars17 + ' dashed-outline bar(s) of ' + allBars17 + ' total');
-    ck('...and it is not on every bar — the two fully-captured weeks stay a plain bar',
-       dashedBars17 > 0 && dashedBars17 < allBars17,
-       'dashed=' + dashedBars17 + ' total=' + allBars17);
-    ck('the legend explains the marker',
-       /some days in that bucket have no data captured/.test(p17));
+    var by17 = p17.slice(p17.indexOf('<h2>By day</h2>'), p17.indexOf('<h2>', p17.indexOf('<h2>By day</h2>') + 1));
+    var pageloadSegs17 = (by17.match(/<polyline points="[^"]+" fill="none" stroke="#3987e5" stroke-width="2"\/>/g) || []).length;
+    var visitSegs17 = (by17.match(/<polyline points="[^"]+" fill="none" stroke="#d95926" stroke-width="2"\/>/g) || []).length;
+    ck('the pageloads line is drawn as exactly 2 segments (08-25..08-29, then 09-01..09-14) '
+     + '— not 1 continuous polyline through the 2-day gap',
+       pageloadSegs17 === 2, pageloadSegs17 + ' segment(s)');
+    ck('...and so is the landing-visits line',
+       visitSegs17 === 2, visitSegs17 + ' segment(s)');
+    var missingTicks17 = (by17.match(/no data captured<\/title><\/line>/g) || []).length;
+    ck('both uncaptured days (08-30, 08-31) draw their own dashed baseline tick',
+       missingTicks17 === 2, missingTicks17 + ' tick(s)');
+    ck('the coarse day (08-28) inside the same window keeps its own reduced-opacity marker '
+     + '— never folded into a sum',
+       /<circle[^>]*fill-opacity="0\.45"[^>]*><title>08-28 F — Pageloads: \d+ \(coarse, ±10\)<\/title>/.test(by17));
+    ck('the legend now describes a BREAK in the line, not a dashed outline on a bar',
+       /a break in the line, marked with a dashed tick at the baseline = no data captured/.test(by17)
+       && !/dashed outline on a bar/.test(by17));
+
+    /* ===================== 17b. today draws HOLLOW on the line, never solid ============= */
+    head('17b. today (live, partial) draws a HOLLOW point on the line — never folded in as '
+       + 'an ordinary closed day');
+    var p17b = await renderPage('&from=2026-09-01&to=2026-09-18');   // 18 days, includes today
+    var by17b = p17b.slice(p17b.indexOf('<h2>By day</h2>'), p17b.indexOf('<h2>', p17b.indexOf('<h2>By day</h2>') + 1));
+    ck('today\'s pageloads point (11) is drawn hollow — fill="none", stroked, never solid',
+       /<circle[^>]*fill="none" stroke="#3987e5" stroke-width="2"><title>09-18 F — Pageloads: 11 \(today, partial\)<\/title>/.test(by17b));
+    ck('today\'s landing-visits point (7) is hollow too',
+       /<circle[^>]*fill="none" stroke="#d95926" stroke-width="2"><title>09-18 F — Landing visits: 7 \(today, partial\)<\/title>/.test(by17b));
+    ck('no OTHER day in the window carries the "(today, partial)" flag — exactly the 2 '
+     + 'series points for today, none else',
+       (by17b.match(/\(today, partial\)/g) || []).length === 2,
+       (by17b.match(/\(today, partial\)/g) || []).length + ' flagged point(s)');
 
     /* ============== 18. a failed referrer fetch degrades, never crashes the page ========= */
     head('18. a failed live referrer fetch degrades BOTH referrer sections — never a 500 for '

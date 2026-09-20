@@ -44,6 +44,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 
 ### Added
+- **Ops dashboard: the By-day chart is a DAILY LINE past 14 days** (2026-09-20, owner request).
+  It bucketed 7 days to a bar above 14 and 30 above 90, so the 30d and All presets showed four or
+  five fat bars of weekly totals. 14 days or fewer keeps the bars unchanged; longer draws one
+  point per day at any length. A day the rollup never captured stores 0, so the line BREAKS there
+  and marks it rather than plunging to zero and back — a real zero still dips, connected, because
+  the two have to look different. X labels thin to about twelve with the spacing stated in the
+  legend.
 - **Ops dashboard: an "All" range preset** (2026-09-20, owner request) opening the window on the
   first day the server recorded, through today. Reuses `storeRange()`'s own `first` rather than
   re-querying, renders only when the store is non-empty, and is clamped to `RETAIN_DAYS` so it can

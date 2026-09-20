@@ -37,7 +37,8 @@
  */
 
 import { html, PAGE_HEAD, nav, table, errBlock, dayLabel, etDay, etDayStartMs,
-         windowStartMs, RUM_FULL_RES_DAYS, barChart, bucketDays, section, esc } from './render.js';
+         windowStartMs, RUM_FULL_RES_DAYS, barChart, bucketDays, lineChart, lineLabelStride,
+         section, esc } from './render.js';
 import { gql, ACCOUNT, SITE_TAG } from './cfapi.js';
 import { referrerKind, RETAIN_DAYS } from './rollup.js';
 import { parseDay, storeRange, dailyTotals, groupBy, referrerBreakdown, trailingMean,
@@ -366,18 +367,26 @@ export async function analyticsPage(env, url) {
     : '<span class="muted">No comparable prior period — ' + esc(delta.reason) + '.</span>')
     + '</p>';
 
-  const b = bucketDays(rows);
-  const chart = barChart(b.rows, {
-    labelA: 'Pageloads', labelB: 'Landing visits', labelMean: '7d mean', labelGhost: 'prior period',
-    bucket: b.bucket,
-  });
-  const legend = chart ? '<p class="muted">Hollow bar = today, live and partial · faded bar = '
-    + 'Cloudflare-coarse (±10) · dashed outline on a bar = some days in that bucket have no '
-    + 'data captured, so the total is an undercount · dashed tick at the baseline = the whole '
-    + 'bucket has no data captured · solid line = 7-day trailing mean of landing visits · '
-    + 'dashed muted line = the prior, equal-length period.'
-    + (b.rows.some((r) => r.short) ? ' A bar marked <b>*</b> is short — the '
-    + 'window does not divide evenly into ' + b.bucket + 's.' : '') + '</p>' : '';
+  /* CHART SHAPE (2026-09-20, owner: "for the 30 day and all can you make them a line graph
+   * and show data from every day not the weekly average"). 14 days or fewer draws the
+   * unchanged bar chart; anything longer draws `lineChart` — one point per day, no
+   * bucketing at any length — instead of folding into weekly/monthly bars. `rows.length`,
+   * not the picked `days`/`from`/`to`, decides: it is the actual number of days on screen,
+   * which is what a hand-picked range or a store-clamped window can shorten without the
+   * caller's own day count changing. */
+  const isLongWindow = rows.length > 14;
+  const chartOpts = { labelA: 'Pageloads', labelB: 'Landing visits', labelMean: '7d mean', labelGhost: 'prior period' };
+  const chart = isLongWindow ? lineChart(rows, chartOpts) : barChart(bucketDays(rows).rows, { ...chartOpts, bucket: 'day' });
+  const legend = !chart ? '' : isLongWindow
+    ? '<p class="muted">Hollow point = today, live and partial · faded point = Cloudflare-'
+      + 'coarse (±10) · a break in the line, marked with a dashed tick at the baseline = no '
+      + 'data captured that day (never drawn as a drop to zero) · solid line = 7-day '
+      + 'trailing mean of landing visits · dashed muted line = the prior, equal-length '
+      + 'period · dates are labelled every ' + lineLabelStride(rows.length) + ' day(s).</p>'
+    : '<p class="muted">Hollow bar = today, live and partial · faded bar = Cloudflare-coarse '
+      + '(±10) · dashed tick at the baseline = no data captured that day · solid line = '
+      + '7-day trailing mean of landing visits · dashed muted line = the prior, '
+      + 'equal-length period.</p>';
 
   const dayTable = table(rows.map((r) => ({
     dateLabel: dayLabel(r.day, r.partial ? r.day : null),
