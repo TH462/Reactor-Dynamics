@@ -246,6 +246,41 @@ function seed() {
   return db;
 }
 
+/* DEEP-LINK LANDINGS FIXTURES (#795 follow-up) — their OWN, ISOLATED databases, not rows
+ * added to the shared `seed()` store above. Every day in that store is already load-
+ * bearing for an exact sum somewhere in this file (checks 1-2's period-over-period delta
+ * alone spans 2026-09-05..2026-09-18 — the "prior 7 days" plus the default window — and
+ * combined with checks 1/10/13/20a's 2026-09-01..2026-09-07 and check 20c's
+ * 2026-08-25..2026-08-31, there is no day left that is not part of some exact total).
+ * Same idiom check 19 already uses for the empty-store case: a fresh `makeDb()` and a
+ * direct `A.analyticsPage()` call rather than the shared `renderPage()` helper. */
+function seedDeepLinkClosed() {
+  var d = makeDb();
+  // One DIRECT non-home landing (the bookmark case — must count) and one EXTERNAL one
+  // (search discovery of a subpage — must NOT), on a day that never reaches "today".
+  d._ins('traffic_daily', { day: '2026-09-09', country: 'Australia', referrer_host: '',
+    referrer_kind: 'direct', path: '/ui/shell', device: 'desktop', browser: 'Chrome',
+    os: 'Windows', nav_type: 'navigate', bot: 0, pageloads: 6, visits: 5, sample_interval: 1 });
+  d._ins('traffic_daily', { day: '2026-09-09', country: 'Australia', referrer_host: 'www.google.com',
+    referrer_kind: 'external', path: '/about', device: 'desktop', browser: 'Chrome',
+    os: 'Windows', nav_type: 'navigate', bot: 0, pageloads: 1, visits: 1, sample_interval: 1 });
+  d._ins('rollup_runs', { day: '2026-09-09', ran_at: '2026-09-09T05:10:00Z', traffic_rows: 2,
+    usage_rows: 0, coarse: 0, note: '' });
+  return d;
+}
+// A window that DOES reach "today" (2026-09-18, per FAKE_NOW below), so the closed side
+// combines with `DEEPLINK_LIVE`'s canned Cloudflare batch (a direct home row, a direct
+// non-home row, and an external non-home row) through the SAME merge.
+function seedDeepLinkLive() {
+  var d = makeDb();
+  d._ins('traffic_daily', { day: '2026-09-17', country: 'United States', referrer_host: '',
+    referrer_kind: 'direct', path: '/', device: 'desktop', browser: 'Chrome', os: 'Windows',
+    nav_type: 'navigate', bot: 0, pageloads: 14, visits: 7, sample_interval: 1 });
+  d._ins('rollup_runs', { day: '2026-09-17', ran_at: '2026-09-17T05:10:00Z', traffic_rows: 1,
+    usage_rows: 0, coarse: 0, note: '' });
+  return d;
+}
+
 // ---------------------------------------------------------------- the fake Cloudflare upstream
 var TODAY_LIVE = { rumPageloadEventsAdaptiveGroups: [
   { count: 8, avg: { sampleInterval: 1 }, sum: { visits: 5 }, dimensions: { bot: false } },
@@ -284,6 +319,21 @@ var GENERIC_BREAKDOWN = { rumPageloadEventsAdaptiveGroups: [
     requestPath: '/', countryName: 'Germany', refererHost: '',
     requestHost: 'reactordynamics.com', deviceType: 'desktop', userAgentBrowser: 'Chrome',
     userAgentOS: 'Windows', navigationType: 'navigate', bot: 0 } } ] };
+/* DEEP-LINK LANDINGS' OWN LIVE BATCH (#795 follow-up) — a THIRD dimension combination
+ * (`requestPath refererHost requestHost bot`) distinct from both `GENERIC_BREAKDOWN`'s
+ * ("requestPath bot", used by Top pages/Countries/Devices/Browser/OS) and the referrer
+ * sections' ("refererHost requestHost bot"), so this fixture answers ONLY the Deep-link
+ * Landings live query and cannot silently change any other section's total. One DIRECT
+ * home row (so the window still has ordinary traffic), one DIRECT non-home row (must
+ * count), one EXTERNAL non-home row (must NOT count — the exact narrowing being proven). */
+var DEEPLINK_LIVE = { rumPageloadEventsAdaptiveGroups: [
+  { count: 8, avg: { sampleInterval: 1 }, sum: { visits: 4 }, dimensions: {
+    requestPath: '/', refererHost: '', requestHost: 'reactordynamics.com', bot: 0 } },
+  { count: 6, avg: { sampleInterval: 1 }, sum: { visits: 5 }, dimensions: {
+    requestPath: '/ui/shell', refererHost: '', requestHost: 'reactordynamics.com', bot: 0 } },
+  { count: 2, avg: { sampleInterval: 1 }, sum: { visits: 1 }, dimensions: {
+    requestPath: '/about', refererHost: 'www.google.com', requestHost: 'reactordynamics.com', bot: 0 } },
+] };
 var VITALS_LCP = { rumWebVitalsEventsAdaptiveGroups: [
   { count: 40, avg: { sampleInterval: 1 }, quantiles: { largestContentfulPaintP75: 1500000 },
     dimensions: { largestContentfulPaintPath: '/' } } ] };
@@ -314,6 +364,7 @@ function dispatchGql(q) {
   // (`rumRows`' `excludeBots` option) without an unconfirmed GraphQL filter term.
   if (has('dimensions { datetimeHour bot }')) return TODAY_LIVE;
   if (has('dimensions { countryName refererHost requestHost bot }')) return THREE_DIM;
+  if (has('dimensions { requestPath refererHost requestHost bot }')) return DEEPLINK_LIVE;
   if (has('dimensions { refererHost requestHost bot }')) {
     if (FAIL_REFERRER) throw new Error('fakeGql: simulated referrer upstream failure');
     return GENERIC_BREAKDOWN;
@@ -457,6 +508,22 @@ var INJECTIONS = {
   'countryday-missing-note-silent': ['analytics.js',
     'const missingDays = allDays.filter((d) => d <= closedTo && (closedByDay.get(d) || { missing: true }).missing);',
     'const missingDays = [];'],
+  /* DEEP-LINK LANDINGS (#795). THE OFF-BY-ONE THAT INVERTS THE METRIC: counting the
+   * HOMEPAGE as a deep-link landing instead of everything that is not it. */
+  'deeplink-home-counted': ['analytics.js',
+    "    const deepRows = rows.filter((r) => r.path !== '/' && r.referrerKind === 'direct');",
+    "    const deepRows = rows.filter((r) => r.path === '/');"],
+  /* THE NARROWING #795's FOLLOW-UP MADE, PUT BACK: counting ANY non-home landing
+   * regardless of referrer — which counts search-engine DISCOVERY of a subpage
+   * (`/about`, `/download`) as though it were a returning visitor's bookmark. */
+  'deeplink-external-counted': ['analytics.js',
+    "    const deepRows = rows.filter((r) => r.path !== '/' && r.referrerKind === 'direct');",
+    "    const deepRows = rows.filter((r) => r.path !== '/');"],
+  /* THE SECTION READS CLOUDFLARE INSTEAD OF THE STORE for closed days — the same shape
+   * `breakdown-skips-d1` proves for the generic breakdowns, here for the dedicated reader. */
+  'deeplink-skips-store': ['analytics.js',
+    'const closed = from <= closedTo ? await deepLinkLandings(db, from, closedTo, 1000) : { total: 0, deepLink: 0, coarse: false, byPath: [] };',
+    'const closed = { total: 0, deepLink: 0, coarse: false, byPath: [] };'],
 };
 
 if (/--list-injections/.test(ARG)) {
@@ -516,6 +583,17 @@ async function threwAsync(fn) {
     SEEN.length = 0;
     var url = new URL('https://example.invalid/dashboard?view=analytics' + (qs || ''));
     var res = await A.analyticsPage({ STATS: db, CF_ANALYTICS_TOKEN: 'tok' }, url);
+    var body = await res.text();
+    ALL_HTML.push(body);
+    return body;
+  }
+  // Same as `renderPage`, against a CALLER-SUPPLIED database rather than the shared
+  // `seed()` store — for a fixture that needs to be isolated from every other check's
+  // exact totals (see `seedDeepLinkClosed`/`seedDeepLinkLive`'s own header).
+  async function renderPageOn(db2, qs) {
+    SEEN.length = 0;
+    var url = new URL('https://example.invalid/dashboard?view=analytics' + (qs || ''));
+    var res = await A.analyticsPage({ STATS: db2, CF_ANALYTICS_TOKEN: 'tok' }, url);
     var body = await res.text();
     ALL_HTML.push(body);
     return body;
@@ -778,9 +856,9 @@ async function threwAsync(fn) {
     var spanRe = /\((\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2})\)/g;
     var sm;
     while ((sm = spanRe.exec(breakdownHtml))) spans.push(sm[1] + '..' + sm[2]);
-    ck('at least one span was found per breakdown section (5 migrated + 2 referrer + 3 '
-     + 'Cloudflare-only = 10)',
-       spans.length === 10, spans.length + ' span(s) found: ' + spans.join(', '));
+    ck('at least one span was found per breakdown section (6 migrated, incl. Deep-link '
+     + 'landings, + 2 referrer + 3 Cloudflare-only = 11)',
+       spans.length === 11, spans.length + ' span(s) found: ' + spans.join(', '));
     ck('...and EVERY one of them is exactly the picked range, 2026-09-01..2026-09-07 — no '
      + 'section quietly used a different window',
        spans.length > 0 && spans.every(function (s) { return s === '2026-09-01..2026-09-07'; }),
@@ -997,6 +1075,71 @@ async function threwAsync(fn) {
        /<td>2026-08-28<\/td><td>France<\/td><td>\(direct\)<\/td><td>direct<\/td><td class="num">20<\/td><td class="num">10<\/td><td>coarse \(±10\)<\/td>/.test(cday20c));
     ck('the source note plainly names which days were never captured, ascending',
        /No data captured<\/b> for 2026-08-30, 2026-08-31/.test(cday20c));
+
+    /* =========== 23. Deep-link landings — not the homepage, AND no referrer (#795 f/u) ==== */
+    head('23. Deep-link landings — narrowed to path <> "/" AND referrer_kind = "direct"');
+    /* ISOLATED database (`seedDeepLinkClosed`, above): a DIRECT non-home landing (must
+     * count) and an EXTERNAL one (search discovery of a subpage — must NOT), and nothing
+     * else in the store, so the totals are exactly the two rows. */
+    var p23a = await renderPageOn(seedDeepLinkClosed(), '&from=2026-09-09&to=2026-09-09');
+    var dl23aStart = p23a.indexOf('<h2>Deep-link landings</h2>');
+    var dl23a = p23a.slice(dl23aStart, p23a.indexOf('<h2>', dl23aStart + 1));
+    ck('the section exists and states the definition, the referrer exclusion, and the '
+     + 'floor/not-a-count caveat',
+       dl23aStart >= 0 && /is not the homepage/.test(dl23a) && /NO REFERRER at all/.test(dl23a)
+       && /that is discovery, the/.test(dl23a) && /FLOOR on returning visitors/.test(dl23a)
+       && /counted[\s\S]{0,10}wrongly as one/.test(dl23a),
+       dl23aStart >= 0 ? 'section found' : 'section missing');
+    ck('5 of 6 landing visits (83.3%) — only the DIRECT /ui/shell landing counts, not the '
+     + 'external /about row',
+       /<b>5 of 6 landing visits<\/b> \(83\.3%\)/.test(dl23a), dl23a.match(/<b>[^<]*<\/b> \([^)]*\)/) || 'no match');
+    ck('THE EXACT DEFECT THIS NARROWING FIXES: the breakdown lists /ui/shell and NEVER '
+     + '/about (external, non-home)',
+       /<td>\/ui\/shell<\/td><td class="num">6<\/td><td class="num">5<\/td>/.test(dl23a)
+       && !/\/about/.test(dl23a), 'checked');
+    ck('its own source note names this exact span and never mentions today',
+       /<h2>Deep-link landings<\/h2><p class="muted">Source: <b>first-party exact<\/b> \(2026-09-09 to 2026-09-09\)/.test(p23a)
+       && !/<h2>Deep-link landings<\/h2>[\s\S]{0,400}plus <b>today<\/b>/.test(p23a));
+
+    /* A window that DOES reach today, so the SAME direct-vs-external exclusion is proven on
+     * the LIVE half of the merge too: `DEEPLINK_LIVE` carries a direct home row, a direct
+     * non-home row (must count) and an external non-home row (must not), in the SAME batch
+     * as `seedDeepLinkLive`'s single closed-store day (7 landing visits, home, direct).
+     * Total = 7 (closed) + 4 + 5 + 1 (live) = 17; deep-link = 0 (closed) + 5 (live) = 5. */
+    var p23b = await renderPageOn(seedDeepLinkLive(), '&from=2026-09-17&to=2026-09-18');
+    var dl23bStart = p23b.indexOf('<h2>Deep-link landings</h2>');
+    var dl23b = p23b.slice(dl23bStart, p23b.indexOf('<h2>', dl23bStart + 1));
+    ck('5 of 17 landing visits (29.4%) — the LIVE direct /ui/shell row counts, the LIVE '
+     + 'external /about row does not, proving the exclusion applies to today’s merge too',
+       /<b>5 of 17 landing visits<\/b> \(29\.4%\)/.test(dl23b), dl23b.match(/<b>[^<]*<\/b> \([^)]*\)/) || 'no match');
+    ck('the breakdown lists /ui/shell and never /about or the homepage, same rule as check 23a',
+       /<td>\/ui\/shell<\/td><td class="num">6<\/td><td class="num">5<\/td>/.test(dl23b)
+       && !/\/about/.test(dl23b) && !/<td>\/<\/td>/.test(dl23b), 'checked');
+    ck('its source note says "plus today (...) live from Cloudflare", same as every other '
+     + 'migrated section on a window that reaches it',
+       /plus <b>today<\/b> \(2026-09-18\) live from Cloudflare/.test(dl23b));
+
+    // A window with NO non-home landings of any kind (the SHARED store, day 2026-09-01,
+    // read-only — no rows added, safe alongside every other check on that store) — the
+    // pre-existing "share is legitimately 0%, not blank" case, unaffected by the narrowing
+    // (there was nothing to narrow away here in the first place).
+    var p23c = await renderPage('&from=2026-09-01&to=2026-09-01');
+    var dl23cStart = p23c.indexOf('<h2>Deep-link landings</h2>');
+    var dl23c = p23c.slice(dl23cStart, p23c.indexOf('<h2>', dl23cStart + 1));
+    ck('0 of 4 landing visits (0%) when every landing in the window is the homepage — not '
+     + 'blank, not omitted',
+       /<b>0 of 4 landing visits<\/b> \(0%\)/.test(dl23c), dl23c.match(/<b>[^<]*<\/b> \([^)]*\)/) || 'no match');
+    ck('...and says so in place of a breakdown table',
+       /No deep-link landings in this window/.test(dl23c));
+
+    // The zero-DENOMINATOR case: a real-zero closed day, on its own, with no live fold-in.
+    var p23d = await renderPage('&from=2026-08-27&to=2026-08-27');
+    var dl23dStart = p23d.indexOf('<h2>Deep-link landings</h2>');
+    var dl23d = p23d.slice(dl23dStart, p23d.indexOf('<h2>', dl23dStart + 1));
+    ck('a window with zero landing visits reads "no landing visits in this window" — never '
+     + 'NaN%, never Infinity%, never a bare 0%',
+       /<b>0 of 0 landing visits<\/b> \(no landing visits in this window\)/.test(dl23d)
+       && !/NaN/.test(dl23d) && !/Infinity/.test(dl23d));
 
     /* =================================================================== 9. no token= */
     head('9. no rendered page anywhere carries a credential in a href');

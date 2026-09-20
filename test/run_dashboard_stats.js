@@ -373,6 +373,17 @@ var INJECTIONS = {
   'cday-bots-in': ['stats.js',
     "    + ' FROM traffic_daily WHERE day >= ? AND day <= ? AND bot = 0'",
     "    + ' FROM traffic_daily WHERE day >= ? AND day <= ?'"],
+  /* DEEP-LINK LANDINGS (#795): the off-by-one that inverts the metric, counting the
+   * homepage itself as a deep-link landing instead of everything that is not it. */
+  'deeplink-home-counted': ['stats.js',
+    "  const deepLink = rows.filter((x) => x.path !== '/' && x.referrerKind === 'direct').reduce((s, x) => s + x.visits, 0);",
+    "  const deepLink = rows.filter((x) => x.path === '/').reduce((s, x) => s + x.visits, 0);"],
+  /* THE NARROWING #795's FOLLOW-UP MADE, PUT BACK: counting ANY non-home landing
+   * regardless of referrer kind — the exact defect that made a search-engine-referred
+   * subpage landing (`/about`, `/download`) read as though someone had bookmarked it. */
+  'deeplink-external-counted': ['stats.js',
+    "  const deepLink = rows.filter((x) => x.path !== '/' && x.referrerKind === 'direct').reduce((s, x) => s + x.visits, 0);",
+    "  const deepLink = rows.filter((x) => x.path !== '/').reduce((s, x) => s + x.visits, 0);"],
 };
 // `sum-sessions` needs both halves of the same defect (the SELECT and the mapper), or the
 // column is fetched and dropped and nothing changes. A one-sided injection lies (#295).
@@ -775,6 +786,100 @@ async function threwAsync(fn) {
      db.seen[n0b].args.join(',') === '2026-09-01,2026-09-05,20'
      && !/\d{4}-\d{2}-\d{2}/.test(db.seen[n0b].sql),
      db.seen[n0b].sql.replace(/\s+/g, ' ').slice(0, 90) + ' args=' + JSON.stringify(db.seen[n0b].args));
+
+  /* ---------------------------------------------------------- deep-link landings */
+  head('7c. deepLinkLandings — not the homepage, AND no referrer at all (#795 follow-up)');
+  /* A DEDICATED, ISOLATED FIXTURE (own db, same idiom `storeRange`'s empty-store check
+   * already uses) rather than reusing the shared `db` above: every day in that fixture is
+   * load-bearing for an exact sum somewhere else in this file (the country totals in
+   * section 7, the trailing-mean windows in section 4, the real-zero/coarse/missing days
+   * in section 3), and this reader's whole point is PATH x REFERRER-KIND diversity that
+   * fixture has none of — `traffic()`'s helper hard-codes `path: '/'` and defaults
+   * `referrer_kind: 'direct'` for every row it inserts. Modelled on the live numbers
+   * measured for #795: 41 direct + 30 external at '/', 5 DIRECT at '/ui/shell' (the
+   * bookmark case), 1 EXTERNAL each at '/about' and '/download' (search discovery of a
+   * subpage — the case the narrowed definition exists to exclude). */
+  function seedDeepLink() {
+    var d = makeDb();
+    traffic(d, '2026-09-10', 'United States', 50, 41, 1, 0);
+    traffic(d, '2026-09-10', 'United States', 40, 30, 1, 0, { referrer_kind: 'external', referrer_host: 'google.com' });
+    traffic(d, '2026-09-10', 'United States', 6, 5, 1, 0, { path: '/ui/shell' });
+    traffic(d, '2026-09-10', 'United States', 1, 1, 1, 0, { path: '/about', referrer_kind: 'external', referrer_host: 'google.com' });
+    traffic(d, '2026-09-10', 'United States', 1, 1, 1, 0, { path: '/download', referrer_kind: 'external', referrer_host: 'google.com' });
+    // A COARSE deep-link row on a separate day, so the coarse flag can be proven per-path
+    // rather than accidentally true because everything in the fixture happens to be exact.
+    traffic(d, '2026-09-11', 'United States', 20, 10, 10, 0, { path: '/ui/shell' });
+    ran(d, '2026-09-10', 5, 1); ran(d, '2026-09-11', 1, 10, 'coarse:10');
+    return d;
+  }
+  var dl = seedDeepLink();
+  var dlAll = await S.deepLinkLandings(dl, '2026-09-10', '2026-09-10', 1000);
+  ck('total is every landing visit in the window, summed across ALL paths and kinds (41+30+5+1+1 = 78)',
+     dlAll.total === 78, JSON.stringify({ total: dlAll.total, deepLink: dlAll.deepLink }));
+  /* THE MEASURED #795 NUMBER: 5, not 7. '/about' and '/download' are non-home but EXTERNAL
+   * (someone found them via a search engine, i.e. discovery) and must NOT contribute —
+   * only '/ui/shell', which is both non-home AND direct, does. This is the exact narrowing
+   * the follow-up made: "not the homepage" alone over-counted by including those two. */
+  ck('deep-link is ONLY the non-home path that is ALSO direct (5, not 5+1+1=7)',
+     dlAll.deepLink === 5, 'deepLink=' + dlAll.deepLink);
+  ck('an EXTERNAL non-home landing is NOT counted — the exact defect this narrowing fixes '
+   + '(/about and /download are non-home but excluded, worth 2 landing visits if wrongly counted)',
+     dlAll.byPath.filter(function (r) { return r.path !== '/' && r.referrerKind === 'external'; })
+       .reduce(function (s, r) { return s + r.visits; }, 0) === 2
+     && dlAll.deepLink === 5,
+     'external non-home visits present but excluded: deepLink stayed ' + dlAll.deepLink);
+  ck('the homepage itself is never counted as a deep-link landing, in EITHER referrer kind',
+     dlAll.byPath.filter(function (r) { return r.path === '/'; }).length === 2
+     && dlAll.deepLink < dlAll.total,
+     JSON.stringify(dlAll.byPath.map(function (r) { return r.path + '/' + r.referrerKind + ':' + r.visits; })));
+  ck('the breakdown carries one row per distinct (path, referrer kind) PAIR — five, since '
+   + '"/" now splits into its direct and external rows',
+     dlAll.byPath.length === 5
+     && dlAll.byPath[0].path === '/' && dlAll.byPath[0].referrerKind === 'direct'
+     && dlAll.byPath[0].visits === 41 && dlAll.byPath[0].pageloads === 50,
+     JSON.stringify(dlAll.byPath));
+  ck('not coarse when every contributing row is exact',
+     dlAll.coarse === false, 'coarse=' + dlAll.coarse);
+
+  var dlCoarse = await S.deepLinkLandings(dl, '2026-09-10', '2026-09-11', 1000);
+  ck('a coarse row anywhere in the window marks the whole answer coarse — the same per-row '
+   + 'rule groupBy already applies, just surfaced one level up',
+     dlCoarse.coarse === true
+     && dlCoarse.byPath.filter(function (r) { return r.path === '/ui/shell' && r.referrerKind === 'direct'; })[0].visits === 15,
+     JSON.stringify(dlCoarse.byPath.filter(function (r) { return r.path === '/ui/shell'; })));
+  ck('deepLinkLandings groups on path AND referrer_kind — a dedicated two-column reader, '
+   + 'not a re-use of groupBy (which is single-dimension only) — and the range/limit are bound',
+     dl.seen[dl.seen.length - 1].sql.indexOf('GROUP BY path, referrer_kind') >= 0
+     && dl.seen[dl.seen.length - 1].args.join(',') === '2026-09-10,2026-09-11,1000',
+     dl.seen[dl.seen.length - 1].sql.replace(/\s+/g, ' ').slice(0, 90));
+
+  // A window where EVERY landing is the homepage: deepLink is 0, total > 0 — not blank,
+  // not equal to total, and not a constant regardless of which paths are in the window.
+  var homeOnlyDb = makeDb();
+  traffic(homeOnlyDb, '2026-09-12', 'United States', 10, 6, 1, 0);
+  ran(homeOnlyDb, '2026-09-12', 1, 1);
+  var dlHome = await S.deepLinkLandings(homeOnlyDb, '2026-09-12', '2026-09-12', 1000);
+  ck('a window where every landing is the homepage has deepLink 0, total > 0 — not blank, '
+   + 'not equal to total',
+     dlHome.total === 6 && dlHome.deepLink === 0, JSON.stringify(dlHome));
+
+  // ISOLATING THE REFERRER CONDITION ALONE: a non-home landing that is EXTERNAL and
+  // nothing else in the window — proves the exclusion is not an artefact of the homepage
+  // rows outweighing it, the way dlAll's mix could be read.
+  var extOnlyDb = makeDb();
+  traffic(extOnlyDb, '2026-09-13', 'United States', 10, 8, 1, 0,
+    { path: '/about', referrer_kind: 'external', referrer_host: 'bing.com' });
+  ran(extOnlyDb, '2026-09-13', 1, 1);
+  var dlExtOnly = await S.deepLinkLandings(extOnlyDb, '2026-09-13', '2026-09-13', 1000);
+  ck('a window whose ONLY landing is a non-home, EXTERNAL page has deepLink 0 — discovery, '
+   + 'not a return',
+     dlExtOnly.total === 8 && dlExtOnly.deepLink === 0, JSON.stringify(dlExtOnly));
+
+  var dlEmpty = await S.deepLinkLandings(makeDb(), '2026-09-01', '2026-09-01', 1000);
+  ck('the zero-denominator case: an empty window is 0/0 and an empty breakdown, never a throw',
+     dlEmpty.total === 0 && dlEmpty.deepLink === 0 && dlEmpty.coarse === false
+     && Array.isArray(dlEmpty.byPath) && dlEmpty.byPath.length === 0,
+     JSON.stringify(dlEmpty));
 
   /* =============================================================== 8. binding */
   head('8. every value is BOUND — D1 has no excuse for interpolation');

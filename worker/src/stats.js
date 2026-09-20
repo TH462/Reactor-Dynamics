@@ -317,6 +317,61 @@ export async function groupBy(db, dim, from, to, limit) {
   }));
 }
 
+/* DEEP-LINK LANDINGS — a proxy for a returning visitor that needs no identifier at all
+ * (cross-visit tracking was considered and declined, 2026-09-20: nothing persistent is
+ * stored on a visitor's device, and privacy.html's promise that two visits cannot be
+ * linked stands).
+ *
+ * A DEEP-LINK LANDING is a landing visit whose landing page is NOT the homepage `/` AND
+ * whose referrer kind is `direct` (no referrer at all). BOTH conditions, not just the
+ * first — NARROWED 2026-09-20 (#795 follow-up) from "any non-home landing page" after the
+ * live store showed why that over-counted: of three non-home landings measured that day,
+ * two (`/about`, `/download`) were `external`, referred by a search engine — someone
+ * FOUND that page, which is discovery, the opposite of what this metric exists to catch.
+ * Only the `direct` one (`/ui/shell`, no referrer) fits "a bookmark or a remembered URL",
+ * since a browser sends no `Referer` header for a typed or bookmarked address. `internal`
+ * needs no separate exclusion: an internal referrer is one page of this site linking to
+ * another, which by construction is never a LANDING (a Cloudflare "visit" is attributed
+ * to the page a session STARTS on, and a session cannot start via an in-app link) — so in
+ * practice the filter is direct vs. external and no allowlist of paths is needed.
+ *
+ * IT IS A FLOOR, NOT A COUNT of returning visitors: a returning visitor who happens to
+ * land on `/` first is invisible to it, and a first-time visitor handed a deep link by a
+ * friend (still `direct`, still not `/`) is counted wrongly. Say so wherever this is
+ * shown — a proxy read as the thing it stands in for is exactly the HR12 failure mode.
+ *
+ * `groupBy` is single-dimension only and cannot express "path AND referrer_kind", so this
+ * is a dedicated two-column GROUP BY, the same shape `referrerBreakdown` already uses for
+ * `referrer_host`+`referrer_kind`. `limit` bounds the number of distinct (path, kind)
+ * pairs summed; 1000 is the ceiling every other reader in this file uses for the same
+ * reason, and this site is nowhere near that many distinct pairs. */
+export async function deepLinkLandings(db, from, to, limit) {
+  const days = dayRange(from, to);
+  const lim = Math.max(1, Math.min(1000, Math.floor(Number(limit)) || 1000));
+  const r = await db.prepare(
+    'SELECT path AS path, referrer_kind AS referrer_kind, SUM(pageloads) AS pageloads,'
+    + ' SUM(visits) AS visits, MAX(sample_interval) AS si FROM traffic_daily'
+    + ' WHERE day >= ? AND day <= ? AND bot = 0'
+    + ' GROUP BY path, referrer_kind ORDER BY visits DESC LIMIT ?')
+    .bind(days[0], days[days.length - 1], lim).all();
+  const rows = rowsOf(r).map((x) => ({
+    path: x.path == null ? '' : String(x.path),
+    referrerKind: x.referrer_kind == null ? '' : String(x.referrer_kind),
+    pageloads: num(x.pageloads),
+    visits: num(x.visits),
+    coarse: num(x.si) > 1,
+  }));
+  const total = rows.reduce((s, x) => s + x.visits, 0);
+  // THE TWO CONDITIONS THE METRIC IS: not the homepage, AND no referrer at all.
+  const deepLink = rows.filter((x) => x.path !== '/' && x.referrerKind === 'direct').reduce((s, x) => s + x.visits, 0);
+  return {
+    total,
+    deepLink,
+    coarse: rows.some((x) => x.coarse),
+    byPath: rows,
+  };
+}
+
 /* REFERRER HOST **AND** THE KIND IT WAS CLASSIFIED AS, in one row.
  *
  * `groupBy('referrer_host', …)` cannot carry a second column through, so a page that wants

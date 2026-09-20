@@ -404,6 +404,24 @@ function literals(src) {
   ck('no string literal under worker/src builds a query carrying token=',
      offenders.length === 0, offenders.length ? offenders.join(' | ') : 'scanned ' + FILES.length + ' files');
 
+  /* NO RAW CONTROL BYTE IN A SOURCE FILE (2026-09-20). A literal NUL or SOH written into
+   * the source as a map-key separator -- `p + '<NUL>' + k` rather than `p + ' ' + k`
+   * -- is perfectly valid JavaScript and runs correctly, which is why it passed every gate
+   * in this repo twice. What it breaks is the TOOLING: git, grep and diff all classify the
+   * file as binary, so `git diff` stops showing changes and a source scan silently skips
+   * it. Two SOH bytes shipped this way in 11463207 and reached a release before anyone
+   * noticed; the third arrived the same day. Tab, CR and LF are the only control
+   * characters a source file has any business containing. */
+  var ctlOffenders = [];
+  FILES.forEach(function (f) {
+    var m = /[ --]/.exec(SRC[f]);
+    if (m) ctlOffenders.push(f + ' @' + m.index + ' (0x'
+      + m[0].charCodeAt(0).toString(16).padStart(2, '0') + ')');
+  });
+  ck('no file under worker/src contains a raw control byte',
+     ctlOffenders.length === 0,
+     ctlOffenders.length ? ctlOffenders.join(' | ') : 'scanned ' + FILES.length + ' files');
+
   var navCode = stripComments(SRC['render.js']);
   ck('nav() takes no credential — its signature is nav(current)',
      /function nav\(current\)/.test(navCode) && !/function nav\(token/.test(navCode), '');

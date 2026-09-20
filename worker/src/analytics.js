@@ -45,7 +45,8 @@ import { html, PAGE_HEAD, nav, table, errBlock, dayLabel, etDay, etDayStartMs,
 import { gql, ACCOUNT, SITE_TAG } from './cfapi.js';
 import { referrerKind, RETAIN_DAYS } from './rollup.js';
 import { parseDay, storeRange, dailyTotals, groupBy, referrerBreakdown, dayCountryReferrer,
-         trailingMean, periodDelta, priorRange, dayRange, prevDay, nextDay } from './stats.js';
+         deepLinkLandings, trailingMean, periodDelta, priorRange, dayRange, prevDay,
+         nextDay } from './stats.js';
 
 // ---------------------------------------------------------------- RUM helpers
 const num = (v) => (v == null || v === '' ? 0 : Number(v));
@@ -443,6 +444,50 @@ export async function analyticsPage(env, url) {
     return { rows, anyCoarse: rows.some((r) => r.coarse) };
   }
 
+  /* DEEP-LINK LANDINGS — a returning-visitor PROXY that needs no identifier at all
+   * (cross-visit tracking was considered and declined, 2026-09-20: nothing persistent is
+   * stored on a visitor's device, and privacy.html's promise that two visits cannot be
+   * linked stands). A landing visit whose landing page is NOT the homepage `/` AND whose
+   * referrer is NONE AT ALL (`direct`) — NARROWED 2026-09-20 (#795 follow-up): a non-home
+   * landing referred by a search engine is DISCOVERY, not a return, so it is excluded by
+   * the same rule that includes the bookmark/typed-URL case. See `stats.deepLinkLandings`'s
+   * header for the measured example (`/about`, `/download` were external; only `/ui/shell`
+   * was direct) and why `internal` needs no separate exclusion.
+   *
+   * Same hybrid split as `hybridBreakdown` above: closed days from `stats.deepLinkLandings`
+   * (a dedicated two-column reader — `groupBy` is single-dimension only and cannot express
+   * "path AND referrer_kind"), today folded in live from Cloudflare. Keyed on path AND kind
+   * together, not path alone, so the live merge can tell a direct `/ui/shell` landing from
+   * an external one the same way the closed store already does. */
+  async function hybridDeepLink() {
+    const closed = from <= closedTo ? await deepLinkLandings(db, from, closedTo, 1000) : { total: 0, deepLink: 0, coarse: false, byPath: [] };
+    const keyOf = (p, k) => p + '\u0000' + k;
+    const by = new Map(closed.byPath.map((r) => [keyOf(r.path, r.referrerKind),
+      { path: r.path, referrerKind: r.referrerKind, pageloads: r.pageloads, visits: r.visits, coarse: r.coarse }]));
+    if (includesToday) {
+      const g = rumRows(await gql(apiToken,
+        rumGroup('requestPath refererHost requestHost', 'count_DESC', 1000, todayFromIso, todayToIso)),
+        (d) => ({ path: d.requestPath || '', referrerKind: referrerKind(d.refererHost || '', d.requestHost) }),
+        undefined, { excludeBots: true });
+      g.rows.forEach((r) => {
+        const k = keyOf(r.path, r.referrerKind);
+        const cur = by.get(k) || { path: r.path, referrerKind: r.referrerKind, pageloads: 0, visits: 0, coarse: false };
+        cur.pageloads += r.pageloads; cur.visits += r.visits;
+        // Per-row sample interval, not the batch-wide flag — the same rule every other
+        // hybrid* merge in this file follows, so one rounded key cannot taint another.
+        if (r.si > 1) cur.coarse = true;
+        by.set(k, cur);
+      });
+    }
+    const rows = [...by.values()].sort((a, b2) => b2.visits - a.visits);
+    const total = rows.reduce((s, r) => s + r.visits, 0);
+    // THE TWO CONDITIONS THE METRIC IS: not the homepage, AND no referrer at all — an
+    // externally-referred subpage landing is search discovery, the opposite of a return.
+    const deepRows = rows.filter((r) => r.path !== '/' && r.referrerKind === 'direct');
+    const deepLink = deepRows.reduce((s, r) => s + r.visits, 0);
+    return { rows, deepRows, total, deepLink, anyCoarse: rows.some((r) => r.coarse) };
+  }
+
   /* THE SPAN, PRINTED LITERALLY, on every migrated section — the coordinator's item 2. If a
    * future edit makes one section derive its own window instead of reusing `from`/`closedTo`,
    * the mismatch is readable on the page, not just theoretically possible. */
@@ -462,6 +507,32 @@ export async function analyticsPage(env, url) {
     section('Top pages', async () => {
       const h = await hybridBreakdown('path', 'requestPath', (d) => d.requestPath || '', 15);
       return hybridSourceNote(h.anyCoarse) + breakdownTable(h.rows, 'Path');
+    }),
+    /* DEEP-LINK LANDINGS (owner, 2026-09-20): "does anyone come back?", answered without
+     * storing or reading any visitor identifier — see `hybridDeepLink` above and
+     * `stats.deepLinkLandings`'s own header for why this needs none. */
+    section('Deep-link landings', async () => {
+      const h = await hybridDeepLink();
+      const share = h.total > 0 ? Math.round((h.deepLink / h.total) * 1000) / 10 : null;
+      const deepRows = h.deepRows.map((r) => ({ key: r.path, pageloads: r.pageloads, visits: r.visits, coarse: r.coarse }));
+      return hybridSourceNote(h.anyCoarse)
+        + '<p class="muted">A <b>deep-link landing</b> is a landing visit whose landing page '
+        + 'is not the homepage <span class="mono">/</span> AND has NO REFERRER at all — a '
+        + 'session that started at, say, <span class="mono">/ui/shell</span> with nothing '
+        + 'sending it there did not discover the site through a link, which in practice '
+        + 'means a bookmark or a remembered URL. A non-home page reached FROM somewhere '
+        + '(a search engine, another site) is excluded on purpose: that is discovery, the '
+        + 'opposite of a return, not the thing this counts. No visitor identifier is stored '
+        + 'or read for this: cross-visit tracking was considered and declined (2026-09-20).</p>'
+        + '<p class="warn">This is a FLOOR on returning visitors, not a count of them — a '
+        + 'returning visitor who lands on the homepage first is invisible to it, and a '
+        + 'first-time visitor sent a bare deep link (no referrer) by a friend is counted '
+        + 'wrongly as one. Read it as a lower bound, never as "this many people came back".</p>'
+        + '<p><b>' + h.deepLink + ' of ' + h.total + ' landing visits</b> ('
+        + (share == null ? 'no landing visits in this window' : share + '%')
+        + ') landed somewhere other than the homepage with no referrer.</p>'
+        + (deepRows.length ? breakdownTable(deepRows, 'Path')
+            : '<p class="muted">No deep-link landings in this window.</p>');
     }),
     section('Countries', async () => {
       const h = await hybridBreakdown('country', 'countryName', (d) => d.countryName || '', 15);
@@ -588,7 +659,7 @@ export async function analyticsPage(env, url) {
     const closed = from <= closedTo ? await dayCountryReferrer(db, from, closedTo, Math.max(limit, 500)) : [];
     const by = new Map();
     closed.forEach((r) => {
-      const k = [r.day, r.country, r.host].join('');
+      const k = [r.day, r.country, r.host].join('\u0001');
       by.set(k, { day: r.day, country: r.country, host: r.host, kind: r.kind,
                   pageloads: r.pageloads, visits: r.visits, coarse: r.coarse,
                   si: r.si || 1 });
@@ -604,7 +675,7 @@ export async function analyticsPage(env, url) {
                   kind: referrerKind(d.refererHost, d.requestHost) }),
         undefined, { excludeBots: true });
       g.rows.forEach((r) => {
-        const k = [today, r.country, r.host].join('');
+        const k = [today, r.country, r.host].join('\u0001');
         const cur = by.get(k) || { day: today, country: r.country, host: r.host, kind: r.kind,
                                     pageloads: 0, visits: 0, coarse: false, si: 1 };
         cur.pageloads += r.pageloads; cur.visits += r.visits;
