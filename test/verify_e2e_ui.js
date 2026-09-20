@@ -3098,7 +3098,7 @@ async function testWatchGlowRendered(page) {
       var st = c.proc.steps[c.idx];
       /* THE TWO LISTS AS `ui/app.js` BUILDS THEM (`stepHlLabels` / `stepWatchLabels`): the
        * authored array when it has entries, else the step's own `control`, never an "(observe)"
-       * pseudo-control — and since the 2026-09-15 ring ruling (#758) the `control` goes to the
+       * pseudo-control — and since the 2026-09-15 ring ruling (#653 S-3b) the `control` goes to the
        * PULSING list only when the step asks for a press, to the STEADY one when it does not.
        * Recomputed from the step rather than imported, so a change to that rule reddens this gate
        * instead of being mirrored into it. IT DID: this block is what went red when the rule
@@ -3175,7 +3175,7 @@ async function testWatchGlowRendered(page) {
       for (var b = 0; b < (procs[a].steps || []).length; b++) {
         var st = procs[a].steps[b];
         if (st.hl_watch && st.hl_watch.length) continue;
-        /* …and the watch fallback too (#758): a step with no `hl_watch`, no `hl` and a
+        /* …and the watch fallback too (#653 S-3b): a step with no `hl_watch`, no `hl` and a
          * press-free `control` now paints a STEADY ring off that `control`, so it is no
          * longer a "0 watch rings" negative. Same mirror as `landOn` above. */
         var ctl = (st.control && !/^\(observe/i.test(st.control)) ? st.control : null;

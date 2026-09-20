@@ -4481,6 +4481,52 @@ if (!only) {
      shared.svc._newAlarmOfPriority([OTHER], []) === OTHER,
      'declared -> ' + shared.svc._newAlarmOfPriority([RHR], []) +
      ', undeclared -> ' + (shared.svc._newAlarmOfPriority([OTHER], []) || {}).id);
+
+  /* THE SHIPPED DECLARATIONS, CHECKED AGAINST THE REGISTRY (#655, 2026-09-20). Everything above
+   * is synthetic and proves the MECHANISM; this is the only check that reads what the pool
+   * actually declares, and it exists because a declaration fails SILENTLY in both directions.
+   *
+   * WHAT IT CAN CATCH: an id that is not an alarm at all — a typo, or a rename — which stops
+   * matching and quietly restores the drop the step was authored to remove; and a `caution` or
+   * `status` id, which is not in ALARM_DROP_PRIORITIES and so was never capable of dropping the
+   * clock, i.e. a declaration that reads as a fix and is a no-op.
+   *
+   * ⚠ WHAT IT CANNOT CATCH, said here so nobody reads a green tally as cover: whether the step
+   * really CAUSES the alarm it names. That is the whole failure mode of the feature — a false
+   * declaration silences a real warning and nothing says so — and no static check can answer it.
+   * It is answered by driving the leg and recording the clear -> active transitions inside the
+   * step's own window; both declarations below were measured that way on 2026-09-20 and the
+   * numbers are written on the steps themselves.
+   *
+   * `carriers.length >= 1` for the same reason 2ad.1 has it: a silent revert must redden. */
+  (function () {
+    var ALARM = {};
+    /* `RD.PWR_CONTROL.protection.alarms`, not `RD.PWR_CONTROL.alarms` — the registry hangs off
+     * the protection block (the first draft of this check read the outer object, found `undefined`
+     * and reported both shipped declarations as unknown ids, which is the check doing its job on
+     * itself). 50 rows, {id, priority, ...}. */
+    ((RD.PWR_CONTROL && RD.PWR_CONTROL.protection && RD.PWR_CONTROL.protection.alarms) || [])
+      .forEach(function (a) { ALARM[a.id] = a; });
+    var DROPS = { critical: true, warning: true };
+    var bad = [], carriers = [];
+    POOL.forEach(function (pr) {
+      (pr.steps || []).forEach(function (st2, i) {
+        (st2.expect_alarms || []).forEach(function (id) {
+          var where = pr.id + ':' + (i + 1) + ' ' + id;
+          var a = ALARM[id];
+          if (!a) { bad.push(where + ' is not an id in the alarm registry'); return; }
+          carriers.push(where + '[' + a.priority + ']');
+          if (!DROPS[a.priority]) bad.push(where + ' is a ' + a.priority +
+            ' — only critical/warning can drop the clock, so declaring it buys nothing');
+        });
+      });
+    });
+    ck('12. every shipped `expect_alarms` id is a real alarm of a drop priority (#655)',
+       bad.length === 0 && carriers.length >= 1,
+       bad.length ? bad.join('; ')
+                  : (carriers.length ? carriers.join(' · ')
+                                     : 'NO step declares expect_alarms — the engine half is inert again'));
+  })();
 })();
 
 

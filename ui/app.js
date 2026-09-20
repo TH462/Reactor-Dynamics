@@ -5063,7 +5063,7 @@
     if (v == null || isNaN(v)) return '—';
     return String(Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 10) / 10);
   }
-  /* DOES THIS STEP ASK FOR A PRESS AT ALL? (#758) — the question the two resolvers below split on.
+  /* DOES THIS STEP ASK FOR A PRESS AT ALL? (#653 S-3b) — the question the two resolvers below split on.
    *
    * A step asks for a press when it issues a command (`cmd`), when one of its check-off rows is
    * graded on a command landing (`acc.cmd`, or a `cmd` entry in `accs` — `accs_ordered` is a flag
@@ -5127,7 +5127,7 @@
    * pulsing green glow.")*. `hl` was one flat list rendered identically, so the gauge and the
    * button were the same affordance; `hl_watch` is the second kind.
    *
-   * …AND SINCE #758 IT CARRIES THE OTHER HALF OF THE FALLBACK. A step that names a `control`,
+   * …AND SINCE #653 S-3b IT CARRIES THE OTHER HALF OF THE FALLBACK. A step that names a `control`,
    * authors NEITHER highlight list and asks for no press has one thing worth marking and one
    * treatment that fits it. It is the LAST resort, not the first: an authored `hl_watch` wins,
    * and a step that authored `hl` has already said what it is about, so its `control` stays a

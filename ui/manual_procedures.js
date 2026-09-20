@@ -12,7 +12,8 @@
  *   narrative:true  → an accident walkthrough; not run by the harness (the engine
  *                     flagship suite owns its physics, CONTEXT §9).
  * Step: { text, control, target, cmd, hold, acc, saw, note, ramp, why, accs, accs_ordered,
- *          wait_hint, overtaken, hl, hl_watch, press_expected, past, story, crew, inject, clear,
+ *          wait_hint, overtaken, hl, hl_watch, press_expected, expect_alarms, past, story, crew,
+ *          inject, clear,
  *          pause, wrong,
  *          wait_est_s }
  *   (THE DEBT #694 LEFT IS PAID (#755): all 24 names on that line are documented below. MEASURED
@@ -40,7 +41,7 @@
  *           and `run_manual_controls` reddens on the overlap as well as on a label the board's
  *           vocabulary does not carry.
  *   press_expected OPTIONAL boolean — THIS STEP ASKS FOR A PRESS EVEN THOUGH NOTHING GRADES ONE
- *           *(OWNER RULING, 2026-09-15: "Move them to the watch ring"; #758)*. The pulsing ring
+ *           *(OWNER RULING, 2026-09-15: "Move them to the watch ring"; #653 S-3b)*. The pulsing ring
  *           means "act on this", so `ui/app.js` only pulses a step that asks for a press: one
  *           with a `cmd`, or a `cmd`-kind check-off row. That rule is right for the VERIFY steps
  *           the ruling is about and wrong for the CONTINGENCY press — "Check SG FEED reads AUTO.
@@ -50,6 +51,23 @@
  *           and all three are conditional presses; `run_manual_controls` reddens on a pwr2 step
  *           that pulses a label without one. DO NOT use it to keep a ring on a pure
  *           verification — that is the defect the ruling exists to remove.
+ *   expect_alarms OPTIONAL array of strings — THE ALARMS THIS STEP'S OWN EVOLUTION CAUSES,
+ *           which therefore do not interrupt fast-forward *(OWNER RULING, 2026-09-14: "Only
+ *           alarms the step is not expecting")*. The service drops the clock to 1x on the first
+ *           warning or critical to arrive on a QUIET board (`_attentionStop` via
+ *           `_newAlarmOfPriority`, layers/simulation_service.js); an id listed here, or a
+ *           case-insensitive substring of the alarm's label, is skipped while THIS step is the
+ *           active one. Ids are exact and are what you should write.
+ *           ⚠ THE FAILURE MODE IS THE WHOLE FIELD: an alarm declared on a step that does not
+ *           cause it is a REAL warning silently disabled, and nothing anywhere says so. So
+ *           MEASURE IT — drive the leg, record the clear -> active transitions inside the step's
+ *           own window, and declare only what you saw. Recall does not qualify and neither does
+ *           another agent's list: the two declarations in this pool were both re-measured on
+ *           2026-09-20 and one of the two REASONS that came with them was wrong (see step 11).
+ *           Only `critical` and `warning` reach the drop at all (ALARM_DROP_PRIORITIES), so a
+ *           `caution` or `status` id buys nothing and is still a claim about causation — do not
+ *           list one. Scoped to the ACTIVE step deliberately: a declaration is a statement about
+ *           ONE evolution, and letting it outlive the step turns it into a permanent exemption.
  *   past    OPTIONAL {p,op,v} or an array (OR) — "has the plant already done this", used only
  *           by catch-up on checklist load (#607): a player who already performed an early
  *           action is walked past a step whose prose no longer applies, rather than trapped
@@ -232,7 +250,7 @@
     if (why) s.why = why;
     if (past) s.past = past;
     if (hlWatch) s.hl_watch = hlWatch;   // #685 — "watch this", steady dashed ring
-    // any remaining step field, so an `obs` step is not barred from one by arity (#758).
+    // any remaining step field, so an `obs` step is not barred from one by arity (#653 S-3b).
     if (extra) for (var k in extra) s[k] = extra[k];
     return s;
   }
@@ -1686,6 +1704,36 @@
             { p: 'heater_auto', op: '>', v: 0, label: 'AUTO lit under HEATER' },
             { p: 'pressure_mpa', op: '>', v: 4.585, label: 'PRIMARY PRESSURE at 665 psi, the accumulator window' },
           ],
+          /* ⚠ THIS STEP'S OWN ALARM DOES NOT INTERRUPT FAST-FORWARD *(OWNER RULING, 2026-09-14:
+           * "Only alarms the step is not expecting")*, and THE CASE THAT PRODUCED THE RULING IS
+           * THIS STEP. Putting the heaters in AUTO drives PRIMARY PRESSURE up through the RHR
+           * isolation interlock at 400 psi (2.76 MPa), the suction valve shuts, `rhr_active` goes
+           * false while the plant is still in Mode 5 — and the board lights "Shutdown Cooling Not
+           * In Service", a WARNING, on a plant that is doing exactly what the step asked.
+           *
+           * MEASURED ON THIS TREE, NOT READ OFF THE LABEL AND NOT INHERITED (2026-09-20, full
+           * stack from `cold_shutdown`, seed 42, every step's cmd issued then held for its
+           * authored `hold`, recording every alarm that goes clear -> active inside each step):
+           *
+           *   step 9 window   t = 725 -> 3424 s
+           *   rhr_not_aligned  [warning]  t = 1817 s   <- inside this step, and nowhere else on the leg
+           *   pzr_level_dev_high [caution] t = 3420.5 s
+           *
+           * IT IS THE ONLY FAST-FORWARD DROP ON THE WHOLE LEG. Driven again with `attentionStops`
+           * LEFT ON and the accel restored after each drop so one cannot hide the next: ONE drop,
+           * step 9, t = 1817 s, 10x -> 1x, reason `alarm`. Every other step: zero. And the board
+           * is measured QUIET at that instant — no other warning or critical standing — so the
+           * drop is this alarm's and this declaration is what removes it.
+           *
+           * INJECTION: leg driven with the declarations AS AUTHORED -> 0 drops; driven again with
+           * every `expect_alarms` STRIPPED -> 1 drop, step 9, t = 1817 s. Seed 7 puts
+           * `rhr_not_aligned` at t = 1817 s too and `low_tavg` at 20352.5 s, so neither is a
+           * seed artefact.
+           *
+           * THE CAUTION IS NOT DECLARED. Only `critical` and `warning` are in
+           * ALARM_DROP_PRIORITIES, so declaring `pzr_level_dev_high` would buy nothing and would
+           * still be a claim about what this step causes. */
+          expect_alarms: ['rhr_not_aligned'],
           hl: ['Pressurizer Heaters (PZR)'], hl_watch: ['Primary Pressure'] },
         /* THE WINDOW IS A TRANSIT, AND THE NUMBERS WERE STALE *(OWNER, 2026-09-02 playtest, #608
          * item 3, filed as a BLOCKER: "I couldnt open the valve, something was blocking it and the
@@ -1750,6 +1798,34 @@
           hold: 40000,
           saw: { p: 'tavg_c', op: '>', v: 150 },
           acc: { p: 'tavg_c', op: '>', v: 283 },
+          /* ⚠ AND THE LONG RIDE DECLARES THE ONE THE RIDE ITSELF CAUSES (same 2026-09-14 ruling).
+           * This is the leg's longest hold — 40,000 s — i.e. exactly where the player is at 600x.
+           *
+           * THE CAUSATION IS MEASURED (2026-09-20, the same sweep as step 9): `low_tavg` [warning]
+           * goes clear -> active at t = 20350 s, inside this step's t = 3434 -> 43419 s window, and
+           * re-arrives five times over the following 25 s. It is `low_tavg` twice over: the alarm
+           * is reclassified to `status` in Modes 4/5 (`pwr_control.js` COLD_MODES) so it is silent
+           * while the plant is cold; THIS step carries the plant out of the cold modes with Tavg
+           * still under the 278 degC (532.4 degF) setpoint, which un-reclassifies it to a WARNING
+           * — and this step's own target, 542 degF (283 degC), is what clears it again. A warning
+           * that arrives because the step is working and leaves when the step is done.
+           *
+           * ⚠ ITS SAVING IS UNPROVEN ON THIS ROUTE, AND THE REASON IS NOT THE ONE THAT WAS FILED.
+           * The end-to-end run with `attentionStops` ON drops the clock exactly ONCE on this leg,
+           * at step 9 — not here. A parked 2026-09-15 draft attributed that to `rhr_not_aligned`
+           * still standing; MEASURED, IT IS NOT — that alarm is gated on `plant_mode in [4,5]` and
+           * its condition has gone by the time this fires. What actually holds `_boardQuiet` false
+           * at t = 20350 is THREE alarms that re-classified out of `status` when the plant left the
+           * cold modes and so never transitioned clear -> active: `pzr_pressure_low` [warning],
+           * `pzr_pressure_lolo` [critical] and `turbine_trip` [warning], all unacknowledged. They
+           * are correct for a plant at 665 psi mid-heatup; pressure is not raised until step 14.
+           *
+           * SO WHY DECLARE IT. The ruling asks a step to declare what it CAUSES, and that is what
+           * is measured. The route is one route: a player who acknowledges those three — which the
+           * board invites — makes it quiet, and then each of the five `low_tavg` arrivals is a drop
+           * on a 40,000 s ride. This declaration is the only thing standing between that player
+           * and a 1x heatup. */
+          expect_alarms: ['low_tavg'],
           /* The `note` makes COOLDOWN RATE on the RHR card "the number to watch" and names HX
            * SPLIT as this leg's only rate lever — neither was ringed (#744 template pass). It
            * stays in the WATCH list: the player acts on it only if the rate runs away. */
@@ -2092,7 +2168,7 @@
           control: 'Feed Pumps', target: 'SG FEED reads AUTO, STEAM GENERATOR LEVEL near 65 %',
           hold: 5,
           acc: { p: 'feed_coupled', op: '>', v: 0 },
-          /* THE RING STAYS BECAUSE THE PRESS IS REAL, AND IT HAS TO SAY SO (#758). The step is
+          /* THE RING STAYS BECAUSE THE PRESS IS REAL, AND IT HAS TO SAY SO (#653 S-3b). The step is
            * graded on the LAMP, not on a command — a player who arrives with SG FEED already in
            * AUTO does nothing and the step self-ticks — so nothing in the step declares a press,
            * and since the 2026-09-15 ring ruling `ui/app.js` will not pulse a step that does not.
@@ -2806,7 +2882,7 @@
           { p: 'sr_energized', op: '<', v: 1 },
           'Close it with the ✕ in its corner; its work is done.', ['1/M Plot Tool'],
           'The SOURCE RANGE detectors would wear out if they stayed on at power, so the plant switches them off by itself once INTER RANGE is reading. There is no button for it.',
-          /* `press_expected` (#758): the hand-off is the VERIFICATION and the ✕ is the ACTION —
+          /* `press_expected` (#653 S-3b): the hand-off is the VERIFICATION and the ✕ is the ACTION —
            * one real press, graded on `sr_energized` because closing a UI window is not a plant
            * command and never could be. Without the declaration the 1/M PLOT ring would go
            * steady and the step would ask the player to close a window it no longer points at. */
@@ -2889,7 +2965,7 @@
           hold: 240,
           accs: [{ p: 'power_pct', op: '<', v: 5, label: 'REACTOR POWER below 5 %' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.1, label: 'STARTUP RATE settled between -0.10 and 0.10' }],
-          /* `press_expected` (#758): both acceptances read the PLANT settling, and the two
+          /* `press_expected` (#653 S-3b): both acceptances read the PLANT settling, and the two
            * pulsing labels are for the branch the text names — "If it does not, press MED and
            * hold INSERT". A real contingency press, so it is declared rather than demoted. */
           press_expected: true,

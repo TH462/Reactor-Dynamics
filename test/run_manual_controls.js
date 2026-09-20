@@ -131,7 +131,7 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
    *   2. NEITHER LIST IS ALWAYS THE AUTHORED ARRAY. `stepHlLabels`/`stepWatchLabels` (ui/app.js)
    *      use `hl`/`hl_watch` when they have entries and otherwise fall back to the step's own
    *      `control`, skipping the "(observe…)" placeholders — to the PULSING list when the step
-   *      asks for a press and to the STEADY one when it does not (#758). `pwr_raise_power` 9
+   *      asks for a press and to the STEADY one when it does not (#653 S-3b). `pwr_raise_power` 9
    *      authors no `hl` at all and reached that fallback; a check walking only `hl` and
    *      `hl_watch` never sees the sub-class. Fold `control` in exactly as the renderer does —
    *      `pressLabels`/`watchLabels` below are that mirror.
@@ -164,7 +164,7 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
     if (SHELL[lab]) return 'shell:' + SHELL[lab];
     return DRV.controlLabelItem ? (DRV.controlLabelItem(lab) || null) : null;
   }
-  /* THE RENDERER'S OWN SPLIT, MIRRORED (#758, 2026-09-20). `ui/app.js` used to fall back to the
+  /* THE RENDERER'S OWN SPLIT, MIRRORED (#653 S-3b, 2026-09-20). `ui/app.js` used to fall back to the
    * step's `control` for the PULSING list unconditionally; since the 2026-09-15 ring ruling
    * ("Move them to the watch ring") it asks `stepAsksForPress` first, and a press-free step's
    * `control` goes to the STEADY list instead. Mirrored here rather than imported, the same way
@@ -256,7 +256,7 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
         ck(where + ' hl/hl_watch resolve to distinct elements', shared.length === 0,
            shared.join('; ') + ' — two labels, ONE board element: it can wear one ring, so ' +
            'the first is silently dropped');
-        /* ============ …AND ONLY A STEP THAT ASKS FOR ONE MAY WEAR IT (#758) ===============
+        /* ============ …AND ONLY A STEP THAT ASKS FOR ONE MAY WEAR IT (#653 S-3b) ===============
          * *(OWNER RULING, 2026-09-15: "Move them to the watch ring")*, on a layman playthrough
          * that nearly pressed TRIP on `pwr_heatup` 4.
          *

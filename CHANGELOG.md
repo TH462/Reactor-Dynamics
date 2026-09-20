@@ -30,6 +30,29 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **A walkthrough VERIFY step no longer wears the pulsing "act on this" ring** *(OWNER RULING,
+  2026-09-15: "Move them to the watch ring")*, raised by the 2026-09-15 layman playthrough, which
+  nearly pressed TRIP on Mode 5 → 3 step 4. TRIP and the STEAM DUMP CLOSE lamp move to the steady
+  watch treatment; Mode 1 power ascension step 9 stops ringing the BORON card. Every element the
+  owner drew is still ringed — only the animation goes. The blocker was structural: `stepHlLabels`
+  fell back to the step's own `control` when `hl` was empty, so deleting `hl` moved the pulse to a
+  different control instead of removing it; it now asks whether the step asks for a press.
+  Measured on the built pools: 51 steps reach that fallback, 40 carry a command and are unchanged,
+  and exactly one live step was affected. The three real contingency presses ("If it does not,
+  press AUTO") declare the new `press_expected`, and `run_manual_controls` reddens on a step that
+  pulses without one — a claim the existing check could not make, because it asks whether the
+  pulsed ELEMENT is workable and TRIP is a real button.
+- **Fast-forward no longer drops to 1× on an alarm the walkthrough step itself causes** *(OWNER
+  RULING, 2026-09-14: "Only alarms the step is not expecting")*. The engine half shipped
+  2026-09-14 and was inert until a step declared one. Two now do, both on the heatup and both
+  measured on the plant: the HEATER AUTO step declares `rhr_not_aligned` — its own pressure climb
+  shuts the RHR suction at 400 psi (2.76 MPa) — and the 11-plant-hour ride declares `low_tavg`,
+  which arrives because the plant leaves the cold modes below the 532 °F (278 °C) setpoint and
+  clears at the step's own 542 °F (283 °C) target. Driven end to end, the leg dropped the clock
+  once at 30 plant-minutes and now drops it not at all.
+
+
 ## [Alpha 1.7.6-rc3] — 2026-09-19
 
 ### Added
