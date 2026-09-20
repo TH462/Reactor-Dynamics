@@ -30,6 +30,65 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.7.6-rc3] — 2026-09-19
+
+### Added
+- **A walkthrough acceptance row is voided when the player deliberately injects a named casualty on
+  the channel it grades** (#788, owner ruling A). Not a fail-open on a broken gauge: it reads
+  `snapshot.active_failures` — the player's own injection record — never `true_state`, and
+  `_predVoided` additionally requires `graded_by === 'instrument'`. The channel dependency relation
+  is declared in the file that computes the channels and **re-discovered by the gate**: one real
+  broadcast frozen, a fresh instrument layer driven to settlement, every channel stuck high *and*
+  low. A one-sided probe reports T-avg as no input to the subcooling margin, because the margin
+  takes `max(tavg, core_exit_temp)` — 610.0 °F (321.0 °C) against 580.2 °F (304.6 °C) at full power
+  — which would have silently excluded all four subcooling rows. On a sole-row step the card says
+  which gauge was failed and that the step was not verified.
+- **A walkthrough now reacts to a reactor trip** (#709, owner ruling A). Banner plus instructor
+  comment; the step does not move and nothing is checked off. The exemption for legs that script
+  their own scram is derived from authored content and needs both its clauses — `pwr_shutdown`
+  sends a scram command, while `pwr_tmi2_incident` sends none and instead *grades* `scrammed`, the
+  trip arriving out of the transient its own earlier steps inject.
+
+### Changed
+- **`pwr_tmi2_incident` step 15's wait is graded on loss of subcooling, not pressurizer level**
+  (#788). The level entry was a gauge doing a clock's job, and two named casualties freeze that
+  channel: frozen at 20.0 % it ticked on 267 of 300 broadcasts the truth did not satisfy; frozen at
+  the pegged 99.97 % it was permanently unmet. Hard Rule 9 — the cue for securing a reactor coolant
+  pump is loss of subcooling. A live player now waits 57.0 plant-minutes instead of 66.3.
+- **`Manuals/04` PWR-N07 gains the P-9 turbine-trip precaution** (#667 item 3) — armed at ≥ 50 %
+  power with the steam dumps available, ≥ 8 % without them. Both figures are the engine's own
+  permissive object, sourced to Ginna Technical Specification Bases B 3.3.1 (ML20339A221); the 8 %
+  case appeared in no manual chapter.
+- **`Manuals/12` §10.8 declares the single pressurizer-pressure channel** (#790, owner ruling
+  "declared simplification"). Measured on the sourced loss-of-load fixture: a **dead** channel is
+  fail-safe and trips the plant at 2.0 s on pressure low, while a channel **stuck** at a plausible
+  number blinds the relief valve and the high-pressure trip together and the plant rides to
+  2497 psia (17.22 MPa) on its code safeties, which read true pressure and are unaffected.
+
+### Fixed
+- **The Hard Rule 11 citation for §10.8 carried the date but not the owner's words** (#790), which
+  the scan correctly reported as undeclared. Caught by the aggregate, not by the four manual gates
+  that commit ran — none of them reads source citations.
+
+### Testing
+- **Two standing sweeps of the PWR2 walkthrough pool** (#773, #667 item 1): rows that become
+  unsatisfiable, and rows a broken gauge falsely satisfies. Of 87 instrument-graded rows under a
+  dead channel, 49 strand and 30 false-tick — the split decided by the direction of the comparison,
+  since `dead` publishes the channel's range floor. Four `saw` rows existed that the original count
+  missed entirely.
+- **A third sweep for the modes authored content actually injects** (#788). `dead` is the one mode
+  no named casualty uses; under `stuck` and `drift` the verdict inverts with the moment of the click
+  and crosses mid-step. `pwr_heatup:11` ticks "Mode 3, Hot Standby reached" at t+466.5 s on a plant
+  truly at 50.01 °C (122.0 °F).
+- **`run_checklist_pwr2` 324 → 359 checks; `run_hardrules` 599 → 600.**
+
+### Closed as accepted
+- **#773 and #788.** Instruments on this plant do not fail unless the player makes them fail, and
+  the only casualty authored content injects (`porv_indicator_stuck_closed`) breaks nothing — 0 of
+  91 pool rows grade that channel. The residual classes are accepted rather than left open implying
+  work *(OWNER, 2026-09-19: "I don't know why this would be a problem in a sim where instruments
+  don't break unless we break them.")*.
+
 ### Added — a walkthrough now says so when the reactor trips under it (#709)
 
 - **The player's only cue was that nothing happened.** A walkthrough is a sequential list with
@@ -94,7 +153,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   (mutations 15 → **21**), `run_pwr2_shell` 192 → **193**. `Manuals/12` §8.4 documented this
   behaviour before the plant had it; it now carries the measured number and the unverified flag.
 
-## [Alpha 1.7.6-rc2] — 2026-09-18
 
 ### Fixed — four channels that read a value the plant was not at (#782, #778, #671, #765, #783)
 
