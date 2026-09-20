@@ -1184,24 +1184,6 @@
       left: 1155, top: 745, width: 90, height: 45,
       label: 'COOLDOWN RATE', labelSize: 10, value: '0', unit: 'F/hr',
       color: '#9fb3c4', fontSize: 15 },
-    /* PORV TAILPIPE TEMPERATURE — the one caption the value never got (#673). `imrsgch20pv`
-     * renders a bare number under the PORV status light with no name on it, and a TMI-2
-     * walkthrough step grades on the player reading it: "the tailpipe temperature below is the
-     * only honest tell" (imrsgch20pv's own comment). A bare "600 F" beside a valve icon is not
-     * that tell if nothing says which pipe it is.
-     *
-     * Copies the RCP FLOW idiom exactly (`imsgtedbunb` above the `imsgteavgid` value): a
-     * left-anchored text caption sitting ~15-18 px above the right-anchored value, offset back
-     * from the value's right edge by roughly the caption's own width.
-     *
-     * GEOMETRY, MEASURED off the doc. The value is `left:945 top:240` (right-anchored, so 945
-     * is its right edge). Clear space above it: PORV STATUS (`ims2jf7fv7m`) sits at top 190 and
-     * the PORV BLOCK VALVE component is 825..865 x 230..270 — neither reaches the 205..238 band.
-     * The STEAM caption (`imrr1gttt2l`) starts at x965, so anything ending by ~944 clears it.
-     * 'TAILPIPE' at fontSize 12 mono runs ~58 px, so 885..943 x 222..236 is inside the free band
-     * with 2 px to spare on the STEAM side. */
-    { id: 'bdPorvTailpipeLabel', kind: 'text', name: '',
-      left: 885, top: 222, text: 'TAILPIPE', fontSize: 12, color: '#9fb3c4', weight: 600, mono: true }
   ];
 
   // ================================================================ NUMBERS (editable)
@@ -4233,6 +4215,24 @@
        * names for `bdOneOverM`; it bit this fix on the first attempt). */
       imrqrnzbm6h: { props: { fontSize: 13 } },   // CONDENSATE
       imsgtedbunb: { props: { fontSize: 13 } },   // RCP FLOW
+      /* PORV TAILPIPE TEMPERATURE GETS ITS ENGRAVING (#673). The tile rendered a bare number
+       * and unit under the PORV status light with nothing saying which pipe it was, and a TMI-2
+       * walkthrough step grades on the player reading it — the tailpipe temperature is the only
+       * honest tell that a PORV the board says is SHUT is in fact passing.
+       *
+       * ⚠ IT IS A `label` PROP ON THE VALUE, NOT A SEPARATE TEXT ITEM, AND THAT IS THE FIX.
+       * The first attempt (`24f98dc8`) added a standalone `kind: 'text'` caption to EXTRA_ITEMS
+       * and shipped RED: `board_check`'s "every board item inspects to something" counts the
+       * item, and a bare caption inspects to nothing. It was the ONLY `kind: 'text'` entry in
+       * EXTRA_ITEMS — the board's own idiom is a `label` on the item it names (COOLDOWN RATE and
+       * the TURBINE buttons both do exactly this), which needs no geometry and adds no item.
+       * MEASURED: 282 checks PASS at `24f98dc8~1`, 1 failing of 282 at `24f98dc8`.
+       *
+       * It went unnoticed for three commits because `node_modules` was empty, so all four
+       * browser gates were dead — which is the standing trap in CLAUDE.md ("a gate that is not
+       * a run_*.js is invisible to run_all") arriving by a different road: the runner exists and
+       * could not load. */
+      imrsgch20pv: { props: { label: 'TAILPIPE', labelSize: 10 } },
       /* THE HX FLOW CAPTION IS RENAMED *(OWNER RULING, 2026-09-10, option A, #700)*. The ruled
        * name is "COOLDOWN RATE / HX SPLIT" and it is rendered as its TWO HALVES, each attached
        * to the thing it names: this caption becomes "HX SPLIT" (the lever) and the new
