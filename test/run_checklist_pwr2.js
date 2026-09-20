@@ -2849,8 +2849,9 @@ if (!only) {
    * on an instrument / 27 of those the only row of their step, and said plainly that they were
    * COUNTED, not swept. Re-measured here on the built pool: 84 / 135 / 87 / 27, identical. What
    * a count cannot tell you is which of the 87 actually strand, and the measured answer is that
-   * FEWER THAN HALF do — 46 of the 87, plus 3 more from the four `saw` rows the issue did not
-   * count at all, 49 in total — for three reasons the sweep decides per row rather than by list:
+   * FEWER THAN HALF do — 47 of the 87 (46 until #789 made `subcooling_margin` breakable and
+   * moved step 19 in from `skipped`), plus 3 more from the four `saw` rows the issue did not
+   * count at all, 50 in total — for three reasons the sweep decides per row rather than by list:
    *
    *   (a) THE DIRECTION OF THE COMPARISON DECIDES IT, and that is the finding the count could
    *       not carry. `dead` publishes the channel's RANGE FLOOR, so it can only ever fail a row
@@ -2863,19 +2864,24 @@ if (!only) {
    *       gate's. (A `stuck` failure with a typed value breaks a row in EITHER direction — the
    *       panel offers one — so the 30 are unsafe too; `dead` is pinned because it is the
    *       one-click mode with no value to type, and it is what #773 and #749 both measured.)
-   *   (b) A CHANNEL THE PLAYER CANNOT ACTUALLY BREAK DOES NOT STRAND, and one of the nineteen
-   *       is not breakable at all. MEASURED, `hot_full_power`, seed 7, 3.0 s after the command:
-   *       `set_instrument_failure {subcooling_margin, stuck, value: 12.040}` (21.7 °F of margin)
-   *       returns `ok` and SUBCOOLING MARGIN goes on reading 43.5 °F (24.140 °C) of margin — the injection is a
-   *       silent no-op, because `subcooling_margin` is DERIVED inside the instrument layer
-   *       (Tsat(primary_pressure) − tavg) and has no transmitter of its own to fail. The other
-   *       eighteen all take the stuck value exactly. That is a defect in its own right — the
-   *       Failures tab lists the channel and the click does nothing — and it is filed rather
-   *       than fixed here; what it means for THIS sweep is that the three TMI-2 subcooling rows
-   *       are not strandable by a direct injection. They ARE strandable INDIRECTLY: measured,
-   *       `{primary_pressure, dead}` drags the derived margin to −50.4 °F (−28.000 °C) against
-   *       a true +85.9 °F (+47.711 °C), which false-ticks step 17 (−50.0 °F, `<= −27.778`) and
-   *       strands step 19 (+10.0 °F, `> 5.56`).
+   *   (b) A CHANNEL THE PLAYER CANNOT ACTUALLY BREAK DOES NOT STRAND — WAS true of one of the
+   *       nineteen until #789 (2026-09-20), kept here as the record of what changed. MEASURED,
+   *       `hot_full_power`, seed 7, 3.0 s after the command: `set_instrument_failure
+   *       {subcooling_margin, stuck, value: 12.040}` (21.7 °F of margin) returned `ok` and
+   *       SUBCOOLING MARGIN went on reading 43.5 °F (24.140 °C) — a silent no-op, because
+   *       `subcooling_margin` is DERIVED inside the instrument layer (Tsat(primary_pressure) −
+   *       tavg) and `update()` computed it directly rather than routing it through
+   *       `_applyFailure` like every SOURCE-mapped channel. The Failures tab listed the channel
+   *       and the click did nothing — filed as #789 and fixed at `engines/pwr/pwr_instruments.js`
+   *       (the derivation now ends in `this._applyFailure('subcooling_margin', ...)`, clipped to
+   *       the channel's own range like every other mode).
+   *
+   *       So the three TMI-2 subcooling rows are DIRECTLY breakable now, and are measured that
+   *       way below rather than skipped: `dead` pins the reading at the channel's range floor,
+   *       −28.000 °C (−50.4 °F of margin, a DIFFERENCE — no +32 offset), which false-ticks steps
+   *       13, 15 and 17 (each a `<=` row the floor satisfies) and strands step 19 (`> 5.56`, which
+   *       a pinned-low reading can never clear). `skipped` is 0 — UNBREAKABLE_EXPECTED is empty,
+   *       pinned that way so a future DERIVED channel with the same hole reopens this check.
    *       The sweep is deliberately DIRECT-ONLY — one channel, the one the row grades on — so
    *       that its set is a property of the authoring and not of the whole instrument graph.
    *   (c) RELIEF THE AUTHOR ALREADY WROTE. Nine rows carry it: `pwr_startup` 5-8's eight 1/M
@@ -2900,7 +2906,8 @@ if (!only) {
    *     pwr_heatup:2:pump_flow_pct. 49 row(s) …"
    *   · add `'pwr_nonesuch:1:power_pct'` to STRAND_EXPECTED  -> 2ae.2 red, "PINNED BUT NOT SEEN"
    *   · add `tavg` to UNBREAKABLE_EXPECTED                   -> 2ae.3 red (tavg took the stuck
-   *     value 152.409, so only one no-op was found against two pinned)
+   *     value exactly — zero no-ops found against one pinned; re-verified 2026-09-20 after #789
+   *     emptied this set, see the (b) note above)
    *   · delete `'pwr_shutdown:1:mwe_output'` from TICK_EXPECTED    -> 2ae.4 red, "UNPINNED"
    *   · delete `'pwr_startup:9:ir_amps'` from RELIEVED_EXPECTED    -> 2ae.5 red, "UNPINNED"
    *   · point 2ae.6's probe at `sr_counts_cps` instead of `sr_energized` -> 2ae.6 red,
@@ -3004,7 +3011,11 @@ if (!only) {
      * SUBCOOLING MARGIN at −4.0208 °C instead of its healthy 24.140, which still is not the
      * 12.040 asked for but could collide with it on some other plant state and report a derived
      * channel as breakable. Isolation is what makes the answer about the channel. */
-    var UNBREAKABLE_EXPECTED = { subcooling_margin: 1 };
+    /* Empty since #789 (2026-09-20): `subcooling_margin` was the one channel here with no
+     * transmitter of its own to fail (see the (b) note above) and is now wired through
+     * `_applyFailure` like every other channel. Pinned empty rather than deleted so a future
+     * DERIVED channel with the same hole reopens 2ae.3 instead of joining `chans` unnoticed. */
+    var UNBREAKABLE_EXPECTED = {};
     var breakable = {}, breakNote = {};
     (function () {
       var chans = {};
@@ -3023,7 +3034,7 @@ if (!only) {
         if (!breakable[c]) noop.push(breakNote[c]);
       });
       var keys = Object.keys(UNBREAKABLE_EXPECTED);
-      ck('2ae.3 exactly the known DERIVED channel refuses an instrument failure silently (#773)',
+      ck('2ae.3 every channel the pool grades on takes an instrument failure — no silent DERIVED no-op (#773/#789)',
          noop.length === keys.length && keys.every(function (k) { return breakable[k] === false; }),
          (noop.length ? 'NO-OP: ' + noop.join('; ') + '. ' : '') + Object.keys(chans).length +
          ' channels probed, ' + (Object.keys(chans).length - noop.length) + ' took the stuck value');
@@ -3099,6 +3110,7 @@ if (!only) {
       'pwr_tmi2_incident:14:sg_level_pct': 'sg_level',       // > 5 [SOLE]    dead 0.000 vs true 98.08 %
       'pwr_tmi2_incident:18:pressure_mpa': 'primary_pressure', // > 5.17      dead 0.000 vs true 14.59 MPa
       'pwr_tmi2_incident:20:pump_flow_pct': 'rcs_flow',      // > 80 [SOLE]   dead 0.000 vs true 100.5 %
+      'pwr_tmi2_incident:19:subcooling_c': 'subcooling_margin', // > 5.56 [SOLE] dead -28.000 vs true 23.404 degC (#789)
       /* the three `saw` rows — no `implied_by` can reach a `saw`, so these have no relief at all */
       'pwr_heatup:11:saw:tavg_c': 'tavg',                    // > 150         same channel as the step's acc
       'pwr_startup:10:saw:startup_rate_dpm': 'startup_rate', // > 0           a channel the step's acc does NOT use
@@ -3125,12 +3137,19 @@ if (!only) {
        * named casualties can freeze, and it broke in BOTH directions depending on when the player
        * clicked — see the step's own note for the measurement and for why no `implied_by` could
        * reach it (the board carries no second measurement of pressurizer level). It now grades
-       * SUBCOOLING MARGIN, the cue that actually decides the action, which is the DERIVED channel
-       * 2ae.3 pins as unbreakable — so the row is SKIPPED here rather than pinned, and that is the
-       * `skipped.length === 4` in 2ae.5 below. */
+       * SUBCOOLING MARGIN — see the three rows below, moved here from `skipped` by #789. */
       'pwr_tmi2_incident:5:sg_level_pct': 1,
       'pwr_tmi2_incident:16:pzr_level_pct': 1, 'pwr_tmi2_incident:18:porv_tailpipe_temp_c': 1,
       'pwr_cooldown:4:saw:tavg_c': 1,   // `saw tavg_c < 250` — a dead tavg reads 30.00 and is "seen"
+      /* #789 (2026-09-20) — `subcooling_margin` went from UNBREAKABLE (silent no-op, skipped)
+       * to directly failable, so these three `<=` rows now measure like every other channel: a
+       * `dead` reading pins at the range floor (-28.000 degC, -50.4 degF of margin — a
+       * DIFFERENCE, so no +32 offset), which satisfies all three `<=` thresholds on a plant that
+       * is really at a healthy +23.4 degC (+42.1 degF) of margin. FALSE-TICKS, not strands —
+       * step 19's `> 5.56` is the one direction a pinned-low floor can never clear, so it
+       * strands instead (STRAND_EXPECTED above). */
+      'pwr_tmi2_incident:13:subcooling_c': 1, 'pwr_tmi2_incident:15:subcooling_c': 1,
+      'pwr_tmi2_incident:17:subcooling_c': 1,
     };
     var RELIEVED_EXPECTED = {
       'pwr_startup:5:sr_counts_cps': 1, 'pwr_startup:5:startup_rate_dpm': 1,
@@ -3167,7 +3186,7 @@ if (!only) {
 
     var dR = diffSet(relieved.map(function (x) { return x.split(' ')[0]; }), RELIEVED_EXPECTED);
     ck('2ae.5 the rows the author already relieved are exactly the pinned ones, and the relief is off-channel (#773)',
-       dR.ok && skipped.length === 4,
+       dR.ok && skipped.length === 0,   // was 4 (the subcooling_margin rows) until #789 made the channel breakable
        dR.note + relieved.length + ' relieved (' + relieved.join('; ') + '); ' +
        skipped.length + ' row(s) skipped on an unbreakable channel');
 
