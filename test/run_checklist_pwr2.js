@@ -3025,6 +3025,17 @@ if (!only) {
         var w = boot('hot_full_power');
         var lv = w.snap.instruments[c];
         var t = (typeof lv === 'number' && lv !== 0) ? lv * 0.5 : 0.5;
+        /* CLAMP THE PROBE INTO THE CHANNEL'S OWN SPAN (#791, 2026-09-20). `stuck` now pegs an
+         * out-of-range typed value to the transmitter's own range floor/ceiling, correctly —
+         * that is #791's fix. Before it, a `stuck` value only had to be TYPED to be honored,
+         * so half of a channel's live reading was a fine probe for every channel including one
+         * sitting on its own floor. `source_range` at `hot_full_power` (SR de-energized) reads
+         * its range floor 1.0 cps, half of which is 0.528 — now legitimately clipped back to
+         * 1.0, which the probe's raw comparison misread as a no-op. Clamp the TARGET to what a
+         * real instrument will accept before asking whether it arrived; a channel is unbreakable
+         * only if an IN-RANGE typed value fails to land, not if an out-of-range one is refused. */
+        var spec = RD.PWR_CONFIG.instruments[c];
+        if (spec && spec.range) t = Math.min(spec.range[1], Math.max(spec.range[0], t));
         w.svc.handleCommand({ action: 'set_instrument_failure', instrument_id: c, mode: 'stuck', value: t });
         var s = null; for (var i = 0; i < 30; i++) s = w.svc.tick();
         var got = s.instruments[c];
