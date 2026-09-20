@@ -233,8 +233,13 @@ export async function analyticsPage(env, url) {
       + (pickerMin ? ' min="' + esc(pickerMin) + '"' : '') + ' max="' + esc(today) + '"></label> '
     + '<button type="submit">Go</button> '
     + '<span class="muted">Presets:</span> '
-    + [7, 14, 30].map((n) => '<button type="submit" formaction="?view=analytics&from='
-        + stepBack(today, n - 1) + '&to=' + today + '">' + n + 'd</button>').join(' ')
+    /* ANCHORS, NOT SUBMIT BUTTONS -- see `a.pbtn` in render.js for the measurement. A GET
+     * form throws away its action URL's query string, so the `formaction` these used to
+     * carry never reached the server and every preset re-submitted the date inputs as they
+     * stood: the 7d window redrew itself under a 14d label. An <a> navigates to the href
+     * verbatim. `&amp;` because this is HTML, not a URL. */
+    + [7, 14, 30].map((n) => '<a class="pbtn" href="?view=analytics&amp;from='
+        + stepBack(today, n - 1) + '&amp;to=' + today + '">' + n + 'd</a>').join(' ')
     + '</form>'
     + '<p class="muted">' + (sr
       ? 'Recorded history begins <b>' + esc(sr.first) + '</b>.'

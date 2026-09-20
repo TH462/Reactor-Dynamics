@@ -30,6 +30,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **The ops dashboard's 7d/14d/30d range presets never changed the range** (2026-09-20). They were
+  submit buttons carrying the span in `formaction`, and a GET submission DISCARDS the action
+  URL's query string and sends the form's own fields instead — so every preset re-submitted the
+  date inputs as they stood and redrew the window already on screen. Plain links now. Measured in
+  headless Edge: the 14d button, whose own action asked for `from=2026-09-07`, navigated to
+  `from=2026-09-14`. Nothing could have caught it server-side — `resolveWindow` answered correctly
+  for the window it was actually asked about, which is why 87 green checks in `run_dashboard_time`
+  were right and irrelevant; the new checks assert the HREF. `run_dashboard_trend` 37 → 41, and the
+  `token-leak` injection was silently blind (its anchor was the deleted line) and is repointed.
+  Ops-only — no simulator change, so no `changelog.html` entry and no version bump.
+
 ## [Alpha 1.7.6-rc3] — 2026-09-19
 
 ### Added

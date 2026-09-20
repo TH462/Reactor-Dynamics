@@ -319,7 +319,16 @@ var INJECTIONS = {
   'legacy-days-ignored': ['analytics.js',
     'const n = Math.max(1, Math.min(90, Math.floor(Number(qDays)) || 7));', 'const n = 7;'],
   'token-leak': ['analytics.js',
-    'formaction="?view=analytics&from=\'', 'formaction="?view=analytics&token=x&from=\''],
+    '<a class="pbtn" href="?view=analytics&amp;from=\'',
+    '<a class="pbtn" href="?view=analytics&amp;token=x&amp;from=\''],
+  /* THE DEFECT THE PRESETS SHIPPED WITH (2026-09-20). Puts the `<button formaction=>`
+   * form back: on a GET submission the browser DISCARDS the action URL's query string and
+   * sends the form's own fields instead, so every preset redrew the window already on
+   * screen. Measured in headless Edge before the fix — the 14d button, whose formaction
+   * asked for from=2026-09-07, navigated to from=2026-09-14, the date input's own value. */
+  'preset-not-a-link': ['analytics.js',
+    '<a class="pbtn" href="?view=analytics&amp;from=\'',
+    '<button type="submit" formaction="?view=analytics&amp;from=\''],
   'breakdown-skips-d1': ['analytics.js',
     'const closed = from <= closedTo ? await groupBy(db, dim, from, closedTo, Math.max(limit, 200)) : [];',
     'const closed = [];'],
@@ -629,6 +638,31 @@ async function threwAsync(fn) {
       p13.indexOf('<h2>', p13.indexOf('<h2>Internal navigation</h2>') + 1));
     ck('preview.example.net sits under Internal navigation, not How people arrive',
        /preview\.example\.net/.test(internalSection14) && !/preview\.example\.net/.test(arriveSection14));
+
+    /* ================================ 15. the presets NAVIGATE, they do not SUBMIT ==== */
+    head('15. each range preset is a LINK carrying its own span — not a submit button');
+    /* WHY A SUBMIT BUTTON CANNOT WORK HERE, and why every other check on this page stayed
+     * green while the feature did not: a `formaction` URL's QUERY STRING is discarded on a
+     * GET submission (HTML spec, "mutate action URL" — the form data set replaces it), so
+     * the server saw the date inputs' current values and answered correctly for the window
+     * it was actually asked about. The defect was entirely in what the browser SENT, which
+     * is why `resolveWindow`'s 87 checks in run_dashboard_time.js could not see it. Assert
+     * the href, which is the thing the browser acts on.
+     *
+     * Today is pinned to 2026-09-18, so 7d opens 09-12, 14d opens 09-05 and 30d 08-20. */
+    var p15 = await renderPage('');
+    [[7, '2026-09-12'], [14, '2026-09-05'], [30, '2026-08-20']].forEach(function (pair) {
+      var n = pair[0], from = pair[1];
+      ck(n + 'd is an <a> whose href opens on ' + from,
+         p15.indexOf('<a class="pbtn" href="?view=analytics&amp;from=' + from
+                     + '&amp;to=2026-09-18">' + n + 'd</a>') >= 0);
+    });
+    /* `<button[^>]*formaction`, not a bare /formaction/: the stylesheet's own comment
+     * explains this defect and ships on every page, so the loose form fails on the fix's
+     * documentation rather than on the markup. Caught by this check going red on its
+     * first run — the word is in render.js's PAGE_HEAD. */
+    ck('no preset is a submit button — a formaction query never reaches the server',
+       !/<button[^>]*formaction/.test(p15));
 
     /* =================================================================== 9. no token= */
     head('9. no rendered page anywhere carries a credential in a href');

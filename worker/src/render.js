@@ -406,6 +406,17 @@ export const PAGE_HEAD = `<meta name="viewport" content="width=device-width,init
   .card-note { white-space:pre-wrap; color:#c3cedb; font-size:13px; max-height:7.5em;
                overflow:hidden; display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; }
   .card-f { margin-top:auto; font-size:12px; }
+  /* PRESET RANGE LINKS. These are anchors rather than submit buttons, and that is the whole
+     fix for #<n>: on a GET submission the browser DISCARDS the action URL's query string and
+     replaces it with the form's own fields, so a per-button action carrying from/to sent the
+     date inputs' CURRENT values instead -- every preset redrew the window already on screen.
+     Measured in headless Edge 2026-09-20: clicking a 14d button whose own action asked for
+     from=2026-09-07 navigated to from=2026-09-14, the value in the input. A preset is
+     NAVIGATION, not submission; an anchor cannot have the defect. */
+  a.pbtn { display:inline-block; padding:2px 10px; margin-right:4px; border-radius:4px;
+           background:#111823; border:1px solid #1c2531; color:#d7e0e8; font-size:12px;
+           text-decoration:none; }
+  a.pbtn:hover { border-color:#2a3646; color:#5fb3d9; }
 </style>`;
 
 /* NO CREDENTIAL IN A HREF (#764). The nav used to rewrite the shared secret onto every
