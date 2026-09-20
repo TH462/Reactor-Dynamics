@@ -43,11 +43,11 @@ docs.
 > - **Write-ups get no word limit — they get a content rule:** don't restate what the diff shows;
 >   record the trap and the numbers that prove it. Length then falls out.
 >
-> **Why not three caps** (the reasoning, so it is not re-litigated): a word limit on write-ups
-> would forbid the worked A/B that makes a trap believable — #363's lesson is worthless without
-> the 15 °F number that disproved the filed symptom — and HR12 would then be unsatisfiable. Caps
-> are also a proxy an honest writer games without noticing. The gate-baselines blob was not bad
-> because it was 21,000 words, but because it duplicated a machine-readable authority.
+> **Why not three caps** (so it is not re-litigated): a word limit on write-ups would forbid the
+> worked A/B that makes a trap believable — #363's lesson is worthless without the 15 °F number
+> that disproved the filed symptom — leaving HR12 unsatisfiable. Caps are also a proxy an honest
+> writer games without noticing: the gate-baselines blob was bad for duplicating a
+> machine-readable authority, not for its word count.
 
 > **End with what is STILL OUTSTANDING** *(OWNER DIRECTIVE, 2026-07-30: "I would like to add to
 > claude.md to have the ai place a 'Still Outstanding' summary at the bottom so i know exactly
@@ -339,10 +339,10 @@ to read everything.
 _Last updated: **2026-09-18**._
 
 **What is open, and where the plant stands: `gh issue list --state open` is the authority, and
-`Blueprint/PWR2_VALIDATION.md` is the engineering record.** This section carried ~820 words of
-per-issue prose that told you not to trust it — measured twice (2026-08-10, 2026-08-28), whole
-bullets called issues open that were closed. Cut *(OWNER DIRECTIVE, 2026-09-12: "Implement the
-ruleset and Claude.md cuts as recommended.")*. **Run the query; read the sections.**
+`Blueprint/PWR2_VALIDATION.md` is the engineering record.** A hand-kept copy here rotted twice
+(measured 2026-08-10, 2026-08-28: bullets called issues open that were closed) and was cut
+*(OWNER DIRECTIVE, 2026-09-12: "Implement the ruleset and Claude.md cuts as recommended.")*.
+**Run the query; read the sections.**
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
 2026-08-06: "The revision number only matters during a release to the website. Revision numbers
@@ -387,12 +387,11 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   step", rose, cleared and re-rose **three times over 24 psi**; its gate SAMPLED the first rise and
   passed. Assert the span, and grep the checklist for the step that is active when a cue fires.
 - **A FRESH-READER REVIEW REPORTS WHAT THE RENDERER SHOWS, AND WHAT YOUR EXTRACT LEFT OUT**
-  (2026-09-06, #653). Two minimal-context reviewers, one an operator and one a layman, both
-  reported "30 of 67 steps have no acceptance": the panel draws the done-when on the ACTIVE step
-  only, and my extract had dropped the `accs`/`saw` forms — measured on the built pool, **6**. The
-  same reviews found the real defects nothing else had: "Tavg" 34 times and not on the board,
-  three units for one gauge, cautions that never render. **Verify every count on the built object
-  before it reaches an issue, and read the layman's "I could not find it" as a board fact.**
+  (2026-09-06, #653). Two minimal-context reviewers both filed "30 of 67 steps have no
+  acceptance"; the panel draws the done-when on the ACTIVE step only and the extract had dropped
+  the `accs`/`saw` forms — on the built pool, **6**. The same reviews found what nothing else had:
+  "Tavg" 34 times and not on the board, three units for one gauge. **Verify every count on the
+  built object before it reaches an issue; read a layman's "I could not find it" as a board fact.**
 
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md")*,
@@ -589,15 +588,13 @@ service (M5, +rewind) ✅, instructor (M6) ✅, test runner (M7) ✅. The PWR mo
 initial condition** and the **full Mode 5 ↔ Mode 1 on integrated physics**. **UI (M8):
 functional alpha, PWR only** 🟦.
 
-**Known open work** — `gh issue list --state open`, as the paragraph above already says. A
-hand-kept copy here named three items and could not say whether any was still open; details in
-`Diagnostic/`, `Manuals/ISSUES_AND_FINDINGS.md` and `BUILD_DECISIONS.md` Open Flags.
+**Known open work** — the query above. Detail: `Diagnostic/`, `Manuals/ISSUES_AND_FINDINGS.md`,
+`BUILD_DECISIONS.md` Open Flags.
 
 **Current gate baselines — `BASELINES` in `test/run_all.js` IS the authority. Do not copy
-numbers here.** It carried ~24,000 words of per-runner prose until 2026-08-06 and EVERY figure
-had rotted, one runner listed **twice with different numbers** (`TUNING_LOG.md` 2026-08-06).
-Run the gate; read the map. Per-change rationale:
-`Diagnostic/TUNING_LOG.md` and `Blueprint/BUILD_DECISIONS.md`, newest first.
+numbers here.** ~24,000 words of per-runner prose lived here until 2026-08-06 and EVERY figure
+had rotted, one runner listed **twice with different numbers**. Run the gate; read the map.
+Per-change rationale: `Diagnostic/TUNING_LOG.md`, `Blueprint/BUILD_DECISIONS.md`, newest first.
 
 ```
 node test/run_all.js            # every discovered runner vs BASELINES (10-way parallel locally;
@@ -631,9 +628,8 @@ Four things about it that are procedure, not history:
 
 **Tracked reds carry their own `note` in `BASELINES` — read it there, and do NOT re-band one.**
 A red kept on purpose is reporting against a target; re-banding it whenever the plant moves
-retires the target instead. This paragraph listed one such red by name and number and was stale
-inside a day when a second arrived (2026-09-14) — the same rot as the gate baselines above.
-`verify_e2e_ui` carries **1 strict xfail** for #111's missing unit conversion.
+retires the target instead. Naming them here rots inside a day (measured 2026-09-14) — same as
+the gate baselines above.
 ---
 
 ## Running it
@@ -884,8 +880,21 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 
 ## Issue tracking (GitHub) — the owner's preferred workflow
 
-**Open items belong in GitHub issues**, not only in `Diagnostic/` prose. When you find a defect,
-a gap, or a deferred decision that outlives the session, file it.
+**Open items belong in GitHub issues**, not only in `Diagnostic/` prose — but the issue has to
+EARN itself.
+
+> **THE FILING BAR** *(OWNER DIRECTIVE, 2026-09-20: "The last few sessions kept adding issues by
+> themselves but I found a lot of these issues went on a tangent and are a waste of time.")*. Of
+> 34 closed as not worth doing that day, **6 concluded in their own body that nothing should
+> change**; **8 were tests about tests.**
+> - **`Diagnostic/TUNING_LOG.md` is where a finding GOES; an issue is the EXCEPTION.** This line
+>   used to read "keep the log **and** file the issue" — it instructed double-filing.
+> - **The bar: a PLAYER CONSEQUENCE, or a wrong number on the SHIPPED plant.** *"A gate could be
+>   tighter"* and *"I measured this and it is fine"* fail it.
+> - **A finding you would not file if you could not fix it yourself is not an issue.**
+> - **An ANSWER goes in a COMMENT on the asking issue, never a new one.**
+>
+> **Not gateable**, like HR12 and the units rule — it decays unless the sweep re-runs.
 
 Repo: **`TH462/Reactor-Dynamics`**. `gh` is installed per-user and on the PATH, authed as
 `TH462`. On `gh: command not found`, prepend it (mind the space in the path):
@@ -902,11 +911,11 @@ gh issue close  <n> --repo TH462/Reactor-Dynamics --comment "…"
 ```
 
 - **ALWAYS add the `Claude` label to every issue you touch** (`--label Claude` on create,
-  `gh issue edit <n> --add-label Claude` otherwise). It means **"Claude worked on this"** —
-  not just authorship — so apply it when you create an issue, comment on one, or do the work
-  it tracks. It exists so the owner can see agent involvement at a glance.
-- **Draft long bodies to a file and use `--body-file`** — `inbox/` is gitignored, so drafts
-  don't pollute the repo. Inline `--body` mangles multi-line markdown.
+  `gh issue edit <n> --add-label Claude` otherwise). It means **"Claude worked on this"**, not
+  just authorship — create, comment, or do the work it tracks. It is how the owner sees agent
+  involvement at a glance.
+- **Draft long bodies to a file and use `--body-file`** — `inbox/` is gitignored. Inline
+  `--body` mangles multi-line markdown.
 - **Labels — four required axes** (scheme revised 2026-07-25; the canonical definition is
   **GitHub issue #61**, which is self-contained — the `PROJECT_WORKFLOW.md` it used to cite
   never existed). Every issue gets one of each:
@@ -952,14 +961,12 @@ gh issue close  <n> --repo TH462/Reactor-Dynamics --comment "…"
   occupancy and stands down for nobody. Clear it on the same turn you hand the issue back,
   whether the work landed, is blocked, or you were interrupted.
 
-  **This is the FIRST occupancy signal that is not a guess.** The lane check at the top of
-  this file infers occupancy from uncommitted files plus a recent commit, and that heuristic
-  cannot tell another live session from the owner's own edits from your own leftovers — which
-  is exactly why it is only ever allowed to WARN AND ASK. A lane tag is an agent SAYING where
-  it is. It does not replace the `git status` sweep (an agent can start work without touching
-  an issue), so run both: `gh issue list --label status-wip-workbench` answers *who is in that
-  tree and on what*, which the file sweep never could. **A tagged issue in your lane that you
-  did not tag is a positive — warn and ask, same as the file check.**
+  **This is the FIRST occupancy signal that is not a guess** — the file sweep cannot tell a live
+  session from the owner's edits from your own leftovers, which is why it may only WARN AND ASK.
+  A lane tag is an agent SAYING where it is, and `gh issue list --label status-wip-workbench`
+  answers *who is in that tree and on what*. It does not replace the sweep (an agent can work
+  without touching an issue), so run both. **A tagged issue in your lane that you did not tag is
+  a positive — warn and ask, same as the file check.**
 
   **ONE `--label` is fine; THREE are not** — `gh` ANDs repeated `--label`, so the all-lanes
   sweep must be `--search 'label:a,b,c'`. `Blueprint/LANES.md` §2 for what that cost.
@@ -970,14 +977,11 @@ gh issue close  <n> --repo TH462/Reactor-Dynamics --comment "…"
   YYYY-MM-DD" — otherwise it is one agent's preference wearing the project's authority.
   An unattributed `status-deliberate` is advisory: weigh it and say you did.
 
-  Retired — do not apply to new issues: `assign-*` (use GitHub assignees), `type-refactor`
-  (→`type-cleanup`), `type-design` (→`type-decision`), `system-api`/`system-state`
-  (→`system-service`), `ui`/`ui-ux` (→`system-hmi`), the GitHub defaults `bug`/`enhancement`/
-  `documentation`, and the legacy `phase-*`/`chief`/`grok-build`/`technical`/`decision`/
-  `workflow` tags. They are left in place on old issues, not deleted.
+  Retired labels (left on old issues, never applied to new ones) are listed in **issue #61**,
+  the canonical scheme; `gh label list` shows what is live.
 - **Cross-link related issues by number** (`#122`) once both exist.
-- Keep the durable engineering record in `Diagnostic/TUNING_LOG.md` **and** file the issue —
-  the log is the narrative, the issue is the tracked unit of work.
+- **The log is the narrative; the issue is the tracked unit of work** — and per the filing bar
+  above, most findings are only the former.
 
 ## Branching & workflow
 
