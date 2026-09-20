@@ -448,9 +448,16 @@
     // reading set without the appended channel keeps the bulk datum.
     var cetInd = this.reading.core_exit_temp;
     var tHotSide = (cetInd != null && cetInd > this.reading.tavg) ? cetInd : this.reading.tavg;
-    this.reading.subcooling_margin = clip(
+    var subDerived = clip(
       T_sat(this.reading.primary_pressure) - tHotSide,
       this.specs.subcooling_margin.range[0], this.specs.subcooling_margin.range[1]);
+    // #789 — a DERIVED channel is still a channel: it carries its own entry in the
+    // Failures tab (spec.derived, gen_manual_reference.js), so a player who injects
+    // stuck/drift/noisy/dead on it must see the reading move like every other lever,
+    // not silently keep tracking the P/T computation underneath.
+    var subTrue = trueState.subcooling_c != null ? trueState.subcooling_c : subDerived;
+    this.reading.subcooling_margin = this._applyFailure(
+      'subcooling_margin', subDerived, subTrue, this.specs.subcooling_margin, dt);
 
     // Level deviation from program (#262) — the inventory cue. See _levelDev.
     this.reading.pzr_level_dev = this._levelDev(extras);
@@ -486,8 +493,8 @@
     // baseline run has, so the existing noise sequence is untouched (#247).
     var fSigma = spec.noise > 0 ? spec.noise : (spec.noise_failure || 0);
     switch (f.mode) {
-      case 'stuck': return f.value;                      // frozen at injection value
-      case 'drift': f.offset += f.rate * dt; return trueVal + f.offset; // sim-time correct (HR6)
+      case 'stuck': return clip(f.value, spec.range[0], spec.range[1]);   // frozen at injection value, pegged to the transmitter's own span
+      case 'drift': f.offset += f.rate * dt; return clip(trueVal + f.offset, spec.range[0], spec.range[1]); // sim-time correct (HR6), pegged like every other failure mode
       case 'noisy': return spec.log
         ? clip(Math.pow(10, this._gauss(this.lagged[id], fSigma * f.scale)), spec.range[0], spec.range[1])
         : clip(this._gauss(this.lagged[id], fSigma * f.scale), spec.range[0], spec.range[1]);
