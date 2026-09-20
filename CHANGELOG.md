@@ -30,6 +30,9 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+
+## [Alpha 1.7.6] — 2026-09-20
+
 ### Changed
 - **A walkthrough VERIFY step no longer wears the pulsing "act on this" ring** *(OWNER RULING,
   2026-09-15: "Move them to the watch ring")*, raised by the 2026-09-15 layman playthrough, which
@@ -131,7 +134,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 Ops-only — no simulator change, so no `changelog.html` entry and no version bump.
 
-## [Alpha 1.7.6-rc3] — 2026-09-19
 
 ### Added
 - **A walkthrough acceptance row is voided when the player deliberately injects a named casualty on
