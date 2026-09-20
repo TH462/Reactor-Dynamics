@@ -2638,6 +2638,27 @@
            * deliberately not used: turning the single `acc` into a rung sequence is a GRADING
            * change and owes its own measurement.
            *
+           * ⚠ AND IT IS NOW SETTLED THAT IT STAYS THAT WAY *(OWNER RULING, 2026-09-20: "A", on
+           * drawn options — leave step 9 unordered and close the rungs item as superseded)*. The
+           * 2026-09-15 ruling "Turn the actions into ordered rungs" was aimed at THIS step while
+           * its acceptance was still a single `acc`; #749/option B then gave it a purpose-built
+           * two-row `accs` with `implied_by: 'power_pct'` on 2026-09-18, three days later.
+           *
+           * THE TWO MECHANISMS ARE MUTUALLY EXCLUSIVE BY DESIGN AND THE EXCLUSION IS GATED:
+           * `implied_by` is "Ignored on an `accs_ordered` step, where position is meaning", and
+           * `run_checklist_pwr2` §2ad reddens if one is authored there — 2ad.3/4/5 are wired to
+           * this step's exact two-row shape. So ordering costs the INTER RANGE soft-lock fix: a
+           * dead INTER RANGE channel is reachable from the Failures tab and strands the step for
+           * ever, and ordering makes it WORSE, because that rung would then block every rung
+           * behind it. Trading a measured soft-lock fix for a display improvement is the wrong
+           * way round. The parked draft also carried a last rung of `power_pct > 0.1`, the exact
+           * threshold #749 moved to 0.05 because `digits: 1` renders 0.05 as "0.1".
+           *
+           * If the five actions are ever to be broken up, the cheap half needs no grading change
+           * (split the note into per-row `ask` text); making BOTH work needs `implied_by` taught
+           * to survive ordering, which is a design change to a freshly-ruled guard and owes its
+           * own issue and its own measurement. Steps 5-8 keep their rungs and are unaffected.
+           *
            * ⚠ "NOTHING WAS DELETED" AND "Behind the readings:" ARE BOTH STALE AS OF 2026-09-18.
            * The reconcile to `Blueprint/walkthrough_steps/02_mode3_to_mode1.md` took his note,
            * which ENDS at "press it before the rods will move again" — the whole instrument-teaching
