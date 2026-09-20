@@ -890,7 +890,7 @@ The **setpoint is 87 % of rated, blocked below P-7 (8 % power)**. Measured on th
 *(These two figures are read from the protection layer directly, which is where the trip logic lives; the board's own channels are published through the reused instrument layer and are one step removed from them.)*
 ### 10.8 Pressurizer pressure is ONE channel too — and its two failure directions do opposite things
 
-**DECLARED SIMPLIFICATION** *(OWNER RULING, 2026-09-19)*. **This plant carries one pressurizer-pressure channel.** A real Westinghouse unit separates the *controlling* channel from the *protection* channels and acts on coincidence, so one lying transmitter can neither cause nor defeat a protective action:
+**DECLARED SIMPLIFICATION** *(OWNER RULING, 2026-09-19: "2: declared simplification")*. **This plant carries one pressurizer-pressure channel.** A real Westinghouse unit separates the *controlling* channel from the *protection* channels and acts on coincidence, so one lying transmitter can neither cause nor defeat a protective action:
 
 > "The same sensors (PT-429, PT-430, and PT-431) provide input to the Pressurizer Pressure-High and -Low trips and the Overtemperature ΔT trip with the exception that the Pressurizer Pressure-Low and Overtemperature ΔT trips also receive input from PT-449. Since the Pressurizer Pressure channels are also used for other control functions, **the actuation logic must be able to withstand an input failure to the control system**, which may then require the protection function actuation, and a single failure in the other channels providing the protection function actuation." — Ginna Technical Specification Bases B 3.3.1 (ML20339A221); the Pressurizer Pressure-Low LCO requires **four** channels.
 
