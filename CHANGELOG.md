@@ -124,7 +124,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `double6`/`t_session`), making "Lasted ≥" and the Median/Mean/Longest tiles a weaker floor than
   designed. **And the session list truncated at 100 with no note.**
 - **Removed the legacy `?token=` dashboard credential** five days before its own deadline, and
-  deleted the Worker secret with it *(OWNER RULING, 2026-09-20)*. It was the only credential check
+  deleted the Worker secret with it *(OWNER RULING, 2026-09-20: "delete now, do not wait for the
+  25th")*. It was the only credential check
   on that Worker with no rate limit — a wrong password charges 1 of 5 per minute, a wrong token
   charged nothing — and the bookmark migration it existed for had already happened.
 

@@ -2535,7 +2535,15 @@ if (!only) {
      * source-scanned: a scan tells you the guard is written, never that it is reached. Its `dim`
      * branch (the only part with outside dependencies) is unreachable for a `sci` entry. */
     (function () {
-      var appSrc = fs.readFileSync(path.join(ROOT, 'ui', 'app.js'), 'utf8');
+      /* ⚠ NORMALISE THE LINE ENDINGS BEFORE SLICING (2026-09-20). The slice ends on the first
+       * `\n  }\n` after the declaration, and this machine has `core.autocrlf=true`, so ANY git
+       * checkout rewrites the working tree as CRLF and that pattern then matches nothing —
+       * `b2` comes back -1, the slice runs to the end of the file and the lift throws. The
+       * committed blob is LF (measured: 0 CRLF in the blob, 10,898 in the worktree), so CI and
+       * a freshly-edited file both pass and only a Windows tree that has been checked out goes
+       * red. It cost a release gate to find. The claim this check makes is about the FORMATTER,
+       * not about line endings, so normalising here narrows nothing. */
+      var appSrc = fs.readFileSync(path.join(ROOT, 'ui', 'app.js'), 'utf8').replace(/\r\n/g, '\n');
       var a2 = appSrc.indexOf('function fmtPredValue(');
       var b2 = a2 < 0 ? -1 : appSrc.indexOf('\n  }\n', a2);
       var fpv = null;
