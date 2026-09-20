@@ -52,6 +52,83 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   clears at the step's own 542 °F (283 °C) target. Driven end to end, the leg dropped the clock
   once at 30 plant-minutes and now drops it not at all.
 
+### Fixed
+- **The ops dashboard's 7d/14d/30d range presets never changed the range** (2026-09-20). They were
+  submit buttons carrying the span in `formaction`, and a GET submission DISCARDS the action
+  URL's query string and sends the form's own fields instead — so every preset re-submitted the
+  date inputs as they stood and redrew the window already on screen. Plain links now. Measured in
+  headless Edge: the 14d button, whose own action asked for `from=2026-09-07`, navigated to
+  `from=2026-09-14`. Nothing could have caught it server-side — `resolveWindow` answered correctly
+  for the window it was actually asked about, which is why 87 green checks in `run_dashboard_time`
+  were right and irrelevant; the new checks assert the HREF. `run_dashboard_trend` 37 → 41, and the
+  `token-leak` injection was silently blind (its anchor was the deleted line) and is repointed.
+  Ops-only — no simulator change, so no `changelog.html` entry and no version bump.
+
+
+### Added
+- **Ops dashboard: "Country × referrer × day" reads the first-party store** (2026-09-20) instead
+  of querying Cloudflare live, so it stops rounding past 7 days. Cloudflare's RUM holds 7 days at
+  full resolution and serves a sampled tier beyond that — measured, the identical query returns
+  sampleInterval 1 over 7 days and 10 over 19 — and the data had been exact in `traffic_daily`
+  all along; only a multi-dimension reader was missing. Exact back to 2026-08-25.
+- **The site's own beacon now records referrer, country and a bot class** (2026-09-20), rolled
+  nightly into `own_traffic_daily`. Traffic data previously reached us only through Cloudflare's
+  injected RUM beacon, which content blockers block. The referrer is cut to a HOST — client-side
+  and again at the Worker, since the endpoint is open — the country comes from the edge without
+  an IP ever being stored, and the bot class is our own User-Agent match, cruder than
+  Cloudflare's and labelled as ours. **Authority does not move**: the dashboard still reports the
+  Cloudflare-derived numbers, and the two series run side by side until a comparison decides.
+  Expect ours to read higher once it works — that is the block rate becoming visible, not new
+  traffic.
+- **Ops dashboard: the By-day chart is a DAILY LINE past 14 days** (2026-09-20, owner request).
+  It bucketed 7 days to a bar above 14 and 30 above 90, so the 30d and All presets showed four or
+  five fat bars of weekly totals. 14 days or fewer keeps the bars unchanged; longer draws one
+  point per day at any length. A day the rollup never captured stores 0, so the line BREAKS there
+  and marks it rather than plunging to zero and back — a real zero still dips, connected, because
+  the two have to look different. X labels thin to about twelve with the spacing stated in the
+  legend.
+- **Ops dashboard: an "All" range preset** (2026-09-20, owner request) opening the window on the
+  first day the server recorded, through today. Reuses `storeRange()`'s own `first` rather than
+  re-querying, renders only when the store is non-empty, and is clamped to `RETAIN_DAYS` so it can
+  never hand the picker a window `stats.dayRange` then rejects.
+
+### Fixed
+- **The ops dashboard counted bot traffic in every live "today" figure** while every closed day
+  excluded it (`stats.js` filters `bot = 0`) — so the page's own Bots section printed that it was
+  the only section including bots, which was false for the live half of all of them. Excluded on
+  the returned rows rather than by inventing an unconfirmed RUM filter key; the Bots section stays
+  exempt, because filtering the column you group by is the exemption `stats.js` already makes.
+- **An uncaptured day printed a confident conclusion drawn from its own absence.**
+  `ext.every(r => r.kind === 'direct')` is `true` on an empty array, so a day the nightly rollup
+  never ran rendered "nothing external referred anyone — that is a finding, not a gap in the data"
+  while the same page's by-day table marked the date no-data.
+- **A failed Cloudflare GraphQL call could be written into permanent history as a quiet day.**
+  `cfapi.js`'s `gql()` never checked `res.ok` — only a non-empty `errors` array — so a 403/429/5xx
+  shaped `{success:false, errors:[], result:null}` returned `{}` and the rollup stored
+  `traffic_rows: 0` with no note. Unrecoverable afterwards: a re-capture only gets the rounded tier.
+  `sql()` had the check all along.
+- **An expired `CF_ANALYTICS_TOKEN` produced total silence** — the guard returned before
+  `ensureSchema`, so not even a `rollup_runs` row was written, in the one table built to tell a
+  failed job from a quiet day.
+- **Dev-channel traffic was counted as players.** `blob2 <> 'dev'` was on 3 queries; the six
+  walkthrough queries, four sim sections and every query in `sessions.js` had none, so every local
+  headless run landed in the numbers. Now 16 sites in `usage.js`, 9 in `sessions.js`.
+- **Exact rows were labelled "coarse (±10)"** — the batch-wide sample interval was applied to every
+  row of a live merge; `cfOnlySections` had the per-row form right.
+- **A weekly bucket containing one uncaptured day undercounted with no marker** — `missing` used
+  `.every()` where `coarse`/`partial` use `.some()`. Now drawn with a dashed outline rather than
+  flipping to `.some()`, which would blank a mostly-complete bucket and be a worse lie.
+- **One transient referrer-query failure returned a 500 for the whole page** — that fetch was
+  awaited outside the `section()` wrapper every other breakdown degrades through.
+- **Session duration read the clock that resets on reload** (`double5`/`t_page` instead of
+  `double6`/`t_session`), making "Lasted ≥" and the Median/Mean/Longest tiles a weaker floor than
+  designed. **And the session list truncated at 100 with no note.**
+- **Removed the legacy `?token=` dashboard credential** five days before its own deadline, and
+  deleted the Worker secret with it *(OWNER RULING, 2026-09-20)*. It was the only credential check
+  on that Worker with no rate limit — a wrong password charges 1 of 5 per minute, a wrong token
+  charged nothing — and the bookmark migration it existed for had already happened.
+
+Ops-only — no simulator change, so no `changelog.html` entry and no version bump.
 
 ## [Alpha 1.7.6-rc3] — 2026-09-19
 

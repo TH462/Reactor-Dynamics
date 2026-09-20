@@ -312,6 +312,51 @@
     return true;
   }
 
+  /* THE REFERRING HOST -- AND NOTHING ELSE OF THE URL (2026-09-20).
+   *
+   * Cloudflare's injected RUM beacon already reports a referrer and a country, and
+   * privacy.html discloses both. What it does not do is survive a content blocker, and a
+   * blocked beacon is not a missing visitor -- it is a missing ROW, which is the one
+   * failure an analytics stream cannot see in itself. Recording the same two facts on
+   * this path, which is not blocked, is what lets the site's own stream answer the
+   * question at all *(OWNER RULING, 2026-09-20: "We don't need to change privacy.html.
+   * We are just doing what cloudflare already does.")*.
+   *
+   * HOST ONLY. `document.referrer` is a full URL -- path, query and fragment included --
+   * and a search page's query string is the visitor's own words. The hostname is the
+   * entire answer to "where did they come from", so the rest never leaves this page.
+   * `URL.hostname` drops the scheme, any userinfo, the port, the path and the query in
+   * one step; the regex below is the fallback for a runtime without `URL` and applies
+   * the same cuts by hand. The final shape test is the load-bearing line: a hostname
+   * cannot contain '/', '?', '#', ':' or a space, so a value carrying one is dropped
+   * WHOLE rather than trimmed into something host-shaped.
+   *
+   * IT IS AN ENVELOPE FIELD, NOT A PROP, on two counts. It is a fact about the PAGE
+   * LOAD and is constant for every event in the batch -- the same shape as `release`,
+   * `channel` and `build`, which are already envelope fields -- and invariant (d)
+   * governs prop VALUES, which this is not. The receiver re-applies the identical
+   * host-only cut on arrival (worker/src/index.js `hostOf`), because anything can POST
+   * to that endpoint and the sanitiser that the promise rests on is the one at the far
+   * end, not this one.
+   */
+  function refHost() {
+    var r = '';
+    try { r = (G.document && G.document.referrer) || ''; } catch (e) { return ''; }
+    if (!r) return '';
+    var h = '';
+    try { if (G.URL) h = new G.URL(String(r)).hostname || ''; } catch (e) { h = ''; }
+    if (!h) {
+      var m = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/([^/?#]*)/.exec(String(r));
+      h = m ? String(m[1]).replace(/^[^@]*@/, '').replace(/:\d+$/, '') : '';
+    }
+    h = String(h).toLowerCase();
+    // 253 is DNS's own limit on a hostname, so nothing real is refused by it; the bound
+    // is there to stop an absurd value being stored at all, and the character class on
+    // the same line is what stops a path or a query riding in.
+    if (!h || h.length > 253 || !/^[a-z0-9.-]+$/.test(h)) return '';
+    return h;
+  }
+
   function flush(useBeacon) {
     if (timer && G.clearTimeout) { G.clearTimeout(timer); timer = null; }
     var url = endpoint();
@@ -321,6 +366,8 @@
       release: (typeof G.RD_RELEASE === 'string') ? G.RD_RELEASE : null,
       build: (typeof G.RD_VERSION === 'string') ? G.RD_VERSION : null,
       channel: (typeof G.RD_CHANNEL === 'string') ? G.RD_CHANNEL : null,
+      // The HOST of document.referrer and never the URL -- see refHost() above.
+      ref: refHost(),
       events: queue.splice(0, queue.length),
     });
     try {
@@ -551,6 +598,7 @@
     widthBucket: widthBucket,
     // Test seams. Not for production callers.
     _clean: clean,
+    _refHost: refHost,
     _queue: function () { return queue; },
     _autoInit: autoInit,
     PAGES: PAGES,

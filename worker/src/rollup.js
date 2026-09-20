@@ -49,6 +49,39 @@ import { sql, gql, ACCOUNT, SITE_TAG, DATASET } from './cfapi.js';
  * so the ruling has one home and the number cannot drift between the two tables. */
 export const RETAIN_DAYS = 730;
 
+/* WHEN OUR OWN EDGE COLUMNS STARTED EXISTING (2026-09-20). cfapi.js's COLUMNS_SINCE
+ * idiom, applied to the columns worker/src/index.js appended on that date — blob9
+ * (referrer host), blob10 (referrer kind), blob11 (country), blob12 (bot kind) and
+ * double11 (bot). It lives here rather than in cfapi.js because this file is their only
+ * consumer: the dashboard still reports the Cloudflare-derived series and nothing on
+ * that page names these columns.
+ *
+ * WHY THIS VALUE IS SAFE. A column cannot appear on a row written before the code that
+ * writes it was authored, and that was 2026-09-20; this floor is the following midnight,
+ * so it errs LATE by up to a day rather than admitting one pre-column row. The usual
+ * hazard with a hand-set floor is the opposite one — a floor below the deploy silently
+ * drags pre-column rows in, where a short blobs array reads back as '' and a short
+ * doubles array as 0, i.e. as "no referrer, not a bot" (cfapi.js measured exactly that
+ * on the live dataset). That hazard does not apply here, and for a structural reason
+ * rather than a lucky date: `ref_kind` is NEVER '' on a row this Worker writes, so a
+ * pre-column row identifies itself and fetchOwnTraffic drops it whatever the floor says.
+ * The floor's remaining job is to keep the scanned window small and to write the
+ * boundary down.
+ *
+ * ⚠ A FLOOR CANNOT STOP A 422. Naming a column that no row in the result set carries is
+ * an ERROR, not a null — so the probe query in fetchOwnTraffic runs first and a failure
+ * is recorded as `own-columns-absent` instead of taking the day's run down with it.
+ * Between this change landing and the Worker actually being deployed, that note is what
+ * every run will carry, and it is the correct reading rather than a fault: the columns
+ * are not live yet.
+ *
+ * Like cfapi.js's, this constant expires. Analytics Engine retention is a fixed three
+ * months, so once no row older than 2026-12-21 survives, every remaining row carries the
+ * columns and the floor and the probe can both be deleted. */
+export const OWN_COLUMNS_SINCE_TS = '2026-09-21 00:00:00';
+// The cast is required, not decorative: `timestamp >= '<string>'` is a 422 (cfapi.js).
+export const OWN_COLUMNS_SINCE = `toDateTime('${OWN_COLUMNS_SINCE_TS}')`;
+
 /* The dimension tuple each table is keyed on. `INSERT OR REPLACE` against these makes the
  * job IDEMPOTENT: a retry, a manual trigger, an overlapping schedule or a same-day re-run
  * rewrites the row instead of adding a second one. That is the failure this design is
@@ -57,6 +90,15 @@ export const RETAIN_DAYS = 730;
 const TRAFFIC_KEY = ['day', 'country', 'referrer_host', 'referrer_kind', 'path',
                      'device', 'browser', 'os', 'nav_type', 'bot'];
 const USAGE_KEY = ['day', 'channel', 'release', 'event', 'key_str', 'plant'];
+/* OUR OWN traffic series (2026-09-20), keyed on the dimensions the Cloudflare-derived
+ * one is keyed on MINUS the three only a RUM beacon can see (browser, OS, navigation
+ * type) and PLUS `channel`, which our stream has and Cloudflare's does not — without it
+ * the test site's page views would be added to the production site's. `path` becomes
+ * `page`, because the client sends a closed enum of page ids and never a path
+ * (site/telemetry.js PAGES); that is a narrower fact on purpose and it is the one
+ * invariant (d) permits. */
+const OWN_KEY = ['day', 'channel', 'country', 'referrer_host', 'referrer_kind', 'page',
+                 'bot', 'bot_kind'];
 
 export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS traffic_daily (
@@ -70,6 +112,36 @@ export const SCHEMA = [
      key_str TEXT NOT NULL, plant TEXT NOT NULL,
      n INTEGER NOT NULL, sessions INTEGER NOT NULL,
      PRIMARY KEY (${USAGE_KEY.join(', ')}))`,
+  /* A TABLE OF ITS OWN, AND NOT A SECOND WRITER INTO traffic_daily (2026-09-20).
+   *
+   * The two series measure the same thing by different means and are BOTH incomplete, in
+   * opposite directions. traffic_daily comes from Cloudflare's injected RUM beacon, which
+   * a content blocker removes — so it under-counts, and by an unknown amount that is
+   * itself unmeasurable from inside it. own_traffic_daily comes from this site's own
+   * telemetry POST, which is not blocked by the usual lists but only fires where
+   * JavaScript runs and the visitor has not opted out.
+   *
+   * Merging them would destroy the only thing that makes either trustworthy: that each
+   * is comparable WITH ITSELF over time. So they sit side by side and the difference
+   * between them is the measurement. AUTHORITY DOES NOT MOVE IN THIS CHANGE — the
+   * dashboard keeps reporting the Cloudflare numbers, and what decides whether it ever
+   * stops is weeks of the two series next to each other, not this comment.
+   *
+   * ⚠ EXPECT THIS ONE TO READ HIGHER once it is live. It is not blocked, so a rise on the
+   * day it starts working is the block rate becoming visible — it is NOT new traffic, and
+   * anyone comparing a before and an after across that date will read it as growth.
+   *
+   * `views` rather than `pageloads`, and `sessions` rather than `visits`: different
+   * words for deliberately different measurements. A "visit" is Cloudflare's own
+   * attribution of a session to its landing page; `sessions` here is a count of distinct
+   * sessionStorage ids that produced a row in that group, which is not the same rule and
+   * must not be charted as though it were. */
+  `CREATE TABLE IF NOT EXISTS own_traffic_daily (
+     day TEXT NOT NULL, channel TEXT NOT NULL, country TEXT NOT NULL,
+     referrer_host TEXT NOT NULL, referrer_kind TEXT NOT NULL, page TEXT NOT NULL,
+     bot INTEGER NOT NULL, bot_kind TEXT NOT NULL,
+     views INTEGER NOT NULL, sessions INTEGER NOT NULL,
+     PRIMARY KEY (${OWN_KEY.join(', ')}))`,
   /* One row per completed run, so "did it run" and "was that day captured exact" are
    * answerable without inferring either from the presence of rows. A day with genuinely
    * no traffic writes no traffic rows, and is indistinguishable from a day the job never
@@ -79,6 +151,7 @@ export const SCHEMA = [
      usage_rows INTEGER NOT NULL, coarse INTEGER NOT NULL, note TEXT NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS traffic_day ON traffic_daily (day)`,
   `CREATE INDEX IF NOT EXISTS usage_day ON usage_daily (day)`,
+  `CREATE INDEX IF NOT EXISTS own_traffic_day ON own_traffic_daily (day)`,
 ];
 
 export async function ensureSchema(db) {
@@ -197,6 +270,78 @@ export async function fetchUsage(token, win, sqlFn) {
   }));
 }
 
+/* ONE EASTERN DAY OF OUR OWN PAGE VIEWS (2026-09-20).
+ *
+ * TWO QUERIES, NOT ONE, and the reason is a silent collision rather than tidiness. The
+ * shell sends no `page_view` — its arrival is `session_start`, which carries more — so a
+ * table built from page_view alone would have no row for the simulator itself, which is
+ * the page the whole funnel is about. session_start is therefore folded in as
+ * page = 'shell'. But its blob5 is the INITIAL STATE, not a page: grouped in the same
+ * query, two starting conditions would map to the same primary key and `INSERT OR
+ * REPLACE` would keep the last and drop the other's views, saying nothing. Grouping it
+ * WITHOUT blob5 in a query of its own makes each group exact, and the two result sets
+ * cannot collide because no page_view is ever 'shell'.
+ *
+ * `sum(_sample_interval)` and never `count()` — the dataset is sampled and count()
+ * reports rows stored rather than events that happened (fetchUsage carries the same
+ * rule, as does the analytics page's header).
+ *
+ * THE PROBE RUNS FIRST. Analytics Engine types columns PER RESULT SET, so naming a
+ * column that no matching row carries is a 422 and not a null; between this landing and
+ * the Worker being deployed that is every single day. A caught probe returns
+ * `own-columns-absent` and no rows, which the run record keeps — a deploy gap then reads
+ * as a reason instead of as a quiet day or a broken job. */
+export async function fetchOwnTraffic(token, win, sqlFn) {
+  const run = sqlFn || sql;
+  const from = iso(win.fromMs).replace('T', ' ').replace('Z', '');
+  const to = iso(win.toMs).replace('T', ' ').replace('Z', '');
+  const where = `timestamp >= toDateTime('${from}') AND timestamp < toDateTime('${to}')`
+    + ` AND timestamp >= ${OWN_COLUMNS_SINCE}`;
+  const dims = `blob2 AS channel, blob9 AS ref_host, blob10 AS ref_kind,
+                blob11 AS country, blob12 AS bot_kind, double11 AS bot`;
+  const aggs = `sum(_sample_interval) AS n, count(DISTINCT blob4) AS sessions`;
+  const grp = `channel, ref_host, ref_kind, country, bot_kind, bot`;
+
+  try {
+    await run(token, `SELECT blob10 AS ref_kind, double11 AS bot
+                      FROM ${DATASET} WHERE ${where} LIMIT 1`);
+  } catch (e) {
+    return { rows: [], note: 'own-columns-absent' };
+  }
+
+  const views = await run(token,
+    `SELECT blob5 AS page, ${dims}, ${aggs} FROM ${DATASET}
+     WHERE ${where} AND blob1 = 'page_view' GROUP BY page, ${grp}`);
+  const shell = await run(token,
+    `SELECT ${dims}, ${aggs} FROM ${DATASET}
+     WHERE ${where} AND blob1 = 'session_start' GROUP BY ${grp}`);
+
+  /* A ROW WITH AN EMPTY ref_kind PREDATES THE COLUMNS and is dropped, not stored as a
+   * direct visit from an unknown country. Every row this Worker writes carries one of
+   * three non-empty kinds (worker/src/index.js), so this test is exact and needs no
+   * clock — which is what makes the floor above a convenience rather than the guard. */
+  let predating = 0;
+  const rows = [];
+  const take = (r, page) => {
+    if (!r.ref_kind) { predating++; return; }
+    rows.push({
+      day: win.day,
+      channel: r.channel || '',
+      country: r.country || '',
+      referrer_host: r.ref_host || '',
+      referrer_kind: r.ref_kind,
+      page: page,
+      bot: num(r.bot) ? 1 : 0,
+      bot_kind: r.bot_kind || '',
+      views: num(r.n),
+      sessions: num(r.sessions),
+    });
+  };
+  views.forEach((r) => take(r, r.page || ''));
+  shell.forEach((r) => take(r, 'shell'));
+  return { rows, note: predating ? 'own-predating:' + predating : '' };
+}
+
 function upsert(db, table, key, rows) {
   if (!rows.length) return [];
   const cols = Object.keys(rows[0]);
@@ -218,30 +363,56 @@ export async function runRollup(env, nowMs, deps) {
   const db = env.STATS;
   const token = env.CF_ANALYTICS_TOKEN;
   const win = dayWindow(nowMs == null ? Date.now() : nowMs);
-  const out = { day: win.day, traffic_rows: 0, usage_rows: 0, coarse: 1, notes: [] };
+  const out = { day: win.day, traffic_rows: 0, usage_rows: 0, own_rows: 0, coarse: 1, notes: [] };
   if (!db) { out.notes.push('no STATS binding'); return out; }
-  if (!token) { out.notes.push('no CF_ANALYTICS_TOKEN'); return out; }
 
   await ensureSchema(db);
   const batch = [];
 
-  try {
-    const t = await fetchTraffic(token, win, deps.gql);
-    out.traffic_rows = t.rows.length;
-    out.coarse = t.coarse;
-    if (t.truncated) out.notes.push('limit-hit');
-    /* A coarse capture is STORED AND MARKED, never dropped and never passed off as exact.
-     * Dropping it would leave a hole that reads as "no traffic"; storing it silently would
-     * put rounded numbers into the one place that is supposed to be exact. */
-    if (t.coarse > 1) out.notes.push('coarse:' + t.coarse);
-    batch.push(...upsert(db, 'traffic_daily', TRAFFIC_KEY, t.rows));
-  } catch (e) { out.notes.push('traffic failed: ' + String(e.message || e).slice(0, 120)); }
+  /* A missing token is a run that CANNOT PROCEED, not a run that never happened — the
+   * `rollup_runs` row below still gets written with the reason, same as a run whose fetch
+   * throws. Returning early here (as this used to) skipped `ensureSchema` and the whole
+   * batch, so an expired token produced total silence: no row, no note, nothing for
+   * `scheduled()` to log (it deliberately logs nothing either). The `!db` guard above stays
+   * an early return — with no D1 binding there is genuinely nothing to write to. */
+  if (!token) {
+    out.notes.push('no CF_ANALYTICS_TOKEN');
+  } else {
+    try {
+      const t = await fetchTraffic(token, win, deps.gql);
+      out.traffic_rows = t.rows.length;
+      out.coarse = t.coarse;
+      if (t.truncated) out.notes.push('limit-hit');
+      /* A coarse capture is STORED AND MARKED, never dropped and never passed off as exact.
+       * Dropping it would leave a hole that reads as "no traffic"; storing it silently would
+       * put rounded numbers into the one place that is supposed to be exact. */
+      if (t.coarse > 1) out.notes.push('coarse:' + t.coarse);
+      batch.push(...upsert(db, 'traffic_daily', TRAFFIC_KEY, t.rows));
+    } catch (e) { out.notes.push('traffic failed: ' + String(e.message || e).slice(0, 120)); }
 
-  try {
-    const u = await fetchUsage(token, win, deps.sql);
-    out.usage_rows = u.length;
-    batch.push(...upsert(db, 'usage_daily', USAGE_KEY, u));
-  } catch (e) { out.notes.push('usage failed: ' + String(e.message || e).slice(0, 120)); }
+    try {
+      const u = await fetchUsage(token, win, deps.sql);
+      out.usage_rows = u.length;
+      batch.push(...upsert(db, 'usage_daily', USAGE_KEY, u));
+    } catch (e) { out.notes.push('usage failed: ' + String(e.message || e).slice(0, 120)); }
+
+    /* OUR OWN traffic, into its own table (2026-09-20). A third fetch and a third
+     * upsert, deliberately NOT a second writer into traffic_daily — see the schema.
+     *
+     * `own:N` is pushed UNCONDITIONALLY, success or failure, because rollup_runs gained
+     * no column for it: `CREATE TABLE IF NOT EXISTS` does not add a column to a table
+     * that already exists in the live database, and there is no migration step here. So
+     * the count rides in the note, where `own:0` beside `own-columns-absent` is a
+     * different fact from a bare `own:0`, and both are different from the note being
+     * absent entirely — which would mean this code never ran. */
+    try {
+      const o = await fetchOwnTraffic(token, win, deps.sql);
+      out.own_rows = o.rows.length;
+      if (o.note) out.notes.push(o.note);
+      batch.push(...upsert(db, 'own_traffic_daily', OWN_KEY, o.rows));
+    } catch (e) { out.notes.push('own traffic failed: ' + String(e.message || e).slice(0, 120)); }
+    out.notes.push('own:' + out.own_rows);
+  }
 
   batch.push(db.prepare(
     `INSERT OR REPLACE INTO rollup_runs (day, ran_at, traffic_rows, usage_rows, coarse, note)
@@ -254,6 +425,7 @@ export async function runRollup(env, nowMs, deps) {
   const horizon = etDay(win.fromMs - RETAIN_DAYS * 86400000);
   batch.push(db.prepare('DELETE FROM traffic_daily WHERE day < ?').bind(horizon));
   batch.push(db.prepare('DELETE FROM usage_daily WHERE day < ?').bind(horizon));
+  batch.push(db.prepare('DELETE FROM own_traffic_daily WHERE day < ?').bind(horizon));
   batch.push(db.prepare('DELETE FROM rollup_runs WHERE day < ?').bind(horizon));
   out.pruned_before = horizon;
 
