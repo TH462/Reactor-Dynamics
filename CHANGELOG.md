@@ -42,6 +42,51 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `token-leak` injection was silently blind (its anchor was the deleted line) and is repointed.
   Ops-only — no simulator change, so no `changelog.html` entry and no version bump.
 
+
+### Added
+- **Ops dashboard: an "All" range preset** (2026-09-20, owner request) opening the window on the
+  first day the server recorded, through today. Reuses `storeRange()`'s own `first` rather than
+  re-querying, renders only when the store is non-empty, and is clamped to `RETAIN_DAYS` so it can
+  never hand the picker a window `stats.dayRange` then rejects.
+
+### Fixed
+- **The ops dashboard counted bot traffic in every live "today" figure** while every closed day
+  excluded it (`stats.js` filters `bot = 0`) — so the page's own Bots section printed that it was
+  the only section including bots, which was false for the live half of all of them. Excluded on
+  the returned rows rather than by inventing an unconfirmed RUM filter key; the Bots section stays
+  exempt, because filtering the column you group by is the exemption `stats.js` already makes.
+- **An uncaptured day printed a confident conclusion drawn from its own absence.**
+  `ext.every(r => r.kind === 'direct')` is `true` on an empty array, so a day the nightly rollup
+  never ran rendered "nothing external referred anyone — that is a finding, not a gap in the data"
+  while the same page's by-day table marked the date no-data.
+- **A failed Cloudflare GraphQL call could be written into permanent history as a quiet day.**
+  `cfapi.js`'s `gql()` never checked `res.ok` — only a non-empty `errors` array — so a 403/429/5xx
+  shaped `{success:false, errors:[], result:null}` returned `{}` and the rollup stored
+  `traffic_rows: 0` with no note. Unrecoverable afterwards: a re-capture only gets the rounded tier.
+  `sql()` had the check all along.
+- **An expired `CF_ANALYTICS_TOKEN` produced total silence** — the guard returned before
+  `ensureSchema`, so not even a `rollup_runs` row was written, in the one table built to tell a
+  failed job from a quiet day.
+- **Dev-channel traffic was counted as players.** `blob2 <> 'dev'` was on 3 queries; the six
+  walkthrough queries, four sim sections and every query in `sessions.js` had none, so every local
+  headless run landed in the numbers. Now 16 sites in `usage.js`, 9 in `sessions.js`.
+- **Exact rows were labelled "coarse (±10)"** — the batch-wide sample interval was applied to every
+  row of a live merge; `cfOnlySections` had the per-row form right.
+- **A weekly bucket containing one uncaptured day undercounted with no marker** — `missing` used
+  `.every()` where `coarse`/`partial` use `.some()`. Now drawn with a dashed outline rather than
+  flipping to `.some()`, which would blank a mostly-complete bucket and be a worse lie.
+- **One transient referrer-query failure returned a 500 for the whole page** — that fetch was
+  awaited outside the `section()` wrapper every other breakdown degrades through.
+- **Session duration read the clock that resets on reload** (`double5`/`t_page` instead of
+  `double6`/`t_session`), making "Lasted ≥" and the Median/Mean/Longest tiles a weaker floor than
+  designed. **And the session list truncated at 100 with no note.**
+- **Removed the legacy `?token=` dashboard credential** five days before its own deadline, and
+  deleted the Worker secret with it *(OWNER RULING, 2026-09-20)*. It was the only credential check
+  on that Worker with no rate limit — a wrong password charges 1 of 5 per minute, a wrong token
+  charged nothing — and the bookmark migration it existed for had already happened.
+
+Ops-only — no simulator change, so no `changelog.html` entry and no version bump.
+
 ## [Alpha 1.7.6-rc3] — 2026-09-19
 
 ### Added

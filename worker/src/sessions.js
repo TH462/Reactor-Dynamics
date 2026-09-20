@@ -97,7 +97,7 @@ export async function sessionList(env, url) {
   if (!apiToken) return html(head + '<h1>Sessions</h1><p class="warn">No '
     + '<span class="mono">CF_ANALYTICS_TOKEN</span> secret is set on this Worker.</p></body></html>');
 
-  let body;
+  let body, truncated = false;
   try {
     // Three queries rather than one: Analytics Engine SQL has no subqueries, and the
     // fields wanted here live on different event rows. Merged by session id below.
@@ -111,14 +111,18 @@ export async function sessionList(env, url) {
       //     422 "cannot use the String type as argument 1 in max()". There is no
       //     any()/argMax() here either, so the string columns come from the second
       //     query instead, where session_start already carries them.
+      // `blob2 <> 'dev'` throughout this file (OWNER RULING, 2026-09-20): these pages
+      // claim to show what players do, and the dev channel is a local checkout, `file://`
+      // or a static server — i.e. an agent's headless run, never a real visitor. It needs
+      // no COLUMNS_SINCE-style probe: blob2/channel is populated on every row.
       sql(apiToken, `SELECT blob4 AS session,
               min(timestamp) AS first_seen, max(timestamp) AS last_seen,
               count() AS raw, sum(_sample_interval) AS est
-         FROM ${DATASET} WHERE ${since}
+         FROM ${DATASET} WHERE blob2 <> 'dev' AND ${since}
          GROUP BY session ORDER BY first_seen DESC LIMIT 100`),
       sql(apiToken, `SELECT blob4 AS session, blob5 AS initial_state,
               blob3 AS release, blob6 AS plant
-         FROM ${DATASET} WHERE blob1 = 'session_start' AND ${since}
+         FROM ${DATASET} WHERE blob1 = 'session_start' AND blob2 <> 'dev' AND ${since}
          GROUP BY session, initial_state, release, plant`),
       /* The client's own elapsed clock, needed because the WRITE-TIME span is 0 for any
        * session whose events all landed in one batch — measured: two real browser
@@ -131,14 +135,17 @@ export async function sessionList(env, url) {
        */
       (async () => {
         const p = await sql(apiToken, `SELECT count() AS n FROM ${DATASET}
-            WHERE ${since} AND timestamp >= ${COLUMNS_SINCE}`);
+            WHERE blob2 <> 'dev' AND ${since} AND timestamp >= ${COLUMNS_SINCE}`);
         if (!(num(p[0] && p[0].n) > 0)) return [];
-        return sql(apiToken, `SELECT blob4 AS session, max(double5) AS t_last
-           FROM ${DATASET} WHERE ${since} AND timestamp >= ${COLUMNS_SINCE}
+        // double6 is t_session — seconds since the session id was MINTED, which
+        // survives a reload; double5/t_page resets on every reload and is the weaker
+        // floor. sessionDetail() below already reads double6 for the same reason.
+        return sql(apiToken, `SELECT blob4 AS session, max(double6) AS t_last
+           FROM ${DATASET} WHERE blob2 <> 'dev' AND ${since} AND timestamp >= ${COLUMNS_SINCE}
            GROUP BY session`);
       })(),
       sql(apiToken, `SELECT blob4 AS session, blob5 AS last_panel, max(double1) AS secs
-         FROM ${DATASET} WHERE blob1 = 'session_end' AND ${since}
+         FROM ${DATASET} WHERE blob1 = 'session_end' AND blob2 <> 'dev' AND ${since}
          GROUP BY session, last_panel`),
     ]);
 
@@ -148,6 +155,11 @@ export async function sessionList(env, url) {
     starts.forEach((r) => { if (!startBy[r.session]) startBy[r.session] = r; });
     ends.forEach((r) => { endBy[r.session] = r; });
     (elapsed || []).forEach((r) => { lastBy[r.session] = num(r.t_last); });
+
+    // The `counts` query carries `LIMIT 100` (dashboard.js's pattern, `verbatim`d rather
+    // than imported — this file does not touch that one). A full page means the oldest
+    // sessions in the window were silently cut off unless the reader is told.
+    truncated = counts.length >= 100;
 
     const rows = counts.map((r) => {
       const end = endBy[r.session];
@@ -199,6 +211,8 @@ export async function sessionList(env, url) {
 
   return html(head
     + '<h1>Sessions <span class="muted">— last ' + days + ' days</span></h1>'
+    + (truncated ? '<p class="warn">Showing the most recent 100 sessions — the window holds '
+      + 'more; narrow the day range to see the rest.</p>' : '')
     + '<p class="muted">A session is a browser TAB, not a sitting: the id lives in '
     + 'sessionStorage, so a tab left open spans hours — the longest here is 11h 34m and '
     + 'nobody played for 11 hours. <b>Lasted ≥</b> is a FLOOR, the better of two lower '
@@ -244,7 +258,7 @@ export async function sessionDetail(env, url, sid) {
      * session for ever.
      */
     const probe = await sql(apiToken, `SELECT count() AS n FROM ${DATASET}
-        WHERE blob4 = '${sid}' AND timestamp >= ${COLUMNS_SINCE}`);
+        WHERE blob4 = '${sid}' AND blob2 <> 'dev' AND timestamp >= ${COLUMNS_SINCE}`);
     const timed = num(probe[0] && probe[0].n) > 0;
 
     /* The batch write time stays the OUTER sort — it is never wrong ACROSS batches —
@@ -266,11 +280,12 @@ export async function sessionDetail(env, url, sid) {
              double1 AS secs, double2 AS sim, double3 AS mode,
              double5 AS t_page, double6 AS t_sess, double7 AS blocked, blob7 AS code,
              _sample_interval AS si
-        FROM ${DATASET} WHERE blob4 = '${sid}'
+        FROM ${DATASET} WHERE blob4 = '${sid}' AND blob2 <> 'dev'
         ORDER BY timestamp ASC, t_sess ASC, t_page ASC LIMIT 500`
       : `SELECT timestamp, blob1 AS event, blob5 AS key,
              double1 AS secs, double2 AS sim, double3 AS mode, _sample_interval AS si
-        FROM ${DATASET} WHERE blob4 = '${sid}' ORDER BY timestamp ASC LIMIT 500`);
+        FROM ${DATASET} WHERE blob4 = '${sid}' AND blob2 <> 'dev'
+        ORDER BY timestamp ASC LIMIT 500`);
 
     // A DROP in t_page is a page reload: the stamp is relative to page load while the
     // session id lives in sessionStorage and survives one. Draw it, rather than let a

@@ -220,28 +220,37 @@ export async function runRollup(env, nowMs, deps) {
   const win = dayWindow(nowMs == null ? Date.now() : nowMs);
   const out = { day: win.day, traffic_rows: 0, usage_rows: 0, coarse: 1, notes: [] };
   if (!db) { out.notes.push('no STATS binding'); return out; }
-  if (!token) { out.notes.push('no CF_ANALYTICS_TOKEN'); return out; }
 
   await ensureSchema(db);
   const batch = [];
 
-  try {
-    const t = await fetchTraffic(token, win, deps.gql);
-    out.traffic_rows = t.rows.length;
-    out.coarse = t.coarse;
-    if (t.truncated) out.notes.push('limit-hit');
-    /* A coarse capture is STORED AND MARKED, never dropped and never passed off as exact.
-     * Dropping it would leave a hole that reads as "no traffic"; storing it silently would
-     * put rounded numbers into the one place that is supposed to be exact. */
-    if (t.coarse > 1) out.notes.push('coarse:' + t.coarse);
-    batch.push(...upsert(db, 'traffic_daily', TRAFFIC_KEY, t.rows));
-  } catch (e) { out.notes.push('traffic failed: ' + String(e.message || e).slice(0, 120)); }
+  /* A missing token is a run that CANNOT PROCEED, not a run that never happened — the
+   * `rollup_runs` row below still gets written with the reason, same as a run whose fetch
+   * throws. Returning early here (as this used to) skipped `ensureSchema` and the whole
+   * batch, so an expired token produced total silence: no row, no note, nothing for
+   * `scheduled()` to log (it deliberately logs nothing either). The `!db` guard above stays
+   * an early return — with no D1 binding there is genuinely nothing to write to. */
+  if (!token) {
+    out.notes.push('no CF_ANALYTICS_TOKEN');
+  } else {
+    try {
+      const t = await fetchTraffic(token, win, deps.gql);
+      out.traffic_rows = t.rows.length;
+      out.coarse = t.coarse;
+      if (t.truncated) out.notes.push('limit-hit');
+      /* A coarse capture is STORED AND MARKED, never dropped and never passed off as exact.
+       * Dropping it would leave a hole that reads as "no traffic"; storing it silently would
+       * put rounded numbers into the one place that is supposed to be exact. */
+      if (t.coarse > 1) out.notes.push('coarse:' + t.coarse);
+      batch.push(...upsert(db, 'traffic_daily', TRAFFIC_KEY, t.rows));
+    } catch (e) { out.notes.push('traffic failed: ' + String(e.message || e).slice(0, 120)); }
 
-  try {
-    const u = await fetchUsage(token, win, deps.sql);
-    out.usage_rows = u.length;
-    batch.push(...upsert(db, 'usage_daily', USAGE_KEY, u));
-  } catch (e) { out.notes.push('usage failed: ' + String(e.message || e).slice(0, 120)); }
+    try {
+      const u = await fetchUsage(token, win, deps.sql);
+      out.usage_rows = u.length;
+      batch.push(...upsert(db, 'usage_daily', USAGE_KEY, u));
+    } catch (e) { out.notes.push('usage failed: ' + String(e.message || e).slice(0, 120)); }
+  }
 
   batch.push(db.prepare(
     `INSERT OR REPLACE INTO rollup_runs (day, ran_at, traffic_rows, usage_rows, coarse, note)

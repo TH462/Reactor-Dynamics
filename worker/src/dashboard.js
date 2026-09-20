@@ -22,14 +22,21 @@
  * and — since the same value gated the feature-flag WRITE — a leaked URL could mutate the
  * live sim. It is replaced by a password typed once per device.
  *
- * THREE Worker secrets, none of them in this repo and none in RD_Ops:
+ * TWO Worker secrets, none of them in this repo and none in RD_Ops:
  *
  *   DASHBOARD_PASSWORD   what the operator types. Compared with `safeEqual`.
- *   DASHBOARD_HMAC_KEY   signs the session cookie. DELIBERATELY SEPARATE from the token
- *                        below: during the cutover window DASHBOARD_TOKEN is still a live
- *                        bearer credential, and signing sessions with a live bearer
- *                        credential means one leak forges the other.
- *   DASHBOARD_TOKEN      LEGACY, one-shot only — see LEGACY_TOKEN_EXCHANGE at the bottom.
+ *   DASHBOARD_HMAC_KEY   signs the session cookie.
+ *
+ * DASHBOARD_TOKEN IS GONE (2026-09-20). The cutover block that exchanged an old `?token=`
+ * bookmark for a session cookie was deleted a week early *(OWNER RULING, 2026-09-20, on the
+ * recommendation to delete it now rather than wait for the 25th: "the two rulings as
+ * recommended")*, and the secret was deleted with it. Two reasons it did not need its week:
+ * the migration it existed for had ALREADY HAPPENED -- the owner signed in with the password
+ * the same day, so his cookie was already minted -- and a review measured the exchange to be
+ * the one credential check on this Worker with NO RATE LIMIT. A wrong password burns 1 of 5
+ * per minute through LOGIN_LIMITER; a wrong token cost nothing and could be guessed for ever,
+ * which made the token strictly weaker than the password it was standing in for.
+ * DO NOT REINTRODUCE A BEARER TOKEN IN A URL.
  *
  * ROTATING `DASHBOARD_HMAC_KEY` IS THE REVOKE-ALL-DEVICES SWITCH. Every outstanding
  * cookie fails its MAC check the moment the key changes, and every device has to sign in
@@ -282,45 +289,6 @@ async function reportDetail(env, key) {
     + '</body></html>');
 }
 
-/* ================================================= LEGACY_TOKEN_EXCHANGE — REMOVE AFTER
- * 2026-09-25 (7 days from the cutover), then `wrangler secret put DASHBOARD_TOKEN` with a
- * new value, or delete the secret.
- *
- * A bookmark carrying the CURRENT token is exchanged, ONCE, for a session cookie and
- * redirected to the same path with the token stripped — so the owner's existing bookmark
- * rewrites itself the first time he opens it and the secret leaves the address bar
- * without him retyping anything.
- *
- * That is ALL it does. `?token=` is no longer standing authentication: the redirect
- * carries no page, and a request that presents the token again gets another redirect
- * rather than content. THE ORIGINAL PLAN WAS SELF-CONTRADICTORY — it rotated the token in
- * the same step and still promised old bookmarks would migrate, which cannot both happen,
- * because rotating burns every URL the old value ever appeared in. Rotation comes after
- * this block is deleted, deliberately, once the bookmarks have moved.
- */
-async function legacyTokenExchange(env, url, session) {
-  const tok = url.searchParams.get('token');
-  const matches = !!tok && !!env.DASHBOARD_TOKEN && safeEqual(tok, env.DASHBOARD_TOKEN);
-  /* A token that is neither valid nor accompanied by a session is not exchanged — it
-   * falls through to the login page. Redirecting it too would make this endpoint answer
-   * differently for a right and a wrong guess, which is an oracle nobody needs. */
-  if (!matches && !session) return null;
-  const clean = new URL(url.toString());
-  clean.searchParams.delete('token');
-  const headers = {
-    Location: clean.pathname + clean.search,
-    'Cache-Control': 'no-store',
-    'Referrer-Policy': 'no-referrer',
-  };
-  /* ALREADY SIGNED IN AND STILL CARRYING THE TOKEN: strip it, mint nothing. This is the
-   * case the first cut missed — the exchange fired once, the ADDRESS BAR came out clean,
-   * and the BOOKMARK still held the secret, so every later visit served a whole dashboard
-   * at a URL bearing the credential. Redirecting whenever the parameter is present is
-   * what actually rewrites the bookmark. */
-  if (matches) headers['Set-Cookie'] = await mintCookie(env);
-  return new Response(null, { status: 302, headers });
-}
-
 export async function handleDashboard(env, url, request) {
   if (!env.DASHBOARD_PASSWORD || !env.DASHBOARD_HMAC_KEY) {
     return html('dashboard not configured — DASHBOARD_PASSWORD and DASHBOARD_HMAC_KEY '
@@ -370,10 +338,6 @@ export async function handleDashboard(env, url, request) {
   }
 
   const session = await authed(env, request);
-  if (url.searchParams.has('token')) {
-    const exchanged = await legacyTokenExchange(env, url, session);
-    if (exchanged) return exchanged;
-  }
   if (!session) return loginPage('');
 
   const view = url.searchParams.get('view');

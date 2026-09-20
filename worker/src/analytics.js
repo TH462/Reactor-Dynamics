@@ -39,14 +39,29 @@
 import { html, PAGE_HEAD, nav, table, errBlock, dayLabel, etDay, etDayStartMs,
          windowStartMs, RUM_FULL_RES_DAYS, barChart, bucketDays, section, esc } from './render.js';
 import { gql, ACCOUNT, SITE_TAG } from './cfapi.js';
-import { referrerKind } from './rollup.js';
+import { referrerKind, RETAIN_DAYS } from './rollup.js';
 import { parseDay, storeRange, dailyTotals, groupBy, referrerBreakdown, trailingMean,
          periodDelta, priorRange, dayRange, prevDay, nextDay } from './stats.js';
 
 // ---------------------------------------------------------------- RUM helpers
 const num = (v) => (v == null || v === '' ? 0 : Number(v));
 
+/* `dims` always carries `bot`, even when the caller did not ask for it — the dashboard's
+ * closed-day figures (`stats.js`) are `bot = 0` for every traffic figure they return, with
+ * one deliberate exemption for `groupBy('bot', …)` (see that function's header). The live
+ * "today" half of every RUM query here used to carry NO bot filter at all, so a window
+ * reaching today silently mixed bot-included live rows into bot-excluded closed-day totals
+ * — the page's own Bots section says it is the ONLY section including bot traffic, which
+ * was false for the live half of every other one.
+ *
+ * The exclusion happens HERE-side, on the RETURNED rows (`rumRows`' `excludeBots` option),
+ * rather than as a GraphQL filter term. This file's own Web Vitals introspection note is
+ * the only confirmed schema check this account has done, and it was for the quantile
+ * fields, not a `bot:` filter clause on this dataset — writing an unconfirmed filter key
+ * would be exactly the guess `stats.js`'s header warns against. Deduped so a caller that
+ * already names `bot` itself (the dedicated Bots section) does not select it twice. */
 function rumGroup(dims, order, limit, from, to) {
+  const fullDims = /\bbot\b/.test(dims) ? dims : (dims ? dims + ' bot' : 'bot');
   return `{ viewer { accounts(filter: {accountTag: "${ACCOUNT}"}) {
     rumPageloadEventsAdaptiveGroups(limit: ${limit},
       filter: {datetime_geq: "${from}", datetime_leq: "${to}", siteTag: "${SITE_TAG}"},
@@ -54,7 +69,7 @@ function rumGroup(dims, order, limit, from, to) {
       count
       avg { sampleInterval }
       sum { visits }
-      dimensions { ${dims} }
+      dimensions { ${fullDims} }
     } } } }`;
 }
 
@@ -89,9 +104,15 @@ function vitalsGroup(dims, order, limit, from, to, quantileField) {
 // even though it is no longer rendered as a per-row column (#764 Unit 1 killed that) — the
 // by-day view combines intervals across a bucket and reading "±10" back out of a display
 // string would be reading a rendering as data.
-function rumRows(group, map, key) {
+// `opts.excludeBots` drops bot rows before summing — every call site sets it true except
+// the dedicated Bots section, which needs the bot flag intact to split on. `rumGroup`
+// always requests the `bot` dimension so there is something here to filter on.
+function rumRows(group, map, key, opts) {
   let coarse = 0;
-  const rows = (group[key || 'rumPageloadEventsAdaptiveGroups'] || []).map((r) => {
+  const excludeBots = !!(opts && opts.excludeBots);
+  const raw = group[key || 'rumPageloadEventsAdaptiveGroups'] || [];
+  const filtered = excludeBots ? raw.filter((r) => !((r.dimensions || {}).bot)) : raw;
+  const rows = filtered.map((r) => {
     const si = num((r.avg || {}).sampleInterval) || 1;
     if (si > coarse) coarse = si;
     return Object.assign(map(r.dimensions || {}), {
@@ -225,6 +246,14 @@ export async function analyticsPage(env, url) {
   const sr = await storeRange(db);   // { first, last } | null — clamps the picker
 
   const pickerMin = sr ? sr.first : null;
+  /* "ALL" (owner request, 2026-09-20) opens on the first day the store has, reusing
+   * `storeRange`'s own `first` rather than re-querying. Clamped to the retention window so
+   * a store someday older than the 800-day span `stats.dayRange` accepts could never hand
+   * the picker a window the page then rejects — today's first recorded day (2026-08-25) is
+   * nowhere near that ceiling, but the clamp is what keeps that true rather than assuming
+   * it forever. */
+  const allFloor = sr ? stepBack(today, RETAIN_DAYS - 1) : null;
+  const allFrom = sr ? (sr.first < allFloor ? allFloor : sr.first) : null;
   const picker = (fromV, toV) => '<form method="get" style="margin:0 0 8px">'
     + '<input type="hidden" name="view" value="analytics">'
     + '<label>From <input type="date" name="from" value="' + esc(fromV) + '"'
@@ -240,6 +269,8 @@ export async function analyticsPage(env, url) {
      * verbatim. `&amp;` because this is HTML, not a URL. */
     + [7, 14, 30].map((n) => '<a class="pbtn" href="?view=analytics&amp;from='
         + stepBack(today, n - 1) + '&amp;to=' + today + '">' + n + 'd</a>').join(' ')
+    + (sr ? ' <a class="pbtn" href="?view=analytics&amp;from=' + allFrom
+        + '&amp;to=' + today + '">All</a>' : '')
     + '</form>'
     + '<p class="muted">' + (sr
       ? 'Recorded history begins <b>' + esc(sr.first) + '</b>.'
@@ -289,7 +320,7 @@ export async function analyticsPage(env, url) {
     try {
       const g = rumRows(await gql(apiToken, rumGroup('datetimeHour', 'datetimeHour_ASC', 26,
         new Date(etDayStartMs(today)).toISOString(), new Date(nowMs).toISOString())),
-        (d) => ({}));
+        (d) => ({}), undefined, { excludeBots: true });
       liveToday = {
         pageloads: g.rows.reduce((s, r) => s + r.pageloads, 0),
         visits: g.rows.reduce((s, r) => s + r.visits, 0),
@@ -341,9 +372,11 @@ export async function analyticsPage(env, url) {
     bucket: b.bucket,
   });
   const legend = chart ? '<p class="muted">Hollow bar = today, live and partial · faded bar = '
-    + 'Cloudflare-coarse (±10) · dashed tick at the baseline = no data captured · solid '
-    + 'line = 7-day trailing mean of landing visits · dashed muted line = the prior, equal-'
-    + 'length period.' + (b.rows.some((r) => r.short) ? ' A bar marked <b>*</b> is short — the '
+    + 'Cloudflare-coarse (±10) · dashed outline on a bar = some days in that bucket have no '
+    + 'data captured, so the total is an undercount · dashed tick at the baseline = the whole '
+    + 'bucket has no data captured · solid line = 7-day trailing mean of landing visits · '
+    + 'dashed muted line = the prior, equal-length period.'
+    + (b.rows.some((r) => r.short) ? ' A bar marked <b>*</b> is short — the '
     + 'window does not divide evenly into ' + b.bucket + 's.' : '') + '</p>' : '';
 
   const dayTable = table(rows.map((r) => ({
@@ -379,14 +412,18 @@ export async function analyticsPage(env, url) {
     const closed = from <= closedTo ? await groupBy(db, dim, from, closedTo, Math.max(limit, 200)) : [];
     const by = new Map(closed.map((r) => [r.key, { key: r.key, pageloads: r.pageloads, visits: r.visits, coarse: r.coarse }]));
     if (includesToday) {
+      // `dim !== 'bot'` is the exemption: grouping by bot status and excluding bots would
+      // return exactly one row, always Human.
       const g = rumRows(await gql(apiToken, rumGroup(cfDims, 'count_DESC', Math.max(limit, 200), todayFromIso, todayToIso)),
-        (d) => ({ key: cfKey(d) }));
+        (d) => ({ key: cfKey(d) }), undefined, { excludeBots: dim !== 'bot' });
       // "Today" sits inside Cloudflare's 7-day full-resolution edge in practice, but that is
       // measured elsewhere, never assumed here — a coarse live slice still marks its rows.
+      // The per-row sample interval, not the batch-wide `g.coarse`, decides which MERGED
+      // key gets marked — a rounded row must not taint every other row in the same batch.
       g.rows.forEach((r) => {
         const cur = by.get(r.key) || { key: r.key, pageloads: 0, visits: 0, coarse: false };
         cur.pageloads += r.pageloads; cur.visits += r.visits;
-        if (g.coarse > 1) cur.coarse = true;
+        if (r.si > 1) cur.coarse = true;
         by.set(r.key, cur);
       });
     }
@@ -472,21 +509,33 @@ export async function analyticsPage(env, url) {
       // the lossy host-alone call this section used to make on already-aggregated data.
       const g = rumRows(await gql(apiToken, rumGroup('refererHost requestHost', 'count_DESC',
         1000, todayFromIso, todayToIso)),
-        (d) => ({ host: d.refererHost || '', kind: referrerKind(d.refererHost, d.requestHost) }));
+        (d) => ({ host: d.refererHost || '', kind: referrerKind(d.refererHost, d.requestHost) }),
+        undefined, { excludeBots: true });
       g.rows.forEach((r) => {
         // A host the store already has keeps its STORED kind; only a host today introduces
         // for the first time falls back to today's own (still fully-informed) classification.
         const cur = by.get(r.host) || { host: r.host, kind: r.kind, pageloads: 0, visits: 0, coarse: false };
         cur.pageloads += r.pageloads; cur.visits += r.visits;
-        if (g.coarse > 1) cur.coarse = true;
+        // Per-row sample interval, not the batch-wide `g.coarse` — one rounded host must
+        // not mark every other host in the same live batch.
+        if (r.si > 1) cur.coarse = true;
         by.set(r.host, cur);
       });
     }
     const rows = [...by.values()].sort((a, b2) => b2.pageloads - a.pageloads).slice(0, limit);
     return { rows, anyCoarse: rows.some((r) => r.coarse) };
   }
-  const referrerHybrid = await hybridReferrer(1000);
-  const referrerRows = referrerHybrid.rows;
+  // The fetch is made ONCE here, outside `section()`, and shared by the two sections below
+  // — it used to be `await`ed at the top level of `analyticsPage`, outside every section's
+  // try/catch, so one bad GraphQL call 500'd the whole page instead of degrading just the
+  // two sections that read it. Caught here and turned into a stored error so each section
+  // below can still render its own errBlock through `section()`, same as every other
+  // breakdown on this page.
+  let referrerRows = [];
+  let referrerErr = null;
+  try {
+    referrerRows = (await hybridReferrer(1000)).rows;
+  } catch (e) { referrerErr = e.message; }
   const referrerTable = (rows, label) => table(rows.map((r) => ({
     referer: r.host || '(direct)', kind: r.kind, pageloads: r.pageloads, visits: r.visits,
     note: r.coarse ? 'coarse (±10)' : '',
@@ -498,13 +547,19 @@ export async function analyticsPage(env, url) {
      * section is for; it excludes our own pages linking to each other (measured 2026-09-02:
      * 6 of 12 rows over 30 days were `reactordynamics.com` referring itself). */
     section('How people arrive', async () => {
+      if (referrerErr) throw new Error(referrerErr);
       const ext = referrerRows.filter((r) => r.kind !== 'internal').slice(0, 40);
+      // `ext.length > 0 &&` guards a VACUOUS TRUTH: `[].every(...)` is true on an empty
+      // array, so a day the nightly rollup never captured used to print "nothing external
+      // referred anyone" as a finding, when there was no data to draw that conclusion from
+      // at all. The sentence may only appear when there is positive evidence for it.
       return hybridSourceNote(ext.some((r) => r.coarse)) + referrerTable(ext, 'Referrer')
-        + (ext.every((r) => r.kind === 'direct')
+        + (ext.length > 0 && ext.every((r) => r.kind === 'direct')
             ? '<p class="muted">Every arrival in this window is direct or internal — nothing '
               + 'external referred anyone. That is a finding, not a gap in the data.</p>' : '');
     }),
     section('Internal navigation', async () => {
+      if (referrerErr) throw new Error(referrerErr);
       const inter = referrerRows.filter((r) => r.kind === 'internal').slice(0, 40);
       return hybridSourceNote(inter.some((r) => r.coarse)) + referrerTable(inter, 'From');
     }),
@@ -530,7 +585,8 @@ export async function analyticsPage(env, url) {
         rumGroup('countryName refererHost requestHost datetimeHour', 'count_DESC',
                  Math.min(10000, allDays.length * 24 + 48), cfFrom, cfTo)),
         (d) => ({ country: d.countryName, referer: d.refererHost || '(direct)',
-                  kind: referrerKind(d.refererHost, d.requestHost), day: etDay(d.datetimeHour) }));
+                  kind: referrerKind(d.refererHost, d.requestHost), day: etDay(d.datetimeHour) }),
+        undefined, { excludeBots: true });
       const by = new Map();
       g.rows.forEach((r) => {
         const k = [r.day, r.country, r.referer].join('');

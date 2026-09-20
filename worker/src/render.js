@@ -498,7 +498,7 @@ const GHOST_COLOR = '#8fa2b3';
  * through as zero. A null mean means "the window is not full yet or crosses a coarse/
  * uncaptured day"; drawing a line through it would show a dip that never happened.
  *
- * THREE STATUS MARKS a bar can carry without changing its height, because a bar's HEIGHT is
+ * FOUR STATUS MARKS a bar can carry without changing its height, because a bar's HEIGHT is
  * still only pageloads/visits:
  *   PARTIAL  today, live and unfinished — drawn hollow (stroke only), never solid, so a
  *            half-finished day cannot be mistaken for a closed one at a glance.
@@ -506,6 +506,10 @@ const GHOST_COLOR = '#8fa2b3';
  *   MISSING  no rollup ran for that day — drawn as a dashed tick at the baseline, never a
  *            zero-height bar, because a day with genuinely no traffic and a day the cron
  *            never ran must not look identical (`stats.js`'s whole reason for existing).
+ *   PARTIAL_MISSING  a WEEKLY or MONTHLY bucket where only SOME of its days are uncaptured —
+ *            still a bar (the days that DID capture are real, and a tick would erase them),
+ *            but the total is an undercount, so it is drawn with a dashed outline — the
+ *            other three marks have no way to say "this sum is short".
  */
 export function barChart(rows, opts) {
   opts = opts || {};
@@ -544,8 +548,14 @@ export function barChart(rows, opts) {
         const seriesLabel = si === 0 ? labelA : labelB;
         const style = r.partial
           ? 'fill="none" stroke="' + s.color + '" stroke-width="2"'
-          : 'fill="' + s.color + '"' + (r.coarse ? ' fill-opacity="0.45"' : '');
-        const flag = r.partial ? ' (today, partial)' : r.coarse ? ' (coarse, ±10)' : '';
+          : 'fill="' + s.color + '"' + (r.coarse ? ' fill-opacity="0.45"' : '')
+            // A dashed outline on top of the fill — never in place of it, the bucket's real
+            // days still drew a bar — marks a bucket where some but not all days are
+            // uncaptured, so its total is an undercount. Neither `coarse` (rounded, not
+            // short) nor `missing` (drawn as a tick, not a bar) can say this.
+            + (r.partialMissing ? ' stroke="#8fa2b3" stroke-width="1.5" stroke-dasharray="3,2"' : '');
+        const flag = r.partial ? ' (today, partial)' : r.coarse ? ' (coarse, ±10)'
+          : r.partialMissing ? ' (partial — some days in this bucket have no data captured)' : '';
         g += '<rect x="' + x + '" y="' + (PADT + plotH - h) + '" width="' + barW + '" height="' + h
           + '" rx="3" ' + style + '><title>' + esc(r.label) + ' — ' + esc(seriesLabel)
           + ': ' + v + flag + '</title></rect>';
@@ -612,9 +622,16 @@ export function barChart(rows, opts) {
  * — a 400-day pick draws about 13 bars, not 57.
  *
  * `mean`/`ghost` carry the LAST day's value in the bucket (a trend as of that bucket's
- * close) rather than an average of averages; either is null if that last day had none. The
- * three status flags are OR'd across the bucket — one rounded, uncaptured, or live-partial
- * day is enough to mark the whole bar, same convention as the existing `short` mark. */
+ * close) rather than an average of averages; either is null if that last day had none.
+ * `coarse` and `partial` are OR'd across the bucket — one rounded or live-partial day is
+ * enough to mark the whole bar, same convention as the existing `short` mark. `missing` is
+ * AND'd, not OR'd: it means the WHOLE bucket is uncaptured (drawn as a dashed tick, never a
+ * bar — see barChart), so a bucket that is mostly captured must not collapse into one. A
+ * bucket with SOME but not all days uncaptured still draws a bar — its real days are real —
+ * but the sum is an undercount, which `partialMissing` marks (drawn with a dashed outline,
+ * not OR'd into `coarse` or `missing`, because neither of those says "this total is short"
+ * and flipping `missing` to `.some()` would make a six-day bucket read as if nothing
+ * happened at all). */
 export function bucketDays(dayRows) {
   if (!dayRows || !dayRows.length) return { rows: [], bucket: 'day' };
   const n = dayRows.length;
@@ -625,6 +642,7 @@ export function bucketDays(dayRows) {
 
   const fold = (chunk, short) => {
     const first = chunk[0], last = chunk[chunk.length - 1];
+    const missingCount = chunk.filter((r) => r.missing).length;
     return {
       label: bucket === 'day' ? first.day.slice(5) + ' ' + dow(first.day)
                                : first.day.slice(5) + (short ? '*' : ''),
@@ -633,7 +651,8 @@ export function bucketDays(dayRows) {
       mean: last.mean == null ? null : last.mean,
       ghost: last.ghost == null ? null : last.ghost,
       coarse: chunk.some((r) => r.coarse),
-      missing: chunk.every((r) => r.missing),
+      missing: missingCount === chunk.length,
+      partialMissing: missingCount > 0 && missingCount < chunk.length,
       partial: chunk.some((r) => r.partial),
       short: !!short,
     };

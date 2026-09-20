@@ -145,13 +145,33 @@ function fakeUpstream(gqlRows, sqlRows, si) {
  * already-built dependency. Three modules, no cycles; this is a loader, not a bundler, and
  * it will throw rather than guess if the graph ever grows an edge it does not know. */
 var INJECT = process.argv.indexOf('--inject') >= 0;
-/* THE INJECTION: `INSERT OR REPLACE` becomes a plain `INSERT`, i.e. the job appends instead
- * of upserting. That is the production failure this runner exists for — a doubled day looks
- * exactly like a good day, with no error anywhere — so it is the one the gate has to be
- * shown to catch rather than merely claimed to. */
+/* THE INJECTIONS, one per silent failure this runner exists to catch. Each reverts a fix
+ * to its exact original defective text so the gate proves it catches the regression, not
+ * merely a change adjacent to it.
+ *
+ *   rollup.js: (1) `INSERT OR REPLACE` becomes a plain `INSERT`, i.e. the job appends
+ *   instead of upserting — a doubled day looks exactly like a good day.
+ *   (2) the `!token` guard returns BEFORE `ensureSchema`/the batch write, so an expired
+ *   token produces total silence — no `rollup_runs` row, no reason recorded (defect 2).
+ *
+ *   cfapi.js: `gql()` stops checking `res.ok`, so a 403/429/5xx shaped like
+ *   {success:false, errors:[], result:null} — an EMPTY errors array — returns {} instead
+ *   of throwing, and a day the token could not fetch is written as a quiet day (defect 1).
+ */
 function injectSrc(rel, src) {
-  if (!INJECT || rel !== 'rollup.js') return src;
-  return src.split('INSERT OR REPLACE INTO').join('INSERT INTO');
+  if (!INJECT) return src;
+  if (rel === 'rollup.js') {
+    return src
+      .split('INSERT OR REPLACE INTO').join('INSERT INTO')
+      .split("    out.notes.push('no CF_ANALYTICS_TOKEN');\n  } else {")
+      .join("    out.notes.push('no CF_ANALYTICS_TOKEN'); return out;\n  } else {");
+  }
+  if (rel === 'cfapi.js') {
+    return src.split(
+      "  if (!res.ok) throw new Error('gql HTTP ' + res.status + ': ' + text.slice(0, 200).trim());\n"
+    ).join('');
+  }
+  return src;
 }
 
 function loadEsm(ROOT, entry) {
@@ -288,6 +308,64 @@ function loadEsm(ROOT, entry) {
      /timestamp >= toDateTime/.test(sq) && /timestamp < toDateTime/.test(sq), '');
   ck('...and it sums the sample interval rather than counting stored rows',
      /sum\(_sample_interval\)/.test(sq) && !/\bcount\(\)/.test(sq), '');
+
+  /* ---------------------------------------------------------------- 7. gql() checks status */
+  head('7. gql() checks the HTTP status, not only the errors array (defect 1)');
+  /* Loaded as its OWN entry — cfapi.js has no relative imports, so this needs no stub
+   * graph — with global.fetch swapped out so the module's real HTTP layer runs, which is
+   * the thing under test here (everywhere else in this file fetch never happens at all). */
+  var modCfapi = await loadEsm(ROOT, 'cfapi.js');
+  var savedFetch = global.fetch;
+  try {
+    // Cloudflare's actual shape for a 403/429/5xx: 200-shaped JSON, EMPTY errors array.
+    // Only the status distinguishes this from a genuinely quiet day.
+    global.fetch = function () { return Promise.resolve({
+      ok: false, status: 403,
+      text: function () { return Promise.resolve(JSON.stringify({ success: false, errors: [], result: null })); },
+    }); };
+    var threw403 = false, msg403 = '';
+    try { await modCfapi.gql('tok', '{ viewer { accounts { x } } }'); }
+    catch (e) { threw403 = true; msg403 = String(e.message || e); }
+    ck('a 403 with an EMPTY errors array throws instead of returning {}',
+       threw403 && /403/.test(msg403), msg403 || '(did not throw)');
+
+    // A genuine GraphQL error (200 OK, non-empty errors) must still throw — the status
+    // check is ADDED to the errors check, never a replacement for it.
+    global.fetch = function () { return Promise.resolve({
+      ok: true, status: 200,
+      text: function () { return Promise.resolve(JSON.stringify({ errors: [{ message: 'bad query' }] })); },
+    }); };
+    var threwBad = false, msgBad = '';
+    try { await modCfapi.gql('tok', 'garbage'); }
+    catch (e) { threwBad = true; msgBad = String(e.message || e); }
+    ck('...and a 200 WITH an errors array still throws',
+       threwBad && /bad query/.test(msgBad), msgBad || '(did not throw)');
+
+    // A genuinely good response still returns the account unharmed.
+    global.fetch = function () { return Promise.resolve({
+      ok: true, status: 200,
+      text: function () { return Promise.resolve(JSON.stringify({ data: { viewer: { accounts: [{ ok: 1 }] } } })); },
+    }); };
+    var good = await modCfapi.gql('tok', '{ viewer { accounts { ok } } }');
+    ck('a genuinely good response is unaffected', good.ok === 1, JSON.stringify(good));
+  } finally { global.fetch = savedFetch; }
+
+  /* ---------------------------------------------------------------- 8. token-missing run */
+  head('8. a missing CF_ANALYTICS_TOKEN still records the run (defect 2)');
+  var dbNoTok = makeDb();
+  var envNoTok = { STATS: dbNoTok, CF_ANALYTICS_TOKEN: '' };
+  var upNoTok = fakeUpstream(ROWS, USAGE, 1);
+  var rNoTok = await mod.runRollup(envNoTok, NOW, upNoTok);
+  ck('the run reports the reason and zero rows',
+     rNoTok.traffic_rows === 0 && rNoTok.usage_rows === 0 && /no CF_ANALYTICS_TOKEN/.test(rNoTok.notes.join(';')),
+     JSON.stringify(rNoTok));
+  ck('a rollup_runs ROW IS WRITTEN ANYWAY — a missing day must be distinguishable from a quiet one',
+     dbNoTok._t('rollup_runs').length === 1 && /no CF_ANALYTICS_TOKEN/.test(dbNoTok._t('rollup_runs')[0].note || ''),
+     JSON.stringify(dbNoTok._t('rollup_runs')[0] || {}));
+  ck('...and no traffic/usage rows are fabricated in the process',
+     dbNoTok._t('traffic_daily').length === 0 && dbNoTok._t('usage_daily').length === 0, '');
+  ck('the upstreams were never called — there is no token to call them with',
+     upNoTok.seen.gql.length === 0 && upNoTok.seen.sql.length === 0, '');
 
   console.log('\n' + BOLD + (nFail === 0 ? GREEN + 'PASS' : RED + 'FAIL') + RST +
     '  ' + nPass + ' passed, ' + nFail + ' failed, ' + (nPass + nFail) + ' checks');

@@ -239,16 +239,32 @@ function seed() {
 
 // ---------------------------------------------------------------- the fake Cloudflare upstream
 var TODAY_LIVE = { rumPageloadEventsAdaptiveGroups: [
-  { count: 8, avg: { sampleInterval: 1 }, sum: { visits: 5 }, dimensions: {} },
-  { count: 3, avg: { sampleInterval: 1 }, sum: { visits: 2 }, dimensions: {} },
-] };   // 11 pageloads, 7 visits
+  { count: 8, avg: { sampleInterval: 1 }, sum: { visits: 5 }, dimensions: { bot: false } },
+  { count: 3, avg: { sampleInterval: 1 }, sum: { visits: 2 }, dimensions: { bot: false } },
+  /* A BOT ROW baked into the SAME live batch as the two human rows above. Proves bots are
+   * excluded from the "today" by-day figure — the defect was that today's live queries
+   * carried no bot exclusion at all, while every closed-day figure is bot-excluded. If it
+   * ever leaks back in, the totals checks 1 and 2 assert (53/28) jump to (153/78). */
+  { count: 100, avg: { sampleInterval: 1 }, sum: { visits: 50 }, dimensions: { bot: true } },
+] };   // 11 pageloads, 7 visits (human only) — the bot row must never be summed in
 var THREE_DIM = { rumPageloadEventsAdaptiveGroups: [
   { count: 5, avg: { sampleInterval: 1 }, sum: { visits: 2 }, dimensions: {
     countryName: 'United States', refererHost: '', requestHost: 'reactordynamics.com',
     datetimeHour: '2026-09-10 10:00:00' } } ] };
+/* TWO ROWS in the same live batch, same key in every dimension EXCEPT country and the
+ * sample interval — France... no, "Germany" is a country that never appears in the seeded
+ * D1 store, so its merged row is entirely the live half. Germany's row is COARSE
+ * (sampleInterval 10); the United States row in the same batch is EXACT (sampleInterval 1).
+ * Proves the per-KEY merge marks coarseness off the ROW'S OWN `si`, not the batch-wide
+ * `g.coarse` — the defect was `if (g.coarse > 1) cur.coarse = true` inside the per-row
+ * forEach, which taints every key in the batch once ANY row in it is coarse. */
 var GENERIC_BREAKDOWN = { rumPageloadEventsAdaptiveGroups: [
   { count: 6, avg: { sampleInterval: 1 }, sum: { visits: 3 }, dimensions: {
     requestPath: '/', countryName: 'United States', refererHost: '',
+    requestHost: 'reactordynamics.com', deviceType: 'desktop', userAgentBrowser: 'Chrome',
+    userAgentOS: 'Windows', navigationType: 'navigate', bot: 0 } },
+  { count: 3, avg: { sampleInterval: 10 }, sum: { visits: 1 }, dimensions: {
+    requestPath: '/', countryName: 'Germany', refererHost: '',
     requestHost: 'reactordynamics.com', deviceType: 'desktop', userAgentBrowser: 'Chrome',
     userAgentOS: 'Windows', navigationType: 'navigate', bot: 0 } } ] };
 var VITALS_LCP = { rumWebVitalsEventsAdaptiveGroups: [
@@ -261,6 +277,10 @@ var VITALS_CLS = { rumWebVitalsEventsAdaptiveGroups: [
   { count: 8, avg: { sampleInterval: 1 }, quantiles: { cumulativeLayoutShiftP75: 0.02 },
     dimensions: { cumulativeLayoutShiftPath: '/', cumulativeLayoutShiftElement: 'img.hero' } } ] };
 
+// Set true for exactly one render (check 18) to simulate the live referrer fetch failing —
+// everything else must keep working normally around it.
+var FAIL_REFERRER = false;
+
 // Dispatch on the query TEXT, most specific first — a fake that matched loosely would be
 // answering the wrong question and never notice.
 function dispatchGql(q) {
@@ -272,8 +292,15 @@ function dispatchGql(q) {
     if (has('cumulativeLayoutShiftP75')) return VITALS_CLS;
     throw new Error('fakeGql: vitals query with no recognised quantile field: ' + s.slice(0, 150));
   }
-  if (has('dimensions { datetimeHour }')) return TODAY_LIVE;
-  if (has('dimensions { countryName refererHost requestHost datetimeHour }')) return THREE_DIM;
+  // `dimensions { … bot }` -- analytics.js's `rumGroup` always appends `bot` to the
+  // requested dimensions now, so it can filter bot rows out of the returned rows
+  // (`rumRows`' `excludeBots` option) without an unconfirmed GraphQL filter term.
+  if (has('dimensions { datetimeHour bot }')) return TODAY_LIVE;
+  if (has('dimensions { countryName refererHost requestHost datetimeHour bot }')) return THREE_DIM;
+  if (has('dimensions { refererHost requestHost bot }')) {
+    if (FAIL_REFERRER) throw new Error('fakeGql: simulated referrer upstream failure');
+    return GENERIC_BREAKDOWN;
+  }
   if (has('rumPageloadEventsAdaptiveGroups')) return GENERIC_BREAKDOWN;
   throw new Error('fakeGql: unrecognised query: ' + s.slice(0, 150));
 }
@@ -343,6 +370,22 @@ var INJECTIONS = {
   'bot-no-warning': ['analytics.js',
     "+ '<p class=\"warn\">Unlike every other section on this page, THIS ONE INCLUDES BOT '\n        + 'TRAFFIC — grouping by bot status cannot also filter it out. Do not compare these '\n        + 'totals against Top pages, Countries, or any other section above.</p>'\n        + table(h.rows.map((r) => ({",
     '+ table(h.rows.map((r) => ({'],
+  /* THE FIVE CODA DEFECTS + THE "All" PRESET (coordinator round, 2026-09-20). */
+  'today-bots-included': ['analytics.js',
+    'const filtered = excludeBots ? raw.filter((r) => !((r.dimensions || {}).bot)) : raw;',
+    'const filtered = raw;'],
+  'arrivals-vacuous-truth': ['analytics.js',
+    "+ (ext.length > 0 && ext.every((r) => r.kind === 'direct')",
+    "+ (ext.every((r) => r.kind === 'direct')"],
+  'batch-coarse-taints-row': ['analytics.js',
+    'if (r.si > 1) cur.coarse = true;', 'if (g.coarse > 1) cur.coarse = true;'],
+  'bucket-partial-missing-hidden': ['render.js',
+    'partialMissing: missingCount > 0 && missingCount < chunk.length,', 'partialMissing: false,'],
+  'referrer-fetch-crashes-page': ['analytics.js',
+    '} catch (e) { referrerErr = e.message; }', '} catch (e) { throw e; }'],
+  'all-preset-missing': ['analytics.js',
+    "+ (sr ? ' <a class=\"pbtn\" href=\"?view=analytics&amp;from=' + allFrom",
+    "+ (false ? ' <a class=\"pbtn\" href=\"?view=analytics&amp;from=' + allFrom"],
 };
 
 if (/--list-injections/.test(ARG)) {
@@ -414,7 +457,7 @@ async function threwAsync(fn) {
     /* =================================================================== 1. closed days */
     head('1. an explicit [from,to] queries the first-party store for every CLOSED day');
     var p1 = await renderPage('&from=2026-09-01&to=2026-09-07');
-    var liveQueryFired1 = SEEN.some(function (q) { return /dimensions \{ datetimeHour \}/.test(q); });
+    var liveQueryFired1 = SEEN.some(function (q) { return /dimensions \{ datetimeHour bot \}/.test(q); });
     ck('a range that never reaches today issues NO live Cloudflare query for the by-day figure',
        !liveQueryFired1, liveQueryFired1 ? 'a today-only query was issued anyway' : 'none issued');
     // 56/28 United States (7 clean days at 8/4) plus the 5/2 Canada/preview.example.net row
@@ -428,7 +471,7 @@ async function threwAsync(fn) {
     /* =================================================================== 2. today, live */
     head('2. TODAY comes from Cloudflare, live, and is marked partial — never blended in solid');
     var p2 = await renderPage('');   // default window: the last 7 days, ending today
-    var liveQueryFired2 = SEEN.some(function (q) { return /dimensions \{ datetimeHour \}/.test(q); });
+    var liveQueryFired2 = SEEN.some(function (q) { return /dimensions \{ datetimeHour bot \}/.test(q); });
     ck('the default window (ending today) DOES issue a live today-only Cloudflare query, '
      + 'and the headline totals include its 11 pageloads / 7 visits (53 / 28 over the 7 days)',
        liveQueryFired2 && />53<\/div><div class="k">Pageloads<\/div>/.test(p2)
@@ -583,6 +626,15 @@ async function threwAsync(fn) {
        /<h2>Countries<\/h2>[\s\S]*?<td>United States<\/td><td class="num">48<\/td><td class="num">24<\/td>/.test(p11));
     ck('...and its source note says so — "plus today (...) live from Cloudflare"',
        /<h2>Countries<\/h2>[\s\S]{0,300}plus <b>today<\/b> \(2026-09-18\) live from Cloudflare/.test(p11));
+    /* THE SAME live batch also carries a COARSE Germany row (GENERIC_BREAKDOWN's second
+     * row, sampleInterval 10) beside the EXACT United States one. A per-key merge must mark
+     * coarseness off each row's OWN sample interval — the defect was `if (g.coarse > 1)`,
+     * the BATCH-WIDE maximum, which taints every key in the merge once any one row in it is
+     * coarse. */
+    ck('...and the coarse Germany row in that SAME batch does not taint the exact United '
+     + 'States row — Germany is marked coarse, United States is not',
+       /<h2>Countries<\/h2>[\s\S]*?<td>United States<\/td><td class="num">48<\/td><td class="num">24<\/td><td><\/td>/.test(p11)
+       && /<h2>Countries<\/h2>[\s\S]*?<td>Germany<\/td><td class="num">3<\/td><td class="num">1<\/td><td>coarse \(±10\)<\/td>/.test(p11));
 
     /* ============================== 12. one window, everywhere (coordinator item 2) ===== */
     head('12. every section on the page names the SAME picked span — no section silently '
@@ -663,6 +715,75 @@ async function threwAsync(fn) {
      * first run — the word is in render.js's PAGE_HEAD. */
     ck('no preset is a submit button — a formaction query never reaches the server',
        !/<button[^>]*formaction/.test(p15));
+
+    /* ====================== 16. an EMPTY arrivals set is not a vacuous "finding" ======== */
+    head('16. "How people arrive" says nothing about an EMPTY arrivals set — [].every(...) is '
+       + 'true on nothing, and that is not evidence');
+    // 2026-08-27 is seeded as a REAL ZERO day (rollup_runs has a row, traffic_daily has
+    // none) — `referrerBreakdown` returns zero rows, so `ext` is empty. The old code's
+    // `ext.every((r) => r.kind === 'direct')` is vacuously true on an empty array, so it
+    // used to print "nothing external referred anyone" as a finding with no rows behind it.
+    var p16 = await renderPage('&from=2026-08-27&to=2026-08-27');
+    ck('the section renders (no crash) but prints NO "nothing external referred anyone" claim '
+     + 'when there is no arrival data at all',
+       /<h2>How people arrive<\/h2>/.test(p16)
+       && !/nothing[\s\S]{0,20}external referred anyone/.test(p16));
+
+    /* ================== 17. a bucket with SOME uncaptured days is not a complete bar ===== */
+    head('17. a weekly bucket holding some (not all) uncaptured days draws with a dashed '
+       + 'outline — never a plain bar, never a blank tick');
+    /* 21 days -> weekly buckets (bucketDays: n<=90 -> size 7). Week 1 (08-25..08-31) holds
+     * 2 uncaptured days (08-30 no run at all, 08-31 traffic failed) among 5 real ones; weeks
+     * 2 and 3 (09-01..09-14) are fully clean. The defect was `missing: chunk.every(...)`
+     * with no distinct mark for "some but not all" — a bucket like week 1 drew as an
+     * ordinary solid bar, undercounting with nothing on screen to say so. */
+    var p17 = await renderPage('&from=2026-08-25&to=2026-09-14');
+    var dashedBars17 = (p17.match(/stroke-dasharray="3,2"/g) || []).length;
+    var allBars17 = (p17.match(/<rect[^>]*rx="3"/g) || []).length;
+    ck('at least one bar (week 1, the partially-uncaptured bucket) carries the dashed-'
+     + 'outline marker',
+       dashedBars17 > 0, dashedBars17 + ' dashed-outline bar(s) of ' + allBars17 + ' total');
+    ck('...and it is not on every bar — the two fully-captured weeks stay a plain bar',
+       dashedBars17 > 0 && dashedBars17 < allBars17,
+       'dashed=' + dashedBars17 + ' total=' + allBars17);
+    ck('the legend explains the marker',
+       /some days in that bucket have no data captured/.test(p17));
+
+    /* ============== 18. a failed referrer fetch degrades, never crashes the page ========= */
+    head('18. a failed live referrer fetch degrades BOTH referrer sections — never a 500 for '
+       + 'the whole page');
+    /* The fetch used to be awaited at the TOP LEVEL of analyticsPage, outside every
+     * section()'s try/catch — one bad GraphQL call took the whole page down instead of
+     * degrading just the two sections that read it. */
+    FAIL_REFERRER = true;
+    var p18 = null, threw18 = null;
+    try { p18 = await renderPage(''); }
+    catch (e) { threw18 = String(e && e.message || e); }
+    finally { FAIL_REFERRER = false; }
+    ck('the page still renders instead of throwing',
+       !threw18, threw18 ? 'threw: ' + threw18 : 'rendered');
+    ck('...both "How people arrive" and "Internal navigation" show their OWN error block',
+       !!p18 && /<h2>How people arrive<\/h2><p class="err">query failed:/.test(p18)
+       && /<h2>Internal navigation<\/h2><p class="err">query failed:/.test(p18),
+       p18 ? 'checked' : '(no page — see previous check)');
+    ck('...and the rest of the page rendered normally — By day and Countries are unaffected',
+       !!p18 && /<h2>By day<\/h2>/.test(p18)
+       && /<h2>Countries<\/h2><p class="muted">Source: <b>first-party exact<\/b>/.test(p18),
+       p18 ? 'checked' : '(no page — see previous check)');
+
+    /* ========================= 19. the "All" range preset (feature) ===================== */
+    head('19. an "All" preset opens on the first recorded day through today, and is absent '
+       + 'when the store is empty');
+    var p19 = await renderPage('');
+    ck('an <a class="pbtn"> "All" link opens on the store’s first day (2026-08-25) through today',
+       p19.indexOf('<a class="pbtn" href="?view=analytics&amp;from=2026-08-25'
+                   + '&amp;to=2026-09-18">All</a>') >= 0);
+    var emptyDb = makeDb();
+    var emptyUrl = new URL('https://example.invalid/dashboard?view=analytics');
+    var emptyRes = await A.analyticsPage({ STATS: emptyDb, CF_ANALYTICS_TOKEN: 'tok' }, emptyUrl);
+    var emptyBody = await emptyRes.text();
+    ck('with an empty store, no "All" preset renders at all',
+       !/>All<\/a>/.test(emptyBody) && /No first-party history recorded yet/.test(emptyBody));
 
     /* =================================================================== 9. no token= */
     head('9. no rendered page anywhere carries a credential in a href');

@@ -76,8 +76,18 @@ var INJECTIONS = {
               to: '' },
   rejectall: { file: 'dashboard.js', red: '2 — nobody can sign in at all (the lockout case)',
                from: 'return raw ? validSession(env, raw) : false;', to: 'return false;' },
-  legacystrip: { file: 'dashboard.js', red: '2 — the old bookmark keeps its secret',
-                 from: "clean.searchParams.delete('token');", to: '' },
+  /* REPLACED `legacystrip` (2026-09-20). It deleted a line inside LEGACY_TOKEN_EXCHANGE,
+   * and that whole block is gone -- so it had gone BLIND, and a blind injection exits 1
+   * claiming its anchor moved rather than testing anything. The defect worth pinning is no
+   * longer "the exchange forgets to strip the token"; it is "?token= became special"
+   * again. This revives it the smallest way a careless change plausibly would: a bearer
+   * check in front of the session check, unthrottled -- LOGIN_LIMITER is charged on the
+   * password path only, which is what made the old exchange the one credential check on
+   * this Worker with no rate limit at all. */
+  tokenrevived: { file: 'dashboard.js',
+                  red: '3 -- ?token= is a bearer credential again, and an oracle with it',
+                  from: 'const session = await authed(env, request);',
+                  to: "if (url.searchParams.get('token')) return new Response(null, { status: 302, headers: { Location: '/dashboard?view=analytics' } }); const session = await authed(env, request);" },
   /* ANCHORED ON ONE LINE EACH, not on the pair. The first cut of this injection spanned
    * two lines with a `\n`, which matched nothing — these files are CRLF in the working
    * tree — so the runner reported "the anchor moved" instead of running the injection.
@@ -86,9 +96,15 @@ var INJECTIONS = {
              from: "'Cache-Control': 'no-store',", to: '' },
   noreferrer: { file: 'render.js', red: '1 — the dashboard leaks its URLs to outbound links',
                 from: "'Referrer-Policy': 'no-referrer',", to: '' },
-  tokenhref: { file: 'analytics.js', red: '1 — a credential back in an href',
-               from: "const href = '?view=analytics&days=' + n;",
-               to: "const href = '?token=' + encodeURIComponent('x') + '&view=analytics&days=' + n;" },
+  /* REPOINTED 2026-09-20. The old anchor named `?view=analytics&days=`, the fixed-preset
+   * form the 2026-09-18 arbitrary-window rewrite replaced -- so this had been BLIND for two
+   * days, exiting "the anchor moved" instead of testing that a credential cannot return to
+   * an href. THIRD blind anchor found today (with `token-leak` in run_dashboard_trend.js and
+   * `legacystrip` above): an anchor is a dependency on someone else's line, and nothing
+   * warns you when they move it. */
+  tokenhref: { file: 'analytics.js', red: '1 -- a credential back in an href',
+               from: "+ [7, 14, 30].map((n) => '<a class=\"pbtn\" href=\"?view=analytics&amp;from='",
+               to: "+ [7, 14, 30].map((n) => '<a class=\"pbtn\" href=\"?token=x&amp;view=analytics&amp;from='" },
 };
 var INJECT = '';
 process.argv.forEach(function (a) {
@@ -306,44 +322,58 @@ function literals(src) {
      outCookie);
 
   /* ------------------------------------------------------------- 4. the legacy exchange */
-  head('4. LEGACY_TOKEN_EXCHANGE — one shot, then the bookmark is clean');
+  /* WAS "LEGACY_TOKEN_EXCHANGE -- one shot, then the bookmark is clean". THE FEATURE IS
+   * GONE (2026-09-20), deleted five days before its own 2026-09-25 deadline *(OWNER RULING:
+   * "the two rulings as recommended")*, so three checks here were pinning a behaviour the
+   * Worker no longer has. They are INVERTED rather than deleted: the point of the removal
+   * is that `?token=` must stop being special, and nothing else in this file would notice
+   * if a later change quietly made it special again.
+   *
+   * WHY IT WENT EARLY. A review measured the exchange to be the ONLY credential check on
+   * this Worker with no rate limit -- a wrong password charges LOGIN_LIMITER 1 of 5 per
+   * minute, a wrong token charged nothing and could be guessed for ever -- and the bookmark
+   * migration it existed for had already happened. */
+  head('4. ?token= is DEAD -- not a credential, not an exchange, not special');
 
-  var exch = await get(mod, '?token=' + encodeURIComponent(LEGACY) + '&view=analytics');
-  var exchLoc = exch.headers.get('Location') || '';
-  ck('an old ?token= bookmark is exchanged for a cookie and redirected',
-     exch.status === 302 && /HttpOnly/.test(exch.headers.get('Set-Cookie') || ''),
-     'status ' + exch.status);
-  ck('...and the redirect it hands back carries NO token — this is what rewrites the '
-     + 'bookmark', exchLoc.indexOf('token') < 0 && /view=analytics/.test(exchLoc), exchLoc);
-
-  var exchBody = await exch.text();
-  ck('the exchange response itself carries no dashboard content',
-     !/<h1>Analytics/.test(exchBody), exchBody.length + ' bytes');
-
-  /* A SECOND request presenting only the token is the case the old plan called "a short
-   * window where ?token= keeps working". It does not keep working: it is an exchange, and
-   * an exchange is not a page. */
-  var second = await get(mod, '?token=' + encodeURIComponent(LEGACY) + '&view=analytics');
-  var secondBody = await second.text();
-  ck('a request carrying ONLY ?token= never returns analytics content, first time or tenth',
-     !/<h1>Analytics/.test(secondBody), 'status ' + second.status);
-
-  /* THE BOOKMARK ITSELF still holds the token after the exchange — only the address bar
-   * came out clean. So a request that already HAS a session and still presents the
-   * parameter is redirected too; otherwise every later visit serves a whole dashboard at
-   * a URL bearing the credential, which is the thing #764 is removing. */
-  var signedInWithToken = await get(mod, '?token=' + encodeURIComponent(LEGACY) + '&view=analytics',
-    goodCookie);
-  var signedInBody = await signedInWithToken.text();
-  ck('an already-signed-in request still carrying ?token= is redirected clean, not served',
-     signedInWithToken.status === 302 && !/<h1>Analytics/.test(signedInBody)
-       && (signedInWithToken.headers.get('Location') || '').indexOf('token') < 0,
-     'status ' + signedInWithToken.status + ' -> ' + signedInWithToken.headers.get('Location'));
+  var tokOld = await get(mod, '?token=' + encodeURIComponent(LEGACY) + '&view=analytics');
+  var tokOldBody = await tokOld.text();
+  ck('the RIGHT old token gets the ordinary login form -- no cookie, no redirect, no content',
+     tokOld.status === 200 && isLogin(tokOldBody)
+       && !(tokOld.headers.get('Set-Cookie') || '')
+       && !tokOld.headers.get('Location'),
+     'status ' + tokOld.status + ', Set-Cookie '
+       + (tokOld.headers.get('Set-Cookie') ? 'PRESENT' : 'none'));
 
   var badTok = await get(mod, '?token=not-the-token&view=analytics');
   var badTokBody = await badTok.text();
   ck('a wrong token gets the login form, not a redirect',
      badTok.status === 200 && isLogin(badTokBody), 'status ' + badTok.status);
+
+  /* A RIGHT AND A WRONG TOKEN MUST NOW BE INDISTINGUISHABLE. While the exchange existed the
+   * right one redirected and the wrong one did not -- a usable oracle for a guesser, and
+   * harmless only because the value was already the owner's. Asserting it now is what stops
+   * a reintroduction bringing the oracle back with it. */
+  ck('a right and a wrong token produce the SAME response -- no oracle for a guesser',
+     tokOld.status === badTok.status && tokOldBody.length === badTokBody.length,
+     tokOld.status + '/' + tokOldBody.length + ' vs ' + badTok.status + '/' + badTokBody.length);
+
+  /* Signed in and still carrying the parameter: it is simply ignored now, page renders. */
+  var signedInWithToken = await get(mod,
+    '?token=' + encodeURIComponent(LEGACY) + '&view=analytics', goodCookie);
+  ck('a signed-in request carrying ?token= is served normally, the parameter ignored',
+     signedInWithToken.status === 200 && !signedInWithToken.headers.get('Location'),
+     'status ' + signedInWithToken.status);
+
+  /* THE SOURCE SIDE. Every behavioural check above passes just as well against a Worker
+   * that still READS the secret but happens not to act on it in these four cases. This is
+   * what says the reader is gone, so the deleted Worker secret cannot quietly come back to
+   * life. Comments are stripped first: the header deliberately names the removed secret. */
+  var tokenReaders = FILES.filter(function (f) {
+    return /env\s*\.\s*DASHBOARD_TOKEN/.test(stripComments(SRC[f]));
+  });
+  ck('no file under worker/src reads env.DASHBOARD_TOKEN any more',
+     tokenReaders.length === 0,
+     tokenReaders.length ? tokenReaders.join(' | ') : 'scanned ' + FILES.length + ' files');
 
   /* ------------------------------------------------------------- 5. response headers */
   head('5. the headers every dashboard response carries');
