@@ -11,10 +11,12 @@
  *
  * A third route reads back what the second one stored:
  *
- *   GET /dashboard?token=T   a token-gated feedback viewer — see dashboard.js
+ *   GET  /dashboard    the ops console — see dashboard.js
+ *   POST /dashboard    sign in, sign out, and the one feature-flag write
  *
- * It is GET, token-gated instead of origin-gated, and not part of the
- * CORS-fronted API below — it is meant to be opened directly in a browser.
+ * It is gated by a signed session cookie instead of by origin, and is not part of the
+ * CORS-fronted API below — it is meant to be opened directly in a browser. The cookie is
+ * scoped `Path=/dashboard` precisely so it is never attached to the ingest POST at `/`.
  *
  * ---------------------------------------------------------------- what is NOT stored
  * The client is careful about what it sends. This end has to be equally careful
@@ -22,7 +24,19 @@
  *
  *   - The IP address is used as the rate-limit key and NEVER written anywhere. It
  *     goes into env.LIMITER.limit({key}) and out of scope on the next line.
- *   - The User-Agent is not read, not stored, not passed on.
+ *   - The User-Agent IS READ, and is never stored, never passed on, never logged. It
+ *     is reduced on the next line to one of a short list of BOT CLASSES ('' for none)
+ *     by botClass() below and the string itself goes out of scope, exactly as the IP
+ *     does. This line used to read "not read", and the change is deliberate *(OWNER
+ *     RULING, 2026-09-20: "We should also classify bots.")*: a class label is a fact
+ *     about the client SOFTWARE, the User-Agent string is a fingerprinting surface, and
+ *     only the first is kept.
+ *   - The COUNTRY is taken from the EDGE -- request.cf.country, which Cloudflare has
+ *     already derived before this code runs. Deriving it here would mean holding the
+ *     address to do it, which is the promise above; taking the ANSWER instead of the
+ *     INPUT is what keeps it. privacy.html has disclosed a per-country page-view count
+ *     since the RUM beacon went in *(OWNER RULING, 2026-09-20: "We don't need to change
+ *     privacy.html. We are just doing what cloudflare already does.")*.
  *   - ONE exception: handleBundle stamps the CORS-checked Origin header into a bug report's
  *     R2 customMetadata (one of the three values in ALLOWED_ORIGINS — not a full URL, no
  *     path or query, nothing a visitor typed) so a report can be told apart by which site
@@ -120,6 +134,39 @@ const MAX_EVENTS_PER_BATCH = 250;   // Analytics Engine caps writes per invocati
  *   doubles[8]  step                walkthrough_* only — the 0-based step index
  *   doubles[9]  steps               walkthrough_start / _end only — the leg's length
  *
+ *   --- 2026-09-20: what the Cloudflare RUM beacon reports and this stream did not ---
+ *   blobs[8]    ref_host            the HOST of the referrer and never the URL, cut by
+ *                                   hostOf() below. '' = no referrer, or one that did
+ *                                   not survive the cut.
+ *   blobs[9]    ref_kind            unknown | direct | internal | external, from rollup.js's
+ *                                   referrerKind() — the SAME classifier the
+ *                                   Cloudflare-derived series uses, deliberately not a
+ *                                   second one. NEVER '' on a row this Worker wrote,
+ *                                   which is what makes it the marker described below.
+ *                                   `unknown` means the CLIENT DID NOT SEND THE FIELD, and
+ *                                   is not the same fact as `direct`, which means the
+ *                                   browser reported no referrer. Conflating them would
+ *                                   record the whole pre-field site as direct traffic.
+ *   blobs[10]   country             two-letter EDGE country. Not a country NAME:
+ *                                   traffic_daily stores Cloudflare's `countryName`, so
+ *                                   the two series compare by rank, not by string.
+ *   blobs[11]   bot_kind            OUR classification, from the User-Agent: crawler |
+ *                                   preview | headless | tool | no-ua. '' = no match.
+ *   doubles[10] bot                 1 matched, 0 did not. NO -1 sentinel, and the reason
+ *                                   is specific rather than an exemption: this Worker
+ *                                   can always answer, so -1 would never be written and
+ *                                   a query excluding it would exclude nothing.
+ *
+ * THE 2026-09-20 COLUMNS CARRY THEIR OWN MARKER, which is better than a clock. A row
+ * written before they existed reads back '' for a blob and 0 for a double —
+ * indistinguishable from "no referrer, not a bot", and the whole reason COLUMNS_SINCE
+ * exists for the 2026-08-10 set. `ref_kind` closes it: every row this Worker writes
+ * carries one of three non-empty strings, so `ref_kind === ''` IS "this row predates the
+ * columns", exactly and with no date in it. rollup.js drops those rows. It ALSO carries
+ * a timestamp floor and a probe query (OWN_COLUMNS_SINCE) because naming a column that
+ * no matching row carries is a 422 rather than a null — the floor and the probe stop the
+ * query FAILING; the marker is what stops it LYING.
+ *
  * ALL FOUR NEW DOUBLES AND THE NEW BLOB ARE WRITTEN ON EVERY ROW FROM THE COMMIT
  * THAT ADDED THEM, even where nothing produces the value yet. A short row reads
  * back as 0 downstream, so a version that wrote five doubles and one that wrote
@@ -176,6 +223,18 @@ const KEY_OF = {
   walkthrough_step: ['id', 'step', 'by'],
   walkthrough_rewind: ['id', 'step'],
   walkthrough_end: ['id', 'reason'],
+  /* THE WAY IN (#764). Both ride ENTIRELY in this string and claim no new column, which
+   * is deliberate rather than thrifty: `usage_daily` keys on
+   * [day, channel, release, event, key_str, plant] and carries no numeric columns, so a
+   * funnel encoded in doubles would evaporate at the three-month Analytics Engine edge —
+   * and "is the click-through rate improving" is a question about months, not weeks.
+   *
+   * `cta_click`'s three parts give `shell:coarse:xs`, which is the whole question in one
+   * groupable string: did a phone press the button that the homepage says is not for
+   * phones. Every part is a closed enum on the client, so this key cannot be widened by
+   * anything a page sends. */
+  page_view: 'page',
+  cta_click: ['to', 'device', 'width'],
 };
 
 function keyPart(v) {
@@ -191,7 +250,7 @@ function keyOf(name, p) {
 }
 
 import { handleDashboard } from './dashboard.js';
-import { runRollup } from './rollup.js';
+import { runRollup, referrerKind } from './rollup.js';
 import { stagesEndpoint } from './features.js';
 
 // ---------------------------------------------------------------- helpers
@@ -244,6 +303,77 @@ async function readCapped(request, max) {
 function num(v) { return typeof v === 'number' && isFinite(v) ? v : -1; }
 function bool(v) { return v === true ? 1 : v === false ? 0 : -1; }
 
+/* HOST ONLY, ENFORCED HERE (2026-09-20). site/telemetry.js already cuts
+ * document.referrer down to its hostname before sending, and that cut is NOT the one the
+ * promise rests on: this endpoint is open and unauthenticated by design, so a full URL —
+ * path, query and all — can arrive in `ref` whatever the shipped client does. This is the
+ * sanitiser that counts, and it is the same shape as the client's on purpose.
+ *
+ * A hostname cannot contain '/', '?', '#', ':' or a space, so a value carrying one is
+ * DROPPED WHOLE rather than trimmed: trimming the path off a URL that arrived here means
+ * the path existed in a variable in a file whose next edit might store it. */
+function hostOf(v) {
+  let s = String(v == null ? '' : v).trim().toLowerCase();
+  if (!s) return '';
+  const m = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/.exec(s);
+  if (m) s = m[1].replace(/^[^@]*@/, '').replace(/:\d+$/, '');
+  // 253 = DNS's own hostname limit, so no real host is refused; the bound only stops an
+  // absurd value being stored, and the character class beside it is the part that stops
+  // a path or a query riding in.
+  if (!s || s.length > 253 || !/^[a-z0-9.-]+$/.test(s)) return '';
+  return s;
+}
+
+/* THE COUNTRY, TAKEN FROM THE EDGE AND NEVER DERIVED HERE. `request.cf.country` is
+ * Cloudflare's own answer, computed before this Worker runs; `CF-IPCountry` is the same
+ * value as a header and covers `wrangler dev` and any request that arrives with no `cf`
+ * object. Either way the ADDRESS is never in a variable in this function, which is the
+ * difference between honouring the promise at the top of this file and breaking it for a
+ * two-letter string.
+ *
+ * 'XX' (unknown) and 'T1' (Tor) are real answers and are stored as they come rather than
+ * blanked: "we do not know" is a different fact from "we did not look". */
+function edgeCountry(request) {
+  const cf = request && request.cf;
+  const hdr = (request && request.headers && request.headers.get('CF-IPCountry')) || '';
+  const v = String((cf && cf.country) || hdr || '').toUpperCase();
+  return /^[A-Z0-9]{2}$/.test(v) ? v : '';
+}
+
+/* OUR OWN BOT CLASSIFICATION, AND IT IS THE CRUDE ONE *(OWNER RULING, 2026-09-20: "We
+ * should also classify bots.")*. Cloudflare Bot Management is not on this plan, and the
+ * `bot` flag in traffic_daily comes from the RUM stream, which has signals this has no
+ * access to — request fingerprints, address reputation, behavioural scoring. THIS IS A
+ * USER-AGENT SUBSTRING MATCH. It is stored in a column of our own and must never be read
+ * as the same measurement; where the two disagree, Cloudflare's is the better one.
+ *
+ * ⚠ A LOW COUNT HERE IS EXPECTED AND IS NOT EVIDENCE THE CLASSIFIER WORKS. This runs on a
+ * JS beacon: a client reaches it only by executing JavaScript and then POSTing, and most
+ * crawlers do neither. So the honest prior is that this column is nearly all zeros
+ * whether the patterns are right or wrong — the exact shape of a check that cannot fail.
+ * The only ways to know are to feed it User-Agent strings and assert the class
+ * (test/run_telemetry.js does, one per family, plus real browser strings that must NOT
+ * match), and after deploy to compare our rate against Cloudflare's bot share on
+ * traffic_daily for the same days.
+ *
+ * ORDER MATTERS. Slackbot, Twitterbot and their kin all contain "bot", so the PREVIEW
+ * family is matched before the generic crawler pattern or every link unfurl would be
+ * filed as a crawler. An absent User-Agent is 'no-ua' and not '': a browser always sends
+ * one, so its absence is a signal, and '' would merge it with "looked and found
+ * nothing". */
+const BOT_PATTERNS = [
+  ['preview', /(facebookexternalhit|slackbot|twitterbot|discordbot|telegrambot|whatsapp|linkedinbot|embedly|skypeuripreview|redditbot|pinterest|vkshare|preview)/],
+  ['headless', /(headlesschrome|phantomjs|puppeteer|playwright|selenium|chrome-lighthouse|electron\/)/],
+  ['tool', /(curl\/|wget\/|python-requests|python-urllib|libwww-perl|go-http-client|okhttp|axios\/|node-fetch|httpie|postman|guzzle|scrapy|java\/)/],
+  ['crawler', /(googlebot|bingbot|yandex|duckduckbot|baiduspider|applebot|ahrefsbot|semrushbot|petalbot|bytespider|gptbot|claudebot|ccbot|perplexitybot|archive\.org_bot|(^|[^a-z])(bot|crawler|spider)([^a-z]|$))/],
+];
+function botClass(ua) {
+  const s = String(ua == null ? '' : ua).toLowerCase();
+  if (!s) return 'no-ua';
+  for (const row of BOT_PATTERNS) if (row[1].test(s)) return row[0];
+  return '';
+}
+
 // ---------------------------------------------------------------- the Worker
 export default {
   /* THE DAILY ROLLUP (#604). Neither upstream keeps anything for long -- Web Analytics
@@ -273,9 +403,11 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // The dashboard, and the one write it owns. Both token-gated inside; neither is
-    // part of the CORS-fronted ingest below, and the POST here is a form submit from
-    // the dashboard page rather than anything the sim can reach.
+    /* The dashboard, and the writes it owns. Authentication is INSIDE handleDashboard
+     * (a signed cookie since #764), and this stays a SINGLE route on purpose: sign-in and
+     * sign-out are POSTs to this same path carrying an `action` field. A `/dashboard/login`
+     * route would have to be added here, to the cookie's Path, and to the CORS boundary
+     * below — every POST that is not this one falls through into the ingest handler. */
     if (url.pathname === '/dashboard' && (request.method === 'GET' || request.method === 'POST')) {
       return handleDashboard(env, url, request);
     }
@@ -283,7 +415,7 @@ export default {
     /* The site BUILD reads this to stamp flag stages. Open and unauthenticated on
      * purpose: a stage is not a secret — every one of them ships inside site/flags.js
      * to every visitor — so gating it would protect nothing while forcing a token into
-     * the Pages build environment. Writing stays behind DASHBOARD_TOKEN. */
+     * the Pages build environment. Writing stays behind the dashboard session. */
     if (request.method === 'GET' && url.pathname === '/flags-stages') {
       return stagesEndpoint(env);
     }
@@ -324,6 +456,33 @@ async function handleEvents(request, env, origin) {
   const release = String(payload.release || '');
   const session = String(payload.session || '');
 
+  /* THE THREE EDGE FACTS (2026-09-20). Computed ONCE per batch rather than per event:
+   * the country and the User-Agent are properties of the REQUEST, and the referrer is a
+   * property of the page load the batch came from, so a per-event copy would be the same
+   * value repeated with somewhere new to drift.
+   *
+   * `origin` is already checked against ALLOWED_ORIGINS above, so it is the SITE's host.
+   * The Worker's OWN hostname is not the site's, and handing that to referrerKind() would
+   * file every internal hop as external — the exact error the `traffic_daily` series was
+   * built to stop making. */
+  /* A CLIENT THAT NEVER SENDS `ref` IS NOT A DIRECT VISIT, and conflating the two writes a
+   * WRONG number rather than a missing one -- unrecoverable, because nothing downstream can
+   * tell the rows apart afterwards. `hostOf(undefined)` is '' and `referrerKind('')` is
+   * 'direct', so without this the entire live site -- which does not carry the field until
+   * site/telemetry.js ships -- would record as 100 % direct, and every referral we ever had
+   * would read as someone typing the URL.
+   *
+   * ABSENT and EMPTY are different facts and get different values:
+   *   field absent      -> 'unknown'  the client predates the field (or is not ours)
+   *   field present, '' -> 'direct'   the browser reported no referrer, which IS the answer
+   * `fetchOwnTraffic` keeps 'unknown' rows and they stay countable as page views; what they
+   * must never do is inflate 'direct'. Delete this and the damage is silent. */
+  const refSent = Object.prototype.hasOwnProperty.call(payload, 'ref');
+  const refHost = hostOf(payload.ref);
+  const refKind = refSent ? referrerKind(refHost, hostOf(origin)) : 'unknown';
+  const country = edgeCountry(request);
+  const botKind = botClass(request.headers.get('User-Agent'));
+
   let written = 0;
   for (const e of events.slice(0, MAX_EVENTS_PER_BATCH)) {
     const name = String((e && e.e) || '');
@@ -348,6 +507,15 @@ async function handleEvents(request, env, origin) {
         // The `id` prop ALONE (#674) — see the column map for why it is duplicated out of
         // blob5. Events with no `id` write '', which is not a value any query groups on.
         String(p.id || ''),
+        /* The 2026-09-20 edge columns. Constant across the batch, and written on EVERY
+         * row for the reason the 2026-08-10 set is: a short row reads back as '' and
+         * would say "no referrer, unknown country" where the truth is "this Worker could
+         * not tell you". `refKind` is never '' here, which is what makes a '' downstream
+         * mean "written before these columns existed". */
+        refHost,
+        refKind,
+        country,
+        botKind,
       ],
       doubles: [
         Number(p.seconds || 0),
@@ -368,6 +536,9 @@ async function handleEvents(request, env, origin) {
         // parsing a string in a SQL dialect with no subqueries (cfapi.js).
         num(p.step),
         num(p.steps),
+        // OUR bot verdict, not Cloudflare's — see botClass(). No -1: this Worker can
+        // always answer, so the sentinel would never be written.
+        botKind ? 1 : 0,
       ],
     });
     written++;

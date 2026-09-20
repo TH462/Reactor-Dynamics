@@ -101,7 +101,7 @@ head('2. Seam probe — the startup checklist flags the boron row (#395 machiner
 var snap = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
 var pcA = snap && snap.instructor && snap.instructor.checklist && snap.instructor.checklist.preconditions;
 function row(pv, i) { return (pv && pv[i]) || {}; }
-ck('probe A: 4 verdicts shipped', !!(pcA && pcA.length === 4), pcA && pcA.length);
+ck('probe A: 5 verdicts shipped', !!(pcA && pcA.length === 5), pcA && pcA.length);
 ck('probe A: boron seam row UNMET at ~857 ppm', row(pcA, 3).met === false && Math.abs(row(pcA, 3).obs - 857) < 15,
   'obs ' + (row(pcA, 3).obs != null ? (+row(pcA, 3).obs).toFixed(1) : '—'));
 ck('probe A: the Mode-3 rows are MET — exactly the seam is named',
@@ -132,8 +132,8 @@ for (var i = 0; i < 120; i++) svc.tick();
 head('4. Seam probe again — remedied, every row reads MET');
 snap = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
 var pcB = snap && snap.instructor && snap.instructor.checklist && snap.instructor.checklist.preconditions;
-var allMet = !!(pcB && pcB.length === 4 && pcB.every(function (p) { return p.met; }));
-ck('probe B: all 4 rows MET after the remedy', allMet,
+var allMet = !!(pcB && pcB.length === 5 && pcB.every(function (p) { return p.met; }));
+ck('probe B: all 5 rows MET after the remedy', allMet,
   pcB ? pcB.map(function (p) { return p.met ? 'y' : 'n'; }).join('') : 'none');
 ck('probe B: no instructor comment', !(snap.instructor && snap.instructor.message),
   (snap.instructor && snap.instructor.message) ? 'raised' : 'none');

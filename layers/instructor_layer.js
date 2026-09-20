@@ -45,10 +45,22 @@
       steam_pressure_mpa: 'steam_pressure', boron_ppm: 'boron_analyzer',
     },
     /* THE SHIPPED PLANT (#526/#244, 2026-08-31). Authored against pwr2_instruments.js's
-     * own channel ids — NOT copied from pwr (its `boron_analyzer` is `boron` here, and
-     * PWR2 has no SR/IR channels, so sr_counts_cps grades true_state, the documented
-     * exception). Every id verified present in a live pwr2 broadcast by
-     * test/run_checklist_pwr2.js, which reddens if one goes missing. */
+     * own channel ids — NOT copied from pwr (its `boron_analyzer` is `boron` here).
+     * Every id verified present in a live pwr2 broadcast by test/run_checklist_pwr2.js,
+     * which reddens if one goes missing.
+     *
+     * ⚠ THIS COMMENT USED TO SAY "PWR2 has no SR/IR channels, so sr_counts_cps grades
+     * true_state, the documented exception" AND THAT WAS STALE (#749 item 1, measured
+     * 2026-09-18). PWR2 has no SR/IR channel of its OWN — pwr2_instruments.js serves the
+     * internal reactor protection system and defines neither — but the SHELL carries a
+     * reused `RD.PWRInstruments` (pwr2_shell.js: "reuse pwr_instruments.js unchanged"),
+     * and that layer is where `source_range` lives. MEASURED on a live pwr2 broadcast,
+     * `hot_zero_power`, seed 42, 2.0 s in: `instruments.source_range` = 499.0 against
+     * `true_state.sr_counts_cps` = 502.0, one of 88 channels present. The board has drawn
+     * that reading the whole time (`IN(s).source_range`, pwr_board_wiring), so the tile and
+     * the acceptance were on different channels — measured divergence over the authored
+     * 1/M ladder, instrument/truth 0.83 to 1.18. The map entry below closes it. Same class
+     * as `subcooling_margin` and `pzr_spray_flow` above, which were already mapped that way. */
     pwr2: {
       power_pct: 'power_range', pressure_mpa: 'primary_pressure', sg_level_pct: 'sg_level',
       pzr_level_pct: 'pzr_level', tavg_c: 'tavg', thot_c: 'thot', tcold_c: 'tcold',
@@ -82,6 +94,25 @@
        * stuck-closed. Grading on `true_state.porv_open` instead would tick the step off a
        * truth the player cannot see. */
       porv_tailpipe_temp_c: 'porv_tailpipe_temp',
+      /* THE SOURCE RANGE COUNT RATE (#749 item 1) — the channel the 1/M ladder's four count
+       * rungs are graded on, and the one the NIS card prints. It graded `true_state` until
+       * 2026-09-18 while the tile drew the instrument, so the board could read the step's own
+       * target while the step refused: MEASURED on the player's route (release WITHDRAW the
+       * instant the tile first prints the target), rung 6 at `hot_zero_power` seed 42 — released
+       * at truth 1254 counts a second against an instrument reading 1366, and the old
+       * `true_state > 1400` row did not close for another 173.2 s while the tile printed 1.4e3
+       * or higher on 2,046 of the next 3,000 broadcasts. Graded here it closes in 46.4 s.
+       * Instrument-first is HR1, and this is NOT the #670 "regrade on the drawn value" case:
+       * `source_range` carries no DISPLAY_DAMP entry, so the transmitter reading and the drawn
+       * reading are the same number — the board only formats it (`fmtExp`). */
+      sr_counts_cps: 'source_range',
+      /* THE INTERMEDIATE RANGE (#749 item 2) — the one tile that MOVES through the criticality
+       * step's 21.8-minute wait, and the channel that step's own note tells the player to watch
+       * ("From your last tap onward, watch INTER RANGE and STARTUP RATE rather than REACTOR
+       * POWER"). Same shell instrument layer and same argument as `source_range` above:
+       * `intermediate_range` carries no DISPLAY_DAMP entry, so the transmitter reading and the
+       * drawn reading are the same number and the board only formats it (`fmtExp`). */
+      ir_amps: 'intermediate_range',
     },
     rbmk: {
       power_pct: 'power_range', steam_pressure_mpa: 'steam_pressure', drum_level_pct: 'drum_level',
@@ -279,6 +310,7 @@
       profile_key: (meta && meta.profile_key) || null,
       idx: 0,
       cmdSeen: false, sawSeen: false, accStreak: 0, accMetNow: false,
+      accVoided: null, sawVoided: null,
       gradedBy: null, done: false,
     };
     this._checkpointRequested = true;
@@ -303,6 +335,7 @@
       done: proc.steps.map(function () { return false; }),
       doneBy: proc.steps.map(function () { return null; }),   // 'auto' | 'manual' | 'observed' | 'caught_up' | 'overtaken' (#641)
       cmdSeen: false, sawSeen: false, accStreak: 0, accMetNow: false,
+      accVoided: null, sawVoided: null,
       gradedBy: null, complete: false,
       // Precondition verdicts (#395) — evaluated on the first step() tick, never
       // here: load has no snapshot. null = no `precond` authored or not yet graded.
@@ -311,6 +344,14 @@
       precondSaid: false,  // #732 — it has been said ONCE for this run and will not be said again
                            //   (restored by loadState too: a REWIND is not a new run)
       catchUp: true,       // first _stepChecklist tick walks past already-done steps (#607)
+      /* THE REACTOR-TRIP NOTICE (#709) — see `_stepChecklist`. `scramExempt` is a property of
+       * the CONTENT and so is recomputed from the proc here and on restore, never serialized;
+       * `scramArmed` is per-RUN and does ride the save (a rewind is not a new run, same rule as
+       * `precondSaid`). `scramSeen` is recomputed every tick and latches nothing. */
+      scramExempt: InstructorLayer.legScriptsScram(proc),
+      scramArmed: false,   // this run has seen the plant NOT tripped at least once
+      scramSeen: false,    // the notice is standing RIGHT NOW (published as `trip_notice`)
+      scramMsg: false,     // the standing instructor comment is OURS to take down
       // Behind-the-scenes failures fired on the CURRENT step (#670): `fired` is the once-per-
       // entry keys, `injected` the failure ids the snapshot publishes. Both reset per step.
       fired: [], injected: [],
@@ -321,7 +362,8 @@
   InstructorLayer.prototype.stopChecklist = function () {
     // Take our own precondition comment down with the checklist (it names a
     // banner that no longer exists); anyone else's message is left alone.
-    if (this.checklist && this.checklist.precondMsg) this.pendingMessage = null;
+    // #709 — the trip notice goes the same way: it names a panel that no longer exists.
+    if (this.checklist && (this.checklist.precondMsg || this.checklist.scramMsg)) this.pendingMessage = null;
     this.checklist = null;
   };
 
@@ -719,13 +761,77 @@
   // outcome is the verification, the keystroke path doesn't matter; or, with no
   // acc, its saw latching; or, with neither, its command family being observed.
   // Pure observation steps only check by hand (checklistCheck).
+  /* ==================================================================================
+   * DOES THIS LEG SCRIPT A REACTOR TRIP OF ITS OWN? (#709)
+   *
+   * A trip can land on ANY leg, so the notice below is deliberately not special-cased to the
+   * ascension — but on a leg where the trip IS the authored point, a banner reading "this
+   * walkthrough cannot continue" printed on the step that just told the player to scram is
+   * worse than silence. So the exemption is DERIVED FROM THE AUTHORED CONTENT rather than kept
+   * as a list of leg ids here, which is the shape that certifies a map instead of a plant: a
+   * leg is exempt when one of its steps sends a scram command, or grades the `scrammed` param.
+   *
+   * MEASURED on the shipped pwr2 pool (2026-09-19), and the two mechanisms are different, which
+   * is why both clauses are needed:
+   *   · `pwr_shutdown` step 2 — `cmd {action:'scram'}`, the planned trip.
+   *   · `pwr_tmi2_incident` step 7 — `acc {p:'scrammed', op:'>', v:0}`. It sends NO scram
+   *     command; the trip arrives out of the loss-of-feedwater transient its earlier steps
+   *     inject, and the step's acceptance is what says the leg expects it.
+   * The other five legs (`pwr_heatup`, `pwr_startup`, `pwr_raise_power`, `pwr_lower_power`,
+   * `pwr_cooldown`) carry neither and are covered by the notice. `run_checklist_pwr2` §2ai
+   * re-discovers this set by DRIVING each leg rather than by reading this scan.
+   *
+   * Static and pool-agnostic on purpose — the retired `pwr` pool and the other plants' pools go
+   * through the same runtime and get the same treatment with no per-pool list to maintain. */
+  var SCRAM_CMD_RE = /scram/i;
+  function stepCmdAction(c) { return !c ? null : (typeof c === 'string' ? c : c.action) || null; }
+  InstructorLayer.legScriptsScram = function (proc) {
+    var steps = (proc && proc.steps) || [];
+    for (var i = 0; i < steps.length; i++) {
+      var st = steps[i] || {};
+      if (SCRAM_CMD_RE.test(stepCmdAction(st.cmd) || '')) return true;
+      if (st.acc && st.acc.p === 'scrammed') return true;
+      if (st.saw && st.saw.p === 'scrammed') return true;
+      if (st.overtaken && st.overtaken.p === 'scrammed') return true;
+      var accs = st.accs || [];
+      for (var j = 0; j < accs.length; j++) {
+        var en = accs[j] || {};
+        if (SCRAM_CMD_RE.test(stepCmdAction(en.cmd) || '')) return true;
+        if (en.p === 'scrammed') return true;
+      }
+    }
+    return false;
+  };
+
+  /* THE WORDS THE NOTICE SPEAKS, in both registers (#709). Kept beside the mechanism rather
+   * than in the pool: it is not authored content, it belongs to no leg, and every leg that is
+   * not exempt gets the same sentence. The panel banner in `ui/app.js` is the shorter twin —
+   * this is the instructor's comment, which is the teaching channel and says WHY. No units, so
+   * the no-SI-in-walkthroughs ruling (2026-09-06) has nothing to bite on. */
+  var SCRAM_NOTICE_MSG = {
+    learning: 'The reactor has tripped, and this walkthrough was written for a reactor that keeps running. It cannot carry on from here: the step you are on is waiting for a reading the plant will not give again. Nothing is broken and nothing is blocked — press ⏪ Rewind step to go back to before the trip, or ← All walkthroughs to leave this one.',
+    industry: 'REACTOR TRIP — this procedure is not valid post-trip. The active step\'s acceptance cannot be satisfied in the present plant condition. Rewind to a pre-trip checkpoint, or exit the procedure.',
+  };
+
   InstructorLayer.prototype._stepChecklist = function (snapshot) {
     var simTime = (snapshot && snapshot.metadata && snapshot.metadata.sim_time) || 0;
     var c = this.checklist;
     // #715 — re-graded every tick the banner is shown, not once at the step-off:
     // the board can be read at any time while the walkthrough sits complete, and
     // the claim it draws should track the live plant, same as `precond` below.
-    if (c.complete) { c.outcomeVerified = this._gradeOutcomeGuard(c.proc); return; }
+    if (c.complete) {
+      c.outcomeVerified = this._gradeOutcomeGuard(c.proc);
+      /* THE TRIP NOTICE DIES WITH THE RUN (#709), and THIS is the site that matters — the one
+       * below, in the `!st` branch, is the door almost nobody comes through. `_checklistCheckOff`
+       * sets `complete` itself when the last step ticks, so a finished walkthrough returns HERE
+       * every tick and never reaches the step body at all. Measured by §2ai.7 on the first draft,
+       * which had only the other copy: the banner flag stayed lit on the completion card, which
+       * is #749 item 2 exactly — a message raised on a step outliving it, on the very card that
+       * caught it last time. A finished walkthrough has nothing left that "cannot continue". */
+      if (c.scramMsg) { this.pendingMessage = null; c.scramMsg = false; }
+      c.scramSeen = false;
+      return;
+    }
 
     // Preconditions (#395) — grade each authored {p, op, v, tol} against the LIVE
     // plant every tick, instrument-first like `acc`, so the banner clears itself
@@ -821,9 +927,82 @@
     }
 
     var st = c.proc.steps[c.idx];
-    if (!st) { c.complete = true; return; }
+    if (!st) {
+      c.complete = true;
+      /* The same three lines as the `c.complete` early return above, for the same reason and
+       * for the other way into this state — an index already past the end when the tick
+       * arrives (a restored save, a proc whose steps shrank under it). Kept as a second copy
+       * rather than shared, because the alternative is to let the notice stand for one
+       * broadcast on the completion card while `complete` takes effect. */
+      if (c.scramMsg) { this.pendingMessage = null; c.scramMsg = false; }
+      c.scramSeen = false;
+      return;
+    }
     var stepEntryTick = (c.stepAt == null);
-    if (stepEntryTick) c.stepAt = simTime;   // when this step came up — the dwell's clock
+    if (stepEntryTick) c.stepAt = simTime;
+
+    /* ================================================================================
+     * THE REACTOR TRIPPED AND THE WALKTHROUGH SAID NOTHING (#709, layman playthrough
+     * 2026-09-07 finding S-15: "The checklist does not react to a reactor trip.")
+     *
+     * A walkthrough is a sequential list with one active step. Trip the reactor part-way
+     * through a leg and the plant is in a state the leg never scripted: the same step stays
+     * active, its done-when waits on a number the plant will not reach again, and the panel
+     * says nothing at all. The player's only cue is that nothing happens.
+     *
+     * THIS TELLS THEM. IT DOES NOT RESCUE THEM. The step does not move, nothing is checked
+     * off, no row is graded differently, and no acceptance is relieved — compare the #788
+     * casualty relief a few hundred lines down, which DOES stand rows down. This writes one
+     * instructor comment and one banner flag and changes the grading not at all. Per-step
+     * re-entry and a post-trip emergency leg were the other two options and are NOT built.
+     *
+     * ⚠ HARD RULE 1. `scrammed` is `true_state` (and `rps_state`, the protection system's own
+     * latch). Reading it to decide whether to INFORM THE PLAYER is not the same act as grading
+     * an acceptance on it, and nothing here grades: the verdict goes to `pendingMessage` and to
+     * `trip_notice`, both of which are prose on a card. HR1 governs what the plant's
+     * INSTRUMENTS may be used to decide; the instructor is allowed to know what actually
+     * happened, exactly as `_evalTrigger`'s `scram` case already does — and the spelling here
+     * is that same expression, deliberately, so there is one definition of "tripped".
+     *
+     * ARMED BY A HEALTHY PLANT, NOT BY A BASELINE AT START. Measured across all seven pwr2
+     * legs at their own initial conditions (2026-09-19): none boots tripped. But a player can
+     * open a walkthrough on a plant that is ALREADY tripped, and "the reactor has tripped" is
+     * an event, not a condition — so the notice is armed only once this run has seen the plant
+     * untripped, and a run that begins tripped stays quiet until the trip is reset and a NEW
+     * one arrives. `scramArmed` is the only latch here.
+     *
+     * NOTHING ELSE LATCHES, so it clears by construction. `scramSeen` is recomputed from the
+     * live plant every tick: PRESS TO RESET drops `rps_state.scrammed` and the banner and the
+     * comment go with it on the next broadcast, and a Rewind restores a pre-trip plant and
+     * does the same. There is no "clear the notice" path to get wrong because there is no
+     * stored notice.
+     *
+     * THE COMMENT DEFERS TO A STANDING COMMENT, WITH ONE EXCEPTION, AND THE EXCEPTION WAS
+     * MEASURED RATHER THAN REASONED. The overtaken skip's note belongs to the step the player
+     * has just been moved to and must not be stamped over. The PRECONDITION comment is the
+     * opposite case: it answers "was it sensible to OPEN this walkthrough", which is an entry
+     * question and by then history, and it is raised once per run and never again. A plain
+     * `!this.pendingMessage` guard therefore lost the trip notice on TWO of the five covered
+     * legs — `pwr_raise_power` and `pwr_lower_power`, whose preconditions are unmet at their
+     * own initial conditions, so the entry comment was still standing when the reactor tripped
+     * (measured 2026-09-19). So the trip notice takes the channel from that one comment, and
+     * clears its ownership flag with it, or a later precondition recovery would null OURS.
+     * The BANNER is unconditional either way and is the primary cue. */
+    var tripped = !!((snapshot.rps_state && snapshot.rps_state.scrammed) ||
+                     (snapshot.true_state && snapshot.true_state.scrammed));
+    if (!tripped) c.scramArmed = true;
+    c.scramSeen = tripped && !!c.scramArmed && !c.scramExempt;
+    if (c.scramSeen && !c.scramMsg && (!this.pendingMessage || c.precondMsg)) {
+      c.scramMsg = true;
+      c.precondMsg = false;
+      this.pendingMessage = { learning: SCRAM_NOTICE_MSG.learning, industry: SCRAM_NOTICE_MSG.industry };
+    } else if (!c.scramSeen && c.scramMsg) {
+      /* `scramMsg` is the flag saying the standing comment is OURS to clear — the same
+       * ownership idiom `precondMsg` uses, and for the same reason: an unconditional clear
+       * here would null out somebody else's comment. */
+      c.scramMsg = false;
+      this.pendingMessage = null;
+    }   // when this step came up — the dwell's clock
 
     /* FAILURES THE STEP FIRES BEHIND THE SCENES (#670 Phase 1, incident walkthroughs). See
      * `_checklistFire`. NOT on the entry tick, and that is not a detail — see the ordering
@@ -874,25 +1053,50 @@
       c.overtakenStreak = this._grade(snapshot, st.overtaken).met ? (c.overtakenStreak || 0) + 1 : 0;
       if (c.overtakenStreak >= ACC_STABLE_N) {
         var otText = st.overtaken.text || 'The plant has moved past this step.';
-        this.pendingMessage = { learning: otText, industry: st.overtaken.industry || otText };
+        /* ⚠ CHECK OFF FIRST, THEN SPEAK (#749 item 4, 2026-09-18). `_checklistCheckOff` now
+         * retires the outgoing step's comment, so setting `pendingMessage` BEFORE this call —
+         * which is what this site used to do — hands it a message and then deletes it on the
+         * same tick. The message belongs to the step being ENTERED (it explains why the player
+         * is suddenly there), so it is raised after the move, and it is retired when THAT step
+         * is checked off. Any future caller that wants to speak through a check-off owes the
+         * same order; `run_checklist_pwr2` §2ac reddens if this pair is swapped back. */
         this._checklistCheckOff('overtaken');
+        this.pendingMessage = { learning: otText, industry: st.overtaken.industry || otText };
         return;
       }
     }
 
     if (st.saw && !c.sawSeen && this._grade(snapshot, st.saw).met) c.sawSeen = true;
+    /* THE VOID REACHES `saw`, AND IT IS DECIDED HERE RATHER THAN LEFT TO FALL OUT
+     * (#773/#788). `implied_by` cannot reach a `saw` — it lives inside `accs` — so a
+     * `saw` on a channel the player has broken is the ONE construct in the pool with no
+     * relief of any kind: three exist, and `pwr_heatup` step 11's is on the same channel
+     * as its own acceptance, so the step would be relieved on one half and locked on the
+     * other. It is computed BESIDE the latch and never INTO it: writing `c.sawSeen = true`
+     * would make the void permanent and survive `clear_failure`, which is exactly the bug
+     * this whole mechanism is written to avoid. */
+    c.sawVoided = st.saw ? this._predVoided(snapshot, st.saw) : null;
 
     if (st.accs && st.accs.length) {          // multi-check-off (#244 item 8)
       c.gradedBy = null;
+      c.accVoided = null;                     // per-row, in `accsState[].voided`
       c.accMetNow = this._gradeAccs(c, st, snapshot);
     } else if (st.acc) {
       var g = this._gradeOne(c, snapshot, st.acc, 'acc');
       c.gradedBy = g.graded_by;
       c.accStreak = g.met ? c.accStreak + 1 : 0;
-      c.accMetNow = c.accStreak >= ACC_STABLE_N;
+      /* THE SOLE-ROW CASE, WHICH THE RULING ACCEPTED WITH A CONDITION. Standing down the
+       * ONLY acceptance of a step means the step completes with nothing asserting it —
+       * the shape #773 rejected — and it is allowed here only because the player caused
+       * it AND THE CARD SAYS SO. A silent advance is the failure mode; the string is
+       * rendered from `acc_voided` in ui/app.js. No `ACC_STABLE_N` debounce: an injection
+       * is a discrete declared event, not a reading that can flicker across a threshold. */
+      c.accVoided = this._predVoided(snapshot, st.acc);
+      c.accMetNow = c.accStreak >= ACC_STABLE_N || !!c.accVoided;
     } else {
       c.gradedBy = null;
       c.accMetNow = false;
+      c.accVoided = null;
     }
 
     /* A step with NOTHING GRADABLE is an OBSERVATION, and it completes on time spent.
@@ -910,8 +1114,9 @@
      * `checklist_check` survives as a command — save/restore and the tests still use it —
      * it simply has no button any more. */
     var hasAccs = !!(st.accs && st.accs.length);
-    var met = (hasAccs || st.acc) ? (c.accMetNow && (!st.saw || c.sawSeen))
-            : st.saw ? c.sawSeen
+    var sawOk = !st.saw || c.sawSeen || !!c.sawVoided;            // #773/#788, see above
+    var met = (hasAccs || st.acc) ? (c.accMetNow && sawOk)
+            : st.saw ? sawOk
             : st.cmd ? c.cmdSeen
             : (simTime - (c.stepAt == null ? simTime : c.stepAt)) >= OBSERVE_DWELL_S;
     /* A STEP THE PLAYER NEVER TOUCHES WAITS FOR AN ACKNOWLEDGEMENT *(OWNER, 2026-09-03, #619
@@ -1058,10 +1263,66 @@
 
   InstructorLayer.prototype._checklistCheckOff = function (by) {
     var c = this.checklist;
+    /* THE OUTGOING STEP'S COMMENT GOES WITH THE STEP (#749 item 4, measured 2026-09-18).
+     *
+     * `_advanceFollow` has cleared `pendingMessage` on every step change since it was written —
+     * "a new step retires the previous step's feedback" — and this, the Path 3 advance the
+     * Continue button AND the overtaken skip both run through, reset eleven per-step fields and
+     * never touched it. MEASURED on the live runtime (`start_checklist pwr_startup`, a real
+     * overshoot to `sr_energized < 1` at bank 242, then Continue to the end): step 6's overtaken
+     * text — "This point is overtaken: SOURCE RANGE switched itself off… Stop withdrawing and go
+     * to the criticality step." — stood at steps 9, 10, 11, 12, 13, 14, 15, 16, 17 AND on the
+     * COMPLETE snapshot. TEN of the ten later states, the last of them telling a finished player
+     * to stop withdrawing. `ui/app.js` paints it into `#instrCurrent`, so it is on the card for
+     * all of them. NOT specific to the overtaken note: any message raised on a walkthrough step
+     * outlived every later step.
+     *
+     * ⚠ THE ORDERING IS THE TRAP AND IT IS WHY THIS LINE IS NOT ENOUGH ON ITS OWN. The overtaken
+     * path SET the message and then called this — so an unconditional clear here deletes the very
+     * message that call was made to deliver. The form chosen is the one with the smallest surface
+     * and no new serialized state: this clears unconditionally, and the ONE caller that speaks
+     * through a check-off now raises its message AFTER the call. The alternative — stamping each
+     * message with the step index it belongs to — buys the same behaviour for a new field in
+     * `serialize`/`restore` and a second rule to keep in step; declined. The other two callers
+     * (`checklistCheck`, the Continue button; and the `caught_up` loop) raise no message at all.
+     *
+     * `precondMsg` COMES DOWN WITH IT, and that is deliberate rather than incidental: it is the
+     * flag saying "the standing comment is OURS to clear", so leaving it true over a cleared
+     * message would let a later recovery null out somebody else's comment instead — the same
+     * defect facing the other way. The precondition ROWS are unaffected; the walkthrough panel
+     * still lists every failed one, which is where that detail has always lived.
+     *
+     * ⚠ EXCEPT ON THE CATCH-UP, AND THE REASON THE FIRST DRAFT MISSED IT IS IN THE PARAGRAPH
+     * ABOVE: it enumerated the CALLERS ("the caught_up loop raises no message at all") when the
+     * question is what is STANDING when the caller runs. The catch-up loop is not a player
+     * action — it is the runtime fast-forwarding past steps the plant has already done, on the
+     * first `_stepChecklist` pass — and the precondition comment is raised EARLIER IN THAT SAME
+     * PASS, a few lines up. So an unconditional clear ate it before it was ever drawn, and
+     * `precondSaid` latches for the life of the run, so it could never come back.
+     *
+     * MEASURED (quality pass, 2026-09-18), `start_checklist pwr_shutdown` on `hot_zero_power` —
+     * preconditions unmet (REACTOR POWER above 10 %: the plant reads 1.9e-7 %) and step 1's own
+     * acceptance already true, so the catch-up fires: before this guard `instructor.message` was
+     * NULL on every broadcast; with it the comment stands, exactly as it did before #749 item 4.
+     * The case is not exotic — it is precisely "the plant is not where the procedure assumes",
+     * which is the only case that comment exists for. A plain Continue on step 0 still retires
+     * it (the author's stated intent, and §2ac.3 pins it). */
+    if (by !== 'caught_up') {
+      this.pendingMessage = null;
+      c.precondMsg = false;
+      /* #709 — and this is the half that is easy to forget. The trip notice is a fact about
+       * the PLANT, not about the outgoing step, so clearing the comment without clearing its
+       * ownership flag would retire it for good the first time any step ticked while the
+       * reactor was tripped. Cleared, it is re-raised on the next tick for as long as the trip
+       * stands — and on the LAST step the `!st` branch above takes it down instead, so it
+       * never reaches the completion card. */
+      c.scramMsg = false;
+    }
     c.done[c.idx] = true;
     c.doneBy[c.idx] = by;
     c.idx++;
     c.cmdSeen = false; c.sawSeen = false; c.accStreak = 0; c.accMetNow = false; c.gradedBy = null;
+    c.accVoided = null; c.sawVoided = null;
     c.accsState = null;                 // per-entry multi-check-off latches (#244 item 8)
     c.outOfTurn = null;                 // #759 — the out-of-turn note belongs to the step it was pressed on
     c.predBags = null;                // #755/#761 — the new step owes its steadiness / quiet window afresh
@@ -1229,6 +1490,103 @@
     // `value` rides along for consumers that display the reading (#395's
     // precondition banner); met/graded_by callers are unaffected.
     return { met: this._predMet(r.value, pred), graded_by: r.graded_by, value: r.value };
+  };
+
+  /* ==================================================================================
+   * A CASUALTY THE PLAYER INJECTED ON PURPOSE STANDS ITS OWN ROWS DOWN
+   * *(OWNER RULING, 2026-09-19: "A", on #788/#773)*.
+   *
+   * THE RULE: a walkthrough step may stand an acceptance row down because the player
+   * DELIBERATELY INJECTED A NAMED CASUALTY on the channel that row grades.
+   *
+   * WHY THIS IS NOT THE FAIL-OPEN #773 REJECTED, and the distinction is the whole
+   * design. A fail-open says *"you are done because your meter died"* and fires on ANY
+   * cause — a lag, a range floor, a channel that never published, a failure the player
+   * did not choose. This fires ONLY on the player's own declared action: *"you broke this
+   * on purpose, so this observation is void."* It reads `snapshot.active_failures`, which
+   * is the INJECTION RECORD — a list of ids the operator (or an authored `inject`) sent
+   * down — and never `true_state`. HARD RULE 1 IS UNTOUCHED: nothing here consults plant
+   * truth to decide whether a row stands, and a gauge that is merely lying, lagging or
+   * railed is still graded exactly as before.
+   *
+   * THE SCOPE IS THE NAMED PATH, AND THAT IS THE RULING'S OWN BOUNDARY. `inject_failure
+   * {failure_id}` publishes `active_failures = [{id, severity}]`; the raw advanced-panel
+   * `set_instrument_failure {instrument_id, mode}` publishes NOTHING (measured, #788
+   * §2ag.7 — the engine knows, the snapshot does not). So a channel broken from the
+   * advanced panel is NOT relieved here, deliberately: extending the publication also
+   * decides what M5's new-failure attention stop does when a player breaks a gauge, which
+   * is a separate decision and was left out of scope.
+   *
+   * THE DERIVED-CHANNEL HALF IS THE HARD ONE, and a name match closes none of it. The
+   * TMI-2 leg's four SUBCOOLING MARGIN rows grade `subcooling_margin`, which is built
+   * inside the instrument layer out of indicated pressure, T-avg and core-exit temperature
+   * — so `tavg_sensor_failure` kills them though their channel is not `tavg`, and one of
+   * them (step 19) was an unrecorded soft lock. The relation is therefore taken from
+   * `RD.PWRInstruments.DERIVED_FROM`, which is declared in the file that COMPUTES those
+   * channels and re-discovered by perturbation in `run_checklist_pwr2.js` §2ah.1 — not a
+   * list kept here, which is the shape that certifies a map instead of a plant.
+   *
+   * IT IS RE-EVALUATED EVERY TICK AND NEVER LATCHED. `clear_failure` empties
+   * `active_failures`, the row comes straight back, and the step owes its own criterion
+   * again. Latching it would be the `implied_by` latch bug in a new place.
+   *
+   * WHAT IT DOES NOT TOUCH: `precond` (a leg's ENTRY gate — standing it down would let a
+   * player start a leg the plant is not lined up for), `overtaken` (a plant condition, not
+   * an acceptance) and the outcome guard. */
+  InstructorLayer.prototype._casualtyChannels = function (snapshot) {
+    var af = (snapshot && snapshot.active_failures) || [];
+    var plant = (snapshot && snapshot.metadata && snapshot.metadata.plant_id) || '';
+    var sig = plant + '::' + af.map(function (f) { return f && f.id; }).join('|');
+    if (this._voidSig === sig && this._voidMap) return this._voidMap;
+    /* THE CATALOG IS THE CONTROL LAYER'S OWN (`config.failures`), not a copy: it is what
+     * says which ids are `type:'instrument'` and which channel each one holds. Reached
+     * through `this.below`, the layer this one is constructed over — the same downward
+     * reference `_checklistFire` already uses to place a failure. */
+    var cat = (this.below && this.below.config && this.below.config.failures) || {};
+    var direct = {}, any = false;
+    for (var i = 0; i < af.length; i++) {
+      var def = af[i] && cat[af[i].id];
+      if (!def || def.type !== 'instrument' || !def.instrument_id) continue;
+      direct[def.instrument_id] = def.display || af[i].id;
+      any = true;
+    }
+    var out = {}, k;
+    for (k in direct) out[k] = direct[k];
+    if (any) {
+      var dmap = (RD.PWRInstruments && RD.PWRInstruments.DERIVED_FROM) || {};
+      /* ONE FORWARD PASS IS ENOUGH and the gate says so: no channel in DERIVED_FROM is
+       * itself an input to another (§2ah.1 asserts the relation is one level deep), so a
+       * chain cannot hide behind a single sweep the way `implied_by`'s can. */
+      for (var chan in dmap) {
+        if (out[chan]) continue;
+        var ins = dmap[chan];
+        for (var j = 0; j < ins.length; j++) {
+          if (direct[ins[j]]) { out[chan] = direct[ins[j]]; break; }
+        }
+      }
+    }
+    this._voidSig = sig; this._voidMap = out;
+    return out;
+  };
+
+  /* null, or the DISPLAY NAME of the casualty the player injected that took this row's
+   * gauge out — the string the card shows them, so the void is never silent. */
+  InstructorLayer.prototype._predVoided = function (snapshot, pred) {
+    if (!pred || !pred.p || !snapshot) return null;
+    var af = snapshot.active_failures;
+    if (!af || !af.length) return null;            // the healthy plant: never, for any row
+    var map = this._casualtyChannels(snapshot);
+    var plant = (snapshot.metadata && snapshot.metadata.plant_id) || null;
+    var pm = plant ? PARAM_INSTRUMENT[plant] : null;
+    var iid = pm ? pm[pred.p] : null;
+    if (!iid || !map[iid]) return null;
+    /* AND THE ROW MUST ACTUALLY BE GRADED OFF THAT GAUGE. A param that falls through to
+     * `true_state` — because the channel is absent from this plant's broadcast — is not
+     * affected by any instrument casualty, so voiding it would be the fail-open shape on
+     * a row the failure never touched. Asked of `readParam`, the one resolver, rather
+     * than re-derived here. */
+    if (readParam(snapshot, pred.p).graded_by !== 'instrument') return null;
+    return map[iid];
   };
 
   /* THE STEADINESS EVALUATOR (#755) — ONE implementation, two callers. The live runtimes reach
@@ -1464,7 +1822,13 @@
   InstructorLayer.prototype._ensureAccsState = function (holder, st) {
     if (!holder.accsState || holder.accsState.length !== st.accs.length) {
       holder.accsState = st.accs.map(function () {
-        return { streak: 0, met: false, obs: null, graded_by: null, bag: null };
+        // `implied` — latched by a sibling's threshold rather than this row's own (see
+        // `implied_by` in _gradeAccs). Initialised here so the shape is stable across
+        // serialize/restore and the card can read it on the first broadcast.
+        // `voided` — the player's own named casualty took this row's gauge out (#773/#788).
+        // NOT a latch: re-derived every tick, so `clear_failure` gives the row back.
+        return { streak: 0, met: false, obs: null, graded_by: null, bag: null, implied: false,
+                 voided: null };
       });
     }
     return holder.accsState;
@@ -1480,6 +1844,11 @@
        * moving" is a HOLD claim, and a plant — or a player — that starts moving again has left
        * it. */
       var holds = !!(en && (en.op === '~' || BAG_OPS[en.op]));
+      /* THE PLAYER'S OWN CASUALTY (#773/#788) — recomputed here every tick for EVERY row,
+       * met or not, so that clearing the failure takes the relief away again. It is kept
+       * OUT of `ax.met` on purpose: `met` is a latch, and a latched void would survive the
+       * clear. The row still grades underneath, so the card keeps showing its reading. */
+      ax.voided = this._predVoided(snapshot, en);
       if ((!ax.met || holds) && en && en.p) {
         var g;
         if (BAG_OPS[en.op]) {
@@ -1496,12 +1865,75 @@
         if (ax.streak >= ACC_STABLE_N && !blocked) ax.met = true;
         else if (holds) ax.met = false;        // left the band — the check-off comes back off
       }
-      if (!ax.met) { all = false; if (ordered) blocked = true; }   // cmd entries latch in handleCommand
+      // a voided row neither holds the step nor blocks its successors — it is an
+      // observation the player deliberately made impossible, not an unmet one.
+      if (!ax.met && !ax.voided) { all = false; if (ordered) blocked = true; }   // cmd entries latch in handleCommand
       /* A LATCHED ENTRY IS NEVER UN-LATCHED BY A PREDECESSOR GOING BACK OFF, and that is
        * deliberate: "the counts passed 7.0e2" and "you plotted a point" stay true when a later
        * `steady` row un-ticks because the player pulled more rod. The block only gates NEW
        * latches, so the step still cannot COMPLETE until every row is met at once. */
     }
+    /* ---------------------------------------------------------------- `implied_by` (#749
+     * follow-up, OWNER RULING 2026-09-18, option B: "the INTER RANGE row stays — close the
+     * soft-lock it opened").
+     *
+     * A ROW MAY NAME A SIBLING WHOSE OWN THRESHOLD ALREADY ANSWERS IT, and then the sibling
+     * being met is enough. `implied_by` holds the `p` of another entry in the SAME `accs`
+     * array; when that entry is met and this one is not, this one latches and is flagged
+     * `implied` so the card can say so.
+     *
+     * WHY IT EXISTS. `pwr_startup` step 9 grades criticality on two instrument rows — INTER
+     * RANGE at or above 1.0e-7 A, and REACTOR POWER above 0.05 %. `accs` is a CONJUNCTION, so
+     * a channel the player can break takes the step with it: MEASURED on this tree,
+     * `hot_full_power`, seed 7, through this function — `set_instrument_failure
+     * {intermediate_range, dead}`, which the Failures tab offers, publishes the channel's range
+     * floor 1.0e-11 A against a true 8.3e-3 A, and the INTER RANGE row read `met:false` for
+     * ever while REACTOR POWER read 99.6 % and met. The step authors no `overtaken`, so
+     * Continue stayed dark: a stranded leg, the #667 class.
+     *
+     * WHY IT IS AN IMPLICATION AND NOT A FAIL-OPEN ON A BROKEN GAUGE, which was the obvious
+     * candidate and is the WRONG SHAPE. (1) Nothing the instructor layer can see declares the
+     * failure — MEASURED, `snapshot.active_failures` is `[]` with the channel dead; the engine
+     * knows (`PWR2Engine.getActiveFailures` returns `instrument:intermediate_range`) and
+     * nothing publishes it. (2) Even with that bit published, standing a row down BECAUSE its
+     * gauge broke says nothing about whether anything still asserts the step — on a
+     * single-row step it would tick the step off a broken instrument, which is "you are done
+     * because your meter died". The honest condition is REDUNDANCY, and that is what this
+     * names: the row stands down only when a NAMED sibling, itself graded on an instrument,
+     * has already answered the same question. Hard Rule 1 is untouched — no true_state is
+     * read on either side — and the relief works for any cause, a stuck channel or a lost
+     * failure list included, because it is a plant-and-board condition, not a failure flag.
+     *
+     * IT IS SAFE ONLY WHERE THE IMPLICATION IS REAL, AND THAT IS THE AUTHOR'S CLAIM TO MAKE.
+     * For step 9 it is arithmetic, not a fit: `pwr2_true_state` computes `ir_amps = 8.333e-3 ×
+     * power_frac`, so the power row's own 0.05 % threshold puts INTER RANGE at 4.17e-6 A —
+     * 41.7x the row's 1.0e-7 A. `run_checklist_pwr2` §2ad re-derives that ratio out of the
+     * engine rather than trusting this paragraph.
+     *
+     * NOT ON AN `accs_ordered` STEP. There a row's POSITION is its meaning, and letting a
+     * later row's latch stand an earlier one down would open the sequencer from the far end.
+     * §2ad reddens if one is ever authored.
+     *
+     * WHAT THIS PASS DOES NOT DO, and why it is the AUTHOR's constraint rather than a check
+     * (quality pass, 2026-09-18; neither is reachable from the one shipped instance). It does
+     * not give the latch back: once implied-met the row is skipped by both loops for ever, so a
+     * `~` band or a `steady`/`stopped` sibling that later un-ticks leaves the implied row
+     * standing -- name a LATCHING sibling. And it resolves in ONE forward pass, so a row implied
+     * by a row that is itself implied lands a broadcast late -- do not chain. Both are written
+     * into the `implied_by` paragraph in ui/manual_procedures.js, where authors read. */
+    for (var mi = 0; mi < st.accs.length; mi++) {
+      var me = st.accs[mi], mx = state[mi];
+      if (ordered || !me || !me.implied_by || mx.met) continue;
+      for (var ni = 0; ni < st.accs.length; ni++) {
+        if (ni === mi || !st.accs[ni] || st.accs[ni].p !== me.implied_by) continue;
+        if (state[ni].met) { mx.met = true; mx.implied = true; }
+      }
+    }
+    /* recomputed over the SAME bits the loop above set, so an implication cannot be masked by
+     * an `all` taken before it resolved — and identical to the loop's own accumulation when no
+     * entry carries `implied_by`, which is every step in the pool but one. */
+    all = true;
+    for (var qi = 0; qi < state.length; qi++) if (!state[qi].met && !state[qi].voided) { all = false; break; }
     return all;
   };
   // The command half of the watch: latch any unmet cmd-kind entry the command satisfies.
@@ -1665,10 +2097,12 @@
         acc_met: f.accMetNow,
         graded_by: f.gradedBy,
         done: f.done,
-        // Multi-check-off verdicts for the ACTIVE step ({met, obs, graded_by} per
-        // entry, order-parallel to the step's `accs`), or null on single-acc steps.
+        // Multi-check-off verdicts for the ACTIVE step ({met, obs, graded_by, implied}
+        // per entry, order-parallel to the step's `accs`), or null on single-acc steps.
+        // `implied` — this row latched on a sibling's threshold, not its own (`implied_by`).
         accs: f.accsState ? f.accsState.map(function (a) {
-          return { met: a.met, obs: a.obs, graded_by: a.graded_by };
+          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
+                   voided: a.voided || null };
         }) : null,
       } : null,
       level_complete: this.levelComplete ? {
@@ -1694,6 +2128,19 @@
         steps_done: this.checklist.done.slice(),
         done_by: this.checklist.doneBy.slice(),
         acc_met: this.checklist.accMetNow,
+        /* THE SOLE ROW THE PLAYER'S OWN CASUALTY STOOD DOWN (#773/#788) — the display
+         * name of the failure they injected, or null. `acc_met` is TRUE alongside it, so
+         * without this the step would tick with nothing asserting it and nothing said;
+         * ui/app.js renders the sentence off this field. `saw_voided` is the same fact
+         * for the step's `saw` latch, which no other relief in this file can reach. */
+        acc_voided: this.checklist.accVoided || null,
+        saw_voided: this.checklist.sawVoided || null,
+        /* THE REACTOR HAS TRIPPED AND THIS LEG DID NOT SCRIPT IT (#709). Recomputed every
+         * tick, never latched, false on an exempt leg and false once the run is complete —
+         * see `_stepChecklist`. `ui/app.js` draws the panel banner off this and joins it to
+         * the card's render key; the instructor's comment is the other half. It changes NO
+         * grading: `acc_met`, the per-row verdicts and the step index are untouched. */
+        trip_notice: !!this.checklist.scramSeen,
         graded_by: this.checklist.gradedBy,
         complete: this.checklist.complete,
         // #715 — whether the completion banner's `outcome` text is safe to show: re-graded
@@ -1717,9 +2164,12 @@
          * to rewind to" while the button sat lit). M5 fills this in from the ring itself. */
         rewind_ready: !!this._rewindReady,
         // Multi-check-off verdicts for the ACTIVE step (#244 item 8) — {met, obs,
-        // graded_by} order-parallel to the step's `accs`; null on single-acc steps.
+        // graded_by, implied} order-parallel to the step's `accs`; null on single-acc
+        // steps. `implied` — latched on a sibling's threshold (`implied_by`), not its own.
+        // `voided` — the player's own named casualty took this row's gauge out (#773/#788).
         accs: this.checklist.accsState ? this.checklist.accsState.map(function (a) {
-          return { met: a.met, obs: a.obs, graded_by: a.graded_by };
+          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
+                   voided: a.voided || null };
         }) : null,
         /* THE LAST OUT-OF-TURN PRESS ON THIS STEP (#759) — `{ acc_index, blocked_by }`, both
          * indices into the step's own `accs`. `acc_index` is the row the press WOULD have
@@ -1854,6 +2304,11 @@
          * comment and the flicker came back one press at a time. Absent in an old save reads as
          * false, which is exactly the pre-#732 behaviour. */
         precond_said: !!this.checklist.precondSaid,
+        /* #709 — the trip notice is armed by having seen the plant untripped during THIS run,
+         * and a rewind is not a new run, so the arming rides the checkpoint for the same
+         * reason `precond_said` does. Absent in an old save reads as false, which simply
+         * re-arms on the first untripped broadcast — the conservative direction. */
+        scram_armed: !!this.checklist.scramArmed,
       } : null,
     };
   };
@@ -1879,9 +2334,13 @@
           cmdSeen: !!cs.cmdSeen, sawSeen: !!cs.sawSeen,
           accStreak: cStreak, accMetNow: cStreak >= ACC_STABLE_N,
           gradedBy: null, complete: !!cs.complete,
-          // restore the per-entry latches; streaks/obs regrade live (#244 item 8)
+          /* restore the per-entry latches; streaks/obs regrade live (#244 item 8). `implied`
+           * is NOT saved and restores false: the save format carries one boolean per entry,
+           * and a latch taken by `implied_by` restores as the latch it is — the card loses
+           * only the "covered by" note under that row until the run ends. Widening
+           * `accs_met` to carry it is a save-format change for a note. */
           accsState: cs.accs_met ? cs.accs_met.map(function (m) {
-            return { streak: 0, met: !!m, obs: null, graded_by: null };
+            return { streak: 0, met: !!m, obs: null, graded_by: null, implied: false };
           }) : null,
           // Precondition VERDICTS are DERIVED state — never saved; the first step() tick
           // after a restore regrades them against the live plant.
@@ -1897,6 +2356,13 @@
           // #670 — restored, not re-derived: a save written before this field is an empty set,
           // which is exactly what it used to behave as.
           fired: (cs.fired || []).slice(), injected: (cs.injected || []).slice(),
+          /* #709 — `scramExempt` is a property of the CONTENT, so it is recomputed from the
+           * re-resolved proc rather than restored from the save: an edit to a leg must take
+           * effect on an old save, and a stale exemption riding a checkpoint is exactly the
+           * "certify the map, not the plant" shape. The arming IS per-run and is restored;
+           * `scramSeen`/`scramMsg` are recomputed on the first tick after the load. */
+          scramExempt: InstructorLayer.legScriptsScram(cproc),
+          scramArmed: !!cs.scram_armed, scramSeen: false, scramMsg: false,
         };
       } else if (typeof console !== 'undefined') {
         console.warn('InstructorLayer.loadState: checklist procedure "' + cs.procedure_id + '" not found — dropped.');
@@ -1948,9 +2414,10 @@
         idx: fs.idx, cmdSeen: fs.cmdSeen, sawSeen: fs.sawSeen,
         accStreak: fStreak, accMetNow: fStreak >= ACC_STABLE_N,
         gradedBy: null, done: fs.done,
-        // restore the per-entry latches; streaks/obs regrade live (#244 item 8)
+        // restore the per-entry latches; streaks/obs regrade live (#244 item 8); `implied`
+        // is not saved — see the checklist half above.
         accsState: fs.accs_met ? fs.accs_met.map(function (m) {
-          return { streak: 0, met: !!m, obs: null, graded_by: null };
+          return { streak: 0, met: !!m, obs: null, graded_by: null, implied: false };
         }) : null,
       };
       this.scenarioStartTime = state.scenario_start_time;

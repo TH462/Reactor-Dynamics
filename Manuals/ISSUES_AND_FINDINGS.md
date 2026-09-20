@@ -132,6 +132,58 @@ Sources include `Diagnostic/SPEC_AUDIT_2026-07-16.md` and campaign playtest note
 
 ---
 
+## 9a. Known board defects referenced by a procedure step
+
+### HPI DISCHARGE PRESSURE read zero on an operator-restored injection — FIXED 2026-09-18 (#782)
+
+**Was referenced by `07_ABNORMAL_EMERGENCY.md` PWR-E06 step 3b; that note is removed now the
+gauge is fixed.**
+
+`engines/pwr2/pwr2_true_state.js`'s high-pressure-injection discharge-pressure line was gated
+on `ts.hpi_active`, while the comment directly above it stated the intended meaning as
+*"min(dead-head, system P) **while running**"*. Those are not the same condition. By ruling
+(#603, recorded in that file) `hpi_active` is the **safety-injection signal** — "has the plant
+fired" — and deliberately *not* a reading of delivered flow.
+
+So when the operator restarted the pumps themselves, below the actuation setpoint, the board
+showed an impossible pair. Filed 2026-09-18, full stack, `hot_full_power`, 40 % tube rupture,
+injection secured at ten minutes and restored at fifteen:
+
+| | HPI FLOW | HPI ACTUATED | HPI DISCH PRESS |
+|---|---|---|---|
+| automatic actuation (3 min) | 0.1034 | true | 7.89 MPa (1144 psi) |
+| operator-restored (17 min) | 0.1223 | false | **5.93e-323 MPa** |
+
+The flow reading was correct throughout; only the discharge gauge decayed to a denormal float
+and never recovered, reading as a dead pump beside a pump delivering 12 % of rated flow.
+
+**Fix:** gate the discharge-pressure line on pump operation (`pumpKgs > 0`, the same quantity
+the flow reading already uses) instead of on `hpi_active`. `hpi_active` itself is untouched —
+the #603 ruling stands, and reverting it would re-break the case where injection actuates above
+the shutoff head and delivers nothing.
+
+**Re-measured 2026-09-18 on the same scenario, same clock** (`node test/measure_stack.js
+--plant=pwr2 --ic=hot_full_power`, 40 % SGTR at 0 s, HPI secured at 10 min, restored at 15 min):
+
+| | HPI FLOW | HPI ACTUATED | HPI DISCH PRESS |
+|---|---|---|---|
+| automatic actuation (3 min) | 0.0987 | true | 1160 psi (8.00 MPa) |
+| operator-restored (17 min) | 0.1216 | false | **1069 psi (7.37 MPa)** |
+
+Flow and discharge pressure now read non-zero together on the operator-restored path, the exact
+pairing the pre-fix code could not produce. Gated by `test/run_pwr2_true_state.js`'s
+"operator-restored injection" probe, which reverts to `ts.hpi_active === true` and reproduces
+the pre-fix reading (flow 0.337, discharge 0.00 MPa in that probe's synthetic fixture) before
+the fix is restored.
+
+`afw_discharge_pressure_mpa` (the next line in the same file) does **not** share this defect:
+it is gated on `ts.afw_active`, and `afw_active` is itself defined as `aw.total_kgs > 0` — a
+flow-delivery reading, not an actuation signal, the same shape as the corrected HPI line.
+Confirmed by source read of `pwr2_true_state.js`'s AFW block; not separately re-measured,
+because the code shows it was never wired to the signal in the first place.
+
+---
+
 ## 10. Change control
 
 | Date | Change |

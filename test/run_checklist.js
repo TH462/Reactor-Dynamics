@@ -305,7 +305,7 @@ svc4.running = true;
 run(svc4, 10);
 snap = svc4.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
 c = ckl(snap);
-ck('startup ships 4 precondition rows', !!(c && c.preconditions && c.preconditions.length === 4), c && c.preconditions && c.preconditions.length);
+ck('startup ships 5 precondition rows', !!(c && c.preconditions && c.preconditions.length === 5), c && c.preconditions && c.preconditions.length);
 ck('the #396 boron seam row reads UNMET at ~857 ppm', pcv(c, 3).met === false && Math.abs(pcv(c, 3).obs - 857) < 15, 'obs ' + (pcv(c, 3).obs != null ? (+pcv(c, 3).obs).toFixed(1) : '—'));
 ck('the temperature row reads UNMET on a cold plant', pcv(c, 0).met === false, 'obs ' + (pcv(c, 0).obs != null ? (+pcv(c, 0).obs).toFixed(1) : '—'));
 ck('instructor comment raised for the seam', !!(snap.instructor && snap.instructor.message), 'raised');

@@ -1307,6 +1307,17 @@
       // anything missing from this table under a trailing heading rather than dropping it.
       // A new failure therefore SHOWS UP misfiled instead of disappearing, and
       // `run_inspect` asserts every catalog entry is placed.
+      // #671: `stuck_rod_on_scram`, `steam_line_break` and `steam_line_break_upstream` are
+      // PLACEHOLDERS on PWR2 and are deliberately KEPT here. PWR2's own keep-list
+      // (pwr2_shell.js REHOMED wrapper, ~:1504) filters all three out, so on the shipped
+      // plant they are dead membership — but this table is SHARED: `PROFILES.pwr` serves
+      // both engines (the `pwr2` entry at ~:456 is `plant: 'pwr'`), the retired engine's
+      // catalog really does carry all three, and `run_inspect`'s "every failure is placed"
+      // check reads that catalog. Dropping them was tried and reddened it 61/62, misfiling
+      // three live rows under the trailing catch-all on the plant that still has them.
+      // They cost nothing while filtered — `buildFailures` renders from the CATALOG, so a
+      // group id with no catalog entry simply draws no row. #530 is what lands the
+      // steam-line break on PWR2; `stuck_rod_on_scram` has no PWR2 issue yet.
       failGroups: [
         { title: 'Reactivity & rods',        ids: ['continuous_rod_withdrawal', 'stuck_rod_on_scram', 'failure_to_scram', 'anticipatory_trip_failure'] },
         { title: 'Reactor coolant system',   ids: ['large_loca', 'sgtr', 'rcp_seal_leak', 'stuck_porv_open', 'rcp_trip'] },
@@ -4024,6 +4035,12 @@
     /* #735 / #724 item 6 — the count rate renders the way the meter writes it: "7.0e2
      * (700 counts per second)". See `sci` in fmtPredValue. */
     sr_counts_cps:          { label: 'SOURCE RANGE', u: 'counts per second', sci: true },
+    /* #749 item 2 — the criticality step's progress row. Same `sci` form as the count rate,
+     * because the NIS card prints this channel through the same `fmtExp`. Its values are
+     * FRACTIONS OF A MICROAMP, which is why `fmtPredValue`'s bracketed plain number has to
+     * know when to stay out of the way: `Math.round(1e-7)` is 0, and "1.0e-7 A (0 A)" is
+     * worse than no bracket at all. See the guard in the `sci` branch below. */
+    ir_amps:                { label: 'INTER RANGE', u: 'A', sci: true },
     startup_rate_dpm:       { label: 'STARTUP RATE', u: 'DPM' },
     reactivity_pcm:         { label: 'Net reactivity', u: 'pcm' },
     boron_ppm:              { label: 'Boron in the loop (BORON CHEM after a sample)', u: 'ppm' },
@@ -4160,6 +4177,14 @@
       var mant = vv, exp = 0;
       while (Math.abs(mant) >= 10) { mant /= 10; exp++; }
       while (mant !== 0 && Math.abs(mant) < 1) { mant *= 10; exp--; }
+      /* THE BRACKET IS AN AID, AND BELOW 1 IT STOPS BEING ONE (#749 item 2, 2026-09-18). The
+       * owner's form is "7.0e2 (700 counts per second)" — the meter's notation with the plain
+       * number beside it — and the plain number is what makes it an aid. `Math.round` on a
+       * sub-unit reading returns 0, so an INTER RANGE row would have drawn "1.0e-7 A (0 A)":
+       * a bracket claiming the channel reads nothing, next to a shorthand saying it does not.
+       * The shorthand is the part the directive requires (#724 item 6) and it is unchanged;
+       * only the bracket is dropped, and only where it would print a rounded zero. */
+      if (Math.abs(vv) < 0.5) return mant.toFixed(1) + 'e' + exp + (pd.u ? ' ' + pd.u : '');
       return mant.toFixed(1) + 'e' + exp + ' (' + Math.round(vv).toLocaleString('en-US') +
              (pd.u ? ' ' + pd.u : '') + ')';
     }
@@ -4257,6 +4282,36 @@
     return '  — the plant reads ' + (MODE_NAMES[Math.round(m)] || ('Mode ' + m)) + ' (true value)';
   }
 
+
+  /* The sibling an `implied_by` row was covered by, as the player sees it: its own letter when
+   * the step draws letters, else its done-when line. Mirrors the out-of-turn line's derivation
+   * (#759) — letters count VISIBLE entries, so a hidden cmd twin does not consume one. */
+  function impliedSay(st, en, stepNo) {
+    var accs = st.accs || [], j = -1, visN = 0, i;
+    for (i = 0; i < accs.length; i++) {
+      if (!accs[i].hidden) visN++;
+      if (j === -1 && accs[i] !== en && accs[i].p === en.implied_by) j = i;
+    }
+    if (j === -1) return 'another line on this step';
+    var lbl = accs[j].label || (accs[j].p ? fmtPredicate(accs[j]) : String(accs[j].cmd || ''));
+    if (visN > 1 && !accs[j].hidden) {
+      var seen = 0;
+      for (i = 0; i < j; i++) if (!accs[i].hidden) seen++;
+      return String(stepNo) + String.fromCharCode(97 + seen) + ': ' + lbl;
+    }
+    return lbl;
+  }
+
+  /* THE TRIP BANNER'S WORDS, both registers (#709). The shorter twin of the instructor's
+   * comment in `layers/instructor_layer.js` (`SCRAM_NOTICE_MSG`), which carries the WHY; this
+   * is a banner and says what happened and what the player can do. Board words only — the two
+   * routes out are the card's own buttons, "⏪ Rewind step" and "← All walkthroughs". No units,
+   * so the no-SI-in-walkthroughs ruling (2026-09-06) has nothing to bite on. */
+  var CKL_TRIP_NOTICE = {
+    learning: 'The reactor has tripped. This walkthrough cannot carry on from here — the step you are on will not check off. Press ⏪ Rewind step to go back to before the trip, or ← All walkthroughs to leave this one.',
+    industry: 'REACTOR TRIP — this procedure is not valid post-trip and the active step will not advance. Rewind to a pre-trip checkpoint, or exit the procedure.',
+  };
+
   function renderChecklist(s, ck) {
     var cur = $('cklRun');
     if (!cur) return;
@@ -4285,7 +4340,22 @@
       ck.step_index, ck.acc_met ? 1 : 0, ck.graded_by || '', ck.complete ? 1 : 0, pcKey, ui.register,
       // #244 additions: per-entry check-off states, the why-toggle states, and the display
       // units all change what the card shows, so they join the render key.
-      (ck.accs || []).map(function (a) { return a.met ? 1 : 0; }).join(''),
+      /* `implied` is a THIRD state, not a second spelling of met (#749 follow-up): a row
+       * covered by a sibling draws an extra line, and in every case seen so far it flips
+       * met in the same broadcast — but a key that cannot tell 1 from 2 would go dark the
+       * first time it does not, which is this file's own thrice-learned lesson. */
+      /* `voided` is a FOURTH state for the same reason (#773/#788): the player's own
+       * casualty stood the row down, which draws a different extra line, and on a SOLE
+       * row `acc_met` flips to true with nothing else in the key moving at all. */
+      (ck.accs || []).map(function (a) { return a.voided ? 3 : (a.met ? (a.implied ? 2 : 1) : 0); }).join(''),
+      ck.acc_voided || '', ck.saw_voided || '',
+      /* THE REACTOR-TRIP BANNER JOINS THE KEY (#709) — this file's four-times-learned lesson
+       * (#392's precondition banner, #653 defect 4's mode line, #759's out-of-turn note,
+       * #788's voided rows). A trip moves nothing else in this key by construction: the whole
+       * point of the finding is that the step index sits still, no row latches and no
+       * acceptance changes, which is precisely the case the key could never cover by accident.
+       * Outside it the banner would never be drawn at all. */
+      ck.trip_notice ? 1 : 0,
       /* #660 items 17-18: BOTH BUTTONS' LIT STATES BELONG IN THE KEY. `awaiting_ack` is what
        * lights Continue and draws its note, and `rewind_ready` is what enables Rewind — neither
        * was here, and neither is implied by the rest of the key: `rewind_ready` can flip while
@@ -4330,6 +4400,24 @@
     h += '<div class="ckl-head"><b>' + mesc(pr.title) + '</b>' +
       '<span class="ckl-stepno">' + (ck.complete ? 'Complete' : ('Step ' + (ck.step_index + 1) + ' of ' + pr.steps.length)) +
       (headClock ? ' · ' + mesc(headClock) : '') + '</span></div>';
+    /* THE WALKTHROUGH SAYS SO WHEN THE REACTOR TRIPS UNDER IT (#709, layman playthrough
+     * 2026-09-07 finding S-15: "The checklist does not react to a reactor trip.")
+     *
+     * A trip part-way through a leg leaves the same step active waiting on a number the plant
+     * will not reach again, and the panel said nothing at all — the player's only cue was that
+     * nothing happened. This is the banner half; the instructor's comment is the other. It
+     * INFORMS ONLY: the step does not move, nothing is checked off and no acceptance is
+     * relieved. The runtime decides whether it applies (`trip_notice` is false on a leg that
+     * scripts its own scram, and false once the leg is complete); this draws its verdict and
+     * never re-derives it, the same rule the voided-row lines below follow.
+     *
+     * It sits ABOVE the precondition banner because it is about the plant as it is now, while
+     * that one is about whether opening this walkthrough was sensible — and unlike that one it
+     * is deliberately NOT latched at entry: it comes and goes with the trip, so PRESS TO RESET
+     * or a Rewind to before the trip takes it down on the next broadcast. */
+    if (ck.trip_notice) {
+      h += '<div class="m-caution ckl-trip"><b>' + mesc(CKL_TRIP_NOTICE[ui.register] || CKL_TRIP_NOTICE.learning) + '</b></div>';
+    }
     // Precondition banner (#395) — WARN, NEVER BLOCK: unmet rows are listed with
     // measured-vs-expected and everything below still runs. Row text comes from
     // the procedure artifact (`precond[i].text`); the snapshot ships verdicts only.
@@ -4564,6 +4652,25 @@
                * its own line, so the imperative is what the eye lands on. Not on a row that is
                * still waiting its turn (#756) — a done-when for a row nothing is grading yet. */
               (en.ask && !ordWait ? '<div class="ckl-crit-when">' + mesc(enTxt) + '</div>' : '') +
+              /* A ROW TICKED BY A SIBLING SAYS SO (`implied_by`, #749 follow-up, OWNER RULING
+               * 2026-09-18). Without this the card draws "INTER RANGE reads 1.0e-7 A or more
+               * ✓" beside a tile bottomed out at 1.0e-11 — a tick standing for a reading the
+               * board never showed, which is the #757 class. The sentence names the row that
+               * DID answer, derived from the entry's own `implied_by` and that row's letter, so
+               * a re-worded or re-ordered step cannot leave a stale one behind. Drawn only when
+               * the runtime actually latched it that way: `implied` is a snapshot verdict, not
+               * a re-derivation here. */
+              (av.implied ? '<div class="ckl-crit-when">Covered by ' +
+                 mesc(impliedSay(st, en, i + 1)) + ' — this gauge did not get there.</div>' : '') +
+              /* A ROW STOOD DOWN BY THE PLAYER'S OWN CASUALTY SAYS SO, AND SAYING SO IS THE
+               * CONDITION THE RULING ATTACHED TO IT (#773/#788, OWNER RULING 2026-09-19:
+               * "A"). The step advances with this row unverified, which is only acceptable
+               * because the player broke the gauge on purpose — so the card names the
+               * failure they injected and states plainly that nothing checked this. A silent
+               * advance is the failure mode. The name comes from the runtime's own verdict
+               * (`voided` carries the casualty's display string), never re-derived here. */
+              (av.voided ? '<div class="ckl-crit-when">Not verified — you injected ' +
+                 mesc(av.voided) + ', and this reading comes off that gauge.</div>' : '') +
               '</div>';
           }
           /* A PRESS THAT LANDED OUT OF TURN GETS A REASON ON THE CARD (#759, OWNER RULING
@@ -4595,7 +4702,19 @@
           }
         } else if (st.acc) {
           h += '<div class="ckl-crit' + (ck.acc_met ? ' ckl-crit-met' : '') + '">' +
-            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc) + modeLiveNote(st.acc, s)) + '</div>';
+            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc) + modeLiveNote(st.acc, s)) +
+            /* THE SOLE-ROW VOID (#773/#788) — the case the ruling accepted WITH THIS
+             * SENTENCE AS THE CONDITION. There is no sibling here, so the step completes
+             * with nothing at all asserting it; the card must not let that pass unsaid. */
+            (ck.acc_voided ? '<div class="ckl-crit-when">Not verified — you injected ' +
+               mesc(ck.acc_voided) + ', and this reading comes off that gauge. ' +
+               'The step was checked off without it.</div>' : '') + '</div>';
+        }
+        /* The same for the step’s `saw` latch, which is graded but never printed as a row
+         * of its own — without this the player sees no reason at all for the advance. */
+        if (ck.saw_voided) {
+          h += '<div class="ckl-crit"><div class="ckl-crit-when">Not verified — you injected ' +
+            mesc(ck.saw_voided) + ', and what this step had to see comes off that gauge.</div></div>';
         }
         var isObs = st.control && /^\(observe/i.test(st.control);
         if (isObs) {
@@ -4944,21 +5063,82 @@
     if (v == null || isNaN(v)) return '—';
     return String(Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 10) / 10);
   }
-  // Labels a checklist step points at on hover: its explicit `hl` list when
-  // authored (controls + indications), else a fallback to the step's own `control`
-  // field (skipping the "(observe…)" placeholders that name no on-board control).
+  /* DOES THIS STEP ASK FOR A PRESS AT ALL? (#653 S-3b) — the question the two resolvers below split on.
+   *
+   * A step asks for a press when it issues a command (`cmd`), when one of its check-off rows is
+   * graded on a command landing (`acc.cmd`, or a `cmd` entry in `accs` — `accs_ordered` is a flag
+   * ON `accs`, so it is covered), or when it SAYS SO with `press_expected`. The step's TEXT is
+   * never consulted: it is not parseable, and the `control` pill is a label, not a claim about
+   * what the player does.
+   *
+   * `press_expected` IS FOR THE CONTINGENCY PRESS — a step that really does want the pulsing ring
+   * but is graded on the PLANT rather than on a command ("if it does not, press AUTO"). It is a
+   * declaration and not a heuristic for the same reason `expect_alarms` is one: nothing outside
+   * the step can tell a conditional press from a lamp the player is only meant to read. MEASURED
+   * on the built pools 2026-09-20: exactly THREE steps in the shipped pwr2 pool carry `hl` with
+   * no command behind it — `pwr_startup` 3, 11 and 12 — and all three are real contingency
+   * presses, so all three declare it. `run_manual_controls` gates the claim from the other side:
+   * a pwr2 step with any pulsing label must ask for a press. */
+  function stepAsksForPress(st) {
+    if (!st) return false;
+    if (st.cmd) return true;
+    if (st.press_expected) return true;
+    if (st.acc && st.acc.cmd) return true;
+    for (var i = 0; st.accs && i < st.accs.length; i++) if (st.accs[i] && st.accs[i].cmd) return true;
+    return false;
+  }
+  // The step's own `control` pill as a highlight label — null for the "(observe…)"
+  // placeholders, which name no on-board control.
+  function stepControlLabel(st) {
+    return (st && st.control && !/^\(observe/i.test(st.control)) ? st.control : null;
+  }
+  /* Labels a checklist step points at on hover: its explicit `hl` list when authored (controls +
+   * indications), else a fallback to the step's own `control` field.
+   *
+   * ⚠ THE FALLBACK ASKS `stepAsksForPress` FIRST, AND THAT IS THE FIX *(OWNER RULING, 2026-09-15:
+   * "Move them to the watch ring")*. A VERIFY step must not wear the pulsing ring: a 2026-09-15
+   * layman playthrough nearly pressed TRIP on `pwr_heatup` 4, whose `hl: ['Turbine — Trip']`
+   * resolved to the TRIP button's own box and pulsed it, on a step whose whole instruction is
+   * "nothing to press".
+   *
+   * THE RING STAYS, ONLY THE PULSE GOES — the highlights are the owner's own drawings
+   * (`Blueprint/WALKTHROUGH_STEPS_OWNER.md`, #744), so the two `pwr_heatup` steps move their
+   * labels from `hl` to `hl_watch`, the steady treatment. That move was BLOCKED until this
+   * function changed: with `hl` emptied, the old unconditional fallback pulsed the step's own
+   * `control` instead — a DIFFERENT control, still workable — so `pwr_heatup` 4 would have
+   * swapped a pulse on TRIP for a pulse on the TURBINE-GENERATOR card and reddened
+   * `run_manual_controls`' distinct-element check into the bargain. The third step the ruling
+   * names, `pwr_raise_power` 9, authors no `hl` at all and is fixed by this function alone.
+   *
+   * WHAT DEPENDS ON THE OLD FALLBACK, MEASURED on the built pools 2026-09-20 rather than reasoned:
+   * 51 steps reach it — 40 of them carry a command and are UNCHANGED. The eleven that do not are
+   * ten in the RETIRED `pwr` pool (`pwr_post_trip` 3-5, `pwr_turbine_trip` 3-4, `pwr_rod_withdrawal`
+   * 4, `pwr_sgtr` 5, `pwr_seal_leak` 3-5) and exactly one in the live pool — `pwr_raise_power` 9,
+   * which is the step the ruling is about. The ten retired-pool steps do not go dark: they have no
+   * `hl_watch`, so `stepWatchLabels` below picks their `control` up as a steady ring. */
   function stepHlLabels(st) {
     if (st.hl && st.hl.length) return st.hl;
-    if (st.control && !/^\(observe/i.test(st.control)) return [st.control];
+    var c = stepControlLabel(st);
+    if (c && stepAsksForPress(st)) return [c];
     return null;
   }
   /* THE INDICATIONS TO WATCH, AS OPPOSED TO THE CONTROL TO PRESS (#685) *(OWNER, 2026-09-09,
    * #675 section B: "Each step should highlight the important indications to watch with a non
    * pulsing green glow.")*. `hl` was one flat list rendered identically, so the gauge and the
-   * button were the same affordance; `hl_watch` is the second kind. No `control` fallback —
-   * a step's own control is by definition the thing to act on, never the thing to watch. */
+   * button were the same affordance; `hl_watch` is the second kind.
+   *
+   * …AND SINCE #653 S-3b IT CARRIES THE OTHER HALF OF THE FALLBACK. A step that names a `control`,
+   * authors NEITHER highlight list and asks for no press has one thing worth marking and one
+   * treatment that fits it. It is the LAST resort, not the first: an authored `hl_watch` wins,
+   * and a step that authored `hl` has already said what it is about, so its `control` stays a
+   * pill. Without this the ten retired-pool verify steps above would lose their ring AND their
+   * hover affordance (`hoverable` is `stepHlLabels || stepWatchLabels`) — a regression, not a fix. */
   function stepWatchLabels(st) {
-    return (st.hl_watch && st.hl_watch.length) ? st.hl_watch : null;
+    if (st.hl_watch && st.hl_watch.length) return st.hl_watch;
+    if (st.hl && st.hl.length) return null;
+    var c = stepControlLabel(st);
+    if (c && !stepAsksForPress(st)) return [c];
+    return null;
   }
   // Hover-preview glow for checklist steps: glow every control/indication label a
   // step names. Separate class from the Instructor beat glow (.instr-glow) so a

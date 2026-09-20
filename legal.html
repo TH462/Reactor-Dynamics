@@ -175,6 +175,11 @@
 
 <script src="site/version.js"></script>
   <script src="site/release.js"></script>
+<!-- Usage data (#764). ENDPOINT FIRST: telemetry.js reads it at load. Both are
+     generated at deploy, so a clone or a local checkout has no endpoint and sends
+     nothing. See privacy.html and the header of site/telemetry.js. -->
+<script src="site/telemetry_endpoint.js"></script>
+<script src="site/telemetry.js"></script>
 <script src="site/nav.js"></script>
 </body>
 </html>

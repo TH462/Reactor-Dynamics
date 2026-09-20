@@ -32,9 +32,16 @@
  *   NO PUMP CURVE. Real AFW pumps are centrifugal and their flow falls as SG pressure rises toward
  *   the shutoff head — the corpus gives a single rated point for each pump, not a curve, so this
  *   layer delivers RATED flow whenever a pump is running, independent of SG pressure. That is
- *   OPTIMISTIC at high SG pressure, the same direction pwr2_break.js's overstatement runs, and it
- *   is why `afw_discharge_pressure_mpa` is left declared-missing rather than invented — there is
- *   no curve to read a discharge pressure off.
+ *   OPTIMISTIC at high SG pressure, the same direction pwr2_break.js's overstatement runs.
+ *   ⚠ THE SENTENCE THAT USED TO CLOSE THIS PARAGRAPH WAS STALE AND WRONG (#786): *"which is why
+ *   `afw_discharge_pressure_mpa` is left declared-missing rather than invented — there is no curve
+ *   to read a discharge pressure off."* That field HAS been published by `pwr2_true_state.js` for
+ *   as long as that shim has existed, off a hard 8.3 MPa ceiling the CONSUMER held. A module
+ *   header restating what the code no longer does is the inherited-claim trap, and this one read
+ *   as a deliberate omission for months. `shutoff_mpa` below is the plant's own copy of that
+ *   constant — and it is UNVERIFIED; see its note. The absent curve is still real: the discharge
+ *   gauge is modelled as the TWO ENDS of the curve (shutoff, and the injection point), not the
+ *   line between them.
  *   NO CST INVENTORY. Draws from an unlimited source, same declared omission ECCS makes for the
  *   RWST. A real CST can run dry; this model cannot represent that, so `afw_blocked` — which would
  *   report exactly that condition — stays declared-missing rather than reporting a permanent false.
@@ -61,6 +68,27 @@
     POWER_SCALE: 300 / 1775,
     /* [sourced] ch15 table: "Auxiliary feedwater temperature (F) 70 100 100" -- the design point */
     afw_temp_f: 70.0,
+    /* [open, UNVERIFIED] the AFW pump SHUTOFF HEAD, 8.3 MPa (1204 psia / 1189 psig).
+     *
+     * NOT SOURCED, and stated as such (#786). The 2026-09-19 evidence pass across all three
+     * lanes' corpora found NO AFW shutoff head, discharge pressure figure, or pump curve:
+     * `node tools/find_source.js 'auxiliary feedwater pump.{0,120}(psig|psia|ft head)'` and
+     * `'AFW.{0,80}shutoff'` both EXIT 1 (genuine zero, 41 documents, 3 lanes). What the corpus
+     * does give is that the gauge is PROTOTYPICAL — Ginna UFSAR ch10 §10.4 (ML20339A040) lists
+     * *"Preferred auxiliary feedwater pump discharge pressure"* and *"Standby auxiliary feedwater
+     * pump (SAFW) high discharge pressure"* among the control-room indications — and a shutoff
+     * head for the WRONG pump (ch15: the high-head safety injection pumps, *"approximately 1500
+     * psi"*, which is what the RETIRED engine's `afw_shutoff_mpa: 10.34` had silently borrowed).
+     *
+     * THE NUMBER IS NOT NEW AND IS NOT INVENTED HERE: 8.3 MPa is the ceiling `pwr2_true_state.js`
+     * has always clipped this gauge at. #786 moved it to the plant rather than changing it —
+     * exactly the second-copy-held-by-the-consumer defect `ratedGpm` below was written for.
+     * Whoever sources a real figure changes it HERE and the gauge follows.
+     *
+     * PLAUSIBILITY, not evidence: it must exceed the main steam safety valve pop so the pumps can
+     * still feed a generator at its safeties — 1189 psig against `pwr2_relief.js`'s sourced
+     * 1085 psig, a 104 psi margin. That it is in the right direction is not that it is right. */
+    shutoff_mpa: 8.3,
     src: 'Ginna UFSAR ch10 & ch15 (ML20339A040 / ML20339A101)'
   };
 
@@ -156,8 +184,13 @@
      * Absent state means wide open, so an old save and a Layer-5 fixture both behave as
      * before. */
     var thr = af.throttle === undefined ? 1 : Math.min(1, Math.max(0, af.throttle));
-    var md = (open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * Math.max(0, af.mdafwAvail) * thr : 0;
-    var td = (open && af.tdafwRunning) ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) * thr : 0;
+    /* avail defaults to 1 when ABSENT, not to NaN (#786). `createAFW` always sets it, so this is
+     * identical for every engine-built state; a hand-built Layer-5 fixture that omits it used to
+     * get `Math.max(0, undefined)` = NaN and silently poison the whole feed term. */
+    var mdAvail = Math.max(0, af.mdafwAvail === undefined ? 1 : af.mdafwAvail);
+    var tdAvail = Math.max(0, af.tdafwAvail === undefined ? 1 : af.tdafwAvail);
+    var md = (open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * mdAvail * thr : 0;
+    var td = (open && af.tdafwRunning) ? tdafwRatedKgs() * tdAvail * thr : 0;
     var total = md + td;
     af.delivered_kg += total * dt;
     var rated = mdafwRatedKgs() + tdafwRatedKgs();
@@ -167,8 +200,23 @@
       /* DEMAND, reported separately from delivery — the house split (#200/#329/#332): a
        * demanded pump with avail 0 is RUNNING with no flow, not SECURED. */
       mdafw_running: !!af.mdafwRunning, tdafw_running: !!af.tdafwRunning,
+      /* IS A SHAFT ACTUALLY TURNING — the THIRD reading, and the one a DISCHARGE-PRESSURE gauge
+       * needs (#786). The house split above is demand-vs-delivery, and neither half answers it:
+       * `mdafw_running` is DEMAND and stands true on a dead motor in a station blackout, while
+       * `total_kgs > 0` is DELIVERY and goes to zero the moment the throttle valve shuts with the
+       * pump spinning happily behind it. A pump develops head iff it is demanded, its drive is
+       * there, and it has not failed — which is exactly the three terms of `md`/`td` above MINUS
+       * the two that are downstream of the pump (`blocked`, `thr`). The TDAFW train takes no
+       * power term by design (WTSM 5.7.5, the do-not-gate note in this function's header). */
+      pump_turning: (!!af.mdafwRunning && mdPowered && mdAvail > 0) ||
+                    (!!af.tdafwRunning && tdAvail > 0),
       blocked: !!af.blocked,
       throttle: thr,
+      /* THE CONSTANT TRAVELS WITH THE RESULT (#786), the same idiom `adv_rated_kgs` uses for the
+       * relief layer: the contract shim reads step RESULTS off ctx and calls into no layer, so a
+       * shutoff head it had to import would either be a second copy held by the consumer (which
+       * is what 8.3 WAS) or a new dependency across that boundary. */
+      shutoff_mpa: AFW.shutoff_mpa,
       h_kJkg: W.h_l(f2c(AFW.afw_temp_f), 0.1),      /* near-atmospheric CST, cold */
       delivered_kg: af.delivered_kg,
       afw_flow_normalized: rated > 0 ? total / rated : 0

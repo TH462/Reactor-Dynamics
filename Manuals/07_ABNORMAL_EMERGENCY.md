@@ -2,7 +2,7 @@
 
 **Document:** PWR-EOP-01  
 **Title:** Failure Response — PWR Trainer  
-**Revision:** 19  
+**Revision:** 20  
 
 ---
 
@@ -275,13 +275,52 @@ Core covered and cooled on natural circulation with AFW. **This is achievable** 
 | 1 | SCRAM if not automatic / as pressure falls |
 | 2 | Identify the leak on the PRIMARY side — inventory falling with charging saturated, level below program and still going, subcooling eroding. The steam generator will not confirm it for you (see the departure above) |
 | 3 | Maximize charging / ensure HPI as needed |
-| 3a | **SECURE high-pressure injection before you depressurize — check the criteria first:** subcooling in hand, heat sink established on AFW, core covered. **This step is what makes step 4 work at all.** Injection holds the primary up at pressure, so with it running the Pressure SP does nothing and break flow does not move: measured, walking the setpoint 2235 → 1450 psi (15.41 → 10.0 MPa) with HPI in cut break flow by **0 %** (measured on the RETIRED engine, 2026-08-03; not re-measured since the swap) and drifted the plant toward solid at 106.8 % inventory. Securing it first cut break flow **84 % in one minute** and 87 % held out to twenty. Same reason every real SGTR procedure carries an SI-termination step: injection and depressurization work against each other |
+| 3a | **SECURE high-pressure injection before you depressurize — and the criteria are a STANDING CONDITION, not a one-time check.** Before you secure: subcooling in hand, heat sink established on AFW, core covered. **After you secure: keep watching subcooling — on this plant it does not stay in hand** *(OWNER RULING, 2026-09-18: "A")*. Measured, criteria genuinely met at the click (5.4 °F / 3.0 °C of margin) and injection secured anyway: subcooling reaches **0 °F (0 °C) by minute twelve and stays there**, while leaving injection in holds 4.8–6.2 °F (2.7–3.4 °C) indefinitely. The margin you checked is gone twelve minutes later. **Step 3b is the re-entry and it is not optional.** **This step is what makes step 4 work at all.** Injection holds the primary up at pressure, so with it running the Pressure SP barely moves break flow: **re-measured on PWR2** (2026-09-18, full stack, `hot_full_power`, 40 % severity — see the Note below), walking the setpoint 2235 → 1450 psi (15.41 → 10.0 MPa) with HPI still running cut break flow **≈1 %**, unchanged from one minute to twenty — inventory held near 88 % and subcooling held 5.4–7.2 °F (3.0–4.0 °C), **not** the drift toward solid the retired engine reported. Securing injection first, then the same setpoint walk, cut break flow **42 % in one minute**, easing further to **49 % by twenty** (still declining, not flat) — the core argument survives, at roughly half the retired engine's reported magnitude. Same reason every real SGTR procedure carries an SI-termination step: injection and depressurization work against each other |
+| 3b | **RE-ENTRY — if subcooling reaches zero, RESTORE high-pressure injection.** Do not ride a saturated primary to finish the depressurization. Measured on the same transient: restoring injection at the zero crossing brings subcooling back to **6.6 °F (3.7 °C) within five minutes** and it holds 5.9–6.9 °F thereafter, with core inventory recovering 87.0 → 88.3 %; the same plant left alone sat at 0 °F for fifteen minutes and was still at 0.5 °F at thirty. **The re-entry works — but verify it on HPI FLOW, not on the HPI ACTUATED light.** `HPI ACTUATED` is the safety-injection SIGNAL, not a reading of delivered flow (**12** §6.3): the plant fired it for you the first time, and when *you* restart the pumps below the actuation setpoint it stays dark while water moves. **HPI FLOW reads ~0.12 of rated and subcooling starts climbing within a minute** — those two are your confirmation. **HPI DISCHARGE PRESSURE confirms it too** — re-measured on the fixed gauge (#782): ~1069 psi (7.37 MPa) at the same operator-restored point that used to read zero. Once margin is restored, return to step 4 and continue the depressurization |
 | 4 | Depressurize primary carefully toward secondary pressure to reduce break flow (heaters off, spray if available, PORV only with care) |
-| 5 | Isolate / control steam paths per training objective (MSIV strategy if used). **On this trainer the MSIV does not change the secondary pressure trend** — SG pressure is capped at Psat(Tavg), so it tracks primary temperature rather than steam inventory. Measured on the RETIRED engine (2026-08-03, before the engine swap): 134.6 psi (0.928 MPa) with the MSIV open against 134.0 psi (0.924 MPa) shut, at the same point in the transient. Not re-measured on the plant that ships |
+| 5 | Isolate / control steam paths per training objective (MSIV strategy if used). **Re-measured on PWR2 (2026-09-18): the MSIV DOES change the secondary pressure trend — the retired engine's "no effect" claim is WITHDRAWN.** Same failure and schedule, diverging only in the MSIV command: open, secondary pressure eased to 1024 psi (7.06 MPa) by twenty minutes; shut, the ADV opens as the alternate relief path and secondary pressure instead climbs to 1060 psi (7.31 MPa) — a 36 psi (0.25 MPa) gap, identical across six instrument-noise seeds (0 psi spread — this is not noise; see the Note below). SG pressure still tracks Psat(Tavg) as designed, but Tavg itself is not independent of which steam path is open |
 | 6 | Maintain heat sink and subcooling |
 
 ### Acceptance
 Break flow reduced; core covered; plant stabilized for “cooldown” narrative.
+
+### Note — two SGTR evidence figures re-measured on PWR2 (2026-09-18, #593)
+Both figures above were measured on the retired `pwr` engine (2026-08-03, `3558561`); PWR2
+(`engines/pwr2/`) has shipped as the plant the site runs since #523. Re-measured full stack
+(M4+M5+M6, default free-play lineup, `PWR2Engine`), `hot_full_power`, 40 % severity SGTR (the
+chapter default), via `node test/measure_stack.js --plant=pwr2`.
+
+- **Step 3a's core argument survives, at about half the reported magnitude, and one framing in
+  it is REFUTED.** "Securing injection first cuts break flow far more than walking the setpoint
+  alone" still holds (49 % vs ≈1 % at twenty minutes, not the retired engine's 87 % vs 0 %) — but
+  the **"drifts toward solid" claim does not reproduce**: leaving HPI in holds inventory near
+  88 % and subcooling 5.4–7.2 °F (3.0–4.0 °C); it does not fill toward solid on this plant.
+  **New finding, not in the retired-engine record:** securing HPI with the criteria nominally met
+  (5.4 °F / 3.0 °C subcooling in hand at the moment of the click) still eroded subcooling to
+  0 °F (0 °C) by minute twelve and held there for the rest of the twenty-minute ride, while
+  leaving HPI running preserved the thin margin instead. Break flow and inventory did not worsen
+  further while subcooling sat at zero, but the margin itself never recovered. This suggests the
+  step's "subcooling in hand" precondition may need to be an ongoing check rather than a one-time
+  gate on this plant. **Flagged for an owner ruling — not resolved, and the step's action is
+  unchanged here pending that ruling.**
+- **Step 5's claim is WITHDRAWN, not just re-numbered.** The MSIV changes the secondary pressure
+  trend by 36 psi (0.25 MPa) at twenty minutes, deterministic across seeds 1, 2, 3, 4, 5 and the
+  4242 default (0 psi spread at any seed) — an order of magnitude past the retired engine's
+  reported 0.6 psi gap, and far outside any instrument-noise explanation. Closing the MSIV forces
+  the ADV open as the alternate relief path, which settles the plant at a different Tavg (548.0 °F / 286.7 °C open vs 552.4 °F / 289.1 °C
+  shut at twenty minutes) and therefore a different
+  Psat(Tavg) secondary pressure. The single-steam-generator declared departure
+  (`DESIGN_COMPANION.md` §8.26 — this trainer still cannot show which generator is leaking) is
+  untouched; the specific claim that MSIV position has no effect on the secondary pressure trend
+  is not true on this plant. **Flagged for an owner ruling on whether step 5's guidance should
+  change — not rewritten here.**
+
+Invocation, step 3a legs (A = HPI stays in; B = securing leg adds the 590 s command):
+`node test/measure_stack.js --plant=pwr2 --ic=hot_full_power --accel=10 --for=1800s --every=60s --watch=leak_flow,core_inventory_pct,pzr_level_pct,pressure_mpa,hpi_active,afw_active,scrammed,subcooling_c --cmd='0s:{"action":"inject_failure","failure_id":"sgtr","severity":0.4}' --cmd='60s:{"action":"scram"}' --cmd='120s:{"action":"set_afw","active":true}' --cmd='180s:{"action":"set_hpi","active":true}' --cmd='590s:{"action":"set_hpi","active":false}' --cmd='600s:{"action":"set_pressure_setpoint","mpa":10.0}'`
+(leg A omits the 590 s command). Step 5 legs replace the 590 s/600 s commands with
+`--cmd='200s:{"action":"open_msiv"}'` or `close_msiv`, seed swept 4242/1/2/3/4/5.
+Stamped header: full stack (M4+M5+M6), `PWR2Engine`, lineup default (free play), seed 4242
+(swept for step 5), acceleration 10x, settle 0 s — measurement t=0 is engine simTime 0.00 s.
 
 ---
 

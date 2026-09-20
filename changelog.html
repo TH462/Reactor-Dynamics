@@ -166,6 +166,24 @@
 
   <details class="log-entry" open>
     <summary class="log-head">
+      <h2>Startup steps grade on the number the board prints, and the board stops describing a plant that is not there</h2>
+      <span class="log-ver mono">Alpha 1.7.6</span>
+      <time class="log-date mono" datetime="2026-09-20">20 September 2026</time>
+    </summary>
+    <ul>
+      <li><span class="log-tag fixed">Fixed</span><strong>Four startup steps waited on a number you could not read.</strong> Each graded against a threshold sitting in the middle of the band its own tile rounds to, so a tile already showing the target left Continue dark &mdash; 107.4&nbsp;seconds of it on one step. The steps now grade the floor of the band the tile draws.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The criticality step shows progress.</strong> An INTER RANGE row joins it, ticking at roughly 57&nbsp;per&nbsp;cent of the wait, so something on the card moves through a stare that was otherwise static.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Walkthroughs cope when the plant goes off the script.</strong> A row you can break no longer takes the step with it; if you fail a gauge deliberately from the Failures tab, the rows that read it stand down and the card names the gauge rather than leaving you on a step that can never tick. A reactor trip now says so &mdash; the walkthrough tells you it cannot carry on and points at Rewind or the walkthrough list, instead of waiting in silence on a reading the plant will not give again, and the startup walkthrough no longer offers itself as ready on a plant that has just tripped. And the Three Mile Island leg&rsquo;s wait before securing the pumps is graded on loss of subcooling, the reading that actually decides that action, rather than on a pressurizer level gauge that was standing in for a clock.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>A secured SOURCE RANGE drew <code>1.0e0&nbsp;cps</code>.</strong> A de-energized channel read as a live count rate one step from criticality; it now reads as secured.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Walkthrough steps stop pointing at buttons they do not want pressed.</strong> A step that only asks you to check something wore the same pulsing ring as a step asking for a press &mdash; on one Mode&nbsp;5 to Mode&nbsp;3 step that ring sat on TRIP. Those steps now use the steady watch treatment; every element still glows, only the animation goes. Fast-forward also stops dropping to 1&times; on an alarm the step itself causes: the heatup&rsquo;s two expected alarms are declared, so an 11&nbsp;plant-hour ride that broke the clock once now runs unbroken. The Mode&nbsp;3 to Mode&nbsp;1 walkthrough is reconciled to the step file it was written from.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Two indications described things the plant was not doing.</strong> The safety-injection discharge gauge read zero on a running pump whenever you restarted injection yourself &mdash; 12&nbsp;per&nbsp;cent of rated flow beside a dead gauge, now 1069&nbsp;psi (7.37&nbsp;MPa). The two containment alarms named containment spray and steam-line isolation, neither of which this plant performs; they now state the pressure they are at. The PORV tailpipe temperature &mdash; the reading that tells you a valve reported shut is passing &mdash; had no label on it at all, and now says TAILPIPE. A failed gauge also stays on its own dial: a drifting one used to walk off the scale for ever, reading 1647&nbsp;&deg;F (897&nbsp;&deg;C) on a transmitter that stops at 649&nbsp;&deg;F (343&nbsp;&deg;C). And SUBCOOLING MARGIN can now actually be failed &mdash; the Failures tab listed it and the click did nothing.</li>
+    <li><span class="log-tag fixed">Fixed</span><strong>The Failures tab now matches what was actually injected.</strong> A reactor-coolant-pump trip never appeared and could not be cleared; a large break filed the wrong row; securing the feed pumps or closing the auxiliary feedwater block valve by hand filed casualties nobody injected &mdash; the second of those on a valve the Three Mile Island walkthrough asks you to close. Injected casualties also survive a rewind now, instead of quietly disappearing from the list.</li>
+    <li><span class="log-tag fixed">Fixed</span><strong>The manuals&rsquo; startup-rate timeline was measured at an older rod speed.</strong> Chapters 09 and 12 put the intermediate-range rod stop 44.9&nbsp;seconds later than the plant reaches it. Both re-measured, and both now state which instant the times are counted from &mdash; the start of withdrawal, not engine start. Chapter&nbsp;04 gains the precaution it never carried: above the P-9 interlock a turbine trip is a reactor trip, at 50&nbsp;per&nbsp;cent power with the steam dumps available and 8&nbsp;per&nbsp;cent without them. Chapter&nbsp;12 now states that this plant carries one pressurizer-pressure channel where a real unit carries four, and what that costs &mdash; a channel stuck at a plausible number blinds the relief valve and the high-pressure trip together, though the code safeties read true pressure and still lift.</li>
+    </ul>
+  </details>
+
+  <details class="log-entry" open>
+    <summary class="log-head">
       <h2>A locked walkthrough can no longer be started from the one before it, and fast-forward carries across steps</h2>
       <span class="log-ver mono">Alpha 1.7.5</span>
       <time class="log-date mono" datetime="2026-09-17">17 September 2026</time>
@@ -580,6 +598,11 @@
 
 <script src="site/version.js"></script>
   <script src="site/release.js"></script>
+<!-- Usage data (#764). ENDPOINT FIRST: telemetry.js reads it at load. Both are
+     generated at deploy, so a clone or a local checkout has no endpoint and sends
+     nothing. See privacy.html and the header of site/telemetry.js. -->
+<script src="site/telemetry_endpoint.js"></script>
+<script src="site/telemetry.js"></script>
 <script src="site/nav.js"></script>
 </body>
 </html>

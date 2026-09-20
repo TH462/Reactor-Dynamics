@@ -391,6 +391,41 @@ function runSuite(TS, rec, quiet) {
      ts.hpi_discharge_pressure_mpa === 0,
      tsLow.hpi_discharge_pressure_mpa.toFixed(2) + ' MPa injecting-side, 0 on the healthy ' +
      'plant whose pumps are in standby');
+  /* THE DEAD-HEADED ACTUATION, the MIRROR of the check below (added on the #782 quality pass,
+   * 2026-09-18). `tsArmed` above is the state an actuated injection is in AT PRESSURE: both
+   * pumps running, RCS above both shutoff heads, delivered flow exactly 0. Nothing asserted its
+   * DISCHARGE, and #782's first draft gated the gauge on delivered flow alone — so this state
+   * published 0.00 MPa (0 psia) for a running pump, the mirror of the impossible pair #782
+   * removed. The check below and this one pin the two legs of the union; either gate alone reds
+   * one of them. The 9.58 MPa here is the SOURCED shutoff head, and the fixture reaches it the
+   * honest way (sys at 15.41 MPa, its own eccs stepped at the same 15.41), unlike `tsLow`. */
+  ck('an ACTUATED injection that is DEAD-HEADED still reads its shutoff head, not zero -- a ' +
+     'running pump has a discharge pressure (#782 mirror)',
+     tsArmed.hpi_flow_normalized === 0 && tsArmed.hpi_active === true &&
+     Math.abs(tsArmed.hpi_discharge_pressure_mpa - 9.58) < 1e-9,
+     'flow=' + tsArmed.hpi_flow_normalized + ', discharge=' +
+     tsArmed.hpi_discharge_pressure_mpa.toFixed(2) + ' MPa (' +
+     (tsArmed.hpi_discharge_pressure_mpa * 145.038).toFixed(1) + ' psia) against the RCS at ' +
+     (B.sys.P * 145.038).toFixed(0) + ' psia -- gating on delivered flow alone reads 0.00 MPa here');
+  /* THE OPERATOR-RESTORED PATH (#782) — every check above this line runs the pumps WHILE the SI
+   * signal is active (`protection: siOn`), which is exactly the one case that could never expose
+   * this defect: `hpi_active` and pump operation happen to agree there, so gating the discharge
+   * pressure on either one reads the same number. The real defect is an operator who SECURES
+   * injection (SI signal clears, `hpi_active` -> false) and then RESTARTS the pumps by hand below
+   * the actuation setpoint — flow resumes, the signal stays false. No `protection` context here
+   * is deliberate: it leaves `pt.si` false, same as a plant where SI has been reset. */
+  var ecRestored = RD.eccs.stepECCS(RD.eccs.createECCS({ hhsiRunning: true, lhsiRunning: true }),
+                                     { P: 1.0 }, 0.02);
+  var tsRestored = TS.buildTrueState({ sys: B.sys, eccs: ecRestored });
+  ck('operator-restored injection: SI signal false, pumps running -- flow AND discharge ' +
+     'pressure read non-zero TOGETHER (#782)',
+     tsRestored.hpi_active === false &&
+     tsRestored.hpi_flow_normalized > 0 &&
+     tsRestored.hpi_discharge_pressure_mpa > 0,
+     'active=' + tsRestored.hpi_active + '  flow=' + tsRestored.hpi_flow_normalized.toFixed(3) +
+     '  discharge=' + tsRestored.hpi_discharge_pressure_mpa.toFixed(2) + ' MPa -- gating the ' +
+     'gauge on the SI SIGNAL instead of pump operation reads 0 MPa here beside real flow, the ' +
+     'impossible pair measured on the board 2026-09-18');
   ck('AFW pump-running and flow-normalized are SUPPLIED once a train is lined up',
      ts.afw_pump_running === true && ts.afw_active === true &&
      ts.afw_flow_normalized !== undefined && ts.afw_flow_normalized > 0,
@@ -448,6 +483,68 @@ function runSuite(TS, rec, quiet) {
      Math.abs(ts.afw_discharge_pressure_mpa - Math.min(8.3, ts.steam_pressure_mpa)) < 1e-9,
      ts.afw_discharge_pressure_mpa.toFixed(2) + ' MPa -- and a blocked system reads RUNNING, ' +
      'not delivering, blocked: the three facts separated');
+
+  /* ---- #786: THE AFW DISCHARGE GAUGE ON A RUNNING PUMP -----------------------------------
+   * The gauge was `afw_active ? min(8.3, SG pressure) : 0`, and `afw_active` is `total_kgs > 0`
+   * -- DELIVERED flow. So every state that runs the pumps into a SHUT path drew 0.0 psia
+   * (0.000 MPa) beside a lit run light, the same impossible pair #782 removed from HHSI, whose
+   * comment then wrongly cleared this field for being "already a delivery reading".
+   *
+   * IT IS NOT A CASUALTY CORNER, which is the whole reason it matters. MEASURED 2026-09-19 on
+   * the ordinary post-trip ride (trip, main feed isolated, both pumps started by hand -- the
+   * fixture run_pwr2_shell group T already rides): the throttle valve holds shut above the
+   * sourced 33 +/- 5 % narrow-range band for 496.6 s of the first 1100 s, 45.1 % of the ride,
+   * every second of it drawing a running pump at zero. The AFAS-start route is the contrast --
+   * it starts the pumps at t=928 s with the level already BELOW the band, so it delivers
+   * immediately and spends 0.0 s there over 3000 s. The defect belongs to the route the
+   * operator actually takes.
+   *
+   * THE FORM IS THE CONTRACT'S. CONTEXT.md 6.3 has always read "SG pressure + margin while
+   * delivering, pinned at SHUTOFF when demanded into a blocked discharge, 0 when not demanded",
+   * and the RETIRED engine implemented exactly that; PWR2 kept the contract line and dropped
+   * the mechanism. Four checks, one per branch -- including the DELIVERING one, which is the
+   * mirror #782 shipped when it re-gated a discharge gauge and zero came out the other side. */
+  ck('a running pump with the THROTTLE SHUT reads its SHUTOFF HEAD, not zero -- the ORDINARY ' +
+     'post-trip band (45.1 % of a measured 1100 s ride), not a casualty (#786)',
+     (function () {
+       var thr0 = RD.afw.stepAFW(RD.afw.createAFW({ mdafwRunning: true, tdafwRunning: true,
+                                                    throttle: 0 }), 0.02);
+       var tT = TS.buildTrueState(Object.assign({}, B.ctx, { afw: thr0 }));
+       return tT.afw_pump_running === true && tT.afw_active === false &&
+              tT.afw_discharge_pressure_mpa === RD.afw.AFW.shutoff_mpa;
+     })(),
+     'shutoff head ' + (RD.afw.AFW.shutoff_mpa * 145.038).toFixed(0) + ' psia (' +
+     RD.afw.AFW.shutoff_mpa.toFixed(2) + ' MPa) -- the constant is the PLANT\'s and is ' +
+     'UNVERIFIED; the corpus has no AFW shutoff head (find_source exit 1, 3 lanes)');
+  ck('a running pump into a BLOCKED discharge reads shutoff too -- the TMI-2 tag-out is the ' +
+     'same shut boundary as the throttle valve, both downstream of both pumps (#786)',
+     (function () {
+       var blk2 = RD.afw.stepAFW(RD.afw.createAFW({ mdafwRunning: true, blocked: true }), 0.02);
+       var tB2 = TS.buildTrueState(Object.assign({}, B.ctx, { afw: blk2 }));
+       return tB2.afw_pump_running === true && tB2.afw_active === false &&
+              tB2.afw_discharge_pressure_mpa === RD.afw.AFW.shutoff_mpa;
+     })(),
+     'a centrifugal pump against a shut discharge sits at shutoff head, whichever valve shut it');
+  ck('a DELIVERING pump still reads the INJECTION POINT, not shutoff -- the mirror #782 shipped ' +
+     'the day it re-gated a discharge gauge and zero came out the other side (#786)',
+     ts.afw_active === true &&
+     Math.abs(ts.afw_discharge_pressure_mpa -
+              Math.min(RD.afw.AFW.shutoff_mpa, ts.steam_pressure_mpa)) < 1e-9 &&
+     ts.afw_discharge_pressure_mpa < RD.afw.AFW.shutoff_mpa,
+     'delivering at ' + (ts.afw_discharge_pressure_mpa * 145.038).toFixed(0) + ' psia (' +
+     ts.afw_discharge_pressure_mpa.toFixed(3) + ' MPa), below the ' +
+     (RD.afw.AFW.shutoff_mpa * 145.038).toFixed(0) + ' psia shutoff -- the min() is only ' +
+     'physically right while the path to the generator is open');
+  ck('a DEMANDED but UNPOWERED pump publishes NO head -- demand is not a turning shaft, and a ' +
+     'run light that stays lit through a blackout (#200) is not a reason to draw pressure (#786)',
+     (function () {
+       var sbo = RD.afw.stepAFW(RD.afw.createAFW({ mdafwRunning: true, tdafwRunning: false }),
+                                0.02, { mdafw_power_ok: false });
+       var tS = TS.buildTrueState(Object.assign({}, B.ctx, { afw: sbo }));
+       return tS.afw_pump_running === true && tS.afw_discharge_pressure_mpa === 0;
+     })(),
+     'the motor-driven train is a vital load and dies in a station blackout; the gauge is the ' +
+     'one place the run light must NOT be taken at face value');
 
   /* ---- CORE DAMAGE: five supplied, one still declared, and the reason CHANGED -------------
    * This block is the one this file's header warns about most directly. Five of these six were
@@ -925,6 +1022,30 @@ var MUTATIONS = [
    "    put('fuel_temp_c',    rx.T_fuel_c);", "    put('fuel_temp_c',    sg.T_sec);"],
   ['the one-pressure simplification is hidden by perturbing the three readings',
    "    put('p_pumpsuction', sys.P);", "    put('p_pumpsuction', sys.P * 0.98);"],
+  /* #782's UNION, one mutation per leg (quality pass 2026-09-18). Either half alone is a
+   * half-gauge: delivered flow alone blanks the dead-headed actuation, the SI signal alone
+   * blanks the operator-restored injection. Both were shipped states of this line. */
+  ['the discharge gauge is gated on DELIVERED FLOW alone -- a dead-headed actuation reads 0',
+   "        (pumpKgs > 0 || ts.hpi_active === true) ? Math.min(9.58, Math.max(sys.P, 0.101)) : 0);",
+   "        pumpKgs > 0 ? Math.min(9.58, Math.max(sys.P, 0.101)) : 0);"],
+  ['the discharge gauge is gated on the SI SIGNAL alone -- an operator-restored injection reads 0',
+   "        (pumpKgs > 0 || ts.hpi_active === true) ? Math.min(9.58, Math.max(sys.P, 0.101)) : 0);",
+   "        ts.hpi_active === true ? Math.min(9.58, Math.max(sys.P, 0.101)) : 0);"],
+  /* #786, four: the AFW discharge gauge's three branches and its gate. Each is a form this
+   * field has actually worn -- the first IS the shipped defect, restored. */
+  ['the AFW discharge gauge goes back to the DELIVERY gate (#786 as shipped -- a throttled-shut ' +
+   'pump reads 0 through 45 % of an ordinary post-trip ride)',
+   '          aw.pump_turning !== true ? 0',
+   '          (aw.total_kgs > 0) !== true ? 0'],
+  ['the AFW discharge gate falls back to DEMAND -- a dead motor in a station blackout draws head',
+   '          aw.pump_turning !== true ? 0',
+   '          !(aw.mdafw_running || aw.tdafw_running) ? 0'],
+  ['the AFW shut-path branch is unreachable -- a dead-headed pump reads the SG through the min()',
+   '      var afwOpen = aw.blocked !== true && (aw.throttle === undefined ? 1 : aw.throttle) > 0;',
+   '      var afwOpen = true;'],
+  ['the AFW gauge pins at SHUTOFF unconditionally -- a delivering pump stops reading the SG',
+   '      var afwOpen = aw.blocked !== true && (aw.throttle === undefined ? 1 : aw.throttle) > 0;',
+   '      var afwOpen = false;'],
   ['the shim invents a plant instead of refusing',
    "      throw new Error('pwr2_true_state: ctx.sys is REQUIRED — this layer translates a plant, it ' +\n                      'does not build one.');",
    '      sys = { P: 15.41, nodes: [] };']

@@ -2,7 +2,7 @@
 
 **Document:** PWR-ARP-01  
 **Title:** Annunciator Response — PWR  
-**Revision:** 19  
+**Revision:** 20  
 
 ---
 
@@ -248,8 +248,8 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 | **Setpoint** | Indicated level ≥ **20 %** below its programmed value |
 | **Means** | **Make-up has lost it.** The deeper rung of the same ladder as **A31** — see that card for why level is measured against its program rather than as an absolute number. |
 | **Why it is not an absolute level any more** | It was ≤ 25 % through Rev 16, and 25 % is this plant's own programmed no-load level: at Mode 3, Hot Standby a perfectly healthy plant sat on the setpoint and the alarm stood in. Measured, hot zero power settles at 23.6–26.4 % for an hour on end. A fixed number on a programmed level collides the moment the program reaches it. The 20-point band is measured too: the worst healthy excursion on any initial condition is 2.8 points, and a 100 → 90 MWe load change spans 5.9 — so the alarm sits about seven times clear of normal wander, and every leak the plant can host crosses it inside half an hour. |
-| **Where the old 17 %/25 % protection went** | Nowhere — it was never this alarm's job. The heaters cut out and letdown isolates at **17 % actual level**, a fixed elevation in the vessel, and that annunciates on its own as **PZR HTRS SHED (A43)**. The reactor trip stays absolute at 12 % (**A14**). |
-| **Actions** | 1) Increase charging; isolate letdown if needed. 2) Check for leak. 3) Watch for **A43** — heaters lost means pressure control is next. 4) Watch for LO-LO trip at **12 %**. |
+| **Where the old 17 %/25 % protection went** | Nowhere — it was never this alarm's job. The heaters cut out and letdown isolates at **17 % actual level**, a fixed elevation in the vessel, and that annunciates on its own as **PZR HTRS SHED (A43)** and **PZR LTDN ISOL (A13a)**. **There is no reactor trip at 12 % on this plant.** A real plant trips the reactor on low pressurizer level; this one does not (**09** §2.0) — **A14** at 12 % is a critical alarm, not a trip. See that card for what actually protects this plant below 17 %. |
+| **Actions** | 1) Increase charging; isolate letdown if needed. 2) Check for leak. 3) Watch for **A43** — heaters lost means pressure control is next. 4) Watch for **A14 (PZR LVL LO LO)** at **12 %** — a critical alarm, not a trip; see that card. |
 
 ---
 
@@ -259,8 +259,8 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 |-------|---------|
 | **Setpoint** | Indicated pressurizer level ≤ **17 %** |
 | **Means** | The plant has just isolated **every letdown path** — both orifices *and* the RHR-to-CVCS cross-connect, if you were on shutdown cooling — and cut the pressurizer heaters. Both are automatic and both are latched: the fire latch re-arms only above 20 %, and there is **no automatic restoration** — letdown stays shut until you re-open an orifice by hand. **The card shows it**: all four lineup lamps go dark, **CLOSED** lights amber to say the plant shut the valves rather than you, and the status word reads **ISOLATED** (**03** §7.3). Your *selection* is remembered but not lit — a lamp reports where the valve is. |
-| **Why it exists** | The actions were always there; the lamp was not. An automatic action the operator cannot see is one they cannot undo, and this one takes away a flow path they then have to restore deliberately. It is also the **last annunciation before the 12 % reactor trip** — the alarm that used to sit above that trip was a fixed 25 %, which collided with this plant's own programmed no-load level and became program-relative at Rev 17. |
-| **Actions** | 1) Charging to maximum; letdown is already isolated for you. 2) Check for a leak — **A31/A13** will have come in first if make-up has lost it. 3) Expect **PZR HTRS SHED (A43)** with it: pressure control is gone until you reload the heaters. 4) Watch for **PZR LVL LO LO** and the trip at **12 %**. 5) On recovery, level past 20 % re-arms the latch — then **re-open an orifice yourself**; the lamp lights again when you do, which is how you know the isolate has cleared. |
+| **Why it exists** | The actions were always there; the lamp was not. An automatic action the operator cannot see is one they cannot undo, and this one takes away a flow path they then have to restore deliberately. It is also the **last annunciation before PZR LVL LO LO (A14)** at 12 % — but not before a reactor trip or a safety injection: **this plant trips on neither low pressurizer level nor starts injection on it** (**09** §2.0, §3.0). The alarm that used to sit above this one was a fixed 25 %, which collided with this plant's own programmed no-load level and became program-relative at Rev 17. |
+| **Actions** | 1) Charging to maximum; letdown is already isolated for you. 2) Check for a leak — **A31/A13** will have come in first if make-up has lost it. 3) Expect **PZR HTRS SHED (A43)** with it: pressure control is gone until you reload the heaters. 4) Watch for **PZR LVL LO LO (A14)** at **12 %** — a critical alarm, not a trip or an SI start; **primary pressure**, not level, is what protects this plant (**09** §2.0, §3.0; see **A14**). 5) On recovery, level past 20 % re-arms the latch — then **re-open an orifice yourself**; the lamp lights again when you do, which is how you know the isolate has cleared. |
 | **Not the same as A43** | A43 says the heaters are off the bus; this says letdown is shut. Different actions, different recoveries — a button versus an orifice. |
 
 ---
@@ -269,9 +269,10 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | ≤ **12 %** (SCRAM + auto SI) |
-| **Means** | Critical inventory indication. |
-| **Actions** | 1) Verify SCRAM. 2) Verify **HPI auto-actuation** (SI initiates on PZR level lo-lo when the HPI arm is AUTO). 3) Maximize charging. 4) Find inventory loss. |
+| **Setpoint** | ≤ **12 %** indicated |
+| **Means** | Critical inventory indication — and, on this plant, **level alone trips nothing and starts nothing**. A real plant carries a reactor trip and a safety-injection path on low pressurizer level; this one does not (**09** §2.0, §3.0). This plant's engineered-safeguards list has exactly three entries, all primary- or steam-side: the reactor trips on **low primary pressure** (1775 psi / 12.24 MPa) and injection starts on **low primary pressure** (1715 psi / 11.824 MPa), **low steam pressure** (328 psi / 2.26 MPa), or **high-high steam flow** — never on pressurizer level by itself. A slow leak can carry level well past 12 % before pressure catches up and does either. |
+| **Actions** | 1) Do **not** wait for an automatic trip or safety injection on this alarm — none is coming. 2) Watch **primary pressure** and **subcooling margin**, not level, for the protection that actually applies (**A05/A06**, **A10/A11**). 3) Maximize charging; letdown is already isolated (**A13a** fired at 17 %). 4) Find and isolate the inventory loss. 5) If pressure keeps falling with it, expect the low-pressure reactor trip and safety injection to follow — on **their own** setpoints, not this one. |
+| **Why it exists** | Kept as a real, live alarm — the instrument and the 12 % setpoint are both real (`pzr_level`, critical priority, `layers/control/pwr_control.js`) — with its consequence corrected. Level and pressure are not the same signal, and knowing which one this plant actually watches is the point (**09** §3.0). |
 
 ---
 
@@ -545,8 +546,8 @@ equivalent annunciator.
 | Field | Content |
 |-------|---------|
 | **Setpoint** | Containment pressure above **18.1 psi (0.125 MPa)** absolute — the sourced **3.5 psig** safety-injection backup signal (WTSM 12.3) |
-| **Means** | A high-energy line is discharging **inside the building** — a primary break, an open relief path, or a steam line break upstream of the isolation valve. Safety injection has actuated on this signal, and it **cannot be blocked**. An SGTR does *not* light this alarm: that break discharges into the steam generator — the one leak containment cannot see. |
-| **Immediate operator actions** | 1) Verify SI actuated. 2) Diagnose the discharge path: RCS pressure/inventory falling → LOCA (**E09**); PORV tailpipe hot → stuck relief valve (**E07**); steam pressure collapsing with the MSIV shut → upstream steam break. 3) Watch the sump — rising level with steady pressure is the small-cold-leak signature. |
+| **Means** | A high-energy line is discharging **inside the building** — a primary break, an open relief path, or a steam line break upstream of the isolation valve. **On this plant nothing acts on this signal.** A real plant runs it as a backup safety-injection start, in case the primary side has not fallen far enough on its own; this plant's three engineered-safeguards entries are all primary- or steam-side, so a break that pressurizes containment without depressurizing the loop or the steam side starts nothing here (**09** §3.0). This is a real, live pressure reading and a real alarm — only the automatic response is absent. An SGTR does *not* light this alarm: that break discharges into the steam generator — the one leak containment cannot see. |
+| **Immediate operator actions** | 1) Do **not** wait on this alarm for safety injection — it starts only on **its own** signal (primary pressure ≤ 1715 psi / 11.824 MPa, steam pressure ≤ 328 psi / 2.26 MPa, or steam flow ≥ 1.55× rated). 2) Diagnose the discharge path: RCS pressure/inventory falling → LOCA (**E09**); PORV tailpipe hot → stuck relief valve (**E07**); steam pressure collapsing with the MSIV shut → upstream steam break. 3) Watch the sump — rising level with steady pressure is the small-cold-leak signature. |
 
 ---
 
@@ -555,9 +556,9 @@ equivalent annunciator.
 | Field | Content |
 |-------|---------|
 | **Setpoint** | Containment pressure above **44.7 psi (0.308 MPa)** absolute — the sourced **30 psig** spray / steam-line-isolation signal (WTSM 12.3: "indicative of a large line break") |
-| **Means** | A large break is pressurizing the building. Containment spray has started and the main steam line has isolated, both automatically. |
-| **Automatic actions** | Containment spray on (secures itself once pressure recovers below the SI signal); MSIV shut (sealed in until pressure recovers); fan coolers already realigned on SI. |
-| **Immediate operator actions** | 1) Verify the automatic actions above. 2) Treat the initiating event (**E09** / **E07**). 3) Expect pressure to fall in minutes under spray — a building that stays up with spray running means the source is still discharging hard. |
+| **Means** | A large break is pressurizing the building. **On this plant nothing acts on it.** There is no containment spray, no automatic steam-line isolation on this signal, and no fan-cooler safety realign — this plant's containment is one lumped, unsprayed volume that only heats and pressurizes (`pwr2_containment.js`; **09** §3.0). **A38**, **A39** and the containment leg of MSLI (**09** §3.0) are the tiles a real plant would light here; on this one they can never light, and their cards say so. |
+| **Automatic actions** | **None.** Nothing brings containment pressure back down but the passive structure — no spray, no fans, no isolation. |
+| **Immediate operator actions** | 1) There is no automatic action to verify. 2) Treat the initiating event (**E09** / **E07**) — that is the only lever that stops this alarm. 3) Watch containment pressure and temperature trend directly; a plant that keeps climbing under this alarm has nothing else coming to arrest it. |
 
 ---
 
@@ -565,9 +566,9 @@ equivalent annunciator.
 
 | Field | Content |
 |-------|---------|
-| **Logic** | `ctmt_spray_active` — the trains are **delivering** (a blackout stops them with the signal standing) |
-| **Means** | Spray started on the high-high signal (automatic in this build — there is no spray control on the board). It knocks building pressure down by condensing the steam and stops itself once pressure recovers below the SI signal. |
-| **Actions** | Informational. Spray water collects in the sump. |
+| **Logic** | `ctmt_spray_active` — **declared static false on this plant, always** (`pwr2_true_state.js`: *"sprays, fans and recombiners are unmodeled … false/0 states their absence"*). This tile can never light. |
+| **Means** | This plant has no containment spray system. `pwr2_containment.js` models one lumped air/steam atmosphere with no spray, no fan coolers and no recombiners (**09** §3.0) — a large break raises pressure and temperature, and only the building structure absorbs it back down. The tile is kept on the panel as the honest report of that absence rather than deleted, the same way **08** §6.0 keeps the TMI-2 hydrogen-burn gap visible instead of silent. |
+| **Actions** | None — if this tile is ever lit, treat it as a display or instrument defect, not a real spray train. For the actual response to high containment pressure, see **A36/A37**. |
 
 ---
 
@@ -575,9 +576,9 @@ equivalent annunciator.
 
 | Field | Content |
 |-------|---------|
-| **Logic** | `ctmt_fan_active` — realigned on any safety injection (normal-mode fan cooling is part of the building's passive heat sink) |
-| **Means** | The diverse containment heat-removal train. Slower than spray, runs on any SI whether or not the building is pressurized, and stays realigned. |
-| **Actions** | Informational. |
+| **Logic** | `ctmt_fan_safety` / `ctmt_fan_active` — **declared static false on this plant, always**. This tile can never light. |
+| **Means** | Same absence as **A38**, the diverse train: this plant folds fan cooling into the passive heat sink and has no realign-on-safety-injection logic to run (**09** §3.0). |
+| **Actions** | None — treat a lit tile as a display defect. See **A36/A37** for what actually applies. |
 
 ---
 
@@ -585,9 +586,9 @@ equivalent annunciator.
 
 | Field | Content |
 |-------|---------|
-| **Logic** | `ctmt_h2` > **4.1 % by volume** — the lower flammability limit of hydrogen in air (NUREG-1431 Bases) |
-| **Means** | An overheated core has been burning its zirconium cladding in steam, and the hydrogen has reached the building through whatever opening the primary is discharging from. The recombiners started automatically well below this point (A42) — this alarm means they are **losing**: generation is outrunning removal, which only a rapidly oxidizing core can do. The atmosphere is now flammable; at roughly double this concentration it will find an ignition source. |
-| **Actions** | The alarm is a **core** symptom, not a containment one — nothing in the building can be operated on it in this build. Restore core cooling: injection, and close the discharge path if it is closable (block valve). Expect the concentration to keep rising for a time even after the core is recovered — the RCS holds an inventory in transit. |
+| **Logic** | `ctmt_h2_pct` > **4.1 % by volume** — the lower flammability limit of hydrogen in air (NUREG-1431 Bases). **This channel is real**, unlike its neighbours below: containment hydrogen is a live quantity on this plant, computed from cladding oxidation, not a declared constant (`pwr2_true_state.js`). |
+| **Means** | An overheated core has been burning its zirconium cladding in steam, and the hydrogen has reached the building through whatever opening the primary is discharging from. **Nothing removes it on this plant**: there are no recombiners (**A42** can never light) and no ignition/burn (**A41** can never light) — see those cards. **Whether it comes in is PATH-DEPENDENT, and the path matters more than the severity.** On the flagship TMI-2 ride the cladding measured at 94 % uncovered still read only 555 °F (290.6 °C) — below the 1200 °F (648.9 °C) onset of significant Baker-Just generation (**08** §6.0), so that ride makes almost no hydrogen. A station blackout with auxiliary feedwater failed is a different plant: measured 2026-09-18, full stack from `hot_full_power`, cladding reaches **3162.2 °F (1739 °C)** by three hours, fuel damage latches, and containment hydrogen climbs **0.04 % → 2.22 % by volume in the last 45 minutes** — still short of this alarm's 4.1 %, and still rising steeply when the measurement ended. Treat a quiet CTMT H2 tile as evidence about *this* transient, never as evidence the plant cannot make hydrogen. |
+| **Actions** | The alarm is a **core** symptom, not a containment one — nothing in the building can be operated on it. Restore core cooling: injection, and close the discharge path if it is closable (block valve). Expect the concentration to keep climbing after the core is recovered — the RCS holds an inventory in transit — and to **never come back down on its own**. |
 
 ---
 
@@ -595,9 +596,9 @@ equivalent annunciator.
 
 | Field | Content |
 |-------|---------|
-| **Logic** | `ctmt_h2_burned` — the burn latch. Comes in with the deflagration and **never clears**. |
-| **Means** | The hydrogen ignited: a one-time deflagration that consumed ~85 % of the inventory in seconds and put a single sharp pressure spike on the containment pressure recorder — at TMI-2 it read ~28 psi (193 kPa) over the building pressure and the operators first took it for electrical noise. The spike crosses the 30 psig high-high — 44.7 psi (0.308 MPa) absolute — so expect A37, spray (A38) and steam-line isolation with it. The containment is designed for 60 psig — 74.7 psi (0.515 MPa) absolute — and holds. |
-| **Actions** | Informational — the event is over before any action exists. The concentration reading collapses at the burn and may climb again; there is no second burn. The standing lamp is the record that it happened. |
+| **Logic** | `ctmt_h2_burned` — **declared static zero on this plant, always** (`pwr2_true_state.js`). This tile can never light. |
+| **Means** | A real plant's hydrogen, once it reaches the flammability limit, can find an ignition source and deflagrate — at TMI-2 a one-time burn consumed an estimated ~85 % of the atmosphere's hydrogen in seconds and put a sharp, roughly 28 psi (193 kPa) spike on the containment pressure recorder that the operators first took for electrical noise. **This plant does not model ignition**: hydrogen accumulates (see **A40**) and never burns (**09** §3.0). |
+| **Actions** | None — the tile cannot light. If containment pressure spikes sharply, look for a break growing worse (**A36/A37**), not a hydrogen burn. |
 
 ---
 
@@ -605,9 +606,9 @@ equivalent annunciator.
 
 | Field | Content |
 |-------|---------|
-| **Logic** | `ctmt_recomb_active` — the trains are **delivering** (a blackout stops them with the demand standing) |
-| **Means** | Started automatically on rising containment hydrogen (0.5 % by volume in this build; secures itself at 0.2 %). Removal is slow by design — hours per factor of e — which is the real machine: recombiners manage the slow post-accident tail, not a degraded-core generation rate. |
-| **Actions** | Informational. If CTMT H2 HI (A40) comes in while this lamp is lit, the recombiners are being outrun — the answer is at the core, not in the building. |
+| **Logic** | `ctmt_recomb_active` — **declared static false on this plant, always**. This tile can never light. |
+| **Means** | A real plant starts hydrogen recombiners automatically on rising containment hydrogen and removes it over hours; this plant has none (**09** §3.0). Containment hydrogen (**A40**) accumulates with nothing to bring it back down. |
+| **Actions** | None — treat a lit tile as a display defect. If **A40** is in, the answer is at the core (see that card), not here. |
 
 ---
 

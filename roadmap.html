@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Roadmap — Reactor Dynamics</title>
-    <meta name="description" content="What is coming next for Reactor Dynamics: training campaign, scenarios, walkthroughs, and BWR and RBMK control rooms.">
+    <meta name="description" content="What is coming next for Reactor Dynamics: training campaign, scenarios, and BWR and RBMK control rooms.">
     <link rel="canonical" href="https://reactordynamics.com/roadmap.html">
     <meta property="og:site_name" content="Reactor Dynamics">
     <meta property="og:url" content="https://reactordynamics.com/roadmap.html">
@@ -86,12 +86,14 @@
     <li>PWR free play, cold shutdown through full power</li>
     <li>Operator manuals in the control room</li>
     <li>Injected plant failures and free-play recovery</li>
+    <li>Walkthroughs &mdash; manual procedures graded live against the plant,
+    step by step in the Instructor panel</li>
     <li><a href="download.html">Offline single-file download</a></li>
     <li><a href="physics.html">Physics</a> write-up of the plant model</li>
   </ul>
 
   <h2>Nearly there &mdash; built, in final review</h2>
-  <p>These three are written and running. They are held back for two reasons: the
+  <p>These two are written and running. They are held back for two reasons: the
   plant’s physics engine has been rebuilt, so every mission and procedure is
   being re-validated against the new model, and each one is then played end to end
   before it ships. An instructor that grades you against a step it has not been
@@ -106,12 +108,6 @@
   <p>Instructor-led situations &mdash; one lesson each &mdash; from normal
   evolutions to casualties, including longer story sequences such as Three Mile
   Island.</p>
-
-  <h3>Walkthroughs</h3>
-  <p>Procedures that tick themselves off against the plant as it sits: you
-  operate, the walkthrough grades the instruments. The same manual procedures,
-  advanced one step at a time in the Instructor panel. Free-play practice
-  without a full scripted mission.</p>
 
   <h2>In progress &mdash; being built now</h2>
 
@@ -165,6 +161,11 @@
 
 <script src="site/version.js"></script>
 <script src="site/release.js"></script>
+<!-- Usage data (#764). ENDPOINT FIRST: telemetry.js reads it at load. Both are
+     generated at deploy, so a clone or a local checkout has no endpoint and sends
+     nothing. See privacy.html and the header of site/telemetry.js. -->
+<script src="site/telemetry_endpoint.js"></script>
+<script src="site/telemetry.js"></script>
 <script src="site/nav.js"></script>
 </body>
 </html>

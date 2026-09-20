@@ -318,11 +318,27 @@ export function pctBar(pct, label) {
     + '<b>' + esc(label == null ? Math.round(w) + '%' : label) + '</b></div>';
 }
 
-export function html(body, status) {
-  return new Response(body, {
-    status: status || 200,
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
-  });
+/* EVERY dashboard page goes out through here, which is the only reason the two privacy
+ * headers below can be relied on: set them per view and the one view that forgets is the
+ * one holding a player's bug-report note in a shared-device browser cache (#764).
+ *
+ *   Cache-Control: no-store    the bug list is other people's words; a back-button
+ *                              rehydration of it on a borrowed laptop is a real leak.
+ *   Referrer-Policy: no-referrer   the dashboard links OUT (a report's origin URL, the
+ *                              site itself). Nothing of ours belongs in someone else's
+ *                              access log, and this survived the token leaving the query
+ *                              string precisely because it was never only about the token.
+ *
+ * `extra` is for the per-response headers a single view owns — Set-Cookie on login and
+ * logout, X-Robots-Tag on the login page. It can override the two above; nothing does. */
+export function html(body, status, extra) {
+  const headers = {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Referrer-Policy': 'no-referrer',
+  };
+  if (extra) for (const k of Object.keys(extra)) headers[k] = extra[k];
+  return new Response(body, { status: status || 200, headers });
 }
 
 export const PAGE_HEAD = `<meta name="viewport" content="width=device-width,initial-scale=1">
@@ -390,11 +406,26 @@ export const PAGE_HEAD = `<meta name="viewport" content="width=device-width,init
   .card-note { white-space:pre-wrap; color:#c3cedb; font-size:13px; max-height:7.5em;
                overflow:hidden; display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; }
   .card-f { margin-top:auto; font-size:12px; }
+  /* PRESET RANGE LINKS. These are anchors rather than submit buttons, and that is the whole
+     fix for #<n>: on a GET submission the browser DISCARDS the action URL's query string and
+     replaces it with the form's own fields, so a per-button action carrying from/to sent the
+     date inputs' CURRENT values instead -- every preset redrew the window already on screen.
+     Measured in headless Edge 2026-09-20: clicking a 14d button whose own action asked for
+     from=2026-09-07 navigated to from=2026-09-14, the value in the input. A preset is
+     NAVIGATION, not submission; an anchor cannot have the defect. */
+  a.pbtn { display:inline-block; padding:2px 10px; margin-right:4px; border-radius:4px;
+           background:#111823; border:1px solid #1c2531; color:#d7e0e8; font-size:12px;
+           text-decoration:none; }
+  a.pbtn:hover { border-color:#2a3646; color:#5fb3d9; }
 </style>`;
 
-export function nav(token, current) {
+/* NO CREDENTIAL IN A HREF (#764). The nav used to rewrite the shared secret onto every
+ * internal link, which put it in browser history, in the address bar of every screenshot,
+ * and one outbound click away from someone else's access log. Authentication is the
+ * `rd_dash` cookie now; a link carries only what it is FOR — view, sid, key, raw, days. */
+export function nav(current) {
   const link = (view, label) => {
-    const href = '?token=' + encodeURIComponent(token) + (view ? '&view=' + view : '');
+    const href = view ? '?view=' + view : '/dashboard';
     return '<a class="' + (current === view ? 'on' : '') + '" href="' + href + '">' + label + '</a>';
   };
   /* `usage` is the FEATURE USAGE page (#674) and `features` is the feature FLAGS page.
@@ -453,14 +484,46 @@ const SERIES = [
   { key: 'a', color: '#3987e5' },
   { key: 'b', color: '#d95926' },
 ];
+// Trend colours, added for #764 Unit 2b — chosen to stay clear of both bar colours above
+// AND of `.warn`/`.err` (a trend line wearing a status colour would claim a condition it
+// does not have, same rule as the bars). MEAN is this page's own `.tile .k` mint-green
+// register (unused elsewhere as a fill), GHOST is the page's existing `.muted` ink, so a
+// past period reads as a memory rather than a competing claim.
+const MEAN_COLOR = '#5fd9a0';
+const GHOST_COLOR = '#8fa2b3';
 
+/* EXTENDED FOR THE TREND (#764 Unit 2b, on top of #604's original two-series chart): a
+ * TRAILING-MEAN LINE and a GHOST (prior-period) line, both built from CONTIGUOUS RUNS of
+ * non-null points — a null breaks the polyline into a new segment rather than being joined
+ * through as zero. A null mean means "the window is not full yet or crosses a coarse/
+ * uncaptured day"; drawing a line through it would show a dip that never happened.
+ *
+ * THREE STATUS MARKS a bar can carry without changing its height, because a bar's HEIGHT is
+ * still only pageloads/visits:
+ *   PARTIAL  today, live and unfinished — drawn hollow (stroke only), never solid, so a
+ *            half-finished day cannot be mistaken for a closed one at a glance.
+ *   COARSE   Cloudflare's rounded tier (sample_interval > 1) — drawn at reduced opacity.
+ *   MISSING  no rollup ran for that day — drawn as a dashed tick at the baseline, never a
+ *            zero-height bar, because a day with genuinely no traffic and a day the cron
+ *            never ran must not look identical (`stats.js`'s whole reason for existing).
+ *
+ * THIS CHART IS NOW ONLY EVER CALLED FOR A WINDOW OF 14 DAYS OR FEWER (2026-09-20, owner:
+ * "for the 30 day and all can you make them a line graph"). A longer window draws
+ * `lineChart` below instead of folding into weekly/monthly bars — `bucketDays` no longer
+ * buckets at all, and the fourth mark this chart used to carry, PARTIAL_MISSING (a weekly
+ * bucket where only some of its folded days were uncaptured), was a fact about a SUM and
+ * cannot occur once nothing is summed; it is gone, along with the two checks and the
+ * `bucket-partial-missing-hidden` injection that pinned it — see `bucketDays`' header.
+ */
 export function barChart(rows, opts) {
   opts = opts || {};
   if (!rows || rows.length < 2) return '';          // one bar is a number, not a chart
   const labelA = opts.labelA || 'A', labelB = opts.labelB || 'B';
+  const labelMean = opts.labelMean || 'trailing mean', labelGhost = opts.labelGhost || 'prior period';
   const W = 720, H = 190, PADL = 34, PADR = 96, PADT = 12, PADB = 26;
   const plotW = W - PADL - PADR, plotH = H - PADT - PADB;
-  const max = Math.max(1, ...rows.map((r) => Math.max(r.a || 0, r.b || 0)));
+  const max = Math.max(1, ...rows.map((r) =>
+    Math.max(r.a || 0, r.b || 0, r.mean || 0, r.ghost || 0)));
   /* A ceiling on a "nice" number, so the gridline reads as a round figure rather than as
    * whatever the tallest bar happened to be. */
   const pow = Math.pow(10, Math.floor(Math.log10(max)));
@@ -468,6 +531,7 @@ export function barChart(rows, opts) {
   const slot = plotW / rows.length;
   const barW = Math.max(3, Math.min(18, slot / 2 - 3));   // 2px+ of surface between bars
   const y = (v) => PADT + plotH - (v / top) * plotH;
+  const xMid = (i) => PADL + i * slot + slot / 2;
 
   let g = '';
   // Recessive grid: two lines and their labels, in muted ink, behind everything.
@@ -479,53 +543,264 @@ export function barChart(rows, opts) {
   });
   rows.forEach((r, i) => {
     const x0 = PADL + i * slot + (slot - barW * 2 - 2) / 2;
-    SERIES.forEach((s, si) => {
-      const v = r[s.key] || 0;
-      const h = Math.max(v > 0 ? 2 : 0, (v / top) * plotH);
-      if (!h) return;
-      const x = x0 + si * (barW + 2);
-      g += '<rect x="' + x + '" y="' + (PADT + plotH - h) + '" width="' + barW + '" height="' + h
-        + '" rx="3" fill="' + s.color + '">'
-        + '<title>' + esc(r.label) + ' — ' + esc(si === 0 ? labelA : labelB) + ': ' + v + '</title>'
-        + '</rect>';
-    });
-    g += '<text x="' + (PADL + i * slot + slot / 2) + '" y="' + (H - 8) + '" fill="#8fa2b3" '
+    if (!r.missing) {
+      SERIES.forEach((s, si) => {
+        const v = r[s.key] || 0;
+        const h = Math.max(v > 0 ? 2 : 0, (v / top) * plotH);
+        if (!h) return;
+        const x = x0 + si * (barW + 2);
+        const seriesLabel = si === 0 ? labelA : labelB;
+        const style = r.partial
+          ? 'fill="none" stroke="' + s.color + '" stroke-width="2"'
+          : 'fill="' + s.color + '"' + (r.coarse ? ' fill-opacity="0.45"' : '');
+        const flag = r.partial ? ' (today, partial)' : r.coarse ? ' (coarse, ±10)' : '';
+        g += '<rect x="' + x + '" y="' + (PADT + plotH - h) + '" width="' + barW + '" height="' + h
+          + '" rx="3" ' + style + '><title>' + esc(r.label) + ' — ' + esc(seriesLabel)
+          + ': ' + v + flag + '</title></rect>';
+      });
+    } else {
+      // A tick, not a bar: zero-height would be indistinguishable from a genuine zero day.
+      g += '<line x1="' + (xMid(i) - barW) + '" y1="' + (PADT + plotH) + '" x2="' + (xMid(i) + barW)
+        + '" y2="' + (PADT + plotH) + '" stroke="#8fa2b3" stroke-width="3" stroke-dasharray="2,2">'
+        + '<title>' + esc(r.label) + ' — no data captured</title></line>';
+    }
+    g += '<text x="' + xMid(i) + '" y="' + (H - 8) + '" fill="#8fa2b3" '
       + 'font-size="10" text-anchor="middle">' + esc(r.label) + '</text>';
   });
+
+  // Trend line(s): one polyline per CONTIGUOUS run of non-null points, so a gap in the data
+  // breaks the line instead of being interpolated across.
+  const trendLine = (key, color, dashed) => {
+    const segs = [];
+    let cur = [];
+    rows.forEach((r, i) => {
+      const v = r[key];
+      if (v == null) { if (cur.length > 1) segs.push(cur); cur = []; return; }
+      cur.push(xMid(i) + ',' + y(v).toFixed(1));
+    });
+    if (cur.length > 1) segs.push(cur);
+    return segs.map((pts) => '<polyline points="' + pts.join(' ') + '" fill="none" stroke="'
+      + color + '" stroke-width="2"' + (dashed ? ' stroke-dasharray="5,4"' : '') + '/>').join('');
+  };
+  g += trendLine('ghost', GHOST_COLOR, true);
+  g += trendLine('mean', MEAN_COLOR, false);
+
   // Direct labels at the right, so identity survives a greyscale print or a CVD reader.
+  // Collision-avoided: two labels within 11px are pushed apart rather than left overlapping,
+  // which is common once a mean or ghost line ends near a bar's own height.
   const last = rows[rows.length - 1] || {};
-  g += '<text x="' + (PADL + plotW + 8) + '" y="' + (y(last.a || 0) + 4) + '" fill="'
-    + SERIES[0].color + '" font-size="11">' + esc(labelA) + '</text>'
-    + '<text x="' + (PADL + plotW + 8) + '" y="' + (y(last.b || 0) + 4) + '" fill="'
-    + SERIES[1].color + '" font-size="11">' + esc(labelB) + '</text>';
+  const lastNonNull = (key) => { for (let i = rows.length - 1; i >= 0; i--) if (rows[i][key] != null) return rows[i][key]; return null; };
+  const labels = [{ y: y(last.a || 0), color: SERIES[0].color, text: labelA }];
+  labels.push({ y: y(last.b || 0), color: SERIES[1].color, text: labelB });
+  const lm = lastNonNull('mean'); if (lm != null) labels.push({ y: y(lm), color: MEAN_COLOR, text: labelMean });
+  const lg = lastNonNull('ghost'); if (lg != null) labels.push({ y: y(lg), color: GHOST_COLOR, text: labelGhost });
+  labels.sort((p, q) => p.y - q.y);
+  for (let i = 1; i < labels.length; i++) {
+    if (labels[i].y - labels[i - 1].y < 11) labels[i].y = labels[i - 1].y + 11;
+  }
+  labels.forEach((l) => {
+    g += '<text x="' + (PADL + plotW + 8) + '" y="' + (l.y + 4) + '" fill="' + l.color
+      + '" font-size="11">' + esc(l.text) + '</text>';
+  });
 
   return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="max-width:' + W
     + 'px;display:block;margin:0 0 8px" role="img" aria-label="'
     + esc(labelA + ' and ' + labelB + ' per ' + (opts.bucket || 'period')) + '">' + g + '</svg>';
 }
 
-/* Fold a list of {date,pageloads,visits} Eastern days into the chart's rows. Weekly once
- * there is more than a week to show — see barChart's header for why. The oldest bucket is
- * marked when it is short, for the same reason `dayLabel` marks a partial day: a short
- * bucket and a quiet week are the same bar without it. */
-export function bucketDays(dayRows, days) {
+/* Map {day,pageloads,visits,coarse,missing,partial,mean,ghost} Eastern-day rows (ascending)
+ * onto `barChart`'s row shape — one bar per DAY, always (2026-09-20 rewrite; owner: "for
+ * the 30 day and all can you make them a line graph and show data from every day not the
+ * weekly average"). `analytics.js` now only calls this for a window of 14 days or fewer —
+ * `barChart`'s own widest readable width — and calls `lineChart` below for anything longer,
+ * so THIS FUNCTION NO LONGER BUCKETS AT ANY LENGTH.
+ *
+ * IT USED TO. Before this change a >14-day window folded into weekly bars and a >90-day one
+ * into monthly bars, sized off the row count rather than a caller-supplied `days` (an
+ * arbitrary range has no guarantee the two agree). That folding — and the `partialMissing`
+ * mark that existed ONLY to flag a bucket where some but not all of its folded days were
+ * uncaptured, a fact about a SUM — cannot occur once nothing is ever summed, so both are
+ * gone, along with `short` (the bucket-doesn't-divide-evenly mark, equally a fact about
+ * folding). Removed with them: the `bucket-threshold-widen` and
+ * `bucket-partial-missing-hidden` injections in `test/run_dashboard_trend.js`, and the two
+ * checks under its old section 7 that asserted week/month bucket counts at 30/45/400 days —
+ * see that file for what replaced them. */
+export function bucketDays(dayRows) {
   if (!dayRows || !dayRows.length) return { rows: [], bucket: 'day' };
-  if (days <= 7) {
-    return { rows: dayRows.map((r) => ({ label: (r.date || '').slice(5),
-                                         a: r.pageloads, b: r.visits })), bucket: 'day' };
-  }
-  const out = [];
-  for (let end = dayRows.length; end > 0; end -= 7) {
-    const start = Math.max(0, end - 7);
-    const week = dayRows.slice(start, end);
-    out.unshift({
-      label: (week[0].date || '').slice(5) + (week.length < 7 ? '*' : ''),
-      a: week.reduce((s, r) => s + (r.pageloads || 0), 0),
-      b: week.reduce((s, r) => s + (r.visits || 0), 0),
-      short: week.length < 7,
+  return {
+    bucket: 'day',
+    rows: dayRows.map((r) => ({
+      label: r.day.slice(5) + ' ' + dow(r.day),
+      a: r.pageloads || 0,
+      b: r.visits || 0,
+      mean: r.mean == null ? null : r.mean,
+      ghost: r.ghost == null ? null : r.ghost,
+      coarse: !!r.coarse,
+      missing: !!r.missing,
+      partial: !!r.partial,
+    })),
+  };
+}
+
+/* ---------------------------------------------------------------- the line chart (2026-09-20)
+ *
+ * ONE POINT PER DAY, NO BUCKETING, for any window over 14 days (owner: "for the 30 day and
+ * all can you make them a line graph and show data from every day not the weekly average").
+ * `barChart` above is UNCHANGED and still draws the 14-day-or-fewer case; #764's "mostly
+ * zeros" argument against a daily chart doesn't hold once the shape is a line rather than a
+ * bar — a line reads fine at 30, 90 or 400 points, a wall of 2px-wide bars does not.
+ *
+ * THE TRAP: a missing day's STORED count is 0 — `missing` is the only thing that says the
+ * nightly rollup never ran, not the value. Joining the line straight through it draws a
+ * PLUNGE TO ZERO AND BACK, a collapse that never happened, so each series' line is built
+ * from CONTIGUOUS RUNS of non-missing days (`dataLine` below), exactly the segment-per-run
+ * idiom the mean/ghost trend line already uses for a null window — and every missing day
+ * ALSO draws the same dashed baseline tick `barChart` uses for a whole missing bar, so the
+ * gap in the line reads as "no data", not as an unexplained hole (`test/run_dashboard_trend
+ * .js`'s `line-joins-through-missing` and `line-missing-tick-gone` injections prove both
+ * halves separately — a fixed line with no tick, or a tick with no break, is still wrong).
+ *
+ * `partial` (today, live) and `coarse` (Cloudflare-rounded) are per-day facts that must
+ * survive the shape change: drawn on the POINT MARKER, same convention as the bar — a
+ * hollow ring for partial, reduced opacity for coarse — never solid, never folded away.
+ *
+ * `partialMissing` HAS NO EQUIVALENT HERE. It marked a WEEKLY BUCKET where some but not all
+ * of the folded days were uncaptured — a fact about a sum. A line's points are never
+ * summed, so see `bucketDays`' header for where that logic (and the checks pinning it) went.
+ *
+ * X-AXIS LABELS are thinned to roughly `LABEL_TARGET` across the window — every label at 30
+ * days is already tight, at 90 or 400 it is unreadable — so only every `lineLabelStride`-th
+ * day is labelled, plus the LAST day always, so the window's end is never the one label a
+ * stride happens to skip. The stride is also what the caller's legend prints, so the
+ * spacing is stated, not left for the reader to count.
+ */
+const LABEL_TARGET = 12;
+
+// Exported so `analytics.js` can state the spacing in the legend using the SAME number
+// this function draws with, rather than a second guess that could silently drift from it.
+export function lineLabelStride(n) {
+  return Math.max(1, Math.ceil((n || 1) / LABEL_TARGET));
+}
+
+export function lineChart(rows, opts) {
+  opts = opts || {};
+  if (!rows || rows.length < 2) return '';
+  const labelA = opts.labelA || 'A', labelB = opts.labelB || 'B';
+  const labelMean = opts.labelMean || 'trailing mean', labelGhost = opts.labelGhost || 'prior period';
+  const W = 720, H = 190, PADL = 34, PADR = 96, PADT = 12, PADB = 26;
+  const plotW = W - PADL - PADR, plotH = H - PADT - PADB;
+  const max = Math.max(1, ...rows.map((r) => Math.max(
+    r.missing ? 0 : (r.pageloads || 0), r.missing ? 0 : (r.visits || 0), r.mean || 0, r.ghost || 0)));
+  const pow = Math.pow(10, Math.floor(Math.log10(max)));
+  const top = Math.ceil(max / pow) * pow;
+  const n = rows.length;
+  const slot = plotW / n;
+  const y = (v) => PADT + plotH - (v / top) * plotH;
+  const xMid = (i) => PADL + i * slot + slot / 2;
+  const stride = lineLabelStride(n);
+  const dayLbl = (r) => r.day.slice(5) + ' ' + dow(r.day);
+
+  let g = '';
+  [0, top].forEach((v) => {
+    g += '<line x1="' + PADL + '" y1="' + y(v) + '" x2="' + (PADL + plotW) + '" y2="' + y(v)
+      + '" stroke="#1c2531" stroke-width="1"/>'
+      + '<text x="' + (PADL - 6) + '" y="' + (y(v) + 4) + '" fill="#8fa2b3" font-size="10" '
+      + 'text-anchor="end">' + v + '</text>';
+  });
+
+  // Baseline ticks for every MISSING day, drawn first so a marker at the same x is never
+  // hidden under one — same visual language as barChart's own missing-bucket tick, just
+  // narrower to fit a much tighter slot.
+  rows.forEach((r, i) => {
+    if (!r.missing) return;
+    g += '<line x1="' + (xMid(i) - 3) + '" y1="' + (PADT + plotH) + '" x2="' + (xMid(i) + 3)
+      + '" y2="' + (PADT + plotH) + '" stroke="#8fa2b3" stroke-width="3" stroke-dasharray="2,2">'
+      + '<title>' + esc(dayLbl(r)) + ' — no data captured</title></line>';
+  });
+
+  // One series line per CONTIGUOUS run of non-missing days — a missing day breaks the line
+  // instead of being interpolated across as a drop to zero — plus a point marker per day
+  // carrying the same partial/coarse status the bar chart puts on a bar.
+  const dataLine = (valueKey, color, seriesLabel) => {
+    const segs = []; let cur = [];
+    rows.forEach((r, i) => {
+      if (r.missing) { if (cur.length > 1) segs.push(cur); cur = []; return; }
+      cur.push(xMid(i) + ',' + y(r[valueKey] || 0).toFixed(1));
     });
+    if (cur.length > 1) segs.push(cur);
+    let out = segs.map((pts) => '<polyline points="' + pts.join(' ') + '" fill="none" stroke="'
+      + color + '" stroke-width="2"/>').join('');
+    rows.forEach((r, i) => {
+      if (r.missing) return;
+      const v = r[valueKey] || 0;
+      const style = r.partial ? 'fill="none" stroke="' + color + '" stroke-width="2"'
+        : 'fill="' + color + '"' + (r.coarse ? ' fill-opacity="0.45"' : '');
+      const flag = r.partial ? ' (today, partial)' : r.coarse ? ' (coarse, ±10)' : '';
+      out += '<circle cx="' + xMid(i) + '" cy="' + y(v).toFixed(1) + '" r="2.5" ' + style + '>'
+        + '<title>' + esc(dayLbl(r)) + ' — ' + esc(seriesLabel) + ': ' + v + flag + '</title></circle>';
+    });
+    return out;
+  };
+  g += dataLine('pageloads', SERIES[0].color, labelA);
+  g += dataLine('visits', SERIES[1].color, labelB);
+
+  // Trend line(s) — identical segment-per-null-run idiom to barChart's own `trendLine`.
+  const trendLine = (key, color, dashed) => {
+    const segs = []; let cur = [];
+    rows.forEach((r, i) => {
+      const v = r[key];
+      if (v == null) { if (cur.length > 1) segs.push(cur); cur = []; return; }
+      cur.push(xMid(i) + ',' + y(v).toFixed(1));
+    });
+    if (cur.length > 1) segs.push(cur);
+    return segs.map((pts) => '<polyline points="' + pts.join(' ') + '" fill="none" stroke="'
+      + color + '" stroke-width="2"' + (dashed ? ' stroke-dasharray="5,4"' : '') + '/>').join('');
+  };
+  g += trendLine('ghost', GHOST_COLOR, true);
+  g += trendLine('mean', MEAN_COLOR, false);
+
+  // X-axis labels, thinned to roughly LABEL_TARGET across the window, plus the LAST day
+  // always — a stride that would otherwise skip the window's own end point.
+  /* AND THE LABEL BEFORE THE LAST IS DROPPED WHEN THE TWO WOULD COLLIDE. Forcing the final
+   * label while also drawing every stride-th one puts two within one day of each other
+   * whenever (n - 1) is not a multiple of the stride: MEASURED on an 18-day window at
+   * stride 2, `09-17 Th` and `09-18 F` overprinted as `09-17 TH09-18 F`. The label is wider
+   * than one day's slot, so anything inside two slots touches; the window's END is the one
+   * worth keeping, so its neighbour gives way. Only a RENDER shows this -- the markup is
+   * well-formed either way, which is why the check for it screenshots. */
+  const lastForced = (n - 1) % stride !== 0;
+  rows.forEach((r, i) => {
+    if (i % stride !== 0 && i !== n - 1) return;
+    if (lastForced && i !== n - 1 && (n - 1) - i < 2 * stride) return;
+    g += '<text x="' + xMid(i) + '" y="' + (H - 8) + '" fill="#8fa2b3" '
+      + 'font-size="10" text-anchor="middle">' + esc(dayLbl(r)) + '</text>';
+  });
+
+  // Direct labels at the right, collision-avoided exactly as barChart does — the two DATA
+  // series use the LAST NON-MISSING day, never the last row outright, so a window ending on
+  // an uncaptured day does not plant "Pageloads"/"Landing visits" at the y=0 baseline.
+  let lastRow = null;
+  for (let i = rows.length - 1; i >= 0; i--) if (!rows[i].missing) { lastRow = rows[i]; break; }
+  const lastNonNull = (key) => { for (let i = rows.length - 1; i >= 0; i--) if (rows[i][key] != null) return rows[i][key]; return null; };
+  const labels = [];
+  if (lastRow) {
+    labels.push({ y: y(lastRow.pageloads || 0), color: SERIES[0].color, text: labelA });
+    labels.push({ y: y(lastRow.visits || 0), color: SERIES[1].color, text: labelB });
   }
-  return { rows: out, bucket: 'week' };
+  const lm = lastNonNull('mean'); if (lm != null) labels.push({ y: y(lm), color: MEAN_COLOR, text: labelMean });
+  const lg = lastNonNull('ghost'); if (lg != null) labels.push({ y: y(lg), color: GHOST_COLOR, text: labelGhost });
+  labels.sort((p, q) => p.y - q.y);
+  for (let i = 1; i < labels.length; i++) {
+    if (labels[i].y - labels[i - 1].y < 11) labels[i].y = labels[i - 1].y + 11;
+  }
+  labels.forEach((l) => {
+    g += '<text x="' + (PADL + plotW + 8) + '" y="' + (l.y + 4) + '" fill="' + l.color
+      + '" font-size="11">' + esc(l.text) + '</text>';
+  });
+
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="max-width:' + W
+    + 'px;display:block;margin:0 0 8px" role="img" aria-label="'
+    + esc(labelA + ' and ' + labelB + ' per day') + '">' + g + '</svg>';
 }
 
 export function errBlock(message) {

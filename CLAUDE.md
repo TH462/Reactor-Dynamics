@@ -43,11 +43,11 @@ docs.
 > - **Write-ups get no word limit — they get a content rule:** don't restate what the diff shows;
 >   record the trap and the numbers that prove it. Length then falls out.
 >
-> **Why not three caps** (the reasoning, so it is not re-litigated): a word limit on write-ups
-> would forbid the worked A/B that makes a trap believable — #363's lesson is worthless without
-> the 15 °F number that disproved the filed symptom — and HR12 would then be unsatisfiable. Caps
-> are also a proxy an honest writer games without noticing. The gate-baselines blob was not bad
-> because it was 21,000 words, but because it duplicated a machine-readable authority.
+> **Why not three caps** (so it is not re-litigated): a word limit on write-ups would forbid the
+> worked A/B that makes a trap believable — #363's lesson is worthless without the 15 °F number
+> that disproved the filed symptom — leaving HR12 unsatisfiable. Caps are also a proxy an honest
+> writer games without noticing: the gate-baselines blob was bad for duplicating a
+> machine-readable authority, not for its word count.
 
 > **End with what is STILL OUTSTANDING** *(OWNER DIRECTIVE, 2026-07-30: "I would like to add to
 > claude.md to have the ai place a 'Still Outstanding' summary at the bottom so i know exactly
@@ -63,10 +63,22 @@ docs.
 > ```
 >
 > **Scope it to the task in hand**, not the whole backlog — the owner is asking "where are we on
-> *this*", and a list of everything open answers a different question. **Name what blocks each
-> item**: "not started", "waiting on your ruling" and "blocked by another session" are different
-> facts and only one of them is yours to clear. **One recommendation, not a menu** — same rule as
-> the block above.
+> *this*", and a list of everything open answers a different question. **One recommendation, not
+> a menu** — same rule as the block above.
+>
+> **THE BLOCK IS A REPORT, NOT A PLACE TO PUT WORK** *(OWNER DIRECTIVE, 2026-09-20: "You often
+> stop with work that needs to be done in the STILL OUTSTANDING block. how can we adjust so that
+> you keep working until its complete? I cant always monitor your work just to say 'keep going'
+> every time.")*. **Every item names which of exactly THREE things it waits on: his RULING** (a
+> judgement only he can make) · **his PERMISSION** (push and merge, already gated) · **a CLOCK**
+> (a gate actually running).
+>
+> **Waiting on none of those is not OUTSTANDING, it is UNSTARTED — do it before you stop.**
+> *"Waiting on your yes"* is not a category: if you would act the instant he said yes, and nothing
+> in it is irreversible or his to judge, the yes was never load-bearing — make the call, do the
+> work, say what you did. In the session that produced this rule, one block parked two items as
+> *"waiting on your yes"* that needed nothing from him **while calling two branches that carried
+> his own rulings "undecided"**. **He cannot monitor; the default is KEEP GOING.**
 >
 > **Omit it entirely when nothing is outstanding**, and say so in a sentence instead. A section
 > that appears every turn stops being read, which is the failure mode the First Principles rule
@@ -84,16 +96,12 @@ docs.
 >
 > **RE-ISSUED, because the rule above was not enough** *(OWNER DIRECTIVE, 2026-08-14: "From now on,
 > whenever you need a ruling, tell me what you need me to decide, my options and your
-> recommendation. I'm tired of having to ask every time.")*. **The failure mode is specific and it
-> is NOT refusing to recommend — it is naming a blocker without the decision attached.** Writing
-> *"blocked on your ruling"* or *"needs your call"* in a status line, a STILL OUTSTANDING block or
-> an issue comment, and leaving the options in a document he has to go find, makes him ask. It
-> made him ask twice in one session against a rule already a fortnight old.
->
-> **Every time you say a thing is blocked on him, the decision travels WITH it, in that message:**
-> what he is deciding · the options · your recommendation and why. **No exceptions for brevity** —
-> if it is worth telling him he is blocking something, it is worth telling him what to do about it.
-> A pointer to where the options are written is not the options.
+> recommendation. I'm tired of having to ask every time.")*. **The failure mode is NOT refusing to
+> recommend — it is naming a blocker without the decision attached.** *"Blocked on your ruling"* in
+> a status line, a STILL OUTSTANDING block or an issue comment, with the options in a document he
+> must go find, makes him ask. **Every time you say a thing is blocked on him, the decision travels
+> WITH it, in that message:** what he is deciding · the options · your recommendation and why. **No
+> exceptions for brevity.** A pointer to where the options are written is not the options.
 
 > **The First Principles section — a CANARY, not an essay** *(OWNER RULING, 2026-07-29: "I would
 > label it the 'First Principles' section. The start and end should be marked."; narrowed hours
@@ -109,19 +117,18 @@ docs.
 > **— END FIRST PRINCIPLES —**
 > ```
 >
-> **One concern, not a survey** — the first two drafts each crammed in three, which is what made
-> them too long. Two candidates: ship the one you would most regret him not seeing. Needs more
-> than three sentences: then the canary is a short line plus an offer to expand, or an issue.
+> **One concern, not a survey** — two candidates: ship the one you would most regret him not
+> seeing. Needs more than three sentences: a short line plus an offer to expand, or an issue.
 > Same sense as HR9's — it says *look here*, it settles nothing.
 >
-> **Unhedged, not unaccountable.** Exempt from habit (hedging, deferring to documents, ranking
-> the cheap option first), never from the rules: **HR12 still binds** — an unmeasured claim must
-> say so, since a rules-free zone for confident plant-dynamics claims is what #205 and #220 are
-> the record of — as do HR11 and no-fabricated-sources, and it can never authorise an action or
-> excuse a gate. **Optional and never padded**: a slot filled every turn trains the owner to skip
-> it. **Two triggers worth knowing** — the *ranking disclosure* (your recommendation is the safe
-> option and a higher-fidelity one exists you are not recommending: say which you would pick on
-> fidelity alone, #251), and a doubt about your own work you would otherwise bury. Not gateable.
+> **Unhedged, not unaccountable.** Exempt from habit (hedging, deferring to documents, ranking the
+> cheap option first), never from the rules: **HR12 still binds** — a rules-free zone for confident
+> plant-dynamics claims is what #205 and #220 are the record of — as do HR11 and
+> no-fabricated-sources, and it can never authorise an action or excuse a gate. **Optional and
+> never padded**: a slot filled every turn trains the owner to skip it. **Two triggers** — the
+> *ranking disclosure* (you are recommending the safe option and a higher-fidelity one exists: say
+> which you would pick on fidelity alone, #251), and a doubt about your own work you would
+> otherwise bury. Not gateable.
 
 > **You may not be the only agent in this repo. Check all lanes before you edit.** Two sessions
 > in one working directory overwrite each other's files and sweep each other's work into the
@@ -159,7 +166,7 @@ docs.
 >   it shouldn't be automatic. The agent should warn the user and ask if they should use
 >   workbench.")*. The detection misfires both ways and only the owner can tell the cases apart.
 >   Investigating in place is fine; **editing, probe files and commits are not**. Absent a reply,
->   stay read-only and say what you are waiting on — the heuristic never gets an action.
+>   stay read-only — the heuristic never gets an action.
 > - **NEVER MERGE INTO `develop` UNLESS THE OWNER SAYS SO** *(OWNER DIRECTIVE, 2026-07-31: "We
 >   need a rule to never merge unless I say so. Develop was being worked")*. Applies to
 >   fast-forwards and anything else that moves `develop`. A clean `git status` is not permission.
@@ -179,12 +186,11 @@ docs.
 >   `Diagnostic/TUNING_LOG.md`, `Blueprint/BUILD_DECISIONS.md`, and the `BASELINES` map in
 >   `test/run_all.js` — keep both sides, then **re-run `run_all`**, because a mechanical BASELINES
 >   resolution can take the wrong number silently.
-> - **`Manuals/` is on that list and is the DANGEROUS one**: those four conflict LOUDLY, a manual
->   chapter is edited in the MIDDLE by both lanes and resolves in one lane's favour **saying
->   nothing** — a 2026-08-03 merge dropped a whole `§5.5` while the digests re-sealed around it.
->   `run_manual_rev` now has a content canary, but **it only sees what a revision row NAMES**, so
->   write rows chapter-qualified with a `§`, and after any `Manuals/` merge grep the chapter for
->   the thing you wrote. `LANES.md` §6.
+> - **`Manuals/` is the DANGEROUS one**: those four conflict LOUDLY, but a chapter edited in the
+>   MIDDLE by both lanes resolves in one lane's favour **saying nothing** — a 2026-08-03 merge
+>   dropped a whole `§5.5` while the digests re-sealed around it. `run_manual_rev`'s content canary
+>   **only sees what a revision row NAMES**, so write rows chapter-qualified with a `§`, and after
+>   any `Manuals/` merge grep the chapter for what you wrote. `LANES.md` §6.
 > - **Your session-log heading names your LANE: `YYYY-MM-DD-<lane>-<letter>`**, `-a` first, never
 >   bare — `test/run_session_labels.js` gates it; `LANES.md` §7 for why.
 > - A new tree comes from `git worktree add <path> <branch>`, and needs `node_modules` junctioned
@@ -317,12 +323,11 @@ to read everything.
 | **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
 | **Work out which lane to use, or merge one** | **`Blueprint/LANES.md`** — the occupancy check's two blind spots, warn-and-ask, the merge-conflict list and the `Manuals/` silent-drop case. The block at the top of this file is only what binds. |
 | **Look up a trap that used to be in this file** | **`Blueprint/TRAPS.md`** — bullets evicted from the standing list under its 25-cap, plus the criterion for which ones go. |
-| **Run an independent audit slice (#221)** | **`Blueprint/AUDIT_CHARTER.md`** — the whole file is *your* (primed) document: the lane, the prep and the close-out. The auditor's own rules are **`Blueprint/AUDITOR_ORIENTATION.md`**, deployed to `C:\grok_build\RD_Audit\CLAUDE.md` by `node tools/audit_deploy.js`; do not restate them anywhere else. Verify with `node tools/audit_preflight.js <slice>` (eight checks, exit 2 naming the cause; it launches nothing). **The launch is a fresh session started in `C:\grok_build\RD_Audit` itself — not in its `tree/`**, which would silently get the repo's settings and no auditor orientation. **If you are reading THIS file auto-loaded, you are primed and cannot be the auditor** — prep the slice per §4 and stop; do not read the slice's code "to help". Preflight proves the config, not the session: the auditor's first turn must state on the slice issue whether CLAUDE.md was auto-loaded *without it reading the file*. |
+| **Run an independent audit slice (#221)** | **`Blueprint/AUDIT_CHARTER.md`** — the lane, the prep and the close-out (yours, as the primed agent). The auditor's own rules are **`Blueprint/AUDITOR_ORIENTATION.md`**, deployed by `node tools/audit_deploy.js`; do not restate them elsewhere. Verify with `node tools/audit_preflight.js <slice>`. **Launch a fresh session in `C:\grok_build\RD_Audit` itself, NOT its `tree/`** — which silently gets the repo's settings and no auditor orientation. **Reading THIS file auto-loaded means you are primed and cannot be the auditor**: prep the slice per §4 and stop. Preflight proves the config, not the session. |
 | **Build or modify a module** | `Blueprint/CONTEXT.md` **plus that one module's spec** (`Blueprint/M1`–`M8`) — and nothing else. |
 | **Know what changed recently** | `CHANGELOG.md` (skimmable) → `Blueprint/BUILD_DECISIONS.md` (dense engineering rationale, tuning, gate tallies). |
 | **Operate the plant / look up a control, setpoint, or procedure** | `Manuals/` — start at `Manuals/README.md` (commercial-format PWR operator manuals). |
-| **Pick up the active tuning / bug-fixing effort** | `Diagnostic/TUNING_LOG.md` — the session-continuity record: current status, the tuning toolbox (knobs + tests + workflow), a dated worklog, and the full backlog of known & suspected issues. **Read this first when continuing tuning work.** |
-| **See current known issues, tuning gaps, playtest findings** | `Diagnostic/` (`TUNING_LOG.md`, `SPEC_AUDIT_*.md`, `OPS_TUNING_REPORT.md`, `PLAYTEST_REPORT.md`) and `Manuals/ISSUES_AND_FINDINGS.md`. |
+| **Pick up the active tuning / bug-fixing effort, or see known issues and playtest findings** | `Diagnostic/TUNING_LOG.md` — the session-continuity record: current status, the tuning toolbox (knobs + tests + workflow), a dated worklog, and the backlog of known & suspected issues. **Read it first when continuing tuning work.** Then the rest of `Diagnostic/` (`SPEC_AUDIT_*`, `OPS_TUNING_REPORT`, `PLAYTEST_REPORT`) and `Manuals/ISSUES_AND_FINDINGS.md`. |
 | **Tune plant behavior (the physics "knobs")** | Each plant's **`[tune]`-annotated constants** in `engines/<plant>/<plant>_config.js` (PWR 89, RBMK 27, BWR 37 — the file header explains the convention: `[tune]` values are starting points arbitrated by the scenario suite; un-marked values are fixed). Protection/alarm/failure setpoints are data too, in `layers/control/<plant>_control.js`. Validate with `test/run_ops.js` and `test/run_behavior.js`; open tuning targets are tracked in `Diagnostic/OPS_TUNING_REPORT.md`, and the live worklog + toolbox is `Diagnostic/TUNING_LOG.md`. **BEFORE you move a constant, run `node tools/perturb_sweep.js`** — it nudges `[tune]` values by 2–3 % and reports which checks flip, so "what will this break?" is answered ahead of the retune instead of by a mystery red after it (#321). |
 | **Run the simulator** | Open `index.html` (landing page — Operate the PWR from there), or `ui/shell.html` directly — see below. |
 | **Run the tests** | `node test/run_<suite>.js` — see below. |
@@ -336,29 +341,37 @@ to read everything.
 > change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
 > (Status line + Open Flags table) — update both.
 
-_Last updated: **2026-09-09**._
+_Last updated: **2026-09-18**._
 
 **What is open, and where the plant stands: `gh issue list --state open` is the authority, and
-`Blueprint/PWR2_VALIDATION.md` is the engineering record.** This section carried ~820 words of
-per-issue prose that told you not to trust it — measured twice (2026-08-10, 2026-08-28), whole
-bullets called issues open that were closed. Cut *(OWNER DIRECTIVE, 2026-09-12: "Implement the
-ruleset and Claude.md cuts as recommended.")*. **Run the query; read the sections.**
+`Blueprint/PWR2_VALIDATION.md` is the engineering record.** A hand-kept copy here rotted twice
+(measured 2026-08-10, 2026-08-28: bullets called issues open that were closed) and was cut
+*(OWNER DIRECTIVE, 2026-09-12: "Implement the ruleset and Claude.md cuts as recommended.")*.
+**Run the query; read the sections.**
 
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
 2026-08-06: "The revision number only matters during a release to the website. Revision numbers
 should never go up until a release happens.")*. **Read the top row of
-`Manuals/00_REVISION_HISTORY.md`, never a number written here** — this line said "Rev 14 …
-pending Rev 15" while that table stood at a **pending Rev 17**, which is the same rot as the
-gate baselines. The newest row is the pending one and it extends until the next release.
-**Do not open a new revision row for a manual edit; extend the pending row.** That is
-also the resolution for a revision-number collision, which is what two lanes editing the manuals
-produce — Rev 13 shipped carrying thirteen lettered items from two lanes for exactly that reason.
+`Manuals/00_REVISION_HISTORY.md`, never a number written here** — a number written here rotted
+two revisions behind that table, the same rot as the gate baselines. The newest row is the
+pending one and extends until the next release. **Do not open a new revision row for a manual
+edit; extend the pending row** — that is also how a revision-number collision resolves, which is
+what two lanes editing the manuals produce (Rev 13 shipped thirteen lettered items for that
+reason).
 
 **Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.** A
 reading aid, not a record: the full entry is in `Diagnostic/TUNING_LOG.md`, and anything that is
 standing procedure rather than news belongs in the list below. **Evicting one: RESCUE THE TRAP
 FIRST** — ask what in it would still burn someone in a month, move that to the standing list as
 ONE line, drop the rest. **A bullet is ~80 words.**
+
+- **AN ACCEPTANCE THRESHOLD AT THE CENTRE OF ITS OWN RENDER BAND IS A STEP THE BOARD CANNOT TELL
+  THE PLAYER IS MET** (2026-09-18, #749). `fmtExp` is `toFixed(1)`, so `1.4e3` draws for
+  [1350, 1450) while `> 1400` refused the whole lower half; REACTOR POWER's `digits: 1` did the
+  same at 0.1 — **107.4 s of dark Continue beside a tile already reading the target**. Grade the
+  band FLOOR, on the channel the tile DRAWS: the map's "PWR2 has no SR/IR channels" was stale, 88
+  reused channels. **Measure the PLAYER's route — the same fix buys 1 s on the replay, 127 on
+  theirs.**
 
 - **A LATCHING FAILURE ARMED AFTER THE EVENT IT LATCHES ON IS A NO-OP THAT READS AS A WORKING
   INJECTION** (2026-09-09, #670 Phase 2): `stuck_porv_open` latches on the first lift; the lift is
@@ -372,13 +385,6 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   target, the authored route peaking at 9.91e4. Steps now author `overtaken: {p,op,v,text}`, the
   condition under which they no longer apply. **Grep every `{cmd:…}` acceptance for the plant state
   that makes its control refuse.**
-- **THE PAUSE LOOP EXCLUDED ONE CLASS BY DESIGN AND THAT CLASS WAS THE FRAME PRODUCER**
-  (2026-09-04, #613). `tickAnimations` paused ~90 keyframe animations and skipped CSSTransition as
-  "short, one-shot" — but 150 ms transitions on level rects, restarted by every 100 ms broadcast,
-  never finish. Measured at 10×: ZERO keyframe animations running, 6–7 transitions running at every
-  sampled instant, 904 compositor draws per 15 s against 265 app paints. Removing them: −51 %.
-  Three waves throttled the class already stopped — the fps in the bundle is the APP’s own cadence.
-
 - **TWO CORRECT MECHANISMS TWO DAYS APART CAN DISAGREE BY 17 psi — AND A HOLD RE-DECIDED EVERY
   STEP CHATTERS AT 1×** (2026-09-04, #627). #608 ticked the Pressure SP step at 682 psia to clear the
   cover gas; #622 held the clock AT the 665 psia cover gas. Between them the checklist waited on a
@@ -386,12 +392,11 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   step", rose, cleared and re-rose **three times over 24 psi**; its gate SAMPLED the first rise and
   passed. Assert the span, and grep the checklist for the step that is active when a cue fires.
 - **A FRESH-READER REVIEW REPORTS WHAT THE RENDERER SHOWS, AND WHAT YOUR EXTRACT LEFT OUT**
-  (2026-09-06, #653). Two minimal-context reviewers, one an operator and one a layman, both
-  reported "30 of 67 steps have no acceptance": the panel draws the done-when on the ACTIVE step
-  only, and my extract had dropped the `accs`/`saw` forms — measured on the built pool, **6**. The
-  same reviews found the real defects nothing else had: "Tavg" 34 times and not on the board,
-  three units for one gauge, cautions that never render. **Verify every count on the built object
-  before it reaches an issue, and read the layman's "I could not find it" as a board fact.**
+  (2026-09-06, #653). Two minimal-context reviewers both filed "30 of 67 steps have no
+  acceptance"; the panel draws the done-when on the ACTIVE step only and the extract had dropped
+  the `accs`/`saw` forms — on the built pool, **6**. The same reviews found what nothing else had:
+  "Tavg" 34 times and not on the board, three units for one gauge. **Verify every count on the
+  built object before it reaches an issue; read a layman's "I could not find it" as a board fact.**
 
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md")*,
@@ -588,15 +593,13 @@ service (M5, +rewind) ✅, instructor (M6) ✅, test runner (M7) ✅. The PWR mo
 initial condition** and the **full Mode 5 ↔ Mode 1 on integrated physics**. **UI (M8):
 functional alpha, PWR only** 🟦.
 
-**Known open work** — `gh issue list --state open`, as the paragraph above already says. A
-hand-kept copy here named three items and could not say whether any was still open; details in
-`Diagnostic/`, `Manuals/ISSUES_AND_FINDINGS.md` and `BUILD_DECISIONS.md` Open Flags.
+**Known open work** — the query above. Detail: `Diagnostic/`, `Manuals/ISSUES_AND_FINDINGS.md`,
+`BUILD_DECISIONS.md` Open Flags.
 
 **Current gate baselines — `BASELINES` in `test/run_all.js` IS the authority. Do not copy
-numbers here.** It carried ~24,000 words of per-runner prose until 2026-08-06 and EVERY figure
-had rotted, one runner listed **twice with different numbers** (`TUNING_LOG.md` 2026-08-06).
-Run the gate; read the map. Per-change rationale:
-`Diagnostic/TUNING_LOG.md` and `Blueprint/BUILD_DECISIONS.md`, newest first.
+numbers here.** ~24,000 words of per-runner prose lived here until 2026-08-06 and EVERY figure
+had rotted, one runner listed **twice with different numbers**. Run the gate; read the map.
+Per-change rationale: `Diagnostic/TUNING_LOG.md`, `Blueprint/BUILD_DECISIONS.md`, newest first.
 
 ```
 node test/run_all.js            # every discovered runner vs BASELINES (10-way parallel locally;
@@ -630,9 +633,8 @@ Four things about it that are procedure, not history:
 
 **Tracked reds carry their own `note` in `BASELINES` — read it there, and do NOT re-band one.**
 A red kept on purpose is reporting against a target; re-banding it whenever the plant moves
-retires the target instead. This paragraph listed one such red by name and number and was stale
-inside a day when a second arrived (2026-09-14) — the same rot as the gate baselines above.
-`verify_e2e_ui` carries **1 strict xfail** for #111's missing unit conversion.
+retires the target instead. Naming them here rots inside a day (measured 2026-09-14) — same as
+the gate baselines above.
 ---
 
 ## Running it
@@ -767,8 +769,6 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 > "Can we save the gate until just before pushing instead of doing it after every change?")*.
 > Measured that day: `run_all` is **34 min**, FOUR ran for one bundle, ~100 minutes of it waste.
 > - **Per change, run only the runners it touches** — `run_all.js --only run_flags,verify_flags_ui`.
->   **A subagent never runs the aggregate**: per-change gates say what YOU broke, the aggregate what
->   someone else did, and it is the coordinator who needs that.
 > - **Run it ONCE, immediately before the push, tree settled, NOTHING else live in it.** A commit
 >   landing mid-run VOIDS it — the drift is the tree moving, not the code (cost a 34 min run,
 >   2026-09-12). Same trap as stashing under a background gate.
@@ -777,23 +777,20 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 
 > **NEVER PUSH UNTIL HE SAYS SO** *(OWNER DIRECTIVE, 2026-09-14: "Let's change the rule to don't
 > push until I tell you to.")*, which supersedes the same day's "push once a session, at the end"
-> — that rule came from *(OWNER, 2026-09-14: "Why are you running the aggregate gate and pushing
-> right now when you have a lot more work to do this is just a waste of time if nobody is going to
-> be play testing it right now")* and did not go far enough. **Same shape as the never-merge rule:
+> — that rule did not go far enough. **Same shape as the never-merge rule:
 > a clean tree and a green gate are not permission.** "Committed on the lane, gated, waiting" is
 > the correct end state, and so is ending a session with nothing pushed.
 > - **THE PUSH IS WHAT TRIGGERS THE AGGREGATE, so no push means NO `run_all`.** Per-change gates
 >   still run and still bind. When he calls for a push: settle the tree, run it ONCE, then the
 >   release-candidate bump and the changelog extension, then push. **Do not run it speculatively
->   "so it is ready"** — that is the 34 min run abandoned mid-flight on 2026-09-14, plus a whole
->   second release cycle, because a finished work unit was read as a finished session.
-> - **The cost of holding is that cross-effects go uncertified** — per-change gates say what YOU
->   broke, the aggregate what someone else did. **Say when it is overdue; never run it to fix
->   that on your own.**
+>   "so it is ready"** — a finished work unit is not a finished session (cost a 34 min run
+>   abandoned mid-flight and a second release cycle, 2026-09-14).
+> - **The cost of holding is that cross-effects go uncertified.** Say when it is overdue; never
+>   run it to fix that on your own.
 > - **Give every subagent a tool-call ceiling: past ~150 calls, STOP and report what remains.**
 >   Cost is tool calls, not brief length (the rule below), and the tail is where it goes: measured
->   the same day, seven agents ran 84 · 101 · 132 · 139 · 156 · **1231** · **2274**. The two long
->   ones were not scoped worse — they ground, and a check-in would have let the coordinator
+>   the same day, seven agents ran 84–156 for five of them, then **1231** and **2274**. The two
+>   long ones were not scoped worse — they ground, and a check-in would have let the coordinator
 >   re-scope instead. **An agent that EDITS BEFORE IT PLANS pays for the rework twice**: the
 >   2274-call run hit a contradiction its own change had created.
 
@@ -825,6 +822,12 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 > - **No agent where no judgement is required and the facts are in hand** — a ruling record, a
 >   cross-link, a version bump. One such cost **112 k tokens for three string edits**. No size
 >   threshold: size is not the axis.
+> - **SONNET BY DEFAULT; OPUS WHERE JUDGEMENT IS THE WORK** *(OWNER DIRECTIVE, 2026-09-18: "change
+>   our standard practice to use sonnet agents for well scoped work and only use opus agents for
+>   Work that needs more intelligence")*. **Narrows** the 2026-09-08 "have opus agents do it" — the
+>   coordinator half stands, the model does not. **Well-scoped = the brief already names the files,
+>   the interface and the checks.** Opus buys an open diagnosis or per-probe adjudication. Guessing
+>   low is cheap — re-dispatch on Opus.
 > - **A brief carries constraints and numbers, not rationale.** The *why* is for the owner.
 > - **One doc-budget pass**: compute what the block costs, cut that much in the same edit, measure
 >   once.
@@ -882,8 +885,21 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 
 ## Issue tracking (GitHub) — the owner's preferred workflow
 
-**Open items belong in GitHub issues**, not only in `Diagnostic/` prose. When you find a defect,
-a gap, or a deferred decision that outlives the session, file it.
+**Open items belong in GitHub issues**, not only in `Diagnostic/` prose — but the issue has to
+EARN itself.
+
+> **THE FILING BAR** *(OWNER DIRECTIVE, 2026-09-20: "The last few sessions kept adding issues by
+> themselves but I found a lot of these issues went on a tangent and are a waste of time.")*. Of
+> 34 closed as not worth doing that day, **6 concluded in their own body that nothing should
+> change**; **8 were tests about tests.**
+> - **`Diagnostic/TUNING_LOG.md` is where a finding GOES; an issue is the EXCEPTION.** This line
+>   used to read "keep the log **and** file the issue" — it instructed double-filing.
+> - **The bar: a PLAYER CONSEQUENCE, or a wrong number on the SHIPPED plant.** *"A gate could be
+>   tighter"* and *"I measured this and it is fine"* fail it.
+> - **A finding you would not file if you could not fix it yourself is not an issue.**
+> - **An ANSWER goes in a COMMENT on the asking issue, never a new one.**
+>
+> **Not gateable**, like HR12 and the units rule — it decays unless the sweep re-runs.
 
 Repo: **`TH462/Reactor-Dynamics`**. `gh` is installed per-user and on the PATH, authed as
 `TH462`. On `gh: command not found`, prepend it (mind the space in the path):
@@ -900,11 +916,11 @@ gh issue close  <n> --repo TH462/Reactor-Dynamics --comment "…"
 ```
 
 - **ALWAYS add the `Claude` label to every issue you touch** (`--label Claude` on create,
-  `gh issue edit <n> --add-label Claude` otherwise). It means **"Claude worked on this"** —
-  not just authorship — so apply it when you create an issue, comment on one, or do the work
-  it tracks. It exists so the owner can see agent involvement at a glance.
-- **Draft long bodies to a file and use `--body-file`** — `inbox/` is gitignored, so drafts
-  don't pollute the repo. Inline `--body` mangles multi-line markdown.
+  `gh issue edit <n> --add-label Claude` otherwise). It means **"Claude worked on this"**, not
+  just authorship — create, comment, or do the work it tracks. It is how the owner sees agent
+  involvement at a glance.
+- **Draft long bodies to a file and use `--body-file`** — `inbox/` is gitignored. Inline
+  `--body` mangles multi-line markdown.
 - **Labels — four required axes** (scheme revised 2026-07-25; the canonical definition is
   **GitHub issue #61**, which is self-contained — the `PROJECT_WORKFLOW.md` it used to cite
   never existed). Every issue gets one of each:
@@ -950,14 +966,12 @@ gh issue close  <n> --repo TH462/Reactor-Dynamics --comment "…"
   occupancy and stands down for nobody. Clear it on the same turn you hand the issue back,
   whether the work landed, is blocked, or you were interrupted.
 
-  **This is the FIRST occupancy signal that is not a guess.** The lane check at the top of
-  this file infers occupancy from uncommitted files plus a recent commit, and that heuristic
-  cannot tell another live session from the owner's own edits from your own leftovers — which
-  is exactly why it is only ever allowed to WARN AND ASK. A lane tag is an agent SAYING where
-  it is. It does not replace the `git status` sweep (an agent can start work without touching
-  an issue), so run both: `gh issue list --label status-wip-workbench` answers *who is in that
-  tree and on what*, which the file sweep never could. **A tagged issue in your lane that you
-  did not tag is a positive — warn and ask, same as the file check.**
+  **This is the FIRST occupancy signal that is not a guess** — the file sweep cannot tell a live
+  session from the owner's edits from your own leftovers, which is why it may only WARN AND ASK.
+  A lane tag is an agent SAYING where it is, and `gh issue list --label status-wip-workbench`
+  answers *who is in that tree and on what*. It does not replace the sweep (an agent can work
+  without touching an issue), so run both. **A tagged issue in your lane that you did not tag is
+  a positive — warn and ask, same as the file check.**
 
   **ONE `--label` is fine; THREE are not** — `gh` ANDs repeated `--label`, so the all-lanes
   sweep must be `--search 'label:a,b,c'`. `Blueprint/LANES.md` §2 for what that cost.
@@ -968,14 +982,11 @@ gh issue close  <n> --repo TH462/Reactor-Dynamics --comment "…"
   YYYY-MM-DD" — otherwise it is one agent's preference wearing the project's authority.
   An unattributed `status-deliberate` is advisory: weigh it and say you did.
 
-  Retired — do not apply to new issues: `assign-*` (use GitHub assignees), `type-refactor`
-  (→`type-cleanup`), `type-design` (→`type-decision`), `system-api`/`system-state`
-  (→`system-service`), `ui`/`ui-ux` (→`system-hmi`), the GitHub defaults `bug`/`enhancement`/
-  `documentation`, and the legacy `phase-*`/`chief`/`grok-build`/`technical`/`decision`/
-  `workflow` tags. They are left in place on old issues, not deleted.
+  Retired labels (left on old issues, never applied to new ones) are listed in **issue #61**,
+  the canonical scheme; `gh label list` shows what is live.
 - **Cross-link related issues by number** (`#122`) once both exist.
-- Keep the durable engineering record in `Diagnostic/TUNING_LOG.md` **and** file the issue —
-  the log is the narrative, the issue is the tracked unit of work.
+- **The log is the narrative; the issue is the tracked unit of work** — and per the filing bar
+  above, most findings are only the former.
 
 ## Branching & workflow
 

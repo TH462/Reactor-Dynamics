@@ -53,7 +53,9 @@ var DT = 0.02;
  * 'K' the shutdown preset, 'L' the operator's rate-limited load dial (#624 item 24),
  * 'N' the SUR HI annunciator (#661), 'O' the continuous-withdrawal casualty's RATE (#662),
  * 'S' the save contract, 'T' the AFW throttle on a real drain
- * (#582 — full channel runtime under the control kernel). The CLEAN pass runs everything;
+ * (#582 — full channel runtime under the control kernel), 'U' the seed is LIVE (#769 —
+ * engine.seed is not a silent undefined and actually drives the PRNG, across construction,
+ * reset() and a save/load round trip). The CLEAN pass runs everything;
  * each named group is preflighted ALONE on the clean build before the replays. */
 function runSuite(SH, rec, quiet, only) {
   /* THE BANK'S OWN CURRENCY (#602 phase 2) — the same helpers the engine gate carries, for the
@@ -201,9 +203,15 @@ function runSuite(SH, rec, quiet, only) {
    * the annunciator shape adopted, the failures menu exactly the injectable levers. */
   var pc = eng.getProtectionConfig();
   var baseAlarms = globalThis.RD.PWR_CONFIG.protection.alarms;
-  /* ONE override since #500 closed (2026-08-29) — was two. `rod_limit_approach` 40 -> 10 (the
-   * sourced RIL+10 in this bank's own step currency) is the survivor; every other row must
-   * stay shared BY REFERENCE, and a second silent divergence reds here.
+  /* THREE overrides since #783 (2026-09-18) — was one. `rod_limit_approach` 40 -> 10 (the
+   * sourced RIL+10 in this bank's own step currency), and the two containment-pressure
+   * CAPTIONS, which on the shared table name mitigations this plant does not perform — spray,
+   * the fan realign, steam-line isolation, and (MEASURED for #783) a containment safety
+   * injection PWR2's own protection has no channel for. Every other row must stay shared BY
+   * REFERENCE, and a FOURTH silent divergence reds here. The containment arms pin that only
+   * the LEARNING CAPTION moved: setpoint, direction, priority, instrument and the industry
+   * string are asserted identical to the shared row, so a per-plant setpoint smuggled in
+   * behind a caption edit still reds.
    *
    * ⚠ THE #500 OVERRIDE IS GONE AND THAT IS THE POINT OF THIS CHANGE, not an omission. It
    * rebuilt `pzr_level_low` at 17 % because the shared table's FIXED 25.0 % is this plant's
@@ -215,11 +223,25 @@ function runSuite(SH, rec, quiet, only) {
    * shared by reference is therefore a real claim here — re-introducing a per-plant copy reds
    * it — and the second clause below pins the shape so "shared" cannot mean "shared and
    * absolute again". */
+  function capOnly(a, b, want, wasRe) {
+    return a.label_learning === want && wasRe.test(b.label_learning || '') &&
+           a.setpoint === b.setpoint && a.priority === b.priority &&
+           a.instrument === b.instrument && a.direction === b.direction &&
+           a.label_industry === b.label_industry;
+  }
+  var OVERRIDDEN = {
+    rod_limit_approach: function (a, b) { return a.setpoint === 10 && b.setpoint === 40; },
+    ctmt_press_hi: function (a, b) {
+      return capOnly(a, b, 'Containment Pressure High (3.5 psig)', /\(SI signal\)/);
+    },
+    ctmt_press_hihi: function (a, b) {
+      return capOnly(a, b, 'Containment Pressure High-High (30 psig)', /\(spray\/MSLI\)/);
+    }
+  };
   var alarmsOk = Array.isArray(pc.alarms) && pc.alarms.length === baseAlarms.length &&
     pc.alarms.every(function (a, i) {
-      return a.id === 'rod_limit_approach'
-        ? (a.setpoint === 10 && baseAlarms[i].id === 'rod_limit_approach' && baseAlarms[i].setpoint === 40)
-        : a === baseAlarms[i];
+      if (a.id !== baseAlarms[i].id) return false;
+      return OVERRIDDEN[a.id] ? OVERRIDDEN[a.id](a, baseAlarms[i]) : a === baseAlarms[i];
     }) &&
     (function () {
       var lo = pc.alarms.filter(function (a) { return a.id === 'pzr_level_low'; })[0];
@@ -268,7 +290,8 @@ function runSuite(SH, rec, quiet, only) {
      !!pc.failures.continuous_rod_withdrawal &&
      !!pc.failures.tavg_sensor_failure && !!pc.failures.porv_indicator_stuck_closed,
      'M4 gets a shape it can hold; the level ladder is program-relative on both plants ' +
-     '(#500) so no alarm row is overridden but rod_limit_approach; boron_conc by reference');
+     '(#500) so the only overridden rows are rod_limit_approach and the two containment ' +
+     'captions (#783, caption only); boron_conc by reference');
   /* THE ONE ESF ENTRY (2026-08-20, the AFAS build). The board's AUX FEED word needs
    * automation.esf.afw === 'auto' to say STANDBY, and the kernel only emits that for a
    * listed system — before this entry the tile read SECURED over an armed AFAS. commands
@@ -603,6 +626,80 @@ function runSuite(SH, rec, quiet, only) {
   })();
   }
 
+  if (grp('D5')) {
+  /* ---- 1d5. THE LOFW (Loss Of FeedWater) SEAT (#785) -----------------------------------------
+   * SAME SHAPE AS #671's RCP row: `fw.pumpA`/`fw.pumpB` are the operator's own RUN flags
+   * (#605, #200) and the injection deliberately leaves them alone (it zeroes pumpAAvail/
+   * pumpBAvail instead), so the detector cannot read those flags — reading them made an
+   * injected casualty invisible AND made the board's own FEED PUMPS OFF file one nobody
+   * injected. Both directions, because a probe written for only one would pass on a detector
+   * that still gets the other wrong. */
+  head('THE LOFW SEAT  [#785 — invisible+unclearable when injected, filed for free on FEED PUMPS OFF]');
+  (function () {
+    var i;
+    var eLW = new SH.PWR2Engine({});
+    for (i = 0; i < 3000; i++) eLW.step(0.02);
+    var p0 = eLW.getTrueState().power_pct;
+    eLW.applyCommand({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
+    for (i = 0; i < 6000; i++) eLW.step(0.02);
+    var pAfter = eLW.getTrueState().power_pct;
+    ck('#785: an INJECTED loss_of_feedwater appears in the failures list, and the plant ' +
+       'actually loses power on it (99.6 -> 0.1 % measured, no casualty is a slow one)',
+       eLW.getActiveFailures().indexOf('loss_of_feedwater') !== -1 && pAfter < 50,
+       p0.toFixed(1) + ' % -> ' + pAfter.toFixed(1) + ' %, active [' +
+       eLW.getActiveFailures().join(',') + ']');
+    eLW.applyCommand({ action: 'clear_failure', failure_id: 'loss_of_feedwater' });
+    ck('...and clear_failure clears the SEAT without throwing',
+       eLW.getActiveFailures().indexOf('loss_of_feedwater') === -1, '');
+
+    /* THE FALSE POSITIVE. The board's own FEED PUMPS OFF is a normal, un-injected action
+     * (#605: the selector IS the control) and must never file a casualty against the
+     * operator who pressed it. */
+    var eLF = new SH.PWR2Engine({});
+    for (i = 0; i < 3000; i++) eLF.step(0.02);
+    eLF.applyCommand({ action: 'set_feedwater_flow', pct: 0, secure: true });
+    for (i = 0; i < 100; i++) eLF.step(0.02);
+    ck('#785: securing the feed pumps BY HAND (set_feedwater_flow {pct:0, secure:true}, no ' +
+       'injection) files NOTHING — the pre-fix detector reported ["loss_of_feedwater"] here',
+       eLF.getActiveFailures().indexOf('loss_of_feedwater') === -1,
+       'active [' + eLF.getActiveFailures().join(',') + '], pumpA ' + eLF.eng.fw.pumpA +
+       ', pumpB ' + eLF.eng.fw.pumpB);
+  })();
+
+  /* ---- THE AFW (Auxiliary FeedWater) BLOCK SEAT (#787) -----------------------------------------
+   * SAME SHAPE AS #785's LOFW row and #671's RCP row: `eng.aw.blocked` is shared by the
+   * `afw_failure` injection AND the board's own AFW block valve (`set_afw_block`/`block_afw`, an
+   * ordinary VALVE_TOGGLE at ui/diagram/board/pwr_board_wiring.js:2706) — both drive it through
+   * the SAME `afw_block` command. Both directions, because a probe written for only one would
+   * pass on a detector that still gets the other wrong. */
+  head('THE AFW BLOCK SEAT  [#787 — filed for free when the player closes the block valve by hand]');
+  (function () {
+    var i;
+    var eAI = new SH.PWR2Engine({});
+    eAI.applyCommand({ action: 'inject_failure', failure_id: 'afw_failure' });
+    ck('#787: an INJECTED afw_failure appears in the failures list',
+       eAI.getActiveFailures().indexOf('afw_failure') !== -1,
+       'active [' + eAI.getActiveFailures().join(',') + ']');
+    eAI.applyCommand({ action: 'clear_failure', failure_id: 'afw_failure' });
+    ck('...and clear_failure clears the SEAT without throwing',
+       eAI.getActiveFailures().indexOf('afw_failure') === -1, '');
+
+    /* THE FALSE POSITIVE, measured: set_afw_block {open:false} with no injection ->
+     * getActiveFailures() ["afw_failure"]; reopening -> []. This is the TMI-2 walkthrough's
+     * own valve (Three Mile Island Unit 2) — closing and reopening it must file nothing. */
+    var eAB = new SH.PWR2Engine({});
+    eAB.applyCommand({ action: 'set_afw_block', open: false });
+    ck('#787: closing the AFW block valve BY HAND (set_afw_block {open:false}, no injection) ' +
+       'files NOTHING — the pre-fix detector reported ["afw_failure"] here',
+       eAB.getActiveFailures().indexOf('afw_failure') === -1,
+       'active [' + eAB.getActiveFailures().join(',') + '], aw.blocked ' + eAB.eng.aw.blocked);
+    eAB.applyCommand({ action: 'set_afw_block', open: true });
+    ck('...and reopening it BY HAND still files nothing',
+       eAB.getActiveFailures().indexOf('afw_failure') === -1,
+       'active [' + eAB.getActiveFailures().join(',') + '], aw.blocked ' + eAB.eng.aw.blocked);
+  })();
+  }
+
   if (grp('E')) {
   /* ---- 1e. THE ELECTRICAL PAIR (#507 wave 4) ------------------------------------------------ */
   head('THE ELECTRICAL PAIR  [LOOP kills the nonvital bus and clears; SBO kills the vital one too]');
@@ -771,6 +868,48 @@ function runSuite(SH, rec, quiet, only) {
     eF.applyCommand({ action: 'clear_failure', failure_id: 'turbine_trip' });
     ck('...and clear_failure clears it, without THROWING (a clear is not an operator latch)',
        eF.getActiveFailures().indexOf('turbine_trip') === -1, '');
+  })();
+
+  /* ---- 1e-ia2. THE RCP TRIP SEAT (#671) ---------------------------------------------------------
+   * SAME SHAPE AS #551's turbine row above: `pump_trip` sets `sys.pumpTripped`, a flag also
+   * reached by a LOOP, a blackout, or the operator's own stop_pump/set_rcp OFF — so the
+   * detector cannot read the trip state and must read whether THIS injection made it. */
+  head('THE RCP TRIP SEAT  [#671 — invisible + unclearable until it reads a seat, not sys.pumpTripped]');
+  (function () {
+    var i;
+    var eG = new SH.PWR2Engine({});
+    for (i = 0; i < 3000; i++) eG.step(0.02);
+    eG.applyCommand({ action: 'inject_failure', failure_id: 'rcp_trip' });
+    for (i = 0; i < 100; i++) eG.step(0.02);
+    ck('#671: an INJECTED rcp_trip appears in the failures list, breaker open',
+       eG.getActiveFailures().indexOf('rcp_trip') !== -1 && eG.eng.sys.pumpTripped === true,
+       '[' + eG.getActiveFailures().join(',') + '], pumpTripped ' + eG.eng.sys.pumpTripped);
+    eG.applyCommand({ action: 'clear_failure', failure_id: 'rcp_trip' });
+    ck('...and clear_failure clears the SEAT without throwing, and without restarting the ' +
+       'pump on its own — the operator\'s own rcp_start/set_rcp stays the real restart path',
+       eG.getActiveFailures().indexOf('rcp_trip') === -1 && eG.eng.sys.pumpTripped === true,
+       '[' + eG.getActiveFailures().join(',') + '], pumpTripped ' + eG.eng.sys.pumpTripped);
+  })();
+
+  /* ---- 1e-ia3. LARGE_LOCA REPORTS AS ITSELF (#671) -----------------------------------------------
+   * `large_loca` and a plain `primary_leak` both open a cold_leg-node break with the same area
+   * formula, so the detector could not tell them apart by node alone and reported EVERY
+   * cold_leg break as `primary_leak` — an id with no catalog def and no menu row. */
+  head('LARGE_LOCA REPORTS AS ITSELF  [#671 — was reporting as primary_leak, no catalog id]');
+  (function () {
+    var i;
+    var eH = new SH.PWR2Engine({});
+    for (i = 0; i < 3000; i++) eH.step(0.02);
+    eH.applyCommand({ action: 'inject_failure', failure_id: 'large_loca', severity: 1.0 });
+    for (i = 0; i < 100; i++) eH.step(0.02);
+    var actH = eH.getActiveFailures();
+    ck('#671: an INJECTED large_loca reports as ITSELF, not primary_leak',
+       actH.indexOf('large_loca') !== -1 && actH.indexOf('primary_leak') === -1 &&
+       eH.eng.brk && eH.eng.brk.open === true,
+       '[' + actH.join(',') + ']');
+    eH.applyCommand({ action: 'clear_failure', failure_id: 'large_loca' });
+    ck('...and clear_failure still clears it (both ids were always handled there)',
+       eH.getActiveFailures().indexOf('large_loca') === -1 && eH.eng.brk.open === false, '');
   })();
 
   /* ---- 1e-ib. THE ROD DRIVE UNDER A LATCHED TRIP (#545) --------------------------------------
@@ -2258,6 +2397,85 @@ function runSuite(SH, rec, quiet, only) {
              : 'rated_steam ' + mgB.eng.rated_steam.toFixed(4) + ', _pwrRate 0, plant at ' +
                (tsMg.pressure_mpa * 145.038).toFixed(1) + ' psia after 10 s');
 
+  /* THE CASUALTY SEATS RIDE THE SAVE (added on the #671 quality pass, 2026-09-18). Every other
+   * row `engineActiveFailures` reports is derived from plant state this blob already carries;
+   * `rcp_trip` (#671) and `turbine_trip` (#551) are SEATS exactly because the state they stand
+   * for is reachable without the casualty, so they had to be saved explicitly and were not.
+   * MEASURED on the shipped code before the fix: inject, save, load into a fresh shell ->
+   * getActiveFailures() [] for both while `sys.pumpTripped` was still true and the turbine
+   * still latched, i.e. a rewind or a service restore silently un-filed a live casualty and
+   * left the Failures tab with nothing to clear. Asserted THROUGH the load, not after a ride. */
+  var stA = new SH.PWR2Engine({});
+  run(stA, quiet ? 30 : 60);
+  stA.applyCommand({ action: 'inject_failure', failure_id: 'rcp_trip' });
+  stA.applyCommand({ action: 'inject_failure', failure_id: 'turbine_trip' });
+  run(stA, 2);
+  var stB = new SH.PWR2Engine({});
+  stB.loadState(stA.saveState());
+  var stAf = stA.getActiveFailures(), stBf = stB.getActiveFailures();
+  ck('an injected rcp_trip AND turbine_trip survive a save/load round trip -- the seats are ' +
+     'in the blob (#671/#551)',
+     stAf.indexOf('rcp_trip') !== -1 && stAf.indexOf('turbine_trip') !== -1 &&
+     stBf.indexOf('rcp_trip') !== -1 && stBf.indexOf('turbine_trip') !== -1,
+     'before [' + stAf.join(',') + '] -> after [' + stBf.join(',') + ']');
+  /* THE MIGRATION half, same shape as the pre-cluster check above: a save written before the
+   * seats joined pwr2-1.0 carries neither key and must load onto a plant with no casualty
+   * filed, rather than throwing or inventing one. */
+  var stOld = stA.saveState();
+  delete stOld.state.scalars._rcpTripInjected;
+  delete stOld.state.scalars.tbTripFailed;
+  var stC = new SH.PWR2Engine({}), stThrew = '';
+  try { stC.loadState(stOld); } catch (err) { stThrew = err.message; }
+  var stCf = stThrew ? [] : stC.getActiveFailures();
+  ck('...and a PRE-SEAT save still loads, with neither casualty filed (the pre-fix state)',
+     !stThrew && stCf.indexOf('rcp_trip') === -1 && stCf.indexOf('turbine_trip') === -1,
+     stThrew ? 'THREW: ' + stThrew : '[' + stCf.join(',') + ']');
+
+  /* THE LOFW (Loss Of FeedWater) SEAT RIDES THE SAVE TOO (#785, same trap the #671 quality pass
+   * caught for rcp_trip/turbine_trip above: `_rcpTripInjected` and `tbTripFailed` were both
+   * added as seats and neither was in the pwr2-1.0 save blob at first, so a rewind or a service
+   * restore silently un-filed a live casualty). Asserted through the load, plus the migration
+   * half. */
+  var lwA = new SH.PWR2Engine({});
+  run(lwA, quiet ? 30 : 60);
+  lwA.applyCommand({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
+  run(lwA, 2);
+  var lwB = new SH.PWR2Engine({});
+  lwB.loadState(lwA.saveState());
+  var lwAf = lwA.getActiveFailures(), lwBf = lwB.getActiveFailures();
+  ck('an injected loss_of_feedwater survives a save/load round trip -- the seat is in the ' +
+     'blob (#785)',
+     lwAf.indexOf('loss_of_feedwater') !== -1 && lwBf.indexOf('loss_of_feedwater') !== -1,
+     'before [' + lwAf.join(',') + '] -> after [' + lwBf.join(',') + ']');
+  var lwOld = lwA.saveState();
+  delete lwOld.state.scalars._lofwInjected;
+  var lwC = new SH.PWR2Engine({}), lwThrew = '';
+  try { lwC.loadState(lwOld); } catch (errLw) { lwThrew = errLw.message; }
+  var lwCf = lwThrew ? [] : lwC.getActiveFailures();
+  ck('...and a PRE-SEAT save still loads, with no casualty filed (the pre-fix state)',
+     !lwThrew && lwCf.indexOf('loss_of_feedwater') === -1,
+     lwThrew ? 'THREW: ' + lwThrew : '[' + lwCf.join(',') + ']');
+
+  /* THE AFW (Auxiliary FeedWater) BLOCK SEAT RIDES THE SAVE TOO (#787, same trap #785 and #671
+   * caught: a seat added without its save key comes back un-filed while the underlying state
+   * is still exactly as injected). Asserted through the load, plus the migration half. */
+  var abA = new SH.PWR2Engine({});
+  abA.applyCommand({ action: 'inject_failure', failure_id: 'afw_failure' });
+  var abB = new SH.PWR2Engine({});
+  abB.loadState(abA.saveState());
+  var abAf = abA.getActiveFailures(), abBf = abB.getActiveFailures();
+  ck('an injected afw_failure survives a save/load round trip -- the seat is in the blob (#787)',
+     abAf.indexOf('afw_failure') !== -1 && abBf.indexOf('afw_failure') !== -1,
+     'before [' + abAf.join(',') + '] -> after [' + abBf.join(',') + ']');
+  var abOld = abA.saveState();
+  delete abOld.state.scalars._afwFailureInjected;
+  var abC = new SH.PWR2Engine({}), abThrew = '';
+  try { abC.loadState(abOld); } catch (errAb) { abThrew = errAb.message; }
+  var abCf = abThrew ? [] : abC.getActiveFailures();
+  ck('...and a PRE-SEAT save still loads, with no casualty filed (the pre-fix state)',
+     !abThrew && abCf.indexOf('afw_failure') === -1,
+     abThrew ? 'THREW: ' + abThrew : '[' + abCf.join(',') + ']');
+
   /* #544: a PRE-AIR-LEDGER save carries the containment ledger water-only under its old name.
    * Hand-build that shape (the rename makes it detectable), load, and require the SAME
    * containment temperature on the next step — the migration reconstructs the total at the
@@ -2280,6 +2498,69 @@ function runSuite(SH, rec, quiet, only) {
      cgB.eng.ctm.U_water_kJ === undefined,
      'saved ' + (cgT0 * 9 / 5 + 32).toFixed(1) + ' degF, migrated re-solves ' +
      (cgT1 * 9 / 5 + 32).toFixed(1) + ' degF (air term dropped: ~+90 degF)');
+  }
+
+  if (grp('U')) {
+  /* ---- 5. THE SEED IS LIVE (#769) -------------------------------------------------------------
+   * `engine.seed` used to be a silent `undefined` — the seed reached the instrument
+   * constructor (`new RD.PWRInstruments(cfg, opts.seed)`) and was never stored on the engine.
+   * A harness that read or set `engine.seed` directly (rather than seeding through
+   * `new SimulationService({seed})`) silently measured ONE noise stream no matter how many
+   * "different seeds" it thought it was running — a dead input whose failure mode is a
+   * believable, PERFECTLY REPRODUCIBLE number (the #555 plausible-zero class). This is the
+   * assertion that would have caught it. */
+  head('THE SEED IS LIVE  [engine.seed is not a silent undefined, and it drives the PRNG]');
+  var su42a = new SH.PWR2Engine({ seed: 42 });
+  var su42b = new SH.PWR2Engine({ seed: 42 });
+  var su7 = new SH.PWR2Engine({ seed: 7 });
+  var suSecs = quiet ? 20 : 40;
+  run(su42a, suSecs); run(su42b, suSecs); run(su7, suSecs);
+  var p42a = su42a.getInstruments().primary_pressure;
+  var p42b = su42b.getInstruments().primary_pressure;
+  var p7 = su7.getInstruments().primary_pressure;
+  ck('two engines at the SAME initial condition, DIFFERENT seeds, read DIFFERENT on a ' +
+     'noise-carrying instrument',
+     p42a !== p7,
+     'seed 42: ' + p42a.toFixed(6) + ' MPa, seed 7: ' + p7.toFixed(6) + ' MPa');
+  ck('the SAME seed reproduces BIT-EXACTLY across two independently constructed engines',
+     p42a === p42b,
+     'seed 42, two instances: ' + p42a.toFixed(6) + ' MPa both');
+  ck('engine.seed is a NUMBER and equals instruments.seed -- the assertion that would have ' +
+     'caught #769',
+     typeof su42a.seed === 'number' && su42a.seed === su42a.instruments.seed &&
+     typeof su7.seed === 'number' && su7.seed === su7.instruments.seed,
+     'seed 42 -> engine.seed ' + su42a.seed + ', seed 7 -> engine.seed ' + su7.seed);
+  /* a falsy seed (0) falls through PWRInstruments' own `(seed >>> 0) || 0x9E3779B9` default
+   * (pwr_instruments.js:117, untouched by this fix) -- engine.seed must reflect that EFFECTIVE
+   * value, not the raw 0 that was asked for, or it would be a second, differently-wrong number. */
+  var suZero = new SH.PWR2Engine({ seed: 0 });
+  ck('a seed of 0 reads back as the EFFECTIVE (defaulted) seed, not the raw 0 asked for',
+     suZero.seed === 0x9E3779B9 && suZero.seed === suZero.instruments.seed,
+     'engine.seed ' + suZero.seed + ' (0x9E3779B9 = ' + 0x9E3779B9 + ')');
+  /* the two paths besides the constructor that touch instruments.seed: reset() reconstructs
+   * the instruments, loadState() calls instruments.load(). Either can leave engine.seed a
+   * STALE second copy -- the exact defect class CLAUDE.md's standing list warns about. */
+  var suR = new SH.PWR2Engine({ seed: 123 });
+  var seedBeforeReset = suR.seed;
+  suR._opts.seed = 456;   /* white-box: prove reset() re-reads the CURRENT opts, not a stale
+                            * copy carried from construction -- reset() always uses the SAME
+                            * seed in normal play, which is exactly why a plain before/after
+                            * comparison at the unchanged seed cannot tell a synced copy from a
+                            * stale one */
+  suR.reset();
+  ck('reset() keeps engine.seed in sync with the freshly reconstructed instruments (not a ' +
+     'stale copy from construction)',
+     suR.seed === suR.instruments.seed && suR.seed !== seedBeforeReset,
+     'engine.seed ' + seedBeforeReset + ' (seed 123) before, ' + suR.seed +
+     ' (seed 456) after reset()');
+  var suS = new SH.PWR2Engine({ seed: 321 });
+  run(suS, quiet ? 10 : 20);
+  var suL = new SH.PWR2Engine({ seed: 999 });   /* a DIFFERENT seed, so load must overwrite it */
+  suL.loadState(suS.saveState());
+  ck('loadState() keeps engine.seed in sync with the RESTORED instruments, not the pre-load seed',
+     suL.seed === suL.instruments.seed && suL.seed === suS.seed,
+     'pre-load seed 999, post-load engine.seed ' + suL.seed + ' (source engine\'s seed ' +
+     suS.seed + ')');
   }
 
   if (grp('N')) {
@@ -2308,12 +2589,34 @@ function runSuite(SH, rec, quiet, only) {
    *     442.48 s   intermediate-range high-flux ROD STOP, 20 % current equivalent
    *     444.32 s   reactor trip, intermediate-range high flux, 25 %
    *
-   * The annunciator is 1.82 s behind TRUTH and 0.00 s behind its own INSTRUMENT, which is HR1
-   * working exactly as written: the alarm reads the indicated channel, so its whole delay is the
-   * meter's. (The #661 comment's 366.0 / 368.0 s are the same events measured full-stack through
-   * the service at 10x; the two harnesses differ by ~1 s and the issue's earlier engine-flag ride
-   * differs by ~55 s at the rod stop. Unreconciled, and deliberately not papered over — this
-   * block quotes ITS OWN layer's ride and nothing else.)
+   * THOSE SIX TIMES ARE HISTORY, NOT THE PLANT (#665, 2026-09-18). `950fbad2` (#668) moved
+   * `ROD_SPEEDS.normal` 0.702 -> 0.800 steps/s at 22:13 THAT SAME NIGHT and every time above
+   * scaled with it; restoring the old constant reproduces all six to the digit, which is how the
+   * drift was identified rather than guessed. The table is kept because it is what the #661 and
+   * #665 threads quote — DO NOT cite it as current. This block's ASSERTIONS never typed any of
+   * it (they read the row and the plant), so they went green through the whole drift; today the
+   * note prints **325.10 s true / 326.76 s indicated**, MEASURED. The remaining three events at
+   * THIS layer were not re-measured — `Diagnostic/PWR2_HARNESS_RECONCILIATION_2026-09-18.md`
+   * carries the full current timeline and says which layer each figure came from.
+   *
+   * The annunciator is 1.66 s behind TRUTH (was 1.82 s at the old drive speed) and 0.00 s behind
+   * its own INSTRUMENT, which is HR1 working exactly as written: the alarm reads the indicated
+   * channel, so its whole delay is the meter's.
+   *
+   * THE THREE HARNESSES ARE NOW RECONCILED (#665) — the note that stood here calling them
+   * "unreconciled" is retired. They were never measuring a different plant; they were reporting
+   * a different CLOCK. The ~60 s was the REFERENCE POINT (#661's ride reported relative to
+   * `rod_start`, this block and the alarm probe report absolute engine simTime — all three
+   * settled 60 s), and the residual ~4.5 s was a TICK-COUNTED clock: that ride assumed
+   * "50 steps per tick = 1.000 s", but `SimulationService` halves `broadcastMs` to 50 ms during
+   * an active transient, so a tick buys 0.5 s once the plant goes transient. 55.5 = 60 - 4.5.
+   * The LAYER carried 0.44 s of it and the SEED 0.20 s, so this block quoting its own layer was
+   * right, and was never the thing that differed.
+   *
+   * THIS FIXTURE PASSES NO SEED (#774) — `new SH.PWR2Engine({initial_state})` below has no
+   * `seed:` key, so it rides `PWRInstruments`'s default `0x9E3779B9`, NOT the `0x1234` the #665
+   * thread's fixture description claims. Measured worth on these events: 0.20 s indicated,
+   * 0.00 s on truth, the rod stop and the trip.
    *
    * THE SETPOINT IS READ OFF THE ROW, NEVER TYPED. A hard 1.0 here would silently desynchronise
    * from a retuned table and then assert a timing relationship between two different numbers.
@@ -2324,7 +2627,7 @@ function runSuite(SH, rec, quiet, only) {
    * IT IS A `caution` AND THAT IS A CLAIM, not a label: since #655 only `critical` and `warning`
    * arrivals drop the clock (`simulation_service.js` ALARM_DROP_PRIORITIES), so this alarm
    * warns a player walking a startup at speed WITHOUT yanking them out of WARP for a rate they
-   * were deliberately building. Promote it and every startup at 600x stops dead at 367 s. */
+   * were deliberately building. Promote it and every startup at 600x stops dead at 326.76 s. */
   head('SUR HI ON PWR2  [#661: the 1 DPM caution the ruling asked to be BUILT was already here]');
   (function () {
     var eN = new SH.PWR2Engine({ initial_state: 'hot_zero_power' });
@@ -2522,6 +2825,7 @@ function runSuite(SH, rec, quiet, only) {
     eT.applyCommand({ action: 'isolate_feedwater', value: true });
     eT.applyCommand({ action: 'set_afw', on: true });
     var t = 0, worstFlowAbove = 0, sawAbove = false, sawTaper = false, ts = null;
+    var worstDischAbove = 1e9, zeroDelivSec = 0;   /* #786 */
     while (t < 1100) {
       layT.stepAutomation(DT); ts = eT.step(DT); t += DT;
       var lvl = eT.getInstruments().sg_level;
@@ -2530,6 +2834,10 @@ function runSuite(SH, rec, quiet, only) {
       if (t > 20 && lvl > 40 && ts.afw_pump_running) {
         sawAbove = true;
         if (ts.afw_flow_normalized > worstFlowAbove) worstFlowAbove = ts.afw_flow_normalized;
+        /* #786: the gauge beside that run light, on the PLAYER's ordinary route */
+        if (ts.afw_discharge_pressure_mpa < worstDischAbove)
+          worstDischAbove = ts.afw_discharge_pressure_mpa;
+        zeroDelivSec += DT;
       }
       if (lvl < 37.5 && lvl > 33 && ts.afw_flow_normalized > 0.02 &&
           ts.afw_flow_normalized < 0.98) sawTaper = true;
@@ -2538,6 +2846,21 @@ function runSuite(SH, rec, quiet, only) {
     ck('above the band the pumps RUN and the valve delivers NOTHING — throttled shut, not secured',
        sawAbove && worstFlowAbove < 0.05 && ts.afw_pump_running === true,
        'max delivered above 40 % NR: ' + worstFlowAbove.toFixed(3) + ' of rated');
+    /* #786 — THE GAUGE BESIDE THAT RUN LIGHT, ON THE PLAYER'S OWN ROUTE. The check above is
+     * what made this a plant defect rather than a casualty corner: it states that the ordinary
+     * post-trip band runs the pumps at 0.000 of rated, and the discharge gauge was gated on
+     * DELIVERED flow, so the board drew a running pump at 0.0 psia for every second of it —
+     * MEASURED on this very fixture, 496.6 s of the first 1100 s, 45.1 % of the ride. A probe
+     * written only on the `afw_failure` injection would have passed on that plant. The value is
+     * the pump's shutoff head, because the throttle valve is downstream of both pumps and a
+     * centrifugal pump against a shut discharge sits at shutoff. */
+    ck('...and the DISCHARGE GAUGE reads the pump shutoff head through all of it — a running ' +
+       'pump always has head, on the ORDINARY route, not just under a casualty (#786)',
+       worstDischAbove > 8.0 && zeroDelivSec > 300,
+       'lowest discharge while running above the band: ' +
+       (worstDischAbove * 145.038).toFixed(1) + ' psia (' + worstDischAbove.toFixed(3) +
+       ' MPa) over ' + zeroDelivSec.toFixed(1) + ' s of pumps-running/zero-delivered ' +
+       '(the delivery gate read 0.0 psia for every one of those seconds)');
     ck('the delivery TAPERS across the sourced 33 +/- 5 % NR band — a ramp, not a step',
        sawTaper, 'partial flow observed inside the band on the way down');
     ck('the drain settles INSIDE the band with the flow throttled off both rails — the ' +
@@ -2621,6 +2944,49 @@ var MUTATIONS = [
   ['the kernel loses its reset permissive row (the board caption goes dark again)',
    '        }].concat(base.rps_reset_permissive || []),',
    '        }].slice(0, 0).concat(base.rps_reset_permissive || []),', { grp: 'E' }],
+  /* #671, ADDED ON THE QUALITY PASS — the 175 -> 179 note claimed "two mutations (both
+   * reverts), both caught" and the array held neither; the reverts had been run by hand. One
+   * per fix, so the claim is the gate's rather than a session's memory. */
+  ['the RCP trip seat is never set (an injected pump trip is invisible in the failures list)',
+   '        e._rcpTripInjected = true;', '', { grp: 'E' }],
+  /* #785 — the LOFW (Loss Of FeedWater) seat, same shape as the RCP one above. Two anchors
+   * because the two directions fail separately: sever the SET and an injected LOFW goes
+   * invisible; revert the detector to the old flags and FEED PUMPS OFF files a casualty on
+   * its own (caught by the D5 false-positive check, not the injected-appears one). */
+  ['the LOFW seat is never set (an injected loss_of_feedwater is invisible in the failures list)',
+   '        e._lofwInjected = true;', '', { grp: 'D5' }],
+  ['the LOFW row reads the operator\'s run flags again (FEED PUMPS OFF files a casualty nobody injected)',
+   "    if (eng._lofwInjected) out.push('loss_of_feedwater');",
+   "    if (!eng.fw.pumpA && !eng.fw.pumpB) out.push('loss_of_feedwater');", { grp: 'D5' }],
+  /* THE SAVE-KEY GAP, closed rather than inherited (#785 follow-up): the #671 quality pass
+   * found `_rcpTripInjected`/`tbTripFailed` shipped as seats that were never added to `scalars`
+   * and so never survived a save — caught by hand, not by a gate. This mutation strips ONLY the
+   * `_lofwInjected` scalars line (the seat itself, in inject_failure, stays intact) so the S
+   * group's save-round-trip check has its own red proof instead of trusting the precedent. */
+  ['the LOFW seat is never SAVED (set correctly, but dropped from the scalars blob -- a save/load ' +
+   'silently un-files a live casualty, same trap the #671 quality pass found by hand)',
+   '        _lofwInjected: e._lofwInjected,', '', { grp: 'S' }],
+  /* #787 — the AFW (Auxiliary FeedWater) block seat, same shape and same two-anchor split as the
+   * LOFW one above: sever the SET and an injected afw_failure goes invisible; revert the
+   * detector to `eng.aw.blocked` and the board's own block-valve VALVE_TOGGLE files a casualty
+   * nobody injected (caught by the false-positive half of the D5 check, not the injected-appears
+   * half). */
+  ['the AFW block seat is never set (an injected afw_failure is invisible in the failures list)',
+   '        e._afwFailureInjected = true;', '', { grp: 'D5' }],
+  ['the AFW block row reads eng.aw.blocked again (the board\'s own block valve files a ' +
+   'casualty nobody injected)',
+   "    if (eng._afwFailureInjected) out.push('afw_failure');",
+   "    if (eng.aw.blocked) out.push('afw_failure');", { grp: 'D5' }],
+  /* THE SAVE-KEY GAP, closed rather than inherited, same pattern as the LOFW entry above: this
+   * mutation strips ONLY the `_afwFailureInjected` half of the combined scalars line (the
+   * `_lofwInjected` half stays intact) so the S group's save-round-trip check has its own red
+   * proof. */
+  ['the AFW block seat is never SAVED (set correctly, but dropped from the scalars blob -- a ' +
+   'save/load silently un-files a live casualty)',
+   '        _lofwInjected: e._lofwInjected, _afwFailureInjected: e._afwFailureInjected,',
+   '        _lofwInjected: e._lofwInjected,', { grp: 'S' }],
+  ['the break carries no injected id again (a large LOCA reports as menu-invisible primary_leak)',
+   "        if (e.brk) e.brk.injected_id = 'large_loca';", '', { grp: 'E' }],
   ['a REFUSED command is silently swallowed (reads exactly like a plant that survived it)',
    "    if (REFUSED[a] !== undefined) {\n      throw new Error('pwr2_shell: \"' + a + '\" REFUSED — ' + REFUSED[a]);\n    }",
    '    if (REFUSED[a] !== undefined) { return { ok: true, action: a }; }', { grp: 'A' }],
@@ -2638,6 +3004,11 @@ var MUTATIONS = [
   ['the initial-condition scales leave the save again (a Mode 4 restore wears HFP constants)',
    '        rated_steam: e.rated_steam, M_nominal: e.M_nominal',
    '        _icScalesNotSaved: 0', { grp: 'S' }],
+  /* the two casualty seats leave the save (added on the #671 quality pass) — the shipped
+   * defect, replayed: a rewind or a service restore un-files a live casualty. */
+  ['the casualty SEATS leave the save (an injected RCP/turbine trip vanishes on a rewind)',
+   '        _rcpTripInjected: e._rcpTripInjected, tbTripFailed: e.tbTripFailed,',
+   '', { grp: 'S' }],
   ['the non-finite readings are not re-installed (a dead channel comes back a hard zero)',
    '    (st.ins.nonFinite || []).forEach(function (id) { e.ins.reading[id] = NaN; });',
    '', { grp: 'S' }],
@@ -2741,8 +3112,16 @@ var MUTATIONS = [
    * so the mutation ADDS one. It reds both halves: the shared-by-reference sweep and the
    * ladder-shape clause beside it. */
   ['a per-plant ABSOLUTE pzr_level_low override is re-introduced (the #500 shape undone)',
-   "          return a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;",
-   "          return a.id === 'pzr_level_low'\n            ? Object.assign({}, a, { instrument: 'pzr_level', setpoint: 17.0 })\n            : a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;", { grp: 'A' }],
+   "          if (a.id === 'rod_limit_approach') return Object.assign({}, a, { setpoint: 10 });",
+   "          if (a.id === 'pzr_level_low') return Object.assign({}, a, { instrument: 'pzr_level', setpoint: 17.0 });\n          if (a.id === 'rod_limit_approach') return Object.assign({}, a, { setpoint: 10 });", { grp: 'A' }],
+  /* #783 — the containment CAPTION override dropped: PWR2 takes back the shared text naming
+   * containment spray, the steam-line isolation and a safety-injection signal it has none of.
+   * The sweep above then finds the rows shared by reference and the arm that says only the
+   * caption may move reds. run_pwr2_kernel band 6 owns the PLANT half (the mitigations
+   * measurably do not happen); this is the config half. */
+  ['the containment caption override is dropped (the shared spray/MSLI text comes back)',
+   "          if (a.id === 'ctmt_press_hi') {\n            return Object.assign({}, a, { label_learning: 'Containment Pressure High (3.5 psig)' });\n          }",
+   '', { grp: 'A' }],
   ['the shutdown group reverts to the pre-#506 snap (200 -> 0 in one frame on scram)',
    "          steps: Math.round(e.sdSteps), max_steps: bankSteps()," + NL_ +
    "          position_pct: 100 * e.sdSteps / bankSteps(),",
@@ -2791,8 +3170,8 @@ var MUTATIONS = [
    /* anchor re-cut when #500's override left the map (2026-08-29) — it used to open with the
     * `: ` that chained off the pzr_level_low arm, and an anchor that no longer matches is a
     * BLIND mutation, not a passing one. The runner's ANCHOR MISS report is what caught it. */
-   "          return a.id === 'rod_limit_approach'\n            ? Object.assign({}, a, { setpoint: 10 })\n            : a;",
-   '          return a;', { grp: 'I' }],
+   "          if (a.id === 'rod_limit_approach') return Object.assign({}, a, { setpoint: 10 });",
+   '', { grp: 'I' }],
   ['the SECURED latch is dropped (an operator-stopped pump reads LOST) -- #507 wave 9',
    "        e._rcpSecured = true;               /* the OPERATOR stopped it — the handswitch\n                                             * reads SECURED, not LOST (#200's split) */",
    '', { grp: 'J' }],
@@ -2880,7 +3259,30 @@ var MUTATIONS = [
   ['the slider label falls back to the shared pwr row (0-24 steps/s, the retired plant\'s ' +
    'fine-step currency) while the plant drives correctly',
    '          if (out.continuous_rod_withdrawal) {',
-   '          if (false && out.continuous_rod_withdrawal) {', { grp: 'O' }]
+   '          if (false && out.continuous_rod_withdrawal) {', { grp: 'O' }],
+  /* #769 — engine.seed goes back to a silent undefined at each of the three sites that set it.
+   * Three separate anchors because the three sync sites fail separately: the constructor's is
+   * the one every harness hits by default; reset()'s and loadState()'s are the "stale second
+   * copy" failure mode CLAUDE.md's standing list warns about, and neither is visible unless the
+   * effective seed genuinely changes across the call (which is why the group's own checks
+   * mutate _opts.seed / use a different construction seed before asserting). */
+  ['engine.seed goes back to a silent undefined at construction',
+   '      this.seed = this.instruments.seed;\n    } else {',
+   '    } else {', { grp: 'U' }],
+  ['engine.seed is left STALE across reset() (the freshly reconstructed instruments\' seed is ' +
+   'never read back)',
+   '    this.instruments.reset(this._ts, this._instrExtras());\n' +
+   '    this.instruments.update(this._ts, 0.02, this._instrExtras());\n' +
+   '    this.seed = this.instruments.seed;   // #769: keep the stored copy in sync with a reset\n' +
+   '  };',
+   '    this.instruments.reset(this._ts, this._instrExtras());\n' +
+   '    this.instruments.update(this._ts, 0.02, this._instrExtras());\n' +
+   '  };', { grp: 'U' }],
+  ['engine.seed is left STALE across loadState() (the restored instruments\' seed is never ' +
+   'read back)',
+   '    this.instruments.load(st.shellIns);\n' +
+   '    this.seed = this.instruments.seed;   // #769: keep the stored copy in sync with a restore',
+   '    this.instruments.load(st.shellIns);', { grp: 'U' }]
 ];
 
 /* ---- SCOPED-CLEAN-PASS PREFLIGHT (#513) ------------------------------------------------

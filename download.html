@@ -147,6 +147,11 @@
        global and breaks nothing, which is why nav.js guards for it rather than assuming.
        Must load before nav.js, same reason as release.js above. -->
   <script src="download/manifest.js"></script>
+  <!-- Usage data (#764). ENDPOINT FIRST: telemetry.js reads it at load. Both are
+       generated at deploy, so a clone or a local checkout has no endpoint and sends
+       nothing. See privacy.html and the header of site/telemetry.js. -->
+  <script src="site/telemetry_endpoint.js"></script>
+  <script src="site/telemetry.js"></script>
   <script src="site/nav.js"></script>
 </body>
 </html>

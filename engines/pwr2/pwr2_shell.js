@@ -1037,9 +1037,27 @@
        * the operator lifts it, then it never reseats — pwr2_pressurizer step 3 */
       else if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', true);
       else if (c.failure_id === 'primary_leak') REHOMED.primary_leak(e, c);
-      else if (c.failure_id === 'rcp_trip') EN.command(e, 'pump_trip', true);
+      else if (c.failure_id === 'rcp_trip') {
+        EN.command(e, 'pump_trip', true);
+        /* #671: the SEAT, same precedent as #551's turbine row (:1743). `sys.pumpTripped`
+         * alone cannot tell this casualty from a LOOP/blackout trip or the operator's own
+         * stop_pump/set_rcp OFF (all three set the same flag) — inferring the casualty from
+         * that shared state would never fire once any of those held it first. */
+        e._rcpTripInjected = true;
+      }
       else if (c.failure_id === 'turbine_trip') EN.command(e, 'turbine_trip_failed', true);
-      else if (c.failure_id === 'loss_of_feedwater') MAPPED.loss_of_feedwater(e, c);
+      else if (c.failure_id === 'loss_of_feedwater') {
+        MAPPED.loss_of_feedwater(e, c);
+        /* #785: the SEAT, same precedent as #671's rcp_trip (:1046). The detector used to read
+         * `fw.pumpA`/`fw.pumpB` — the operator's RUN flags (#605, #200) — while this injection
+         * deliberately leaves them alone and zeroes `fw.pumpAAvail`/`pumpBAvail` instead, so an
+         * injected LOFW (Loss Of FeedWater) never appeared in the failures list, and the board's
+         * own FEED PUMPS OFF (`set_feedwater_flow {pct:0, secure:true}`, which DOES clear
+         * pumpA/pumpB) filed a casualty nobody injected. MEASURED before the fix: inject ->
+         * getActiveFailures() [], power 99.6 -> 0.1 %, plant trips on SG level; FEED PUMPS OFF
+         * with no injection -> ["loss_of_feedwater"]. */
+        e._lofwInjected = true;
+      }
       /* #507 wave 3 — the rows PWR2's existing machinery honestly injects */
       else if (c.failure_id === 'sg_overfeed') MAPPED.sg_overfeed(e, c);
       else if (c.failure_id === 'loss_of_offsite_power') {
@@ -1063,6 +1081,12 @@
       }
       else if (c.failure_id === 'large_loca') {
         REHOMED.primary_leak(e, { severity: c.severity !== undefined ? c.severity : 1.0 });
+        /* #671: TAG the break with the catalog id that opened it. A plain `primary_leak`
+         * injection (no catalog def, menu-invisible — see the `keep` comment at ~:1498) lands
+         * on the same cold_leg node with the same area formula, so the node alone cannot
+         * tell them apart; the detector below reads this to report the id the Failures tab
+         * row is actually keyed on. */
+        if (e.brk) e.brk.injected_id = 'large_loca';
       }
       else if (c.failure_id === 'rcp_seal_leak') {
         /* [derived] scale, MEASURED: 8e-6 m2 leaks ~1.2 kg/s at operating pressure against
@@ -1074,7 +1098,19 @@
         EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevS * 1.2e-5), node: 'rcp' });
       }
       /* ---- the wave-6 rows (#507): each an engine lever, each with its own probe ---- */
-      else if (c.failure_id === 'afw_failure') EN.command(e, 'afw_block', true);
+      else if (c.failure_id === 'afw_failure') {
+        EN.command(e, 'afw_block', true);
+        /* #787: the SEAT, same precedent as #785's `_lofwInjected` and #671's `_rcpTripInjected`
+         * (:1046, :1059). `eng.aw.blocked` cannot tell this casualty from the board's own AFW
+         * (Auxiliary FeedWater) block valve — an ordinary VALVE_TOGGLE at
+         * ui/diagram/board/pwr_board_wiring.js:2706, reachable via `set_afw_block`/`block_afw` —
+         * which sets the SAME flag through the SAME `afw_block` command. MEASURED before the
+         * fix: `set_afw_block {open:false}` with no injection -> getActiveFailures()
+         * ["afw_failure"]; reopening -> []. The TMI-2 (Three Mile Island Unit 2) walkthrough has
+         * the player close and reopen this exact valve, so every normal use of it filed a
+         * casualty against the player. */
+        e._afwFailureInjected = true;
+      }
       else if (c.failure_id === 'failure_to_scram') EN.command(e, 'scram_block', true);
       else if (c.failure_id === 'anticipatory_trip_failure') EN.command(e, 'p9_defeat', true);
       else if (c.failure_id === 'failed_pzr_heaters') EN.command(e, 'pzr_heaters_failed', true);
@@ -1132,7 +1168,18 @@
       }
       else if (c.failure_id === 'loss_of_feedwater') {
         EN.command(e, 'feed_pump_a_avail', 1); EN.command(e, 'feed_pump_b_avail', 1);
+        /* #785: unset the SEAT only — the run flags (`fw.pumpA`/`pumpB`) are the operator's, and
+         * this clear does not touch them, same rule as rcp_trip's clear one block down. */
+        e._lofwInjected = false;
       }
+      /* #671: unset the SEAT only — do NOT restart the pump. `pump_trip` is unconditional and
+       * shared with the operator's own stop_pump/set_rcp OFF, and the real restart (rcp_start)
+       * is gated on live offsite power; auto-restoring here would either throw on a dead bus
+       * or silently un-secure a pump the operator (or a standing LOOP/blackout) independently
+       * stopped. Same rule the LOOP/blackout clears already follow one function up (:1055 "the
+       * operator restarts with rcp_start") — the board's rcp-run handler (ui/app.js) already
+       * follows this clear with a real set_rcp {running:true}, which stays the restart path. */
+      else if (c.failure_id === 'rcp_trip') e._rcpTripInjected = false;
       else if (c.failure_id === 'sg_overfeed') EN.command(e, 'feed_overfeed', false);
       else if (c.failure_id === 'loss_of_condenser_vacuum') EN.command(e, 'cw_pumps', true);
       /* #551: this row fell off the end of the chain — the instructor could inject a turbine
@@ -1145,7 +1192,14 @@
         if (EN.turbineTripCauses(e).length === 0) EN.command(e, 'turbine_trip', false);
       }
       else if (c.failure_id === 'degraded_hpi') e.ec.hhsiAvail = 1;
-      else if (c.failure_id === 'afw_failure') EN.command(e, 'afw_block', false);
+      else if (c.failure_id === 'afw_failure') {
+        EN.command(e, 'afw_block', false);
+        /* #787: unset the SEAT only — leaves the operator's own valve position untouched, same
+         * rule as loss_of_feedwater's and rcp_trip's clears above. If the operator independently
+         * blocked the valve by hand, this clear (correctly) reopens it too, same as the
+         * pre-#787 behavior, because `afw_block` is one lever shared by both. */
+        e._afwFailureInjected = false;
+      }
       else if (c.failure_id === 'failure_to_scram') EN.command(e, 'scram_block', false);
       else if (c.failure_id === 'anticipatory_trip_failure') EN.command(e, 'p9_defeat', false);
       else if (c.failure_id === 'failed_pzr_heaters') EN.command(e, 'pzr_heaters_failed', false);
@@ -1222,6 +1276,12 @@
        * branch integrating from undefined (measured: every reading NaN) */
       this.instruments.reset(this._ts, this._instrExtras());
       this.instruments.update(this._ts, 0.02, this._instrExtras());
+      // #769: engine.seed used to be a silent `undefined` — the seed was consumed by the
+      // instrument constructor and never stored on the engine. Read back the EFFECTIVE
+      // seed (post-defaulting: PWRInstruments falls through `(seed >>> 0) || 0x9E3779B9`
+      // on a falsy seed) rather than opts.seed, so this is never a second, differently-wrong
+      // number.
+      this.seed = this.instruments.seed;
     } else {
       throw new Error('pwr2_shell: RD.PWRInstruments/RD.PWR_CONFIG not loaded — the shell ' +
         'class REUSES the published instrument layer (D4) and cannot honestly run without it');
@@ -1481,9 +1541,40 @@
           /* rod_limit_approach 40 -> 10 (#507 wave 8): the shared 40 is the sourced
            * "RIL + 10 steps" in pwr1's FINE-step currency (4 fine per step) — this bank's
            * steps ARE the currency, so the same physical number is 10. */
-          return a.id === 'rod_limit_approach'
-            ? Object.assign({}, a, { setpoint: 10 })
-            : a;
+          if (a.id === 'rod_limit_approach') return Object.assign({}, a, { setpoint: 10 });
+          /* THE SECOND OVERRIDE (#783, OWNER RULING 2026-09-18 "Containment as you
+           * recommend"): the two containment-pressure captions, which on the shared table
+           * name their own mitigations — "(SI signal)" and "(spray/MSLI)". On the RETIRED
+           * engine that is TRUE and must stay: its actuation table fires the safety-injection
+           * backup, containment spray, the fan-cooler realign and the steam-line isolation
+           * off exactly these two setpoints. On PWR2 not one of the four happens. #778
+           * measured why — `actuations: []` three lines up hands this plant's kernel a
+           * different, EMPTY array — and a large loss-of-coolant accident rides to 78.5 psig
+           * (0.643 MPa) with spray, fans and the main steam isolation valves all untouched.
+           *
+           * ⚠ AND THE `hi` ROW IS WRONG THE SAME WAY — MEASURED for this issue, not assumed.
+           * PWR2's protection is its own (pwr2_protection.js) and could have carried a
+           * containment safety-injection channel the retired row was merely shadowing. It
+           * does not. Pressurizing the building to 35.3 psig (49.98 psia, 0.345 MPa) on an
+           * otherwise healthy plant lights BOTH annunciators (31.0 s and 32.5 s) and latches
+           * NO safety injection: this plant's ESFAS is three rows — low pressurizer pressure,
+           * low steam pressure, high-high steam flow — and nothing in it reads containment at
+           * all. On the large loss-of-coolant accident the safety injection that does occur is
+           * caused by `si_lo_pzr_press` at 27.02 s, 51.5 s BEFORE containment reaches hi-hi.
+           *
+           * So both captions state the CONDITION and the line it crossed, and promise nothing.
+           * The industry register is bare already ('CTMT PRESS HI' / 'CTMT PRESS HI HI') and
+           * needs no override. Do NOT "fix" this in pwr_control.js — the shared text is
+           * correct on the plant that fires the rows. If #784 models spray and the fan coolers
+           * inside this engine the parenthetical is earned back, and run_pwr2_kernel band 6
+           * grades the PLANT rather than the string, so it will say so. */
+          if (a.id === 'ctmt_press_hi') {
+            return Object.assign({}, a, { label_learning: 'Containment Pressure High (3.5 psig)' });
+          }
+          if (a.id === 'ctmt_press_hihi') {
+            return Object.assign({}, a, { label_learning: 'Containment Pressure High-High (30 psig)' });
+          }
+          return a;
         }),
         failures: (function () {
           /* the pwr failures table is an OBJECT keyed by id (measured — an array filter
@@ -1719,10 +1810,22 @@
     /* the break family reports by NODE — a seal leak is the rcp node's break (#507 wave 3),
      * a tube rupture the sg_primary node's (#507 wave 5) */
     if (eng.brk && eng.brk.open) {
+      /* #671: `large_loca` was landing here as `primary_leak` — an id with no catalog def
+       * and no menu row (~:1498) — because the cold_leg branch reported by NODE alone and
+       * both ids open the same node. `injected_id` (set at injection, above) breaks the tie;
+       * a break opened some other way (a plain `primary_leak` command, a scenario script)
+       * carries no tag and still falls back to `primary_leak`, unchanged. */
       out.push(eng.brk.node === 'rcp' ? 'rcp_seal_leak'
-             : eng.brk.node === 'sg_primary' ? 'sgtr' : 'primary_leak');
+             : eng.brk.node === 'sg_primary' ? 'sgtr'
+             : (eng.brk.injected_id || 'primary_leak'));
     }
-    if (!eng.fw.pumpA && !eng.fw.pumpB) out.push('loss_of_feedwater');
+    /* THE LOFW (Loss Of FeedWater) ROW (#785, same precedent as the RCP row below). Read the
+     * SEAT (was `loss_of_feedwater` injected), not `fw.pumpA`/`fw.pumpB` — those are the
+     * operator's own RUN flags (#605, #200), reachable by the board's FEED PUMPS OFF
+     * (`set_feedwater_flow {pct:0, secure:true}`) with no casualty involved. Reading them here
+     * made an injected LOFW invisible (the injection zeroes pumpAAvail/pumpBAvail instead, by
+     * design) and made the operator's own OFF click file a casualty against itself. */
+    if (eng._lofwInjected) out.push('loss_of_feedwater');
     if (eng.fw.overfeed) out.push('sg_overfeed');   /* the seat reports (#510 M-12) */
     if (!eng.cwPumps) out.push('loss_of_condenser_vacuum');
     if (eng.ec.hhsiAvail < 1) out.push('degraded_hpi');
@@ -1730,10 +1833,20 @@
      * stacking with it (it IS a LOOP plus dead diesels; one row, the worse one) */
     if (eng.elec.blackout) out.push('station_blackout');
     else if (!eng.elec.offsite) out.push('loss_of_offsite_power');
-    /* the wave-6 levers (#507) */
-    if (eng.aw.blocked) out.push('afw_failure');
+    /* THE AFW (Auxiliary FeedWater) BLOCK ROW (#787, same precedent as the LOFW and RCP rows
+     * above). Read the SEAT (was `afw_failure` injected), not `eng.aw.blocked` — that flag is
+     * set by the SAME `afw_block` command the board's own AFW block valve uses
+     * (`set_afw_block`/`block_afw`, an ordinary VALVE_TOGGLE), so reading it here filed a
+     * casualty against a normal operator action (the TMI-2 walkthrough closes and reopens this
+     * exact valve). */
+    if (eng._afwFailureInjected) out.push('afw_failure');
     if (eng.scramBlocked) out.push('failure_to_scram');
     if (eng.p9Defeated) out.push('anticipatory_trip_failure');
+    /* THE RCP ROW (#671, same precedent as the turbine row below). Read the SEAT (was
+     * `rcp_trip` injected), not `sys.pumpTripped` — the plant reaches a tripped pump by
+     * itself (LOOP, blackout, the operator's own stop_pump/set_rcp OFF), so inferring the
+     * casualty from that shared state would never fire once any of those held it first. */
+    if (eng._rcpTripInjected) out.push('rcp_trip');
     /* THE TURBINE ROW (#551, the half buried in its verification note). `inject_failure
      * {turbine_trip}` has been in the keep-list and has set the trip since the menu was built,
      * but this detector had NO turbine branch — so the row never appeared in the Failures tab
@@ -2123,6 +2236,7 @@
     this.instruments = new root.RD.PWRInstruments(root.RD.PWR_CONFIG, opts.seed);
     this.instruments.reset(this._ts, this._instrExtras());
     this.instruments.update(this._ts, 0.02, this._instrExtras());
+    this.seed = this.instruments.seed;   // #769: keep the stored copy in sync with a reset
   };
 
   /* ---- save/load: schema pwr2-1.0 (see header — pwr-1.0 is deliberately NOT loadable) ---- */
@@ -2198,6 +2312,19 @@
         /* the wave-6 failure levers (#507) — old saves land on the healthy defaults;
          * aw.blocked and the pzDrivers seats ride their own saved objects */
         scramBlocked: e.scramBlocked, runaway: e.runaway,
+        /* THE CASUALTY SEATS THAT READ NOTHING ELSE (#551, #671 — added on the #671 quality
+         * pass, 2026-09-18; joined by `_lofwInjected` on #785 and `_afwFailureInjected` on #787,
+         * both 2026-09-18). Every other row in `engineActiveFailures` is derived from plant
+         * state that is already in this blob; these four are seats PRECISELY because the state
+         * they stand for (`tb.tripped`, `sys.pumpTripped`, `fw.pumpA`/`pumpB`, `aw.blocked`) is
+         * reached by the plant — or the operator — on its own, so a save that dropped them came
+         * back with the casualty INVISIBLE and its row gone from the Failures tab while the
+         * underlying state stayed exactly as injected.
+         * MEASURED before the #671 fix: inject -> ["rcp_trip"] / ["turbine_trip"], save, load ->
+         * [] for both, pumpTripped still true. An old save without them lands on undefined,
+         * i.e. the pre-seat state exactly. */
+        _rcpTripInjected: e._rcpTripInjected, tbTripFailed: e.tbTripFailed,
+        _lofwInjected: e._lofwInjected, _afwFailureInjected: e._afwFailureInjected,
         _Qox: e._Qox, _cdAvail: e._cdAvail, _plcsAuto: e._plcsAuto,
         _pwrRate: e._pwrRate, _prevPower: e._prevPower,
         _tavgPrev: e._tavgPrev, _tavgRate: e._tavgRate, advDemand: e.advDemand,
@@ -2269,6 +2396,7 @@
     }
     this._ts = st.ts;                          /* the same step's own snapshot — no re-derive */
     this.instruments.load(st.shellIns);
+    this.seed = this.instruments.seed;   // #769: keep the stored copy in sync with a restore
     /* #548 (and the #511 migration pattern): an old save carries no shell block — 0 is the
      * pre-fix state. The service always restores into a FRESHLY CONSTRUCTED shell, so
      * leaving this alone means undefined, and the swell term is simply missing. */

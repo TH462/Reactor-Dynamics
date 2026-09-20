@@ -175,6 +175,51 @@ function runSuite(A, rec, quiet) {
   var rK2 = A.stepAFW(afK, 0.02);
   ck('opening the valves restores delivery at the STANDING demand -- no re-start needed (#200)',
      rK2.total_kgs, A.mdafwRatedKgs() + A.tdafwRatedKgs(), 1e-9, 'kg/s');
+
+  /* ---- IS A SHAFT TURNING (#786) ----------------------------------------------------------
+   * The THIRD reading, beside demand and delivery. A discharge-pressure gauge needs it and
+   * neither of the other two answers it: `mdafw_running` is DEMAND and stands true on a dead
+   * motor; `total_kgs > 0` is DELIVERY and goes to zero behind a shut throttle valve with the
+   * pump spinning. Publishing the gauge off delivery is what drew a running pump at 0.0 psia
+   * through 45.1 % of a measured ordinary post-trip ride. */
+  head('THE TURNING SHAFT  [#786: demand, delivery, and the third reading a gauge needs]');
+  ckT('a THROTTLED-SHUT pump is turning -- the valve is downstream, the shaft does not care',
+      A.stepAFW(A.createAFW({ mdafwRunning: true, tdafwRunning: true, throttle: 0 }), 0.02)
+        .pump_turning === true &&
+      A.stepAFW(A.createAFW({ mdafwRunning: true, tdafwRunning: true, throttle: 0 }), 0.02)
+        .total_kgs === 0,
+      'turning with zero delivered: the ordinary post-trip band, not a casualty');
+  ckT('a BLOCKED pump is turning too -- the tag-out is the same shut boundary (#507 wave 6)',
+      A.stepAFW(A.createAFW({ mdafwRunning: true, blocked: true }), 0.02).pump_turning === true, '');
+  ckT('an UNPOWERED motor-driven pump is NOT turning, though its run flag stands -- the one ' +
+      'place the #200 demand split must not be taken at face value',
+      A.stepAFW(A.createAFW({ mdafwRunning: true, tdafwRunning: false }), 0.02,
+                { mdafw_power_ok: false }).pump_turning === false,
+      'a station blackout must not draw discharge head on a dead motor');
+  ckT('...but the steam-driven train still turns through that same blackout (WTSM 5.7.5)',
+      A.stepAFW(A.createAFW({ mdafwRunning: true, tdafwRunning: true }), 0.02,
+                { mdafw_power_ok: false }).pump_turning === true, '');
+  ckT('a FAILED pump (availability 0) is not turning, and secured pumps are not turning',
+      A.stepAFW(A.createAFW({ mdafwRunning: true, mdafwAvail: 0 }), 0.02).pump_turning === false &&
+      A.stepAFW(A.createAFW({}), 0.02).pump_turning === false, '');
+  /* THE SHUTOFF HEAD RIDES DOWN ON THE RESULT (#786), the `adv_rated_kgs` idiom: the contract
+   * shim reads step results off ctx and calls into no layer, so a constant it had to import
+   * would be a second copy held by the consumer -- which is exactly what the hard-coded 8.3 in
+   * pwr2_true_state.js WAS. It is UNVERIFIED: the 2026-09-19 evidence pass found no AFW shutoff
+   * head in any lane's corpus (find_source exit 1). Pinned to the PLANT, not to a literal. */
+  ckT('the pump SHUTOFF HEAD travels with the step result, so no consumer holds a second copy',
+      A.stepAFW(A.createAFW({ mdafwRunning: true }), 0.02).shutoff_mpa === A.AFW.shutoff_mpa &&
+      A.AFW.shutoff_mpa > 0, A.AFW.shutoff_mpa.toFixed(2) + ' MPa (' +
+      (A.AFW.shutoff_mpa * 145.038).toFixed(0) + ' psia) -- UNVERIFIED, no corpus figure');
+  ckT('...and it clears the sourced main steam safety valve pop, or the pumps could not feed a ' +
+      'generator at its safeties (1085 psig, pwr2_relief.js) -- plausibility, not evidence',
+      A.AFW.shutoff_mpa * 145.038 - 14.7 > 1085, '');
+  /* AVAILABILITY ABSENT MEANS 1, NOT NaN (#786): createAFW always sets it, so this is identical
+   * for every engine-built state -- but a hand-built Layer-5 fixture that omitted it used to get
+   * Math.max(0, undefined) = NaN and silently poison the whole secondary feed term. */
+  ck('an ABSENT availability reads as FULL, not NaN -- a hand-built fixture cannot poison feed',
+     A.stepAFW({ mdafwRunning: true, tdafwRunning: false, throttle: 1 }, 0.02).total_kgs,
+     A.mdafwRatedKgs(), 1e-9, 'kg/s');
 }
 
 console.log('\nPWR2 Layer 5 -- AUXILIARY FEEDWATER');
@@ -193,14 +238,14 @@ var MUTATIONS = [
    * whose anchor a refactor moved goes BLIND, which the runner reports and which is easy to
    * scroll past — read the self-test line, not just the checks tally. */
   ['availability ignored (a degraded pump reports full flow)',
-   'af.mdafwAvail) * thr : 0;', 'af.mdafwAvail) * thr : 0; md = af.mdafwRunning ? mdafwRatedKgs() : 0;'],
+   'mdAvail * thr : 0;', 'mdAvail * thr : 0; md = af.mdafwRunning ? mdafwRatedKgs() : 0;'],
   ['rated flow stops scaling with plant rating (a hardcoded gpm masquerading as derived)',
    'function mdafwRatedKgs() { return gpmToKgs(AFW.mdafw_ginna_gpm * AFW.POWER_SCALE, 1000); }',
    'function mdafwRatedKgs() { return gpmToKgs(28.7, 1000); }'],
   ['TDAFW ratio to MDAFW silently changed (breaks the sourced 200%/100% relationship)',
    'tdafw_ginna_gpm: 340,', 'tdafw_ginna_gpm: 300,'],
   ['negative availability produces negative flow instead of clamping',
-   '(open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * Math.max(0, af.mdafwAvail) * thr : 0;',
+   '(open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * mdAvail * thr : 0;',
    '(open && af.mdafwRunning && mdPowered) ? mdafwRatedKgs() * af.mdafwAvail * thr : 0;'],
   ['the MDAFW power gate is severed (a blacked-out motor pump keeps pumping)',
    'var mdPowered = !drivers || drivers.mdafw_power_ok !== false;',
@@ -209,16 +254,16 @@ var MUTATIONS = [
    'var open = !af.blocked;',
    'var open = true;'],
   ['the power gate lands on the TURBINE pump (the do-not-gate note violated)',
-   'var td = (open && af.tdafwRunning) ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) * thr : 0;',
-   'var td = (open && af.tdafwRunning && mdPowered) ? tdafwRatedKgs() * Math.max(0, af.tdafwAvail) * thr : 0;'],
+   'var td = (open && af.tdafwRunning) ? tdafwRatedKgs() * tdAvail * thr : 0;',
+   'var td = (open && af.tdafwRunning && mdPowered) ? tdafwRatedKgs() * tdAvail * thr : 0;'],
 
   /* ---- #562: THE FLOW CONTROL VALVES ---------------------------------------------------- */
   ['the throttle is ignored on the MOTOR-driven train (the operator valve does nothing)',
-   'mdafwRatedKgs() * Math.max(0, af.mdafwAvail) * thr : 0;',
-   'mdafwRatedKgs() * Math.max(0, af.mdafwAvail) : 0;'],
+   'mdafwRatedKgs() * mdAvail * thr : 0;',
+   'mdafwRatedKgs() * mdAvail : 0;'],
   ['the throttle is ignored on the TURBINE-driven train (half the fill is un-throttleable)',
-   'tdafwRatedKgs() * Math.max(0, af.tdafwAvail) * thr : 0;',
-   'tdafwRatedKgs() * Math.max(0, af.tdafwAvail) : 0;'],
+   'tdafwRatedKgs() * tdAvail * thr : 0;',
+   'tdafwRatedKgs() * tdAvail : 0;'],
   ['a throttled-shut valve SECURES the pumps instead of stopping the flow (the #200 split)',
    'var thr = af.throttle === undefined ? 1 : Math.min(1, Math.max(0, af.throttle));',
    'var thr = af.throttle === undefined ? 1 : Math.min(1, Math.max(0, af.throttle));' +
@@ -231,7 +276,27 @@ var MUTATIONS = [
    'var thr = af.throttle === undefined ? 0 : Math.min(1, Math.max(0, af.throttle));'],
   ['afw_flow_normalized divides by only the running trains instead of both rated',
    'var rated = mdafwRatedKgs() + tdafwRatedKgs();',
-   'var rated = md + td;']
+   'var rated = md + td;'],
+
+  /* ---- #786: THE TURNING SHAFT AND THE SHUTOFF HEAD -------------------------------------- */
+  ['pump_turning falls back to DEMAND (a dead motor in a blackout reports a turning shaft)',
+   'pump_turning: (!!af.mdafwRunning && mdPowered && mdAvail > 0) ||\n                    (!!af.tdafwRunning && tdAvail > 0),',
+   'pump_turning: !!af.mdafwRunning || !!af.tdafwRunning,'],
+  ['pump_turning is taken from DELIVERY (a throttled-shut pump reports stopped -- the #786 defect)',
+   'pump_turning: (!!af.mdafwRunning && mdPowered && mdAvail > 0) ||\n                    (!!af.tdafwRunning && tdAvail > 0),',
+   'pump_turning: total > 0,'],
+  ['the power gate reaches pump_turning on the TURBINE train too (the WTSM 5.7.5 survivor stops)',
+   '(!!af.tdafwRunning && tdAvail > 0),',
+   '(!!af.tdafwRunning && mdPowered && tdAvail > 0),'],
+  ['the shutoff head stops travelling with the step result (the consumer holds the copy again)',
+   '      shutoff_mpa: AFW.shutoff_mpa,',
+   '      shutoff_mpa: undefined,'],
+  ['the shutoff head drops below the sourced main steam safety pop (AFW cannot feed at safeties)',
+   '    shutoff_mpa: 8.3,',
+   '    shutoff_mpa: 7.0,'],
+  ['an ABSENT availability goes back to NaN (a hand-built fixture poisons the whole feed term)',
+   'var mdAvail = Math.max(0, af.mdafwAvail === undefined ? 1 : af.mdafwAvail);',
+   'var mdAvail = Math.max(0, af.mdafwAvail);']
 ];
 
 console.log('\n' + '='.repeat(70));

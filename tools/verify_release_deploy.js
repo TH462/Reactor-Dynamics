@@ -1,7 +1,7 @@
 /* verify_release_deploy.js — IS THE RELEASED COMMIT ACTUALLY LIVE?
  *
- *   node tools/verify_release_deploy.js            # checks HEAD
- *   node tools/verify_release_deploy.js <sha>
+ *   node tools/verify_release_deploy.js            # checks origin/main, freshly fetched
+ *   node tools/verify_release_deploy.js <sha>      # explicit argument always wins
  *
  * Exit 0 = a successful PRODUCTION deployment of that commit exists on Cloudflare Pages,
  * the host that serves the site. Exit 1 = it does not, or could not be established.
@@ -13,8 +13,8 @@
  * CI was green, and the only deployment Vercel made for that commit was a Preview. The
  * production domain served the previous release for half an hour and nothing said so.
  *
- * The rule was written as prose plus a command to paste, and it has now failed FOUR ways.
- * Three of them were in this file; all four are recorded because the shapes recur:
+ * The rule was written as prose plus a command to paste, and it has now failed SIX ways.
+ * Five of them were in this file; all six are recorded because the shapes recur:
  *
  *   1. CLAUDE.md wrote the command as `?sha=<SHA>`. The GitHub API needs the FULL
  *      40-character sha — `?sha=c918667` returns ZERO deployments for a commit that has
@@ -45,6 +45,21 @@
  *      Same shape as (2) and (4): the check had no reachable state in which it could say
  *      NOT LIVE and mean it, for every agent who had followed the telemetry setup. #494.
  *
+ *   6. With no argument it defaulted to LOCAL HEAD — and the §5b procedure runs this check
+ *      at the one moment HEAD is guaranteed to be the wrong commit. §5b confirms production
+ *      BEFORE fast-forwarding `develop` (the fix for (1) above's ancestor incident), which
+ *      means at check time `develop` is still checked out, sitting on the RELEASE COMMIT,
+ *      while Cloudflare Pages built `main`'s MERGE COMMIT one commit later. Measured live,
+ *      Alpha 1.7.4, 2026-09-15: release commit `58edbefe` (local HEAD, what the tool
+ *      checked) reported NOT LIVE; merge commit `42a7490c` (what Cloudflare actually built
+ *      and the site served) reported LIVE, given explicitly. The site was correct the whole
+ *      time. Worse than an ordinary false negative: the file's OWN printed remedy for a
+ *      missing deploy is "wait, it may still be building" — which never clears, because the
+ *      sha is simply wrong — immediately followed by "do NOT push develop to retrigger it,
+ *      that is the suspected cause of the (1)-class failure". The guard rail pointed at the
+ *      cliff. #763. Fixed: default to `origin/main`, freshly fetched, never local HEAD — see
+ *      `resolveSha()` below, and its self-test rows.
+ *
  * (3) and (4) are the same bug mirrored, and the pair is the lesson: a verifier with no
  * true-positive on record is not a verifier, and neither is one with no true-negative.
  * Exercise BOTH directions against real data before believing either.
@@ -73,9 +88,10 @@ const G = '\x1b[32m', R = '\x1b[31m', Y = '\x1b[33m', B = '\x1b[1m', D = '\x1b[2
 const PROJECT = 'reactor-dynamics';          // Cloudflare Pages project
 const SITE = 'https://reactordynamics.com';  // the production domain
 
-function run(cmd, args, env) {
+function run(cmd, args, env, timeoutMs) {
   const r = cp.spawnSync(cmd, args, {
     encoding: 'utf8', shell: process.platform === 'win32', env: env || process.env,
+    timeout: timeoutMs,
   });
   return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim() };
 }
@@ -190,6 +206,39 @@ function selfTest() {
   ok('nothing to report falls back to a guess that READS like one',
     firstError({ err: '', out: '' }) === 'wrangler not authenticated?');
 
+  // ---- which sha to check. Failure (6): defaulting to local HEAD at the one moment §5b
+  // guarantees it is the wrong commit (#763). No network — every ctx below is fabricated.
+  console.log(D + '\n  resolveSha(arg, ctx)           #763 — never silently fall back to HEAD' + X);
+  const HEAD = 'aaaa000000000000000000000000000000aaaa';
+  const MAIN = 'bbbb111111111111111111111111111111bbbb';
+  ok('an explicit argument wins even when origin/main disagrees',
+    resolveSha(MAIN, { fetchOk: true, originMain: { ok: true, out: HEAD }, headSha: HEAD }).sha === MAIN);
+  ok('explicit-argument source is reported, not confused with the default path',
+    resolveSha(MAIN, { fetchOk: null, originMain: null, headSha: HEAD }).source === 'explicit argument');
+  ok('no argument defaults to a freshly fetched origin/main, not HEAD',
+    resolveSha('', { fetchOk: true, originMain: { ok: true, out: MAIN }, headSha: HEAD }).sha === MAIN);
+  ok('the default path is LABELLED origin/main, never silently "HEAD"',
+    /origin\/main/.test(resolveSha('', { fetchOk: true, originMain: { ok: true, out: MAIN }, headSha: HEAD }).source));
+  ok('resolved-sha-differs-from-HEAD is announced when they diverge (the #763 shape)',
+    resolveSha('', { fetchOk: true, originMain: { ok: true, out: MAIN }, headSha: HEAD }).differsFromHead === true);
+  ok('no announcement when the resolved sha and HEAD happen to be the same commit',
+    resolveSha('', { fetchOk: true, originMain: { ok: true, out: HEAD }, headSha: HEAD }).differsFromHead === false);
+  ok('a fetch failure with a usable stale ref still resolves, but is marked stale',
+    (function () {
+      const r = resolveSha('', { fetchOk: false, originMain: { ok: true, out: MAIN }, headSha: HEAD });
+      return r.ok === true && r.sha === MAIN && r.stale === true && /STALE/.test(r.source);
+    }()));
+  ok('a fetch failure with NO origin/main ref at all refuses to guess rather than falling back to HEAD',
+    (function () {
+      const r = resolveSha('', { fetchOk: false, originMain: null, headSha: HEAD });
+      return r.ok === false && r.sha === null && r.error && !new RegExp(HEAD).test(r.source + r.error);
+    }()));
+  ok('no origin remote and no fetch attempted (e.g. a bare clone) also refuses, never HEAD',
+    (function () {
+      const r = resolveSha('', { fetchOk: null, originMain: { ok: false, out: '' }, headSha: HEAD });
+      return r.ok === false && r.sha !== HEAD;
+    }()));
+
   console.log('');
   if (fails.length) {
     console.log(B + R + 'SELF TEST: ' + fails.length + ' failed' + X + D + '  ' + (pass + fails.length) + ' checks' + X + '\n');
@@ -202,8 +251,27 @@ function selfTest() {
   process.exit(0);
 }
 
-// FULL sha, always. The short form is the trap this file exists to remove.
-const sha = (process.argv[2] || run('git', ['rev-parse', 'HEAD']).out).trim();
+// ---------------------------------------------------------------- which commit are we checking?
+// Never local HEAD by default — see failure (6) in the header. `git rev-parse HEAD` is read
+// unconditionally (no network) only to power the "differs from HEAD" line below; it never picks
+// the sha. When no argument is given, `origin/main` is fetched fresh and used; a fetch failure
+// falls back to the last-known `origin/main` ref and SAYS it may be stale, and only when even
+// that ref does not exist does the script refuse to guess and exit.
+const explicitArg = process.argv[2] || '';
+const headSha = (run('git', ['rev-parse', 'HEAD']).out || '').trim();
+let fetchOk = null, originMain = null;
+if (!explicitArg) {
+  fetchOk = run('git', ['fetch', 'origin', 'main', '--quiet'],
+    Object.assign({}, process.env, { GIT_TERMINAL_PROMPT: '0' }), 30000).ok;
+  originMain = run('git', ['rev-parse', 'origin/main']);
+}
+const resolved = resolveSha(explicitArg, { fetchOk: fetchOk, originMain: originMain, headSha: headSha });
+if (!resolved.ok) {
+  console.error(R + 'Could not determine which commit to check.' + X + D + '  ' + resolved.source + X);
+  console.error(D + resolved.error + X);
+  process.exit(1);
+}
+const sha = resolved.sha.trim();
 if (!/^[0-9a-f]{40}$/.test(sha)) {
   console.error(R + 'Not a full 40-character sha: ' + JSON.stringify(sha) + X);
   console.error(D + 'The GitHub API returns ZERO deployments for an abbreviated sha, which reads\n' +
@@ -211,7 +279,15 @@ if (!/^[0-9a-f]{40}$/.test(sha)) {
   process.exit(1);
 }
 
-console.log(B + '\nRelease deploy check' + X + D + '  ' + sha.slice(0, 12) + '…' + X);
+console.log(B + '\nRelease deploy check' + X + D + '  ' + sha.slice(0, 12) + '…  via ' +
+  resolved.source + X);
+if (resolved.stale) {
+  console.log(Y + '  fetch failed — this is the LAST-KNOWN origin/main, may be behind' + X);
+}
+if (resolved.differsFromHead) {
+  console.log(Y + '  differs from local HEAD' + X + D + '  HEAD=' + headSha.slice(0, 7) +
+    '  checking=' + sha.slice(0, 7) + X);
+}
 
 const found = [];
 
@@ -326,6 +402,48 @@ function decide(record, served) {
 function matchDeployments(list, short) {
   const forSha = (list || []).filter((d) => String(d.Source || '').slice(0, 7) === short);
   return { forSha: forSha, good: forSha.filter((d) => !/^failure$/i.test(String(d.Status || ''))) };
+}
+
+// ------------------------------------------------------------- which SHA are we checking? (#763)
+// Extracted for the same reason as `decide()`: pure, so `--self-test` can drive every path
+// (explicit argument, the origin/main default, a fetch that fails with and without a usable
+// stale ref) with no network. This is where failure (6) in the header lived — defaulting to
+// local HEAD, which is provably the wrong commit at the one moment §5b runs this check.
+//
+//   arg — process.argv[2], or '' if none was given. Wins unconditionally over everything below.
+//   ctx.fetchOk    — null if no fetch was attempted (arg was given, so none was needed);
+//                    otherwise whether `git fetch origin main` succeeded.
+//   ctx.originMain — { ok, out } from `git rev-parse origin/main`, or null/falsy `out` if that
+//                    ref cannot be read at all (no `origin` remote, or `main` never fetched once).
+//   ctx.headSha    — local HEAD's full sha. Read unconditionally in the real script (one local
+//                    `git rev-parse HEAD`, no network) purely so the "differs from HEAD" line
+//                    below has something to compare against — it does NOT influence which sha
+//                    is chosen.
+//
+// On fetch failure: a stale `origin/main` is used and SAID to be stale, rather than silently
+// falling back to HEAD — a silent HEAD fallback here would reintroduce failure (6) wearing a
+// fallback label. With no `origin/main` ref at all, it refuses to guess and exits, matching the
+// file's one-line promise: "never guesses".
+function resolveSha(arg, ctx) {
+  const headSha = (ctx.headSha || '').trim();
+  function withHead(r) {
+    r.headSha = headSha;
+    r.differsFromHead = !!(r.ok && r.sha && headSha && r.sha !== headSha);
+    return r;
+  }
+  if (arg) return withHead({ ok: true, sha: arg.trim(), source: 'explicit argument' });
+
+  if (ctx.originMain && ctx.originMain.ok && ctx.originMain.out) {
+    const sha = ctx.originMain.out.trim();
+    if (ctx.fetchOk) return withHead({ ok: true, sha: sha, source: 'origin/main (fetched)' });
+    return withHead({ ok: true, sha: sha, stale: true,
+      source: 'origin/main (STALE — fetch failed, using the last-known ref)' });
+  }
+  return withHead({ ok: false, sha: null,
+    source: ctx.fetchOk === false ? 'fetch failed and no origin/main ref exists to fall back on'
+      : 'no origin/main ref exists',
+    error: 'refusing to guess the release commit. Pass one explicitly:\n' +
+      '  node tools/verify_release_deploy.js <sha>' });
 }
 
 function parseVersion(bodyText) {

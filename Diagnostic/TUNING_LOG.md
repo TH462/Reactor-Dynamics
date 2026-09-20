@@ -29,6 +29,997 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-19-develop-a (#786 — the AFW discharge gauge, and the plant question underneath it)
+
+**THE DEFECT.** `pwr2_true_state.js` published `afw_discharge_pressure_mpa` as
+`ts.afw_active === true ? Math.min(8.3, max(steam_pressure, 0.101)) : 0`, and `afw_active` is
+`aw.total_kgs > 0` — DELIVERED flow. A running auxiliary feedwater pump with its discharge path
+shut therefore read **0.0 psia (0.000 MPa)** beside a lit run light. It is the identical shape
+#782 removed from the high-head safety injection gauge one line above, and #782's own comment
+cleared this field by source read on the grounds that it *"was never wired to the signal
+pattern"* — circular, because being gated on delivery is the defect #782 removed, not an
+exemption from it.
+
+**THE MEASUREMENT THAT DECIDED IT WAS NOT A CORNER CASE.** Full stack (shell engine +
+`ControlLayer.stepAutomation`, DT 0.02), the ordinary post-trip ride: reactor trip, main feed
+isolated, both pumps started by hand — the fixture `run_pwr2_shell` group T already rides.
+
+| route | pumps running | of which zero delivered | gauge dark |
+|---|---|---|---|
+| operator: trip + isolate + hand-start (1100 s) | 1100.0 s | **496.6 s — 45.1 %** | **496.6 s** |
+| automatic: lo-lo level starts them (3000 s) | 2072.1 s | 0.0 s | 0.0 s |
+
+The flow control valve (#562) holds shut whenever narrow-range level is above its sourced
+33 ± 5 % band, so the whole recovery from above the band is pumps-running/zero-delivered. The
+automatic start fires at t=928 s with the level already BELOW the band, delivers at once, and
+never enters the regime — **the defect belonged to the route the operator actually takes**, and a
+probe written on the `afw_failure` injection alone would have passed on a plant that drew 0 psia
+through every normal post-trip hold.
+
+**THE PLANT QUESTION, AND WHY IT WAS ALREADY ANSWERED.** The issue asked whether a running pump
+with a shut discharge should read its dead-head or the steam-generator pressure through the
+existing `min()`. Three independent answers agree, and none of them is mine:
+
+1. **`Blueprint/CONTEXT.md` §6.3 has always said it** — *"AFW discharge head: SG pressure + margin
+   while delivering, pinned at SHUTOFF when demanded into a blocked discharge, 0 when not
+   demanded. Deadheaded-at-shutoff is the tell that separates `afw_blocked` from
+   `afw_active=false`."*
+2. **The RETIRED engine implemented exactly that** — `s.afw_discharge_pressure_mpa = s.afw_blocked
+   ? sg.afw_shutoff_mpa : clip(steam_pressure + margin, 0, shutoff)`, gated on `afw_pump_demand`.
+   PWR2 kept the contract line and dropped the mechanism: the #562 shape again, a spec that is the
+   surviving copy of a mechanism the shipped plant never had.
+3. **`Manuals/12` §8.4 TEACHES it** — *"AFW pumps can run against a shut discharge valve. When
+   they do, discharge pressure sits at shutoff head rather than at SG-plus-margin."* The manual has
+   been documenting behaviour the plant did not have. Hard Rule 9 runs the other way here: the
+   plant caught up to the content rather than the content following the plant, because the content
+   was the last surviving statement of the ruled design.
+
+The physics agrees and is the reason the three agree: a centrifugal pump against a shut discharge
+sits at its shutoff head, and the `min()` against steam-generator pressure is only right while the
+path to the generator is OPEN. In this plant the throttle valve (#562) and the tagged-shut block
+(#507 wave 6) are **both downstream of both pumps**, so either one shut is that boundary.
+
+**WHY THE `min()` COULD NEVER PRODUCE THE DEAD-HEAD BRANCH, unlike the HHSI line beside it.** The
+high-head injection gauge is `min(9.58, RCS pressure)` and the RCS at power is 15.41 MPa
+(2235 psia), so its `min()` *returns* the shutoff head — the dead-head case falls out for free.
+Auxiliary feedwater pumps into a generator at ~7.03 MPa (1020 psia) against an 8.3 MPa (1204 psia)
+ceiling, so this `min()` returns the generator pressure **always** and the shutoff branch was
+unreachable by construction. Two gauges one line apart, the same expression, and only one of them
+had a working dead-head.
+
+**THE EVIDENCE PASS — what it found and what it did not.** `node tools/find_source.js`, all three
+lanes, 41 documents:
+
+- **`'auxiliary feedwater pump.{0,120}(psig|psia|ft head)'` → EXIT 1, genuine zero.**
+  **`'AFW.{0,80}shutoff'` → EXIT 1, genuine zero.** There is **no auxiliary feedwater pump curve,
+  shutoff head or discharge-pressure figure in the corpus.** The 8.3 MPa is therefore **UNVERIFIED**
+  and is labelled so in the plant, the manual and the validation record. It was NOT invented for
+  this fix: it is the ceiling the contract shim already clipped this gauge at, moved to
+  `AFW.shutoff_mpa` where the plant owns it.
+- **The gauge IS prototypical** — Ginna UFSAR ch10 §10.4 (ML20339A040) lists *"Preferred auxiliary
+  feedwater pump discharge pressure"* and *"Standby auxiliary feedwater pump (SAFW) high discharge
+  pressure"* among the control-room indications. Design criterion 2 is satisfied for the channel
+  even though its VALUE is not sourced.
+- **The minimum-flow recirculation line: NOT FOUND for auxiliary feedwater.**
+  `'AFW pump.{0,80}recirc'` and `'recirculation.{0,120}AFW'` both return zero hits. The corpus has
+  recirculation lines for the **safety injection, residual heat removal and containment spray**
+  pumps (Ginna Technical Specification Bases ML20339A221: *"ensure each pump can maintain minimum
+  flow requirements when operating at or near shutoff head conditions"*), which is the shape the
+  issue anticipated — but it is not evidence about the auxiliary feedwater pumps and I am not
+  extending it to them. **UNVERIFIED claim, recorded and not acted on:** a real auxiliary feedwater
+  pump is generally fitted with a minimum-flow recirculation line so it is never truly dead-headed.
+  Even if sourced it would **not change this gauge** — at minimum flow a centrifugal pump still
+  sits at essentially its shutoff head. It would change pump SURVIVAL on a long dead-head, which
+  this model does not represent at all (no pump damage, bearing or seal model). Worth an issue if
+  the dead-head should have a consequence.
+- The retired engine's `afw_shutoff_mpa: 10.34` was commented *"≈ 1500 psi pump shutoff head"* —
+  1500 psi is the **safety injection** pump's figure from Ginna ch15, borrowed for the wrong pump.
+  The board's inspect copy still taught that number and now teaches the plant's.
+
+**WHAT LANDED.**
+
+- `engines/pwr2/pwr2_afw.js` — `AFW.shutoff_mpa` (8.3 MPa, `[open, UNVERIFIED]`, with the evidence
+  pass's verdict written in); `stepAFW` returns **`pump_turning`** and **`shutoff_mpa`**.
+  `pump_turning` is the THIRD reading beside demand and delivery: the run flag is DEMAND and stands
+  true on a dead motor (#200), `total_kgs > 0` is DELIVERY and dies behind a shut valve on a
+  healthy plant, and a discharge gauge needs neither. The constant travels with the step result
+  rather than being imported — the `adv_rated_kgs` idiom, and the reason is structural: the
+  runner's sandbox in `run_pwr2_true_state.js` supplies only the modules the shim legitimately
+  calls into, so an imported constant failed the gate immediately. The boundary caught it.
+- `engines/pwr2/pwr2_true_state.js` — the gauge reads shutoff when the path is shut, the injection
+  point while delivering, 0 when no shaft turns. **No margin term**: this plant has no pump curve,
+  so it models the two ENDS of the curve and declares the absent line.
+- Latent fix: an absent pump availability was `Math.max(0, undefined)` = **NaN**, which would
+  poison the entire secondary feed term for a hand-built Layer 5 fixture. `createAFW` always sets
+  it, so no engine-built state ever saw it.
+- The stale header in `pwr2_afw.js` and the stale `PWR2_VALIDATION.md` §31.4 line both claimed
+  `afw_discharge_pressure_mpa` was *"left declared-missing rather than invented"*. It has been
+  published for as long as the shim has existed. Both corrected, both called out as the
+  inherited-claim trap — a module header is exactly the sentence nobody re-measures.
+
+**THE CHECKS, and the injection proof for each.** Every one has a permanent entry in its runner's
+mutation array; no hand-run reverts.
+
+| runner | checks | mutations | new mutation → red |
+|---|---|---|---|
+| `run_pwr2_true_state` | 83 → **87** | 33 → **37** | delivery gate restored → **2 red**; gate falls back to demand → **1 red**; shut-path branch unreachable → **2 red**; pinned at shutoff always → **2 red** |
+| `run_pwr2_afw` | 35 → **43** | 15 → **21** | `pump_turning` from demand → **2 red**; from delivery → **2 red**; power gate reaches the turbine train → **1 red**; shutoff stops travelling → **1 red**; shutoff below the safety pop → **1 red**; absent availability back to NaN → **1 red** |
+| `run_pwr2_shell` | 192 → **193** | 75 | group T's ordinary ride; no new mutation — that array anchors `pwr2_shell.js`, and the mechanism is covered by the eight above |
+
+The four `run_pwr2_true_state` checks deliberately pin **all three branches plus the delivering
+one** — that last is the mirror #782 shipped when it re-gated a discharge gauge on `pumpKgs` and
+zero came out the other side. The group T check is the one that matters most: it asserts the gauge
+on the PLAYER's route, on a fixture that already asserted the pumps run at 0.000 of rated there.
+
+**FIVE MUTATION ANCHORS WENT BLIND AND WERE RE-POINTED.** Introducing the `mdAvail`/`tdAvail`
+locals orphaned five existing anchors in `run_pwr2_afw.js` that named `Math.max(0, af.mdafwAvail)`
+verbatim. The runner reports `ERROR anchor not found` and counts them blind, so the gate failed
+loudly rather than silently losing coverage — the file's own comment warns about exactly this. Read
+the self-test line, not just the checks tally.
+
+**MANUAL GREP** (standing rule: grep the manual for the subject of every board change).
+`Manuals/12` §8.4 already taught this behaviour and gains the measured number, the 1204 psia
+(8.3 MPa) value, the no-margin declaration and the UNVERIFIED flag; revision row 20 extended with
+item **(m)**, which also records that row 20's item **(l)** — #782's — carried the wrong clearance.
+`Manuals/06` and `Manuals/08` need nothing. **The fix makes two pieces of authored content true
+that were not:** `Manuals/08`'s TMI-2 cue *"low OTSG level, low steam pressure, high emergency
+feedwater discharge pressure"* and the walkthrough beat in `ui/manual_procedures.js` naming *"high
+auxiliary feed discharge pressure"* as one of three cues to a blocked line — on the shipped plant
+that gauge read **zero** when the line was blocked, so the cue pointed the player at an indication
+saying the opposite.
+
+**WHAT I DID NOT VERIFY.** The `afw_failure` injection was not driven end to end through the
+control failure layer — my `injectFailure('afw_failure')` call left `afw_blocked` false, so I
+measured the shut-path branch through the throttle valve and through a Layer 5 `blocked: true`
+fixture instead, both of which exercise the same `afwOpen` term. The board was not opened in a
+browser; the gauge's rendering is unverified beyond the published field, and `verify_e2e_ui` was
+not run. No claim is made that 8.3 MPa is the right shutoff head — only that it is the number this
+code already used, now owned by the plant and labelled unverified.
+
+---
+
+## Session log — 2026-09-18-develop-g (#787 — the AFW block seat, the fourth of this shape)
+
+**THE TRAP, restated because this is the FOURTH row of it (#551's turbine row, #671's
+`rcp_trip`, #785's `loss_of_feedwater`, now `afw_failure`): a detector inferred from state a
+normal board action can reach files a casualty against the player.** `engineActiveFailures` read
+`eng.aw.blocked` — the flag both the `afw_failure` injection AND the board's own AFW (Auxiliary
+FeedWater) block valve (`set_afw_block`/`block_afw`, an ordinary VALVE_TOGGLE at
+`ui/diagram/board/pwr_board_wiring.js:2706`) set through the SAME `afw_block` command. MEASURED,
+re-confirming #785's sweep finding rather than assuming it still held:
+
+- **Close the valve by hand**, no injection -> `getActiveFailures()` = `["afw_failure"]`.
+- **Reopen it** -> `getActiveFailures()` = `[]`.
+
+This is not an edge case: the TMI-2 (Three Mile Island Unit 2) incident walkthrough has the
+player close and reopen this exact valve, so every normal use of it filed a casualty against
+them and would raise a `failure` attention stop via `_anyNewFailure`.
+
+**THE FIX — a seat, `e._afwFailureInjected`, same precedent as #785's `_lofwInjected` and #671's
+`_rcpTripInjected`.** Set `true` alongside the existing `EN.command(e, 'afw_block', true)` call in
+`inject_failure`, `false` in `clear_failure` without touching the valve, read by
+`engineActiveFailures` in place of `eng.aw.blocked`. **Added to the `scalars` save blob in the
+SAME change** — the combined line now carries both `_lofwInjected` and `_afwFailureInjected`.
+
+**SIX PERMANENT CHECKS, new checks in `grp('D5')` plus two additions to `grp('S')` in
+`test/run_pwr2_shell.js`**, each injection-proven (red on a dedicated mutation, green after):
+1. Inject -> appears in the list -> clear -> gone.
+2. `set_afw_block {open:false}` with NO injection -> nothing filed (the false-positive
+   direction).
+3. Reopen the same valve by hand -> still nothing filed.
+4. Save/load round trip: inject -> save -> load into a fresh shell -> still reported. Dedicated
+   mutation (strip only the `_afwFailureInjected` half of the combined scalars line): **1 red**.
+5. Migration: a pre-seat save (key stripped) loads without throwing, at the falsy default.
+
+**MUTATIONS: 72 -> 75** (`+3`: seat-set severed, detector reverted to `eng.aw.blocked`,
+save-key dropped — all CAUGHT, all scoped `grp('D5')`/`grp('S')` so the replay sees them).
+
+**THE SWEEP, re-run rather than trusted from #785's write-up.** Grepped every consumer of
+`getActiveFailures()`/`active_failures` beyond the Failures tab and `clear_all_failures` (#510
+M-3): `ui/app.js`'s `hasFail()` never keys on `afw_failure` (its four call sites are RBMK/BWR
+ids — `rcic_failure`, `ic_failure`, `hpci_failure`, `msiv_closure`, all ON HOLD plants); the
+scenario files (`pwr_tmi.js`, `pwr_tmi2_common.js`, `pwr_tmi2_p3.js`) and
+`ui/manual_procedures.js:4304` only INJECT/CLEAR `afw_failure` as setup — none reads it back as
+a grading or acceptance condition. **The false positive's only damage was the Failures tab row
+and the attention stop, not a broken walkthrough grade — but that is still a casualty filed
+against the player for a documented, correct action.**
+
+**Do I believe any of this shape remain? No — checked, not assumed.** Re-verified #785's list of
+the other ten `engineActiveFailures` levers (`cw_pumps`, `hhsiAvail`, `scram_block`, `p9_defeat`,
+`pzr_heaters_failed`, `spray_stick`, `station_blackout`, `offsite_power`, `rod_runaway`,
+`porv_stick`, `break_open`) — all still written ONLY inside `inject_failure`/`clear_failure`, no
+ordinary board command reaches any of them. `afw_failure` was the one instance #785's sweep
+found and filed separately as #787; with it fixed, the sweep is now exhausted for this shell.
+
+### Gates
+
+`run_pwr2_shell` **192/192 (75/75 mutations, no blind spots)** — was 186/186 (72/72); `+6`
+checks, `+3` mutations. `BASELINES` updated in `test/run_all.js`.
+`run_pwr2_afw`, `run_pwr2_forwarding`, `run_pwr2_roundtrip`, `run_inspect` — all at recorded
+baseline, unmoved.
+**NOT run:** the aggregate (the coordinator owns it).
+
+---
+
+## Session log — 2026-09-18-develop-f (#785 — the LOFW seat, and the same false-positive shape found once more)
+
+**THE TRAP, restated because it is the second time this class shipped in one day (#671
+yesterday's `rcp_trip`, this one's `loss_of_feedwater`): a detector inferred from state the
+OPERATOR can reach with a normal board action files a casualty against the player, and the
+seat that fixes it is worthless unless it rides the save.** `engineActiveFailures` read
+`!fw.pumpA && !fw.pumpB` — the RUN flags `set_feedwater_flow`/`set_feed_pump_speed` own — while
+`inject_failure {loss_of_feedwater}` deliberately leaves those alone (#605/#200: take away
+delivered capability, leave the selector where the operator put it) and zeroes
+`fw.pumpAAvail`/`pumpBAvail` instead. Both directions were live and MEASURED at `4d897f30`:
+
+- **Inject** -> `getActiveFailures()` = `[]` while power runs **99.6 % -> 0.1 %** on an SG-level
+  trip, and `clear_all_failures` cannot touch a row that was never in its list (#510 M-3).
+- **The board's own FEED PUMPS OFF** (`set_feedwater_flow {pct:0, secure:true}`, no injection)
+  -> `getActiveFailures()` = `["loss_of_feedwater"]` — the operator's own click filed a casualty
+  against itself, and `_anyNewFailure` would raise a `failure` attention stop for it.
+
+**THE FIX — a seat, `e._lofwInjected`, same precedent as #671's `rcp_trip`** (nearer than #551's
+turbine row: both are set directly in `pwr2_shell.js`'s `inject_failure`/`clear_failure` switch,
+not through the inner engine's own command handler). Set `true` alongside the existing
+`MAPPED.loss_of_feedwater` call, `false` in the clear branch without touching
+`feed_pump_a_avail`/`b_avail` or the run flags, read by `engineActiveFailures` in place of the
+old flag check. **Added to the `scalars` save blob in the SAME change** — the #671 quality pass
+found `_rcpTripInjected`/`tbTripFailed` shipped as seats that were NOT in the save and were
+caught by hand (inject, save, load, casualty gone, pump still tripped); closing that gap here
+rather than inheriting it a third time was the point, so a DEDICATED mutation stripping only the
+`_lofwInjected` scalars line was added too, proving the save-round-trip check has its own red
+instead of borrowing the #671 precedent's word for it.
+
+**FOUR PERMANENT CHECKS, new `grp('D5')` plus two additions to `grp('S')` in
+`test/run_pwr2_shell.js`**, each injection-proven (red measured before the fix / on the
+dedicated mutation, green after):
+1. Inject -> appears in the list, plant actually loses power (99.6 -> 0.1 %) -> clear -> gone.
+2. `set_feedwater_flow {pct:0, secure:true}` with NO injection -> nothing filed (the
+   false-positive direction — a probe written for #1 alone would have passed a detector that
+   still gets this wrong).
+3. Save/load round trip: inject -> save -> load into a fresh shell -> still reported. Dedicated
+   mutation (strip the `_lofwInjected` scalars line only, seat-set left intact): **1 red**.
+4. Migration: a pre-seat save (key stripped) loads without throwing, at the falsy default —
+   no casualty invented.
+
+**THE FALSE-POSITIVE SWEEP, asked for and run.** Grepped every write site behind every row in
+`engineActiveFailures`: `cw_pumps`, `hhsiAvail`, `scram_block`, `p9_defeat`,
+`pzr_heaters_failed`, `spray_stick`, `station_blackout`, `offsite_power`, `rod_runaway`,
+`porv_stick` and `break_open` are ALL written only inside `inject_failure`/`clear_failure` — no
+ordinary board command reaches them. **One more instance of the same shape found and filed
+separately, not fixed here**: `afw_failure` is inferred from `eng.aw.blocked`, which the board's
+own AFW block valve (`set_afw_block {open:false}`, wired as a normal VALVE_TOGGLE and the exact
+action the TMI-2 walkthrough has the player take) sets through the SAME `afw_block` command the
+`afw_failure` injection uses. MEASURED: closing the valve by hand with no injection ->
+`getActiveFailures()` = `["afw_failure"]`; reopening -> `[]`.
+
+### Gates
+
+`run_pwr2_shell` **186/186 (72/72 mutations, no blind spots)** — was 181/181 (69/69);
+`+5` checks, `+3` mutations (seat-set severed, detector reverted to the old flags, save-key
+dropped — all CAUGHT). `BASELINES` updated in `test/run_all.js`.
+`run_pwr2_forwarding` 11/11 · `run_pwr2_roundtrip` 20/20 · `run_pwr2_feedwater` 30/30 ·
+`run_inspect` 11/11 62/62 — all at recorded baseline, unmoved.
+**NOT run:** the aggregate (the coordinator owns it).
+
+---
+
+## Session log — 2026-09-18-develop-e (#783 — the annunciator that promised what the plant will not do)
+
+*(OWNER RULING, 2026-09-18: "Containment as you recommend"* — option A only: fix the caption,
+keep the containment engineered safety features declared static 0 (#672), model spray and the fan
+coolers auto-only as a separately scoped #784, no player controls.*)*
+
+**THE OPEN QUESTION WAS THE `high` ROW, AND IT HAD TO BE MEASURED.** The high-high caption names
+containment spray and main steam line isolation, which #778 already measured do not happen. The
+HIGH caption names the safety-injection signal — and PWR2's protection is its OWN
+(`engines/pwr2/pwr2_protection.js`), so the shared row could have been shadowing a real channel.
+It is not shadowing anything:
+
+- **Containment pressure alone, on an otherwise healthy plant** (the atmosphere's air mass
+  inflated 4×, so containment pressure is the only thing that moved — a break would confound it
+  with a primary depressurization): the building reaches **35.3 psig (50.0 psia, 0.345 MPa)** with
+  the reactor coolant system still at **2244 psia (15.47 MPa)**. `CTMT PRESS HI` lights at
+  **31.0 s**, `CTMT PRESS HI HI` at **32.5 s**, and **safety injection never latches** — nor spray,
+  nor the fan realign, nor the isolation valves.
+- **PWR2's engineered-safeguards actuation is three functions** — low pressurizer pressure, low
+  steam pressure, high-high steam flow. **Zero** rows read containment, and containment pressure is
+  not even among the drivers `stepProtection` is handed (`pwr2_engine.js:1663`).
+- **On the large loss-of-coolant accident the injection that does occur is low-pressurizer-pressure
+  at 27.02 s**, with containment at 6.85 psig — **51.5 s before** the high-high alarm at 78.5 s.
+  A reader watching that ride would credit the containment signal for an injection it did not
+  cause, which is the second reason the caption had to go.
+
+**THE WORDING.** Both learning captions now state the condition and the line it crossed:
+`Containment Pressure High (3.5 psig)` / `Containment Pressure High-High (30 psig)`. The industry
+register named nothing and is unchanged. The override is the SECOND one in
+`pwr2_shell.getProtectionConfig`'s alarm map, beside `rod_limit_approach` — **not** an edit to
+`layers/control/pwr_control.js`, where the text is correct because that plant fires all three.
+
+**THE CHECK — `run_pwr2_kernel` band 6, and it is NOT a word ban.** *A caption a row LIGHTS may not
+name a mitigation the same ride failed to produce.* `saw` is measured on the ride, so
+`CTMT SPRAY ON`'s own caption naming spray is fine (the only ride that lights it is one where
+spray runs) and #784 building spray would lift that word's ban with no edit here. It grades
+`tile_label` off the SNAPSHOT for rows the ride actually lit — a source scan for the new wording
+proves nothing about reachability, and one for the old wording passes on a caption nothing draws.
+Injection-proven both ways: reverting the override reds `cap-no-false-promise` naming all three
+promises; putting the hi-hi ANNUNCIATOR setpoint (its own number, not the actuation constants) out
+of reach reds `cap-rows-lit`, so the ban cannot be green by grading nothing.
+
+**THE QUALITY PASS CAUGHT A CHECK THAT WOULD HAVE REDDENED WHEN THE PLANT GOT BETTER.** Band 6's
+safety-injection pattern was `/\bSI\b/`, which also matches the INDUSTRY strings `CTMT FANS SI` and
+`SI ACCUM ALIGNED < 1000 PSI` — neither of which promises an injection; the first names the signal
+the fans realign *on*. Latent today (neither row lights on this ride), and **not latent the day #784
+models the realign**: `ctmt_fans_si` would light with its own mitigation correctly observed and
+still red on this row's pattern, arriving as a mystery red inside someone else's issue. Narrowed to
+`/safety injection|\(SI\b|\bSI signal\b/`; the two containment rows still match it and the
+override-reverted mutation still reds, so **the narrowing did not buy the green**. The general
+shape is worth keeping: *a vocabulary written against one plant's captions will over-match another
+row's, and the failure lands on whoever improves the plant next.*
+
+**THE MANUAL WAS ALREADY RIGHT — a result, not a non-event.** `Manuals/06` PWR-A36/A37 say *"On
+this plant nothing acts on this signal"* and list the same three engineered-safeguards setpoints
+this session measured; A38/A39 say their tiles can never light. No manual edit, so no revision row
+and no repack. `ui/manual_data.js` carries the alarm IDs only; `ui/manual_procedures.js` and
+`pwr_board_inspect.js` mention neither caption.
+
+**A SECOND GATE HAD TO LEARN THE NEW OVERRIDE SET.** `run_pwr2_shell`'s
+`getProtectionConfig` check enumerates *which* alarm rows diverge and reds on a silent new one —
+it did exactly that here, correctly. It now carries three, and the containment arms assert that
+only the LEARNING CAPTION moved: setpoint, direction, priority, instrument and the industry string
+are pinned identical to the shared row, so a per-plant setpoint smuggled in behind a caption edit
+still reds. Two of its mutation anchors named the old `alarms:` map body and had to be re-cut —
+**an anchor that no longer matches is a BLIND mutation, not a passing one**, which is the trap that
+file's own comment already records.
+
+### Gates
+
+`run_pwr2_kernel` 45/45 (12/12 mutations) · `run_pwr2_shell` 181/181 (69/69) ·
+`run_pwr2_containment` 27/27 · `run_inspect` 11/11 62/62 · `run_autoctl` 31/31 ·
+`run_pwr2_board` 98/98. `BASELINES` updated for `run_pwr2_kernel` (41 → 45).
+**NOT run:** the aggregate (the coordinator owns it) and `run_checklist_pwr2`, which exceeds the
+600 s tool ceiling — nothing in `ui/` or `scenarios/` references either caption id (grepped).
+
+---
+
+## Session log — 2026-09-18-develop-d (#782 · #778 · #671 · #765 — four channels that read a value the plant was not at)
+
+### ADDENDUM — the quality pass on this bundle (2026-09-18, same lane)
+
+Two of the three fixes above needed a correction, and one claim in this entry is REFUTED. Both
+corrections are measured; neither re-opens a ruling.
+
+**1. #782 traded the impossible pair for its MIRROR.** `pumpKgs` is DELIVERED flow, which is 0
+whenever the reactor coolant system sits above the pump shutoff head — the state an *actuated*
+injection is in at pressure, and the state `run_pwr2_true_state`'s own `tsArmed` fixture holds
+(safety injection actuated, both pumps running, 2235 psia). Measured there:
+
+| gate on that line | `tsArmed` discharge |
+|---|---|
+| `hpi_active` (before #782) | 1390 psia (9.58 MPa) — the sourced shutoff head |
+| `pumpKgs > 0` (as shipped) | **0.0 psia** — a running pump with no discharge head |
+| `pumpKgs > 0 \|\| hpi_active` (now) | 1390 psia (9.58 MPa) |
+
+Nothing asserted that state's discharge, which is why the shipped gate passed: the check that
+claims the dead-head branch reads it off `tsLow`, whose ECCS is stepped at 1.0 MPa while its `sys`
+sits at 15.41 — the fixture split #603's own comment flags as artificial. A check now pins the
+dead-headed leg, with one mutation per leg of the union.
+
+**2. REFUTED: "`afw_discharge_pressure_mpa` does NOT share the shape."** That was a source read,
+and the reasoning is circular — "`afw_active` is `total_kgs > 0`, already a delivery reading" is
+exactly the gate #782 exists to remove from a discharge gauge. MEASURED on PWR2, `afw_failure`
+injected and both aux-feed pumps started by hand: `afw_pump_running` **true**, delivered flow 0,
+`afw_discharge_pressure_mpa` **0.000 MPa (0.0 psia)** — the identical impossible pair. NOT fixed:
+`afw_pump_running` is published two lines above and would be the honest gate, but what a blocked
+pump's gauge should then read (its 8.3 MPa / 1204 psia dead-head, or steam-generator pressure
+through the existing `min()`) is a plant question this pass did not rule on.
+
+**3. The two casualty SEATS were not in the save.** `_rcpTripInjected` (#671) and `tbTripFailed`
+(#551) are seats precisely because the state they stand for is reachable without the casualty —
+and neither rode `pwr2-1.0`. Measured before the fix: inject, save, load into a fresh shell →
+`getActiveFailures()` **[]** for both, `sys.pumpTripped` still true. A rewind or a service restore
+un-filed a live casualty. Both keys added to `scalars`, with the migration asserted.
+
+**4. The 175 → 179 note claimed two mutations it never added.** "Two mutations (both reverts),
+both caught" — the array held neither, and the mutation count did not move (65 before, 65 after).
+The reverts had been run by hand, which is a session's memory, not the gate's. Both are now in
+`MUTS`, plus one for the save. Independently re-proved by hand on the shipped tree first: dropping
+the seat reds the rcp check only, dropping `injected_id` reds the LOCA check only, and reverting
+#782's line reds exactly its own check (flow 0.337 beside 0.00 MPa).
+
+Gates after the pass: `run_pwr2_true_state` 83/83 (33/33 mutations) · `run_pwr2_shell` 181/181
+(68 mutations) · `run_pwr2_kernel` 41/41 (10/10) · `run_inspect` 62/62 · `run_contract` 180/180 ·
+`run_manual_rev` 15/15 · `run_manual_units` clean. `BASELINES`: `run_pwr2_true_state` 82 → 83,
+`run_pwr2_shell` 179 → 181.
+
+Bundled on one class: a published channel, or a wired row, whose reading is produced by a
+quantity that cannot carry the answer. Three defects, one non-defect, one new issue.
+
+### #782 — the discharge gauge read a dead pump through a live injection
+
+`hpi_discharge_pressure_mpa` was gated on `ts.hpi_active`, which ruling #603 defines as the
+safety-injection SIGNAL — "has the plant fired" — deliberately not a reading of delivered flow.
+The line above it already used the right quantity (`pumpKgs`). So an operator who secures
+injection and restarts the pumps below the actuation setpoint got 12 % of rated flow beside a
+discharge pressure that decayed to a denormal float:
+
+| | HPI FLOW | HPI ACTUATED | HPI DISCH PRESS |
+|---|---|---|---|
+| automatic actuation (3 min) | 0.0987 | true | 1160 psi (8.00 MPa) |
+| operator-restored (17 min), before | 0.1216 | false | **0 psi (0 MPa)** |
+| operator-restored (17 min), after | 0.1216 | false | **1069 psi (7.37 MPa)** |
+
+**THE TRAP: a correct ruling one field over.** #603 is right, and the neighbouring line inherited
+its gate anyway. `afw_discharge_pressure_mpa` was checked in the same pass and does NOT share the
+shape — `afw_active` is `total_kgs > 0`, already a delivery reading. Having a ruling in the file
+is not the same as the ruling applying to every line near it.
+
+The probe that existed could never have caught it: every prior HPI-discharge check ran the pumps
+*while* the signal was also active, the one case where the two quantities agree. The new probe
+runs the operator-restored path and asserts flow and discharge pressure non-zero TOGETHER.
+
+### #778 — the dark actuation rows are the WHOLE table, not the containment half
+
+The issue reported two containment rows wired at both ends and never firing, and asked whether
+the retired engine's actuation set was inert on PWR2 "or only its containment half". Measured:
+**the whole table.** `pwr_control.js` pushes every row onto one module-level `PWR_ACTUATIONS`
+array; `pwr2_shell.getProtectionConfig` `Object.assign`s `actuations: []` over that base, so the
+array PWR2's kernel holds is a *different, empty* one — **21 rows on the retired engine, 0 on
+PWR2**.
+
+Same casualty, both plants (large loss-of-coolant accident, severity 1.0):
+
+| | retired PWR | PWR2 |
+|---|---|---|
+| containment high-high (30 psig) crossed | 11.52 s | 58.64 s |
+| containment peak | 36.5 psig (0.353 MPa) | **78.5 psig (0.643 MPa)** @600 s |
+| fan coolers realign · MSIV shut · spray start | 3.72 s · 12.60 s · 12.66 s | **never** |
+
+PWR2 goes further past the setpoint that fires the retired plant and fires nothing.
+
+**Proof it is the ARRAY, not the rows** (the #642 pattern): moving `CTMT_HIHI_MPA` 321× out of
+reach stops the retired engine closing its MSIV and starting spray, and changes PWR2's ride by
+nothing — same 0.6427147749359522 MPa peak to the last digit.
+
+**THE TRAP: an absence-assertion pins a non-event.** The check is shaped as a BIFURCATION — one
+casualty, two plants, both legs red-able: the firing leg genuinely sees a firing (the 321×
+mutation reds it), the inert leg sees PWR2 at higher pressure firing nothing. Two mutations were
+not enough: emptying the shell's `actuations` reds the count check and then THROWS on a verb PWR2
+refuses, so a third mutation leaks only `close_msiv` — a verb PWR2 *does* wire — and that one
+reds the inert leg itself. Without it the inert leg was proven only at the array count.
+
+**And the self-test's counter was itself hollow**: `caught = crashed ? 1 : reds` let a crash stand
+in for coverage *and discarded genuine reds recorded before the throw*. Reds now count first.
+That is what exposed the missing behavioural coverage.
+
+Declared at three sites in `pwr_control.js`, the authoritative one above the array: **adding a row
+there does not give PWR2 a protection.**
+
+The #626 `run_manual_notmodelled` red STANDS and was not claimed. Its remaining leg needs a
+steam-line break, which `pwr2_shell.js` refuses outright ("no steam-line break model yet"), so it
+is unknown which of `Manuals/09` §3.0 and `Manuals/12` §8.5 is wrong. #530 is what unblocks it.
+
+### #671 — the registry reported by a quantity that could not tell casualties apart
+
+Three defects, and **the third fix was wrong and a gate caught it**.
+
+`rcp_trip` was injectable but never reported and never clearable. Fixed with a SEAT
+(`_rcpTripInjected`), the #551 turbine precedent: read whether the casualty was injected, never
+`sys.pumpTripped` — a loss of offsite power, a station blackout and the operator's own
+`stop_pump` all set that flag, so a detector reading it would never fire once any of those held
+it first. The clear unsets the seat and does NOT restart the pump: `rcp_start` is gated on live
+offsite power, so auto-restoring would either throw on a dead bus or silently un-secure a pump
+someone else stopped.
+
+`large_loca` reported as `primary_leak` — an id with no catalog def and no menu row — because the
+cold-leg branch read the break's NODE alone and both ids open the same node. The break now carries
+`injected_id`.
+
+**THE TRAP, and it is the one worth keeping: the dead membership was not dead.** `failGroups`
+listed three ids PWR2's keep-list filters out, so they were dropped as a promise of rows that
+cannot exist. That reddened `run_inspect` at **61/62** — `PROFILES.pwr` is SHARED by both engines
+(the `pwr2` profile entry is `plant: 'pwr'`), the retired engine's catalog really carries all
+three, and the gate asserts every catalog entry is placed. The drop misfiled three live rows under
+the trailing catch-all on the plant that still has them. They stay, commented as placeholders;
+a group id with no catalog entry simply draws no row, so they cost nothing while filtered.
+**Ask which plant a shared table serves before you prune it for one of them.**
+
+### #765 — not a defect, and the measurement is the deliverable
+
+`charging_flow_actual` and `letdown_flow_actual` were filed as reading 0.0 through 12.6
+plant-minutes of maximum charging that moved level 37 points. They never read zero. The channel's
+currency is a fraction of 450,000 gpm, so the real value is ~1e-5: settled charging **5.8500e-5 =
+26 gpm (99.6 L/min)**, matching `CVCS.charging_max_gpm()` computed independently to three
+significant figures; letdown 12 gpm (44.8 L/min); level 25.0 → 63.5 % in 13.05 plant-minutes,
+reproducing the filed 37 points. The original harness printed a 1e-5 quantity at a precision that
+rounds to 0.0. The board draws 26 gpm and 12 gpm — legible, correct.
+
+Coverage was proven by injection rather than asserted: forcing both `put()` calls to literal 0 in
+a sandboxed reload was caught by the existing `run_pwr2_true_state` assertion. No probe added,
+because one already covers the effect.
+
+### Filed, not fixed — #783
+
+The shell empties `actuations` but KEEPS `alarms`, deliberately (annunciators only read
+instruments). So on the same large-LOCA ride, `ctmt_press_hihi` goes active at ~65 s and stays lit
+**1154 of 1800 ticks** at priority *critical*, labelled **"Containment Pressure High-High
+(spray/MSLI)"** — naming containment spray and main steam line isolation, neither of which
+happens. The dark wire is not merely invisible; it is announced. The label is shared text and is
+correct on the retired engine, so the fix is a player-facing decision, not a word change.
+
+### Gates
+
+`run_pwr2_true_state` 82/82 (31/31 mutations) · `run_pwr2_kernel` 41/41 (10/10) ·
+`run_pwr2_shell` 179/179 (65/65 injection self-test, no blind spots) · `run_pwr2_containment`
+27/27 · `run_pwr2_eccs` 39/39 · `run_pwr2_roundtrip` 20/20 · `run_pwr2_forwarding` 11/11 ·
+`run_autoctl` 31/31 · `run_m4` 47/47 · `run_pwr` 265/265 · `run_inspect` 62/62 · `run_flags`
+344/344 · `run_contract` 180/180 · `run_hr3` 32/32 · `run_ops` 59/70 at baseline ·
+`run_manual_rev` 15/15 · `run_manual_units` clean.
+
+`BASELINES` moved four ways, all better-than-baseline: `run_pwr2_true_state` 81 → 82,
+`run_pwr2_kernel` 36 → 41, `run_pwr2_shell` 175 → 179, `run_hardrules` 595 → 597 (two new Hard
+Rule 11 citation sites, from #778's declarations).
+
+**A gate run against a moving tree is void, and it happened twice here.** Four agents held
+uncommitted edits in one working directory; `run_pwr2_shell` first reported DRIFT and then timed
+out at 599 s against a file being edited under it, and a BASELINES line was rewritten mid-run so
+`run_all` compared against a number that no longer existed. Both re-run on a settled tree. The
+per-agent file ownership held — no work was lost — but the GATES cannot be parallelised that way.
+
+## Session log — 2026-09-18-develop-c (#763 #769 #665 — three tools that lied at the moment they were trusted)
+
+**One bundle, one theme: a measurement tool whose failure mode is a believable number.** All three
+issues are the class #555 named (the plausible zero) wearing different costumes — a flag that does
+nothing, a subject that is the wrong commit, a clock that runs fast. None of them could fail loudly.
+
+**#763 — `verify_release_deploy.js` checked LOCAL HEAD, which is `develop`.** `:206` was
+`process.argv[2] || git rev-parse HEAD`, and the release skill's §5b runs it BEFORE the `develop`
+fast-forward — deliberately, since that ordering is the Alpha 1.0.0 fix. So at the one moment the
+tool is trusted, HEAD is the release commit on `develop` while Cloudflare built `main`'s MERGE
+commit. **Reproduced live on this tree, 2026-09-18**, which is better evidence than the self-test:
+
+| subject | verdict |
+|---|---|
+| `origin/main` = `fce63efa` (the fix) | **LIVE** — production deployment found, origin serving `alpha · fce63ef` |
+| local HEAD = `168205e4` (the old default) | **NOT LIVE** — "0 for this sha, 18 production deployment(s) total" |
+
+**The trap is that the false negative is indistinguishable from the real one, and the file's own
+remedy text walks you toward the cliff**: it says to WAIT and re-run (waiting never clears a wrong
+subject), then warns against the one action people reach for next. Now resolves `origin/main` after
+a fetch; an explicit argument still wins; on fetch failure it uses the stale ref and SAYS so; with
+no `origin/main` at all it REFUSES rather than falling back to HEAD. Prints `differs from local
+HEAD  HEAD=168205e  checking=fce63ef` — the one line that would have ended the 2026-09-15
+confusion in a single read. Self-test 20 → 29 checks, injection-proven four ways (reintroducing the
+actual defect reds 6).
+
+`tools/verify_worker_deploy.js` is **NOT** the same defect (measured): it compares `git log -1`
+TIMESTAMPS on whatever is checked out, and §5c runs it only AFTER the `--ff-only` merge has made
+`develop` and `main` the same commit. It is the same FAMILY — an ordering dependency — but not
+currently exploitable. Whether the false negative ever passed silently before is **unknowable from
+the record**: the documented remedy leaves no trace distinguishable from a slow deploy.
+
+**#769 — `engine.seed` was a silent `undefined` on BOTH engines.** `pwr2_shell.js:1202/:2123` and
+`pwr_engine.js:63` passed `opts.seed` into `PWRInstruments` and never stored it. The issue listed
+"does the retired engine have the same shape" as unmeasured; **it does**. `engine.seed` is now
+assigned from `this.instruments.seed` — read back AFTER the instrument constructor's own defaulting,
+never from raw `opts.seed`, or it is a second differently-wrong number. Verified with seed `0`:
+`(seed >>> 0) || 0x9E3779B9` defaults it, and `engine.seed` correctly reads `2654435769`.
+
+**Sync sites are where this recurs**: `loadState()` on both engines and `reset()` on the shell.
+`pwr_engine.reset()` needed nothing — it calls `instruments.reset()` and does not reconstruct.
+**A sync check comparing `engine.seed` to itself at an unchanged value passes with the sync line
+DELETED**, because `reset()` reuses the same `_opts.seed` in normal play — so the check mutates
+`_opts.seed` between construction and reset to make the effective seed genuinely change. That is
+what made the mutation go red for the right reason. New `seed_is_live` in `run_pwr` (37/37 260 →
+38/38 265) and GROUP U in `run_pwr2_shell` (169 → 175, mutations 62 → 65, 3 new, no blind spots).
+
+**A harness bug worth keeping**: `pwr_engine.js`'s `ck(desc, observed, pass, expected)` has a
+DIFFERENT signature from `run_pwr2_shell.js`'s `ck(name, cond, note)`. A 3-arg call into the 4-arg
+harness puts a non-empty string in the `pass` slot — `!!string` is `true`, so every check passes
+while printing a literal `(false)` beside a green tick. Same shape as TR-17's `!range(bool).max`.
+**Check the `ck` arity of the file you are writing into.**
+
+**The grep that mattered more than the fix.** #761's published conclusion — *"the spread between
+configurations is no larger than the spread between seeds"* — depended on whether its harness seeded
+the engine or the service. Traced: `ACCURACY_VS_WAIT_2026-09-17.md` and `SETTLE_DURATIONS_2026-09-17.md`
+both used `SimulationService`, and `procedures_harness.js:122` seeds the service too. **The
+conclusion stands.** No harness in `test/` or `tools/` reads `engine.seed` back. The constructor-arg
+path (`behavior_pwr.js`, `ops_harness.js`, `measure_pwr2_ab.js`, `run_m4.js`) was never affected —
+`opts.seed` always reached the instruments regardless.
+
+**#665 item 2 — `measure_stack.js` now takes `--plant=pwr2`.** Chose teaching the existing tool over
+a second `measure_pwr2.js`: a second implementation is a second plant. `engineCtor` already accepted
+`pwr2` (`simulation_service.js:224`), so only the load list was missing. Added `--settle=<dur>`,
+STAMPED in the header whether or not given, with every sample and `--cmd` timed from the end of it —
+because an unstamped settle is what made two harnesses look 60 s apart for ten days. Also stamps the
+engine constructor and the command path. **Cost on PWR2 is ~23.9 s wall per plant-hour at 60x,
+roughly 7x the retired engine's ~3.3 s.**
+
+Three defects fell out of building it, all the bundle's own class: **`--seed=0x1234` parsed as `0`**
+via `parseInt(s, 10)` — the #665 fixture's OWN seed, and since `0` is falsy `PWRInstruments` then
+substituted its DEFAULT, so the misreading was not even seed 0; `--nudge`/`--pzr2` silently targeted
+the retired engine's config under `--plant=pwr2` (now hard errors); and `selectPlant`'s error return
+was unchecked, leaving `svc.engine` undefined to crash later.
+
+**#665 item 1 — the three harnesses RECONCILED, and the cause was not on the candidate list.**
+Full write-up `Diagnostic/PWR2_HARNESS_RECONCILIATION_2026-09-18.md`. They were not measuring a
+different plant; they were reporting a different CLOCK, in two layers:
+
+1. **The 60 s was the REFERENCE POINT, not settle handling.** All three settled 60 s. #661's ride
+   reported relative to `rod_start`; the other two reported absolute engine time. **This is #761's
+   pattern repeating** — the fifth cause, added because #761 had just been the same thing.
+2. **The residual 4.5 s was a TICK-COUNTED CLOCK** — the cause nobody listed. #661's ride assumed
+   "50 steps per tick = 1.000 s", but `SimulationService` halves `broadcastMs` to 50 ms during a
+   transient, so a tick buys **0.5 s once the plant goes transient**. That is why the first gap was
+   a clean 60 s and the rod-stop gap was 55: **55.5 = 60 − 4.5.**
+
+**Demonstrated by turning one knob back.** `ROD_SPEEDS.normal` restored to 0.702 steps/s reproduced
+every filed figure to the digit (365.24 / 367.06 / 396.80 / 442.48 / 444.32), and re-reporting that
+same run as ticks-since-`rod_start` gave **306 / 387 / 391** — #661's three numbers, from a clock
+built to TEST the hypothesis rather than fitted to them. Four of six candidate causes were refuted
+as carriers: the LAYER is worth 0.44 s at the rod stop, the SEED 0.20 s on the indicated crossing
+and 0.00 s on truth, and the attention-stop dropout changes sim-seconds-per-tick but not the plant,
+so anything reading `svc.simTime` is immune.
+
+**The rod-speed lead was tree drift, not harness error**: `950fbad2` (#668) moved the drive 0.702 →
+0.800 steps/s at 22:13 that same night, AFTER all three measurements. Everything downstream scaled.
+
+**Side finding: `run_pwr2_shell` group N passes NO seed at all**, so "one fixture, seed `0x1234`"
+was never true of it. Not the #769 defect class — it never misreads a seed, it just never supplies
+one — but it means that fixture is one default stream. Backlogged, not fixed.
+
+**#665's drift reached the player (HR9).** `Manuals/09 §7.5.1` and `Manuals/12 §4.4` both cited the
+2026-09-08 ride, with the rod stop **44.9 s** off. Re-measured independently before editing (agreed
+within one 2 s sampling interval), then corrected to **SUR HI 267 s, rod stop 338 s, trip 339 s**,
+published RELATIVE to the start of withdrawal and **saying so in the sentence** — the old text
+published absolute time silently, and that silence is the whole defect. The old figures survive only
+in a provenance parenthetical naming the constant that moved. Manual 12's instrument-lag note also
+moved **1.82 s → 1.66 s**, a real change rather than a restamp. Pending Rev 19 row extended (item
+`ddd`), stamped and packed; packed copy grepped to confirm it reached the player.
+
+**No scenario or checklist hard-codes the old figures** (grepped). `Diagnostic/` and `CHANGELOG.md`
+keep theirs — they are dated record, and record is not policy.
+
+
+## Session log — 2026-09-18-develop-b (#749 follow-up — a row the player can break must not take the step with it)
+
+**The ruling.** *(OWNER RULING, 2026-09-18: selected option "B" of four — A keep the INTER RANGE
+row as shipped; **B keep it and close the soft-lock**; C revert the row; D build a non-grading
+"what to watch" row kind. A SELECTION, not verbatim words.)*
+
+**The defect, re-measured before acting.** `pwr_startup` step 9 grades criticality on two rows and
+since #749 item 1 **both grade on INSTRUMENTS**. `accs` is a conjunction, so a channel the player
+can break takes the step with it. MEASURED on this tree, `hot_full_power`, seed 7, through the real
+`_gradeAccs` — `set_instrument_failure {intermediate_range, dead}`, which the Failures tab offers:
+
+| | INTER RANGE row | REACTOR POWER row | step |
+|---|---|---|---|
+| healthy | met, reading **2.0e-3 A** | met, **99.6 %** | **ticks** |
+| dead channel | **never met**, reading **1.0e-11 A** (true 8.3e-3) | met, **99.6 %** | **never ticks** |
+
+The step authors no `overtaken`, so Continue stays dark for ever. The #667 class.
+
+**What the snapshot publishes — the question that decided the mechanism.** MEASURED:
+`snapshot.active_failures` is **`[]`** with the channel dead. The declaration exists one layer
+down — `PWR2Engine.getActiveFailures()` returns `instrument:intermediate_range` — and **nothing
+consumes it**: `ControlLayer.getActiveFailures()` returns only kernel-injected rows, and the
+service publishes that. So the instructor layer cannot see an instrument failure at all.
+
+**The mechanism: `implied_by`, an IMPLICATION — not a fail-open on a broken gauge.** A row may name
+a sibling in the same `accs` array whose own threshold already answers it; while that sibling is
+met, this row latches too and is flagged `implied`, and the card draws *"Covered by 9b: REACTOR
+POWER reads 0.1 % or more — this gauge did not get there."*
+
+**Fail-open was the leading candidate and was rejected on two grounds, the second the load-bearing
+one.** (1) The signal is not published, and publishing it means `control_kernel` + a decision about
+`simulation_service`'s new-failure attention stop — outside the brief's file scope. (2) **Even with
+the bit, standing a row down BECAUSE its gauge broke says nothing about whether anything still
+asserts the step.** On a single-row step it would tick the step off a dead instrument — "you are
+done because your meter died". The honest condition is REDUNDANCY, which is what `implied_by`
+names, and it works for any cause (a stuck channel, a lost failure list) rather than only a
+declared `dead`. `overtaken` was also weighed and rejected: it checks the WHOLE STEP off on a
+plant condition, and a dead instrument is not the plant moving past anything — it would skip the
+criticality confirmation because a gauge broke.
+
+**The implication is ARITHMETIC on this plant, not a fit.** `pwr2_true_state` computes
+`ir_amps = 8.333e-3 x power_frac`, so the power row's own 0.05 % threshold puts INTER RANGE at
+**4.17e-6 A — 41.7x** the covered row's 1.0e-7 A. It therefore cannot fire on a healthy board: the
+covered row ticks at **+742 s / +851 s** against **+1306 s / +1499 s** for the sibling that could
+imply it (INHERITED from the authoring pass; §2ab.7 re-measures it every run).
+
+**Gate.** `run_checklist_pwr2` **319 -> 324**, new section §2ad, five checks. Injection-proven
+three ways, each reddening a different pair: delete `implied_by` -> 2ad.1 and 2ad.3 (*"step graded
+false"* — the strand itself); drop the `state[ni].met` test -> 2ad.4 and 2ad.5 (the row ticks with
+nothing asserting the step); move the threshold to 1.0e-5 -> 2ad.2 at 0.4x. All 19 touched runners
+green: `run_checklist` · `run_procedures_stack` 29/29 262/262 · `run_procedures_chain` 50/50 ·
+`run_m5` · `run_m6` · `run_m6ph` · `run_m7` · `run_autoctl` · `run_campaign` A/B/C · `run_scenarios`
+· `run_procdocs` · `run_style` · `run_manual_units` · `verify_ckl_relevance` · `verify_e2e_ui` ·
+`verify_manual_follow`.
+
+**IS IT GENERAL? Yes, and it was NOT applied pool-wide — that is its own decision.** MEASURED on
+the built pwr2 pool: **84 graded steps, 135 predicate acceptance rows, 87 of them graded on an
+instrument, 27 of those the ONLY row of their step.** A pool-wide *fail-open* grading rule would
+touch all 87 — and those 27 are exactly where it would tick a step off a broken gauge with nothing
+else asserting it, which is the argument for redundancy over fail-open in one number.
+
+**NOT VERIFIED.** The rendered card — the "Covered by" line is not asserted in a browser by any
+gate; `verify_ckl_relevance` and `verify_manual_follow` are green but neither reads it. The
+save/restore path drops `implied` (the save format carries one boolean per entry), so a reloaded
+run keeps the tick and loses the note. Whether any OTHER walkthrough step becomes unsatisfiable
+under a single `dead` instrument — the 87 rows were counted, not swept. `run_all` unfiltered — not
+run; the coordinator owns the aggregate.
+
+---
+
+## Session log — 2026-09-18-develop-a (#749 · #757 · #759 · #766 — the graded number vs the number on the board)
+
+**Issues:** #749 (four items), #757, #759 (verified), #766 (closed), #772 (filed). **Nothing pushed.
+Nothing merged.** Five commits on `develop`: `4c2be582`, `dbae62ca`, `04317660`, `e21d7e90`,
+`73416410`.
+
+### The bundle, and the one class underneath it
+
+Four issues were picked because they share a shape: **the number a walkthrough step is graded on is
+not the number the player can read.** Working them together turned two of them into one fix.
+
+**The class, stated so it can be applied again:** *an acceptance threshold must be the LOWER EDGE of
+the render band of the number the card prints, on the channel the card draws.* A threshold at the
+band's CENTRE means the tile prints the target for the whole lower half of the band while the row
+refuses — the board cannot tell the player when the step is satisfiable.
+
+### #749 item 1 — the count rungs
+
+- **The channel.** `PARAM_INSTRUMENT.pwr2` carried the comment *"PWR2 has no SR/IR channels"*. It has
+  none of its **own** — `pwr2_instruments.js` defines neither — but `pwr2_shell.js` hands the kernel
+  a reused `RD.PWRInstruments`, and `source_range` lives there. MEASURED, live pwr2 broadcast,
+  `hot_zero_power`, seed 42, t = 2.0 s: `instruments.source_range` **499.0** against
+  `true_state.sr_counts_cps` **502.0**, one of **88** channels present; over the authored ladder the
+  ratio ran **0.83–1.18**. `sr_counts_cps: 'source_range'` added; the comment rewritten. This is the
+  inherited-claim trap in CLAUDE.md's standing list — a module header that had aged.
+- **Not the #670 "regrade on the drawn value" case, and it was PINNED rather than asserted:**
+  `source_range` carries **no `DISPLAY_DAMP` entry**, so the transmitter reading and the drawn
+  reading are the same number and the board only *formats* it. Same for `intermediate_range`.
+- **The band.** `fmtExp` is `mantissa.toFixed(1)`, so `1.4e3` is drawn for **[1350, 1450)**.
+  Thresholds are now `>=` the band **floor** — **695 / 1350 / 2950 / 6950**. `>=` not `>`, because
+  the edge value itself renders as the target string. MEASURED, authored route, both seeds, all four
+  rungs: the first broadcast the tile prints the target or higher and the first broadcast the new
+  predicate holds are **the same broadcast — gap 0.0 s** (seed 42 138.6 / 437.8 / 712.7 / 1125.8 s).
+- **Where it actually buys something is the PLAYER's route**, not the replay's. Release WITHDRAW the
+  instant the tile first prints the target, then hold — the 1.4e3 rung went **+173.2 s → +46.4 s**
+  (seed 42) and **+236.0 s → +47.1 s** (seed 7). Over those 300 s the tile printed `1.4e3` or higher
+  on **2,046 of 3,000** broadcasts while the old row refused. On the authored route the change buys
+  10–29 s against 11–31 s — nearly nothing, which is why measuring only the replay would have made
+  this look not worth doing.
+- **The residual is `ACC_STABLE_N`, not the band**: five consecutive broadcasts against a channel
+  carrying 0.02 decades (±4.7 %) of noise.
+
+### #749 item 2 — REACTOR POWER, the same defect on a `toFixed(1)` tile
+
+`digits: 1` prints "0.1" for **[0.05, 0.15)** and the acceptance sat at 0.1, the middle of its own
+digit. MEASURED, authored route, seed 42, step opens t = 1689.4 s: the tile first prints "0.1" at
+**+1307.5 s**; the old `power_pct > 0.10` latched **+1414.9 s** — **107.4 s of dark Continue beside a
+tile already reading the target**. Now `> 0.05`, latching **+1306.4 s**.
+
+**Two candidate fixes were declined WITH the measurement, which is the part worth keeping.** Moving
+the acceptance onto the step's own stated test — *"STARTUP RATE positive and steady with the rods
+stopped"* — is satisfied at **+0.4 s**, so it would tick this step instantly and **relocate the
+identical stare onto the next step's `power_pct > 0.5`**; and `>` latches, so a rod still moving
+would tick it for a player who is not critical. Re-stating the wait in prose was already shipped
+(#753) and re-measures at **21.8 min** against a copy saying "about twenty-five", so it is
+conservative and was left alone.
+
+### #749 item 2's second half — an INTER RANGE row, shipped because it was measured first
+
+`accs` is a **conjunction**, so a second row cannot shorten the wait by a second. What it can buy is
+that something on the card MOVES through the stare. The criterion was set before the work and the
+row had to clear it: MEASURED, authored route — INTER RANGE ticks **+742 s (seed 42) / +851 s
+(seed 7)** against **+1306 s / +1499 s** for the power row, **57 % of the wait on both**, 9.4 and
+10.8 plant-minutes of margin. **The margin is the GATE's criterion, not a preference:** moving the
+row to 4.0e-6 collapses it to 7 s and reds `2ab.7` — Q4 of `DESIGN_CRITERIA` firing by measurement.
+
+**1.0e-7 A is a DECLARED progress milestone, not a plant setpoint** — there is no sourced setpoint in
+this window (P-6 is 1.0e-10 A; the step opens at 4.7e-10) — and it says so on the step rather than
+dressing it as a plant number. `fmtExp` quirk worth knowing: one ulp below 1e-7 prints `10.0e-8` at a
+mantissa of ten, so here the band floor IS the target.
+
+**⚠ THE "IT CANNOT GATE" CLAIM WAS TRUE ABOUT THE PLANT AND FALSE ABOUT THE BOARD**, and the quality
+pass caught it. On TRUE STATE the rows are strictly ordered by construction (`ir_amps` and
+`power_pct` are both `K × pFrac` of the same flux, a factor of 47 apart). But **item 1 is the change
+that put both rows on INSTRUMENTS**, and an instrument is independently failable: MEASURED,
+`hot_full_power`, seed 7, `set_instrument_failure {intermediate_range, dead}` — reachable from the
+Failures tab — publishes the range floor **1.0e-11 A** against a true **8.3e-3 A**, and the row then
+never meets while REACTOR POWER reads **99.7 %** and does. The step authors no `overtaken`, so
+Continue stays dark. **Not regraded** — instrument-first is HR1, and every instrument-graded row in
+the pool already pays this — but the claim was corrected in the step comment and the CHANGELOG, and
+the exposure is tracked on **#772**. The four count rungs took the same exposure in the same change.
+
+### #749 item 3 — verified closed, no edit
+
+Now step index 11 (the leg shortened when #750 removed the sixth 1/M point). Graded through the real
+`_gradeAccs`: 4.91 % at −0.60 DPM **refuses** · 4.98 % at −0.308 **refuses** · 1.94 % at +0.183
+**refuses** · settled 4.01 % at −0.0012 **ticks** · 5.4 % at −0.00 **refuses**. Both halves of its
+own sentence are graded.
+
+### #749 item 4 — a message raised on a walkthrough step outlived it
+
+MEASURED on the live Path 3 runtime before the fix (`start_checklist pwr_startup`, Continue to a 1/M
+rung, real overshoot until the plant secured the source range itself at bank **242**, then Continue
+to the end): step 6's overtaken note — *"Stop withdrawing and go to the criticality step"* — stood at
+steps **9, 10, 11, 12, 13, 14, 15, 16, 17 and on the COMPLETE snapshot**, ten of ten later states,
+the last of them telling a finished player to stop withdrawing. `_advanceFollow` clears
+`pendingMessage`; `_checklistCheckOff` reset eleven per-step fields and never touched it.
+
+**⚠ THE ORDERING TRAP.** The `overtaken` path SET the message and THEN called `_checklistCheckOff`,
+so a naive clear inside that function deletes the message the call was made to deliver. The form
+chosen: `_checklistCheckOff` clears unconditionally, and the one caller that speaks *through* it
+raises its message **after** the call — which is also where that message belongs, since the note
+explains the step the player has **landed on**. The alternative (stamping each message with its step
+index) buys identical behaviour for a new `serialize`/`restore` field and a second rule to keep in
+step; declined. After: the note is on step 9 and steps 10–17 plus COMPLETE are all `null`.
+
+### #757 — a secured SOURCE RANGE drew `1.0e0 cps`
+
+**The root cause was one level below the filed one.** `sr_counts_cps` truth is **0** when
+de-energized, but `pwr_instruments.js` floors the *published* reading at the channel's own range
+minimum (`source_range: {range:[1,1e6], log:true}` — a log scale cannot carry zero). So the tile was
+handed a real **1** and drew it honestly; the defect is that the tile had no representation for *out
+of service*. MEASURED headless, `hot_full_power`: before `{"text":"1.0e0 cps"}`, after `{"text":"— "}`
+with the unit span empty, colour unchanged at idle grey `#7f95a5`.
+
+**The sweep** (the issue's own "the bug is the missing state, not the number 1"):
+`intermediate_range` has the log floor (1e-11 A) but **no de-energization switch** — always live, and
+its low reading is a real chamber current. Every other channel in `pwr_instruments.js`'s SOURCE map
+floors at 0 (a secured pump genuinely reads 0) or at a real physical minimum (tavg/thot/tcold 30 °C).
+`source_range` is **the only tile with this shape**: a log-scale floor plus a real, non-injected
+securing switch.
+
+**Deliberately NOT fixed:** an *injected* `dead` failure on the source range still draws `1.0e0 cps`
+in green. That is modelled instrument deception (HR1), a different case from a display gap, and
+`sr_energized` is untouched by an injected failure so the two paths never overlap.
+
+### #759 — verified, not rebuilt
+
+**BOTH halves were already shipped** (`fd5750c9`, 2026-09-15) and the issue was simply never closed.
+The trap for the next reader: the source comment at `ui/manual_procedures.js:2083` reads *"the card's
+one-line reason on an out-of-turn press is ui/app.js"* — that is a **pointer to where it lives**, not
+a TODO, and reading it as a TODO cost an agent a full run. Re-driven live rather than inherited: at
+step 5 with rung 5a unmet, two out-of-turn presses leave the rows at `5a○ 5b· 5c· 5d·`, take both
+points on the plot (C = 491 then 459 cps), and draw
+`Not yet — 5a comes first: Press MED, then hold WITHDRAW under CONTROL until SOURCE RANGE passes 7.0e2.`
+which clears when a real WITHDRAW satisfies 5a. `ui/app.js` had zero net diff.
+
+### #766 — closed
+
+`nextLegFor` gate live at `ui/app.js:5630`, `verify_flags_ui` baselined 55/55, and
+`git tag --contains 33983f33` returns **v1.7.5** — on `main` and live, not just on the lane.
+
+### The quality pass found a defect the fix itself introduced
+
+CLAUDE.md's fresh-agent directive earned its keep here. `e21d7e90`'s note reasoned about the
+**callers** of `_checklistCheckOff` — *"the other two raise no message at all"* — when the question is
+what is **standing** when the caller runs. `_stepChecklist` raises the PRECONDITIONS-NOT-MET comment
+and **then** runs the catch-up fast-forward, in the same pass, a few lines apart; the unconditional
+clear deleted it before any broadcast drew it, and `precondSaid` latches for the life of the run, so
+it never came back. MEASURED, `start_checklist pwr_shutdown` on `hot_zero_power`, seed 7 (a shipped
+case — first precondition is REACTOR POWER above 10 %, plant reads 1.9e-7 %, and step 1 is already
+true so the catch-up fires): `instructor.message` **NULL on every broadcast**, in precisely the one
+case that comment exists for. Fixed with `if (by !== 'caught_up')`. **Generalise it:** *"the callers
+raise no message"* is not the same claim as *"no message is standing"*.
+
+Two further corrections from the same pass: *"the card's line is byte-identical"* stopped being true
+at `e21d7e90`, because the new row got an authored `label` and `ui/app.js:4565` prefers `label` over
+`fmtPredicate`; and `'REACTOR POWER reads 0.1 %'` became `'… or more'`, the bare form being false at
+0.3 % while the row is still ticked.
+
+### Checks — and the one that was hollow on its first draft
+
+`run_checklist_pwr2` **303 → 319**, two new sections. Everything is injection-proven, red text on the
+issues. The one worth reading twice:
+
+> **§2ab.5's first draft asserted only "at the tick the tile prints the target or higher" — and its
+> injection PASSED.** With the map entry gone the rung still latched with the card reading `1.5e3`,
+> one band *above* target. One half was satisfiable by accident; it is written as a conjunction with
+> `graded_by === 'instrument'` for that reason.
+
+The band edges in the gate are **re-derived out of the board's own `fmtExp`**, lifted by name and
+evaluated, not copied — and `04317660` exists because the lift threw a raw `SyntaxError` and killed
+the runner instead of reddening, which is the wrong failure mode for a check that exists to notice a
+reformat of the board's formatter.
+
+### `run_hardrules` 590 → 591 — pre-existing, adjudicated here
+
+Not caused by this bundle: reproduced red at `088048ae`, and the five bundle commits add zero sites.
+DERIVED — the marker diff over the six scanned roots across `768b8dc3..088048ae` yields exactly one
+`+` and zero `-`, and it is CLAUDE.md's `SONNET BY DEFAULT; OPUS WHERE JUDGEMENT IS THE WORK`
+*(OWNER DIRECTIVE, 2026-09-18: "change our standard practice to use sonnet agents for well scoped
+work and only use opus agents for Work that needs more intelligence")* from `ca2c5a6e`. HR11 site count 574 → 575, **0 undeclared** — the
+rule is satisfied and only the tally was stale. `BASELINES` updated with the derivation.
+
+### Still open, on the owner
+
+- **#772** carries three residuals, all with options and a recommendation: the 7.0e2 rung's ±4.7 %
+  noise (recommend: leave it), the unmeasured `<`-direction mirror case on damped channels, and the
+  instrument-failure exposure above (recommend: leave it).
+- **The INTER RANGE row gates nothing on a healthy board** — progress feedback wearing an
+  acceptance's clothes, a shape this pool has no precedent for. One commit deep and reversible if
+  the owner would rather have a separate non-grading "what to watch" affordance.
+
+### ADDENDUM, same session — the INTER RANGE row's soft-lock, ruled and closed (`1a94d5e2`, `40365eb7`)
+
+*(OWNER RULING, 2026-09-18: selected "B" from four options — A keep the row as shipped; **B keep it,
+and close the soft-lock**; C revert the row; D build a non-grading "what to watch" row kind. A
+SELECTION, not verbatim words.)*
+
+**The mechanism is `implied_by`, and it is an IMPLICATION, not a fail-open.** An `accs` entry may name
+a **sibling in its own array whose threshold already answers it**; while that sibling is met this
+entry latches too and is flagged `implied`, and the card draws *"Covered by 9b: REACTOR POWER reads
+0.1 % or more — this gauge did not get there."* rather than a bare tick standing for a reading the
+board never showed. Authored on exactly one row: `pwr_startup` step 9's INTER RANGE row,
+`implied_by: 'power_pct'`.
+
+**FAIL-OPEN WAS THE OBVIOUS IDEA AND IT IS WRONG TWICE.** First, the signal does not exist where the
+instructor can see it — MEASURED, `hot_full_power`, seed 7, channel dead: `snapshot.active_failures`
+is **`[]`**. The declaration lives one layer down and nothing consumes it
+(`PWR2Engine.getActiveFailures()` at `pwr2_shell.js:1761` returns `instrument:intermediate_range`;
+`ControlLayer.getActiveFailures()` at `control_kernel.js:1217` returns only kernel-injected rows, and
+that is what `simulation_service.js:949` publishes). **Second, and this is the load-bearing one: even
+with the bit it is the wrong shape.** Standing a row down *because its gauge broke* says nothing about
+whether anything still asserts the step — and MEASURED on the built pool, **27 of the 87
+instrument-graded rows are the ONLY row of their step**, so a blanket fail-open would tick those off a
+broken gauge. The honest condition is **redundancy**, which also covers a stuck channel or a lost
+failure list rather than only a declared `dead`. `overtaken` rejected for the reason in the brief: it
+checks the WHOLE STEP off on a plant condition, and a dead instrument is not the plant moving past
+anything. **HR1 intact — neither row reads `true_state`.**
+
+**Numbers.** Dead channel publishes **1.0e-11 A** against a true **8.3e-3 A**. Before: `all:false` for
+ever with REACTOR POWER at **99.6 %** met. After: `all:true`, INTER RANGE `met:true implied:true`.
+`K_IR` is **8.333e-3** A per unit rated fraction (`pwr2_true_state.js:592`), so the power row's 0.05 %
+puts INTER RANGE at **4.17e-6 A** — **41.7×** the covered row's 1.0e-7 A, and that ratio is gated
+(move the row to 1.0e-5 and §2ad.2 reds at **0.4×** against a 10× bound).
+
+**Two constraints on `implied_by` that NO GATE CAN ENFORCE** — found by the quality pass, latent from
+the one shipped instance, now written at the mechanism: **(a) the latch is never given back, so name a
+LATCHING sibling — never a `~` band, `steady` or `stopped` row**; **(b) the pass resolves in ONE
+FORWARD PASS, so do not chain.** A third finding was declined and reported: §2ad.1 does not enforce
+that the named sibling be instrument-graded, and a gate checking the channel still could not check
+that the implication is *real*.
+
+`run_checklist_pwr2` **319 → 324** (§2ad, five checks; the replay count is unmoved because the replay
+asserts each entry's own predicate and `implied_by` is invisible to it). `run_hardrules` **592 → 593**,
+HR11 site count 576 → 577, the new ruling citation. 19 touched runners green.
+
+**PROCESS TRAP, and it cost a re-run: `run_hardrules` was not in the first change's per-change batch,
+and only the re-run caught the drift. ADD `run_hardrules` TO THE BATCH WHENEVER A COMMENT CITES A
+RULING** — the citation is the thing that moves the tally, and a comment is the easiest place to
+forget you wrote one.
+
+**The class is filed as #773**, with the 87 / 27 measurement in the body so it is a yes/no rather than
+an investigation: sweep the instrument-graded rows for steps that strand under a single `dead`
+instrument and author `implied_by`, `overtaken`, or nothing, case by case. Recommended — but not next,
+and split by leg rather than run as one 87-row pass.
+
+**Not verified:** the rendered "Covered by" line has never been seen in a browser (no gate reads it);
+save/restore carries one boolean per entry, so a reloaded run keeps the tick and **loses the note**
+(declined as a save-format change for a note, written into the file); the 87 rows were **counted, not
+swept**; the +742/+851 s margins are inherited from the authoring pass, not re-measured here.
+
+**A COST NOTE, because CLAUDE.md's ceiling exists for this:** the agent that did this work ran
+**1,842 tool calls** against the ~150 ceiling its brief set, and reported nothing until the end. The
+work is sound and the quality pass found no live defect in it — the failure is that no check-in
+happened at the point where re-scoping was still possible. Same shape as the 1231/2274-call runs the
+efficiency directive records. **A ceiling in a brief is not self-enforcing; only a check-in is.**
+
+### Not verified
+
+The rendered card — everything here is measured on the built pool and on live broadcasts through
+`_grade` / `_gradeAccs`, and `verify_e2e_ui` / `verify_manual_follow` are green but neither reads the
+new two-row done-when block's drawn text. More than two seeds for the 57 % margin. The
+`DISPLAY_DAMP` injection for §2ab.2 and §2ab.6 (it needs an edit to a file another agent held).
+Whether any *other* walkthrough step becomes unsatisfiable under a single `dead` instrument — the two
+channels this change touched were measured, the pool was not swept.
+
+---
+
 ## Session log — 2026-09-17-develop-b (#761 — the 1/M settle rungs stop grading a PROXY: `op: 'stopped'`)
 
 **Issue:** #761. **Nothing pushed.**

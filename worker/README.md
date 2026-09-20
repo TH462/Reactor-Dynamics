@@ -121,23 +121,43 @@ A browser exercises the CORS preflight that curl above does not.
 
 ## The ops dashboard
 
-`GET /dashboard?token=T` — a read-only viewer, gated by a shared-secret token instead of
-the CORS origin check the ingestion routes use. Two views:
+`GET /dashboard` — a viewer behind a password form and an HttpOnly session cookie, rather
+than the CORS origin check the ingestion routes use. Views:
 
 | | |
 |---|---|
-| `?token=T` | **Bug reports** — the R2 bundles, newest first, with a detail view per report and `&raw=1` for the JSON. `src/dashboard.js` |
-| `?token=T&view=analytics` | **Analytics** — Web Analytics traffic + in-sim usage, `&days=7\|14\|30`. `src/analytics.js` |
-| `?token=T&view=sessions` | **Sessions** — one row per session; click through to its ordered event trace. `src/sessions.js` |
-| `?token=T&view=features` | **Features** — what the live sim gates, and the control that changes it. `src/features.js` |
+| `/dashboard` | **Bug reports** — the R2 bundles, newest first, with a detail view per report and `&raw=1` for the JSON. `src/dashboard.js` |
+| `?view=analytics` | **Analytics** — traffic + in-sim usage over an arbitrary `&from=&to=` date range, with a trend line. `src/analytics.js`, reading `src/stats.js` |
+| `?view=sessions` | **Sessions** — one row per session; click through to its ordered event trace. `src/sessions.js` |
+| `?view=features` | **Features** — what the live sim gates, and the control that changes it. `src/features.js` |
 
-Set the token once, as a Worker secret (never a repo file, never RD_Ops — that directory
-syncs off-site and is deliberately secret-free):
+**No secret goes in the URL.** The bookmark is the clean path; the address bar, browser
+history and any pasted link carry nothing. That was not true before 2026-09-18: the token
+was a query parameter on every internal link, so the bookmark *was* the credential.
+
+Three Worker secrets (never a repo file, never RD_Ops — that directory syncs off-site and
+is deliberately secret-free):
 
 ```bash
 cd worker
-wrangler secret put DASHBOARD_TOKEN   # paste a random value when prompted
+wrangler secret put DASHBOARD_PASSWORD   # what you type, once per device
+wrangler secret put DASHBOARD_HMAC_KEY   # signs the session cookie; 32+ random chars
+wrangler secret put DASHBOARD_TOKEN      # LEGACY, kept only for the bookmark migration
 ```
+
+`DASHBOARD_HMAC_KEY` must **not** be the same value as `DASHBOARD_TOKEN`: the token stays a
+live bearer credential until the cutover block is deleted, and signing sessions with a live
+bearer credential is the defect this change removed.
+
+**Rotating `DASHBOARD_HMAC_KEY` is the revoke-all-devices switch** — it invalidates every
+outstanding cookie. There is no other way to log out a lost phone.
+
+**Cutover, in two stages.** Stage 1 shipped 2026-09-18: a `GET` carrying a matching
+`?token=` mints the cookie and redirects to the same path with the token stripped, so an
+existing bookmark rewrites itself on first use. The token is no longer standing
+authentication — only that one-shot exchange. **Stage 2, after 2026-09-25:** delete the
+`LEGACY_TOKEN_EXCHANGE` block in `src/dashboard.js` and rotate `DASHBOARD_TOKEN`. Rotating
+it earlier burns the migration, because an old bookmark carries the old value.
 
 The analytics view needs a **second** secret, because the `EVENTS` binding is write-only —
 **a Worker cannot read its own Analytics Engine dataset through the binding.** Both the SQL
@@ -190,7 +210,9 @@ message from different causes:
 `GET /flags-stages` (open, unauthenticated) returns the queued stages;
 `site/stamp_version.js` fetches it at build and freezes the result into the generated
 `site/channel.js` as `RD_FLAG_STAGES`, which `site/flags.js` reads in place of its own
-literals. Writes are a form POST to the dashboard behind `DASHBOARD_TOKEN`.
+literals. Writes are a form POST to the dashboard behind the session cookie — `SameSite=Lax`
+is what stops a foreign site submitting it, which is why the cookie must never become
+`SameSite=None`.
 
 **A change is queued, not live — it ships on the next deploy of `main`.** That is a
 consequence of the offline promise, not an oversight: the sim must load nothing at
@@ -230,11 +252,13 @@ and the page warns when the window crossed the seam.
 If wrangler auths via a scoped `CLOUDFLARE_API_TOKEN` in the environment (Analytics-read
 only, per `RD_Ops/runbook.md`), that token lacks permission to write Worker secrets —
 unset it for this one command so wrangler falls back to its own OAuth login:
-`env -u CLOUDFLARE_API_TOKEN wrangler secret put DASHBOARD_TOKEN`.
+`env -u CLOUDFLARE_API_TOKEN wrangler secret put DASHBOARD_PASSWORD`.
 
-Bookmark `https://reactor-dynamics-telemetry.<subdomain>.workers.dev/dashboard?token=<T>`
-— that URL is the credential. Rotating it is just `secret put` again followed by
-`wrangler deploy`.
+Bookmark `https://reactor-dynamics-telemetry.<subdomain>.workers.dev/dashboard` — no
+secret in it. You are asked for the password once per device and the cookie lasts 30 days.
+Changing the password is `secret put` again followed by `wrangler deploy`; that does not
+sign anyone out, because existing cookies are signed with `DASHBOARD_HMAC_KEY` — rotate
+that instead when you want every device logged out.
 
 ### Bug reports
 

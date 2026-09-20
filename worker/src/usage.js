@@ -1,6 +1,6 @@
 /* Reactor Dynamics — the FEATURE USAGE page of the ops dashboard. (#674)
  *
- *   GET /dashboard?token=T&view=usage
+ *   GET /dashboard?view=usage
  *
  * *(OWNER, 2026-09-09: "I need to update my telemetry site for tracking usage of the
  * walk-throughs. I'd like to be able to figure out if people get stuck on one or how far
@@ -90,13 +90,13 @@ function quantile(sorted, q) {
 }
 
 // ---------------------------------------------------------------- the page
-export async function usagePage(env, url, token) {
+export async function usagePage(env, url) {
   const apiToken = env.CF_ANALYTICS_TOKEN;
   const days = Math.max(1, Math.min(90, Number(url.searchParams.get('days')) || 30));
   const since = `timestamp > NOW() - INTERVAL '${days}' DAY`;
 
   const head = '<!doctype html><html><head>' + PAGE_HEAD
-    + '<title>Feature usage — Reactor Dynamics</title></head><body>' + nav(token, 'usage');
+    + '<title>Feature usage — Reactor Dynamics</title></head><body>' + nav('usage');
 
   if (!apiToken) {
     return html(head
@@ -108,7 +108,7 @@ export async function usagePage(env, url, token) {
   }
 
   const windowLink = (n) => {
-    const href = '?token=' + encodeURIComponent(token) + '&view=usage&days=' + n;
+    const href = '?view=usage&days=' + n;
     return n === days ? '<b>' + n + 'd</b>' : '<a href="' + href + '">' + n + 'd</a>';
   };
 
@@ -118,7 +118,7 @@ export async function usagePage(env, url, token) {
   let haveWt = 0, probeErr = '';
   try {
     const r = await sql(apiToken, `SELECT sum(_sample_interval) AS n FROM ${DATASET}
-        WHERE blob1 LIKE 'walkthrough_%' AND ${since}`);
+        WHERE blob1 LIKE 'walkthrough_%' AND blob2 <> 'dev' AND ${since}`);
     haveWt = num(r[0] && r[0].n);
   } catch (e) { probeErr = e.message; }
 
@@ -137,7 +137,13 @@ export async function usagePage(env, url, token) {
     + '<h1>Feature usage <span class="muted">— last ' + days + ' days</span></h1>'
     + '<p class="muted">Window: ' + windowLink(7) + ' · ' + windowLink(30) + ' · ' + windowLink(90)
     + ' · in-sim usage only. Traffic and page performance are on '
-    + '<a href="?token=' + encodeURIComponent(token) + '&view=analytics">Analytics</a>.</p>'
+    + '<a href="?view=analytics">Analytics</a>.</p>'
+    /* The source line every view now carries instead of an `Exact` column (#764). This
+     * page is not Web Analytics and has no coarse tier — it is the sampled Analytics
+     * Engine dataset, whose grain is the IN-SIM SESSION, so it says so rather than
+     * borrowing the traffic page's wording. */
+    + '<p class="muted">Source: <b>Cloudflare Analytics Engine</b> — sampled '
+    + '(session counts are a floor), 3-month retention.</p>'
     + '<h2>Walkthroughs <span class="muted">— how far people get, and where they stall</span></h2>'
     + '<p class="muted">Session counts are a <b>FLOOR</b>: this dataset is sampled, whole '
     + 'rows are dropped, and no weighting recovers a session that vanished entirely. '
@@ -166,15 +172,22 @@ async function walkthroughSections(apiToken, since) {
     failed.push(what + ': ' + String((e && e.message) || e).slice(0, 200));
     return [];
   };
+  /* `blob2 <> 'dev'` on every query below — see the identical guard and its own comment
+   * in simSections's "Controls people try but cannot use" further down. It never reaches
+   * a matching-column 422 (blob2/channel is populated on every row, not a column added
+   * later), so it needs no COLUMNS_SINCE-style probe. */
   const [starts, ends, mix, funnel, rewinds, dwell] = await Promise.all([
     sql(apiToken, `SELECT blob8 AS wt, count(DISTINCT blob4) AS sessions,
             sum(_sample_interval) AS n, max(double10) AS steps
-       FROM ${DATASET} WHERE blob1 = 'walkthrough_start' AND ${since} GROUP BY wt`).catch(errRows('starts')),
+       FROM ${DATASET} WHERE blob1 = 'walkthrough_start' AND blob2 <> 'dev' AND ${since}
+       GROUP BY wt`).catch(errRows('starts')),
     sql(apiToken, `SELECT blob5 AS k, count(DISTINCT blob4) AS sessions, sum(_sample_interval) AS n
-       FROM ${DATASET} WHERE blob1 = 'walkthrough_end' AND ${since} GROUP BY k`).catch(errRows('ends')),
+       FROM ${DATASET} WHERE blob1 = 'walkthrough_end' AND blob2 <> 'dev' AND ${since}
+       GROUP BY k`).catch(errRows('ends')),
     // The by-mix comes off the COMPOSITE key, which is the copy that survives the rollup.
     sql(apiToken, `SELECT blob5 AS k, sum(_sample_interval) AS n
-       FROM ${DATASET} WHERE blob1 = 'walkthrough_step' AND ${since} GROUP BY k`).catch(errRows('step mix')),
+       FROM ${DATASET} WHERE blob1 = 'walkthrough_step' AND blob2 <> 'dev' AND ${since}
+       GROUP BY k`).catch(errRows('step mix')),
     /* …and the funnel comes off the COLUMNS, because `count(DISTINCT session)` per
      * (walkthrough, step) has to group on the step alone. Summing the by-mix rows instead
      * would double-count any session that checked one step off twice under two different
@@ -182,13 +195,16 @@ async function walkthroughSections(apiToken, since) {
      * page exists to find. */
     sql(apiToken, `SELECT blob8 AS wt, double9 AS step, count(DISTINCT blob4) AS sessions,
             sum(_sample_interval) AS n
-       FROM ${DATASET} WHERE blob1 = 'walkthrough_step' AND ${since} GROUP BY wt, step`).catch(errRows('funnel')),
+       FROM ${DATASET} WHERE blob1 = 'walkthrough_step' AND blob2 <> 'dev' AND ${since}
+       GROUP BY wt, step`).catch(errRows('funnel')),
     sql(apiToken, `SELECT blob8 AS wt, double9 AS step, count(DISTINCT blob4) AS sessions,
             sum(_sample_interval) AS n
-       FROM ${DATASET} WHERE blob1 = 'walkthrough_rewind' AND ${since} GROUP BY wt, step`).catch(errRows('rewinds')),
+       FROM ${DATASET} WHERE blob1 = 'walkthrough_rewind' AND blob2 <> 'dev' AND ${since}
+       GROUP BY wt, step`).catch(errRows('rewinds')),
     // Raw durations. Quantiles are computed here, not in SQL — see `quantile`.
     sql(apiToken, `SELECT blob8 AS wt, double9 AS step, double1 AS seconds
-       FROM ${DATASET} WHERE blob1 = 'walkthrough_step' AND ${since} LIMIT 20000`).catch(errRows('time on step')),
+       FROM ${DATASET} WHERE blob1 = 'walkthrough_step' AND blob2 <> 'dev' AND ${since}
+       LIMIT 20000`).catch(errRows('time on step')),
   ]);
 
   // starters[id] -> {sessions, n, steps}
@@ -405,7 +421,11 @@ async function simSections(apiToken, since) {
         const probe = await sql(apiToken, `SELECT count() AS n FROM ${DATASET}
             WHERE ${since} AND timestamp >= ${COLUMNS_SINCE}`);
         if (num(probe[0] && probe[0].n) > 0) {
-          (await sql(apiToken, `SELECT blob4 AS session, max(double5) AS t_last
+          // double6 is t_session — seconds since the session id was MINTED, which
+          // survives a reload. double5/t_page is seconds since PAGE LOAD and resets on
+          // every reload, making it a weaker floor than the design intends (#same bug
+          // as sessions.js's detail query, which already reads double6 correctly).
+          (await sql(apiToken, `SELECT blob4 AS session, max(double6) AS t_last
               FROM ${DATASET} WHERE blob2 <> 'dev' AND ${since}
                 AND timestamp >= ${COLUMNS_SINCE} GROUP BY session`))
             .forEach((r) => { lastBy[r.session] = num(r.t_last); });
@@ -434,21 +454,21 @@ async function simSections(apiToken, since) {
     }),
     section('Sessions by starting condition', async () => table(
       (await sql(apiToken, `SELECT blob5 AS initial_state, count(DISTINCT blob4) AS sessions
-         FROM ${DATASET} WHERE blob1 = 'session_start' AND ${since}
+         FROM ${DATASET} WHERE blob1 = 'session_start' AND blob2 <> 'dev' AND ${since}
          GROUP BY initial_state ORDER BY sessions DESC`))
         .map((r) => ({ initial_state: r.initial_state || '(none)', sessions: num(r.sessions) })),
       [{ key: 'initial_state', label: 'Starting condition' },
        { key: 'sessions', label: 'Sessions', num: true }])),
     section('How far through a startup they get', async () => table(
       (await sql(apiToken, `SELECT double3 AS mode, count(DISTINCT blob4) AS sessions
-         FROM ${DATASET} WHERE blob1 = 'plant_mode' AND ${since}
+         FROM ${DATASET} WHERE blob1 = 'plant_mode' AND blob2 <> 'dev' AND ${since}
          GROUP BY mode ORDER BY mode DESC`))
         .map((r) => ({ mode: 'Mode ' + num(r.mode), sessions: num(r.sessions) })),
       [{ key: 'mode', label: 'Reached' }, { key: 'sessions', label: 'Sessions', num: true }])),
     section('Most-used controls', async () => table(
       (await sql(apiToken, `SELECT blob5 AS action, sum(_sample_interval) AS uses,
               count(DISTINCT blob4) AS sessions
-         FROM ${DATASET} WHERE blob1 = 'command' AND ${since}
+         FROM ${DATASET} WHERE blob1 = 'command' AND blob2 <> 'dev' AND ${since}
          GROUP BY action ORDER BY uses DESC LIMIT 20`))
         .map((r) => ({ action: r.action || '(none)', uses: num(r.uses), sessions: num(r.sessions) })),
       [{ key: 'action', label: 'Action' }, { key: 'uses', label: 'Uses', num: true },
@@ -499,7 +519,7 @@ async function simSections(apiToken, since) {
     section('Panels opened', async () => table(
       (await sql(apiToken, `SELECT blob5 AS panel, sum(_sample_interval) AS opens,
               count(DISTINCT blob4) AS sessions
-         FROM ${DATASET} WHERE blob1 = 'panel_open' AND ${since}
+         FROM ${DATASET} WHERE blob1 = 'panel_open' AND blob2 <> 'dev' AND ${since}
          GROUP BY panel ORDER BY opens DESC LIMIT 20`))
         .map((r) => ({ panel: r.panel || '(none)', opens: num(r.opens), sessions: num(r.sessions) })),
       [{ key: 'panel', label: 'Panel' }, { key: 'opens', label: 'Opens', num: true },

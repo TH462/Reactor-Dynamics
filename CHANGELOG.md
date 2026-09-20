@@ -30,6 +30,544 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+
+## [Alpha 1.7.6] — 2026-09-20
+
+### Changed
+- **A walkthrough VERIFY step no longer wears the pulsing "act on this" ring** *(OWNER RULING,
+  2026-09-15: "Move them to the watch ring")*, raised by the 2026-09-15 layman playthrough, which
+  nearly pressed TRIP on Mode 5 → 3 step 4. TRIP and the STEAM DUMP CLOSE lamp move to the steady
+  watch treatment; Mode 1 power ascension step 9 stops ringing the BORON card. Every element the
+  owner drew is still ringed — only the animation goes. The blocker was structural: `stepHlLabels`
+  fell back to the step's own `control` when `hl` was empty, so deleting `hl` moved the pulse to a
+  different control instead of removing it; it now asks whether the step asks for a press.
+  Measured on the built pools: 51 steps reach that fallback, 40 carry a command and are unchanged,
+  and exactly one live step was affected. The three real contingency presses ("If it does not,
+  press AUTO") declare the new `press_expected`, and `run_manual_controls` reddens on a step that
+  pulses without one — a claim the existing check could not make, because it asks whether the
+  pulsed ELEMENT is workable and TRIP is a real button.
+- **Fast-forward no longer drops to 1× on an alarm the walkthrough step itself causes** *(OWNER
+  RULING, 2026-09-14: "Only alarms the step is not expecting")*. The engine half shipped
+  2026-09-14 and was inert until a step declared one. Two now do, both on the heatup and both
+  measured on the plant: the HEATER AUTO step declares `rhr_not_aligned` — its own pressure climb
+  shuts the RHR suction at 400 psi (2.76 MPa) — and the 11-plant-hour ride declares `low_tavg`,
+  which arrives because the plant leaves the cold modes below the 532 °F (278 °C) setpoint and
+  clears at the step's own 542 °F (283 °C) target. Driven end to end, the leg dropped the clock
+  once at 30 plant-minutes and now drops it not at all.
+
+### Fixed
+- **The ops dashboard's 7d/14d/30d range presets never changed the range** (2026-09-20). They were
+  submit buttons carrying the span in `formaction`, and a GET submission DISCARDS the action
+  URL's query string and sends the form's own fields instead — so every preset re-submitted the
+  date inputs as they stood and redrew the window already on screen. Plain links now. Measured in
+  headless Edge: the 14d button, whose own action asked for `from=2026-09-07`, navigated to
+  `from=2026-09-14`. Nothing could have caught it server-side — `resolveWindow` answered correctly
+  for the window it was actually asked about, which is why 87 green checks in `run_dashboard_time`
+  were right and irrelevant; the new checks assert the HREF. `run_dashboard_trend` 37 → 41, and the
+  `token-leak` injection was silently blind (its anchor was the deleted line) and is repointed.
+  Ops-only — no simulator change, so no `changelog.html` entry and no version bump.
+
+
+### Added
+- **Ops dashboard: "Country × referrer × day" reads the first-party store** (2026-09-20) instead
+  of querying Cloudflare live, so it stops rounding past 7 days. Cloudflare's RUM holds 7 days at
+  full resolution and serves a sampled tier beyond that — measured, the identical query returns
+  sampleInterval 1 over 7 days and 10 over 19 — and the data had been exact in `traffic_daily`
+  all along; only a multi-dimension reader was missing. Exact back to 2026-08-25.
+- **The site's own beacon now records referrer, country and a bot class** (2026-09-20), rolled
+  nightly into `own_traffic_daily`. Traffic data previously reached us only through Cloudflare's
+  injected RUM beacon, which content blockers block. The referrer is cut to a HOST — client-side
+  and again at the Worker, since the endpoint is open — the country comes from the edge without
+  an IP ever being stored, and the bot class is our own User-Agent match, cruder than
+  Cloudflare's and labelled as ours. **Authority does not move**: the dashboard still reports the
+  Cloudflare-derived numbers, and the two series run side by side until a comparison decides.
+  Expect ours to read higher once it works — that is the block rate becoming visible, not new
+  traffic.
+- **Ops dashboard: the By-day chart is a DAILY LINE past 14 days** (2026-09-20, owner request).
+  It bucketed 7 days to a bar above 14 and 30 above 90, so the 30d and All presets showed four or
+  five fat bars of weekly totals. 14 days or fewer keeps the bars unchanged; longer draws one
+  point per day at any length. A day the rollup never captured stores 0, so the line BREAKS there
+  and marks it rather than plunging to zero and back — a real zero still dips, connected, because
+  the two have to look different. X labels thin to about twelve with the spacing stated in the
+  legend.
+- **Ops dashboard: an "All" range preset** (2026-09-20, owner request) opening the window on the
+  first day the server recorded, through today. Reuses `storeRange()`'s own `first` rather than
+  re-querying, renders only when the store is non-empty, and is clamped to `RETAIN_DAYS` so it can
+  never hand the picker a window `stats.dayRange` then rejects.
+
+### Fixed
+- **The ops dashboard counted bot traffic in every live "today" figure** while every closed day
+  excluded it (`stats.js` filters `bot = 0`) — so the page's own Bots section printed that it was
+  the only section including bots, which was false for the live half of all of them. Excluded on
+  the returned rows rather than by inventing an unconfirmed RUM filter key; the Bots section stays
+  exempt, because filtering the column you group by is the exemption `stats.js` already makes.
+- **An uncaptured day printed a confident conclusion drawn from its own absence.**
+  `ext.every(r => r.kind === 'direct')` is `true` on an empty array, so a day the nightly rollup
+  never ran rendered "nothing external referred anyone — that is a finding, not a gap in the data"
+  while the same page's by-day table marked the date no-data.
+- **A failed Cloudflare GraphQL call could be written into permanent history as a quiet day.**
+  `cfapi.js`'s `gql()` never checked `res.ok` — only a non-empty `errors` array — so a 403/429/5xx
+  shaped `{success:false, errors:[], result:null}` returned `{}` and the rollup stored
+  `traffic_rows: 0` with no note. Unrecoverable afterwards: a re-capture only gets the rounded tier.
+  `sql()` had the check all along.
+- **An expired `CF_ANALYTICS_TOKEN` produced total silence** — the guard returned before
+  `ensureSchema`, so not even a `rollup_runs` row was written, in the one table built to tell a
+  failed job from a quiet day.
+- **Dev-channel traffic was counted as players.** `blob2 <> 'dev'` was on 3 queries; the six
+  walkthrough queries, four sim sections and every query in `sessions.js` had none, so every local
+  headless run landed in the numbers. Now 16 sites in `usage.js`, 9 in `sessions.js`.
+- **Exact rows were labelled "coarse (±10)"** — the batch-wide sample interval was applied to every
+  row of a live merge; `cfOnlySections` had the per-row form right.
+- **A weekly bucket containing one uncaptured day undercounted with no marker** — `missing` used
+  `.every()` where `coarse`/`partial` use `.some()`. Now drawn with a dashed outline rather than
+  flipping to `.some()`, which would blank a mostly-complete bucket and be a worse lie.
+- **One transient referrer-query failure returned a 500 for the whole page** — that fetch was
+  awaited outside the `section()` wrapper every other breakdown degrades through.
+- **Session duration read the clock that resets on reload** (`double5`/`t_page` instead of
+  `double6`/`t_session`), making "Lasted ≥" and the Median/Mean/Longest tiles a weaker floor than
+  designed. **And the session list truncated at 100 with no note.**
+- **Removed the legacy `?token=` dashboard credential** five days before its own deadline, and
+  deleted the Worker secret with it *(OWNER RULING, 2026-09-20: "delete now, do not wait for the
+  25th")*. It was the only credential check
+  on that Worker with no rate limit — a wrong password charges 1 of 5 per minute, a wrong token
+  charged nothing — and the bookmark migration it existed for had already happened.
+
+Ops-only — no simulator change, so no `changelog.html` entry and no version bump.
+
+
+### Added
+- **A walkthrough acceptance row is voided when the player deliberately injects a named casualty on
+  the channel it grades** (#788, owner ruling A). Not a fail-open on a broken gauge: it reads
+  `snapshot.active_failures` — the player's own injection record — never `true_state`, and
+  `_predVoided` additionally requires `graded_by === 'instrument'`. The channel dependency relation
+  is declared in the file that computes the channels and **re-discovered by the gate**: one real
+  broadcast frozen, a fresh instrument layer driven to settlement, every channel stuck high *and*
+  low. A one-sided probe reports T-avg as no input to the subcooling margin, because the margin
+  takes `max(tavg, core_exit_temp)` — 610.0 °F (321.0 °C) against 580.2 °F (304.6 °C) at full power
+  — which would have silently excluded all four subcooling rows. On a sole-row step the card says
+  which gauge was failed and that the step was not verified.
+- **A walkthrough now reacts to a reactor trip** (#709, owner ruling A). Banner plus instructor
+  comment; the step does not move and nothing is checked off. The exemption for legs that script
+  their own scram is derived from authored content and needs both its clauses — `pwr_shutdown`
+  sends a scram command, while `pwr_tmi2_incident` sends none and instead *grades* `scrammed`, the
+  trip arriving out of the transient its own earlier steps inject.
+
+### Changed
+- **`pwr_tmi2_incident` step 15's wait is graded on loss of subcooling, not pressurizer level**
+  (#788). The level entry was a gauge doing a clock's job, and two named casualties freeze that
+  channel: frozen at 20.0 % it ticked on 267 of 300 broadcasts the truth did not satisfy; frozen at
+  the pegged 99.97 % it was permanently unmet. Hard Rule 9 — the cue for securing a reactor coolant
+  pump is loss of subcooling. A live player now waits 57.0 plant-minutes instead of 66.3.
+- **`Manuals/04` PWR-N07 gains the P-9 turbine-trip precaution** (#667 item 3) — armed at ≥ 50 %
+  power with the steam dumps available, ≥ 8 % without them. Both figures are the engine's own
+  permissive object, sourced to Ginna Technical Specification Bases B 3.3.1 (ML20339A221); the 8 %
+  case appeared in no manual chapter.
+- **`Manuals/12` §10.8 declares the single pressurizer-pressure channel** (#790, owner ruling
+  "declared simplification"). Measured on the sourced loss-of-load fixture: a **dead** channel is
+  fail-safe and trips the plant at 2.0 s on pressure low, while a channel **stuck** at a plausible
+  number blinds the relief valve and the high-pressure trip together and the plant rides to
+  2497 psia (17.22 MPa) on its code safeties, which read true pressure and are unaffected.
+
+### Fixed
+- **The Hard Rule 11 citation for §10.8 carried the date but not the owner's words** (#790), which
+  the scan correctly reported as undeclared. Caught by the aggregate, not by the four manual gates
+  that commit ran — none of them reads source citations.
+
+### Testing
+- **Two standing sweeps of the PWR2 walkthrough pool** (#773, #667 item 1): rows that become
+  unsatisfiable, and rows a broken gauge falsely satisfies. Of 87 instrument-graded rows under a
+  dead channel, 49 strand and 30 false-tick — the split decided by the direction of the comparison,
+  since `dead` publishes the channel's range floor. Four `saw` rows existed that the original count
+  missed entirely.
+- **A third sweep for the modes authored content actually injects** (#788). `dead` is the one mode
+  no named casualty uses; under `stuck` and `drift` the verdict inverts with the moment of the click
+  and crosses mid-step. `pwr_heatup:11` ticks "Mode 3, Hot Standby reached" at t+466.5 s on a plant
+  truly at 50.01 °C (122.0 °F).
+- **`run_checklist_pwr2` 324 → 359 checks; `run_hardrules` 599 → 600.**
+
+### Closed as accepted
+- **#773 and #788.** Instruments on this plant do not fail unless the player makes them fail, and
+  the only casualty authored content injects (`porv_indicator_stuck_closed`) breaks nothing — 0 of
+  91 pool rows grade that channel. The residual classes are accepted rather than left open implying
+  work *(OWNER, 2026-09-19: "I don't know why this would be a problem in a sim where instruments
+  don't break unless we break them.")*.
+
+### Added — a walkthrough now says so when the reactor trips under it (#709)
+
+- **The player's only cue was that nothing happened.** A walkthrough is a sequential list with
+  one active step; trip the reactor part-way through a leg and the plant is in a state the leg
+  never scripted, so the same step stayed active, its done-when waited on a number the plant
+  would not reach again, and the panel said nothing at all (layman playthrough 2026-09-07,
+  finding S-15). The leg now **detects the trip and says so**: one instructor comment and a
+  banner on the walkthrough panel, in both the Learning and Industry registers.
+- **It informs; it does not rescue.** The step does not move, nothing is checked off and no
+  acceptance is relieved — that is the ruling's boundary against the #788 casualty relief, and
+  it is pinned by an A/B that runs the same leg and the same trip with the mechanism neutered
+  and asserts every graded output is identical. Per-step re-entry and a post-trip emergency leg
+  are the other two options and are not built.
+- **It fires on the five legs a trip is not the point of, and on neither of the two it is.**
+  `pwr_shutdown` sends a scram command at its step 2; `pwr_tmi2_incident` sends none at all and
+  trips out of the loss-of-feedwater transient its earlier steps inject. The exemption is
+  derived from the authored content and re-discovered by driving each leg, not kept as a list.
+- **Nothing latches.** The notice is recomputed from the live plant every broadcast, so
+  SCRAM · PRESS TO RESET takes it down, and so does a Rewind to before the trip. It is gone from
+  the completion card.
+- `run_checklist_pwr2` 351 → 359 (new section 2ai, eight checks).
+
+### Fixed — the auxiliary feedwater discharge gauge read 0 psia on a running pump (#786)
+
+- **`afw_discharge_pressure_mpa` was gated on `afw_active`, which is `total_kgs > 0` — DELIVERED
+  flow.** So any state that ran the auxiliary feedwater pumps into a shut discharge path published
+  **0.0 psia (0.000 MPa)** beside a lit run light: the same impossible pair #782 removed from the
+  high-head safety injection gauge one line above, and the one #782's own comment wrongly cleared
+  on the grounds that the field "was never wired to the signal pattern". Being gated on delivery is
+  the defect, not an exemption from it.
+- **It was never casualty-only, which is what made it matter.** MEASURED 2026-09-19 on the ordinary
+  post-trip ride (reactor trip, main feed isolated, both pumps started by hand, full control layer
+  — the fixture `run_pwr2_shell` group T already rides): the flow control valve holds shut above
+  the sourced 33 ± 5 % narrow-range level band for **496.6 s of the first 1100 s, 45.1 % of the
+  ride**, every second of it drawing a running pump at zero. The automatic (lo-lo level) start is
+  the contrast — it starts the pumps with the level already below the band, delivers immediately,
+  and spends **0.0 s** there over 3000 s. The defect belonged to the route the operator takes.
+- **The gauge is now the form the contract has always specified** (`Blueprint/CONTEXT.md` §6.3, and
+  what the retired engine implemented): **shutoff head, 1204 psia (8.3 MPa), when the discharge
+  path is shut** — throttle valve or tagged-shut block, both downstream of both pumps — **the
+  generator pressure while delivering**, and **zero only when no shaft is turning**. A centrifugal
+  pump against a shut discharge sits at its shutoff head; the `min()` against steam-generator
+  pressure is only physically right while the path to the generator is open.
+- **`pwr2_afw.js` gained `pump_turning`**, the third reading beside demand and delivery. Neither of
+  the other two answers "is a shaft spinning": the run flag is DEMAND and stands true on a dead
+  motor through a station blackout, delivery dies behind a shut valve on a healthy one. The gauge
+  reads this, so a blacked-out motor-driven pump draws no head while the steam-driven train still
+  does (WTSM 5.7.5).
+- **The shutoff head moved to the plant and is declared UNVERIFIED.** An evidence pass across all
+  three lanes' corpora found no auxiliary feedwater pump curve, shutoff head or discharge-pressure
+  figure (`node tools/find_source.js` exit 1 on both probes). 8.3 MPa is the ceiling the contract
+  shim already clipped this gauge at — moved to `AFW.shutoff_mpa` and ridden down on the step
+  result, not invented and not changed. The corpus does confirm the gauge is prototypical: Ginna
+  UFSAR ch10 §10.4 lists auxiliary feedwater pump discharge pressure among the control-room
+  indications.
+- **Board copy corrected.** The AFW DISCHARGE PRESSURE inspect note taught the **retired** engine's
+  1500 psi (10.34 MPa) — itself the safety-injection pump's figure, borrowed — against a plant that
+  publishes 1204 psia (8.3 MPa).
+- Also fixed in passing: an absent pump availability read as `NaN` rather than full, which would
+  silently poison the whole secondary feed term for a hand-built Layer 5 fixture.
+- Gates: `run_pwr2_true_state` 83 → **87** (mutations 33 → **37**), `run_pwr2_afw` 35 → **43**
+  (mutations 15 → **21**), `run_pwr2_shell` 192 → **193**. `Manuals/12` §8.4 documented this
+  behaviour before the plant had it; it now carries the measured number and the unverified flag.
+
+
+### Fixed — four channels that read a value the plant was not at (#782, #778, #671, #765, #783)
+
+- **The safety-injection discharge gauge read a dead pump through a live injection** (#782).
+  `hpi_discharge_pressure_mpa` was gated on `hpi_active`, which ruling #603 defines as the
+  injection SIGNAL, not pump operation. An operator who secured injection and restarted the pumps
+  below the actuation setpoint got 12 % of rated flow beside a discharge pressure that decayed to
+  a denormal float — 0 psi on the board. Re-gated on **delivered flow OR the injection signal**:
+  the operator-restored point now reads **1069 psi (7.37 MPa)** where it read 0, with the
+  automatic-actuation path unchanged at 1160 psi (8.00 MPa). `hpi_active` itself is untouched.
+  `Manuals/07` PWR-E06 step 3b loses its "known defect" caveat (pending Rev 20, item l).
+  **Corrected on the quality pass:** the first fix gated on delivered flow ALONE, which is 0
+  whenever the plant is above the pump shutoff head — the state an *actuated* injection is in at
+  pressure — so it published 0 psi for a running, dead-headed pump where the old gate published
+  the sourced 1390 psi (9.58 MPa). The union restores that and keeps the fix. The same pass
+  measured `afw_discharge_pressure_mpa`, which the entry above had cleared by source read: with
+  `afw_failure` injected and both pumps started by hand it reads **0 psia with the run lamp lit**,
+  so it does share the shape. Left alone deliberately — what a blocked aux-feed pump's gauge
+  should read (its 1204 psi shutoff head, or steam-generator pressure) is a plant question, not a
+  wiring one.
+
+- **Two injected casualties did not survive a rewind** (quality pass on #671/#551). The `rcp_trip`
+  and `turbine_trip` seats were not in the `pwr2-1.0` save, so a save/restore came back with the
+  row gone from the Failures tab while the pump stayed tripped and the turbine stayed latched.
+  Both now ride the save; an older save without them loads unchanged.
+
+- **The retired engine's whole actuation table is inert on PWR2 — 21 rows against 0** (#778).
+  Filed as two containment rows that never fire; measured as the entire set. `pwr_control.js`
+  pushes every row onto one module-level array, and PWR2's `getProtectionConfig` assigns an empty
+  one over it, so the array the kernel holds is a different object. Same large loss-of-coolant
+  accident on both plants: the retired engine realigns fan coolers at 3.72 s, shuts the main steam
+  isolation valves at 12.60 s and starts containment spray at 12.66 s, peaking at 36.5 psig
+  (0.353 MPa); PWR2 crosses the same high-high setpoint at 58.64 s, fires nothing, and reaches
+  **78.5 psig (0.643 MPa)**. No behaviour change — the fact is now declared at three sites in the
+  kernel ("adding a row here does not give PWR2 a protection") and gated as a bifurcation that can
+  see both a firing and its absence. The `run_manual_notmodelled` red from #626 is explicitly NOT
+  cleared: its remaining leg needs a steam-line break, which PWR2 refuses to inject (#530).
+
+- **The casualty registry reported by a quantity that could not tell casualties apart** (#671).
+  `rcp_trip` was injectable but never appeared in the Failures tab and could not be cleared — the
+  detector had no branch for it, because the trip flag it would have read is shared with a loss of
+  offsite power, a station blackout and the operator's own pump stop. It now reads a seat set at
+  injection, the same precedent as the turbine row; clearing it releases the casualty without
+  restarting the pump, which stays the operator's action. `large_loca` reported itself as
+  `primary_leak`, an id with no catalog row, so injecting it from the menu never lit its own row;
+  the break now carries the id it was opened with.
+
+- **An injected loss of feedwater was invisible and unclearable, and the operator's own FEED
+  PUMPS OFF filed a casualty nobody caused** (#785, same class as #671's `rcp_trip`). The
+  detector read `fw.pumpA`/`fw.pumpB` — the operator's own run flags — while the injection
+  deliberately leaves them alone and zeroes availability instead: inject and the plant runs
+  99.6 % → 0.1 % on an empty Failures tab; secure the feed pumps by hand
+  (`set_feedwater_flow {pct:0, secure:true}`, no injection) and the tab reports
+  `loss_of_feedwater` against the operator. Now reads a seat set at injection and cleared
+  without touching the run flags, added to the save blob in the same change (the #671 quality
+  pass found two seats that shipped without that, caught by hand, not a gate — this one has its
+  own mutation).
+
+- **Closing the auxiliary feedwater block valve by hand filed a casualty against the player —
+  the exact valve the TMI-2 (Three Mile Island Unit 2) walkthrough asks them to close and
+  reopen** (#787, fourth instance of the #671/#785 shape). The detector read `aw.blocked`, which
+  the `afw_failure` injection and the board's own AFW block valve (`set_afw_block`/`block_afw`,
+  an ordinary valve toggle) both set through the same `afw_block` command: closing the valve with
+  no injection filed `["afw_failure"]`, reopening it cleared to `[]`. Now reads a seat set at
+  injection and cleared without touching the valve, added to the save blob in the same change.
+  Swept every remaining row in the detector (all ten other levers) — none shares this shape.
+
+- **Charging and letdown flow were not dead** (#765). Filed as reading 0.0 through 12.6
+  plant-minutes of maximum charging. Measured: 26 gpm (99.6 L/min) charging and 12 gpm
+  (44.8 L/min) letdown, matching the pump's own computed maximum to three significant figures and
+  drawn correctly on the board. The report came from a harness printing a small-fraction channel
+  at a precision that rounds to zero. No change; closed with the numbers.
+
+- **PWR2's containment annunciators promised mitigations the plant does not perform** (#783;
+  *OWNER RULING, 2026-09-18: "Containment as you recommend"* — caption only, the physics build
+  scoped separately as #784). The shared rows read *"Containment Pressure High (SI signal)"* and
+  *"…High-High (spray/MSLI)"*, which is true on the retired engine and false here: #778's inert
+  actuation array means containment spray, the fan-cooler realign and the steam-line isolation
+  never happen. The `high` row was **measured rather than assumed**, because PWR2's protection is
+  its own and could have carried a containment safety-injection channel — it does not.
+  Pressurizing the building to **35.3 psig (50.0 psia, 0.345 MPa)** on an otherwise healthy plant
+  lights both annunciators (31.0 s and 32.5 s) and latches **no** safety injection at all; this
+  plant's engineered-safeguards actuation is three functions — low pressurizer pressure, low steam
+  pressure, high-high steam flow — and none of them reads containment. On a large loss-of-coolant
+  accident the injection that does occur is caused by low pressurizer pressure at **27.02 s**,
+  **51.5 s before** containment reaches high-high. Both captions now state the condition and the
+  line it crossed — *"Containment Pressure High (3.5 psig)"*, *"…High-High (30 psig)"* — overridden
+  per-plant in `pwr2_shell.getProtectionConfig`; the shared text is untouched because it is correct
+  where the rows fire. The industry captions (`CTMT PRESS HI`, `CTMT PRESS HI HI`) named nothing
+  and did not change, and `Manuals/06` already documented the absence correctly. New gate band
+  (`run_pwr2_kernel` 41 → 45): **a caption a row lights may not name a mitigation the same ride
+  failed to produce** — measured per ride, not a word ban, so building the mitigation lifts the
+  ban by itself.
+
+
+
+### Fixed — three measurement tools that could not fail loudly (#763, #769, #665)
+
+- **The release deploy check asked about the wrong commit, at the one moment it is trusted**
+  (#763). `tools/verify_release_deploy.js` defaulted to local HEAD, and the release procedure runs
+  it deliberately *before* the `develop` fast-forward — so HEAD is the release commit on `develop`
+  while Cloudflare Pages built `main`'s merge commit. Reproduced live: `origin/main` reports LIVE,
+  local HEAD reports `NOT LIVE — 0 for this sha, 18 production deployment(s) total`, for the same
+  correct, already-serving site. It now resolves `origin/main` after a fetch, announces which
+  commit it chose and when that differs from HEAD, marks a stale ref as stale, and **refuses**
+  rather than falling back to HEAD. Self-test 20 → 29 checks.
+- **`engine.seed` was a silent `undefined` on both engines** (#769) — the seed reached the
+  instruments but was never stored, so a harness reading it back measured one noise stream while
+  believing it measured several. The failure mode is perfect reproducibility, which is the most
+  convincing possible evidence. Now stored as the *effective* seed (read back after the instrument
+  constructor's own defaulting) and kept in sync across `reset()` and `loadState()`, with new
+  checks that make a changed seed prove itself.
+- **`measure_stack.js` now measures PWR2** (#665) — `--plant=pwr2`, plus a `--settle` that is
+  stamped into the output whether or not it was given. Building it turned up `--seed=0x1234`
+  parsing as `0`, `--nudge`/`--pzr2` silently targeting the retired engine, and an unchecked
+  plant-selection error; all three are hard errors now.
+- **Three harnesses that disagreed by 55 seconds about the same plant are reconciled** (#665) —
+  they were reporting different clocks, not measuring different plants: one published times
+  relative to the rod withdrawal and the others absolute, and one counted ticks as a fixed second
+  when the service halves its broadcast period during a transient.
+- **The startup-rate timeline in the manuals matched a superseded rod drive speed** — `09` and
+  `12` cited a rod stop 44.9 s later than the plant now does. Both corrected, re-measured first,
+  and they now state which instant the times are measured from.
+
+
+### Fixed — the criticality step shows progress, and a walkthrough comment dies with its step (#749 items 2, 4)
+
+- **An INTER RANGE row joins the criticality step, and it shipped only because it was measured
+  first.** `accs` is a conjunction, so it cannot shorten the 21.8-plant-minute wait by a second —
+  what it buys is that something on the card MOVES through the stare, and that the card names a
+  number the player can watch approach. MEASURED, authored route: the INTER RANGE row ticks at
+  **+742 s (seed 42) / +851 s (seed 7)** against **+1306 s / +1499 s** for the REACTOR POWER row —
+  **57 % of the wait on both**. Had it landed next to the power row it would have been one more
+  line to read for nothing and `DESIGN_CRITERIA` Q4 would have vetoed it; the gate asserts that
+  margin, so it stays a criterion rather than a preference.
+- **The threshold is a declared progress milestone, not a plant setpoint.** There is no sourced
+  setpoint in this window — P-6 is 1.0e-10 A and the step *opens* at 4.7e-10 — so 1.0e-7 A is the
+  round decade that lands mid-wait on every route measured. It obeys the same render-band rule as
+  the count rungs, and **on a healthy board it cannot gate**: `ir_amps` and `power_pct` are both
+  `K x pFrac` of the same flux, so on TRUE STATE the two rows are strictly ordered by
+  construction. **Both rows are graded on INSTRUMENTS, though, so that is a statement about the
+  plant and not about the board** — MEASURED (quality pass): a `dead` failure injected on
+  `intermediate_range` from the Failures tab publishes the channel's range floor, 1.0e-11 A,
+  against a true 8.3e-3 A, and this row then never meets while REACTOR POWER reads 99.7 % and
+  does. The four count rungs took on the same exposure in the same change. That is the ordinary
+  price of Hard Rule 1 grading, which every instrument-graded row in the pool already pays;
+  it is tracked with the rest of the #749 residuals on #772.
+- **A criteria line for a sub-unit reading no longer prints a rounded zero.** `Math.round(1e-7)` is
+  0, so the meter-notation form would have drawn `1.0e-7 A (0 A)` — a bracket saying the channel
+  reads nothing beside a shorthand saying it does not. The bracket is dropped below one; the
+  shorthand form the owner asked for is untouched.
+- **A message raised on a walkthrough step no longer outlives it.** MEASURED on the live runtime
+  (`pwr_startup`, a real overshoot until the plant secured the source range at bank 242, then
+  Continue to the end): step 6's overtaken note — *"Stop withdrawing and go to the criticality
+  step"* — stood at steps **9, 10, 11, 12, 13, 14, 15, 16, 17 and on the COMPLETE card**, ten of
+  the ten later states. The Path 3 advance reset eleven per-step fields and never touched the
+  comment. It is retired with its step now, and the one caller that speaks *through* that advance —
+  the overtaken skip — raises its message after the move instead of before it, so the note still
+  lands on the step the player is dropped on.
+- **…and the catch-up fast-forward does not eat the preconditions comment** (quality pass). That
+  clear was unconditional at first, and the catch-up is not a player action: `_stepChecklist`
+  raises the "the plant does not match one or more of its prerequisites" comment and then runs
+  the catch-up in the SAME pass, so the clear deleted it before any broadcast drew it — and the
+  raise latches for the run, so it never came back. MEASURED on the shipped case (open the plant
+  shutdown walkthrough on a shut-down plant): the comment was gone entirely; it stands again now.
+  A plain Continue still retires it.
+
+### Fixed — the number a startup step is graded on is the number the board prints (#749 items 1, 2)
+
+- **The four 1/M count rungs of `pwr_startup` grade the SOURCE RANGE instrument the card draws,
+  not `true_state`.** `sr_counts_cps` had no `PARAM_INSTRUMENT.pwr2` entry because the map's own
+  comment said PWR2 has no source-range channel; it has none of its *own*, but the shell carries
+  a reused `RD.PWRInstruments` and the board has drawn `instruments.source_range` all along.
+  MEASURED over the authored ladder, instrument / truth ran **0.83 to 1.18**.
+- **Every count target moved off the CENTRE of its own render band onto the band's LOWER EDGE.**
+  The card prints the count through `fmtExp`, so `1.4e3` is drawn for anything in [1350, 1450) —
+  the target was the middle of a 100-count band and the tile read it for fifty counts before the
+  step could tick. The thresholds are now `>= 695 / 1350 / 2950 / 6950`; **every player-facing
+  string still says 7.0e2 / 1.4e3 / 3.0e3 / 7.0e3** and the edge number is never shown.
+  MEASURED on the player's route (release WITHDRAW the instant the tile first prints the target,
+  `hot_zero_power`): the 1.4e3 rung closed in **173.2 s** on seed 42 and **236.0 s** on seed 7;
+  it now closes in **46.4 s** and **47.1 s**.
+- **The criticality step's `REACTOR POWER > 0.1 %` was the same defect on a `toFixed(1)` tile** —
+  "0.1" is drawn from 0.05 up. The acceptance is the band floor now, so the step no longer holds
+  a dark Continue beside a tile already reading the target: MEASURED, **107.4 s** of that, gone.
+  The generated line was byte-identical at that point (`fmtPredValue` rounds a power to one
+  decimal either way, so 0.05 and 0.1 both draw "0.1 %"); the row then gained an authored label
+  alongside the INTER RANGE row above, and the card now reads *"REACTOR POWER reads 0.1 % or
+  more"*.
+- `test/run_checklist_pwr2.js` §2ab pins all of it — seven checks, with the four band edges
+  re-derived out of the board's own `fmtExp` rather than copied, each proven red by injection.
+
+### Fixed — a secured SOURCE RANGE no longer draws a false live reading (#757)
+
+- **`imro6qutiht` (the SOURCE RANGE tile) blanks to `—` once the detector is secured**, instead
+  of drawing `1.0e0 cps`. De-energized, the true count rate is 0 (`sr_counts_cps`), but the
+  log-scale instrument model floors its published reading at the channel's own range minimum
+  (1 cps — a log scale cannot carry zero), so the tile was handed a real `1` and drew it as a
+  plausible live count one control-bank step from criticality, exactly where a startup player
+  has been taught to watch it. MEASURED headless on `hot_full_power`: before, `1.0e0 cps`;
+  after, `—` (unit blanked too, same idiom as the boron/cooldown-rate tiles). Trip/caution/normal
+  colouring is unchanged. Swept every other instrument that can secure or fail: only
+  `source_range` combines a log-scale floor with a real de-energization switch (`intermediate_range`
+  is the only other log-scale channel and is always live). A `dead`-instrument FAILURE on any
+  channel still shows its range floor deliberately (the taught HR1 deception, a different case).
+
+### Added — the site pages report whether anyone reaches the simulator (#764)
+
+Still internal measurement, not the simulator: no `changelog.html` entry, no version bump.
+
+- **`site/telemetry.js` loaded only in `ui/shell.html`.** A visitor who read the homepage and
+  left was invisible, which is why the console could not tell "nobody enters the sim" from
+  "nobody *lands* on the shell" — it reported the first, and the truth was the second. The
+  client now loads on all nine site pages.
+- **Two events, both closed enums end to end.** `page_view` carries a page name from a fixed
+  list — a raw `location.pathname` is unbounded free text and invariant (d) rejects it,
+  correctly. `cta_click` carries where the button goes, whether the pointer is coarse, and a
+  **viewport size band, never the pixel width**: a pixel count is a number the validator would
+  happily accept and a fingerprinting surface that buys nothing over the bucket. The question
+  is "was this a phone", not "was this 393 pixels".
+- **Both ride entirely in the Analytics Engine key string and claim no new column**, so they
+  survive the three-month retention edge into `usage_daily`. "Is the click-through rate
+  improving" is a question about months.
+- **No consent surface was added**, per the standing ruling that there is no opt-out anywhere.
+  `privacy.html`'s `data-collects` markup — which `run_telemetry` reads and reddens on —
+  declares the new collection in the same commit.
+- The shell is not double-wired (`ui/app.js` owns its lifecycle) and the offline single-file
+  build wires nothing, since it has no endpoint stamped.
+
+### Changed — the ops dashboard: password auth, the first-party store on screen, an arbitrary window and a trend (#764)
+
+Internal tooling, not the simulator, so there is **no `changelog.html` entry and no version
+bump** — the site the player touches is unchanged by all of this.
+
+- **The secret is out of the URL.** `?token=T` was rewritten onto every internal href, so the
+  bookmark *was* the credential: it sat in browser history, in any screenshot of the address bar,
+  and one outbound link from a `Referer` header — `html()` set no `Referrer-Policy`. The same token
+  gated the Features write, so a leaked URL could mutate the live sim. Now a password form and an
+  HMAC-signed `HttpOnly` cookie, `Path=/dashboard` so it can never reach the ingest route at `/`.
+  Login and logout are `POST /dashboard` with an `action` field rather than new top-level routes,
+  which would have fallen through into the CORS-fronted ingest handler. Failed logins throttle on a
+  second rate-limit binding, not KV — a KV counter is eventually consistent across colos, which
+  makes it a poor rate limiter. **Rotating `DASHBOARD_HMAC_KEY` is the revoke-all-devices switch**;
+  there is no other way to log out a lost phone.
+- **Cutover, stage 1 of 2.** A `GET` carrying a matching `?token=` mints the cookie and redirects to
+  the same path with the token stripped, so an existing bookmark rewrites itself on first use. The
+  original plan rotated the secret *and* promised that migration — mutually exclusive, since a
+  rotated secret burns every old bookmark. **Stage 2 after 2026-09-25:** delete the
+  `LEGACY_TOKEN_EXCHANGE` block and rotate `DASHBOARD_TOKEN`.
+- **`worker/src/stats.js` — the read side of the first-party store, which did not exist.**
+  `rollup.js` has written `traffic_daily` since 2026-09-02 and `env.STATS` appeared in no other
+  file: a writer with no reader, so every figure on screen still came from Cloudflare and went to
+  multiples of 10 past 7 days. The module is built around the ways those rows turn into a confident
+  wrong number — a day the cron missed writes no rows and so does a quiet day (`rollup_runs` is the
+  only thing that tells them apart); a late capture is rounded to the nearest 10 and must not be
+  averaged into a trend; `usage_daily.sessions` is `count(DISTINCT blob4)` **per tuple** and summing
+  it over-counts, so `sessionsInPeriod()` throws rather than obliging.
+- **An arbitrary `?from=&to=` window** *(OWNER, 2026-09-18: "I should be able to select the window,
+  not just arbitrary seven or 30 or whatever days.")*. The 7/14/30 presets only ever existed because
+  Cloudflare's coarse tier punishes older windows; on closed days in the store that constraint is
+  gone. The picker is clamped to the store's first day and says when history begins — a date before
+  it returns no rows, which would draw as *zero traffic* rather than *no data*. Legacy `?days=N`
+  still resolves.
+- **A trend** *(OWNER, 2026-09-18: "I would also like to see trend graph so that I can see the growth
+  or drop of the traffic.")*: daily bars, a 7-day trailing mean, a dashed prior-period ghost, and a
+  period-over-period figure. At about 5 landing visits a day the weekday effect dominates the bars,
+  so the line is the trend and the bars are the data. **A refused comparison prints its reason and
+  never a digit** — no 0 %, no infinity — because the store begins about 2026-09-01 and the first
+  weeks would otherwise show enormous growth that is only the store starting. Today has no
+  first-party row, is fetched live and drawn hollow: a half-finished day drawn solid makes every
+  morning look like a collapse.
+- **9 of 10 breakdown sections read the first-party store**, each with its own source note naming its
+  own span and source. Country × referrer × day stays on Cloudflare — genuinely three-dimensional.
+  The referrer views now read the **stored** `referrer_kind`, computed at rollup time with the real
+  `requestHost`; the page had been recomputing it with `requestHost` as `null`, which discards the
+  exact-match rule and would classify a new preview domain as *discovery* rather than in-app
+  navigation — the #604 finding inverted. `groupBy('bot')` deliberately drops the `bot = 0` filter,
+  because filtering a column to one value and grouping by it returns one row that looks like data
+  and is half the answer; that section is labelled non-comparable on the page.
+- **"Visits" is now "Landing visits"** everywhere, with a glossary strip. A visit is attributed to
+  the *landing* path, so internal hops show 0 — which already produced the false reading "almost
+  nobody enters the sim", when the truth was "almost nobody *lands* on the shell". The `EXACT`
+  column, an implementation detail of Cloudflare's tiering, is deleted. Web Vitals now show real
+  p75 LCP / INP / CLS instead of sample counts and CSS selectors, and say on the page that they can
+  never become a trend, because `traffic_daily` stores no percentiles.
+- **Four new gates, 142 checks, 55 injections, all caught.** `run_dashboard_auth` (25),
+  `run_dashboard_stats` (80), `run_dashboard_trend` (37); `run_dashboard_time` moved 88 → 87 and the
+  drop is adjudicated per check in `BASELINES`. Three lessons are recorded there rather than here:
+  an injection anchored across two lines matches nothing against these CRLF files and silently never
+  fires; an injection into a module can never redden a cross-engine comparison, because the same
+  module drives both sides, so that check is proved by planting the defect in the runner's own
+  interpreter; and an unscoped page regex matches the *next* section — two checks were hollow that
+  way and both were caught by re-injecting after the change that hollowed them.
+- **`worker/README.md`** documented `?token=T` bookmarks on four lines and now carries the
+  password/cookie model, the three secrets and the two-stage cutover.
+
+### Changed — the Mode 3 → Mode 1 walkthrough is reconciled to the owner's step file
+
+- `pwr_startup`'s player-facing text now comes down to `Blueprint/walkthrough_steps/02_mode3_to_mode1.md`,
+  the owner's own authored file. **17 steps in, 17 out** — no step added, dropped or re-ordered.
+  **20 fields changed**: one step line, two notes (steps 1 and 9, both pure trailing deletions) and
+  **all 17 Backgrounds**, including substantially new boron and steam-generator coupling prose.
+- **Nothing in the grading moved.** `acc`, `accs`, `accs_ordered`, `cmd`, `hold`, `overtaken`, `hl`
+  and `hl_watch` are untouched, so the 1/M ladder's sequenced rungs on steps 5–8 and every
+  highlight are exactly as they shipped. Every lettered acceptance row, every fast-forward hint and
+  step 9's "Watch for:" line already matched his file byte for byte.
+- Step 1's line is **shortened by three words** against his file: his spelling-out of the Reactor
+  Coolant Pump takes a 20-word line to 23, over `run_style`'s scored W2 cap. His addition is kept and
+  the filler "the plant is" is cut — shortened, not waived. Recorded in his file and at the step.
+- Two source comments that described text the reconcile deleted (step 1's BORON CHEM tail, step 9's
+  "Behind the readings:" block) are corrected in place rather than left asserting what no longer ships.
+
 ## [Alpha 1.7.5] — 2026-09-17
 
 ### Changed — fast-forward carries across walkthrough step boundaries (#761)

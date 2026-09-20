@@ -57,9 +57,16 @@ export async function gql(token, query) {
     headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ query }),
   });
-  const j = await res.json().catch(() => null);
+  const text = await res.text();
+  let j;
+  try { j = JSON.parse(text); } catch (e) { j = null; }
   if (!j) throw new Error('HTTP ' + res.status + ': unparseable response');
-  // A bad GraphQL query is a 200 with an errors array — the status never tells you.
+  // A bad GraphQL query is a 200 with an errors array — the status never tells you. But a
+  // TRANSPORT failure (403/429/5xx) can ALSO come back shaped like a good response —
+  // {success:false, errors:[], result:null}, an EMPTY errors array — so the status check
+  // below is ADDED to the errors check, never a replacement for it: dropping the errors
+  // check would stop catching a genuinely bad query that comes back 200.
+  if (!res.ok) throw new Error('gql HTTP ' + res.status + ': ' + text.slice(0, 200).trim());
   if (j.errors && j.errors.length) throw new Error(j.errors.map((e) => e.message).join('; ').slice(0, 200));
   const accts = ((j.data || {}).viewer || {}).accounts || [];
   return accts[0] || {};

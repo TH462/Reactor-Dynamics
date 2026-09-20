@@ -54,25 +54,60 @@ function head(s) { console.log('\n' + BOLD + s + RST); }
 
 var INJECT = process.argv.indexOf('--inject') >= 0;
 
-/* THE INJECTIONS, one per silent failure named in the header. Each is a change a real
- * author could make believing it harmless, and each leaves the page rendering normally. */
+/* THE INJECTIONS, one per silent failure named in the header (plus, since #791, the
+ * dev-channel filter, the session-clock column and the 100-session truncation note —
+ * shared with sessions.js, which reuses this file's fake-sql/loadEsm idiom rather than
+ * inventing a second one). Each reverts a fix to its exact original defective text, so
+ * the gate is shown to catch the regression rather than merely claimed to. */
 function injectSrc(rel, src) {
-  if (!INJECT || rel !== 'usage.js') return src;
-  return src
-    // 1. the funnel normalised on itself — every step 100 %.
-    .split('const pct = started ? (r.sessions / started) * 100 : 0;')
-    .join('const pct = 100;')
-    // 2. p90 quietly becomes a second median.
-    .split('p90 = quantile(v, 0.9)').join('p90 = quantile(v, 0.5)')
-    // 3. the composite key parsed as if it had no third part.
-    .split("c: p[2] == null ? '' : p[2]").join("c: ''");
+  if (!INJECT) return src;
+  if (rel === 'usage.js') {
+    return src
+      // 1. the funnel normalised on itself — every step 100 %.
+      .split('const pct = started ? (r.sessions / started) * 100 : 0;')
+      .join('const pct = 100;')
+      // 2. p90 quietly becomes a second median.
+      .split('p90 = quantile(v, 0.9)').join('p90 = quantile(v, 0.5)')
+      // 3. the composite key parsed as if it had no third part.
+      .split("c: p[2] == null ? '' : p[2]").join("c: ''")
+      // 4. dev-channel traffic back in the walkthrough funnel (defect 3, #791). No
+      //    trailing newline in the anchor — this repo's checkout is CRLF and a bare \n
+      //    never matches, "the source moved" by a line-ending, not a content change.
+      .split("blob1 = 'walkthrough_start' AND blob2 <> 'dev' AND ${since}")
+      .join("blob1 = 'walkthrough_start' AND ${since}")
+      // ...and back in the migrated sim sections (defect 3, #791).
+      .split("blob1 = 'session_start' AND blob2 <> 'dev' AND ${since}")
+      .join("blob1 = 'session_start' AND ${since}")
+      // 5. the elapsed-clock query reads the PAGE clock again, not the SESSION clock
+      //    (defect 4, #791) — double5 resets on every reload, double6 does not.
+      .split('(await sql(apiToken, `SELECT blob4 AS session, max(double6) AS t_last')
+      .join('(await sql(apiToken, `SELECT blob4 AS session, max(double5) AS t_last');
+  }
+  if (rel === 'sessions.js') {
+    return src
+      // dev-channel traffic back in the session_start query (defect 3, #791).
+      .split("blob1 = 'session_start' AND blob2 <> 'dev' AND ${since}")
+      .join("blob1 = 'session_start' AND ${since}")
+      // the elapsed-clock query reads the PAGE clock again (defect 4, #791).
+      .split('return sql(apiToken, `SELECT blob4 AS session, max(double6) AS t_last')
+      .join('return sql(apiToken, `SELECT blob4 AS session, max(double5) AS t_last')
+      // the 100-session truncation note is silenced (defect 5, #791).
+      .split('truncated = counts.length >= 100;')
+      .join('truncated = false;');
+  }
+  return src;
 }
 
 // ---------------------------------------------------------------- the fake upstream
 /* Dispatch on the query TEXT, most specific first. Matching loosely is how a fake starts
- * answering the wrong question — two of these queries differ only in their GROUP BY. */
-function fakeSql(rows) {
+ * answering the wrong question — two of these queries differ only in their GROUP BY.
+ * `seen`, if given, collects every query TEXT issued — how #791's dev-channel-filter and
+ * session-clock checks confirm what actually reached the wire, not just what a source
+ * scan finds (a source scan cannot tell a string is reachable — CLAUDE.md's own standing
+ * trap list). */
+function fakeSql(rows, seen) {
   return function (token, q) {
+    if (seen) seen.push(String(q));
     /* A REJECTED PROMISE, never a synchronous throw. The real `sql()` is async, so a
      * fake that throws on the spot escapes the page's per-query `.catch` and would make
      * a correctly-handled failure look unhandled — the harness reporting a defect it
@@ -95,6 +130,14 @@ function dispatch(rows, q) {
     if (has("'walkthrough_step'", 'LIMIT 20000')) return Promise.resolve(rows.dwell);
     if (has("'walkthrough_step'", 'blob5 AS k')) return Promise.resolve(rows.mix);
     if (has("'walkthrough_step'", 'GROUP BY wt, step')) return Promise.resolve(rows.funnel);
+    // "Time per session"'s write-span query — a non-empty answer is what lets that
+    // section go on to its columns-exist probe and its max(double6) query, the one
+    // #791's elapsed-clock check needs to see reach the wire.
+    if (has('min(timestamp) AS first_seen', 'max(timestamp) AS last_seen'))
+      return Promise.resolve([{ session: 's1', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:05:00' }]);
+    // Its own columns-exist probe (no blob1 filter, no GROUP BY) — a non-zero count is
+    // what lets the max(double6) query fire at all.
+    if (has('SELECT count() AS n FROM', 'timestamp >=')) return Promise.resolve([{ n: 5 }]);
     // The migrated sections. Empty is a legitimate answer and renders "(none)".
     return Promise.resolve([]);
   }
@@ -103,6 +146,7 @@ function dispatch(rows, q) {
 function fakeCfapi(sqlBody) {
   return 'export const DATASET = "reactor_dynamics_usage";\n'
     + 'export const COLUMNS_SINCE = "toDateTime(\'2026-08-11 02:54:00\')";\n'
+    + 'export const COLUMNS_SINCE_TS = "2026-08-11 02:54:00";\n'
     + 'export const sql = globalThis.__RD_FAKE_SQL;\n'
     + 'export const gql = () => Promise.resolve({});\n'
     + 'export const ACCOUNT = "acct"; export const SITE_TAG = "tag";\n' + (sqlBody || '');
@@ -169,13 +213,75 @@ var ROWS = {
  * data and two checks failed for a reason that had nothing to do with the page. The nonce
  * makes each render its own module graph. */
 var nonce = 0;
-async function render(rows, token) {
-  globalThis.__RD_FAKE_SQL = fakeSql(rows);
+async function render(rows, token, seen) {
+  globalThis.__RD_FAKE_SQL = fakeSql(rows, seen);
   var ROOT = path.join(__dirname, '..');
   var mod = await loadEsm(ROOT, 'usage.js',
     { 'cfapi.js': fakeCfapi('// render ' + (++nonce) + '\n') });
   var url = new URL('https://example.invalid/dashboard?token=t&view=usage&days=30');
   var res = await mod.usagePage({ CF_ANALYTICS_TOKEN: 'x' }, url, token || 't');
+  return res.text();
+}
+
+// ---------------------------------------------------------------- sessions.js (shares
+// this file's ESM-loader/fake-sql idiom rather than inventing a second one; sessions.js
+// has no dedicated runner of its own, and this repo's convention is one test idiom per
+// query-fake shape, not one per source file).
+function dispatchSessions(rows, q) {
+  var asked = String(q);
+  function has() {
+    for (var i = 0; i < arguments.length; i++) if (asked.indexOf(arguments[i]) === -1) return false;
+    return true;
+  }
+  var isDetail = asked.indexOf("blob4 = '") !== -1;
+  if (!isDetail && has('GROUP BY session ORDER BY first_seen')) return Promise.resolve(rows.counts || []);
+  if (!isDetail && has("'session_start'", 'GROUP BY session, initial_state')) return Promise.resolve(rows.starts || []);
+  if (!isDetail && has('SELECT count() AS n', 'timestamp >=')) return Promise.resolve(rows.probe || [{ n: 0 }]);
+  if (!isDetail && has('max(double', 'GROUP BY session')) return Promise.resolve(rows.elapsed || []);
+  if (!isDetail && has("'session_end'")) return Promise.resolve(rows.ends || []);
+  if (isDetail && has('SELECT count() AS n')) return Promise.resolve(rows.detailProbe || [{ n: 0 }]);
+  if (isDetail && has('ORDER BY timestamp ASC')) return Promise.resolve(rows.detailRows || []);
+  return Promise.resolve([]);
+}
+
+function mkSessionsRows(n) {
+  var counts = [];
+  for (var i = 0; i < n; i++) {
+    counts.push({ session: 's' + i, first_seen: '2026-09-19 10:00:00',
+                  last_seen: '2026-09-19 10:05:00', raw: 3, est: 3 });
+  }
+  return {
+    counts: counts,
+    starts: [{ session: 's0', initial_state: 'cold_shutdown', release: 'Alpha 1.7.0', plant: 'pwr2' }],
+    probe: [{ n: 1 }],
+    elapsed: [{ session: 's0', t_last: 42 }],
+    ends: [{ session: 's0', last_panel: 'board', secs: 10 }],
+  };
+}
+
+async function renderSessionList(rows, seen) {
+  globalThis.__RD_FAKE_SQL = function (token, q) {
+    if (seen) seen.push(String(q));
+    try { return dispatchSessions(rows, q); } catch (e) { return Promise.reject(e); }
+  };
+  var ROOT = path.join(__dirname, '..');
+  var mod = await loadEsm(ROOT, 'sessions.js',
+    { 'cfapi.js': fakeCfapi('// sessions render ' + (++nonce) + '\n') });
+  var url = new URL('https://example.invalid/dashboard?token=t&view=sessions&days=30');
+  var res = await mod.sessionList({ CF_ANALYTICS_TOKEN: 'x' }, url);
+  return res.text();
+}
+
+async function renderSessionDetail(rows, sid, seen) {
+  globalThis.__RD_FAKE_SQL = function (token, q) {
+    if (seen) seen.push(String(q));
+    try { return dispatchSessions(rows, q); } catch (e) { return Promise.reject(e); }
+  };
+  var ROOT = path.join(__dirname, '..');
+  var mod = await loadEsm(ROOT, 'sessions.js',
+    { 'cfapi.js': fakeCfapi('// session detail render ' + (++nonce) + '\n') });
+  var url = new URL('https://example.invalid/dashboard?token=t&view=session&sid=' + sid);
+  var res = await mod.sessionDetail({ CF_ANALYTICS_TOKEN: 'x' }, url, sid);
   return res.text();
 }
 
@@ -331,6 +437,61 @@ async function render(rows, token) {
   var esc = await render(hostile);
   ck('a hostile id is escaped, not rendered', esc.indexOf('<img src=x') === -1
     && esc.indexOf('&lt;img src=x') !== -1);
+
+  /* ------------------------------------------------------- 10. the dev channel (#791) */
+  head('10. usage.js excludes the dev channel everywhere (defect 3, owner ruling 2026-09-20)');
+  var seenU = [];
+  await render(ROWS, 't', seenU);
+  ck('at least 12 queries were issued (6 walkthrough + probe + 5 migrated sim sections)',
+    seenU.length >= 12, seenU.length + ' queries seen');
+  var noDevFilter = seenU.filter(function (q) {
+    return /FROM \S+ WHERE/.test(q) && q.indexOf("blob2 <> 'dev'") === -1;
+  });
+  ck('every query against the event stream excludes the dev channel',
+    noDevFilter.length === 0, noDevFilter.length + ' missing it: ' + noDevFilter.join(' || ').slice(0, 300));
+
+  /* ------------------------------------------------------ 11. the session clock (#791) */
+  head('11. usage.js reads the SESSION clock (double6), not the PAGE clock (double5) (defect 4)');
+  var elapsedQ = seenU.filter(function (q) {
+    return /max\(double\d+\) AS t_last/.test(q);
+  });
+  ck('the elapsed-clock query names double6, never double5',
+    elapsedQ.length === 1 && /max\(double6\)/.test(elapsedQ[0]) && !/max\(double5\)/.test(elapsedQ[0]),
+    elapsedQ.join(' | '));
+
+  /* -------------------------------------------------- 12. sessions.js: the dev channel */
+  head('12. sessions.js excludes the dev channel on every query (defect 3, #791)');
+  var seenS = [];
+  await renderSessionList(mkSessionsRows(3), seenS);
+  ck('at least 5 queries were issued (counts, starts, elapsed probe, elapsed, ends)',
+    seenS.length >= 5, seenS.length + ' queries seen: ' + seenS.map(function (q) { return q.slice(0, 40); }).join(' || '));
+  var noDevS = seenS.filter(function (q) { return q.indexOf("blob2 <> 'dev'") === -1; });
+  ck('every one of them excludes the dev channel',
+    noDevS.length === 0, noDevS.length + ' missing it: ' + noDevS.join(' || ').slice(0, 300));
+
+  var seenD = [];
+  await renderSessionDetail({ detailProbe: [{ n: 1 }],
+    detailRows: [{ timestamp: '2026-09-19 10:00:00', event: 'command', key: 'scram' }] },
+    'abc123-defg5678', seenD);
+  ck('sessionDetail()\'s two queries exclude the dev channel too',
+    seenD.length >= 2 && seenD.every(function (q) { return q.indexOf("blob2 <> 'dev'") !== -1; }),
+    seenD.join(' || ').slice(0, 300));
+
+  /* --------------------------------------------------- 13. sessions.js: session clock */
+  head('13. sessions.js reads the SESSION clock (double6), not the PAGE clock (defect 4)');
+  var elapsedS = seenS.filter(function (q) { return /max\(double\d+\) AS t_last/.test(q); });
+  ck('the elapsed-clock query names double6, never double5',
+    elapsedS.length === 1 && /max\(double6\)/.test(elapsedS[0]) && !/max\(double5\)/.test(elapsedS[0]),
+    elapsedS.join(' | '));
+
+  /* --------------------------------------------------- 14. sessions.js: the 100-cap */
+  head('14. sessions.js says when the 100-session cap truncated the list (defect 5, #791)');
+  var full100 = await renderSessionList(mkSessionsRows(100), []);
+  ck('a full page of 100 sessions gets a truncation note',
+    /Showing the most recent 100 sessions/.test(full100));
+  var short3 = await renderSessionList(mkSessionsRows(3), []);
+  ck('...and a short page does not', full100.indexOf('Showing the most recent') !== -1
+    && short3.indexOf('Showing the most recent') === -1);
 
   console.log('\n' + BOLD + (nFail ? RED + 'FAIL' : GREEN + 'PASS') + RST
     + '  ' + nPass + ' passed, ' + nFail + ' failed'

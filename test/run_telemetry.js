@@ -29,6 +29,103 @@ function ck(name, ok, detail) {
   fail++; failures.push({ name: name, detail: detail || '' });
 }
 
+// ------------------------------------------------------------------ injections
+/* Each is a real defect this runner claims to catch, applied to the SOURCE before it is
+ * loaded or read — "the check can go red" is then a command anyone can re-run rather than
+ * a sentence in a report:
+ *
+ *   node test/run_telemetry.js --list-injections
+ *   node test/run_telemetry.js --inject=wk-country-from-ip
+ *
+ * `[file, anchor, replacement]`, and THE ANCHOR MUST BE A SINGLE PHYSICAL LINE. This tree
+ * holds both endings — site/telemetry.js and worker/src/index.js are CRLF, worker/src/
+ * rollup.js is LF — so an anchor with an embedded \n matches nothing in the CRLF files
+ * and the injection silently never fires, which is worse than no injection. */
+var ARG = process.argv.slice(2).join(' ');
+var INJECT = (/--inject=([\w-]+)/.exec(ARG) || [])[1] || null;
+var INJECTIONS = {
+  /* --- the client half: a HOST and never a URL --------------------------------- */
+  // The whole referrer on the wire, path and query included — a search page's query
+  // string is the visitor's own words, and this is the one that matters.
+  /* THE CONFLATION (2026-09-20). Reverts absent-vs-empty to the single `referrerKind()`
+   * call: a client that never sent the field is then recorded as a DIRECT VISIT. It is the
+   * shape of defect this whole page keeps producing -- not a missing number, a confident
+   * wrong one, and unrecoverable once written because no later query can separate those
+   * rows from real direct traffic. The live site does not send `ref` until
+   * site/telemetry.js ships, so this would have been EVERY row until then. */
+  'wk-ref-absent-reads-direct': ['worker/src/index.js',
+    "  const refKind = refSent ? referrerKind(refHost, hostOf(origin)) : 'unknown';",
+    '  const refKind = referrerKind(refHost, hostOf(origin));'],
+  'tel-ref-is-full-url': ['site/telemetry.js',
+    '      ref: refHost(),', "      ref: (G.document && G.document.referrer) || '',"],
+  // The field simply not sent: the stream goes back to knowing nothing about arrivals.
+  'tel-ref-absent': ['site/telemetry.js', '      ref: refHost(),', ''],
+  // The final shape test removed. An IPv6 literal host comes back as '[::1]', which is
+  // not host-shaped and is the evidence that the test is doing work rather than sitting
+  // downstream of a parser that already cleaned everything.
+  'tel-ref-shape-test-gone': ['site/telemetry.js',
+    "    if (!h || h.length > 253 || !/^[a-z0-9.-]+$/.test(h)) return '';", "    if (!h) return '';"],
+  // The no-URL fallback stops stripping userinfo and the port, so credentials in a
+  // referrer would reach the shape test instead of being cut before it.
+  'tel-ref-fallback-keeps-userinfo': ['site/telemetry.js',
+    "      h = m ? String(m[1]).replace(/^[^@]*@/, '').replace(/:\\d+$/, '') : '';",
+    "      h = m ? String(m[1]) : '';"],
+
+  /* --- the Worker half ---------------------------------------------------------- */
+  // The receiver trusting the client's `ref`. The shipped client sends a host; anything
+  // at all can POST here, so this is the sanitiser the promise actually rests on.
+  'wk-ref-unsanitised': ['worker/src/index.js',
+    '  const refHost = hostOf(payload.ref);', "  const refHost = String(payload.ref || '');"],
+  // A SECOND classifier instead of the one the Cloudflare-derived series uses: every
+  // internal hop then files as discovery, which is the error traffic_daily exists to
+  // stop making.
+  'wk-ref-kind-invented': ['worker/src/index.js',
+    "  const refKind = refSent ? referrerKind(refHost, hostOf(origin)) : 'unknown';",
+    "  const refKind = refHost ? 'external' : 'direct';"],
+  // The country never recorded.
+  'wk-country-dropped': ['worker/src/index.js',
+    '  const country = edgeCountry(request);', "  const country = '';"],
+  // THE PROMISE BREAKER: the country derived here from the visitor's address instead of
+  // taken from the edge, which puts the IP in a variable in the write path.
+  'wk-country-from-ip': ['worker/src/index.js',
+    '  const cf = request && request.cf;',
+    "  const cf = { country: String(request.headers.get('CF-Connecting-IP') || '').slice(0, 2) };"],
+  // Nothing is ever a bot.
+  'wk-bot-never-classified': ['worker/src/index.js',
+    "  if (!s) return 'no-ua';", "  return '';"],
+  // The preview family dropped, so every Slack and Twitter link unfurl is filed as a
+  // crawler — the generic pattern below it matches the "bot" in their names.
+  'wk-preview-family-dropped': ['worker/src/index.js',
+    "  ['preview', /(facebookexternalhit|slackbot|twitterbot|discordbot|telegrambot|whatsapp|linkedinbot|embedly|skypeuripreview|redditbot|pinterest|vkshare|preview)/],", ''],
+  // The verdict computed and then not written.
+  'wk-bot-column-dropped': ['worker/src/index.js', '        botKind ? 1 : 0,', ''],
+  // A blob REMOVED rather than appended: every column after it shifts one slot and every
+  // historical row is silently reinterpreted. This is the failure the column map's
+  // append-only rule exists for, and it produces no error anywhere.
+  'wk-blob-slot-shifted': ['worker/src/index.js', '        refHost,', ''],
+};
+
+if (/--list-injections/.test(ARG)) {
+  Object.keys(INJECTIONS).forEach(function (k) { console.log(k); });
+  process.exit(0);
+}
+
+/* Read a repo file with the active injection applied. Used for the two files the
+ * injections target; every other read in this runner is a plain readFileSync, which is
+ * correct — an injection that no check reads would report CAUGHT on someone else's. */
+function readSrc(rel) {
+  var src = require('fs').readFileSync(path.join(ROOT, rel), 'utf8');
+  if (!INJECT) return src;
+  var spec = INJECTIONS[INJECT];
+  if (!spec) throw new Error('unknown injection: ' + INJECT);
+  if (spec[0] !== rel) return src;
+  if (src.indexOf(spec[1]) < 0) {
+    throw new Error('injection "' + INJECT + '" did not match its anchor in ' + rel
+      + ' — the source moved and the injection is blind, which is worse than no injection');
+  }
+  return src.split(spec[1]).join(spec[2]);
+}
+
 // ------------------------------------------------------------------ fake browser
 // Minimal, and deliberately hand-written: a real DOM library would bring behaviours
 // this module must work WITHOUT (storage that throws, no sendBeacon, no fetch).
@@ -93,6 +190,14 @@ function load(opts) {
   }
   stub('performance', { now: function () { return 1000; } });
   stub('navigator', { sendBeacon: function (url, body) { sent.push({ via: 'beacon', url: url, body: body }); return true; } });
+  /* A REFERRER NEEDS A `document`, and the module reads it at FLUSH time rather than at
+   * load, so a case can set one. Defined only when a case asks: the auto-init at the foot
+   * of telemetry.js is guarded by a one-shot global that this process's FIRST load has
+   * already consumed, so a document here cannot start wiring listeners — but leaving it
+   * undefined by default keeps every other suite exactly as it was. */
+  stub('document', ('referrer' in opts)
+    ? { referrer: opts.referrer, addEventListener: function () {}, readyState: 'complete', visibilityState: 'visible' }
+    : undefined);
   // THE REAL RECORDER, not a stub (#681). sendBundle's byte backstop calls
   // RD.DiagRecorder.trimOldest through a soft global lookup, which is exactly how the
   // control room wires it (ui/shell.html loads diag_recorder.js before app.js). A fake trim
@@ -102,7 +207,17 @@ function load(opts) {
     delete require.cache[require.resolve(path.join(ROOT, 'ui', 'diag_recorder.js'))];
     require(path.join(ROOT, 'ui', 'diag_recorder.js'));
   }
-  require(path.join(ROOT, 'site', 'telemetry.js'));
+  /* The injected load goes through `vm` rather than `require`, because require() reads
+   * the file itself and there is nowhere to patch it. telemetry.js is a plain
+   * global-namespace IIFE with no module references (CLAUDE.md, "Code conventions"), so
+   * running its source in this context attaches RD.Telemetry exactly as require does.
+   * The uninjected path is left on require() so an ordinary run is unchanged. */
+  if (INJECT && INJECTIONS[INJECT] && INJECTIONS[INJECT][0] === 'site/telemetry.js') {
+    require('vm').runInThisContext(readSrc('site/telemetry.js'),
+      { filename: path.join(ROOT, 'site', 'telemetry.js') });
+  } else {
+    require(path.join(ROOT, 'site', 'telemetry.js'));
+  }
   return { T: g.RD.Telemetry, sent: sent };
 }
 
@@ -526,6 +641,186 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
     'the in-sim consent row is back — one setting, two controls');
 }());
 
+/* ================================================ the site pages (#764)
+ *
+ * The client used to load ONLY in ui/shell.html, so a visitor who read the homepage and
+ * left was invisible — which is why the console could not tell "nobody enters the sim"
+ * from "nobody LANDS on the shell", and reported the first when it was the second.
+ *
+ * Widening its reach widens what is collected from people who never open the simulator,
+ * and there is no consent prompt anywhere by owner ruling. So the guards below are not
+ * about whether the events arrive; they are about the events staying INCAPABLE of
+ * carrying more than was disclosed. Every one of them was written against an injection
+ * that made it red first — INJ3 below in particular went GREEN on the first pass, which
+ * is what these exist for.
+ */
+(function () {
+  // `fs` is declared per-suite in this runner, not at module scope. Without this line the
+  // read below throws a ReferenceError INSIDE the try/catch and every page reports "no
+  // endpoint tag" — a wrong diagnosis that looks exactly like the defect being guarded.
+  var fs = require('fs');
+  var T = globalThis.RD.Telemetry;
+  var EV = T.EVENTS;
+  var PAGES = T.PAGES;
+
+  /* CLOSED ENUMS, NOT OPEN ONES. `clean()`'s 'enum' kind accepts any identifier-shaped
+   * string up to 48 characters; an ARRAY accepts only what is listed. The difference is
+   * the whole privacy claim for these two events: an open `page` prop would take
+   * `index.html` — a real path, disclosed as nothing — and an open `width` would take the
+   * pixel count this deliberately buckets away. MEASURED: switching page_view.page from
+   * PAGES to 'enum' left the suite at 169/0 before this check existed. */
+  var closed = function (spec) { return Object.prototype.toString.call(spec) === '[object Array]'; };
+  ck('page_view.page is a CLOSED enum, not an open one',
+    closed(EV.page_view && EV.page_view.props.page),
+    'an open enum here takes a real path and discloses none of it');
+  ['to', 'device', 'width'].forEach(function (k) {
+    ck('cta_click.' + k + ' is a CLOSED enum',
+      closed(EV.cta_click && EV.cta_click.props[k]),
+      'an open enum here takes more than the four buckets that were disclosed');
+  });
+
+  /* THE CLASSIFIER CANNOT EMIT A PATH. Driven through the real pageId() rather than read
+   * out of the source, because what matters is the value it RETURNS, and a source scan
+   * for a closed list cannot tell you the function honours it. The corpus is deliberately
+   * hostile: a query string and a fragment are the two ways a path smuggles free text. */
+  var paths = ['/', '/index.html', '/about.html', '/404.html', '/ui/shell.html',
+    '/ui/shell.html?engine=pwr2', '/privacy.html#usage', '/some/unknown/page.html',
+    '/index.html?utm_source=a_marketing_campaign', '', '/WEIRD.HtMl'];
+  var out = paths.map(function (p) { return T.pageId(p); });
+  var escaped = out.filter(function (v) { return PAGES.indexOf(v) === -1; });
+  ck('pageId() returns nothing outside the declared page set', escaped.length === 0,
+    'escaped: ' + JSON.stringify(escaped));
+  ck('a query string cannot ride in on the page id',
+    T.pageId('/index.html?utm_source=a_marketing_campaign') === 'home',
+    String(T.pageId('/index.html?utm_source=a_marketing_campaign')));
+  ck('an unknown page is "other", never its own path',
+    T.pageId('/some/unknown/page.html') === 'other',
+    String(T.pageId('/some/unknown/page.html')));
+  ck('widthBucket() returns one of the four declared bands',
+    [0, 320, 599, 600, 899, 900, 1279, 1280, 4000].every(function (w) {
+      return EV.cta_click.props.width.indexOf(T.widthBucket(w)) !== -1;
+    }));
+  // A bucket that collapses to one value discloses nothing and would pass the check above.
+  ck('the width bands actually discriminate',
+    T.widthBucket(390) !== T.widthBucket(1920),
+    'every width lands in the same band — the bucket is decorative');
+
+  /* THE SHELL IS NOT DOUBLE-WIRED. ui/app.js already owns that page's lifecycle
+   * (session_start, session_end, and a pagehide beacon at app.js:8703). A second set of
+   * listeners there would add a page_view nothing asked for and a second flush racing the
+   * one that carries session_end — the most valuable row in the set. */
+  /* DRIVEN THROUGH THE REAL autoInit, not asserted off pageId(). The first draft of these
+   * two checks tested what pageId() RETURNS for the shell path, which is the ingredient
+   * and not the behaviour: deleting autoInit's `pageId() === 'shell'` guard reddened
+   * NOTHING, measured. What follows wires a fake document and asks what actually happens. */
+  function fakeDoc() {
+    var h = {};
+    return {
+      visibilityState: 'visible',
+      addEventListener: function (t, fn) { (h[t] = h[t] || []).push(fn); },
+      _handlers: h,
+      _click: function (href) {
+        var a = { tagName: 'A', getAttribute: function (k) { return k === 'href' ? href : null; },
+                  parentNode: null };
+        (h.click || []).forEach(function (fn) { fn({ target: a }); });
+      },
+    };
+  }
+  function at(pathname, fn) {
+    var prev = globalThis.location;
+    globalThis.location = { pathname: pathname };
+    try { return fn(); } finally { globalThis.location = prev; }
+  }
+
+  var site = load();
+  at('/index.html', function () {
+    var doc = fakeDoc();
+    ck('autoInit runs on a site page', site.T._autoInit(doc) === true);
+    var before = site.sent.length;
+    /* THE CLICK NAVIGATES AWAY INSIDE THE 15-SECOND BATCH WINDOW, so a queued cta_click
+     * dies with the page. That would report ZERO clicks on a button people press — the
+     * most confidently wrong number this change could produce — so the send must happen
+     * on the click itself, with no flush() call from the test. */
+    doc._click('ui/shell.html?engine=pwr2');
+    ck('a call-to-action click is sent immediately, not left in the batch',
+      site.sent.length === before + 1, 'sent delta ' + (site.sent.length - before));
+    // DEFENSIVE ABOUT AN EMPTY WIRE. Without this the same defect the check above catches
+    // makes this line THROW on `sent[-1]`, and the runner dies with a stack trace and no
+    // tally — a broken module reported as neither pass nor fail.
+    var last = site.sent[site.sent.length - 1];
+    var rows = last ? JSON.parse(last.body).events.map(function (e) { return e.e; }) : [];
+    ck('that send carries both the page_view and the cta_click',
+      rows.indexOf('page_view') !== -1 && rows.indexOf('cta_click') !== -1,
+      last ? rows.join(',') : 'nothing was sent at all');
+    // An ordinary navigation link is a page_view already; counting it as a call-to-action
+    // too would make the funnel's own denominator meaningless.
+    var n = site.sent.length;
+    doc._click('about.html');
+    ck('an ordinary link is not counted as a call-to-action', site.sent.length === n);
+  });
+
+  /* NO ENDPOINT, NO WIRING. The offline single-file build is not called shell.html, so the
+   * shell guard does not catch it; without an endpoint check it would wire listeners and
+   * queue events on a build whose entire promise is that it never touches the network. */
+  var offline = load({ endpoint: null });
+  at('/Reactor_Dynamics_Alpha_1.7.5.html', function () {
+    var doc = fakeDoc(), win = fakeDoc();
+    ck('autoInit refuses when no endpoint is stamped', offline.T._autoInit(doc, win) === false);
+    ck('and wires nothing in the offline build',
+      Object.keys(doc._handlers).length === 0 && Object.keys(win._handlers).length === 0);
+  });
+
+  /* THE BOUNCE IS THE VISITOR THIS EXISTS TO COUNT. Site pages have no session_end, so
+   * without a pagehide beacon someone who reads the homepage and closes the tab inside the
+   * 15-second batch window sends nothing at all — and "arrived, left immediately" is
+   * exactly the row the funnel needs. Proved by driving the registered handler, because a
+   * check that the LISTENER exists says nothing about whether it flushes. */
+  var bounce = load();
+  at('/about.html', function () {
+    var doc = fakeDoc(), win = fakeDoc();
+    bounce.T._autoInit(doc, win);
+    ck('a pagehide handler is registered on the window', !!(win._handlers.pagehide || []).length);
+    var before = bounce.sent.length;
+    (win._handlers.pagehide || []).forEach(function (fn) { fn(); });
+    ck('leaving the page sends what was queued', bounce.sent.length === before + 1,
+      'sent delta ' + (bounce.sent.length - before));
+    // flush() empties the queue, so the second call must be a no-op and not a duplicate row.
+    var after = bounce.sent.length;
+    (win._handlers.pagehide || []).forEach(function (fn) { fn(); });
+    ck('a second pagehide does not duplicate the send', bounce.sent.length === after);
+  });
+
+  /* THE SHELL IS NOT DOUBLE-WIRED. ui/app.js already owns that page's lifecycle
+   * (session_start, session_end, and a pagehide beacon at app.js:8703). A second set of
+   * listeners there would add a page_view nothing asked for and a second flush racing the
+   * one that carries session_end — the most valuable row in the set. */
+  var shellClient = load();
+  at('/ui/shell.html', function () {
+    var doc = fakeDoc();
+    ck('autoInit REFUSES to run on the shell', shellClient.T._autoInit(doc) === false);
+    ck('and wires no listeners there', Object.keys(doc._handlers).length === 0,
+      Object.keys(doc._handlers).join(','));
+    ck('and sends nothing there', shellClient.sent.length === 0,
+      String(shellClient.sent.length));
+  });
+
+  /* LOAD ORDER ON EVERY SITE PAGE. telemetry.js reads window.RD_TELEMETRY_ENDPOINT at
+   * load, so the endpoint file must come FIRST. Reversed, the client silently collects
+   * nothing for ever — invariant (b) makes that the correct behaviour for an unset
+   * endpoint, which is exactly why the mistake would never announce itself. */
+  var SITE_PAGES = ['index.html', 'about.html', 'physics.html', 'roadmap.html',
+    'changelog.html', 'download.html', 'privacy.html', 'legal.html', '404.html'];
+  SITE_PAGES.forEach(function (f) {
+    var src = '';
+    try { src = fs.readFileSync(path.join(ROOT, f), 'utf8'); } catch (e) { /* reported below */ }
+    var ep = src.indexOf('<script src="site/telemetry_endpoint.js">');
+    var tel = src.indexOf('<script src="site/telemetry.js">');
+    ck(f + ' loads the client, endpoint first',
+      ep !== -1 && tel !== -1 && ep < tel,
+      ep === -1 ? 'no endpoint tag' : (tel === -1 ? 'no telemetry tag' : 'endpoint loads AFTER the client'));
+  });
+}());
+
 // ======================================================= path 2 is a separate path
 // Run WITHOUT compression first: the body is plain JSON and can be read directly.
 // Consent is deliberately left UNDECIDED throughout — pressing send in the feedback
@@ -730,6 +1025,277 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
           !/Could not send/.test(app),
           (app.match(/.{0,40}Could not send.{0,40}/) || [''])[0]);
       });
+  })
+  .then(function () {
+    /* ========================= the referrer, the country and the bot flag (2026-09-20)
+     *
+     * WHAT THIS IS FOR. Country, referrer, device and a bot flag reach us ONLY through
+     * Cloudflare's injected RUM beacon; the nightly rollup mirrors them into our own D1
+     * while they are still inside Cloudflare's 7-day exact window, so the STORE is ours
+     * and the COLLECTION is not. Content blockers remove that beacon, so the series is
+     * structurally incomplete by an amount it cannot measure about itself. These checks
+     * cover the same two facts arriving on OUR path, which is not blocked, plus a bot
+     * classification of our own *(OWNER RULINGS, 2026-09-20: "We don't need to change
+     * privacy.html. We are just doing what cloudflare already does." and "We should also
+     * classify bots.")*.
+     *
+     * The Worker helpers are LIFTED OUT AND EXECUTED, not grepped — the keyOf idiom
+     * earlier in this file, and for the same reason: a source scan can certify a
+     * classifier that classifies nothing (#485). They are pure and import nothing, which
+     * is the only reason it is possible. */
+    var fs = require('fs');
+
+    // ---- the client sends a HOST, and never the rest of the URL ---------------------
+    var q = load({ referrer: 'https://www.google.com/search?q=nuclear+plant+simulator+tim+holt' });
+    ck('the referrer is reduced to its host', q.T._refHost() === 'www.google.com', q.T._refHost());
+    q.T.event('page_view', { page: 'home' });
+    q.T.flush();
+    var body = (q.sent[0] || {}).body || '';
+    var env = {};
+    try { env = JSON.parse(body); } catch (e) { /* reported by the checks below */ }
+    ck('THE ENVELOPE CARRIES THE HOST', env.ref === 'www.google.com', JSON.stringify(env.ref));
+    /* The load-bearing one. A query string on a search referrer is the visitor's own
+     * words, and the whole point of sending a host is that they never leave the page. */
+    ck('...and NOT the path or the query — the search terms never leave the page',
+      body.indexOf('/search') < 0 && body.indexOf('q=nuclear') < 0 && body.indexOf('tim+holt') < 0,
+      body.slice(0, 160));
+    ck('...and nothing host-shaped carries a slash, a colon, a query or a fragment',
+      !/[/?#: ]/.test(String(env.ref || '')), JSON.stringify(env.ref));
+
+    var noRef = load({ referrer: '' });
+    noRef.T.event('page_view', { page: 'home' });
+    noRef.T.flush();
+    ck('no referrer sends an empty string, not "undefined" or a missing field',
+      JSON.parse((noRef.sent[0] || {}).body || '{}').ref === '', '');
+
+    var noDoc = load();
+    noDoc.T.event('page_view', { page: 'home' });
+    noDoc.T.flush();
+    ck('a runtime with no document still sends — the field is empty, not absent',
+      JSON.parse((noDoc.sent[0] || {}).body || '{}').ref === '', '');
+
+    var same = load({ referrer: 'https://reactordynamics.com/about.html' });
+    ck('an internal hop sends its host too — CLASSIFYING it is the receiver\'s job',
+      same.T._refHost() === 'reactordynamics.com', same.T._refHost());
+
+    /* THE FALLBACK PATH, which no browser in production takes and every check above
+     * therefore skips. Without `URL` the host is cut by hand, and credentials and a port
+     * are exactly what a hand-written cut forgets. */
+    var savedURL = globalThis.URL;
+    Object.defineProperty(globalThis, 'URL', { value: undefined, writable: true, configurable: true });
+    try {
+      var fb = load({ referrer: 'https://user:pw@evil.example.com:8443/p?q=secret' });
+      ck('with no URL constructor the host is still cut by hand, without userinfo or port',
+        fb.T._refHost() === 'evil.example.com', fb.T._refHost());
+      var fb2 = load({ referrer: 'evil.example.com/search?q=secret' });
+      ck('...and a value that is not a URL at all is dropped WHOLE, never trimmed',
+        fb2.T._refHost() === '', fb2.T._refHost());
+    } finally {
+      Object.defineProperty(globalThis, 'URL', { value: savedURL, writable: true, configurable: true });
+    }
+    var six = load({ referrer: 'https://[::1]:8080/p' });
+    ck('an IPv6 literal is not host-shaped and is dropped, not passed through',
+      six.T._refHost() === '', six.T._refHost());
+
+    // ---- the Worker: the three edge facts, EXECUTED ---------------------------------
+    var wsrc = readSrc('worker/src/index.js');
+    var mHost = /function hostOf\(v\) \{[\s\S]*?\r?\n\}/.exec(wsrc);
+    var mCtry = /function edgeCountry\(request\) \{[\s\S]*?\r?\n\}/.exec(wsrc);
+    var mBot = /const BOT_PATTERNS = \[[\s\S]*?\r?\n\];\r?\nfunction botClass\(ua\) \{[\s\S]*?\r?\n\}/.exec(wsrc);
+    ck('the Worker\'s hostOf was found', !!mHost);
+    ck('the Worker\'s edgeCountry was found', !!mCtry);
+    ck('the Worker\'s bot classifier was found', !!mBot);
+
+    if (mHost) {
+      var hostOf = new Function(mHost[0] + '; return hostOf;')();
+      ck('the receiver re-cuts a full URL to its host — the client is never trusted',
+        hostOf('https://www.google.com/search?q=secret') === 'www.google.com',
+        hostOf('https://www.google.com/search?q=secret'));
+      ck('...a bare host passes through unchanged',
+        hostOf('news.ycombinator.com') === 'news.ycombinator.com', hostOf('news.ycombinator.com'));
+      ck('...a host WITH a path and no scheme is dropped whole, not trimmed',
+        hostOf('news.ycombinator.com/item?id=1') === '', hostOf('news.ycombinator.com/item?id=1'));
+      ck('...userinfo, port and case are all removed',
+        hostOf('HTTPS://User:Pw@Example.COM:8443/p') === 'example.com',
+        hostOf('HTTPS://User:Pw@Example.COM:8443/p'));
+      ck('...an absurd length is refused rather than truncated',
+        hostOf('a'.repeat(300) + '.com') === '', String(hostOf('a'.repeat(300) + '.com')).length + ' chars');
+      var hostile = ['https://x.test/a/b?c=d#e', 'javascript:alert(1)', '../../etc/passwd',
+        'https://x.test/?note=i typed this', '', null, undefined, 12345,
+        'https://[::1]/p', 'http://10.0.0.1:99/x?y'];
+      ck('NO INPUT PRODUCES ANYTHING BUT A BARE HOST OR AN EMPTY STRING',
+        hostile.every(function (v) { var o = hostOf(v); return o === '' || /^[a-z0-9.-]+$/.test(o); }),
+        hostile.map(function (v) { return JSON.stringify(hostOf(v)); }).join(' '));
+    }
+
+    if (mCtry) {
+      var edgeCountry = new Function(mCtry[0] + '; return edgeCountry;')();
+      var req = function (cf, hdr) {
+        return { cf: cf, headers: { get: function (k) { return k === 'CF-IPCountry' ? (hdr || null) : null; } } };
+      };
+      ck('the country comes from the edge object', edgeCountry(req({ country: 'US' })) === 'US');
+      ck('...or from the CF-IPCountry header when there is no cf object',
+        edgeCountry(req(null, 'GB')) === 'GB', edgeCountry(req(null, 'GB')));
+      ck('..."unknown" and Tor are real answers and are kept as they come',
+        edgeCountry(req({ country: 'XX' })) === 'XX' && edgeCountry(req({ country: 'T1' })) === 'T1', '');
+      ck('...and anything that is not a two-character code is refused',
+        edgeCountry(req({ country: 'United States' })) === '' && edgeCountry(req(null)) === '', '');
+      /* THE STANDING PROMISE, as a source fact rather than a behaviour: the address is a
+       * rate-limit key and nothing else. A country DERIVED here instead of taken from the
+       * edge would put it in a variable in the write path, which is how a promise like
+       * this one gets broken by someone being helpful. */
+      ck('THE VISITOR ADDRESS IS NOWHERE NEAR THE COUNTRY — it is taken, not derived',
+        !/CF-Connecting-IP/.test(mCtry[0]), mCtry[0].replace(/\s+/g, ' ').slice(0, 120));
+    }
+
+    /* THE IP, ONCE, AND ONLY AS A RATE-LIMIT KEY. Counted over the whole Worker rather
+     * than asserted about one function: the promise at the top of index.js is about the
+     * FILE, and a second reader added anywhere is the thing that would break it. */
+    /* CODE ONLY. The header and the `scheduled()` comment both NAME the header, because
+     * explaining the promise requires saying what it is about — counting those would make
+     * this check red for documenting itself, which is the surest way to get the comment
+     * deleted instead of the defect fixed. The `[^:]` guard on the line-comment strip is
+     * the standing idiom in this file: without it every `https://` eats its own line. */
+    var wCode = wsrc.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    var ipHits = (wCode.match(/CF-Connecting-IP/g) || []).length;
+    ck('the Worker READS the visitor address exactly once, in the rate limiter',
+      ipHits === 1 && /env\.LIMITER[\s\S]{0,240}CF-Connecting-IP/.test(wCode), ipHits + ' occurrence(s) in code');
+    var wBody = (/writeDataPoint\(\{([\s\S]*?)\n    \}\);/.exec(wsrc) || [])[1] || '';
+    ck('...and nothing about the address reaches the row that is written',
+      !!wBody && !/CF-Connecting-IP|\bip\b/i.test(wBody), wBody ? '' : 'writeDataPoint body not found');
+
+    if (mBot) {
+      var botClass = new Function(mBot[0] + '; return botClass;')();
+      var CHROME = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+      var IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+      var FIREFOX = 'Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0';
+      ck('a real desktop browser is NOT a bot', botClass(CHROME) === '', botClass(CHROME));
+      ck('a real phone browser is NOT a bot', botClass(IPHONE) === '', botClass(IPHONE));
+      ck('a real Firefox is NOT a bot', botClass(FIREFOX) === '', botClass(FIREFOX));
+      ck('a search crawler classifies as crawler',
+        botClass('Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)') === 'crawler',
+        botClass('Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'));
+      ck('an unrecognised self-declared bot still classifies as crawler',
+        botClass('SomeNewThing-Bot/1.0 (+https://example.test)') === 'crawler',
+        botClass('SomeNewThing-Bot/1.0 (+https://example.test)'));
+      /* ORDER, AND IT IS NOT COSMETIC: Slackbot, Twitterbot and their kin all contain
+       * "bot", so the generic crawler pattern would swallow the whole preview family and
+       * every shared link would read as a crawl. */
+      ck('a link unfurl is a PREVIEW, not a crawler — the families are matched in order',
+        botClass('Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)') === 'preview',
+        botClass('Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)'));
+      ck('...and so is Twitter\'s, which also has "bot" in its name',
+        botClass('Twitterbot/1.0') === 'preview', botClass('Twitterbot/1.0'));
+      ck('a command-line tool classifies as tool', botClass('curl/8.4.0') === 'tool', botClass('curl/8.4.0'));
+      ck('a driven browser classifies as headless',
+        botClass('Mozilla/5.0 (X11; Linux x86_64) HeadlessChrome/120.0.0.0 Safari/537.36') === 'headless',
+        botClass('Mozilla/5.0 (X11; Linux x86_64) HeadlessChrome/120.0.0.0 Safari/537.36'));
+      ck('an ABSENT User-Agent is "no-ua", which is a signal, not a blank',
+        botClass('') === 'no-ua' && botClass(null) === 'no-ua' && botClass(undefined) === 'no-ua', '');
+      /* THE HONEST CAVEAT, written into the gate so it cannot be forgotten: this runs on
+       * a JS beacon, and most bots execute no JavaScript. A near-zero bot rate in
+       * production is therefore EXPECTED and is not evidence the classifier works — these
+       * strings are. */
+      ck('the classifier says in its own comment that a low live count proves nothing',
+        /not evidence the classifier works/i.test(wsrc), '');
+    }
+
+    /* ---- AND THE WIRING IS RUN, not read ------------------------------------------
+     * Everything above proves the three helpers. It says nothing about whether
+     * handleEvents CALLS them: `const refHost = String(payload.ref || '')` would leave
+     * every check above green while the receiver trusted whatever a client posted, and
+     * `const country = ''` would leave the column empty for ever. Measured — both
+     * injections reddened NOTHING until this block existed.
+     *
+     * The four assignments are lifted out and executed with the real helpers in scope,
+     * the same idiom as the key composer earlier in this file. referrerKind comes from
+     * rollup.js because that is where it lives and reusing it is half the point. */
+    /* STARTS AT `refSent`, not `refHost`: the absent-vs-empty guard is declared above
+     * refHost, and lifting from refHost left it out of scope -- ReferenceError, which at
+     * least fails loudly. A line silently EXCLUDED from a lifted block would not. */
+    var wireM = /  const refSent = [\s\S]*?\r?\n  const botKind = [^\r\n]*/.exec(wsrc);
+    var rkM = /export function referrerKind\(refererHost, requestHost\) \{[\s\S]*?\r?\n\}/
+      .exec(require('fs').readFileSync(path.join(ROOT, 'worker', 'src', 'rollup.js'), 'utf8'));
+    ck('the receiver\'s edge-fact wiring was found', !!wireM);
+    ck('rollup.js\'s referrerKind was found', !!rkM);
+    if (wireM && rkM && mHost && mCtry && mBot) {
+      var referrerKind = new Function(rkM[0].replace(/^export /, '') + '; return referrerKind;')();
+      var wire = new Function('hostOf', 'referrerKind', 'edgeCountry', 'botClass',
+        'payload', 'origin', 'request',
+        wireM[0] + '\nreturn { refHost: refHost, refKind: refKind, country: country, botKind: botKind };');
+      var mkReq = function (country, ua) {
+        return { cf: { country: country }, headers: { get: function (k) { return k === 'User-Agent' ? ua : null; } } };
+      };
+      var w1 = wire(new Function(mHost[0] + '; return hostOf;')(), referrerKind,
+        new Function(mCtry[0] + '; return edgeCountry;')(),
+        new Function(mBot[0] + '; return botClass;')(),
+        { ref: 'https://news.ycombinator.com/item?id=1&note=whatever' },
+        'https://reactordynamics.com', mkReq('DE', 'Mozilla/5.0 (compatible; Googlebot/2.1)'));
+      ck('A CLIENT THAT POSTS A FULL URL STILL YIELDS A HOST — the receiver re-cuts it',
+        w1.refHost === 'news.ycombinator.com', JSON.stringify(w1.refHost));
+      ck('...and an outside referrer is classified external',
+        w1.refKind === 'external', w1.refKind);
+      ck('THE COUNTRY IS ACTUALLY TAKEN FROM THE REQUEST, not left empty',
+        w1.country === 'DE', JSON.stringify(w1.country));
+      ck('...and the User-Agent is actually classified',
+        w1.botKind === 'crawler', JSON.stringify(w1.botKind));
+      var w2 = wire(new Function(mHost[0] + '; return hostOf;')(), referrerKind,
+        new Function(mCtry[0] + '; return edgeCountry;')(),
+        new Function(mBot[0] + '; return botClass;')(),
+        { ref: 'reactordynamics.com' }, 'https://reactordynamics.com',
+        mkReq('US', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0.0.0 Safari/537.36'));
+      ck('OUR OWN HOST IS INTERNAL NAVIGATION, not discovery — the same call the\n      Cloudflare-derived series makes',
+        w2.refKind === 'internal', w2.refKind);
+      ck('...and an ordinary visitor is not flagged a bot',
+        w2.botKind === '' && w2.country === 'US', w2.botKind + '/' + w2.country);
+      var w3 = wire(new Function(mHost[0] + '; return hostOf;')(), referrerKind,
+        new Function(mCtry[0] + '; return edgeCountry;')(),
+        new Function(mBot[0] + '; return botClass;')(),
+        {}, 'https://reactordynamics.com', mkReq('CA', 'curl/8.4.0'));
+      /* THE MARKER THE ROLLUP DEPENDS ON. A row this Worker wrote always carries a
+       * non-empty kind, which lets rollup.js tell a pre-column row ('' here) from a real
+       * one without consulting a clock. If this can ever be '', that inference dies.
+       *
+       * SPLIT 2026-09-20. It used to assert an ABSENT `ref` is 'direct', bundling two
+       * different facts. A client that never sends the field is NOT a direct visit, and
+       * the live site does not send it until site/telemetry.js ships -- so 'direct' would
+       * have recorded the whole pre-field site as typed-in traffic: a WRONG number, not a
+       * missing one, and unrecoverable, because nothing downstream could separate those
+       * rows later. Absent is 'unknown' now, and the two cases are asserted separately. */
+      ck('an ABSENT ref field is "unknown" — the client did not report one',
+        w3.refKind === 'unknown', JSON.stringify(w3.refKind));
+      var w4 = wire(new Function(mHost[0] + '; return hostOf;')(), referrerKind,
+        new Function(mCtry[0] + '; return edgeCountry;')(),
+        new Function(mBot[0] + '; return botClass;')(),
+        { ref: '' }, 'https://reactordynamics.com', mkReq('CA', 'curl/8.4.0'));
+      ck('a PRESENT but empty ref IS "direct" — the browser reported no referrer',
+        w4.refKind === 'direct', JSON.stringify(w4.refKind));
+      ck('...and neither is ever the empty string, which is the pre-column marker',
+        w3.refKind !== '' && w4.refKind !== '', JSON.stringify([w3.refKind, w4.refKind]));
+    }
+
+    // ---- the column map: APPENDED, documented, and written on every row -------------
+    var noCmt = wBody.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    ck('the four new blobs are APPENDED after the last one, in the documented order',
+      /String\(p\.id \|\| ''\),\s*refHost,\s*refKind,\s*country,\s*botKind,\s*\]/.test(noCmt),
+      (noCmt.match(/String\(p\.id[\s\S]{0,120}/) || [''])[0].replace(/\s+/g, ' '));
+    ck('the bot verdict is APPENDED after the last double, not inserted among them',
+      /num\(p\.steps\),\s*botKind \? 1 : 0,\s*\]/.test(noCmt),
+      (noCmt.match(/num\(p\.steps\)[\s\S]{0,80}/) || [''])[0].replace(/\s+/g, ' '));
+    ['blobs\\[8\\]\\s+ref_host', 'blobs\\[9\\]\\s+ref_kind', 'blobs\\[10\\]\\s+country',
+     'blobs\\[11\\]\\s+bot_kind', 'doubles\\[10\\] bot'].forEach(function (re) {
+      ck('the column map documents ' + re.replace(/\\\\s\+|\\\\/g, ' ').replace(/\s+/g, ' '),
+        new RegExp(re).test(wsrc), 'a slot claimed in code and not in the map is the next collision');
+    });
+    ck('the receiver reuses rollup.js\'s referrerKind rather than writing a second one',
+      /import \{ runRollup, referrerKind \} from '\.\/rollup\.js';/.test(wsrc) &&
+      /referrerKind\(refHost, hostOf\(origin\)\)/.test(wsrc),
+      'a second classifier is how internal navigation becomes discovery');
+    /* The ORIGIN's host and not the Worker's: this endpoint is a different hostname from
+     * the site, so referrerKind given the request URL would file every internal hop as
+     * external — and it would look right in a code read. */
+    ck('...and it is handed the SITE\'s host, not the Worker\'s own',
+      !/referrerKind\([^)]*url\.hostname/.test(wsrc), '');
   })
   .then(function () {
     // ------------------------------------------------- storage refused entirely
