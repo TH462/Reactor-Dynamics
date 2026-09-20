@@ -1183,7 +1183,25 @@
       name: 'Heatup / cooldown rate  ·  sim: instruments.tavg_rate (indicated Tavg, differentiated and damped), °C/hr in',
       left: 1155, top: 745, width: 90, height: 45,
       label: 'COOLDOWN RATE', labelSize: 10, value: '0', unit: 'F/hr',
-      color: '#9fb3c4', fontSize: 15 }
+      color: '#9fb3c4', fontSize: 15 },
+    /* PORV TAILPIPE TEMPERATURE — the one caption the value never got (#673). `imrsgch20pv`
+     * renders a bare number under the PORV status light with no name on it, and a TMI-2
+     * walkthrough step grades on the player reading it: "the tailpipe temperature below is the
+     * only honest tell" (imrsgch20pv's own comment). A bare "600 F" beside a valve icon is not
+     * that tell if nothing says which pipe it is.
+     *
+     * Copies the RCP FLOW idiom exactly (`imsgtedbunb` above the `imsgteavgid` value): a
+     * left-anchored text caption sitting ~15-18 px above the right-anchored value, offset back
+     * from the value's right edge by roughly the caption's own width.
+     *
+     * GEOMETRY, MEASURED off the doc. The value is `left:945 top:240` (right-anchored, so 945
+     * is its right edge). Clear space above it: PORV STATUS (`ims2jf7fv7m`) sits at top 190 and
+     * the PORV BLOCK VALVE component is 825..865 x 230..270 — neither reaches the 205..238 band.
+     * The STEAM caption (`imrr1gttt2l`) starts at x965, so anything ending by ~944 clears it.
+     * 'TAILPIPE' at fontSize 12 mono runs ~58 px, so 885..943 x 222..236 is inside the free band
+     * with 2 px to spare on the STEAM side. */
+    { id: 'bdPorvTailpipeLabel', kind: 'text', name: '',
+      left: 885, top: 222, text: 'TAILPIPE', fontSize: 12, color: '#9fb3c4', weight: 600, mono: true }
   ];
 
   // ================================================================ NUMBERS (editable)
