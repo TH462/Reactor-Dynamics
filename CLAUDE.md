@@ -63,10 +63,22 @@ docs.
 > ```
 >
 > **Scope it to the task in hand**, not the whole backlog — the owner is asking "where are we on
-> *this*", and a list of everything open answers a different question. **Name what blocks each
-> item**: "not started", "waiting on your ruling" and "blocked by another session" are different
-> facts and only one of them is yours to clear. **One recommendation, not a menu** — same rule as
-> the block above.
+> *this*", and a list of everything open answers a different question. **One recommendation, not
+> a menu** — same rule as the block above.
+>
+> **THE BLOCK IS A REPORT, NOT A PLACE TO PUT WORK** *(OWNER DIRECTIVE, 2026-09-20: "You often
+> stop with work that needs to be done in the STILL OUTSTANDING block. how can we adjust so that
+> you keep working until its complete? I cant always monitor your work just to say 'keep going'
+> every time.")*. **Every item names which of exactly THREE things it waits on: his RULING** (a
+> judgement only he can make) · **his PERMISSION** (push and merge, already gated) · **a CLOCK**
+> (a gate actually running).
+>
+> **Waiting on none of those is not OUTSTANDING, it is UNSTARTED — do it before you stop.**
+> *"Waiting on your yes"* is not a category: if you would act the instant he said yes, and nothing
+> in it is irreversible or his to judge, the yes was never load-bearing — make the call, do the
+> work, say what you did. In the session that produced this rule, one block parked two items as
+> *"waiting on your yes"* that needed nothing from him **while calling two branches that carried
+> his own rulings "undecided"**. **He cannot monitor; the default is KEEP GOING.**
 >
 > **Omit it entirely when nothing is outstanding**, and say so in a sentence instead. A section
 > that appears every turn stops being read, which is the failure mode the First Principles rule
@@ -84,16 +96,12 @@ docs.
 >
 > **RE-ISSUED, because the rule above was not enough** *(OWNER DIRECTIVE, 2026-08-14: "From now on,
 > whenever you need a ruling, tell me what you need me to decide, my options and your
-> recommendation. I'm tired of having to ask every time.")*. **The failure mode is specific and it
-> is NOT refusing to recommend — it is naming a blocker without the decision attached.** Writing
-> *"blocked on your ruling"* or *"needs your call"* in a status line, a STILL OUTSTANDING block or
-> an issue comment, and leaving the options in a document he has to go find, makes him ask. It
-> made him ask twice in one session against a rule already a fortnight old.
->
-> **Every time you say a thing is blocked on him, the decision travels WITH it, in that message:**
-> what he is deciding · the options · your recommendation and why. **No exceptions for brevity** —
-> if it is worth telling him he is blocking something, it is worth telling him what to do about it.
-> A pointer to where the options are written is not the options.
+> recommendation. I'm tired of having to ask every time.")*. **The failure mode is NOT refusing to
+> recommend — it is naming a blocker without the decision attached.** *"Blocked on your ruling"* in
+> a status line, a STILL OUTSTANDING block or an issue comment, with the options in a document he
+> must go find, makes him ask. **Every time you say a thing is blocked on him, the decision travels
+> WITH it, in that message:** what he is deciding · the options · your recommendation and why. **No
+> exceptions for brevity.** A pointer to where the options are written is not the options.
 
 > **The First Principles section — a CANARY, not an essay** *(OWNER RULING, 2026-07-29: "I would
 > label it the 'First Principles' section. The start and end should be marked."; narrowed hours
@@ -109,19 +117,18 @@ docs.
 > **— END FIRST PRINCIPLES —**
 > ```
 >
-> **One concern, not a survey** — the first two drafts each crammed in three, which is what made
-> them too long. Two candidates: ship the one you would most regret him not seeing. Needs more
-> than three sentences: then the canary is a short line plus an offer to expand, or an issue.
+> **One concern, not a survey** — two candidates: ship the one you would most regret him not
+> seeing. Needs more than three sentences: a short line plus an offer to expand, or an issue.
 > Same sense as HR9's — it says *look here*, it settles nothing.
 >
-> **Unhedged, not unaccountable.** Exempt from habit (hedging, deferring to documents, ranking
-> the cheap option first), never from the rules: **HR12 still binds** — an unmeasured claim must
-> say so, since a rules-free zone for confident plant-dynamics claims is what #205 and #220 are
-> the record of — as do HR11 and no-fabricated-sources, and it can never authorise an action or
-> excuse a gate. **Optional and never padded**: a slot filled every turn trains the owner to skip
-> it. **Two triggers worth knowing** — the *ranking disclosure* (your recommendation is the safe
-> option and a higher-fidelity one exists you are not recommending: say which you would pick on
-> fidelity alone, #251), and a doubt about your own work you would otherwise bury. Not gateable.
+> **Unhedged, not unaccountable.** Exempt from habit (hedging, deferring to documents, ranking the
+> cheap option first), never from the rules: **HR12 still binds** — a rules-free zone for confident
+> plant-dynamics claims is what #205 and #220 are the record of — as do HR11 and
+> no-fabricated-sources, and it can never authorise an action or excuse a gate. **Optional and
+> never padded**: a slot filled every turn trains the owner to skip it. **Two triggers** — the
+> *ranking disclosure* (you are recommending the safe option and a higher-fidelity one exists: say
+> which you would pick on fidelity alone, #251), and a doubt about your own work you would
+> otherwise bury. Not gateable.
 
 > **You may not be the only agent in this repo. Check all lanes before you edit.** Two sessions
 > in one working directory overwrite each other's files and sweep each other's work into the
@@ -159,7 +166,7 @@ docs.
 >   it shouldn't be automatic. The agent should warn the user and ask if they should use
 >   workbench.")*. The detection misfires both ways and only the owner can tell the cases apart.
 >   Investigating in place is fine; **editing, probe files and commits are not**. Absent a reply,
->   stay read-only and say what you are waiting on — the heuristic never gets an action.
+>   stay read-only — the heuristic never gets an action.
 > - **NEVER MERGE INTO `develop` UNLESS THE OWNER SAYS SO** *(OWNER DIRECTIVE, 2026-07-31: "We
 >   need a rule to never merge unless I say so. Develop was being worked")*. Applies to
 >   fast-forwards and anything else that moves `develop`. A clean `git status` is not permission.
@@ -179,12 +186,11 @@ docs.
 >   `Diagnostic/TUNING_LOG.md`, `Blueprint/BUILD_DECISIONS.md`, and the `BASELINES` map in
 >   `test/run_all.js` — keep both sides, then **re-run `run_all`**, because a mechanical BASELINES
 >   resolution can take the wrong number silently.
-> - **`Manuals/` is on that list and is the DANGEROUS one**: those four conflict LOUDLY, a manual
->   chapter is edited in the MIDDLE by both lanes and resolves in one lane's favour **saying
->   nothing** — a 2026-08-03 merge dropped a whole `§5.5` while the digests re-sealed around it.
->   `run_manual_rev` now has a content canary, but **it only sees what a revision row NAMES**, so
->   write rows chapter-qualified with a `§`, and after any `Manuals/` merge grep the chapter for
->   the thing you wrote. `LANES.md` §6.
+> - **`Manuals/` is the DANGEROUS one**: those four conflict LOUDLY, but a chapter edited in the
+>   MIDDLE by both lanes resolves in one lane's favour **saying nothing** — a 2026-08-03 merge
+>   dropped a whole `§5.5` while the digests re-sealed around it. `run_manual_rev`'s content canary
+>   **only sees what a revision row NAMES**, so write rows chapter-qualified with a `§`, and after
+>   any `Manuals/` merge grep the chapter for what you wrote. `LANES.md` §6.
 > - **Your session-log heading names your LANE: `YYYY-MM-DD-<lane>-<letter>`**, `-a` first, never
 >   bare — `test/run_session_labels.js` gates it; `LANES.md` §7 for why.
 > - A new tree comes from `git worktree add <path> <branch>`, and needs `node_modules` junctioned
@@ -317,12 +323,11 @@ to read everything.
 | **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
 | **Work out which lane to use, or merge one** | **`Blueprint/LANES.md`** — the occupancy check's two blind spots, warn-and-ask, the merge-conflict list and the `Manuals/` silent-drop case. The block at the top of this file is only what binds. |
 | **Look up a trap that used to be in this file** | **`Blueprint/TRAPS.md`** — bullets evicted from the standing list under its 25-cap, plus the criterion for which ones go. |
-| **Run an independent audit slice (#221)** | **`Blueprint/AUDIT_CHARTER.md`** — the whole file is *your* (primed) document: the lane, the prep and the close-out. The auditor's own rules are **`Blueprint/AUDITOR_ORIENTATION.md`**, deployed to `C:\grok_build\RD_Audit\CLAUDE.md` by `node tools/audit_deploy.js`; do not restate them anywhere else. Verify with `node tools/audit_preflight.js <slice>` (eight checks, exit 2 naming the cause; it launches nothing). **The launch is a fresh session started in `C:\grok_build\RD_Audit` itself — not in its `tree/`**, which would silently get the repo's settings and no auditor orientation. **If you are reading THIS file auto-loaded, you are primed and cannot be the auditor** — prep the slice per §4 and stop; do not read the slice's code "to help". Preflight proves the config, not the session: the auditor's first turn must state on the slice issue whether CLAUDE.md was auto-loaded *without it reading the file*. |
+| **Run an independent audit slice (#221)** | **`Blueprint/AUDIT_CHARTER.md`** — the lane, the prep and the close-out (yours, as the primed agent). The auditor's own rules are **`Blueprint/AUDITOR_ORIENTATION.md`**, deployed by `node tools/audit_deploy.js`; do not restate them elsewhere. Verify with `node tools/audit_preflight.js <slice>`. **Launch a fresh session in `C:\grok_build\RD_Audit` itself, NOT its `tree/`** — which silently gets the repo's settings and no auditor orientation. **Reading THIS file auto-loaded means you are primed and cannot be the auditor**: prep the slice per §4 and stop. Preflight proves the config, not the session. |
 | **Build or modify a module** | `Blueprint/CONTEXT.md` **plus that one module's spec** (`Blueprint/M1`–`M8`) — and nothing else. |
 | **Know what changed recently** | `CHANGELOG.md` (skimmable) → `Blueprint/BUILD_DECISIONS.md` (dense engineering rationale, tuning, gate tallies). |
 | **Operate the plant / look up a control, setpoint, or procedure** | `Manuals/` — start at `Manuals/README.md` (commercial-format PWR operator manuals). |
-| **Pick up the active tuning / bug-fixing effort** | `Diagnostic/TUNING_LOG.md` — the session-continuity record: current status, the tuning toolbox (knobs + tests + workflow), a dated worklog, and the full backlog of known & suspected issues. **Read this first when continuing tuning work.** |
-| **See current known issues, tuning gaps, playtest findings** | `Diagnostic/` (`TUNING_LOG.md`, `SPEC_AUDIT_*.md`, `OPS_TUNING_REPORT.md`, `PLAYTEST_REPORT.md`) and `Manuals/ISSUES_AND_FINDINGS.md`. |
+| **Pick up the active tuning / bug-fixing effort, or see known issues and playtest findings** | `Diagnostic/TUNING_LOG.md` — the session-continuity record: current status, the tuning toolbox (knobs + tests + workflow), a dated worklog, and the backlog of known & suspected issues. **Read it first when continuing tuning work.** Then the rest of `Diagnostic/` (`SPEC_AUDIT_*`, `OPS_TUNING_REPORT`, `PLAYTEST_REPORT`) and `Manuals/ISSUES_AND_FINDINGS.md`. |
 | **Tune plant behavior (the physics "knobs")** | Each plant's **`[tune]`-annotated constants** in `engines/<plant>/<plant>_config.js` (PWR 89, RBMK 27, BWR 37 — the file header explains the convention: `[tune]` values are starting points arbitrated by the scenario suite; un-marked values are fixed). Protection/alarm/failure setpoints are data too, in `layers/control/<plant>_control.js`. Validate with `test/run_ops.js` and `test/run_behavior.js`; open tuning targets are tracked in `Diagnostic/OPS_TUNING_REPORT.md`, and the live worklog + toolbox is `Diagnostic/TUNING_LOG.md`. **BEFORE you move a constant, run `node tools/perturb_sweep.js`** — it nudges `[tune]` values by 2–3 % and reports which checks flip, so "what will this break?" is answered ahead of the retune instead of by a mystery red after it (#321). |
 | **Run the simulator** | Open `index.html` (landing page — Operate the PWR from there), or `ui/shell.html` directly — see below. |
 | **Run the tests** | `node test/run_<suite>.js` — see below. |
@@ -347,12 +352,12 @@ _Last updated: **2026-09-18**._
 **The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
 2026-08-06: "The revision number only matters during a release to the website. Revision numbers
 should never go up until a release happens.")*. **Read the top row of
-`Manuals/00_REVISION_HISTORY.md`, never a number written here** — this line said "Rev 14 …
-pending Rev 15" while that table stood at a **pending Rev 17**, which is the same rot as the
-gate baselines. The newest row is the pending one and it extends until the next release.
-**Do not open a new revision row for a manual edit; extend the pending row.** That is
-also the resolution for a revision-number collision, which is what two lanes editing the manuals
-produce — Rev 13 shipped carrying thirteen lettered items from two lanes for exactly that reason.
+`Manuals/00_REVISION_HISTORY.md`, never a number written here** — a number written here rotted
+two revisions behind that table, the same rot as the gate baselines. The newest row is the
+pending one and extends until the next release. **Do not open a new revision row for a manual
+edit; extend the pending row** — that is also how a revision-number collision resolves, which is
+what two lanes editing the manuals produce (Rev 13 shipped thirteen lettered items for that
+reason).
 
 **Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.** A
 reading aid, not a record: the full entry is in `Diagnostic/TUNING_LOG.md`, and anything that is
