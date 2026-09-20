@@ -18,8 +18,11 @@
  *     the SAME split: closed days from `stats.js`, today folded in live from Cloudflare, each
  *     printing its own source note and its own literal span so a section cannot silently
  *     drift onto a different window than the one the picker shows.
- *   - ONE section, "Country × referrer × day", has no first-party equivalent — `stats.groupBy`
- *     is single-dimension only — and stays Cloudflare-only, over the picked window, saying so.
+ *   - "Country × referrer × day" reads the SAME split as the nine breakdowns above it since
+ *     the coordinator follow-up: `stats.dayCountryReferrer` is a dedicated four-column GROUP
+ *     BY (day, country, referrer host, referrer kind), the same shape `referrerBreakdown`
+ *     already used for two of those columns — `stats.groupBy` itself stays single-dimension
+ *     only, but this section never needed it to be anything else.
  *   - Web Vitals is Cloudflare-only, fixed to a trailing 7 days, and says so — `traffic_daily`
  *     stores no percentiles, so it can never become a trend (#764 Unit 2b, section E).
  *
@@ -41,8 +44,8 @@ import { html, PAGE_HEAD, nav, table, errBlock, dayLabel, etDay, etDayStartMs,
          section, esc } from './render.js';
 import { gql, ACCOUNT, SITE_TAG } from './cfapi.js';
 import { referrerKind, RETAIN_DAYS } from './rollup.js';
-import { parseDay, storeRange, dailyTotals, groupBy, referrerBreakdown, trailingMean,
-         periodDelta, priorRange, dayRange, prevDay, nextDay } from './stats.js';
+import { parseDay, storeRange, dailyTotals, groupBy, referrerBreakdown, dayCountryReferrer,
+         trailingMean, periodDelta, priorRange, dayRange, prevDay, nextDay } from './stats.js';
 
 // ---------------------------------------------------------------- RUM helpers
 const num = (v) => (v == null || v === '' ? 0 : Number(v));
@@ -574,42 +577,77 @@ export async function analyticsPage(env, url) {
     }),
   ]);
 
-  /* ---- the one section with NO first-party equivalent — genuinely three-dimensional, and
-   * `stats.groupBy` is single-dimension only (coordinator: "stays on Cloudflare"). Names its
-   * own span, never the page default. */
-  const cfFrom = new Date(etDayStartMs(from)).toISOString();
-  const cfTo = new Date(includesToday ? nowMs : etDayStartMs(nextDay(to))).toISOString();
-  // `breakdownCoarse`, not a shorter name: it is the per-SECTION rounding factor for the
-  // one section that still reads Cloudflare directly, named so the note below reports the
-  // actual number Cloudflare returned rather than a bare "it's rounded".
-  function cfOnlyNote(breakdownCoarse) {
-    return '<p class="muted">Source: ' + (breakdownCoarse > 1
-      ? '<b>Cloudflare coarse</b> — rounded to the nearest ' + breakdownCoarse
-      : '<b>Cloudflare exact</b> — 7 days or fewer') + ' (' + esc(from) + ' to ' + esc(to)
-      + '). No first-party equivalent for this dimension.</p>';
-  }
-  const cfOnlySections = await Promise.all([
-    section('Country × referrer × day', async () => {
+  /* ---- "Country × referrer × day" — MIGRATED (coordinator follow-up on #791). It used to
+   * stay Cloudflare-only for the whole picked window because `stats.groupBy` is
+   * single-dimension only; `stats.dayCountryReferrer` is a dedicated four-column GROUP BY
+   * instead, so closed days now come from the store exactly like every other breakdown, and
+   * only TODAY is still fetched live. Reuses `from`/`closedTo`/`today` for the same reason
+   * `hybridBreakdown` does — a section deriving its own span is how one silently drifts onto
+   * a different window than the picker shows. */
+  async function hybridCountryReferrerDay(limit) {
+    const closed = from <= closedTo ? await dayCountryReferrer(db, from, closedTo, Math.max(limit, 500)) : [];
+    const by = new Map();
+    closed.forEach((r) => {
+      const k = [r.day, r.country, r.host].join('');
+      by.set(k, { day: r.day, country: r.country, host: r.host, kind: r.kind,
+                  pageloads: r.pageloads, visits: r.visits, coarse: r.coarse,
+                  si: r.si || 1 });
+    });
+    // Only TODAY is ever read live here — a window that never reaches today must issue NO
+    // Cloudflare query for this dimension combination at all (closed days come from D1 alone).
+    const fetchCountryDayLive = includesToday;
+    if (fetchCountryDayLive) {
       const g = rumRows(await gql(apiToken,
-        rumGroup('countryName refererHost requestHost datetimeHour', 'count_DESC',
-                 Math.min(10000, allDays.length * 24 + 48), cfFrom, cfTo)),
-        (d) => ({ country: d.countryName, referer: d.refererHost || '(direct)',
-                  kind: referrerKind(d.refererHost, d.requestHost), day: etDay(d.datetimeHour) }),
+        rumGroup('countryName refererHost requestHost', 'count_DESC', Math.max(limit, 500),
+                 todayFromIso, todayToIso)),
+        (d) => ({ country: d.countryName || '', host: d.refererHost || '',
+                  kind: referrerKind(d.refererHost, d.requestHost) }),
         undefined, { excludeBots: true });
-      const by = new Map();
       g.rows.forEach((r) => {
-        const k = [r.day, r.country, r.referer].join('');
-        const cur = by.get(k) || { day: r.day, country: r.country, referer: r.referer,
-                                   kind: r.kind, pageloads: 0, visits: 0, si: 1 };
+        const k = [today, r.country, r.host].join('');
+        const cur = by.get(k) || { day: today, country: r.country, host: r.host, kind: r.kind,
+                                    pageloads: 0, visits: 0, coarse: false, si: 1 };
         cur.pageloads += r.pageloads; cur.visits += r.visits;
-        if (r.si > cur.si) cur.si = r.si;
+        // Per-row sample interval, not a batch-wide flag — one rounded key must not taint
+        // every other key merged from the same live batch (the same trap `hybridBreakdown`
+        // and `hybridReferrer` already guard against).
+        if (r.si > 1) { cur.coarse = true; cur.si = Math.max(cur.si || 1, r.si); }
         by.set(k, cur);
       });
-      const rows2 = [...by.values()]
-        .sort((a, b2) => (a.day === b2.day ? b2.pageloads - a.pageloads : (a.day < b2.day ? 1 : -1)));
-      return cfOnlyNote(g.coarse) + table(rows2, [{ key: 'day', label: 'Date (ET)' },
-        { key: 'country', label: 'Country' }, { key: 'referer', label: 'Referrer' },
-        { key: 'kind', label: 'Kind' }, ...RUM_COLS]);
+    }
+    const rows = [...by.values()]
+      .sort((a, b2) => (a.day === b2.day ? b2.pageloads - a.pageloads : (a.day < b2.day ? 1 : -1)))
+      .slice(0, limit);
+    return { rows, anyCoarse: rows.some((r) => r.coarse) };
+  }
+  /* Same span-naming rule as `hybridSourceNote`, plus the one thing this table cannot say by
+   * itself: a day this table has NO ROWS for could be a real zero or a day the nightly job
+   * never captured, and those must not read the same. `closedByDay` already carries that flag
+   * per day (built for the by-day headline above) — reused here rather than re-querying. */
+  function countryReferrerDayNote(anyCoarse, missingDays, worstSi) {
+    return '<p class="muted">Source: <b>first-party exact</b> (' + esc(from) + ' to ' + esc(closedTo) + ')'
+      + (anyCoarse ? ', a row marked <b>coarse</b> below was captured late and is'
+          + ' Cloudflare-rounded to the nearest ' + (worstSi || 10) : '')
+      + (includesToday ? ', plus <b>today</b> (' + esc(today) + ') live from Cloudflare' : '') + '.</p>'
+      + (missingDays.length ? '<p class="warn"><b>No data captured</b> for ' + missingDays.map(esc).join(', ')
+          + ' — absent from the table below, which is NOT the same as a zero.</p>' : '');
+  }
+  const countryReferrerDaySection = await Promise.all([
+    section('Country × referrer × day', async () => {
+      const h = await hybridCountryReferrerDay(500);
+      const missingDays = allDays.filter((d) => d <= closedTo && (closedByDay.get(d) || { missing: true }).missing);
+      // The WORST interval in the window, so the note cannot understate what a row shows.
+      const worstSi = h.rows.reduce((m, r) => Math.max(m, r.coarse ? (r.si || 1) : 1), 1);
+      return countryReferrerDayNote(h.anyCoarse, missingDays, worstSi) + table(h.rows.map((r) => ({
+        day: r.day, country: r.country === '' ? '(unknown)' : r.country,
+        referer: r.host || '(direct)', kind: r.kind, pageloads: r.pageloads, visits: r.visits,
+        /* THE INTERVAL IT ACTUALLY GOT, not a hard-coded 10 -- see stats.dayCountryReferrer.
+         * The five other sites on this page still print the literal; they are the same
+         * latent defect and are not fixed here. */
+        note: r.coarse ? 'coarse (±' + r.si + ')' : '',
+      })), [{ key: 'day', label: 'Date (ET)' }, { key: 'country', label: 'Country' },
+        { key: 'referer', label: 'Referrer' }, { key: 'kind', label: 'Kind' }, ...RUM_COLS,
+        { key: 'note', label: 'Note' }]);
     }),
   ]);
 
@@ -674,12 +712,7 @@ export async function analyticsPage(env, url) {
     + (liveErr ? '<p class="warn">Today’s live figure failed to load: ' + esc(liveErr) + '</p>' : '')
     + '<h2>By day</h2>' + chart + legend + dayTable
     + '<h2>Traffic breakdown <span class="muted">— first-party for closed days, Cloudflare live for today</span></h2>'
-    + migrated.join('') + referrerSections.join('')
-    + '<h2>Traffic breakdown — Cloudflare only <span class="muted">— no first-party equivalent</span></h2>'
-    + '<p class="muted">`stats.groupBy`, the first-party reader, is single-dimension only — a '
-    + 'three-way country/referrer/day cut has no equivalent there. This section below reads '
-    + 'Cloudflare directly for the window you picked and says so itself.</p>'
-    + cfOnlySections.join('')
+    + migrated.join('') + referrerSections.join('') + countryReferrerDaySection.join('')
     + '<h2>Performance <span class="muted">— real visitors, last 7 days, Cloudflare-only</span></h2>'
     + '<p class="muted">Core Web Vitals from real page loads, at the 75th percentile — the '
     + 'figure Google’s own ranking uses, and the one that would have shown #596 (the control '

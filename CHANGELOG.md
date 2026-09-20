@@ -44,6 +44,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 
 ### Added
+- **Ops dashboard: "Country × referrer × day" reads the first-party store** (2026-09-20) instead
+  of querying Cloudflare live, so it stops rounding past 7 days. Cloudflare's RUM holds 7 days at
+  full resolution and serves a sampled tier beyond that — measured, the identical query returns
+  sampleInterval 1 over 7 days and 10 over 19 — and the data had been exact in `traffic_daily`
+  all along; only a multi-dimension reader was missing. Exact back to 2026-08-25.
+- **The site's own beacon now records referrer, country and a bot class** (2026-09-20), rolled
+  nightly into `own_traffic_daily`. Traffic data previously reached us only through Cloudflare's
+  injected RUM beacon, which content blockers block. The referrer is cut to a HOST — client-side
+  and again at the Worker, since the endpoint is open — the country comes from the edge without
+  an IP ever being stored, and the bot class is our own User-Agent match, cruder than
+  Cloudflare's and labelled as ours. **Authority does not move**: the dashboard still reports the
+  Cloudflare-derived numbers, and the two series run side by side until a comparison decides.
+  Expect ours to read higher once it works — that is the block rate becoming visible, not new
+  traffic.
 - **Ops dashboard: the By-day chart is a DAILY LINE past 14 days** (2026-09-20, owner request).
   It bucketed 7 days to a bar above 14 and 30 above 90, so the 30d and All presets showed four or
   five fat bars of weekly totals. 14 days or fewer keeps the bars unchanged; longer draws one

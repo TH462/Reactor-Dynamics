@@ -256,10 +256,18 @@ var TODAY_LIVE = { rumPageloadEventsAdaptiveGroups: [
    * ever leaks back in, the totals checks 1 and 2 assert (53/28) jump to (153/78). */
   { count: 100, avg: { sampleInterval: 1 }, sum: { visits: 50 }, dimensions: { bot: true } },
 ] };   // 11 pageloads, 7 visits (human only) — the bot row must never be summed in
+/* TODAY's live slice for "Country × referrer × day" — no `datetimeHour` dimension any more
+ * (#791 follow-up): the section only ever fetches ONE day live (today), so there is nothing
+ * left to bucket by hour. Two rows in the SAME batch, one exact and one coarse, so a check
+ * can prove the per-row (not batch-wide) coarse marking the way `GENERIC_BREAKDOWN` already
+ * does for the single-dimension sections. `news.ycombinator.com` matches neither the
+ * reactordynamics.com nor the *.pages.dev suffix rule, so it classifies EXTERNAL. */
 var THREE_DIM = { rumPageloadEventsAdaptiveGroups: [
   { count: 5, avg: { sampleInterval: 1 }, sum: { visits: 2 }, dimensions: {
-    countryName: 'United States', refererHost: '', requestHost: 'reactordynamics.com',
-    datetimeHour: '2026-09-10 10:00:00' } } ] };
+    countryName: 'United States', refererHost: '', requestHost: 'reactordynamics.com' } },
+  { count: 3, avg: { sampleInterval: 10 }, sum: { visits: 1 }, dimensions: {
+    countryName: 'Germany', refererHost: 'news.ycombinator.com', requestHost: 'reactordynamics.com' } },
+] };
 /* TWO ROWS in the same live batch, same key in every dimension EXCEPT country and the
  * sample interval — France... no, "Germany" is a country that never appears in the seeded
  * D1 store, so its merged row is entirely the live half. Germany's row is COARSE
@@ -305,7 +313,7 @@ function dispatchGql(q) {
   // requested dimensions now, so it can filter bot rows out of the returned rows
   // (`rumRows`' `excludeBots` option) without an unconfirmed GraphQL filter term.
   if (has('dimensions { datetimeHour bot }')) return TODAY_LIVE;
-  if (has('dimensions { countryName refererHost requestHost datetimeHour bot }')) return THREE_DIM;
+  if (has('dimensions { countryName refererHost requestHost bot }')) return THREE_DIM;
   if (has('dimensions { refererHost requestHost bot }')) {
     if (FAIL_REFERRER) throw new Error('fakeGql: simulated referrer upstream failure');
     return GENERIC_BREAKDOWN;
@@ -424,6 +432,31 @@ var INJECTIONS = {
     'if (lastForced && i !== n - 1 && (n - 1) - i < 2 * stride) return;', ''],
   'line-labels-not-thinned': ['render.js',
     'if (i % stride !== 0 && i !== n - 1) return;', 'if (false) return;'],
+  /* "COUNTRY × REFERRER × DAY" MIGRATED OFF CLOUDFLARE-ONLY (#791 follow-up): four
+   * behaviours, four injections. */
+  'countryday-skips-d1': ['analytics.js',
+    'const closed = from <= closedTo ? await dayCountryReferrer(db, from, closedTo, Math.max(limit, 500)) : [];',
+    'const closed = [];'],
+  /* THE ONE THE TASK NAMES DIRECTLY: "falls back to the live Cloudflare query". A window that
+   * never reaches today must never touch Cloudflare for this dimension combination at all —
+   * `fetchCountryDayLive` exists so this can be forced on without touching the `includesToday`
+   * guard three OTHER blocks in this file already share. */
+  'countryday-falls-back-live': ['analytics.js',
+    'const fetchCountryDayLive = includesToday;', 'const fetchCountryDayLive = true;'],
+  /* THE OTHER ONE THE TASK NAMES DIRECTLY: "an uncaptured day renders as a zero row". The
+   * shipped code cannot produce one — a GROUP BY over rows that do not exist returns no row,
+   * never a zero one — so this is the NAIVE alternative it replaced: pre-seed a placeholder
+   * for every day in the window before the real rows are folded in, the way a LEFT JOIN
+   * against a calendar table would. */
+  'countryday-zero-row': ['analytics.js', '    const by = new Map();',
+    '    const by = new Map((from <= closedTo ? dayRange(from, closedTo) : []).map((d) => '
+    + '[d, { day: d, country: \'\', host: \'\', kind: \'\', pageloads: 0, visits: 0, coarse: false }]));'],
+  /* A day can be legitimately absent from the table without the reader being broken (a real
+   * zero, or the window ending before it). What must not happen is the NOTE staying silent
+   * about a day that was never captured — this drops the warning paragraph outright. */
+  'countryday-missing-note-silent': ['analytics.js',
+    'const missingDays = allDays.filter((d) => d <= closedTo && (closedByDay.get(d) || { missing: true }).missing);',
+    'const missingDays = [];'],
 };
 
 if (/--list-injections/.test(ARG)) {
@@ -904,6 +937,66 @@ async function threwAsync(fn) {
     var emptyBody = await emptyRes.text();
     ck('with an empty store, no "All" preset renders at all',
        !/>All<\/a>/.test(emptyBody) && /No first-party history recorded yet/.test(emptyBody));
+
+    /* ============ 20. "Country × referrer × day" reads the store for closed days ========= */
+    head('20. "Country × referrer × day" reads the first-party store for closed days '
+       + '(#791 follow-up — it used to stay Cloudflare-only for the whole window)');
+    var p20a = await renderPage('&from=2026-09-01&to=2026-09-07');
+    var cday20aStart = p20a.indexOf('<h2>Country × referrer × day</h2>');
+    var cday20a = p20a.slice(cday20aStart, p20a.indexOf('<h2>', cday20aStart + 1));
+    ck('a window that never reaches today issues NO live Cloudflare query for this dimension combination',
+       !SEEN.some(function (q) { return /dimensions \{ countryName refererHost requestHost bot \}/.test(q); }));
+    ck('the table holds exactly the store’s rows for the window — 7 daily United States rows '
+     + 'plus the Canada/preview.example.net row on 09-03 (8 data rows + 1 header = 9 <tr>)',
+       (cday20a.match(/<tr>/g) || []).length === 9,
+       (cday20a.match(/<tr>/g) || []).length + ' <tr>');
+    ck('the Canada/preview.example.net row carries the STORED kind (internal), never recomputed '
+     + 'from the host alone',
+       /<td>2026-09-03<\/td><td>Canada<\/td><td>preview\.example\.net<\/td><td>internal<\/td><td class="num">5<\/td><td class="num">2<\/td><td><\/td>/.test(cday20a));
+    ck('the section’s own source note says first-party exact for this exact span, and never '
+     + 'mentions today — the window does not reach it',
+       /Source: <b>first-party exact<\/b> \(2026-09-01 to 2026-09-07\)/.test(cday20a)
+       && !/plus <b>today<\/b>/.test(cday20a));
+
+    /* =========== 21. today folds in live, per-row coarse never taints the batch ========== */
+    head('21. today folds INTO "Country × referrer × day" live, and per-row coarse never '
+       + 'taints the whole batch');
+    var p20b = await renderPage('');   // default window, ends today
+    var liveFired20b = SEEN.some(function (q) { return /dimensions \{ countryName refererHost requestHost bot \}/.test(q); });
+    var cday20bStart = p20b.indexOf('<h2>Country × referrer × day</h2>');
+    var cday20b = p20b.slice(cday20bStart, p20b.indexOf('<h2>', cday20bStart + 1));
+    ck('the default window (ending today) DOES issue the live query for this section',
+       liveFired20b);
+    ck('today’s United States/direct row is EXACT (5/2, no coarse note)',
+       /<td>2026-09-18<\/td><td>United States<\/td><td>\(direct\)<\/td><td>direct<\/td><td class="num">5<\/td><td class="num">2<\/td><td><\/td>/.test(cday20b));
+    ck('today’s Germany/news.ycombinator.com row in the SAME live batch is marked coarse and '
+     + 'classified external (matches neither the reactordynamics.com nor the pages.dev rule)',
+       /<td>2026-09-18<\/td><td>Germany<\/td><td>news\.ycombinator\.com<\/td><td>external<\/td><td class="num">3<\/td><td class="num">1<\/td><td>coarse \(±10\)<\/td>/.test(cday20b));
+    ck('...and the exact United States row on the SAME day is not tainted by Germany’s coarseness',
+       !/United States[\s\S]{0,10}coarse/.test(cday20b));
+    ck('the source note says "plus today (...) live from Cloudflare"',
+       /plus <b>today<\/b> \(2026-09-18\) live from Cloudflare/.test(cday20b));
+
+    /* ====== 22. an uncaptured day never renders as a zero row, and the note says so ====== */
+    head('22. an uncaptured day never renders as a zero row in "Country × referrer × day" — '
+       + 'and the source note names it plainly');
+    var p20c = await renderPage('&from=2026-08-25&to=2026-08-31');
+    var cday20cStart = p20c.indexOf('<h2>Country × referrer × day</h2>');
+    var cday20c = p20c.slice(cday20cStart, p20c.indexOf('<h2>', cday20cStart + 1));
+    ck('neither uncaptured day (08-30 no run at all, 08-31 traffic failed) appears as a row — '
+     + 'not even a zero one',
+       !/<td>2026-08-30<\/td>/.test(cday20c) && !/<td>2026-08-31<\/td>/.test(cday20c));
+    ck('the REAL-zero day (08-27, ran fine, nobody came) also draws no row — same absence as '
+     + 'an uncaptured day; only the NOTE tells the two apart',
+       !/<td>2026-08-27<\/td>/.test(cday20c));
+    ck('the table holds exactly the 5 real rows (08-25, 08-26, 08-28 France, 08-29 US, '
+     + '08-29 France) plus its header (6 <tr>)',
+       (cday20c.match(/<tr>/g) || []).length === 6,
+       (cday20c.match(/<tr>/g) || []).length + ' <tr>');
+    ck('the coarse day (08-28, France) is marked in its OWN row',
+       /<td>2026-08-28<\/td><td>France<\/td><td>\(direct\)<\/td><td>direct<\/td><td class="num">20<\/td><td class="num">10<\/td><td>coarse \(±10\)<\/td>/.test(cday20c));
+    ck('the source note plainly names which days were never captured, ascending',
+       /No data captured<\/b> for 2026-08-30, 2026-08-31/.test(cday20c));
 
     /* =================================================================== 9. no token= */
     head('9. no rendered page anywhere carries a credential in a href');

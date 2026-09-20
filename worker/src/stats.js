@@ -357,6 +357,53 @@ export async function referrerBreakdown(db, from, to, limit) {
   }));
 }
 
+/* DAY x COUNTRY x REFERRER, in one row — the three-way cut the "Country × referrer × day"
+ * section used to buy by staying Cloudflare-only for every window, not just the coarse
+ * ones (#791-follow-up). `groupBy` cannot express it (single-dimension), but nothing here
+ * is a new capability: it is a GROUP BY over four columns `traffic_daily` already keys on,
+ * the same shape `referrerBreakdown` already takes for two of them.
+ *
+ * A dedicated reader, same reasoning as `referrerBreakdown`: all four columns are fixed in
+ * the SQL text, never caller-supplied, so there is nothing here for the `DIMS` allowlist to
+ * guard — that allowlist exists because `groupBy`'s `dim` argument reaches a column name,
+ * and this function's SQL has no such argument.
+ *
+ * `coarse` is per ROW (one day/country/referrer combination), never per day and never per
+ * batch — a country whose only appearance in the window is on a rounded day is a rounded
+ * row, the same convention `groupBy` and `referrerBreakdown` already use.
+ *
+ *   -> [{ day, country, host, kind, pageloads, visits, coarse }], descending by pageloads.
+ *      Callers wanting day-then-pageloads order (the page does, to print newest day first)
+ *      sort after merging in today's live slice — the same place `hybridBreakdown` and
+ *      `hybridReferrer` already do their own final sort, so this reader does not carry a
+ *      second ORDER BY column the merge would only re-sort anyway. */
+export async function dayCountryReferrer(db, from, to, limit) {
+  const days = dayRange(from, to);
+  const lim = Math.max(1, Math.min(1000, Math.floor(Number(limit)) || 200));
+  const r = await db.prepare(
+    'SELECT day AS day, country AS country, referrer_host AS host, referrer_kind AS kind,'
+    + ' SUM(pageloads) AS pageloads, SUM(visits) AS visits, MAX(sample_interval) AS si'
+    + ' FROM traffic_daily WHERE day >= ? AND day <= ? AND bot = 0'
+    + ' GROUP BY day, country, referrer_host, referrer_kind'
+    + ' ORDER BY pageloads DESC LIMIT ?')
+    .bind(days[0], days[days.length - 1], lim).all();
+  return rowsOf(r).map((x) => ({
+    day: String(x.day),
+    country: x.country == null ? '' : String(x.country),
+    host: x.host == null ? '' : String(x.host),
+    kind: x.kind == null ? '' : String(x.kind),
+    pageloads: num(x.pageloads),
+    visits: num(x.visits),
+    /* `si` IS RETURNED, not only the boolean derived from it. The SQL above already
+     * computes MAX(sample_interval), and throwing that number away is what let the page
+     * print a HARD-CODED "coarse (+/-10)" -- right only while Cloudflare's coarse tier
+     * happens to be 10, and a confidently wrong number the moment it is not. The caller
+     * reports the interval it actually received. */
+    si: Math.max(1, num(x.si)),
+    coarse: num(x.si) > 1,
+  }));
+}
+
 /* ---------------------------------------------------------------- in-sim usage
  *
  * `n` ONLY. See NON_ADDITIVE: the `sessions` column is a pre-aggregated distinct count and

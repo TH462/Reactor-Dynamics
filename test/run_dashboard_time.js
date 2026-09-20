@@ -297,13 +297,35 @@ test('the traffic table is RE-GROUPED into Eastern days, not relabelled', functi
    * by four or five hours in every row and looks entirely correct. */
   ck('the by-day query groups by datetimeHour', /rumGroup\(\s*'datetimeHour'/.test(a));
   ck("no query asks for the API's own UTC `date` dimension", !/rumGroup\(\s*'date'/.test(a));
-  ck('the hours are bucketed with etDay()', /etDay\(\s*d\.datetimeHour\s*\)/.test(a));
+  /* WAS `/etDay\(d\.datetimeHour\)/` -- hour rows summed into Eastern days after the fetch.
+   * Country x referrer x day stopped hour-bucketing on 2026-09-20: closed days come from the
+   * first-party store already keyed by Eastern day, and only TODAY is fetched live, so there
+   * is one day and nothing to bucket. THE PROPERTY IS UNCHANGED and now holds at the QUERY
+   * rather than after it -- the live window STARTS at Eastern midnight. That is strictly
+   * harder to get wrong, so the check follows the mechanism instead of the old literal. */
+  ck('the live "today" window opens at EASTERN midnight, not UTC',
+    /todayFromIso\s*=\s*new Date\(etDayStartMs\(today\)\)/.test(a));
+  ck('...and the by-day headline still buckets its hours with etDay()',
+    /etDay\(\s*d\.datetimeHour\s*\)/.test(a) || /dailyTotals\(/.test(a));
   ck('the column says ET', /label:\s*'Date \(ET\)'/.test(a));
   /* The limit must cover every hour in the window or the tail is dropped silently — the
    * rows simply stop, which reads as a quiet week rather than as a truncation. Rewritten
    * for #764 Unit 2b's arbitrary window: the window length is `allDays.length`, not a
    * `days` parameter — there is no longer a fixed preset count to name. */
-  ck('the hourly limit scales with the window', /allDays\.length\s*\*\s*24/.test(a));
+  /* WAS `/allDays\.length \* 24/` -- the hourly limit had to cover every hour in the window.
+   * The harm it guarded is SILENT TRUNCATION: rows simply stop, which reads as a quiet week.
+   * Since 2026-09-20 the closed days come from D1, where no Cloudflare row limit applies at
+   * all, and the live fetch is a SINGLE Eastern day -- so a window-scaled limit is not just
+   * obsolete, it would now be wrong. The property is asserted against what protects it now:
+   * the live fetch is one day, and the floor under its limit is generous for one day's
+   * country x referrer cardinality. (Neither form DETECTS truncation -- that gap is real and
+   * is tracked separately; this check has never closed it.) */
+  ck('the country x referrer live fetch is scoped to today alone',
+    /* `[\s\S]{0,140}?` and not `[^)]*`: the call spans two physical lines AND contains
+     * `Math.max(limit, 500)`, whose own `)` ends a negated-class match early. */
+    /rumGroup\('countryName refererHost requestHost'[\s\S]{0,140}?todayFromIso, todayToIso\)/.test(a));
+  ck('...and its row limit has a floor rather than riding on the window length',
+    /hybridCountryReferrerDay\(500\)/.test(a) && /Math\.max\(limit, 500\)/.test(a));
 });
 
 /* #764 UNIT 2b REWROTE THE WINDOW ENTIRELY — arbitrary [from,to] read from the first-party
@@ -345,8 +367,19 @@ test('the arbitrary window: whole Eastern days by construction, and CLAMPED to t
     !/Window &gt; 7 days/.test(a));
   // The breakdown sections' source note still names the actual rounding factor it got,
   // not just "rounded" with no number — `breakdownCoarse` is this file's renamed `g.coarse`.
-  ck('the coarse warning still reports the interval it got',
-    /rounded to the nearest ' \+ coarse/.test(a) && /breakdownCoarse/.test(a));
+  /* STRENGTHENED 2026-09-20, after this check caught a real regression. The migration to the
+   * first-party store replaced `'rounded to the nearest ' + breakdownCoarse` -- the interval
+   * Cloudflare actually returned -- with a HARD-CODED 'coarse (+/-10)'. Right today, and a
+   * confidently wrong number the moment Cloudflare's coarse tier is not 10. The fix carries
+   * MAX(sample_interval) out of stats.dayCountryReferrer and prints it, so the check now
+   * asserts the ABSENCE of the literal as well as the presence of the measured value.
+   * FIVE OTHER SITES on the page still print the '+/-10' literal; they are the same latent
+   * defect, deliberately not fixed in that change, and this check does not cover them. */
+  ck('the section reports the interval it MEASURED, not a hard-coded 10',
+    /coarse \(±' \+ r\.si \+ '\)/.test(a)
+      && /rounded to the nearest ' \+ \(worstSi/.test(a));
+  ck('...and that section no longer hard-codes the interval anywhere',
+    !/countryReferrerDayNote[\s\S]{0,400}coarse \(±10\)/.test(a));
 });
 
 test('every view routes its instants through the Eastern helpers', function (ck) {

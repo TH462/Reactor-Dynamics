@@ -343,7 +343,13 @@ var INJECTIONS = {
    * `ghost-column` selects a column that does not exist in the real schema. */
   'bad-alias': ['stats.js', "'SELECT ' + col + ' AS key,", "'SELECT ' + col + ' AS group,"],
   /* --- the dimensions and the referrer reader (the 2026-09-18 additions) --------------- */
-  'dims-shrunk': ['stats.js', "  nav_type: 'nav_type',\n  bot: 'bot',\n", ''],
+  /* RE-ANCHORED (found blind alongside `ghost-column` while re-firing every injection for
+   * #791): the two-line anchor joined by a literal `\n` never matched this CRLF file, so the
+   * injection only "caught" by throwing its own not-found error — worse than no injection,
+   * since it never actually shrank the allowlist. `dims-shrunk-a`/`-b` are each a SINGLE
+   * physical line; `PAIRS` below fires both, the same idiom `sum-sessions` already uses. */
+  'dims-shrunk-a': ['stats.js', "  nav_type: 'nav_type',", ''],
+  'dims-shrunk-b': ['stats.js', "  bot: 'bot',", ''],
   'bot-filtered': ['stats.js', "  const humans = col === 'bot' ? '' : ' AND bot = 0';",
     "  const humans = ' AND bot = 0';"],
   'bot-stringified': ['stats.js',
@@ -354,14 +360,24 @@ var INJECTIONS = {
   'kind-recomputed': ['stats.js', "    kind: x.kind == null ? '' : String(x.kind),",
     "    kind: /(^|\\.)reactordynamics\\.com$|(^|\\.)pages\\.dev$/i.test(String(x.host))\n"
     + "      ? 'internal' : (String(x.host) ? 'external' : 'direct'),"],
-  'ghost-column': ['stats.js', 'SUM(pageloads) AS pageloads, SUM(visits) AS visits,'
-    + '\'\n    + \' MAX(sample_interval) AS si FROM traffic_daily\'\n    + \' WHERE day >= ? AND day <= ? AND bot = 0 GROUP BY day\'',
-    'SUM(pageviews) AS pageloads, SUM(visits) AS visits,'
-    + '\'\n    + \' MAX(sample_interval) AS si FROM traffic_daily\'\n    + \' WHERE day >= ? AND day <= ? AND bot = 0 GROUP BY day\''],
+  /* RE-ANCHORED (found blind while re-firing every injection for #791: the original anchor
+   * spanned three physical lines joined by a literal `\n`, and this file is CRLF — the join
+   * never matched and the injection only "caught" by throwing the anchor-not-found error
+   * itself, which is worse than no injection because it never touches the module at all.
+   * A single physical line, selecting a column `traffic_daily` does not have. */
+  'ghost-column': ['stats.js',
+    "    'SELECT day AS day, SUM(pageloads) AS pageloads, SUM(visits) AS visits,'",
+    "    'SELECT day AS day, SUM(pageviews) AS pageloads, SUM(visits) AS visits,'"],
+  /* THE NEWEST READER'S bot FILTER. `dayCountryReferrer` never groups BY bot (unlike
+   * `groupBy`'s deliberate exemption), so it has no excuse to ever drop `AND bot = 0`. */
+  'cday-bots-in': ['stats.js',
+    "    + ' FROM traffic_daily WHERE day >= ? AND day <= ? AND bot = 0'",
+    "    + ' FROM traffic_daily WHERE day >= ? AND day <= ?'"],
 };
 // `sum-sessions` needs both halves of the same defect (the SELECT and the mapper), or the
 // column is fetched and dropped and nothing changes. A one-sided injection lies (#295).
-var PAIRS = { 'sum-sessions': ['sum-sessions', 'sum-sessions2'] };
+var PAIRS = { 'sum-sessions': ['sum-sessions', 'sum-sessions2'],
+  'dims-shrunk': ['dims-shrunk-a', 'dims-shrunk-b'] };
 
 /* Injections into THIS FILE rather than into the module. Section 10's comparison asks
  * whether my interpreter and SQLite agree; an injection into stats.js moves both answers
@@ -370,7 +386,11 @@ var RUNNER_INJECTIONS = { 'stub-drift': "the runner's own SQL interpreter sums r
 var STUB_DRIFT = INJECT === 'stub-drift';
 
 if (/--list-injections/.test(ARG)) {
-  Object.keys(INJECTIONS).forEach(function (k) { if (k !== 'sum-sessions2') console.log(k); });
+  // `sum-sessions2` and the `dims-shrunk-a`/`-b` halves are PAIRS internals, not names anyone
+  // runs directly — `dims-shrunk` (the name that fires both) is listed in their place.
+  var HIDDEN_HALVES = { 'sum-sessions2': true, 'dims-shrunk-a': true, 'dims-shrunk-b': true };
+  console.log('dims-shrunk');
+  Object.keys(INJECTIONS).forEach(function (k) { if (!HIDDEN_HALVES[k]) console.log(k); });
   Object.keys(RUNNER_INJECTIONS).forEach(function (k) {
     console.log(k + '   (' + RUNNER_INJECTIONS[k] + ')'); });
   process.exit(0);
@@ -721,6 +741,41 @@ async function threwAsync(fn) {
   ck('every dimension outside the allowlist throws BEFORE any statement is issued',
      leaked.length === 0, leaked.length ? 'LEAKED: ' + leaked.join(' | ') : EVIL.length + ' rejected');
 
+  /* ---------------------------------------------------------- the day x country x referrer reader */
+  head('7b. dayCountryReferrer — the three-way cut with no single-dimension groupBy equivalent');
+  var cday = await S.dayCountryReferrer(db, '2026-09-01', '2026-09-05', 20);
+  ck('seven day/country/referrer rows — one per DISTINCT combination in the window; the '
+   + 'real-zero day (09-03) contributes none, and the bot day is excluded',
+     cday.length === 7,
+     JSON.stringify(cday.map(function (x) { return x.day + '/' + x.country + '/' + (x.host || '(direct)') + ':' + x.pageloads; })));
+  var r0904 = cday.filter(function (x) { return x.day === '2026-09-04'; })[0];
+  ck('the coarse day (09-04, France) is marked coarse in its OWN row',
+     !!r0904 && r0904.coarse === true && r0904.country === 'France' && r0904.pageloads === 20,
+     JSON.stringify(r0904));
+  var r0901 = cday.filter(function (x) { return x.day === '2026-09-01'; })[0];
+  ck('...and a clean day in the SAME result set is not tainted',
+     !!r0901 && r0901.coarse === false, JSON.stringify(r0901));
+  var pv2 = cday.filter(function (x) { return x.host === 'preview.example.net'; })[0];
+  ck('THE CASE RECOMPUTATION GETS WRONG, again: the referrer kind is the STORED value '
+   + '(internal), never recomputed from the host alone',
+     !!pv2 && pv2.kind === 'internal' && pv2.country === 'United States' && pv2.pageloads === 6,
+     JSON.stringify(pv2));
+  var extRow = cday.filter(function (x) { return x.host === 'news.ycombinator.com'; })[0];
+  ck('an external referrer keeps its stored kind too, in the same three-way row',
+     !!extRow && extRow.kind === 'external' && extRow.pageloads === 4, JSON.stringify(extRow));
+  ck('the real-zero day (09-03, ran but nobody came) contributes NO row at all — a GROUP BY '
+   + 'over rows that do not exist cannot fabricate a zero one',
+     cday.every(function (x) { return x.day !== '2026-09-03'; }));
+  var cdayLim = await S.dayCountryReferrer(db, '2026-09-01', '2026-09-05', 1);
+  ck('the limit is applied and the ordering is by pageloads descending',
+     cdayLim.length === 1 && cdayLim[0].pageloads === 20, JSON.stringify(cdayLim));
+  var n0b = db.seen.length;
+  await S.dayCountryReferrer(db, '2026-09-01', '2026-09-05', 20);
+  ck('every value is bound — the range and the limit — and no date literal reaches the SQL',
+     db.seen[n0b].args.join(',') === '2026-09-01,2026-09-05,20'
+     && !/\d{4}-\d{2}-\d{2}/.test(db.seen[n0b].sql),
+     db.seen[n0b].sql.replace(/\s+/g, ' ').slice(0, 90) + ' args=' + JSON.stringify(db.seen[n0b].args));
+
   /* =============================================================== 8. binding */
   head('8. every value is BOUND — D1 has no excuse for interpolation');
   var dated = db.seen.filter(function (s) { return /\d{4}-\d{2}-\d{2}/.test(s.sql); });
@@ -844,14 +899,15 @@ async function threwAsync(fn) {
      * exercised by any check above. A `>=` would go green on exactly that. Raise it when a
      * reader is added, in the same change that adds a check calling it:
      *   1 storeRange + 2 dailyTotals + 8 groupBy(text) + 1 groupBy(bot, unfiltered)
-     *   + 1 referrerBreakdown + 1 usageTotals = 14 */
+     *   + 1 referrerBreakdown + 1 usageTotals + 1 dayCountryReferrer = 15 */
     ck('the captured statement set covers all nine dimensions and every other reader',
-       dims.length === 9 && stmts.length === 14
+       dims.length === 9 && stmts.length === 15
        && stmts.some(function (s) { return /rollup_runs/.test(s); })
        && stmts.some(function (s) { return /usage_daily/.test(s); })
        && stmts.some(function (s) { return /MIN\(day\)/.test(s); })
-       && stmts.some(function (s) { return /referrer_kind AS kind/.test(s); }),
-       stmts.length + ' distinct statements (expected 14), dims: ' + dims.join(','));
+       && stmts.some(function (s) { return /referrer_kind AS kind/.test(s); })
+       && stmts.some(function (s) { return /GROUP BY day, country, referrer_host, referrer_kind/.test(s); }),
+       stmts.length + ' distinct statements (expected 15), dims: ' + dims.join(','));
 
     var rejected = [];
     stmts.forEach(function (s) {
@@ -886,9 +942,13 @@ async function threwAsync(fn) {
       return S.groupBy(x, 'bot', '2026-09-01', '2026-09-05', 5); });
     var okRefs = await agrees('referrerBreakdown 09-01..09-05', function (x) {
       return S.referrerBreakdown(x, '2026-09-01', '2026-09-05', 10); });
+    // The newest reader: a FOUR-column GROUP BY, a shape the interpreter had never been
+    // asked for before either.
+    var okCday = await agrees('dayCountryReferrer 09-01..09-05', function (x) {
+      return S.dayCountryReferrer(x, '2026-09-01', '2026-09-05', 20); });
     var disagreed = sameness.filter(function (s) { return !s.same; });
     ck('the real engine returns the SAME rows as the interpreter — GROUP BY, MAX(sample_interval), bot = 0',
-       okDaily && okGroup && okStore && okUsage && okBot && okRefs,
+       okDaily && okGroup && okStore && okUsage && okBot && okRefs && okCday,
        disagreed.length ? disagreed[0].label + ': mine ' + JSON.stringify(disagreed[0].mine).slice(0, 120)
          + ' vs sqlite ' + JSON.stringify(disagreed[0].sqlite).slice(0, 120)
          : sameness.map(function (s) { return s.label.split(' ')[0]; }).join(', '));
@@ -898,6 +958,7 @@ async function threwAsync(fn) {
        sameness.every(function (s) { return s.n > 0; })
        && sameness[0].sqlite.length === 7 && sameness[1].sqlite.length === 2
        && sameness[4].sqlite.length === 2 && sameness[5].sqlite.length === 3
+       && sameness[6].sqlite.length === 7
        && typeof sameness[4].sqlite[0].key === 'number',
        sameness.map(function (s) { return s.label.split(' ')[0] + ':' + s.n; }).join(' '));
   }
