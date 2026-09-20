@@ -3454,14 +3454,16 @@ if (!only) {
    *       difference in one row: `dead` reads 0.0 % and TICKS both 15 and 16 (§2ae pins them in
    *       TICK_EXPECTED); the same two rows STRAND under a stuck gauge pegged high.
    *
-   * AND ONE DEFECT IN THE FAILURE MODEL ITSELF, found on the way (2ag.6): `drift` and `stuck`
-   * are applied AFTER the range clip in `pwr_instruments.stepInstruments` and are not clipped
-   * themselves, so a drifting Tavg walks straight out of its own transmitter span. MEASURED at
-   * `hot_zero_power`, 600 ticks in: 583.86 degC (1082.9 degF) on a channel declared
-   * [30, 343] degC (86-649 degF) — 240.86 degC (433.5 degF) past the top of the instrument. A
-   * real transmitter pegs. `dead` and `noisy` ARE clipped in the same switch, so this is an
-   * inconsistency inside one function rather than a design position. Pinned as a canary, not
-   * blessed: when it is fixed this check reddens and the fix is read.
+   * AND ONE DEFECT IN THE FAILURE MODEL ITSELF, found on the way (2ag.6) and FIXED at #791
+   * (2026-09-20): `drift` and `stuck` used to return out of `_applyFailure` AFTER the range
+   * clip, unclipped, so a drifting Tavg walked straight out of its own transmitter span.
+   * MEASURED at `hot_zero_power`, 600 ticks in, before the fix: 583.86 degC (1082.9 degF) on a
+   * channel declared [30, 343] degC (86-649 degF) — 240.86 degC (433.5 degF) past the top of
+   * the instrument. `dead` and `noisy` were ALREADY clipped in the same switch, so this was an
+   * inconsistency inside one function rather than a design position. Was pinned as a canary,
+   * not blessed — it reddened exactly as documented when #791 clipped the return, and this is
+   * that reading: 2ag.6 now asserts the FIXED invariant, that `drift` pegs at the same span
+   * `dead` does.
    *
    * TWO HOLLOW SHAPES CAUGHT WHILE BUILDING THIS, both of which produced confident wrong
    * answers before they were caught, and both of which the checks below are written to avoid:
@@ -3495,11 +3497,14 @@ if (!only) {
    *   · 2ag.5's late injection delay 150 -> 0 ticks   -> 2ag.5 red, both legs report "clicked at
    *     61.55 %" and the two verdict sets stop differing — the check is measuring the DELAY
    *   · CLIP the drift return in `pwr_instruments._applyFailure` to `spec.range` (the fix this
-   *     canary is waiting for)                          -> 2ag.6 red, "tavg drifts to 343.00 degC
-   *     (649 degF) … 0.00 degC (0.0 degF) past the top". 2ag.3 STAYED GREEN under that fix,
-   *     which is its own finding: pegging the gauge at 343 degC does not change one strand or
-   *     false-tick verdict, so the unclipped reading is a BOARD defect and not the cause of the
-   *     thirteen broken rows. Fix it for the board's sake, and the rows stay broken.
+   *     canary was waiting for) -> 2ag.6 red, "tavg drifts to 343.00 degC (649 degF) … 0.00
+   *     degC (0.0 degF) past the top". 2ag.3 STAYED GREEN under that fix, which is its own
+   *     finding: pegging the gauge at 343 degC does not change one strand or false-tick
+   *     verdict, so the unclipped reading was a BOARD defect and not the cause of the thirteen
+   *     broken rows. THIS IS NO LONGER A HYPOTHETICAL MUTATION: #791 (2026-09-20) shipped
+   *     exactly this clip, 2ag.6 reddened exactly as predicted, and is rewritten below to
+   *     assert the fixed invariant instead of the defect. 2ag.3 is unchanged, confirming the
+   *     prediction that the thirteen rows are untouched by it.
    *   · send 2ag.7's panel probe through `inject_failure` instead -> 2ag.7 red
    * Baseline before the mutations and after the restore: 0 red both times. */
   (function () {
@@ -3810,10 +3815,12 @@ if (!only) {
          'TICK_EXPECTED because a DEAD gauge reads 0.0 % and satisfies it');
     })();
 
-    /* --- 2ag.6 THE FAILURE MODEL'S OWN DEFECT, pinned as a canary (see the header). `drift`
-     * and `stuck` return out of `_applyFailure` AFTER the range clip and are not clipped, so
-     * the reading leaves the transmitter's declared span. `dead` and `noisy` are clipped in the
-     * same switch. Asserted as a STRICT excess so a fix reddens it and is read. */
+    /* --- 2ag.6 THE FAILURE MODEL'S OWN DEFECT, WAS pinned as a canary (see the header) —
+     * FIXED at #791 (2026-09-20). `drift` and `stuck` used to return out of `_applyFailure`
+     * AFTER the range clip, unclipped, so the reading could leave the transmitter's declared
+     * span; `dead` and `noisy` were already clipped in the same switch. Rewritten from the
+     * canary's STRICT-EXCESS assertion to the fixed invariant: `drift` now pegs at the same
+     * span `dead` does, same as every other failure mode. */
     (function () {
       var sp = RD.PWR_CONFIG.instruments.tavg;
       var w = boot('hot_zero_power'), s = w.snap, i;
@@ -3823,12 +3830,11 @@ if (!only) {
       var w2 = boot('hot_zero_power'), s2 = w2.snap;
       w2.svc.handleCommand({ action: 'set_instrument_failure', instrument_id: 'tavg', mode: 'dead' });
       for (i = 0; i < 30; i++) s2 = w2.svc.tick();
-      ck('2ag.6 CANARY — a drifting channel walks out of its own transmitter span, `dead` does not (#788)',
-         drifted > sp.range[1] && Math.abs(s2.instruments.tavg - sp.range[0]) < 1e-9,
-         'tavg drifts to ' + drifted.toFixed(2) + ' degC (' + (drifted * 9 / 5 + 32).toFixed(0) +
-         ' degF) on a channel declared [' + sp.range[0] + ', ' + sp.range[1] + '] degC — ' +
-         (drifted - sp.range[1]).toFixed(2) + ' degC (' + ((drifted - sp.range[1]) * 9 / 5).toFixed(1) +
-         ' degF) past the top; `dead` on the same channel reads ' + s2.instruments.tavg.toFixed(3));
+      ck('2ag.6 a drifting channel now pegs at its own transmitter span, same as `dead` (#788, fixed by #791)',
+         Math.abs(drifted - sp.range[1]) < 1e-9 && Math.abs(s2.instruments.tavg - sp.range[0]) < 1e-9,
+         'tavg drift pegs at ' + drifted.toFixed(3) + ' degC (' + (drifted * 9 / 5 + 32).toFixed(1) +
+         ' degF) against the declared top ' + sp.range[1] + ' degC; `dead` pegs at ' +
+         s2.instruments.tavg.toFixed(3) + ' degC against the declared floor ' + sp.range[0] + ' degC');
     })();
 
     /* --- 2ag.7 IS THE BROKEN GAUGE PUBLISHED WHERE THE INSTRUCTOR COULD READ IT? This is the
