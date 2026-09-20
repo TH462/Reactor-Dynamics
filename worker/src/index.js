@@ -138,11 +138,15 @@ const MAX_EVENTS_PER_BATCH = 250;   // Analytics Engine caps writes per invocati
  *   blobs[8]    ref_host            the HOST of the referrer and never the URL, cut by
  *                                   hostOf() below. '' = no referrer, or one that did
  *                                   not survive the cut.
- *   blobs[9]    ref_kind            direct | internal | external, from rollup.js's
+ *   blobs[9]    ref_kind            unknown | direct | internal | external, from rollup.js's
  *                                   referrerKind() — the SAME classifier the
  *                                   Cloudflare-derived series uses, deliberately not a
  *                                   second one. NEVER '' on a row this Worker wrote,
  *                                   which is what makes it the marker described below.
+ *                                   `unknown` means the CLIENT DID NOT SEND THE FIELD, and
+ *                                   is not the same fact as `direct`, which means the
+ *                                   browser reported no referrer. Conflating them would
+ *                                   record the whole pre-field site as direct traffic.
  *   blobs[10]   country             two-letter EDGE country. Not a country NAME:
  *                                   traffic_daily stores Cloudflare's `countryName`, so
  *                                   the two series compare by rank, not by string.
@@ -461,8 +465,21 @@ async function handleEvents(request, env, origin) {
    * The Worker's OWN hostname is not the site's, and handing that to referrerKind() would
    * file every internal hop as external — the exact error the `traffic_daily` series was
    * built to stop making. */
+  /* A CLIENT THAT NEVER SENDS `ref` IS NOT A DIRECT VISIT, and conflating the two writes a
+   * WRONG number rather than a missing one -- unrecoverable, because nothing downstream can
+   * tell the rows apart afterwards. `hostOf(undefined)` is '' and `referrerKind('')` is
+   * 'direct', so without this the entire live site -- which does not carry the field until
+   * site/telemetry.js ships -- would record as 100 % direct, and every referral we ever had
+   * would read as someone typing the URL.
+   *
+   * ABSENT and EMPTY are different facts and get different values:
+   *   field absent      -> 'unknown'  the client predates the field (or is not ours)
+   *   field present, '' -> 'direct'   the browser reported no referrer, which IS the answer
+   * `fetchOwnTraffic` keeps 'unknown' rows and they stay countable as page views; what they
+   * must never do is inflate 'direct'. Delete this and the damage is silent. */
+  const refSent = Object.prototype.hasOwnProperty.call(payload, 'ref');
   const refHost = hostOf(payload.ref);
-  const refKind = referrerKind(refHost, hostOf(origin));
+  const refKind = refSent ? referrerKind(refHost, hostOf(origin)) : 'unknown';
   const country = edgeCountry(request);
   const botKind = botClass(request.headers.get('User-Agent'));
 

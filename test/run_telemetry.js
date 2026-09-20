@@ -47,6 +47,15 @@ var INJECTIONS = {
   /* --- the client half: a HOST and never a URL --------------------------------- */
   // The whole referrer on the wire, path and query included — a search page's query
   // string is the visitor's own words, and this is the one that matters.
+  /* THE CONFLATION (2026-09-20). Reverts absent-vs-empty to the single `referrerKind()`
+   * call: a client that never sent the field is then recorded as a DIRECT VISIT. It is the
+   * shape of defect this whole page keeps producing -- not a missing number, a confident
+   * wrong one, and unrecoverable once written because no later query can separate those
+   * rows from real direct traffic. The live site does not send `ref` until
+   * site/telemetry.js ships, so this would have been EVERY row until then. */
+  'wk-ref-absent-reads-direct': ['worker/src/index.js',
+    "  const refKind = refSent ? referrerKind(refHost, hostOf(origin)) : 'unknown';",
+    '  const refKind = referrerKind(refHost, hostOf(origin));'],
   'tel-ref-is-full-url': ['site/telemetry.js',
     '      ref: refHost(),', "      ref: (G.document && G.document.referrer) || '',"],
   // The field simply not sent: the stream goes back to knowing nothing about arrivals.
@@ -71,7 +80,7 @@ var INJECTIONS = {
   // internal hop then files as discovery, which is the error traffic_daily exists to
   // stop making.
   'wk-ref-kind-invented': ['worker/src/index.js',
-    '  const refKind = referrerKind(refHost, hostOf(origin));',
+    "  const refKind = refSent ? referrerKind(refHost, hostOf(origin)) : 'unknown';",
     "  const refKind = refHost ? 'external' : 'direct';"],
   // The country never recorded.
   'wk-country-dropped': ['worker/src/index.js',
@@ -1201,7 +1210,10 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
      * The four assignments are lifted out and executed with the real helpers in scope,
      * the same idiom as the key composer earlier in this file. referrerKind comes from
      * rollup.js because that is where it lives and reusing it is half the point. */
-    var wireM = /  const refHost = [\s\S]*?\r?\n  const botKind = [^\r\n]*/.exec(wsrc);
+    /* STARTS AT `refSent`, not `refHost`: the absent-vs-empty guard is declared above
+     * refHost, and lifting from refHost left it out of scope -- ReferenceError, which at
+     * least fails loudly. A line silently EXCLUDED from a lifted block would not. */
+    var wireM = /  const refSent = [\s\S]*?\r?\n  const botKind = [^\r\n]*/.exec(wsrc);
     var rkM = /export function referrerKind\(refererHost, requestHost\) \{[\s\S]*?\r?\n\}/
       .exec(require('fs').readFileSync(path.join(ROOT, 'worker', 'src', 'rollup.js'), 'utf8'));
     ck('the receiver\'s edge-fact wiring was found', !!wireM);
@@ -1240,12 +1252,26 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
         new Function(mCtry[0] + '; return edgeCountry;')(),
         new Function(mBot[0] + '; return botClass;')(),
         {}, 'https://reactordynamics.com', mkReq('CA', 'curl/8.4.0'));
-      /* THE MARKER THE ROLLUP DEPENDS ON. A row this Worker wrote always carries one of
-       * three kinds, which is what lets rollup.js tell a pre-column row ('' here) from a
-       * direct visit without consulting a clock. If this can ever be '', that inference
-       * dies and the floor is all that is left. */
-      ck('NO REFERRER IS "direct" AND NEVER EMPTY — the rollup\'s pre-column marker',
-        w3.refKind === 'direct', JSON.stringify(w3.refKind));
+      /* THE MARKER THE ROLLUP DEPENDS ON. A row this Worker wrote always carries a
+       * non-empty kind, which lets rollup.js tell a pre-column row ('' here) from a real
+       * one without consulting a clock. If this can ever be '', that inference dies.
+       *
+       * SPLIT 2026-09-20. It used to assert an ABSENT `ref` is 'direct', bundling two
+       * different facts. A client that never sends the field is NOT a direct visit, and
+       * the live site does not send it until site/telemetry.js ships -- so 'direct' would
+       * have recorded the whole pre-field site as typed-in traffic: a WRONG number, not a
+       * missing one, and unrecoverable, because nothing downstream could separate those
+       * rows later. Absent is 'unknown' now, and the two cases are asserted separately. */
+      ck('an ABSENT ref field is "unknown" — the client did not report one',
+        w3.refKind === 'unknown', JSON.stringify(w3.refKind));
+      var w4 = wire(new Function(mHost[0] + '; return hostOf;')(), referrerKind,
+        new Function(mCtry[0] + '; return edgeCountry;')(),
+        new Function(mBot[0] + '; return botClass;')(),
+        { ref: '' }, 'https://reactordynamics.com', mkReq('CA', 'curl/8.4.0'));
+      ck('a PRESENT but empty ref IS "direct" — the browser reported no referrer',
+        w4.refKind === 'direct', JSON.stringify(w4.refKind));
+      ck('...and neither is ever the empty string, which is the pre-column marker',
+        w3.refKind !== '' && w4.refKind !== '', JSON.stringify([w3.refKind, w4.refKind]));
     }
 
     // ---- the column map: APPENDED, documented, and written on every row -------------
