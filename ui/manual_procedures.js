@@ -12,7 +12,8 @@
  *   narrative:true  → an accident walkthrough; not run by the harness (the engine
  *                     flagship suite owns its physics, CONTEXT §9).
  * Step: { text, control, target, cmd, hold, acc, saw, note, ramp, why, accs, accs_ordered,
- *          wait_hint, overtaken, hl, hl_watch, past, story, crew, inject, clear, pause, wrong,
+ *          wait_hint, overtaken, hl, hl_watch, press_expected, past, story, crew, inject, clear,
+ *          pause, wrong,
  *          wait_est_s }
  *   (THE DEBT #694 LEFT IS PAID (#755): all 24 names on that line are documented below. MEASURED
  *   on the built pool rather than counted by hand — which is how this note came to claim 12 of
@@ -38,6 +39,17 @@
  *           A label belongs in ONE of the two lists: both would draw two rings on one element,
  *           and `run_manual_controls` reddens on the overlap as well as on a label the board's
  *           vocabulary does not carry.
+ *   press_expected OPTIONAL boolean — THIS STEP ASKS FOR A PRESS EVEN THOUGH NOTHING GRADES ONE
+ *           *(OWNER RULING, 2026-09-15: "Move them to the watch ring"; #758)*. The pulsing ring
+ *           means "act on this", so `ui/app.js` only pulses a step that asks for a press: one
+ *           with a `cmd`, or a `cmd`-kind check-off row. That rule is right for the VERIFY steps
+ *           the ruling is about and wrong for the CONTINGENCY press — "Check SG FEED reads AUTO.
+ *           If it does not, press AUTO" — which wants the ring and is graded on the plant.
+ *           Nothing outside the step can tell those apart (the `text` is not parseable), so the
+ *           step says so, the way `expect_alarms` does. Three steps in the shipped pool carry it
+ *           and all three are conditional presses; `run_manual_controls` reddens on a pwr2 step
+ *           that pulses a label without one. DO NOT use it to keep a ring on a pure
+ *           verification — that is the defect the ruling exists to remove.
  *   past    OPTIONAL {p,op,v} or an array (OR) — "has the plant already done this", used only
  *           by catch-up on checklist load (#607): a player who already performed an early
  *           action is walked past a step whose prose no longer applies, rather than trapped
@@ -215,11 +227,13 @@
     industry: 'SOURCE RANGE DE-ENERGIZED ABOVE 1E5 CPS — 1/M APPROACH OVERTAKEN. Remaining plot steps skipped. Hold rods; STARTUP RATE under 1 DPM.',
   };
 
-  function obs(text, acc, note, hl, why, past, hlWatch) {
+  function obs(text, acc, note, hl, why, past, hlWatch, extra) {
     var s = { text: text, acc: acc || null, note: note || null, hl: hl || null };
     if (why) s.why = why;
     if (past) s.past = past;
     if (hlWatch) s.hl_watch = hlWatch;   // #685 — "watch this", steady dashed ring
+    // any remaining step field, so an `obs` step is not barred from one by arity (#758).
+    if (extra) for (var k in extra) s[k] = extra[k];
     return s;
   }
 
@@ -1388,21 +1402,24 @@
          * didn't have an acknowledge button"). With a `cmd` on it the step ticked itself on the
          * already-tripped turbine and advanced; without one it satisfies and waits, like the
          * other verifications. The cold plant boots tripped, so the replay ticks it on state. */
-        /* ⚠ THE PULSING RING ON `TRIP` READS AS "PRESS ME" ON A VERIFY STEP, AND THE TEXT IS THE
-         * HALF THAT COULD BE FIXED HERE (2026-09-15 layman playtest, #653 S-3b: the reviewer
-         * nearly pressed TRIP). MEASURED on the built pool: this step carries no `cmd`, and
-         * `hl: ['Turbine — Trip']` resolves to the TRIP button's own box, drawn with
+        /* ⚠ TRIP IS NOW A STEADY RING, NOT A PULSE *(OWNER RULING, 2026-09-15: "Move them to the
+         * watch ring")*, on the 2026-09-15 layman playtest (#653 S-3b: the reviewer nearly pressed
+         * TRIP). The defect, measured on the built pool: this step carries no `cmd`, and
+         * `hl: ['Turbine — Trip']` resolved to the TRIP button's own box drawn with
          * `.ckl-step-glow` / `cklGlow` — the ACT-ON-THIS cue, identical to the one on a step that
          * really does want a press.
          *
-         * THE RING ITSELF IS NOT CHANGED HERE, because it is the OWNER'S OWN DRAWING
+         * THE RING STAYS, ONLY THE PULSE GOES, which is what keeps the OWNER'S OWN DRAWING intact
          * *(OWNER, 2026-09-13, #744: "[HIGHLIGHTED: TURBINE-GENERATOR CARD (steady), TRIP
-         * (pulsing)]")*, recorded in `Blueprint/WALKTHROUGH_STEPS_OWNER.md`. Moving TRIP to
-         * `hl_watch` also cannot be done from this file alone: `stepHlLabels` (ui/app.js) falls
-         * back to the step's own `control` when `hl` is empty, and this step's `control` is
-         * 'Turbine Load' — which is in `hl_watch` AND is itself workable, so dropping `hl` swaps
-         * one pulsing control for another and reds run_manual_controls' distinct-element check.
-         * The structural fix is a "verify, press nothing" form in app.js; it is on the owner. */
+         * (pulsing)]")*, recorded in `Blueprint/WALKTHROUGH_STEPS_OWNER.md` — all three elements
+         * are still marked, on one treatment instead of two.
+         *
+         * THE MOVE NEEDED A CHANGE IN `ui/app.js` FIRST and could not be done from this file
+         * alone: `stepHlLabels` fell back to the step's own `control` when `hl` was empty, and
+         * this step's `control` is 'Turbine Load' — which is in `hl_watch` AND is itself workable,
+         * so dropping `hl` swapped one pulsing control for another and reddened
+         * `run_manual_controls`' distinct-element check. That fallback now asks
+         * `stepAsksForPress` first; see the note on `stepHlLabels`. */
         { text: 'Verify the turbine is tripped, nothing to press: TRIP lit on the TURBINE-GENERATOR card, OUTPUT 0 MWe.',
           note: 'The ring on TRIP marks the lamp to read, not a button to push. If LOAD reads anything but 0, press UNLOAD. UNLOAD is not TRIP: UNLOAD walks the load setting to zero, TRIP shuts the steam valves.',
           why: 'The cold plant starts with the turbine tripped. It matters because a turbine taking any steam on pump heat would carry away the very heat you are trying to build up.',
@@ -1417,8 +1434,7 @@
            * and they are what is read; TRIP stays in `hl` because it is the thing the step is
            * about and the one control the player touches if the verification fails. All three
            * resolve to different elements, so no watch ring is skipped. */
-          hl: ['Turbine — Trip'],
-          hl_watch: ['Turbine Load', 'Generator Output'] },
+          hl_watch: ['Turbine — Trip', 'Turbine Load', 'Generator Output'] },
         /* CONFIRM, THEN ACT *(OWNER, #724 item 3: "Walkthrough mode 5>3 step 5, the SG FEED AUTO
          * button is already [in AUTO]")*. Same shape as #619 item 16, which reworded the sibling
          * step in `pwr_startup`.
@@ -1477,9 +1493,12 @@
          * Graded on `steam_dump_valve_pct`, the DEMAND the valve is actually carrying — not on
          * the setpoint, which this step no longer touches and which would check off identically
          * on a dumping plant. */
-        /* Same shape as the turbine verify above (#653 S-3b): no `cmd`, and `hl: ['Steam Dump —
-         * Close']` pulses the CLOSE button. The ring stays because it too is the owner's drawing
-         * (the #744 quote in the comment below); the TEXT says there is nothing to press. */
+        /* Same shape as the turbine verify above (#653 S-3b), and moved by the same ruling
+         * *(OWNER RULING, 2026-09-15: "Move them to the watch ring")*: no `cmd`, and
+         * `hl: ['Steam Dump — Close']` pulsed the CLOSE button on a step whose text says there is
+         * nothing to press. CLOSE keeps its ring — it is the owner's drawing (the #744 quote
+         * below) — as the steady watch treatment. This step authors no `control` at all, so
+         * unlike the turbine verify it needed nothing from `stepHlLabels`' fallback. */
         { text: 'Verify the STEAM DUMP is closed, nothing to press: CLOSE lit on the STEAM DUMP card, status reading MANUAL.',
           note: 'The ring on CLOSE marks the lamp to read, not a button to push.',
           why: 'The steam dump sends steam straight to the condenser instead of the turbine. Kept shut, the steam side bottles up and the pump heat stays in the plant. The DUMP SETPOINT box already reads 1020 psi, but that number does nothing until AUTO is pressed, which a later step does once the steam side is hot.',
@@ -1497,8 +1516,8 @@
            * STEAM DUMP % tile `imrzmlyafa3` is in the board's DOC_REMOVE and is not on the canvas
            * — see the note in CONTROL_LABEL_MAP.) 'Steam Dump Valve' is the valve symbol itself,
            * the "physical STEAM DUMP" he asked for. Four distinct elements, so nothing is skipped. */
-          hl: ['Steam Dump — Close'],
-          hl_watch: ['Steam Dump', 'Steam Dump Status', 'Steam Dump Valve', 'Steam Dump Opening'] },
+          hl_watch: ['Steam Dump — Close', 'Steam Dump', 'Steam Dump Status', 'Steam Dump Valve',
+                     'Steam Dump Opening'] },
         /* THE LETDOWN TRANSFER (#624 items 14/25, 2026-09-04). The LETDOWN selector had never
          * changed anything a player could see, because every initial condition booted with the
          * orifices already in — an orphan control on a board whose plant was pre-lined-up. The
@@ -2073,6 +2092,12 @@
           control: 'Feed Pumps', target: 'SG FEED reads AUTO, STEAM GENERATOR LEVEL near 65 %',
           hold: 5,
           acc: { p: 'feed_coupled', op: '>', v: 0 },
+          /* THE RING STAYS BECAUSE THE PRESS IS REAL, AND IT HAS TO SAY SO (#758). The step is
+           * graded on the LAMP, not on a command — a player who arrives with SG FEED already in
+           * AUTO does nothing and the step self-ticks — so nothing in the step declares a press,
+           * and since the 2026-09-15 ring ruling `ui/app.js` will not pulse a step that does not.
+           * This one genuinely asks ("If it does not, press AUTO"), so it declares it. */
+          press_expected: true,
           hl: ['SG Feed AUTO'], hl_watch: ['SG Level'] },
         /* THE INDICATION IS NAMED, AND SO IS ITS NOTATION *(OWNER, 2026-09-03, #619 item 19:
          * "It never says to look at the SOURCE RANGE indication for counts… SOURCE RANGE says
@@ -2781,7 +2806,11 @@
           { p: 'sr_energized', op: '<', v: 1 },
           'Close it with the ✕ in its corner; its work is done.', ['1/M Plot Tool'],
           'The SOURCE RANGE detectors would wear out if they stayed on at power, so the plant switches them off by itself once INTER RANGE is reading. There is no button for it.',
-          null, ['Source Range', 'Intermediate Range']),
+          /* `press_expected` (#758): the hand-off is the VERIFICATION and the ✕ is the ACTION —
+           * one real press, graded on `sr_energized` because closing a UI window is not a plant
+           * command and never could be. Without the declaration the 1/M PLOT ring would go
+           * steady and the step would ask the player to close a window it no longer points at. */
+          null, ['Source Range', 'Intermediate Range'], { press_expected: true }),
         /* THE ACCEPTANCE TESTED HALF OF WHAT THE STEP SAID (#748 wave 2). The line asks for two
          * things — "stops rising AND is below 5 %" — and `acc` graded only the second, so the
          * step ticked the instant power crossed 5 % on its way DOWN, with the bank still driving
@@ -2860,6 +2889,10 @@
           hold: 240,
           accs: [{ p: 'power_pct', op: '<', v: 5, label: 'REACTOR POWER below 5 %' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.1, label: 'STARTUP RATE settled between -0.10 and 0.10' }],
+          /* `press_expected` (#758): both acceptances read the PLANT settling, and the two
+           * pulsing labels are for the branch the text names — "If it does not, press MED and
+           * hold INSERT". A real contingency press, so it is declared rather than demoted. */
+          press_expected: true,
           hl: ['Rod Speed — Normal', 'Insert'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
         /* ⚠ STILL THIRTEEN, AND #750 TRIED EIGHT FIRST — THE STEP AFTER NEXT IS WHAT DECIDES IT.
          * The 13 was measured from bank 214, where the -14 INSERT used to leave the plant; the leg
@@ -3243,6 +3276,16 @@
           accs: [{ p: 'power_pct', op: '>', v: 96, label: 'REACTOR POWER near 100 %' },
                  { p: 'boron_ppm', op: '<', v: 680, label: 'BORON down to its 660 ppm setting' },
                  { p: 'tavg_c', op: '~', v: 303.2, tol: 8, label: 'AVG COOLANT TEMPERATURE between 563 and 592 °F' }],
+          /* ⚠ NOTHING CHANGED HERE AND THAT IS THE POINT — THE THIRD STEP OF THE 2026-09-15
+           * RING RULING IS FIXED IN `ui/app.js`, NOT IN THIS FILE *(OWNER RULING, 2026-09-15:
+           * "Move them to the watch ring")*. This step authors no `hl`, so `stepHlLabels` fell
+           * back to its `control` — 'Boron control', the BORON card — and pulsed the ACT-ON-THIS
+           * ring on a step that carries no `cmd` and whose whole instruction is "Verify". It is
+           * the ONE step in the shipped pwr2 pool that reached the fallback without asking for a
+           * press (measured 2026-09-20 over both pwr pools: 51 fallback steps, 11 of them
+           * press-free, 10 in the retired pool). The fallback now asks `stepAsksForPress` first,
+           * so the card is no longer ringed at all and the four readings below keep their steady
+           * rings. Do not "restore" a `hl` here to get the card back: `hl` IS the pulse. */
           hl_watch: ['Reactor Power', 'Generator Output', 'Tavg', 'Boron Concentration'] },
         /* STEP TWO OF THE BORON PROGRAM *(OWNER RULING, 2026-09-04: selected "A two-step boron
          * program that follows xenon")*, and the measurement that makes it the right shape:

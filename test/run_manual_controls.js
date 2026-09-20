@@ -128,12 +128,13 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
    *      paints two distinct elements — a false positive that would have bought a fix for a
    *      step that never had the defect. A shell target is namespaced `shell:<selector>` here
    *      so it can never collide with a board id.
-   *   2. A STEP'S PRESS LIST IS NOT ALWAYS `hl`. `stepHlLabels` (ui/app.js) uses `hl` when it
-   *      has entries, ELSE the step's own `control`, skipping the "(observe…)" placeholders.
-   *      `pwr_raise_power` 9 authors no `hl` at all: its press target is `control: 'Boron
-   *      control'` and its `hl_watch` carries `'Boron'` — one element, and `applyCklWatchGlow`
-   *      drops the steady ring on it. A check walking only `hl` and `hl_watch` never sees that
-   *      whole sub-class. Fold `control` in exactly as the renderer does.
+   *   2. NEITHER LIST IS ALWAYS THE AUTHORED ARRAY. `stepHlLabels`/`stepWatchLabels` (ui/app.js)
+   *      use `hl`/`hl_watch` when they have entries and otherwise fall back to the step's own
+   *      `control`, skipping the "(observe…)" placeholders — to the PULSING list when the step
+   *      asks for a press and to the STEADY one when it does not (#758). `pwr_raise_power` 9
+   *      authors no `hl` at all and reached that fallback; a check walking only `hl` and
+   *      `hl_watch` never sees the sub-class. Fold `control` in exactly as the renderer does —
+   *      `pressLabels`/`watchLabels` below are that mirror.
    *
    * ⚠ THE MODEL IS EXACT FOR THE ONE SHELL TARGET THERE IS, AND THAT WAS MEASURED, NOT REASONED.
    * The obvious worry is that a shell target FALLS BACK to the board map when its selector
@@ -163,10 +164,35 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
     if (SHELL[lab]) return 'shell:' + SHELL[lab];
     return DRV.controlLabelItem ? (DRV.controlLabelItem(lab) || null) : null;
   }
+  /* THE RENDERER'S OWN SPLIT, MIRRORED (#758, 2026-09-20). `ui/app.js` used to fall back to the
+   * step's `control` for the PULSING list unconditionally; since the 2026-09-15 ring ruling
+   * ("Move them to the watch ring") it asks `stepAsksForPress` first, and a press-free step's
+   * `control` goes to the STEADY list instead. Mirrored here rather than imported, the same way
+   * `verify_e2e_ui` mirrors it: a change to the rule must redden a gate. THE LABEL MULTISET IS
+   * UNCHANGED for every step in both pools — `control` moves between the two lists and never
+   * leaves them — so the distinct-element check below reads exactly what it read before; only
+   * the #748 pulse check, which walks `pressLabels` alone, moves. */
+  function asksForPress(st) {
+    if (!st) return false;
+    if (st.cmd) return true;
+    if (st.press_expected) return true;
+    if (st.acc && st.acc.cmd) return true;
+    for (var i = 0; st.accs && i < st.accs.length; i++) if (st.accs[i] && st.accs[i].cmd) return true;
+    return false;
+  }
+  function controlLabel(st) {
+    return (st && st.control && !/^\(observe/i.test(st.control)) ? st.control : null;
+  }
   function pressLabels(st) {
     if (st.hl && st.hl.length) return st.hl;
-    if (st.control && !/^\(observe/i.test(st.control)) return [st.control];
-    return [];
+    var c = controlLabel(st);
+    return (c && asksForPress(st)) ? [c] : [];
+  }
+  function watchLabels(st) {
+    if (st.hl_watch && st.hl_watch.length) return st.hl_watch;
+    if (st.hl && st.hl.length) return [];
+    var c = controlLabel(st);
+    return (c && !asksForPress(st)) ? [c] : [];
   }
   /* ---- "can the player act on this?" (#748) — see the long note after this IIFE ---- */
   var ITEM = {};
@@ -219,7 +245,7 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
         /* …AND THE SAME CLAIM ON RESOLVED IDS (#745). One check per step, so the count is
          * DERIVED from the pool rather than typed: add a step and the tally moves by one. */
         var byId = {}, shared = [];
-        pressLabels(st).concat(st.hl_watch || []).forEach(function (lab) {
+        pressLabels(st).concat(watchLabels(st)).forEach(function (lab) {
           var id = resolveLabel(lab);
           if (!id) return;                       // unknown labels are the check above's job
           (byId[id] = byId[id] || []).push(lab);
@@ -230,6 +256,29 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
         ck(where + ' hl/hl_watch resolve to distinct elements', shared.length === 0,
            shared.join('; ') + ' — two labels, ONE board element: it can wear one ring, so ' +
            'the first is silently dropped');
+        /* ============ …AND ONLY A STEP THAT ASKS FOR ONE MAY WEAR IT (#758) ===============
+         * *(OWNER RULING, 2026-09-15: "Move them to the watch ring")*, on a layman playthrough
+         * that nearly pressed TRIP on `pwr_heatup` 4.
+         *
+         * THE #748 CHECK BELOW COULD NEVER HAVE CAUGHT THAT, and that is why this one exists:
+         * #748 asks whether the pulsed element is WORKABLE, and TRIP is a real button — the most
+         * workable thing on the card. Both of the steps the ruling names pulsed a control the
+         * player can absolutely press, on a step whose whole instruction is "nothing to press".
+         * The claim that was missing is about the STEP, not about the element.
+         *
+         * ASKS FOR A PRESS = a `cmd`, a `cmd`-kind check-off row, or `press_expected` (the
+         * contingency-press declaration — see `ui/manual_procedures.js`'s field doc). pwr2 only,
+         * the same scope as #748: the retired `pwr` pool has SIXTEEN steps that would red here and
+         * is counted, not gated. One check per step that pulses anything, so the tally is derived
+         * from the pool — a new verify step with an `hl` moves it by one and reddens. */
+        if (prof === 'pwr2' && pressLabels(st).length) {
+          ck(where + ' pulses only on a step that asks for a press',
+             asksForPress(st),
+             'pulses ' + pressLabels(st).map(function (l) { return '"' + l + '"'; }).join(', ') +
+             ' but issues no cmd, grades no cmd-kind row and declares no press_expected. The ' +
+             'pulsing ring is the ACT-ON-THIS cue: move the labels to hl_watch (a verification), ' +
+             'or declare press_expected (a real conditional press)');
+        }
         /* ============ THE PULSING RING MEANS "PRESS THIS" (#748) ==========================
          * See the block above this IIFE's end for what this asserts, what it does NOT, and
          * why the obvious version of it is born wrong. */

@@ -5063,21 +5063,82 @@
     if (v == null || isNaN(v)) return '—';
     return String(Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 10) / 10);
   }
-  // Labels a checklist step points at on hover: its explicit `hl` list when
-  // authored (controls + indications), else a fallback to the step's own `control`
-  // field (skipping the "(observe…)" placeholders that name no on-board control).
+  /* DOES THIS STEP ASK FOR A PRESS AT ALL? (#758) — the question the two resolvers below split on.
+   *
+   * A step asks for a press when it issues a command (`cmd`), when one of its check-off rows is
+   * graded on a command landing (`acc.cmd`, or a `cmd` entry in `accs` — `accs_ordered` is a flag
+   * ON `accs`, so it is covered), or when it SAYS SO with `press_expected`. The step's TEXT is
+   * never consulted: it is not parseable, and the `control` pill is a label, not a claim about
+   * what the player does.
+   *
+   * `press_expected` IS FOR THE CONTINGENCY PRESS — a step that really does want the pulsing ring
+   * but is graded on the PLANT rather than on a command ("if it does not, press AUTO"). It is a
+   * declaration and not a heuristic for the same reason `expect_alarms` is one: nothing outside
+   * the step can tell a conditional press from a lamp the player is only meant to read. MEASURED
+   * on the built pools 2026-09-20: exactly THREE steps in the shipped pwr2 pool carry `hl` with
+   * no command behind it — `pwr_startup` 3, 11 and 12 — and all three are real contingency
+   * presses, so all three declare it. `run_manual_controls` gates the claim from the other side:
+   * a pwr2 step with any pulsing label must ask for a press. */
+  function stepAsksForPress(st) {
+    if (!st) return false;
+    if (st.cmd) return true;
+    if (st.press_expected) return true;
+    if (st.acc && st.acc.cmd) return true;
+    for (var i = 0; st.accs && i < st.accs.length; i++) if (st.accs[i] && st.accs[i].cmd) return true;
+    return false;
+  }
+  // The step's own `control` pill as a highlight label — null for the "(observe…)"
+  // placeholders, which name no on-board control.
+  function stepControlLabel(st) {
+    return (st && st.control && !/^\(observe/i.test(st.control)) ? st.control : null;
+  }
+  /* Labels a checklist step points at on hover: its explicit `hl` list when authored (controls +
+   * indications), else a fallback to the step's own `control` field.
+   *
+   * ⚠ THE FALLBACK ASKS `stepAsksForPress` FIRST, AND THAT IS THE FIX *(OWNER RULING, 2026-09-15:
+   * "Move them to the watch ring")*. A VERIFY step must not wear the pulsing ring: a 2026-09-15
+   * layman playthrough nearly pressed TRIP on `pwr_heatup` 4, whose `hl: ['Turbine — Trip']`
+   * resolved to the TRIP button's own box and pulsed it, on a step whose whole instruction is
+   * "nothing to press".
+   *
+   * THE RING STAYS, ONLY THE PULSE GOES — the highlights are the owner's own drawings
+   * (`Blueprint/WALKTHROUGH_STEPS_OWNER.md`, #744), so the two `pwr_heatup` steps move their
+   * labels from `hl` to `hl_watch`, the steady treatment. That move was BLOCKED until this
+   * function changed: with `hl` emptied, the old unconditional fallback pulsed the step's own
+   * `control` instead — a DIFFERENT control, still workable — so `pwr_heatup` 4 would have
+   * swapped a pulse on TRIP for a pulse on the TURBINE-GENERATOR card and reddened
+   * `run_manual_controls`' distinct-element check into the bargain. The third step the ruling
+   * names, `pwr_raise_power` 9, authors no `hl` at all and is fixed by this function alone.
+   *
+   * WHAT DEPENDS ON THE OLD FALLBACK, MEASURED on the built pools 2026-09-20 rather than reasoned:
+   * 51 steps reach it — 40 of them carry a command and are UNCHANGED. The eleven that do not are
+   * ten in the RETIRED `pwr` pool (`pwr_post_trip` 3-5, `pwr_turbine_trip` 3-4, `pwr_rod_withdrawal`
+   * 4, `pwr_sgtr` 5, `pwr_seal_leak` 3-5) and exactly one in the live pool — `pwr_raise_power` 9,
+   * which is the step the ruling is about. The ten retired-pool steps do not go dark: they have no
+   * `hl_watch`, so `stepWatchLabels` below picks their `control` up as a steady ring. */
   function stepHlLabels(st) {
     if (st.hl && st.hl.length) return st.hl;
-    if (st.control && !/^\(observe/i.test(st.control)) return [st.control];
+    var c = stepControlLabel(st);
+    if (c && stepAsksForPress(st)) return [c];
     return null;
   }
   /* THE INDICATIONS TO WATCH, AS OPPOSED TO THE CONTROL TO PRESS (#685) *(OWNER, 2026-09-09,
    * #675 section B: "Each step should highlight the important indications to watch with a non
    * pulsing green glow.")*. `hl` was one flat list rendered identically, so the gauge and the
-   * button were the same affordance; `hl_watch` is the second kind. No `control` fallback —
-   * a step's own control is by definition the thing to act on, never the thing to watch. */
+   * button were the same affordance; `hl_watch` is the second kind.
+   *
+   * …AND SINCE #758 IT CARRIES THE OTHER HALF OF THE FALLBACK. A step that names a `control`,
+   * authors NEITHER highlight list and asks for no press has one thing worth marking and one
+   * treatment that fits it. It is the LAST resort, not the first: an authored `hl_watch` wins,
+   * and a step that authored `hl` has already said what it is about, so its `control` stays a
+   * pill. Without this the ten retired-pool verify steps above would lose their ring AND their
+   * hover affordance (`hoverable` is `stepHlLabels || stepWatchLabels`) — a regression, not a fix. */
   function stepWatchLabels(st) {
-    return (st.hl_watch && st.hl_watch.length) ? st.hl_watch : null;
+    if (st.hl_watch && st.hl_watch.length) return st.hl_watch;
+    if (st.hl && st.hl.length) return null;
+    var c = stepControlLabel(st);
+    if (c && !stepAsksForPress(st)) return [c];
+    return null;
   }
   // Hover-preview glow for checklist steps: glow every control/indication label a
   // step names. Separate class from the Instructor beat glow (.instr-glow) so a
