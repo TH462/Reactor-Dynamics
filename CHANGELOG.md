@@ -31,6 +31,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Ops dashboard: the Sessions view sorts and filters** (#797). Newest, oldest, longest and
+  shortest; filters on device, country, referrer kind and whether the session scrammed. Device,
+  country and referrer now show on each card so a filter's effect is visible. The 100-row cap
+  interacts with sorting — only oldest-first changes what is fetched — and the page says so
+  rather than implying the longest session in the window is on screen.
 - **Ops dashboard: release markers on the By-day chart** (#797). Each public release is drawn at
   the day it first reached a real user — taken from the telemetry itself rather than a stamped
   list, so it cannot go stale and marks arrival rather than tagging. Preview builds are excluded:

@@ -111,7 +111,42 @@ function injectSrc(rel, src) {
       .join('return sql(apiToken, `SELECT blob4 AS session, max(double5) AS t_last')
       // the 100-session truncation note is silenced (defect 5, #791).
       .split('truncated = counts.length >= 100;')
-      .join('truncated = false;');
+      .join('truncated = false;')
+      /* --- sortable/filterable Sessions view (#797.4) ------------------------------- */
+      // 6. `start_asc` stops changing which 100 rows the SQL fetches — the primary
+      //    query's ORDER BY is pinned to DESC regardless of the requested sort.
+      .split("const fetchDir = sort === 'start_asc' ? 'ASC' : 'DESC';")
+      .join("const fetchDir = 'DESC';")
+      // 7. the device filter stops reaching the primary query's WHERE clause.
+      .split("if (device !== 'all') filterClauses.push('blob13 = ' + sqlStr(device));")
+      .join("if (false) filterClauses.push('blob13 = ' + sqlStr(device));")
+      // 8. the referrer-kind filter stops reaching the primary query's WHERE clause.
+      .split("if (refKind !== 'all') filterClauses.push('blob10 = ' + sqlStr(refKind));")
+      .join("if (false) filterClauses.push('blob10 = ' + sqlStr(refKind));")
+      // 9. the day window stops being carried as a hidden field on the filter form, so
+      //    submitting it resets the window to the default (the trap named in the brief).
+      .split('    + \'<input type="hidden" name="days" value="\' + days + \'">\'')
+      .join('    + \'\'')
+      // 10. a sort link stops carrying the active device filter forward.
+      .split("if (device !== 'all') p.set('device', device);")
+      .join("if (false) p.set('device', device);")
+      // 11. duration-descending sort stops re-ordering the fetched rows.
+      .split('if (sort === \'dur_desc\') rows = rows.slice().sort((a, b) => b.span_secs - a.span_secs);')
+      .join('if (sort === \'dur_desc\') { /* no-op */ }')
+      // 12. duration-ascending sort stops re-ordering the fetched rows.
+      .split('else if (sort === \'dur_asc\') rows = rows.slice().sort((a, b) => a.span_secs - b.span_secs);')
+      .join('else if (sort === \'dur_asc\') { /* no-op */ }')
+      // 13. the scrammed filter stops removing non-matching sessions.
+      .split("rows = rows.filter((r) => (scram === 'yes' ? r.scrams > 0 : r.scrams === 0));")
+      .join('rows = rows;')
+      // 14. the truncation note stops distinguishing the oldest-100 fetch from the
+      //     newest-100 one — it always reads as though the fetch were newest-first.
+      .split("? (fetchDir === 'ASC'")
+      .join('? (false')
+      // 15. a card's own device/country/referrer stops being merged in, so every card
+      //     falls back to the '—' placeholder regardless of what `meta` returned.
+      .split('(meta || []).forEach((r) => { if (!metaBy[r.session]) metaBy[r.session] = r; });')
+      .join('(meta || []).forEach(() => {});');
   }
   return src;
 }
@@ -272,8 +307,36 @@ function dispatchSessions(rows, q) {
     return true;
   }
   var isDetail = asked.indexOf("blob4 = '") !== -1;
-  if (!isDetail && has('GROUP BY session ORDER BY first_seen')) return Promise.resolve(rows.counts || []);
+  /* THE PRIMARY QUERY — sort-aware, playing the role of Analytics Engine itself rather
+   * than a canned fixture, because the sort-actually-reorders check (#797.4) has to prove
+   * the RENDERED order changes, and `start_asc`'s effect is entirely in the SQL `ORDER BY`
+   * (sessions.js has no JS-side re-sort for the two start_* sorts — see its own header
+   * comment). A fixture that ignored ASC/DESC here would let that specific defect through
+   * silently: the page would render fine, just always in DESC order, and nothing above
+   * this fake would ever notice. */
+  if (!isDetail && has('GROUP BY session ORDER BY first_seen')) {
+    var list = (rows.counts || []).slice();
+    var asc = /ORDER BY first_seen ASC/.test(asked);
+    list.sort(function (a, b) {
+      var d = String(a.first_seen) < String(b.first_seen) ? -1
+        : (String(a.first_seen) > String(b.first_seen) ? 1 : 0);
+      return asc ? d : -d;
+    });
+    return Promise.resolve(list);
+  }
   if (!isDetail && has("'session_start'", 'GROUP BY session, initial_state')) return Promise.resolve(rows.starts || []);
+  // Device/country/referrer FOR DISPLAY — the "for display" query's own GROUP BY, distinct
+  // from the one two lines up so the two cannot collide.
+  if (!isDetail && has("'session_start'", 'GROUP BY session, device')) return Promise.resolve(rows.meta || []);
+  // "Scrammed" — milestone:scram rows, one per session that ever scrammed.
+  if (!isDetail && has("blob1 = 'milestone'", "blob5 = 'scram'")) return Promise.resolve(rows.scrams || []);
+  // The two probes are DISTINCT floors (cfapi.js's COLUMNS_SINCE vs rollup.js's
+  // OWN_COLUMNS_SINCE — sessions.js's own comment on why they are never shared), matched
+  // on their own literal timestamps so a test can make one succeed and the other not —
+  // the generic fallback below would answer both identically otherwise.
+  if (!isDetail && has('SELECT count() AS n', 'timestamp >=', '2026-09-21')) {
+    return Promise.resolve(rows.metaProbe || rows.probe || [{ n: 0 }]);
+  }
   if (!isDetail && has('SELECT count() AS n', 'timestamp >=')) return Promise.resolve(rows.probe || [{ n: 0 }]);
   if (!isDetail && has('max(double', 'GROUP BY session')) return Promise.resolve(rows.elapsed || []);
   if (!isDetail && has("'session_end'")) return Promise.resolve(rows.ends || []);
@@ -294,7 +357,50 @@ function mkSessionsRows(n) {
     probe: [{ n: 1 }],
     elapsed: [{ session: 's0', t_last: 42 }],
     ends: [{ session: 's0', last_panel: 'board', secs: 10 }],
+    meta: [],
+    scrams: [],
   };
+}
+
+/* Three sessions chosen so RECENCY order and DURATION order DISAGREE — a check that
+ * happened to sort the same way regardless of the requested axis would still pass by
+ * accident against a fixture where they agreed (#797.4). No `elapsed`/`ends` rows, so
+ * each session's duration is purely the write span between first_seen and last_seen. */
+function mkSortRows() {
+  return {
+    counts: [
+      { session: 's_new', first_seen: '2026-09-19 11:00:00', last_seen: '2026-09-19 11:00:20', raw: 2, est: 2 },
+      { session: 's_mid', first_seen: '2026-09-19 10:00:00', last_seen: '2026-09-19 10:08:20', raw: 2, est: 2 },
+      { session: 's_old', first_seen: '2026-09-19 09:00:00', last_seen: '2026-09-19 09:00:50', raw: 2, est: 2 },
+    ],
+    starts: [], probe: [{ n: 0 }], elapsed: [], ends: [], meta: [], scrams: [],
+  };
+}
+
+// Two sessions, one that scrammed once and one that never did — the minimum fixture the
+// scram filter needs to prove it removes the non-matching session rather than the matching one.
+function mkScramRows() {
+  return {
+    counts: [
+      { session: 's_scrammed', first_seen: '2026-09-19 10:00:00', last_seen: '2026-09-19 10:00:05', raw: 1, est: 1 },
+      { session: 's_clean', first_seen: '2026-09-19 09:00:00', last_seen: '2026-09-19 09:00:05', raw: 1, est: 1 },
+    ],
+    starts: [], probe: [{ n: 0 }], elapsed: [], ends: [], meta: [],
+    scrams: [{ session: 's_scrammed', n: 1 }],
+  };
+}
+
+async function renderSessionListQS(rows, qsStr, seen) {
+  globalThis.__RD_FAKE_SQL = function (token, q) {
+    if (seen) seen.push(String(q));
+    try { return dispatchSessions(rows, q); } catch (e) { return Promise.reject(e); }
+  };
+  var ROOT = path.join(__dirname, '..');
+  var mod = await loadEsm(ROOT, 'sessions.js',
+    { 'cfapi.js': fakeCfapi('// sessions render ' + (++nonce) + '\n') });
+  var url = new URL('https://example.invalid/dashboard?token=t&view=sessions' + qsStr);
+  var res = await mod.sessionList({ CF_ANALYTICS_TOKEN: 'x' }, url);
+  return res.text();
 }
 
 async function renderSessionList(rows, seen) {
@@ -530,6 +636,131 @@ async function renderSessionDetail(rows, sid, seen) {
   var short3 = await renderSessionList(mkSessionsRows(3), []);
   ck('...and a short page does not', full100.indexOf('Showing the most recent') !== -1
     && short3.indexOf('Showing the most recent') === -1);
+
+  /* ---------------------------------------- 14.1 sessions.js: sort by start time (#797.4) */
+  head('14.1 sessions.js: sort by start time actually reorders (#797.4)');
+  /* `mkSortRows` is chosen so recency order and duration order DISAGREE (s_mid started
+   * in the middle but ran longest) — a check that passed either way by accident is worth
+   * nothing here. Asserted on the RENDERED page, not the SQL text (the requirement): the
+   * fake `dispatchSessions` plays Analytics Engine and actually honours `ORDER BY
+   * first_seen ASC/DESC`, so if sessions.js stopped sending the right direction the
+   * fixture's own order would leak through unchanged and this would catch it. */
+  var pageNewestFirst = await renderSessionListQS(mkSortRows(), '&days=30&sort=start_desc');
+  var pageOldestFirst = await renderSessionListQS(mkSortRows(), '&days=30&sort=start_asc');
+  function orderIdx(page, ids) { return ids.map(function (id) { return page.indexOf('sid=' + id); }); }
+  var newestOrder = orderIdx(pageNewestFirst, ['s_new', 's_mid', 's_old']);
+  var oldestOrder = orderIdx(pageOldestFirst, ['s_old', 's_mid', 's_new']);
+  ck('default (Newest first) renders s_new, s_mid, s_old in that order',
+    newestOrder[0] < newestOrder[1] && newestOrder[1] < newestOrder[2], newestOrder.join(','));
+  ck('Oldest first renders s_old, s_mid, s_new in that order — the OPPOSITE order',
+    oldestOrder[0] < oldestOrder[1] && oldestOrder[1] < oldestOrder[2], oldestOrder.join(','));
+  ck('...and it is a real reversal, not the same order read backwards by the test',
+    pageNewestFirst.indexOf('sid=s_new') < pageOldestFirst.indexOf('sid=s_new'));
+
+  /* ------------------------------------------- 14.2 sessions.js: sort by duration (#797.4) */
+  head('14.2 sessions.js: sort by duration actually reorders — "show me the longest" (#797.4)');
+  // s_mid = 500s (08:20 span), s_old = 50s, s_new = 20s — write-span only, no elapsed clock.
+  var pageLongest = await renderSessionListQS(mkSortRows(), '&days=30&sort=dur_desc');
+  var pageShortest = await renderSessionListQS(mkSortRows(), '&days=30&sort=dur_asc');
+  var longestOrder = orderIdx(pageLongest, ['s_mid', 's_old', 's_new']);
+  var shortestOrder = orderIdx(pageShortest, ['s_new', 's_old', 's_mid']);
+  ck('Longest first renders s_mid (500s), s_old (50s), s_new (20s) in that order',
+    longestOrder[0] < longestOrder[1] && longestOrder[1] < longestOrder[2], longestOrder.join(','));
+  ck('Shortest first renders the OPPOSITE order: s_new, s_old, s_mid',
+    shortestOrder[0] < shortestOrder[1] && shortestOrder[1] < shortestOrder[2], shortestOrder.join(','));
+  ck('the longest session shows its actual duration ("8m 20s")', pageLongest.indexOf('8m 20s') !== -1);
+
+  /* --------------------------------- 14.3 sessions.js: every param survives (#797.4) */
+  head('14.3 sessions.js: sort links and the filter form preserve days + the active filter');
+  var page7 = await renderSessionListQS(mkSortRows(), '&days=7&sort=dur_desc&device=mobile');
+  ck('the filter form\'s hidden days field carries the ACTUAL window (7)',
+    page7.indexOf('<input type="hidden" name="days" value="7">') !== -1);
+  ck('a sort link (Newest first) carries days=7 AND the active device filter forward',
+    page7.indexOf('href="?view=sessions&days=7&sort=start_desc&device=mobile"') !== -1);
+  ck('the ACTIVE sort (Longest first) is bolded, not a link',
+    /<b>Longest first<\/b>/.test(page7));
+
+  /* ------------------------------------------- 14.4 sessions.js: a filter reaches the query */
+  head('14.4 sessions.js: device/country/referrer filters reach the primary query (#797.4)');
+  var seenDevice = [];
+  await renderSessionListQS(mkSortRows(), '&days=30&device=mobile', seenDevice);
+  ck('the device filter appears in the primary query as blob13',
+    seenDevice.some(function (q) { return q.indexOf("blob13 = 'mobile'") !== -1; }));
+  ck('...guarded by the 2026-09-20 column floor (OWN_COLUMNS_SINCE)',
+    seenDevice.some(function (q) { return q.indexOf("blob13 = 'mobile'") !== -1
+      && q.indexOf('2026-09-21') !== -1; }));
+  var seenCountry = [];
+  await renderSessionListQS(mkSortRows(), '&days=30&country=US', seenCountry);
+  ck('the country filter appears in the primary query as blob11',
+    seenCountry.some(function (q) { return q.indexOf("blob11 = 'US'") !== -1; }));
+  var seenUnknownCountry = [];
+  await renderSessionListQS(mkSortRows(), '&days=30&country=unknown', seenUnknownCountry);
+  ck('"unknown" country filters on the empty string, not the literal word',
+    seenUnknownCountry.some(function (q) { return q.indexOf("blob11 = ''") !== -1; }));
+  var seenRef = [];
+  await renderSessionListQS(mkSortRows(), '&days=30&ref=external', seenRef);
+  ck('the referrer-kind filter appears in the primary query as blob10',
+    seenRef.some(function (q) { return q.indexOf("blob10 = 'external'") !== -1; }));
+  var seenNone = [];
+  await renderSessionListQS(mkSortRows(), '&days=30', seenNone);
+  ck('with no filter selected, no query names blob13/blob11/blob10 at all',
+    seenNone.every(function (q) { return q.indexOf('blob13 =') === -1 && q.indexOf('blob10 =') === -1
+      && q.indexOf('blob11 =') === -1; }));
+
+  /* --------------------------- 14.5 sessions.js: window survives sort + filter TOGETHER */
+  head('14.5 sessions.js: the day window survives a sort change AND a filter change at once');
+  var seenBoth = [];
+  var pageBoth = await renderSessionListQS(mkSortRows(),
+    '&days=14&sort=dur_asc&country=US&scram=yes', seenBoth);
+  ck('the primary query carries the 14-day window',
+    seenBoth.some(function (q) { return q.indexOf("INTERVAL \'14\' DAY") !== -1; }));
+  ck('the filter form\'s hidden days field reads 14, not the 30-day default',
+    pageBoth.indexOf('<input type="hidden" name="days" value="14">') !== -1);
+  ck('a sort link carries the 14-day window AND the active country + scram filters',
+    pageBoth.indexOf('href="?view=sessions&days=14&sort=dur_desc&country=US&scram=yes"') !== -1);
+
+  /* -------------------------------------------------- 14.6 sessions.js: sort-aware cap note */
+  head('14.6 sessions.js: the truncation note names WHICH 100 sessions it is showing (#797.4)');
+  var capOldest = await renderSessionListQS(mkSessionsRows(100), '&days=30&sort=start_asc');
+  ck('sorted oldest-first, the note says OLDEST, not "most recent"',
+    /Showing the OLDEST 100 sessions/.test(capOldest) && capOldest.indexOf('most recent') === -1);
+  var capDur = await renderSessionListQS(mkSessionsRows(100), '&days=30&sort=dur_desc');
+  ck('sorted by duration, the note says the sort applies WITHIN the fetched 100',
+    /sorted by duration/.test(capDur) && /within that set/.test(capDur));
+  var capFiltered = await renderSessionListQS(mkSessionsRows(100), '&days=30&device=mobile');
+  ck('with a filter active and the cap hit, the note says so',
+    capFiltered.indexOf('matching this filter') !== -1);
+  var capShort = await renderSessionListQS(mkSessionsRows(3), '&days=30&sort=start_asc');
+  ck('under the cap, no truncation note at all regardless of sort',
+    capShort.indexOf('Showing the') === -1);
+
+  /* ------------------------------------------------------- 14.7 sessions.js: scram filter */
+  head('14.7 sessions.js: "scrammed" filters sessions without a second query round (#797.4)');
+  var seenScram = [];
+  var pageAny = await renderSessionListQS(mkScramRows(), '&days=30', seenScram);
+  ck('unfiltered, both sessions render',
+    pageAny.indexOf('sid=s_scrammed') !== -1 && pageAny.indexOf('sid=s_clean') !== -1);
+  var pageYes = await renderSessionListQS(mkScramRows(), '&days=30&scram=yes');
+  ck('scram=yes keeps the scrammed session and drops the clean one',
+    pageYes.indexOf('sid=s_scrammed') !== -1 && pageYes.indexOf('sid=s_clean') === -1);
+  var pageNo = await renderSessionListQS(mkScramRows(), '&days=30&scram=no');
+  ck('scram=no keeps the clean session and drops the scrammed one',
+    pageNo.indexOf('sid=s_clean') !== -1 && pageNo.indexOf('sid=s_scrammed') === -1);
+  ck('the "scrammed" milestone query never issues a query per already-fetched session — one query total',
+    seenScram.filter(function (q) { return q.indexOf("blob5 = 'scram'") !== -1; }).length === 1);
+
+  /* --------------------------------------- 14.8 sessions.js: device/country/referrer shown */
+  head('14.8 sessions.js: a card shows its own device/country/referrer');
+  var METogo = {
+    counts: [{ session: 's_meta', first_seen: '2026-09-19 10:00:00', last_seen: '2026-09-19 10:00:05', raw: 1, est: 1 }],
+    starts: [], probe: [{ n: 0 }], metaProbe: [{ n: 1 }], elapsed: [], ends: [],
+    meta: [{ session: 's_meta', device: 'mobile', country: 'US', ref_kind: 'external' }],
+    scrams: [],
+  };
+  var pageMeta = await renderSessionListQS(METogo, '&days=30');
+  ck('the card shows the device, country and referrer kind for its own session',
+    pageMeta.indexOf('mobile') !== -1 && pageMeta.indexOf('>US<') !== -1
+    && pageMeta.indexOf('external') !== -1);
 
   /* --------------------------------------------------- 15. usage.js: the version filter */
   head('15. the RELEASE-VERSION filter on Feature usage (#800)');
