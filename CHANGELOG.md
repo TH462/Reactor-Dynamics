@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.7.7] — 2026-09-21
+
 ### Added
 - **The nightly rollup detects a host collision it cannot otherwise survive** (#797). The daily
   traffic key omits the request host, so two Cloudflare groups differing only by host collapse
