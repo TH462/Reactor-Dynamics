@@ -85,6 +85,39 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `wait_hint` decides the LINE, so those steps set the rung and keep their own note as the only
   sentence about it. Snapped DOWN to a real ladder rung, inheriting #628's "never name a button
   that is not there".
+- **#796 items 1, 2 and 3 — the walkthrough panel's own complaints.**
+  - **A watch ring came off Mode 5 -> 3 step 11** *(OWNER: "step 11 in mode 5-3 walkthrough
+    highlights the RHR card when its just a wait for coolant temp step.")*. The justification in
+    the pool was a comment about `pwr_cooldown` step 11 — a step-number collision between two legs
+    put a correct sentence about COOLDOWN RATE and HX SPLIT onto a heatup step that has no note and
+    no rate lever, and the ring followed the sentence. RHR is also already secured by then (the
+    585 psig autoclose fires during the ride), so the cue pointed at a system the player can
+    neither read anything from nor act on. Steps 1 and 12 keep their RHR ring, and the difference
+    is the point: step 1 verifies the cold lineup with RHR in service, step 12 is GRADED on RHR
+    being gone.
+  - **The background box is headed "Background", full stop** *(OWNER: "Remove '-Not an Action'
+    from every background title from every walkthrough step.")*, superseding the 2026-09-13 label.
+    The box, set apart from the action rows, is what carries the negative — and already did: both
+    fresh-reader reviews of that layout reported the block as unambiguous background. The clause
+    was a negation restating what the layout says, on every step, in a 10 px legend.
+  - **The 1/M ladder is one step per plot point again** *(OWNER: "go back to one step per plot
+    point like we had before ... remove the requirements for startup rate to fall back to zero")*,
+    superseding #756's line-of-instruction-per-substep. In CSS terms his complaint is exact: a
+    step's instruction is `.ckl-txt`, white; a lettered check-off row is `.ckl-crit`, cobalt — so
+    four rows meant four cobalt imperatives and no white instruction of their own. Steps 5-8 now
+    carry two ordered rows, the counts floor then the plot, with the whole sequence back in the
+    white line above them. `accs_ordered` stays: a cmd-kind row is deaf until its predecessor is
+    met, so Plot point still cannot bank a stale point while the counts are climbing.
+  - **The settle moves from a graded row into the instruction, and that distinction is
+    load-bearing** — because the premise under it measures FALSE. MEASURED (seed 42, full stack,
+    the same run sampled twice): plotting all four rungs without the settle predicts critical at
+    step **213**; with it, step **208**; this plant actually goes critical at step **207**. The
+    settle is worth **5.1 steps of prediction**, and all of the error is on the danger side — a
+    prediction that reads HIGH tells the operator they have further to go than they have. The
+    recollection that it "doesn't have much affect on the final outcome" does not reproduce, so
+    the requirement is lifted as asked while the text and the note keep telling the player to wait
+    for the rate, now with the cost in rod steps.
+
 - **#796 items 4 and 5 — the two steps that were being played at 1x now name their rung**, on a
   measurement rather than a feel. Mode 3 -> Mode 1 step 12 (watch power level off) simply has its
   `wait_hint: false` REMOVED: that suppression came from the #653 S-9 pass, which applied it across
@@ -121,6 +154,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   reason to find it.
 
 ### Tests
+- `run_checklist_pwr2.js` 360 -> 352 checks, and the DOWN move is content leaving, not coverage.
+  Eight checks were reading the retired 1/M rows rather than the mechanism behind them. FIVE WERE
+  REWRITTEN, NOT DELETED: the rung-shape check pins the new shape, and the four plant-driven #761
+  probes now grade a LOCAL fixture carrying the retired rows instead of the shipped step — so
+  `op: 'stopped'` stays proven on the real plant through the real `_gradeAccs` while the proof
+  stops breaking every time the content that once used it is re-authored. `op: 'stopped'` now has
+  no author in the pool, exactly as `op: 'steady'` already had none; the synthetic-channel halves
+  are what keep both honest, which is why the well-formed check no longer demands a non-empty
+  population. Two pinned censuses moved with the rows, with the graded-step count unmoved at 84 as
+  the control. Injection-proven: swapping rung 5's rows so the plot comes first reddens the
+  rung-shape check naming the order.
+- `run_manual_controls.js` 1065 -> 1064: one fewer resolvable watch label, which is the #796 item 1
+  fix.
 - `verify_flags_ui.js` +1 (55 -> 56): an authored `wait_speed` sets the CLOCK, asserted on
   `service.timeAcceleration` rather than the field, with the negative half that makes it
   non-vacuous — the landed rung must NOT be the one `RD.CklSpeedHint` derives from `hold`.

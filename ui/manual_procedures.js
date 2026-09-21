@@ -1841,9 +1841,25 @@
            * on a 40,000 s ride. This declaration is the only thing standing between that player
            * and a 1x heatup. */
           expect_alarms: ['low_tavg'],
-          /* The `note` makes COOLDOWN RATE on the RHR card "the number to watch" and names HX
-           * SPLIT as this leg's only rate lever — neither was ringed (#744 template pass). It
-           * stays in the WATCH list: the player acts on it only if the rate runs away. */
+          /* ⚰ THE RHR WATCH IS GONE FROM THIS STEP *(OWNER, 2026-09-20, #796 item 1: "step 11 in
+           * mode 5-3 walkthrough highlights the RHR card when its just a wait for coolant temp
+           * step.")*, and the justification that stood here was about a DIFFERENT LEG'S STEP 11.
+           *
+           * It read: "The `note` makes COOLDOWN RATE on the RHR card the number to watch and names
+           * HX SPLIT as this leg's only rate lever (#744 template pass)." Both halves are true of
+           * `pwr_cooldown` step 11, which carries exactly that note and rings the RHR card. THIS
+           * step has NO `note` at all, and this leg has no rate lever — the 100 °F/hr limit was
+           * ruled OUT of the heatup (see the block below), because a heatup's rate is what pump
+           * heat does whether the player likes it or not. A step-number collision between two legs
+           * put a correct sentence on the wrong step, and the ring followed the sentence.
+           *
+           * RHR IS ALSO ALREADY SECURED BY THE TIME THIS STEP RUNS — the 585 psig autoclose fires
+           * during the ride, which is what step 12's acceptance then asserts. So the cue pointed at
+           * a system the player can neither read anything from nor act on.
+           *
+           * STEPS 1 AND 12 KEEP THEIRS, and the difference is the point: step 1 verifies the cold
+           * lineup with RHR in service, and step 12 is graded on RHR being GONE. A watch ring has
+           * to name something the step is actually about. */
           /* ⚠ THE 100 °F/hr HEATUP-RATE LIMIT IS OUT OF THIS LEG ON PURPOSE — DO NOT "RESTORE" IT
            * *(OWNER RULING, 2026-09-14/15, on options put as "put it back in a step / put it in a
            * note / leave it out": selected "Leave it out of the walkthrough")*.
@@ -1857,7 +1873,7 @@
            * lever he is told to move, and this heatup's rate is what pump heat does whether he
            * likes it or not. `Manuals/` is unchanged and still carries the limit; a walkthrough
            * is not the manual. Same record in `Blueprint/WALKTHROUGH_STEPS_OWNER.md`. */
-          hl_watch: ['Tavg', 'Primary Pressure', 'SG Pressure', 'Residual Heat Removal (RHR)'] },
+          hl_watch: ['Tavg', 'Primary Pressure', 'SG Pressure'] },
         /* THE EFFECT ACCEPTANCE FOR THE LETDOWN STEP (#624 item 25). The orifice step's own tick
          * reads the SELECTOR; this reads the PLANT, after the transfer has actually happened —
          * RHR gone (the 585 psig autoclose fired during the ride) and letdown still flowing,
@@ -2219,7 +2235,7 @@
          * #618 removed hours earlier: the step still steers on the count rate and the acceptance
          * is unchanged. The numbers are the replay's own `cmd.steps` — 94 / 63 / 31 / 14 / 9,
          * rounded — so they cannot drift from what the harness drives. */
-        { text: 'Raise SOURCE RANGE past 7.0e2, stop the rods, let STARTUP RATE fall to zero, then plot the point.',
+        { text: 'Press MED, then hold WITHDRAW under CONTROL until SOURCE RANGE passes 7.0e2. Release, let STARTUP RATE fall back to zero, then press Plot point.',
           /* ⚠ "PLOT POINT DOES NOTHING UNTIL THE COUNTS ARE STEADY" WAS FALSE AND SHIPPED ON THIS
            * CARD (#759, verified 2026-09-15). MEASURED: pressing Plot point with rung 5c unmet
            * ADDS REAL POINTS — 1 -> 2 -> 3 SVG circles, the panel refitting each time — the rung
@@ -2228,7 +2244,7 @@
            * `accs_ordered` gates the CHECK-OFF, not the button. *(OWNER RULING, 2026-09-15:
            * selected "Fix the text AND say why (Recommended)")* — this is the text half; the
            * card's one-line reason on an out-of-turn press is ui/app.js. */
-          note: 'Stop when CONTROL ROD POSITION reads about 80 to 100. Holding WITHDRAW drives the bank at the selected speed and releasing it stops; a single tap moves one step. MED moves 48 steps a minute at 1×, SLOW 8, FAST 72. Work the four lines below in order. Plot point will take a press at any time, but a point plotted before the rods have stopped and STARTUP RATE has settled is a bad point: it goes on the plot, drags the prediction, and only Clear takes it off again.',
+          note: 'Stop when CONTROL ROD POSITION reads about 80 to 100. Holding WITHDRAW drives the bank at the selected speed and releasing it stops; a single tap moves one step. MED moves 48 steps a minute at 1×, SLOW 8, FAST 72. Plot point will take a press at any time, but a point plotted before the rods have stopped and STARTUP RATE has settled is a bad point: plot all four rungs early and the predicted critical position comes out about five rod steps too far out, which is the direction that catches you out. It goes on the plot, drags the prediction, and only Clear takes it off again.',
           why: 'The first two points always predict too high: near the bottom the rods are worth little per step, so the line they draw crosses zero far past the real critical position. That is expected. While the reactor is shut down, SOURCE RANGE counts are the only thing that tells how close the core is; rod position does not.',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e2 (700 counts a second); point 2 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 94, speed: 'normal' }, hold: 300,
@@ -2333,27 +2349,48 @@
            * `sr_counts_cps` now maps to the `source_range` instrument, so the row grades the
            * same number the tile formats. Moving the edge without that leaves the two on
            * different channels and half the defect standing. */
+          /* ⚰ ONE STEP PER PLOT POINT, WHICH IS WHERE THIS WAS BEFORE #756 *(OWNER, 2026-09-20,
+           * #796 item 3: "Walkthrough mode 3-1 step 5 is broken. each of these checkoff should
+           * have a white step text above it. go back to one step per plot point like we had
+           * before. Same with step 6. remove the requirements for startup rate to fall back to
+           * zero.")*. This SUPERSEDES #756, which was his own 2026-09-15 directive for a line of
+           * instruction per substep.
+           *
+           * WHAT HE IS LOOKING AT, IN CSS TERMS: a step's instruction is `.ckl-txt`, white
+           * (var(--text)); a lettered check-off row is `.ckl-crit`, cobalt (#7fa8dd). Four rows
+           * meant four cobalt imperatives and no white instruction of their own, so the rung read
+           * as four steps that were not steps. Collapsing to one step per point puts the whole
+           * sequence back in the white line above the check-offs.
+           *
+           * THE ROD-STOP AND SETTLE ROWS GO; THE SETTLE ITSELF DOES NOT. It moves from a graded
+           * row into the instruction and the note — which is exactly where it was before #756 —
+           * so the requirement is lifted (his words) while the guidance stays. That distinction is
+           * load-bearing, because the premise underneath it measures FALSE:
+           *
+           * ⚠ MEASURED 2026-09-20 (#796, seed 42, full stack, the same run sampled twice: at the
+           * tick each rung's counts arrive, and again at the end of its hold). Plotting all four
+           * rungs WITHOUT the settle predicts critical at step 213; WITH it, step 208. This plant
+           * actually goes critical at step 207. So the settle is worth 5.1 steps of prediction,
+           * and every bit of the error is on the DANGER side — a prediction that reads HIGH tells
+           * the operator they have further to go than they have. His recollection that it "doesn't
+           * have much affect on the final outcome" does not reproduce. The number is why the text
+           * still says to wait for it, and why the `note` now carries the cost in rod steps.
+           *
+           * `accs_ordered` STAYS. With two rows it still does the one thing #756 bought that
+           * nothing else does: a cmd-kind entry is deaf until the row above is met, so Plot point
+           * cannot bank a stale point while the counts are still climbing. */
           accs_ordered: true,
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 695,
-                   ask: 'Press MED, then hold WITHDRAW under CONTROL until SOURCE RANGE passes 7.0e2.',
                    label: 'SOURCE RANGE reads 7.0e2 (700 counts per second) or more' },
-                 { p: 'control_bank_steps', op: 'stopped', v: 60,
-                   ask: 'Release WITHDRAW and let CONTROL ROD POSITION sit still for a minute.',
-                   label: 'Rods stopped — CONTROL ROD POSITION unchanged for a minute' },
-                 { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.02,
-                   ask: 'Now watch STARTUP RATE fall back toward zero.',
-                   label: 'STARTUP RATE back to zero (within 0.02 DPM)' },
-                 { cmd: 'plot_1m_point',
-                   ask: 'Press Plot point on the 1/M PLOT panel.',
-                   label: 'Point plotted' }],
+                 { cmd: 'plot_1m_point', label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
           /* CONTROL ROD POSITION IS WHAT THE 1/M PANEL'S PREDICTION IS A NUMBER ON (#735, owner
            * playtest #724 item 10: "we should probably highlight CONTROL ROD POSITION in the
            * step the first time we mvoe the rods as well"). This is that first move. */
           hl: ['Rod Speed — Normal', 'Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
-        { text: 'Raise SOURCE RANGE past 1.4e3, stop the rods, let STARTUP RATE settle, plot, then read the prediction.',
-          note: 'Stop when CONTROL ROD POSITION reads about 150 to 175 steps. The four lines below run in order.',
+        { text: 'Hold WITHDRAW at MED until SOURCE RANGE passes 1.4e3. Release, let STARTUP RATE fall back to zero, press Plot point, then read the prediction.',
+          note: 'Stop when CONTROL ROD POSITION reads about 150 to 175 steps. Wait for the rate before you plot — see step 5.',
           /* NO AUTHORED `wait_hint` (#653 S-5, 2026-09-15): `hold` is 300 s, so ui/app.js already
            * prints "About 5 plant-minutes at 1× — set the speed control to 10×." on this card, and
            * the authored string said 10× a SECOND time in the same line. Same defect on step 5.
@@ -2362,23 +2399,15 @@
           why: 'Each new point is taken closer to critical, where a step is worth more, so the line steepens and the predicted crossing walks in. The panel prints the crossing as a rod step with a marker on the plot. That number still reads high; it improves with every point.',
           control: 'Control Bank', target: 'SOURCE RANGE above 1.4e3 (1,400 counts a second); point 3 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 63, speed: 'normal' }, hold: 300,
+          /* One step per plot point since #796 item 3 — the reasoning is on step 5. */
           accs_ordered: true,
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 1350,   // the 1.4e3 band's lower edge — see step 5's RENDER BAND block
-                   ask: 'Hold WITHDRAW at MED until SOURCE RANGE passes 1.4e3.',
                    label: 'SOURCE RANGE reads 1.4e3 (1,400 counts per second) or more' },
-                 { p: 'control_bank_steps', op: 'stopped', v: 60,
-                   ask: 'Release WITHDRAW and let CONTROL ROD POSITION sit still for a minute.',
-                   label: 'Rods stopped — CONTROL ROD POSITION unchanged for a minute' },
-                 { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.02,
-                   ask: 'Now watch STARTUP RATE fall back toward zero.',
-                   label: 'STARTUP RATE back to zero (within 0.02 DPM)' },
-                 { cmd: 'plot_1m_point',
-                   ask: 'Press Plot point, then read the predicted critical position on the panel.',
-                   label: 'Point plotted' }],
+                 { cmd: 'plot_1m_point', label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
-        { text: 'Raise SOURCE RANGE past 3.0e3, stop the rods, let STARTUP RATE settle, plot, and read the prediction again.',
+        { text: 'Hold WITHDRAW at MED until SOURCE RANGE passes 3.0e3. Release, let STARTUP RATE fall back to zero, press Plot point, and read the prediction again.',
           /* ⚠ "THE SETTLE TAKES LONGER AT EVERY RUNG" WAS AN UNMEASURED CLAIM IN PLAYER COPY
            * (#653 S-11, 2026-09-15). MEASURED on the built pool: all four settle rungs on steps
            * 5-8 carry IDENTICAL acceptances — the bank stopped for 60 s, then `startup_rate ~0
@@ -2387,7 +2416,7 @@
            * after ROD-STOP, so the settle genuinely does stretch — but only from rung 7 on, where
            * the startup rate becomes the long pole. The removed sentence is still not restored
            * here, because it would be false of rungs 5 and 6. */
-          note: 'Stop when CONTROL ROD POSITION reads about 180 to 205 steps. The four lines below run in order.',
+          note: 'Stop when CONTROL ROD POSITION reads about 180 to 205 steps. Wait for the rate before you plot — see step 5.',
           /* THIS ONE KEEPS ITS `wait_hint`, AND IT SAYS THE OPPOSITE OF WHAT IT USED TO. `hold` is
            * 420 s here, so the generated line offers 60× — right for the settle, WRONG for the
            * pull this step opens with: the rung is only 25 steps wide (180 to 205) and MED is
@@ -2399,18 +2428,10 @@
           control: 'Control Bank', target: 'SOURCE RANGE above 3.0e3 (3,000 counts a second); point 4 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 31, speed: 'normal' }, hold: 420,
           accs_ordered: true,
+          /* One step per plot point since #796 item 3 — the reasoning is on step 5. */
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 2950,   // the 3.0e3 band's lower edge — see step 5's RENDER BAND block
-                   ask: 'Hold WITHDRAW at MED until SOURCE RANGE passes 3.0e3.',
                    label: 'SOURCE RANGE reads 3.0e3 (3,000 counts per second) or more' },
-                 { p: 'control_bank_steps', op: 'stopped', v: 60,
-                   ask: 'Release WITHDRAW and let CONTROL ROD POSITION sit still for a minute.',
-                   label: 'Rods stopped — CONTROL ROD POSITION unchanged for a minute' },
-                 { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.02,
-                   ask: 'Now watch STARTUP RATE fall back toward zero.',
-                   label: 'STARTUP RATE back to zero (within 0.02 DPM)' },
-                 { cmd: 'plot_1m_point',
-                   ask: 'Press Plot point, then read the prediction again.',
-                   label: 'Point plotted' }],
+                 { cmd: 'plot_1m_point', label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
@@ -2446,8 +2467,8 @@
          * supercritical point the ruling removes. 205 is the highest bank in the band that is
          * still subcritical (ρ −12.5 static, −15 measured), so the band ends there. The cue is
          * unchanged and is still the count rate: 7,000 a second lands the authored burst at 202. */
-        { text: 'Hold WITHDRAW at MED past 7.0e3. Stop the rods, let STARTUP RATE settle, then plot the last point.',
-          note: 'Stop when CONTROL ROD POSITION reads about 195 to 205 steps. This is the point the prediction is built on, so give it the time: STARTUP RATE takes about six plant-minutes to come back to zero here, and a point plotted before it does throws the predicted position two or three steps too far out. The four lines below run in order; plot when the fourth one is the only one left. Note the rod position at criticality the 1/M panel predicts — the reactor goes critical at it or just below, so you stop short of it and tap from there.',
+        { text: 'Hold WITHDRAW at MED until SOURCE RANGE passes 7.0e3. Release, let STARTUP RATE fall back to zero — about six plant-minutes — then plot the last point.',
+          note: 'Stop when CONTROL ROD POSITION reads about 195 to 205 steps. This is the point the prediction is built on, so give it the time: STARTUP RATE takes about six plant-minutes to come back to zero here, and a point plotted before it does throws the predicted position further out than it is. Note the rod position at criticality the 1/M panel predicts — the reactor goes critical at it or just below, so you stop short of it and tap from there.',
           wait_hint: 'STARTUP RATE is still falling when the rods stop, and the prediction is only as good as the wait you give it. Come back to 10× before the next step, where the reactor starts making power.',
           why: 'This is the last plotted point: from here single steps beat one more fitted number, because another burst would land past critical. STARTUP RATE is the speedometer — 1.0 means power is multiplying by ten every minute, and any positive reading with the rods still means the chain reaction is growing. Under 1.0 is a comfortable climb; above it, nothing in the plant slows the rise yet.',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e3 (7,000 counts a second); point 5 plotted; STARTUP RATE under 1.0',
@@ -2532,18 +2553,10 @@
            * press still puts a real point on the plot and only Clear takes it off (#759). */
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 14, speed: 'normal' }, hold: 600,
           accs_ordered: true,
+          /* One step per plot point since #796 item 3 — the reasoning is on step 5. */
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 6950,   // the 7.0e3 band's lower edge — see step 5's RENDER BAND block
-                   ask: 'Hold WITHDRAW at MED until SOURCE RANGE passes 7.0e3.',
                    label: 'SOURCE RANGE reads 7.0e3 (7,000 counts per second) or more' },
-                 { p: 'control_bank_steps', op: 'stopped', v: 60,
-                   ask: 'Release WITHDRAW and let CONTROL ROD POSITION sit still for a minute.',
-                   label: 'Rods stopped — CONTROL ROD POSITION unchanged for a minute' },
-                 { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.02,
-                   ask: 'Now watch STARTUP RATE fall back toward zero, about six plant-minutes.',
-                   label: 'STARTUP RATE back to zero (within 0.02 DPM)' },
-                 { cmd: 'plot_1m_point',
-                   ask: 'Press Plot point. Note the critical position the panel predicts.',
-                   label: 'Point plotted' }],
+                 { cmd: 'plot_1m_point', label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },

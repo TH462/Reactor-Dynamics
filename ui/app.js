@@ -5077,27 +5077,32 @@
        * contingencies the player does have to act on. A label is what separates "read this to
        * act" from "read this to understand".
        *
-       * "Background - not an action" *(OWNER RULING, 2026-09-13: "Info-box label - a", choosing
-       * it over "Why this step - background, not an action")*, settling his own instruction of
-       * the same day: "I also want to make the informational text block more obvious that it's
-       * not a work step but just there for education. Put it in its own box, move it slightly
-       * away from the work steps and label it so it's obvious what it is."
+       * IT IS "Background", FULL STOP *(OWNER, 2026-09-20, #796 item 2: "Remove '-Not an Action'
+       * from every background title from every walkthrough step.")*. This SUPERSEDES the label he
+       * chose on 2026-09-13 ("Info-box label - a", over "Why this step - background, not an
+       * action"), which settled his instruction of that day: "I also want to make the
+       * informational text block more obvious that it's not a work step but just there for
+       * education. Put it in its own box, move it slightly away from the work steps and label it
+       * so it's obvious what it is."
        *
-       * IT NAMES THE CATEGORY AND STATES THE NEGATIVE, which is the half a question-shaped
-       * label cannot do. "Why this step" named the field's contract (CHECKLIST_WRITING_GUIDE
-       * F2 - one causal chain answering why the step is here) but a player scanning for what
-       * to press still has to read it to learn it is not for them. The rejected candidate kept
-       * both halves and ran long for a 10 px upper-case legend.
+       * THE BOX IS WHAT CARRIES THE NEGATIVE NOW, AND IT ALREADY DID. The old argument for the
+       * clause was that the legend should state the negative as well as the category, because a
+       * question-shaped label ("Why this step") leaves a player scanning for what to press to read
+       * the block before learning it is not for them. But the 2026-09-13 instruction was answered
+       * by THREE things at once — its own box, set apart from the action rows, AND a legend — and
+       * the two reviewers who met the result both reported the block as unambiguous background.
+       * With the box doing that work the clause was a negation restating what the layout says, on
+       * every step, in a 10 px legend that has to stay short.
        *
-       * THE GUIDE STILL CALLS THE FIELD "why" and F2 still governs what goes in it - this is
-       * the LEGEND the player reads, not a rename of the authoring key.
+       * THE GUIDE STILL CALLS THE FIELD "why" and F2 still governs what goes in it — this is the
+       * LEGEND the player reads, not a rename of the authoring key.
        *
        * The legend borrows `.ckl-story-l > span`'s idiom — small, upper case, muted — because
        * the story block is the OTHER always-drawn supplementary field on this card, and two
        * supplementary blocks that look like two different kinds of thing is the confusion this
        * is fixing. */
       if (st.why) {
-        det += '<div class="ckl-why"><span class="ckl-why-lbl">Background — not an action</span>' +
+        det += '<div class="ckl-why"><span class="ckl-why-lbl">Background</span>' +
           mesc(st.why) + '</div>';
       }
       if (det) {

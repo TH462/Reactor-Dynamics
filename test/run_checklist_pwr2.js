@@ -347,9 +347,14 @@ if (!only) {
     ck('2x INJECTION: the same probe WITHOUT accs_ordered latches the later entry early',
        un.early[0] === false && un.early[1] === true,
        'unordered accs ' + JSON.stringify(un.early) + ' (this is the pre-#756 behaviour)');
-    /* the static half: the flag is opt-in and means nothing on a step with one row, and every
-     * ordered step's rows must be authorable as a sequence (an `ask` on each, so the card has an
-     * instruction to draw for the row the player is standing on). */
+    /* the static half: the flag is opt-in and means nothing on a step with one row.
+     *
+     * ⚰ THE `ask`-ON-EVERY-ROW CLAUSE IS GONE (#796 item 3, 2026-09-20). It pinned #756's model
+     * — a line of instruction per substep — and the owner has since superseded that: "go back to
+     * one step per plot point like we had before", because a row's `ask` draws in `.ckl-crit`
+     * cobalt and only a step's own text draws white. A row may still carry an `ask`; requiring one
+     * is what would forbid the shape he asked for. `accs_ordered` itself stays, and so does the
+     * two-row floor: the flag means nothing on a single-row step. */
     var ordSteps = [];
     POOL.forEach(function (pr) {
       (pr.steps || []).forEach(function (st, k) {
@@ -357,10 +362,9 @@ if (!only) {
       });
     });
     var badOrd = ordSteps.filter(function (e) {
-      return !e.st.accs || e.st.accs.length < 2 ||
-             e.st.accs.some(function (en) { return !en.ask; });
+      return !e.st.accs || e.st.accs.length < 2;
     });
-    ck('2x every accs_ordered step has at least two rows and an `ask` on each (#756)',
+    ck('2x every accs_ordered step has at least two rows (#756; the per-row `ask` clause retired #796)',
        ordSteps.length > 0 && badOrd.length === 0,
        badOrd.length ? badOrd.map(function (e) { return e.id + ' step ' + e.k; }).join(', ')
                      : ordSteps.length + ' ordered steps: ' +
@@ -1953,25 +1957,38 @@ if (!only) {
     var FLOORS = [695, 1350, 2950, 6950];
 
     /* --- 1. the authored shape of the four rungs -------------------------------------- */
-    var shapeBad = [], stopN = null;
+    /* ⚰ THE SHAPE THIS PINS CHANGED BY DIRECTIVE (#796 item 3, 2026-09-20). It used to require
+     * four ordered rows per rung — counts floor, `control_bank_steps stopped`, startup rate, plot
+     * — which is #761's gate on top of #756's sequence. The owner has retired BOTH from the
+     * authored pool: "go back to one step per plot point like we had before. remove the
+     * requirements for startup rate to fall back to zero."
+     *
+     * WHAT STILL HAS TO HOLD, and what this now asserts: TWO ordered rows, the counts floor FIRST
+     * and the plot LAST. The ordering is the half that survives on its own merits — a cmd-kind
+     * entry is deaf until its predecessor is met, so Plot point cannot bank a stale point while
+     * the counts are still climbing, which is the one thing #756 bought that the step text cannot.
+     *
+     * THE ROD-STOP MECHANISM IS NOT UNTESTED BY THIS RETIREMENT. `op: 'stopped'` now has no
+     * author in the pool, exactly as `op: 'steady'` already had none, and both are proven on
+     * synthetic channels in §5 below plus on the plant in §3/§4 against a LOCAL fixture rather
+     * than a shipped step. A gate that reads authored content cannot tell a retired convention
+     * from a regression; one that drives the mechanism can. */
+    var shapeBad = [];
     RUNGS.forEach(function (idx, k) {
       var st = proc && proc.steps[idx], w = 'step ' + (idx + 1);
       var en = (st && st.accs) || [];
-      var iFloor = -1, iStop = -1, iRate = -1, iPlot = -1;
+      var iFloor = -1, iPlot = -1;
       en.forEach(function (e, i) {
         if (e.p === 'sr_counts_cps' && e.op === '>=' && e.v === FLOORS[k]) iFloor = i;
-        if (e.p === 'control_bank_steps' && e.op === 'stopped') { iStop = i; stopN = e.v; }
-        if (e.p === 'startup_rate_dpm' && e.op === '~') iRate = i;
         if (e.cmd === 'plot_1m_point' || (e.cmd && e.cmd.action === 'plot_1m_point')) iPlot = i;
       });
       if (!st || !st.accs_ordered) shapeBad.push(w + ' not accs_ordered');
-      else if (iFloor !== 0 || iStop !== 1 || iRate !== 2 || iPlot !== 3)
-        shapeBad.push(w + ' order floor/stop/rate/plot = ' + [iFloor, iStop, iRate, iPlot].join('/'));
+      else if (en.length !== 2 || iFloor !== 0 || iPlot !== 1)
+        shapeBad.push(w + ' ' + en.length + ' rows, order floor/plot = ' + [iFloor, iPlot].join('/'));
     });
-    ck('all four 1/M rungs gate the plot on ROD-STOP, then startup rate — the counts floor first (#761)',
-       shapeBad.length === 0 && stopN > 0,
-       shapeBad.join('; ') || 'steps 5-8: counts floor, control_bank_steps stopped ' + stopN +
-       ' s, startup rate, plot — ordered');
+    ck('all four 1/M rungs are ONE step per plot point: counts floor, then plot, ordered (#796 item 3)',
+       shapeBad.length === 0,
+       shapeBad.join('; ') || 'steps 5-8: counts floor then plot, two ordered rows each');
 
     /* --- 2. legality, both halves of it ----------------------------------------------- */
     var illegal = [], malformed = [], notControl = [], nBagged = 0, byOp = {};
@@ -2009,15 +2026,36 @@ if (!only) {
     });
     ck('a BAGGED predicate is authored ONLY where a per-step bag exists — acc / accs (#755, #761)',
        illegal.length === 0, illegal.join(', ') || nBagged + ' bagged predicate(s) in the pool, all in acc/accs');
-    ck('...and every one is well formed (param + threshold, and a window if it is `steady`)',
-       nBagged > 0 && malformed.length === 0,
-       malformed.join(', ') || nBagged + ' well formed: ' + JSON.stringify(byOp));
+    /* ⚰ IT NO LONGER DEMANDS A POPULATION (#796 item 3). `nBagged > 0` was honest while the four
+     * 1/M rungs authored `stopped`; with those rows retired by directive the pool authors NO
+     * bagged predicate at all, and a check that fails because content was legitimately removed is
+     * pinning the content rather than the rule. What it asserts is the rule — any bagged predicate
+     * that IS authored must be well formed — and it prints the population so a silent drop to
+     * zero is visible in the log rather than inferred. The non-vacuity now lives where it can
+     * survive an empty pool: §5's synthetic-channel proofs of `steady` and `stopped`. */
+    ck('...and every bagged predicate authored is well formed (param + threshold, window if `steady`)',
+       malformed.length === 0,
+       malformed.join(', ') || nBagged + ' bagged, all well formed: ' + JSON.stringify(byOp));
     ck('...and `stopped` is authored only on a CONTROL-class param, where equality is exact (#761)',
        notControl.length === 0,
        notControl.join(', ') || (byOp.stopped || 0) + ' stopped predicate(s), all control-class');
 
     /* --- 3. THE PLANT RUN. The authored 94/63/31/14 ladder on `hot_zero_power`, the step-8 rows
      * graded through `_gradeAccs` — the path the live card actually grades on. */
+    /* ⚰ THE FIXTURE IS LOCAL SINCE #796 item 3. This used to grade `proc.steps[7].accs` — the
+     * shipped step 8 — and the rows it is about (rod-stop, then the rate) were retired from that
+     * step by directive. Driving the shipped rows would now prove only that a counts floor latches
+     * when the counts arrive, which is not what #761 is about and not what this section exists to
+     * defend. So the ROWS are declared here, in the test, and driven on the real plant through the
+     * real `_gradeAccs`: the mechanism stays proven, and the proof stops breaking every time the
+     * content that once used it is re-authored. The floor, the quiet window and the tolerance are
+     * the ones the pool carried on 2026-09-20, kept verbatim so the measured numbers below still
+     * describe the same claim. */
+    var ROD_STOP_RUNG = [
+      { p: 'sr_counts_cps', op: '>=', v: 6950 },
+      { p: 'control_bank_steps', op: 'stopped', v: 60 },
+      { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.02 },
+    ];
     var step8 = proc && proc.steps[7];
     if (step8 && step8.accs) {
       var svc = mkSvc('hot_zero_power');
@@ -2037,7 +2075,7 @@ if (!only) {
       while (still < 5) { s = svc.tick(); var b = ctlBank(); if (b === prev) still++; else still = 0; prev = b; }
       var tStop = s.metadata.sim_time, bankStop = ctlBank();
       var il8 = Object.create(RD.InstructorLayer.prototype);
-      var graded = { accs: step8.accs.filter(function (e) { return e && e.p; }), accs_ordered: true };
+      var graded = { accs: ROD_STOP_RUNG.slice(), accs_ordered: true };
       var holder = {}, firstFloor = null, firstAll = null, stoppedAtFloor = false, countsAtFloor = null;
       while (s.metadata.sim_time - tStop < 900) {
         s = svc.tick();
@@ -2082,7 +2120,14 @@ if (!only) {
         if (!st || !st.accs) return;
         var target = ctlBank() + [94, 63][k];
         var il = Object.create(RD.InstructorLayer.prototype);
-        var graded = { accs: st.accs.filter(function (e) { return e && e.p; }), accs_ordered: true };
+        /* The LOCAL fixture again (#796 item 3), at this rung's own floor — see §3. The shipped
+         * step no longer carries a rod-stop row, and driving what it does carry would make this
+         * probe assert that a counts floor latches when the counts arrive, i.e. exactly the hole
+         * #761 was opened to close. */
+        var graded = { accs: [{ p: 'sr_counts_cps', op: '>=', v: FLOORS[k] },
+                              { p: 'control_bank_steps', op: 'stopped', v: 60 },
+                              { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.02 }],
+                       accs_ordered: true };
         var oldGraded = { accs: [ { p: 'sr_counts_cps', op: '>', v: FLOORS[k] }, oldSteady ],
                           accs_ordered: true };
         var holder = {}, oldHolder = {};
@@ -3005,8 +3050,15 @@ if (!only) {
          missing.length ? 'SCAN MISSED: ' + missing.join(', ')
            : Object.keys(MAP).length + ' mapped params, ' + Object.keys(seen).length +
              ' distinct pool params, none graded `instrument` outside the map');
-      ck('2ae.1b the re-measured pool counts are the ones #773 counted (84 / 135 / 87 / 27)',
-         gradedSteps === 84 && predRows === 135 && rows.length === 87 && soleInst === 27,
+      /* ⚰ RE-PINNED 2026-09-20 (#796 item 3): 135 -> 127 predicate rows, 87 -> 83
+       * instrument-graded, 27 -> 31 sole rows. The eight that left are the rod-stop and
+       * startup-rate rows the 1/M ladder shed when it collapsed to one step per plot point by
+       * directive, and the SOLE count RISES for the same reason — a rung that had four rows now
+       * has two, and its counts floor is the only predicate row on it, so four more rows became
+       * the only row of their step. The graded-step count is unmoved at 84, which is the control:
+       * no step gained or lost its grading, only its row count. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned #796: 84 / 127 / 83 / 31)',
+         gradedSteps === 84 && predRows === 127 && rows.length === 83 && soleInst === 31,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -3170,11 +3222,15 @@ if (!only) {
       'pwr_tmi2_incident:13:subcooling_c': 1, 'pwr_tmi2_incident:15:subcooling_c': 1,
       'pwr_tmi2_incident:17:subcooling_c': 1,
     };
+    /* ⚰ THE FOUR `startup_rate_dpm` ROWS LEFT THIS SET WITH THE ROWS THEMSELVES (#796 item 3,
+     * 2026-09-20): the 1/M rungs collapsed to one step per plot point by directive, so there is
+     * no rate row on steps 5-8 to be relieved. Their `sr_counts_cps` siblings stay, still
+     * relieved off-channel by `overtaken: sr_energized`. */
     var RELIEVED_EXPECTED = {
-      'pwr_startup:5:sr_counts_cps': 1, 'pwr_startup:5:startup_rate_dpm': 1,
-      'pwr_startup:6:sr_counts_cps': 1, 'pwr_startup:6:startup_rate_dpm': 1,
-      'pwr_startup:7:sr_counts_cps': 1, 'pwr_startup:7:startup_rate_dpm': 1,
-      'pwr_startup:8:sr_counts_cps': 1, 'pwr_startup:8:startup_rate_dpm': 1,
+      'pwr_startup:5:sr_counts_cps': 1,
+      'pwr_startup:6:sr_counts_cps': 1,
+      'pwr_startup:7:sr_counts_cps': 1,
+      'pwr_startup:8:sr_counts_cps': 1,
       'pwr_startup:9:ir_amps': 1,
     };
 

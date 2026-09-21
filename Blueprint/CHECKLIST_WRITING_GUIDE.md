@@ -102,7 +102,7 @@ characters a line). Measured on the shipped build (`ui/app.js` `renderChecklist`
   runs, or that WARP is ready. **The player is told why WARP was refused or dropped, so a step no
   longer has to explain the clock** — it only has to say which rung to reach for and what will
   take it away.
-- **The `note`** is grey; **the `why`** is a labelled, tinted block headed *"Background — not an action"*
+- **The `note`** is grey; **the `why`** is a labelled, tinted block headed *"Background"*
   (#692 item 3 / #687 item 4, 2026-09-11). It used to be a second, dimmer grey, which is what
   made the two indistinguishable; the label is now what separates a binding instruction from
   optional background. **Neither is still where an instruction survives.**
@@ -553,7 +553,7 @@ until it lands.
   `purpose` and `prereq` are still browse-card only, and that is deliberate: the panel draws ONE
   step (#660 item 15) and a leg's purpose is answered by having opened it.
 - ~~The `note` and the `why` are nearly indistinguishable (two greys)~~ — **FIXED #692/#653**:
-  the `why` is a labelled, tinted block headed *"Background — not an action"*.
+  the `why` is a labelled, tinted block headed *"Background"*.
 - ~~The orange wait hint is the loudest element, above the step's own limit~~ — **FIXED #653**:
   the amber is now the caution block's, and the speed rung reads as advice.
 - ~~The tilde in "~15 %" renders literally~~ — gone from the pool; measured 0 sites 2026-09-11.
@@ -843,7 +843,7 @@ say what must be there, never what may not be.**
 
 ### T7. Still ambiguous — do not resolve these by guessing
 
-- **The `why` heading.** He writes `Background`; the panel draws `BACKGROUND — NOT AN ACTION`
+- **The `why` heading.** He writes `Background`; the panel draws `BACKGROUND`
   (`ui/app.js`, upper-cased in `ui/shell.css`). He may be abbreviating, or asking for the
   qualifier to go. Unchanged pending his word.
 - ~~**The italic `note`.**~~ **RESOLVED 2026-09-13 — the tip is now italic on the card.** He

@@ -157,6 +157,47 @@ at all. The wait is real on the PLAYER's route, which is the one the owner is re
 measurement tool that only ever drives the replay will call that step a non-event; read "0.0
 plant-min in" as "the replay does not wait here", never as "there is no wait".
 
+**#796 ITEMS 1, 2 AND 3, THE SAME DAY.** Item 1's RHR ring on Mode 5 -> 3 step 11 had a
+justification in the pool that was **about a different leg's step 11** — a comment about COOLDOWN
+RATE and HX SPLIT, both true of `pwr_cooldown` step 11 and neither true of the heatup's, which has
+no note and no rate lever (the 100 degF/hr limit was ruled OUT of that leg). A step-number
+collision between two legs put a correct sentence on the wrong step and the ring followed the
+sentence. **Look for this shape**: two legs both have a step 11.
+
+Item 2 superseded the 2026-09-13 "Background — not an action" legend. Worth recording WHY the
+original argument stopped applying rather than just that it did: the negative clause existed
+because a question-shaped label leaves a player reading the block before learning it is not for
+them — but the instruction it answered was satisfied by THREE things at once (its own box, set
+apart, AND a legend), and both fresh-reader reviews reported the block as unambiguous. With the
+box doing that work the clause was a negation restating the layout, on every step, in a 10 px
+legend.
+
+**ITEM 3 IS THE ONE WITH A REFUTED PREMISE IN IT.** The structural half is unambiguous and is a
+straight supersession of #756 (his own directive of 2026-09-15): the ladder goes back to one step
+per plot point. His complaint is exact in CSS terms — `.ckl-txt` is white, `.ckl-crit` is cobalt,
+so four rows meant four cobalt imperatives and no white instruction of their own.
+
+**But "remove the requirements for startup rate to fall back to zero ... this doesn't have much
+affect on the final outcome" is a recalled claim, and it measures false.** Same run sampled twice
+(seed 42, full stack: at the tick each rung's counts arrive, and again at the end of its hold),
+both sets through the panel's own trailing-3 fit: **no settle -> predicted critical step 213;
+settled -> step 208; ACTUAL 207.** The settle is worth **5.1 steps**, all of it on the DANGER side.
+
+**THE RESOLUTION IS THE DISTINCTION HE ACTUALLY DREW: the REQUIREMENT goes, the guidance stays.**
+Before #756 the settle was taught in the step text and never graded — which is what "like we had
+before" names. So the graded rows go and the instruction and note keep telling the player to wait
+for the rate, now carrying the cost in rod steps. Both his sentences are satisfied and the
+prediction is not silently degraded for a player who reads the step.
+
+**THE GATE FALLOUT WAS EIGHT CHECKS, ALL PINNING THE REMOVED ROWS, AND FIVE WERE WORTH KEEPING.**
+Adjudicated one at a time (HR10). The rung-shape check re-pins the NEW shape; the four plant-driven
+#761 probes — the rod-stop rung and the two DRIBBLE routes — now grade a **local fixture** carrying
+the retired rows instead of the shipped step. That is the move worth copying: **a probe that reads
+authored content cannot tell a retired convention from a regression, and one that drives the
+mechanism can.** `op: 'stopped'` now has NO author in the pool — exactly the position `op: 'steady'`
+was already in — so the well-formed check had to stop demanding a non-empty population, and the
+synthetic-channel halves are what keep both operators honest.
+
 **The derivation is now a command, not a feel: `node tools/glance_rung.js <procedure_id> <step>`**,
 referenced from the `wait_speed` schema so the next rung is measured too.
 
