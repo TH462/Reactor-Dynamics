@@ -127,37 +127,37 @@ than the CORS origin check the ingestion routes use. Views:
 | | |
 |---|---|
 | `/dashboard` | **Bug reports** — the R2 bundles, newest first, with a detail view per report and `&raw=1` for the JSON. `src/dashboard.js` |
-| `?view=analytics` | **Analytics** — traffic + in-sim usage over an arbitrary `&from=&to=` date range, with a trend line. `src/analytics.js`, reading `src/stats.js` |
+| `?view=analytics` | **Analytics** — traffic + in-sim usage over an arbitrary `&from=&to=` range. Bars to 14 days, a DAILY LINE beyond. Carries **deep-link landings** (a returning-visitor proxy needing no identifier), a **pipeline-health** warning and a **throttle** warning, both of which render NOTHING when healthy. `src/analytics.js`, reading `src/stats.js` |
 | `?view=sessions` | **Sessions** — one row per session; click through to its ordered event trace. `src/sessions.js` |
+| `?view=usage` | **Feature usage** — what people do at the board, walkthrough funnels, session length. **Filters by RELEASE**, defaulting to the newest by most recent event (never by sorting the version string — `Alpha 1.7.10` sorts below `Alpha 1.7.9`). `src/usage.js` |
 | `?view=features` | **Features** — what the live sim gates, and the control that changes it. `src/features.js` |
 
 **No secret goes in the URL.** The bookmark is the clean path; the address bar, browser
 history and any pasted link carry nothing. That was not true before 2026-09-18: the token
 was a query parameter on every internal link, so the bookmark *was* the credential.
 
-Three Worker secrets (never a repo file, never RD_Ops — that directory syncs off-site and
+**TWO Worker secrets** (never a repo file, never RD_Ops — that directory syncs off-site and
 is deliberately secret-free):
 
 ```bash
 cd worker
 wrangler secret put DASHBOARD_PASSWORD   # what you type, once per device
 wrangler secret put DASHBOARD_HMAC_KEY   # signs the session cookie; 32+ random chars
-wrangler secret put DASHBOARD_TOKEN      # LEGACY, kept only for the bookmark migration
 ```
-
-`DASHBOARD_HMAC_KEY` must **not** be the same value as `DASHBOARD_TOKEN`: the token stays a
-live bearer credential until the cutover block is deleted, and signing sessions with a live
-bearer credential is the defect this change removed.
 
 **Rotating `DASHBOARD_HMAC_KEY` is the revoke-all-devices switch** — it invalidates every
 outstanding cookie. There is no other way to log out a lost phone.
 
-**Cutover, in two stages.** Stage 1 shipped 2026-09-18: a `GET` carrying a matching
-`?token=` mints the cookie and redirects to the same path with the token stripped, so an
-existing bookmark rewrites itself on first use. The token is no longer standing
-authentication — only that one-shot exchange. **Stage 2, after 2026-09-25:** delete the
-`LEGACY_TOKEN_EXCHANGE` block in `src/dashboard.js` and rotate `DASHBOARD_TOKEN`. Rotating
-it earlier burns the migration, because an old bookmark carries the old value.
+**`DASHBOARD_TOKEN` IS GONE** (2026-09-20). The two-stage cutover this section used to
+describe is finished: `LEGACY_TOKEN_EXCHANGE` is deleted from `src/dashboard.js`, nothing
+reads `env.DASHBOARD_TOKEN`, and the secret itself was deleted from the Worker. It went a
+week before its own deadline for a measured reason — it was the ONE credential check here
+with **no rate limit**: a wrong password burns 1 of 5 per minute through `LOGIN_LIMITER`, a
+wrong token cost nothing and could be guessed indefinitely. The migration it existed for
+had already happened. `run_dashboard_auth.js` now asserts the inverse — that `?token=` is
+ignored, and that a right and a wrong token return byte-identical responses, since the old
+exchange answered them differently and that difference was an oracle. **Do not reintroduce
+a bearer token in a URL.**
 
 The analytics view needs a **second** secret, because the `EVENTS` binding is write-only —
 **a Worker cannot read its own Analytics Engine dataset through the binding.** Both the SQL
@@ -241,6 +241,29 @@ like a genuine "not blocked". Measured — Alpha 1.5.1 rows report `min(double7)
 `max(double5) = 0`. So every query over a new column needs **both** `>= 0` **and**
 `timestamp >= COLUMNS_SINCE` (`src/cfapi.js`), and that constant has a real expiry:
 three-month retention means it can be deleted once nothing older than 2026-11-11 survives.
+
+**NINE COLUMNS WERE APPENDED ON 2026-09-20-21** and the map in `src/index.js` is the
+authority — POSITION IS THE SCHEMA, so append, never insert or reuse. `blobs[8..14]` are
+`ref_host`, `ref_kind`, `country`, `bot_kind`, `device`, `browser`, `os`; `doubles[10..11]`
+are `bot` and `count`. All are derived AT THE WORKER from the request, not sent by the
+client, except `ref_host`, which the client sends as a bare host and the receiver re-cuts
+anyway (the endpoint is open, so the client's cut is not what the promise rests on).
+
+Two of them need care when querying:
+
+- **`ref_kind` distinguishes `unknown` from `direct`.** Absent field means the client never
+  reported one; `direct` means the browser reported no referrer. Conflating them would have
+  recorded the entire pre-field site as typed-in traffic — a wrong number, not a missing
+  one, and unrecoverable afterwards.
+- **`count` is presses in a COALESCED RUN.** Repeats of one command inside 250 ms collapse
+  into a single row carrying the count, because the controls in question are number boxes
+  with arrows: the count is user EFFORT, not pointer noise. A differing `blocked` always
+  breaks a run, so a refusal is never folded into accepted presses.
+
+`ref_kind` and `device` are each never empty on a row this Worker wrote, which is what lets
+`rollup.js` tell a pre-column row from a real one without consulting a clock. It requires
+BOTH, because the two commits deployed separately and a row can carry the first without the
+second.
 
 **The two sampling conventions are opposite** and the header of `src/analytics.js` is the
 long version: Analytics Engine `count()` undercounts (use `sum(_sample_interval)`), RUM
@@ -334,6 +357,46 @@ WHERE blob1 LIKE 'mission_%' GROUP BY mission ORDER BY started DESC
 ```
 
 ---
+
+## What it stores, and what throttles it
+
+**Four D1 tables**, all created by `src/rollup.js`'s `ensureSchema` on first run — there is
+no migration step, so `CREATE TABLE IF NOT EXISTS` CANNOT add a column to a table that
+already exists. Adding one to a primary key means a rebuild; `migrateOwnTraffic` is the
+worked example (it probes for the new columns and drops only when they are absent, so it is
+a no-op once migrated).
+
+| table | what |
+|---|---|
+| `traffic_daily` | The **Cloudflare-derived** series: one row per Eastern day × dimension tuple, mirrored nightly from RUM while it is still inside Cloudflare's 7-day exact window. Two years' retention, pruned by the job. |
+| `own_traffic_daily` | **Our own** beacon's equivalent (2026-09-20). A SEPARATE table on purpose: `traffic_daily` has to stay comparable with itself. **Authority has not moved** — the dashboard still reports the Cloudflare numbers, and the two run side by side until a comparison decides. Expect ours to read HIGHER once the site ships the client half, because content blockers block Cloudflare's injected beacon and not a request to our own domain. That rise is the block rate becoming visible, not new traffic. |
+| `usage_daily` | In-sim usage, rolled from Analytics Engine. |
+| `rollup_runs` | One row per nightly run, with a `note` on failure. **Read by the analytics page's pipeline-health line**, which warns on a stale tail, a bad note or a gap — and renders nothing when healthy. An unrecognised note warns by default. |
+
+**`traffic_daily`'s key omits `requestHost`.** Two Cloudflare groups differing only by host
+collapse onto one primary key and `INSERT OR REPLACE` keeps the last. Measured 2026-09-21:
+one host, zero collisions, so it is LATENT — and a key migration on the only exact history
+we hold is not worth the risk. The run NOTES a second host if one ever appears, which the
+pipeline-health line then surfaces.
+
+**Three rate limiters, three namespaces, three budgets** — sized separately because their
+costs differ by orders of magnitude:
+
+| binding | ns | limit | why |
+|---|---|---|---|
+| `LIMITER` | 1001 | 300 / 60s | Event ingest. The client batches every 60 s, so a session is ~1 request/minute: this covers ~300 concurrent users behind ONE address. It used to be 60 — one person's budget — which for an educational sim silently lost a whole classroom behind a NAT. |
+| `BUNDLE_LIMITER` | 1003 | 5 / 60s | Bug-report uploads. A report is one human POST of up to 2 MB into R2; it used to share the ingest budget, so an upload cost the same as a tiny event batch. |
+| `LOGIN_LIMITER` | 1002 | 5 / 60s | Dashboard password, charged ONLY by a failure, so signing in on several devices cannot lock you out. |
+
+**None of these is the cost protection** and the config says so: the Workers daily ceiling
+(100,000/day on the free plan) and, on paid, the bill are. A limiter's job is to stop one
+address burning the day.
+
+**A throttle is recorded, because the client cannot tell you about one.** `flush()` in
+`site/telemetry.js` splices its queue out BEFORE sending, posts `mode: 'no-cors'`, and never
+reads the response — so a 429 discards those events permanently and silently. The Worker
+writes a `rate_limited` row (never the IP) and the analytics page says the telemetry was
+dropped, not delayed.
 
 ## Two things that will bite
 
