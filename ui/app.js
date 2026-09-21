@@ -7810,12 +7810,21 @@
     // sessionStorage refusal is not an error here: the catch falls back to in-memory, which
     // is exactly the old behaviour, and a browser that refuses storage has no stable session
     // id to double-count against anyway.
-    var SEEN_KEY = 'rd_telemetry_seen', MODE_KEY = 'rd_telemetry_lastmode';
+    var SEEN_KEY = 'rd_telemetry_seen', MODE_KEY = 'rd_telemetry_lastmode', FALSE_KEY = 'rd_telemetry_seenfalse';
     function ssGet(k) { try { return window.sessionStorage.getItem(k); } catch (e) { return null; } }
     function ssSet(k, v) { try { window.sessionStorage.setItem(k, v); } catch (e) { /* memory only */ } }
     function loadSeen() { try { return JSON.parse(ssGet(SEEN_KEY) || '{}') || {}; } catch (e) { return {}; } }
+    function loadFalseSeen() { try { return JSON.parse(ssGet(FALSE_KEY) || '{}') || {}; } catch (e) { return {}; } }
 
     var seen = loadSeen();    // one-shot milestones, latched for the life of the SESSION ID
+    // A STATE-DERIVED milestone (see stateMilestone below) fires on a FALSE -> TRUE
+    // transition OBSERVED within the session, never on the state alone — an initial
+    // condition can already sit in the "achieved" state (hot_full_power starts on the
+    // grid) and that is not something the player did. `falseSeen[name]` latches "this
+    // session has seen the condition FALSE at least once"; only a TRUE after that reaches
+    // `milestone()`. SAME storage, SAME session-ID lifetime as `seen` above, for the same
+    // reload reason.
+    var falseSeen = loadFalseSeen();
     var lastMode = (function () { var v = ssGet(MODE_KEY); return v === null ? null : Number(v); }());
     var lastPanel = null;
     var startedAt = 0, mission = null, ended = false;
@@ -7913,20 +7922,55 @@
         ev('milestone', { name: name, sim_seconds: Math.round(simT || 0) });
       },
 
+      // A state-derived milestone (on_grid, core_damage, …) is a FALSE -> TRUE transition
+      // observed WITHIN THE SESSION, never a state test — see the falseSeen comment above
+      // SEEN_KEY. Not start-state suppression: a player who starts on the grid, trips the
+      // turbine, and re-synchronises HAS achieved something, and this still reports it once
+      // the trip has put `falseSeen[name]` on record. `milestone()`'s own one-shot latch is
+      // unchanged — this only decides whether a TRUE is allowed to reach it.
+      stateMilestone: function (name, isTrue, simT) {
+        if (isTrue) {
+          if (falseSeen[name]) this.milestone(name, simT);
+          return;
+        }
+        if (!falseSeen[name]) {
+          falseSeen[name] = true;
+          ssSet(FALSE_KEY, JSON.stringify(falseSeen));   // survives a reload; see FALSE_KEY above
+        }
+      },
+
       // Driven from diagTick, so it sees every snapshot the recorder does.
       tick: function (s) {
         if (!s || !s.true_state) return;
         var ts = s.true_state, t = (s.metadata && s.metadata.sim_time) || 0;
 
-        // THE FUNNEL. plant_mode is the engine's own derived commercial mode (1-6),
-        // so "how far did they get" carries no threshold of mine.
+        // THE FUNNEL. plant_mode is the engine's own derived commercial mode (1-6), so "how
+        // far did they get" carries no threshold of mine — EXCEPT the very first mode this
+        // session ever observes, which only establishes the baseline. `lastMode` is `null`
+        // for "unknown, never observed" and can never be confused with a real mode (1-6 are
+        // the only values the engine ever reports), so the check below is exact, not a
+        // heuristic. Firing on that first observation recorded WHERE THEY BEGAN as
+        // something they REACHED — same shape as the on_grid defect above, one layer up,
+        // and it dominated the numbers: measured 2026-09-20, mode 1 read 69 sessions and
+        // mode 5 read 24, while 69 sessions STARTED at hot_full_power and 21 STARTED at
+        // cold_shutdown. The starting mode is already recorded once, correctly, on
+        // session_start's `initial_state` — this only stops it being counted a second time
+        // as progress. Every LATER transition, including back to a mode already visited,
+        // still fires exactly as before: plant_mode is not one-shot like a milestone.
         if (typeof ts.plant_mode === 'number' && ts.plant_mode !== lastMode) {
+          var modeWasKnown = lastMode !== null;     // false only for this session's FIRST mode
           lastMode = ts.plant_mode;
-          ssSet(MODE_KEY, String(lastMode));      // same reason as SEEN_KEY: survive a reload
-          ev('plant_mode', { mode: ts.plant_mode, sim_seconds: Math.round(t) });
+          ssSet(MODE_KEY, String(lastMode));        // same reason as SEEN_KEY: survive a reload
+          if (modeWasKnown) ev('plant_mode', { mode: ts.plant_mode, sim_seconds: Math.round(t) });
         }
-        if (typeof ts.mwe_output === 'number' && ts.mwe_output > 0) this.milestone('on_grid', t);
-        if (ts.fuel_damaged) this.milestone('core_damage', t);   // engine-latched, not inferred
+        // FALSE -> TRUE within the session, not a state test (see stateMilestone above):
+        // `hot_full_power` starts with `mwe_output > 0` already true, which used to fire
+        // on_grid on tick one and recorded the initial condition as an accomplishment —
+        // measured live, 2026-09-13..20: on_grid 69 sessions, hot_full_power 69 sessions.
+        if (typeof ts.mwe_output === 'number') this.stateMilestone('on_grid', ts.mwe_output > 0, t);
+        // engine-latched, not inferred; no shipped IC starts damaged, but it is the same
+        // SHAPE, so it goes through the same rule rather than waiting for one that does.
+        this.stateMilestone('core_damage', !!ts.fuel_damaged, t);
 
         if (mission && s.instructor && s.instructor.level_complete) {
           ev('mission_complete', { id: mission.id, seconds: since(mission.at) });

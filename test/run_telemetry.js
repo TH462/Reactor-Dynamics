@@ -170,6 +170,62 @@ var INJECTIONS = {
   // Same failure, at the OTHER place a queue is emptied: a normal batch flush leaves
   // the open run pointing at a row that just left the queue via splice().
   'tel-coalesce-survives-flush': ['site/telemetry.js', '    openRun = null;', ''],
+
+  /* --- ui/app.js: state-derived milestones (2026-09-20+4) ------------------------------
+   * #on_grid-is-an-IC: a state TEST ("mwe_output > 0") fires on the first tick of any
+   * initial condition that already has the generator on line, recording the IC as an
+   * accomplishment. The fix is transition-based: `stateMilestone` requires the condition
+   * to have been observed FALSE at some point in the session before a TRUE reaches the
+   * one-shot `milestone()` latch. Each injection below reverts ONE piece of that back to
+   * a shape this runner has actually reproduced by inverting it. */
+  // THE ORIGINAL DEFECT, at the call site: back to a bare state test.
+  'tel-ongrid-state-test': ['ui/app.js',
+    "        if (typeof ts.mwe_output === 'number') this.stateMilestone('on_grid', ts.mwe_output > 0, t);",
+    "        if (typeof ts.mwe_output === 'number' && ts.mwe_output > 0) this.milestone('on_grid', t);"],
+  // The mechanism itself ignores whether the condition was ever seen false — an IC that
+  // starts true fires immediately, same defect, one layer lower.
+  'tel-statemilestone-ic-fires': ['ui/app.js',
+    '          if (falseSeen[name]) this.milestone(name, simT);',
+    '          this.milestone(name, simT);'],
+  // The condition is never recorded as having gone false, so it can NEVER transition —
+  // a player who starts off the grid and then generates would get no on_grid, ever.
+  'tel-falseseen-never-set': ['ui/app.js',
+    '        if (!falseSeen[name]) {',
+    '        if (false) {'],
+  // Recorded in memory only: a reload loses the fact that the condition was ever seen
+  // false, so a legitimate transition spanning a reload is silently dropped.
+  'tel-falseseen-not-persisted': ['ui/app.js',
+    '          ssSet(FALSE_KEY, JSON.stringify(falseSeen));   // survives a reload; see FALSE_KEY above',
+    '          /* not persisted */'],
+  // The one-shot latch disabled: the SAME milestone fires again on every later tick (and
+  // again after a reload, under the unchanged session id) instead of once per session.
+  'tel-seen-latch-disabled': ['ui/app.js',
+    '        if (seen[name]) return;                   // latched: first crossing only',
+    '        if (false) return;'],
+
+  /* --- ui/app.js: the plant_mode FUNNEL's own baseline (2026-09-20+5) -------------------
+   * #plant_mode-baseline-counted-as-progress: `lastMode` starts null, so the FIRST mode a
+   * session ever observes always "differs" from it and fired — recording where a session
+   * STARTED as a mode it REACHED. Measured 2026-09-20: mode-1 read 69 sessions and 69
+   * sessions started at hot_full_power; mode-5 read 24 and 21 started at cold_shutdown —
+   * most of both numbers was starting state, not progress. `modeWasKnown` suppresses only
+   * that first emission; every later transition, including one this session has already
+   * visited, still fires exactly as before. */
+  // THE ORIGINAL DEFECT: fire unconditionally, baseline included.
+  'tel-plantmode-fires-on-first': ['ui/app.js',
+    "          if (modeWasKnown) ev('plant_mode', { mode: ts.plant_mode, sim_seconds: Math.round(t) });",
+    "          ev('plant_mode', { mode: ts.plant_mode, sim_seconds: Math.round(t) });"],
+  // The mechanism INVERTED: fires ONLY on the baseline and suppresses every real
+  // transition afterwards — a plausible off-by-one on the same null check.
+  'tel-modeknown-inverted': ['ui/app.js',
+    "          var modeWasKnown = lastMode !== null;     // false only for this session's FIRST mode",
+    "          var modeWasKnown = lastMode === null;     // false only for this session's FIRST mode"],
+  // The baseline mode never persisted: a real page reload re-inits `lastMode` to null, so
+  // the NEXT genuine transition is wrongly treated as a fresh baseline and lost rather
+  // than reported.
+  'tel-lastmode-not-persisted': ['ui/app.js',
+    '          ssSet(MODE_KEY, String(lastMode));        // same reason as SEEN_KEY: survive a reload',
+    '          /* not persisted */'],
 };
 
 if (/--list-injections/.test(ARG)) {
@@ -286,6 +342,74 @@ function load(opts) {
     require(path.join(ROOT, 'site', 'telemetry.js'));
   }
   return { T: g.RD.Telemetry, sent: sent };
+}
+
+// ------------------------------------------------------------------ TEL (ui/app.js)
+/* TEL is not a module — it is a local `var` inside the giant closure ui/app.js attaches to
+ * globalThis.RD.UI, and nothing in Node can execute that file whole (see the "ui/app.js must
+ * actually USE it" comment lower down, which is why THAT check is a source scan). TEL's own
+ * `tick`/`milestone`/`stateMilestone` methods are self-contained, though: everything they
+ * touch (`seen`, `falseSeen`, `lastMode`, `ssGet`, `ssSet`, `ev`, `api`) is declared inside
+ * the TEL IIFE itself, and `api()` reaches out only through the bare identifiers `window`
+ * and `RD`. Extracting the IIFE's own source and running it against a stubbed `window`/`RD`
+ * therefore exercises the REAL code — the same trick site/telemetry.js's injected loads
+ * already use via vm.runInThisContext, above.
+ *
+ * THE ANCHORS ARE SINGLE PHYSICAL LINES, grep-verified as the only lines in the file
+ * matching them. Either one moving throws rather than silently extracting nothing. */
+var TEL_START = '  var TEL = (function () {';
+var TEL_END = '  }());';
+function extractTEL(src) {
+  var i = src.indexOf(TEL_START);
+  if (i < 0) throw new Error('TEL start anchor not found in ui/app.js — the source moved');
+  var j = src.indexOf(TEL_END, i);
+  if (j < 0) throw new Error('TEL end anchor not found in ui/app.js — the source moved');
+  // Assigns a global property instead of declaring `var TEL`, so nothing here can collide
+  // with — or be shadowed by — an unrelated global named TEL.
+  return src.slice(i, j + TEL_END.length).replace('var TEL', 'global.__TEL__');
+}
+
+// Builds a fresh TEL against its own sessionStorage (a new browser TAB) and a fake
+// RD.Telemetry that just records what was accepted. `opts.storage` reuses a PRIOR mkStore()
+// to simulate a RELOAD of the SAME tab: real sessionStorage survives a reload, so passing
+// the same store back in is what "reload" means here — TEL itself is rebuilt from scratch,
+// exactly like the page re-running this IIFE, but the storage under it is the same object.
+function loadTEL(opts) {
+  opts = opts || {};
+  var events = [];
+  var granted = opts.granted !== false;
+  global.window = global;                     // window === globalThis, as it is in a browser
+  // Same shape as telemetry.js's own `noStorage` case: `window.sessionStorage.getItem`
+  // throws on a null store, and ssGet's own try/catch is what is under test there.
+  global.sessionStorage = opts.noStorage ? null : (opts.storage || mkStore());
+  global.RD = { Telemetry: {
+    granted: function () { return granted; },
+    event: function (name, props) { events.push({ name: name, props: props }); return true; },
+  } };
+  require('vm').runInThisContext(extractTEL(readSrc('ui/app.js')),
+    { filename: path.join(ROOT, 'ui', 'app.js') });
+  var TEL = global.__TEL__;
+  delete global.__TEL__;
+  return { TEL: TEL, events: events, storage: global.sessionStorage };
+}
+// A snapshot shaped like what TEL.tick reads: `s.true_state.mwe_output`/`.fuel_damaged`/
+// `.plant_mode` and `s.metadata.sim_time`. `mode` is left OUT of the object entirely when
+// omitted (rather than `undefined`) — `typeof ts.plant_mode === 'number'` must see the key
+// missing, not present-but-undefined, to match a real true_state that never had the field.
+function snap(mwe, fuelDamaged, simT, mode) {
+  var ts = { mwe_output: mwe, fuel_damaged: !!fuelDamaged };
+  if (typeof mode === 'number') ts.plant_mode = mode;
+  return { true_state: ts, metadata: { sim_time: simT || 0 } };
+}
+function names(events) { return events.map(function (e) { return e.name; }); }
+function milestoneNames(events) {
+  return events.filter(function (e) { return e.name === 'milestone'; })
+    .map(function (e) { return e.props.name; });
+}
+// The sequence of MODES actually reported on the funnel, in firing order.
+function modeSeq(events) {
+  return events.filter(function (e) { return e.name === 'plant_mode'; })
+    .map(function (e) { return e.props.mode; });
 }
 
 // A bundle shaped like a real recording: columnar timeseries, `rows` rows of full-precision
@@ -1016,6 +1140,210 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
       ep !== -1 && tel !== -1 && ep < tel,
       ep === -1 ? 'no endpoint tag' : (tel === -1 ? 'no telemetry tag' : 'endpoint loads AFTER the client'));
   });
+}());
+
+// =========================================== ui/app.js: state-derived milestones (TEL)
+/* #on_grid-is-an-IC: `hot_full_power` starts with the generator already on line, so the
+ * old "mwe_output > 0" state test fired on_grid on the FIRST tick — recording the initial
+ * condition as though the player had done something. Live data, 7 days to 2026-09-20:
+ * on_grid 69 sessions, hot_full_power 69 sessions — a "100% success" funnel that measured
+ * nothing. `stateMilestone` requires a FALSE observed before a TRUE counts, so an IC that
+ * starts true never fires — but a player who starts on the grid, trips, and re-syncs still
+ * gets credit once the trip has been observed. Each case below is proven to go red via the
+ * matching injection in the table above; run with --inject=<name> to watch it happen. */
+(function () {
+  // ---- an IC that starts true: no on_grid, ever, for this session --------------------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(50, false, 0));      // first observation: already on the grid
+    a.TEL.tick(snap(52, false, 5));      // stays on the grid
+    ck('an IC that starts on the grid emits NO on_grid milestone',
+      milestoneNames(a.events).indexOf('on_grid') === -1,
+      JSON.stringify(milestoneNames(a.events)));
+  }());
+
+  // ---- starts off the grid, then generates: on_grid DOES fire ------------------------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(0, false, 0));       // observed false first
+    a.TEL.tick(snap(0, false, 3));
+    a.TEL.tick(snap(40, false, 8));      // the transition
+    ck('a session that starts off the grid and then generates DOES emit on_grid',
+      milestoneNames(a.events).indexOf('on_grid') !== -1,
+      JSON.stringify(milestoneNames(a.events)));
+    var ev = a.events.filter(function (e) { return e.name === 'milestone' && e.props.name === 'on_grid'; })[0];
+    ck('...stamped with the sim second of the crossing, not the first tick',
+      ev && ev.props.sim_seconds === 8, JSON.stringify(ev));
+  }());
+
+  // ---- starts on the grid, drops off, comes back: DOES fire (the re-sync case) -------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(60, false, 0));      // starts true — must NOT fire yet
+    ck('...has not fired while still on the initial condition',
+      milestoneNames(a.events).indexOf('on_grid') === -1, JSON.stringify(milestoneNames(a.events)));
+    a.TEL.tick(snap(0, false, 10));      // trips off — the false this rule requires
+    a.TEL.tick(snap(45, false, 40));     // re-synchronises
+    ck('a session that starts on the grid, drops off, and comes back DOES emit on_grid',
+      milestoneNames(a.events).indexOf('on_grid') !== -1, JSON.stringify(milestoneNames(a.events)));
+  }());
+
+  // ---- the one-shot latch still holds across a repeat ---------------------------------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(0, false, 0));
+    a.TEL.tick(snap(30, false, 5));      // fires once
+    a.TEL.tick(snap(0, false, 10));      // drops off again
+    a.TEL.tick(snap(35, false, 20));     // a SECOND crossing, same session
+    var hits = milestoneNames(a.events).filter(function (n) { return n === 'on_grid'; });
+    ck('the one-shot latch still holds across a repeat crossing in the same session',
+      hits.length === 1, JSON.stringify(milestoneNames(a.events)));
+  }());
+
+  // ---- a reload does not duplicate an already-fired milestone -------------------------
+  (function () {
+    var store = mkStore();
+    var a = loadTEL({ storage: store });
+    a.TEL.tick(snap(0, false, 0));
+    a.TEL.tick(snap(30, false, 5));      // fires under the first TEL instance
+    var b = loadTEL({ storage: store }); // "reload": same sessionStorage, a fresh TEL
+    b.TEL.tick(snap(31, false, 6));      // still on the grid post-reload
+    ck('a reload of an already-fired session does not re-emit on_grid',
+      milestoneNames(b.events).indexOf('on_grid') === -1, JSON.stringify(milestoneNames(b.events)));
+  }());
+
+  // ---- a reload does not LOSE a false-seen-but-not-yet-fired milestone -----------------
+  (function () {
+    var store = mkStore();
+    var a = loadTEL({ storage: store });
+    a.TEL.tick(snap(0, false, 0));       // observed false, not yet fired
+    var b = loadTEL({ storage: store }); // "reload" before the transition ever happened
+    b.TEL.tick(snap(40, false, 12));     // the transition, under the reloaded TEL
+    ck('a reload does not lose a false-seen-but-not-yet-crossed on_grid',
+      milestoneNames(b.events).indexOf('on_grid') !== -1, JSON.stringify(milestoneNames(b.events)));
+  }());
+
+  // ---- core_damage goes through the SAME rule (shape check, not a live defect) --------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(10, true, 0));       // an IC that starts damaged: must not fire
+    ck('core_damage does not fire on an already-damaged initial condition',
+      milestoneNames(a.events).indexOf('core_damage') === -1, JSON.stringify(milestoneNames(a.events)));
+    var b = loadTEL();
+    b.TEL.tick(snap(10, false, 0));
+    b.TEL.tick(snap(10, true, 30));      // the transition
+    ck('core_damage fires on a genuine false -> true transition',
+      milestoneNames(b.events).indexOf('core_damage') !== -1, JSON.stringify(milestoneNames(b.events)));
+  }());
+
+  // ---- scram is UNCHANGED: an event, not a state test, and takes no falseSeen key -----
+  (function () {
+    var raw = require('fs').readFileSync(path.join(ROOT, 'ui', 'app.js'), 'utf8');
+    ck("scram still fires from the recorder's EVENT (type === 'scram'), not a state test",
+      raw.indexOf("if (type === 'scram') TEL.milestone('scram', t);") !== -1,
+      'the scram hook moved — this file was not supposed to touch it');
+  }());
+
+  // ============================= the plant_mode FUNNEL's own baseline (2026-09-20+5) ====
+  /* `lastMode` starts null, so the FIRST mode a session ever observes always "differed"
+   * and fired — recording where a session STARTED as a mode it REACHED. Measured
+   * 2026-09-20: mode-1 read 69 sessions and 69 sessions STARTED at hot_full_power; mode-5
+   * read 24 and 21 STARTED at cold_shutdown. `modeWasKnown` suppresses only that one
+   * emission per session; plant_mode itself is NOT one-shot (unlike milestone()) — every
+   * later transition, including one already visited, must keep firing. */
+
+  // ---- the very first mode a session observes does not fire -------------------------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(50, false, 0, 1));   // first observation: Mode 1
+    a.TEL.tick(snap(52, false, 5, 1));   // unchanged
+    ck('the first plant_mode observation this session emits NOTHING',
+      modeSeq(a.events).length === 0, JSON.stringify(modeSeq(a.events)));
+  }());
+
+  // ---- a session that starts at mode 1 and never changes emits NOTHING --------------
+  (function () {
+    var a = loadTEL();
+    for (var i = 0; i < 5; i++) a.TEL.tick(snap(50, false, i * 10, 1));
+    ck('a session that never changes mode emits no plant_mode at all',
+      modeSeq(a.events).length === 0, JSON.stringify(modeSeq(a.events)));
+  }());
+
+  // ---- a later transition still fires, exactly as before -----------------------------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(0, false, 0, 5));    // baseline: Mode 5 — no emission
+    a.TEL.tick(snap(0, false, 20, 4));   // a real transition
+    a.TEL.tick(snap(20, false, 40, 3));  // and another
+    ck('a later transition still emits plant_mode',
+      JSON.stringify(modeSeq(a.events)) === JSON.stringify([4, 3]),
+      JSON.stringify(modeSeq(a.events)));
+  }());
+
+  // ---- starts at mode 5, works up: every mode ENTERED fires, not the one begun in ----
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(0, false, 0, 5));
+    a.TEL.tick(snap(0, false, 30, 4));
+    a.TEL.tick(snap(0, false, 60, 3));
+    a.TEL.tick(snap(0, false, 90, 2));
+    a.TEL.tick(snap(80, false, 120, 1));
+    ck('a session climbing from mode 5 emits every mode entered, but not the one begun in',
+      JSON.stringify(modeSeq(a.events)) === JSON.stringify([4, 3, 2, 1]),
+      JSON.stringify(modeSeq(a.events)));
+  }());
+
+  // ---- revisiting a mode already seen this session still fires (not one-shot) --------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(0, false, 0, 3));
+    a.TEL.tick(snap(0, false, 10, 4));
+    a.TEL.tick(snap(0, false, 20, 3));   // back to 3 — a milestone would suppress this
+    ck('plant_mode is not one-shot: a revisited mode fires again',
+      JSON.stringify(modeSeq(a.events)) === JSON.stringify([4, 3]),
+      JSON.stringify(modeSeq(a.events)));
+  }());
+
+  // ---- a reload mid-session does not re-emit the baseline -----------------------------
+  (function () {
+    var store = mkStore();
+    var a = loadTEL({ storage: store });
+    a.TEL.tick(snap(0, false, 0, 3));    // baseline established and persisted
+    var b = loadTEL({ storage: store }); // "reload": same sessionStorage, a fresh TEL
+    b.TEL.tick(snap(0, false, 5, 3));    // still mode 3 post-reload
+    ck('a reload of an established baseline does not re-emit it',
+      modeSeq(b.events).length === 0, JSON.stringify(modeSeq(b.events)));
+  }());
+
+  // ---- a genuine transition, discovered on the FIRST tick after a reload, still fires --
+  /* THE DISCRIMINATING CASE for persistence specifically: if the reload's first tick
+   * repeats the pre-reload mode (as above), an unpersisted `lastMode` still "recovers" by
+   * treating that repeat as its own new baseline — same value, so nothing LOOKS lost. Only
+   * a mode that already changed by the time of that first post-reload tick exposes it: an
+   * unpersisted baseline reads this as a fresh session's first mode and swallows it. */
+  (function () {
+    var store = mkStore();
+    var a = loadTEL({ storage: store });
+    a.TEL.tick(snap(0, false, 0, 3));     // baseline: mode 3, established and persisted
+    var b = loadTEL({ storage: store });  // "reload": same sessionStorage, a fresh TEL
+    b.TEL.tick(snap(60, false, 5, 1));    // already at mode 1 on the very first post-reload tick
+    ck('a transition already true on the first tick after a reload still fires',
+      JSON.stringify(modeSeq(b.events)) === JSON.stringify([1]), JSON.stringify(modeSeq(b.events)));
+    b.TEL.tick(snap(60, false, 20, 1));   // unchanged
+    ck('...and does not repeat while unchanged',
+      JSON.stringify(modeSeq(b.events)) === JSON.stringify([1]), JSON.stringify(modeSeq(b.events)));
+  }());
+
+  // ---- storage refusal: the first tick is still suppressed, never a spurious fire ----
+  (function () {
+    var a = loadTEL({ noStorage: true });
+    a.TEL.tick(snap(0, false, 0, 5));
+    ck('a storage refusal does not turn the first tick into an emission',
+      modeSeq(a.events).length === 0, JSON.stringify(modeSeq(a.events)));
+    a.TEL.tick(snap(0, false, 10, 4));   // a real transition, still detected in-memory
+    ck('...but a later transition in the SAME session (no reload) still fires',
+      JSON.stringify(modeSeq(a.events)) === JSON.stringify([4]), JSON.stringify(modeSeq(a.events)));
+  }());
 }());
 
 // ======================================================= path 2 is a separate path

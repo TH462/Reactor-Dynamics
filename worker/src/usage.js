@@ -56,6 +56,26 @@
  *   - `ORDER BY` resolves against the SELECT PROJECTION, so it may only name an alias that
  *     is actually selected. Most ordering here is done in JavaScript for that reason.
  *   - `max()` REJECTS A STRING COLUMN outright, and there is no `any()`/`argMax()`.
+ *
+ * ------------------------------------------------------------------- the RELEASE filter
+ * `GET /dashboard?view=usage&version=<release>|<channel>` (#800, owner: "Feature usage
+ * needs to correlate to version... i should be able to filter by version with a drop
+ * down. default should be the latest."). `blob3` is the release string on every event and
+ * `blob2` is its channel (public/preview/dev) — both have existed since the first row, so
+ * neither needs a `COLUMNS_SINCE` guard the way double5-8 do.
+ *
+ * `max()` REJECTS A STRING, so "latest" cannot come from `max(blob3)` even if version
+ * strings sorted correctly — and they do not: "Alpha 1.7.10" sorts BELOW "Alpha 1.7.9"
+ * lexically, and this project was at 1.7.6 and climbing the day this was written, so a
+ * lexical pick breaks within months. "Latest" is instead `max(timestamp)` per
+ * (release, channel), computed once in `releaseOptions()` and reused for the default,
+ * the dropdown order and the "how many sessions" label — see the comment there.
+ *
+ * A release can appear under more than one CHANNEL (a preview/RC build and its eventual
+ * public release both write real rows). Rather than guess which one the owner wants,
+ * (release, channel) is the selectable UNIT — each dropdown option names both, so no
+ * label is ambiguous about what it includes, and "All versions" is the only option that
+ * spans channels (still under the existing `blob2 <> 'dev'` exclusion below).
  */
 
 import { esc, html, PAGE_HEAD, nav, table, dur, section, pctBar } from './render.js';
@@ -89,6 +109,47 @@ function quantile(sorted, q) {
   return sorted[i];
 }
 
+/* Quotes a value for interpolation into an AE SQL string literal. `cfapi.js` has no
+ * parameter binding (its own header says so), so anything built from a URL parameter has
+ * to be escaped here rather than trusted — even though a release is normally "Alpha
+ * 1.7.6" and a channel is public/preview/dev, neither of which contains a quote today. */
+function sqlStr(s) { return "'" + String(s == null ? '' : s).replace(/'/g, "''") + "'"; }
+
+/* Below this many sessions, one session moves any percentage on this page by MORE than
+ * the ten points its bars are drawn to (`pctBar` rounds to one decimal, but a reader
+ * scans bars, not decimals) — 1/9 is already an 11-point swing. The newest release will
+ * routinely sit under this for days after a push, which is exactly the case #800 exists
+ * to surface, not to hide. */
+const SMALL_SAMPLE = 10;
+
+/* The (release, channel) combinations present in the window, newest FIRST BY LAST EVENT
+ * — never by sorting the version string. "Alpha 1.7.10" sorts below "Alpha 1.7.9"
+ * lexically (character 8 is '1' vs '9'), so a lexical pick silently regresses the moment
+ * a two-digit patch number ships, which for this project is soon. `max(timestamp)` per
+ * combination is the only thing that reads "latest" the same way a human would.
+ *
+ * `blob2 <> 'dev'` matches the exclusion every other query in this file already carries.
+ * `count(DISTINCT blob4)` is the same FLOOR every session figure on this page already is
+ * — see the file header — so the number shown per option is labelled the same way. */
+async function releaseOptions(apiToken, since) {
+  const rows = await sql(apiToken, `SELECT blob3 AS release, blob2 AS channel,
+          max(timestamp) AS last_seen, count(DISTINCT blob4) AS sessions
+     FROM ${DATASET} WHERE blob2 <> 'dev' AND ${since}
+     GROUP BY release, channel`);
+  const lastMs = (s) => {
+    const t = Date.parse(String(s || '').trim().replace(' ', 'T') + 'Z');
+    return isFinite(t) ? t : 0;
+  };
+  return rows.map((r) => ({
+    release: String(r.release || '(none)'),
+    channel: String(r.channel || '(none)'),
+    sessions: num(r.sessions),
+    lastMs: lastMs(r.last_seen),
+  })).sort((a, b) => b.lastMs - a.lastMs);
+}
+
+const optKey = (r) => r.release + '|' + r.channel;
+
 // ---------------------------------------------------------------- the page
 export async function usagePage(env, url) {
   const apiToken = env.CF_ANALYTICS_TOKEN;
@@ -107,25 +168,86 @@ export async function usagePage(env, url) {
       + '</body></html>');
   }
 
+  /* -------------------------------------------------------------- the version filter
+   * See the file header. `releaseOptions` is queried unconditionally — it names no
+   * doubles, so it is safe on a dataset with no walkthrough rows at all — and its
+   * result decides everything below: the dropdown, the default selection, and the
+   * WHERE-clause fragment every other query in this file now carries. */
+  let releases = [], releasesErr = '';
+  try { releases = await releaseOptions(apiToken, since); }
+  catch (e) { releasesErr = e.message; }
+
+  const rawVer = url.searchParams.get('version');
+  let verParam = 'all';
+  if (rawVer !== 'all') {
+    const match = releases.find((r) => optKey(r) === rawVer);
+    // No match — either this is the first load (no `version` param at all) or a stale/
+    // hostile one naming a combination not in the current window. Either way the right
+    // fallback is the SAME one requirement 2 asks for: the latest by last event, never
+    // "all" — an unrecognised param must not silently widen the scope.
+    verParam = match ? optKey(match) : (releases[0] ? optKey(releases[0]) : 'all');
+  }
+  const selected = verParam === 'all' ? null : releases.find((r) => optKey(r) === verParam);
+  // Only ever built from a value that came out of `releases` itself (never straight off
+  // the URL), so `sqlStr` here is a second layer of defence, not the only one.
+  const versionWhere = selected
+    ? ` AND blob3 = ${sqlStr(selected.release)} AND blob2 = ${sqlStr(selected.channel)}`
+    : '';
+  const sampleSessions = selected ? selected.sessions
+    : releases.reduce((a, r) => a + r.sessions, 0);
+  const sampleLabel = selected ? (selected.release + ' — ' + selected.channel) : 'All versions';
+
   const windowLink = (n) => {
-    const href = '?view=usage&days=' + n;
+    const href = '?view=usage&days=' + n + '&version=' + encodeURIComponent(verParam);
     return n === days ? '<b>' + n + 'd</b>' : '<a href="' + href + '">' + n + 'd</a>';
   };
 
+  const versionForm = releases.length ? ('<form method="GET" style="margin:8px 0">'
+    + '<input type="hidden" name="view" value="usage">'
+    /* THE DAYS PARAMETER, CARRIED AS A HIDDEN FIELD — the trap named in the brief: a
+     * `<button formaction="?...">` inside a GET form has its action's query string
+     * DISCARDED by the browser, which then submits only the form's own fields (measured
+     * in headless Edge against this exact dashboard, `render.js`'s `a.pbtn` comment).
+     * The fix here is the same one render.js landed on for the preset links: never rely
+     * on the browser preserving a query string it does not own. A hidden field IS one of
+     * the form's own fields, so it survives. */
+    + '<input type="hidden" name="days" value="' + days + '">'
+    + '<select name="version">'
+    + '<option value="all"' + (verParam === 'all' ? ' selected' : '') + '>All versions ('
+    + releases.reduce((a, r) => a + r.sessions, 0) + ' sessions)</option>'
+    + releases.map((r) => '<option value="' + esc(optKey(r)) + '"'
+        + (optKey(r) === verParam ? ' selected' : '') + '>' + esc(r.release) + ' — '
+        + esc(r.channel) + ' (' + r.sessions + ')</option>').join('')
+    + '</select> <button type="submit">Go</button>'
+    + '</form>') : '';
+
+  const sampleWarn = sampleSessions < SMALL_SAMPLE
+    ? ('<p class="warn">⚠ Only ' + sampleSessions + ' session'
+      + (sampleSessions === 1 ? '' : 's') + ' in this window for <b>' + esc(sampleLabel)
+      + '</b> — below ' + SMALL_SAMPLE + ', one session moves any percentage on this page '
+      + 'by more than the bars below are drawn to. Read this as a few examples, not a '
+      + 'trend.</p>')
+    : '';
+
   /* THE PROBE. Names no doubles and no blob8, so it is safe on an empty dataset, and it is
    * what stops the five walkthrough sections from each rendering the same 422 in the
-   * window between deploying this Worker and shipping the client that feeds it. */
+   * window between deploying this Worker and shipping the client that feeds it. Scoped
+   * by the version filter too, so it answers "no walkthrough events for THIS release",
+   * not just "none anywhere" — the per-query error catching inside walkthroughSections
+   * already covers the case where an OLDER release predates an event this page reads,
+   * so this probe only needs to save the common case, not prove every one. */
   let haveWt = 0, probeErr = '';
   try {
     const r = await sql(apiToken, `SELECT sum(_sample_interval) AS n FROM ${DATASET}
-        WHERE blob1 LIKE 'walkthrough_%' AND blob2 <> 'dev' AND ${since}`);
+        WHERE blob1 LIKE 'walkthrough_%' AND blob2 <> 'dev' AND ${since}${versionWhere}`);
     haveWt = num(r[0] && r[0].n);
   } catch (e) { probeErr = e.message; }
 
-  const wt = haveWt > 0 ? await walkthroughSections(apiToken, since) : [];
-  const migrated = await simSections(apiToken, since);
+  const wt = haveWt > 0 ? await walkthroughSections(apiToken, since, versionWhere) : [];
+  const migrated = await simSections(apiToken, since, versionWhere);
 
-  const noData = '<p class="muted">No walkthrough events in this window. These four events '
+  const noData = '<p class="muted">No walkthrough events in this window'
+    + (selected ? ' for <b>' + esc(sampleLabel) + '</b>' : '') + '. These four events '
     + '(<span class="mono">walkthrough_start</span>, <span class="mono">_step</span>, '
     + '<span class="mono">_rewind</span>, <span class="mono">_end</span>) ship with the '
     + 'client release that follows this Worker deploy, so an empty window here before that '
@@ -138,6 +260,15 @@ export async function usagePage(env, url) {
     + '<p class="muted">Window: ' + windowLink(7) + ' · ' + windowLink(30) + ' · ' + windowLink(90)
     + ' · in-sim usage only. Traffic and page performance are on '
     + '<a href="?view=analytics">Analytics</a>.</p>'
+    + versionForm
+    + (releasesErr ? '<p class="err">version list query failed: ' + esc(releasesErr) + '</p>' : '')
+    /* THE SAMPLE SIZE, STATED PROMINENTLY (#800) — every table and figure below is scoped
+     * to exactly this selection, and this line is the whole reason the filter exists: a
+     * fresh release routinely has a handful of sessions, and a funnel drawn from 2 reads
+     * identically to one drawn from 33 unless something on the page says otherwise. */
+    + '<p class="mono"><b>' + esc(sampleLabel) + ' · ' + sampleSessions + ' session'
+    + (sampleSessions === 1 ? '' : 's') + '</b></p>'
+    + sampleWarn
     /* The source line every view now carries instead of an `Exact` column (#764). This
      * page is not Web Analytics and has no coarse tier — it is the sampled Analytics
      * Engine dataset, whose grain is the IN-SIM SESSION, so it says so rather than
@@ -158,7 +289,8 @@ export async function usagePage(env, url) {
 }
 
 // ============================================================ the walkthrough sections
-async function walkthroughSections(apiToken, since) {
+async function walkthroughSections(apiToken, since, versionWhere) {
+  versionWhere = versionWhere || '';
   /* Four queries, run once and shared. Each section below is a rendering of these rather
    * than its own round trip — the same rows answer several questions, and a section that
    * re-asked would be a second chance to ask differently. */
@@ -179,14 +311,14 @@ async function walkthroughSections(apiToken, since) {
   const [starts, ends, mix, funnel, rewinds, dwell] = await Promise.all([
     sql(apiToken, `SELECT blob8 AS wt, count(DISTINCT blob4) AS sessions,
             sum(_sample_interval) AS n, max(double10) AS steps
-       FROM ${DATASET} WHERE blob1 = 'walkthrough_start' AND blob2 <> 'dev' AND ${since}
+       FROM ${DATASET} WHERE blob1 = 'walkthrough_start' AND blob2 <> 'dev' AND ${since}${versionWhere}
        GROUP BY wt`).catch(errRows('starts')),
     sql(apiToken, `SELECT blob5 AS k, count(DISTINCT blob4) AS sessions, sum(_sample_interval) AS n
-       FROM ${DATASET} WHERE blob1 = 'walkthrough_end' AND blob2 <> 'dev' AND ${since}
+       FROM ${DATASET} WHERE blob1 = 'walkthrough_end' AND blob2 <> 'dev' AND ${since}${versionWhere}
        GROUP BY k`).catch(errRows('ends')),
     // The by-mix comes off the COMPOSITE key, which is the copy that survives the rollup.
     sql(apiToken, `SELECT blob5 AS k, sum(_sample_interval) AS n
-       FROM ${DATASET} WHERE blob1 = 'walkthrough_step' AND blob2 <> 'dev' AND ${since}
+       FROM ${DATASET} WHERE blob1 = 'walkthrough_step' AND blob2 <> 'dev' AND ${since}${versionWhere}
        GROUP BY k`).catch(errRows('step mix')),
     /* …and the funnel comes off the COLUMNS, because `count(DISTINCT session)` per
      * (walkthrough, step) has to group on the step alone. Summing the by-mix rows instead
@@ -195,15 +327,15 @@ async function walkthroughSections(apiToken, since) {
      * page exists to find. */
     sql(apiToken, `SELECT blob8 AS wt, double9 AS step, count(DISTINCT blob4) AS sessions,
             sum(_sample_interval) AS n
-       FROM ${DATASET} WHERE blob1 = 'walkthrough_step' AND blob2 <> 'dev' AND ${since}
+       FROM ${DATASET} WHERE blob1 = 'walkthrough_step' AND blob2 <> 'dev' AND ${since}${versionWhere}
        GROUP BY wt, step`).catch(errRows('funnel')),
     sql(apiToken, `SELECT blob8 AS wt, double9 AS step, count(DISTINCT blob4) AS sessions,
             sum(_sample_interval) AS n
-       FROM ${DATASET} WHERE blob1 = 'walkthrough_rewind' AND blob2 <> 'dev' AND ${since}
+       FROM ${DATASET} WHERE blob1 = 'walkthrough_rewind' AND blob2 <> 'dev' AND ${since}${versionWhere}
        GROUP BY wt, step`).catch(errRows('rewinds')),
     // Raw durations. Quantiles are computed here, not in SQL — see `quantile`.
     sql(apiToken, `SELECT blob8 AS wt, double9 AS step, double1 AS seconds
-       FROM ${DATASET} WHERE blob1 = 'walkthrough_step' AND blob2 <> 'dev' AND ${since}
+       FROM ${DATASET} WHERE blob1 = 'walkthrough_step' AND blob2 <> 'dev' AND ${since}${versionWhere}
        LIMIT 20000`).catch(errRows('time on step')),
   ]);
 
@@ -395,7 +527,8 @@ async function walkthroughSections(apiToken, since) {
 // Moved VERBATIM (#674, owner: "move some of the feature tracking from the statistics
 // page ... to this new feature tracking page"). Their comments came with them, because
 // each one records a trap that is still true.
-async function simSections(apiToken, since) {
+async function simSections(apiToken, since, versionWhere) {
+  versionWhere = versionWhere || '';
   return Promise.all([
     /* TIME PER SESSION. Reported as a MEDIAN first and a mean second, because the mean
      * here is close to meaningless: the live data contains a tab left open 11h 34m, and
@@ -411,7 +544,7 @@ async function simSections(apiToken, since) {
     section('Time per session', async () => {
       const spans = await sql(apiToken, `SELECT blob4 AS session,
               min(timestamp) AS first_seen, max(timestamp) AS last_seen
-         FROM ${DATASET} WHERE blob2 <> 'dev' AND ${since} GROUP BY session`);
+         FROM ${DATASET} WHERE blob2 <> 'dev' AND ${since}${versionWhere} GROUP BY session`);
       if (!spans.length) return '<p class="muted">(none)</p>';
 
       // The client clock is a separate query and only exists post-column; absent, the
@@ -419,7 +552,7 @@ async function simSections(apiToken, since) {
       let lastBy = {};
       try {
         const probe = await sql(apiToken, `SELECT count() AS n FROM ${DATASET}
-            WHERE ${since} AND timestamp >= ${COLUMNS_SINCE}`);
+            WHERE ${since} AND timestamp >= ${COLUMNS_SINCE}${versionWhere}`);
         if (num(probe[0] && probe[0].n) > 0) {
           // double6 is t_session — seconds since the session id was MINTED, which
           // survives a reload. double5/t_page is seconds since PAGE LOAD and resets on
@@ -427,7 +560,7 @@ async function simSections(apiToken, since) {
           // as sessions.js's detail query, which already reads double6 correctly).
           (await sql(apiToken, `SELECT blob4 AS session, max(double6) AS t_last
               FROM ${DATASET} WHERE blob2 <> 'dev' AND ${since}
-                AND timestamp >= ${COLUMNS_SINCE} GROUP BY session`))
+                AND timestamp >= ${COLUMNS_SINCE}${versionWhere} GROUP BY session`))
             .forEach((r) => { lastBy[r.session] = num(r.t_last); });
         }
       } catch (e) { lastBy = {}; }
@@ -454,21 +587,21 @@ async function simSections(apiToken, since) {
     }),
     section('Sessions by starting condition', async () => table(
       (await sql(apiToken, `SELECT blob5 AS initial_state, count(DISTINCT blob4) AS sessions
-         FROM ${DATASET} WHERE blob1 = 'session_start' AND blob2 <> 'dev' AND ${since}
+         FROM ${DATASET} WHERE blob1 = 'session_start' AND blob2 <> 'dev' AND ${since}${versionWhere}
          GROUP BY initial_state ORDER BY sessions DESC`))
         .map((r) => ({ initial_state: r.initial_state || '(none)', sessions: num(r.sessions) })),
       [{ key: 'initial_state', label: 'Starting condition' },
        { key: 'sessions', label: 'Sessions', num: true }])),
     section('How far through a startup they get', async () => table(
       (await sql(apiToken, `SELECT double3 AS mode, count(DISTINCT blob4) AS sessions
-         FROM ${DATASET} WHERE blob1 = 'plant_mode' AND blob2 <> 'dev' AND ${since}
+         FROM ${DATASET} WHERE blob1 = 'plant_mode' AND blob2 <> 'dev' AND ${since}${versionWhere}
          GROUP BY mode ORDER BY mode DESC`))
         .map((r) => ({ mode: 'Mode ' + num(r.mode), sessions: num(r.sessions) })),
       [{ key: 'mode', label: 'Reached' }, { key: 'sessions', label: 'Sessions', num: true }])),
     section('Most-used controls', async () => table(
       (await sql(apiToken, `SELECT blob5 AS action, sum(_sample_interval) AS uses,
               count(DISTINCT blob4) AS sessions
-         FROM ${DATASET} WHERE blob1 = 'command' AND blob2 <> 'dev' AND ${since}
+         FROM ${DATASET} WHERE blob1 = 'command' AND blob2 <> 'dev' AND ${since}${versionWhere}
          GROUP BY action ORDER BY uses DESC LIMIT 20`))
         .map((r) => ({ action: r.action || '(none)', uses: num(r.uses), sessions: num(r.sessions) })),
       [{ key: 'action', label: 'Action' }, { key: 'uses', label: 'Uses', num: true },
@@ -497,7 +630,7 @@ async function simSections(apiToken, since) {
               count(DISTINCT blob4) AS sessions
          FROM ${DATASET} WHERE blob1 = 'command' AND double7 >= 0
               AND blob2 <> 'dev'
-              AND timestamp >= ${COLUMNS_SINCE} AND ${since}
+              AND timestamp >= ${COLUMNS_SINCE} AND ${since}${versionWhere}
          GROUP BY action, code ORDER BY refused DESC LIMIT 25`);
       const shown = rows.filter((r) => num(r.refused) > 0).map((r) => ({
         action: r.action || '(none)',
@@ -519,7 +652,7 @@ async function simSections(apiToken, since) {
     section('Panels opened', async () => table(
       (await sql(apiToken, `SELECT blob5 AS panel, sum(_sample_interval) AS opens,
               count(DISTINCT blob4) AS sessions
-         FROM ${DATASET} WHERE blob1 = 'panel_open' AND blob2 <> 'dev' AND ${since}
+         FROM ${DATASET} WHERE blob1 = 'panel_open' AND blob2 <> 'dev' AND ${since}${versionWhere}
          GROUP BY panel ORDER BY opens DESC LIMIT 20`))
         .map((r) => ({ panel: r.panel || '(none)', opens: num(r.opens), sessions: num(r.sessions) })),
       [{ key: 'panel', label: 'Panel' }, { key: 'opens', label: 'Opens', num: true },
