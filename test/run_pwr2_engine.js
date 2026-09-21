@@ -79,6 +79,18 @@ var fs = require('fs');
  * lands in the other half goes BLIND, which this runner would say out loud — so it is filed
  * work, not something to do while re-balancing.
  *
+ * THE NULL SELF-TEST ADDS ONE REPLAY PER GROUP (#657) — the convention and its rationale are
+ * in mut_flags.nullSelfTest, the wiring is beside the MUTATIONS table below. It costs one mean
+ * replay per group, so it reads straight off the mean/replay column above. MEASURED 2026-09-21,
+ * one `--grp=<g> --mut=NULL` process per group, two streams contending: A 6.7 · B 1.8 · C 2.4 ·
+ * D 15.3 · E 24.8 · F 9.4 · G 1.9 · H 2.5 · I 103.9 · K 18.6 · L 4.8 · M 0.6 · N 2.8 · O 1.3 ·
+ * P 0.2 · Q 3.5 · R 6.9 = 207.4 s, i.e. part A +52.5 · part B +51.0 · part C +103.9. Every one
+ * came back BLIND with 0 red, so no group's coverage figure was resting on a short-ride red.
+ * GROUP O IS THE ONE ASYMMETRY the measurement exposed: its clean pass records 7 checks and its
+ * replay 5, because O4 is `if (!quiet)` by cost (see the note there). Two checks therefore run
+ * in NO replay, and a mutation only they could catch would report BLIND — that is documented and
+ * deliberate, and the null line is the first place the gate says it out loud.
+ *
  * PART A KEEPS EVERYTHING UNLISTED. A new grp() block lands in part A by default and moves
  * part A's check tally — so the partition cannot drift silently (the #513 property). GROUPS is
  * DERIVED from this file's own source, so a group letter in PART_B/PART_C that no longer
@@ -3415,6 +3427,24 @@ var MUTATIONS = [
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 
+/* ---- THE NULL MUTATION, ONE PER GROUP (#657, owner ruling 2026-09-21 option A) ---------------
+ * The convention and the whole rationale live in mut_flags.nullSelfTest — deliberately, because
+ * #644's finding was that this repo's test conventions exist as hand-copied paragraphs and the
+ * eleventh copy is the one that silently lacks the guard. THIS runner is the reason it was
+ * written: it runs the clean pass at `quiet = false` and every replay at `quiet = true`, and
+ * `quiet` shortens 53 ride sites here (grep `quiet ?`; the issue named six) — the settle 120 s against 300, the
+ * cooldown 300 against 600, the Mode 5 pressure ride 300 against 900. A check green on the long
+ * ride and red on the short one is red in every mutant of its group and that group's whole
+ * "caught, no blind spots" is a lie #644's clean-run guard cannot see.
+ *
+ * MUT_TOTAL freezes the REAL mutation count first: a null is a self-test OF the instrument, not
+ * a unit of coverage, so it must never enter the caught/total arithmetic below. Entries are
+ * built for EVERY group, not just this part's, so the ownership audit and the partition line
+ * still reason over one whole list; `mine` scopes them to the part exactly as it does the rest. */
+var NULLS = MUT.nullSelfTest({ groups: GROUPS, expect: MY_GROUPS, anchor: "'use strict';" });
+var MUT_TOTAL = MUTATIONS.length;
+MUTATIONS = MUTATIONS.concat(NULLS.entries);
+
 /* ---- THE OWNERSHIP AUDIT (#637) -------------------------------------------------------------
  * The split's ONE new way to lose coverage: a mutation whose `grp` no part owns would simply
  * never replay, in any process, and every part would still print a green "no blind spots".
@@ -3436,10 +3466,13 @@ var mine = MUT.select(MUTATIONS).filter(function (m) {
   var t = (o && typeof o === 'object' && o.grp) || null;
   return t !== null && MY[t] === true;
 });
+/* the caught/total arithmetic is over REAL mutations only (#657) — a null is the instrument
+ * auditing itself, and counting it as coverage would inflate the figure it exists to audit */
+var mineReal = mine.filter(function (m) { return !NULLS.is(m[0]); });
 var ownedTotal = MUTATIONS.filter(function (m) {
   var o = m[m.length - 1];
   var t = (o && typeof o === 'object' && o.grp) || null;
-  return t !== null && GROUPS.indexOf(t) >= 0;
+  return !NULLS.is(m[0]) && t !== null && GROUPS.indexOf(t) >= 0;
 }).length;
 
 /* THE OWNERSHIP AUDIT IS PRINTED FIRST (#644) — it is a STATIC property of the MUTATIONS table
@@ -3464,8 +3497,9 @@ MUT.requireCleanRun(rec, '  ' + RUNNER_NAME + ': ' + pass + ' passed, ' + fail +
   { hint: 'To measure a group that is GREEN while another is red, scope BOTH passes: ' +
           '--groups=' + MY_GROUPS.join(',') + ' (or --grp=<one tag>). Forced non-zero, never a baseline.' });
 
-console.log('\ninjection self-test (' + mine.length + ' of ' + MUTATIONS.length +
-  ' mutations — this part owns groups ' + MY_GROUPS.join(' ') + '):');
+console.log('\ninjection self-test (' + mineReal.length + ' of ' + MUT_TOTAL +
+  ' mutations + ' + (mine.length - mineReal.length) + ' null self-tests — this part owns groups ' +
+  MY_GROUPS.join(' ') + '):');
 var blind = 0;
 var MUTTIME = !!process.env.MUTTIME;
 mine.forEach(function (m) {
@@ -3475,7 +3509,11 @@ mine.forEach(function (m) {
   var grpTag = (opts && opts.grp) || undefined;
   var base = isCore ? CORESRC : ENSRC;
   var mutated = base.replace(m[1], m[2]);
-  if (mutated === base) { console.log('  ANCHOR MISS ' + m[0]); blind++; return; }
+  if (mutated === base) {
+    if (NULLS.is(m[0])) NULLS.score(m[0], { anchorMiss: true });
+    else { console.log('  ANCHOR MISS ' + m[0]); blind++; }
+    return;
+  }
   var rec2 = [], crashed = false;
   try {
     runSuite(isCore ? loadAll(undefined, mutated) : loadAll(mutated), rec2, !process.env.MUTDBG, grpTag);
@@ -3487,7 +3525,13 @@ mine.forEach(function (m) {
    * blind-spot verdict through two full reruns. */
   var realReds = rec2.filter(function (r) { return !r.ok; }).length;
   var f2 = crashed ? 1 : (rec2.length ? realReds : 1);
-  if (f2 === 0) { console.log('  BLIND TO  ' + m[0] + '   <-- THIS GATE CANNOT SEE IT'); blind++; }
+  /* A NULL MUTATION INVERTS EVERY VERDICT BELOW (#657): BLIND is the pass and any red names a
+   * check that is red on the replay's own short ride rather than on a mutation. The scoring
+   * lives in mut_flags so the eleventh runner inherits it instead of re-deriving it. */
+  if (NULLS.is(m[0])) {
+    NULLS.score(m[0], { base: base, mutated: mutated, rec: rec2, crashed: crashed });
+  }
+  else if (f2 === 0) { console.log('  BLIND TO  ' + m[0] + '   <-- THIS GATE CANNOT SEE IT'); blind++; }
   /* a crash-only catch is REPORTED AS ITSELF (#510 LOW): by this suite's own principle a
    * mutation that throws is worthless as coverage — the verdict stays "caught" (the crash
    * rationale above holds), but the label no longer lets it wear a physics check's face */
@@ -3501,18 +3545,21 @@ mine.forEach(function (m) {
 loadAll();
 
 console.log('\n' + '='.repeat(70));
-console.log('  injection self-test: ' + (mine.length - blind) + '/' + mine.length +
+console.log('  injection self-test: ' + (mineReal.length - blind) + '/' + mineReal.length +
   ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
+/* printed BEFORE the tally line, never after: run_all scrapes the LAST token-bearing line. */
+var nullFail = NULLS.report();
 /* the partition's own arithmetic, printed every run: this part's share + the other parts' =
  * the whole list, with nothing unowned. `mine` is filtered by mut_flags too, so this line is
  * about OWNERSHIP and reads off the unfiltered totals. */
-console.log('  partition: ' + ownedTotal + ' of ' + MUTATIONS.length +
+console.log('  partition: ' + ownedTotal + ' of ' + MUT_TOTAL +
   ' mutations owned by a part' + (unowned.length ? '  ** ' + unowned.length +
   ' UNOWNED -- GATE FAILS **' : '') + '; this part owns ' +
   MUTATIONS.filter(function (m) {
-    var o = m[m.length - 1]; return o && o.grp && MY[o.grp] === true;
+    var o = m[m.length - 1];
+    return !NULLS.is(m[0]) && o && o.grp && MY[o.grp] === true;
   }).length);
 console.log('  ' + RUNNER_NAME + ': ' + pass + ' passed, ' + fail + ' failed  (' +
   rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit(fail > 0 || blind > 0 || unowned.length > 0 ? 1 : 0);
+process.exit(fail > 0 || blind > 0 || unowned.length > 0 || nullFail > 0 ? 1 : 0);
