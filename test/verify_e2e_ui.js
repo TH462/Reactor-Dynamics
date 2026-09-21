@@ -2899,6 +2899,25 @@ async function testSpeedRungGlowRendered(page) {
     return { ok: true, idx: target, hold: +c.proc.steps[target].hold };
   });
   if (!jumped.ok) throw new Error('#743 fixture: pwr_heatup authors no step with hold >= 180');
+
+  /* THE ONE UPSTREAM FACT THIS CHECK IS ABOUT: is the step's criterion met yet? (#796.) Jumping
+   * the index lands on a step the plant may ALREADY satisfy — measured on pwr_heatup, it does, so
+   * the card read "Wait complete" and no rung was cued, which is the correct behaviour for a
+   * satisfied step and useless as a fixture for an unsatisfied one. `awaitingAck` cannot be poked
+   * directly (`c.awaitingAck = !!met` is rewritten every `_stepChecklist` tick), so the flag is
+   * planted on the SNAPSHOT and the real `_assembleWithInstructor` → `_broadcast` → `render`
+   * chain carries it — #686's held-speed shape. Installed once, flipped by `window.__wtMet`, so
+   * the same wrapper serves the "still waiting" half and the "wait satisfied" half below. */
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    window.__wtMet = false;
+    var orig = svc._instructorBlock.bind(svc);
+    svc._instructorBlock = function () {
+      var b = orig();
+      if (b && b.checklist) { b.checklist.acc_met = window.__wtMet; b.checklist.awaiting_ack = window.__wtMet; }
+      return b;
+    };
+  });
   await page.waitForTimeout(2500);
 
   var seen = await page.evaluate(function () {
@@ -2913,6 +2932,8 @@ async function testSpeedRungGlowRendered(page) {
       rungAnim: rung ? getComputedStyle(rung).animationName : null,
       barGlowClass: bar ? bar.classList.contains('ckl-step-glow') : null,
       barShadow: barCs ? barCs.boxShadow : null,
+      rungOn: rung ? rung.classList.contains('on') : null,                       /* #796 */
+      accel: globalThis.RD.__dev.service().timeAcceleration,                     /* #796 */
       note: (document.querySelector('.warp-info') || {}).textContent || ''
     };
   });
@@ -2930,9 +2951,23 @@ async function testSpeedRungGlowRendered(page) {
     throw new Error('#743: the rung glow is an OUTER shadow, which `.speed { overflow: hidden }` ' +
       'clips away to nothing — it must be an inset. ' + JSON.stringify(seen));
   }
-  if (seen.rungAnim !== 'cklRungGlow') {
-    throw new Error('#743: the recommended rung must PULSE (owner: pulsing for a user control), ' +
-      'animationName is ' + seen.rungAnim);
+  /* #796: THE WALKTHROUGH HAS ALREADY PRESSED IT, so the rung arrives `.on` and NOT pulsing —
+   * `.ckl-speed-rung.on { animation: none }` is what turns the cue off, the same rule that used to
+   * fire only after the player's own click. The MARK must survive (it is the one thing on the bar
+   * that says which rung belongs to this step); the PULSE must not, because there is nothing left
+   * to act on. The pulse's own assertion moved down to the override block, which is now the only
+   * state where a press is still owed. */
+  if (!seen.rungOn) {
+    throw new Error('#796: the walkthrough did not take the clock to its own recommended rung — ' +
+      'expected ' + seen.speed + '× selected, ' + JSON.stringify(seen));
+  }
+  if (+seen.speed !== seen.accel) {
+    throw new Error('#796: the clock is at ' + seen.accel + '× on a step whose rung is ' +
+      seen.speed + '× — the walkthrough is meant to set it. ' + JSON.stringify(seen));
+  }
+  if (seen.rungAnim !== 'none') {
+    throw new Error('#796: the rung is PULSING while the plant is already on it (' + seen.rungAnim +
+      ') — an "act on this" cue with nothing to act on. ' + JSON.stringify(seen));
   }
   /* THE OWNER'S COMPLAINT, ASSERTED. Without this the check passes on the old whole-strip form. */
   if (seen.barGlowClass || (seen.barShadow && seen.barShadow !== 'none')) {
@@ -2940,41 +2975,83 @@ async function testSpeedRungGlowRendered(page) {
       'controls, just highlight the one that is suggested") — ' + JSON.stringify(seen));
   }
   log.push('step ' + (jumped.idx + 1) + ' (hold ' + jumped.hold + ' s): rung ' + seen.speed +
-    '× of ' + seen.nButtons + ' lit, pulsing ' + seen.rungAnim);
+    '× of ' + seen.nButtons + ' marked, walkthrough took the clock to ' + seen.accel +
+    '×, animation=' + seen.rungAnim + ' (nothing left to press)');
 
-  /* AND IT STANDS DOWN ONCE PRESSED. Nothing else gates this and it is a behaviour, not styling:
-   * the pulse means "act on this", the act is pressing that rung, and a cue that keeps firing for
-   * the whole 180 s-plus hold it just asked for is how a player learns to stop reading cues. It is
-   * done in CSS (`.ckl-speed-rung.on { animation: none }`) precisely so no second JavaScript path
-   * has to be kept in step -- which also means a source read of app.js cannot see it at all, and a
-   * broken `.on` selector would leave the rung pulsing for ever with every other check green.
-   *
-   * A REAL CLICK, so the app's own speed handler runs and puts `.on` where it really goes; the
-   * class is never set by hand here. Injection-proven: deleting the `.ckl-speed-rung.on` rule
-   * leaves animationName at cklRungGlow after the press and reds this. */
-  var pressed = await page.evaluate(function (sp) {
-    var b = document.querySelector('#speed [data-speed="' + sp + '"]');
-    if (!b) return { err: 'rung vanished' };
+  /* THE PLAYER TAKES THE BAR BACK, AND KEEPS IT (#796). A REAL CLICK on 1×, so the app's own
+   * speed handler runs. Two claims, and both are the feature rather than styling:
+   *   - the recommended rung PULSES AGAIN. This is #743's original assertion, moved to the only
+   *     state that can still produce it — the cue means "act on this", and after an override
+   *     there genuinely is something to press. It is CSS (`.ckl-speed-rung.on { animation: none }`)
+   *     with no second JavaScript path, so no source read of app.js can see it and a broken `.on`
+   *     selector would leave the rung pulsing for ever with every other check green.
+   *   - the override STANDS. `syncCklAutoSpeed` acts once per (step, wanted speed, hold), so the
+   *     clock must still read 1× several broadcasts later. Without that guard the walkthrough
+   *     re-presses its rung on the next broadcast and the player cannot slow anything down — the
+   *     worst way to build this, and invisible to a single-sample read. */
+  var pressed = await page.evaluate(function () {
+    var b = document.querySelector('#speed [data-speed="1"]');
+    if (!b) return { err: '1× rung missing' };
     b.click();
     return { ok: true };
-  }, seen.speed);
-  if (pressed.err) throw new Error('#743 fixture: ' + pressed.err);
-  await page.waitForTimeout(900);
+  });
+  if (pressed.err) throw new Error('#796 fixture: ' + pressed.err);
+  await page.waitForTimeout(1500);
   var after = await page.evaluate(function (sp) {
     var b = document.querySelector('#speed [data-speed="' + sp + '"]');
-    return b ? { on: b.classList.contains('on'), rung: b.classList.contains('ckl-speed-rung'),
-                 anim: getComputedStyle(b).animationName } : null;
+    return { accel: globalThis.RD.__dev.service().timeAcceleration,
+             on: b ? b.classList.contains('on') : null,
+             rung: b ? b.classList.contains('ckl-speed-rung') : null,
+             anim: b ? getComputedStyle(b).animationName : null };
   }, seen.speed);
-  if (!after || !after.on) {
-    throw new Error('#743 fixture: pressing rung ' + seen.speed + '× did not select it — ' +
-      JSON.stringify(after) + '; the stand-down assertion below would prove nothing');
+  if (after.accel !== 1) {
+    throw new Error('#796: the walkthrough overrode the player — clock back to ' + after.accel +
+      '× after a deliberate 1× press. Auto-speed must act ONCE per step. ' + JSON.stringify(after));
   }
-  if (after.anim !== 'none') {
-    throw new Error('#743: the recommended rung is STILL PULSING after the player pressed it (' +
-      after.anim + ') — an "act on this" cue that outlives the act. ' + JSON.stringify(after));
+  if (!after.rung || after.anim !== 'cklRungGlow') {
+    throw new Error('#743/#796: the recommended rung must be marked and PULSING once the player ' +
+      'is off it (owner: pulsing for a user control) — ' + JSON.stringify(after));
   }
-  log.push('  pressed ' + seen.speed + '×: selected=' + after.on + ', still marked=' +
-    after.rung + ', animation=' + after.anim + ' (stands down to plain .on)');
+  log.push('  player pressed 1×: clock stays ' + after.accel + '×, rung ' + seen.speed +
+    '× marked=' + after.rung + ' and pulsing again (' + after.anim + ')');
+
+  /* AND IT COMES BACK DOWN WHEN THE WAIT IS SATISFIED (#796) — the half the owner asked for
+   * ("it should auto drop down to the speed the step should be played at"). Poked the same way
+   * the step index is poked above: `awaitingAck` is what the instructor sets when the criterion
+   * is met and it is holding for Continue, and the snapshot carries it as `awaiting_ack`.
+   * The clock has to be ABOVE 1× first or this proves nothing, so the rung is re-pressed. */
+  await page.evaluate(function (sp) {
+    var b = document.querySelector('#speed [data-speed="' + sp + '"]');
+    if (b) b.click();
+  }, seen.speed);
+  await page.waitForTimeout(600);
+  var metSetup = await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    var before = svc.timeAcceleration;
+    window.__wtMet = true;          // the wrapper installed above starts reporting the step met
+    return { before: before };
+  });
+  if (metSetup.before <= 1) {
+    throw new Error('#796 fixture: re-pressing rung ' + seen.speed + '× left the clock at ' +
+      metSetup.before + '× — the drop assertion below would prove nothing');
+  }
+  await page.waitForTimeout(1500);
+  var dropped = await page.evaluate(function () {
+    var bar = document.getElementById('speed');
+    return { accel: globalThis.RD.__dev.service().timeAcceleration,
+             nRungs: bar ? bar.querySelectorAll('.ckl-speed-rung').length : -1,
+             note: (document.querySelector('.warp-info') || {}).textContent || '' };
+  });
+  if (dropped.accel !== 1) {
+    throw new Error('#796: the wait is satisfied and the clock is still at ' + dropped.accel +
+      '× — every plant-second past the criterion is overshoot. ' + JSON.stringify(dropped));
+  }
+  if (dropped.nRungs !== 0) {
+    throw new Error('#796: a rung is still cued on a satisfied step — it points at a ' +
+      'fast-forward that would now be overshoot. ' + JSON.stringify(dropped));
+  }
+  log.push('  criterion met: clock ' + metSetup.before + '× → ' + dropped.accel + '×, ' +
+    dropped.nRungs + ' rungs cued; line reads "' + dropped.note.trim() + '"');
   log.push('  rung box-shadow: ' + seen.rungShadow);
   log.push('  strip: class ' + seen.barGlowClass + ', box-shadow ' + seen.barShadow);
   log.push('  note under the strip: ' + seen.note.trim());

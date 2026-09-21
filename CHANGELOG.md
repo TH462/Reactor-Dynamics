@@ -30,6 +30,59 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **The walkthrough drives the speed control** *(OWNER, 2026-09-20: "The fast forward should drop
+  down to 1x for steps where the next step should be played at 1x. it should auto fast forward but
+  it should auto drop down to the speed the step should be played at.")*. Every part of the rule
+  already existed — since #628 the card printed "set the speed control to 600x", since #686 the
+  line under the bar printed the same sentence, since #743 the rung pulsed — three surfaces asking
+  the player to make a mechanical choice the walkthrough already knew the answer to. Now
+  `syncCklAutoSpeed` (ui/app.js, in the broadcast path, never the rAF paint) presses it: the
+  step's own rung while it is waiting, **1x** on every other step, and **1x again the moment the
+  step's check-off criterion is met** — the expensive half, because a 600x clock running past the
+  criterion is overshoot the next step is then about. ONE RULE, NOT A NEW AUTHORED FIELD: the
+  speed comes from the same `hold >= 180 && wait_hint !== false` condition the wait line and the
+  rung glow already read, so the clock and the words cannot drift apart.
+  - **The player still owns the bar.** Auto acts ONCE per (step, wanted speed, hold state), so any
+    rung pressed by hand stands for the rest of that step and the next step re-takes the clock.
+    It will not act while the clock is stopped (and does not latch the step, so #691's
+    play-from-pause-at-1x is untouched), will not fight a plant-declared hold (`speed_hold`
+    refuses `set_speed` above 1x — the hold is IN the key, so the acceleration lands by itself
+    when the window closes), will not request WARP while the service would refuse it (clamped to
+    the best PLAY rung off `pacing.warp_available` instead of eating a `warp_locked` toast), and
+    will not fight an attention stop (the drop moves no step, so auto has already had its act).
+  - **Not routed through `cmd()`**, deliberately: that path stamps the diagnostic bundle, the
+    sequence of events and telemetry as THE PLAYER ACTING (#437). A bug report whose SOE shows six
+    speed presses nobody made is a worse artifact than one that shows none.
+  - The wait line and `#warpInfo` now share a three-form formatter (`cklWaitAdvice`) — *fast-
+    forwarding at 600x* / *set the speed control to 600x* (only when the player has taken the bar
+    back, the one state where a press is still owed) / *wait complete, back at 1x*. The rung is
+    named in all three. The recommended rung keeps its `.ckl-speed-rung` mark throughout and
+    pulses only while the plant is not on it, which `.ckl-speed-rung.on { animation: none }` (#743)
+    already did for free.
+- **Walkthrough step text is larger** *(OWNER, 2026-09-20: "Make the walkthrough text a little
+  bigger.")*. The step instruction 12.5 -> 14 px, the head 13 -> 14.5, `Use ...` and the `why`
+  11.5 -> 13, the sub/wait lines 11 -> 12.5, the incident narrative 11.5 -> 12.5, and the
+  out-of-turn note, ack note, step number and mark 11 -> 12.
+
+### Fixed
+- **`Manuals/02` §4.1 promised a WARP timer the plant has not had since 2026-09-08.** #660 removed
+  `_warpLockedUntil` ("Warp lock should not have a time out, it should either be locked or not")
+  and `_warpBlocked` has reported only live conditions ever since; the manual still told the
+  reader the buttons "stay dark for 30 plant-seconds of quiet". Nothing gates described BEHAVIOUR
+  — `run_manual_setpoints` checks numbers in tables — so it took reading the section for another
+  reason to find it.
+
+### Tests
+- `verify_e2e_ui.js` `testSpeedRungGlowRendered` re-cut for the new behaviour, three halves each
+  injection-proven red for its own reason and no other: deleting the `syncCklAutoSpeed` call reds
+  "the walkthrough did not take the clock to its own rung" (rung marked and pulsing, clock 1x);
+  deleting the drop-on-met branch reds "the wait is satisfied and the clock is still at 60x";
+  defeating the act-once key guard reds "the walkthrough overrode the player" after a deliberate
+  1x press. The fixture plants ONE upstream fact — `acc_met`/`awaiting_ack` on the snapshot, via
+  an `_instructorBlock` wrapper — because `c.awaitingAck = !!met` is rewritten every
+  `_stepChecklist` tick and poking it directly is a race the drop loses.
+
 
 ## [Alpha 1.7.6] — 2026-09-20
 

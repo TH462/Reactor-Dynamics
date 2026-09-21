@@ -29,6 +29,79 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-20-develop-a (#796 — the walkthrough drives the speed control)
+
+*(OWNER, 2026-09-20: "Make the walkthrough text a little bigger. The fast forward should drop down
+to 1x for steps where the next step should be played at 1x. it should auto fast forward but it
+should auto drop down to the speed the step should be played at.")*
+
+**THE RULE ALREADY EXISTED — WHAT MOVED IS WHO PRESSES THE BUTTON.** `hold >= 180 &&
+wait_hint !== false` -> `RD.CklSpeedHint(hold)` has driven three surfaces since #628/#686/#743: the
+card's wait line, the line under the speed bar, and the pulsing rung. All three asked the player to
+make a mechanical choice the walkthrough already knew the answer to. `syncCklAutoSpeed` (ui/app.js)
+now sends it, reading the SAME condition rather than a new authored `speed:` field — a per-step
+number would be the second copy that drifts (the 705 ppm shape).
+
+**THE EXPENSIVE HALF IS COMING BACK DOWN, AND IT IS KEYED ON THE CRITERION, NOT ON CONTINUE.**
+Every step waits for Continue since #660, so a clock left at 600x after a wait's `acc_met` runs the
+plant past the thing the next step is about while the player is reading the card. `cklStepSpeed`
+returns 1x on `acc_met || awaiting_ack`, and `applyCklSpeedGlow` stands the rung down on the same
+condition — a cue pointing at a fast-forward that would now be overshoot.
+
+**FOUR REFUSALS IT HAS TO RESPECT, AND THREE OF THEM SELF-HEAL THROUGH THE KEY** (`procedure |
+step | wanted speed | hold`):
+- **the player.** Auto acts ONCE per key, so any rung pressed by hand stands for the rest of the
+  step. Injection-proven: defeating the key guard reds the gate with "the walkthrough overrode the
+  player" after a deliberate 1x press.
+- **a stopped clock.** Skipped AND the key deliberately not latched, so a pause never eats the
+  step's speed change — and #691 (play-from-pause always lands at 1x) is untouched, because on
+  resume the step's key is already spent.
+- **`true_state.speed_hold`.** The service refuses `set_speed > 1` while it stands, so sending
+  there buys a guaranteed refusal plus a toast. The hold is IN the key: the acceleration lands by
+  itself the moment the accumulator window closes, which is #619 item 13 closing itself.
+- **WARP unavailable.** Clamped to the best PLAY rung off `pacing.warp_available` rather than
+  eating `_setSpeed`'s `warp_locked` clamp and its toast; also in the key, so the rung is taken the
+  moment WARP frees. The wait line says `fast-forwarding at 60x - 600x needs a quiet plant` in that
+  state rather than naming a rung the clock is not on.
+
+**IN THE BROADCAST PATH, NOT THE rAF PAINT.** `renderNow` is one frame late and is skipped outright
+when paints coalesce (#432: 1475 rows in, 35 recorded); a speed change landing a frame late at 600x
+is 600 plant-seconds of overshoot. It sits beside the #694 walkthrough-pause block, which is the
+same kind of thing and has the same snapshot restamp (`metadata.time_acceleration` here,
+`metadata.running` there).
+
+**NOT THROUGH `cmd()`.** That path stamps the diagnostic bundle, the SOE and telemetry as THE
+PLAYER ACTING (#437). A bug report whose sequence of events shows six speed presses nobody made is
+a worse artifact than one showing none.
+
+**THE GATE.** `verify_e2e_ui` `testSpeedRungGlowRendered` re-cut; #743's four halves survive (the
+painted inset shadow, the unlit strip, the dark-wire proof, the pulse stand-down — the last now
+asserted in the OVERRIDE state, which is the only one where a press is still owed). Three new
+halves, each injection-proven red for its own reason and no other: no `syncCklAutoSpeed` call ->
+"did not take the clock to its own rung"; no drop-on-met branch -> "the wait is satisfied and the
+clock is still at 60x"; no act-once guard -> "overrode the player". **The fixture had to plant
+`acc_met`/`awaiting_ack` on the SNAPSHOT** (an `_instructorBlock` wrapper, #686's shape): jumping
+`c.idx` lands on a step pwr_heatup ALREADY satisfies — the first run read "Wait complete" and cued
+no rung, which is correct behaviour and a useless fixture — and `c.awaitingAck = !!met` is rewritten
+every `_stepChecklist` tick, so poking the field directly is a race the drop loses.
+
+**ALSO.** Walkthrough step text up ~12 % (step instruction 12.5 -> 14 px, head 13 -> 14.5, `Use ...`
+and `why` 11.5 -> 13, sub/wait 11 -> 12.5, incident narrative 11.5 -> 12.5, out-of-turn/ack/step
+number/mark 11 -> 12). And **`Manuals/02` §4.1 was still promising a WARP timer the plant lost on
+2026-09-08** — #660 deleted `_warpLockedUntil` ("either locked or not") and `_warpBlocked` has read
+only live conditions since, while the manual said the buttons "stay dark for 30 plant-seconds of
+quiet". Nothing gates described BEHAVIOUR, only numbers in tables, so it took reading the section
+for another reason to find it. Manual set Rev 21.
+
+**GATES** (tree settled, run after the edits; no aggregate — not pushing): `verify_e2e_ui`
+4screenshots, `verify_flags_ui` 55/55, `verify_ckl_relevance` 34/34, `verify_manual_follow` 225,
+`verify_board_check` 282, `verify_board_scroll` 158/158, `verify_reduced_motion` 18/18,
+`run_checklist` 93/93, `run_checklist_pwr2` 360/360, `run_manual_rev` 15/0, `run_manual_setpoints`
+18/18, `run_manual_units` 0 failed, `run_manual_commands` 8/8, `run_hardrules` 605,
+`run_release` 31, `run_doc_budget` 4, `run_session_labels` 8.
+
+---
+
 ## Session log — 2026-09-19-develop-a (#786 — the AFW discharge gauge, and the plant question underneath it)
 
 **THE DEFECT.** `pwr2_true_state.js` published `afw_discharge_pressure_mpa` as
