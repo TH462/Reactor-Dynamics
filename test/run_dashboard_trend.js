@@ -438,9 +438,14 @@ var INJECTIONS = {
   'window-error-swallowed': ['analytics.js',
     'catch (e) { return { error: e.message }; }', 'catch (e) { return { from: today, to: today }; }'],
   'clamp-drop': ['analytics.js', 'if (sr && from < sr.first) {', 'if (false) {'],
+  /* RE-ANCHORED (found blind while re-firing every injection for #797: the deep-link-per-
+   * day merge landed between this fix and the anchor's last check, `coarse: c.coarse,`
+   * became `coarse: c.coarse || dl.coarse,`, and the old anchor silently never matched —
+   * the exact "source moved, injection never touches the module" trap this file's own
+   * header warns about, on a check nothing else re-fires). */
   'coarse-hide': ['analytics.js',
-    'return { day, pageloads: c.pageloads, visits: c.visits, coarse: c.coarse, missing: c.missing,',
-    'return { day, pageloads: c.pageloads, visits: c.visits, coarse: false, missing: c.missing,'],
+    'return { day, pageloads: c.pageloads, visits: c.visits, coarse: c.coarse || dl.coarse,',
+    'return { day, pageloads: c.pageloads, visits: c.visits, coarse: false,'],
   'delta-always-ok': ['analytics.js',
     "const deltaLine = '<p>' + (delta.ok", "const deltaLine = '<p>' + (true"],
   'ghost-draws-to-zero': ['render.js',
@@ -588,6 +593,20 @@ var INJECTIONS = {
   'health-stale-never-fires': ['analytics.js',
     '  const stale = Number.isFinite(hoursSince) && hoursSince > STALE_HOURS;', '  const stale = false;'],
   'health-gap-silent': ['analytics.js', '  if (gaps.length) {', '  if (false) {'],
+  /* THE FIVE REMAINING "coarse (±10)" LITERALS (#797). `si-not-carried` blanks the per-row
+   * merge in `hybridBreakdown`/`hybridDeepLink`/`hybridReferrer` at once -- identical text,
+   * same "one physical line, several call sites" shape `batch-coarse-taints-row` already
+   * uses next door. `coarse-note-hardcoded` reverts all four render sites that print a row's
+   * OWN note (by-day table, breakdownTable, Bots, referrerTable) back to the universal
+   * literal. `legend-si-hardcoded`/`legend-worstsi-blind` are two different ways the chart
+   * legend's own figure could go back to a hard-coded 10. */
+  'si-not-carried': ['analytics.js', 'cur.si = Math.max(cur.si || 1, r.si || 1);', ''],
+  'coarse-note-hardcoded': ['analytics.js',
+    "(r.si > 1 ? 'coarse (±' + r.si + ')' : 'coarse')", "'coarse (±10)'"],
+  'legend-si-hardcoded': ['analytics.js', '(worstSi > 1 ? worstSi : 10)', '10'],
+  'legend-worstsi-blind': ['analytics.js',
+    'const worstSi = rows.reduce((m, r) => Math.max(m, r.coarse ? (r.si || 1) : 1), 1);',
+    'const worstSi = 1;'],
 };
 
 if (/--list-injections/.test(ARG)) {
@@ -1398,6 +1417,101 @@ async function threwAsync(fn) {
     ck('wired into the real page: a stale pipeline DOES render the banner, near the TOP -- '
      + 'before the by-day section',
        idxLine >= 0 && idxByDay > idxLine, 'idx(Data pipeline)=' + idxLine + ' idx(By day)=' + idxByDay);
+
+    /* =================================================================== 27. si (#797) */
+    head('27. the five remaining "coarse (±10)" literals now print the MEASURED interval, '
+       + 'not Cloudflare’s current tier (#797) -- an isolated fixture using 25, a number no '
+       + 'hard-coded renderer would produce, across every remaining site.');
+    /* An ISOLATED fixture (own db), same idiom `seedDeepLinkClosed` above uses -- and dated
+     * 2026-08-20 specifically so a >14-day window (needed for the LINE chart legend) stays
+     * entirely BEFORE "today" (2026-09-18): `storeRange` clamps `from` up to its own first
+     * recorded day, so the window has to start there, not touch the live-merge path. */
+    function seedMeasuredSi() {
+      var d = makeDb();
+      d._ins('traffic_daily', { day: '2026-08-20', country: 'Testland', referrer_host: 'ref.example.net',
+        referrer_kind: 'external', path: '/measured', device: 'desktop', browser: 'Chrome',
+        os: 'Windows', nav_type: 'navigate', bot: 0, pageloads: 4, visits: 2, sample_interval: 25 });
+      d._ins('traffic_daily', { day: '2026-08-20', country: 'Testland', referrer_host: '',
+        referrer_kind: 'direct', path: '/ui/shell', device: 'desktop', browser: 'Chrome',
+        os: 'Windows', nav_type: 'navigate', bot: 0, pageloads: 3, visits: 1, sample_interval: 25 });
+      d._ins('traffic_daily', { day: '2026-08-20', country: 'Testland', referrer_host: '',
+        referrer_kind: 'direct', path: '/', device: 'desktop', browser: 'Chrome',
+        os: 'Windows', nav_type: 'navigate', bot: 1, pageloads: 9, visits: 9, sample_interval: 25 });
+      d._ins('rollup_runs', { day: '2026-08-20', ran_at: '2026-08-20T05:10:00Z', traffic_rows: 3,
+        usage_rows: 0, coarse: 25, note: 'coarse:25' });
+      return d;
+    }
+    var msiDb = seedMeasuredSi();
+
+    // Two days, not one -- `barChart` draws nothing for a single bar ("one bar is a number,
+    // not a chart"), which would leave the legend paragraph absent rather than proven right.
+    var p27bar = await renderPageOn(msiDb, '&from=2026-08-20&to=2026-08-21');
+    var byDay27bar = p27bar.slice(p27bar.indexOf('<h2>By day</h2>'), p27bar.indexOf('<h2>', p27bar.indexOf('<h2>By day</h2>') + 1));
+    ck('the by-day table cell prints the MEASURED interval (25), not a hard-coded 10',
+       /<td>coarse \(±25\)<\/td>/.test(byDay27bar), byDay27bar);
+    ck('...and the BAR chart legend (≤14 days) states the same measured interval',
+       /faded bar = Cloudflare-coarse \(±25\)/.test(byDay27bar), byDay27bar);
+
+    var p27line = await renderPageOn(msiDb, '&from=2026-08-20&to=2026-09-04');   // 16 days
+    var byDay27line = p27line.slice(p27line.indexOf('<h2>By day</h2>'), p27line.indexOf('<h2>', p27line.indexOf('<h2>By day</h2>') + 1));
+    ck('past 14 days the LINE chart legend states the same measured interval too, not the '
+     + 'bar chart’s own literal',
+       /faded point = Cloudflare-coarse \(±25\)/.test(byDay27line), byDay27line);
+
+    var countriesSec27 = p27bar.slice(p27bar.indexOf('<h2>Countries</h2>'), p27bar.indexOf('<h2>', p27bar.indexOf('<h2>Countries</h2>') + 1));
+    ck('the Countries table (hybridBreakdown -> breakdownTable) prints the measured interval',
+       /Testland[\s\S]*?coarse \(±25\)/.test(countriesSec27), countriesSec27);
+
+    var botsSec27 = p27bar.slice(p27bar.indexOf('<h2>Bots</h2>'), p27bar.indexOf('<h2>', p27bar.indexOf('<h2>Bots</h2>') + 1));
+    ck('the Bots table (its OWN inline rendering, not breakdownTable) prints the measured '
+     + 'interval for BOTH the Human and Bot rows',
+       (botsSec27.match(/coarse \(±25\)/g) || []).length === 2, botsSec27);
+
+    var arriveSec27 = p27bar.slice(p27bar.indexOf('<h2>How people arrive</h2>'), p27bar.indexOf('<h2>', p27bar.indexOf('<h2>How people arrive</h2>') + 1));
+    ck('the referrer table ("How people arrive") prints the measured interval',
+       /ref\.example\.net[\s\S]*?coarse \(±25\)/.test(arriveSec27), arriveSec27);
+
+    var deepSec27 = p27bar.slice(p27bar.indexOf('<h2>Deep-link landings</h2>'), p27bar.indexOf('<h2>', p27bar.indexOf('<h2>Deep-link landings</h2>') + 1));
+    ck('the Deep-link landings breakdown prints the measured interval too, not just its total',
+       /coarse \(±25\)/.test(deepSec27), deepSec27);
+
+    /* THE SVG TOOLTIPS, which the first pass at #797 missed entirely: they live in render.js,
+     * not analytics.js, so a grep of the page's own source found four sites and not these two.
+     * They were the LAST hard-coded ±10 on the page, and `bucketDays` had to stop dropping `si`
+     * before the bar chart could even reach the number. A tooltip is exactly where a reader
+     * goes to ask "how rounded is this bar", so a literal there is the worst of the six. */
+    ck('the BAR chart tooltip states the measured interval, not a literal',
+       /<title>[^<]*\(coarse, ±25\)<\/title>/.test(byDay27bar), (byDay27bar.match(/<title>[^<]*coarse[^<]*<\/title>/) || ['(no coarse tooltip)'])[0]);
+    ck('...and so does the LINE chart tooltip',
+       /<title>[^<]*\(coarse, ±25\)<\/title>/.test(byDay27line), (byDay27line.match(/<title>[^<]*coarse[^<]*<\/title>/) || ['(no coarse tooltip)'])[0]);
+    ck('no ±10 survives ANYWHERE in either rendered chart, tooltips included',
+       byDay27bar.indexOf('±10') < 0 && byDay27line.indexOf('±10') < 0,
+       'bar ' + byDay27bar.indexOf('±10') + ', line ' + byDay27line.indexOf('±10'));
+
+    /* Strip the SVG <title> tooltips before this scan: `render.js`'s own point/bar tooltip
+     * text ("(coarse, ±10)") is OUT OF SCOPE here (#797 names five sites in analytics.js;
+     * render.js's `bucketDays` drops `si` before it ever reaches that string, and even where
+     * it does not — the line chart's own `dataLine` closure — the string is hard-coded
+     * independent of it) — see check 17's own `±10` tooltip assertion, unchanged by this
+     * fix. This proves every literal this task DID touch, not the one it named as a
+     * plumbing job not worth forcing. */
+    var stripTitles = (s) => s.replace(/<title>[^<]*<\/title>/g, '');
+    ck('and the hard-coded literal survives NOWHERE this task touched -- every coarse row in '
+     + 'this fixture is si=25, so a stray "±10" outside an SVG tooltip can only be the old '
+     + 'hard-code coming back',
+       !/±10/.test(stripTitles(p27bar)) && !/±10/.test(stripTitles(p27line)),
+       'p27bar has ±10: ' + /±10/.test(stripTitles(p27bar))
+       + ', p27line has ±10: ' + /±10/.test(stripTitles(p27line)));
+
+    /* NO "unmeasured coarse" CASE EXISTS TO PROVE for the by-day table: `rollup_runs.coarse`
+     * IS that run's own real measured interval (`rollup.js`'s `out.coarse = t.coarse`, never a
+     * bare flag), and `dailyTotals`/`deepLinkLandingsByDay`'s `si` is the max of it and
+     * `traffic_daily`'s own -- the SAME two sources `coarse` itself already ORs, so `coarse`
+     * cannot be true here with no number behind it. The `r.si > 1 ? … : 'coarse'` guard in
+     * analytics.js stays as a fail-safe for a future coarse-flagging path that does not keep
+     * that invariant, not because this fixture can reach it today.
+     * `groupBy`/`referrerBreakdown`/`deepLinkLandings` have no separate flag at all -- `coarse`
+     * IS `si > 1` there, so the same is true by construction; see run_dashboard_stats.js. */
 
     /* =================================================================== 9. no token= */
     head('9. no rendered page anywhere carries a credential in a href');

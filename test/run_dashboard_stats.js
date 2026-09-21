@@ -399,6 +399,19 @@ var INJECTIONS = {
     '  const gaps = full.filter((d) => !present.has(d));', '  const gaps = [];'],
   'health-empty-crashes': ['stats.js',
     '  if (!rows.length) return { rows: [], gaps: [] };', '  // (guard removed)'],
+  /* THE MEASURED INTERVAL, DISCARDED (#797): each reader already computes MAX(sample_
+   * interval) for its `coarse` boolean and used to throw the number away, which is what let
+   * analytics.js hard-code "coarse (±10)" -- right only while Cloudflare's tier happens to be
+   * 10. `dailyTotals` and `deepLinkLandingsByDay` each carry a distinct expression;
+   * `groupBy`, `deepLinkLandings` and `referrerBreakdown` (and the already-shipped
+   * `dayCountryReferrer`) share the identical line, so ONE injection blanks all four at once —
+   * same "one physical line, several call sites" shape `batch-coarse-taints-row` uses next
+   * door in run_dashboard_trend.js. */
+  'dailytotals-si-discarded': ['stats.js',
+    '      si: Math.max(a ? num(a.si) : 1, run ? num(run.coarse) : 1),', ''],
+  'si-discarded': ['stats.js', '    si: Math.max(1, num(x.si)),', ''],
+  'deeplinkbyday-si-discarded': ['stats.js',
+    '      si: Math.max(a ? a.si : 1, run ? num(run.coarse) : 1),', ''],
 };
 // `sum-sessions` needs both halves of the same defect (the SELECT and the mapper), or the
 // column is fetched and dropped and nothing changes. A one-sided injection lies (#295).
@@ -934,6 +947,40 @@ async function threwAsync(fn) {
      dlEmpty.total === 0 && dlEmpty.deepLink === 0 && dlEmpty.coarse === false
      && Array.isArray(dlEmpty.byPath) && dlEmpty.byPath.length === 0,
      JSON.stringify(dlEmpty));
+
+  /* ------------------------------------------------------------------------------------- */
+  head('7d. si — the MEASURED interval, not the boolean it is derived from (#797). Every '
+     + 'fixture above happens to use 1 or 10, which cannot tell a real reading apart from a '
+     + 'hard-coded one; this fixture uses 25 on purpose, a number no renderer would guess.');
+  function seedMeasuredSi() {
+    var d = makeDb();
+    traffic(d, '2026-09-05', 'Testland', 4, 2, 25, 0,
+      { referrer_host: 'ref.example.net', referrer_kind: 'external', path: '/measured' });
+    traffic(d, '2026-09-05', 'Testland', 3, 1, 25, 0,
+      { path: '/ui/shell', referrer_kind: 'direct', referrer_host: '' });
+    ran(d, '2026-09-05', 2, 25, 'coarse:25');
+    return d;
+  }
+  var msi = seedMeasuredSi();
+  var dtSi = await S.dailyTotals(msi, '2026-09-05', '2026-09-05');
+  ck('dailyTotals carries the MEASURED interval (25), not the tier’s usual 10',
+     dtSi[0].coarse === true && dtSi[0].si === 25, JSON.stringify(dtSi[0]));
+  var gbSi = await S.groupBy(msi, 'country', '2026-09-05', '2026-09-05', 5);
+  ck('groupBy carries the MEASURED interval',
+     gbSi.length === 1 && gbSi[0].coarse === true && gbSi[0].si === 25, JSON.stringify(gbSi));
+  var rbSi = await S.referrerBreakdown(msi, '2026-09-05', '2026-09-05', 5);
+  var extRowSi = rbSi.filter(function (x) { return x.kind === 'external'; })[0];
+  ck('referrerBreakdown carries the MEASURED interval',
+     !!extRowSi && extRowSi.coarse === true && extRowSi.si === 25, JSON.stringify(extRowSi));
+  var dlSi = await S.deepLinkLandings(msi, '2026-09-05', '2026-09-05', 5);
+  var dlPathSi = dlSi.byPath.filter(function (x) { return x.path === '/ui/shell'; })[0];
+  ck('deepLinkLandings carries the MEASURED interval',
+     !!dlPathSi && dlPathSi.coarse === true && dlPathSi.si === 25, JSON.stringify(dlPathSi));
+  var dbdSi = await S.deepLinkLandingsByDay(msi, '2026-09-05', '2026-09-05');
+  ck('deepLinkLandingsByDay carries the MEASURED interval',
+     dbdSi[0].coarse === true && dbdSi[0].si === 25, JSON.stringify(dbdSi[0]));
+  ck('...and an exact row (si=1) never gets promoted to a fake interval',
+     byC[0].coarse === false && byC[0].si === 1, JSON.stringify(byC[0]));
 
   /* =============================================================== 8. binding */
   head('8. every value is BOUND — D1 has no excuse for interpolation');

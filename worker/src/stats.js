@@ -274,6 +274,14 @@ export async function dailyTotals(db, from, to) {
       pageloads: a ? num(a.pageloads) : 0,
       visits: a ? num(a.visits) : 0,
       coarse: (a ? num(a.si) : 1) > 1 || (run ? num(run.coarse) : 1) > 1,
+      /* `si` IS RETURNED, not only the boolean derived from it -- same fix as
+       * `dayCountryReferrer` (#797), for the reader every by-day chart and table pulls from.
+       * THE WORST OF BOTH SOURCES that feed `coarse` above: `traffic_daily`'s own
+       * MAX(sample_interval) AND `rollup_runs.coarse`, which `rollup.js` stores as that run's
+       * OWN measured max interval (`out.coarse = t.coarse`), never a bare flag -- so it is a
+       * real number a caller may print, not a boolean this reader would have to fake a figure
+       * to render. Either source alone can be the one that is actually coarse. */
+      si: Math.max(a ? num(a.si) : 1, run ? num(run.coarse) : 1),
       missing: !run || failed,
       truncated: /limit-hit/.test(note),
     };
@@ -352,6 +360,9 @@ export async function groupBy(db, dim, from, to, limit) {
     pageloads: num(x.pageloads),
     visits: num(x.visits),
     coarse: num(x.si) > 1,
+    // `si` returned alongside the boolean, same `dayCountryReferrer` fix (#797): a caller
+    // rendering "coarse" must say WHAT it is rounded to, not assume Cloudflare's current tier.
+    si: Math.max(1, num(x.si)),
   }));
 }
 
@@ -398,6 +409,8 @@ export async function deepLinkLandings(db, from, to, limit) {
     pageloads: num(x.pageloads),
     visits: num(x.visits),
     coarse: num(x.si) > 1,
+    // `si` returned alongside the boolean, same `dayCountryReferrer` fix (#797).
+    si: Math.max(1, num(x.si)),
   }));
   const total = rows.reduce((s, x) => s + x.visits, 0);
   // THE TWO CONDITIONS THE METRIC IS: not the homepage, AND no referrer at all.
@@ -459,6 +472,9 @@ export async function deepLinkLandingsByDay(db, from, to) {
       day,
       deepLink: a ? a.deepLink : 0,
       coarse: (a ? a.si : 1) > 1 || (run ? num(run.coarse) : 1) > 1,
+      // `si` returned alongside the boolean, same `dayCountryReferrer` fix (#797) -- the
+      // worst of both sources feeding `coarse` above, same reasoning as `dailyTotals`.
+      si: Math.max(a ? a.si : 1, run ? num(run.coarse) : 1),
       missing: !run || failed,
     };
   });
@@ -501,6 +517,8 @@ export async function referrerBreakdown(db, from, to, limit) {
     pageloads: num(x.pageloads),
     visits: num(x.visits),
     coarse: num(x.si) > 1,
+    // `si` returned alongside the boolean, same `dayCountryReferrer` fix (#797).
+    si: Math.max(1, num(x.si)),
   }));
 }
 

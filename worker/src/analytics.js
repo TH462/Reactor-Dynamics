@@ -472,7 +472,7 @@ export async function analyticsPage(env, url) {
   const prevDays = await dailyTotals(db, priorR.from, priorR.to);   // same length as [from,to]
 
   // ---- today, live (only when the window reaches it) ------------------------------------
-  let liveToday = { pageloads: 0, visits: 0, coarse: false, deepLink: 0 };
+  let liveToday = { pageloads: 0, visits: 0, coarse: false, deepLink: 0, si: 1 };
   let liveErr = null;
   if (includesToday) {
     try {
@@ -490,6 +490,9 @@ export async function analyticsPage(env, url) {
         pageloads: g.rows.reduce((s, r) => s + r.pageloads, 0),
         visits: g.rows.reduce((s, r) => s + r.visits, 0),
         coarse: g.coarse > 1,
+        // `g.coarse` IS the largest sample interval seen today, not just a boolean (see
+        // `rumRows`'s own header) — the interval the by-day chart and table actually got (#797).
+        si: g.coarse,
         deepLink: dl.rows.filter((r) => r.path !== '/' && r.referrerKind === 'direct')
           .reduce((s, r) => s + r.visits, 0),
       };
@@ -504,12 +507,15 @@ export async function analyticsPage(env, url) {
     if (day === today) {
       return { day, pageloads: liveToday.pageloads, visits: liveToday.visits,
                coarse: liveToday.coarse, missing: false, partial: true, ghost,
-               deepLink: liveToday.deepLink };
+               deepLink: liveToday.deepLink, si: liveToday.si || 1 };
     }
-    const c = closedByDay.get(day) || { pageloads: 0, visits: 0, coarse: false, missing: true };
-    const dl = closedDeepLinkByDay.get(day) || { deepLink: 0, coarse: false, missing: true };
+    const c = closedByDay.get(day) || { pageloads: 0, visits: 0, coarse: false, missing: true, si: 1 };
+    const dl = closedDeepLinkByDay.get(day) || { deepLink: 0, coarse: false, missing: true, si: 1 };
+    // The worst of the two sources feeding this day (#797) — the day-level counts and the
+    // deep-link counts are two separate GROUP BYs and either can be the one that was coarse.
     return { day, pageloads: c.pageloads, visits: c.visits, coarse: c.coarse || dl.coarse,
-             missing: c.missing || dl.missing, partial: false, ghost, deepLink: dl.deepLink };
+             missing: c.missing || dl.missing, partial: false, ghost, deepLink: dl.deepLink,
+             si: Math.max(c.si || 1, dl.si || 1) };
   });
 
   const curTotalVisits = rows.reduce((s, r) => s + r.visits, 0);
@@ -585,22 +591,29 @@ export async function analyticsPage(env, url) {
     labelC: 'Deep-link landings', labelCShort: 'Deep-link',
                        labelGhost: 'prior period' };
   const chart = isLongWindow ? lineChart(rows, chartOpts) : barChart(bucketDays(rows).rows, { ...chartOpts, bucket: 'day' });
+  // THE WORST INTERVAL IN THE WINDOW (#797), same convention `countryReferrerDayNote` below
+  // uses — a legend describing every faded point/bar in the chart must not understate the
+  // roundest one shown. Falls back to 10 (Cloudflare's tier at the time of writing) only when
+  // nothing coarse is actually in view, i.e. the number is never read against a real point.
+  const worstSi = rows.reduce((m, r) => Math.max(m, r.coarse ? (r.si || 1) : 1), 1);
   const legend = !chart ? '' : isLongWindow
     ? '<p class="muted">Hollow point = today, live and partial · faded point = Cloudflare-'
-      + 'coarse (±10) · a break in the line, marked with a dashed tick at the baseline = no '
-      + 'data captured that day (never drawn as a drop to zero) · dashed muted line = the '
-      + 'prior, equal-length period · dates are labelled every ' + lineLabelStride(rows.length)
-      + ' day(s).</p>'
+      + 'coarse (±' + (worstSi > 1 ? worstSi : 10) + ') · a break in the line, marked with a '
+      + 'dashed tick at the baseline = no data captured that day (never drawn as a drop to '
+      + 'zero) · dashed muted line = the prior, equal-length period · dates are labelled '
+      + 'every ' + lineLabelStride(rows.length) + ' day(s).</p>'
     : '<p class="muted">Hollow bar = today, live and partial · faded bar = Cloudflare-coarse '
-      + '(±10) · dashed tick at the baseline = no data captured that day · dashed muted '
-      + 'line = the prior, equal-length period.</p>';
+      + '(±' + (worstSi > 1 ? worstSi : 10) + ') · dashed tick at the baseline = no data '
+      + 'captured that day · dashed muted line = the prior, equal-length period.</p>';
 
   const dayTable = table(rows.map((r) => ({
     dateLabel: dayLabel(r.day, r.partial ? r.day : null),
     pageloads: r.pageloads,
     visits: r.visits,
     deepLink: r.deepLink,
-    status: r.missing ? 'no data captured' : r.coarse ? 'coarse (±10)' : r.partial ? 'today, live' : '',
+    // The interval it actually got (#797), plain "coarse" when no numeric interval was
+    // carried for this day (the `rollup_runs` flag alone, no row to measure it from).
+    status: r.missing ? 'no data captured' : r.coarse ? (r.si > 1 ? 'coarse (±' + r.si + ')' : 'coarse') : r.partial ? 'today, live' : '',
   })), [{ key: 'dateLabel', label: 'Date (ET)' }, ...RUM_COLS,
         { key: 'deepLink', label: 'Deep-link landings', num: true },
         { key: 'status', label: 'Note' }]);
@@ -629,7 +642,7 @@ export async function analyticsPage(env, url) {
    * ROW, not a rounded table, so one noisy country does not paint the whole section coarse. */
   async function hybridBreakdown(dim, cfDims, cfKey, limit) {
     const closed = from <= closedTo ? await groupBy(db, dim, from, closedTo, Math.max(limit, 200)) : [];
-    const by = new Map(closed.map((r) => [r.key, { key: r.key, pageloads: r.pageloads, visits: r.visits, coarse: r.coarse }]));
+    const by = new Map(closed.map((r) => [r.key, { key: r.key, pageloads: r.pageloads, visits: r.visits, coarse: r.coarse, si: r.si || 1 }]));
     if (includesToday) {
       // `dim !== 'bot'` is the exemption: grouping by bot status and excluding bots would
       // return exactly one row, always Human.
@@ -640,9 +653,12 @@ export async function analyticsPage(env, url) {
       // The per-row sample interval, not the batch-wide `g.coarse`, decides which MERGED
       // key gets marked — a rounded row must not taint every other row in the same batch.
       g.rows.forEach((r) => {
-        const cur = by.get(r.key) || { key: r.key, pageloads: 0, visits: 0, coarse: false };
+        const cur = by.get(r.key) || { key: r.key, pageloads: 0, visits: 0, coarse: false, si: 1 };
         cur.pageloads += r.pageloads; cur.visits += r.visits;
         if (r.si > 1) cur.coarse = true;
+        // The interval it actually got, not the literal "10" the note used to hard-code
+        // (#797) — carried the same way `dayCountryReferrer`'s merge does.
+        cur.si = Math.max(cur.si || 1, r.si || 1);
         by.set(r.key, cur);
       });
     }
@@ -669,7 +685,7 @@ export async function analyticsPage(env, url) {
     const closed = from <= closedTo ? await deepLinkLandings(db, from, closedTo, 1000) : { total: 0, deepLink: 0, coarse: false, byPath: [] };
     const keyOf = (p, k) => p + '\u0000' + k;
     const by = new Map(closed.byPath.map((r) => [keyOf(r.path, r.referrerKind),
-      { path: r.path, referrerKind: r.referrerKind, pageloads: r.pageloads, visits: r.visits, coarse: r.coarse }]));
+      { path: r.path, referrerKind: r.referrerKind, pageloads: r.pageloads, visits: r.visits, coarse: r.coarse, si: r.si || 1 }]));
     if (includesToday) {
       const g = rumRows(await gql(apiToken,
         rumGroup('requestPath refererHost requestHost', 'count_DESC', 1000, todayFromIso, todayToIso)),
@@ -677,11 +693,13 @@ export async function analyticsPage(env, url) {
         undefined, { excludeBots: true });
       g.rows.forEach((r) => {
         const k = keyOf(r.path, r.referrerKind);
-        const cur = by.get(k) || { path: r.path, referrerKind: r.referrerKind, pageloads: 0, visits: 0, coarse: false };
+        const cur = by.get(k) || { path: r.path, referrerKind: r.referrerKind, pageloads: 0, visits: 0, coarse: false, si: 1 };
         cur.pageloads += r.pageloads; cur.visits += r.visits;
         // Per-row sample interval, not the batch-wide flag — the same rule every other
         // hybrid* merge in this file follows, so one rounded key cannot taint another.
         if (r.si > 1) cur.coarse = true;
+        // The interval it actually got (#797) — same carry as `hybridBreakdown` above.
+        cur.si = Math.max(cur.si || 1, r.si || 1);
         by.set(k, cur);
       });
     }
@@ -705,7 +723,12 @@ export async function analyticsPage(env, url) {
   function breakdownTable(rows, keyLabel, emptyLabel) {
     return table(rows.map((r) => ({
       key: r.key === '' || r.key == null ? (emptyLabel || '(unknown)') : r.key,
-      pageloads: r.pageloads, visits: r.visits, note: r.coarse ? 'coarse (±10)' : '',
+      pageloads: r.pageloads, visits: r.visits,
+      // The interval it actually got (#797), not a hard-coded 10 — `r.si` is only meaningful
+      // when `coarse` is true; a row marked coarse with no numeric interval behind it (the
+      // `rollup_runs` flag alone, nothing in `traffic_daily` to measure) prints plain "coarse"
+      // rather than inventing a figure it was never handed.
+      note: r.coarse ? (r.si > 1 ? 'coarse (±' + r.si + ')' : 'coarse') : '',
     })), [{ key: 'key', label: keyLabel }, ...RUM_COLS, { key: 'note', label: 'Note' }]);
   }
 
@@ -720,7 +743,7 @@ export async function analyticsPage(env, url) {
     section('Deep-link landings', async () => {
       const h = await hybridDeepLink();
       const share = h.total > 0 ? Math.round((h.deepLink / h.total) * 1000) / 10 : null;
-      const deepRows = h.deepRows.map((r) => ({ key: r.path, pageloads: r.pageloads, visits: r.visits, coarse: r.coarse }));
+      const deepRows = h.deepRows.map((r) => ({ key: r.path, pageloads: r.pageloads, visits: r.visits, coarse: r.coarse, si: r.si }));
       return hybridSourceNote(h.anyCoarse)
         + '<p class="muted">A <b>deep-link landing</b> is a landing visit whose landing page '
         + 'is not the homepage <span class="mono">/</span> AND has NO REFERRER at all — a '
@@ -776,7 +799,9 @@ export async function analyticsPage(env, url) {
         + 'totals against Top pages, Countries, or any other section above.</p>'
         + table(h.rows.map((r) => ({
             who: r.key === 1 ? 'Bot' : 'Human', pageloads: r.pageloads, visits: r.visits,
-            note: r.coarse ? 'coarse (±10)' : '',
+            // Same rule as `breakdownTable` (#797): the interval it actually got, plain
+            // "coarse" when no numeric interval was carried for this row.
+            note: r.coarse ? (r.si > 1 ? 'coarse (±' + r.si + ')' : 'coarse') : '',
           })), [{ key: 'who', label: 'Traffic' }, ...RUM_COLS, { key: 'note', label: 'Note' }]);
     }),
   ]);
@@ -791,7 +816,7 @@ export async function analyticsPage(env, url) {
   async function hybridReferrer(limit) {
     const closed = from <= closedTo ? await referrerBreakdown(db, from, closedTo, 1000) : [];
     const by = new Map(closed.map((r) => [r.host, { host: r.host, kind: r.kind,
-      pageloads: r.pageloads, visits: r.visits, coarse: r.coarse }]));
+      pageloads: r.pageloads, visits: r.visits, coarse: r.coarse, si: r.si || 1 }]));
     if (includesToday) {
       // TODAY has no stored kind yet — it is classified here, but WITH the real requestHost
       // this live row actually carries, which is the accurate half of `referrerKind`, not
@@ -803,11 +828,13 @@ export async function analyticsPage(env, url) {
       g.rows.forEach((r) => {
         // A host the store already has keeps its STORED kind; only a host today introduces
         // for the first time falls back to today's own (still fully-informed) classification.
-        const cur = by.get(r.host) || { host: r.host, kind: r.kind, pageloads: 0, visits: 0, coarse: false };
+        const cur = by.get(r.host) || { host: r.host, kind: r.kind, pageloads: 0, visits: 0, coarse: false, si: 1 };
         cur.pageloads += r.pageloads; cur.visits += r.visits;
         // Per-row sample interval, not the batch-wide `g.coarse` — one rounded host must
         // not mark every other host in the same live batch.
         if (r.si > 1) cur.coarse = true;
+        // The interval it actually got (#797) — same carry as `hybridBreakdown` above.
+        cur.si = Math.max(cur.si || 1, r.si || 1);
         by.set(r.host, cur);
       });
     }
@@ -827,7 +854,9 @@ export async function analyticsPage(env, url) {
   } catch (e) { referrerErr = e.message; }
   const referrerTable = (rows, label) => table(rows.map((r) => ({
     referer: r.host || '(direct)', kind: r.kind, pageloads: r.pageloads, visits: r.visits,
-    note: r.coarse ? 'coarse (±10)' : '',
+    // Same rule as `breakdownTable` (#797): the interval it actually got, plain "coarse"
+    // when no numeric interval was carried for this row.
+    note: r.coarse ? (r.si > 1 ? 'coarse (±' + r.si + ')' : 'coarse') : '',
   })), [{ key: 'referer', label: label }, { key: 'kind', label: 'Kind' }, ...RUM_COLS,
         { key: 'note', label: 'Note' }]);
 

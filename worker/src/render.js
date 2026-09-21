@@ -573,7 +573,7 @@ export function barChart(rows, opts) {
         const style = r.partial
           ? 'fill="none" stroke="' + s.color + '" stroke-width="2"'
           : 'fill="' + s.color + '"' + (r.coarse ? ' fill-opacity="0.45"' : '');
-        const flag = r.partial ? ' (today, partial)' : r.coarse ? ' (coarse, ±10)' : '';
+        const flag = r.partial ? ' (today, partial)' : r.coarse ? coarseFlag(r) : '';
         g += '<rect x="' + x + '" y="' + (PADT + plotH - h) + '" width="' + barW + '" height="' + h
           + '" rx="3" ' + style + '><title>' + esc(r.label) + ' — ' + esc(seriesLabel)
           + ': ' + v + flag + '</title></rect>';
@@ -645,6 +645,15 @@ export function barChart(rows, opts) {
  * `bucket-partial-missing-hidden` injections in `test/run_dashboard_trend.js`, and the two
  * checks under its old section 7 that asserted week/month bucket counts at 30/45/400 days —
  * see that file for what replaced them. */
+/* The rounding a row ACTUALLY carries, never a literal. `si` is MAX(sample_interval) from
+ * the first-party store or the live RUM batch; Cloudflare's coarse tier happens to be 10
+ * today and is not promised to stay there. Falls back to a bare "coarse" rather than
+ * inventing a figure if a row is somehow marked coarse with no interval behind it. */
+function coarseFlag(r) {
+  const si = Math.max(1, Number(r && r.si) || 1);
+  return si > 1 ? ' (coarse, ±' + si + ')' : ' (coarse)';
+}
+
 export function bucketDays(dayRows) {
   if (!dayRows || !dayRows.length) return { rows: [], bucket: 'day' };
   return {
@@ -656,6 +665,11 @@ export function bucketDays(dayRows) {
       c: r.deepLink || 0,
       ghost: r.ghost == null ? null : r.ghost,
       coarse: !!r.coarse,
+      /* THE MEASURED interval, carried so the tooltip can state the rounding it actually
+       * got instead of a hard-coded 10. Cloudflare's coarse tier is 10 TODAY; it is not a
+       * constant, and a page that prints a number nobody measured is the defect this
+       * whole issue is about. `bucketDays` dropped it, so the bar chart could not. */
+      si: Math.max(1, Number(r.si) || 1),
       missing: !!r.missing,
       partial: !!r.partial,
     })),
@@ -763,7 +777,7 @@ export function lineChart(rows, opts) {
       const v = r[valueKey] || 0;
       const style = r.partial ? 'fill="none" stroke="' + color + '" stroke-width="2"'
         : 'fill="' + color + '"' + (r.coarse ? ' fill-opacity="0.45"' : '');
-      const flag = r.partial ? ' (today, partial)' : r.coarse ? ' (coarse, ±10)' : '';
+      const flag = r.partial ? ' (today, partial)' : r.coarse ? coarseFlag(r) : '';
       out += '<circle cx="' + xMid(i) + '" cy="' + y(v).toFixed(1) + '" r="2.5" ' + style + '>'
         + '<title>' + esc(dayLbl(r)) + ' — ' + esc(seriesLabel) + ': ' + v + flag + '</title></circle>';
     });
