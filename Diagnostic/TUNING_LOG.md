@@ -74,12 +74,32 @@ same kind of thing and has the same snapshot restamp (`metadata.time_acceleratio
 PLAYER ACTING (#437). A bug report whose sequence of events shows six speed presses nobody made is
 a worse artifact than one showing none.
 
+**THE QUALITY PASS FOUND THE ONE THAT MATTERED, AND MY OWN COMMENT HAD CLAIMED THE OPPOSITE.**
+The first cut latched the act-once key and then returned on a stopped clock, under a comment
+saying *"a pause never eats the step's speed change"*. It ate it in the COMMON case: `pauseSim`
+stops the broadcasts so the driver does not run at all, `resumeSim` forces 1x outside it (#691),
+and the first broadcast back computes the SAME key, matches the latch and returns — the clock then
+sat at 1x for the rest of a step the walkthrough was meant to be fast-forwarding. Reachable by
+pressing pause and play. The reasoning error is specific and worth naming: I checked that a pause
+before auto acted could not lose the step's speed, and never checked the pause AFTER it acted,
+which is the one a player actually takes. **The fix is two memories, not one** — the latch drops
+whenever the clock stops, and the player's override moves to `cklAuto.over`, keyed on the same
+step, so it survives the drop. Without the split, fixing the strand would have thrown away a rung
+the player deliberately chose on resume; the gate asserts both directions.
+
+**AND ONE MORE THE PASS FOUND:** `stop_checklist` never touched `timeAcceleration`, so ending a
+leg mid-wait left the plant at a rung AUTO chose with nothing tracking it. Before this change that
+took a deliberate 600x press by the player, so the feature turned an unattended runaway from
+possible into easy. Handed back only when the clock is exactly where auto put it and above 1x.
+
 **THE GATE.** `verify_e2e_ui` `testSpeedRungGlowRendered` re-cut; #743's four halves survive (the
 painted inset shadow, the unlit strip, the dark-wire proof, the pulse stand-down — the last now
 asserted in the OVERRIDE state, which is the only one where a press is still owed). Three new
 halves, each injection-proven red for its own reason and no other: no `syncCklAutoSpeed` call ->
 "did not take the clock to its own rung"; no drop-on-met branch -> "the wait is satisfied and the
-clock is still at 60x"; no act-once guard -> "overrode the player". **The fixture had to plant
+clock is still at 60x"; no act-once guard -> "overrode the player"; the latch kept across a pause
+-> "a pause/resume stranded the step at 1x"; no separate override memory -> "a pause/resume threw
+away the player's override"; no hand-back -> "ended at 60x and left the plant running at 60x". **The fixture had to plant
 `acc_met`/`awaiting_ack` on the SNAPSHOT** (an `_instructorBlock` wrapper, #686's shape): jumping
 `c.idx` lands on a step pwr_heatup ALREADY satisfies — the first run read "Wait complete" and cued
 no rung, which is correct behaviour and a useless fixture — and `c.awaitingAck = !!met` is rewritten

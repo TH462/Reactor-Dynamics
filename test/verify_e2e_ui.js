@@ -2978,6 +2978,39 @@ async function testSpeedRungGlowRendered(page) {
     '× of ' + seen.nButtons + ' marked, walkthrough took the clock to ' + seen.accel +
     '×, animation=' + seen.rungAnim + ' (nothing left to press)');
 
+  /* A PAUSE MUST NOT STRAND THE STEP AT 1× (#796, quality pass 2026-09-20). THE FIRST CUT DID:
+   * the act-once latch was set and kept across the pause, `pauseSim` stops the broadcasts so the
+   * driver does not run, and `resumeSim` forces 1× outside it (#691) — so the first broadcast
+   * back matched the latch, returned, and left the clock at real time for the rest of a step the
+   * walkthrough was meant to be fast-forwarding. Silent, and reachable by the single most ordinary
+   * interaction there is.
+   *
+   * REAL PRESSES OF THE REAL BUTTON (`#playBtn` toggles on `service.running`), never `service.stop()`
+   * — the defect lives in the UI's own pause path and a direct service call skips `pauseWhy`,
+   * which is half of what the driver reads. */
+  await page.click('#playBtn');
+  await page.waitForTimeout(400);
+  var paused = await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    return { running: svc.running, accel: svc.timeAcceleration };
+  });
+  if (paused.running) throw new Error('#796 fixture: #playBtn did not pause — ' + JSON.stringify(paused));
+  await page.click('#playBtn');
+  await page.waitForTimeout(1500);
+  var resumed = await page.evaluate(function (sp) {
+    var b = document.querySelector('#speed [data-speed="' + sp + '"]');
+    return { running: globalThis.RD.__dev.service().running,
+             accel: globalThis.RD.__dev.service().timeAcceleration,
+             on: b ? b.classList.contains('on') : null };
+  }, seen.speed);
+  if (resumed.accel !== +seen.speed) {
+    throw new Error('#796: a pause/resume stranded the step at ' + resumed.accel + '× — the ' +
+      'walkthrough must re-take its own rung (' + seen.speed + '×) on resume. ' +
+      JSON.stringify(resumed));
+  }
+  log.push('  pause + resume: clock back to ' + resumed.accel + '× (the step\'s rung, not the ' +
+    'player\'s last selection — #691 is about a stale player choice, not the step\'s rate)');
+
   /* THE PLAYER TAKES THE BAR BACK, AND KEEPS IT (#796). A REAL CLICK on 1×, so the app's own
    * speed handler runs. Two claims, and both are the feature rather than styling:
    *   - the recommended rung PULSES AGAIN. This is #743's original assertion, moved to the only
@@ -3014,6 +3047,25 @@ async function testSpeedRungGlowRendered(page) {
   }
   log.push('  player pressed 1×: clock stays ' + after.accel + '×, rung ' + seen.speed +
     '× marked=' + after.rung + ' and pulsing again (' + after.anim + ')');
+
+  /* …AND THE OVERRIDE SURVIVES A PAUSE, which is the other half of the fix above and the reason
+   * it needed a second memory rather than the latch. Dropping the latch on a stopped clock (so a
+   * pause cannot strand the step) would, on its own, ALSO throw away a rung the player chose —
+   * resume would re-apply the walkthrough's 60× over their deliberate 1×. `cklAuto.over` is
+   * keyed on the same step, so it outlives the pause the latch does not. */
+  await page.click('#playBtn');
+  await page.waitForTimeout(400);
+  await page.click('#playBtn');
+  await page.waitForTimeout(1500);
+  var overHeld = await page.evaluate(function () {
+    return { running: globalThis.RD.__dev.service().running,
+             accel: globalThis.RD.__dev.service().timeAcceleration };
+  });
+  if (overHeld.accel !== 1) {
+    throw new Error('#796: a pause/resume threw away the player\'s override — clock went to ' +
+      overHeld.accel + '× over a deliberate 1× press. ' + JSON.stringify(overHeld));
+  }
+  log.push('  pause + resume after the override: clock still ' + overHeld.accel + '× (theirs)');
 
   /* AND IT COMES BACK DOWN WHEN THE WAIT IS SATISFIED (#796) — the half the owner asked for
    * ("it should auto drop down to the speed the step should be played at"). Poked the same way
@@ -3056,7 +3108,45 @@ async function testSpeedRungGlowRendered(page) {
   log.push('  strip: class ' + seen.barGlowClass + ', box-shadow ' + seen.barShadow);
   log.push('  note under the strip: ' + seen.note.trim());
 
+  /* ENDING THE WALKTHROUGH HANDS THE CLOCK BACK (#796, quality pass 2026-09-20). `stop_checklist`
+   * tears the checklist down and never touches `timeAcceleration`, so a leg ended mid-wait left
+   * the plant running at a rung AUTO chose with nothing tracking it any more — before #796 that
+   * took a deliberate 600× press by the player, so it is a runaway the change itself made easy to
+   * reach. The step is put back into its waiting state first so auto re-takes the rung: a
+   * hand-back asserted from a clock already at 1× would prove nothing. */
+  /* A FRESH RUN OF THE LEG, because the flow above has spent this step's override: the player
+   * pressed a rung on it, `cklAuto.over` is keyed on (step, wanted speed, hold), and auto
+   * correctly stands down for the rest of that step. Tearing the checklist down is what clears
+   * that memory — which is itself the behaviour being relied on here. */
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    window.__wtMet = false;
+    svc.handleCommand({ action: 'stop_checklist' });
+    svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+  });
+  await page.waitForTimeout(800);
+  await page.evaluate(function (idx) {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    c.idx = idx; c.stepAt = null; c.awaitingAck = false;
+  }, jumped.idx);
+  await page.waitForTimeout(2000);
+  var beforeStop = await page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  if (beforeStop <= 1) {
+    throw new Error('#796 fixture: the step did not go back to fast-forwarding (' + beforeStop +
+      '×) — the hand-back assertion below would prove nothing');
+  }
   await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  await page.waitForTimeout(1500);
+  var handedBack = await page.evaluate(function () {
+    return { accel: globalThis.RD.__dev.service().timeAcceleration,
+             ckl: !!globalThis.RD.__dev.service().instructor.checklist };
+  });
+  if (handedBack.ckl) throw new Error('#796 fixture: stop_checklist left a checklist running');
+  if (handedBack.accel !== 1) {
+    throw new Error('#796: the walkthrough ended at ' + beforeStop + '× and left the plant running ' +
+      'at ' + handedBack.accel + '× with nothing tracking it. ' + JSON.stringify(handedBack));
+  }
+  log.push('  walkthrough ended at ' + beforeStop + '×: clock handed back to ' + handedBack.accel + '×');
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
 }
 

@@ -3999,7 +3999,11 @@
    * operator half of the SOE stream (#437), and a walkthrough pacing itself is not an operator
    * act. A bug report whose SOE shows six speed presses nobody made is a worse artifact than one
    * that shows none. */
-  var cklAuto = { key: null };
+  /* `key` — the (step, wanted speed, hold) auto has already acted on. `over` — the key the
+   * PLAYER pressed a rung against, which is what makes an override survive a pause that the
+   * latch deliberately does not. `set` — the rate auto last asked for, so the hand-back can
+   * tell a speed it is holding from one the player chose afterwards. */
+  var cklAuto = { key: null, over: null, set: 0 };
   /* The active walkthrough step, or null — the same lookup `syncWarpInfo` does, named once so the
    * clock and the words cannot read different steps. */
   function cklActiveStep(s) {
@@ -4061,19 +4065,66 @@
     for (var i = 0; i < lad.length; i++) if (!lad[i].warp) top = lad[i].speed;
     return top;
   }
+  /* THE KEY — what "auto has already had its act" is scoped to. Named because TWO places need the
+   * same string: this driver, and the speed-button handler that records an override against it.
+   * A second copy computed by hand is how the two would drift. */
+  function cklAutoKey(s) {
+    var a = cklActiveStep(s);
+    var want = cklStepSpeed(s, a);
+    if (want == null) return null;
+    return a.ck.procedure_id + '#' + a.ck.step_index + '|' + want +
+           ((s.true_state && s.true_state.speed_hold) ? '|h' : '');
+  }
   function syncCklAutoSpeed(s) {
     var a = cklActiveStep(s);
     var want = cklStepSpeed(s, a);
-    if (want == null) { cklAuto.key = null; return; }
-    var held = !!(s.true_state && s.true_state.speed_hold);
-    var key = a.ck.procedure_id + '#' + a.ck.step_index + '|' + want + (held ? '|h' : '');
-    if (key === cklAuto.key) return;
-    // A stopped clock is the player's, not ours — and the key is deliberately NOT latched, so
-    // whatever this step wanted is still owed when they press play.
-    if (!service || !service.running || Object.keys(pauseWhy).length) return;
-    cklAuto.key = key;
-    if (held && want > 1) return;                         // refused; the key retries when it lifts
     var cur = (s.metadata && s.metadata.time_acceleration) || 1;
+    var idle = !service || !service.running || Object.keys(pauseWhy).length > 0;
+    /* ---- NO WALKTHROUGH: HAND THE CLOCK BACK IF IT IS STILL OURS (quality pass, 2026-09-20) ----
+     * `stop_checklist` tears the checklist down and never touches `timeAcceleration`, so ending a
+     * walkthrough mid-wait — or finishing one — left the plant running at a rung AUTO chose, with
+     * nothing tracking it any more. Before #796 that took a deliberate 600× press by the player;
+     * now it is a speed they may never have consciously selected, which turns an unattended
+     * runaway from possible into easy.
+     *
+     * "STILL OURS" IS THE WHOLE GUARD: only when the clock is exactly where auto last put it and
+     * that was above real time. Move it yourself after auto did and it is your speed — `set` is
+     * dropped and the hand-back never fires. ("← All walkthroughs" is unaffected: the checklist
+     * stays live, so this branch is not reached.) */
+    if (want == null) {
+      cklAuto.key = null; cklAuto.over = null;
+      if (cklAuto.set > 1) {
+        if (cur !== cklAuto.set) { cklAuto.set = 0; return; }   // the player has moved it since
+        if (idle) return;                                       // try again when the clock runs
+        cklAuto.set = 0;
+        try { service.handleCommand({ action: 'set_speed', value: 1 }); } catch (e) { return; }
+        if (s.metadata) s.metadata.time_acceleration = service.timeAcceleration;
+      }
+      return;
+    }
+    var key = a.ck.procedure_id + '#' + a.ck.step_index + '|' + want +
+              ((s.true_state && s.true_state.speed_hold) ? '|h' : '');
+    /* ---- A STOPPED CLOCK DROPS THE LATCH, AND THAT IS A FIX, NOT A STYLE (quality pass,
+     * 2026-09-20) ---- This read `if (!running) return;` with the key ALREADY LATCHED, under a
+     * comment claiming "a pause never eats the step's speed change". It ate it in the COMMON
+     * case: `pauseSim` stops the broadcasts (so this function does not run at all while paused)
+     * and `resumeSim` forces 1× outside this driver, per #691 — then the first broadcast back
+     * computes the SAME key, matches the latch and returns. The clock then sat at 1× for the rest
+     * of a step the walkthrough was meant to be fast-forwarding, silently, after any pause taken
+     * once auto had acted. Which is most of them: you pause while the plant is running away, not
+     * in the split second before it starts.
+     *
+     * #691 IS UNTOUCHED. Its ruling is that the speed showing when you paused is not a request to
+     * resume there — a stale PLAYER selection. The step's rung is not a selection, it is what
+     * this step is played at; re-applying it on resume restores the walkthrough's rate and never
+     * yours. An override still survives the pause, because it is remembered separately (`over`)
+     * rather than by this latch. */
+    if (idle) { cklAuto.key = null; return; }
+    if (cklAuto.over === key) return;        // the player took this step's clock; it is theirs
+    if (key === cklAuto.key) return;
+    cklAuto.key = key;
+    cklAuto.set = want;
+    if ((s.true_state && s.true_state.speed_hold) && want > 1) return;  // refused; retries when it lifts
     if (cur === want) return;
     try { service.handleCommand({ action: 'set_speed', value: want }); }
     catch (e) { return; }                                 // a refusal is not a crash (#505/#506)
@@ -8715,6 +8766,16 @@
       // the element). This handler used to set it too, unguarded — and the PWR shell
       // has no #ffBadge, so every speed click threw before the segment could repaint.
       retireWarpNote();   // the player has acted on the last drop (#655); the info line moves on — unless the hold named is still standing (#710)
+      /* THE OVERRIDE, RECORDED AGAINST THE STEP IT WAS MADE ON (#796). The walkthrough's own
+       * act-once latch cannot carry this: the latch is dropped whenever the clock stops, so that
+       * a pause cannot strand a fast-forwarded step at 1× — and without a separate memory that
+       * same drop would throw away a rung the player deliberately chose. Compared by equality
+       * against the live key, so it expires by itself the moment the step, the wanted speed or
+       * the hold moves; nothing has to clear it. THE KEYBOARD RUNGS COME THROUGH HERE TOO —
+       * `SPEED_KEYS` clicks this button rather than sending its own command — and `resumeSim`'s
+       * drop to 1× does NOT, because it goes straight to `cmd()`: a resume is not the player
+       * choosing a rate. */
+      cklAuto.over = cklAutoKey(latest);
       cmd({ action: 'set_speed', value: +b.getAttribute('data-speed') });
     });
     // Settings: Units only under Display (#277 removed Values / Terminology /

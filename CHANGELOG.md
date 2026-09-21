@@ -51,6 +51,20 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
     when the window closes), will not request WARP while the service would refuse it (clamped to
     the best PLAY rung off `pacing.warp_available` instead of eating a `warp_locked` toast), and
     will not fight an attention stop (the drop moves no step, so auto has already had its act).
+  - **A pause no longer strands the step at 1x**, found by the post-work quality pass and fixed
+    before it shipped. The act-once latch was kept across a pause; `pauseSim` stops the broadcasts
+    so the driver never runs, `resumeSim` forces 1x outside it (#691), and the first broadcast back
+    matched the latch and returned — leaving the clock at real time for the rest of a step the
+    walkthrough was meant to be fast-forwarding, after the most ordinary interaction there is. The
+    latch is now dropped whenever the clock stops, and the player's override is remembered
+    SEPARATELY (`cklAuto.over`, keyed on the same step) so it survives the pause that the latch
+    deliberately does not. **#691 is untouched**: its ruling is about a stale PLAYER selection, and
+    the step's rung is not a selection.
+  - **Ending a walkthrough hands the clock back.** `stop_checklist` never touched
+    `timeAcceleration`, so a leg ended mid-wait left the plant running at a rung AUTO chose with
+    nothing tracking it — before this change that took a deliberate 600x press, so it is a runaway
+    the feature itself made easy to reach. Only when the clock is exactly where auto put it and
+    above real time: move it yourself afterwards and it is your speed.
   - **Not routed through `cmd()`**, deliberately: that path stamps the diagnostic bundle, the
     sequence of events and telemetry as THE PLAYER ACTING (#437). A bug report whose SOE shows six
     speed presses nobody made is a worse artifact than one that shows none.
@@ -95,7 +109,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   "the walkthrough did not take the clock to its own rung" (rung marked and pulsing, clock 1x);
   deleting the drop-on-met branch reds "the wait is satisfied and the clock is still at 60x";
   defeating the act-once key guard reds "the walkthrough overrode the player" after a deliberate
-  1x press. The fixture plants ONE upstream fact — `acc_met`/`awaiting_ack` on the snapshot, via
+  1x press; keeping the latch across a pause reds "a pause/resume stranded the step at 1x";
+  dropping the separate override memory reds "a pause/resume threw away the player's override";
+  disabling the hand-back reds "the walkthrough ended at 60x and left the plant running at 60x".
+  The fixture plants ONE upstream fact — `acc_met`/`awaiting_ack` on the snapshot, via
   an `_instructorBlock` wrapper — because `c.awaitingAck = !!met` is rewritten every
   `_stepChecklist` tick and poking it directly is a race the drop loses.
 
