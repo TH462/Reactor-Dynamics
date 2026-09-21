@@ -29,6 +29,47 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-21-develop-a (the shared `node_modules` emptied a THIRD time — the junction is retired from scratch worktrees)
+
+*(OWNER, 2026-09-21: "The worker in develop just screwed up. Ask it what happened. Do not fix it
+yourself. Evaluate the best course of action to fix it." — then "A", choosing the reinstall +
+`NODE_PATH` fix over a Synology restore.)*
+
+**What happened.** The develop session bisected a red `run_pwr2_endurance` (24/1) in a scratch
+worktree with its `node_modules` junctioned to the primary's, and the teardown emptied
+`C:\grok_build\Reactor_Dynamics\node_modules` — 0 entries; `RD_workbench` and `RD_backshop`
+junction into it, so every browser gate in all three lanes died. Git untouched: no stash, reset or
+checkout in the reflog; its four uncommitted files are its own #588 work; five gated commits,
+none pushed. The agent reported following `LANES.md` §9's `rmdir`-first order. Same accident as
+the two on 2026-09-12 (entries below), so the order is not the control.
+
+**Recovery, measured.** Pinned to `gates.yml`'s `PW_VERSION` in a scratch prefix (no manifest in
+the repo root): `npm init -y && npm install playwright@1.61.1`, copied into the primary's
+`node_modules` — 2 packages, 2 s, browser binaries in `~/AppData/Local/ms-playwright` intact so
+no download. `require.resolve('playwright')` resolves from all three lanes; `verify_board_check`
+**282** at baseline.
+
+**The structural fix.** A detached scratch tree with NO `node_modules` ran
+`run_all --only verify_board_check` at baseline under
+`NODE_PATH='C:\grok_build\Reactor_Dynamics\node_modules'`, and threw without it; then
+`git worktree remove --force` on that tree left the primary at 1.61.1. `LANES.md` §9 now sets up
+scratch trees with `NODE_PATH` and no junction, and the paragraph that kept the junction for
+native runs ("still needs real module resolution in its own tree") is corrected — it was never
+measured and is false. Standing lanes keep their junctions; they are never force-removed.
+
+**Unverified, recorded as such.** The agent's theory for why `rmdir`-first did not protect the
+primary: the primary's `node_modules` is itself a reparse point (tag `0x9000601a`, a Synology
+Drive cloud placeholder), which the 2026-09-12 decoy reproduction did not model. Not reproduced.
+Two consequences the owner may want to act on: the folder is being synced to the NAS (the
+placeholder tag proves it), and a deletion there replicates; and the reinstall re-uploads it.
+
+**Left with the develop session:** the `run_pwr2_endurance` red is #784's (green at `7db3d2e7`,
+red at HEAD — the unblockable 3.5 psig safety-injection backup fires on a seal leak into
+containment) and still needs adjudication, and its #588 limiter is uncommitted and gated pre-damage
+on Node-only runners, so unaffected.
+
+---
+
 ## Session log — 2026-09-20-develop-a (#796 — the walkthrough drives the speed control)
 
 *(OWNER, 2026-09-20: "Make the walkthrough text a little bigger. The fast forward should drop down
