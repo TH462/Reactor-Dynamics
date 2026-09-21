@@ -1,6 +1,6 @@
 # Mode 3, Hot Standby to Mode 1, At Power
 
-**Walkthrough id: `pwr\\\_startup`  ·  17 steps**
+**Walkthrough id: `pwr\\\\\\\_startup`  ·  17 steps**
 
 > Edit this freely — it is the step text, and it is what the sim is brought down to.
 > Agent notes go at the END of the file, never between the steps.
@@ -29,7 +29,7 @@ Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down: th
 
 2\. Wash boron out of the water: on the BORON card set 719 and press Enter.
 
-○ When Boron in the loop (BORON CHEM after a sample) 679 to 759 ppm
+○ When Boron in the loop reads 679 to 759 ppm
 
 
 
@@ -59,7 +59,7 @@ The steam generator is the boiler: reactor water heats it on one side and steam 
 
 
 
-4\. Before any rod moves: press 1/M PLOT on the ROD CONTROL card, then press Plot point.
+4\. Before moving the control rod group: press 1/M PLOT on the ROD CONTROL card, then press Plot point.
 
 ○ Baseline point plotted
 
@@ -345,7 +345,7 @@ The reactor is critical, the generator is carrying load, and both startup shutdo
 walkthroughs are almost unreadable now with all the notes... keep the text clean so i can easily
 edit them."). Nothing here is instruction to a player. Add new notes HERE.*
 
-**THE FILE IS THE AUTHORITY FOR THIS WALKTHROUGH.** The built pool (`ui/manual\\\_procedures.js`) comes DOWN to the step text above. Highlights are the exception: a step with no highlight entry there keeps the highlights the pool has, per your standing instruction. Split out of `Blueprint/WALKTHROUGH\\\_STEPS\\\_OWNER.md` on 2026-09-15 *(OWNER DIRECTIVE, 2026-09-15: "I want to be able to manually review and edit the steps for the walkthroughs easier. can you make a folder within blueprints/ and create a new file for each walkthrough.")*.
+**THE FILE IS THE AUTHORITY FOR THIS WALKTHROUGH.** The built pool (`ui/manual\\\\\\\_procedures.js`) comes DOWN to the step text above. Highlights are the exception: a step with no highlight entry there keeps the highlights the pool has, per your standing instruction. Split out of `Blueprint/WALKTHROUGH\\\\\\\_STEPS\\\\\\\_OWNER.md` on 2026-09-15 *(OWNER DIRECTIVE, 2026-09-15: "I want to be able to manually review and edit the steps for the walkthroughs easier. can you make a folder within blueprints/ and create a new file for each walkthrough.")*.
 
 **THE TICK AND CIRCLE MARKS IN THIS FILE CARRY NO MEANING** *(OWNER, 2026-09-17: "The tick vs circle in my writing was because I was copy/pasting from the sim and what needed up in the document was whatever state it happened to be in the sim at the time. It has no special meaning.")*. A row drawn with a tick was simply a row that happened to be CHECKED OFF on his screen when he copied it; a circle was one that was not. **Do not read them as authored intent, do not preserve them, and never change a step's kind to match one.** The step's kind is decided by what it asks the player to do — action or verify — not by the glyph. The same goes for the backslash escaping throughout: that is his editor's round-trip, not content. Leave it; do not "clean" it.
 
@@ -353,7 +353,7 @@ REVISED 2026-09-17, BACKGROUNDS. Every Background rewritten to the Mode 5 → 3 
 
 Moved off step 9's card:
 
-**THE LENGTH BARELY MOVED AND THAT IS A GATE, NOT A CHOICE.** 2,103 → 2,023 characters. `run_style`'s W-detail check caps a details paragraph at three sentences, so Background could take only the core and the rest had to stay in the note. A real shrink needs either that cap relaxed for Background, or the actions turned into lettered `accs_ordered` rungs the way steps 5–8 now are — a grading change that owes its own measurement. Recommendation: the `accs_ordered` rungs.
+**THE LENGTH BARELY MOVED AND THAT IS A GATE, NOT A CHOICE.** 2,103 → 2,023 characters. `run\_style`'s W-detail check caps a details paragraph at three sentences, so Background could take only the core and the rest had to stay in the note. A real shrink needs either that cap relaxed for Background, or the actions turned into lettered `accs\_ordered` rungs the way steps 5–8 now are — a grading change that owes its own measurement. Recommendation: the `accs\_ordered` rungs.
 
 ONE REMEDY WAS ADDED (#653 S-10): the note gave three remedies for a startup rate too HIGH and none for too LOW. The reviewer settled at +0.01 decades per minute with PERIOD reading 2,391 s and stalled. On-plan figures: about 0.15 settled, PERIOD 150 to 200 s; under 60 s means too far out.
 
@@ -376,7 +376,7 @@ REVISED 2026-09-15, TWO DEFECTS ON ONE CARD. **(#759)** the old sentence *"Plot 
 
 REVISED 2026-09-15 (#653 S-5): same duplication as step 5 — the authored hint repeated the generated line's 10×. Deleted.
 
-REVISED 2026-09-15, TWO DEFECTS. **(#653 S-11)** *"and the settle takes longer at every rung"* was an unmeasured claim in player copy: measured on the built pool, **all four settle rungs on steps 5–8 carry IDENTICAL acceptances** — `startup\\\\\\\_rate \\\\\\\~0 ±0.02`, then counts `steady` at 3 % over a 120 s window. The PLANT does settle more slowly nearer criticality (your own observation, verified above: counts-steady at 223 / 226 / 281 / 507 s), but the live durations were not re-measured in this pass, so the sentence is removed rather than replaced with a number nobody has taken. **(#653 S-5)** this step's hold is 420 s, so the GENERATED line offers **60×** while the authored hint said **10×** — one line, two speeds, and 60× is wrong for the rod pull this step opens with (the rung is 25 steps wide, 180 to 205, and MED is 48 steps a minute at 1× — this file's own step-5 figure — i.e. 48 a second at 60×). The hint now says which rung is for which half.
+REVISED 2026-09-15, TWO DEFECTS. **(#653 S-11)** *"and the settle takes longer at every rung"* was an unmeasured claim in player copy: measured on the built pool, **all four settle rungs on steps 5–8 carry IDENTICAL acceptances** — `startup\\\\\\\\\\\\\\\_rate \\\\\\\\\\\\\\\~0 ±0.02`, then counts `steady` at 3 % over a 120 s window. The PLANT does settle more slowly nearer criticality (your own observation, verified above: counts-steady at 223 / 226 / 281 / 507 s), but the live durations were not re-measured in this pass, so the sentence is removed rather than replaced with a number nobody has taken. **(#653 S-5)** this step's hold is 420 s, so the GENERATED line offers **60×** while the authored hint said **10×** — one line, two speeds, and 60× is wrong for the rod pull this step opens with (the rung is 25 steps wide, 180 to 205, and MED is 48 steps a minute at 1× — this file's own step-5 figure — i.e. 48 a second at 60×). The hint now says which rung is for which half.
 
 REVISED 2026-09-17, STEPS 5–8 — THE THIRD LINE ON ALL FOUR RUNGS IS NOW "RODS STOPPED", NOT "COUNTS STEADY" *(OWNER RULING, 2026-09-17: selected "Gate on rods stopped + startup rate" from three options — gate on rod-stop plus startup rate, remove the steady row and keep startup rate alone, or keep the steady row)*. Both of the old rows were PROXIES for "you have stopped pulling", and one route defeats both: MEASURED, one bank step withdrawn every 20 s satisfies the startup-rate row with the rods still moving at rungs 5 and 6, and the counts-steady row with the rods still moving at rung 5 — and rung 6 is inside the panel's trailing-three fit window. The counts-steady row also bought 0.6 of a bank step for 445 s of waiting, against a ladder whose own spread is 2 steps. The new line reads the fact itself: the bank has not moved for a minute. A MINUTE is not a round number — measured at taps of 2 / 5 / 10 / 20 / 30 / 45 / 60 / 75 s, the line can be satisfied with the rods still moving if and only if the tap cadence is at or above its own quiet time, so the quiet time IS the slowest tap cadence the rung refuses, and 60 s is three times the slowest dribble that defeated the old rows. It costs 47 s at rung 5, 2 s at rung 6 and nothing at rungs 7 and 8, where the startup rate is the longer wait. The `hold` values (300 / 300 / 420 / 600) are unchanged.
 
@@ -389,10 +389,12 @@ REVISED 2026-09-15 *(OWNER RULING, 2026-09-14: "Rewrite both")*, answering "the 
 MEASURED on this tree, full stack, the authored route driven end to end (ladder at MED with the new 600 s last settle, then the creep at SLOW), true critical control bank 208 of 627:
 
 
-RECONCILED 2026-09-18 — THE SIM WAS BROUGHT DOWN TO THIS FILE. 17 steps in, 17 out: no step added, none dropped, none re-ordered. **20 fields changed** — one step line (step 1), two notes (steps 1 and 9, both pure trailing deletions) and **all 17 Backgrounds**. Everything else already matched byte for byte and was left alone: every lettered acceptance row on steps 5–8, 12 and 14, every ⏩ line, and step 9's "Watch for:" line. The runtime plumbing this file does not carry — `acc`, `accs`, `accs_ordered`, `cmd`, `hold`, `overtaken`, `hl`, `hl_watch` — was not touched, so every highlight the pool had it still has.
 
-ONE LINE OF YOURS DID NOT FIT A GATE AND WAS SHORTENED BY THREE WORDS. Your step 1 reads "Verify the plant is hot and shut down: … Reactor Coolant Pump (RCP) FLOW on." — **23 words** against `run_style`'s scored 20-word cap on a step's instruction line. The old line sat at exactly 20 and spelling the pump out costs three. What ships is "Verify hot and shut down: … Reactor Coolant Pump (RCP) FLOW on." — your addition kept, the filler "the plant is" cut. Same remedy as Mode 5 → 3 steps 4 and 6. If you want the longer opening back, a clause has to move into the italic note instead.
+RECONCILED 2026-09-18 — THE SIM WAS BROUGHT DOWN TO THIS FILE. 17 steps in, 17 out: no step added, none dropped, none re-ordered. **20 fields changed** — one step line (step 1), two notes (steps 1 and 9, both pure trailing deletions) and **all 17 Backgrounds**. Everything else already matched byte for byte and was left alone: every lettered acceptance row on steps 5–8, 12 and 14, every ⏩ line, and step 9's "Watch for:" line. The runtime plumbing this file does not carry — `acc`, `accs`, `accs\_ordered`, `cmd`, `hold`, `overtaken`, `hl`, `hl\_watch` — was not touched, so every highlight the pool had it still has.
+
+ONE LINE OF YOURS DID NOT FIT A GATE AND WAS SHORTENED BY THREE WORDS. Your step 1 reads "Verify the plant is hot and shut down: … Reactor Coolant Pump (RCP) FLOW on." — **23 words** against `run\_style`'s scored 20-word cap on a step's instruction line. The old line sat at exactly 20 and spelling the pump out costs three. What ships is "Verify hot and shut down: … Reactor Coolant Pump (RCP) FLOW on." — your addition kept, the filler "the plant is" cut. Same remedy as Mode 5 → 3 steps 4 and 6. If you want the longer opening back, a clause has to move into the italic note instead.
 
 STEPS 5–8 DESCRIBE THE SHIPPED GRADING CORRECTLY — checked, because they were re-gated the day before. The third row on all four rungs grades on the bank not having moved for a minute, not on the counts flattening, and your rows say exactly that.
 
 WHAT THE DELETIONS COST, so it is on the record and not rediscovered as a defect: step 1's note lost its "BORON CHEM is the live loop concentration…" tail and its Background lost the boron clause; step 9's note lost the "Behind the readings:" instrument-teaching tail (2,023 → 1,222 characters); step 15's Background lost "This one also clears a rod stop at 20 %." Nothing else left the leg.
+

@@ -1,6 +1,6 @@
 # Mode 5, Cold Shutdown to Mode 3, Hot Standby
 
-**Walkthrough id: `pwr\_heatup`  ·  17 steps**
+**Walkthrough id: `pwr\\\_heatup`  ·  17 steps**
 
 > Edit this freely — it is the step text, and it is what the sim is brought down to.
 > Agent notes go at the END of the file, never between the steps.
@@ -13,7 +13,7 @@
 
 1\. Verify the plant is cold and shut down: AVG COOLANT TEMPERATURE 122 °F, PRIMARY PRESSURE 363 psi, Reactor Coolant Pump (RCP) FLOW OFF.
 
-✓ When Plant in Mode 5, Cold Shutdown — the plant reads Mode 5, Cold Shutdown (true value)
+✓ When Plant in Mode 5, Cold Shutdown — the plant reads Mode 5, Cold Shutdown
 
 Both rod positions read 0 of 627.
 
@@ -301,5 +301,5 @@ Power at zero is the whole point of a pump-heat heatup: the friction of the runn
 walkthroughs are almost unreadable now with all the notes... keep the text clean so i can easily
 edit them."). Nothing here is instruction to a player. Add new notes HERE.*
 
-REVISED 2026-09-15 (#653 S-9): `pcm` appears exactly ONCE in both legs — here — on a step graded on a quantity that is not on the board, and the unit was never defined. The done-when LINE itself is rendered by `PRED\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_DISPLAY` in ui/app.js from `acc.p` and is not authorable from the step, so the note is where the unit gets defined. **The acceptance is deliberately untouched**: your note above it asks for this step to grade on SOURCE RANGE and STARTUP RATE instead, and that is a grading change owing its own measurement — still open.
+REVISED 2026-09-15 (#653 S-9): `pcm` appears exactly ONCE in both legs — here — on a step graded on a quantity that is not on the board, and the unit was never defined. The done-when LINE itself is rendered by `PRED\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\_DISPLAY` in ui/app.js from `acc.p` and is not authorable from the step, so the note is where the unit gets defined. **The acceptance is deliberately untouched**: your note above it asks for this step to grade on SOURCE RANGE and STARTUP RATE instead, and that is a grading change owing its own measurement — still open.
 
