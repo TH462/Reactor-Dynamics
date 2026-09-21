@@ -22,8 +22,11 @@
  * The client is careful about what it sends. This end has to be equally careful
  * about what it ADDS, because a Worker sees far more than the page does:
  *
- *   - The IP address is used as the rate-limit key and NEVER written anywhere. It
- *     goes into env.LIMITER.limit({key}) and out of scope on the next line.
+ *   - The IP address is used as the rate-limit key and NEVER written anywhere. It goes
+ *     into env.LIMITER.limit({key}) or env.BUNDLE_LIMITER.limit({key}) — picked per
+ *     route since #797 split the one shared budget in two, see wrangler.toml for why —
+ *     and out of scope on the next line. A request the limiter refuses records THAT it
+ *     was refused and on which route, never the address; see recordThrottle below.
  *   - The User-Agent IS READ, and is never stored, never passed on, never logged. It
  *     is reduced on the next line to a short list of CLASSES -- a bot kind ('' for
  *     none), and coarse DEVICE / BROWSER / OS labels -- by botClass(), deviceClass(),
@@ -542,15 +545,28 @@ export default {
     if (request.method !== 'POST') return json({ error: 'POST only' }, 405, origin);
     if (!allowed(origin)) return json({ error: 'origin not allowed' }, 403, origin);
 
+    /* THE ROUTE IS DECIDED FIRST, so the rate-limit check can pick the budget that
+     * actually fits it (#797) — see wrangler.toml for the arithmetic behind each number.
+     * This stays ONE check rather than a copy inside handleEvents and another inside
+     * handleBundle: reading the address, asking a binding and recording a throttle on
+     * refusal is the same four lines either way, so branching once on `isBundle` here is
+     * the whole difference a per-route check would buy, without two copies to keep in
+     * step. */
+    const isBundle = url.searchParams.get('kind') === 'bundle';
+
     // Rate limit on the caller's IP. The address is used HERE and nowhere else — it
     // is never written to R2, never written to Analytics Engine, never logged.
-    if (env.LIMITER) {
-      const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-      const { success } = await env.LIMITER.limit({ key: ip });
-      if (!success) return json({ error: 'rate limited' }, 429, origin);
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    const limiter = isBundle ? env.BUNDLE_LIMITER : env.LIMITER;
+    if (limiter) {
+      const { success } = await limiter.limit({ key: ip });
+      if (!success) {
+        recordThrottle(env, isBundle ? 'bundle' : 'events');
+        return json({ error: 'rate limited' }, 429, origin);
+      }
     }
 
-    return url.searchParams.get('kind') === 'bundle'
+    return isBundle
       ? handleBundle(request, env, origin)
       : handleEvents(request, env, origin);
   },
@@ -719,4 +735,33 @@ async function handleBundle(request, env, origin) {
 
   // The id goes back so a reporter can quote it and it can be found in one command.
   return json({ ok: true, id: id }, 200, origin);
+}
+
+// ---------------------------------------------------------------- throttle visibility
+/* A REQUEST THE LIMITER REFUSES IS OTHERWISE INVISIBLE (#797). site/telemetry.js's
+ * flush() splices the batch out of its queue before sending and never inspects the
+ * response — a 429 here silently and permanently discards those events, and nothing
+ * downstream, client or dashboard, could previously tell. This writes ONE short row
+ * recording that a throttle happened and on which route, so analytics.js can surface a
+ * count that reads as "data was dropped".
+ *
+ * NO IP, EVER. This function takes no request and reads no header — its only input is
+ * the route label the caller already decided — so the promise at the top of this file
+ * (the address is a rate-limit key and nothing else) cannot be broken here even by a
+ * later, careless edit that tries to make the row "more specific".
+ *
+ * DELIBERATELY OUTSIDE THE COLUMN MAP above. An ordinary event row is 15 blobs / 12
+ * doubles, written on every row since 2026-09-20 so a short row always means "written
+ * before these columns existed". A 'rate_limited' row is a second, PERMANENTLY short
+ * shape instead: indexes[0]/blobs[0] carry the event name (needs no join to filter),
+ * and blobs[4] carries the route in the same slot an ordinary row's principal key
+ * string would use. It can never be mistaken for a client-declared event: KEY_OF has no
+ * 'rate_limited' entry, and this path never goes near handleEvents' payload parsing or
+ * dispatch at all. */
+function recordThrottle(env, route) {
+  if (!env.EVENTS) return;
+  env.EVENTS.writeDataPoint({
+    indexes: ['rate_limited'],
+    blobs: ['rate_limited', '', '', '', route],
+  });
 }

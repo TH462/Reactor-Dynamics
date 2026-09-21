@@ -226,6 +226,33 @@ var INJECTIONS = {
   'tel-lastmode-not-persisted': ['ui/app.js',
     '          ssSet(MODE_KEY, String(lastMode));        // same reason as SEEN_KEY: survive a reload',
     '          /* not persisted */'],
+
+  /* --- the rate limiter, split in two (#797) ------------------------------------------ */
+  // THE ORIGINAL DEFECT: both routes drawing on the SAME budget. A bug-report upload and
+  // an events flood would then throttle each other, which is exactly what the split
+  // exists to stop.
+  'wk-limiters-share-one-budget': ['worker/src/index.js',
+    '    const limiter = isBundle ? env.BUNDLE_LIMITER : env.LIMITER;',
+    '    const limiter = env.LIMITER;'],
+  // The refusal recorded nowhere: a 429 goes back to the client exactly as before, but
+  // nothing durable notices it happened — the invisibility the whole feature exists to fix.
+  'wk-throttle-not-recorded': ['worker/src/index.js',
+    "        recordThrottle(env, isBundle ? 'bundle' : 'events');", ''],
+  // THE PROMISE BREAKER, at the one call site that could carry the address into a written
+  // row: appending it to the route label is a plausible "make it more specific" edit, and
+  // it would put the IP in Analytics Engine for three months.
+  'wk-throttle-leaks-ip': ['worker/src/index.js',
+    "        recordThrottle(env, isBundle ? 'bundle' : 'events');",
+    "        recordThrottle(env, (isBundle ? 'bundle' : 'events') + ':' + ip);"],
+  // The dashboard line shown even at zero — the "0 requests rate-limited" drift the
+  // function's own header warns against: a routine-looking line where `.warn` belongs.
+  'wk-throttle-line-shown-at-zero': ['worker/src/analytics.js',
+    '  if (!throttled) return \'\';', ''],
+  // `.warn` dropped: a non-zero count would render, but as neutral text indistinguishable
+  // from every other line on the page — the one thing the task called out by name.
+  'wk-throttle-line-not-warn': ['worker/src/analytics.js',
+    "  return '<p class=\"warn\"><b>' + throttled + '</b> request'",
+    "  return '<p><b>' + throttled + '</b> request'"],
 };
 
 if (/--list-injections/.test(ARG)) {
@@ -247,6 +274,41 @@ function readSrc(rel) {
       + ' — the source moved and the injection is blind, which is worse than no injection');
   }
   return src.split(spec[1]).join(spec[2]);
+}
+
+/* ------------------------------------------------------- loading the Worker's ES modules
+ * The idiom from run_dashboard_auth.js/run_dashboard_trend.js/run_rollup.js: there is no
+ * package.json declaring module type (the repo root is gated against gaining one), so a
+ * `data:` URL carries each module and the graph is resolved BOTTOM-UP — a dependency is
+ * built before the specifier that names it is rewritten to point at the built copy.
+ * Reads through readSrc(), so an active --inject= targeting 'worker/src/index.js' still
+ * reaches the module actually imported and executed here. */
+function loadWorkerEsm(entry, stubs) {
+  var built = {};
+  function build(rel) {
+    if (built[rel]) return built[rel];
+    var src = (stubs && Object.prototype.hasOwnProperty.call(stubs, rel))
+      ? stubs[rel]
+      : readSrc('worker/src/' + rel);
+    src = src.replace(/from\s+'\.\/([\w.]+\.js)'/g, function (_, dep) {
+      return "from '" + build(dep) + "'";
+    });
+    built[rel] = 'data:text/javascript;base64,' + Buffer.from(src, 'utf8').toString('base64');
+    return built[rel];
+  }
+  return import(build(entry));
+}
+// A stub for cfapi.js's whole export surface (every name any worker/src module imports
+// from it) that never makes a real network call. Every route this runner drives (events,
+// bundle) never reaches analytics.js/usage.js/sessions.js/rollup.js's actual functions —
+// they only need to IMPORT successfully, which is all this proves.
+function fakeCfapiForWorker() {
+  return "export const DATASET = 'reactor_dynamics_usage';\n"
+    + "export const ACCOUNT = 'acct'; export const SITE_TAG = 'tag';\n"
+    + "export const COLUMNS_SINCE_TS = '2026-08-11 02:54:00';\n"
+    + "export const COLUMNS_SINCE = \"toDateTime('2026-08-11 02:54:00')\";\n"
+    + "export const sql = () => Promise.reject(new Error('run_telemetry: unexpected sql() call'));\n"
+    + "export const gql = () => Promise.reject(new Error('run_telemetry: unexpected gql() call'));\n";
 }
 
 // ------------------------------------------------------------------ fake browser
@@ -1683,11 +1745,31 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
      * the standing idiom in this file: without it every `https://` eats its own line. */
     var wCode = wsrc.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
     var ipHits = (wCode.match(/CF-Connecting-IP/g) || []).length;
-    ck('the Worker READS the visitor address exactly once, in the rate limiter',
-      ipHits === 1 && /env\.LIMITER[\s\S]{0,240}CF-Connecting-IP/.test(wCode), ipHits + ' occurrence(s) in code');
+    /* REWRITTEN FOR #797: the address is still read exactly once, but the two limiters
+     * that key off it are chosen by a ternary rather than a single fixed binding — the
+     * old regex required `env.LIMITER` immediately before the CF-Connecting-IP read, and
+     * that ordering is gone now that the route decides which binding to ask FIRST. */
+    ck('the Worker READS the visitor address exactly once, and both limiters key off it',
+      ipHits === 1 &&
+      /CF-Connecting-IP'\)\s*\|\|\s*'unknown';[\s\S]{0,150}env\.BUNDLE_LIMITER[\s\S]{0,60}env\.LIMITER;[\s\S]{0,200}limiter\.limit\(\{\s*key:\s*ip\s*\}\)/.test(wCode),
+      ipHits + ' occurrence(s) in code');
     var wBody = (/writeDataPoint\(\{([\s\S]*?)\n    \}\);/.exec(wsrc) || [])[1] || '';
-    ck('...and nothing about the address reaches the row that is written',
+    ck('...and nothing about the address reaches the ordinary EVENT row that is written',
       !!wBody && !/CF-Connecting-IP|\bip\b/i.test(wBody), wBody ? '' : 'writeDataPoint body not found');
+    /* THE SECOND WRITE SITE (#797): recordThrottle's own row. Found independently of the
+     * one above — it is the LAST writeDataPoint in the file, appended after handleBundle —
+     * so a defect in either one cannot hide behind the other going green. */
+    var mThrottleFn = /function recordThrottle\(env, route\) \{[\s\S]*?\r?\n\}/.exec(wsrc);
+    ck('recordThrottle was found', !!mThrottleFn);
+    if (mThrottleFn) {
+      ck('recordThrottle takes no request and reads no header — it cannot leak the '
+        + 'address even by a later, careless edit',
+        !/\brequest\b|\bheaders\b|CF-Connecting-IP/.test(mThrottleFn[0]), mThrottleFn[0]);
+      var mThrottleBody = (/env\.EVENTS\.writeDataPoint\(\{([\s\S]*?)\n  \}\);/.exec(mThrottleFn[0]) || [])[1] || '';
+      ck('...and its own writeDataPoint body carries no IP either',
+        !!mThrottleBody && !/CF-Connecting-IP|\bip\b/i.test(mThrottleBody),
+        mThrottleBody ? mThrottleBody : 'recordThrottle writeDataPoint body not found');
+    }
 
     if (mBot) {
       var botClass = new Function(mBot[0] + '; return botClass;')();
@@ -1907,6 +1989,148 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
      * external — and it would look right in a code read. */
     ck('...and it is handed the SITE\'s host, not the Worker\'s own',
       !/referrerKind\([^)]*url\.hostname/.test(wsrc), '');
+  })
+  .then(function () {
+    /* ================================ the rate limiter, split in two (#797) ============
+     * WHY THIS EXECUTES THE REAL WORKER rather than reading its source: "route A doesn't
+     * draw on route B's budget" is a claim about BEHAVIOUR under a shared IP, and a source
+     * scan can certify a ternary that is never actually reached at request time (the
+     * exact shape #485/#542 already caught elsewhere in this file). mod.default.fetch is
+     * driven with real `Request` objects and counting fakes for both `ratelimits`
+     * bindings, the same idiom run_dashboard_auth.js already uses for handleDashboard. */
+    function makeLimiter(succeedFn) {
+      var l = { calls: 0 };
+      l.limit = function (opts) {
+        l.calls++;
+        return Promise.resolve({ success: succeedFn(l.calls, opts) });
+      };
+      return l;
+    }
+    function makeEvents() {
+      var rows = [];
+      return { rows: rows, writeDataPoint: function (row) { rows.push(row); } };
+    }
+    function evReq(ip, extra) {
+      var body = JSON.stringify(Object.assign({ channel: 'public', release: 'Alpha 1.7.6',
+        session: 's', events: [{ e: 'session_start', p: { plant: 'pwr' } }] }, extra || {}));
+      return new Request('https://telemetry.example/',
+        { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip }, body: body });
+    }
+    function bnReq(ip) {
+      return new Request('https://telemetry.example/?kind=bundle',
+        { method: 'POST', headers: { 'CF-Connecting-IP': ip }, body: '{"kind":"x"}' });
+    }
+
+    return loadWorkerEsm('index.js', { 'cfapi.js': fakeCfapiForWorker() }).then(function (mod) {
+      var IP = '203.0.113.9';
+
+      // ---- (1) a bundle upload does not consume the events budget, and vice versa -----
+      return (function () {
+        var ev = makeLimiter(function () { return true; });
+        var bn = makeLimiter(function () { return true; });
+        var env = { LIMITER: ev, BUNDLE_LIMITER: bn, EVENTS: makeEvents(), BUNDLES: { put: function () { return Promise.resolve(); } } };
+        return mod.default.fetch(evReq(IP), env).then(function () {
+          ck('an events request calls only the EVENTS limiter',
+            ev.calls === 1 && bn.calls === 0, 'events=' + ev.calls + ' bundle=' + bn.calls);
+          return mod.default.fetch(bnReq(IP), env);
+        }).then(function (res) {
+          ck('a bundle upload calls only the BUNDLE limiter — the events budget is untouched',
+            ev.calls === 1 && bn.calls === 1, 'events=' + ev.calls + ' bundle=' + bn.calls);
+          ck('...and the bundle itself still goes through', res.status === 200, String(res.status));
+        });
+      }())
+      // ---- (2) an events flood exhausting ITS limiter does not block a bug report -----
+      .then(function () {
+        var ev = makeLimiter(function (n) { return n <= 3; });   // 4th+ call refused
+        var bn = makeLimiter(function () { return true; });
+        var env = { LIMITER: ev, BUNDLE_LIMITER: bn, EVENTS: makeEvents(), BUNDLES: { put: function () { return Promise.resolve(); } } };
+        var flood = Promise.resolve();
+        for (var i = 0; i < 6; i++) { (function () { flood = flood.then(function () { return mod.default.fetch(evReq(IP), env); }); }()); }
+        return flood.then(function () {
+          ck('an events flood exhausted its own limiter', ev.calls === 6, 'calls=' + ev.calls);
+          return mod.default.fetch(bnReq(IP), env);
+        }).then(function (res) {
+          ck('...and a bug report from the SAME address still goes through',
+            res.status === 200 && bn.calls === 1, 'status=' + res.status + ' bundleCalls=' + bn.calls);
+        });
+      })
+      // ---- (3) a throttled request records ITS datapoint, on the right route ----------
+      .then(function () {
+        var refused = makeLimiter(function () { return false; });
+        var allowed = makeLimiter(function () { return true; });
+        var events = makeEvents();
+        var env = { LIMITER: refused, BUNDLE_LIMITER: allowed, EVENTS: events, BUNDLES: { put: function () { return Promise.resolve(); } } };
+        return mod.default.fetch(evReq(IP), env).then(function (res) {
+          ck('a throttled events request answers 429', res.status === 429, String(res.status));
+          ck('...and writes exactly one throttle datapoint',
+            events.rows.length === 1, JSON.stringify(events.rows));
+          ck('...tagged as the EVENTS route (blobs[4], same slot an ordinary row\'s key uses)',
+            !!events.rows[0] && events.rows[0].blobs[4] === 'events', JSON.stringify(events.rows[0]));
+          ck('...under the "rate_limited" name, so it is never mistaken for a real event',
+            !!events.rows[0] && events.rows[0].indexes[0] === 'rate_limited'
+              && events.rows[0].blobs[0] === 'rate_limited', JSON.stringify(events.rows[0]));
+          // THE LOAD-BEARING ONE (4): the row carries no trace of the address anywhere —
+          // not a blob, not a double, not a key of the object — searched as JSON rather
+          // than field-by-field so a later column added to the row cannot hide it. Read
+          // defensively (the #-idiom in this file): a wrong row count above must not also
+          // crash this one — `events.rows[0]` may not exist, which is red about THAT
+          // defect, not a reason to throw here.
+          ck('...and the row carries NO IP anywhere in it',
+            !!events.rows[0] && JSON.stringify(events.rows[0]).indexOf(IP) === -1,
+            JSON.stringify(events.rows[0]));
+        });
+      })
+      .then(function () {
+        var allowed = makeLimiter(function () { return true; });
+        var refused = makeLimiter(function () { return false; });
+        var events = makeEvents();
+        var env = { LIMITER: allowed, BUNDLE_LIMITER: refused, EVENTS: events, BUNDLES: { put: function () { return Promise.resolve(); } } };
+        return mod.default.fetch(bnReq(IP), env).then(function (res) {
+          ck('a throttled bundle upload answers 429', res.status === 429, String(res.status));
+          ck('...and writes a throttle datapoint tagged as the BUNDLE route',
+            events.rows.length === 1 && !!events.rows[0] && events.rows[0].blobs[4] === 'bundle',
+            JSON.stringify(events.rows));
+          ck('...still with no IP anywhere in it',
+            !!events.rows[0] && JSON.stringify(events.rows[0]).indexOf(IP) === -1,
+            JSON.stringify(events.rows[0]));
+        });
+      })
+      // ---- (5) no EVENTS binding: the limiter check still runs, nothing throws --------
+      .then(function () {
+        var refused = makeLimiter(function () { return false; });
+        var env = { LIMITER: refused, BUNDLE_LIMITER: makeLimiter(function () { return true; }) };
+        return mod.default.fetch(evReq(IP), env).then(function (res) {
+          ck('a throttle with no EVENTS binding still answers 429 rather than throwing',
+            res.status === 429, String(res.status));
+        }, function (e) {
+          ck('a throttle with no EVENTS binding still answers 429 rather than throwing', false, String(e));
+        });
+      });
+    });
+  })
+  .then(function () {
+    /* =========================== the dashboard's throttle line (#797) ===================
+     * renderThrottleLine (worker/src/analytics.js) is a PURE function of the query rows,
+     * split out from the query specifically so it can be lifted and run directly — same
+     * idiom as hostOf/edgeCountry/botClass above, and for the same reason (HR10: a source
+     * scan proves the string exists, not that it renders the right thing under the right
+     * condition). */
+    var asrc = readSrc('worker/src/analytics.js');
+    var m = /function renderThrottleLine\(rows\) \{[\s\S]*?\r?\n\}/.exec(asrc);
+    ck('analytics.js\'s renderThrottleLine was found', !!m);
+    if (m) {
+      var renderThrottleLine = new Function('esc', m[0] + '; return renderThrottleLine;')(function (s) { return String(s); });
+      ck('zero rows renders NOTHING — no reassuring "0 requests" line',
+        renderThrottleLine([]) === '', JSON.stringify(renderThrottleLine([])));
+      ck('an all-zero total also renders nothing',
+        renderThrottleLine([{ route: 'events', n: 0 }]) === '', renderThrottleLine([{ route: 'events', n: 0 }]));
+      var line = renderThrottleLine([{ route: 'events', n: 3 }, { route: 'bundle', n: 1 }]);
+      ck('a non-zero total renders `.warn` — the alarm colour, not a neutral tile',
+        /class="warn"/.test(line), line);
+      ck('...carries the total', /\b4\b/.test(line), line);
+      ck('...and both routes, distinguishably',
+        /events: 3/.test(line) && /bundle: 1/.test(line), line);
+    }
   })
   .then(function () {
     // ------------------------------------------------- storage refused entirely

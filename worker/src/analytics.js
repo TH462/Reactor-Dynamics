@@ -37,12 +37,20 @@
  * The transport lives in `cfapi.js`; the first-party reader is `stats.js` — both carry the
  * detailed traps (Eastern-day arithmetic, the non-additive `usage_daily.sessions` column,
  * why every day string is strictly parsed). This file does not repeat them.
+ *
+ * ONE DELIBERATE EXCEPTION (#797): the rate-limiter throttle count near the top of the
+ * page, below. It is a single control-plane total shown apart from every RUM/D1 number
+ * here — never folded into a tile, chart or breakdown table next to one — so there is
+ * nothing on screen a reader could misapply the wrong sampling rule to. It stays here
+ * rather than on the usage page because it is a health signal for THIS page's own data
+ * pipeline (lost events mean the numbers above it are undercounts), not a feature-usage
+ * breakdown.
  */
 
 import { html, PAGE_HEAD, nav, table, errBlock, dayLabel, etDay, etDayStartMs,
          windowStartMs, RUM_FULL_RES_DAYS, barChart, bucketDays, lineChart, lineLabelStride,
          section, esc } from './render.js';
-import { gql, ACCOUNT, SITE_TAG } from './cfapi.js';
+import { gql, sql, ACCOUNT, SITE_TAG, DATASET } from './cfapi.js';
 import { referrerKind, RETAIN_DAYS } from './rollup.js';
 import { parseDay, storeRange, dailyTotals, groupBy, referrerBreakdown, dayCountryReferrer,
          deepLinkLandings, deepLinkLandingsByDay, periodDelta, priorRange, dayRange, prevDay,
@@ -220,6 +228,31 @@ function resolveWindow(url, today) {
   return { from, to };
 }
 
+/* THE RATE-LIMITER THROTTLE LINE (#797) — a pure function of the SQL rows, isolated from
+ * the query itself precisely so it can be executed and proven directly (test/
+ * run_telemetry.js lifts this function the same way worker/src/index.js's hostOf/
+ * edgeCountry/botClass are lifted and run). `rows` is `[{route, n}]`; `route` is
+ * 'events' | 'bundle' (blobs[4] on a 'rate_limited' row — see worker/src/index.js
+ * recordThrottle) and `n` is the corrected count (`sum(_sample_interval)`, never the raw
+ * `count()` — see the file header's Analytics Engine vs Web Analytics warning).
+ *
+ * ZERO ROWS -> EMPTY STRING, deliberately: printing "0 requests rate-limited" every time
+ * would make the ALARM look like routine status text, exactly the drift `.warn` (render.js)
+ * exists to prevent elsewhere on this page. Any non-zero total gets `.warn` — the amber
+ * that means "look at this", not the tiles' neutral styling. */
+function renderThrottleLine(rows) {
+  let throttled = 0;
+  const byRoute = rows.map((r) => {
+    const n = Math.round(Number(r.n) || 0);
+    throttled += n;
+    return (r.route || '?') + ': ' + n;
+  }).join(', ');
+  if (!throttled) return '';
+  return '<p class="warn"><b>' + throttled + '</b> request'
+    + (throttled === 1 ? ' was' : 's were') + ' rate-limited in the last 24h ('
+    + esc(byRoute) + ') — that telemetry was dropped, not delayed.</p>';
+}
+
 // ---------------------------------------------------------------- the page
 export async function analyticsPage(env, url) {
   const apiToken = env.CF_ANALYTICS_TOKEN;
@@ -372,6 +405,29 @@ export async function analyticsPage(env, url) {
     + '<div class="tile"><div class="v">' + curTotalVisits + '</div><div class="k">Landing visits</div></div>'
     + '<div class="tile"><div class="v">' + allDays.length + '</div><div class="k">Days</div></div>'
     + '</div>';
+
+  /* RATE-LIMITER THROTTLE COUNT (#797), last 24h. Zero is the expected value: the limiter
+   * refusing anything at all means site/telemetry.js discarded that batch for good
+   * (flush() never inspects the response — see worker/src/index.js recordThrottle), so
+   * the line is OMITTED entirely at zero rather than printing a reassuring "0", and
+   * carries `.warn` (render.js) when it is not — a "look at this" line, not a tile.
+   *
+   * blob1 = 'rate_limited' always exists once any row has ever been written with that
+   * indexes[0]/blobs[0] — unlike the walkthrough columns in usage.js this needs no
+   * COLUMNS_SINCE probe, because nothing here names a double or blob that could be
+   * absent from every row: an empty result set is a real zero, not a schema-typing 422.
+   *
+   * SPLIT FROM THE QUERY ON PURPOSE (`renderThrottleLine` below): a pure function of the
+   * rows is what test/run_telemetry.js executes to prove the zero-is-omitted / non-zero-
+   * is-`.warn` behaviour without also having to stand up a fake D1 store and a fake RUM
+   * feed just to reach this one line. */
+  let throttleLine = '';
+  try {
+    const tRows = await sql(apiToken, `SELECT blob5 AS route, sum(_sample_interval) AS n
+       FROM ${DATASET} WHERE blob1 = 'rate_limited' AND timestamp > NOW() - INTERVAL '1' DAY
+       GROUP BY route`);
+    throttleLine = renderThrottleLine(tRows);
+  } catch (e) { /* best-effort: a failed probe must not take the whole page down with it */ }
 
   const deltaLine = '<p>' + (delta.ok
     ? (delta.direction === 'flat'
@@ -808,7 +864,7 @@ export async function analyticsPage(env, url) {
     + 'midnight to midnight.</p>'
     + picker(from, to) + clampNote
     + GLOSSARY
-    + tiles + deltaLine
+    + tiles + deltaLine + throttleLine
     + sourceNoteFirstParty(anyCoarse, anyMissing)
     + (liveErr ? '<p class="warn">Today’s live figure failed to load: ' + esc(liveErr) + '</p>' : '')
     + '<h2>By day</h2>' + chart + legend + dayTable
