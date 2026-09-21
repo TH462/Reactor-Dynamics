@@ -145,6 +145,31 @@ var INJECTIONS = {
   'wk-device-column-dropped': ['worker/src/index.js', '        deviceKind,', ''],
   'wk-browser-column-dropped': ['worker/src/index.js', '        browserKind,', ''],
   'wk-os-column-dropped': ['worker/src/index.js', '        osKind,', ''],
+
+  /* --- command-run coalescing (2026-09-20+3) ------------------------------------ */
+  // The window check disabled: every repeat starts a new run instead of extending one,
+  // so a drag/hold never collapses and the queue fills one row per tick again.
+  'tel-coalesce-never-collapses': ['site/telemetry.js',
+    '      if (openRun && openRun.key === key && (perfMs - openRun.raw) <= COALESCE_MS) {',
+    '      if (false) {'],
+  // The run's identity key ignores its own props, so a DIFFERENT action or a DIFFERENT
+  // `blocked` wrongly extends the same run — hiding a refused command inside a run of
+  // accepted ones, the exact failure the task calls out by name.
+  'tel-coalesce-key-ignores-props': ['site/telemetry.js',
+    "    for (k in p) { if (Object.prototype.hasOwnProperty.call(p, k) && k !== 'count') ks.push(k); }",
+    '    for (k in p) { if (false) ks.push(k); }'],
+  // The count freezes at 1: a run of any length reports as a single press.
+  'tel-coalesce-count-frozen': ['site/telemetry.js',
+    '        openRun.row.p.count = ++openRun.count;', '        openRun.row.p.count = openRun.count;'],
+  // The open run is NOT cleared on opt-out, so it is left pointing at a row `queue.length
+  // = 0` just detached — a later repeat mutates that orphan instead of starting a fresh,
+  // correctly-counted run, and the repeat is silently lost.
+  'tel-coalesce-survives-optout': ['site/telemetry.js',
+    "    if (v === 'denied') { queue.length = 0; openRun = null; }",
+    "    if (v === 'denied') { queue.length = 0; }"],
+  // Same failure, at the OTHER place a queue is emptied: a normal batch flush leaves
+  // the open run pointing at a row that just left the queue via splice().
+  'tel-coalesce-survives-flush': ['site/telemetry.js', '    openRun = null;', ''],
 };
 
 if (/--list-injections/.test(ARG)) {
@@ -401,6 +426,136 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
     !('seconds' in a.T._clean('session_end', { seconds: '600' })));
   ck('a number in a bool field is dropped',
     !('blocked' in a.T._clean('command', { blocked: 1 })));
+}());
+
+// ===================================================== (f) command-run coalescing
+// These controls are number boxes with up/down arrows, not sliders (a hold auto-repeats,
+// a "dial it in exactly" click-sequence does not) — set_pressure_setpoint alone was 1,761
+// uses over 18 sessions, and `command` was 93% of all 13,181 events. A run of the SAME
+// action/flags within COALESCE_MS collapses to ONE row on the trailing edge, carrying how
+// many presses it took. See COALESCE_MS in site/telemetry.js for the window and why.
+(function () {
+  // ---- a run collapses to one row, and the row carries the repeat count -----------
+  (function () {
+    var a = load();
+    a.T.setConsent('granted');
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    ck('a run of 3 identical presses collapses to ONE queued row',
+      a.T._queue().length === 1, 'queue=' + a.T._queue().length);
+    ck('...and the row carries the repeat count',
+      a.T._queue()[0].p.count === 3, JSON.stringify(a.T._queue()[0].p));
+
+    var b = load();
+    b.T.setConsent('granted');
+    b.T.event('command', { action: 'set_load_target', blocked: false });
+    ck('a single press with no repeat still carries count: 1',
+      b.T._queue()[0].p.count === 1, JSON.stringify(b.T._queue()[0].p));
+  }());
+
+  // ---- the row's timing is the TRAILING edge, not the first press -----------------
+  (function () {
+    var a = load();
+    a.T.setConsent('granted');
+    // 1450 -> 1650ms: 200ms apart (inside COALESCE_MS, so still one run) but straddling
+    // a whole-second rounding boundary (1 -> 2), since `t` is seconds, rounded.
+    var clock = { t: 1450 };
+    globalThis.performance = { now: function () { return clock.t; } };
+    a.T.event('command', { action: 'set_steam_dump_setpoint', blocked: false });
+    var firstT = a.T._queue()[0].t;
+    clock.t += 200;
+    a.T.event('command', { action: 'set_steam_dump_setpoint', blocked: false });
+    var lastT = a.T._queue()[0].t;
+    ck('the coalesced row\'s timestamp moves to the LAST repeat, not the first',
+      lastT > firstT, 'first=' + firstT + ' last=' + lastT);
+  }());
+
+  // ---- a gap over the window starts a NEW run, not a third repeat -------------------
+  (function () {
+    var a = load();
+    a.T.setConsent('granted');
+    var clock = { t: 1000 };
+    globalThis.performance = { now: function () { return clock.t; } };
+    a.T.event('command', { action: 'set_rods', blocked: false });
+    clock.t += 251;   // just over COALESCE_MS (250ms)
+    a.T.event('command', { action: 'set_rods', blocked: false });
+    ck('a gap over the coalesce window starts a second row',
+      a.T._queue().length === 2, 'queue=' + a.T._queue().length);
+    // Read defensively: a wrong row count above must not also crash this one.
+    var q2 = a.T._queue();
+    ck('...each with its own count of 1',
+      !!q2[0] && !!q2[1] && q2[0].p.count === 1 && q2[1].p.count === 1,
+      JSON.stringify(q2.map(function (r) { return r.p.count; })));
+  }());
+
+  // ---- NEVER coalesce across a different action ------------------------------------
+  (function () {
+    var a = load();
+    a.T.setConsent('granted');
+    a.T.event('command', { action: 'set_rods', blocked: false });
+    a.T.event('command', { action: 'set_load_target', blocked: false });
+    ck('two different action names are never coalesced',
+      a.T._queue().length === 2, 'queue=' + a.T._queue().length);
+  }());
+
+  // ---- NEVER coalesce across a different `blocked` ---------------------------------
+  // THE LOAD-BEARING ONE: a refused command inside a run of accepted ones is the single
+  // most interesting event in that run, and folding it away would hide exactly what
+  // "Controls people try but cannot use" exists to show.
+  (function () {
+    var a = load();
+    a.T.setConsent('granted');
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: true });
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    ck('a refused command inside a run is its OWN row, never folded in',
+      a.T._queue().length === 3, 'queue=' + a.T._queue().length);
+    // Read defensively (#-idiom in this file): when the row count is wrong, index [1]
+    // may not exist at all — that is red about the defect above, not a crash here.
+    var q3 = a.T._queue();
+    ck('...and the blocked flag survives on its own row',
+      !!q3[1] && q3[1].p.blocked === true,
+      JSON.stringify(q3.map(function (r) { return r.p.blocked; })));
+  }());
+
+  // ---- the buffer cannot survive an opt-out (invariant a) --------------------------
+  (function () {
+    var a = load();
+    a.T.setConsent('granted');
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });   // open run, count=2
+    a.T.setConsent('denied');
+    ck('opting out mid-run empties the queue', a.T._queue().length === 0);
+    a.T.setConsent('granted');
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    ck('a repeat after re-consenting starts a FRESH run, not a silently-lost extension',
+      a.T._queue().length === 1 && a.T._queue()[0].p.count === 1,
+      JSON.stringify(a.T._queue()));
+  }());
+
+  // ---- a run that spans a batch flush: the tail ships, and does not orphan --------
+  (function () {
+    var a = load();
+    a.T.setConsent('granted');
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    a.T.flush();
+    ck('the run in flight IS in the flushed batch, count included',
+      a.sent.length === 1 && JSON.parse(a.sent[0].body).events[0].p.count === 2,
+      a.sent.length ? a.sent[0].body : 'nothing sent');
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    ck('a repeat after the flush starts a NEW row, not an edit to the shipped one',
+      a.T._queue().length === 1 && a.T._queue()[0].p.count === 1,
+      JSON.stringify(a.T._queue()));
+  }());
+
+  // ---- BATCH_MS is 60000, not 15000 -------------------------------------------------
+  (function () {
+    var src = require('fs').readFileSync(path.join(ROOT, 'site', 'telemetry.js'), 'utf8');
+    ck('BATCH_MS is 60000 (15s -> 60s)', /\bvar BATCH_MS = 60000;/.test(src),
+      (src.match(/var BATCH_MS = \d+;/) || [''])[0]);
+  }());
 }());
 
 // =================================================== (e) no cross-session identity
@@ -1392,9 +1547,17 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
     ck('...and device/browser/os are APPENDED after THOSE, not spliced in among them',
       /country,\s*botKind,\s*deviceKind,\s*browserKind,\s*osKind,\s*\]/.test(noCmt),
       (noCmt.match(/country,[\s\S]{0,120}/) || [''])[0].replace(/\s+/g, ' '));
-    ck('the bot verdict is APPENDED after the last double, not inserted among them',
-      /num\(p\.steps\),\s*botKind \? 1 : 0,\s*\]/.test(noCmt),
-      (noCmt.match(/num\(p\.steps\)[\s\S]{0,80}/) || [''])[0].replace(/\s+/g, ' '));
+    /* WAS anchored on `botKind ? 1 : 0,` being the LAST double before `]`. That could not
+     * survive the next append, and on 2026-09-20 it did not: `count` was appended after it,
+     * which SATISFIES the property this check exists for (append, never insert) while
+     * failing its literal form. Rewritten to assert the ORDER of the appended doubles, open
+     * at the end, so the next append extends it instead of breaking it. */
+    ck('the doubles appended since 2026-09-20 are in documented order, bot then count',
+      /num\(p\.steps\),\s*botKind \? 1 : 0,\s*num\(p\.count\),/.test(noCmt),
+      (noCmt.match(/num\(p\.steps\)[\s\S]{0,90}/) || [''])[0].replace(/\s+/g, ' '));
+    ck('...and nothing was SPLICED IN before them — steps is still the last pre-2026-09-20 double',
+      /num\(p\.step\),\s*num\(p\.steps\),/.test(noCmt),
+      (noCmt.match(/num\(p\.step\),[\s\S]{0,60}/) || [''])[0].replace(/\s+/g, ' '));
     /* device/browser/os add NO new doubles (unlike bot, which paired a string with a
      * numeric flag) — Cloudflare's own deviceType/userAgentBrowser/userAgentOS on the
      * RUM series are plain TEXT columns too, so there is no boolean counterpart to omit. */

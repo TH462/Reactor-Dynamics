@@ -160,6 +160,7 @@ const MAX_EVENTS_PER_BATCH = 250;   // Analytics Engine caps writes per invocati
  *                                   is specific rather than an exemption: this Worker
  *                                   can always answer, so -1 would never be written and
  *                                   a query excluding it would exclude nothing.
+ *   doubles[11] count               presses in a coalesced run; 1 for a single press.
  *
  *   --- 2026-09-20: coarse DEVICE / BROWSER / OS, derived at this Worker ---------------
  *   blobs[12]   device              OUR classification, from the User-Agent, by
@@ -669,6 +670,14 @@ async function handleEvents(request, env, origin) {
         // OUR bot verdict, not Cloudflare's — see botClass(). No -1: this Worker can
         // always answer, so the sentinel would never be written.
         botKind ? 1 : 0,
+        /* HOW MANY PRESSES a coalesced run of repeats took (2026-09-20). The client
+         * collapses repeats of the same command inside 250 ms into ONE event so that a
+         * held arrow and a single click are comparable -- but these controls are NUMBER
+         * BOXES, not sliders, so the press count is a measure of USER EFFORT and not a
+         * pointer artifact. "It took 18 presses to reach the setpoint" is a usability
+         * finding; without this column the collapse would destroy it. Always >= 1 on a
+         * command, so no -1 sentinel is needed. */
+        num(p.count),
       ],
     });
     written++;

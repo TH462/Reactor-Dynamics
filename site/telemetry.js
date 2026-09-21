@@ -47,7 +47,10 @@
  *
  *   a. Nothing is sent once the visitor has opted OUT, and opting out DROPS what was
  *      queued rather than flushing it — a queue that survives an opt-out is a record
- *      of someone who just asked you not to keep one.
+ *      of someone who just asked you not to keep one. This covers the command-run
+ *      COALESCING BUFFER too (see `openRun` below): it is never a second copy outside
+ *      `queue`, so the same drop already clears it, and setConsent/flush both null the
+ *      reference so nothing is left for a later repeat to mutate into nothing.
  *   b. Nothing is sent when there is no endpoint. A local checkout and the offline
  *      single-file build both have none, by construction (see the note below).
  *   c. Event names come from the EVENTS allowlist. An undeclared name is dropped.
@@ -105,7 +108,14 @@
     // --- what they touch ----------------------------------------------------
     // Action NAME only. Never the value — "set_rod_position" is a usage fact,
     // "set_rod_position 143" is a recording of what someone did.
-    command:       { props: { action: 'enum', blocked: 'bool' } },
+    //
+    // `count` is NOT free text and is not the value either: these controls are number
+    // boxes with up/down arrows, not sliders, so "it took 18 presses to reach the
+    // setpoint" is a usability fact about the CONTROL, never about what the player set
+    // it to. It is populated by the coalescing in event() below, never by a caller —
+    // see COALESCE_MS for why a run of repeats collapses to one row with a count
+    // instead of either one undifferentiated row or hundreds of identical ones.
+    command:       { props: { action: 'enum', blocked: 'bool', count: 'num' } },
     panel_open:    { props: { panel: 'enum' } },
 
     // --- what they learn ----------------------------------------------------
@@ -193,8 +203,35 @@
   var CONSENT_KEY = 'rd_telemetry_consent';   // 'granted' | 'denied' — localStorage
   var SESSION_KEY = 'rd_telemetry_session';   // random, sessionStorage ONLY (invariant e)
   var MAX_STR = 48;                           // an enum that long is a mistake, not a value
-  var BATCH_MS = 15000;
+  // 15s -> 60s (2026-09-20+3): the timer only ARMS when something is queued, so an idle
+  // session already costs nothing — this cuts requests from an ACTIVE session roughly
+  // fourfold. MAX_QUEUE (200) already sits under the Worker's MAX_EVENTS_PER_BATCH (250)
+  // per broadcast, and command-run coalescing below cuts the dominant source of volume
+  // further, so a busier queue over the longer window does not get near either cap.
+  var BATCH_MS = 60000;
   var MAX_QUEUE = 200;
+  /* THE COMMAND-RUN COALESCE WINDOW (2026-09-20+3). set_pressure_setpoint, _steam_dump
+   * and set_load_target are number boxes with up/down arrows, not sliders — held-down
+   * auto-repeat AND deliberate multi-click "dial it in" both fire one `command` event per
+   * press, and at 93 % of all traffic (12,214 of 13,181 events, 72 sessions) they were the
+   * load driver this change exists to cut, while ALSO ranking the "Most-used controls"
+   * dashboard by press count instead of by interaction.
+   *
+   * MEASURED (server-side, 1-second resolution — sub-second timing is not in the data):
+   * over 318 real set_pressure_setpoint presses, 41.3 % of consecutive pairs land in the
+   * SAME second, and the busiest seconds hold 6, 5, 5, 5, 5 presses — six a second is a
+   * ~167 ms auto-repeat gap. 111 of 187 active seconds hold exactly one press, so
+   * deliberate single clicks are in the same stream and must not be merged into a
+   * neighbour a second away.
+   *
+   * 250 ms is chosen from that, not measured directly (no client ran this window against
+   * real presses): comfortably above the ~167 ms auto-repeat gap so a held arrow never
+   * straddles two rows even with jitter, and short enough that two genuinely separate
+   * presses — the 111-of-187 seconds case, typically hundreds of ms apart at the closest —
+   * stay distinct. If this proves too tight or too loose once real count values are in,
+   * that is a number to revisit with THIS client's own sub-second data, not the 1-second
+   * server figures above. */
+  var COALESCE_MS = 250;
 
   function store(which) {
     try { return G[which] || null; } catch (e) { return null; }   // blocked cookies/storage
@@ -223,7 +260,12 @@
     // Only an OPT-OUT drops the queue (invariant a). Under the old tri-state this read
     // `!== 'granted'`, which also fired for the back-to-default case — now that default
     // means "collecting", clearing there would silently bin events we are allowed to send.
-    if (v === 'denied') queue.length = 0;
+    // The open command run is the SAME object as its row in `queue` (see `openRun`
+    // above), so dropping the queue already deletes it — this line is what stops a
+    // later repeat mutating that now-detached object into nothing instead of starting
+    // a fresh, correctly-counted run. Without it the run does not survive the opt-out
+    // either (nothing sends it), it just goes silently missing rather than restarting.
+    if (v === 'denied') { queue.length = 0; openRun = null; }
   }
   // ON BY DEFAULT, off only on an explicit opt-out (see the header for why the launch
   // prompt was removed). `null` means the visitor never touched the Settings toggle, so
@@ -276,6 +318,28 @@
   // ==================================================================== queue
   var queue = [];
   var timer = null;
+  /* THE OPEN COMMAND RUN, if one is in progress — { key, row, raw, count } or null.
+   * `row` is a REFERENCE to an object already sitting in `queue`, never a value held
+   * outside it: coalescing extends that row in place instead of buffering a second copy
+   * anywhere, which is what keeps it inside invariant (a) for free — `queue.length = 0`
+   * on opt-out and `queue.splice(...)` on flush both already remove the only copy of the
+   * row, so both places also null this out below rather than leave it pointing at a
+   * detached object a later repeat would silently mutate into nothing. */
+  var openRun = null;
+
+  // Coalescing IDENTITY for a `command` row — same action, same blocked (and any future
+  // scalar the schema adds), because a differing flag is the single most interesting
+  // event in a run and must never fold into the ones around it. `count` is deliberately
+  // EXCLUDED: it is the thing being counted, not part of what makes two rows "the same
+  // run", and a caller never supplies it anyway (event() writes it, below).
+  function runKey(p) {
+    var ks = [], k;
+    for (k in p) { if (Object.prototype.hasOwnProperty.call(p, k) && k !== 'count') ks.push(k); }
+    ks.sort();
+    var out = [];
+    for (var i = 0; i < ks.length; i++) out.push(ks[i] + '=' + p[ks[i]]);
+    return out.join('&');
+  }
 
   /* Seconds since THE SESSION ID WAS MINTED, derived from the id itself — its first
    * segment is `Date.now().toString(36)` (see sessionId above). Nothing new is
@@ -303,11 +367,39 @@
     if (!granted() || !endpoint()) return false;              // invariants (a) and (b)
     var p = clean(name, props);
     if (!p) return false;
-    if (queue.length >= MAX_QUEUE) return false;              // never grow without bound
-    var row = { e: name, t: Math.round((G.performance && G.performance.now ? G.performance.now() : 0) / 1000), p: p };
+
+    var perfMs = (G.performance && G.performance.now ? G.performance.now() : 0);
+    var t = Math.round(perfMs / 1000);
     var st = sessionElapsed();
+
+    /* COALESCE A REPEATED `command`. Only this event name: it is the one that fires once
+     * per press/tick from a live control, and nothing else here is emitted that fast. A
+     * DIFFERENT action, a DIFFERENT `blocked` (or any future scalar the schema grows) or a
+     * gap over COALESCE_MS all fall through to "start a new run" below — never folded in. */
+    if (name === 'command') {
+      var key = runKey(p);
+      if (openRun && openRun.key === key && (perfMs - openRun.raw) <= COALESCE_MS) {
+        // Extend the run IN PLACE. `row` is already the object sitting in `queue`, so
+        // this is the only copy anywhere — no second buffer for an opt-out to miss.
+        // TRAILING EDGE: t/st move forward with every repeat, so whichever batch ships
+        // the row reports when the run last repeated, not when it started.
+        openRun.raw = perfMs;
+        openRun.row.t = t;
+        if (st !== null) openRun.row.st = st; else delete openRun.row.st;
+        openRun.row.p.count = ++openRun.count;
+        return true;
+      }
+      openRun = null;                                          // window closed / different run
+    }
+
+    if (queue.length >= MAX_QUEUE) return false;              // never grow without bound
+    var row = { e: name, t: t, p: p };
     if (st !== null) row.st = st;                             // omitted rather than faked
     queue.push(row);
+    if (name === 'command') {
+      p.count = 1;
+      openRun = { key: runKey(p), row: row, raw: perfMs, count: 1 };
+    }
     if (!timer && G.setTimeout) timer = G.setTimeout(flush, BATCH_MS);
     return true;
   }
@@ -360,7 +452,7 @@
   function flush(useBeacon) {
     if (timer && G.clearTimeout) { G.clearTimeout(timer); timer = null; }
     var url = endpoint();
-    if (!url || !queue.length || !granted()) { queue.length = 0; return false; }
+    if (!url || !queue.length || !granted()) { queue.length = 0; openRun = null; return false; }
     var body = JSON.stringify({
       v: 1, session: sessionId(),
       release: (typeof G.RD_RELEASE === 'string') ? G.RD_RELEASE : null,
@@ -370,6 +462,11 @@
       ref: refHost(),
       events: queue.splice(0, queue.length),
     });
+    // The run in flight, if any, just left in that splice — a repeat arriving after this
+    // must start a fresh, correctly-counted row, not extend an object no longer anywhere
+    // (a drag spanning a batch boundary becomes two rows, which is correct: the first
+    // is what actually shipped).
+    openRun = null;
     try {
       // sendBeacon survives the page going away, which is exactly when session_end
       // fires — a normal fetch there is routinely cancelled and that event is the
