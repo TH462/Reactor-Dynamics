@@ -3285,15 +3285,25 @@ var MUTATIONS = [
    '    this.instruments.load(st.shellIns);', { grp: 'U' }]
 ];
 
+/* ---- THE NULL MUTATION, ONE PER GROUP (#657) --------------------------------------------
+ * GROUPS is the set of `.grp` tags MUTATIONS actually uses (not a hand-written map — the #513
+ * property). One no-op replay per group proves the QUIET-shortened ride is not, on its own,
+ * red for a group — the convention and rationale are in mut_flags.nullSelfTest. MUT_TOTAL
+ * freezes the real mutation count before the null entries are appended, since a null is a
+ * self-test OF the instrument, not a unit of coverage. */
+var GROUPS = MUTATIONS.map(function (mt) { return mt[3] && mt[3].grp; })
+  .filter(function (g, i, a) { return g && a.indexOf(g) === i; });
+var NULLS = MUT.nullSelfTest({ groups: GROUPS, anchor: "'use strict';" });
+var MUT_TOTAL = MUTATIONS.length;
+MUTATIONS = MUTATIONS.concat(NULLS.entries);
+
 /* ---- SCOPED-CLEAN-PASS PREFLIGHT (#513) ------------------------------------------------
  * Every group a mutation names must be GREEN when run alone on the clean build. In the replay
  * loop a crash counts as caught, so a group whose checks lean on another section's setup would
  * crash there and silently stand in for coverage; here, on the clean module, it fails loudly. */
 var scopeBad = 0;
 var SH0 = loadAll();
-MUTATIONS.map(function (mt) { return mt[3] && mt[3].grp; })
-  .filter(function (g, i, a) { return g && a.indexOf(g) === i; })
-  .forEach(function (g) {
+GROUPS.forEach(function (g) {
     var rg = [], threw = false;
     try { runSuite(SH0, rg, true, g); } catch (e) { threw = true; }
     var fg = rg.filter(function (r) { return !r.ok; }).length;
@@ -3306,11 +3316,19 @@ MUTATIONS.map(function (mt) { return mt[3] && mt[3].grp; })
     }
   });
 
-console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
+console.log('\ninjection self-test (' + MUT_TOTAL + ' mutations + ' + NULLS.entries.length +
+  ' null self-tests):');
 var blind = 0;
 MUT.select(MUTATIONS).forEach(function (mt) {
   var grpTag = (mt[3] && mt[3].grp) || undefined;
   var mutated = SHSRC.replace(mt[1], mt[2]);
+  if (NULLS.is(mt[0])) {
+    if (mutated === SHSRC) { NULLS.score(mt[0], { anchorMiss: true }); return; }
+    var recN = [], crashedN = false;
+    try { runSuite(loadAll(mutated), recN, true, grpTag); } catch (e) { crashedN = true; }
+    NULLS.score(mt[0], { base: SHSRC, mutated: mutated, rec: recN, crashed: crashedN });
+    return;
+  }
   if (mutated === SHSRC) { console.log('  ANCHOR MISS ' + mt[0]); blind++; return; }
   var rec2 = [], crashed = false;
   try { runSuite(loadAll(mutated), rec2, true, grpTag); }
@@ -3328,9 +3346,11 @@ MUT.select(MUTATIONS).forEach(function (mt) {
 loadAll();
 
 console.log('\n' + '='.repeat(70));
-console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
+console.log('  injection self-test: ' + (MUT_TOTAL - blind) + '/' + MUT_TOTAL +
   ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots') +
   (scopeBad ? '  ** ' + scopeBad + ' GROUP(S) NOT SELF-STANDING **' : ''));
+/* printed BEFORE the tally line, never after: run_all scrapes the LAST token-bearing line. */
+var nullFail = NULLS.report();
 console.log('  run_pwr2_shell: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit(fail > 0 || blind > 0 || scopeBad > 0 ? 1 : 0);
+process.exit(fail > 0 || blind > 0 || scopeBad > 0 || nullFail > 0 ? 1 : 0);

@@ -131,7 +131,20 @@ function runSuite(G, rec, quiet) {
    * 150 s after the cut, and the whole suite runs in ~5 s. Choosing the horizon from what the
    * CHECK needs rather than from what looks thorough is the whole of the cost discipline. */
   var BASE = quiet ? 3000 : 4500;      /* 60 s vs 90 s */
-  var AFTER = quiet ? 4000 : 7500;     /* 80 s vs 150 s */
+  /* 4000 -> 5000 (#657 null self-test). ⚠ AND READ THE MARGIN BEFORE YOU TRUST IT: the check
+   * this moved for -- "restoring demand brings power back up", `restored.power > cut.power + 10`
+   * -- STANDS ON A CLIFF AT EVERY RIDE LENGTH, the loud one included. MEASURED, both legs swept
+   * together at 4 000 / 4 500 / 5 000 / 5 500 / 6 000 / 7 000 / 7 500 / 9 000 steps, the margin
+   * over the bar is -0.043 / +0.024 / +0.052 / +0.061 / +0.059 / +0.046 / +0.053 / +0.044
+   * PERCENTAGE POINTS of a TEN-point bar: the physical span is 89.40 -> 99.49 = 10.09, so the
+   * check clears by 0.6 % of what it asks for and the SHIPPING loud ride clears by 0.053. 5 000
+   * is chosen because it reproduces the loud run's own margin (0.052 vs 0.053), not because it
+   * is safe -- it is not, and neither is 7 500.
+   * ⚠ RESOLVED: the BAR was re-pointed to 9 (see the check's own note at the REVERSIBILITY
+   * block). The horizon is UNCHANGED and this paragraph is kept as the record of why moving it
+   * settled nothing -- the climb is 9.957 to 10.059 points at EVERY horizon from 80 s to 180 s,
+   * so no ride length makes a 10-point bar a claim. Do not re-band the horizon for this check. */
+  var AFTER = quiet ? 5000 : 7500;     /* 100 s vs 150 s */
 
   function plant() {
     /* THE PLANT HAS A PRESSURIZER NOW (pwr2_pressurizer.js, owner ruling 2026-08-18 "Option 1")
@@ -521,8 +534,37 @@ function runSuite(G, rec, quiet) {
   ride(pl3, AFTER, function () { return MWE_CUT; });
   var restored = ride(pl3, AFTER, function () { return MWE_RATED; });
   /* bands re-sized with the armed dump's halved excursion (see the A1 note); both plants clear */
-  ckT('restoring demand brings power back up', restored.power > cut.power + 10,
-      cut.power.toFixed(2) + ' -> ' + restored.power.toFixed(2) + ' %');
+  /* ⚠ THE BAR WAS RE-POINTED 10 -> 9, AND THE HORIZON WAS NOT TOUCHED (#657 follow-up).
+   *
+   * `> cut.power + 10` was a bar standing on a cliff, not a claim. MEASURED, the whole leg swept
+   * at 4 000 / 4 500 / 5 000 / 5 500 / 6 000 / 7 000 / 7 500 / 9 000 steps (80 s to 180 s after
+   * the cut), the CLIMB is 9.957 / 10.023 / 10.051 / 10.059 / 10.057 / 10.044 / 10.038 / 10.039
+   * points -- so the old bar cleared by at most 0.059 and went NEGATIVE at 4 000. It demanded
+   * essentially the entire recovery and there is no horizon at which it is not one re-tune from
+   * red; #543 and #524 are what that costs.
+   *
+   * THE CLAIM, MEASURED, IS THAT THE RECOVERY IS WHOLE: the cut removes 9.85 points (99.30 ->
+   * 89.45 on the shipping ride) and restoring the demand brings back 10.04 of them -- 101.9 %
+   * of the drop, because the baseline sample is itself still creeping up. A bar of 9 asks for
+   * 91 % of the loud climb and is cleared by 0.96 points at the WORST horizon in the sweep.
+   *
+   * AND IT STILL DISCRIMINATES, which is the half a loosened bar usually loses. MEASURED on the
+   * quiet replay ride, the climb under each mutation in this file: 0.013 (duty stops following
+   * primary temperature) / -0.002 (secondary temperature frozen) / -0.687 (steam draw removes
+   * no energy) / 10.052 (no mass removed) / -0.002 (pressure never updates) / -0.017 (duty
+   * backwards) / 18.535 (conductance halved) / -0.687 (feed at steam enthalpy). Every mutation
+   * that breaks the coupling returns 0.013 points or LESS -- 8.99 below the new bar -- and the
+   * two that do not break it clear it by 1.05 and 9.5. The red set is IDENTICAL at 9 and at 10.
+   *
+   * THE DROP IS ASSERTED WITH THE CLIMB, so the check cannot be satisfied by a plant that never
+   * moved: at 0.009 points of drop, "power came back up" is vacuous, and that is exactly the
+   * state the first mutation leaves the plant in. */
+  ckT('restoring demand brings power back up',
+      cut.power < base.power - 5 && restored.power > cut.power + 9,
+      cut.power.toFixed(2) + ' -> ' + restored.power.toFixed(2) + ' % (+' +
+      (restored.power - cut.power).toFixed(2) + ' points against a bar of 9, recovering ' +
+      (100 * (restored.power - cut.power) / (base.power - cut.power)).toFixed(1) +
+      ' % of the ' + (base.power - cut.power).toFixed(2) + ' the cut removed)');
   ckT('...and Tavg back down', restored.tavg_f < cut.tavg_f - 5,
       cut.tavg_f.toFixed(2) + ' -> ' + restored.tavg_f.toFixed(2) + ' degF');
   ckT('...to near where it started, without anybody resetting anything',
@@ -567,8 +609,30 @@ function runSuite(G, rec, quiet) {
   head('§42 CRITERION A  [dispatch moves never arm the dumps; power follows load 1:1]');
   var plA = plant();
   ride(plA, BASE);
-  var swSteps = quiet ? [100, 84, 68] : [100, 92, 84, 76, 68];
-  var swSettle = quiet ? 2400 : 15000;                    /* 48 s vs 300 s per point */
+  /* ⚠ THE QUIET SCHEDULE WAS A DIFFERENT EXPERIMENT, NOT A SHORTER ONE (#657 null self-test).
+   * It read [100, 84, 68] -- SIXTEEN MWe per move against the criterion's EIGHT -- and a 16 MWe
+   * move ARMS C-7. MEASURED: on [100, 84, 68] the dump latches armed at the 84 MWe point and
+   * carries 8.28 % of rated steam, power stalls at 91.4 % against an 84 MWe ask, and NEITHER
+   * recovers at any horizon -- still armed at 7.87 % after 400 s. So the two reds here were not
+   * an undershot settle and no amount of extra ride could have cleared them; the fixture had
+   * quietly replaced the ruled §42 dispatch schedule with a load rejection.
+   * ⚠ AND THE SETTLE IS A BIFURCATION, NOT A SETTLING TIME -- IT BUYS ALMOST NOTHING. C7DET's
+   * rate unit has a 120 s lag, so what the detector sees is the PEAK of a staircase, not its
+   * average: consecutive 8 % moves stack while the previous one is still decaying. MEASURED per
+   * point, the detector's peak rate against its own 5.00 %/min bar --
+   *      180 s  5.094 %/min  ARMS      250 s  4.530 %/min  9.4 % inside
+   *      200 s  4.884 %/min  2.3 %     270 s  4.434 %/min  11.3 %
+   *      220 s  4.719 %/min  5.6 %     300 s  4.321 %/min  13.6 %  (the loud ride)
+   * -- so the edge is ~195 s and even the SHIPPING loud ride only clears by 13.6 %. Everything
+   * from 40 s to 160 s arms at the 84 MWe point and stays latched for the rest of the sweep,
+   * which is what the two reds here were; the settled power is identical either side of the
+   * flip (91.2x % at the 92 MWe point at every settle from 40 s to 300 s), so nothing about the
+   * plant's equilibrium distinguishes them -- only the detector does. 12 500 steps is 9.4 %
+   * inside the bar and still 1.2x cheaper than the loud ride. The C-7 step criterion is not
+   * close at any horizon: 7.24 % of a 10 % bar throughout. Tracking clears easily once the sweep
+   * is off the cliff -- worst |power - MWe| over the >= 76 MWe points is 1.09 of a bar of 4. */
+  var swSteps = [100, 92, 84, 76, 68];
+  var swSettle = quiet ? 12500 : 15000;                   /* 250 s vs 300 s per point */
   var swPrev = null, swMono = true, swArmed = false, swTrack = true, last = null;
   swSteps.forEach(function (mwe) {
     last = ride(plA, swSettle, function () { return mwe; });
@@ -613,7 +677,13 @@ function runSuite(G, rec, quiet) {
       trip1.dumpArmed === true && trip1.dumpFrac > 0.1,
       'dump ' + (100 * trip1.dumpFrac).toFixed(1) + ' % against the no-load reference — no ' +
       'operator, no C-7 event, the trip relay itself');
-  var trip2 = ride(plT, quiet ? 2250 : 15000);
+  /* 2250 -> 8000 steps (#657 null self-test): at 45 s the dump is still 8.4 % against this
+   * check's 5 % bar -- the Tavg half was already met (554.8 degF of a 565 bar), the CLOSING half
+   * was not. MEASURED every 250 steps, the reseat is monotone and slow: 5.04 % at 110 s, 5.00 %
+   * at ~112 s (the edge), 4.83 % at 120 s, 4.29 % at 160 s, 4.00 % at 200 s. 8 000 steps is 43 %
+   * past the edge and 14 % inside the bar -- the thinnest headroom of the four sites fixed here,
+   * because the tail itself is flat: the loud 300 s ride only reaches ~3.6 %. */
+  var trip2 = ride(plT, quiet ? 8000 : 15000);
   ckT('...and the dumps walk Tavg toward NO-LOAD and then CLOSE — the controller finishes its job',
       trip2.tavg_f < 565 && trip2.dumpFrac < 0.05,
       'Tavg ' + trip2.tavg_f.toFixed(1) + ' degF (no-load 557), dump ' +
@@ -709,6 +779,15 @@ var MUTATIONS = [
    'var E_in = Q + feed * W.h_g(sg.P) + afw * W.h_g(sg.P) + leak * h_leak;']
 ];
 
+/* ---- THE NULL MUTATION (#657) -------------------------------------------------------------
+ * This runner has no `grp()` scoping — every replay runs the WHOLE suite quiet — so there is
+ * exactly one group: the one short (quiet) ride every real mutation is also replayed on. One
+ * no-op edit proves that ride is not, on its own, red. MUT_TOTAL freezes the real count first;
+ * a null is a self-test OF the instrument, not a unit of coverage. */
+var MUT_TOTAL = MUTATIONS.length;
+var NULLS = MUT.nullSelfTest({ groups: ['ALL'], anchor: "'use strict';" });
+MUTATIONS = MUTATIONS.concat(NULLS.entries);
+
 if (fail > 0) {
   console.log('  ' + require('path').basename(__filename, '.js') + ': ' + pass +
               ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
@@ -723,6 +802,14 @@ console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one ch
 console.log('='.repeat(70));
 var blind = 0;
 MUT.select(MUTATIONS).forEach(function (m) {
+  if (NULLS.is(m[0])) {
+    if (SRC.indexOf(m[1]) === -1) { NULLS.score(m[0], { anchorMiss: true }); return; }
+    var mutatedN = SRC.split(m[1]).join(m[2]);
+    var recN = [], crashedN = false;
+    try { runSuite(loadFrom(mutatedN), recN, true); } catch (e) { crashedN = true; }
+    NULLS.score(m[0], { base: SRC, mutated: mutatedN, rec: recN, crashed: crashedN });
+    return;
+  }
   if (SRC.indexOf(m[1]) === -1) { console.log('  ERROR   anchor not found: ' + m[0]); blind++; return; }
   var r2 = [];
   try { runSuite(loadFrom(SRC.split(m[1]).join(m[2])), r2, true); }
@@ -733,8 +820,9 @@ MUT.select(MUTATIONS).forEach(function (m) {
 });
 
 console.log('\n' + '='.repeat(70));
-console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
+console.log('  injection self-test: ' + (MUT_TOTAL - blind) + '/' + MUT_TOTAL +
   ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
+var nullFail = NULLS.report();
 console.log('  run_pwr2_loadfollow: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit((fail > 0 || blind > 0) ? 1 : 0);
+process.exit((fail > 0 || blind > 0 || nullFail > 0) ? 1 : 0);
