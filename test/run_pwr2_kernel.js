@@ -62,6 +62,10 @@ var LAYERS = path.join(__dirname, '..', 'layers');
 var KPATH = path.join(LAYERS, 'control', 'control_kernel.js');
 var CPATH = path.join(LAYERS, 'control', 'pwr_control.js');
 var SHPATH = path.join(SRC, 'pwr2_shell.js');
+/* #784: the containment engineered safety features live in the ENGINE, not in any control
+ * table, so the only way to injure them for an injection is to mutate this file. See the
+ * `install` note below for why an 'E' mutation costs a shell re-install as well. */
+var EPATH = path.join(SRC, 'pwr2_engine.js');
 
 require(path.join(__dirname, '..', 'engines', 'load_mode.js'));
 require(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_config.js'));
@@ -645,14 +649,47 @@ function runSuite(rec, quiet, only) {
        ', spray ' + (r1.spray === null ? 'never' : r1.spray.toFixed(2) + ' s') +
        ', peak ' + PSIA(r1.peak) + ' psia');
 
-    /* LEG 2 — the inert side, under a HIGHER containment pressure than the one that fired. */
-    ck('act-pwr2-inert', 'PWR2 goes FURTHER past hi-hi and fires NONE of them',
-       r2.hihi !== null && r2.peak > r1.peak && r2.msiv === null && r2.spray === null && r2.fan === null,
+    /* ⚠ LEG 2 TURNED AROUND (#784, OWNER RULING 2026-09-21: "Authorise it — auto-only"). It
+     * read `act-pwr2-inert`, 'PWR2 goes FURTHER past hi-hi and fires NONE of them', and that
+     * was #778's RECORD OF A PLANT THAT COULD NOT MITIGATE. It can now — spray, the fan
+     * coolers and the steam-line isolation are built inside `pwr2_engine.js`. A check still
+     * asserting the inertia would be pinning the ABSENCE OF THE FIX (HR9: content follows the
+     * plant), the same turn-around run_pwr2_true_state's statics check just took.
+     *
+     * ⚠ THE BAND'S SUBJECT IS UNCHANGED, which is why this is a turn-around and not a deletion.
+     * Its claim was never "PWR2 does not mitigate" — it was "the RETIRED ACTUATION TABLE is
+     * inert on this plant", and `act-pwr2-empty` / `act-pwr2-layer` above still assert the
+     * kernel holds ZERO rows. So leg 2 now says the mitigations fire WITH that table empty,
+     * i.e. from the engine, and the bifurcation stays two-sided: leg 1 is untouched and still
+     * reds if the retired engine ever stops firing.
+     *
+     * ⚠ THE THREE TIMINGS ARE THE SUBSTANCE, not the three booleans. One bistable drives two
+     * consumers with DIFFERENT timing and a third rides a different signal entirely, so each
+     * is asserted against what it is sourced to do:
+     *   MSIV      — on the hi-hi with no system delay (valve travel only). Measured 0.70 s
+     *               after the true-state crossing, which is the instrument channel's own lag.
+     *   spray     — the hi-hi PLUS the sourced 28.5 s system response (B 3.6.6). Banded from
+     *               the sourced floor up, never centred on the measurement: a band centred on
+     *               29.2 s would pass a plant that had lost the response time entirely and
+     *               gained an equal lag somewhere else.
+     *   fans      — BEFORE the hi-hi, because they realign on ANY safety injection (B 3.6.6),
+     *               and on this casualty SI comes from low pressurizer pressure at ~5.5 s.
+     *               Measured 49.52 s against a hi-hi at 58.94 s. A fan realign that waited for
+     *               containment pressure would read as working and be wired to the wrong
+     *               signal, which no boolean can tell you. */
+    ck('act-pwr2-fires', 'PWR2 fires all three from INSIDE the engine, on the sourced signals and at the sourced response times',
+       r2.hihi !== null && r2.msiv !== null && r2.spray !== null && r2.fan !== null &&
+       r2.msiv >= r2.hihi && (r2.msiv - r2.hihi) < 5.0 &&
+       (r2.spray - r2.hihi) >= 28.5 && (r2.spray - r2.hihi) < 34.0 &&
+       r2.fan < r2.hihi,
        'hi-hi ' + (r2.hihi === null ? 'never' : r2.hihi.toFixed(2) + ' s') + ', peak ' +
-       PSIA(r2.peak) + ' psia vs the retired ' + PSIA(r1.peak) +
-       '; MSIV ' + (r2.msiv === null ? 'never' : r2.msiv.toFixed(2) + ' s') +
-       ', spray ' + (r2.spray === null ? 'never' : r2.spray.toFixed(2) + ' s') +
-       ', fans ' + (r2.fan === null ? 'never' : r2.fan.toFixed(2) + ' s'));
+       PSIA(r2.peak) + ' psia (retired ' + PSIA(r1.peak) + ')' +
+       '; MSIV ' + (r2.msiv === null ? 'never' : r2.msiv.toFixed(2) + ' s (+' +
+         (r2.msiv - r2.hihi).toFixed(2) + ')') +
+       ', spray ' + (r2.spray === null ? 'never' : r2.spray.toFixed(2) + ' s (+' +
+         (r2.spray - r2.hihi).toFixed(2) + ', sourced 28.5)') +
+       ', fans ' + (r2.fan === null ? 'never' : r2.fan.toFixed(2) + ' s (on SI, ' +
+         (r2.hihi - r2.fan).toFixed(2) + ' s BEFORE hi-hi)'));
 
     /* THE CONSUMER, not the write. The array the LIVE kernel over PWR2 is holding — a shell
      * that publishes an empty array while the layer was built from the retired one would pass
@@ -741,11 +778,30 @@ function runSuite(rec, quiet, only) {
     ck('cap-vocab-not-vacuous', 'the vocabulary still matches the SHARED rows it was written against',
        vocabHit === 2, vocabHit + '/2 shared containment captions name a mitigation');
 
-    /* THE MEASUREMENT the ban rests on: what containment pressure ALONE actuates here. */
-    ck('cap-ride-inert', 'containment pressure alone actuates NONE of the four on PWR2',
-       !MITIG[0].saw && !MITIG[1].saw && !MITIG[2].saw && !MITIG[3].saw,
+    /* THE MEASUREMENT the ban rests on: what containment pressure ALONE actuates here.
+     *
+     * ⚠ TURNED AROUND (#784, OWNER RULING 2026-09-21: "Authorise it — auto-only"). It read
+     * `cap-ride-inert`, 'containment pressure alone actuates NONE of the four', and that was
+     * #783's record of a plant that could not mitigate. On the SAME stimulus all four now
+     * fire, and the 3.5 psig safety injection is itself a containment-pressure row — so the
+     * measurement the ban rests on has INVERTED, and this is the check that records it.
+     *
+     * ⚠ AND THIS IS THE MECHANISM #783 DESIGNED, WORKING — the band's own header says "build
+     * containment spray inside this engine (#784) and the ban on that word lifts itself, with
+     * no edit here", and `cap-no-false-promise` did indeed stay green through the build. That
+     * mechanism is deliberately left alone.
+     *
+     * ⚠ THE PAIR IS NOT VACUOUS, AND THE HONEST STATEMENT IS THAT NEITHER HALF IS SUFFICIENT.
+     * With all four `saw` true, `cap-no-false-promise` below CANNOT red — every word its
+     * regexes look for is now earned — so the ban half is carried entirely by THIS check:
+     * regress any of the four and `saw` goes false here (red) AND the ban re-arms below on any
+     * lit row naming it. That is why the measurement is asserted POSITIVELY rather than
+     * deleted; deleting it would leave a green ban grading nothing, which is precisely the
+     * hollow shape this file's own preflight exists to refuse. */
+    ck('cap-ride-mitigates', 'containment pressure ALONE actuates all four on PWR2 -- the ban lifts by measurement, not by edit',
+       MITIG[0].saw && MITIG[1].saw && MITIG[2].saw && MITIG[3].saw,
        MITIG.map(function (m) { return m.id + '=' + (m.saw ? 'FIRED' : 'never'); }).join(', ') +
-       ' at ' + PSIG(pkM) + ' psig');
+       ' at ' + PSIG(pkM) + ' psig -- the 3.5 psig SI backup is itself a containment row');
 
     /* THE INVARIANT. Both registers: `tile_label` is the string DRAWN in the register this
      * kernel is in, and the live layer's own row carries the other one. */
@@ -796,7 +852,7 @@ if (nFail > 0 || nXpass > 0) {
  * build first, because in the replay loop a crash counts as caught, so a group that cannot
  * stand alone would silently stand in for coverage. */
 var SRCS = {};
-[['K', KPATH], ['C', CPATH], ['SH', SHPATH]].forEach(function (p) {
+[['K', KPATH], ['C', CPATH], ['SH', SHPATH], ['E', EPATH]].forEach(function (p) {
   SRCS[p[0]] = { path: p[1], text: fs.readFileSync(p[1], 'utf8').replace(/\r\n/g, '\n') };
 });
 
@@ -845,9 +901,9 @@ var MUTS = [
    * The first takes the containment setpoints 321x out of reach: the retired engine stops
    * firing (act-pwr1-fires reds) and PWR2's ride is byte-identical, which is the measurement
    * the declaration in pwr_control.js quotes. The second stops the shell emptying the array,
-   * and PWR2's kernel starts evaluating the retired plant's rows (act-pwr2-empty,
-   * act-pwr2-layer and act-pwr2-inert red, or the whole band throws on a verb PWR2 refuses —
-   * which is itself the reason the strip exists). */
+   * and PWR2's kernel starts evaluating the retired plant's rows (act-pwr2-empty and
+   * act-pwr2-layer red, or the whole band throws on a verb PWR2 refuses — which is itself the
+   * reason the strip exists). */
   ['the containment hi-hi setpoints move out of reach — the retired engine stops firing', 'C',
    'var CTMT_SI_MPA = 0.1254, CTMT_HIHI_MPA = 0.3081;',
    'var CTMT_SI_MPA = 99.0, CTMT_HIHI_MPA = 99.0;', { grp: 'A' }],
@@ -856,39 +912,69 @@ var MUTS = [
    'trips: [], actuations: [], interlocks: [], runbacks: [],',
    'trips: [], actuations: base.actuations, interlocks: [], runbacks: [],', { grp: 'A' }],
 
-  /* AND THE SAME LEAK NARROWED TO A VERB PWR2 ACTUALLY WIRES. The mutation above reds the
-   * array check and then THROWS — PWR2 refuses `set_containment_spray` and `set_ctmt_fans`,
-   * which is exactly why the shell empties the array — so the BEHAVIOURAL half of leg 2 never
-   * gets to run under it. Leaking only the `close_msiv` rows (a mapped command on this plant,
-   * pwr2_shell:442) lets the ride finish and reds `act-pwr2-inert` itself. Without this the
-   * inert leg would be proven only at the array, and a shell that published an empty array
-   * while the rows fired anyway would pass. */
-  ['only the close_msiv containment rows leak — PWR2\'s MSIV shuts on hi-hi', 'SH',
-   'trips: [], actuations: [], interlocks: [], runbacks: [],',
-   "trips: [], actuations: base.actuations.filter(function (a) { return a.action === 'close_msiv'; }), interlocks: [], runbacks: [],",
-   { grp: 'A' }],
+  /* RETIRED AT #784, NOT LOST — and it is worth saying exactly why, because "the mutation
+   * still goes red" was true and was not the point. It leaked only the retired table's
+   * `close_msiv` rows so that PWR2's MSIV would shut on hi-hi, reddening the old
+   * `act-pwr2-inert` BEHAVIOURALLY rather than only at the array. PWR2's MSIV shuts on hi-hi
+   * BY DESIGN now, so the state it produced is the correct one: it would keep reporting as
+   * caught on `act-pwr2-empty` and `act-pwr2-layer` — the two checks the mutation above
+   * already covers — while its own description named a defect that no longer exists. A
+   * mutation caught for a reason other than the one it claims is coverage that lies.
+   *
+   * The worry it carried — that leg 2 could be proven only at the array — is carried by the
+   * three 'E' mutations below, which injure the mitigation itself. */
+  /* ---- THE MITIGATION ITSELF (#784), ONE MUTATION PER CONSUMER ------------------------------
+   * `act-pwr2-fires` asserts three separately-sufficient things, so it needs three injections:
+   * a single mutation killing all of them would let a check that watched only the MSIV stand
+   * in for coverage of the spray (#295/#545, plant the demand past the half you are not
+   * testing). Each names one line in `pwr2_engine.js`'s containment ESF block. */
+  ['the steam-line isolation never reaches the valve — PWR2\'s MSIV stays open on hi-hi', 'E',
+   '    if (ptr.msli_ctmt) eng.msiv.open = false;', '', { grp: 'A' }],
 
-  /* #783 — one mutation per LEG of band 6. The first reverts the caption override, so PWR2
-   * takes the shared "(SI signal)" / "(spray/MSLI)" text back and `cap-no-false-promise`
-   * reds on rows the ride proved it lights. The second puts the hi-hi ANNUNCIATOR setpoint
-   * (its own number, not the actuation constants) out of reach, so the row never lights and
-   * `cap-rows-lit` reds — without it the ban could be green by grading nothing. */
-  ['the PWR2 caption override is reverted — the shared containment text comes back', 'SH',
-   "          if (a.id === 'ctmt_press_hi') {\n" +
-   "            return Object.assign({}, a, { label_learning: 'Containment Pressure High (3.5 psig)' });\n" +
-   "          }\n" +
-   "          if (a.id === 'ctmt_press_hihi') {\n" +
-   "            return Object.assign({}, a, { label_learning: 'Containment Pressure High-High (30 psig)' });\n" +
-   "          }\n",
-   '', { grp: 'M' }],
+  ['the spray DEMAND is never raised — the actuation fires and no water is delivered', 'E',
+   '    eng.ctmtSprayDemand = !!ptr.ctmt_spray_demand;',
+   '    eng.ctmtSprayDemand = false;', { grp: 'A' }],
 
+  ['the fan-cooler realign is dropped — the CRFC units never see the SI signal', 'E',
+   '    if (ptr.si) eng.ctmtFanDemand = true;', '', { grp: 'A' }],
+
+  /* #783 — one mutation per LEG of band 6. The first puts the hi-hi ANNUNCIATOR setpoint (its
+   * own number, not the actuation constants) out of reach, so the row never lights and
+   * `cap-rows-lit` reds — without it the ban could be green by grading nothing. The second is
+   * #784's: it takes the mitigation away, which is the ONLY thing that can now re-arm the ban.
+   *
+   * RETIRED AT #784, NOT LOST: 'the PWR2 caption override is reverted — the shared containment
+   * text comes back'. It restored "(SI signal)" and "(spray/MSLI)" to the two captions and
+   * reddened `cap-no-false-promise` on rows the ride proved PWR2 lights. Both of those strings
+   * name mitigations THIS PLANT NOW PERFORMS, so the restored text is no longer a false
+   * promise and the mutation runs green — BLIND, and the gate would say so. That is the
+   * self-lifting mechanism the band's header describes, arriving. It also means #783's caption
+   * override may itself now be obsolete; that is a RULING on #783, not a test edit, and is
+   * reported rather than acted on here. */
   ['the hi-hi ANNUNCIATOR setpoint goes out of reach — the caption is never drawn', 'C',
    "direction: 'high',    setpoint: 0.3081, priority: 'critical'",
-   "direction: 'high',    setpoint: 99.0, priority: 'critical'", { grp: 'M' }]
+   "direction: 'high',    setpoint: 99.0, priority: 'critical'", { grp: 'M' }],
+
+  /* THE BAN'S OTHER LEG, #784. Take the spray away and `cap-ride-mitigates` reds on the
+   * measurement — and any caption still naming spray re-arms `cap-no-false-promise` behind
+   * it, which is the two-sidedness the pair was rewritten to keep. */
+  ['the spray DEMAND is never raised — the caption ban has a mitigation to re-arm on', 'E',
+   '    eng.ctmtSprayDemand = !!ptr.ctmt_spray_demand;',
+   '    eng.ctmtSprayDemand = false;', { grp: 'M' }]
 ];
 
-/* re-execute a module's source into RD; every consumer looks its constructor up live */
-function install(text) { (0, eval)(text); }
+/* re-execute a module's source into RD; every consumer looks its constructor up live.
+ *
+ * ⚠ EXCEPT THE SHELL, WHICH CAPTURES THE ENGINE FACADE ONCE (#784). `pwr2_shell.js:46` reads
+ * `var EN = RD.engine;` into a closure local at LOAD time, so a re-executed `pwr2_engine.js`
+ * reaches nothing the shell calls until the shell is re-executed over it. An 'E' mutation
+ * without this ran BYTE-IDENTICAL to the clean build — the silent form, reported as BLIND if
+ * you are lucky and as caught-for-another-reason if you are not. The shell is re-installed
+ * from its OWN clean text, so an 'E' mutation stays a one-file mutation. */
+function install(text, key) {
+  (0, eval)(text);
+  if (key === 'E') (0, eval)(SRCS.SH.text);
+}
 
 console.log('\n' + '='.repeat(74));
 console.log('  SCOPED-CLEAN-PASS PREFLIGHT');
@@ -913,9 +999,9 @@ MUTS.forEach(function (m) {
   var S = SRCS[m[1]], mutated = S.text.replace(m[2], m[3]);
   if (mutated === S.text) { console.log('  ANCHOR MISS ' + m[0]); blind++; return; }
   var r2 = [], crashed = false;
-  try { install(mutated); runSuite(r2, true, m[4].grp); }
+  try { install(mutated, m[1]); runSuite(r2, true, m[4].grp); }
   catch (e) { crashed = true; }
-  install(S.text);                                   /* restore before the next mutation */
+  install(S.text, m[1]);                             /* restore before the next mutation */
   /* REDS FIRST, THE CRASH ONLY AS A FALLBACK. A crash counts as caught — a mutant that cannot
    * run has certainly been noticed — but it is the WEAK form: it says nothing about whether
    * any check can SEE the defect, so a band that throws early would stand in for coverage it

@@ -1678,6 +1678,12 @@
       turbine_tripped: eng.tb.tripped,
       steam_dumps_available: eng._cdAvail !== false,
       p9_defeated: eng.p9Defeated === true,           /* #515: the failed channel */
+      /* CONTAINMENT PRESSURE (#784) — HR1, off the instrument like every other analog driver
+       * above, with truth filling in only on the pre-reading first step. The channel is
+       * `containment_pressure` (tau 1.0 s, range [0, 2] MPa), which already holds both sourced
+       * setpoints strictly inside. Absolute MPa: the two rows convert their own psig once. */
+      containment_pressure_mpa: rd.containment_pressure !== undefined
+        ? rd.containment_pressure : eng._ctP,
       /* [sourced ch10] the loss-of-both-feed-pumps MDAFW start's input — a STATE signal
        * (breaker positions), the turbine_tripped convention, not an analog channel */
       main_feed_lost: mfLost,        /* armed only off RHR — see the block above `var mfLost` */
@@ -1731,6 +1737,44 @@
      * against excessive moisture carryover", WTSM 3.2). Level-held while latched. */
     if (ptr.fwi) { eng.fw.isolated = true; eng.tb.tripped = true; }
 
+    /* ---- THE CONTAINMENT ENGINEERED SAFETY FEATURES (#784) ----------------------------------
+     * The caller's half again: `pwr2_protection.js` decided WHETHER on sourced setpoints and
+     * `pwr2_containment.js` owns HOW MUCH; this block owns the three things in between — the
+     * steam-line isolation, the sourced system RESPONSE TIMES, and the AC gate.
+     *
+     * ⚠ EACH HALF IS SEPARATELY SUFFICIENT TO FAIL, which is why the demand and the delivery are
+     * two fields and not one (#295/#545). Break the actuation and the demand never rises; break
+     * the delivery and the demand stands with nothing coming out of the nozzles. A single
+     * boolean would make either injection look like the other's success.
+     *
+     * ⚠ AND THE DE-ENERGIZATION IS IN THE DELIVERY, NEVER IN THE DEMAND (#200/#329/#332). A
+     * blackout takes away the pumped water and the fan motors; it does not reach back and
+     * un-actuate the signal, so `ctmt_spray_demand` stands through a blackout and delivery
+     * resumes the moment a bus comes back — the `afw_pump_running` / `afw_flow_normalized`
+     * split, which is this house's idiom for exactly this. */
+    /* steam-line isolation, sealed in — a valve that shut on the containment signal stays shut */
+    if (ptr.msli_ctmt) eng.msiv.open = false;
+    /* the CRFC safety realign is ON ANY SAFETY INJECTION, not on containment pressure
+     * [sourced — Ginna TS Bases B 3.6.6 (ML20339A221): "In post accident operation following a
+     * SI actuation signal, the CRFC System fans are designed to start automatically if not
+     * already running"]. ONE-SHOT with no automatic securing: realigned fans stay realigned
+     * until an operator restores normal mode, which this auto-only build does not surface. The
+     * retired engine's row keys on the same signal for the same reason. */
+    if (ptr.si) eng.ctmtFanDemand = true;
+    eng.ctmtSprayDemand = !!ptr.ctmt_spray_demand;
+    /* THE SOURCED RESPONSE TIMES, counted on the DEMAND and reset with it [sourced — B 3.6.6:
+     * spray "total response time is 28.5 seconds for one pump to the upper spray header";
+     * "The CRFC System total response time of 44 seconds, includes signal delay, DG startup
+     * (for loss of offsite power), and service water pump and CRFC unit startup times"]. They
+     * are SYSTEM times — valve travel, pump start, line fill — which is why they live here and
+     * not in the protection row's channel delay, where they would have delayed the steam-line
+     * isolation that shares the bistable. */
+    eng._spray_t = eng.ctmtSprayDemand ? (eng._spray_t || 0) + dt : 0;
+    eng._fan_t   = eng.ctmtFanDemand   ? (eng._fan_t   || 0) + dt : 0;
+    var sprayActive = eng.ctmtSprayDemand && eng._spray_t >= CT.CS.spray_response_s && acAvail;
+    var fanActive   = eng.ctmtFanDemand   && eng._fan_t   >= CT.CS.crfc_response_s  && acAvail;
+    eng._sprayActive = sprayActive; eng._fanActive = fanActive;
+
     /* containment receives the break AND the pressurizer relief (PORV/safety discharge ends
      * up there via the relief tank; the tank itself is unmodelled, declared). An SGTR is
      * EXCLUDED — the tube discharges into the SG, a closed receiver, and containment seeing
@@ -1746,12 +1790,29 @@
     var mBr = br && !toSG && br.mdot_kgs > 0 ? br.mdot_kgs : 0;
     var mPz = eng._pzRelief > 0 ? eng._pzRelief : 0;
     var ctIn = mBr + mPz;
-    var ctr = CT.stepContainment(eng.ctm, dtAcc > 0 ? dtAcc : dt,
-      ctIn > 0 && dtAcc > 0
-        ? { mdot_kgs: ctIn,
-            h_kJkg: (mBr * (mBr > 0 ? br.source.h : 0) + mPz * eng._pzReliefH) / ctIn }
-        : { mdot_kgs: 0 });
+    /* #784: the active systems ride the SAME call, so they are stepped over the same interval
+     * the discharge is. DECLARED: on a REFUSED or PARTIAL step that interval is `dtAcc`, the
+     * time the PRIMARY lost inventory over, and spray and the fan coolers are credited for that
+     * interval rather than the full `dt` — they actually ran for `dt`. The two differ only on a
+     * step the solver did not fully accept, where the whole plant's clock is short by the same
+     * amount; splitting them into a second `stepContainment` call over `dt` would make the
+     * atmosphere and the discharge disagree about what time it is, which is worse. */
+    var ctDrv = ctIn > 0 && dtAcc > 0
+      ? { mdot_kgs: ctIn,
+          h_kJkg: (mBr * (mBr > 0 ? br.source.h : 0) + mPz * eng._pzReliefH) / ctIn }
+      : { mdot_kgs: 0 };
+    ctDrv.spray_active = sprayActive;
+    ctDrv.fan_active = fanActive;
+    var ctr = CT.stepContainment(eng.ctm, dtAcc > 0 ? dtAcc : dt, ctDrv);
+    /* the two-field split the contract asks for: DEMANDED, and DELIVERING */
+    ctr.spray_demand = eng.ctmtSprayDemand === true;
+    ctr.spray_active = sprayActive === true;
+    ctr.fan_safety   = eng.ctmtFanDemand === true;
+    ctr.fan_active   = fanActive === true;
     eng._ctP = ctr.containment_pressure_mpa;   /* next step's break backpressure (#543) */
+    /* #784: the containment result itself, for a gate that must assert the EFFECT — the
+     * kg/s and kW the active systems actually moved — rather than that a flag was set. */
+    eng._lastCtr = ctr;
 
     eng.simTime += dt;
     eng._pzr = pzr; eng._dcr = dcr;

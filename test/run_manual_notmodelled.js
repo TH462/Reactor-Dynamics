@@ -109,9 +109,25 @@ ch09.split('\n').forEach(function (line, i) {
 });
 
 console.log('\n' + BOLD + 'CHAPTER 09\'S NOT-MODELLED ROWS vs EVERY OTHER MANUAL CHAPTER  (#626)' + RST);
-ck('chapter 09\'s NOT MODELLED rows parse',
-   notModelledRows.length >= 10,
-   notModelledRows.length + ' rows found: ' + notModelledRows.map(function (r) { return r.label; }).join(' | '));
+/* THE FLOOR WAS A MAGIC NUMBER AND IT EXPIRED (#784, 2026-09-21). This asserted
+ * `notModelledRows.length >= 10`, which is a claim about HOW MUCH OF THE PLANT IS UNBUILT --
+ * it reddens every time a system gets built, which is the plant improving. Four rows retired the
+ * day containment spray, the fan coolers and the steam-line isolation went in, and the floor
+ * reported that as a parse failure.
+ *
+ * What this check is actually for is the parser: a markdown change that turns a NOT MODELLED row
+ * into something the `line.charAt(0) === '|'` scan no longer sees would leave this whole gate
+ * silently measuring nothing -- the EMPTY failure mode, which reads exactly like success. So
+ * assert the parse against an INDEPENDENT count of the marker in the chapter, and that every
+ * parsed row carries a label. A row that stops being a table row now reddens; a row that is
+ * legitimately built and removed does not. */
+var markerHits = ch09.split('\n').filter(function (l) { return /\*\*\s*NOT MODELLED/i.test(l); }).length;
+var unlabelled = notModelledRows.filter(function (r) { return !r.label || !r.norm; });
+ck('chapter 09\'s NOT MODELLED rows parse -- every marker in the chapter is a parsed, labelled row',
+   notModelledRows.length > 0 && notModelledRows.length === markerHits && unlabelled.length === 0,
+   notModelledRows.length + ' rows parsed of ' + markerHits + ' markers in the chapter' +
+   (unlabelled.length ? ', ' + unlabelled.length + ' UNLABELLED' : '') + ': ' +
+   notModelledRows.map(function (r) { return r.label; }).join(' | '));
 
 /* ---- 2. THE BRIDGE — hand-authored, small, on purpose ----------------------------------------
  * Keyed by the NORMALIZED 09 label. `live`: patterns that fire if another chapter teaches the
@@ -183,23 +199,21 @@ var BRIDGE = {
            /shuts? the MSIV without any operator action/i,
            /MSIV (closes|shuts).{0,30}(automatic\w*|on low steam pressure)/i]
   },
-  'msli (containment leg)': {
-    id: 'MSLI (main steam line isolation), containment-pressure leg',
-    live: [/containment pressure.{0,40}(isolat\w*|steam.?line.?isolation)/i,
-           /steam.?line.?isolation leg/i]
-  },
-  'si backup (containment)': {
-    id: 'SI (safety injection) backup on high containment pressure',
-    live: [/\bSI backup\b/i, /containment pressure.{0,40}(SI|safety injection)/i]
-  },
-  'containment spray': {
-    id: 'Containment spray',
-    live: [/containment spray/i]
-  },
-  'fan coolers, safety realign': {
-    id: 'Containment fan coolers, safety realign on SI',
-    live: [/fan.?coolers?.{0,30}(safety )?realign/i, /fan cooler.{0,20}(start|auto)/i]
-  },
+  /* RETIRED 2026-09-21 (#784, OWNER RULING "Authorise it -- auto-only"). FOUR entries stood here:
+   * 'msli (containment leg)', 'si backup (containment)', 'containment spray' and
+   * 'fan coolers, safety realign'. They are GONE because the systems are BUILT -- containment
+   * spray, the recirculation fan coolers and the steam-line isolation now actuate automatically
+   * inside the PWR2 engine on the sourced 3.5 psig (0.1254 MPa) and 30 psig (0.3082 MPa)
+   * setpoints; chapter 09 no longer marks those four rows NOT MODELLED, and chapter 06's PWR-A36
+   * to PWR-A39 cards now teach them as live. Keeping the entries would have made this gate red on
+   * prose that is CORRECT.
+   *
+   * THE GATE SAID SO ITSELF, and that is the part worth keeping. Direction 2 -- "every BRIDGE
+   * entry still points at a row chapter 09 actually marks NOT MODELLED" -- caught all four the
+   * moment the manual was updated. A hand-maintained map is a thing a gate TESTS, never a thing a
+   * gate silently TRUSTS (CLAUDE.md's standing list), and this file was built knowing that.
+   *
+   * The HYDROGEN entries below stay: the recombiners and the burn are still unmodelled. */
   'h2 recombiners, auto-start': {
     id: 'H2 (hydrogen) recombiners, auto-start',
     live: [/recombiners?.{0,20}(auto-?start|started automatically|in service)/i,

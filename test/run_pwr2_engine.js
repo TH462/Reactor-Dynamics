@@ -689,19 +689,47 @@ function runSuite(RD, rec, quiet, only) {
   run(engBP, quiet ? 10 : 30);
   EN.command(engBP, 'break_open', { area_m2: 0.002, node: 'cold_leg' });
   var bpN = Math.round(1200 / DT), bpAdverse = 0, bpWorst = 0, bpTs = null;   /* adverse hit at 995 s pre-fix */
+  var bpPeak = 0, bpPeakT = 0;                       /* #784 — see the precondition note below */
   for (var bpI = 0; bpI < bpN; bpI++) {
     bpTs = EN.step(engBP, DT);
+    if (bpTs.containment_pressure_mpa > bpPeak) {
+      bpPeak = bpTs.containment_pressure_mpa; bpPeakT = (bpI + 1) * DT;
+    }
     var bpGap = bpTs.containment_pressure_mpa - bpTs.pressure_mpa;
     if (bpGap > 1e-6 && engBP.brk && bpTs.leak_flow > 0) {
       bpAdverse++;
       if (bpGap > bpWorst) bpWorst = bpGap;
     }
   }
+  /* ⚠ THE PRECONDITION TRACKS THE PEAK, NOT THE LAST SAMPLE (#784). It read
+   * `bpTs.containment_pressure_mpa > 0.5` — the value at 1200 s — and that WAS the peak, for
+   * as long as containment could do nothing but climb. Spray and the fan coolers turn it over,
+   * so the end sample now measures the RECOVERY and the clause reported "containment never
+   * pressurised" about a ride whose containment reached 55.7 psig. MEASURED both ways on this
+   * exact ride (0.002 m2 cold-leg break, 1200 s, engine-direct):
+   *
+   *     build            adverse steps   ctmt PEAK                       ctmt at 1200 s
+   *     pre-#784             0/60000     0.6888 MPa (99.9 psia) @1200s   99.9 psia (climbing)
+   *     #784 built           0/60000     0.4852 MPa (70.4 psia) @349.0s  58.3 psia (falling)
+   *
+   * ⚠ THE INVARIANT ITSELF NEVER MOVED and is not what was failing: 0 adverse steps of 60,000
+   * on BOTH builds. Only the precondition is re-cut, and it is re-cut to the quantity it always
+   * meant — "containment really did pressurise, so the gradient COULD have inverted".
+   *
+   * ⚠ BANDED ON THE SOURCED 30 psig HIGH-HIGH (0.3081 MPa absolute, WTSM 12.3 / ML11223A310),
+   * not on a round 0.5 and not on either measurement. A band cut to fit the new peak would be a
+   * refit; this one PASSES ON BOTH BUILDS — 0.6888 unmitigated, 0.4852 mitigated — which is
+   * what makes it a better check rather than the same check refitted (HR10). It is also the
+   * only number on this plant that MEANS "pressurised": it is the setpoint at which the
+   * building's own mitigation is called for. */
+  var BP_HIHI_MPA = 0.3081;              /* 30 psig absolute — WTSM 12.3, the hi-hi actuation */
   ckT('a full LOCA blowdown NEVER discharges up the pressure gradient (live backpressure)',
-      bpAdverse === 0 && bpTs.containment_pressure_mpa > 0.5 &&
+      bpAdverse === 0 && bpPeak > BP_HIHI_MPA &&
       bpTs.pressure_mpa >= bpTs.containment_pressure_mpa - 1e-6,
       bpAdverse + ' adverse-flow steps of ' + bpN + ' (worst +' +
-      (bpWorst * 145.038).toFixed(1) + ' psi); ends RCS ' +
+      (bpWorst * 145.038).toFixed(1) + ' psi); ctmt peaked ' +
+      (bpPeak * 145.038).toFixed(1) + ' psia at ' + bpPeakT.toFixed(1) + ' s (past the ' +
+      (BP_HIHI_MPA * 145.038).toFixed(1) + ' psia hi-hi); ends RCS ' +
       (bpTs.pressure_mpa * 145.038).toFixed(1) + ' vs ctmt ' +
       (bpTs.containment_pressure_mpa * 145.038).toFixed(1) +
       ' psia — the frozen constant gave 88.0 vs 95.6 at 1200 s with the hole still flowing');
@@ -3226,6 +3254,15 @@ var MUTATIONS = [
   ['the containment-pressure stash is severed (#543 — the pass reads undefined for ever)',
    'eng._ctP = ctr.containment_pressure_mpa;',
    '', { grp: 'D' }],
+  /* #784: the blowdown check's PRECONDITION, which had no injection of its own while it read
+   * the last sample — the clause is what says "containment really did pressurise, so the
+   * gradient COULD have inverted", and a precondition nothing can red is a precondition that
+   * stops meaning anything the day the ride changes. Which is what happened: the ride's
+   * containment now peaks at 349 s and recovers, and an end-sample clause graded the recovery.
+   * Severed, the building never leaves its 1.0 psig initial condition (MEASURED: peak
+   * 0.1082 MPa / 15.7 psia, against 0.4852 built and 0.6888 pre-#784) and the peak clause reds. */
+  ['the discharge never reaches containment (the building stays at its initial condition)',
+   '    var ctIn = mBr + mPz;', '    var ctIn = 0;', { grp: 'D' }],
   ['the SGTR stash is severed (primary water leaves and never reaches the SG)',
    '    eng._sgtrKgs = toSG && br ? br.mdot_kgs : 0;',
    '    eng._sgtrKgs = 0;', { grp: 'H' }],
