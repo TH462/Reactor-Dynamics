@@ -120,11 +120,45 @@ numbers already measured and already in those steps' notes; nothing else in the 
 rung must not be the one the hold-derived rule would give, or it passes on a build that ignores the
 field whenever the two agree.
 
-**STILL OPEN FROM #796 ITEMS 4 AND 5** (the owner's 1.7.6 playtest): `pwr_startup` steps 12 (hold
-240 s) and 13 (hold 400 s) also carry `wait_hint: false` and name no rung, so auto plays them at
-1x — which is what items 4 and 5 ask to change ("should suggest a higher warp setting than 1x",
-"probably 5x"). The mechanism now exists; the NUMBERS do not — neither step has a #753-style glance
-measurement, and picking one by eye is the HR12 failure that rule is for.
+**#796 ITEMS 4 AND 5 — MEASURED THE NEXT DAY, AND THE TWO STEPS ANSWER DIFFERENTLY.** Both carried
+`wait_hint: false` from the #653 S-9 pass and so were played at 1x.
+
+**Step 12 needed no cap at all — it needed its suppression removed.** #653 applied `wait_hint:
+false` across this region because the rule offered 60x on the 1800 s dwells either side; step 12
+holds 240 s, where the rule returns **10x**. The suppression was inherited, not reasoned, and that
+is the shape to watch for: a blanket fix applied to a neighbourhood outlives the case that
+justified it.
+
+**And step 12 is STANDING STILL, which makes the glance metric read its own noise** (`tools/
+glance_rung.js`, seed 42, full stack, 0.1 s samples): 3.891 % to 4.118 % over the whole four
+minutes, so indicated says 0.150 % at 1x and 0.185 % at 60x — **near-identical, which is the
+tell** — while TRUE says 0.002 % and 0.038 %. Grading a rung on the indicated column there would
+be grading the instrument (power range, sigma 0.3 %). True movement at 10x is 0.012 %, against the
+0.186 % ACCEPTED for step 9. 60x would be safe on movement alone; 10x is taken because the step
+also authorises a corrective INSERT, and **a rung is only as fast as the fastest thing the step
+asks you to do**.
+
+**Step 13 is decided by the ROD PULL, not by a power delta.** 13 steps at SLOW is 97.3
+plant-seconds, so ONE ROD STEP costs the player **7.49 s** of wall clock at 1x, **1.50 s** at 5x,
+**0.75 s** at 10x, **0.12 s** at 60x. 1.50 s is a reaction window; 0.75 s is not. That is the same
+failure #653 S-9 filed one region up, and it is why the owner's own "probably 5x" is ADOPTED on a
+measurement rather than deferred to. The rule would have given 60x, so this one genuinely needs
+`wait_speed`.
+
+**AND THE WINDOW AUTO ACCELERATES ON STEP 13 IS 42 PLANT-SECONDS, NOT 400** — `power_pct > 5` is
+met 0.7 plant-minutes in and `cklStepSpeed` drops the clock there, so the run to 10.5 % filling the
+rest of the authored dwell is already at real time. Grading the rung over the full dwell would have
+judged the walkthrough on plant it never accelerates. `wait_est_s: false` for the same reason: a
+printed "about 7 plant-minutes" overstates the wait tenfold.
+
+**⚠ STEP 12 IS SATISFIED ON ARRIVAL ON THE REPLAY'S ROUTE** — step 11's dwell settles the rate, so
+both acceptance entries hold at t=0 (power 3.97 %, rate 0.006) and auto never accelerates it there
+at all. The wait is real on the PLAYER's route, which is the one the owner is reporting from. A
+measurement tool that only ever drives the replay will call that step a non-event; read "0.0
+plant-min in" as "the replay does not wait here", never as "there is no wait".
+
+**The derivation is now a command, not a feel: `node tools/glance_rung.js <procedure_id> <step>`**,
+referenced from the `wait_speed` schema so the next rung is measured too.
 
 **ALSO.** Walkthrough step text up ~12 % (step instruction 12.5 -> 14 px, head 13 -> 14.5, `Use ...`
 and `why` 11.5 -> 13, sub/wait 11 -> 12.5, incident narrative 11.5 -> 12.5, out-of-turn/ack/step

@@ -164,9 +164,10 @@ recovered once passed.
 
 **A walkthrough drives the speed control for you.** While a walkthrough is running, each step
 sets the clock to the rate that step should be played at: the rung named on its ⏩ wait line for a
-long wait, the rate a step's own note names where one does — the two approach-to-criticality steps
-call for **10×** and **5×** against the wait line's rule of thumb, because a rod tap has to land
-while you can still read the rate — and **1×** for everything else. It also comes back down to
+long wait, a slower rate where the step names its own — the four steps of the approach to
+criticality and the pull into Mode 1 run at **10×** or **5×** against the wait line's rule of
+thumb, because a rod step has to land while you can still read the rate — and **1×** for
+everything else. It also comes back down to
 **1×** the moment the step's
 check-off criterion is met, so a fast-forward cannot run the plant past the thing the next step is
 about. You keep the bar: any rung you press stands for the rest of that step, and the walkthrough

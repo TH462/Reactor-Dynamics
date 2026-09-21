@@ -180,6 +180,11 @@
  *           step may set the rung and keep its own note as the only sentence about it.
  *           Snapped DOWN to a real ladder rung by app.js — the number is a ceiling.
  *           Harnesses ignore it (the replay drives its own dwell).
+ *           **DERIVE N, DO NOT PICK IT: `node tools/glance_rung.js <procedure_id> <step>`.**
+ *           It reports #753's yardstick — the worst REACTOR POWER change inside one 2.5 s
+ *           glance at each rung — over the window auto actually accelerates, plus the wall
+ *           clock of any rod pull the step asks for. Picking a rung by eye is the HR12
+ *           failure, and #653 S-9 is the record of what it costs.
  *   overtaken OPTIONAL {p,op,v[,tol],text[,industry]} — the plant condition under which
  *           this step NO LONGER APPLIES (#641): graded like `acc` while the step is active,
  *           and when it holds the live checklist checks the step off as 'overtaken', posts
@@ -3005,7 +3010,36 @@
           note: 'The climb stops by itself near 4 %, about twenty plant-minutes after the rods stop, and STARTUP RATE comes back to 0.00 on the way. The step checks off once the rate is under 0.10, which comes about fifteen minutes before power finally levels — leave the rods alone and let it. If power instead runs past 5 %, press MED and hold INSERT until it comes back — about 14 steps — then release and let the plant settle before you read it: while the bank is driving in, STARTUP RATE is well below zero and power has not finished falling.',
           why: 'Warmer water slows this reactor down, so the heat the climb makes is what stops the climb. Power finds a level for the rod position it was left at, and no further rod motion is needed to hold it. Below about 1 % that feedback was too weak to feel; from here it is what makes the plant steady.',
           control: 'Control Bank', target: 'REACTOR POWER below 5 % and levelling off; STARTUP RATE back under 0.10',
-          wait_hint: false,
+          /* THE `wait_hint: false` IS GONE, WHICH RESTORES THE RUNG *(OWNER, 2026-09-20, #796 item
+           * 4: "walkthrough mnode 3-1 step 12 should suggest a higher warp setting than 1x to wait
+           * for the startup rate to settle.")*. The suppression came from the #653 S-9 pass, which
+           * applied it across this region because the hint was offering 60× on the 1800 s dwells
+           * either side of it. THIS step holds 240 s, so the 30 s rule returns 10× — not 60× — and
+           * it needs no cap: it is the wrong number on the neighbours that was the problem, never
+           * the line.
+           *
+           * MEASURED 2026-09-20 (#796, seed 42, full stack, the shipped replay to step 11 then
+           * 0.1 s samples), on #753's own yardstick — the worst REACTOR POWER change inside one
+           * 2.5 s glance, i.e. 2.5×N plant-seconds at rung N:
+           *
+           *     rung   indicated   TRUE
+           *       1×    0.150 %    0.002 %
+           *       5×    0.177 %    0.009 %
+           *      10×    0.191 %    0.012 %
+           *      60×    0.185 %    0.038 %
+           *
+           * The plant is STANDING STILL here — 3.891 % to 4.118 % over the whole four minutes — so
+           * the indicated column is this channel's own noise (sigma 0.3 %) and says nothing about
+           * the rung; read the TRUE column. 10× moves 0.012 %, against the 0.186 % that was
+           * ACCEPTED for step 9. Even 60× would be safe on movement alone; 10× is taken because
+           * the step also authorises a corrective INSERT, and a rung is only as fast as the
+           * fastest thing it asks you to do.
+           *
+           * ⚠ ON THE REPLAY ROUTE THIS STEP IS SATISFIED ON ARRIVAL: step 11's dwell settles the
+           * rate, so both entries hold at t=0 (power 3.97 %, rate 0.006) and auto never accelerates
+           * it at all. The wait is real on the PLAYER's route, where the rate is still positive
+           * when the step opens — which is the route the owner is reporting from and the one the
+           * rung is for. */
           hold: 240,
           accs: [{ p: 'power_pct', op: '<', v: 5, label: 'REACTOR POWER below 5 %' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.1, label: 'STARTUP RATE settled between -0.10 and 0.10' }],
@@ -3064,7 +3098,37 @@
         { text: 'Press SLOW, then hold WITHDRAW until REACTOR POWER passes 5 %, about 13 steps. That is Mode 1, At Power.',
           why: 'Mode 1, At Power, begins at 5 % power. The warming water now holds power back, so each rod step buys a new steady level rather than a runaway — about half a percent of power per step. The extra steps past 5 % are for the turbine: it needs REACTOR POWER above 10 % before the startup trips will stay switched off.',
           control: 'Control Bank', target: 'REACTOR POWER above 5 %, settling near 11 %',
-          wait_hint: false,
+          /* 5×, AND IT IS THE ROD PULL THAT DECIDES IT *(OWNER, 2026-09-20, #796 item 5:
+           * "walkthrough mode 3-1 step 13 should also suggest a warp seting. probably 5x.")*. The
+           * 30 s rule would return 60× for a 400 s dwell, which is why this step could not simply
+           * have its `wait_hint: false` removed the way step 12 did — it needs the cap.
+           *
+           * MEASURED 2026-09-20 (#796, seed 42, full stack, 0.1 s samples). TWO numbers decide it,
+           * and the second is the one that matters, because this is an ACTION step: the player is
+           * holding WITHDRAW and has to let go.
+           *
+           *   worst REACTOR POWER change in one 2.5 s glance, over the window auto actually
+           *   accelerates (see below) — 1× 0.083 %, 5× 0.379 %, 10× 0.677 % (true values)
+           *
+           *   the pull itself — 13 steps at SLOW is 97.3 plant-seconds, so ONE ROD STEP costs the
+           *   player 7.49 s of wall clock at 1×, 1.50 s at 5×, 0.75 s at 10×, 0.12 s at 60×
+           *
+           * 1.50 s is a reaction window; 0.75 s is not, and 0.12 s is a step landing before the
+           * eye has moved. That is the same failure #653 S-9 filed one region up ("at 60x the
+           * reactor went 0 -> 12 % between two glances"), and it is why the owner's own 5× is
+           * adopted rather than the rule's 60× — measured, not deferred to.
+           *
+           * THE ACCELERATED WINDOW IS 42 PLANT-SECONDS, NOT 400. `power_pct > 5` is met at
+           * t = 4667.3 s against a step opening at 4625.6 — 0.7 plant-minutes in — and
+           * `cklStepSpeed` drops the clock to 1× the instant an acceptance is met (#796). So the
+           * rung governs the pull and nothing else; the run to 10.5 % that fills the rest of the
+           * authored dwell is already at real time.
+           *
+           * `wait_est_s: false` FOR THAT SAME REASON: `hold` is 400 s and the acceptance lands in
+           * 42, so printing "about 7 plant-minutes" would overstate the wait by a factor of ten.
+           * The rung is right with no honest number beside it, which is exactly what the field is
+           * for (#628). */
+          wait_speed: 5, wait_est_s: false,
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 13, speed: 'slow' }, hold: 400,
           acc: { p: 'power_pct', op: '>', v: 5 },
           hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },

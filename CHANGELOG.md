@@ -85,6 +85,28 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `wait_hint` decides the LINE, so those steps set the rung and keep their own note as the only
   sentence about it. Snapped DOWN to a real ladder rung, inheriting #628's "never name a button
   that is not there".
+- **#796 items 4 and 5 — the two steps that were being played at 1x now name their rung**, on a
+  measurement rather than a feel. Mode 3 -> Mode 1 step 12 (watch power level off) simply has its
+  `wait_hint: false` REMOVED: that suppression came from the #653 S-9 pass, which applied it across
+  the region because the rule offered 60x on the 1800 s dwells either side — but step 12 holds
+  240 s, so the rule returns **10x** and needs no cap. Step 13 (hold WITHDRAW into Mode 1) takes
+  `wait_speed: 5`, the owner's own number, because the rule would give 60x.
+  - MEASURED (`tools/glance_rung.js`, seed 42, full stack, 0.1 s samples), on #753's yardstick —
+    the worst REACTOR POWER change inside one 2.5 s glance. Step 12 is **standing still**: 3.891 %
+    to 4.118 % over four minutes, so its whole indicated figure is this channel's noise (0.150 % at
+    1x against 0.185 % at 60x — near-identical, which is the tell). True movement is 0.012 % at
+    10x, against the 0.186 % that was ACCEPTED for step 9. Even 60x would be safe on movement
+    alone; 10x is taken because the step also authorises a corrective INSERT.
+  - Step 13 is decided by the ROD PULL, not by a power delta: 13 steps at SLOW is 97.3
+    plant-seconds, so one rod step costs the player **7.49 s** of wall clock at 1x, **1.50 s** at
+    5x, **0.75 s** at 10x, **0.12 s** at 60x. 1.50 s is a reaction window; 0.75 s is not.
+  - And the window auto accelerates on step 13 is **42 plant-seconds, not 400** — `power_pct > 5`
+    is met 0.7 plant-minutes in, and the clock drops to 1x there — so `wait_est_s: false` drops a
+    "7 plant-minutes" estimate that would overstate the wait tenfold.
+- **`tools/glance_rung.js`** — the tool that derives a `wait_speed`, so the next one is a
+  measurement too. Reports the glance figure per rung on both the indicated and the true channel
+  (on a settled step the indicated column is noise and says nothing about the rung), over the
+  window auto actually accelerates, plus the wall clock of any rod pull the step asks for.
 - **Walkthrough step text is larger** *(OWNER, 2026-09-20: "Make the walkthrough text a little
   bigger.")*. The step instruction 12.5 -> 14 px, the head 13 -> 14.5, `Use ...` and the `why`
   11.5 -> 13, the sub/wait lines 11 -> 12.5, the incident narrative 11.5 -> 12.5, and the
