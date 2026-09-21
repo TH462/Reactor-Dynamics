@@ -31,6 +31,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Added
+- **Ops dashboard: a session-duration histogram and a "first 60 seconds" section** (#797). The
+  percentiles hid a bimodal shape — 17 of 72 sessions record a span of exactly zero against a
+  tail to 5.6 hours — so the zero-span group now has its own row, labelled as a batching artefact
+  rather than an instant visit. The first-minute view shows which control and panel come first
+  and how far a session gets, on the clock with history behind it, saying so on the page.
 - **Ops dashboard: the Sessions view sorts and filters** (#797). Newest, oldest, longest and
   shortest; filters on device, country, referrer kind and whether the session scrammed. Device,
   country and referrer now show on each card so a filter's effect is visible. The 100-row cap

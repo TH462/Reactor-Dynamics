@@ -374,6 +374,15 @@ async function usage() {
   // A DISTRIBUTION, not a row per session — this is the section that would otherwise grow
   // without bound. quantileWeighted is the only quantile the endpoint accepts, and weighting
   // by _sample_interval is what the sampled rows require anyway.
+  /* THIS FIGURE IS session_end ONLY AND THE LABEL SAYS SO -- but the label is the whole
+   * defence, and it has now been stripped twice when the number was quoted onward. Only
+   * about half of sessions record an end (36 of 69, measured 2026-09-20): a tab left open
+   * never does, and the ones it omits are disproportionately the LONG ones, so this median
+   * is biased SHORT. Measured the same day: session_end-only reads p50 1.9 min / p75 8.0,
+   * while ALL sessions by first-to-last event span read p50 3.0 / p75 21.8 / p95 125.3.
+   *
+   * THE DASHBOARD'S Feature usage PAGE HAS THE UNBIASED VERSION (a histogram over every
+   * session, #797 item 6). Prefer it. Quote this one only with its qualifier attached. */
   await sec('usage_length', 'Session length  (session_end only — a tab still open has not ended)',
     ['metric', 'p50', 'p75', 'p95', 'max'], async () => {
     const q = (c) => `quantileWeighted(${c})(double1, _sample_interval)`;

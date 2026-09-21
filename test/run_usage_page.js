@@ -99,7 +99,36 @@ function injectSrc(rel, src) {
       .join('+ \'<input type="hidden" name="days" value="30">\'')
       // 9. the small-sample warning threshold is neutered — a two-session release reads
       //    exactly like a thirty-session one (#800).
-      .split('const SMALL_SAMPLE = 10;').join('const SMALL_SAMPLE = 0;');
+      .split('const SMALL_SAMPLE = 10;').join('const SMALL_SAMPLE = 0;')
+      /* --- duration histogram + first-60-seconds (#797 items 6/7) ------------------- */
+      // 10. "Time per session" goes back to the session_end-only population — the exact
+      //     bias that produced the wrong 1.9min figure the owner had to be corrected on
+      //     (tools/site_report.js's usage_length query, not this file, but the same
+      //     defect shape). A fixture with an unended long session must fall out of the
+      //     histogram's long bucket once this is applied.
+      .split("FROM ${DATASET} WHERE blob2 <> 'dev' AND ${since}${versionWhere} GROUP BY session`);")
+      .join("FROM ${DATASET} WHERE blob1 = 'session_end' AND blob2 <> 'dev' AND ${since}${versionWhere} GROUP BY session`);")
+      // 11. the zero-span row folds into "<1m" instead of standing as its own category —
+      //     a batch-floor artefact would then read as "visit lasted under a minute".
+      .split('if (secs <= 0) return -1;').join('if (false) return -1;')
+      // 12. the percentiles are computed over a DIFFERENT population than the histogram
+      //     (silently dropping the zero-span cluster) — the two must read the same array.
+      .split('const p50 = quantile(secs, 0.5), p75 = quantile(secs, 0.75), p95 = quantile(secs, 0.95);')
+      .join('const _p = secs.filter((s) => s > 0); const p50 = quantile(_p, 0.5), p75 = quantile(_p, 0.75), p95 = quantile(_p, 0.95);')
+      // 13. the first-60-seconds window reads the SESSION clock (double6) instead of the
+      //     PAGE clock (double5) it was deliberately built on for its much longer history
+      //     — same defect shape as #791's, reintroduced in the new section.
+      .split('AND timestamp >= ${COLUMNS_SINCE} AND double5 >= 0 AND double5 <= 60')
+      .join('AND timestamp >= ${COLUMNS_SINCE} AND double6 >= 0 AND double6 <= 60')
+      // 14. the first-panel-opened query drops the release filter — every other
+      //     first-60-seconds query still carries it, so this proves the check actually
+      //     reads that section rather than passing on the first query it finds.
+      .split("WHERE blob1 = 'panel_open' AND blob2 <> 'dev' AND ${since}${versionWhere}")
+      .join("WHERE blob1 = 'panel_open' AND blob2 <> 'dev' AND ${since}")
+      // 15. "touched nothing" is forced to 0 instead of `total - touched.size` — the
+      //     0-touch category, a real answer to "how far do they get", disappears.
+      .split('const zeroTouch = Math.max(0, totalSessions - touched.size);')
+      .join('const zeroTouch = 0;');
   }
   if (rel === 'sessions.js') {
     return src
@@ -186,11 +215,36 @@ function dispatch(rows, q) {
     if (has("'walkthrough_step'", 'LIMIT 20000')) return Promise.resolve(rows.dwell);
     if (has("'walkthrough_step'", 'blob5 AS k')) return Promise.resolve(rows.mix);
     if (has("'walkthrough_step'", 'GROUP BY wt, step')) return Promise.resolve(rows.funnel);
-    // "Time per session"'s write-span query — a non-empty answer is what lets that
-    // section go on to its columns-exist probe and its max(double6) query, the one
-    // #791's elapsed-clock check needs to see reach the wire.
-    if (has('min(timestamp) AS first_seen', 'max(timestamp) AS last_seen'))
-      return Promise.resolve([{ session: 's1', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:05:00' }]);
+    /* "The first 60 seconds" (#797 item 7) — matched on the column that names them
+     * uniquely: only these two queries select double5 alongside their own blob1 filter
+     * ("Most-used controls"/"Panels opened" filter on the same blob1 values but name no
+     * double column at all). Injection 13 (double5 -> double6) makes both fall through
+     * to the generic empty-result fallback at the bottom of this function, which is the
+     * point — the fixture then goes missing and every count built from it goes to 0. */
+    // `double5 >= 0` is required IN ADDITION to `double5 AS t` — the SELECT list alone
+    // is not enough to prove injection 13 (double5 -> double6 in the WHERE guard) would
+    // be caught: that injection leaves `double5 AS t` in the SELECT clause untouched, so
+    // a matcher keyed on the SELECT list alone would still serve the fixture as if
+    // nothing had changed (measured — it did, before this line named the guard too).
+    if (has("blob1 = 'command'", 'double5 AS t', 'double5 >= 0')) return Promise.resolve(rows.firstCmd || []);
+    if (has("blob1 = 'panel_open'", 'double5 AS t', 'double5 >= 0')) return Promise.resolve(rows.firstPanel || []);
+    // The first-60-seconds denominator — no GROUP BY, which is what keeps it from
+    // colliding with "Sessions by starting condition" / "How far through a startup they
+    // get" below (both GROUP BY and both also select count(DISTINCT blob4)).
+    if (has('count(DISTINCT blob4) AS sessions') && asked.indexOf('GROUP BY') === -1)
+      return Promise.resolve(rows.total60 || []);
+    /* "Time per session"'s write-span query — a non-empty answer is what lets that
+     * section go on to its columns-exist probe and its max(double6) query, the one
+     * #791's elapsed-clock check needs to see reach the wire. Injection 10 (#797 item 6)
+     * adds a `blob1 = 'session_end'` filter to reproduce the exact bias that produced
+     * the wrong 1.9min figure reported to the owner once already (tools/site_report.js's
+     * separate usage_length query, same defect shape) — `spansEnded` is the fixture's
+     * answer to THAT text, `spans` to the honest, population-complete one. */
+    if (has('min(timestamp) AS first_seen', 'max(timestamp) AS last_seen')) {
+      return Promise.resolve(has("blob1 = 'session_end'")
+        ? (rows.spansEnded || [])
+        : (rows.spans || [{ session: 's1', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:05:00' }]));
+    }
     // Its own columns-exist probe (no blob1 filter, no GROUP BY) — a non-zero count is
     // what lets the max(double6) query fire at all.
     if (has('SELECT count() AS n FROM', 'timestamp >=')) return Promise.resolve([{ n: 5 }]);
@@ -265,6 +319,70 @@ var ROWS = {
   // without also triggering the low-sample warning tested separately below.
   releases: [{ release: 'Alpha 1.7.5', channel: 'public', sessions: 20, last_seen: '2026-09-15 10:00:00' }],
 };
+
+/* THE HISTOGRAM + FIRST-60-SECONDS FIXTURE (#797 items 6/7), separate from ROWS above so
+ * the 94 checks already built on ROWS's exact shape (query counts, NaN-absence, etc.)
+ * cannot be disturbed by adding these.
+ *
+ * TEN SESSIONS for "Time per session": TWO zero-span (the "own category" the histogram
+ * has to keep visible), and eight non-zero spans chosen so quantile(secs, .5) is
+ * FALSIFIABLE against the zero-span-inclusion bug — removing just ONE zero shifts a
+ * ceil()-based quantile index by exactly one slot and can land back on the SAME value
+ * by coincidence (proven while building this fixture: it did, for both p50 and p75, on
+ * a single-zero version of this set); removing TWO does not. Two of the eight
+ * (14400s/20000s) exist ONLY in `spans`, not in `spansEnded` — the "unended long
+ * session" injection 10 needs to make disappear from the long bucket.
+ *
+ *   spans (n=10):     0, 0, 30, 90, 180, 480, 1200, 2700, 14400, 20000 (seconds)
+ *   -> zero-span: 2         <1m: 1 (30)        3h+: 2 (14400, 20000, BOTH unended)
+ *   -> p50 = quantile(.5) = 180s = "3m 0s"    (WITHOUT the two zeros: 480s = "8m 0s")
+ *
+ *   spansEnded (n=8, injection 10's population): the same set minus the two unended
+ *   long sessions — what "session_end only" sees.
+ *
+ * FIRST 60 SECONDS: total60 = 10 sessions (the same window), so a hand reader can check
+ * every percentage here against one denominator. `firstCmd`/`firstPanel` are raw EVENT
+ * rows (not pre-reduced to "first"), because the page itself does the reduction — s1's
+ * SECOND command (boron_add @ t=40) is included specifically to prove the earliest one
+ * (rod_nudge @ t=5) wins, not the other way around. */
+var HIST_ROWS = Object.assign({}, ROWS, {
+  spans: [
+    { session: 's_zero1', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:00:00' },
+    { session: 's_zero2', first_seen: '2026-09-01 11:00:00', last_seen: '2026-09-01 11:00:00' },
+    { session: 's_30', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:00:30' },
+    { session: 's_90', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:01:30' },
+    { session: 's_180', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:03:00' },
+    { session: 's_480', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:08:00' },
+    { session: 's_1200', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:20:00' },
+    { session: 's_2700', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:45:00' },
+    // Unended: only "spans" (the whole-population query) carries these two.
+    { session: 's_14400', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 14:00:00' },
+    { session: 's_20000', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 15:33:20' },
+  ],
+  spansEnded: [
+    { session: 's_zero1', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:00:00' },
+    { session: 's_zero2', first_seen: '2026-09-01 11:00:00', last_seen: '2026-09-01 11:00:00' },
+    { session: 's_30', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:00:30' },
+    { session: 's_90', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:01:30' },
+    { session: 's_180', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:03:00' },
+    { session: 's_480', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:08:00' },
+    { session: 's_1200', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:20:00' },
+    { session: 's_2700', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:45:00' },
+  ],
+  total60: [{ sessions: 10 }],
+  firstCmd: [
+    { session: 's1', action: 'rod_nudge', t: 5 },
+    { session: 's1', action: 'boron_add', t: 40 },   // s1's SECOND touch -- must lose to t=5
+    { session: 's2', action: 'rod_nudge', t: 12 },
+    { session: 's3', action: 'boron_add', t: 3 },
+    { session: 's4', action: 'rod_nudge', t: 58 },
+  ],
+  firstPanel: [
+    { session: 's1', panel: 'core', t: 2 },
+    { session: 's2', panel: 'core', t: 20 },
+    { session: 's5', panel: 'secondary', t: 9 },
+  ],
+});
 
 /* ⚠ A NONCE, AND IT IS LOAD-BEARING. `import()` caches by URL and a data: URL is its own
  * content, so two renders built from identical source got the SAME module instance — and
@@ -839,6 +957,89 @@ async function renderSessionDetail(rows, sid, seen) {
   var pageBad = await renderQS(VER_ROWS, '&days=30&version=' + encodeURIComponent('Alpha 0.0.0|public'));
   ck('an unrecognised version falls back to the latest release, not to "All versions"',
     pageBad.indexOf('Alpha 1.7.10 — public · 5 sessions') !== -1);
+
+  /* ------------------------------------------ 16. the duration histogram (#797 item 6) */
+  head('16. "Time per session": the histogram + percentiles over the CORRECT population');
+  var pageHist = await render(HIST_ROWS);
+  /* THE ZERO-SPAN CATEGORY IS ITS OWN ROW, never folded into "<1m" — both counts are
+   * checked so a fold-in (injection 11) shows up as a MISMATCH (zero drops to 0, <1m
+   * rises to 2) rather than one check alone having to catch a shift either direction. */
+  ck('the two zero-span sessions get their own row, not folded into "<1m"',
+    /<td>0s \(single batch\)<\/td><td class="num">2<\/td>/.test(pageHist));
+  ck('...and "<1m" itself still reads 1 (the real 30s session only)',
+    /<td>&lt;1m<\/td><td class="num">1<\/td>/.test(pageHist));
+  /* THE UNENDED LONG SESSIONS LAND IN THE LONG BUCKET — the population check. Both
+   * 14400s and 20000s sessions never wrote a session_end row (see HIST_ROWS' header);
+   * if "Time per session" ever goes back to a session_end-only population (injection
+   * 10) this bucket drops from 2 to 0, not just shrinks, because BOTH of this fixture's
+   * long sessions are unended. */
+  ck('the two long, UNENDED sessions both land in the "3h+" bucket',
+    /<td>3h\+<\/td><td class="num">2<\/td>/.test(pageHist));
+  /* PERCENTILES OVER THE SAME POPULATION AS THE HISTOGRAM. p50 over all 10 sessions is
+   * 180s ("3m 0s"); dropping the two zero-span sessions first (injection 12) moves it to
+   * 480s ("8m 0s") instead — built to be false by coincidence, see HIST_ROWS' header. */
+  ck('p50 is computed over ALL 10 sessions (3m 0s), not the 8 non-zero ones (would read 8m 0s)',
+    pageHist.indexOf('<div class="v">3m 0s</div><div class="k">p50</div>') !== -1);
+  ck('p75 and the max tile also render off the same array',
+    pageHist.indexOf('<div class="v">45m 0s</div><div class="k">p75</div>') !== -1
+    && pageHist.indexOf('<div class="v">5h 33m</div><div class="k">Max</div>') !== -1);
+  ck('the Sessions tile counts all 10, zero-span included',
+    pageHist.indexOf('<div class="v">10</div><div class="k">Sessions</div>') !== -1);
+  ck('the page states a span of 0 is a floor artefact, not an instant visit',
+    /single batch/.test(pageHist) && /not evidence the visit was instantaneous/.test(pageHist));
+
+  /* -------------------------------------------- 17. the first 60 seconds (#797 item 7) */
+  head('17. "The first 60 seconds" — first touch, first panel, how far (#797 item 7)');
+  ck('the section heading is on the page',
+    /<h2>The first 60 seconds/.test(pageHist));
+  /* FIRST CONTROL TOUCHED. rod_nudge wins 3 sessions (s1 via its t=5 row, over its own
+   * later t=40 boron_add — the tie-break the fixture exists to prove — plus s2, s4);
+   * boron_add wins only s3. Against the total60 denominator of 10. */
+  ck('rod_nudge is the first control touched by 3 of 10 sessions',
+    /<td>rod_nudge<\/td><td class="num">3<\/td>/.test(pageHist)
+    && pageHist.indexOf('3 / 10') !== -1);
+  ck("s1's EARLIEST command (t=5) wins over its own later one (t=40) — boron_add is only 1 of 10",
+    /<td>boron_add<\/td><td class="num">1<\/td>/.test(pageHist));
+  ck('rod_nudge is ranked above boron_add (3 beats 1)',
+    pageHist.indexOf('>rod_nudge<') < pageHist.indexOf('>boron_add<'));
+  /* FIRST PANEL OPENED. core wins s1 and s2 (2 of 10); secondary wins s5 alone (1 of 10). */
+  ck('core is the first panel opened by 2 of 10 sessions, secondary by 1',
+    /<td>core<\/td><td class="num">2<\/td>/.test(pageHist)
+    && /<td>secondary<\/td><td class="num">1<\/td>/.test(pageHist));
+  /* HOW FAR IN 60 SECONDS. touches per session: s1=3 (2 commands+1 panel), s2=2 (1+1),
+   * s3=1, s4=1, s5=1 -> bucket "1"=3 (s3,s4,s5), bucket "2-3"=2 (s1,s2), and the 5
+   * sessions with NO row at all (of the 10 total) are bucket 0 — the real "touched
+   * nothing" category injection 15 would zero out. */
+  ck('"0 — touched nothing" is a real, non-zero category (5 of 10)',
+    /<td>0 — touched nothing<\/td><td class="num">5<\/td>/.test(pageHist));
+  ck('1 touch: 3 of 10 (s3, s4, s5)',
+    /<td>1<\/td><td class="num">3<\/td><td><div class="bar">.*?3 \/ 10/.test(pageHist));
+  ck('2-3 touches: 2 of 10 (s1, s2)',
+    /<td>2-3<\/td><td class="num">2<\/td><td><div class="bar">.*?2 \/ 10/.test(pageHist));
+  ck('the page names the clock, its resolution and how much history stands behind it',
+    /t_page/.test(pageHist) && /1-second resolution/.test(pageHist)
+    && /t_session/.test(pageHist) && /about a day/.test(pageHist));
+
+  /* THE FIRST-60-SECONDS SECTION HONOURS THE RELEASE FILTER — reusing check 15's own
+   * `eventQueries`/`missingFilter` computation (same seenSel capture, unchanged): those
+   * three new queries are "FROM ... WHERE" queries like any other, so if this section's
+   * panel query drops the filter (injection 14) THAT check goes red already. Named here
+   * too, on the query TEXT directly, so a failure reads as "this file" not "check 15". */
+  /* Read off `seenSel` DIRECTLY rather than the `eventQueries` derived above — that
+   * derivation's `/FROM \S+ WHERE/` regex requires FROM and WHERE on the same physical
+   * line, which two of THIS section's three queries do not (FROM ends one line, WHERE
+   * starts the next), exactly like the walkthrough probe and the Time-per-session probe
+   * it already excludes. A query is still a query whichever line WHERE starts on. */
+  var firstMinuteQueries = seenSel.filter(function (q) {
+    return q.indexOf('double5 AS t') !== -1 || (q.indexOf('count(DISTINCT blob4) AS sessions') !== -1
+      && q.indexOf('GROUP BY') === -1);
+  });
+  ck('all 3 first-60-seconds queries were issued with a version selected',
+    firstMinuteQueries.length === 3, firstMinuteQueries.length + ' seen');
+  ck('...and every one of them carries the selected release and channel',
+    firstMinuteQueries.length > 0 && firstMinuteQueries.every(function (q) {
+      return q.indexOf("blob3 = 'Alpha 1.7.9'") !== -1 && q.indexOf("blob2 = 'public'") !== -1;
+    }));
 
   console.log('\n' + BOLD + (nFail ? RED + 'FAIL' : GREEN + 'PASS') + RST
     + '  ' + nPass + ' passed, ' + nFail + ' failed'
