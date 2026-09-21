@@ -802,6 +802,249 @@ async function testTripBlockPopoverDismissesOnOutsideClick(page) {
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
 }
 
+/* THE TRIP BLOCKS POPOVER DISMISSES FROM ANYWHERE, ON ESCAPE, AND RETURNS FOCUS
+ * (#721, OWNER RULING 2026-09-21: "Widen to anywhere + Escape + focus (Recommended)").
+ * #690 scoped the outside-press listener to the board wrap; MEASURED with that scope, the
+ * Instructor tab, the time controls (a speed button) and the alarms/chart strip (Ack All) all
+ * left the panel open, because none of them lives inside the board wrap. pwr_board_wiring.js's
+ * `armPopAway` now hosts the pointerdown listener on `document`, arms a `keydown` listener for
+ * Escape alongside it, and `closePop` hands focus back to the TRIP BLOCKS button on a player
+ * dismiss — see the WIDENED note there.
+ *
+ * EVERY PRESS HERE IS A REAL EVENT — `page.click`/`page.mouse.click` (Playwright dispatches
+ * actual input events, not a bare DOM `.click()`) and `page.keyboard.press`. Never
+ * `element.click()` inside an evaluate — same reason as #690's own check above.
+ *
+ * THE LISTENER-COUNT ASSERTIONS patch `document.addEventListener`/`removeEventListener` on the
+ * already-loaded page and read the DELTA from that point forward, so a pre-existing document
+ * listener (app.js's own global Escape handler, for one) cannot inflate the count — only NEW
+ * pointerdown/keydown listeners added by `armPopAway` move it, which is what "one while a panel
+ * is up and none otherwise" actually asserts.
+ *
+ * INJECTION-VERIFIED — see the note in run_all.js's BASELINES entry. */
+async function testTripBlockPopoverWidenedDismissal(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page);
+
+  await page.evaluate(function () {
+    window.__rdCounts = { pointerdown: 0, keydown: 0 };
+    var origAdd = document.addEventListener, origRemove = document.removeEventListener;
+    document.addEventListener = function (type, fn, opts) {
+      if (type === 'pointerdown' || type === 'keydown') window.__rdCounts[type]++;
+      return origAdd.call(this, type, fn, opts);
+    };
+    document.removeEventListener = function (type, fn, opts) {
+      if (type === 'pointerdown' || type === 'keydown') window.__rdCounts[type]--;
+      return origRemove.call(this, type, fn, opts);
+    };
+  });
+
+  function findTripBtn() {
+    return page.evaluate(function () {
+      var el = null, w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), n;
+      while ((n = w.nextNode())) {
+        if ((n.nodeValue || '').trim() === 'TRIP BLOCKS' && n.parentElement.matches('button')) {
+          el = n.parentElement; break;
+        }
+      }
+      if (!el) return null;
+      el.setAttribute('data-rd-trip-btn', '1');   // stable marker — the button's own text can
+      var b = el.getBoundingClientRect();          // carry a count badge, so textContent is not
+      return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) };   // reliable
+    });
+  }
+  var isOpen = function () { return page.evaluate(function () { return !!document.querySelector('.bd-pop'); }); };
+  var counts = function () { return page.evaluate(function () { return window.__rdCounts; }); };
+  var activeIsTrip = function () {
+    return page.evaluate(function () {
+      var el = document.activeElement;
+      return !!(el && el.getAttribute && el.getAttribute('data-rd-trip-btn') === '1');
+    });
+  };
+  function findBareOutsidePoint() {
+    return page.evaluate(function () {
+      var pop = document.querySelector('.bd-pop'), stage = document.querySelector('.pwr-board-stage');
+      if (!pop || !stage) return null;
+      var sb = stage.getBoundingClientRect(), pb = pop.getBoundingClientRect();
+      for (var y = sb.top + 8; y < sb.bottom - 8; y += 17) {
+        for (var x = sb.left + 8; x < sb.right - 8; x += 17) {
+          if (x > pb.left - 6 && x < pb.right + 6 && y > pb.top - 6 && y < pb.bottom + 6) continue;
+          if (document.elementFromPoint(x, y) !== stage) continue;
+          return { x: Math.round(x), y: Math.round(y) };
+        }
+      }
+      return null;
+    });
+  }
+
+  var tripPt = await findTripBtn();
+  if (!tripPt) {
+    console.error('FAIL: the trip-block widened-dismissal fixture is gone (no TRIP BLOCKS button) — re-point this check');
+    process.exitCode = 1;
+    return 'trip-block-widened: FIXTURE MISSING — no TRIP BLOCKS button' + String.fromCharCode(10);
+  }
+
+  var bad = [];
+
+  /* EVERY CASE OPENS THE PANEL ITSELF AND ASSERTS IT IS OPEN BEFORE PRESSING. No case may
+   * inherit a previous case's state (#721 quality-pass finding, the reason this was sent back
+   * once already): the first cut just pressed the TRIP BLOCKS button and assumed it opened, so a
+   * case whose OWN dismissal press failed to close the panel left the NEXT case's opening press
+   * hitting the button's own close-on-second-press branch instead of a fresh open — measured on
+   * the pre-#721 code, where the Instructor-tab and alarms-strip cases both read "closed" even
+   * though neither press could reach a board-scoped listener, purely because Escape (the case
+   * before them) had left the panel open.
+   *
+   * FORCE A CLEAN CLOSED BASELINE FIRST, through the button's OWN unconditional toggle-close
+   * (`if (pop) { closePop(true); return; }` in `toggleTripBlocks` — unrelated to, and untouched
+   * by, the outside-dismiss code under test), then open fresh from there. That makes every case
+   * self-sufficient regardless of what a previous case's press did or didn't do: a still-broken
+   * dismissal upstream can no longer masquerade as, or mask, a case downstream. */
+  async function openAndAssert(tag) {
+    if (await isOpen()) {
+      await page.mouse.click(tripPt.x, tripPt.y);   // the button's own toggle — always closes when open
+      await page.waitForTimeout(50);
+    }
+    await page.mouse.click(tripPt.x, tripPt.y);
+    var o = await isOpen();
+    if (!o) bad.push(tag + ': the popover did not open on its own precondition press — not evaluated');
+    return o;
+  }
+
+  // ---- case: Escape ----
+  if (await openAndAssert('Escape')) {
+    var cOpen1 = await counts();
+    if (cOpen1.pointerdown !== 1 || cOpen1.keydown !== 1) {
+      bad.push('Escape case: listener counts while open ' + JSON.stringify(cOpen1) + ' (want {pointerdown:1,keydown:1})');
+    }
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(80);
+    if (await isOpen()) {
+      bad.push('Escape did not dismiss the popover (#721 item 2)');
+    } else {
+      var cEsc = await counts();
+      if (cEsc.pointerdown !== 0 || cEsc.keydown !== 0) {
+        bad.push('listener counts after Escape close: ' + JSON.stringify(cEsc) + ' (want {pointerdown:0,keydown:0})');
+      }
+      if (!(await activeIsTrip())) bad.push('focus after Escape dismiss is not the TRIP BLOCKS button (#721 item 3)');
+      log.push('Escape: open=true → Escape → open=false, counts ' + JSON.stringify(cEsc));
+    }
+  }
+
+  // ---- case: the Instructor tab (outside the board wrap) ----
+  if (await openAndAssert('Instructor tab')) {
+    await page.click('button[data-tab="instructor"]');
+    await page.waitForTimeout(80);
+    if (await isOpen()) {
+      bad.push('a press on the Instructor tab left the popover open (#721 item 1)');
+    } else {
+      if (!(await activeIsTrip())) bad.push('focus after the Instructor-tab dismiss is not the TRIP BLOCKS button');
+      log.push('Instructor tab: open=true → press → open=false');
+    }
+  }
+
+  // ---- case: the time controls (a speed button, outside the board wrap) ----
+  if (await openAndAssert('time controls')) {
+    await page.click('#speed button[data-speed="1"]');
+    await page.waitForTimeout(80);
+    if (await isOpen()) {
+      bad.push('a press on the time controls left the popover open (#721 item 1)');
+    } else {
+      if (!(await activeIsTrip())) bad.push('focus after the time-controls dismiss is not the TRIP BLOCKS button');
+      log.push('time controls: open=true → press → open=false');
+    }
+  }
+
+  // ---- case: the alarms/chart strip (Ack All, outside the board wrap) ----
+  if (await openAndAssert('alarms/chart strip')) {
+    await page.click('[data-act="ack-all"]');
+    await page.waitForTimeout(80);
+    if (await isOpen()) {
+      bad.push('a press on the alarms/chart strip (Ack All) left the popover open (#721 item 1)');
+    } else {
+      if (!(await activeIsTrip())) bad.push('focus after the alarms-strip dismiss is not the TRIP BLOCKS button');
+      log.push('alarms/chart strip: open=true → press → open=false');
+    }
+  }
+
+  /* ---- case: re-arms cleanly across a board remount ----
+   * Its OWN precondition is CLOSED, not open — a leaked open panel from a case above would
+   * otherwise let the remount's `onMount -> closePop()` teardown masquerade as "the listener
+   * count is zero because nothing was ever armed". Same self-sufficiency rule as `openAndAssert`
+   * above: force it closed through the button's own toggle rather than skipping this case
+   * outright, so a broken case upstream cannot also swallow this one. The remount itself needs
+   * the real Main Menu -> Reset the plant flow (`rebuildPlantUI` is the only production path to
+   * `RD.PwrBoardDriver.onMount`); nothing else in this function navigates or rebuilds the board,
+   * so this is the one case that pays for it. */
+  if (await isOpen()) {
+    await page.mouse.click(tripPt.x, tripPt.y);   // the button's own toggle — always closes when open
+    await page.waitForTimeout(50);
+  }
+  if (await isOpen()) {
+    bad.push('remount case: could not reach a closed baseline — not evaluated');
+  } else {
+    var cBaseline = await counts();
+    if (cBaseline.pointerdown !== 0 || cBaseline.keydown !== 0) {
+      bad.push('remount case: listener counts before the remount are not zero: ' + JSON.stringify(cBaseline));
+    }
+    await page.click('#mainMenuBtn');
+    await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 5000 }).catch(function () {});
+    await page.click('[data-mreset]');   // arm
+    await page.click('[data-mreset]');   // confirm -> doReset(true) -> rebuildPlantUI -> onMount
+    await page.waitForTimeout(500);
+    await waitBoardLive(page).catch(function () {});
+    var cAfterRemount = await counts();
+    if (cAfterRemount.pointerdown !== 0 || cAfterRemount.keydown !== 0) {
+      bad.push('listener counts after a remount (popover never reopened): ' + JSON.stringify(cAfterRemount) +
+        ' (want {pointerdown:0,keydown:0} — onMount calls closePop() on every rebuild)');
+    }
+    var tripPt2 = await findTripBtn();
+    if (!tripPt2) {
+      bad.push('the TRIP BLOCKS button fixture is gone after a remount');
+    } else {
+      await page.mouse.click(tripPt2.x, tripPt2.y);
+      if (!(await isOpen())) {
+        bad.push('remount case: the popover did not (re)open after the remount — not evaluated further');
+      } else {
+        var cReopen = await counts();
+        if (cReopen.pointerdown !== 1 || cReopen.keydown !== 1) {
+          bad.push('listener counts re-opened after remount: ' + JSON.stringify(cReopen) +
+            ' (want {pointerdown:1,keydown:1} — a leaked pre-remount listener would show 2)');
+        }
+        var outPt = await findBareOutsidePoint();
+        if (!outPt) {
+          bad.push('could not find a bare outside point on the board after the remount — re-point this check');
+        } else {
+          await page.mouse.click(outPt.x, outPt.y);
+          await page.waitForTimeout(80);
+          if (await isOpen()) {
+            bad.push('after a remount, an outside press no longer dismisses the popover');
+          } else {
+            var cClosedAfter = await counts();
+            if (cClosedAfter.pointerdown !== 0 || cClosedAfter.keydown !== 0) {
+              bad.push('listener counts after the post-remount close: ' + JSON.stringify(cClosedAfter));
+            }
+          }
+        }
+      }
+    }
+    log.push('remount: counts after teardown ' + JSON.stringify(cAfterRemount) +
+      ', after reopen ' + JSON.stringify(await counts()));
+  }
+
+  if (bad.length) {
+    console.error('FAIL: trip-block popover widened dismissal (#721): ' + bad.join('; '));
+    process.exitCode = 1;
+  } else {
+    console.log('  trip-block popover dismisses from anywhere, on Escape, returns focus, and ' +
+      're-arms cleanly across a remount (#721)');
+  }
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
 async function testEsfArmButtons(page) {
   var log = [];
   /* pwr disables NOTHING; pwr2 disables the DELIBERATE set: the HPI AUTO re-arm (#503),
@@ -5220,6 +5463,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'trip-block-overlay.log'), tbLog);
     var tdLog = await testTripBlockPopoverDismissesOnOutsideClick(page);
     fs.writeFileSync(path.join(SCRATCH, 'trip-block-dismiss.log'), tdLog);
+    var twLog = await testTripBlockPopoverWidenedDismissal(page);
+    fs.writeFileSync(path.join(SCRATCH, 'trip-block-widened-dismiss.log'), twLog);
     var dbLog = await testDiagBundle(page);
     fs.writeFileSync(path.join(SCRATCH, 'diag-bundle.log'), dbLog);
     var hpLog = await testHeldPlantDialog(page);
@@ -5292,6 +5537,7 @@ if (require.main !== module) {
                      startWalkthrough: startWalkthrough,
                      testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
                      testTripBlockPopoverDismissesOnOutsideClick: testTripBlockPopoverDismissesOnOutsideClick,
+                     testTripBlockPopoverWidenedDismissal: testTripBlockPopoverWidenedDismissal,
                      waitBoardLive: waitBoardLive,
                      testWalkthroughHoldReleasedOnExit: testWalkthroughHoldReleasedOnExit,
                      testHeldNotePauseResume: testHeldNotePauseResume,

@@ -3139,19 +3139,40 @@
    *     one while a panel is up and none otherwise. That is also the unmount/remount teardown:
    *     `onMount` already calls `closePop()`, so a board rebuild cannot leave a listener behind
    *     on a detached stage. Nothing else has to remember to clean up.
-   *  2. THE HOST IS THE BOARD, NEVER `document`. A document-level listener fires on every piece
-   *     of chrome — the walkthrough panel, the menus, the chart — which is not what "outside
-   *     that popup" means for a panel that lives on the board. It is attached to the wrap rather
-   *     than the stage so the letterbox margin around the scaled canvas counts as outside too.
-   *  3. THE TRIP BLOCKS BUTTON IS EXEMPT, and that guard is what makes the panel openable at
-   *     all. The button toggles on 'click'; this listener runs on 'pointerdown', which fires
-   *     FIRST. Without the exemption a press on the button while the panel is up would close it
-   *     here and then the click would re-open it, so the button could never shut it — the panel
-   *     would be dismissible by every press except the one an operator would try. A press inside
-   *     the panel is exempt for the obvious reason: the rows are buttons.
+   *  2. THE HOST IS `document` (WIDENED #721, see below). THE TRIP BLOCKS BUTTON IS EXEMPT, and
+   *     that guard is what makes the panel openable at all. The button toggles on 'click'; this
+   *     listener runs on 'pointerdown', which fires FIRST. Without the exemption a press on the
+   *     button while the panel is up would close it here and then the click would re-open it, so
+   *     the button could never shut it — the panel would be dismissible by every press except the
+   *     one an operator would try. A press inside the panel is exempt for the obvious reason: the
+   *     rows are buttons.
    *
    * pointerdown rather than click so the panel goes away on the press, and in the CAPTURE phase
-   * so a handler that ever starts calling stopPropagation cannot strand it open. */
+   * so a handler that ever starts calling stopPropagation cannot strand it open.
+   *
+   * ---------------------------------------------------------- WIDENED 2026-09-21 (#721, RULED)
+   * The host used to be the board wrap, on the reading that "outside that popup" meant "outside
+   * the popup, on the board". The owner's ruling took the #675 sentence literally: outside the
+   * popup, full stop. MEASURED with the board-scoped host: the Instructor tab, the time controls
+   * and the alarms/chart strip all left the panel open, because none of them lives inside the
+   * board wrap. The host is `document` now — the exemptions above are what keep it from also
+   * closing on the button that opens it or a press inside the card.
+   *
+   * TWO MORE THINGS DISMISS IT, SAME RULING:
+   *   - Escape, via a `keydown` listener armed and torn down alongside the pointerdown one —
+   *     same one-while-up, none-otherwise lifetime, same `closePop(true)` acknowledge path.
+   *   - Focus returns to the opener. `closePop` hands it back to the button that was passed to
+   *     `armPopAway`, but DEFERRED one tick (`setTimeout(…, 0)`), not synchronously — a real
+   *     mouse press on another focusable control (the Instructor tab, a speed button…) assigns
+   *     that control's OWN focus as the browser's native default action of the mousedown, which
+   *     runs AFTER this capture-phase listener returns. Focusing the opener synchronously here
+   *     would be overwritten by that default action a moment later; the deferral runs after it.
+   *     Escape and the opener's own second press have nothing competing for focus, so the same
+   *     deferred call is harmless there too — same visible result, just one tick later.
+   *
+   * NOT done: putting the popover in the tab order (item 2 of #721's body). That is a
+   * roving-focus job with no precedent in this product — left as a known, written-down gap;
+   * shift-tab back to the button and Enter still work. */
   /* ==================== THE TRIP-BLOCK MESSAGE STATE (#738, #716) ====================
    * *(OWNER RULING, 2026-09-13: "I don't want to add new UI elements to the main board. What if
    * we flash the permissive button amber when there's a message and put the permissive messages
@@ -3402,7 +3423,7 @@
     }).filter(function (r) { return r.msg || r.note; });
   }
 
-  var popAway = null;                // { host, fn } while a popover is up, else null
+  var popAway = null;                // { fn, keyFn, btn } while a popover is up, else null
 
   /* `ack` IS THE PLAYER'S CLOSE, NOT EVERY CLOSE (#738). A TEARDOWN close must not bank what the
    * player was looking at: `onMount` calls closePop() on every board rebuild, and a rebuild
@@ -3422,13 +3443,23 @@
       });
     }
     tbSeenPend = {};
-    if (popAway) { popAway.host.removeEventListener('pointerdown', popAway.fn, true); popAway = null; }
+    var opener = popAway && popAway.btn;
+    if (popAway) {
+      document.removeEventListener('pointerdown', popAway.fn, true);
+      document.removeEventListener('keydown', popAway.keyFn, true);
+      popAway = null;
+    }
     if (pop && pop.parentNode) pop.parentNode.removeChild(pop); pop = null;
+    /* #721 item 3 — hand focus back to the opener on a PLAYER dismiss only. `ack` is unset on the
+     * teardown path (`onMount` rebuilding the board), which has no reason to steal focus from
+     * wherever the page already is. See the WIDENED note above `armPopAway` for why this is
+     * deferred rather than synchronous. */
+    if (ack && opener && typeof opener.focus === 'function') {
+      setTimeout(function () { opener.focus(); }, 0);
+    }
   }
 
   function armPopAway(btn) {
-    var host = refs && (refs.wrap || refs.stage);
-    if (!host) return;
     var fn = function (e) {
       var t = e.target;
       if (!t) return;
@@ -3437,8 +3468,13 @@
       if (t.closest && t.closest('[data-item="imrsk4xz2dm"]')) return;       // …and its tile
       closePop(true);            // the player dismissed it — that is the acknowledge (#738)
     };
-    host.addEventListener('pointerdown', fn, true);
-    popAway = { host: host, fn: fn };
+    var keyFn = function (e) {
+      if (e.key !== 'Escape' && e.key !== 'Esc') return;   // #721 — 'Esc' is the old-IE key string
+      closePop(true);
+    };
+    document.addEventListener('pointerdown', fn, true);
+    document.addEventListener('keydown', keyFn, true);
+    popAway = { fn: fn, keyFn: keyFn, btn: btn };
   }
 
   /* The per-row "press again to confirm" arm (#598 item 15). Reset whenever the popover opens,
