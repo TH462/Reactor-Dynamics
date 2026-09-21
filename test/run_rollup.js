@@ -246,6 +246,12 @@ var INJECTIONS = {
   /* --- our own traffic series (2026-09-20) ------------------------------------- */
   // The new series written into the Cloudflare-derived table, which is the one thing
   // the whole design says must not happen: the two are only trustworthy separately.
+  /* --- the key's blind spot (#797, 2026-09-21) -------------------------------- */
+  // The detector silenced. TRAFFIC_KEY still cannot tell two hosts apart, so the day's
+  // rows still collapse -- the only thing lost is anyone finding out. Exactly the
+  // pre-fix state, and the reason this is a detector rather than a key migration.
+  'host-collision-blind': ['rollup.js',
+    "      if (t.hostCollision) out.notes.push('host-collision:' + t.hostCollision);", ''],
   'own-writes-traffic-daily': ['rollup.js',
     "      batch.push(...upsert(db, 'own_traffic_daily', OWN_KEY, o.rows));",
     "      batch.push(...upsert(db, 'traffic_daily', OWN_KEY, o.rows));"],
@@ -457,6 +463,37 @@ function loadEsm(ROOT, entry) {
      EC.db._t('traffic_daily').every(function (r) { return r.sample_interval === 10; }), '');
   ck('and the run is flagged coarse',
      rc.coarse === 10 && /coarse:10/.test(rc.notes.join(';')), rc.notes.join('; '));
+
+  /* ------------------------------------------- 4b. the key omits requestHost (#797) */
+  head('4b. two hosts in one day are DETECTED, because TRAFFIC_KEY cannot tell them apart');
+  /* `requestHost` is fetched and used to classify the referrer, but it is NOT in
+   * TRAFFIC_KEY -- so two Cloudflare groups differing only by host collapse onto one
+   * primary key and INSERT OR REPLACE keeps the last, dropping the other's counts
+   * silently. MEASURED on the live store 2026-09-21: ONE host, zero collisions, so the
+   * defect is LATENT and a key migration on the only exact history we hold is not worth
+   * the risk. It goes live the moment a second host appears -- www. beginning to beacon,
+   * a rename, or the preview domain joining Web Analytics. So this asserts the DETECTOR,
+   * not the absence: the run must say so, and the dashboard's pipeline-health line warns
+   * on any note it does not recognise, which makes it visible on arrival. */
+  var TWO_HOST = [
+    ROWS[0],
+    { count: 4, visits: 4, d: { countryName: 'United States', refererHost: '', requestPath: '/',
+        requestHost: 'www.reactordynamics.com', deviceType: 'desktop', userAgentBrowser: 'Chrome',
+        userAgentOS: 'Windows', navigationType: 'navigate', bot: 0 } },
+  ];
+  var EH = mkEnv(fakeUpstream(TWO_HOST, USAGE, 1, []));
+  var rh = await mod.runRollup(EH.env, NOW, EH.up);
+  ck('the run names BOTH hosts in a note',
+     /host-collision:reactordynamics\.com,www\.reactordynamics\.com/.test(rh.notes.join(';')),
+     rh.notes.join('; '));
+  /* The proof the note is EARNED: the two rows are identical but for the host, so they
+   * land on one primary key and the table holds ONE row, not two -- the silent drop. */
+  ck('...and the collapse it warns about is real -- 2 groups, 1 stored row',
+     EH.db._t('traffic_daily').length === 1, EH.db._t('traffic_daily').length + ' rows');
+  var ES = mkEnv(fakeUpstream(ROWS, USAGE, 1, []));
+  var rs = await mod.runRollup(ES.env, NOW, ES.up);
+  ck('a single-host day says NOTHING -- silence is the healthy state here too',
+     !/host-collision/.test(rs.notes.join(';')), rs.notes.join('; '));
 
   /* ---------------------------------------------------------------- 5. retention */
   head('5. retention: two years, pruned by the job itself (owner ruling)');

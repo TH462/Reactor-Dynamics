@@ -279,7 +279,24 @@ export async function fetchTraffic(token, win, gqlFn) {
       sample_interval: si,
     };
   });
-  return { rows, coarse, truncated: groups.length >= LIMIT };
+  /* THE KEY OMITS `requestHost` AND THAT IS ONLY SAFE WHILE THERE IS ONE HOST.
+   * `requestHost` is fetched and used to classify the referrer, but TRAFFIC_KEY does not
+   * carry it -- so two Cloudflare groups differing ONLY by host collapse onto one primary
+   * key and INSERT OR REPLACE keeps the last, dropping the other's counts with no note.
+   * MEASURED 2026-09-21 over the 8 days to that date: ONE host, `reactordynamics.com`,
+   * 190 pageloads, ZERO colliding tuples -- so the defect is LATENT, and a primary-key
+   * migration on the only exact history we hold would be risk spent on a problem we do
+   * not have. It activates the moment a SECOND host appears under this site tag: `www.`
+   * beginning to beacon, a rename, or the preview domain being added to Web Analytics
+   * (measured the same day: preview traffic does NOT reach this dataset today).
+   *
+   * So detect it instead of pre-empting it. The note rides out with the run and the
+   * dashboard's pipeline-health line warns on any note it does not recognise, which
+   * makes this one visible on arrival rather than on the day someone thinks to look. */
+  const hosts = [...new Set(groups.map((r) => (r.dimensions || {}).requestHost || '')
+    .filter((h) => h !== ''))];
+  return { rows, coarse, truncated: groups.length >= LIMIT,
+    hostCollision: hosts.length > 1 ? hosts.sort().join(',') : '' };
 }
 
 /* One Eastern day of in-sim usage. `sum(_sample_interval)` and never `count()` — the
@@ -438,6 +455,9 @@ export async function runRollup(env, nowMs, deps) {
       out.traffic_rows = t.rows.length;
       out.coarse = t.coarse;
       if (t.truncated) out.notes.push('limit-hit');
+      /* Not merely informational: while it says nothing the key is safe, and when it
+       * speaks some day's counts are being silently overwritten. See fetchTraffic. */
+      if (t.hostCollision) out.notes.push('host-collision:' + t.hostCollision);
       /* A coarse capture is STORED AND MARKED, never dropped and never passed off as exact.
        * Dropping it would leave a hole that reads as "no traffic"; storing it silently would
        * put rounded numbers into the one place that is supposed to be exact. */
