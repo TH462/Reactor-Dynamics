@@ -64,14 +64,17 @@
  * `etDayStartMs`, never through a fixed 4- or 5-hour offset and never by subtracting
  * 86,400,000 ms: a window spanning a daylight-saving switch is 23 or 25 hours long.
  *
- * ⚠ `dayStartMs` anchors at NOON UTC before calling `etDayStartMs`, and that is NOT the
- * forbidden shortcut render.js warns about. The forbidden one samples the ZONE OFFSET at
- * noon and is wrong on the two switch days in opposite directions. This one only needs an
- * instant that is unambiguously inside the wanted Eastern day — noon UTC is 07:00 or 08:00
- * Eastern, always the same date — and then hands it to the two-pass helper, which reads the
- * offset correctly at the boundary. Feeding a bare "YYYY-MM-DD" to `etDayStartMs` directly
- * would be the real bug: it parses as midnight UTC, which is 19:00 or 20:00 the PREVIOUS
- * Eastern day, and every day would silently shift back one.
+ * `dayStartMs` hands the day STRAIGHT to `etDayStartMs`, which since #797 takes a bare
+ * "YYYY-MM-DD" as the day it names — the same `DATE_ONLY` guard `et`/`etDay`/`etWithDow`/
+ * `etFull` have always had. It used to anchor at NOON UTC first, to dodge the fact that the
+ * guard was missing there and a day string parsed as midnight UTC, i.e. 19:00 or 20:00 the
+ * PREVIOUS Eastern day. That anchor is gone because the hazard is gone; the validation is
+ * NOT gone, and `mustDay` still rejects anything that is not an Eastern day string before
+ * it can become part of a SQL range.
+ *
+ * Note which shortcut is still forbidden, because the two look alike: sampling the ZONE
+ * OFFSET at noon is wrong on the two switch days in opposite directions, and render.js's
+ * two-pass solve is what avoids it. Nothing here may replace that with an offset of its own.
  *
  * BOTS ARE EXCLUDED from every traffic figure this module returns (`bot = 0`), with ONE
  * deliberate exemption: `groupBy('bot', …)`, where filtering the column you are grouping
@@ -172,11 +175,11 @@ function mustDay(where, s) {
   return d;
 }
 
-/* The UTC instant at which an Eastern calendar day began. See the ⚠ in the header for why
- * the noon anchor is here and why it is not the shortcut render.js forbids. */
+/* The UTC instant at which an Eastern calendar day began. `etDayStartMs` takes the day
+ * string directly (#797); `mustDay` stays because it is the SQL-range validation, not a
+ * date-parsing workaround. See the header for which shortcut is still forbidden. */
 export function dayStartMs(day) {
-  const d = mustDay('stats.dayStartMs', day);
-  return etDayStartMs(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10), 12, 0, 0));
+  return etDayStartMs(mustDay('stats.dayStartMs', day));
 }
 
 // The Eastern day before this one: one millisecond before its start is in it, whatever the

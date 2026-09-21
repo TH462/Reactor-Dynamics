@@ -325,9 +325,17 @@ var INJECTIONS = {
   'interp': ['stats.js',
     "    + ' WHERE day >= ? AND day <= ? AND bot = 0 GROUP BY day').bind(f, t).all();",
     "    + \" WHERE day >= '\" + f + \"' AND day <= '\" + t + \"' AND bot = 0 GROUP BY day\").all();"],
-  'naive-day': ['stats.js',
-    '  return etDayStartMs(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10), 12, 0, 0));',
-    '  return etDayStartMs(d);'],
+  /* REPOINTED for #797, and the repoint is the whole point of the entry. It used to
+   * replace `dayStartMs`'s noon anchor with a bare `etDayStartMs(d)` — the defect, back
+   * when render.js's helper had no `DATE_ONLY` guard and a day string parsed as midnight
+   * UTC. #797 gave the helper that guard and retired the anchor, which makes the old
+   * replacement CORRECT CODE: the injection would still have applied, still have reported
+   * green, and proven nothing. The defect now lives one module down, so the injection
+   * follows it — the guard is removed from render.js instead, which reproduces exactly the
+   * same wrong answer (every Eastern day starting 24 h early) through the new spelling. */
+  'naive-day': ['render.js',
+    '  const p = DATE_ONLY.test(s)',
+    '  const p = false && DATE_ONLY.test(s)'],
   'sum-sessions': ['stats.js',
     "    'SELECT event AS event, key_str AS key_str, plant AS plant, SUM(n) AS n'",
     "    'SELECT event AS event, key_str AS key_str, plant AS plant, SUM(n) AS n, SUM(sessions) AS sessions'"],

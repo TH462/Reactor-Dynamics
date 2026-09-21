@@ -478,7 +478,18 @@ export async function analyticsPage(env, url) {
     try {
       const todayFrom = new Date(etDayStartMs(today)).toISOString();
       const todayTo = new Date(nowMs).toISOString();
-      const g = rumRows(await gql(apiToken, rumGroup('datetimeHour', 'datetimeHour_ASC', 26,
+      /* THE LIMIT IS SIZED OFF THE ACTUAL GROUPING, WHICH IS NOT THE DIMENSION ASKED FOR.
+       * `rumGroup` appends `bot` unconditionally, so this groups hour x bot, not hour. The
+       * count: the window is [Eastern midnight, now], at most ONE Eastern day; the longest
+       * Eastern day is 25 hours (fall-back); an Eastern midnight is always on an exact UTC
+       * hour boundary, so that span touches at most 25 `datetimeHour` buckets; `bot` takes
+       * two values. 25 x 2 = 50, exact, no slack needed.
+       *
+       * It was 26 (24 hours + the 25th + one spare), sized for the dimension asked for
+       * rather than the one grouped on. Ordered `datetimeHour_ASC`, so once bots touched
+       * ~13 hours of the day the limit fell inside the window and the EVENING was dropped
+       * — silently, and UNDER-counting today. Nothing errors when a limit truncates. */
+      const g = rumRows(await gql(apiToken, rumGroup('datetimeHour', 'datetimeHour_ASC', 50,
         todayFrom, todayTo)), (d) => ({}), undefined, { excludeBots: true });
       // Same query shape `hybridDeepLink` uses for its own live slice below — same two
       // conditions (not `/`, referrer `direct`), just summed here rather than kept by path.

@@ -186,11 +186,34 @@ function etOffsetMs(ms) {
  * 7th); noon on 2026-11-01 is already EST, so it puts that day's start at 05:00Z when
  * 00:00 EDT is 04:00Z (an hour late, dropping the day's first hour). Both were measured;
  * `test/run_dashboard_time.js` pins all four cases so it cannot be "simplified" back.
+ *
+ * A BARE "YYYY-MM-DD" IS ALREADY THE ANSWER'S DAY, and it gets the same `DATE_ONLY` guard
+ * `et`, `etDay`, `etWithDow` and `etFull` carry — this one is the only member of the group
+ * whose answer is a QUERY BOUNDARY rather than a label, so it is the only one where the
+ * missing guard moved a number instead of a caption. Without it the string went to
+ * `etFields`, parsed as midnight UTC, and came back as 19:00 or 20:00 the PREVIOUS Eastern
+ * day: measured on the defect, `etDayStartMs('2026-09-20')` was 2026-09-19T04:00Z against
+ * the correct 2026-09-20T04:00Z, a full 24 h early, and the same 24 h in EST
+ * (2026-01-15), on spring-forward (2026-03-08) and on fall-back (2026-11-01). The two
+ * live call sites in analytics.js pass `etDay(nowMs)`, so the "today" window opened
+ * yesterday and swept 48 hours. Anything that is not a day and not a parseable instant
+ * still returns null.
  */
 export function etDayStartMs(input) {
-  const p = etFields(input);
+  const s = typeof input === 'string' ? input.trim() : '';
+  const p = DATE_ONLY.test(s)
+    ? { year: s.slice(0, 4), month: s.slice(5, 7), day: s.slice(8, 10) }
+    : etFields(input);
   if (!p) return null;
   const wall = Date.UTC(+p.year, +p.month - 1, +p.day, 0, 0, 0);
+  /* "2026-02-30" has the SHAPE and is not a day, and `Date.UTC` rolls it rather than
+   * refusing. MEASURED on the code as it stood before the guard above: it returned
+   * 2026-03-01T05:00Z — V8 parses the string leniently, so this hole predates #797 and the
+   * guard would only have widened it ("2026-13-45" was, and stays, null). A window that
+   * opens in the wrong MONTH is the same class of defect as one that opens a day early, so
+   * the round trip refuses it outright. An instant can never fail the round trip — its
+   * fields come from the formatter, which cannot emit a date that does not exist. */
+  if (new Date(wall).toISOString().slice(0, 10) !== `${p.year}-${p.month}-${p.day}`) return null;
   const guess = wall - etOffsetMs(wall);
   return wall - etOffsetMs(guess);
 }

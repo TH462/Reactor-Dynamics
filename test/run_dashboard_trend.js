@@ -384,6 +384,25 @@ var VITALS_CLS = { rumWebVitalsEventsAdaptiveGroups: [
 // everything else must keep working normally around it.
 var FAIL_REFERRER = false;
 
+/* Set to a batch for exactly one render (check 28) to stand in for TODAY_LIVE — a full
+ * 25-hour Eastern day with every hour touched by a bot, which is the shape that makes the
+ * group LIMIT load-bearing. Null everywhere else, so no other check's totals move. */
+var HOURLY_WIDE = null;
+
+/* THE LIMIT IS PART OF THE ANSWER, so the fake honours it. Cloudflare truncates a group
+ * query at `limit:` and says nothing — the rows simply stop, which reads as a quiet
+ * evening rather than as a truncation. A fake that returns its whole canned batch
+ * regardless can never show that, so every check in this file was blind to an undersized
+ * limit however the number had been derived. TODAY_LIVE is 3 rows against a limit of 50,
+ * so this changes nothing for any other check; only a fixture deliberately wider than the
+ * limit can see it. */
+function limited(batch, s) {
+  var m = /limit: (\d+)/.exec(s);
+  if (!m) return batch;
+  return { rumPageloadEventsAdaptiveGroups:
+    (batch.rumPageloadEventsAdaptiveGroups || []).slice(0, +m[1]) };
+}
+
 // Dispatch on the query TEXT, most specific first — a fake that matched loosely would be
 // answering the wrong question and never notice.
 function dispatchGql(q) {
@@ -398,7 +417,7 @@ function dispatchGql(q) {
   // `dimensions { … bot }` -- analytics.js's `rumGroup` always appends `bot` to the
   // requested dimensions now, so it can filter bot rows out of the returned rows
   // (`rumRows`' `excludeBots` option) without an unconfirmed GraphQL filter term.
-  if (has('dimensions { datetimeHour bot }')) return TODAY_LIVE;
+  if (has('dimensions { datetimeHour bot }')) return limited(HOURLY_WIDE || TODAY_LIVE, s);
   if (has('dimensions { countryName refererHost requestHost bot }')) return THREE_DIM;
   if (has('dimensions { requestPath refererHost requestHost bot }')) return DEEPLINK_LIVE;
   if (has('dimensions { refererHost requestHost bot }')) {
@@ -479,6 +498,13 @@ var INJECTIONS = {
   'breakdown-today-not-merged': ['analytics.js',
     "const g = rumRows(await gql(apiToken, rumGroup(cfDims, 'count_DESC', Math.max(limit, 200), todayFromIso, todayToIso)),",
     "const g = { rows: [] }; false && rumRows(await gql(apiToken, rumGroup(cfDims, 'count_DESC', Math.max(limit, 200), todayFromIso, todayToIso)),"],
+  /* #797 item 5. The limit as it shipped: 26, sized for the dimension ASKED FOR while
+   * `rumGroup` groups on hour x bot. Ordered ASC, so it truncates the EVENING. The fake
+   * `gql` honours `limit:` (see `limited`), so this is a behavioural red, not a spelling
+   * one — check 28's tile drops from 25 pageloads to 13. */
+  'hourly-limit-26': ['analytics.js',
+    "      const g = rumRows(await gql(apiToken, rumGroup('datetimeHour', 'datetimeHour_ASC', 50,",
+    "      const g = rumRows(await gql(apiToken, rumGroup('datetimeHour', 'datetimeHour_ASC', 26,"],
   'breakdown-span-drift': ['analytics.js',
     "+ esc(from) + ' to ' + esc(closedTo) + ')'", "+ esc(from) + ' to ' + esc(nextDay(closedTo)) + ')'"],
   'referrer-kind-recomputed': ['analytics.js',
@@ -1512,6 +1538,53 @@ async function threwAsync(fn) {
      * that invariant, not because this fixture can reach it today.
      * `groupBy`/`referrerBreakdown`/`deepLinkLandings` have no separate flag at all -- `coarse`
      * IS `si > 1` there, so the same is true by construction; see run_dashboard_stats.js. */
+
+    /* ============ 28. the hourly group limit is sized off the GROUPING, not the dim === */
+    head('28. the live "today" hourly limit covers hour x bot, not hour — the evening is '
+       + 'never silently dropped (#797)');
+    /* THE SECOND HALF OF #797, and it pushes the number the OTHER WAY. `rumGroup` appends
+     * `bot` to every dimension list, so `rumGroup('datetimeHour', …)` groups hour x bot.
+     * The limit was 26, sized for 24 hours plus the 25-hour fall-back day plus one spare —
+     * i.e. for the dimension ASKED FOR, not the one grouped on. Ordered `datetimeHour_ASC`,
+     * so once bots had touched about 13 hours of the day the limit fell inside the window
+     * and every hour after it was dropped. Nothing errors. Today just reads low.
+     *
+     * DERIVATION of 50: the window is [Eastern midnight, now], at most ONE Eastern day; the
+     * longest Eastern day is 25 h (fall-back); an Eastern midnight is always on an exact UTC
+     * hour boundary, so that span touches at most 25 `datetimeHour` buckets; `bot` takes two
+     * values. 25 x 2 = 50, exact.
+     *
+     * THE FIXTURE IS THE WORST CASE: all 25 hours, each with a human row (1 pageload,
+     * 1 visit) and a bot row (2 pageloads), interleaved in the ASC order the API returns.
+     * Human total 25. At limit 26 the fake hands back the first 26 groups — 13 human, 13
+     * bot — so the tile reads 13. Own store, one closed REAL-ZERO day, so the tile is
+     * today's live figure and nothing else. */
+    var wide = [];
+    for (var h28 = 0; h28 < 25; h28++) {
+      var hh = '2026-09-18T' + (h28 < 10 ? '0' + h28 : h28) + ':00:00Z';
+      wide.push({ count: 1, avg: { sampleInterval: 1 }, sum: { visits: 1 },
+        dimensions: { datetimeHour: hh, bot: false } });
+      wide.push({ count: 2, avg: { sampleInterval: 1 }, sum: { visits: 1 },
+        dimensions: { datetimeHour: hh, bot: true } });
+    }
+    var db28 = makeDb();
+    ran(db28, '2026-09-17', 0, 1);          // a real zero: the store exists, today is all live
+    HOURLY_WIDE = { rumPageloadEventsAdaptiveGroups: wide };
+    var p28, q28;
+    try {
+      p28 = await renderPageOn(db28, '');
+      q28 = (SEEN.filter(function (q) { return /dimensions \{ datetimeHour bot \}/.test(q); })[0]) || '';
+    } finally { HOURLY_WIDE = null; }
+    var lim28 = (/limit: (\d+)/.exec(String(q28).replace(/\s+/g, ' ')) || [])[1];
+    ck('the query the page actually built groups hour x bot and asks for at least 25 x 2',
+       /dimensions \{ datetimeHour bot \}/.test(q28) && Number(lim28) >= 50,
+       'limit: ' + lim28 + ' for a grouping of hour x bot');
+    ck('all 25 human hours reach the tile — 25 pageloads, not the 13 a limit of 26 leaves',
+       />25<\/div><div class="k">Pageloads<\/div>/.test(p28),
+       (p28.match(/<div class="v">(\d+)<\/div><div class="k">(Pageloads|Landing visits)/g) || []).join(' | '));
+    ck('and the 50 bot pageloads in the same batch are still excluded',
+       !/>75<\/div><div class="k">Pageloads<\/div>/.test(p28)
+       && !/>39<\/div><div class="k">Pageloads<\/div>/.test(p28));
 
     /* =================================================================== 9. no token= */
     head('9. no rendered page anywhere carries a credential in a href');
