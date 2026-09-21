@@ -85,6 +85,27 @@ clock is still at 60x"; no act-once guard -> "overrode the player". **The fixtur
 no rung, which is correct behaviour and a useless fixture — and `c.awaitingAck = !!met` is rewritten
 every `_stepChecklist` tick, so poking the field directly is a race the drop loses.
 
+**AND IT FORCED THE FIELD THE POOL SAID WAS OWED.** `ui/manual_procedures.js` step 9 of
+`pwr_startup` carries the diagnosis verbatim: *"an authorable CAP on the rung is an app.js change
+and is filed rather than smuggled in here"* — the 30 s rule returns **60x** for its 1800 s dwell
+while #753 measured the safe rung at **10x** (worst REACTOR POWER change inside one 2.5 s glance:
+1x 0.020 %, 5x 0.094 %, 10x 0.186 %, 60x 1.083 %), so the number lived in the step's prose and
+`wait_hint: false` suppressed the app's wrong sentence. **That was survivable while the PLAYER
+pressed the button and is not survivable now**: with auto-speed, `wait_hint: false` means "played
+at 1x", which forces real time on a step whose own note says 10x. `wait_speed` is that cap — CLOCK
+only, `wait_hint` still owns the LINE, snapped DOWN to a real ladder rung so it inherits #628's
+"never name a button that is not there". Authored on `pwr_startup` steps 9 (10x) and 10 (5x), both
+numbers already measured and already in those steps' notes; nothing else in the pool sets it.
+**Gated in `verify_flags_ui` (55 -> 56), and the NEGATIVE half is the whole check** — the landed
+rung must not be the one the hold-derived rule would give, or it passes on a build that ignores the
+field whenever the two agree.
+
+**STILL OPEN FROM #796 ITEMS 4 AND 5** (the owner's 1.7.6 playtest): `pwr_startup` steps 12 (hold
+240 s) and 13 (hold 400 s) also carry `wait_hint: false` and name no rung, so auto plays them at
+1x — which is what items 4 and 5 ask to change ("should suggest a higher warp setting than 1x",
+"probably 5x"). The mechanism now exists; the NUMBERS do not — neither step has a #753-style glance
+measurement, and picking one by eye is the HR12 failure that rule is for.
+
 **ALSO.** Walkthrough step text up ~12 % (step instruction 12.5 -> 14 px, head 13 -> 14.5, `Use ...`
 and `why` 11.5 -> 13, sub/wait 11 -> 12.5, incident narrative 11.5 -> 12.5, out-of-turn/ack/step
 number/mark 11 -> 12). And **`Manuals/02` §4.1 was still promising a WARP timer the plant lost on

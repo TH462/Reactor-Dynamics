@@ -474,6 +474,76 @@ function pinChannel(ch) {
            : 'no non-qualifying pwr2 procedure found to open');
   await b.ctx.close();
 
+  /* ---- #796: AN AUTHORED `wait_speed` BEATS THE 30 s RULE, AND THE WALKTHROUGH PRESSES IT -----
+   * The dark-wire risk this closes is the #507 wave-6 shape exactly: `wait_speed` is a new field
+   * read in ONE place, and a source read of either file agrees it is "honoured" whether or not
+   * anything ever reaches the plant. So this asserts the CLOCK — `service.timeAcceleration` —
+   * after landing on a step that authors one.
+   *
+   * THE NEGATIVE HALF IS WHAT MAKES IT NON-VACUOUS: the rung must NOT be the one
+   * `RD.CklSpeedHint` derives from the step's `hold`. On pwr_startup step 9 (hold 1800 s) the
+   * 30 s rule returns 60×, the authored cap is the measured 10× (#753: worst REACTOR POWER change
+   * inside one 2.5 s glance is 0.186 % at 10× against 1.083 % at 60×), and without that clause
+   * this check passes on a build that ignores `wait_speed` entirely whenever the two agree.
+   *
+   * Data-driven — the first pool step carrying the field, never a typed id or index — so
+   * re-authoring the leg cannot quietly aim it at a step that has no cap. */
+  /* `&run=1&dev=1`: auto-speed only acts on a RUNNING clock, and `RD.__dev` (the service handle)
+   * exists only on a dev build — neither is in this file's default SHELL url. */
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  var ws = await b.page.evaluate(function () {
+    var pool = ((window.RD || {}).MANUAL_PROCEDURES || {}).pwr2 || [];
+    for (var i = 0; i < pool.length; i++) {
+      for (var j = 0; j < (pool[i].steps || []).length; j++) {
+        if (!(+pool[i].steps[j].wait_speed > 0)) continue;
+        var btn = document.querySelector('[data-ckl-start="' + pool[i].id + '"]');
+        if (!btn) continue;
+        btn.click();
+        return { id: pool[i].id, idx: j, want: +pool[i].steps[j].wait_speed,
+                 hold: +pool[i].steps[j].hold || 0,
+                 byRule: RD.CklSpeedHint(+pool[i].steps[j].hold || 0).speed };
+      }
+    }
+    return { id: null };
+  });
+  var wsGot = null;
+  if (ws.id) {
+    await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 20000 }).catch(function () {});
+    wsGot = await b.page.evaluate(function (idx) {
+      var svc = globalThis.RD.__dev.service();
+      svc.attentionStops = false;
+      var c = svc.instructor.checklist;
+      c.idx = idx; c.stepAt = null; c.awaitingAck = false;
+      /* THE STEP MUST READ AS STILL WAITING, and jumping the index does not guarantee it: the
+       * plant may already satisfy a step it has not reached, in which case the correct answer is
+       * 1× with no rung — right behaviour, useless fixture (measured here: clock 1×, rung null).
+       * `c.awaitingAck = !!met` is rewritten every `_stepChecklist` tick, so the flag is planted
+       * on the SNAPSHOT and the real broadcast chain carries it — verify_e2e_ui's #796 shape. */
+      var orig = svc._instructorBlock.bind(svc);
+      svc._instructorBlock = function () {
+        var bl = orig();
+        if (bl && bl.checklist) { bl.checklist.acc_met = false; bl.checklist.awaiting_ack = false; }
+        return bl;
+      };
+      return true;
+    }, ws.idx);
+    await b.page.waitForTimeout(2000);
+    wsGot = await b.page.evaluate(function () {
+      return { accel: globalThis.RD.__dev.service().timeAcceleration,
+               rung: (document.querySelector('#speed .ckl-speed-rung') || {}).getAttribute
+                     ? document.querySelector('#speed .ckl-speed-rung').getAttribute('data-speed') : null };
+    });
+  }
+  ck('dev (pwr2): an authored wait_speed sets the clock, beating the hold-derived rung (#796)',
+    !!ws.id && !!wsGot && wsGot.accel === ws.want && ws.want !== ws.byRule &&
+    +wsGot.rung === ws.want,
+    ws.id ? (ws.id + ' step ' + (ws.idx + 1) + ' hold=' + ws.hold + 's: authored ' + ws.want +
+             '×, 30 s rule would give ' + ws.byRule + '×, clock landed at ' +
+             (wsGot ? wsGot.accel : '?') + '× with rung ' + (wsGot ? wsGot.rung : '?'))
+          : 'no pwr2 step authors wait_speed');
+  await b.ctx.close();
+
   // The player's window (no `mmode` in the URL) offers exactly Free Play and Walkthroughs
   // (#660 item 19); the campaign and scenario areas are reachable only through the door.
   b = await build('dev', SHELL.replace('&mmode=free', ''));

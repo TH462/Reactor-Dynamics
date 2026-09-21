@@ -4010,17 +4010,50 @@
     var st = pr ? pr.steps[ck.step_index] : null;
     return st ? { ck: ck, pr: pr, st: st } : null;
   }
-  // Is this step one the card offers a fast-forward for? The #628/#686/#743 condition, once.
+  // Does the card PRINT a fast-forward line for this step? The #628/#686/#743 condition, once.
   function cklIsWaitStep(st) {
     return !!st && (+st.hold || 0) >= 180 && st.wait_hint !== false;
+  }
+  /* WHICH RUNG DOES THIS STEP BELONG ON — or null for "real time" (#796).
+   *
+   * `wait_speed` IS THE AUTHORABLE CAP `ui/manual_procedures.js` SAID WAS OWED. Its comment on
+   * pwr_startup step 9 names this exact gap: *"an authorable CAP on the rung is an app.js change
+   * and is filed rather than smuggled in here"* — because the 30 s rule returns 60× for that
+   * step's 1800 s dwell, while #753 MEASURED the rung at 10× (worst REACTOR POWER change inside
+   * one 2.5 s glance: 1× 0.020 %, 5× 0.094 %, 10× 0.186 %, 60× 1.083 %). With only `wait_hint:
+   * false` to reach for, the step could suppress the app's wrong sentence but could not state the
+   * right rung, so the number lived in prose — and once the walkthrough started PRESSING the
+   * button, prose was no longer enough: auto would have forced 1× on a step whose own note says
+   * "put the clock on 10×".
+   *
+   * TWO AXES, DELIBERATELY SEPARATE. `wait_speed` decides the CLOCK; `wait_hint` decides the
+   * LINE. A step may set the rung and keep its generated line suppressed (steps 9 and 10 do —
+   * their notes already teach the speed in the step's own words, and a second sentence from the
+   * app is how #653's contradiction happened). One axis would force a choice between the right
+   * clock and a duplicated sentence.
+   *
+   * SNAPPED TO THE STRIP, never trusted raw: `RD.CklSpeedHint` picks off the ladder itself so it
+   * can never name a button that is not there (#628), and an authored number has to inherit that
+   * or a typo'd `wait_speed: 30` becomes a rung the player cannot see, at a rate they cannot
+   * reach by hand. The largest rung AT OR BELOW the authored value — rounding DOWN, because the
+   * number is a ceiling on how fast this step may be watched. */
+  function cklRungFor(st) {
+    if (!st) return null;
+    var want = +st.wait_speed || 0;
+    if (want > 0) {
+      var lad = speedLadder(), best = lad[0];
+      for (var i = 0; i < lad.length; i++) if (lad[i].speed <= want) best = lad[i];
+      return best;
+    }
+    return cklIsWaitStep(st) ? RD.CklSpeedHint(+st.hold || 0) : null;
   }
   /* What speed should the plant be running at for the step on screen — null when no walkthrough
    * is running, in which case the clock is nobody's business but the player's. */
   function cklStepSpeed(s, a) {
     if (!a) return null;
-    if (!cklIsWaitStep(a.st)) return 1;
+    var rung = cklRungFor(a.st);
+    if (!rung) return 1;
     if (a.ck.acc_met || a.ck.awaiting_ack) return 1;      // the wait is over — hand it back
-    var rung = RD.CklSpeedHint(+a.st.hold || 0);
     if (!rung.warp) return rung.speed;
     var p = s.metadata && s.metadata.pacing;
     if (!p || p.warp_available !== false) return rung.speed;
@@ -4057,7 +4090,7 @@
   function cklWaitAdvice(s, a, forBar) {
     var holdS = +a.st.hold || 0;
     var span = cklWaitSpan(a.st, holdS);
-    var rung = RD.CklSpeedHint(holdS);
+    var rung = cklRungFor(a.st) || RD.CklSpeedHint(holdS);
     var cur = (s.metadata && s.metadata.time_acceleration) || 1;
     if (a.ck.acc_met || a.ck.awaiting_ack) {
       return 'Wait complete — back at ' + cur + '× (this step fast-forwards at ' + rung.speed + '×).';
@@ -4927,7 +4960,7 @@
            * that was removed). */
           /* The rung keeps its <b>: the sentence is built as text by the shared formatter, so the
            * emphasis is put back on the one token the eye is hunting for, once. */
-          var rungTxt = RD.CklSpeedHint(holdS).speed + '×';
+          var rungTxt = (cklRungFor(st) || RD.CklSpeedHint(holdS)).speed + '×';
           h += '<div class="ckl-sub ckl-wait">⏩ ' +
             mesc(cklWaitAdvice(s, { ck: ck, pr: pr, st: st }, false)).replace(rungTxt, '<b>' + rungTxt + '</b>') +
             (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
@@ -5454,14 +5487,13 @@
    * be overshoot — the same reason auto drops the clock there. */
   function applyCklSpeedGlow(s, ck, st) {
     clearCklSpeedGlow();
-    var holdS = st ? (+st.hold || 0) : 0;
-    if (!st || holdS < 180 || st.wait_hint === false) return;
+    var rung0 = cklRungFor(st);
+    if (!rung0) return;
     if (ck && (ck.acc_met || ck.awaiting_ack)) return;
     if (warpNote && warpNote.reason === 'hold') return;   // the clock is held; the press would refuse
     var bar = document.getElementById('speed');
     if (!bar) return;
-    var rung = (RD.CklSpeedHint ? RD.CklSpeedHint(holdS) : null);
-    var el = (rung && rung.speed != null) ? bar.querySelector('[data-speed="' + rung.speed + '"]') : null;
+    var el = rung0.speed != null ? bar.querySelector('[data-speed="' + rung0.speed + '"]') : null;
     if (el) el.classList.add('ckl-speed-rung');
   }
   function clearCklSpeedGlow() {

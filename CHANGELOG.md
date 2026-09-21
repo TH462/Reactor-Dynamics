@@ -60,6 +60,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
     named in all three. The recommended rung keeps its `.ckl-speed-rung` mark throughout and
     pulses only while the plant is not on it, which `.ckl-speed-rung.on { animation: none }` (#743)
     already did for free.
+- **A step can name its own rung: `wait_speed`** — the authorable cap `ui/manual_procedures.js`
+  has said was owed since #753 (*"an authorable CAP on the rung is an app.js change and is filed
+  rather than smuggled in here"*). It was optional while the player pressed the button and became
+  REQUIRED the moment the walkthrough did: `wait_hint: false` then means *"this step is played at
+  1x"*, which would have forced real time on the two approach-to-criticality steps whose own notes
+  say to use **10x** and **5x** (measured, #753: worst REACTOR POWER change inside one 2.5 s glance
+  is 0.020 % at 1x, 0.094 % at 5x, 0.186 % at 10x, 1.083 % at 60x — and the 30 s rule returns 60x
+  for that 1800 s dwell). Two axes, deliberately separate: `wait_speed` decides the CLOCK,
+  `wait_hint` decides the LINE, so those steps set the rung and keep their own note as the only
+  sentence about it. Snapped DOWN to a real ladder rung, inheriting #628's "never name a button
+  that is not there".
 - **Walkthrough step text is larger** *(OWNER, 2026-09-20: "Make the walkthrough text a little
   bigger.")*. The step instruction 12.5 -> 14 px, the head 13 -> 14.5, `Use ...` and the `why`
   11.5 -> 13, the sub/wait lines 11 -> 12.5, the incident narrative 11.5 -> 12.5, and the
@@ -74,6 +85,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   reason to find it.
 
 ### Tests
+- `verify_flags_ui.js` +1 (55 -> 56): an authored `wait_speed` sets the CLOCK, asserted on
+  `service.timeAcceleration` rather than the field, with the negative half that makes it
+  non-vacuous — the landed rung must NOT be the one `RD.CklSpeedHint` derives from `hold`.
+  Injection-proven: zeroing the branch reds it at 1x with no rung, which is the regression it
+  exists to stop.
 - `verify_e2e_ui.js` `testSpeedRungGlowRendered` re-cut for the new behaviour, three halves each
   injection-proven red for its own reason and no other: deleting the `syncCklAutoSpeed` call reds
   "the walkthrough did not take the clock to its own rung" (rung marked and pulsing, clock 1x);

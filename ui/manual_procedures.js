@@ -12,7 +12,7 @@
  *   narrative:true  → an accident walkthrough; not run by the harness (the engine
  *                     flagship suite owns its physics, CONTEXT §9).
  * Step: { text, control, target, cmd, hold, acc, saw, note, ramp, why, accs, accs_ordered,
- *          wait_hint, overtaken, hl, hl_watch, press_expected, expect_alarms, past, story, crew,
+ *          wait_hint, wait_speed, overtaken, hl, hl_watch, press_expected, expect_alarms, past, story, crew,
  *          inject, clear,
  *          pause, wrong,
  *          wait_est_s }
@@ -169,7 +169,17 @@
  *           predecessors come true rather than all at step entry, so the gate drives the route
  *           the player has to take. `run_checklist_pwr2` §2x is the injection pair.
  *   wait_hint OPTIONAL string — rendered as a time-acceleration suggestion on long
- *           steps (#244 M5→3 item 5). Prose only; harnesses ignore it.
+ *           steps (#244 M5→3 item 5). Prose only; harnesses ignore it. `false` drops the
+ *           generated ⏩ line entirely (#653 S9).
+ *   wait_speed OPTIONAL number — THE RUNG THIS STEP IS PLAYED AT (#796), overriding the
+ *           30 s rule `RD.CklSpeedHint` derives from `hold`. Since the walkthrough now sets
+ *           the speed control itself (ui/app.js `syncCklAutoSpeed`), a step whose safe rung
+ *           is NOT the smallest one that clears its dwell in 30 s has to be able to say so —
+ *           pwr_startup steps 9 and 10 are the case, at a measured 10× and 5× against the
+ *           rule's 60×. It decides the CLOCK only; `wait_hint` still decides the LINE, so a
+ *           step may set the rung and keep its own note as the only sentence about it.
+ *           Snapped DOWN to a real ladder rung by app.js — the number is a ceiling.
+ *           Harnesses ignore it (the replay drives its own dwell).
  *   overtaken OPTIONAL {p,op,v[,tol],text[,industry]} — the plant condition under which
  *           this step NO LONGER APPLIES (#641): graded like `acc` while the step is active,
  *           and when it holds the live checklist checks the step off as 'overtaken', posts
@@ -2692,8 +2702,16 @@
            * authoring the string here would have printed "set the speed control to 60×" immediately
            * followed by my "use 10×" — the app contradicting the step in one line. `wait_hint: false`
            * suppresses the generated line entirely and there is no third state; an authorable CAP on
-           * the rung is an app.js change and is filed rather than smuggled in here. */
-          wait_hint: false,
+           * the rung is an app.js change and is filed rather than smuggled in here.
+           *
+           * THE THIRD STATE NOW EXISTS, AND IT HAD TO (#796, 2026-09-20). `wait_speed` is that cap.
+           * Once the walkthrough started PRESSING the speed control for the player, `wait_hint:
+           * false` alone meant "this step is played at 1x" — forcing real time on the step whose
+           * own note says to put the clock on 10x, the rung #753 measured. `wait_speed` decides
+           * the CLOCK, `wait_hint` still decides the LINE, so the app sets 10x and stays silent:
+           * the note above teaches the speed in the step's own words and a second sentence from
+           * the app is exactly the contradiction the paragraph above is about. */
+          wait_hint: false, wait_speed: 10,
           /* ---- THE BAND, THE PERIOD AND THE HANDOFF — ALL MEASURED ON THE AUTHORED ROUTE ----
            * *(OWNER RULING, 2026-09-14/15: "Rewrite both"; his diagnosis: "the rate the power
            * climbs seems to be is nothing until it suddenly shoots up in power if the user has
@@ -2890,7 +2908,12 @@
           why: 'With the reactor just critical, power climbs by itself and every extra rod step adds to a rise that is already under way. Below about 1 % the water is not yet warm enough to hold that climb back, which is why a high STARTUP RATE is a signal to wait, not to pull.',
           control: 'Control Bank', target: 'REACTOR POWER rising past 1 %',
           note: 'While STARTUP RATE is positive, leave the rods alone. Only if it falls back to 0.00 with REACTOR POWER still below 0.5 %, tap WITHDRAW one step at SLOW and wait again. SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE takes over. About 15 plant-minutes. 5× is the speed for it: the plant behaves the same at any speed, but this is the step that may want a tap, and at 10× a tap has landed before you have read the rate. Come back to 1× to tap.',
-          wait_hint: false,
+          /* THE NOTE'S OWN RUNG, NOW AUTHORED (#796, 2026-09-20). 5x is the note's number and its
+           * reason is not fidelity — #753 measured the plant indistinguishable at every rung
+           * through here — it is that this is the step that may want a TAP, and at 10x the tap
+           * lands before the rate has been read. The 30 s rule would have returned 60x for a 900 s
+           * dwell. Line still suppressed: the note says it better and in the step's own voice. */
+          wait_hint: false, wait_speed: 5,
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 2, speed: 'slow' }, hold: 900,
           saw: { p: 'startup_rate_dpm', op: '>', v: 0 },
           acc: { p: 'power_pct', op: '>', v: 0.5 },
