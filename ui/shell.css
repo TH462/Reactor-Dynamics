@@ -2107,7 +2107,7 @@ select.num-input { width: auto; }
   animation: cklAckGlow 1.2s ease-in-out infinite;
 }
 .ckl-ack:hover { background: rgba(120, 210, 150, 0.12); }
-.ckl-ack-note { font-size: 11px; color: var(--text-2); }
+.ckl-ack-note { font-size: 12px; color: var(--text-2); }
 @media (prefers-reduced-motion: reduce) {
   .ckl-ack { animation: none; box-shadow: 0 0 0 2px rgba(120, 210, 150, 0.85); }
 }
@@ -2413,11 +2413,11 @@ select.num-input { width: auto; }
    the card — is the only one. `.instr-prev` is display:none in chat-mode, so the log is
    effectively alone in there. The 48vh cap stays for every other use of .ckl-log. */
 .instructor.chat-mode .ckl-log { max-height: none; overflow-y: visible; }
-.ckl-head { font-size: 13px; }
+.ckl-head { font-size: 14.5px; }
 .ckl-step { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px; background: var(--bg-elevated); }
 .ckl-ico { font-weight: 700; width: 16px; text-align: center; flex: none; }
 .ckl-body { flex: 1; min-width: 0; }
-.ckl-txt { font-size: 12.5px; line-height: 1.4; color: var(--text); }
+.ckl-txt { font-size: 14px; line-height: 1.4; color: var(--text); }
 /* THE INCIDENT WALKTHROUGH'S NARRATIVE BLOCK (#670 Phase 1) — clock, what the crew saw, what
    they knew, what they did — ABOVE the numbered instruction. Quieter than the instruction and
    louder than a .ckl-sub: it is the reason the step exists, but the step is still the thing to
@@ -2427,7 +2427,7 @@ select.num-input { width: auto; }
 .ckl-story {
   margin-bottom: 6px; padding: 5px 0 5px 8px;
   border-left: 2px solid var(--border);
-  font-size: 11.5px; line-height: 1.45; color: var(--text-2);
+  font-size: 12.5px; line-height: 1.45; color: var(--text-2);
 }
 .ckl-story-l { margin-bottom: 2px; }
 .ckl-story-l:last-child { margin-bottom: 0; }
@@ -2449,7 +2449,7 @@ select.num-input { width: auto; }
    margin-bottom and .ckl-use zeroes its margin-top, so without this the block butts straight
    against the step text it belongs to. */
 .ckl-act { margin-top: 5px; }
-.ckl-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+.ckl-sub { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
 /* THE OPERATING TIP IS ITALIC *(OWNER, 2026-09-13: he renders the `note` in italics in his own
    step template — CHECKLIST_WRITING_GUIDE.md §15 T7 flagged it as a one-line CSS change pending
    his word)*. `.ckl-sub.muted` is the step `note` and ONLY the step `note`: the `muted` class is
@@ -2501,7 +2501,7 @@ select.num-input { width: auto; }
    error — the plant accepted it and the point really was plotted — it simply does not count
    toward a rung whose turn has not come. Red would say "you broke something", which is the
    misreading the line exists to prevent. Sits directly under the rows it is about. */
-.ckl-oot { margin: 4px 0 0; padding: 3px 7px; border-radius: 4px; font-size: 11px; line-height: 1.35;
+.ckl-oot { margin: 4px 0 0; padding: 3px 7px; border-radius: 4px; font-size: 12px; line-height: 1.35;
            color: var(--caution); background: rgba(217, 164, 65, 0.10);
            border-left: 2px solid rgba(217, 164, 65, 0.55); }
 /* WHICH CONTROL, AND WHAT YOU ARE DRIVING IT TO (#598 item 13, owner ruling 2026-09-02).
@@ -2512,7 +2512,7 @@ select.num-input { width: auto; }
    than above it — and is deliberately a touch larger and lighter than a plain
    .ckl-sub, because it is part of the action rather than a footnote to it. The control name
    itself is the brightest thing on the line; that is the word the eye is hunting for. */
-.ckl-use { font-size: 11.5px; color: var(--text-2); margin-bottom: 3px; margin-top: 0; }
+.ckl-use { font-size: 13px; color: var(--text-2); margin-bottom: 3px; margin-top: 0; }
 .ckl-use b { color: var(--text); font-weight: 600; }
 /* the "why" (#244 items 2/9) — teaching prose, visually quieter than the action. Since #660
    item 3 it is ALWAYS open on the active step, so it is no longer collapsible in practice and
@@ -2543,7 +2543,7 @@ select.num-input { width: auto; }
    Still the quietest ground on the card, deliberately: this must not out-shout .ckl-crit, which
    is the row the player is being graded on. The border is --border, the same line the step card
    itself uses, so the box reads as "a different KIND of thing" rather than "an important thing". */
-.ckl-why { font-size: 11.5px; color: var(--text-2); line-height: 1.45; margin-top: 12px;
+.ckl-why { font-size: 13px; color: var(--text-2); line-height: 1.45; margin-top: 12px;
   border: 1px solid var(--border); padding: 6px 9px;
   background: rgba(152,163,175,0.045); border-radius: 5px; }
 .ckl-why-lbl {
@@ -2593,7 +2593,7 @@ select.num-input { width: auto; }
 .ckl-active { border-left: 3px solid var(--caution); }
 .ckl-active .ckl-ico { color: var(--caution); }
 .ckl-pend { opacity: 0.45; }
-.ckl-mark { margin-top: 6px; font-size: 11px; padding: 3px 8px; }
+.ckl-mark { margin-top: 6px; font-size: 12px; padding: 3px 8px; }
 .ckl-complete { text-align: center; border: 1px solid var(--running); border-radius: 8px; padding: 8px; color: var(--running); }
 .ckl-btns { display: flex; gap: 6px; }
 .ckl-btns .btn { flex: 1; }
@@ -3197,7 +3197,7 @@ select.num-input { width: auto; }
 
 /* Walkthrough step card (#660 items 15-18): "Step X of N", a Continue that only lights when the
    step is satisfied, and the walkthrough's own one-step Rewind beside it. */
-.ckl-stepno { float: right; font-size: 11px; color: var(--text-2); font-weight: normal; }
+.ckl-stepno { float: right; font-size: 12px; color: var(--text-2); font-weight: normal; }
 .wt-continue:not(.ready) { opacity: 0.45; animation: none; box-shadow: none; cursor: default; }
 .wt-continue:not(.ready):hover { background: transparent; }
 .wt-rewind[disabled] { opacity: 0.45; cursor: default; }

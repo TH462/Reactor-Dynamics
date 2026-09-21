@@ -2,7 +2,7 @@
 
 **Document:** PWR-SIM-01  
 **Title:** Reactor⚛️Dynamics — PWR Trainer Operation  
-**Revision:** 20  
+**Revision:** 21  
 
 ---
 
@@ -150,9 +150,10 @@ something you did *not* choose to look at.
 **WARP lets go by itself.** The moment the plant moves fast — a reactor trip, a new equipment
 failure, a first alarm on a quiet board, power moving faster than 2 %/s or pressure faster than
 40 psi/s (0.276 MPa/s), or the loop asked for more sub-steps than it can give — WARP drops to
-**60×** and a toast names the reason. The two WARP buttons then stay dark for **30 plant-seconds
-of quiet**. Asking for WARP while it is unavailable lands you at 60× with the same toast. A
-mission's own fast-forward never uses WARP.
+**60×** and a toast names the reason. The two WARP buttons stay dark for as long as the
+condition stands, and light again the moment it lifts — there is no timer. Asking for WARP while
+it is unavailable lands you at 60× with the same toast. A mission's own fast-forward never uses
+WARP.
 
 **The plant can hold the clock.** Where the plant needs you and cannot let you skip past — today
 the accumulator arming window on a heatup, from the **665 psia (4.585 MPa)** cover gas until the
@@ -160,6 +161,18 @@ accumulator valve is open — the clock drops to **1×** and every speed button 
 with the reason in the scanner bar under the board. Opening the valve releases it. This hold
 ignores the fast-forward dropout setting, because the point of it is that the window cannot be
 recovered once passed.
+
+**A walkthrough drives the speed control for you.** While a walkthrough is running, each step
+sets the clock to the rate that step should be played at: the rung named on its ⏩ wait line for a
+long wait, a slower rate where the step names its own — the four steps of the approach to
+criticality and the pull into Mode 1 run at **10×** or **5×** against the wait line's rule of
+thumb, because a rod step has to land while you can still read the rate — and **1×** for
+everything else. It also comes back down to
+**1×** the moment the step's
+check-off criterion is met, so a fast-forward cannot run the plant past the thing the next step is
+about. You keep the bar: any rung you press stands for the rest of that step, and the walkthrough
+takes the clock again at the next one. The step's own rung stays marked on the strip throughout,
+and pulses only while the plant is not on it.
 
 **Fast-forward dropout.** Acceleration snaps back to **1×** when something arrives that you
 have to look at: a **reactor trip**, a **new equipment failure**, or the **first alarm on an
@@ -444,12 +457,13 @@ underneath it:
 |---|---|
 | Check-off criterion | The indication the step is graded on, in blue; it turns green when met. |
 | **Use …** | The board control this step drives, and the value to drive it to. |
-| ⏩ wait line | Roughly how long the step takes **in plant time**, and the speed-control rung to set. |
+| ⏩ wait line | Roughly how long the step takes **in plant time**, and what the clock is doing about it — the walkthrough sets the rung itself, and the line reads *set the speed control to N×* only when you have taken the bar back (§4.1). |
 | **Continue ▶** | On every step. Dark until the instruments satisfy the step, lit when they do — press it to move on. |
 | **⏪ Rewind step** | Takes the plant and the walkthrough back to the start of the previous step. Off on the first step. |
 | Details | The step's reasoning, cautions and any extra notes — always open on the step you are on. |
 
-The wait line appears on steps that hold three plant-minutes or longer. The suggested rung is
+The wait line appears on steps that hold three plant-minutes or longer, and the walkthrough
+presses that rung itself (§4.1). The suggested rung is
 the lowest one that finishes the wait in about **half a minute** of real time, so three quarters
 of the waits stay on the full-fidelity **1× to 60×** tier; the ones of about forty plant-minutes
 and up — the pressurization, the heatup ride, the cooldown legs, the boration — call for

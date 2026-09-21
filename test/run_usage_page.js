@@ -81,7 +81,25 @@ function injectSrc(rel, src) {
       // 5. the elapsed-clock query reads the PAGE clock again, not the SESSION clock
       //    (defect 4, #791) — double5 resets on every reload, double6 does not.
       .split('(await sql(apiToken, `SELECT blob4 AS session, max(double6) AS t_last')
-      .join('(await sql(apiToken, `SELECT blob4 AS session, max(double5) AS t_last');
+      .join('(await sql(apiToken, `SELECT blob4 AS session, max(double5) AS t_last')
+      // 6. "latest release" picked by sorting the version STRING lexically instead of by
+      //    last-seen timestamp (#800) — wrong the moment a two-digit patch ships, since
+      //    "Alpha 1.7.10" < "Alpha 1.7.9" as strings ('1' < '9' at the first differing
+      //    character). Proven by run_usage_page.js's Alpha-1.7.9/1.7.10 fixture.
+      .split('})).sort((a, b) => b.lastMs - a.lastMs);')
+      .join('})).sort((a, b) => (a.release < b.release ? 1 : -1));')
+      // 7. one section (Panels opened) drops the version filter — every OTHER query still
+      //    carries it, so this proves the "every section" check actually inspects every
+      //    section rather than passing on the first one it finds.
+      .split("FROM ${DATASET} WHERE blob1 = 'panel_open' AND blob2 <> 'dev' AND ${since}${versionWhere}")
+      .join("FROM ${DATASET} WHERE blob1 = 'panel_open' AND blob2 <> 'dev' AND ${since}")
+      // 8. the `days` hidden field is hard-coded to 30 instead of echoing the actual
+      //    window, so changing the version would silently reset it back to 30 (#800).
+      .split('+ \'<input type="hidden" name="days" value="\' + days + \'">\'')
+      .join('+ \'<input type="hidden" name="days" value="30">\'')
+      // 9. the small-sample warning threshold is neutered — a two-session release reads
+      //    exactly like a thirty-session one (#800).
+      .split('const SMALL_SAMPLE = 10;').join('const SMALL_SAMPLE = 0;');
   }
   if (rel === 'sessions.js') {
     return src
@@ -123,6 +141,9 @@ function dispatch(rows, q) {
       for (var i = 0; i < arguments.length; i++) if (asked.indexOf(arguments[i]) === -1) return false;
       return true;
     }
+    // The version-filter dropdown's own query (#800) — distinct GROUP BY, cannot collide
+    // with any query above or below it.
+    if (has('GROUP BY release, channel')) return Promise.resolve(rows.releases || []);
     if (has("LIKE 'walkthrough_%'")) return Promise.resolve(rows.probe);
     if (has("'walkthrough_start'")) return Promise.resolve(rows.starts);
     if (has("'walkthrough_end'")) return Promise.resolve(rows.ends);
@@ -204,6 +225,10 @@ var ROWS = {
   dwell: [10, 20, 30, 40, 300].map(function (s) {
     return { wt: 'pwr_heatup', step: 2, seconds: s };
   }),
+  // The version-filter dropdown's own data (#800) — one release, comfortably above the
+  // small-sample threshold, so the baseline render above exercises the filter machinery
+  // without also triggering the low-sample warning tested separately below.
+  releases: [{ release: 'Alpha 1.7.5', channel: 'public', sessions: 20, last_seen: '2026-09-15 10:00:00' }],
 };
 
 /* ⚠ A NONCE, AND IT IS LOAD-BEARING. `import()` caches by URL and a data: URL is its own
@@ -220,6 +245,19 @@ async function render(rows, token, seen) {
     { 'cfapi.js': fakeCfapi('// render ' + (++nonce) + '\n') });
   var url = new URL('https://example.invalid/dashboard?token=t&view=usage&days=30');
   var res = await mod.usagePage({ CF_ANALYTICS_TOKEN: 'x' }, url, token || 't');
+  return res.text();
+}
+
+// Same idiom as `render()`, but with a caller-chosen query string (days/version) rather
+// than the fixed days=30 above — needed to prove the version filter's own behaviour
+// (#800), which `render()`'s hard-coded URL cannot exercise.
+async function renderQS(rows, qs, seen) {
+  globalThis.__RD_FAKE_SQL = fakeSql(rows, seen);
+  var ROOT = path.join(__dirname, '..');
+  var mod = await loadEsm(ROOT, 'usage.js',
+    { 'cfapi.js': fakeCfapi('// render ' + (++nonce) + '\n') });
+  var url = new URL('https://example.invalid/dashboard?token=t&view=usage' + qs);
+  var res = await mod.usagePage({ CF_ANALYTICS_TOKEN: 'x' }, url);
   return res.text();
 }
 
@@ -492,6 +530,84 @@ async function renderSessionDetail(rows, sid, seen) {
   var short3 = await renderSessionList(mkSessionsRows(3), []);
   ck('...and a short page does not', full100.indexOf('Showing the most recent') !== -1
     && short3.indexOf('Showing the most recent') === -1);
+
+  /* --------------------------------------------------- 15. usage.js: the version filter */
+  head('15. the RELEASE-VERSION filter on Feature usage (#800)');
+  /* THREE (release, channel) combinations, chosen so the default pick is FALSIFIABLE:
+   * Alpha 1.7.10 is the most recently SEEN (2026-09-20) but sorts BELOW Alpha 1.7.9 as a
+   * string ('1' < '9' at the first differing character) — a lexical "latest" would pick
+   * the wrong one, which is exactly injection 6 above. 1.7.10 also carries only 5
+   * sessions, under the small-sample threshold, so the default render exercises that
+   * warning too without a second fixture. Alpha 1.7.4 appears under BOTH public and
+   * preview, proving a release is not by itself a unique option. */
+  var VER_ROWS = Object.assign({}, ROWS, {
+    releases: [
+      { release: 'Alpha 1.7.9', channel: 'public', sessions: 33, last_seen: '2026-09-10 12:00:00' },
+      { release: 'Alpha 1.7.10', channel: 'public', sessions: 5, last_seen: '2026-09-20 09:00:00' },
+      { release: 'Alpha 1.7.4', channel: 'preview', sessions: 2, last_seen: '2026-09-01 00:00:00' },
+    ],
+  });
+
+  var seenDefault = [];
+  var pageDefault = await render(VER_ROWS, 't', seenDefault);
+  ck('the default version is picked by LAST-SEEN TIMESTAMP, not a lexical sort of the string',
+    pageDefault.indexOf('<option value="Alpha 1.7.10|public" selected>') !== -1,
+    'expected Alpha 1.7.10 (last seen 09-20) selected over the lexically-higher Alpha 1.7.9 (09-10)');
+  ck('the sample-size line names the selected release, channel and count',
+    pageDefault.indexOf('Alpha 1.7.10 — public · 5 sessions') !== -1);
+  ck('a release in two channels gets two unambiguous, separately-labelled options',
+    pageDefault.indexOf('Alpha 1.7.4 — preview (2)') !== -1
+    && pageDefault.indexOf('Alpha 1.7.9 — public (33)') !== -1);
+  ck('the dropdown lists them NEWEST FIRST by last-seen',
+    pageDefault.indexOf('Alpha 1.7.10 — public') < pageDefault.indexOf('Alpha 1.7.9 — public')
+    && pageDefault.indexOf('Alpha 1.7.9 — public') < pageDefault.indexOf('Alpha 1.7.4 — preview'));
+  ck('"All versions" is offered and states its own total',
+    pageDefault.indexOf('<option value="all"') !== -1 && pageDefault.indexOf('All versions (40 sessions)') !== -1);
+
+  /* THE SMALL-SAMPLE WARNING (5 sessions, below the 10-session threshold). */
+  ck('a 5-session release gets the small-sample warning, by name',
+    pageDefault.indexOf('Only 5 sessions in this window for') !== -1
+    && pageDefault.indexOf('one session moves any percentage') !== -1);
+  var page9 = await renderQS(VER_ROWS, '&days=30&version=' + encodeURIComponent('Alpha 1.7.9|public'));
+  /* NOT a bare "no .warn anywhere" check — the Time-on-step retention caveat and the
+   * overtaken/caught_up stuck-signal count both legitimately use `.warn` too. The
+   * small-sample warning is identified by its own wording instead. */
+  ck('...and a 33-session one does not',
+    page9.indexOf('Alpha 1.7.9 — public · 33 sessions') !== -1
+    && page9.indexOf('one session moves any percentage') === -1);
+
+  /* THE `days` PARAMETER SURVIVES A VERSION CHANGE — a non-default window (7, not the
+   * usual 30) plus an explicit version, and the hidden field must echo the window it was
+   * actually rendered with, not silently reset to the default. */
+  var page7 = await renderQS(VER_ROWS,
+    '&days=7&version=' + encodeURIComponent('Alpha 1.7.9|public'), []);
+  ck('the `days` hidden field carries the ACTUAL window (7), not a reset to the default (30)',
+    page7.indexOf('<input type="hidden" name="days" value="7">') !== -1
+    && page7.indexOf('<input type="hidden" name="days" value="30">') === -1);
+
+  /* EVERY SECTION HONOURS THE FILTER — every event query issued while a specific
+   * (release, channel) is selected names it, or the check would pass on a page where one
+   * section quietly still reads the whole dataset (injection 7, "Panels opened"). The
+   * dropdown's OWN listing query is excluded: it has to see every release to offer them. */
+  var seenSel = [];
+  await renderQS(VER_ROWS, '&days=30&version=' + encodeURIComponent('Alpha 1.7.9|public'), seenSel);
+  var eventQueries = seenSel.filter(function (q) {
+    return /FROM \S+ WHERE/.test(q) && q.indexOf('GROUP BY release, channel') === -1;
+  });
+  var missingFilter = eventQueries.filter(function (q) {
+    return q.indexOf("blob3 = 'Alpha 1.7.9'") === -1 || q.indexOf("blob2 = 'public'") === -1;
+  });
+  ck('at least 12 event queries were issued with a version selected',
+    eventQueries.length >= 12, eventQueries.length + ' queries seen');
+  ck('EVERY one of them carries the selected release and channel — no section ignores the filter',
+    missingFilter.length === 0,
+    missingFilter.length + ' missing it: ' + missingFilter.join(' || ').slice(0, 300));
+
+  /* AN UNKNOWN/STALE `version` FALLS BACK TO THE LATEST, NEVER TO "ALL" — a stray or
+   * expired value must not silently widen the scope back to the unfiltered page. */
+  var pageBad = await renderQS(VER_ROWS, '&days=30&version=' + encodeURIComponent('Alpha 0.0.0|public'));
+  ck('an unrecognised version falls back to the latest release, not to "All versions"',
+    pageBad.indexOf('Alpha 1.7.10 — public · 5 sessions') !== -1);
 
   console.log('\n' + BOLD + (nFail ? RED + 'FAIL' : GREEN + 'PASS') + RST
     + '  ' + nPass + ' passed, ' + nFail + ' failed'

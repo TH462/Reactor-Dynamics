@@ -37,15 +37,24 @@
  * The transport lives in `cfapi.js`; the first-party reader is `stats.js` — both carry the
  * detailed traps (Eastern-day arithmetic, the non-additive `usage_daily.sessions` column,
  * why every day string is strictly parsed). This file does not repeat them.
+ *
+ * ONE DELIBERATE EXCEPTION (#797): the rate-limiter throttle count near the top of the
+ * page, below. It is a single control-plane total shown apart from every RUM/D1 number
+ * here — never folded into a tile, chart or breakdown table next to one — so there is
+ * nothing on screen a reader could misapply the wrong sampling rule to. It stays here
+ * rather than on the usage page because it is a health signal for THIS page's own data
+ * pipeline (lost events mean the numbers above it are undercounts), not a feature-usage
+ * breakdown.
  */
 
 import { html, PAGE_HEAD, nav, table, errBlock, dayLabel, etDay, etDayStartMs,
          windowStartMs, RUM_FULL_RES_DAYS, barChart, bucketDays, lineChart, lineLabelStride,
          section, esc } from './render.js';
-import { gql, ACCOUNT, SITE_TAG } from './cfapi.js';
+import { gql, sql, ACCOUNT, SITE_TAG, DATASET } from './cfapi.js';
 import { referrerKind, RETAIN_DAYS } from './rollup.js';
 import { parseDay, storeRange, dailyTotals, groupBy, referrerBreakdown, dayCountryReferrer,
-         trailingMean, periodDelta, priorRange, dayRange, prevDay, nextDay } from './stats.js';
+         deepLinkLandings, deepLinkLandingsByDay, periodDelta, priorRange, dayRange, prevDay,
+         nextDay, rollupHealth } from './stats.js';
 
 // ---------------------------------------------------------------- RUM helpers
 const num = (v) => (v == null || v === '' ? 0 : Number(v));
@@ -219,6 +228,146 @@ function resolveWindow(url, today) {
   return { from, to };
 }
 
+/* THE RATE-LIMITER THROTTLE LINE (#797) — a pure function of the SQL rows, isolated from
+ * the query itself precisely so it can be executed and proven directly (test/
+ * run_telemetry.js lifts this function the same way worker/src/index.js's hostOf/
+ * edgeCountry/botClass are lifted and run). `rows` is `[{route, n}]`; `route` is
+ * 'events' | 'bundle' (blobs[4] on a 'rate_limited' row — see worker/src/index.js
+ * recordThrottle) and `n` is the corrected count (`sum(_sample_interval)`, never the raw
+ * `count()` — see the file header's Analytics Engine vs Web Analytics warning).
+ *
+ * ZERO ROWS -> EMPTY STRING, deliberately: printing "0 requests rate-limited" every time
+ * would make the ALARM look like routine status text, exactly the drift `.warn` (render.js)
+ * exists to prevent elsewhere on this page. Any non-zero total gets `.warn` — the amber
+ * that means "look at this", not the tiles' neutral styling. */
+function renderThrottleLine(rows) {
+  let throttled = 0;
+  const byRoute = rows.map((r) => {
+    const n = Math.round(Number(r.n) || 0);
+    throttled += n;
+    return (r.route || '?') + ': ' + n;
+  }).join(', ');
+  if (!throttled) return '';
+  return '<p class="warn"><b>' + throttled + '</b> request'
+    + (throttled === 1 ? ' was' : 's were') + ' rate-limited in the last 24h ('
+    + esc(byRoute) + ') — that telemetry was dropped, not delayed.</p>';
+}
+
+/* PIPELINE HEALTH LINE (#797 item 2) — same idiom as `renderThrottleLine` just above: a PURE
+ * function of `stats.rollupHealth`'s rows plus the current instant, isolated from the query
+ * so it can be executed and proven directly. It reads `rollup_runs` in D1, never Analytics
+ * Engine, so it needs no new entry in this file's header exception list — the one exception
+ * recorded there is the throttle count above, a control-plane total pulled LIVE from
+ * Analytics Engine; this is an ordinary D1 read through `stats.js`, the same table
+ * `dailyTotals` already reads for its own `missing`/`coarse` flags.
+ *
+ * THE STALENESS THRESHOLD. The cron is `10 5 * * *` — once a day, 05:10 UTC, which is
+ * 00:10 EST / 01:10 EDT: just after Eastern midnight, on purpose (rollup.js's own header —
+ * the SAME Eastern day asked for while still inside Cloudflare's 7-day exact window stays
+ * exact forever, so being on time each night is the entire mechanism). A healthy pipeline
+ * therefore writes one `rollup_runs` row roughly every 24 h.
+ *
+ *   STALE_HOURS = 30 = the 24 h cadence + 6 h grace.
+ *
+ * 6 h is enough that a Workers cron trigger running late by minutes or a couple of hours —
+ * which happens, and per the task brief is "not yet news" — never trips this, while a
+ * genuinely missed day trips it once the NEXT scheduled run is itself 6 h overdue, rather
+ * than waiting a further 24 h for a second miss to be sure ("one that missed a day is
+ * [news]"). Nothing in this codebase measures actual cron jitter, so 6 h is a margin, not a
+ * fitted number — declared as one rather than dressed up as a measurement (HR12).
+ */
+const STALE_HOURS = 30;
+
+/* WHICH `rollup_runs.note` TOKENS ARE WORTH AN AMBER LINE, AND WHICH ARE ROUTINE. Read
+ * against every note `rollup.js` (worker/src/rollup.js, `runRollup`) can push — this file
+ * may not edit that one, so the classification lives here instead, next to the render
+ * function it feeds, and is done once rather than re-derived per call.
+ *
+ *  WARN — the pipeline could not do (some of) its job that day:
+ *   'no CF_ANALYTICS_TOKEN'  the run had no credential at all — nothing was fetched, for
+ *                            traffic, usage, or own-traffic.
+ *   'limit-hit'              the traffic query came back AT Cloudflare's 10,000-row
+ *                            ceiling: the day is stored SHORT, silently, for ever. This is
+ *                            `stats.dailyTotals`' `truncated` flag's own source token — that
+ *                            flag has existed since #764 and nothing on this page has ever
+ *                            rendered it (verified by source scan of this file).
+ *   'traffic failed: …'     the one exact-tier snapshot that only exists SAME-DAY was
+ *                            missed — the loss #797 exists to catch, permanent after
+ *                            Cloudflare's 7-day window closes over it.
+ *   'usage failed: …'       the in-sim usage fetch threw.
+ *   'own traffic failed: …' the own-telemetry fetch threw — an actual exception, distinct
+ *                            from the EXPECTED, caught 'own-columns-absent' below.
+ *
+ *  QUIET — expected, or already shown elsewhere on this page, so repeating it here would be
+ *  the same fact twice rather than a second fact:
+ *   'coarse:N'               the traffic capture WAS made, just from the rounded tier; every
+ *                            by-day chart point and breakdown-table row already carries its
+ *                            own coarse (±N) badge (`anyCoarse` etc., below).
+ *   'own-columns-absent'    the own-traffic columns are not live yet on this account — a
+ *                            deploy gap rollup.js's own header says is EXPECTED, and is
+ *                            every run before `OWN_COLUMNS_SINCE`. `own_traffic_daily` is
+ *                            not read anywhere on this page.
+ *   'own-predating:N'       rows dropped for predating one of the two own-traffic column
+ *                            sets; same table, same reasoning.
+ *   'own:N'                 a bare row count, pushed unconditionally every run — never a
+ *                            failure signal by itself.
+ *
+ * A token that matches NEITHER list warns, by default: a note this classifier has never
+ * seen is exactly the silent-failure shape #797 exists to catch, and a health line that
+ * stays quiet on an unrecognised note would be that bug recurring one layer up. */
+const QUIET_NOTE = /^(coarse:\d+|own-columns-absent|own-predating:\d+|own:\d+)$/;
+function classifyNote(note) {
+  const tokens = String(note || '').split(';').map((t) => t.trim()).filter(Boolean);
+  return { tokens, warn: tokens.filter((t) => !QUIET_NOTE.test(t)) };
+}
+
+/* THE LINE ITSELF. `health` is `stats.rollupHealth(db)`'s return; `nowMs` decides
+ * staleness. Three independent reasons to draw anything — the tail is stale, the LAST run's
+ * own note is bad, or a day inside the recorded span has no run row at all — and NOTHING
+ * rendered when none apply: the same "silence is the healthy state" rule `renderThrottleLine`
+ * uses just above, for the same reason (a banner shown every time it is checked stops being
+ * read). When it does draw, it also names the last CLEAN run in Eastern, so "nothing is
+ * actually wrong beyond this one note" stays legible at a glance rather than requiring a
+ * second lookup. */
+function renderPipelineHealthLine(health, nowMs) {
+  const rows = (health && health.rows) || [];
+  const gaps = (health && health.gaps) || [];
+  if (!rows.length) {
+    return '<p class="warn"><b>The nightly rollup has never recorded a run</b> — '
+      + '<span class="mono">rollup_runs</span> is empty. Nothing below this page’s '
+      + 'first-party numbers can be trusted as complete history until it has.</p>';
+  }
+
+  const last = rows.reduce((a, b) => (Date.parse(b.ranAt) > Date.parse(a.ranAt) ? b : a));
+  const hoursSince = (nowMs - Date.parse(last.ranAt)) / 3600000;
+  const stale = Number.isFinite(hoursSince) && hoursSince > STALE_HOURS;
+  const lastNote = classifyNote(last.note);
+
+  const goodRows = rows.filter((r) => classifyNote(r.note).warn.length === 0);
+  const lastGood = goodRows.length ? goodRows[goodRows.length - 1] : null;
+
+  const problems = [];
+  if (stale) {
+    problems.push('the last recorded run was <b>' + Math.round(hoursSince) + ' h</b> ago '
+      + '(the cron is daily; more than ' + STALE_HOURS + ' h means at least one day was missed).');
+  }
+  if (lastNote.warn.length) {
+    problems.push('the last run (' + esc(dayLabel(last.day, null)) + ') recorded: <b>'
+      + esc(lastNote.warn.join('; ')) + '</b>.');
+  }
+  if (gaps.length) {
+    const shown = gaps.slice(0, 5).map((d) => dayLabel(d, null));
+    problems.push(gaps.length + ' day' + (gaps.length === 1 ? '' : 's') + ' inside the '
+      + 'recorded span has no run row at all: ' + esc(shown.join(', '))
+      + (gaps.length > shown.length ? ', …' : '') + '.');
+  }
+  if (!problems.length) return '';
+
+  return '<p class="warn"><b>Data pipeline:</b> ' + problems.join(' ')
+    + (lastGood ? ' Last clean run: <b>' + esc(dayLabel(lastGood.day, null)) + '</b>.' : '')
+    + '</p>';
+}
+
 // ---------------------------------------------------------------- the page
 export async function analyticsPage(env, url) {
   const apiToken = env.CF_ANALYTICS_TOKEN;
@@ -237,8 +386,12 @@ export async function analyticsPage(env, url) {
       + '</body></html>');
   }
   if (!apiToken) {
+    // The nightly rollup uses this SAME secret, so its own runs are worth showing here too
+    // — a missing token today is very likely why recent `rollup_runs` rows say so as well.
+    const pipelineLineNoToken = renderPipelineHealthLine(await rollupHealth(db), nowMs);
     return html(head
       + '<h1>Analytics</h1>'
+      + pipelineLineNoToken
       + '<p class="warn">No <span class="mono">CF_ANALYTICS_TOKEN</span> secret is set on this Worker, '
       + 'so today’s live figures and Web Vitals cannot be read (closed-day history would still '
       + 'come from the first-party store).</p>'
@@ -248,6 +401,7 @@ export async function analyticsPage(env, url) {
 
   const w = resolveWindow(url, today);
   const sr = await storeRange(db);   // { first, last } | null — clamps the picker
+  const pipelineLine = renderPipelineHealthLine(await rollupHealth(db), nowMs);
 
   const pickerMin = sr ? sr.first : null;
   /* "ALL" (owner request, 2026-09-20) opens on the first day the store has, reusing
@@ -281,7 +435,7 @@ export async function analyticsPage(env, url) {
       : 'No first-party history recorded yet — every figure below is Cloudflare-only.') + '</p>';
 
   if (w.error) {
-    return html(head + '<h1>Analytics</h1>' + picker(today, today)
+    return html(head + '<h1>Analytics</h1>' + picker(today, today) + pipelineLine
       + errBlock(w.error) + '</body></html>');
   }
 
@@ -291,7 +445,7 @@ export async function analyticsPage(env, url) {
   // throws on — and even if it did not throw, showing a window that opens AFTER it closes
   // is worse than saying plainly there is nothing to show yet.
   if (sr && to < sr.first) {
-    return html(head + '<h1>Analytics</h1>' + picker(from, to)
+    return html(head + '<h1>Analytics</h1>' + picker(from, to) + pipelineLine
       + '<p class="warn">The selected range (' + esc(from) + ' to ' + esc(to) + ') ends '
       + 'before the recorded history begins (' + esc(sr.first) + ') — there is nothing to '
       + 'show yet.</p>' + '</body></html>');
@@ -306,29 +460,52 @@ export async function analyticsPage(env, url) {
 
   const includesToday = to === today;
   const closedTo = includesToday ? prevDay(today) : to;
-  // Six extra days of lookback so the trailing mean is FULL on day one of the display range,
-  // not null for the first six rows of every window (`stats.trailingMean`'s own rule).
-  const meanFrom = stepBack(from, 6);
-  const closedRows = meanFrom <= closedTo ? await dailyTotals(db, meanFrom, closedTo) : [];
+  const closedRows = from <= closedTo ? await dailyTotals(db, from, closedTo) : [];
   const closedByDay = new Map(closedRows.map((r) => [r.day, r]));
-  const meanSeries = trailingMean(closedRows, 7, 'visits');
-  const meanByDay = new Map(meanSeries.map((m) => [m.day, m.mean]));
+  // DEEP-LINK LANDINGS, PER DAY (owner, 2026-09-20: "show that per day and plot it") — same
+  // closed/live split as everything else on this page, merged into the SAME by-day rows
+  // below rather than a parallel array, so the chart and table read one source of truth.
+  const closedDeepLink = from <= closedTo ? await deepLinkLandingsByDay(db, from, closedTo) : [];
+  const closedDeepLinkByDay = new Map(closedDeepLink.map((r) => [r.day, r]));
 
   const priorR = priorRange(from, to);
   const prevDays = await dailyTotals(db, priorR.from, priorR.to);   // same length as [from,to]
 
   // ---- today, live (only when the window reaches it) ------------------------------------
-  let liveToday = { pageloads: 0, visits: 0, coarse: false };
+  let liveToday = { pageloads: 0, visits: 0, coarse: false, deepLink: 0, si: 1 };
   let liveErr = null;
   if (includesToday) {
     try {
-      const g = rumRows(await gql(apiToken, rumGroup('datetimeHour', 'datetimeHour_ASC', 26,
-        new Date(etDayStartMs(today)).toISOString(), new Date(nowMs).toISOString())),
-        (d) => ({}), undefined, { excludeBots: true });
+      const todayFrom = new Date(etDayStartMs(today)).toISOString();
+      const todayTo = new Date(nowMs).toISOString();
+      /* THE LIMIT IS SIZED OFF THE ACTUAL GROUPING, WHICH IS NOT THE DIMENSION ASKED FOR.
+       * `rumGroup` appends `bot` unconditionally, so this groups hour x bot, not hour. The
+       * count: the window is [Eastern midnight, now], at most ONE Eastern day; the longest
+       * Eastern day is 25 hours (fall-back); an Eastern midnight is always on an exact UTC
+       * hour boundary, so that span touches at most 25 `datetimeHour` buckets; `bot` takes
+       * two values. 25 x 2 = 50, exact, no slack needed.
+       *
+       * It was 26 (24 hours + the 25th + one spare), sized for the dimension asked for
+       * rather than the one grouped on. Ordered `datetimeHour_ASC`, so once bots touched
+       * ~13 hours of the day the limit fell inside the window and the EVENING was dropped
+       * — silently, and UNDER-counting today. Nothing errors when a limit truncates. */
+      const g = rumRows(await gql(apiToken, rumGroup('datetimeHour', 'datetimeHour_ASC', 50,
+        todayFrom, todayTo)), (d) => ({}), undefined, { excludeBots: true });
+      // Same query shape `hybridDeepLink` uses for its own live slice below — same two
+      // conditions (not `/`, referrer `direct`), just summed here rather than kept by path.
+      const dl = rumRows(await gql(apiToken, rumGroup('requestPath refererHost requestHost',
+        'count_DESC', 1000, todayFrom, todayTo)),
+        (d) => ({ path: d.requestPath || '', referrerKind: referrerKind(d.refererHost || '', d.requestHost) }),
+        undefined, { excludeBots: true });
       liveToday = {
         pageloads: g.rows.reduce((s, r) => s + r.pageloads, 0),
         visits: g.rows.reduce((s, r) => s + r.visits, 0),
         coarse: g.coarse > 1,
+        // `g.coarse` IS the largest sample interval seen today, not just a boolean (see
+        // `rumRows`'s own header) — the interval the by-day chart and table actually got (#797).
+        si: g.coarse,
+        deepLink: dl.rows.filter((r) => r.path !== '/' && r.referrerKind === 'direct')
+          .reduce((s, r) => s + r.visits, 0),
       };
     } catch (e) { liveErr = e.message; }
   }
@@ -340,11 +517,16 @@ export async function analyticsPage(env, url) {
     const ghost = (ghostSrc && !ghostSrc.missing && !ghostSrc.coarse) ? ghostSrc.visits : null;
     if (day === today) {
       return { day, pageloads: liveToday.pageloads, visits: liveToday.visits,
-               coarse: liveToday.coarse, missing: false, partial: true, mean: null, ghost };
+               coarse: liveToday.coarse, missing: false, partial: true, ghost,
+               deepLink: liveToday.deepLink, si: liveToday.si || 1 };
     }
-    const c = closedByDay.get(day) || { pageloads: 0, visits: 0, coarse: false, missing: true };
-    return { day, pageloads: c.pageloads, visits: c.visits, coarse: c.coarse, missing: c.missing,
-             partial: false, mean: meanByDay.has(day) ? meanByDay.get(day) : null, ghost };
+    const c = closedByDay.get(day) || { pageloads: 0, visits: 0, coarse: false, missing: true, si: 1 };
+    const dl = closedDeepLinkByDay.get(day) || { deepLink: 0, coarse: false, missing: true, si: 1 };
+    // The worst of the two sources feeding this day (#797) — the day-level counts and the
+    // deep-link counts are two separate GROUP BYs and either can be the one that was coarse.
+    return { day, pageloads: c.pageloads, visits: c.visits, coarse: c.coarse || dl.coarse,
+             missing: c.missing || dl.missing, partial: false, ghost, deepLink: dl.deepLink,
+             si: Math.max(c.si || 1, dl.si || 1) };
   });
 
   const curTotalVisits = rows.reduce((s, r) => s + r.visits, 0);
@@ -361,6 +543,29 @@ export async function analyticsPage(env, url) {
     + '<div class="tile"><div class="v">' + allDays.length + '</div><div class="k">Days</div></div>'
     + '</div>';
 
+  /* RATE-LIMITER THROTTLE COUNT (#797), last 24h. Zero is the expected value: the limiter
+   * refusing anything at all means site/telemetry.js discarded that batch for good
+   * (flush() never inspects the response — see worker/src/index.js recordThrottle), so
+   * the line is OMITTED entirely at zero rather than printing a reassuring "0", and
+   * carries `.warn` (render.js) when it is not — a "look at this" line, not a tile.
+   *
+   * blob1 = 'rate_limited' always exists once any row has ever been written with that
+   * indexes[0]/blobs[0] — unlike the walkthrough columns in usage.js this needs no
+   * COLUMNS_SINCE probe, because nothing here names a double or blob that could be
+   * absent from every row: an empty result set is a real zero, not a schema-typing 422.
+   *
+   * SPLIT FROM THE QUERY ON PURPOSE (`renderThrottleLine` below): a pure function of the
+   * rows is what test/run_telemetry.js executes to prove the zero-is-omitted / non-zero-
+   * is-`.warn` behaviour without also having to stand up a fake D1 store and a fake RUM
+   * feed just to reach this one line. */
+  let throttleLine = '';
+  try {
+    const tRows = await sql(apiToken, `SELECT blob5 AS route, sum(_sample_interval) AS n
+       FROM ${DATASET} WHERE blob1 = 'rate_limited' AND timestamp > NOW() - INTERVAL '1' DAY
+       GROUP BY route`);
+    throttleLine = renderThrottleLine(tRows);
+  } catch (e) { /* best-effort: a failed probe must not take the whole page down with it */ }
+
   const deltaLine = '<p>' + (delta.ok
     ? (delta.direction === 'flat'
         ? 'Flat versus the prior ' + allDays.length + ' days'
@@ -376,27 +581,53 @@ export async function analyticsPage(env, url) {
    * bucketing at any length — instead of folding into weekly/monthly bars. `rows.length`,
    * not the picked `days`/`from`/`to`, decides: it is the actual number of days on screen,
    * which is what a hand-picked range or a store-clamped window can shorten without the
-   * caller's own day count changing. */
+   * caller's own day count changing.
+   *
+   * TWO MORE CHANGES TO THE SAME CHART (2026-09-20, owner: "The new landing visits going
+   * other than the home page. Can you show that per day and plot it on the main plot? Get
+   * rid of the weekly average on that plot."): a third series, deep-link landings per day
+   * (`closedDeepLinkByDay`/`liveToday.deepLink` above, `r.deepLink` on every row) — and the
+   * 7-day trailing mean is GONE, in both the chart and the by-day table. The ghost
+   * (prior-period) line is untouched; it is a different thing, not asked to go. */
   const isLongWindow = rows.length > 14;
-  const chartOpts = { labelA: 'Pageloads', labelB: 'Landing visits', labelMean: '7d mean', labelGhost: 'prior period' };
+  /* `labelC` is the SHORT form on purpose. These are direct labels drawn in the chart's
+   * right-hand gutter (PADR = 96 px in render.js) and 'Deep-link landings' does not fit:
+   * it rendered CLIPPED as "Deep-link landing:" in both the bar and line charts. Found by
+   * screenshotting, invisible to every markup assertion -- the SVG was perfectly valid with
+   * the text running past the viewport. The legend and the day table both carry the full
+   * name, as do the SVG tooltips, which have no width limit and keep the FULL label --
+   * only the gutter text is shortened. A geometry check bounds every direct label
+   * against PADR so the next long one cannot clip silently. */
+  const chartOpts = { labelA: 'Pageloads', labelB: 'Landing visits',
+    labelC: 'Deep-link landings', labelCShort: 'Deep-link',
+                       labelGhost: 'prior period' };
   const chart = isLongWindow ? lineChart(rows, chartOpts) : barChart(bucketDays(rows).rows, { ...chartOpts, bucket: 'day' });
+  // THE WORST INTERVAL IN THE WINDOW (#797), same convention `countryReferrerDayNote` below
+  // uses — a legend describing every faded point/bar in the chart must not understate the
+  // roundest one shown. Falls back to 10 (Cloudflare's tier at the time of writing) only when
+  // nothing coarse is actually in view, i.e. the number is never read against a real point.
+  const worstSi = rows.reduce((m, r) => Math.max(m, r.coarse ? (r.si || 1) : 1), 1);
   const legend = !chart ? '' : isLongWindow
     ? '<p class="muted">Hollow point = today, live and partial · faded point = Cloudflare-'
-      + 'coarse (±10) · a break in the line, marked with a dashed tick at the baseline = no '
-      + 'data captured that day (never drawn as a drop to zero) · solid line = 7-day '
-      + 'trailing mean of landing visits · dashed muted line = the prior, equal-length '
-      + 'period · dates are labelled every ' + lineLabelStride(rows.length) + ' day(s).</p>'
+      + 'coarse (±' + (worstSi > 1 ? worstSi : 10) + ') · a break in the line, marked with a '
+      + 'dashed tick at the baseline = no data captured that day (never drawn as a drop to '
+      + 'zero) · dashed muted line = the prior, equal-length period · dates are labelled '
+      + 'every ' + lineLabelStride(rows.length) + ' day(s).</p>'
     : '<p class="muted">Hollow bar = today, live and partial · faded bar = Cloudflare-coarse '
-      + '(±10) · dashed tick at the baseline = no data captured that day · solid line = '
-      + '7-day trailing mean of landing visits · dashed muted line = the prior, '
-      + 'equal-length period.</p>';
+      + '(±' + (worstSi > 1 ? worstSi : 10) + ') · dashed tick at the baseline = no data '
+      + 'captured that day · dashed muted line = the prior, equal-length period.</p>';
 
   const dayTable = table(rows.map((r) => ({
     dateLabel: dayLabel(r.day, r.partial ? r.day : null),
     pageloads: r.pageloads,
     visits: r.visits,
-    status: r.missing ? 'no data captured' : r.coarse ? 'coarse (±10)' : r.partial ? 'today, live' : '',
-  })), [{ key: 'dateLabel', label: 'Date (ET)' }, ...RUM_COLS, { key: 'status', label: 'Note' }]);
+    deepLink: r.deepLink,
+    // The interval it actually got (#797), plain "coarse" when no numeric interval was
+    // carried for this day (the `rollup_runs` flag alone, no row to measure it from).
+    status: r.missing ? 'no data captured' : r.coarse ? (r.si > 1 ? 'coarse (±' + r.si + ')' : 'coarse') : r.partial ? 'today, live' : '',
+  })), [{ key: 'dateLabel', label: 'Date (ET)' }, ...RUM_COLS,
+        { key: 'deepLink', label: 'Deep-link landings', num: true },
+        { key: 'status', label: 'Note' }]);
 
   /* ---- the breakdown sections, MIGRATED (coordinator follow-up, item 1): closed days from
    * the first-party store, today folded in live — the SAME split as the by-day headline
@@ -422,7 +653,7 @@ export async function analyticsPage(env, url) {
    * ROW, not a rounded table, so one noisy country does not paint the whole section coarse. */
   async function hybridBreakdown(dim, cfDims, cfKey, limit) {
     const closed = from <= closedTo ? await groupBy(db, dim, from, closedTo, Math.max(limit, 200)) : [];
-    const by = new Map(closed.map((r) => [r.key, { key: r.key, pageloads: r.pageloads, visits: r.visits, coarse: r.coarse }]));
+    const by = new Map(closed.map((r) => [r.key, { key: r.key, pageloads: r.pageloads, visits: r.visits, coarse: r.coarse, si: r.si || 1 }]));
     if (includesToday) {
       // `dim !== 'bot'` is the exemption: grouping by bot status and excluding bots would
       // return exactly one row, always Human.
@@ -433,14 +664,63 @@ export async function analyticsPage(env, url) {
       // The per-row sample interval, not the batch-wide `g.coarse`, decides which MERGED
       // key gets marked — a rounded row must not taint every other row in the same batch.
       g.rows.forEach((r) => {
-        const cur = by.get(r.key) || { key: r.key, pageloads: 0, visits: 0, coarse: false };
+        const cur = by.get(r.key) || { key: r.key, pageloads: 0, visits: 0, coarse: false, si: 1 };
         cur.pageloads += r.pageloads; cur.visits += r.visits;
         if (r.si > 1) cur.coarse = true;
+        // The interval it actually got, not the literal "10" the note used to hard-code
+        // (#797) — carried the same way `dayCountryReferrer`'s merge does.
+        cur.si = Math.max(cur.si || 1, r.si || 1);
         by.set(r.key, cur);
       });
     }
     const rows = [...by.values()].sort((a, b2) => b2.pageloads - a.pageloads).slice(0, limit);
     return { rows, anyCoarse: rows.some((r) => r.coarse) };
+  }
+
+  /* DEEP-LINK LANDINGS — a returning-visitor PROXY that needs no identifier at all
+   * (cross-visit tracking was considered and declined, 2026-09-20: nothing persistent is
+   * stored on a visitor's device, and privacy.html's promise that two visits cannot be
+   * linked stands). A landing visit whose landing page is NOT the homepage `/` AND whose
+   * referrer is NONE AT ALL (`direct`) — NARROWED 2026-09-20 (#795 follow-up): a non-home
+   * landing referred by a search engine is DISCOVERY, not a return, so it is excluded by
+   * the same rule that includes the bookmark/typed-URL case. See `stats.deepLinkLandings`'s
+   * header for the measured example (`/about`, `/download` were external; only `/ui/shell`
+   * was direct) and why `internal` needs no separate exclusion.
+   *
+   * Same hybrid split as `hybridBreakdown` above: closed days from `stats.deepLinkLandings`
+   * (a dedicated two-column reader — `groupBy` is single-dimension only and cannot express
+   * "path AND referrer_kind"), today folded in live from Cloudflare. Keyed on path AND kind
+   * together, not path alone, so the live merge can tell a direct `/ui/shell` landing from
+   * an external one the same way the closed store already does. */
+  async function hybridDeepLink() {
+    const closed = from <= closedTo ? await deepLinkLandings(db, from, closedTo, 1000) : { total: 0, deepLink: 0, coarse: false, byPath: [] };
+    const keyOf = (p, k) => p + '\u0000' + k;
+    const by = new Map(closed.byPath.map((r) => [keyOf(r.path, r.referrerKind),
+      { path: r.path, referrerKind: r.referrerKind, pageloads: r.pageloads, visits: r.visits, coarse: r.coarse, si: r.si || 1 }]));
+    if (includesToday) {
+      const g = rumRows(await gql(apiToken,
+        rumGroup('requestPath refererHost requestHost', 'count_DESC', 1000, todayFromIso, todayToIso)),
+        (d) => ({ path: d.requestPath || '', referrerKind: referrerKind(d.refererHost || '', d.requestHost) }),
+        undefined, { excludeBots: true });
+      g.rows.forEach((r) => {
+        const k = keyOf(r.path, r.referrerKind);
+        const cur = by.get(k) || { path: r.path, referrerKind: r.referrerKind, pageloads: 0, visits: 0, coarse: false, si: 1 };
+        cur.pageloads += r.pageloads; cur.visits += r.visits;
+        // Per-row sample interval, not the batch-wide flag — the same rule every other
+        // hybrid* merge in this file follows, so one rounded key cannot taint another.
+        if (r.si > 1) cur.coarse = true;
+        // The interval it actually got (#797) — same carry as `hybridBreakdown` above.
+        cur.si = Math.max(cur.si || 1, r.si || 1);
+        by.set(k, cur);
+      });
+    }
+    const rows = [...by.values()].sort((a, b2) => b2.visits - a.visits);
+    const total = rows.reduce((s, r) => s + r.visits, 0);
+    // THE TWO CONDITIONS THE METRIC IS: not the homepage, AND no referrer at all — an
+    // externally-referred subpage landing is search discovery, the opposite of a return.
+    const deepRows = rows.filter((r) => r.path !== '/' && r.referrerKind === 'direct');
+    const deepLink = deepRows.reduce((s, r) => s + r.visits, 0);
+    return { rows, deepRows, total, deepLink, anyCoarse: rows.some((r) => r.coarse) };
   }
 
   /* THE SPAN, PRINTED LITERALLY, on every migrated section — the coordinator's item 2. If a
@@ -454,7 +734,12 @@ export async function analyticsPage(env, url) {
   function breakdownTable(rows, keyLabel, emptyLabel) {
     return table(rows.map((r) => ({
       key: r.key === '' || r.key == null ? (emptyLabel || '(unknown)') : r.key,
-      pageloads: r.pageloads, visits: r.visits, note: r.coarse ? 'coarse (±10)' : '',
+      pageloads: r.pageloads, visits: r.visits,
+      // The interval it actually got (#797), not a hard-coded 10 — `r.si` is only meaningful
+      // when `coarse` is true; a row marked coarse with no numeric interval behind it (the
+      // `rollup_runs` flag alone, nothing in `traffic_daily` to measure) prints plain "coarse"
+      // rather than inventing a figure it was never handed.
+      note: r.coarse ? (r.si > 1 ? 'coarse (±' + r.si + ')' : 'coarse') : '',
     })), [{ key: 'key', label: keyLabel }, ...RUM_COLS, { key: 'note', label: 'Note' }]);
   }
 
@@ -462,6 +747,32 @@ export async function analyticsPage(env, url) {
     section('Top pages', async () => {
       const h = await hybridBreakdown('path', 'requestPath', (d) => d.requestPath || '', 15);
       return hybridSourceNote(h.anyCoarse) + breakdownTable(h.rows, 'Path');
+    }),
+    /* DEEP-LINK LANDINGS (owner, 2026-09-20): "does anyone come back?", answered without
+     * storing or reading any visitor identifier — see `hybridDeepLink` above and
+     * `stats.deepLinkLandings`'s own header for why this needs none. */
+    section('Deep-link landings', async () => {
+      const h = await hybridDeepLink();
+      const share = h.total > 0 ? Math.round((h.deepLink / h.total) * 1000) / 10 : null;
+      const deepRows = h.deepRows.map((r) => ({ key: r.path, pageloads: r.pageloads, visits: r.visits, coarse: r.coarse, si: r.si }));
+      return hybridSourceNote(h.anyCoarse)
+        + '<p class="muted">A <b>deep-link landing</b> is a landing visit whose landing page '
+        + 'is not the homepage <span class="mono">/</span> AND has NO REFERRER at all — a '
+        + 'session that started at, say, <span class="mono">/ui/shell</span> with nothing '
+        + 'sending it there did not discover the site through a link, which in practice '
+        + 'means a bookmark or a remembered URL. A non-home page reached FROM somewhere '
+        + '(a search engine, another site) is excluded on purpose: that is discovery, the '
+        + 'opposite of a return, not the thing this counts. No visitor identifier is stored '
+        + 'or read for this: cross-visit tracking was considered and declined (2026-09-20).</p>'
+        + '<p class="warn">This is a FLOOR on returning visitors, not a count of them — a '
+        + 'returning visitor who lands on the homepage first is invisible to it, and a '
+        + 'first-time visitor sent a bare deep link (no referrer) by a friend is counted '
+        + 'wrongly as one. Read it as a lower bound, never as "this many people came back".</p>'
+        + '<p><b>' + h.deepLink + ' of ' + h.total + ' landing visits</b> ('
+        + (share == null ? 'no landing visits in this window' : share + '%')
+        + ') landed somewhere other than the homepage with no referrer.</p>'
+        + (deepRows.length ? breakdownTable(deepRows, 'Path')
+            : '<p class="muted">No deep-link landings in this window.</p>');
     }),
     section('Countries', async () => {
       const h = await hybridBreakdown('country', 'countryName', (d) => d.countryName || '', 15);
@@ -499,7 +810,9 @@ export async function analyticsPage(env, url) {
         + 'totals against Top pages, Countries, or any other section above.</p>'
         + table(h.rows.map((r) => ({
             who: r.key === 1 ? 'Bot' : 'Human', pageloads: r.pageloads, visits: r.visits,
-            note: r.coarse ? 'coarse (±10)' : '',
+            // Same rule as `breakdownTable` (#797): the interval it actually got, plain
+            // "coarse" when no numeric interval was carried for this row.
+            note: r.coarse ? (r.si > 1 ? 'coarse (±' + r.si + ')' : 'coarse') : '',
           })), [{ key: 'who', label: 'Traffic' }, ...RUM_COLS, { key: 'note', label: 'Note' }]);
     }),
   ]);
@@ -514,7 +827,7 @@ export async function analyticsPage(env, url) {
   async function hybridReferrer(limit) {
     const closed = from <= closedTo ? await referrerBreakdown(db, from, closedTo, 1000) : [];
     const by = new Map(closed.map((r) => [r.host, { host: r.host, kind: r.kind,
-      pageloads: r.pageloads, visits: r.visits, coarse: r.coarse }]));
+      pageloads: r.pageloads, visits: r.visits, coarse: r.coarse, si: r.si || 1 }]));
     if (includesToday) {
       // TODAY has no stored kind yet — it is classified here, but WITH the real requestHost
       // this live row actually carries, which is the accurate half of `referrerKind`, not
@@ -526,11 +839,13 @@ export async function analyticsPage(env, url) {
       g.rows.forEach((r) => {
         // A host the store already has keeps its STORED kind; only a host today introduces
         // for the first time falls back to today's own (still fully-informed) classification.
-        const cur = by.get(r.host) || { host: r.host, kind: r.kind, pageloads: 0, visits: 0, coarse: false };
+        const cur = by.get(r.host) || { host: r.host, kind: r.kind, pageloads: 0, visits: 0, coarse: false, si: 1 };
         cur.pageloads += r.pageloads; cur.visits += r.visits;
         // Per-row sample interval, not the batch-wide `g.coarse` — one rounded host must
         // not mark every other host in the same live batch.
         if (r.si > 1) cur.coarse = true;
+        // The interval it actually got (#797) — same carry as `hybridBreakdown` above.
+        cur.si = Math.max(cur.si || 1, r.si || 1);
         by.set(r.host, cur);
       });
     }
@@ -550,7 +865,9 @@ export async function analyticsPage(env, url) {
   } catch (e) { referrerErr = e.message; }
   const referrerTable = (rows, label) => table(rows.map((r) => ({
     referer: r.host || '(direct)', kind: r.kind, pageloads: r.pageloads, visits: r.visits,
-    note: r.coarse ? 'coarse (±10)' : '',
+    // Same rule as `breakdownTable` (#797): the interval it actually got, plain "coarse"
+    // when no numeric interval was carried for this row.
+    note: r.coarse ? (r.si > 1 ? 'coarse (±' + r.si + ')' : 'coarse') : '',
   })), [{ key: 'referer', label: label }, { key: 'kind', label: 'Kind' }, ...RUM_COLS,
         { key: 'note', label: 'Note' }]);
 
@@ -588,7 +905,7 @@ export async function analyticsPage(env, url) {
     const closed = from <= closedTo ? await dayCountryReferrer(db, from, closedTo, Math.max(limit, 500)) : [];
     const by = new Map();
     closed.forEach((r) => {
-      const k = [r.day, r.country, r.host].join('');
+      const k = [r.day, r.country, r.host].join('\u0001');
       by.set(k, { day: r.day, country: r.country, host: r.host, kind: r.kind,
                   pageloads: r.pageloads, visits: r.visits, coarse: r.coarse,
                   si: r.si || 1 });
@@ -604,7 +921,7 @@ export async function analyticsPage(env, url) {
                   kind: referrerKind(d.refererHost, d.requestHost) }),
         undefined, { excludeBots: true });
       g.rows.forEach((r) => {
-        const k = [today, r.country, r.host].join('');
+        const k = [today, r.country, r.host].join('\u0001');
         const cur = by.get(k) || { day: today, country: r.country, host: r.host, kind: r.kind,
                                     pageloads: 0, visits: 0, coarse: false, si: 1 };
         cur.pageloads += r.pageloads; cur.visits += r.visits;
@@ -706,8 +1023,9 @@ export async function analyticsPage(env, url) {
     + '<p class="muted">Every date and time on this page is <b>Eastern</b>, measured '
     + 'midnight to midnight.</p>'
     + picker(from, to) + clampNote
+    + pipelineLine
     + GLOSSARY
-    + tiles + deltaLine
+    + tiles + deltaLine + throttleLine
     + sourceNoteFirstParty(anyCoarse, anyMissing)
     + (liveErr ? '<p class="warn">Today’s live figure failed to load: ' + esc(liveErr) + '</p>' : '')
     + '<h2>By day</h2>' + chart + legend + dayTable

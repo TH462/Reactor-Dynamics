@@ -29,6 +29,195 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-20-develop-a (#796 — the walkthrough drives the speed control)
+
+*(OWNER, 2026-09-20: "Make the walkthrough text a little bigger. The fast forward should drop down
+to 1x for steps where the next step should be played at 1x. it should auto fast forward but it
+should auto drop down to the speed the step should be played at.")*
+
+**THE RULE ALREADY EXISTED — WHAT MOVED IS WHO PRESSES THE BUTTON.** `hold >= 180 &&
+wait_hint !== false` -> `RD.CklSpeedHint(hold)` has driven three surfaces since #628/#686/#743: the
+card's wait line, the line under the speed bar, and the pulsing rung. All three asked the player to
+make a mechanical choice the walkthrough already knew the answer to. `syncCklAutoSpeed` (ui/app.js)
+now sends it, reading the SAME condition rather than a new authored `speed:` field — a per-step
+number would be the second copy that drifts (the 705 ppm shape).
+
+**THE EXPENSIVE HALF IS COMING BACK DOWN, AND IT IS KEYED ON THE CRITERION, NOT ON CONTINUE.**
+Every step waits for Continue since #660, so a clock left at 600x after a wait's `acc_met` runs the
+plant past the thing the next step is about while the player is reading the card. `cklStepSpeed`
+returns 1x on `acc_met || awaiting_ack`, and `applyCklSpeedGlow` stands the rung down on the same
+condition — a cue pointing at a fast-forward that would now be overshoot.
+
+**FOUR REFUSALS IT HAS TO RESPECT, AND THREE OF THEM SELF-HEAL THROUGH THE KEY** (`procedure |
+step | wanted speed | hold`):
+- **the player.** Auto acts ONCE per key, so any rung pressed by hand stands for the rest of the
+  step. Injection-proven: defeating the key guard reds the gate with "the walkthrough overrode the
+  player" after a deliberate 1x press.
+- **a stopped clock.** Skipped AND the key deliberately not latched, so a pause never eats the
+  step's speed change — and #691 (play-from-pause always lands at 1x) is untouched, because on
+  resume the step's key is already spent.
+- **`true_state.speed_hold`.** The service refuses `set_speed > 1` while it stands, so sending
+  there buys a guaranteed refusal plus a toast. The hold is IN the key: the acceleration lands by
+  itself the moment the accumulator window closes, which is #619 item 13 closing itself.
+- **WARP unavailable.** Clamped to the best PLAY rung off `pacing.warp_available` rather than
+  eating `_setSpeed`'s `warp_locked` clamp and its toast; also in the key, so the rung is taken the
+  moment WARP frees. The wait line says `fast-forwarding at 60x - 600x needs a quiet plant` in that
+  state rather than naming a rung the clock is not on.
+
+**IN THE BROADCAST PATH, NOT THE rAF PAINT.** `renderNow` is one frame late and is skipped outright
+when paints coalesce (#432: 1475 rows in, 35 recorded); a speed change landing a frame late at 600x
+is 600 plant-seconds of overshoot. It sits beside the #694 walkthrough-pause block, which is the
+same kind of thing and has the same snapshot restamp (`metadata.time_acceleration` here,
+`metadata.running` there).
+
+**NOT THROUGH `cmd()`.** That path stamps the diagnostic bundle, the SOE and telemetry as THE
+PLAYER ACTING (#437). A bug report whose sequence of events shows six speed presses nobody made is
+a worse artifact than one showing none.
+
+**THE QUALITY PASS FOUND THE ONE THAT MATTERED, AND MY OWN COMMENT HAD CLAIMED THE OPPOSITE.**
+The first cut latched the act-once key and then returned on a stopped clock, under a comment
+saying *"a pause never eats the step's speed change"*. It ate it in the COMMON case: `pauseSim`
+stops the broadcasts so the driver does not run at all, `resumeSim` forces 1x outside it (#691),
+and the first broadcast back computes the SAME key, matches the latch and returns — the clock then
+sat at 1x for the rest of a step the walkthrough was meant to be fast-forwarding. Reachable by
+pressing pause and play. The reasoning error is specific and worth naming: I checked that a pause
+before auto acted could not lose the step's speed, and never checked the pause AFTER it acted,
+which is the one a player actually takes. **The fix is two memories, not one** — the latch drops
+whenever the clock stops, and the player's override moves to `cklAuto.over`, keyed on the same
+step, so it survives the drop. Without the split, fixing the strand would have thrown away a rung
+the player deliberately chose on resume; the gate asserts both directions.
+
+**AND ONE MORE THE PASS FOUND:** `stop_checklist` never touched `timeAcceleration`, so ending a
+leg mid-wait left the plant at a rung AUTO chose with nothing tracking it. Before this change that
+took a deliberate 600x press by the player, so the feature turned an unattended runaway from
+possible into easy. Handed back only when the clock is exactly where auto put it and above 1x.
+
+**THE GATE.** `verify_e2e_ui` `testSpeedRungGlowRendered` re-cut; #743's four halves survive (the
+painted inset shadow, the unlit strip, the dark-wire proof, the pulse stand-down — the last now
+asserted in the OVERRIDE state, which is the only one where a press is still owed). Three new
+halves, each injection-proven red for its own reason and no other: no `syncCklAutoSpeed` call ->
+"did not take the clock to its own rung"; no drop-on-met branch -> "the wait is satisfied and the
+clock is still at 60x"; no act-once guard -> "overrode the player"; the latch kept across a pause
+-> "a pause/resume stranded the step at 1x"; no separate override memory -> "a pause/resume threw
+away the player's override"; no hand-back -> "ended at 60x and left the plant running at 60x". **The fixture had to plant
+`acc_met`/`awaiting_ack` on the SNAPSHOT** (an `_instructorBlock` wrapper, #686's shape): jumping
+`c.idx` lands on a step pwr_heatup ALREADY satisfies — the first run read "Wait complete" and cued
+no rung, which is correct behaviour and a useless fixture — and `c.awaitingAck = !!met` is rewritten
+every `_stepChecklist` tick, so poking the field directly is a race the drop loses.
+
+**AND IT FORCED THE FIELD THE POOL SAID WAS OWED.** `ui/manual_procedures.js` step 9 of
+`pwr_startup` carries the diagnosis verbatim: *"an authorable CAP on the rung is an app.js change
+and is filed rather than smuggled in here"* — the 30 s rule returns **60x** for its 1800 s dwell
+while #753 measured the safe rung at **10x** (worst REACTOR POWER change inside one 2.5 s glance:
+1x 0.020 %, 5x 0.094 %, 10x 0.186 %, 60x 1.083 %), so the number lived in the step's prose and
+`wait_hint: false` suppressed the app's wrong sentence. **That was survivable while the PLAYER
+pressed the button and is not survivable now**: with auto-speed, `wait_hint: false` means "played
+at 1x", which forces real time on a step whose own note says 10x. `wait_speed` is that cap — CLOCK
+only, `wait_hint` still owns the LINE, snapped DOWN to a real ladder rung so it inherits #628's
+"never name a button that is not there". Authored on `pwr_startup` steps 9 (10x) and 10 (5x), both
+numbers already measured and already in those steps' notes; nothing else in the pool sets it.
+**Gated in `verify_flags_ui` (55 -> 56), and the NEGATIVE half is the whole check** — the landed
+rung must not be the one the hold-derived rule would give, or it passes on a build that ignores the
+field whenever the two agree.
+
+**#796 ITEMS 4 AND 5 — MEASURED THE NEXT DAY, AND THE TWO STEPS ANSWER DIFFERENTLY.** Both carried
+`wait_hint: false` from the #653 S-9 pass and so were played at 1x.
+
+**Step 12 needed no cap at all — it needed its suppression removed.** #653 applied `wait_hint:
+false` across this region because the rule offered 60x on the 1800 s dwells either side; step 12
+holds 240 s, where the rule returns **10x**. The suppression was inherited, not reasoned, and that
+is the shape to watch for: a blanket fix applied to a neighbourhood outlives the case that
+justified it.
+
+**And step 12 is STANDING STILL, which makes the glance metric read its own noise** (`tools/
+glance_rung.js`, seed 42, full stack, 0.1 s samples): 3.891 % to 4.118 % over the whole four
+minutes, so indicated says 0.150 % at 1x and 0.185 % at 60x — **near-identical, which is the
+tell** — while TRUE says 0.002 % and 0.038 %. Grading a rung on the indicated column there would
+be grading the instrument (power range, sigma 0.3 %). True movement at 10x is 0.012 %, against the
+0.186 % ACCEPTED for step 9. 60x would be safe on movement alone; 10x is taken because the step
+also authorises a corrective INSERT, and **a rung is only as fast as the fastest thing the step
+asks you to do**.
+
+**Step 13 is decided by the ROD PULL, not by a power delta.** 13 steps at SLOW is 97.3
+plant-seconds, so ONE ROD STEP costs the player **7.49 s** of wall clock at 1x, **1.50 s** at 5x,
+**0.75 s** at 10x, **0.12 s** at 60x. 1.50 s is a reaction window; 0.75 s is not. That is the same
+failure #653 S-9 filed one region up, and it is why the owner's own "probably 5x" is ADOPTED on a
+measurement rather than deferred to. The rule would have given 60x, so this one genuinely needs
+`wait_speed`.
+
+**AND THE WINDOW AUTO ACCELERATES ON STEP 13 IS 42 PLANT-SECONDS, NOT 400** — `power_pct > 5` is
+met 0.7 plant-minutes in and `cklStepSpeed` drops the clock there, so the run to 10.5 % filling the
+rest of the authored dwell is already at real time. Grading the rung over the full dwell would have
+judged the walkthrough on plant it never accelerates. `wait_est_s: false` for the same reason: a
+printed "about 7 plant-minutes" overstates the wait tenfold.
+
+**⚠ STEP 12 IS SATISFIED ON ARRIVAL ON THE REPLAY'S ROUTE** — step 11's dwell settles the rate, so
+both acceptance entries hold at t=0 (power 3.97 %, rate 0.006) and auto never accelerates it there
+at all. The wait is real on the PLAYER's route, which is the one the owner is reporting from. A
+measurement tool that only ever drives the replay will call that step a non-event; read "0.0
+plant-min in" as "the replay does not wait here", never as "there is no wait".
+
+**#796 ITEMS 1, 2 AND 3, THE SAME DAY.** Item 1's RHR ring on Mode 5 -> 3 step 11 had a
+justification in the pool that was **about a different leg's step 11** — a comment about COOLDOWN
+RATE and HX SPLIT, both true of `pwr_cooldown` step 11 and neither true of the heatup's, which has
+no note and no rate lever (the 100 degF/hr limit was ruled OUT of that leg). A step-number
+collision between two legs put a correct sentence on the wrong step and the ring followed the
+sentence. **Look for this shape**: two legs both have a step 11.
+
+Item 2 superseded the 2026-09-13 "Background — not an action" legend. Worth recording WHY the
+original argument stopped applying rather than just that it did: the negative clause existed
+because a question-shaped label leaves a player reading the block before learning it is not for
+them — but the instruction it answered was satisfied by THREE things at once (its own box, set
+apart, AND a legend), and both fresh-reader reviews reported the block as unambiguous. With the
+box doing that work the clause was a negation restating the layout, on every step, in a 10 px
+legend.
+
+**ITEM 3 IS THE ONE WITH A REFUTED PREMISE IN IT.** The structural half is unambiguous and is a
+straight supersession of #756 (his own directive of 2026-09-15): the ladder goes back to one step
+per plot point. His complaint is exact in CSS terms — `.ckl-txt` is white, `.ckl-crit` is cobalt,
+so four rows meant four cobalt imperatives and no white instruction of their own.
+
+**But "remove the requirements for startup rate to fall back to zero ... this doesn't have much
+affect on the final outcome" is a recalled claim, and it measures false.** Same run sampled twice
+(seed 42, full stack: at the tick each rung's counts arrive, and again at the end of its hold),
+both sets through the panel's own trailing-3 fit: **no settle -> predicted critical step 213;
+settled -> step 208; ACTUAL 207.** The settle is worth **5.1 steps**, all of it on the DANGER side.
+
+**THE RESOLUTION IS THE DISTINCTION HE ACTUALLY DREW: the REQUIREMENT goes, the guidance stays.**
+Before #756 the settle was taught in the step text and never graded — which is what "like we had
+before" names. So the graded rows go and the instruction and note keep telling the player to wait
+for the rate, now carrying the cost in rod steps. Both his sentences are satisfied and the
+prediction is not silently degraded for a player who reads the step.
+
+**THE GATE FALLOUT WAS EIGHT CHECKS, ALL PINNING THE REMOVED ROWS, AND FIVE WERE WORTH KEEPING.**
+Adjudicated one at a time (HR10). The rung-shape check re-pins the NEW shape; the four plant-driven
+#761 probes — the rod-stop rung and the two DRIBBLE routes — now grade a **local fixture** carrying
+the retired rows instead of the shipped step. That is the move worth copying: **a probe that reads
+authored content cannot tell a retired convention from a regression, and one that drives the
+mechanism can.** `op: 'stopped'` now has NO author in the pool — exactly the position `op: 'steady'`
+was already in — so the well-formed check had to stop demanding a non-empty population, and the
+synthetic-channel halves are what keep both operators honest.
+
+**The derivation is now a command, not a feel: `node tools/glance_rung.js <procedure_id> <step>`**,
+referenced from the `wait_speed` schema so the next rung is measured too.
+
+**ALSO.** Walkthrough step text up ~12 % (step instruction 12.5 -> 14 px, head 13 -> 14.5, `Use ...`
+and `why` 11.5 -> 13, sub/wait 11 -> 12.5, incident narrative 11.5 -> 12.5, out-of-turn/ack/step
+number/mark 11 -> 12). And **`Manuals/02` §4.1 was still promising a WARP timer the plant lost on
+2026-09-08** — #660 deleted `_warpLockedUntil` ("either locked or not") and `_warpBlocked` has read
+only live conditions since, while the manual said the buttons "stay dark for 30 plant-seconds of
+quiet". Nothing gates described BEHAVIOUR, only numbers in tables, so it took reading the section
+for another reason to find it. Manual set Rev 21.
+
+**GATES** (tree settled, run after the edits; no aggregate — not pushing): `verify_e2e_ui`
+4screenshots, `verify_flags_ui` 55/55, `verify_ckl_relevance` 34/34, `verify_manual_follow` 225,
+`verify_board_check` 282, `verify_board_scroll` 158/158, `verify_reduced_motion` 18/18,
+`run_checklist` 93/93, `run_checklist_pwr2` 360/360, `run_manual_rev` 15/0, `run_manual_setpoints`
+18/18, `run_manual_units` 0 failed, `run_manual_commands` 8/8, `run_hardrules` 605,
+`run_release` 31, `run_doc_budget` 4, `run_session_labels` 8.
+
+---
+
 ## Session log — 2026-09-19-develop-a (#786 — the AFW discharge gauge, and the plant question underneath it)
 
 **THE DEFECT.** `pwr2_true_state.js` published `afw_discharge_pressure_mpa` as

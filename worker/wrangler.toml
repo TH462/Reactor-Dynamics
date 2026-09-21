@@ -97,17 +97,47 @@ id = "7a421f75b14444e78a72a239c841c90d"
 
 # The endpoint is public and unauthenticated by design — the alternative is a secret
 # shipped inside a page whose source is published under the AGPL, which is not a
-# secret. So the protections are a size cap (in the Worker) and this.
+# secret. So the protections are a size cap (in the Worker) and the two limiters below —
+# and NEITHER of those two is the real cost protection at these numbers. The Workers
+# daily invocation ceiling (100,000/day on the free plan) and, on a paid plan, the bill,
+# are what actually stop an open endpoint being free file hosting. A per-IP limit's job
+# is only to stop ONE address burning the whole day's budget by itself.
 #
-# 60 requests/minute per IP is far above any real session: the client batches events
-# every 15 s and a bug report is a single POST. It is well below what makes an open
-# endpoint worth abusing.
+# TWO LIMITERS, SPLIT (#797). One shared 60/min budget used to gate BOTH ingest routes
+# before this, at src/index.js's route check — so a 2 MB bug-report upload to R2 and a
+# few hundred bytes of events drew on the same allowance despite wildly different cost.
+# A shared address (a classroom, a lecture hall, a corporate NAT) legitimately sends many
+# times a lone visitor's traffic on the EVENTS route and essentially never does on the
+# BUNDLE route, so one number could not be right for both. Same reasoning as
+# LOGIN_LIMITER further down: separate cost profile, separate budget.
+
+# EVENTS. site/telemetry.js now batches once every 60 s (BATCH_MS, raised from 15 s), so
+# a steady session is ~1 request/minute. 300 requests/60s therefore covers roughly 300
+# CONCURRENT SESSIONS behind one address before any one of them is throttled — sized for
+# a lecture hall or a corporate proxy, not just the single person the old 60/min comment
+# was arithmetic for. Keeps the original namespace: this route's per-request cost (a few
+# hundred short rows) is exactly what 1001 was already sized against.
 [[ratelimits]]
 name = "LIMITER"
 namespace_id = "1001"
 
   [ratelimits.simple]
-  limit = 60
+  limit = 300
+  period = 60
+
+# BUNDLES. A bug report is a single POST and a deliberate human act, not a recurring
+# beacon, so this stays tight rather than scaling with EVENTS above. 5 requests/60s per
+# address allows a handful of people behind one shared IP to report the same visible
+# glitch inside the same minute — the realistic shared-address case — while still
+# stopping a scripted repeat of a near-MAX_BUNDLE_BYTES (2 MB) upload from turning into
+# real R2 storage and bandwidth cost. New namespace: 1001 and 1002 are already taken
+# (ingest above, LOGIN_LIMITER below).
+[[ratelimits]]
+name = "BUNDLE_LIMITER"
+namespace_id = "1003"
+
+  [ratelimits.simple]
+  limit = 5
   period = 60
 
 # THE LOGIN THROTTLE (#764). Separate namespace, separate budget: the ingest limiter above

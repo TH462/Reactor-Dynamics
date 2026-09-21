@@ -51,19 +51,40 @@ function head(s) { console.log('\n' + BOLD + s + RST); }
 
 /* ---- a D1 stub: prepare / bind / run / batch, and a readable table dump ---------------
  * Statements are kept as {sql, args} and executed by a tiny interpreter that understands
- * exactly three shapes: CREATE (ignored), INSERT OR REPLACE (upsert on the declared
- * PRIMARY KEY) and DELETE ... WHERE day < ?. Anything else throws rather than silently
- * doing nothing, so a future statement cannot pass this gate by being unrecognised. */
+ * exactly five shapes: CREATE (ignored, but its column LIST is remembered — see below),
+ * INSERT OR REPLACE (upsert on the declared PRIMARY KEY), DELETE ... WHERE day < ?,
+ * SELECT <cols> FROM <table> [LIMIT n] and DROP TABLE IF EXISTS. Anything else throws
+ * rather than silently doing nothing, so a future statement cannot pass this gate by
+ * being unrecognised.
+ *
+ * SELECT and DROP TABLE were added for the own_traffic_daily MIGRATION (rollup.js's
+ * migrateOwnTraffic): it probes with a SELECT naming the new columns and expects THAT TO
+ * THROW on a table that predates them — real D1/SQLite raises "no such column" for a
+ * SELECT naming an undeclared column, so the stub has to know each table's DECLARED
+ * column list (`schemaCols`, parsed from CREATE's own paren body) to reproduce that,
+ * not just its primary key. Without this the stub would pass a migration that does
+ * nothing, because nothing would ever tell it the columns were missing. */
 function makeDb() {
-  var tables = {}, keys = {};
+  var tables = {}, keys = {}, schemaCols = {};
   function parseCreate(sql) {
     var m = /CREATE TABLE IF NOT EXISTS (\w+)/.exec(sql);
     if (!m) return;
-    tables[m[1]] = tables[m[1]] || [];
+    var table = m[1];
+    tables[table] = tables[table] || [];
     var pk = /PRIMARY KEY \(([^)]*)\)/.exec(sql);
-    keys[m[1]] = pk ? pk[1].split(',').map(function (s) { return s.trim(); })
+    keys[table] = pk ? pk[1].split(',').map(function (s) { return s.trim(); })
                     : (/(\w+) TEXT PRIMARY KEY/.exec(sql) || [])[1];
-    if (typeof keys[m[1]] === 'string') keys[m[1]] = [keys[m[1]]];
+    if (typeof keys[table] === 'string') keys[table] = [keys[table]];
+    // The column LIST, from the paren body up to a parenthesised `PRIMARY KEY (` clause
+    // (own_traffic_daily's shape) — or the whole body when the key is inline instead
+    // (rollup_runs' `day TEXT PRIMARY KEY,`), which still leaves every column name as
+    // the first token of its own comma-separated segment.
+    var open = sql.indexOf('(', sql.indexOf(table));
+    var body = sql.slice(open + 1, sql.lastIndexOf(')'));
+    var pkParen = body.indexOf('PRIMARY KEY (');
+    var colsBody = pkParen >= 0 ? body.slice(0, pkParen) : body;
+    schemaCols[table] = colsBody.split(',').map(function (s) { return s.trim().split(/\s+/)[0]; })
+      .filter(Boolean);
   }
   function exec(st) {
     var sql = st.sql, a = st.args || [];
@@ -88,6 +109,22 @@ function makeDb() {
       tables[tt] = (tables[tt] || []).filter(function (r) { return !(r.day < a[0]); });
       return;
     }
+    var sel = /^\s*SELECT\s+([\s\S]*?)\s+FROM\s+(\w+)(?:\s+LIMIT\s+(\d+))?\s*$/i.exec(sql);
+    if (sel) {
+      var wanted = sel[1].split(',').map(function (s) { return s.trim(); });
+      var st2 = sel[2];
+      if (!(st2 in schemaCols)) throw new Error('no such table: ' + st2);
+      wanted.forEach(function (c) {
+        if (schemaCols[st2].indexOf(c) < 0) throw new Error('no such column: ' + c);
+      });
+      var lim = sel[3] ? Number(sel[3]) : Infinity;
+      return (tables[st2] || []).slice(0, lim);
+    }
+    var drop = /^\s*DROP TABLE IF EXISTS (\w+)\s*$/i.exec(sql);
+    if (drop) {
+      delete tables[drop[1]]; delete keys[drop[1]]; delete schemaCols[drop[1]];
+      return;
+    }
     throw new Error('D1 stub does not understand: ' + sql.slice(0, 60));
   }
   return {
@@ -102,13 +139,14 @@ function makeDb() {
         return {
           sql: sql, args: args,
           bind: function () { return mk(Array.prototype.slice.call(arguments)); },
-          run: function () { exec({ sql: sql, args: args }); return Promise.resolve({}); },
+          run: function () { return Promise.resolve(exec({ sql: sql, args: args }) || {}); },
         };
       }
       return mk([]);
     },
     batch: function (sts) { sts.forEach(exec); return Promise.resolve([]); },
     _t: function (n) { return tables[n] || []; },
+    _cols: function (n) { return schemaCols[n] || null; },
   };
 }
 
@@ -118,23 +156,37 @@ function makeDb() {
  * the window a job asks for is as much a defect surface as what it writes. */
 /* OUR OWN page_view stream, as Analytics Engine would answer the two grouped queries
  * fetchOwnTraffic asks. `ref_kind` is non-empty on every row a deployed Worker writes,
- * so the '' row below is a PRE-COLUMN row and must be dropped rather than stored. */
+ * so the '' row below is a PRE-COLUMN row and must be dropped rather than stored.
+ * `device` is EQUALLY non-empty on a row this Worker writes device for — the second row
+ * below (`ref_kind` real, `device` '') is the asynchronous-deploy case the two-marker
+ * predating check exists for: rollup.js's referrer/country/bot commit and its
+ * device/browser/os commit are two separate deploys, so a row can carry one column set
+ * without the other. */
 var OWN_VIEWS = [
   { page: 'home', channel: 'public', ref_host: 'news.ycombinator.com', ref_kind: 'external',
-    country: 'US', bot_kind: '', bot: 0, n: 9, sessions: 7 },
+    country: 'US', bot_kind: '', bot: 0, device: 'mobile', browser: 'chrome', os: 'android',
+    n: 9, sessions: 7 },
   { page: 'home', channel: 'public', ref_host: 'reactordynamics.com', ref_kind: 'internal',
-    country: 'GB', bot_kind: '', bot: 0, n: 4, sessions: 3 },
+    country: 'GB', bot_kind: '', bot: 0, device: 'desktop', browser: 'firefox', os: 'linux',
+    n: 4, sessions: 3 },
   { page: 'about', channel: 'public', ref_host: '', ref_kind: 'direct',
-    country: 'US', bot_kind: 'crawler', bot: 1, n: 2, sessions: 2 },
+    country: 'US', bot_kind: 'crawler', bot: 1, device: 'desktop', browser: 'other', os: 'other',
+    n: 2, sessions: 2 },
+  // ref_kind is real (this row postdates the referrer/country/bot deploy) but device is
+  // '' (it predates the LATER device/browser/os deploy) — dropped on the device marker,
+  // which ref_kind alone would miss.
+  { page: 'home', channel: 'public', ref_host: 'news.ycombinator.com', ref_kind: 'external',
+    country: 'US', bot_kind: '', bot: 0, device: '', browser: '', os: '', n: 3, sessions: 2 },
   // The pre-column row: every dimension reads back as the default a short row gives.
   { page: 'home', channel: 'public', ref_host: '', ref_kind: '',
-    country: '', bot_kind: '', bot: 0, n: 40, sessions: 11 },
+    country: '', bot_kind: '', bot: 0, device: '', browser: '', os: '', n: 40, sessions: 11 },
 ];
 /* session_start, grouped WITHOUT blob5 — two starting conditions would otherwise map to
  * the same 'shell' primary key and one would silently replace the other. */
 var OWN_SHELL = [
   { channel: 'public', ref_host: 'reactordynamics.com', ref_kind: 'internal',
-    country: 'US', bot_kind: '', bot: 0, n: 5, sessions: 5 },
+    country: 'US', bot_kind: '', bot: 0, device: 'tablet', browser: 'safari', os: 'ios',
+    n: 5, sessions: 5 },
 ];
 
 function fakeUpstream(gqlRows, sqlRows, si, own) {
@@ -194,14 +246,51 @@ var INJECTIONS = {
   /* --- our own traffic series (2026-09-20) ------------------------------------- */
   // The new series written into the Cloudflare-derived table, which is the one thing
   // the whole design says must not happen: the two are only trustworthy separately.
+  /* --- the key's blind spot (#797, 2026-09-21) -------------------------------- */
+  // The detector silenced. TRAFFIC_KEY still cannot tell two hosts apart, so the day's
+  // rows still collapse -- the only thing lost is anyone finding out. Exactly the
+  // pre-fix state, and the reason this is a detector rather than a key migration.
+  'host-collision-blind': ['rollup.js',
+    "      if (t.hostCollision) out.notes.push('host-collision:' + t.hostCollision);", ''],
   'own-writes-traffic-daily': ['rollup.js',
     "      batch.push(...upsert(db, 'own_traffic_daily', OWN_KEY, o.rows));",
     "      batch.push(...upsert(db, 'traffic_daily', OWN_KEY, o.rows));"],
-  // A pre-column row kept: reads back as a direct visit from an unknown country with
-  // 40 views, and nothing anywhere says it is a row from before the columns existed.
+  // A pre-column row kept entirely: reads back as a direct visit from an unknown country
+  // with 40 views, and nothing anywhere says it is a row from before the columns existed.
   'own-predating-kept': ['rollup.js',
-    '    if (!r.ref_kind) { predating++; return; }',
+    '    if (!r.ref_kind || !r.device) { predating++; return; }',
     '    if (false) { predating++; return; }'],
+  // ONLY the device leg dropped, ref_kind kept: reverts to the single-marker check that
+  // cannot tell "predates device/browser/os" from "carries them" — the asynchronous-
+  // deploy window this two-marker design exists for (see the column-map comment).
+  'own-device-marker-dropped': ['rollup.js',
+    '    if (!r.ref_kind || !r.device) { predating++; return; }',
+    '    if (!r.ref_kind) { predating++; return; }'],
+  /* --- device / browser / OS (2026-09-20+2) ------------------------------------- */
+  // device/browser/os dropped from the PRIMARY KEY: a mobile visit and a desktop visit
+  // sharing every other dimension collapse into one row in the daily table.
+  'own-device-key-dropped': ['rollup.js',
+    "                 'bot', 'bot_kind', 'device', 'browser', 'os'];",
+    "                 'bot', 'bot_kind'];"],
+  // device/browser/os dropped from the query that reads them back — the columns still
+  // exist and are still written, but the rollup never asks for them.
+  'own-device-dims-dropped': ['rollup.js',
+    '                blob13 AS device, blob14 AS browser, blob15 AS os`;',
+    '                `;'],
+  // The verdicts read but never carried into the row this Worker actually stores.
+  'own-take-device-dropped': ['rollup.js',
+    "      device: r.device || '',", ''],
+  // The probe stops naming a column from the SECOND (device/browser/os) commit, so a
+  // deploy that shipped the first commit but not the second passes the probe and then
+  // 422s on the real queries a moment later.
+  'own-probe-missing-device': ['rollup.js',
+    '    await run(token, `SELECT blob10 AS ref_kind, double11 AS bot, blob13 AS device',
+    '    await run(token, `SELECT blob10 AS ref_kind, double11 AS bot'],
+  // The migration call removed from ensureSchema: a live table that predates
+  // device/browser/os is never rebuilt, and CREATE TABLE IF NOT EXISTS silently leaves
+  // it exactly as it was — the trap the task brief named directly.
+  'own-migration-skipped': ['rollup.js',
+    '  await migrateOwnTraffic(db);', ''],
   // The probe's catch removed: a 422 before the Worker is deployed then takes the whole
   // day's own-traffic write down instead of recording a reason.
   'own-probe-fatal': ['rollup.js',
@@ -375,6 +464,37 @@ function loadEsm(ROOT, entry) {
   ck('and the run is flagged coarse',
      rc.coarse === 10 && /coarse:10/.test(rc.notes.join(';')), rc.notes.join('; '));
 
+  /* ------------------------------------------- 4b. the key omits requestHost (#797) */
+  head('4b. two hosts in one day are DETECTED, because TRAFFIC_KEY cannot tell them apart');
+  /* `requestHost` is fetched and used to classify the referrer, but it is NOT in
+   * TRAFFIC_KEY -- so two Cloudflare groups differing only by host collapse onto one
+   * primary key and INSERT OR REPLACE keeps the last, dropping the other's counts
+   * silently. MEASURED on the live store 2026-09-21: ONE host, zero collisions, so the
+   * defect is LATENT and a key migration on the only exact history we hold is not worth
+   * the risk. It goes live the moment a second host appears -- www. beginning to beacon,
+   * a rename, or the preview domain joining Web Analytics. So this asserts the DETECTOR,
+   * not the absence: the run must say so, and the dashboard's pipeline-health line warns
+   * on any note it does not recognise, which makes it visible on arrival. */
+  var TWO_HOST = [
+    ROWS[0],
+    { count: 4, visits: 4, d: { countryName: 'United States', refererHost: '', requestPath: '/',
+        requestHost: 'www.reactordynamics.com', deviceType: 'desktop', userAgentBrowser: 'Chrome',
+        userAgentOS: 'Windows', navigationType: 'navigate', bot: 0 } },
+  ];
+  var EH = mkEnv(fakeUpstream(TWO_HOST, USAGE, 1, []));
+  var rh = await mod.runRollup(EH.env, NOW, EH.up);
+  ck('the run names BOTH hosts in a note',
+     /host-collision:reactordynamics\.com,www\.reactordynamics\.com/.test(rh.notes.join(';')),
+     rh.notes.join('; '));
+  /* The proof the note is EARNED: the two rows are identical but for the host, so they
+   * land on one primary key and the table holds ONE row, not two -- the silent drop. */
+  ck('...and the collapse it warns about is real -- 2 groups, 1 stored row',
+     EH.db._t('traffic_daily').length === 1, EH.db._t('traffic_daily').length + ' rows');
+  var ES = mkEnv(fakeUpstream(ROWS, USAGE, 1, []));
+  var rs = await mod.runRollup(ES.env, NOW, ES.up);
+  ck('a single-host day says NOTHING -- silence is the healthy state here too',
+     !/host-collision/.test(rs.notes.join(';')), rs.notes.join('; '));
+
   /* ---------------------------------------------------------------- 5. retention */
   head('5. retention: two years, pruned by the job itself (owner ruling)');
   ck('RETAIN_DAYS is the ruled two years', mod.RETAIN_DAYS === 730, String(mod.RETAIN_DAYS));
@@ -472,11 +592,24 @@ function loadEsm(ROOT, entry) {
   ck('the run writes our own rows and reports the count',
      rO.own_rows === 4 && ownT.length === 4,
      'own_rows ' + rO.own_rows + ', stored ' + ownT.length + ' — 3 page_view + 1 shell, the pre-column row dropped');
-  ck('A PRE-COLUMN ROW IS DROPPED, not stored as a direct visit from nowhere',
+  ck('A PRE-COLUMN ROW IS DROPPED, not stored as a direct visit from nowhere — AND SO IS\n      A ROW THAT PREDATES ONLY device/browser/os, which ref_kind alone would miss',
      ownT.every(function (r) { return r.referrer_kind !== ''; }) &&
-     ownT.every(function (r) { return r.views !== 40; }) &&
-     /own-predating:1/.test(rO.notes.join(';')),
+     ownT.every(function (r) { return r.device !== ''; }) &&
+     ownT.every(function (r) { return r.views !== 40 && r.views !== 3; }) &&
+     /own-predating:2/.test(rO.notes.join(';')),
      'kinds ' + ownT.map(function (r) { return r.referrer_kind; }).join(',') + ' | notes ' + rO.notes.join('; '));
+  ck('device/browser/os reach the store, per-row, alongside the other edge facts',
+     ownT.some(function (r) { return r.device === 'mobile' && r.browser === 'chrome' && r.os === 'android'; }) &&
+     ownT.some(function (r) { return r.device === 'tablet' && r.browser === 'safari' && r.os === 'ios'; }),
+     ownT.map(function (r) { return r.device + '/' + r.browser + '/' + r.os; }).join(' '));
+  // A row-collision test would only catch this if two fixture rows happened to share
+  // every OTHER dimension — fragile and easy to defeat by accident. Assert the SCHEMA
+  // TEXT instead: device/browser/os have to be IN the PRIMARY KEY or a mobile visit and
+  // a desktop visit sharing every other dimension merge into one row and one is lost.
+  var ownSchemaSql = (mod.SCHEMA || []).find(function (s) { return /own_traffic_daily/.test(s); }) || '';
+  ck('device/browser/os are part of the PRIMARY KEY, or two devices merge into one row',
+     /PRIMARY KEY \([^)]*\bdevice\b[^)]*\bbrowser\b[^)]*\bos\b[^)]*\)/.test(ownSchemaSql),
+     ownSchemaSql.replace(/\s+/g, ' ').slice(-170));
   ck('the CLOUDFLARE-derived table is untouched by it — the two series stay comparable with themselves',
      EO.db._t('traffic_daily').length === 2 &&
      EO.db._t('traffic_daily').every(function (r) { return r.pageloads === 12 || r.pageloads === 5; }),
@@ -505,9 +638,9 @@ function loadEsm(ROOT, entry) {
 
   head('10. the query it asks, and the floor it asks under');
   var probeQ = upO.seen.sql[1] || '', viewQ = upO.seen.sql[2] || '', shellQ = upO.seen.sql[3] || '';
-  ck('a PROBE runs before the new columns are named — a 422 is not a null',
-     /LIMIT 1/.test(probeQ) && /blob10/.test(probeQ) && /double11/.test(probeQ),
-     probeQ.replace(/\s+/g, ' ').slice(0, 90));
+  ck('a PROBE runs before the new columns are named — a 422 is not a null — and it\n      names ONE column from EACH of the two commits, not just the first',
+     /LIMIT 1/.test(probeQ) && /blob10/.test(probeQ) && /double11/.test(probeQ) && /blob13/.test(probeQ),
+     probeQ.replace(/\s+/g, ' ').slice(0, 110));
   ck('the window carries the COLUMNS_SINCE floor as a toDateTime cast',
      viewQ.indexOf(mod.OWN_COLUMNS_SINCE) >= 0 && /^toDateTime\('[\d -:]+'\)$/.test(mod.OWN_COLUMNS_SINCE),
      mod.OWN_COLUMNS_SINCE);
@@ -523,6 +656,13 @@ function loadEsm(ROOT, entry) {
      /blob9 AS ref_host/.test(viewQ) && /blob10 AS ref_kind/.test(viewQ) &&
      /blob11 AS country/.test(viewQ) && /blob12 AS bot_kind/.test(viewQ) &&
      /double11 AS bot/.test(viewQ), '');
+  ck('...and the device/browser/os trio too, appended after them by POSITION',
+     /blob13 AS device/.test(viewQ) && /blob14 AS browser/.test(viewQ) &&
+     /blob15 AS os/.test(viewQ), '');
+  ck('...and the GROUP BY carries all three, or the daily table double-counts a device',
+     /GROUP BY page, channel, ref_host, ref_kind, country, bot_kind, bot, device, browser, os/
+       .test(viewQ.replace(/\s+/g, ' ')),
+     (/GROUP BY ([^\n]*)/.exec(viewQ) || [])[1] || '(none)');
 
   head('11. the columns not being live yet is a RECORDED REASON, not a failure');
   var upA = fakeUpstream(ROWS, USAGE, 1, null);
@@ -542,12 +682,57 @@ function loadEsm(ROOT, entry) {
   head('12. retention reaches the new table too');
   var EQ = mkEnv(upO);
   await mod.runRollup(EQ.env, NOW, upO);
-  EQ.db.prepare('INSERT OR REPLACE INTO own_traffic_daily (day, channel, country, referrer_host, referrer_kind, page, bot, bot_kind, views, sessions) VALUES (?,?,?,?,?,?,?,?,?,?)')
-    .bind('2019-01-01', 'public', 'US', '', 'direct', 'home', 0, '', 1, 1).run();
+  EQ.db.prepare('INSERT OR REPLACE INTO own_traffic_daily (day, channel, country, referrer_host, referrer_kind, page, bot, bot_kind, device, browser, os, views, sessions) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .bind('2019-01-01', 'public', 'US', '', 'direct', 'home', 0, '', 'desktop', 'chrome', 'windows', 1, 1).run();
   await mod.runRollup(EQ.env, NOW, upO);
   var odays = EQ.db._t('own_traffic_daily').map(function (r) { return r.day; });
   ck('a row older than two years is pruned from own_traffic_daily as well',
      odays.indexOf('2019-01-01') < 0 && odays.length === 4, odays.join(','));
+
+  /* ------------------------------------------------- 13. the live-table migration */
+  head('13. own_traffic_daily MIGRATES when the live table predates device/browser/os');
+  /* Reproduces the trap named in the task brief exactly: `CREATE TABLE IF NOT EXISTS`
+   * against a table that ALREADY EXISTS in the live D1 database does not add a column —
+   * so a hand-built db carrying yesterday's five-dimension own_traffic_daily (no device/
+   * browser/os, and device/browser/os join the PRIMARY KEY, which SQLite cannot ALTER
+   * without a rebuild anyway) is the state the deployed migration has to handle. */
+  var OLD_OWN_TRAFFIC_SQL = `CREATE TABLE IF NOT EXISTS own_traffic_daily (
+     day TEXT NOT NULL, channel TEXT NOT NULL, country TEXT NOT NULL,
+     referrer_host TEXT NOT NULL, referrer_kind TEXT NOT NULL, page TEXT NOT NULL,
+     bot INTEGER NOT NULL, bot_kind TEXT NOT NULL,
+     views INTEGER NOT NULL, sessions INTEGER NOT NULL,
+     PRIMARY KEY (day, channel, country, referrer_host, referrer_kind, page, bot, bot_kind))`;
+  var EM = makeDb();
+  await EM.prepare(OLD_OWN_TRAFFIC_SQL).run();
+  await EM.prepare(
+    'INSERT OR REPLACE INTO own_traffic_daily (day, channel, country, referrer_host, referrer_kind, page, bot, bot_kind, views, sessions) VALUES (?,?,?,?,?,?,?,?,?,?)'
+  ).bind('2026-06-10', 'public', 'US', '', 'direct', 'home', 0, '', 7, 4).run();
+  ck('the OLD five-dimension table is set up correctly before the migration runs',
+     EM._t('own_traffic_daily').length === 1 && EM._cols('own_traffic_daily').indexOf('device') < 0,
+     JSON.stringify(EM._cols('own_traffic_daily')));
+  await mod.ensureSchema(EM);
+  ck('ensureSchema MIGRATES the old-shaped table -- the pre-migration row is gone,\n      not silently kept beside rows the new code writes',
+     EM._t('own_traffic_daily').length === 0,
+     EM._t('own_traffic_daily').length + ' row(s) survived the migration');
+  ck('...and the rebuilt table declares the new columns',
+     (EM._cols('own_traffic_daily') || []).indexOf('device') >= 0 &&
+     (EM._cols('own_traffic_daily') || []).indexOf('browser') >= 0 &&
+     (EM._cols('own_traffic_daily') || []).indexOf('os') >= 0,
+     JSON.stringify(EM._cols('own_traffic_daily')));
+  // ...and a NORMAL run against that same (now-migrated) db writes the new shape cleanly.
+  var upM = fakeUpstream(ROWS, USAGE, 1);
+  var rM = await mod.runRollup({ STATS: EM, CF_ANALYTICS_TOKEN: 'x' }, NOW, upM);
+  ck('a run against the migrated db stores rows carrying the new dimensions',
+     rM.own_rows === 4 && EM._t('own_traffic_daily').some(function (r) { return r.device === 'mobile'; }),
+     'own_rows ' + rM.own_rows);
+  // Re-running ensureSchema on an ALREADY-migrated, POPULATED table must be a no-op —
+  // the probe finding device/browser/os this time means no DROP fires, so the 4 rows
+  // runRollup just wrote survive an EXTRA ensureSchema call on top of the one runRollup
+  // already made internally.
+  await mod.ensureSchema(EM);
+  ck('...and a FURTHER ensureSchema on the now-current, populated table does NOT drop it again',
+     EM._t('own_traffic_daily').length === 4,
+     EM._t('own_traffic_daily').length + ' row(s) after an extra ensureSchema');
 
   console.log('\n' + BOLD + (nFail === 0 ? GREEN + 'PASS' : RED + 'FAIL') + RST +
     '  ' + nPass + ' passed, ' + nFail + ' failed, ' + (nPass + nFail) + ' checks');

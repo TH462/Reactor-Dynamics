@@ -305,10 +305,19 @@ var INJECTIONS = {
   'missing-blind': ['stats.js', 'missing: !run || failed,', 'missing: false,'],
   'coarse-blind': ['stats.js',
     'coarse: (a ? num(a.si) : 1) > 1 || (run ? num(run.coarse) : 1) > 1,', 'coarse: false,'],
-  'mean-blends': ['stats.js',
-    'if (win.some((x) => x.coarse || x.missing)) return { day: r.day, mean: null };', ''],
   'delta-always': ['stats.js', 'const refuse = (reason) => ({ ok: false, reason });',
     "const refuse = (reason) => ({ ok: true, pct: 0, direction: 'flat', reason });"],
+  /* PER-DAY DEEP-LINK LANDINGS (owner, 2026-09-20: "show that per day"). Same shape as the
+   * two `deeplink-*` injections below, aimed at the new day-form instead of the total. */
+  'deeplink-day-home-counted': ['stats.js',
+    "    if (String(r.path) !== '/' && String(r.referrer_kind) === 'direct') cur.deepLink += num(r.visits);",
+    "    if (String(r.path) === '/') cur.deepLink += num(r.visits);"],
+  'deeplink-day-external-counted': ['stats.js',
+    "    if (String(r.path) !== '/' && String(r.referrer_kind) === 'direct') cur.deepLink += num(r.visits);",
+    "    if (String(r.path) !== '/') cur.deepLink += num(r.visits);"],
+  'deeplink-day-bots-in': ['stats.js',
+    "    + ' WHERE day >= ? AND day <= ? AND bot = 0 GROUP BY day, path, referrer_kind').bind(f, t).all();",
+    "    + ' WHERE day >= ? AND day <= ? GROUP BY day, path, referrer_kind').bind(f, t).all();"],
   'loose-day': ['stats.js', 'if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(t)) return null;', ''],
   'no-allowlist': ['stats.js',
     'const col = Object.prototype.hasOwnProperty.call(DIMS, dim) ? DIMS[dim] : null;',
@@ -316,9 +325,17 @@ var INJECTIONS = {
   'interp': ['stats.js',
     "    + ' WHERE day >= ? AND day <= ? AND bot = 0 GROUP BY day').bind(f, t).all();",
     "    + \" WHERE day >= '\" + f + \"' AND day <= '\" + t + \"' AND bot = 0 GROUP BY day\").all();"],
-  'naive-day': ['stats.js',
-    '  return etDayStartMs(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10), 12, 0, 0));',
-    '  return etDayStartMs(d);'],
+  /* REPOINTED for #797, and the repoint is the whole point of the entry. It used to
+   * replace `dayStartMs`'s noon anchor with a bare `etDayStartMs(d)` — the defect, back
+   * when render.js's helper had no `DATE_ONLY` guard and a day string parsed as midnight
+   * UTC. #797 gave the helper that guard and retired the anchor, which makes the old
+   * replacement CORRECT CODE: the injection would still have applied, still have reported
+   * green, and proven nothing. The defect now lives one module down, so the injection
+   * follows it — the guard is removed from render.js instead, which reproduces exactly the
+   * same wrong answer (every Eastern day starting 24 h early) through the new spelling. */
+  'naive-day': ['render.js',
+    '  const p = DATE_ONLY.test(s)',
+    '  const p = false && DATE_ONLY.test(s)'],
   'sum-sessions': ['stats.js',
     "    'SELECT event AS event, key_str AS key_str, plant AS plant, SUM(n) AS n'",
     "    'SELECT event AS event, key_str AS key_str, plant AS plant, SUM(n) AS n, SUM(sessions) AS sessions'"],
@@ -373,6 +390,36 @@ var INJECTIONS = {
   'cday-bots-in': ['stats.js',
     "    + ' FROM traffic_daily WHERE day >= ? AND day <= ? AND bot = 0'",
     "    + ' FROM traffic_daily WHERE day >= ? AND day <= ?'"],
+  /* DEEP-LINK LANDINGS (#795): the off-by-one that inverts the metric, counting the
+   * homepage itself as a deep-link landing instead of everything that is not it. */
+  'deeplink-home-counted': ['stats.js',
+    "  const deepLink = rows.filter((x) => x.path !== '/' && x.referrerKind === 'direct').reduce((s, x) => s + x.visits, 0);",
+    "  const deepLink = rows.filter((x) => x.path === '/').reduce((s, x) => s + x.visits, 0);"],
+  /* THE NARROWING #795's FOLLOW-UP MADE, PUT BACK: counting ANY non-home landing
+   * regardless of referrer kind — the exact defect that made a search-engine-referred
+   * subpage landing (`/about`, `/download`) read as though someone had bookmarked it. */
+  'deeplink-external-counted': ['stats.js',
+    "  const deepLink = rows.filter((x) => x.path !== '/' && x.referrerKind === 'direct').reduce((s, x) => s + x.visits, 0);",
+    "  const deepLink = rows.filter((x) => x.path !== '/').reduce((s, x) => s + x.visits, 0);"],
+  /* PIPELINE HEALTH (#797 item 2): the gap detector goes blind, and the empty-store guard is
+   * removed so an empty table throws instead of returning {rows:[], gaps:[]}. */
+  'health-gap-blind': ['stats.js',
+    '  const gaps = full.filter((d) => !present.has(d));', '  const gaps = [];'],
+  'health-empty-crashes': ['stats.js',
+    '  if (!rows.length) return { rows: [], gaps: [] };', '  // (guard removed)'],
+  /* THE MEASURED INTERVAL, DISCARDED (#797): each reader already computes MAX(sample_
+   * interval) for its `coarse` boolean and used to throw the number away, which is what let
+   * analytics.js hard-code "coarse (±10)" -- right only while Cloudflare's tier happens to be
+   * 10. `dailyTotals` and `deepLinkLandingsByDay` each carry a distinct expression;
+   * `groupBy`, `deepLinkLandings` and `referrerBreakdown` (and the already-shipped
+   * `dayCountryReferrer`) share the identical line, so ONE injection blanks all four at once —
+   * same "one physical line, several call sites" shape `batch-coarse-taints-row` uses next
+   * door in run_dashboard_trend.js. */
+  'dailytotals-si-discarded': ['stats.js',
+    '      si: Math.max(a ? num(a.si) : 1, run ? num(run.coarse) : 1),', ''],
+  'si-discarded': ['stats.js', '    si: Math.max(1, num(x.si)),', ''],
+  'deeplinkbyday-si-discarded': ['stats.js',
+    '      si: Math.max(a ? a.si : 1, run ? num(run.coarse) : 1),', ''],
 };
 // `sum-sessions` needs both halves of the same defect (the SELECT and the mapper), or the
 // column is fetched and dropped and nothing changes. A one-sided injection lies (#295).
@@ -544,32 +591,71 @@ async function threwAsync(fn) {
      r[1].pageloads === 8 && r[1].visits === 5, r[1].pageloads + ' pageloads, ' + r[1].visits + ' visits');
 
   /* =============================================================== 4. coarse days */
-  head('4. a COARSE day is marked, and never averaged in');
+  head('4. a COARSE day is marked (stats.trailingMean, which used to be tested right here, '
+     + 'was REMOVED 2026-09-20 -- owner: "get rid of the weekly average" -- and nothing else '
+     + 'called it)');
   ck('sample_interval > 1 marks the day coarse', r[3].coarse === true && r[3].pageloads === 20,
      '09-04 coarse=' + r[3].coarse + ', ' + r[3].pageloads + ' pageloads (rounded to the nearest 10)');
   ck('an exact day is NOT marked coarse',
      r[0].coarse === false && r[4].coarse === false, '09-01 and 09-05');
   ck('a day with no rows is not silently coarse', r[2].coarse === false && r[5].coarse === false, '');
+  ck('stats.trailingMean no longer exists (removed, not just unexported)',
+     S.trailingMean === undefined, typeof S.trailingMean);
 
-  var full = await S.dailyTotals(db, '2026-09-01', '2026-09-21');
-  var tm = S.trailingMean(full, 7);
-  var byDayMean = {};
-  tm.forEach(function (x) { byDayMean[x.day] = x.mean; });
-  ck('the trailing mean is null until the window is full',
-     tm.slice(0, 6).every(function (x) { return x.mean === null; }) && tm.length === full.length,
-     'first 6 of ' + tm.length + ' null');
-  ck('a window containing the COARSE day yields null, not a blended figure',
-     byDayMean['2026-09-10'] === null, '09-10 window 09-04..09-10 -> ' + byDayMean['2026-09-10']);
-  ck('a window containing an UNCAPTURED day yields null',
-     byDayMean['2026-09-13'] === null, '09-13 window 09-07..09-13 -> ' + byDayMean['2026-09-13']);
-  ck('...and a clean window DOES produce a number (else the nulls above prove nothing)',
-     byDayMean['2026-09-14'] === 4 && byDayMean['2026-09-21'] === 7,
-     '09-14 = ' + byDayMean['2026-09-14'] + ', 09-21 = ' + byDayMean['2026-09-21'] + ' landing visits/day');
-  ck('every mean is either null or a finite number — never NaN',
-     tm.every(function (x) { return x.mean === null || Number.isFinite(x.mean); }),
-     JSON.stringify(tm.map(function (x) { return x.mean; })));
-  ck('a window of 1 is legal; a window of 0 throws rather than dividing by it',
-     S.trailingMean(full, 1)[0].mean === 6 && !!threw(function () { return S.trailingMean(full, 0); }), '');
+  /* ===================================================== 4b. deep-link landings, per day */
+  head('4b. deepLinkLandingsByDay -- the per-day form (owner, 2026-09-20: "show that per '
+     + 'day and plot it on the main plot")');
+  /* An isolated fixture (own db, same reasoning `seedDeepLink` above gives): PATH x
+   * REFERRER-KIND x DAY diversity the shared `db` has none of. Four days, one of each kind
+   * this reader has to tell apart, same convention `dailyTotals`' own section 3 uses. */
+  function seedDeepLinkByDay() {
+    var d = makeDb();
+    // Day 1: two deep-link landings (both direct, non-home) plus a home landing that must
+    // not be counted.
+    traffic(d, '2026-09-01', 'United States', 6, 4, 1, 0);
+    traffic(d, '2026-09-01', 'United States', 3, 2, 1, 0, { path: '/ui/shell' });
+    ran(d, '2026-09-01', 2, 1);
+    // Day 2: REAL ZERO for deep-link landings -- every landing is the homepage -- must read
+    // 0 and NOT missing, the same real-zero-vs-uncaptured split `dailyTotals` guards.
+    traffic(d, '2026-09-02', 'United States', 10, 6, 1, 0);
+    ran(d, '2026-09-02', 1, 1);
+    // Day 3: an EXTERNAL non-home landing only -- must stay 0 (discovery, not a return).
+    traffic(d, '2026-09-03', 'United States', 2, 1, 1, 0,
+      { path: '/about', referrer_kind: 'external', referrer_host: 'google.com' });
+    ran(d, '2026-09-03', 1, 1);
+    // Day 4: exactly ONE deep-link landing -- the "reads at 1" case -- on a COARSE row.
+    traffic(d, '2026-09-04', 'United States', 2, 1, 10, 0, { path: '/ui/shell' });
+    ran(d, '2026-09-04', 1, 10, 'coarse:10');
+    // Day 5: UNCAPTURED -- no rollup_runs row at all.
+    return d;
+  }
+  var dld = seedDeepLinkByDay();
+  var dbd = await S.deepLinkLandingsByDay(dld, '2026-09-01', '2026-09-05');
+  ck('one row per calendar day, ascending, no gaps',
+     dbd.length === 5 && dbd.map(function (x) { return x.day; }).join(',')
+       === '2026-09-01,2026-09-02,2026-09-03,2026-09-04,2026-09-05',
+     dbd.map(function (x) { return x.day.slice(8) + ':' + x.deepLink; }).join(' '));
+  ck('day 1: 2 deep-link landings (the home landing on the same day is excluded)',
+     dbd[0].deepLink === 2 && dbd[0].missing === false && dbd[0].coarse === false,
+     JSON.stringify(dbd[0]));
+  ck('day 2: a REAL ZERO -- every landing was the homepage -- 0 and NOT missing',
+     dbd[1].deepLink === 0 && dbd[1].missing === false, JSON.stringify(dbd[1]));
+  ck('day 3: an external non-home landing does not count -- 0, not 1',
+     dbd[2].deepLink === 0 && dbd[2].missing === false, JSON.stringify(dbd[2]));
+  ck('day 4: exactly 1 deep-link landing, and COARSE (sample_interval 10)',
+     dbd[3].deepLink === 1 && dbd[3].coarse === true && dbd[3].missing === false,
+     JSON.stringify(dbd[3]));
+  ck('day 5: UNCAPTURED -- no run row at all -- 0 and MISSING, distinguishable from day 2’s '
+   + 'real zero by the flag alone (both read deepLink 0)',
+     dbd[4].deepLink === 0 && dbd[4].missing === true
+     && dbd[4].deepLink === dbd[1].deepLink && dbd[4].missing !== dbd[1].missing,
+     JSON.stringify(dbd[4]));
+  var dbdSeen = dld.seen[dld.seen.length - 2];   // the traffic_daily query, not rollup_runs
+  ck('bots are excluded and the range is bound -- GROUP BY day, path, referrer_kind',
+     dbdSeen.sql.indexOf('GROUP BY day, path, referrer_kind') >= 0
+     && dbdSeen.sql.indexOf('bot = 0') >= 0
+     && dbdSeen.args.join(',') === '2026-09-01,2026-09-05',
+     dbdSeen.sql.replace(/\s+/g, ' ').slice(0, 100));
 
   /* =============================================================== 5. the store's edges */
   head('5. where the recorded history begins — zero rows must not draw as zero traffic');
@@ -776,6 +862,134 @@ async function threwAsync(fn) {
      && !/\d{4}-\d{2}-\d{2}/.test(db.seen[n0b].sql),
      db.seen[n0b].sql.replace(/\s+/g, ' ').slice(0, 90) + ' args=' + JSON.stringify(db.seen[n0b].args));
 
+  /* ---------------------------------------------------------- deep-link landings */
+  head('7c. deepLinkLandings — not the homepage, AND no referrer at all (#795 follow-up)');
+  /* A DEDICATED, ISOLATED FIXTURE (own db, same idiom `storeRange`'s empty-store check
+   * already uses) rather than reusing the shared `db` above: every day in that fixture is
+   * load-bearing for an exact sum somewhere else in this file (the country totals in
+   * section 7, the trailing-mean windows in section 4, the real-zero/coarse/missing days
+   * in section 3), and this reader's whole point is PATH x REFERRER-KIND diversity that
+   * fixture has none of — `traffic()`'s helper hard-codes `path: '/'` and defaults
+   * `referrer_kind: 'direct'` for every row it inserts. Modelled on the live numbers
+   * measured for #795: 41 direct + 30 external at '/', 5 DIRECT at '/ui/shell' (the
+   * bookmark case), 1 EXTERNAL each at '/about' and '/download' (search discovery of a
+   * subpage — the case the narrowed definition exists to exclude). */
+  function seedDeepLink() {
+    var d = makeDb();
+    traffic(d, '2026-09-10', 'United States', 50, 41, 1, 0);
+    traffic(d, '2026-09-10', 'United States', 40, 30, 1, 0, { referrer_kind: 'external', referrer_host: 'google.com' });
+    traffic(d, '2026-09-10', 'United States', 6, 5, 1, 0, { path: '/ui/shell' });
+    traffic(d, '2026-09-10', 'United States', 1, 1, 1, 0, { path: '/about', referrer_kind: 'external', referrer_host: 'google.com' });
+    traffic(d, '2026-09-10', 'United States', 1, 1, 1, 0, { path: '/download', referrer_kind: 'external', referrer_host: 'google.com' });
+    // A COARSE deep-link row on a separate day, so the coarse flag can be proven per-path
+    // rather than accidentally true because everything in the fixture happens to be exact.
+    traffic(d, '2026-09-11', 'United States', 20, 10, 10, 0, { path: '/ui/shell' });
+    ran(d, '2026-09-10', 5, 1); ran(d, '2026-09-11', 1, 10, 'coarse:10');
+    return d;
+  }
+  var dl = seedDeepLink();
+  var dlAll = await S.deepLinkLandings(dl, '2026-09-10', '2026-09-10', 1000);
+  ck('total is every landing visit in the window, summed across ALL paths and kinds (41+30+5+1+1 = 78)',
+     dlAll.total === 78, JSON.stringify({ total: dlAll.total, deepLink: dlAll.deepLink }));
+  /* THE MEASURED #795 NUMBER: 5, not 7. '/about' and '/download' are non-home but EXTERNAL
+   * (someone found them via a search engine, i.e. discovery) and must NOT contribute —
+   * only '/ui/shell', which is both non-home AND direct, does. This is the exact narrowing
+   * the follow-up made: "not the homepage" alone over-counted by including those two. */
+  ck('deep-link is ONLY the non-home path that is ALSO direct (5, not 5+1+1=7)',
+     dlAll.deepLink === 5, 'deepLink=' + dlAll.deepLink);
+  ck('an EXTERNAL non-home landing is NOT counted — the exact defect this narrowing fixes '
+   + '(/about and /download are non-home but excluded, worth 2 landing visits if wrongly counted)',
+     dlAll.byPath.filter(function (r) { return r.path !== '/' && r.referrerKind === 'external'; })
+       .reduce(function (s, r) { return s + r.visits; }, 0) === 2
+     && dlAll.deepLink === 5,
+     'external non-home visits present but excluded: deepLink stayed ' + dlAll.deepLink);
+  ck('the homepage itself is never counted as a deep-link landing, in EITHER referrer kind',
+     dlAll.byPath.filter(function (r) { return r.path === '/'; }).length === 2
+     && dlAll.deepLink < dlAll.total,
+     JSON.stringify(dlAll.byPath.map(function (r) { return r.path + '/' + r.referrerKind + ':' + r.visits; })));
+  ck('the breakdown carries one row per distinct (path, referrer kind) PAIR — five, since '
+   + '"/" now splits into its direct and external rows',
+     dlAll.byPath.length === 5
+     && dlAll.byPath[0].path === '/' && dlAll.byPath[0].referrerKind === 'direct'
+     && dlAll.byPath[0].visits === 41 && dlAll.byPath[0].pageloads === 50,
+     JSON.stringify(dlAll.byPath));
+  ck('not coarse when every contributing row is exact',
+     dlAll.coarse === false, 'coarse=' + dlAll.coarse);
+
+  var dlCoarse = await S.deepLinkLandings(dl, '2026-09-10', '2026-09-11', 1000);
+  ck('a coarse row anywhere in the window marks the whole answer coarse — the same per-row '
+   + 'rule groupBy already applies, just surfaced one level up',
+     dlCoarse.coarse === true
+     && dlCoarse.byPath.filter(function (r) { return r.path === '/ui/shell' && r.referrerKind === 'direct'; })[0].visits === 15,
+     JSON.stringify(dlCoarse.byPath.filter(function (r) { return r.path === '/ui/shell'; })));
+  ck('deepLinkLandings groups on path AND referrer_kind — a dedicated two-column reader, '
+   + 'not a re-use of groupBy (which is single-dimension only) — and the range/limit are bound',
+     dl.seen[dl.seen.length - 1].sql.indexOf('GROUP BY path, referrer_kind') >= 0
+     && dl.seen[dl.seen.length - 1].args.join(',') === '2026-09-10,2026-09-11,1000',
+     dl.seen[dl.seen.length - 1].sql.replace(/\s+/g, ' ').slice(0, 90));
+
+  // A window where EVERY landing is the homepage: deepLink is 0, total > 0 — not blank,
+  // not equal to total, and not a constant regardless of which paths are in the window.
+  var homeOnlyDb = makeDb();
+  traffic(homeOnlyDb, '2026-09-12', 'United States', 10, 6, 1, 0);
+  ran(homeOnlyDb, '2026-09-12', 1, 1);
+  var dlHome = await S.deepLinkLandings(homeOnlyDb, '2026-09-12', '2026-09-12', 1000);
+  ck('a window where every landing is the homepage has deepLink 0, total > 0 — not blank, '
+   + 'not equal to total',
+     dlHome.total === 6 && dlHome.deepLink === 0, JSON.stringify(dlHome));
+
+  // ISOLATING THE REFERRER CONDITION ALONE: a non-home landing that is EXTERNAL and
+  // nothing else in the window — proves the exclusion is not an artefact of the homepage
+  // rows outweighing it, the way dlAll's mix could be read.
+  var extOnlyDb = makeDb();
+  traffic(extOnlyDb, '2026-09-13', 'United States', 10, 8, 1, 0,
+    { path: '/about', referrer_kind: 'external', referrer_host: 'bing.com' });
+  ran(extOnlyDb, '2026-09-13', 1, 1);
+  var dlExtOnly = await S.deepLinkLandings(extOnlyDb, '2026-09-13', '2026-09-13', 1000);
+  ck('a window whose ONLY landing is a non-home, EXTERNAL page has deepLink 0 — discovery, '
+   + 'not a return',
+     dlExtOnly.total === 8 && dlExtOnly.deepLink === 0, JSON.stringify(dlExtOnly));
+
+  var dlEmpty = await S.deepLinkLandings(makeDb(), '2026-09-01', '2026-09-01', 1000);
+  ck('the zero-denominator case: an empty window is 0/0 and an empty breakdown, never a throw',
+     dlEmpty.total === 0 && dlEmpty.deepLink === 0 && dlEmpty.coarse === false
+     && Array.isArray(dlEmpty.byPath) && dlEmpty.byPath.length === 0,
+     JSON.stringify(dlEmpty));
+
+  /* ------------------------------------------------------------------------------------- */
+  head('7d. si — the MEASURED interval, not the boolean it is derived from (#797). Every '
+     + 'fixture above happens to use 1 or 10, which cannot tell a real reading apart from a '
+     + 'hard-coded one; this fixture uses 25 on purpose, a number no renderer would guess.');
+  function seedMeasuredSi() {
+    var d = makeDb();
+    traffic(d, '2026-09-05', 'Testland', 4, 2, 25, 0,
+      { referrer_host: 'ref.example.net', referrer_kind: 'external', path: '/measured' });
+    traffic(d, '2026-09-05', 'Testland', 3, 1, 25, 0,
+      { path: '/ui/shell', referrer_kind: 'direct', referrer_host: '' });
+    ran(d, '2026-09-05', 2, 25, 'coarse:25');
+    return d;
+  }
+  var msi = seedMeasuredSi();
+  var dtSi = await S.dailyTotals(msi, '2026-09-05', '2026-09-05');
+  ck('dailyTotals carries the MEASURED interval (25), not the tier’s usual 10',
+     dtSi[0].coarse === true && dtSi[0].si === 25, JSON.stringify(dtSi[0]));
+  var gbSi = await S.groupBy(msi, 'country', '2026-09-05', '2026-09-05', 5);
+  ck('groupBy carries the MEASURED interval',
+     gbSi.length === 1 && gbSi[0].coarse === true && gbSi[0].si === 25, JSON.stringify(gbSi));
+  var rbSi = await S.referrerBreakdown(msi, '2026-09-05', '2026-09-05', 5);
+  var extRowSi = rbSi.filter(function (x) { return x.kind === 'external'; })[0];
+  ck('referrerBreakdown carries the MEASURED interval',
+     !!extRowSi && extRowSi.coarse === true && extRowSi.si === 25, JSON.stringify(extRowSi));
+  var dlSi = await S.deepLinkLandings(msi, '2026-09-05', '2026-09-05', 5);
+  var dlPathSi = dlSi.byPath.filter(function (x) { return x.path === '/ui/shell'; })[0];
+  ck('deepLinkLandings carries the MEASURED interval',
+     !!dlPathSi && dlPathSi.coarse === true && dlPathSi.si === 25, JSON.stringify(dlPathSi));
+  var dbdSi = await S.deepLinkLandingsByDay(msi, '2026-09-05', '2026-09-05');
+  ck('deepLinkLandingsByDay carries the MEASURED interval',
+     dbdSi[0].coarse === true && dbdSi[0].si === 25, JSON.stringify(dbdSi[0]));
+  ck('...and an exact row (si=1) never gets promoted to a fake interval',
+     byC[0].coarse === false && byC[0].si === 1, JSON.stringify(byC[0]));
+
   /* =============================================================== 8. binding */
   head('8. every value is BOUND — D1 has no excuse for interpolation');
   var dated = db.seen.filter(function (s) { return /\d{4}-\d{2}-\d{2}/.test(s.sql); });
@@ -962,6 +1176,42 @@ async function threwAsync(fn) {
        && typeof sameness[4].sqlite[0].key === 'number',
        sameness.map(function (s) { return s.label.split(' ')[0] + ':' + s.n; }).join(' '));
   }
+
+  /* =============================================================== 11. pipeline health */
+  head('11. rollupHealth (#797 item 2) -- every recorded run, and the gaps between them');
+  var health = await S.rollupHealth(db);
+  ck('one row per completed run, ascending by day, none for the day the cron never fired (09-06)',
+     health.rows.length === 23
+     && health.rows[0].day === '2026-09-01'
+     && health.rows[health.rows.length - 1].day === '2026-09-24'
+     && health.rows.every(function (r, i) { return i === 0 || r.day > health.rows[i - 1].day; })
+     && health.rows.every(function (r) { return r.day !== '2026-09-06'; }),
+     health.rows.length + ' rows, ' + health.rows[0].day + '..' + health.rows[health.rows.length - 1].day);
+  ck('the one day inside that span with no run row at all is the ONE gap reported',
+     health.gaps.length === 1 && health.gaps[0] === '2026-09-06', JSON.stringify(health.gaps));
+  var noteByDay = {};
+  health.rows.forEach(function (r) { noteByDay[r.day] = r.note; });
+  ck('a coarse-tier capture note and a traffic-failure note both come through unfiltered',
+     noteByDay['2026-09-04'] === 'coarse:10' && noteByDay['2026-09-07'] === 'traffic failed: upstream 500',
+     JSON.stringify({ '09-04': noteByDay['2026-09-04'], '09-07': noteByDay['2026-09-07'] }));
+  ck('a clean run carries an empty-string note, not null or the string "null"',
+     noteByDay['2026-09-01'] === '', JSON.stringify(noteByDay['2026-09-01']));
+  ck('ran_at survives as a string, not coerced or dropped',
+     health.rows[0].ranAt === '2026-09-01T05:10:00Z', String(health.rows[0].ranAt));
+
+  var emptyHealth = await S.rollupHealth(makeDb());
+  ck('a rollup that has never once run returns {rows:[], gaps:[]}, not a throw or a NaN gap count',
+     Array.isArray(emptyHealth.rows) && emptyHealth.rows.length === 0
+     && Array.isArray(emptyHealth.gaps) && emptyHealth.gaps.length === 0,
+     JSON.stringify(emptyHealth));
+
+  // One run, no span to have a gap in -- a single-row table must not throw computing
+  // dayRange(d, d), and must not be mistaken for the empty-store case above.
+  var singleDb = makeDb();
+  ran(singleDb, '2026-09-01', 1, 1);
+  var singleHealth = await S.rollupHealth(singleDb);
+  ck('a single recorded run has no gaps and is not mistaken for an empty store',
+     singleHealth.rows.length === 1 && singleHealth.gaps.length === 0, JSON.stringify(singleHealth));
 
   /* =============================================================== tally */
   tally();

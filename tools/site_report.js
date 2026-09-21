@@ -214,10 +214,27 @@ const rumRows = (g, map) => (g.rumPageloadEventsAdaptiveGroups || []).map((r) =>
 
 async function traffic() {
   if (!JSON_OUT) console.log(`\n${C.b}══ TRAFFIC ${C.d}(Web Analytics RUM — real browsers, bots excluded)${C.x}`);
+  // Said where the numbers are, not only in a header nobody opens.
+  if (!JSON_OUT) console.log(`${C.d}   Days here are UTC; the dashboard's are EASTERN — the same`
+    + ` date labels a different 24 hours in each, so do not quote one into the other.${C.x}`);
 
   const COLS = ['pageloads', 'visits', 'exact'];
-  await sec('traffic_by_day', 'By day', ['date', ...COLS],
-    async () => rumRows(await gql(rumGroup('date', 'date_ASC', 60)), (d) => ({ date: d.date })));
+  /* `date (UTC)` AND NOT JUST `date`, because THE DASHBOARD'S DAYS ARE EASTERN and these
+   * are not. Cloudflare's `date` dimension is a UTC calendar day, so 2026-09-19 here spans
+   * 09-18 20:00 to 09-19 20:00 Eastern -- it carries the previous evening and drops the
+   * current one. MEASURED 2026-09-21 on the same closed day: this tool reported 51 pageloads
+   * / 17 visits for 2026-09-19 while the dashboard and the first-party store both said
+   * 45 / 14. Neither is wrong; they are different 24-hour windows wearing one label, and a
+   * figure from here was quoted into a sentence about the other.
+   *
+   * THE FIX IS THE LABEL, NOT THE WINDOW. Re-aligning to Eastern midnights would reintroduce
+   * #485: the retention cliff is at 00:00 UTC of (today - 7), a UTC-midnight FROM sits
+   * exactly ON it at every hour, and that is the only reason --days=7 is exact here. The
+   * header above carries the measurement; the dashboard paid three days of rounded evening
+   * figures to learn it. */
+  await sec('traffic_by_day', 'By day', ['date (UTC)', ...COLS],
+    async () => rumRows(await gql(rumGroup('date', 'date_ASC', 60)),
+      (d) => ({ 'date (UTC)': d.date })));
 
   await sec('traffic_paths', 'Top pages', ['path', ...COLS],
     async () => rumRows(await gql(rumGroup('requestPath', 'count_DESC', 15)), (d) => ({ path: d.requestPath })));

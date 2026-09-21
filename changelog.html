@@ -164,7 +164,24 @@
 
        ================================================================== -->
 
-  <details class="log-entry" open>
+    <details class="log-entry" open>
+    <summary class="log-head">
+      <h2>Walkthroughs drive the speed control, and the 1/M ladder goes back to one step per point</h2>
+      <span class="log-ver mono">Alpha 1.7.7</span>
+      <time class="log-date mono" datetime="2026-09-21">21 September 2026</time>
+    </summary>
+    <ul>
+      <li><span class="log-tag changed">Changed</span><strong>A running walkthrough sets the simulation speed for you.</strong> Each step runs at the rate it needs &mdash; the rung named on a waiting step&rsquo;s line, 1&times; everywhere else &mdash; and drops back to 1&times; the moment that step&rsquo;s check-off is met, so a fast-forward cannot run the plant past the thing the next step is about. Any rung you press yourself stands for the rest of that step. The approach to criticality and the pull into Mode&nbsp;1 run at 10&times; and 5&times; rather than the general rule, because a rod step has to land while you can still read the rate.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Walkthrough step text is larger.</strong> The instruction, the control line, the background and the notes all go up about a tenth.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The 1/M plot ladder is one step per plotted point again.</strong> Each rung was four lettered rows; it is now a single instruction with two check-offs, and the step no longer requires the startup rate to settle before it will tick &mdash; the text still tells you to wait for it, and says what plotting early costs.</li>
+      <li><span class="log-tag changed">Changed</span><strong>The explanatory box on a step is headed &ldquo;Background&rdquo;.</strong></li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Pausing during a fast-forwarded step left the clock at real time.</strong> Pause and play on a step the walkthrough was running fast, and it stayed at 1&times; for the rest of that step with nothing saying why. The walkthrough now re-takes its own rate on resume, and a rung you chose still survives the pause. Ending a walkthrough also hands the clock back to 1&times; instead of leaving the plant running at a speed you never selected.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>A heatup step highlighted a system it had nothing to do with.</strong> Mode&nbsp;5 to Mode&nbsp;3 step&nbsp;11 is a wait for coolant temperature, and it ringed the residual heat removal card &mdash; which is shut by then.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>The manual promised a fast-forward timer the sim no longer has.</strong> The WARP buttons were described as staying dark for 30&nbsp;plant-seconds after a drop; they have lit again the moment the condition lifts since 8&nbsp;September.</li>
+    </ul>
+  </details>
+
+<details class="log-entry">
     <summary class="log-head">
       <h2>Startup steps grade on the number the board prints, and the board stops describing a plant that is not there</h2>
       <span class="log-ver mono">Alpha 1.7.6</span>
@@ -182,7 +199,7 @@
     </ul>
   </details>
 
-  <details class="log-entry" open>
+  <details class="log-entry">
     <summary class="log-head">
       <h2>A locked walkthrough can no longer be started from the one before it, and fast-forward carries across steps</h2>
       <span class="log-ver mono">Alpha 1.7.5</span>
@@ -249,7 +266,7 @@
     </ul>
   </details>
 
-  <details class="log-entry" open>
+  <details class="log-entry">
     <summary class="log-head">
       <h2>Playtest fixes and a faster board</h2>
       <span class="log-ver mono">Alpha 1.7.1</span>

@@ -132,6 +132,34 @@ function behaviour(M) {
     eq(ck, 'etWithDow gives it a weekday', M.etWithDow('2026-08-12'), '2026-08-12 W');
     eq(ck, 'etFull does not invent a zone for it', M.etFull('2026-08-12'), '2026-08-12 W');
     eq(ck, 'withDow is zone-free', M.withDow('2026-08-12'), '2026-08-12 W');
+    /* #797 — THE MEMBER OF THE GROUP THAT WAS MISSING, and the only one whose answer is a
+     * QUERY BOUNDARY rather than a label. The five above were all guarded; this one was
+     * not, so a bare day parsed as midnight UTC and came back as the PREVIOUS Eastern day,
+     * 24 h early. Its two live call sites (analytics.js) pass `etDay(nowMs)` — a day
+     * string — so the "today" window opened yesterday and swept 48 hours. A wrong caption
+     * is a wrong caption; a wrong boundary double-counts a day into every section.
+     *
+     * All four measured on the defect: 2026-09-20 -> 9/19, 2026-01-15 -> 1/14,
+     * 2026-03-08 -> 3/07, 2026-11-01 -> 10/31. Both DST regimes and both switch days. */
+    var isoOf = function (x) { return new Date(M.etDayStartMs(x)).toISOString(); };
+    eq(ck, 'etDayStartMs takes a bare day as THAT day (EDT)', isoOf('2026-09-20'),
+      '2026-09-20T04:00:00.000Z');
+    eq(ck, '...and in EST', isoOf('2026-01-15'), '2026-01-15T05:00:00.000Z');
+    eq(ck, '...on spring-forward, where the day is 23 h long', isoOf('2026-03-08'),
+      '2026-03-08T05:00:00.000Z');
+    eq(ck, '...and on fall-back, where it is 25 h', isoOf('2026-11-01'),
+      '2026-11-01T04:00:00.000Z');
+    // The guard must not swallow garbage: a non-day string is still null, not a day.
+    eq(ck, 'etDayStartMs still returns null for something that is not a date',
+      M.etDayStartMs('not a date'), 'null');
+    /* A DATE-SHAPED STRING THAT IS NOT A DAY. Measured on the code before #797:
+     * `etDayStartMs('2026-02-30')` returned 2026-03-01T05:00Z, not null — V8 parses it
+     * leniently, so the roll-over predates the guard, and `Date.UTC` would have kept
+     * rolling it. The round-trip check in the helper refuses it. ("2026-13-45" was already
+     * null and still is; it is here so the pair cannot drift apart.) */
+    eq(ck, '...for a date-shaped string that is not a real day', M.etDayStartMs('2026-02-30'),
+      'null');
+    eq(ck, '...and for one that is not even a month', M.etDayStartMs('2026-13-45'), 'null');
   });
 
   test('an instant lands in the right Eastern DAY', function (ck) {
@@ -144,6 +172,13 @@ function behaviour(M) {
     eq(ck, '05:00Z opens the day (EST)', M.etDay('2026-01-15T05:00:00Z'), '2026-01-15');
   });
 
+  /* EVERY INPUT IN THIS SUITE IS AN INSTANT, and that is why it stayed green through #797.
+   * `etDayStartMs` was missing the `DATE_ONLY` guard its four siblings carry, so a bare
+   * "YYYY-MM-DD" fell through to `etFields` and came back a day early — and nothing here,
+   * not the four switch-day cases and not the 365-day sweep below, ever handed it a day
+   * STRING. The string half is now covered in 'a bare date is a DAY', and the invariant
+   * that binds the two together is at the end of this suite. Adding an instant case here
+   * does not widen the coverage; adding a string one does. */
   test('a day BEGINS at the right instant, including both DST switches', function (ck) {
     var iso = function (x) { return new Date(M.etDayStartMs(x)).toISOString(); };
     eq(ck, 'ordinary EDT day', iso('2026-08-11 15:00:00'), '2026-08-11T04:00:00.000Z');
@@ -175,6 +210,36 @@ function behaviour(M) {
     }
     ck('365 days each contain their own start, and not the instant before it',
       bad.length === 0, bad.slice(0, 5).join(', '));
+
+    /* #797 — THE INVARIANT THE LIVE CALL SITES ACTUALLY RELY ON, asserted behaviourally.
+     *
+     * analytics.js opens its live "today" window at `etDayStartMs(today)` where `today` is
+     * `etDay(nowMs)` — a DAY STRING. So the property the page needs is that routing an
+     * instant through its day name changes nothing:
+     *
+     *     etDayStartMs(etDay(t)) === etDayStartMs(t)
+     *
+     * THE CHECK THAT USED TO STAND HERE WAS A REGEX OVER analytics.js's SOURCE asserting
+     * the spelling `new Date(etDayStartMs(today))`. The spelling was never wrong. The
+     * helper was, for both call sites, for as long as they existed — and the regex was
+     * green the entire time, on the very line it is named after. A source scan cannot
+     * express a round trip; this can, and this is what would have caught it.
+     *
+     * A YEAR OF INSTANTS at four hours apart, so the sweep crosses both switch days inside
+     * the switch hour rather than stepping over it: 2,190 samples. On the defect every
+     * single one was 24 h out (measured: 2,190 of 2,190 before the fix, 0 after). */
+    var drift = [];
+    for (var u = Date.UTC(2026, 0, 1, 0); u < Date.UTC(2027, 0, 1, 0); u += 4 * 3600e3) {
+      if (M.etDayStartMs(M.etDay(u)) !== M.etDayStartMs(u)) drift.push(M.et(u));
+    }
+    ck('a day string and an instant inside that day open the SAME window, all year',
+      drift.length === 0, drift.length + ' of 2190 disagree; first: ' + drift.slice(0, 3).join(', '));
+    // The two switch days named outright, so a failure says WHICH regime broke rather than
+    // only how many samples did.
+    eq(ck, 'spring forward — the day name and 15:00 that day agree',
+      M.etDayStartMs('2026-03-08'), M.etDayStartMs(Date.UTC(2026, 2, 8, 19)));
+    eq(ck, 'fall back — the day name and 15:00 that day agree',
+      M.etDayStartMs('2026-11-01'), M.etDayStartMs(Date.UTC(2026, 10, 1, 19)));
   });
 
   test('the 7d window never reaches past the full-resolution edge', function (ck) {
@@ -303,8 +368,20 @@ test('the traffic table is RE-GROUPED into Eastern days, not relabelled', functi
    * is one day and nothing to bucket. THE PROPERTY IS UNCHANGED and now holds at the QUERY
    * rather than after it -- the live window STARTS at Eastern midnight. That is strictly
    * harder to get wrong, so the check follows the mechanism instead of the old literal. */
-  ck('the live "today" window opens at EASTERN midnight, not UTC',
-    /todayFromIso\s*=\s*new Date\(etDayStartMs\(today\)\)/.test(a));
+  /* WAS `the live "today" window opens at EASTERN midnight, not UTC`, asserting exactly
+   * this spelling as if the spelling were the property. It was not. #797: `etDayStartMs`
+   * had no `DATE_ONLY` guard, `today` is a day STRING, and the window opened at Eastern
+   * midnight YESTERDAY — 48 hours, double-counting a day into the hollow chart point, all
+   * nine breakdown sections and both referrer views. This regex was green throughout, on
+   * the line it was named after, because the call site was never what was wrong.
+   *
+   * THE PROPERTY MOVED, it was not dropped: 'a day string and an instant inside that day
+   * open the SAME window, all year' in the behaviour half asserts the round trip these two
+   * call sites rely on. What is left here is a DELETION TRIPWIRE and is labelled as one —
+   * it can tell you the helper stopped being called; it cannot tell you it is right. */
+  ck('the live "today" window is still DERIVED from the helper (deletion tripwire only)',
+    /todayFromIso\s*=\s*new Date\(etDayStartMs\(today\)\)/.test(a)
+    && /todayFrom\s*=\s*new Date\(etDayStartMs\(today\)\)/.test(a));
   ck('...and the by-day headline still buckets its hours with etDay()',
     /etDay\(\s*d\.datetimeHour\s*\)/.test(a) || /dailyTotals\(/.test(a));
   ck('the column says ET', /label:\s*'Date \(ET\)'/.test(a));

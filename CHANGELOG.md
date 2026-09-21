@@ -30,6 +30,236 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.7.7] — 2026-09-21
+
+### Added
+- **The nightly rollup detects a host collision it cannot otherwise survive** (#797). The daily
+  traffic key omits the request host, so two Cloudflare groups differing only by host collapse
+  and one is silently dropped. Measured against the live store: one host, zero collisions — so
+  the defect is latent and a key migration on the only exact history held would be risk without
+  cause. The run now names both hosts if a second ever appears, and the pipeline-health line
+  surfaces it.
+- **Ops dashboard: a pipeline-health warning** (#797) when the nightly rollup goes stale, records
+  a real failure, or leaves a gap. It has always written its runs and failures to `rollup_runs`;
+  nothing ever read them. Nothing renders while the pipeline is healthy, so it cannot become
+  wallpaper, and an unrecognised failure note warns by default rather than passing silently.
+- **Deep-link landings are plotted per day on the main By-day chart** (2026-09-20) as a third
+  series, in both the bar and line forms, and as a column in the day table. **The 7-day trailing
+  mean is removed** from that chart; the dashed prior-period comparison stays, being an
+  equal-length earlier window rather than a rolling average. The new series is not rescaled onto a
+  second axis — five deep-link landings against 142 pageloads genuinely does sit near zero.
+- **Ops dashboard: Feature usage filters by release version** (2026-09-20), defaulting to the
+  newest — chosen by most recent event, never by sorting the version string, since "Alpha 1.7.10"
+  sorts below "Alpha 1.7.9". Preview and public builds of the same version are separate options,
+  because the tester site is where a walkthrough change gets checked before release. The selected
+  release's session count is shown, with a warning below ten sessions.
+- **Ops dashboard: a "Deep-link landings" section** (2026-09-20) — landing visits that opened
+  somewhere other than the homepage with no referrer, i.e. a bookmark or a typed URL. A proxy for
+  returning visitors that needs no identifier of any kind, added because cross-visit tracking was
+  considered and declined the same day. Externally-referred subpage landings are excluded because
+  they are search discovery, the opposite of a return — measured: the only two in the store were
+  Google to /about and /download. The section says on its own face that it is a FLOOR, not a count.
+
+### Changed
+- **The walkthrough drives the speed control** *(OWNER, 2026-09-20: "The fast forward should drop
+  down to 1x for steps where the next step should be played at 1x. it should auto fast forward but
+  it should auto drop down to the speed the step should be played at.")*. Every part of the rule
+  already existed — since #628 the card printed "set the speed control to 600x", since #686 the
+  line under the bar printed the same sentence, since #743 the rung pulsed — three surfaces asking
+  the player to make a mechanical choice the walkthrough already knew the answer to. Now
+  `syncCklAutoSpeed` (ui/app.js, in the broadcast path, never the rAF paint) presses it: the
+  step's own rung while it is waiting, **1x** on every other step, and **1x again the moment the
+  step's check-off criterion is met** — the expensive half, because a 600x clock running past the
+  criterion is overshoot the next step is then about. ONE RULE, NOT A NEW AUTHORED FIELD: the
+  speed comes from the same `hold >= 180 && wait_hint !== false` condition the wait line and the
+  rung glow already read, so the clock and the words cannot drift apart.
+  - **The player still owns the bar.** Auto acts ONCE per (step, wanted speed, hold state), so any
+    rung pressed by hand stands for the rest of that step and the next step re-takes the clock.
+    It will not act while the clock is stopped (and does not latch the step, so #691's
+    play-from-pause-at-1x is untouched), will not fight a plant-declared hold (`speed_hold`
+    refuses `set_speed` above 1x — the hold is IN the key, so the acceleration lands by itself
+    when the window closes), will not request WARP while the service would refuse it (clamped to
+    the best PLAY rung off `pacing.warp_available` instead of eating a `warp_locked` toast), and
+    will not fight an attention stop (the drop moves no step, so auto has already had its act).
+  - **A pause no longer strands the step at 1x**, found by the post-work quality pass and fixed
+    before it shipped. The act-once latch was kept across a pause; `pauseSim` stops the broadcasts
+    so the driver never runs, `resumeSim` forces 1x outside it (#691), and the first broadcast back
+    matched the latch and returned — leaving the clock at real time for the rest of a step the
+    walkthrough was meant to be fast-forwarding, after the most ordinary interaction there is. The
+    latch is now dropped whenever the clock stops, and the player's override is remembered
+    SEPARATELY (`cklAuto.over`, keyed on the same step) so it survives the pause that the latch
+    deliberately does not. **#691 is untouched**: its ruling is about a stale PLAYER selection, and
+    the step's rung is not a selection.
+  - **Ending a walkthrough hands the clock back.** `stop_checklist` never touched
+    `timeAcceleration`, so a leg ended mid-wait left the plant running at a rung AUTO chose with
+    nothing tracking it — before this change that took a deliberate 600x press, so it is a runaway
+    the feature itself made easy to reach. Only when the clock is exactly where auto put it and
+    above real time: move it yourself afterwards and it is your speed.
+  - **Not routed through `cmd()`**, deliberately: that path stamps the diagnostic bundle, the
+    sequence of events and telemetry as THE PLAYER ACTING (#437). A bug report whose SOE shows six
+    speed presses nobody made is a worse artifact than one that shows none.
+  - The wait line and `#warpInfo` now share a three-form formatter (`cklWaitAdvice`) — *fast-
+    forwarding at 600x* / *set the speed control to 600x* (only when the player has taken the bar
+    back, the one state where a press is still owed) / *wait complete, back at 1x*. The rung is
+    named in all three. The recommended rung keeps its `.ckl-speed-rung` mark throughout and
+    pulses only while the plant is not on it, which `.ckl-speed-rung.on { animation: none }` (#743)
+    already did for free.
+- **A step can name its own rung: `wait_speed`** — the authorable cap `ui/manual_procedures.js`
+  has said was owed since #753 (*"an authorable CAP on the rung is an app.js change and is filed
+  rather than smuggled in here"*). It was optional while the player pressed the button and became
+  REQUIRED the moment the walkthrough did: `wait_hint: false` then means *"this step is played at
+  1x"*, which would have forced real time on the two approach-to-criticality steps whose own notes
+  say to use **10x** and **5x** (measured, #753: worst REACTOR POWER change inside one 2.5 s glance
+  is 0.020 % at 1x, 0.094 % at 5x, 0.186 % at 10x, 1.083 % at 60x — and the 30 s rule returns 60x
+  for that 1800 s dwell). Two axes, deliberately separate: `wait_speed` decides the CLOCK,
+  `wait_hint` decides the LINE, so those steps set the rung and keep their own note as the only
+  sentence about it. Snapped DOWN to a real ladder rung, inheriting #628's "never name a button
+  that is not there".
+- **#796 items 1, 2 and 3 — the walkthrough panel's own complaints.**
+  - **A watch ring came off Mode 5 -> 3 step 11** *(OWNER: "step 11 in mode 5-3 walkthrough
+    highlights the RHR card when its just a wait for coolant temp step.")*. The justification in
+    the pool was a comment about `pwr_cooldown` step 11 — a step-number collision between two legs
+    put a correct sentence about COOLDOWN RATE and HX SPLIT onto a heatup step that has no note and
+    no rate lever, and the ring followed the sentence. RHR is also already secured by then (the
+    585 psig autoclose fires during the ride), so the cue pointed at a system the player can
+    neither read anything from nor act on. Steps 1 and 12 keep their RHR ring, and the difference
+    is the point: step 1 verifies the cold lineup with RHR in service, step 12 is GRADED on RHR
+    being gone.
+  - **The background box is headed "Background", full stop** *(OWNER: "Remove '-Not an Action'
+    from every background title from every walkthrough step.")*, superseding the 2026-09-13 label.
+    The box, set apart from the action rows, is what carries the negative — and already did: both
+    fresh-reader reviews of that layout reported the block as unambiguous background. The clause
+    was a negation restating what the layout says, on every step, in a 10 px legend.
+  - **The 1/M ladder is one step per plot point again** *(OWNER: "go back to one step per plot
+    point like we had before ... remove the requirements for startup rate to fall back to zero")*,
+    superseding #756's line-of-instruction-per-substep. In CSS terms his complaint is exact: a
+    step's instruction is `.ckl-txt`, white; a lettered check-off row is `.ckl-crit`, cobalt — so
+    four rows meant four cobalt imperatives and no white instruction of their own. Steps 5-8 now
+    carry two ordered rows, the counts floor then the plot, with the whole sequence back in the
+    white line above them. `accs_ordered` stays: a cmd-kind row is deaf until its predecessor is
+    met, so Plot point still cannot bank a stale point while the counts are climbing.
+  - **The settle moves from a graded row into the instruction, and that distinction is
+    load-bearing** — because the premise under it measures FALSE. MEASURED (seed 42, full stack,
+    the same run sampled twice): plotting all four rungs without the settle predicts critical at
+    step **213**; with it, step **208**; this plant actually goes critical at step **207**. The
+    settle is worth **5.1 steps of prediction**, and all of the error is on the danger side — a
+    prediction that reads HIGH tells the operator they have further to go than they have. The
+    recollection that it "doesn't have much affect on the final outcome" does not reproduce, so
+    the requirement is lifted as asked while the text and the note keep telling the player to wait
+    for the rate, now with the cost in rod steps.
+
+- **#796 items 4 and 5 — the two steps that were being played at 1x now name their rung**, on a
+  measurement rather than a feel. Mode 3 -> Mode 1 step 12 (watch power level off) simply has its
+  `wait_hint: false` REMOVED: that suppression came from the #653 S-9 pass, which applied it across
+  the region because the rule offered 60x on the 1800 s dwells either side — but step 12 holds
+  240 s, so the rule returns **10x** and needs no cap. Step 13 (hold WITHDRAW into Mode 1) takes
+  `wait_speed: 5`, the owner's own number, because the rule would give 60x.
+  - MEASURED (`tools/glance_rung.js`, seed 42, full stack, 0.1 s samples), on #753's yardstick —
+    the worst REACTOR POWER change inside one 2.5 s glance. Step 12 is **standing still**: 3.891 %
+    to 4.118 % over four minutes, so its whole indicated figure is this channel's noise (0.150 % at
+    1x against 0.185 % at 60x — near-identical, which is the tell). True movement is 0.012 % at
+    10x, against the 0.186 % that was ACCEPTED for step 9. Even 60x would be safe on movement
+    alone; 10x is taken because the step also authorises a corrective INSERT.
+  - Step 13 is decided by the ROD PULL, not by a power delta: 13 steps at SLOW is 97.3
+    plant-seconds, so one rod step costs the player **7.49 s** of wall clock at 1x, **1.50 s** at
+    5x, **0.75 s** at 10x, **0.12 s** at 60x. 1.50 s is a reaction window; 0.75 s is not.
+  - And the window auto accelerates on step 13 is **42 plant-seconds, not 400** — `power_pct > 5`
+    is met 0.7 plant-minutes in, and the clock drops to 1x there — so `wait_est_s: false` drops a
+    "7 plant-minutes" estimate that would overstate the wait tenfold.
+- **`tools/glance_rung.js`** — the tool that derives a `wait_speed`, so the next one is a
+  measurement too. Reports the glance figure per rung on both the indicated and the true channel
+  (on a settled step the indicated column is noise and says nothing about the rung), over the
+  window auto actually accelerates, plus the wall clock of any rod pull the step asks for.
+- **Walkthrough step text is larger** *(OWNER, 2026-09-20: "Make the walkthrough text a little
+  bigger.")*. The step instruction 12.5 -> 14 px, the head 13 -> 14.5, `Use ...` and the `why`
+  11.5 -> 13, the sub/wait lines 11 -> 12.5, the incident narrative 11.5 -> 12.5, and the
+  out-of-turn note, ack note, step number and mark 11 -> 12.
+
+### Fixed
+- **The dashboard's live "today" figure covered 48 hours** (#797). `etDayStartMs` lacked the
+  date-only guard its four sibling helpers carry, so a bare `YYYY-MM-DD` parsed as midnight UTC
+  and resolved to the *previous* Eastern day — a full 24 hours early, in both daylight-saving
+  regimes. The hollow "today" point therefore spanned two days, and yesterday was counted twice
+  in all nine breakdown sections whenever the window included today. Measured on a fixture: the
+  Pageloads tile read **132 against a true 60**. Closed days were never affected, so stored
+  history is clean. A second, opposite error is fixed alongside it: the live hourly query asked
+  for 26 groups where the grouping was hour × bot, silently dropping the evening once enough
+  hours saw a bot — a 48 % under-count. The two had been partly cancelling.
+- **The dashboard printed a rounding interval it never measured** (#797). Seven sites rendered a
+  hard-coded `±10` — Cloudflare's coarse tier today, and not a constant. The real figure was
+  already computed and discarded into a boolean; every site now states the interval it actually
+  received. Two of the seven were SVG tooltips in the chart code, which the page's own grep could
+  not see and an existing guard excluded by construction.
+- **A shared IP could silently lose telemetry, and nothing said so** (#797). One 60-per-minute
+  budget covered both ingest routes, so a 2 MB bug report cost the same as a tiny event batch —
+  and 60/min is one person's budget: a classroom behind one address exhausted it. Events now get
+  300/min and bug reports a separate 5/min. More importantly the loss is now **visible**: a
+  throttled request is recorded and the analytics page warns that the telemetry was dropped, not
+  delayed. The client cannot tell — it clears its queue before sending and never reads the
+  response — so the server is the only place this could be reported from.
+- **Two telemetry metrics counted where a session STARTED as something it achieved.** `on_grid`
+  fired from a state test on the first tick, so the 69 sessions that begin at full power all
+  scored it — it read 69 of 69. And the mode funnel's first observation always emitted, so "how
+  far they get" was largely where people began. A state-derived milestone now fires only on a
+  false→true transition seen within the session, and the funnel's baseline emission is suppressed;
+  starting at power earns nothing, while tripping and re-synchronising still counts. **Figures
+  recorded before this cannot be corrected and must not be trended across the fix.**
+- **Repeated presses of a control collapse into one event carrying a press count** (2026-09-20),
+  and the telemetry batch slows from 15 s to 60 s. `command` was 93 % of all events, with the
+  pressure setpoint at 98 presses per session — those controls are number boxes with arrows, so
+  the repeats are hold-to-repeat plus deliberate clicking. This also corrects a live wrong number:
+  "most-used controls" ranked them top purely because they fire per press, which was never
+  comparable with a single button press. The count is kept because with a number box it measures
+  effort, not pointer noise. A refused press always breaks a run rather than being folded in.
+- **Three raw control bytes had been written into `worker/src/analytics.js`** as map-key separators
+  (a literal NUL and two SOH, rather than `\u0000`/`\u0001` escapes). Valid JavaScript that runs
+  correctly — but git, grep and diff all classified the file as binary and stopped showing its
+  changes. Two of them shipped in Alpha 1.7.6. A gate now scans `worker/src` for raw control bytes.
+- **Device, browser and OS on the site's own telemetry** (2026-09-20), derived at the Worker from
+  the User-Agent it already reads to classify bots — no client change, no new field on the wire,
+  and it takes effect for the deployed site as soon as the Worker ships. They ride on every event,
+  so device is now per-session: "do mobile users leave sooner?" becomes one query instead of an
+  unanswerable join between Cloudflare's RUM and our own stream. Classification is ours and
+  cruder than Cloudflare's; default iPadOS Safari reports a Mac User-Agent, so the tablet count is
+  a floor.
+- **`Manuals/02` §4.1 promised a WARP timer the plant has not had since 2026-09-08.** #660 removed
+  `_warpLockedUntil` ("Warp lock should not have a time out, it should either be locked or not")
+  and `_warpBlocked` has reported only live conditions ever since; the manual still told the
+  reader the buttons "stay dark for 30 plant-seconds of quiet". Nothing gates described BEHAVIOUR
+  — `run_manual_setpoints` checks numbers in tables — so it took reading the section for another
+  reason to find it.
+
+### Tests
+- `run_checklist_pwr2.js` 360 -> 352 checks, and the DOWN move is content leaving, not coverage.
+  Eight checks were reading the retired 1/M rows rather than the mechanism behind them. FIVE WERE
+  REWRITTEN, NOT DELETED: the rung-shape check pins the new shape, and the four plant-driven #761
+  probes now grade a LOCAL fixture carrying the retired rows instead of the shipped step — so
+  `op: 'stopped'` stays proven on the real plant through the real `_gradeAccs` while the proof
+  stops breaking every time the content that once used it is re-authored. `op: 'stopped'` now has
+  no author in the pool, exactly as `op: 'steady'` already had none; the synthetic-channel halves
+  are what keep both honest, which is why the well-formed check no longer demands a non-empty
+  population. Two pinned censuses moved with the rows, with the graded-step count unmoved at 84 as
+  the control. Injection-proven: swapping rung 5's rows so the plot comes first reddens the
+  rung-shape check naming the order.
+- `run_manual_controls.js` 1065 -> 1064: one fewer resolvable watch label, which is the #796 item 1
+  fix.
+- `verify_flags_ui.js` +1 (55 -> 56): an authored `wait_speed` sets the CLOCK, asserted on
+  `service.timeAcceleration` rather than the field, with the negative half that makes it
+  non-vacuous — the landed rung must NOT be the one `RD.CklSpeedHint` derives from `hold`.
+  Injection-proven: zeroing the branch reds it at 1x with no rung, which is the regression it
+  exists to stop.
+- `verify_e2e_ui.js` `testSpeedRungGlowRendered` re-cut for the new behaviour, three halves each
+  injection-proven red for its own reason and no other: deleting the `syncCklAutoSpeed` call reds
+  "the walkthrough did not take the clock to its own rung" (rung marked and pulsing, clock 1x);
+  deleting the drop-on-met branch reds "the wait is satisfied and the clock is still at 60x";
+  defeating the act-once key guard reds "the walkthrough overrode the player" after a deliberate
+  1x press; keeping the latch across a pause reds "a pause/resume stranded the step at 1x";
+  dropping the separate override memory reds "a pause/resume threw away the player's override";
+  disabling the hand-back reds "the walkthrough ended at 60x and left the plant running at 60x".
+  The fixture plants ONE upstream fact — `acc_met`/`awaiting_ack` on the snapshot, via
+  an `_instructorBlock` wrapper — because `c.awaitingAck = !!met` is rewritten every
+  `_stepChecklist` tick and poking it directly is a race the drop loses.
+
 
 ## [Alpha 1.7.6] — 2026-09-20
 

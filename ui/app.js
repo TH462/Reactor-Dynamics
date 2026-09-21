@@ -2598,6 +2598,12 @@
     var _cklWt = s && s.instructor && s.instructor.checklist;
     if (_cklWt && _cklWt.paused) { if (!pausedFor('walkthrough')) pauseSim('walkthrough'); }
     else if (pausedFor('walkthrough')) releaseHold('walkthrough');
+    /* THE WALKTHROUGH'S OWN PACING (#796) — here, in the broadcast path, NOT in the rAF paint.
+     * `renderNow` is one frame late and can be skipped entirely when paints coalesce (#432's
+     * recorder: 1475 rows in, 35 out), and a speed change that lands a frame late at 600× is 600
+     * plant-seconds of overshoot. It sits beside the pause block for the same reason: both are
+     * the walkthrough asking the clock for something, both restamp the snapshot they change. */
+    syncCklAutoSpeed(s);
     /* THE SNAPSHOT'S `running` FLAG IS STAMPED AT ASSEMBLY AND CAN BE STALE BY THE TIME IT
      * IS DRAWN. Re-stamp it from the live service here, which is the one place every
      * renderer downstream reads it from.
@@ -3187,17 +3193,13 @@
      * the only thing this line can say and the drop reason has to be able to sit in front of
      * it (see below). Unchanged in what it says or when it qualifies. */
     var advice = '';
-    var ck = s.instructor && s.instructor.checklist;
-    var pr = ck && !ck.complete && ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || [])
-      .filter(function (x) { return x.id === ck.procedure_id; })[0];
-    var st = pr ? pr.steps[ck.step_index] : null;
-    var holdS = st ? (+st.hold || 0) : 0;
-    if (st && holdS >= 180 && st.wait_hint !== false) {
-      var span = cklWaitSpan(st, holdS);
-      var rung = RD.CklSpeedHint(holdS);
-      advice = (span ? 'About ' + span + ' left at 1× — s' : 'A wait whose length depends on the plant — s') +
-               'et the speed control to ' + rung.speed + '×.';
-    }
+    var actv = cklActiveStep(s);
+    /* Since #796 the sentence is `cklWaitAdvice`'s, not this function's — the walkthrough sets
+     * the speed itself, so the line has to be able to say "fast-forwarding at 600×" as well as
+     * "set the speed control to 600×", and the card prints the same three forms from the same
+     * formatter. WHAT QUALIFIES IS UNCHANGED (`hold >= 180`, `wait_hint !== false`), and
+     * "nothing on other steps" is still the #686 ruling's own words. */
+    if (actv && cklIsWaitStep(actv.st)) advice = cklWaitAdvice(s, actv, true);
     /* EVERY DROP STATES ITS OWN REASON, not just the held-at-real-time one (2026-09-15 layman
      * pass, #653). This branch read `warpNote.reason === 'hold'` and fell through for the other
      * reasons — alarm, scram and failure (and, until 2026-09-17, step) — printing the step's
@@ -3948,6 +3950,213 @@
     return mins < 90 ? Math.round(mins) + ' plant-minutes'
                      : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours';
   }
+
+  /* ---- THE WALKTHROUGH DRIVES THE CLOCK (#796) ------------------------------------------------
+   * *(OWNER, 2026-09-20: "The fast forward should drop down to 1x for steps where the next step
+   * should be played at 1x. it should auto fast forward but it should auto drop down to the speed
+   * the step should be played at.")*
+   *
+   * EVERY PART OF THIS WAS ALREADY COMPUTED — what changes is who presses the button. Since #628
+   * the card prints "set the speed control to 600×", since #686 the line under the speed bar
+   * prints the same sentence, and since #743 the recommended rung pulses. Three surfaces asking
+   * the player to make a mechanical choice the walkthrough already knows the answer to, at the
+   * start of every wait and again at the end of it — and getting the SECOND half wrong (coming
+   * back down) is the expensive one, because a 600× clock running into a step meant for real time
+   * is how a player overshoots the thing the next step is about.
+   *
+   * ONE RULE, NOT AN AUTHORED FIELD: a step's speed is `hold >= 180 && wait_hint !== false` →
+   * `RD.CklSpeedHint(hold)`, and 1× otherwise. That is the SAME condition the card's wait line
+   * and the rung glow already read, so the clock and the words can never disagree — a per-step
+   * `speed:` key would be a second copy of it, free to drift (the 705 ppm shape).
+   *
+   * …AND IT COMES BACK DOWN THE MOMENT THE WAIT IS SATISFIED, not when the player presses
+   * Continue. `acc_met`/`awaiting_ack` is the plant saying the step's criterion is met; every
+   * plant-second after that at 600× is overshoot the player did not ask for, and they may be
+   * reading the card rather than watching the bar.
+   *
+   * THE PLAYER STILL OWNS THE BAR. Auto acts ONCE per (step, wanted speed, hold state) — so any
+   * rung the player presses afterwards stands for the rest of that step, and the next step
+   * re-takes the clock. The recommended rung keeps its `.ckl-speed-rung` mark throughout, and
+   * `.ckl-speed-rung.on { animation: none }` (#743) means it PULSES only while the plant is not
+   * on it, i.e. only when there is something left to press. Nothing new was needed for that.
+   *
+   * WHAT IT WILL NOT DO:
+   *   - act while the clock is stopped, for any reason (`pauseWhy`) — and it does not latch the
+   *     key either, so a pause never eats the step's speed change. #691 keeps play-from-pause at
+   *     1×, and this must not turn that into a fast-forward the player did not press.
+   *   - fight a plant-declared hold (`true_state.speed_hold`): the service REFUSES `set_speed`
+   *     above 1× while it stands, so a send there would be a guaranteed refusal plus a toast.
+   *     The hold is IN THE KEY, so the acceleration lands by itself the moment it lifts — which
+   *     is the accumulator-window trap (#619 item 13) closing itself.
+   *   - offer WARP while the service would refuse it: a blocked WARP request clamps to 60× and
+   *     stamps `warp_locked`, which toasts. The clamp happens HERE instead, off
+   *     `pacing.warp_available`, and rides in the key so the rung is taken the moment WARP frees.
+   *   - fight an attention stop: the drop does not move the step, so the key does not move, so
+   *     auto has already had its one act and says nothing.
+   *
+   * NOT ROUTED THROUGH `cmd()` ON PURPOSE. That path stamps the diagnostic bundle, the sequence
+   * of events and telemetry as THE PLAYER ACTING (`RD.Events.command`, `TEL.command`) — it is the
+   * operator half of the SOE stream (#437), and a walkthrough pacing itself is not an operator
+   * act. A bug report whose SOE shows six speed presses nobody made is a worse artifact than one
+   * that shows none. */
+  /* `key` — the (step, wanted speed, hold) auto has already acted on. `over` — the key the
+   * PLAYER pressed a rung against, which is what makes an override survive a pause that the
+   * latch deliberately does not. `set` — the rate auto last asked for, so the hand-back can
+   * tell a speed it is holding from one the player chose afterwards. */
+  var cklAuto = { key: null, over: null, set: 0 };
+  /* The active walkthrough step, or null — the same lookup `syncWarpInfo` does, named once so the
+   * clock and the words cannot read different steps. */
+  function cklActiveStep(s) {
+    var ck = s && s.instructor && s.instructor.checklist;
+    if (!ck || ck.complete) return null;
+    var pr = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || [])
+      .filter(function (x) { return x.id === ck.procedure_id; })[0];
+    var st = pr ? pr.steps[ck.step_index] : null;
+    return st ? { ck: ck, pr: pr, st: st } : null;
+  }
+  // Does the card PRINT a fast-forward line for this step? The #628/#686/#743 condition, once.
+  function cklIsWaitStep(st) {
+    return !!st && (+st.hold || 0) >= 180 && st.wait_hint !== false;
+  }
+  /* WHICH RUNG DOES THIS STEP BELONG ON — or null for "real time" (#796).
+   *
+   * `wait_speed` IS THE AUTHORABLE CAP `ui/manual_procedures.js` SAID WAS OWED. Its comment on
+   * pwr_startup step 9 names this exact gap: *"an authorable CAP on the rung is an app.js change
+   * and is filed rather than smuggled in here"* — because the 30 s rule returns 60× for that
+   * step's 1800 s dwell, while #753 MEASURED the rung at 10× (worst REACTOR POWER change inside
+   * one 2.5 s glance: 1× 0.020 %, 5× 0.094 %, 10× 0.186 %, 60× 1.083 %). With only `wait_hint:
+   * false` to reach for, the step could suppress the app's wrong sentence but could not state the
+   * right rung, so the number lived in prose — and once the walkthrough started PRESSING the
+   * button, prose was no longer enough: auto would have forced 1× on a step whose own note says
+   * "put the clock on 10×".
+   *
+   * TWO AXES, DELIBERATELY SEPARATE. `wait_speed` decides the CLOCK; `wait_hint` decides the
+   * LINE. A step may set the rung and keep its generated line suppressed (steps 9 and 10 do —
+   * their notes already teach the speed in the step's own words, and a second sentence from the
+   * app is how #653's contradiction happened). One axis would force a choice between the right
+   * clock and a duplicated sentence.
+   *
+   * SNAPPED TO THE STRIP, never trusted raw: `RD.CklSpeedHint` picks off the ladder itself so it
+   * can never name a button that is not there (#628), and an authored number has to inherit that
+   * or a typo'd `wait_speed: 30` becomes a rung the player cannot see, at a rate they cannot
+   * reach by hand. The largest rung AT OR BELOW the authored value — rounding DOWN, because the
+   * number is a ceiling on how fast this step may be watched. */
+  function cklRungFor(st) {
+    if (!st) return null;
+    var want = +st.wait_speed || 0;
+    if (want > 0) {
+      var lad = speedLadder(), best = lad[0];
+      for (var i = 0; i < lad.length; i++) if (lad[i].speed <= want) best = lad[i];
+      return best;
+    }
+    return cklIsWaitStep(st) ? RD.CklSpeedHint(+st.hold || 0) : null;
+  }
+  /* What speed should the plant be running at for the step on screen — null when no walkthrough
+   * is running, in which case the clock is nobody's business but the player's. */
+  function cklStepSpeed(s, a) {
+    if (!a) return null;
+    var rung = cklRungFor(a.st);
+    if (!rung) return 1;
+    if (a.ck.acc_met || a.ck.awaiting_ack) return 1;      // the wait is over — hand it back
+    if (!rung.warp) return rung.speed;
+    var p = s.metadata && s.metadata.pacing;
+    if (!p || p.warp_available !== false) return rung.speed;
+    var lad = speedLadder(), top = 1;                     // WARP is refused: the best PLAY rung
+    for (var i = 0; i < lad.length; i++) if (!lad[i].warp) top = lad[i].speed;
+    return top;
+  }
+  /* THE KEY — what "auto has already had its act" is scoped to. Named because TWO places need the
+   * same string: this driver, and the speed-button handler that records an override against it.
+   * A second copy computed by hand is how the two would drift. */
+  function cklAutoKey(s) {
+    var a = cklActiveStep(s);
+    var want = cklStepSpeed(s, a);
+    if (want == null) return null;
+    return a.ck.procedure_id + '#' + a.ck.step_index + '|' + want +
+           ((s.true_state && s.true_state.speed_hold) ? '|h' : '');
+  }
+  function syncCklAutoSpeed(s) {
+    var a = cklActiveStep(s);
+    var want = cklStepSpeed(s, a);
+    var cur = (s.metadata && s.metadata.time_acceleration) || 1;
+    var idle = !service || !service.running || Object.keys(pauseWhy).length > 0;
+    /* ---- NO WALKTHROUGH: HAND THE CLOCK BACK IF IT IS STILL OURS (quality pass, 2026-09-20) ----
+     * `stop_checklist` tears the checklist down and never touches `timeAcceleration`, so ending a
+     * walkthrough mid-wait — or finishing one — left the plant running at a rung AUTO chose, with
+     * nothing tracking it any more. Before #796 that took a deliberate 600× press by the player;
+     * now it is a speed they may never have consciously selected, which turns an unattended
+     * runaway from possible into easy.
+     *
+     * "STILL OURS" IS THE WHOLE GUARD: only when the clock is exactly where auto last put it and
+     * that was above real time. Move it yourself after auto did and it is your speed — `set` is
+     * dropped and the hand-back never fires. ("← All walkthroughs" is unaffected: the checklist
+     * stays live, so this branch is not reached.) */
+    if (want == null) {
+      cklAuto.key = null; cklAuto.over = null;
+      if (cklAuto.set > 1) {
+        if (cur !== cklAuto.set) { cklAuto.set = 0; return; }   // the player has moved it since
+        if (idle) return;                                       // try again when the clock runs
+        cklAuto.set = 0;
+        try { service.handleCommand({ action: 'set_speed', value: 1 }); } catch (e) { return; }
+        if (s.metadata) s.metadata.time_acceleration = service.timeAcceleration;
+      }
+      return;
+    }
+    var key = a.ck.procedure_id + '#' + a.ck.step_index + '|' + want +
+              ((s.true_state && s.true_state.speed_hold) ? '|h' : '');
+    /* ---- A STOPPED CLOCK DROPS THE LATCH, AND THAT IS A FIX, NOT A STYLE (quality pass,
+     * 2026-09-20) ---- This read `if (!running) return;` with the key ALREADY LATCHED, under a
+     * comment claiming "a pause never eats the step's speed change". It ate it in the COMMON
+     * case: `pauseSim` stops the broadcasts (so this function does not run at all while paused)
+     * and `resumeSim` forces 1× outside this driver, per #691 — then the first broadcast back
+     * computes the SAME key, matches the latch and returns. The clock then sat at 1× for the rest
+     * of a step the walkthrough was meant to be fast-forwarding, silently, after any pause taken
+     * once auto had acted. Which is most of them: you pause while the plant is running away, not
+     * in the split second before it starts.
+     *
+     * #691 IS UNTOUCHED. Its ruling is that the speed showing when you paused is not a request to
+     * resume there — a stale PLAYER selection. The step's rung is not a selection, it is what
+     * this step is played at; re-applying it on resume restores the walkthrough's rate and never
+     * yours. An override still survives the pause, because it is remembered separately (`over`)
+     * rather than by this latch. */
+    if (idle) { cklAuto.key = null; return; }
+    if (cklAuto.over === key) return;        // the player took this step's clock; it is theirs
+    if (key === cklAuto.key) return;
+    cklAuto.key = key;
+    cklAuto.set = want;
+    if ((s.true_state && s.true_state.speed_hold) && want > 1) return;  // refused; retries when it lifts
+    if (cur === want) return;
+    try { service.handleCommand({ action: 'set_speed', value: want }); }
+    catch (e) { return; }                                 // a refusal is not a crash (#505/#506)
+    /* …and this snapshot was assembled before the change, so restamp it — the speed segment,
+     * the ⚡ badge and the chart windows all read `metadata.time_acceleration` off the snapshot
+     * being drawn. Same shape as the `metadata.running` restamp the walkthrough pause needs. */
+    if (s.metadata) s.metadata.time_acceleration = service.timeAcceleration;
+  }
+  /* THE SENTENCE BOTH SURFACES PRINT — the card's `.ckl-wait` line and `#warpInfo` (#686), one
+   * formatter so they cannot disagree. Three forms now that the walkthrough presses the button
+   * itself: it is doing it, the wait is over, or the player has taken the bar back and the old
+   * instruction stands. The rung is named in ALL THREE — it is the fact the line exists to
+   * carry, and the player who overrode wants to know what they overrode. */
+  function cklWaitAdvice(s, a, forBar) {
+    var holdS = +a.st.hold || 0;
+    var span = cklWaitSpan(a.st, holdS);
+    var rung = cklRungFor(a.st) || RD.CklSpeedHint(holdS);
+    var cur = (s.metadata && s.metadata.time_acceleration) || 1;
+    if (a.ck.acc_met || a.ck.awaiting_ack) {
+      return 'Wait complete — back at ' + cur + '× (this step fast-forwards at ' + rung.speed + '×).';
+    }
+    var lead = span ? 'About ' + span + (forBar ? ' left' : '') + ' at 1× — '
+                    : 'A wait whose length depends on the plant — ';
+    var want = cklStepSpeed(s, a);
+    if (cur !== want) return lead + 'set the speed control to ' + rung.speed + '×.';
+    /* The WARP clamp says so rather than printing the rung it is not on: `want` is 60× here and
+     * `rung.speed` is 600×, and a line reading "fast-forwarding at 600×" over a 60× clock is the
+     * two-surfaces-disagreeing defect this formatter exists to prevent. */
+    return lead + (want === rung.speed
+      ? 'fast-forwarding at ' + want + '×.'
+      : 'fast-forwarding at ' + want + '× — ' + rung.speed + '× needs a quiet plant.');
+  }
   /* IS THE POINTER IN THIS ELEMENT? (#605.) `:hover` cannot answer it here — the element is
    * BRAND NEW, built microseconds ago by an innerHTML rebuild, and the browser does not
    * re-run its hit test until the next mouse event or paint. So track the pointer ourselves
@@ -4383,6 +4592,12 @@
        * precisely what makes the press out of turn, so this is the one case the key could never
        * have covered by accident. */
       ck.out_of_turn ? ck.out_of_turn.blocked_by : '',
+      /* THE CLOCK RATE (#796). The wait line now says which of three things the plant is doing
+       * about this step's fast-forward, so a value outside the key never repaints — this file's
+       * lesson for the fourth time (#392, #653 defect 4, #759, #709). It is NOT per-broadcast
+       * churn: `time_acceleration` moves only when the player, this walkthrough, or an attention
+       * stop moves it, which is a handful of times in a whole leg. */
+      (s && s.metadata && s.metadata.time_acceleration) || 1,
       cklState.view].join('|');
     if (key === cklState.key) return;
     var firstBuild = !cklState.key;
@@ -4777,22 +4992,28 @@
            * steam-generator level the reviewer carried), step 14's cue is met in 3.1 plant-minutes
            * against a printed 62 — while an operator playing it live took 175. The number is not
            * an estimate of anything; it is a gate fixture wearing a prediction's clothes. */
-          var span = cklWaitSpan(st, holdS);
           /* AND WHICH RUNG TO REACH FOR *(OWNER, 2026-09-04, #628: "Add a suggested time warp
            * value for the long term waiting steps.")*. "Use time acceleration" left the player
            * to work out how much, and the answer is not obvious: the ladder is 1/5/10/60/600/
            * 3600 and the right rung spans four of those across the 34 pwr2 steps that qualify.
            * RD.CklSpeedHint picks it off the ladder itself, so this can never name a button that
            * is not there. */
-          var rung = RD.CklSpeedHint(holdS);
+          /* SINCE #796 THE WALKTHROUGH PRESSES IT — the line reports what the clock is doing
+           * ("fast-forwarding at 600×") and falls back to the instruction only when the player
+           * has taken the bar back, which is the one case where there is still something to
+           * press. Same formatter as `#warpInfo` (`cklWaitAdvice`), which is what #686 made
+           * these two lines share; the rung is named in every form. */
           /* THE WARP EXPLANATION CLAUSE IS GONE (#686, OWNER RULING 2026-09-10): it pointed at
            * "the line under the speed bar", which is exactly the paragraph #686 replaces — a
            * sentence that would have dangled the moment that paragraph did. This shrinks to the
            * span, the rung, and any step-authored `wait_hint` string (a different, per-step
            * fact — the accumulator-window caution, a pressure-swing note — not the boilerplate
            * that was removed). */
-          h += '<div class="ckl-sub ckl-wait">⏩ ' + (span ? 'About ' + span + ' at 1× — s' : 'A wait whose length depends on the plant — s') + 'et the speed control to <b>' +
-            rung.speed + '×</b>.' +
+          /* The rung keeps its <b>: the sentence is built as text by the shared formatter, so the
+           * emphasis is put back on the one token the eye is hunting for, once. */
+          var rungTxt = (cklRungFor(st) || RD.CklSpeedHint(holdS)).speed + '×';
+          h += '<div class="ckl-sub ckl-wait">⏩ ' +
+            mesc(cklWaitAdvice(s, { ck: ck, pr: pr, st: st }, false)).replace(rungTxt, '<b>' + rungTxt + '</b>') +
             (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
           waitLineShown = true;
         }
@@ -4856,27 +5077,32 @@
        * contingencies the player does have to act on. A label is what separates "read this to
        * act" from "read this to understand".
        *
-       * "Background - not an action" *(OWNER RULING, 2026-09-13: "Info-box label - a", choosing
-       * it over "Why this step - background, not an action")*, settling his own instruction of
-       * the same day: "I also want to make the informational text block more obvious that it's
-       * not a work step but just there for education. Put it in its own box, move it slightly
-       * away from the work steps and label it so it's obvious what it is."
+       * IT IS "Background", FULL STOP *(OWNER, 2026-09-20, #796 item 2: "Remove '-Not an Action'
+       * from every background title from every walkthrough step.")*. This SUPERSEDES the label he
+       * chose on 2026-09-13 ("Info-box label - a", over "Why this step - background, not an
+       * action"), which settled his instruction of that day: "I also want to make the
+       * informational text block more obvious that it's not a work step but just there for
+       * education. Put it in its own box, move it slightly away from the work steps and label it
+       * so it's obvious what it is."
        *
-       * IT NAMES THE CATEGORY AND STATES THE NEGATIVE, which is the half a question-shaped
-       * label cannot do. "Why this step" named the field's contract (CHECKLIST_WRITING_GUIDE
-       * F2 - one causal chain answering why the step is here) but a player scanning for what
-       * to press still has to read it to learn it is not for them. The rejected candidate kept
-       * both halves and ran long for a 10 px upper-case legend.
+       * THE BOX IS WHAT CARRIES THE NEGATIVE NOW, AND IT ALREADY DID. The old argument for the
+       * clause was that the legend should state the negative as well as the category, because a
+       * question-shaped label ("Why this step") leaves a player scanning for what to press to read
+       * the block before learning it is not for them. But the 2026-09-13 instruction was answered
+       * by THREE things at once — its own box, set apart from the action rows, AND a legend — and
+       * the two reviewers who met the result both reported the block as unambiguous background.
+       * With the box doing that work the clause was a negation restating what the layout says, on
+       * every step, in a 10 px legend that has to stay short.
        *
-       * THE GUIDE STILL CALLS THE FIELD "why" and F2 still governs what goes in it - this is
-       * the LEGEND the player reads, not a rename of the authoring key.
+       * THE GUIDE STILL CALLS THE FIELD "why" and F2 still governs what goes in it — this is the
+       * LEGEND the player reads, not a rename of the authoring key.
        *
        * The legend borrows `.ckl-story-l > span`'s idiom — small, upper case, muted — because
        * the story block is the OTHER always-drawn supplementary field on this card, and two
        * supplementary blocks that look like two different kinds of thing is the confusion this
        * is fixing. */
       if (st.why) {
-        det += '<div class="ckl-why"><span class="ckl-why-lbl">Background — not an action</span>' +
+        det += '<div class="ckl-why"><span class="ckl-why-lbl">Background</span>' +
           mesc(st.why) + '</div>';
       }
       if (det) {
@@ -4955,7 +5181,7 @@
     applyCklStepGlow(actSt ? stepHlLabels(actSt) : null,
                      actSt ? (pr.id + '#' + ck.step_index) : null);
     applyCklWatchGlow(actSt ? stepWatchLabels(actSt) : null);   /* #685 */
-    applyCklSpeedGlow(actSt);                                   /* #735 — #724 item 2 */
+    applyCklSpeedGlow(s, ck, actSt);                            /* #735 — #724 item 2; #796 */
     // Step hover → glow the controls/indications the step names (its `hl` list) on
     // the plant display, reusing the Instructor highlight vocabulary (revealControl).
     Array.prototype.forEach.call(cur.querySelectorAll('.ckl-step'), function (el) {
@@ -5305,15 +5531,25 @@
    * that is not in the strip is a real mismatch; lighting the whole strip in that case is precisely
    * what the owner rejected, and `syncWarpInfo` still prints "set the speed control to N x" in words
    * under it either way. */
-  function applyCklSpeedGlow(st) {
+  /* SINCE #796 THE MARK OUTLIVES THE PRESS AND THE PULSE DOES NOT. The walkthrough now sets this
+   * rung itself, so the button is already `.on` when the player looks — and
+   * `.ckl-speed-rung.on { animation: none }` (#743) turns the pulse off for exactly that case,
+   * with no second code path. The MARK stays, because it is the one thing on the bar that says
+   * which rung belongs to this step: take the bar back and the recommendation starts pulsing
+   * again, which is the only state where there is still something to press.
+   *
+   * IT STANDS DOWN WHEN THE WAIT IS SATISFIED (`cklStepSpeed` → 1×). An "act on this" cue over a
+   * step whose criterion the plant has already met is pointing at a fast-forward that would now
+   * be overshoot — the same reason auto drops the clock there. */
+  function applyCklSpeedGlow(s, ck, st) {
     clearCklSpeedGlow();
-    var holdS = st ? (+st.hold || 0) : 0;
-    if (!st || holdS < 180 || st.wait_hint === false) return;
+    var rung0 = cklRungFor(st);
+    if (!rung0) return;
+    if (ck && (ck.acc_met || ck.awaiting_ack)) return;
     if (warpNote && warpNote.reason === 'hold') return;   // the clock is held; the press would refuse
     var bar = document.getElementById('speed');
     if (!bar) return;
-    var rung = (RD.CklSpeedHint ? RD.CklSpeedHint(holdS) : null);
-    var el = (rung && rung.speed != null) ? bar.querySelector('[data-speed="' + rung.speed + '"]') : null;
+    var el = rung0.speed != null ? bar.querySelector('[data-speed="' + rung0.speed + '"]') : null;
     if (el) el.classList.add('ckl-speed-rung');
   }
   function clearCklSpeedGlow() {
@@ -7810,12 +8046,21 @@
     // sessionStorage refusal is not an error here: the catch falls back to in-memory, which
     // is exactly the old behaviour, and a browser that refuses storage has no stable session
     // id to double-count against anyway.
-    var SEEN_KEY = 'rd_telemetry_seen', MODE_KEY = 'rd_telemetry_lastmode';
+    var SEEN_KEY = 'rd_telemetry_seen', MODE_KEY = 'rd_telemetry_lastmode', FALSE_KEY = 'rd_telemetry_seenfalse';
     function ssGet(k) { try { return window.sessionStorage.getItem(k); } catch (e) { return null; } }
     function ssSet(k, v) { try { window.sessionStorage.setItem(k, v); } catch (e) { /* memory only */ } }
     function loadSeen() { try { return JSON.parse(ssGet(SEEN_KEY) || '{}') || {}; } catch (e) { return {}; } }
+    function loadFalseSeen() { try { return JSON.parse(ssGet(FALSE_KEY) || '{}') || {}; } catch (e) { return {}; } }
 
     var seen = loadSeen();    // one-shot milestones, latched for the life of the SESSION ID
+    // A STATE-DERIVED milestone (see stateMilestone below) fires on a FALSE -> TRUE
+    // transition OBSERVED within the session, never on the state alone — an initial
+    // condition can already sit in the "achieved" state (hot_full_power starts on the
+    // grid) and that is not something the player did. `falseSeen[name]` latches "this
+    // session has seen the condition FALSE at least once"; only a TRUE after that reaches
+    // `milestone()`. SAME storage, SAME session-ID lifetime as `seen` above, for the same
+    // reload reason.
+    var falseSeen = loadFalseSeen();
     var lastMode = (function () { var v = ssGet(MODE_KEY); return v === null ? null : Number(v); }());
     var lastPanel = null;
     var startedAt = 0, mission = null, ended = false;
@@ -7913,20 +8158,55 @@
         ev('milestone', { name: name, sim_seconds: Math.round(simT || 0) });
       },
 
+      // A state-derived milestone (on_grid, core_damage, …) is a FALSE -> TRUE transition
+      // observed WITHIN THE SESSION, never a state test — see the falseSeen comment above
+      // SEEN_KEY. Not start-state suppression: a player who starts on the grid, trips the
+      // turbine, and re-synchronises HAS achieved something, and this still reports it once
+      // the trip has put `falseSeen[name]` on record. `milestone()`'s own one-shot latch is
+      // unchanged — this only decides whether a TRUE is allowed to reach it.
+      stateMilestone: function (name, isTrue, simT) {
+        if (isTrue) {
+          if (falseSeen[name]) this.milestone(name, simT);
+          return;
+        }
+        if (!falseSeen[name]) {
+          falseSeen[name] = true;
+          ssSet(FALSE_KEY, JSON.stringify(falseSeen));   // survives a reload; see FALSE_KEY above
+        }
+      },
+
       // Driven from diagTick, so it sees every snapshot the recorder does.
       tick: function (s) {
         if (!s || !s.true_state) return;
         var ts = s.true_state, t = (s.metadata && s.metadata.sim_time) || 0;
 
-        // THE FUNNEL. plant_mode is the engine's own derived commercial mode (1-6),
-        // so "how far did they get" carries no threshold of mine.
+        // THE FUNNEL. plant_mode is the engine's own derived commercial mode (1-6), so "how
+        // far did they get" carries no threshold of mine — EXCEPT the very first mode this
+        // session ever observes, which only establishes the baseline. `lastMode` is `null`
+        // for "unknown, never observed" and can never be confused with a real mode (1-6 are
+        // the only values the engine ever reports), so the check below is exact, not a
+        // heuristic. Firing on that first observation recorded WHERE THEY BEGAN as
+        // something they REACHED — same shape as the on_grid defect above, one layer up,
+        // and it dominated the numbers: measured 2026-09-20, mode 1 read 69 sessions and
+        // mode 5 read 24, while 69 sessions STARTED at hot_full_power and 21 STARTED at
+        // cold_shutdown. The starting mode is already recorded once, correctly, on
+        // session_start's `initial_state` — this only stops it being counted a second time
+        // as progress. Every LATER transition, including back to a mode already visited,
+        // still fires exactly as before: plant_mode is not one-shot like a milestone.
         if (typeof ts.plant_mode === 'number' && ts.plant_mode !== lastMode) {
+          var modeWasKnown = lastMode !== null;     // false only for this session's FIRST mode
           lastMode = ts.plant_mode;
-          ssSet(MODE_KEY, String(lastMode));      // same reason as SEEN_KEY: survive a reload
-          ev('plant_mode', { mode: ts.plant_mode, sim_seconds: Math.round(t) });
+          ssSet(MODE_KEY, String(lastMode));        // same reason as SEEN_KEY: survive a reload
+          if (modeWasKnown) ev('plant_mode', { mode: ts.plant_mode, sim_seconds: Math.round(t) });
         }
-        if (typeof ts.mwe_output === 'number' && ts.mwe_output > 0) this.milestone('on_grid', t);
-        if (ts.fuel_damaged) this.milestone('core_damage', t);   // engine-latched, not inferred
+        // FALSE -> TRUE within the session, not a state test (see stateMilestone above):
+        // `hot_full_power` starts with `mwe_output > 0` already true, which used to fire
+        // on_grid on tick one and recorded the initial condition as an accomplishment —
+        // measured live, 2026-09-13..20: on_grid 69 sessions, hot_full_power 69 sessions.
+        if (typeof ts.mwe_output === 'number') this.stateMilestone('on_grid', ts.mwe_output > 0, t);
+        // engine-latched, not inferred; no shipped IC starts damaged, but it is the same
+        // SHAPE, so it goes through the same rule rather than waiting for one that does.
+        this.stateMilestone('core_damage', !!ts.fuel_damaged, t);
 
         if (mission && s.instructor && s.instructor.level_complete) {
           ev('mission_complete', { id: mission.id, seconds: since(mission.at) });
@@ -8535,6 +8815,16 @@
       // the element). This handler used to set it too, unguarded — and the PWR shell
       // has no #ffBadge, so every speed click threw before the segment could repaint.
       retireWarpNote();   // the player has acted on the last drop (#655); the info line moves on — unless the hold named is still standing (#710)
+      /* THE OVERRIDE, RECORDED AGAINST THE STEP IT WAS MADE ON (#796). The walkthrough's own
+       * act-once latch cannot carry this: the latch is dropped whenever the clock stops, so that
+       * a pause cannot strand a fast-forwarded step at 1× — and without a separate memory that
+       * same drop would throw away a rung the player deliberately chose. Compared by equality
+       * against the live key, so it expires by itself the moment the step, the wanted speed or
+       * the hold moves; nothing has to clear it. THE KEYBOARD RUNGS COME THROUGH HERE TOO —
+       * `SPEED_KEYS` clicks this button rather than sending its own command — and `resumeSim`'s
+       * drop to 1× does NOT, because it goes straight to `cmd()`: a resume is not the player
+       * choosing a rate. */
+      cklAuto.over = cklAutoKey(latest);
       cmd({ action: 'set_speed', value: +b.getAttribute('data-speed') });
     });
     // Settings: Units only under Display (#277 removed Values / Terminology /
