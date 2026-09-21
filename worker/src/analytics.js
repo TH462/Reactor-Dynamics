@@ -45,7 +45,7 @@ import { html, PAGE_HEAD, nav, table, errBlock, dayLabel, etDay, etDayStartMs,
 import { gql, ACCOUNT, SITE_TAG } from './cfapi.js';
 import { referrerKind, RETAIN_DAYS } from './rollup.js';
 import { parseDay, storeRange, dailyTotals, groupBy, referrerBreakdown, dayCountryReferrer,
-         deepLinkLandings, trailingMean, periodDelta, priorRange, dayRange, prevDay,
+         deepLinkLandings, deepLinkLandingsByDay, periodDelta, priorRange, dayRange, prevDay,
          nextDay } from './stats.js';
 
 // ---------------------------------------------------------------- RUM helpers
@@ -307,29 +307,38 @@ export async function analyticsPage(env, url) {
 
   const includesToday = to === today;
   const closedTo = includesToday ? prevDay(today) : to;
-  // Six extra days of lookback so the trailing mean is FULL on day one of the display range,
-  // not null for the first six rows of every window (`stats.trailingMean`'s own rule).
-  const meanFrom = stepBack(from, 6);
-  const closedRows = meanFrom <= closedTo ? await dailyTotals(db, meanFrom, closedTo) : [];
+  const closedRows = from <= closedTo ? await dailyTotals(db, from, closedTo) : [];
   const closedByDay = new Map(closedRows.map((r) => [r.day, r]));
-  const meanSeries = trailingMean(closedRows, 7, 'visits');
-  const meanByDay = new Map(meanSeries.map((m) => [m.day, m.mean]));
+  // DEEP-LINK LANDINGS, PER DAY (owner, 2026-09-20: "show that per day and plot it") — same
+  // closed/live split as everything else on this page, merged into the SAME by-day rows
+  // below rather than a parallel array, so the chart and table read one source of truth.
+  const closedDeepLink = from <= closedTo ? await deepLinkLandingsByDay(db, from, closedTo) : [];
+  const closedDeepLinkByDay = new Map(closedDeepLink.map((r) => [r.day, r]));
 
   const priorR = priorRange(from, to);
   const prevDays = await dailyTotals(db, priorR.from, priorR.to);   // same length as [from,to]
 
   // ---- today, live (only when the window reaches it) ------------------------------------
-  let liveToday = { pageloads: 0, visits: 0, coarse: false };
+  let liveToday = { pageloads: 0, visits: 0, coarse: false, deepLink: 0 };
   let liveErr = null;
   if (includesToday) {
     try {
+      const todayFrom = new Date(etDayStartMs(today)).toISOString();
+      const todayTo = new Date(nowMs).toISOString();
       const g = rumRows(await gql(apiToken, rumGroup('datetimeHour', 'datetimeHour_ASC', 26,
-        new Date(etDayStartMs(today)).toISOString(), new Date(nowMs).toISOString())),
-        (d) => ({}), undefined, { excludeBots: true });
+        todayFrom, todayTo)), (d) => ({}), undefined, { excludeBots: true });
+      // Same query shape `hybridDeepLink` uses for its own live slice below — same two
+      // conditions (not `/`, referrer `direct`), just summed here rather than kept by path.
+      const dl = rumRows(await gql(apiToken, rumGroup('requestPath refererHost requestHost',
+        'count_DESC', 1000, todayFrom, todayTo)),
+        (d) => ({ path: d.requestPath || '', referrerKind: referrerKind(d.refererHost || '', d.requestHost) }),
+        undefined, { excludeBots: true });
       liveToday = {
         pageloads: g.rows.reduce((s, r) => s + r.pageloads, 0),
         visits: g.rows.reduce((s, r) => s + r.visits, 0),
         coarse: g.coarse > 1,
+        deepLink: dl.rows.filter((r) => r.path !== '/' && r.referrerKind === 'direct')
+          .reduce((s, r) => s + r.visits, 0),
       };
     } catch (e) { liveErr = e.message; }
   }
@@ -341,11 +350,13 @@ export async function analyticsPage(env, url) {
     const ghost = (ghostSrc && !ghostSrc.missing && !ghostSrc.coarse) ? ghostSrc.visits : null;
     if (day === today) {
       return { day, pageloads: liveToday.pageloads, visits: liveToday.visits,
-               coarse: liveToday.coarse, missing: false, partial: true, mean: null, ghost };
+               coarse: liveToday.coarse, missing: false, partial: true, ghost,
+               deepLink: liveToday.deepLink };
     }
     const c = closedByDay.get(day) || { pageloads: 0, visits: 0, coarse: false, missing: true };
-    return { day, pageloads: c.pageloads, visits: c.visits, coarse: c.coarse, missing: c.missing,
-             partial: false, mean: meanByDay.has(day) ? meanByDay.get(day) : null, ghost };
+    const dl = closedDeepLinkByDay.get(day) || { deepLink: 0, coarse: false, missing: true };
+    return { day, pageloads: c.pageloads, visits: c.visits, coarse: c.coarse || dl.coarse,
+             missing: c.missing || dl.missing, partial: false, ghost, deepLink: dl.deepLink };
   });
 
   const curTotalVisits = rows.reduce((s, r) => s + r.visits, 0);
@@ -377,27 +388,46 @@ export async function analyticsPage(env, url) {
    * bucketing at any length — instead of folding into weekly/monthly bars. `rows.length`,
    * not the picked `days`/`from`/`to`, decides: it is the actual number of days on screen,
    * which is what a hand-picked range or a store-clamped window can shorten without the
-   * caller's own day count changing. */
+   * caller's own day count changing.
+   *
+   * TWO MORE CHANGES TO THE SAME CHART (2026-09-20, owner: "The new landing visits going
+   * other than the home page. Can you show that per day and plot it on the main plot? Get
+   * rid of the weekly average on that plot."): a third series, deep-link landings per day
+   * (`closedDeepLinkByDay`/`liveToday.deepLink` above, `r.deepLink` on every row) — and the
+   * 7-day trailing mean is GONE, in both the chart and the by-day table. The ghost
+   * (prior-period) line is untouched; it is a different thing, not asked to go. */
   const isLongWindow = rows.length > 14;
-  const chartOpts = { labelA: 'Pageloads', labelB: 'Landing visits', labelMean: '7d mean', labelGhost: 'prior period' };
+  /* `labelC` is the SHORT form on purpose. These are direct labels drawn in the chart's
+   * right-hand gutter (PADR = 96 px in render.js) and 'Deep-link landings' does not fit:
+   * it rendered CLIPPED as "Deep-link landing:" in both the bar and line charts. Found by
+   * screenshotting, invisible to every markup assertion -- the SVG was perfectly valid with
+   * the text running past the viewport. The legend and the day table both carry the full
+   * name, as do the SVG tooltips, which have no width limit and keep the FULL label --
+   * only the gutter text is shortened. A geometry check bounds every direct label
+   * against PADR so the next long one cannot clip silently. */
+  const chartOpts = { labelA: 'Pageloads', labelB: 'Landing visits',
+    labelC: 'Deep-link landings', labelCShort: 'Deep-link',
+                       labelGhost: 'prior period' };
   const chart = isLongWindow ? lineChart(rows, chartOpts) : barChart(bucketDays(rows).rows, { ...chartOpts, bucket: 'day' });
   const legend = !chart ? '' : isLongWindow
     ? '<p class="muted">Hollow point = today, live and partial · faded point = Cloudflare-'
       + 'coarse (±10) · a break in the line, marked with a dashed tick at the baseline = no '
-      + 'data captured that day (never drawn as a drop to zero) · solid line = 7-day '
-      + 'trailing mean of landing visits · dashed muted line = the prior, equal-length '
-      + 'period · dates are labelled every ' + lineLabelStride(rows.length) + ' day(s).</p>'
+      + 'data captured that day (never drawn as a drop to zero) · dashed muted line = the '
+      + 'prior, equal-length period · dates are labelled every ' + lineLabelStride(rows.length)
+      + ' day(s).</p>'
     : '<p class="muted">Hollow bar = today, live and partial · faded bar = Cloudflare-coarse '
-      + '(±10) · dashed tick at the baseline = no data captured that day · solid line = '
-      + '7-day trailing mean of landing visits · dashed muted line = the prior, '
-      + 'equal-length period.</p>';
+      + '(±10) · dashed tick at the baseline = no data captured that day · dashed muted '
+      + 'line = the prior, equal-length period.</p>';
 
   const dayTable = table(rows.map((r) => ({
     dateLabel: dayLabel(r.day, r.partial ? r.day : null),
     pageloads: r.pageloads,
     visits: r.visits,
+    deepLink: r.deepLink,
     status: r.missing ? 'no data captured' : r.coarse ? 'coarse (±10)' : r.partial ? 'today, live' : '',
-  })), [{ key: 'dateLabel', label: 'Date (ET)' }, ...RUM_COLS, { key: 'status', label: 'Note' }]);
+  })), [{ key: 'dateLabel', label: 'Date (ET)' }, ...RUM_COLS,
+        { key: 'deepLink', label: 'Deep-link landings', num: true },
+        { key: 'status', label: 'Note' }]);
 
   /* ---- the breakdown sections, MIGRATED (coordinator follow-up, item 1): closed days from
    * the first-party store, today folded in live — the SAME split as the by-day headline

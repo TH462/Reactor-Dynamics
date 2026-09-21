@@ -25,8 +25,11 @@
  *   5. A REFUSED COMPARISON PRINTS A NUMBER ANYWAY. `stats.periodDelta` refuses rather than
  *      dividing by a store that has not existed long enough to compare against; the page's
  *      OWN rendering has to honour that refusal rather than reaching for `.pct` regardless.
- *   6. THE TREND LINE JOINS THROUGH A GAP. A null trailing mean means "not enough data", not
- *      zero — drawing a line through it shows a dip that never happened.
+ *   6. THE TREND LINE JOINS THROUGH A GAP. A null ghost (prior-period) value means the
+ *      matching prior-period day was coarse or uncaptured, not zero — drawing a line
+ *      through it shows a dip that never happened. (The OTHER trend line this file used to
+ *      guard, a 7-day trailing mean, was REMOVED 2026-09-20 — owner: "get rid of the
+ *      weekly average" — see section 6 below for what replaced its coverage.)
  *   7. `bucketDays` DRAWS TOO MANY BARS. The old signature took a `days` count and switched
  *      to weekly above 7 because every caller's `days` and row count were the same number;
  *      an arbitrary range has no such guarantee, and a wrong bucket size draws either a wall
@@ -281,6 +284,39 @@ function seedDeepLinkLive() {
   return d;
 }
 
+/* DEEP-LINK LANDINGS, PLOTTED PER DAY (owner, 2026-09-20: "show that per day and plot it on
+ * the main plot"). An isolated fixture, own dates, well clear of "today" (2026-09-18) so
+ * every day here is CLOSED and the assertions do not have to reason about a live merge —
+ * that half is already proven by check 23b above. One of each kind of day this new reader
+ * has to tell apart, same convention section 3/4's `dailyTotals` fixture uses:
+ *   day 1  2 deep-link landings (plus a same-day home landing that must not count)
+ *   day 2  a REAL ZERO for deep-link landings — every landing that day is the homepage
+ *   day 3  exactly 1 deep-link landing — the "must still read at a value of 1" case
+ *   day 4  UNCAPTURED — no rollup_runs row at all
+ *   day 5..n  filler clean days (no deep-link landings), so a >14-day request has real
+ *             content past the boundary without inventing more deep-link cases than above */
+function seedDeepLinkByDay(nDays) {
+  var d = makeDb();
+  traffic(d, '2026-09-01', 'United States', 4, 2, 1, 0);
+  d._ins('traffic_daily', { day: '2026-09-01', country: 'United States', referrer_host: '',
+    referrer_kind: 'direct', path: '/ui/shell', device: 'desktop', browser: 'Chrome',
+    os: 'Windows', nav_type: 'navigate', bot: 0, pageloads: 4, visits: 2, sample_interval: 1 });
+  ran(d, '2026-09-01', 2, 1);
+  traffic(d, '2026-09-02', 'United States', 10, 6, 1, 0);
+  ran(d, '2026-09-02', 1, 1);
+  d._ins('traffic_daily', { day: '2026-09-03', country: 'United States', referrer_host: '',
+    referrer_kind: 'direct', path: '/ui/shell', device: 'desktop', browser: 'Chrome',
+    os: 'Windows', nav_type: 'navigate', bot: 0, pageloads: 2, visits: 1, sample_interval: 1 });
+  ran(d, '2026-09-03', 1, 1);
+  // day 4: no rollup_runs row at all -- UNCAPTURED.
+  for (var i = 5; i <= (nDays || 4); i++) {
+    var day = '2026-09-' + (i < 10 ? '0' + i : i);
+    traffic(d, day, 'United States', 4, 2, 1, 0);
+    ran(d, day, 1, 1);
+  }
+  return d;
+}
+
 // ---------------------------------------------------------------- the fake Cloudflare upstream
 var TODAY_LIVE = { rumPageloadEventsAdaptiveGroups: [
   { count: 8, avg: { sampleInterval: 1 }, sum: { visits: 5 }, dimensions: { bot: false } },
@@ -396,7 +432,7 @@ var INJECT = (/--inject=([\w-]+)/.exec(ARG) || [])[1] || null;
  * which is worse than no injection). */
 var INJECTIONS = {
   'closed-days-blind': ['analytics.js',
-    'const closedRows = meanFrom <= closedTo ? await dailyTotals(db, meanFrom, closedTo) : [];',
+    'const closedRows = from <= closedTo ? await dailyTotals(db, from, closedTo) : [];',
     'const closedRows = [];'],
   'today-not-live': ['analytics.js', 'if (includesToday) {', 'if (false) {'],
   'window-error-swallowed': ['analytics.js',
@@ -407,7 +443,7 @@ var INJECTIONS = {
     'return { day, pageloads: c.pageloads, visits: c.visits, coarse: false, missing: c.missing,'],
   'delta-always-ok': ['analytics.js',
     "const deltaLine = '<p>' + (delta.ok", "const deltaLine = '<p>' + (true"],
-  'mean-draws-to-zero': ['render.js',
+  'ghost-draws-to-zero': ['render.js',
     'if (v == null) { if (cur.length > 1) segs.push(cur); cur = []; return; }', ''],
   'legacy-days-ignored': ['analytics.js',
     'const n = Math.max(1, Math.min(90, Math.floor(Number(qDays)) || 7));', 'const n = 7;'],
@@ -524,6 +560,21 @@ var INJECTIONS = {
   'deeplink-skips-store': ['analytics.js',
     'const closed = from <= closedTo ? await deepLinkLandings(db, from, closedTo, 1000) : { total: 0, deepLink: 0, coarse: false, byPath: [] };',
     'const closed = { total: 0, deepLink: 0, coarse: false, byPath: [] };'],
+  /* DEEP-LINK LANDINGS, PER DAY, ON THE BY-DAY CHART (owner, 2026-09-20: "show that per
+   * day and plot it on the main plot"). Four behaviours, same shapes the sections above
+   * already prove for the TOTAL form, now for the per-day merge that feeds the chart/table. */
+  'deeplink-byday-skips-store': ['analytics.js',
+    'const closedDeepLink = from <= closedTo ? await deepLinkLandingsByDay(db, from, closedTo) : [];',
+    'const closedDeepLink = [];'],
+  'deeplink-byday-live-not-merged': ['analytics.js',
+    "const dl = rumRows(await gql(apiToken, rumGroup('requestPath refererHost requestHost',",
+    "const dl = { rows: [] }; false && rumRows(await gql(apiToken, rumGroup('requestPath refererHost requestHost',"],
+  'deeplink-byday-live-home-counted': ['analytics.js',
+    "deepLink: dl.rows.filter((r) => r.path !== '/' && r.referrerKind === 'direct')",
+    "deepLink: dl.rows.filter((r) => r.path === '/')"],
+  'deeplink-byday-live-external-counted': ['analytics.js',
+    "deepLink: dl.rows.filter((r) => r.path !== '/' && r.referrerKind === 'direct')",
+    "deepLink: dl.rows.filter((r) => r.path !== '/')"],
 };
 
 if (/--list-injections/.test(ARG)) {
@@ -690,25 +741,42 @@ async function threwAsync(fn) {
        !/<b>(up|down|flat)[^<]*<\/b>/.test(p5.slice(p5.indexOf('No comparable') - 5)));
 
     /* =================================================================== 6. trend line */
-    head('6. the trailing-mean line skips a null window instead of drawing to zero');
-    var p6 = await renderPage('&from=2026-09-01&to=2026-09-14');
-    var meanPoly = /<polyline points="([^"]+)" fill="none" stroke="#5fd9a0"/.exec(p6);
-    ck('a mean polyline is drawn at all', !!meanPoly, meanPoly ? 'found' : 'NOT FOUND');
-    if (meanPoly) {
-      var pts = meanPoly[1].trim().split(/\s+/);
-      var firstX = parseFloat(pts[0].split(',')[0]);
-      var PADL = 34, plotW = 720 - 34 - 96, slot = plotW / 14;
-      var expectFirstX = PADL + 6 * slot + slot / 2;   // day index 6 (2026-09-07), 0-based
-      ck('it has exactly 8 points (days 7..14 of the 14-day window — the first 6 have no '
-       + 'full trailing window and are skipped, not zeroed)',
-         pts.length === 8, pts.length + ' points');
-      ck('...and the FIRST point sits at day index 6, not day 0 — the gap is a gap, not a '
-       + 'flat run to the baseline',
-         Math.abs(firstX - expectFirstX) < 1, 'x=' + firstX.toFixed(1) + ' vs expected ' + expectFirstX.toFixed(1));
+    head('6. the ghost (prior-period) line skips a null gap instead of drawing to zero — '
+       + 'REPOINTED here 2026-09-20 (owner: "get rid of the weekly average on that plot" '
+       + 'removed the mean/7-day-average line this section used to cover; the shared '
+       + 'null-skip logic in render.js is untouched, so the injection that guards it, '
+       + 'renamed ghost-draws-to-zero, is proven against ghost instead)');
+    var p6 = await renderPage('&from=2026-09-01&to=2026-09-07');
+    /* This window's PRIOR period is 08-25..08-31 — the fixture's own coarse/missing week
+     * (checks 4 and 17 use the same days) — so its per-day ghost values are
+     * [6, 5, 0, null, 5, null, null]: three clean days (08-25..08-27, the middle one a REAL
+     * ZERO, not missing) form ONE drawable run, the 08-28 COARSE day breaks it, the lone
+     * 08-29 point (index 4) is one point — too short to draw, a polyline needs more than
+     * one — and 08-30/08-31 being MISSING leaves nothing after it. */
+    var ghostRe = /<polyline points="([^"]+)" fill="none" stroke="#8fa2b3" stroke-width="2" stroke-dasharray="5,4"\/>/;
+    var ghostPolys = p6.match(new RegExp(ghostRe.source, 'g')) || [];
+    ck('exactly ONE ghost polyline is drawn — the lone index-4 point stays a gap, not a '
+     + 'one-point line joined to its neighbours',
+       ghostPolys.length === 1, ghostPolys.length + ' ghost polyline(s)');
+    var ghostMatch = ghostRe.exec(p6);
+    ck('a ghost polyline is drawn at all', !!ghostMatch, ghostMatch ? 'found' : 'NOT FOUND');
+    if (ghostMatch) {
+      var gpts = ghostMatch[1].trim().split(/\s+/);
+      var gFirstX = parseFloat(gpts[0].split(',')[0]);
+      var GPADL = 34, gplotW = 720 - 34 - 96, gslot = gplotW / 7;
+      var gExpectFirstX = GPADL + 0 * gslot + gslot / 2;   // day index 0 (2026-09-01)
+      ck('it has exactly 3 points (08-25..08-27 — the run the 08-28 coarse day breaks)',
+         gpts.length === 3, gpts.length + ' points');
+      ck('...and the FIRST point sits at day index 0 — the gap that follows it does not '
+       + 'shift where the run starts',
+         Math.abs(gFirstX - gExpectFirstX) < 1, 'x=' + gFirstX.toFixed(1) + ' vs expected ' + gExpectFirstX.toFixed(1));
     } else {
-      ck('it has exactly 8 points', false, 'no polyline to inspect');
-      ck('...and the FIRST point sits at day index 6, not day 0', false, 'no polyline to inspect');
+      ck('it has exactly 3 points', false, 'no polyline to inspect');
+      ck('...and the FIRST point sits at day index 0', false, 'no polyline to inspect');
     }
+    ck('the mean (7-day trailing average) line is GONE from the page entirely — no #5fd9a0 '
+     + 'stroke anywhere, and no "7d mean"/"trailing mean" label',
+       !/#5fd9a0/.test(p6) && !/7d mean/.test(p6) && !/trailing mean/.test(p6));
 
     /* =================================================================== 7. no bucketing */
     head('7. bucketDays NEVER buckets any more, at 7 / 30 / 45 / 400 days (rewritten '
@@ -717,8 +785,8 @@ async function threwAsync(fn) {
     function mkRows(n) {
       var rows = [], d = new Date('2026-01-01T00:00:00Z');
       for (var i = 0; i < n; i++) {
-        rows.push({ day: d.toISOString().slice(0, 10), pageloads: 1, visits: 1,
-          coarse: false, missing: false, partial: false, mean: null, ghost: null });
+        rows.push({ day: d.toISOString().slice(0, 10), pageloads: 1, visits: 1, deepLink: 0,
+          coarse: false, missing: false, partial: false, ghost: null });
         d.setUTCDate(d.getUTCDate() + 1);
       }
       return rows;
@@ -757,8 +825,9 @@ async function threwAsync(fn) {
        'is always labelled, and no two labels are drawn close enough to overprint');
     function mkLineRows(n) {
       var rows = mkRows(n);
-      // One real mean value so the direct-label collision-avoidance path is exercised too.
-      rows[rows.length - 1].mean = 3;
+      // One real ghost value so the direct-label collision-avoidance path is exercised too
+      // (the mean line this used to set is gone — see section 6).
+      rows[rows.length - 1].ghost = 3;
       return rows;
     }
     /* 18 is in the list because it is the case that BROKE: stride 2 over 18 days does not
@@ -975,9 +1044,12 @@ async function threwAsync(fn) {
        /<circle[^>]*fill="none" stroke="#3987e5" stroke-width="2"><title>09-18 F — Pageloads: 11 \(today, partial\)<\/title>/.test(by17b));
     ck('today\'s landing-visits point (7) is hollow too',
        /<circle[^>]*fill="none" stroke="#d95926" stroke-width="2"><title>09-18 F — Landing visits: 7 \(today, partial\)<\/title>/.test(by17b));
-    ck('no OTHER day in the window carries the "(today, partial)" flag — exactly the 2 '
-     + 'series points for today, none else',
-       (by17b.match(/\(today, partial\)/g) || []).length === 2,
+    ck('today\'s deep-link-landings point (5, from the live DEEPLINK_LIVE batch) is hollow '
+     + 'too — the third series carries the same partial treatment as the first two',
+       /<circle[^>]*fill="none" stroke="#a374db" stroke-width="2"><title>09-18 F — Deep-link landings: 5 \(today, partial\)<\/title>/.test(by17b));
+    ck('no OTHER day in the window carries the "(today, partial)" flag — exactly the 3 '
+     + 'series points for today (pageloads, landing visits, deep-link landings), none else',
+       (by17b.match(/\(today, partial\)/g) || []).length === 3,
        (by17b.match(/\(today, partial\)/g) || []).length + ' flagged point(s)');
 
     /* ============== 18. a failed referrer fetch degrades, never crashes the page ========= */
@@ -1140,6 +1212,72 @@ async function threwAsync(fn) {
      + 'NaN%, never Infinity%, never a bare 0%',
        /<b>0 of 0 landing visits<\/b> \(no landing visits in this window\)/.test(dl23d)
        && !/NaN/.test(dl23d) && !/Infinity/.test(dl23d));
+
+    /* ============================ 24. deep-link landings, PER DAY ======================= */
+    head('24. deep-link landings PLOTTED PER DAY on the by-day chart and table (owner, '
+       + '2026-09-20: "show that per day and plot it on the main plot")');
+    var pDLbar = await renderPageOn(seedDeepLinkByDay(4), '&from=2026-09-01&to=2026-09-04');
+    var dlBarSection = pDLbar.slice(pDLbar.indexOf('<h2>By day</h2>'), pDLbar.indexOf('<h2>', pDLbar.indexOf('<h2>By day</h2>') + 1));
+    ck('the by-day TABLE carries a Deep-link landings column',
+       /<th class="num">Deep-link landings<\/th>/.test(dlBarSection));
+    ck('day 1 (2 deep-link landings, plus a same-day home landing that must not add to it) '
+     + 'shows 2 in that column, against 8 pageloads / 4 landing visits total',
+       /<td>2026-09-01[^<]*<\/td><td class="num">8<\/td><td class="num">4<\/td><td class="num">2<\/td><td><\/td>/.test(dlBarSection),
+       dlBarSection.match(/<td>2026-09-01[^<]*<\/td>(?:<td[^>]*>[^<]*<\/td>){4}/) || 'no row match');
+    ck('day 3 (exactly ONE deep-link landing — must still read as a value, not vanish) shows 1',
+       /<td>2026-09-03[^<]*<\/td><td class="num">2<\/td><td class="num">1<\/td><td class="num">1<\/td><td><\/td>/.test(dlBarSection));
+    ck('day 2 is a REAL ZERO for deep-link landings (every landing that day was the '
+     + 'homepage) — 0, not blank, and NOT marked "no data captured"',
+       /<td>2026-09-02[^<]*<\/td><td class="num">10<\/td><td class="num">6<\/td><td class="num">0<\/td><td><\/td>/.test(dlBarSection));
+    ck('day 4 (no rollup run at all) is marked "no data captured" — distinguishing it from '
+     + 'day 2’s real zero, though both read deep-link 0',
+       /<td>2026-09-04[^<]*<\/td><td class="num">0<\/td><td class="num">0<\/td><td class="num">0<\/td><td>no data captured<\/td>/.test(dlBarSection));
+    ck('the chart draws a THIRD bar series for deep-link landings, in its own colour '
+     + '(#a374db), on the day with 2',
+       /fill="#a374db"><title>09-01[^—]* — Deep-link landings: 2<\/title>/.test(dlBarSection));
+    ck('...and it is still visible — a bar is drawn — at a value of exactly 1',
+       /fill="#a374db"><title>09-03[^—]* — Deep-link landings: 1<\/title>/.test(dlBarSection));
+    ck('...and draws NO bar for the real-zero day — 0 height, the same rule pageloads/'
+     + 'visits already follow, not a special case for this series',
+       !/Deep-link landings: 0/.test(dlBarSection));
+    ck('the 7-day mean line is GONE from this page too — no #5fd9a0 stroke, no "7d mean" '
+     + 'or "trailing mean" text anywhere',
+       !/#5fd9a0/.test(pDLbar) && !/7d mean/.test(pDLbar) && !/trailing mean/.test(pDLbar));
+
+    // Past 14 days the SAME series draws as a LINE (section 7b already proves the shape
+    // switch generally; this proves the THIRD series specifically survives it).
+    var pDLline = await renderPageOn(seedDeepLinkByDay(16), '&from=2026-09-01&to=2026-09-16');
+    var dlLineSection = pDLline.slice(pDLline.indexOf('<h2>By day</h2>'), pDLline.indexOf('<h2>', pDLline.indexOf('<h2>By day</h2>') + 1));
+    ck('past 14 days the deep-link series draws as a LINE too (a <circle> in its own '
+     + 'colour), value 2 on day 1',
+       /<circle[^>]*fill="#a374db"[^>]*><title>09-01[^—]* — Deep-link landings: 2<\/title>/.test(dlLineSection));
+    ck('...and value 1 on day 3, still readable as a distinct point',
+       /<circle[^>]*fill="#a374db"[^>]*><title>09-03[^—]* — Deep-link landings: 1<\/title>/.test(dlLineSection));
+    ck('no second or rescaled axis was introduced for the tiny series — still exactly two '
+     + 'gridline labels (0 and the top), same as every other window',
+       (dlLineSection.match(/text-anchor="end">/g) || []).length === 2,
+       (dlLineSection.match(/text-anchor="end">/g) || []).length + ' gridline label(s)');
+
+    /* ============== 25. no direct label overruns the chart's right-hand gutter ========= */
+    head('25. every direct series label fits the gutter it is drawn in');
+    /* FOUND BY SCREENSHOTTING, not by any assertion here: "Deep-link landings" rendered
+     * CLIPPED as "Deep-link landing:" in both the bar and the line chart. The SVG was
+     * perfectly valid -- the text simply ran past the viewport -- so every markup check
+     * passed. The gutter is PADR = 96 px against a 720 px viewBox, and the label is drawn
+     * at font-size 11. This bounds the DRAWN GEOMETRY rather than the text, so the next
+     * long label cannot clip in silence; the tooltips and the legend keep the full name
+     * and are deliberately not covered by this, having no width limit. */
+    var PADR_PX = 96, LABEL_FONT_PX = 11, CHAR_W = 0.62;   // 0.62em is wide for this stack
+    ['', '&from=2026-08-25&to=2026-09-08'].forEach(function (qs, i) {
+      var svg = i ? p13 : p11;
+      var lbls = (svg.match(/<text x="6[0-9][0-9][^>]*font-size="11"[^>]*>([^<]*)</g) || [])
+        .map(function (t) { return /includes=""|>([^<]*)<$/.exec(t)[1]; });
+      var widest = lbls.reduce(function (m, t) { return Math.max(m, t.length); }, 0);
+      var px = widest * LABEL_FONT_PX * CHAR_W;
+      ck((i ? 'line' : 'bar') + ' chart: widest direct label "' + widest + ' chars" fits '
+         + PADR_PX + ' px (' + px.toFixed(0) + ' px)',
+         lbls.length > 0 && px <= PADR_PX, lbls.join(' | ') + ' -> ' + px.toFixed(0) + ' px');
+    });
 
     /* =================================================================== 9. no token= */
     head('9. no rendered page anywhere carries a credential in a href');

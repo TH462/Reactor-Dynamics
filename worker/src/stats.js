@@ -23,8 +23,9 @@
  * to the nearest 10 and is stored with `sample_interval > 1` (rollup.js stores it AND marks
  * it, deliberately, rather than dropping it). Against a real volume of about 5 landing
  * visits a day, one such day is a doubled bar and a blown weekly mean. So `dailyTotals`
- * marks it and `trailingMean` returns null for any window containing one, rather than
- * blending a rounded figure with exact ones and printing the result to two decimals.
+ * marks it, and any day-level reading built from it must skip a window containing one
+ * rather than blending a rounded figure with exact ones — `periodDelta` already refuses on
+ * a coarse day; the by-day chart and table print the flag instead of averaging anything.
  *
  * ------------------------------------------------------------------ 3. THE COMPARISON
  * REFUSES RATHER THAN MISLEADS. The store began about 2026-09-01 (rollup.js landed
@@ -372,6 +373,60 @@ export async function deepLinkLandings(db, from, to, limit) {
   };
 }
 
+/* DEEP-LINK LANDINGS, PER DAY (owner request, 2026-09-20: "show that per day and plot it on
+ * the main plot"). Same two-condition metric as `deepLinkLandings` above (not the homepage
+ * AND referrer kind `direct`) and the SAME day-quality convention `dailyTotals` uses — one
+ * row per calendar day in [from, to], ascending, no gaps, each carrying `coarse`/`missing`
+ * off `rollup_runs` the identical way. A dedicated per-day reader rather than looping
+ * `deepLinkLandings` one day at a time: that would issue one D1 round trip per day instead
+ * of two total, and would have to re-derive the missing/coarse rules a second way.
+ *
+ *   { day, deepLink, coarse, missing }
+ *
+ * `coarse`  the day's rows include one captured from the rounded tier (sample_interval > 1),
+ *           or the run itself recorded a coarse capture — same rule as `dailyTotals`.
+ * `missing` no rollup run completed for that day, or the run recorded a traffic failure. A
+ *           real zero day (every landing was the homepage, or the run genuinely saw
+ *           nothing) is `{deepLink:0, missing:false}` — the same real-zero-vs-uncaptured
+ *           distinction `dailyTotals` exists to preserve, now for this metric too. */
+export async function deepLinkLandingsByDay(db, from, to) {
+  const days = dayRange(from, to);
+  const f = days[0], t = days[days.length - 1];
+
+  const agg = await db.prepare(
+    'SELECT day AS day, path AS path, referrer_kind AS referrer_kind, SUM(visits) AS visits,'
+    + ' MAX(sample_interval) AS si FROM traffic_daily'
+    + ' WHERE day >= ? AND day <= ? AND bot = 0 GROUP BY day, path, referrer_kind').bind(f, t).all();
+  const runs = await db.prepare(
+    'SELECT day AS day, traffic_rows AS traffic_rows, coarse AS coarse, note AS note'
+    + ' FROM rollup_runs WHERE day >= ? AND day <= ?').bind(f, t).all();
+
+  const byDay = new Map();
+  for (const r of rowsOf(agg)) {
+    const day = String(r.day);
+    const cur = byDay.get(day) || { deepLink: 0, si: 1 };
+    // THE TWO CONDITIONS THE METRIC IS: not the homepage, AND no referrer at all.
+    if (String(r.path) !== '/' && String(r.referrer_kind) === 'direct') cur.deepLink += num(r.visits);
+    cur.si = Math.max(cur.si, num(r.si) || 1);
+    byDay.set(day, cur);
+  }
+  const runBy = new Map();
+  for (const r of rowsOf(runs)) runBy.set(String(r.day), r);
+
+  return days.map((day) => {
+    const a = byDay.get(day);
+    const run = runBy.get(day);
+    const note = run ? String(run.note == null ? '' : run.note) : '';
+    const failed = /traffic failed/i.test(note);
+    return {
+      day,
+      deepLink: a ? a.deepLink : 0,
+      coarse: (a ? a.si : 1) > 1 || (run ? num(run.coarse) : 1) > 1,
+      missing: !run || failed,
+    };
+  });
+}
+
 /* REFERRER HOST **AND** THE KIND IT WAS CLASSIFIED AS, in one row.
  *
  * `groupBy('referrer_host', …)` cannot carry a second column through, so a page that wants
@@ -488,28 +543,13 @@ export function sessionsInPeriod() {
 
 /* ---------------------------------------------------------------- trend
  *
- * A trailing mean over `window` days of `dailyTotals` rows, aligned to the last day of each
- * window. `mean` is null until the window is full AND null for any window containing a
- * coarse or uncaptured day: at about 5 landing visits a day, one figure rounded to the
- * nearest 10 moves a 7-day mean by more than the weekday effect the line exists to remove.
- * A gap in the line is readable; a bent line is not.
- *
- * Defaults to `visits` (landing visits), the headline grain — pass 'pageloads' for the
- * other series. */
-export function trailingMean(days, window, metric) {
-  const rows = days || [];
-  const w = Math.floor(Number(window));
-  if (!(w >= 1)) throw new Error('stats.trailingMean: window must be a whole number of days >= 1');
-  const key = metric || 'visits';
-  return rows.map((r, i) => {
-    if (i + 1 < w) return { day: r.day, mean: null };
-    const win = rows.slice(i + 1 - w, i + 1);
-    if (win.some((x) => x.coarse || x.missing)) return { day: r.day, mean: null };
-    const sum = win.reduce((s, x) => s + num(x[key]), 0);
-    return { day: r.day, mean: Math.round((sum / w) * 100) / 100 };
-  });
-}
-
+ * `trailingMean` (a 7-day trailing average over `dailyTotals` rows) lived here and was
+ * REMOVED 2026-09-20 — owner: "Get rid of the weekly average on that plot." It was the
+ * by-day chart's only caller (`analytics.js`), which no longer builds it; nothing else in
+ * this tree called it, so it is gone rather than left as dead exported surface. The
+ * coarse/missing-window rule it enforced ("a rounded or uncaptured day poisons an average
+ * built across it") still applies to `periodDelta` below, which refuses for the same reason.
+ */
 const refuse = (reason) => ({ ok: false, reason });
 
 /* PERIOD OVER PERIOD, or an honest refusal.

@@ -305,10 +305,19 @@ var INJECTIONS = {
   'missing-blind': ['stats.js', 'missing: !run || failed,', 'missing: false,'],
   'coarse-blind': ['stats.js',
     'coarse: (a ? num(a.si) : 1) > 1 || (run ? num(run.coarse) : 1) > 1,', 'coarse: false,'],
-  'mean-blends': ['stats.js',
-    'if (win.some((x) => x.coarse || x.missing)) return { day: r.day, mean: null };', ''],
   'delta-always': ['stats.js', 'const refuse = (reason) => ({ ok: false, reason });',
     "const refuse = (reason) => ({ ok: true, pct: 0, direction: 'flat', reason });"],
+  /* PER-DAY DEEP-LINK LANDINGS (owner, 2026-09-20: "show that per day"). Same shape as the
+   * two `deeplink-*` injections below, aimed at the new day-form instead of the total. */
+  'deeplink-day-home-counted': ['stats.js',
+    "    if (String(r.path) !== '/' && String(r.referrer_kind) === 'direct') cur.deepLink += num(r.visits);",
+    "    if (String(r.path) === '/') cur.deepLink += num(r.visits);"],
+  'deeplink-day-external-counted': ['stats.js',
+    "    if (String(r.path) !== '/' && String(r.referrer_kind) === 'direct') cur.deepLink += num(r.visits);",
+    "    if (String(r.path) !== '/') cur.deepLink += num(r.visits);"],
+  'deeplink-day-bots-in': ['stats.js',
+    "    + ' WHERE day >= ? AND day <= ? AND bot = 0 GROUP BY day, path, referrer_kind').bind(f, t).all();",
+    "    + ' WHERE day >= ? AND day <= ? GROUP BY day, path, referrer_kind').bind(f, t).all();"],
   'loose-day': ['stats.js', 'if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(t)) return null;', ''],
   'no-allowlist': ['stats.js',
     'const col = Object.prototype.hasOwnProperty.call(DIMS, dim) ? DIMS[dim] : null;',
@@ -555,32 +564,71 @@ async function threwAsync(fn) {
      r[1].pageloads === 8 && r[1].visits === 5, r[1].pageloads + ' pageloads, ' + r[1].visits + ' visits');
 
   /* =============================================================== 4. coarse days */
-  head('4. a COARSE day is marked, and never averaged in');
+  head('4. a COARSE day is marked (stats.trailingMean, which used to be tested right here, '
+     + 'was REMOVED 2026-09-20 -- owner: "get rid of the weekly average" -- and nothing else '
+     + 'called it)');
   ck('sample_interval > 1 marks the day coarse', r[3].coarse === true && r[3].pageloads === 20,
      '09-04 coarse=' + r[3].coarse + ', ' + r[3].pageloads + ' pageloads (rounded to the nearest 10)');
   ck('an exact day is NOT marked coarse',
      r[0].coarse === false && r[4].coarse === false, '09-01 and 09-05');
   ck('a day with no rows is not silently coarse', r[2].coarse === false && r[5].coarse === false, '');
+  ck('stats.trailingMean no longer exists (removed, not just unexported)',
+     S.trailingMean === undefined, typeof S.trailingMean);
 
-  var full = await S.dailyTotals(db, '2026-09-01', '2026-09-21');
-  var tm = S.trailingMean(full, 7);
-  var byDayMean = {};
-  tm.forEach(function (x) { byDayMean[x.day] = x.mean; });
-  ck('the trailing mean is null until the window is full',
-     tm.slice(0, 6).every(function (x) { return x.mean === null; }) && tm.length === full.length,
-     'first 6 of ' + tm.length + ' null');
-  ck('a window containing the COARSE day yields null, not a blended figure',
-     byDayMean['2026-09-10'] === null, '09-10 window 09-04..09-10 -> ' + byDayMean['2026-09-10']);
-  ck('a window containing an UNCAPTURED day yields null',
-     byDayMean['2026-09-13'] === null, '09-13 window 09-07..09-13 -> ' + byDayMean['2026-09-13']);
-  ck('...and a clean window DOES produce a number (else the nulls above prove nothing)',
-     byDayMean['2026-09-14'] === 4 && byDayMean['2026-09-21'] === 7,
-     '09-14 = ' + byDayMean['2026-09-14'] + ', 09-21 = ' + byDayMean['2026-09-21'] + ' landing visits/day');
-  ck('every mean is either null or a finite number — never NaN',
-     tm.every(function (x) { return x.mean === null || Number.isFinite(x.mean); }),
-     JSON.stringify(tm.map(function (x) { return x.mean; })));
-  ck('a window of 1 is legal; a window of 0 throws rather than dividing by it',
-     S.trailingMean(full, 1)[0].mean === 6 && !!threw(function () { return S.trailingMean(full, 0); }), '');
+  /* ===================================================== 4b. deep-link landings, per day */
+  head('4b. deepLinkLandingsByDay -- the per-day form (owner, 2026-09-20: "show that per '
+     + 'day and plot it on the main plot")');
+  /* An isolated fixture (own db, same reasoning `seedDeepLink` above gives): PATH x
+   * REFERRER-KIND x DAY diversity the shared `db` has none of. Four days, one of each kind
+   * this reader has to tell apart, same convention `dailyTotals`' own section 3 uses. */
+  function seedDeepLinkByDay() {
+    var d = makeDb();
+    // Day 1: two deep-link landings (both direct, non-home) plus a home landing that must
+    // not be counted.
+    traffic(d, '2026-09-01', 'United States', 6, 4, 1, 0);
+    traffic(d, '2026-09-01', 'United States', 3, 2, 1, 0, { path: '/ui/shell' });
+    ran(d, '2026-09-01', 2, 1);
+    // Day 2: REAL ZERO for deep-link landings -- every landing is the homepage -- must read
+    // 0 and NOT missing, the same real-zero-vs-uncaptured split `dailyTotals` guards.
+    traffic(d, '2026-09-02', 'United States', 10, 6, 1, 0);
+    ran(d, '2026-09-02', 1, 1);
+    // Day 3: an EXTERNAL non-home landing only -- must stay 0 (discovery, not a return).
+    traffic(d, '2026-09-03', 'United States', 2, 1, 1, 0,
+      { path: '/about', referrer_kind: 'external', referrer_host: 'google.com' });
+    ran(d, '2026-09-03', 1, 1);
+    // Day 4: exactly ONE deep-link landing -- the "reads at 1" case -- on a COARSE row.
+    traffic(d, '2026-09-04', 'United States', 2, 1, 10, 0, { path: '/ui/shell' });
+    ran(d, '2026-09-04', 1, 10, 'coarse:10');
+    // Day 5: UNCAPTURED -- no rollup_runs row at all.
+    return d;
+  }
+  var dld = seedDeepLinkByDay();
+  var dbd = await S.deepLinkLandingsByDay(dld, '2026-09-01', '2026-09-05');
+  ck('one row per calendar day, ascending, no gaps',
+     dbd.length === 5 && dbd.map(function (x) { return x.day; }).join(',')
+       === '2026-09-01,2026-09-02,2026-09-03,2026-09-04,2026-09-05',
+     dbd.map(function (x) { return x.day.slice(8) + ':' + x.deepLink; }).join(' '));
+  ck('day 1: 2 deep-link landings (the home landing on the same day is excluded)',
+     dbd[0].deepLink === 2 && dbd[0].missing === false && dbd[0].coarse === false,
+     JSON.stringify(dbd[0]));
+  ck('day 2: a REAL ZERO -- every landing was the homepage -- 0 and NOT missing',
+     dbd[1].deepLink === 0 && dbd[1].missing === false, JSON.stringify(dbd[1]));
+  ck('day 3: an external non-home landing does not count -- 0, not 1',
+     dbd[2].deepLink === 0 && dbd[2].missing === false, JSON.stringify(dbd[2]));
+  ck('day 4: exactly 1 deep-link landing, and COARSE (sample_interval 10)',
+     dbd[3].deepLink === 1 && dbd[3].coarse === true && dbd[3].missing === false,
+     JSON.stringify(dbd[3]));
+  ck('day 5: UNCAPTURED -- no run row at all -- 0 and MISSING, distinguishable from day 2’s '
+   + 'real zero by the flag alone (both read deepLink 0)',
+     dbd[4].deepLink === 0 && dbd[4].missing === true
+     && dbd[4].deepLink === dbd[1].deepLink && dbd[4].missing !== dbd[1].missing,
+     JSON.stringify(dbd[4]));
+  var dbdSeen = dld.seen[dld.seen.length - 2];   // the traffic_daily query, not rollup_runs
+  ck('bots are excluded and the range is bound -- GROUP BY day, path, referrer_kind',
+     dbdSeen.sql.indexOf('GROUP BY day, path, referrer_kind') >= 0
+     && dbdSeen.sql.indexOf('bot = 0') >= 0
+     && dbdSeen.args.join(',') === '2026-09-01,2026-09-05',
+     dbdSeen.sql.replace(/\s+/g, ' ').slice(0, 100));
 
   /* =============================================================== 5. the store's edges */
   head('5. where the recorded history begins — zero rows must not draw as zero traffic');

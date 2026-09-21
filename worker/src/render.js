@@ -466,12 +466,17 @@ export function table(rows, cols) {
  * caller passes days when it is not. The exact numbers stay in the table directly below:
  * this draws the shape, the table answers "how many".
  *
- * THE PALETTE IS COMPUTED, NOT CHOSEN. Two categorical slots for two series, validated
- * against this page's dark surface — blue #3987e5 and orange #d95926, worst adjacent CVD
- * separation ΔE 26.8 (protan) and 31.8 for normal vision. The first pair tried by eye
- * (this page's own link blue against a violet) FAILED at ΔE 3.0 deutan: indistinguishable
- * to a red-green colourblind reader, and only 12.2 to everyone else. Do not substitute
- * hexes here without re-running that check.
+ * THE PALETTE IS COMPUTED, NOT CHOSEN, FOR THE FIRST TWO. Blue #3987e5 and orange #d95926,
+ * validated against this page's dark surface — worst adjacent CVD separation ΔE 26.8
+ * (protan) and 31.8 for normal vision. The first pair tried by eye (this page's own link
+ * blue against a violet) FAILED at ΔE 3.0 deutan: indistinguishable to a red-green
+ * colourblind reader, and only 12.2 to everyone else. Do not substitute hexes here without
+ * re-running that check.
+ *
+ * THE THIRD, #a374db (deep-link landings, added 2026-09-20 for the per-day series), is
+ * chosen for hue distance from the first two and from GHOST_COLOR below — it was NOT put
+ * through that same ΔE measurement. Said plainly rather than implying a check that never
+ * ran (HR12); re-run it before trusting this hex under a CVD simulation.
  *
  * NOT the `.warn` / `.err` colours, deliberately: those are status, they mean something on
  * this page already, and a series wearing a status colour claims a condition it does not
@@ -483,23 +488,32 @@ export function table(rows, cols) {
 const SERIES = [
   { key: 'a', color: '#3987e5' },
   { key: 'b', color: '#d95926' },
+  { key: 'c', color: '#a374db' },
 ];
-// Trend colours, added for #764 Unit 2b — chosen to stay clear of both bar colours above
-// AND of `.warn`/`.err` (a trend line wearing a status colour would claim a condition it
-// does not have, same rule as the bars). MEAN is this page's own `.tile .k` mint-green
-// register (unused elsewhere as a fill), GHOST is the page's existing `.muted` ink, so a
-// past period reads as a memory rather than a competing claim.
-const MEAN_COLOR = '#5fd9a0';
+// The ghost (prior-period) trend colour — the page's existing `.muted` ink, so a past
+// period reads as a memory rather than a competing claim. The 7-DAY TRAILING MEAN and its
+// MEAN_COLOR (#5fd9a0) were REMOVED 2026-09-20 (owner: "get rid of the weekly average on
+// that plot") — ghost is the only trend line left, and `stats.trailingMean` is gone with it.
 const GHOST_COLOR = '#8fa2b3';
 
 /* EXTENDED FOR THE TREND (#764 Unit 2b, on top of #604's original two-series chart): a
- * TRAILING-MEAN LINE and a GHOST (prior-period) line, both built from CONTIGUOUS RUNS of
- * non-null points — a null breaks the polyline into a new segment rather than being joined
- * through as zero. A null mean means "the window is not full yet or crosses a coarse/
- * uncaptured day"; drawing a line through it would show a dip that never happened.
+ * GHOST (prior-period) line, built from CONTIGUOUS RUNS of non-null points — a null breaks
+ * the polyline into a new segment rather than being joined through as zero. A null ghost
+ * value means the matching prior-period day is coarse or uncaptured; drawing a line through
+ * it would show a dip that never happened. (A second trend line, a 7-day trailing mean, was
+ * REMOVED 2026-09-20 — owner: "get rid of the weekly average on that plot" — along with
+ * `stats.trailingMean`, which nothing else called.)
+ *
+ * A THIRD BAR SERIES, DEEP-LINK LANDINGS (2026-09-20, owner: "can you show that per day"),
+ * joins pageloads and landing visits — a landing visit whose page is not `/` AND whose
+ * referrer is `direct` (`stats.deepLinkLandingsByDay`). It is TINY on purpose: 0-2/day
+ * against pageloads peaking in the tens over the same window. It shares this chart's ONE
+ * axis, never a second, rescaled one — inflating it to look interesting would misrepresent
+ * it — and a bar's minimum 2px height (below) is what keeps a value of 1 visible at all
+ * against a much taller max.
  *
  * THREE STATUS MARKS a bar can carry without changing its height, because a bar's HEIGHT is
- * still only pageloads/visits:
+ * still only pageloads/visits/deep-link landings:
  *   PARTIAL  today, live and unfinished — drawn hollow (stroke only), never solid, so a
  *            half-finished day cannot be mistaken for a closed one at a glance.
  *   COARSE   Cloudflare's rounded tier (sample_interval > 1) — drawn at reduced opacity.
@@ -518,18 +532,24 @@ const GHOST_COLOR = '#8fa2b3';
 export function barChart(rows, opts) {
   opts = opts || {};
   if (!rows || rows.length < 2) return '';          // one bar is a number, not a chart
-  const labelA = opts.labelA || 'A', labelB = opts.labelB || 'B';
-  const labelMean = opts.labelMean || 'trailing mean', labelGhost = opts.labelGhost || 'prior period';
+  const labelA = opts.labelA || 'A', labelB = opts.labelB || 'B', labelC = opts.labelC || 'C';
+  // The GUTTER label falls back to labelC; pass labelCShort when labelC will not fit PADR.
+  const labelCShort = opts.labelCShort || labelC;
+  const labelGhost = opts.labelGhost || 'prior period';
   const W = 720, H = 190, PADL = 34, PADR = 96, PADT = 12, PADB = 26;
   const plotW = W - PADL - PADR, plotH = H - PADT - PADB;
   const max = Math.max(1, ...rows.map((r) =>
-    Math.max(r.a || 0, r.b || 0, r.mean || 0, r.ghost || 0)));
+    Math.max(r.a || 0, r.b || 0, r.c || 0, r.ghost || 0)));
   /* A ceiling on a "nice" number, so the gridline reads as a round figure rather than as
    * whatever the tallest bar happened to be. */
   const pow = Math.pow(10, Math.floor(Math.log10(max)));
   const top = Math.ceil(max / pow) * pow;
   const slot = plotW / rows.length;
-  const barW = Math.max(3, Math.min(18, slot / 2 - 3));   // 2px+ of surface between bars
+  const nSeries = SERIES.length, seriesGap = 2;
+  // barW sized for THREE bars per slot (was two, before the deep-link series) — the +gap
+  // accounting keeps the same 2px+ margin of surface between bars the two-series chart had.
+  const barW = Math.max(2, Math.min(14, (slot - seriesGap * (nSeries - 1)) / nSeries - seriesGap));
+  const groupW = barW * nSeries + seriesGap * (nSeries - 1);
   const y = (v) => PADT + plotH - (v / top) * plotH;
   const xMid = (i) => PADL + i * slot + slot / 2;
 
@@ -542,14 +562,14 @@ export function barChart(rows, opts) {
       + 'text-anchor="end">' + v + '</text>';
   });
   rows.forEach((r, i) => {
-    const x0 = PADL + i * slot + (slot - barW * 2 - 2) / 2;
+    const x0 = PADL + i * slot + (slot - groupW) / 2;
     if (!r.missing) {
       SERIES.forEach((s, si) => {
         const v = r[s.key] || 0;
         const h = Math.max(v > 0 ? 2 : 0, (v / top) * plotH);
         if (!h) return;
-        const x = x0 + si * (barW + 2);
-        const seriesLabel = si === 0 ? labelA : labelB;
+        const x = x0 + si * (barW + seriesGap);
+        const seriesLabel = si === 0 ? labelA : si === 1 ? labelB : labelC;
         const style = r.partial
           ? 'fill="none" stroke="' + s.color + '" stroke-width="2"'
           : 'fill="' + s.color + '"' + (r.coarse ? ' fill-opacity="0.45"' : '');
@@ -568,8 +588,9 @@ export function barChart(rows, opts) {
       + 'font-size="10" text-anchor="middle">' + esc(r.label) + '</text>';
   });
 
-  // Trend line(s): one polyline per CONTIGUOUS run of non-null points, so a gap in the data
-  // breaks the line instead of being interpolated across.
+  // Trend line: one polyline per CONTIGUOUS run of non-null points, so a gap in the data
+  // breaks the line instead of being interpolated across. GHOST is the only one left — the
+  // 7-day trailing mean was removed 2026-09-20.
   const trendLine = (key, color, dashed) => {
     const segs = [];
     let cur = [];
@@ -583,16 +604,15 @@ export function barChart(rows, opts) {
       + color + '" stroke-width="2"' + (dashed ? ' stroke-dasharray="5,4"' : '') + '/>').join('');
   };
   g += trendLine('ghost', GHOST_COLOR, true);
-  g += trendLine('mean', MEAN_COLOR, false);
 
   // Direct labels at the right, so identity survives a greyscale print or a CVD reader.
   // Collision-avoided: two labels within 11px are pushed apart rather than left overlapping,
-  // which is common once a mean or ghost line ends near a bar's own height.
+  // which is common once the ghost line ends near a bar's own height.
   const last = rows[rows.length - 1] || {};
   const lastNonNull = (key) => { for (let i = rows.length - 1; i >= 0; i--) if (rows[i][key] != null) return rows[i][key]; return null; };
   const labels = [{ y: y(last.a || 0), color: SERIES[0].color, text: labelA }];
   labels.push({ y: y(last.b || 0), color: SERIES[1].color, text: labelB });
-  const lm = lastNonNull('mean'); if (lm != null) labels.push({ y: y(lm), color: MEAN_COLOR, text: labelMean });
+  labels.push({ y: y(last.c || 0), color: SERIES[2].color, text: labelCShort });
   const lg = lastNonNull('ghost'); if (lg != null) labels.push({ y: y(lg), color: GHOST_COLOR, text: labelGhost });
   labels.sort((p, q) => p.y - q.y);
   for (let i = 1; i < labels.length; i++) {
@@ -605,10 +625,10 @@ export function barChart(rows, opts) {
 
   return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="max-width:' + W
     + 'px;display:block;margin:0 0 8px" role="img" aria-label="'
-    + esc(labelA + ' and ' + labelB + ' per ' + (opts.bucket || 'period')) + '">' + g + '</svg>';
+    + esc(labelA + ', ' + labelB + ' and ' + labelC + ' per ' + (opts.bucket || 'period')) + '">' + g + '</svg>';
 }
 
-/* Map {day,pageloads,visits,coarse,missing,partial,mean,ghost} Eastern-day rows (ascending)
+/* Map {day,pageloads,visits,deepLink,coarse,missing,partial,ghost} Eastern-day rows (ascending)
  * onto `barChart`'s row shape — one bar per DAY, always (2026-09-20 rewrite; owner: "for
  * the 30 day and all can you make them a line graph and show data from every day not the
  * weekly average"). `analytics.js` now only calls this for a window of 14 days or fewer —
@@ -633,7 +653,7 @@ export function bucketDays(dayRows) {
       label: r.day.slice(5) + ' ' + dow(r.day),
       a: r.pageloads || 0,
       b: r.visits || 0,
-      mean: r.mean == null ? null : r.mean,
+      c: r.deepLink || 0,
       ghost: r.ghost == null ? null : r.ghost,
       coarse: !!r.coarse,
       missing: !!r.missing,
@@ -654,11 +674,16 @@ export function bucketDays(dayRows) {
  * nightly rollup never ran, not the value. Joining the line straight through it draws a
  * PLUNGE TO ZERO AND BACK, a collapse that never happened, so each series' line is built
  * from CONTIGUOUS RUNS of non-missing days (`dataLine` below), exactly the segment-per-run
- * idiom the mean/ghost trend line already uses for a null window — and every missing day
+ * idiom the ghost trend line already uses for a null window — and every missing day
  * ALSO draws the same dashed baseline tick `barChart` uses for a whole missing bar, so the
  * gap in the line reads as "no data", not as an unexplained hole (`test/run_dashboard_trend
  * .js`'s `line-joins-through-missing` and `line-missing-tick-gone` injections prove both
  * halves separately — a fixed line with no tick, or a tick with no break, is still wrong).
+ *
+ * A THIRD DATA SERIES, DEEP-LINK LANDINGS (2026-09-20), draws the same way as pageloads and
+ * landing visits — its own `dataLine` call, its own point markers, no second axis and no
+ * rescale (see `barChart`'s header for why: the honest picture is a series hugging zero at
+ * 0-2/day against pageloads in the tens).
  *
  * `partial` (today, live) and `coarse` (Cloudflare-rounded) are per-day facts that must
  * survive the shape change: drawn on the POINT MARKER, same convention as the bar — a
@@ -685,12 +710,15 @@ export function lineLabelStride(n) {
 export function lineChart(rows, opts) {
   opts = opts || {};
   if (!rows || rows.length < 2) return '';
-  const labelA = opts.labelA || 'A', labelB = opts.labelB || 'B';
-  const labelMean = opts.labelMean || 'trailing mean', labelGhost = opts.labelGhost || 'prior period';
+  const labelA = opts.labelA || 'A', labelB = opts.labelB || 'B', labelC = opts.labelC || 'C';
+  // The GUTTER label falls back to labelC; pass labelCShort when labelC will not fit PADR.
+  const labelCShort = opts.labelCShort || labelC;
+  const labelGhost = opts.labelGhost || 'prior period';
   const W = 720, H = 190, PADL = 34, PADR = 96, PADT = 12, PADB = 26;
   const plotW = W - PADL - PADR, plotH = H - PADT - PADB;
   const max = Math.max(1, ...rows.map((r) => Math.max(
-    r.missing ? 0 : (r.pageloads || 0), r.missing ? 0 : (r.visits || 0), r.mean || 0, r.ghost || 0)));
+    r.missing ? 0 : (r.pageloads || 0), r.missing ? 0 : (r.visits || 0),
+    r.missing ? 0 : (r.deepLink || 0), r.ghost || 0)));
   const pow = Math.pow(10, Math.floor(Math.log10(max)));
   const top = Math.ceil(max / pow) * pow;
   const n = rows.length;
@@ -743,8 +771,9 @@ export function lineChart(rows, opts) {
   };
   g += dataLine('pageloads', SERIES[0].color, labelA);
   g += dataLine('visits', SERIES[1].color, labelB);
+  g += dataLine('deepLink', SERIES[2].color, labelC);
 
-  // Trend line(s) — identical segment-per-null-run idiom to barChart's own `trendLine`.
+  // Trend line — GHOST is the only one left; the 7-day trailing mean was removed 2026-09-20.
   const trendLine = (key, color, dashed) => {
     const segs = []; let cur = [];
     rows.forEach((r, i) => {
@@ -757,7 +786,6 @@ export function lineChart(rows, opts) {
       + color + '" stroke-width="2"' + (dashed ? ' stroke-dasharray="5,4"' : '') + '/>').join('');
   };
   g += trendLine('ghost', GHOST_COLOR, true);
-  g += trendLine('mean', MEAN_COLOR, false);
 
   // X-axis labels, thinned to roughly LABEL_TARGET across the window, plus the LAST day
   // always — a stride that would otherwise skip the window's own end point.
@@ -776,9 +804,9 @@ export function lineChart(rows, opts) {
       + 'font-size="10" text-anchor="middle">' + esc(dayLbl(r)) + '</text>';
   });
 
-  // Direct labels at the right, collision-avoided exactly as barChart does — the two DATA
+  // Direct labels at the right, collision-avoided exactly as barChart does — the DATA
   // series use the LAST NON-MISSING day, never the last row outright, so a window ending on
-  // an uncaptured day does not plant "Pageloads"/"Landing visits" at the y=0 baseline.
+  // an uncaptured day does not plant a label at the y=0 baseline.
   let lastRow = null;
   for (let i = rows.length - 1; i >= 0; i--) if (!rows[i].missing) { lastRow = rows[i]; break; }
   const lastNonNull = (key) => { for (let i = rows.length - 1; i >= 0; i--) if (rows[i][key] != null) return rows[i][key]; return null; };
@@ -786,8 +814,8 @@ export function lineChart(rows, opts) {
   if (lastRow) {
     labels.push({ y: y(lastRow.pageloads || 0), color: SERIES[0].color, text: labelA });
     labels.push({ y: y(lastRow.visits || 0), color: SERIES[1].color, text: labelB });
+    labels.push({ y: y(lastRow.deepLink || 0), color: SERIES[2].color, text: labelCShort });
   }
-  const lm = lastNonNull('mean'); if (lm != null) labels.push({ y: y(lm), color: MEAN_COLOR, text: labelMean });
   const lg = lastNonNull('ghost'); if (lg != null) labels.push({ y: y(lg), color: GHOST_COLOR, text: labelGhost });
   labels.sort((p, q) => p.y - q.y);
   for (let i = 1; i < labels.length; i++) {
@@ -800,7 +828,7 @@ export function lineChart(rows, opts) {
 
   return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="max-width:' + W
     + 'px;display:block;margin:0 0 8px" role="img" aria-label="'
-    + esc(labelA + ' and ' + labelB + ' per day') + '">' + g + '</svg>';
+    + esc(labelA + ', ' + labelB + ' and ' + labelC + ' per day') + '">' + g + '</svg>';
 }
 
 export function errBlock(message) {
