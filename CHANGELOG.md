@@ -30,6 +30,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **Ops dashboard: release markers on the By-day chart** (#797). Each public release is drawn at
+  the day it first reached a real user — taken from the telemetry itself rather than a stamped
+  list, so it cannot go stale and marks arrival rather than tagging. Preview builds are excluded:
+  they land on the tester domain and contribute none of the traffic being graphed.
+
+### Fixed
+- **Internal rows no longer show `0` landing visits** (#797) in Country × referrer × day. A visit
+  is credited only to the page load that starts a session, so an internal row can never carry
+  one; it now shows an em dash with the reason. No number changed.
+
 ## [Alpha 1.7.7] — 2026-09-21
 
 ### Added
