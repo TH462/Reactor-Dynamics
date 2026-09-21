@@ -54,7 +54,7 @@ import { gql, sql, ACCOUNT, SITE_TAG, DATASET } from './cfapi.js';
 import { referrerKind, RETAIN_DAYS } from './rollup.js';
 import { parseDay, storeRange, dailyTotals, groupBy, referrerBreakdown, dayCountryReferrer,
          deepLinkLandings, deepLinkLandingsByDay, periodDelta, priorRange, dayRange, prevDay,
-         nextDay } from './stats.js';
+         nextDay, rollupHealth } from './stats.js';
 
 // ---------------------------------------------------------------- RUM helpers
 const num = (v) => (v == null || v === '' ? 0 : Number(v));
@@ -253,6 +253,121 @@ function renderThrottleLine(rows) {
     + esc(byRoute) + ') — that telemetry was dropped, not delayed.</p>';
 }
 
+/* PIPELINE HEALTH LINE (#797 item 2) — same idiom as `renderThrottleLine` just above: a PURE
+ * function of `stats.rollupHealth`'s rows plus the current instant, isolated from the query
+ * so it can be executed and proven directly. It reads `rollup_runs` in D1, never Analytics
+ * Engine, so it needs no new entry in this file's header exception list — the one exception
+ * recorded there is the throttle count above, a control-plane total pulled LIVE from
+ * Analytics Engine; this is an ordinary D1 read through `stats.js`, the same table
+ * `dailyTotals` already reads for its own `missing`/`coarse` flags.
+ *
+ * THE STALENESS THRESHOLD. The cron is `10 5 * * *` — once a day, 05:10 UTC, which is
+ * 00:10 EST / 01:10 EDT: just after Eastern midnight, on purpose (rollup.js's own header —
+ * the SAME Eastern day asked for while still inside Cloudflare's 7-day exact window stays
+ * exact forever, so being on time each night is the entire mechanism). A healthy pipeline
+ * therefore writes one `rollup_runs` row roughly every 24 h.
+ *
+ *   STALE_HOURS = 30 = the 24 h cadence + 6 h grace.
+ *
+ * 6 h is enough that a Workers cron trigger running late by minutes or a couple of hours —
+ * which happens, and per the task brief is "not yet news" — never trips this, while a
+ * genuinely missed day trips it once the NEXT scheduled run is itself 6 h overdue, rather
+ * than waiting a further 24 h for a second miss to be sure ("one that missed a day is
+ * [news]"). Nothing in this codebase measures actual cron jitter, so 6 h is a margin, not a
+ * fitted number — declared as one rather than dressed up as a measurement (HR12).
+ */
+const STALE_HOURS = 30;
+
+/* WHICH `rollup_runs.note` TOKENS ARE WORTH AN AMBER LINE, AND WHICH ARE ROUTINE. Read
+ * against every note `rollup.js` (worker/src/rollup.js, `runRollup`) can push — this file
+ * may not edit that one, so the classification lives here instead, next to the render
+ * function it feeds, and is done once rather than re-derived per call.
+ *
+ *  WARN — the pipeline could not do (some of) its job that day:
+ *   'no CF_ANALYTICS_TOKEN'  the run had no credential at all — nothing was fetched, for
+ *                            traffic, usage, or own-traffic.
+ *   'limit-hit'              the traffic query came back AT Cloudflare's 10,000-row
+ *                            ceiling: the day is stored SHORT, silently, for ever. This is
+ *                            `stats.dailyTotals`' `truncated` flag's own source token — that
+ *                            flag has existed since #764 and nothing on this page has ever
+ *                            rendered it (verified by source scan of this file).
+ *   'traffic failed: …'     the one exact-tier snapshot that only exists SAME-DAY was
+ *                            missed — the loss #797 exists to catch, permanent after
+ *                            Cloudflare's 7-day window closes over it.
+ *   'usage failed: …'       the in-sim usage fetch threw.
+ *   'own traffic failed: …' the own-telemetry fetch threw — an actual exception, distinct
+ *                            from the EXPECTED, caught 'own-columns-absent' below.
+ *
+ *  QUIET — expected, or already shown elsewhere on this page, so repeating it here would be
+ *  the same fact twice rather than a second fact:
+ *   'coarse:N'               the traffic capture WAS made, just from the rounded tier; every
+ *                            by-day chart point and breakdown-table row already carries its
+ *                            own coarse (±N) badge (`anyCoarse` etc., below).
+ *   'own-columns-absent'    the own-traffic columns are not live yet on this account — a
+ *                            deploy gap rollup.js's own header says is EXPECTED, and is
+ *                            every run before `OWN_COLUMNS_SINCE`. `own_traffic_daily` is
+ *                            not read anywhere on this page.
+ *   'own-predating:N'       rows dropped for predating one of the two own-traffic column
+ *                            sets; same table, same reasoning.
+ *   'own:N'                 a bare row count, pushed unconditionally every run — never a
+ *                            failure signal by itself.
+ *
+ * A token that matches NEITHER list warns, by default: a note this classifier has never
+ * seen is exactly the silent-failure shape #797 exists to catch, and a health line that
+ * stays quiet on an unrecognised note would be that bug recurring one layer up. */
+const QUIET_NOTE = /^(coarse:\d+|own-columns-absent|own-predating:\d+|own:\d+)$/;
+function classifyNote(note) {
+  const tokens = String(note || '').split(';').map((t) => t.trim()).filter(Boolean);
+  return { tokens, warn: tokens.filter((t) => !QUIET_NOTE.test(t)) };
+}
+
+/* THE LINE ITSELF. `health` is `stats.rollupHealth(db)`'s return; `nowMs` decides
+ * staleness. Three independent reasons to draw anything — the tail is stale, the LAST run's
+ * own note is bad, or a day inside the recorded span has no run row at all — and NOTHING
+ * rendered when none apply: the same "silence is the healthy state" rule `renderThrottleLine`
+ * uses just above, for the same reason (a banner shown every time it is checked stops being
+ * read). When it does draw, it also names the last CLEAN run in Eastern, so "nothing is
+ * actually wrong beyond this one note" stays legible at a glance rather than requiring a
+ * second lookup. */
+function renderPipelineHealthLine(health, nowMs) {
+  const rows = (health && health.rows) || [];
+  const gaps = (health && health.gaps) || [];
+  if (!rows.length) {
+    return '<p class="warn"><b>The nightly rollup has never recorded a run</b> — '
+      + '<span class="mono">rollup_runs</span> is empty. Nothing below this page’s '
+      + 'first-party numbers can be trusted as complete history until it has.</p>';
+  }
+
+  const last = rows.reduce((a, b) => (Date.parse(b.ranAt) > Date.parse(a.ranAt) ? b : a));
+  const hoursSince = (nowMs - Date.parse(last.ranAt)) / 3600000;
+  const stale = Number.isFinite(hoursSince) && hoursSince > STALE_HOURS;
+  const lastNote = classifyNote(last.note);
+
+  const goodRows = rows.filter((r) => classifyNote(r.note).warn.length === 0);
+  const lastGood = goodRows.length ? goodRows[goodRows.length - 1] : null;
+
+  const problems = [];
+  if (stale) {
+    problems.push('the last recorded run was <b>' + Math.round(hoursSince) + ' h</b> ago '
+      + '(the cron is daily; more than ' + STALE_HOURS + ' h means at least one day was missed).');
+  }
+  if (lastNote.warn.length) {
+    problems.push('the last run (' + esc(dayLabel(last.day, null)) + ') recorded: <b>'
+      + esc(lastNote.warn.join('; ')) + '</b>.');
+  }
+  if (gaps.length) {
+    const shown = gaps.slice(0, 5).map((d) => dayLabel(d, null));
+    problems.push(gaps.length + ' day' + (gaps.length === 1 ? '' : 's') + ' inside the '
+      + 'recorded span has no run row at all: ' + esc(shown.join(', '))
+      + (gaps.length > shown.length ? ', …' : '') + '.');
+  }
+  if (!problems.length) return '';
+
+  return '<p class="warn"><b>Data pipeline:</b> ' + problems.join(' ')
+    + (lastGood ? ' Last clean run: <b>' + esc(dayLabel(lastGood.day, null)) + '</b>.' : '')
+    + '</p>';
+}
+
 // ---------------------------------------------------------------- the page
 export async function analyticsPage(env, url) {
   const apiToken = env.CF_ANALYTICS_TOKEN;
@@ -271,8 +386,12 @@ export async function analyticsPage(env, url) {
       + '</body></html>');
   }
   if (!apiToken) {
+    // The nightly rollup uses this SAME secret, so its own runs are worth showing here too
+    // — a missing token today is very likely why recent `rollup_runs` rows say so as well.
+    const pipelineLineNoToken = renderPipelineHealthLine(await rollupHealth(db), nowMs);
     return html(head
       + '<h1>Analytics</h1>'
+      + pipelineLineNoToken
       + '<p class="warn">No <span class="mono">CF_ANALYTICS_TOKEN</span> secret is set on this Worker, '
       + 'so today’s live figures and Web Vitals cannot be read (closed-day history would still '
       + 'come from the first-party store).</p>'
@@ -282,6 +401,7 @@ export async function analyticsPage(env, url) {
 
   const w = resolveWindow(url, today);
   const sr = await storeRange(db);   // { first, last } | null — clamps the picker
+  const pipelineLine = renderPipelineHealthLine(await rollupHealth(db), nowMs);
 
   const pickerMin = sr ? sr.first : null;
   /* "ALL" (owner request, 2026-09-20) opens on the first day the store has, reusing
@@ -315,7 +435,7 @@ export async function analyticsPage(env, url) {
       : 'No first-party history recorded yet — every figure below is Cloudflare-only.') + '</p>';
 
   if (w.error) {
-    return html(head + '<h1>Analytics</h1>' + picker(today, today)
+    return html(head + '<h1>Analytics</h1>' + picker(today, today) + pipelineLine
       + errBlock(w.error) + '</body></html>');
   }
 
@@ -325,7 +445,7 @@ export async function analyticsPage(env, url) {
   // throws on — and even if it did not throw, showing a window that opens AFTER it closes
   // is worse than saying plainly there is nothing to show yet.
   if (sr && to < sr.first) {
-    return html(head + '<h1>Analytics</h1>' + picker(from, to)
+    return html(head + '<h1>Analytics</h1>' + picker(from, to) + pipelineLine
       + '<p class="warn">The selected range (' + esc(from) + ' to ' + esc(to) + ') ends '
       + 'before the recorded history begins (' + esc(sr.first) + ') — there is nothing to '
       + 'show yet.</p>' + '</body></html>');
@@ -863,6 +983,7 @@ export async function analyticsPage(env, url) {
     + '<p class="muted">Every date and time on this page is <b>Eastern</b>, measured '
     + 'midnight to midnight.</p>'
     + picker(from, to) + clampNote
+    + pipelineLine
     + GLOSSARY
     + tiles + deltaLine + throttleLine
     + sourceNoteFirstParty(anyCoarse, anyMissing)

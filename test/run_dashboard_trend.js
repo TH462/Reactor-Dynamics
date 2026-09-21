@@ -575,6 +575,19 @@ var INJECTIONS = {
   'deeplink-byday-live-external-counted': ['analytics.js',
     "deepLink: dl.rows.filter((r) => r.path !== '/' && r.referrerKind === 'direct')",
     "deepLink: dl.rows.filter((r) => r.path !== '/')"],
+  /* THE PIPELINE-HEALTH LINE (#797 item 2). */
+  /* The anchor carries its trailing newline on purpose: '    + pipelineLine' alone is also
+   * a SUBSTRING of the `!apiToken` branch's '      + pipelineLineNoToken' a few dozen lines
+   * up, and a bare split/join would silently corrupt THAT line's `+` operator too (found by
+   * firing this injection and getting a SyntaxError instead of the one check it should
+   * redden — worse than no injection, since it never touched the composition it targets). */
+  'pipeline-not-wired': ['analytics.js', '    + pipelineLine\n', ''],
+  'health-note-inverted': ['analytics.js',
+    '  return { tokens, warn: tokens.filter((t) => !QUIET_NOTE.test(t)) };',
+    '  return { tokens, warn: tokens.filter((t) => QUIET_NOTE.test(t)) };'],
+  'health-stale-never-fires': ['analytics.js',
+    '  const stale = Number.isFinite(hoursSince) && hoursSince > STALE_HOURS;', '  const stale = false;'],
+  'health-gap-silent': ['analytics.js', '  if (gaps.length) {', '  if (false) {'],
 };
 
 if (/--list-injections/.test(ARG)) {
@@ -1278,6 +1291,113 @@ async function threwAsync(fn) {
          + PADR_PX + ' px (' + px.toFixed(0) + ' px)',
          lbls.length > 0 && px <= PADR_PX, lbls.join(' | ') + ' -> ' + px.toFixed(0) + ' px');
     });
+
+    /* ===================== 26. the pipeline-health line (#797 item 2) =================== */
+    head('26. the pipeline-health line -- classifyNote / renderPipelineHealthLine, and its wiring');
+    /* Lifted directly out of analytics.js and executed, same idiom run_telemetry.js already
+     * uses in this same file for renderThrottleLine -- proof by running the real function,
+     * not a source scan (HR10: a string existing in the source is not evidence it renders
+     * the right thing under the right condition). Sliced by two literal, unique anchors
+     * rather than a brace-matching regex, because the function bodies below contain nested
+     * `{ }` a non-greedy regex would stop at early. */
+    /* THROUGH injectSrc, not a bare fs.readFileSync — an injection into `classifyNote` or
+     * `renderPipelineHealthLine` has to reach THIS slice too, or the checks below stay
+     * green against every injection aimed at them: reading the file straight off disk
+     * would silently bypass the same patching `loadEsm` applies to the module A already
+     * uses, which is exactly the "hollow check" shape #797's own brief warns about. */
+    var asrc26 = injectSrc('analytics.js', fs.readFileSync(path.join(ROOT, 'worker', 'src', 'analytics.js'), 'utf8'));
+    var startMark = 'const STALE_HOURS = 30;';
+    var endMark = '// ---------------------------------------------------------------- the page';
+    var i0 = asrc26.indexOf(startMark), i1 = asrc26.indexOf(endMark);
+    ck('classifyNote / renderPipelineHealthLine were found at their expected anchors',
+       i0 >= 0 && i1 > i0, 'i0=' + i0 + ' i1=' + i1);
+    var blob26 = asrc26.slice(i0, i1);
+    var lifted26 = new Function('esc', 'dayLabel', blob26
+      + '; return { classifyNote: classifyNote, renderPipelineHealthLine: renderPipelineHealthLine };')
+      (R.esc, R.dayLabel);
+    var classifyNote = lifted26.classifyNote, renderLine26 = lifted26.renderPipelineHealthLine;
+
+    /* ---- classifyNote: which rollup_runs.note tokens warn, which stay quiet ------------- */
+    ck('an empty note is clean -- nothing to warn about',
+       classifyNote('').warn.length === 0, JSON.stringify(classifyNote('')));
+    ck('the always-present own:N counter is QUIET, never a warning by itself',
+       classifyNote('own:0').warn.length === 0, JSON.stringify(classifyNote('own:0')));
+    ck('a coarse capture is QUIET -- already shown per-row everywhere else on this page',
+       classifyNote('coarse:10').warn.length === 0, JSON.stringify(classifyNote('coarse:10')));
+    ck('the two EXPECTED own-traffic deploy-gap notes are QUIET',
+       classifyNote('own-columns-absent').warn.length === 0
+       && classifyNote('own-predating:3').warn.length === 0,
+       JSON.stringify([classifyNote('own-columns-absent').warn, classifyNote('own-predating:3').warn]));
+    ck('a missing token IS a warning',
+       classifyNote('no CF_ANALYTICS_TOKEN').warn.length === 1,
+       JSON.stringify(classifyNote('no CF_ANALYTICS_TOKEN')));
+    ck('a truncated day (limit-hit) IS a warning -- the only place this ever surfaces at all '
+     + '(stats.dailyTotals’ own `truncated` flag has never been rendered anywhere on this page)',
+       classifyNote('limit-hit').warn.length === 1, JSON.stringify(classifyNote('limit-hit')));
+    ck('each of the three fetch-exception notes IS a warning',
+       classifyNote('traffic failed: upstream 500').warn.length === 1
+       && classifyNote('usage failed: boom').warn.length === 1
+       && classifyNote('own traffic failed: boom').warn.length === 1,
+       JSON.stringify([classifyNote('traffic failed: upstream 500').warn,
+                        classifyNote('usage failed: boom').warn,
+                        classifyNote('own traffic failed: boom').warn]));
+    ck('a MIX of quiet and warn tokens on one note keeps only the warn half',
+       JSON.stringify(classifyNote('coarse:10; own:4; traffic failed: x').warn) === '["traffic failed: x"]',
+       JSON.stringify(classifyNote('coarse:10; own:4; traffic failed: x')));
+    ck('an unrecognised token defaults to WARN, not silence -- an unseen note is exactly the '
+     + 'silent-failure shape #797 exists to catch',
+       classifyNote('some-future-note:7').warn.length === 1, JSON.stringify(classifyNote('some-future-note:7')));
+
+    /* ---- renderPipelineHealthLine: the three independent reasons to draw anything ------- */
+    var HOUR26 = 3600e3;
+    var lastClean = { day: '2026-09-17', ranAt: '2026-09-17T05:10:00Z', note: '' };
+    ck('a healthy pipeline (fresh, clean, no gaps) renders NOTHING',
+       renderLine26({ rows: [lastClean], gaps: [] }, Date.parse(lastClean.ranAt) + 10 * HOUR26) === '',
+       'expected empty string');
+    ck('...and still nothing when the last run’s note is merely QUIET (coarse/own-*)',
+       renderLine26({ rows: [{ day: '2026-09-17', ranAt: '2026-09-17T05:10:00Z', note: 'coarse:10; own:4' }], gaps: [] },
+         Date.parse(lastClean.ranAt) + 10 * HOUR26) === '', 'expected empty string');
+    var staleLine = renderLine26({ rows: [lastClean], gaps: [] }, Date.parse(lastClean.ranAt) + 31 * HOUR26);
+    ck('past the staleness threshold (31h > 30h) the line warns and names the hour count',
+       /class="warn"/.test(staleLine) && /31 h/.test(staleLine), staleLine);
+    var freshLine = renderLine26({ rows: [lastClean], gaps: [] }, Date.parse(lastClean.ranAt) + 29 * HOUR26);
+    ck('...but 29h (under the threshold) stays quiet -- "a few hours late is not yet news"',
+       freshLine === '', JSON.stringify(freshLine));
+    var notedLine = renderLine26({ rows: [
+      { day: '2026-09-16', ranAt: '2026-09-16T05:10:00Z', note: '' },
+      { day: '2026-09-17', ranAt: '2026-09-17T05:10:00Z', note: 'traffic failed: upstream 500' }], gaps: [] },
+      Date.parse('2026-09-17T05:10:00Z') + 1 * HOUR26);
+    ck('a BAD note on a FRESH run still warns -- staleness is not the only trigger',
+       /class="warn"/.test(notedLine) && /traffic failed: upstream 500/.test(notedLine), notedLine);
+    ck('when it warns, the last CLEAN run (09-16, the one before the bad note) is named in '
+     + 'Eastern, so "nothing else is wrong" stays legible at a glance',
+       /Last clean run.*09-16/.test(notedLine), notedLine);
+    var gapLine = renderLine26({ rows: [
+      { day: '2026-09-01', ranAt: '2026-09-01T05:10:00Z', note: '' },
+      { day: '2026-09-03', ranAt: '2026-09-03T05:10:00Z', note: '' }], gaps: ['2026-09-02'] },
+      Date.parse('2026-09-03T05:10:00Z') + 1 * HOUR26);
+    ck('a gap INSIDE the recorded span warns even though the tail is fresh and its note is clean',
+       /class="warn"/.test(gapLine) && /09-02/.test(gapLine), gapLine);
+    var neverLine = renderLine26({ rows: [], gaps: [] }, Date.now());
+    ck('a rollup that has never recorded a run warns outright, rather than computing NaN hours',
+       /class="warn"/.test(neverLine) && /never recorded a run/.test(neverLine), neverLine);
+
+    /* ---- reachability: the SAME line is actually wired into the real page --------------- */
+    var freshDb26 = makeDb();
+    freshDb26._ins('rollup_runs', { day: '2026-09-17',
+      ran_at: new Date(Date.now() - 5 * HOUR26).toISOString(), traffic_rows: 1, usage_rows: 0,
+      coarse: 0, note: '' });
+    var pHealthy26 = await renderPageOn(freshDb26, '');
+    ck('wired into the real page: a healthy pipeline renders no "Data pipeline" banner',
+       !/Data pipeline/.test(pHealthy26), (pHealthy26.match(/Data pipeline[^<]*/) || ['(none)'])[0]);
+    var staleDb26 = makeDb();
+    staleDb26._ins('rollup_runs', { day: '2026-08-01', ran_at: '2026-08-01T05:10:00Z',
+      traffic_rows: 1, usage_rows: 0, coarse: 0, note: '' });
+    var pStale26 = await renderPageOn(staleDb26, '');
+    var idxLine = pStale26.indexOf('Data pipeline'), idxByDay = pStale26.indexOf('<h2>By day</h2>');
+    ck('wired into the real page: a stale pipeline DOES render the banner, near the TOP -- '
+     + 'before the by-day section',
+       idxLine >= 0 && idxByDay > idxLine, 'idx(Data pipeline)=' + idxLine + ' idx(By day)=' + idxByDay);
 
     /* =================================================================== 9. no token= */
     head('9. no rendered page anywhere carries a credential in a href');

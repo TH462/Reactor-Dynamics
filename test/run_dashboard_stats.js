@@ -393,6 +393,12 @@ var INJECTIONS = {
   'deeplink-external-counted': ['stats.js',
     "  const deepLink = rows.filter((x) => x.path !== '/' && x.referrerKind === 'direct').reduce((s, x) => s + x.visits, 0);",
     "  const deepLink = rows.filter((x) => x.path !== '/').reduce((s, x) => s + x.visits, 0);"],
+  /* PIPELINE HEALTH (#797 item 2): the gap detector goes blind, and the empty-store guard is
+   * removed so an empty table throws instead of returning {rows:[], gaps:[]}. */
+  'health-gap-blind': ['stats.js',
+    '  const gaps = full.filter((d) => !present.has(d));', '  const gaps = [];'],
+  'health-empty-crashes': ['stats.js',
+    '  if (!rows.length) return { rows: [], gaps: [] };', '  // (guard removed)'],
 };
 // `sum-sessions` needs both halves of the same defect (the SELECT and the mapper), or the
 // column is fetched and dropped and nothing changes. A one-sided injection lies (#295).
@@ -1115,6 +1121,42 @@ async function threwAsync(fn) {
        && typeof sameness[4].sqlite[0].key === 'number',
        sameness.map(function (s) { return s.label.split(' ')[0] + ':' + s.n; }).join(' '));
   }
+
+  /* =============================================================== 11. pipeline health */
+  head('11. rollupHealth (#797 item 2) -- every recorded run, and the gaps between them');
+  var health = await S.rollupHealth(db);
+  ck('one row per completed run, ascending by day, none for the day the cron never fired (09-06)',
+     health.rows.length === 23
+     && health.rows[0].day === '2026-09-01'
+     && health.rows[health.rows.length - 1].day === '2026-09-24'
+     && health.rows.every(function (r, i) { return i === 0 || r.day > health.rows[i - 1].day; })
+     && health.rows.every(function (r) { return r.day !== '2026-09-06'; }),
+     health.rows.length + ' rows, ' + health.rows[0].day + '..' + health.rows[health.rows.length - 1].day);
+  ck('the one day inside that span with no run row at all is the ONE gap reported',
+     health.gaps.length === 1 && health.gaps[0] === '2026-09-06', JSON.stringify(health.gaps));
+  var noteByDay = {};
+  health.rows.forEach(function (r) { noteByDay[r.day] = r.note; });
+  ck('a coarse-tier capture note and a traffic-failure note both come through unfiltered',
+     noteByDay['2026-09-04'] === 'coarse:10' && noteByDay['2026-09-07'] === 'traffic failed: upstream 500',
+     JSON.stringify({ '09-04': noteByDay['2026-09-04'], '09-07': noteByDay['2026-09-07'] }));
+  ck('a clean run carries an empty-string note, not null or the string "null"',
+     noteByDay['2026-09-01'] === '', JSON.stringify(noteByDay['2026-09-01']));
+  ck('ran_at survives as a string, not coerced or dropped',
+     health.rows[0].ranAt === '2026-09-01T05:10:00Z', String(health.rows[0].ranAt));
+
+  var emptyHealth = await S.rollupHealth(makeDb());
+  ck('a rollup that has never once run returns {rows:[], gaps:[]}, not a throw or a NaN gap count',
+     Array.isArray(emptyHealth.rows) && emptyHealth.rows.length === 0
+     && Array.isArray(emptyHealth.gaps) && emptyHealth.gaps.length === 0,
+     JSON.stringify(emptyHealth));
+
+  // One run, no span to have a gap in -- a single-row table must not throw computing
+  // dayRange(d, d), and must not be mistaken for the empty-store case above.
+  var singleDb = makeDb();
+  ran(singleDb, '2026-09-01', 1, 1);
+  var singleHealth = await S.rollupHealth(singleDb);
+  ck('a single recorded run has no gaps and is not mistaken for an empty store',
+     singleHealth.rows.length === 1 && singleHealth.gaps.length === 0, JSON.stringify(singleHealth));
 
   /* =============================================================== tally */
   tally();

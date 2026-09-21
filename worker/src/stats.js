@@ -280,6 +280,43 @@ export async function dailyTotals(db, from, to) {
   });
 }
 
+/* PIPELINE HEALTH (#797 item 2) — everything a caller needs in order to say whether the
+ * nightly rollup itself is behaving, read from `rollup_runs` ALONE (never `traffic_daily`):
+ * whether a run happened recently, what its most recent note said, and whether any day
+ * strictly inside its own recorded span has NO row at all. That last one is not the same
+ * question `dailyTotals`' `missing` answers for a single caller-chosen window — a gap deep
+ * in the store can sit behind a perfectly fresh tail (a redeploy that replayed one day
+ * twice, a manual backfill that skipped one) where nothing checking only "how recent is the
+ * newest row" would ever see it.
+ *
+ *   { rows: [{day, ranAt, note}], gaps: [...day strings] }
+ *
+ * `rows` is every recorded run, ascending by day. `gaps` is every Eastern day strictly
+ * within [rows[0].day, rows[last].day] that has no row — `dayRange` minus what is present,
+ * the same "walk the whole span, don't just diff the ends" idiom `dailyTotals` already uses
+ * for a single window. An empty table (the rollup has never completed a run) returns
+ * `{rows:[], gaps:[]}` rather than throwing — a caller asking "is it stale" against nothing
+ * gets an honest empty answer instead of a NaN wearing an hour count.
+ *
+ * What each row's `note` MEANS — which are failures and which are routine — is not decided
+ * here: that is a rendering judgement (`analytics.js`'s `classifyNote`), not a fact about
+ * the store, the same split `dailyTotals` draws between fetching a day's shape and a caller
+ * deciding what to call it. */
+export async function rollupHealth(db) {
+  const r = await db.prepare(
+    'SELECT day AS day, ran_at AS ran_at, note AS note FROM rollup_runs ORDER BY day ASC').all();
+  const rows = rowsOf(r).map((x) => ({
+    day: String(x.day),
+    ranAt: String(x.ran_at == null ? '' : x.ran_at),
+    note: String(x.note == null ? '' : x.note),
+  }));
+  if (!rows.length) return { rows: [], gaps: [] };
+  const present = new Set(rows.map((x) => x.day));
+  const full = dayRange(rows[0].day, rows[rows.length - 1].day);
+  const gaps = full.filter((d) => !present.has(d));
+  return { rows, gaps };
+}
+
 /* Top `limit` values of one dimension over [from, to], descending by pageloads.
  *
  * `coarse` is per KEY, not per day: a country whose only appearance in the window is on a
