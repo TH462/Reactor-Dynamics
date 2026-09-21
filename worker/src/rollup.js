@@ -49,31 +49,40 @@ import { sql, gql, ACCOUNT, SITE_TAG, DATASET } from './cfapi.js';
  * so the ruling has one home and the number cannot drift between the two tables. */
 export const RETAIN_DAYS = 730;
 
-/* WHEN OUR OWN EDGE COLUMNS STARTED EXISTING (2026-09-20). cfapi.js's COLUMNS_SINCE
- * idiom, applied to the columns worker/src/index.js appended on that date — blob9
- * (referrer host), blob10 (referrer kind), blob11 (country), blob12 (bot kind) and
- * double11 (bot). It lives here rather than in cfapi.js because this file is their only
- * consumer: the dashboard still reports the Cloudflare-derived series and nothing on
- * that page names these columns.
+/* WHEN OUR OWN EDGE COLUMNS STARTED EXISTING (2026-09-20+). cfapi.js's COLUMNS_SINCE
+ * idiom, applied to the columns worker/src/index.js appended from that date — blob9
+ * (referrer host), blob10 (referrer kind), blob11 (country), blob12 (bot kind),
+ * double11 (bot), and blob13/blob14/blob15 (device/browser/OS, appended in the same
+ * change that added this comment). It lives here rather than in cfapi.js because this
+ * file is their only consumer: the dashboard still reports the Cloudflare-derived series
+ * and nothing on that page names these columns.
  *
  * WHY THIS VALUE IS SAFE. A column cannot appear on a row written before the code that
- * writes it was authored, and that was 2026-09-20; this floor is the following midnight,
- * so it errs LATE by up to a day rather than admitting one pre-column row. The usual
- * hazard with a hand-set floor is the opposite one — a floor below the deploy silently
- * drags pre-column rows in, where a short blobs array reads back as '' and a short
- * doubles array as 0, i.e. as "no referrer, not a bot" (cfapi.js measured exactly that
- * on the live dataset). That hazard does not apply here, and for a structural reason
- * rather than a lucky date: `ref_kind` is NEVER '' on a row this Worker writes, so a
- * pre-column row identifies itself and fetchOwnTraffic drops it whatever the floor says.
- * The floor's remaining job is to keep the scanned window small and to write the
- * boundary down.
+ * writes it was authored; this floor is the midnight after the EARLIEST of those
+ * commits, so it errs LATE by up to a day or two rather than admitting one pre-column
+ * row. The usual hazard with a hand-set floor is the opposite one — a floor below the
+ * deploy silently drags pre-column rows in, where a short blobs array reads back as ''
+ * and a short doubles array as 0, i.e. as "no referrer, not a bot, desktop/other/other"
+ * (cfapi.js measured exactly that shape on the live dataset for an earlier column set).
+ * That hazard does not apply here, and for a structural reason rather than a lucky date:
+ * `ref_kind` (blob10) and `device` (blob13) are EACH NEVER '' on a row this Worker
+ * writes, so a pre-column row identifies itself on EITHER marker and fetchOwnTraffic
+ * drops it whatever the floor says. TWO MARKERS, NOT ONE, ON PURPOSE: the referrer/
+ * country/bot columns and the device/browser/OS columns are two separate commits, so the
+ * Worker could in principle deploy between them — a window in which ref_kind is real but
+ * device is not. Checking only ref_kind would let that window's rows in mislabelled
+ * 'unknown'/'desktop'/'other'/'other' instead of being dropped. The floor's remaining job
+ * is to keep the scanned window small and to write the boundary down.
  *
  * ⚠ A FLOOR CANNOT STOP A 422. Naming a column that no row in the result set carries is
  * an ERROR, not a null — so the probe query in fetchOwnTraffic runs first and a failure
  * is recorded as `own-columns-absent` instead of taking the day's run down with it.
  * Between this change landing and the Worker actually being deployed, that note is what
  * every run will carry, and it is the correct reading rather than a fault: the columns
- * are not live yet.
+ * are not live yet. The probe names blob13 (device) alongside blob10/double11 — all six
+ * new columns are written from the SAME array literal in index.js once it deploys, so
+ * one representative column from EACH of the two commits is enough to catch a 422 from
+ * either.
  *
  * Like cfapi.js's, this constant expires. Analytics Engine retention is a fixed three
  * months, so once no row older than 2026-12-21 survives, every remaining row carries the
@@ -97,8 +106,12 @@ const USAGE_KEY = ['day', 'channel', 'release', 'event', 'key_str', 'plant'];
  * `page`, because the client sends a closed enum of page ids and never a path
  * (site/telemetry.js PAGES); that is a narrower fact on purpose and it is the one
  * invariant (d) permits. */
+/* device/browser/os APPENDED 2026-09-20(+2): per-event dimensions off blob13/14/15 (see
+ * index.js's column map), added to the key rather than left off it because the question
+ * they exist to answer — is session length different by device — is a BREAKDOWN
+ * question, the same shape bot/bot_kind already answer for bot traffic. */
 const OWN_KEY = ['day', 'channel', 'country', 'referrer_host', 'referrer_kind', 'page',
-                 'bot', 'bot_kind'];
+                 'bot', 'bot_kind', 'device', 'browser', 'os'];
 
 export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS traffic_daily (
@@ -140,6 +153,7 @@ export const SCHEMA = [
      day TEXT NOT NULL, channel TEXT NOT NULL, country TEXT NOT NULL,
      referrer_host TEXT NOT NULL, referrer_kind TEXT NOT NULL, page TEXT NOT NULL,
      bot INTEGER NOT NULL, bot_kind TEXT NOT NULL,
+     device TEXT NOT NULL, browser TEXT NOT NULL, os TEXT NOT NULL,
      views INTEGER NOT NULL, sessions INTEGER NOT NULL,
      PRIMARY KEY (${OWN_KEY.join(', ')}))`,
   /* One row per completed run, so "did it run" and "was that day captured exact" are
@@ -154,7 +168,35 @@ export const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS own_traffic_day ON own_traffic_daily (day)`,
 ];
 
+/* THE own_traffic_daily MIGRATION (2026-09-20+2). `CREATE TABLE IF NOT EXISTS` is a
+ * no-op against a table that already exists in the live D1 database — it does NOT add a
+ * column, and it could not add device/browser/os here even if D1's ALTER TABLE did,
+ * because they join the PRIMARY KEY (OWN_KEY above), not just the row, and SQLite/D1
+ * cannot ALTER a primary key without rebuilding the table anyway.
+ *
+ * own_traffic_daily is ONE DAY OLD at the time this migration was written (created
+ * 2026-09-20, #604 follow-up) and holds no data that cannot be regenerated: every row in
+ * it is rebuilt nightly from Analytics Engine, which still has the whole 3-month history
+ * behind it. So the chosen migration is a DOCUMENTED DROP-AND-REFILL, not a second table
+ * name and not a hand-written ALTER — the owner's task brief names this as the option to
+ * prefer when the table is this young and this cheap to rebuild, over inventing a
+ * migration mechanism this codebase has never needed before.
+ *
+ * SELF-LIMITING, RUN EVERY TIME: probe for the new columns with a cheap `LIMIT 1` select.
+ * If they are already there (the common case, every run after the first post-deploy one),
+ * this is a no-op and existing rows are left alone — the DROP only fires the ONE time the
+ * probe finds the OLD five-column shape (or finds no table at all, in which case DROP IF
+ * EXISTS is itself a no-op and CREATE TABLE IF NOT EXISTS below does the real work). */
+async function migrateOwnTraffic(db) {
+  try {
+    await db.prepare('SELECT device, browser, os FROM own_traffic_daily LIMIT 1').run();
+  } catch (e) {
+    await db.prepare('DROP TABLE IF EXISTS own_traffic_daily').run();
+  }
+}
+
 export async function ensureSchema(db) {
+  await migrateOwnTraffic(db);
   for (const s of SCHEMA) await db.prepare(s).run();
 }
 
@@ -237,7 +279,24 @@ export async function fetchTraffic(token, win, gqlFn) {
       sample_interval: si,
     };
   });
-  return { rows, coarse, truncated: groups.length >= LIMIT };
+  /* THE KEY OMITS `requestHost` AND THAT IS ONLY SAFE WHILE THERE IS ONE HOST.
+   * `requestHost` is fetched and used to classify the referrer, but TRAFFIC_KEY does not
+   * carry it -- so two Cloudflare groups differing ONLY by host collapse onto one primary
+   * key and INSERT OR REPLACE keeps the last, dropping the other's counts with no note.
+   * MEASURED 2026-09-21 over the 8 days to that date: ONE host, `reactordynamics.com`,
+   * 190 pageloads, ZERO colliding tuples -- so the defect is LATENT, and a primary-key
+   * migration on the only exact history we hold would be risk spent on a problem we do
+   * not have. It activates the moment a SECOND host appears under this site tag: `www.`
+   * beginning to beacon, a rename, or the preview domain being added to Web Analytics
+   * (measured the same day: preview traffic does NOT reach this dataset today).
+   *
+   * So detect it instead of pre-empting it. The note rides out with the run and the
+   * dashboard's pipeline-health line warns on any note it does not recognise, which
+   * makes this one visible on arrival rather than on the day someone thinks to look. */
+  const hosts = [...new Set(groups.map((r) => (r.dimensions || {}).requestHost || '')
+    .filter((h) => h !== ''))];
+  return { rows, coarse, truncated: groups.length >= LIMIT,
+    hostCollision: hosts.length > 1 ? hosts.sort().join(',') : '' };
 }
 
 /* One Eastern day of in-sim usage. `sum(_sample_interval)` and never `count()` — the
@@ -298,12 +357,17 @@ export async function fetchOwnTraffic(token, win, sqlFn) {
   const where = `timestamp >= toDateTime('${from}') AND timestamp < toDateTime('${to}')`
     + ` AND timestamp >= ${OWN_COLUMNS_SINCE}`;
   const dims = `blob2 AS channel, blob9 AS ref_host, blob10 AS ref_kind,
-                blob11 AS country, blob12 AS bot_kind, double11 AS bot`;
+                blob11 AS country, blob12 AS bot_kind, double11 AS bot,
+                blob13 AS device, blob14 AS browser, blob15 AS os`;
   const aggs = `sum(_sample_interval) AS n, count(DISTINCT blob4) AS sessions`;
-  const grp = `channel, ref_host, ref_kind, country, bot_kind, bot`;
+  const grp = `channel, ref_host, ref_kind, country, bot_kind, bot, device, browser, os`;
 
+  /* blob13 (device) alongside blob10/double11: the referrer/country/bot columns and the
+   * device/browser/OS columns are two separate commits, so the probe has to catch a 422
+   * from EITHER — naming only blob10 would let a deploy that has the first set but not
+   * the second through to the real queries below, which then 422 on blob13. */
   try {
-    await run(token, `SELECT blob10 AS ref_kind, double11 AS bot
+    await run(token, `SELECT blob10 AS ref_kind, double11 AS bot, blob13 AS device
                       FROM ${DATASET} WHERE ${where} LIMIT 1`);
   } catch (e) {
     return { rows: [], note: 'own-columns-absent' };
@@ -316,14 +380,19 @@ export async function fetchOwnTraffic(token, win, sqlFn) {
     `SELECT ${dims}, ${aggs} FROM ${DATASET}
      WHERE ${where} AND blob1 = 'session_start' GROUP BY ${grp}`);
 
-  /* A ROW WITH AN EMPTY ref_kind PREDATES THE COLUMNS and is dropped, not stored as a
-   * direct visit from an unknown country. Every row this Worker writes carries one of
-   * three non-empty kinds (worker/src/index.js), so this test is exact and needs no
-   * clock — which is what makes the floor above a convenience rather than the guard. */
+  /* A ROW WITH AN EMPTY ref_kind OR AN EMPTY device PREDATES ONE OF THE TWO COLUMN SETS
+   * and is dropped, not stored as a direct visit from an unknown country on an unknown
+   * device. Every row this Worker writes carries one of three non-empty ref_kinds AND one
+   * of four non-empty devices (worker/src/index.js), so EITHER test alone is exact and
+   * needs no clock — which is what makes the floor above a convenience rather than the
+   * guard. BOTH are checked because the two column sets are two separate commits: a row
+   * can carry a real ref_kind from the earlier one while still predating device/browser/
+   * os from the later one, and checking only ref_kind would let that row in mislabelled
+   * instead of dropped. */
   let predating = 0;
   const rows = [];
   const take = (r, page) => {
-    if (!r.ref_kind) { predating++; return; }
+    if (!r.ref_kind || !r.device) { predating++; return; }
     rows.push({
       day: win.day,
       channel: r.channel || '',
@@ -333,6 +402,9 @@ export async function fetchOwnTraffic(token, win, sqlFn) {
       page: page,
       bot: num(r.bot) ? 1 : 0,
       bot_kind: r.bot_kind || '',
+      device: r.device || '',
+      browser: r.browser || '',
+      os: r.os || '',
       views: num(r.n),
       sessions: num(r.sessions),
     });
@@ -383,6 +455,9 @@ export async function runRollup(env, nowMs, deps) {
       out.traffic_rows = t.rows.length;
       out.coarse = t.coarse;
       if (t.truncated) out.notes.push('limit-hit');
+      /* Not merely informational: while it says nothing the key is safe, and when it
+       * speaks some day's counts are being silently overwritten. See fetchTraffic. */
+      if (t.hostCollision) out.notes.push('host-collision:' + t.hostCollision);
       /* A coarse capture is STORED AND MARKED, never dropped and never passed off as exact.
        * Dropping it would leave a hole that reads as "no traffic"; storing it silently would
        * put rounded numbers into the one place that is supposed to be exact. */

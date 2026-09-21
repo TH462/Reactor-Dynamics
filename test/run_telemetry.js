@@ -103,6 +103,156 @@ var INJECTIONS = {
   // historical row is silently reinterpreted. This is the failure the column map's
   // append-only rule exists for, and it produces no error anywhere.
   'wk-blob-slot-shifted': ['worker/src/index.js', '        refHost,', ''],
+
+  /* --- device / browser / OS (2026-09-20+2): the ORDERING traps named in the task ---- */
+  // Android tablets are told apart from phones by the ABSENCE of "mobile" — dropping the
+  // conditional files every Android tablet as a phone.
+  'wk-device-android-tablet-swallowed': ['worker/src/index.js',
+    "  if (/android/.test(s)) return /mobile/.test(s) ? 'mobile' : 'tablet';",
+    "  if (/android/.test(s)) return 'mobile';"],
+  // An iPad that still names itself falls through to the DESKTOP default once this is
+  // gone — the one case this classifier can tell apart from a real Mac, lost.
+  'wk-device-ipad-swallowed': ['worker/src/index.js',
+    "  if (/ipad/.test(s)) return 'tablet';", ''],
+  // Edge's UA carries "Chrome" AND "Safari" — dropping its own check first files every
+  // Edge visit as Chrome, the engine it happens to be built on.
+  'wk-browser-edge-swallowed-by-chrome': ['worker/src/index.js',
+    "  ['edge', /edg/],", ''],
+  // Chrome's UA carries "Safari" too — dropping Chrome's own check files every Chrome
+  // visit as Safari, which is exactly the ordering trap the task named directly.
+  'wk-browser-chrome-swallowed-by-safari': ['worker/src/index.js',
+    "  ['chrome', /(chrome|chromium|crios)/],", ''],
+  // An iPhone/iPad UA also carries "like Mac OS X" — dropping the iOS check first files
+  // every iOS visit as macOS.
+  'wk-os-ios-swallowed-by-macos': ['worker/src/index.js',
+    "  if (/iphone|ipad|ipod/.test(s)) return 'ios';", ''],
+  // Every Android UA also carries the "Linux" token naming its kernel — dropping the
+  // Android check first files every Android visit as Linux.
+  'wk-os-android-swallowed-by-linux': ['worker/src/index.js',
+    "  if (/android/.test(s)) return 'android';", ''],
+  // ChromeOS's UA opens "X11; CrOS ..." — dropping its own check first files every
+  // ChromeOS visit as Linux.
+  'wk-os-cros-swallowed-by-linux': ['worker/src/index.js',
+    "  if (/cros/.test(s)) return 'chromeos';", ''],
+  // ABSENT, on all three: hits every `if (!s) return 'unknown';` in this file at once,
+  // since the three classifiers share the exact same guard line — a real fact about this
+  // source, not a loosely-aimed injection. 'unknown' is the marker an absent User-Agent
+  // is supposed to carry; '' would merge it with "looked and found nothing".
+  'wk-device-browser-os-absent-not-unknown': ['worker/src/index.js',
+    "  if (!s) return 'unknown';", "  if (!s) return '';"],
+  // The verdicts computed and then not written — the append-only column map's failure
+  // shape, once each, for the three new slots.
+  'wk-device-column-dropped': ['worker/src/index.js', '        deviceKind,', ''],
+  'wk-browser-column-dropped': ['worker/src/index.js', '        browserKind,', ''],
+  'wk-os-column-dropped': ['worker/src/index.js', '        osKind,', ''],
+
+  /* --- command-run coalescing (2026-09-20+3) ------------------------------------ */
+  // The window check disabled: every repeat starts a new run instead of extending one,
+  // so a drag/hold never collapses and the queue fills one row per tick again.
+  'tel-coalesce-never-collapses': ['site/telemetry.js',
+    '      if (openRun && openRun.key === key && (perfMs - openRun.raw) <= COALESCE_MS) {',
+    '      if (false) {'],
+  // The run's identity key ignores its own props, so a DIFFERENT action or a DIFFERENT
+  // `blocked` wrongly extends the same run — hiding a refused command inside a run of
+  // accepted ones, the exact failure the task calls out by name.
+  'tel-coalesce-key-ignores-props': ['site/telemetry.js',
+    "    for (k in p) { if (Object.prototype.hasOwnProperty.call(p, k) && k !== 'count') ks.push(k); }",
+    '    for (k in p) { if (false) ks.push(k); }'],
+  // The count freezes at 1: a run of any length reports as a single press.
+  'tel-coalesce-count-frozen': ['site/telemetry.js',
+    '        openRun.row.p.count = ++openRun.count;', '        openRun.row.p.count = openRun.count;'],
+  // The open run is NOT cleared on opt-out, so it is left pointing at a row `queue.length
+  // = 0` just detached — a later repeat mutates that orphan instead of starting a fresh,
+  // correctly-counted run, and the repeat is silently lost.
+  'tel-coalesce-survives-optout': ['site/telemetry.js',
+    "    if (v === 'denied') { queue.length = 0; openRun = null; }",
+    "    if (v === 'denied') { queue.length = 0; }"],
+  // Same failure, at the OTHER place a queue is emptied: a normal batch flush leaves
+  // the open run pointing at a row that just left the queue via splice().
+  'tel-coalesce-survives-flush': ['site/telemetry.js', '    openRun = null;', ''],
+
+  /* --- ui/app.js: state-derived milestones (2026-09-20+4) ------------------------------
+   * #on_grid-is-an-IC: a state TEST ("mwe_output > 0") fires on the first tick of any
+   * initial condition that already has the generator on line, recording the IC as an
+   * accomplishment. The fix is transition-based: `stateMilestone` requires the condition
+   * to have been observed FALSE at some point in the session before a TRUE reaches the
+   * one-shot `milestone()` latch. Each injection below reverts ONE piece of that back to
+   * a shape this runner has actually reproduced by inverting it. */
+  // THE ORIGINAL DEFECT, at the call site: back to a bare state test.
+  'tel-ongrid-state-test': ['ui/app.js',
+    "        if (typeof ts.mwe_output === 'number') this.stateMilestone('on_grid', ts.mwe_output > 0, t);",
+    "        if (typeof ts.mwe_output === 'number' && ts.mwe_output > 0) this.milestone('on_grid', t);"],
+  // The mechanism itself ignores whether the condition was ever seen false — an IC that
+  // starts true fires immediately, same defect, one layer lower.
+  'tel-statemilestone-ic-fires': ['ui/app.js',
+    '          if (falseSeen[name]) this.milestone(name, simT);',
+    '          this.milestone(name, simT);'],
+  // The condition is never recorded as having gone false, so it can NEVER transition —
+  // a player who starts off the grid and then generates would get no on_grid, ever.
+  'tel-falseseen-never-set': ['ui/app.js',
+    '        if (!falseSeen[name]) {',
+    '        if (false) {'],
+  // Recorded in memory only: a reload loses the fact that the condition was ever seen
+  // false, so a legitimate transition spanning a reload is silently dropped.
+  'tel-falseseen-not-persisted': ['ui/app.js',
+    '          ssSet(FALSE_KEY, JSON.stringify(falseSeen));   // survives a reload; see FALSE_KEY above',
+    '          /* not persisted */'],
+  // The one-shot latch disabled: the SAME milestone fires again on every later tick (and
+  // again after a reload, under the unchanged session id) instead of once per session.
+  'tel-seen-latch-disabled': ['ui/app.js',
+    '        if (seen[name]) return;                   // latched: first crossing only',
+    '        if (false) return;'],
+
+  /* --- ui/app.js: the plant_mode FUNNEL's own baseline (2026-09-20+5) -------------------
+   * #plant_mode-baseline-counted-as-progress: `lastMode` starts null, so the FIRST mode a
+   * session ever observes always "differs" from it and fired — recording where a session
+   * STARTED as a mode it REACHED. Measured 2026-09-20: mode-1 read 69 sessions and 69
+   * sessions started at hot_full_power; mode-5 read 24 and 21 started at cold_shutdown —
+   * most of both numbers was starting state, not progress. `modeWasKnown` suppresses only
+   * that first emission; every later transition, including one this session has already
+   * visited, still fires exactly as before. */
+  // THE ORIGINAL DEFECT: fire unconditionally, baseline included.
+  'tel-plantmode-fires-on-first': ['ui/app.js',
+    "          if (modeWasKnown) ev('plant_mode', { mode: ts.plant_mode, sim_seconds: Math.round(t) });",
+    "          ev('plant_mode', { mode: ts.plant_mode, sim_seconds: Math.round(t) });"],
+  // The mechanism INVERTED: fires ONLY on the baseline and suppresses every real
+  // transition afterwards — a plausible off-by-one on the same null check.
+  'tel-modeknown-inverted': ['ui/app.js',
+    "          var modeWasKnown = lastMode !== null;     // false only for this session's FIRST mode",
+    "          var modeWasKnown = lastMode === null;     // false only for this session's FIRST mode"],
+  // The baseline mode never persisted: a real page reload re-inits `lastMode` to null, so
+  // the NEXT genuine transition is wrongly treated as a fresh baseline and lost rather
+  // than reported.
+  'tel-lastmode-not-persisted': ['ui/app.js',
+    '          ssSet(MODE_KEY, String(lastMode));        // same reason as SEEN_KEY: survive a reload',
+    '          /* not persisted */'],
+
+  /* --- the rate limiter, split in two (#797) ------------------------------------------ */
+  // THE ORIGINAL DEFECT: both routes drawing on the SAME budget. A bug-report upload and
+  // an events flood would then throttle each other, which is exactly what the split
+  // exists to stop.
+  'wk-limiters-share-one-budget': ['worker/src/index.js',
+    '    const limiter = isBundle ? env.BUNDLE_LIMITER : env.LIMITER;',
+    '    const limiter = env.LIMITER;'],
+  // The refusal recorded nowhere: a 429 goes back to the client exactly as before, but
+  // nothing durable notices it happened — the invisibility the whole feature exists to fix.
+  'wk-throttle-not-recorded': ['worker/src/index.js',
+    "        recordThrottle(env, isBundle ? 'bundle' : 'events');", ''],
+  // THE PROMISE BREAKER, at the one call site that could carry the address into a written
+  // row: appending it to the route label is a plausible "make it more specific" edit, and
+  // it would put the IP in Analytics Engine for three months.
+  'wk-throttle-leaks-ip': ['worker/src/index.js',
+    "        recordThrottle(env, isBundle ? 'bundle' : 'events');",
+    "        recordThrottle(env, (isBundle ? 'bundle' : 'events') + ':' + ip);"],
+  // The dashboard line shown even at zero — the "0 requests rate-limited" drift the
+  // function's own header warns against: a routine-looking line where `.warn` belongs.
+  'wk-throttle-line-shown-at-zero': ['worker/src/analytics.js',
+    '  if (!throttled) return \'\';', ''],
+  // `.warn` dropped: a non-zero count would render, but as neutral text indistinguishable
+  // from every other line on the page — the one thing the task called out by name.
+  'wk-throttle-line-not-warn': ['worker/src/analytics.js',
+    "  return '<p class=\"warn\"><b>' + throttled + '</b> request'",
+    "  return '<p><b>' + throttled + '</b> request'"],
 };
 
 if (/--list-injections/.test(ARG)) {
@@ -124,6 +274,41 @@ function readSrc(rel) {
       + ' — the source moved and the injection is blind, which is worse than no injection');
   }
   return src.split(spec[1]).join(spec[2]);
+}
+
+/* ------------------------------------------------------- loading the Worker's ES modules
+ * The idiom from run_dashboard_auth.js/run_dashboard_trend.js/run_rollup.js: there is no
+ * package.json declaring module type (the repo root is gated against gaining one), so a
+ * `data:` URL carries each module and the graph is resolved BOTTOM-UP — a dependency is
+ * built before the specifier that names it is rewritten to point at the built copy.
+ * Reads through readSrc(), so an active --inject= targeting 'worker/src/index.js' still
+ * reaches the module actually imported and executed here. */
+function loadWorkerEsm(entry, stubs) {
+  var built = {};
+  function build(rel) {
+    if (built[rel]) return built[rel];
+    var src = (stubs && Object.prototype.hasOwnProperty.call(stubs, rel))
+      ? stubs[rel]
+      : readSrc('worker/src/' + rel);
+    src = src.replace(/from\s+'\.\/([\w.]+\.js)'/g, function (_, dep) {
+      return "from '" + build(dep) + "'";
+    });
+    built[rel] = 'data:text/javascript;base64,' + Buffer.from(src, 'utf8').toString('base64');
+    return built[rel];
+  }
+  return import(build(entry));
+}
+// A stub for cfapi.js's whole export surface (every name any worker/src module imports
+// from it) that never makes a real network call. Every route this runner drives (events,
+// bundle) never reaches analytics.js/usage.js/sessions.js/rollup.js's actual functions —
+// they only need to IMPORT successfully, which is all this proves.
+function fakeCfapiForWorker() {
+  return "export const DATASET = 'reactor_dynamics_usage';\n"
+    + "export const ACCOUNT = 'acct'; export const SITE_TAG = 'tag';\n"
+    + "export const COLUMNS_SINCE_TS = '2026-08-11 02:54:00';\n"
+    + "export const COLUMNS_SINCE = \"toDateTime('2026-08-11 02:54:00')\";\n"
+    + "export const sql = () => Promise.reject(new Error('run_telemetry: unexpected sql() call'));\n"
+    + "export const gql = () => Promise.reject(new Error('run_telemetry: unexpected gql() call'));\n";
 }
 
 // ------------------------------------------------------------------ fake browser
@@ -219,6 +404,74 @@ function load(opts) {
     require(path.join(ROOT, 'site', 'telemetry.js'));
   }
   return { T: g.RD.Telemetry, sent: sent };
+}
+
+// ------------------------------------------------------------------ TEL (ui/app.js)
+/* TEL is not a module — it is a local `var` inside the giant closure ui/app.js attaches to
+ * globalThis.RD.UI, and nothing in Node can execute that file whole (see the "ui/app.js must
+ * actually USE it" comment lower down, which is why THAT check is a source scan). TEL's own
+ * `tick`/`milestone`/`stateMilestone` methods are self-contained, though: everything they
+ * touch (`seen`, `falseSeen`, `lastMode`, `ssGet`, `ssSet`, `ev`, `api`) is declared inside
+ * the TEL IIFE itself, and `api()` reaches out only through the bare identifiers `window`
+ * and `RD`. Extracting the IIFE's own source and running it against a stubbed `window`/`RD`
+ * therefore exercises the REAL code — the same trick site/telemetry.js's injected loads
+ * already use via vm.runInThisContext, above.
+ *
+ * THE ANCHORS ARE SINGLE PHYSICAL LINES, grep-verified as the only lines in the file
+ * matching them. Either one moving throws rather than silently extracting nothing. */
+var TEL_START = '  var TEL = (function () {';
+var TEL_END = '  }());';
+function extractTEL(src) {
+  var i = src.indexOf(TEL_START);
+  if (i < 0) throw new Error('TEL start anchor not found in ui/app.js — the source moved');
+  var j = src.indexOf(TEL_END, i);
+  if (j < 0) throw new Error('TEL end anchor not found in ui/app.js — the source moved');
+  // Assigns a global property instead of declaring `var TEL`, so nothing here can collide
+  // with — or be shadowed by — an unrelated global named TEL.
+  return src.slice(i, j + TEL_END.length).replace('var TEL', 'global.__TEL__');
+}
+
+// Builds a fresh TEL against its own sessionStorage (a new browser TAB) and a fake
+// RD.Telemetry that just records what was accepted. `opts.storage` reuses a PRIOR mkStore()
+// to simulate a RELOAD of the SAME tab: real sessionStorage survives a reload, so passing
+// the same store back in is what "reload" means here — TEL itself is rebuilt from scratch,
+// exactly like the page re-running this IIFE, but the storage under it is the same object.
+function loadTEL(opts) {
+  opts = opts || {};
+  var events = [];
+  var granted = opts.granted !== false;
+  global.window = global;                     // window === globalThis, as it is in a browser
+  // Same shape as telemetry.js's own `noStorage` case: `window.sessionStorage.getItem`
+  // throws on a null store, and ssGet's own try/catch is what is under test there.
+  global.sessionStorage = opts.noStorage ? null : (opts.storage || mkStore());
+  global.RD = { Telemetry: {
+    granted: function () { return granted; },
+    event: function (name, props) { events.push({ name: name, props: props }); return true; },
+  } };
+  require('vm').runInThisContext(extractTEL(readSrc('ui/app.js')),
+    { filename: path.join(ROOT, 'ui', 'app.js') });
+  var TEL = global.__TEL__;
+  delete global.__TEL__;
+  return { TEL: TEL, events: events, storage: global.sessionStorage };
+}
+// A snapshot shaped like what TEL.tick reads: `s.true_state.mwe_output`/`.fuel_damaged`/
+// `.plant_mode` and `s.metadata.sim_time`. `mode` is left OUT of the object entirely when
+// omitted (rather than `undefined`) — `typeof ts.plant_mode === 'number'` must see the key
+// missing, not present-but-undefined, to match a real true_state that never had the field.
+function snap(mwe, fuelDamaged, simT, mode) {
+  var ts = { mwe_output: mwe, fuel_damaged: !!fuelDamaged };
+  if (typeof mode === 'number') ts.plant_mode = mode;
+  return { true_state: ts, metadata: { sim_time: simT || 0 } };
+}
+function names(events) { return events.map(function (e) { return e.name; }); }
+function milestoneNames(events) {
+  return events.filter(function (e) { return e.name === 'milestone'; })
+    .map(function (e) { return e.props.name; });
+}
+// The sequence of MODES actually reported on the funnel, in firing order.
+function modeSeq(events) {
+  return events.filter(function (e) { return e.name === 'plant_mode'; })
+    .map(function (e) { return e.props.mode; });
 }
 
 // A bundle shaped like a real recording: columnar timeseries, `rows` rows of full-precision
@@ -359,6 +612,136 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
     !('seconds' in a.T._clean('session_end', { seconds: '600' })));
   ck('a number in a bool field is dropped',
     !('blocked' in a.T._clean('command', { blocked: 1 })));
+}());
+
+// ===================================================== (f) command-run coalescing
+// These controls are number boxes with up/down arrows, not sliders (a hold auto-repeats,
+// a "dial it in exactly" click-sequence does not) — set_pressure_setpoint alone was 1,761
+// uses over 18 sessions, and `command` was 93% of all 13,181 events. A run of the SAME
+// action/flags within COALESCE_MS collapses to ONE row on the trailing edge, carrying how
+// many presses it took. See COALESCE_MS in site/telemetry.js for the window and why.
+(function () {
+  // ---- a run collapses to one row, and the row carries the repeat count -----------
+  (function () {
+    var a = load();
+    a.T.setConsent('granted');
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    ck('a run of 3 identical presses collapses to ONE queued row',
+      a.T._queue().length === 1, 'queue=' + a.T._queue().length);
+    ck('...and the row carries the repeat count',
+      a.T._queue()[0].p.count === 3, JSON.stringify(a.T._queue()[0].p));
+
+    var b = load();
+    b.T.setConsent('granted');
+    b.T.event('command', { action: 'set_load_target', blocked: false });
+    ck('a single press with no repeat still carries count: 1',
+      b.T._queue()[0].p.count === 1, JSON.stringify(b.T._queue()[0].p));
+  }());
+
+  // ---- the row's timing is the TRAILING edge, not the first press -----------------
+  (function () {
+    var a = load();
+    a.T.setConsent('granted');
+    // 1450 -> 1650ms: 200ms apart (inside COALESCE_MS, so still one run) but straddling
+    // a whole-second rounding boundary (1 -> 2), since `t` is seconds, rounded.
+    var clock = { t: 1450 };
+    globalThis.performance = { now: function () { return clock.t; } };
+    a.T.event('command', { action: 'set_steam_dump_setpoint', blocked: false });
+    var firstT = a.T._queue()[0].t;
+    clock.t += 200;
+    a.T.event('command', { action: 'set_steam_dump_setpoint', blocked: false });
+    var lastT = a.T._queue()[0].t;
+    ck('the coalesced row\'s timestamp moves to the LAST repeat, not the first',
+      lastT > firstT, 'first=' + firstT + ' last=' + lastT);
+  }());
+
+  // ---- a gap over the window starts a NEW run, not a third repeat -------------------
+  (function () {
+    var a = load();
+    a.T.setConsent('granted');
+    var clock = { t: 1000 };
+    globalThis.performance = { now: function () { return clock.t; } };
+    a.T.event('command', { action: 'set_rods', blocked: false });
+    clock.t += 251;   // just over COALESCE_MS (250ms)
+    a.T.event('command', { action: 'set_rods', blocked: false });
+    ck('a gap over the coalesce window starts a second row',
+      a.T._queue().length === 2, 'queue=' + a.T._queue().length);
+    // Read defensively: a wrong row count above must not also crash this one.
+    var q2 = a.T._queue();
+    ck('...each with its own count of 1',
+      !!q2[0] && !!q2[1] && q2[0].p.count === 1 && q2[1].p.count === 1,
+      JSON.stringify(q2.map(function (r) { return r.p.count; })));
+  }());
+
+  // ---- NEVER coalesce across a different action ------------------------------------
+  (function () {
+    var a = load();
+    a.T.setConsent('granted');
+    a.T.event('command', { action: 'set_rods', blocked: false });
+    a.T.event('command', { action: 'set_load_target', blocked: false });
+    ck('two different action names are never coalesced',
+      a.T._queue().length === 2, 'queue=' + a.T._queue().length);
+  }());
+
+  // ---- NEVER coalesce across a different `blocked` ---------------------------------
+  // THE LOAD-BEARING ONE: a refused command inside a run of accepted ones is the single
+  // most interesting event in that run, and folding it away would hide exactly what
+  // "Controls people try but cannot use" exists to show.
+  (function () {
+    var a = load();
+    a.T.setConsent('granted');
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: true });
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    ck('a refused command inside a run is its OWN row, never folded in',
+      a.T._queue().length === 3, 'queue=' + a.T._queue().length);
+    // Read defensively (#-idiom in this file): when the row count is wrong, index [1]
+    // may not exist at all — that is red about the defect above, not a crash here.
+    var q3 = a.T._queue();
+    ck('...and the blocked flag survives on its own row',
+      !!q3[1] && q3[1].p.blocked === true,
+      JSON.stringify(q3.map(function (r) { return r.p.blocked; })));
+  }());
+
+  // ---- the buffer cannot survive an opt-out (invariant a) --------------------------
+  (function () {
+    var a = load();
+    a.T.setConsent('granted');
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });   // open run, count=2
+    a.T.setConsent('denied');
+    ck('opting out mid-run empties the queue', a.T._queue().length === 0);
+    a.T.setConsent('granted');
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    ck('a repeat after re-consenting starts a FRESH run, not a silently-lost extension',
+      a.T._queue().length === 1 && a.T._queue()[0].p.count === 1,
+      JSON.stringify(a.T._queue()));
+  }());
+
+  // ---- a run that spans a batch flush: the tail ships, and does not orphan --------
+  (function () {
+    var a = load();
+    a.T.setConsent('granted');
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    a.T.flush();
+    ck('the run in flight IS in the flushed batch, count included',
+      a.sent.length === 1 && JSON.parse(a.sent[0].body).events[0].p.count === 2,
+      a.sent.length ? a.sent[0].body : 'nothing sent');
+    a.T.event('command', { action: 'set_pressure_setpoint', blocked: false });
+    ck('a repeat after the flush starts a NEW row, not an edit to the shipped one',
+      a.T._queue().length === 1 && a.T._queue()[0].p.count === 1,
+      JSON.stringify(a.T._queue()));
+  }());
+
+  // ---- BATCH_MS is 60000, not 15000 -------------------------------------------------
+  (function () {
+    var src = require('fs').readFileSync(path.join(ROOT, 'site', 'telemetry.js'), 'utf8');
+    ck('BATCH_MS is 60000 (15s -> 60s)', /\bvar BATCH_MS = 60000;/.test(src),
+      (src.match(/var BATCH_MS = \d+;/) || [''])[0]);
+  }());
 }());
 
 // =================================================== (e) no cross-session identity
@@ -821,6 +1204,210 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
   });
 }());
 
+// =========================================== ui/app.js: state-derived milestones (TEL)
+/* #on_grid-is-an-IC: `hot_full_power` starts with the generator already on line, so the
+ * old "mwe_output > 0" state test fired on_grid on the FIRST tick — recording the initial
+ * condition as though the player had done something. Live data, 7 days to 2026-09-20:
+ * on_grid 69 sessions, hot_full_power 69 sessions — a "100% success" funnel that measured
+ * nothing. `stateMilestone` requires a FALSE observed before a TRUE counts, so an IC that
+ * starts true never fires — but a player who starts on the grid, trips, and re-syncs still
+ * gets credit once the trip has been observed. Each case below is proven to go red via the
+ * matching injection in the table above; run with --inject=<name> to watch it happen. */
+(function () {
+  // ---- an IC that starts true: no on_grid, ever, for this session --------------------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(50, false, 0));      // first observation: already on the grid
+    a.TEL.tick(snap(52, false, 5));      // stays on the grid
+    ck('an IC that starts on the grid emits NO on_grid milestone',
+      milestoneNames(a.events).indexOf('on_grid') === -1,
+      JSON.stringify(milestoneNames(a.events)));
+  }());
+
+  // ---- starts off the grid, then generates: on_grid DOES fire ------------------------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(0, false, 0));       // observed false first
+    a.TEL.tick(snap(0, false, 3));
+    a.TEL.tick(snap(40, false, 8));      // the transition
+    ck('a session that starts off the grid and then generates DOES emit on_grid',
+      milestoneNames(a.events).indexOf('on_grid') !== -1,
+      JSON.stringify(milestoneNames(a.events)));
+    var ev = a.events.filter(function (e) { return e.name === 'milestone' && e.props.name === 'on_grid'; })[0];
+    ck('...stamped with the sim second of the crossing, not the first tick',
+      ev && ev.props.sim_seconds === 8, JSON.stringify(ev));
+  }());
+
+  // ---- starts on the grid, drops off, comes back: DOES fire (the re-sync case) -------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(60, false, 0));      // starts true — must NOT fire yet
+    ck('...has not fired while still on the initial condition',
+      milestoneNames(a.events).indexOf('on_grid') === -1, JSON.stringify(milestoneNames(a.events)));
+    a.TEL.tick(snap(0, false, 10));      // trips off — the false this rule requires
+    a.TEL.tick(snap(45, false, 40));     // re-synchronises
+    ck('a session that starts on the grid, drops off, and comes back DOES emit on_grid',
+      milestoneNames(a.events).indexOf('on_grid') !== -1, JSON.stringify(milestoneNames(a.events)));
+  }());
+
+  // ---- the one-shot latch still holds across a repeat ---------------------------------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(0, false, 0));
+    a.TEL.tick(snap(30, false, 5));      // fires once
+    a.TEL.tick(snap(0, false, 10));      // drops off again
+    a.TEL.tick(snap(35, false, 20));     // a SECOND crossing, same session
+    var hits = milestoneNames(a.events).filter(function (n) { return n === 'on_grid'; });
+    ck('the one-shot latch still holds across a repeat crossing in the same session',
+      hits.length === 1, JSON.stringify(milestoneNames(a.events)));
+  }());
+
+  // ---- a reload does not duplicate an already-fired milestone -------------------------
+  (function () {
+    var store = mkStore();
+    var a = loadTEL({ storage: store });
+    a.TEL.tick(snap(0, false, 0));
+    a.TEL.tick(snap(30, false, 5));      // fires under the first TEL instance
+    var b = loadTEL({ storage: store }); // "reload": same sessionStorage, a fresh TEL
+    b.TEL.tick(snap(31, false, 6));      // still on the grid post-reload
+    ck('a reload of an already-fired session does not re-emit on_grid',
+      milestoneNames(b.events).indexOf('on_grid') === -1, JSON.stringify(milestoneNames(b.events)));
+  }());
+
+  // ---- a reload does not LOSE a false-seen-but-not-yet-fired milestone -----------------
+  (function () {
+    var store = mkStore();
+    var a = loadTEL({ storage: store });
+    a.TEL.tick(snap(0, false, 0));       // observed false, not yet fired
+    var b = loadTEL({ storage: store }); // "reload" before the transition ever happened
+    b.TEL.tick(snap(40, false, 12));     // the transition, under the reloaded TEL
+    ck('a reload does not lose a false-seen-but-not-yet-crossed on_grid',
+      milestoneNames(b.events).indexOf('on_grid') !== -1, JSON.stringify(milestoneNames(b.events)));
+  }());
+
+  // ---- core_damage goes through the SAME rule (shape check, not a live defect) --------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(10, true, 0));       // an IC that starts damaged: must not fire
+    ck('core_damage does not fire on an already-damaged initial condition',
+      milestoneNames(a.events).indexOf('core_damage') === -1, JSON.stringify(milestoneNames(a.events)));
+    var b = loadTEL();
+    b.TEL.tick(snap(10, false, 0));
+    b.TEL.tick(snap(10, true, 30));      // the transition
+    ck('core_damage fires on a genuine false -> true transition',
+      milestoneNames(b.events).indexOf('core_damage') !== -1, JSON.stringify(milestoneNames(b.events)));
+  }());
+
+  // ---- scram is UNCHANGED: an event, not a state test, and takes no falseSeen key -----
+  (function () {
+    var raw = require('fs').readFileSync(path.join(ROOT, 'ui', 'app.js'), 'utf8');
+    ck("scram still fires from the recorder's EVENT (type === 'scram'), not a state test",
+      raw.indexOf("if (type === 'scram') TEL.milestone('scram', t);") !== -1,
+      'the scram hook moved — this file was not supposed to touch it');
+  }());
+
+  // ============================= the plant_mode FUNNEL's own baseline (2026-09-20+5) ====
+  /* `lastMode` starts null, so the FIRST mode a session ever observes always "differed"
+   * and fired — recording where a session STARTED as a mode it REACHED. Measured
+   * 2026-09-20: mode-1 read 69 sessions and 69 sessions STARTED at hot_full_power; mode-5
+   * read 24 and 21 STARTED at cold_shutdown. `modeWasKnown` suppresses only that one
+   * emission per session; plant_mode itself is NOT one-shot (unlike milestone()) — every
+   * later transition, including one already visited, must keep firing. */
+
+  // ---- the very first mode a session observes does not fire -------------------------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(50, false, 0, 1));   // first observation: Mode 1
+    a.TEL.tick(snap(52, false, 5, 1));   // unchanged
+    ck('the first plant_mode observation this session emits NOTHING',
+      modeSeq(a.events).length === 0, JSON.stringify(modeSeq(a.events)));
+  }());
+
+  // ---- a session that starts at mode 1 and never changes emits NOTHING --------------
+  (function () {
+    var a = loadTEL();
+    for (var i = 0; i < 5; i++) a.TEL.tick(snap(50, false, i * 10, 1));
+    ck('a session that never changes mode emits no plant_mode at all',
+      modeSeq(a.events).length === 0, JSON.stringify(modeSeq(a.events)));
+  }());
+
+  // ---- a later transition still fires, exactly as before -----------------------------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(0, false, 0, 5));    // baseline: Mode 5 — no emission
+    a.TEL.tick(snap(0, false, 20, 4));   // a real transition
+    a.TEL.tick(snap(20, false, 40, 3));  // and another
+    ck('a later transition still emits plant_mode',
+      JSON.stringify(modeSeq(a.events)) === JSON.stringify([4, 3]),
+      JSON.stringify(modeSeq(a.events)));
+  }());
+
+  // ---- starts at mode 5, works up: every mode ENTERED fires, not the one begun in ----
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(0, false, 0, 5));
+    a.TEL.tick(snap(0, false, 30, 4));
+    a.TEL.tick(snap(0, false, 60, 3));
+    a.TEL.tick(snap(0, false, 90, 2));
+    a.TEL.tick(snap(80, false, 120, 1));
+    ck('a session climbing from mode 5 emits every mode entered, but not the one begun in',
+      JSON.stringify(modeSeq(a.events)) === JSON.stringify([4, 3, 2, 1]),
+      JSON.stringify(modeSeq(a.events)));
+  }());
+
+  // ---- revisiting a mode already seen this session still fires (not one-shot) --------
+  (function () {
+    var a = loadTEL();
+    a.TEL.tick(snap(0, false, 0, 3));
+    a.TEL.tick(snap(0, false, 10, 4));
+    a.TEL.tick(snap(0, false, 20, 3));   // back to 3 — a milestone would suppress this
+    ck('plant_mode is not one-shot: a revisited mode fires again',
+      JSON.stringify(modeSeq(a.events)) === JSON.stringify([4, 3]),
+      JSON.stringify(modeSeq(a.events)));
+  }());
+
+  // ---- a reload mid-session does not re-emit the baseline -----------------------------
+  (function () {
+    var store = mkStore();
+    var a = loadTEL({ storage: store });
+    a.TEL.tick(snap(0, false, 0, 3));    // baseline established and persisted
+    var b = loadTEL({ storage: store }); // "reload": same sessionStorage, a fresh TEL
+    b.TEL.tick(snap(0, false, 5, 3));    // still mode 3 post-reload
+    ck('a reload of an established baseline does not re-emit it',
+      modeSeq(b.events).length === 0, JSON.stringify(modeSeq(b.events)));
+  }());
+
+  // ---- a genuine transition, discovered on the FIRST tick after a reload, still fires --
+  /* THE DISCRIMINATING CASE for persistence specifically: if the reload's first tick
+   * repeats the pre-reload mode (as above), an unpersisted `lastMode` still "recovers" by
+   * treating that repeat as its own new baseline — same value, so nothing LOOKS lost. Only
+   * a mode that already changed by the time of that first post-reload tick exposes it: an
+   * unpersisted baseline reads this as a fresh session's first mode and swallows it. */
+  (function () {
+    var store = mkStore();
+    var a = loadTEL({ storage: store });
+    a.TEL.tick(snap(0, false, 0, 3));     // baseline: mode 3, established and persisted
+    var b = loadTEL({ storage: store });  // "reload": same sessionStorage, a fresh TEL
+    b.TEL.tick(snap(60, false, 5, 1));    // already at mode 1 on the very first post-reload tick
+    ck('a transition already true on the first tick after a reload still fires',
+      JSON.stringify(modeSeq(b.events)) === JSON.stringify([1]), JSON.stringify(modeSeq(b.events)));
+    b.TEL.tick(snap(60, false, 20, 1));   // unchanged
+    ck('...and does not repeat while unchanged',
+      JSON.stringify(modeSeq(b.events)) === JSON.stringify([1]), JSON.stringify(modeSeq(b.events)));
+  }());
+
+  // ---- storage refusal: the first tick is still suppressed, never a spurious fire ----
+  (function () {
+    var a = loadTEL({ noStorage: true });
+    a.TEL.tick(snap(0, false, 0, 5));
+    ck('a storage refusal does not turn the first tick into an emission',
+      modeSeq(a.events).length === 0, JSON.stringify(modeSeq(a.events)));
+    a.TEL.tick(snap(0, false, 10, 4));   // a real transition, still detected in-memory
+    ck('...but a later transition in the SAME session (no reload) still fires',
+      JSON.stringify(modeSeq(a.events)) === JSON.stringify([4]), JSON.stringify(modeSeq(a.events)));
+  }());
+}());
+
 // ======================================================= path 2 is a separate path
 // Run WITHOUT compression first: the body is plain JSON and can be read directly.
 // Consent is deliberately left UNDECIDED throughout — pressing send in the feedback
@@ -1158,11 +1745,31 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
      * the standing idiom in this file: without it every `https://` eats its own line. */
     var wCode = wsrc.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
     var ipHits = (wCode.match(/CF-Connecting-IP/g) || []).length;
-    ck('the Worker READS the visitor address exactly once, in the rate limiter',
-      ipHits === 1 && /env\.LIMITER[\s\S]{0,240}CF-Connecting-IP/.test(wCode), ipHits + ' occurrence(s) in code');
+    /* REWRITTEN FOR #797: the address is still read exactly once, but the two limiters
+     * that key off it are chosen by a ternary rather than a single fixed binding — the
+     * old regex required `env.LIMITER` immediately before the CF-Connecting-IP read, and
+     * that ordering is gone now that the route decides which binding to ask FIRST. */
+    ck('the Worker READS the visitor address exactly once, and both limiters key off it',
+      ipHits === 1 &&
+      /CF-Connecting-IP'\)\s*\|\|\s*'unknown';[\s\S]{0,150}env\.BUNDLE_LIMITER[\s\S]{0,60}env\.LIMITER;[\s\S]{0,200}limiter\.limit\(\{\s*key:\s*ip\s*\}\)/.test(wCode),
+      ipHits + ' occurrence(s) in code');
     var wBody = (/writeDataPoint\(\{([\s\S]*?)\n    \}\);/.exec(wsrc) || [])[1] || '';
-    ck('...and nothing about the address reaches the row that is written',
+    ck('...and nothing about the address reaches the ordinary EVENT row that is written',
       !!wBody && !/CF-Connecting-IP|\bip\b/i.test(wBody), wBody ? '' : 'writeDataPoint body not found');
+    /* THE SECOND WRITE SITE (#797): recordThrottle's own row. Found independently of the
+     * one above — it is the LAST writeDataPoint in the file, appended after handleBundle —
+     * so a defect in either one cannot hide behind the other going green. */
+    var mThrottleFn = /function recordThrottle\(env, route\) \{[\s\S]*?\r?\n\}/.exec(wsrc);
+    ck('recordThrottle was found', !!mThrottleFn);
+    if (mThrottleFn) {
+      ck('recordThrottle takes no request and reads no header — it cannot leak the '
+        + 'address even by a later, careless edit',
+        !/\brequest\b|\bheaders\b|CF-Connecting-IP/.test(mThrottleFn[0]), mThrottleFn[0]);
+      var mThrottleBody = (/env\.EVENTS\.writeDataPoint\(\{([\s\S]*?)\n  \}\);/.exec(mThrottleFn[0]) || [])[1] || '';
+      ck('...and its own writeDataPoint body carries no IP either',
+        !!mThrottleBody && !/CF-Connecting-IP|\bip\b/i.test(mThrottleBody),
+        mThrottleBody ? mThrottleBody : 'recordThrottle writeDataPoint body not found');
+    }
 
     if (mBot) {
       var botClass = new Function(mBot[0] + '; return botClass;')();
@@ -1198,6 +1805,74 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
        * strings are. */
       ck('the classifier says in its own comment that a low live count proves nothing',
         /not evidence the classifier works/i.test(wsrc), '');
+    }
+
+    /* ---- device / browser / OS (2026-09-20+2), EXECUTED the same way as botClass -----
+     * OWNER, 2026-09-20: "Can we start to link device to session along with other info
+     * like country, etc?" Real fixture UAs, one per family, chosen to hit the FOUR
+     * ordering traps the task brief named directly: iPadOS Safari reporting a Mac UA
+     * (device only — this classifier cannot win that one, and MACOS_SAFARI below proves
+     * it does NOT false-positive a real Mac into 'tablet' instead), Edge's UA carrying
+     * "Chrome" AND "Safari", Chrome's UA carrying "Safari", and an Android UA telling a
+     * tablet from a phone by the ABSENCE of "Mobile". */
+    var mDevice = /function deviceClass\(ua\) \{[\s\S]*?\r?\n\}/.exec(wsrc);
+    var mBrowser = /const BROWSER_PATTERNS = \[[\s\S]*?\r?\n\];\r?\nfunction browserClass\(ua\) \{[\s\S]*?\r?\n\}/.exec(wsrc);
+    var mOs = /function osClass\(ua\) \{[\s\S]*?\r?\n\}/.exec(wsrc);
+    ck('the Worker\'s device classifier was found', !!mDevice);
+    ck('the Worker\'s browser classifier was found', !!mBrowser);
+    ck('the Worker\'s OS classifier was found', !!mOs);
+
+    if (mDevice && mBrowser && mOs) {
+      var deviceClass = new Function(mDevice[0] + '; return deviceClass;')();
+      var browserClass = new Function(mBrowser[0] + '; return browserClass;')();
+      var osClass = new Function(mOs[0] + '; return osClass;')();
+
+      var CHROME_WIN = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+      var IPHONE_SAFARI = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+      var FIREFOX_LINUX = 'Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0';
+      var EDGE_WIN = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0';
+      var OPERA_WIN = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 OPR/105.0.0.0';
+      var SAMSUNG_AND = 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/23.0 Chrome/115.0.0.0 Mobile Safari/537.36';
+      var ANDROID_PHONE = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+      var ANDROID_TABLET = 'Mozilla/5.0 (Linux; Android 13; SM-X200) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+      var IPAD_NAMED = 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+      var MACOS_SAFARI = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
+      var CROS_CHROME = 'Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36';
+
+      ck('a desktop Chrome/Windows visit is desktop/chrome/windows',
+        deviceClass(CHROME_WIN) === 'desktop' && browserClass(CHROME_WIN) === 'chrome' && osClass(CHROME_WIN) === 'windows',
+        deviceClass(CHROME_WIN) + '/' + browserClass(CHROME_WIN) + '/' + osClass(CHROME_WIN));
+      ck('an iPhone Safari visit is mobile/safari/ios',
+        deviceClass(IPHONE_SAFARI) === 'mobile' && browserClass(IPHONE_SAFARI) === 'safari' && osClass(IPHONE_SAFARI) === 'ios',
+        deviceClass(IPHONE_SAFARI) + '/' + browserClass(IPHONE_SAFARI) + '/' + osClass(IPHONE_SAFARI));
+      ck('a desktop Firefox/Linux visit is desktop/firefox/linux',
+        deviceClass(FIREFOX_LINUX) === 'desktop' && browserClass(FIREFOX_LINUX) === 'firefox' && osClass(FIREFOX_LINUX) === 'linux',
+        deviceClass(FIREFOX_LINUX) + '/' + browserClass(FIREFOX_LINUX) + '/' + osClass(FIREFOX_LINUX));
+      ck('EDGE IS EDGE, not Chrome — its UA carries "Chrome" AND "Safari" too',
+        browserClass(EDGE_WIN) === 'edge', browserClass(EDGE_WIN));
+      ck('OPERA IS OPERA, same trap',
+        browserClass(OPERA_WIN) === 'opera', browserClass(OPERA_WIN));
+      ck('SAMSUNG INTERNET IS ITS OWN CLASS, same trap, on a real device+OS reading too',
+        browserClass(SAMSUNG_AND) === 'samsung' && deviceClass(SAMSUNG_AND) === 'mobile' && osClass(SAMSUNG_AND) === 'android',
+        browserClass(SAMSUNG_AND) + '/' + deviceClass(SAMSUNG_AND) + '/' + osClass(SAMSUNG_AND));
+      ck('a real Mac Safari visit is desktop/safari/macos — no false tablet or iOS',
+        deviceClass(MACOS_SAFARI) === 'desktop' && browserClass(MACOS_SAFARI) === 'safari' && osClass(MACOS_SAFARI) === 'macos',
+        deviceClass(MACOS_SAFARI) + '/' + browserClass(MACOS_SAFARI) + '/' + osClass(MACOS_SAFARI));
+      ck('AN ANDROID PHONE IS MOBILE — carries "Mobile" in its UA',
+        deviceClass(ANDROID_PHONE) === 'mobile', deviceClass(ANDROID_PHONE));
+      ck('...AND AN ANDROID TABLET IS TABLET — told apart by the ABSENCE of "Mobile", the\n        exact trap the task named',
+        deviceClass(ANDROID_TABLET) === 'tablet', deviceClass(ANDROID_TABLET));
+      ck('an iPad that still names itself is TABLET, the one case this can tell from a Mac',
+        deviceClass(IPAD_NAMED) === 'tablet' && osClass(IPAD_NAMED) === 'ios',
+        deviceClass(IPAD_NAMED) + '/' + osClass(IPAD_NAMED));
+      ck('ChromeOS is its own OS class, not swallowed by the Linux/X11 it also carries',
+        osClass(CROS_CHROME) === 'chromeos', osClass(CROS_CHROME));
+      ck('a command-line tool is desktop/other/other — present but unrecognised, never blank',
+        deviceClass('curl/8.4.0') === 'desktop' && browserClass('curl/8.4.0') === 'other' && osClass('curl/8.4.0') === 'other',
+        deviceClass('curl/8.4.0') + '/' + browserClass('curl/8.4.0') + '/' + osClass('curl/8.4.0'));
+      ck('AN ABSENT User-Agent is "unknown" on all three, never "" — same marker idiom as\n        ref_kind, and it is what makes device its own predates-the-columns signal',
+        deviceClass('') === 'unknown' && deviceClass(null) === 'unknown' && deviceClass(undefined) === 'unknown' &&
+        browserClass('') === 'unknown' && osClass('') === 'unknown', '');
     }
 
     /* ---- AND THE WIRING IS RUN, not read ------------------------------------------
@@ -1276,14 +1951,32 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
 
     // ---- the column map: APPENDED, documented, and written on every row -------------
     var noCmt = wBody.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-    ck('the four new blobs are APPENDED after the last one, in the documented order',
-      /String\(p\.id \|\| ''\),\s*refHost,\s*refKind,\s*country,\s*botKind,\s*\]/.test(noCmt),
+    ck('the four 2026-09-20 blobs are APPENDED after the last one, in the documented order',
+      /String\(p\.id \|\| ''\),\s*refHost,\s*refKind,\s*country,\s*botKind,\s*/.test(noCmt),
       (noCmt.match(/String\(p\.id[\s\S]{0,120}/) || [''])[0].replace(/\s+/g, ' '));
-    ck('the bot verdict is APPENDED after the last double, not inserted among them',
-      /num\(p\.steps\),\s*botKind \? 1 : 0,\s*\]/.test(noCmt),
-      (noCmt.match(/num\(p\.steps\)[\s\S]{0,80}/) || [''])[0].replace(/\s+/g, ' '));
+    ck('...and device/browser/os are APPENDED after THOSE, not spliced in among them',
+      /country,\s*botKind,\s*deviceKind,\s*browserKind,\s*osKind,\s*\]/.test(noCmt),
+      (noCmt.match(/country,[\s\S]{0,120}/) || [''])[0].replace(/\s+/g, ' '));
+    /* WAS anchored on `botKind ? 1 : 0,` being the LAST double before `]`. That could not
+     * survive the next append, and on 2026-09-20 it did not: `count` was appended after it,
+     * which SATISFIES the property this check exists for (append, never insert) while
+     * failing its literal form. Rewritten to assert the ORDER of the appended doubles, open
+     * at the end, so the next append extends it instead of breaking it. */
+    ck('the doubles appended since 2026-09-20 are in documented order, bot then count',
+      /num\(p\.steps\),\s*botKind \? 1 : 0,\s*num\(p\.count\),/.test(noCmt),
+      (noCmt.match(/num\(p\.steps\)[\s\S]{0,90}/) || [''])[0].replace(/\s+/g, ' '));
+    ck('...and nothing was SPLICED IN before them — steps is still the last pre-2026-09-20 double',
+      /num\(p\.step\),\s*num\(p\.steps\),/.test(noCmt),
+      (noCmt.match(/num\(p\.step\),[\s\S]{0,60}/) || [''])[0].replace(/\s+/g, ' '));
+    /* device/browser/os add NO new doubles (unlike bot, which paired a string with a
+     * numeric flag) — Cloudflare's own deviceType/userAgentBrowser/userAgentOS on the
+     * RUM series are plain TEXT columns too, so there is no boolean counterpart to omit. */
+    ck('...and NO new double was added for device/browser/os — TEXT has no boolean twin',
+      !/num\(p\.steps\),\s*botKind \? 1 : 0,\s*(deviceKind|browserKind|osKind)/.test(noCmt), '');
     ['blobs\\[8\\]\\s+ref_host', 'blobs\\[9\\]\\s+ref_kind', 'blobs\\[10\\]\\s+country',
-     'blobs\\[11\\]\\s+bot_kind', 'doubles\\[10\\] bot'].forEach(function (re) {
+     'blobs\\[11\\]\\s+bot_kind', 'doubles\\[10\\] bot',
+     'blobs\\[12\\]\\s+device', 'blobs\\[13\\]\\s+browser', 'blobs\\[14\\]\\s+os'
+    ].forEach(function (re) {
       ck('the column map documents ' + re.replace(/\\\\s\+|\\\\/g, ' ').replace(/\s+/g, ' '),
         new RegExp(re).test(wsrc), 'a slot claimed in code and not in the map is the next collision');
     });
@@ -1296,6 +1989,148 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
      * external — and it would look right in a code read. */
     ck('...and it is handed the SITE\'s host, not the Worker\'s own',
       !/referrerKind\([^)]*url\.hostname/.test(wsrc), '');
+  })
+  .then(function () {
+    /* ================================ the rate limiter, split in two (#797) ============
+     * WHY THIS EXECUTES THE REAL WORKER rather than reading its source: "route A doesn't
+     * draw on route B's budget" is a claim about BEHAVIOUR under a shared IP, and a source
+     * scan can certify a ternary that is never actually reached at request time (the
+     * exact shape #485/#542 already caught elsewhere in this file). mod.default.fetch is
+     * driven with real `Request` objects and counting fakes for both `ratelimits`
+     * bindings, the same idiom run_dashboard_auth.js already uses for handleDashboard. */
+    function makeLimiter(succeedFn) {
+      var l = { calls: 0 };
+      l.limit = function (opts) {
+        l.calls++;
+        return Promise.resolve({ success: succeedFn(l.calls, opts) });
+      };
+      return l;
+    }
+    function makeEvents() {
+      var rows = [];
+      return { rows: rows, writeDataPoint: function (row) { rows.push(row); } };
+    }
+    function evReq(ip, extra) {
+      var body = JSON.stringify(Object.assign({ channel: 'public', release: 'Alpha 1.7.6',
+        session: 's', events: [{ e: 'session_start', p: { plant: 'pwr' } }] }, extra || {}));
+      return new Request('https://telemetry.example/',
+        { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip }, body: body });
+    }
+    function bnReq(ip) {
+      return new Request('https://telemetry.example/?kind=bundle',
+        { method: 'POST', headers: { 'CF-Connecting-IP': ip }, body: '{"kind":"x"}' });
+    }
+
+    return loadWorkerEsm('index.js', { 'cfapi.js': fakeCfapiForWorker() }).then(function (mod) {
+      var IP = '203.0.113.9';
+
+      // ---- (1) a bundle upload does not consume the events budget, and vice versa -----
+      return (function () {
+        var ev = makeLimiter(function () { return true; });
+        var bn = makeLimiter(function () { return true; });
+        var env = { LIMITER: ev, BUNDLE_LIMITER: bn, EVENTS: makeEvents(), BUNDLES: { put: function () { return Promise.resolve(); } } };
+        return mod.default.fetch(evReq(IP), env).then(function () {
+          ck('an events request calls only the EVENTS limiter',
+            ev.calls === 1 && bn.calls === 0, 'events=' + ev.calls + ' bundle=' + bn.calls);
+          return mod.default.fetch(bnReq(IP), env);
+        }).then(function (res) {
+          ck('a bundle upload calls only the BUNDLE limiter — the events budget is untouched',
+            ev.calls === 1 && bn.calls === 1, 'events=' + ev.calls + ' bundle=' + bn.calls);
+          ck('...and the bundle itself still goes through', res.status === 200, String(res.status));
+        });
+      }())
+      // ---- (2) an events flood exhausting ITS limiter does not block a bug report -----
+      .then(function () {
+        var ev = makeLimiter(function (n) { return n <= 3; });   // 4th+ call refused
+        var bn = makeLimiter(function () { return true; });
+        var env = { LIMITER: ev, BUNDLE_LIMITER: bn, EVENTS: makeEvents(), BUNDLES: { put: function () { return Promise.resolve(); } } };
+        var flood = Promise.resolve();
+        for (var i = 0; i < 6; i++) { (function () { flood = flood.then(function () { return mod.default.fetch(evReq(IP), env); }); }()); }
+        return flood.then(function () {
+          ck('an events flood exhausted its own limiter', ev.calls === 6, 'calls=' + ev.calls);
+          return mod.default.fetch(bnReq(IP), env);
+        }).then(function (res) {
+          ck('...and a bug report from the SAME address still goes through',
+            res.status === 200 && bn.calls === 1, 'status=' + res.status + ' bundleCalls=' + bn.calls);
+        });
+      })
+      // ---- (3) a throttled request records ITS datapoint, on the right route ----------
+      .then(function () {
+        var refused = makeLimiter(function () { return false; });
+        var allowed = makeLimiter(function () { return true; });
+        var events = makeEvents();
+        var env = { LIMITER: refused, BUNDLE_LIMITER: allowed, EVENTS: events, BUNDLES: { put: function () { return Promise.resolve(); } } };
+        return mod.default.fetch(evReq(IP), env).then(function (res) {
+          ck('a throttled events request answers 429', res.status === 429, String(res.status));
+          ck('...and writes exactly one throttle datapoint',
+            events.rows.length === 1, JSON.stringify(events.rows));
+          ck('...tagged as the EVENTS route (blobs[4], same slot an ordinary row\'s key uses)',
+            !!events.rows[0] && events.rows[0].blobs[4] === 'events', JSON.stringify(events.rows[0]));
+          ck('...under the "rate_limited" name, so it is never mistaken for a real event',
+            !!events.rows[0] && events.rows[0].indexes[0] === 'rate_limited'
+              && events.rows[0].blobs[0] === 'rate_limited', JSON.stringify(events.rows[0]));
+          // THE LOAD-BEARING ONE (4): the row carries no trace of the address anywhere —
+          // not a blob, not a double, not a key of the object — searched as JSON rather
+          // than field-by-field so a later column added to the row cannot hide it. Read
+          // defensively (the #-idiom in this file): a wrong row count above must not also
+          // crash this one — `events.rows[0]` may not exist, which is red about THAT
+          // defect, not a reason to throw here.
+          ck('...and the row carries NO IP anywhere in it',
+            !!events.rows[0] && JSON.stringify(events.rows[0]).indexOf(IP) === -1,
+            JSON.stringify(events.rows[0]));
+        });
+      })
+      .then(function () {
+        var allowed = makeLimiter(function () { return true; });
+        var refused = makeLimiter(function () { return false; });
+        var events = makeEvents();
+        var env = { LIMITER: allowed, BUNDLE_LIMITER: refused, EVENTS: events, BUNDLES: { put: function () { return Promise.resolve(); } } };
+        return mod.default.fetch(bnReq(IP), env).then(function (res) {
+          ck('a throttled bundle upload answers 429', res.status === 429, String(res.status));
+          ck('...and writes a throttle datapoint tagged as the BUNDLE route',
+            events.rows.length === 1 && !!events.rows[0] && events.rows[0].blobs[4] === 'bundle',
+            JSON.stringify(events.rows));
+          ck('...still with no IP anywhere in it',
+            !!events.rows[0] && JSON.stringify(events.rows[0]).indexOf(IP) === -1,
+            JSON.stringify(events.rows[0]));
+        });
+      })
+      // ---- (5) no EVENTS binding: the limiter check still runs, nothing throws --------
+      .then(function () {
+        var refused = makeLimiter(function () { return false; });
+        var env = { LIMITER: refused, BUNDLE_LIMITER: makeLimiter(function () { return true; }) };
+        return mod.default.fetch(evReq(IP), env).then(function (res) {
+          ck('a throttle with no EVENTS binding still answers 429 rather than throwing',
+            res.status === 429, String(res.status));
+        }, function (e) {
+          ck('a throttle with no EVENTS binding still answers 429 rather than throwing', false, String(e));
+        });
+      });
+    });
+  })
+  .then(function () {
+    /* =========================== the dashboard's throttle line (#797) ===================
+     * renderThrottleLine (worker/src/analytics.js) is a PURE function of the query rows,
+     * split out from the query specifically so it can be lifted and run directly — same
+     * idiom as hostOf/edgeCountry/botClass above, and for the same reason (HR10: a source
+     * scan proves the string exists, not that it renders the right thing under the right
+     * condition). */
+    var asrc = readSrc('worker/src/analytics.js');
+    var m = /function renderThrottleLine\(rows\) \{[\s\S]*?\r?\n\}/.exec(asrc);
+    ck('analytics.js\'s renderThrottleLine was found', !!m);
+    if (m) {
+      var renderThrottleLine = new Function('esc', m[0] + '; return renderThrottleLine;')(function (s) { return String(s); });
+      ck('zero rows renders NOTHING — no reassuring "0 requests" line',
+        renderThrottleLine([]) === '', JSON.stringify(renderThrottleLine([])));
+      ck('an all-zero total also renders nothing',
+        renderThrottleLine([{ route: 'events', n: 0 }]) === '', renderThrottleLine([{ route: 'events', n: 0 }]));
+      var line = renderThrottleLine([{ route: 'events', n: 3 }, { route: 'bundle', n: 1 }]);
+      ck('a non-zero total renders `.warn` — the alarm colour, not a neutral tile',
+        /class="warn"/.test(line), line);
+      ck('...carries the total', /\b4\b/.test(line), line);
+      ck('...and both routes, distinguishably',
+        /events: 3/.test(line) && /bundle: 1/.test(line), line);
+    }
   })
   .then(function () {
     // ------------------------------------------------- storage refused entirely

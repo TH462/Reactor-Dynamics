@@ -23,8 +23,9 @@
  * to the nearest 10 and is stored with `sample_interval > 1` (rollup.js stores it AND marks
  * it, deliberately, rather than dropping it). Against a real volume of about 5 landing
  * visits a day, one such day is a doubled bar and a blown weekly mean. So `dailyTotals`
- * marks it and `trailingMean` returns null for any window containing one, rather than
- * blending a rounded figure with exact ones and printing the result to two decimals.
+ * marks it, and any day-level reading built from it must skip a window containing one
+ * rather than blending a rounded figure with exact ones — `periodDelta` already refuses on
+ * a coarse day; the by-day chart and table print the flag instead of averaging anything.
  *
  * ------------------------------------------------------------------ 3. THE COMPARISON
  * REFUSES RATHER THAN MISLEADS. The store began about 2026-09-01 (rollup.js landed
@@ -63,14 +64,17 @@
  * `etDayStartMs`, never through a fixed 4- or 5-hour offset and never by subtracting
  * 86,400,000 ms: a window spanning a daylight-saving switch is 23 or 25 hours long.
  *
- * ⚠ `dayStartMs` anchors at NOON UTC before calling `etDayStartMs`, and that is NOT the
- * forbidden shortcut render.js warns about. The forbidden one samples the ZONE OFFSET at
- * noon and is wrong on the two switch days in opposite directions. This one only needs an
- * instant that is unambiguously inside the wanted Eastern day — noon UTC is 07:00 or 08:00
- * Eastern, always the same date — and then hands it to the two-pass helper, which reads the
- * offset correctly at the boundary. Feeding a bare "YYYY-MM-DD" to `etDayStartMs` directly
- * would be the real bug: it parses as midnight UTC, which is 19:00 or 20:00 the PREVIOUS
- * Eastern day, and every day would silently shift back one.
+ * `dayStartMs` hands the day STRAIGHT to `etDayStartMs`, which since #797 takes a bare
+ * "YYYY-MM-DD" as the day it names — the same `DATE_ONLY` guard `et`/`etDay`/`etWithDow`/
+ * `etFull` have always had. It used to anchor at NOON UTC first, to dodge the fact that the
+ * guard was missing there and a day string parsed as midnight UTC, i.e. 19:00 or 20:00 the
+ * PREVIOUS Eastern day. That anchor is gone because the hazard is gone; the validation is
+ * NOT gone, and `mustDay` still rejects anything that is not an Eastern day string before
+ * it can become part of a SQL range.
+ *
+ * Note which shortcut is still forbidden, because the two look alike: sampling the ZONE
+ * OFFSET at noon is wrong on the two switch days in opposite directions, and render.js's
+ * two-pass solve is what avoids it. Nothing here may replace that with an offset of its own.
  *
  * BOTS ARE EXCLUDED from every traffic figure this module returns (`bot = 0`), with ONE
  * deliberate exemption: `groupBy('bot', …)`, where filtering the column you are grouping
@@ -171,11 +175,11 @@ function mustDay(where, s) {
   return d;
 }
 
-/* The UTC instant at which an Eastern calendar day began. See the ⚠ in the header for why
- * the noon anchor is here and why it is not the shortcut render.js forbids. */
+/* The UTC instant at which an Eastern calendar day began. `etDayStartMs` takes the day
+ * string directly (#797); `mustDay` stays because it is the SQL-range validation, not a
+ * date-parsing workaround. See the header for which shortcut is still forbidden. */
 export function dayStartMs(day) {
-  const d = mustDay('stats.dayStartMs', day);
-  return etDayStartMs(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10), 12, 0, 0));
+  return etDayStartMs(mustDay('stats.dayStartMs', day));
 }
 
 // The Eastern day before this one: one millisecond before its start is in it, whatever the
@@ -273,10 +277,55 @@ export async function dailyTotals(db, from, to) {
       pageloads: a ? num(a.pageloads) : 0,
       visits: a ? num(a.visits) : 0,
       coarse: (a ? num(a.si) : 1) > 1 || (run ? num(run.coarse) : 1) > 1,
+      /* `si` IS RETURNED, not only the boolean derived from it -- same fix as
+       * `dayCountryReferrer` (#797), for the reader every by-day chart and table pulls from.
+       * THE WORST OF BOTH SOURCES that feed `coarse` above: `traffic_daily`'s own
+       * MAX(sample_interval) AND `rollup_runs.coarse`, which `rollup.js` stores as that run's
+       * OWN measured max interval (`out.coarse = t.coarse`), never a bare flag -- so it is a
+       * real number a caller may print, not a boolean this reader would have to fake a figure
+       * to render. Either source alone can be the one that is actually coarse. */
+      si: Math.max(a ? num(a.si) : 1, run ? num(run.coarse) : 1),
       missing: !run || failed,
       truncated: /limit-hit/.test(note),
     };
   });
+}
+
+/* PIPELINE HEALTH (#797 item 2) — everything a caller needs in order to say whether the
+ * nightly rollup itself is behaving, read from `rollup_runs` ALONE (never `traffic_daily`):
+ * whether a run happened recently, what its most recent note said, and whether any day
+ * strictly inside its own recorded span has NO row at all. That last one is not the same
+ * question `dailyTotals`' `missing` answers for a single caller-chosen window — a gap deep
+ * in the store can sit behind a perfectly fresh tail (a redeploy that replayed one day
+ * twice, a manual backfill that skipped one) where nothing checking only "how recent is the
+ * newest row" would ever see it.
+ *
+ *   { rows: [{day, ranAt, note}], gaps: [...day strings] }
+ *
+ * `rows` is every recorded run, ascending by day. `gaps` is every Eastern day strictly
+ * within [rows[0].day, rows[last].day] that has no row — `dayRange` minus what is present,
+ * the same "walk the whole span, don't just diff the ends" idiom `dailyTotals` already uses
+ * for a single window. An empty table (the rollup has never completed a run) returns
+ * `{rows:[], gaps:[]}` rather than throwing — a caller asking "is it stale" against nothing
+ * gets an honest empty answer instead of a NaN wearing an hour count.
+ *
+ * What each row's `note` MEANS — which are failures and which are routine — is not decided
+ * here: that is a rendering judgement (`analytics.js`'s `classifyNote`), not a fact about
+ * the store, the same split `dailyTotals` draws between fetching a day's shape and a caller
+ * deciding what to call it. */
+export async function rollupHealth(db) {
+  const r = await db.prepare(
+    'SELECT day AS day, ran_at AS ran_at, note AS note FROM rollup_runs ORDER BY day ASC').all();
+  const rows = rowsOf(r).map((x) => ({
+    day: String(x.day),
+    ranAt: String(x.ran_at == null ? '' : x.ran_at),
+    note: String(x.note == null ? '' : x.note),
+  }));
+  if (!rows.length) return { rows: [], gaps: [] };
+  const present = new Set(rows.map((x) => x.day));
+  const full = dayRange(rows[0].day, rows[rows.length - 1].day);
+  const gaps = full.filter((d) => !present.has(d));
+  return { rows, gaps };
 }
 
 /* Top `limit` values of one dimension over [from, to], descending by pageloads.
@@ -314,7 +363,124 @@ export async function groupBy(db, dim, from, to, limit) {
     pageloads: num(x.pageloads),
     visits: num(x.visits),
     coarse: num(x.si) > 1,
+    // `si` returned alongside the boolean, same `dayCountryReferrer` fix (#797): a caller
+    // rendering "coarse" must say WHAT it is rounded to, not assume Cloudflare's current tier.
+    si: Math.max(1, num(x.si)),
   }));
+}
+
+/* DEEP-LINK LANDINGS — a proxy for a returning visitor that needs no identifier at all
+ * (cross-visit tracking was considered and declined, 2026-09-20: nothing persistent is
+ * stored on a visitor's device, and privacy.html's promise that two visits cannot be
+ * linked stands).
+ *
+ * A DEEP-LINK LANDING is a landing visit whose landing page is NOT the homepage `/` AND
+ * whose referrer kind is `direct` (no referrer at all). BOTH conditions, not just the
+ * first — NARROWED 2026-09-20 (#795 follow-up) from "any non-home landing page" after the
+ * live store showed why that over-counted: of three non-home landings measured that day,
+ * two (`/about`, `/download`) were `external`, referred by a search engine — someone
+ * FOUND that page, which is discovery, the opposite of what this metric exists to catch.
+ * Only the `direct` one (`/ui/shell`, no referrer) fits "a bookmark or a remembered URL",
+ * since a browser sends no `Referer` header for a typed or bookmarked address. `internal`
+ * needs no separate exclusion: an internal referrer is one page of this site linking to
+ * another, which by construction is never a LANDING (a Cloudflare "visit" is attributed
+ * to the page a session STARTS on, and a session cannot start via an in-app link) — so in
+ * practice the filter is direct vs. external and no allowlist of paths is needed.
+ *
+ * IT IS A FLOOR, NOT A COUNT of returning visitors: a returning visitor who happens to
+ * land on `/` first is invisible to it, and a first-time visitor handed a deep link by a
+ * friend (still `direct`, still not `/`) is counted wrongly. Say so wherever this is
+ * shown — a proxy read as the thing it stands in for is exactly the HR12 failure mode.
+ *
+ * `groupBy` is single-dimension only and cannot express "path AND referrer_kind", so this
+ * is a dedicated two-column GROUP BY, the same shape `referrerBreakdown` already uses for
+ * `referrer_host`+`referrer_kind`. `limit` bounds the number of distinct (path, kind)
+ * pairs summed; 1000 is the ceiling every other reader in this file uses for the same
+ * reason, and this site is nowhere near that many distinct pairs. */
+export async function deepLinkLandings(db, from, to, limit) {
+  const days = dayRange(from, to);
+  const lim = Math.max(1, Math.min(1000, Math.floor(Number(limit)) || 1000));
+  const r = await db.prepare(
+    'SELECT path AS path, referrer_kind AS referrer_kind, SUM(pageloads) AS pageloads,'
+    + ' SUM(visits) AS visits, MAX(sample_interval) AS si FROM traffic_daily'
+    + ' WHERE day >= ? AND day <= ? AND bot = 0'
+    + ' GROUP BY path, referrer_kind ORDER BY visits DESC LIMIT ?')
+    .bind(days[0], days[days.length - 1], lim).all();
+  const rows = rowsOf(r).map((x) => ({
+    path: x.path == null ? '' : String(x.path),
+    referrerKind: x.referrer_kind == null ? '' : String(x.referrer_kind),
+    pageloads: num(x.pageloads),
+    visits: num(x.visits),
+    coarse: num(x.si) > 1,
+    // `si` returned alongside the boolean, same `dayCountryReferrer` fix (#797).
+    si: Math.max(1, num(x.si)),
+  }));
+  const total = rows.reduce((s, x) => s + x.visits, 0);
+  // THE TWO CONDITIONS THE METRIC IS: not the homepage, AND no referrer at all.
+  const deepLink = rows.filter((x) => x.path !== '/' && x.referrerKind === 'direct').reduce((s, x) => s + x.visits, 0);
+  return {
+    total,
+    deepLink,
+    coarse: rows.some((x) => x.coarse),
+    byPath: rows,
+  };
+}
+
+/* DEEP-LINK LANDINGS, PER DAY (owner request, 2026-09-20: "show that per day and plot it on
+ * the main plot"). Same two-condition metric as `deepLinkLandings` above (not the homepage
+ * AND referrer kind `direct`) and the SAME day-quality convention `dailyTotals` uses — one
+ * row per calendar day in [from, to], ascending, no gaps, each carrying `coarse`/`missing`
+ * off `rollup_runs` the identical way. A dedicated per-day reader rather than looping
+ * `deepLinkLandings` one day at a time: that would issue one D1 round trip per day instead
+ * of two total, and would have to re-derive the missing/coarse rules a second way.
+ *
+ *   { day, deepLink, coarse, missing }
+ *
+ * `coarse`  the day's rows include one captured from the rounded tier (sample_interval > 1),
+ *           or the run itself recorded a coarse capture — same rule as `dailyTotals`.
+ * `missing` no rollup run completed for that day, or the run recorded a traffic failure. A
+ *           real zero day (every landing was the homepage, or the run genuinely saw
+ *           nothing) is `{deepLink:0, missing:false}` — the same real-zero-vs-uncaptured
+ *           distinction `dailyTotals` exists to preserve, now for this metric too. */
+export async function deepLinkLandingsByDay(db, from, to) {
+  const days = dayRange(from, to);
+  const f = days[0], t = days[days.length - 1];
+
+  const agg = await db.prepare(
+    'SELECT day AS day, path AS path, referrer_kind AS referrer_kind, SUM(visits) AS visits,'
+    + ' MAX(sample_interval) AS si FROM traffic_daily'
+    + ' WHERE day >= ? AND day <= ? AND bot = 0 GROUP BY day, path, referrer_kind').bind(f, t).all();
+  const runs = await db.prepare(
+    'SELECT day AS day, traffic_rows AS traffic_rows, coarse AS coarse, note AS note'
+    + ' FROM rollup_runs WHERE day >= ? AND day <= ?').bind(f, t).all();
+
+  const byDay = new Map();
+  for (const r of rowsOf(agg)) {
+    const day = String(r.day);
+    const cur = byDay.get(day) || { deepLink: 0, si: 1 };
+    // THE TWO CONDITIONS THE METRIC IS: not the homepage, AND no referrer at all.
+    if (String(r.path) !== '/' && String(r.referrer_kind) === 'direct') cur.deepLink += num(r.visits);
+    cur.si = Math.max(cur.si, num(r.si) || 1);
+    byDay.set(day, cur);
+  }
+  const runBy = new Map();
+  for (const r of rowsOf(runs)) runBy.set(String(r.day), r);
+
+  return days.map((day) => {
+    const a = byDay.get(day);
+    const run = runBy.get(day);
+    const note = run ? String(run.note == null ? '' : run.note) : '';
+    const failed = /traffic failed/i.test(note);
+    return {
+      day,
+      deepLink: a ? a.deepLink : 0,
+      coarse: (a ? a.si : 1) > 1 || (run ? num(run.coarse) : 1) > 1,
+      // `si` returned alongside the boolean, same `dayCountryReferrer` fix (#797) -- the
+      // worst of both sources feeding `coarse` above, same reasoning as `dailyTotals`.
+      si: Math.max(a ? a.si : 1, run ? num(run.coarse) : 1),
+      missing: !run || failed,
+    };
+  });
 }
 
 /* REFERRER HOST **AND** THE KIND IT WAS CLASSIFIED AS, in one row.
@@ -354,6 +520,8 @@ export async function referrerBreakdown(db, from, to, limit) {
     pageloads: num(x.pageloads),
     visits: num(x.visits),
     coarse: num(x.si) > 1,
+    // `si` returned alongside the boolean, same `dayCountryReferrer` fix (#797).
+    si: Math.max(1, num(x.si)),
   }));
 }
 
@@ -433,28 +601,13 @@ export function sessionsInPeriod() {
 
 /* ---------------------------------------------------------------- trend
  *
- * A trailing mean over `window` days of `dailyTotals` rows, aligned to the last day of each
- * window. `mean` is null until the window is full AND null for any window containing a
- * coarse or uncaptured day: at about 5 landing visits a day, one figure rounded to the
- * nearest 10 moves a 7-day mean by more than the weekday effect the line exists to remove.
- * A gap in the line is readable; a bent line is not.
- *
- * Defaults to `visits` (landing visits), the headline grain — pass 'pageloads' for the
- * other series. */
-export function trailingMean(days, window, metric) {
-  const rows = days || [];
-  const w = Math.floor(Number(window));
-  if (!(w >= 1)) throw new Error('stats.trailingMean: window must be a whole number of days >= 1');
-  const key = metric || 'visits';
-  return rows.map((r, i) => {
-    if (i + 1 < w) return { day: r.day, mean: null };
-    const win = rows.slice(i + 1 - w, i + 1);
-    if (win.some((x) => x.coarse || x.missing)) return { day: r.day, mean: null };
-    const sum = win.reduce((s, x) => s + num(x[key]), 0);
-    return { day: r.day, mean: Math.round((sum / w) * 100) / 100 };
-  });
-}
-
+ * `trailingMean` (a 7-day trailing average over `dailyTotals` rows) lived here and was
+ * REMOVED 2026-09-20 — owner: "Get rid of the weekly average on that plot." It was the
+ * by-day chart's only caller (`analytics.js`), which no longer builds it; nothing else in
+ * this tree called it, so it is gone rather than left as dead exported surface. The
+ * coarse/missing-window rule it enforced ("a rounded or uncaptured day poisons an average
+ * built across it") still applies to `periodDelta` below, which refuses for the same reason.
+ */
 const refuse = (reason) => ({ ok: false, reason });
 
 /* PERIOD OVER PERIOD, or an honest refusal.

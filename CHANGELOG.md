@@ -30,6 +30,34 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **The nightly rollup detects a host collision it cannot otherwise survive** (#797). The daily
+  traffic key omits the request host, so two Cloudflare groups differing only by host collapse
+  and one is silently dropped. Measured against the live store: one host, zero collisions — so
+  the defect is latent and a key migration on the only exact history held would be risk without
+  cause. The run now names both hosts if a second ever appears, and the pipeline-health line
+  surfaces it.
+- **Ops dashboard: a pipeline-health warning** (#797) when the nightly rollup goes stale, records
+  a real failure, or leaves a gap. It has always written its runs and failures to `rollup_runs`;
+  nothing ever read them. Nothing renders while the pipeline is healthy, so it cannot become
+  wallpaper, and an unrecognised failure note warns by default rather than passing silently.
+- **Deep-link landings are plotted per day on the main By-day chart** (2026-09-20) as a third
+  series, in both the bar and line forms, and as a column in the day table. **The 7-day trailing
+  mean is removed** from that chart; the dashed prior-period comparison stays, being an
+  equal-length earlier window rather than a rolling average. The new series is not rescaled onto a
+  second axis — five deep-link landings against 142 pageloads genuinely does sit near zero.
+- **Ops dashboard: Feature usage filters by release version** (2026-09-20), defaulting to the
+  newest — chosen by most recent event, never by sorting the version string, since "Alpha 1.7.10"
+  sorts below "Alpha 1.7.9". Preview and public builds of the same version are separate options,
+  because the tester site is where a walkthrough change gets checked before release. The selected
+  release's session count is shown, with a warning below ten sessions.
+- **Ops dashboard: a "Deep-link landings" section** (2026-09-20) — landing visits that opened
+  somewhere other than the homepage with no referrer, i.e. a bookmark or a typed URL. A proxy for
+  returning visitors that needs no identifier of any kind, added because cross-visit tracking was
+  considered and declined the same day. Externally-referred subpage landings are excluded because
+  they are search discovery, the opposite of a return — measured: the only two in the store were
+  Google to /about and /download. The section says on its own face that it is a FLOOR, not a count.
+
 ### Changed
 - **The walkthrough drives the speed control** *(OWNER, 2026-09-20: "The fast forward should drop
   down to 1x for steps where the next step should be played at 1x. it should auto fast forward but
@@ -146,6 +174,52 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   out-of-turn note, ack note, step number and mark 11 -> 12.
 
 ### Fixed
+- **The dashboard's live "today" figure covered 48 hours** (#797). `etDayStartMs` lacked the
+  date-only guard its four sibling helpers carry, so a bare `YYYY-MM-DD` parsed as midnight UTC
+  and resolved to the *previous* Eastern day — a full 24 hours early, in both daylight-saving
+  regimes. The hollow "today" point therefore spanned two days, and yesterday was counted twice
+  in all nine breakdown sections whenever the window included today. Measured on a fixture: the
+  Pageloads tile read **132 against a true 60**. Closed days were never affected, so stored
+  history is clean. A second, opposite error is fixed alongside it: the live hourly query asked
+  for 26 groups where the grouping was hour × bot, silently dropping the evening once enough
+  hours saw a bot — a 48 % under-count. The two had been partly cancelling.
+- **The dashboard printed a rounding interval it never measured** (#797). Seven sites rendered a
+  hard-coded `±10` — Cloudflare's coarse tier today, and not a constant. The real figure was
+  already computed and discarded into a boolean; every site now states the interval it actually
+  received. Two of the seven were SVG tooltips in the chart code, which the page's own grep could
+  not see and an existing guard excluded by construction.
+- **A shared IP could silently lose telemetry, and nothing said so** (#797). One 60-per-minute
+  budget covered both ingest routes, so a 2 MB bug report cost the same as a tiny event batch —
+  and 60/min is one person's budget: a classroom behind one address exhausted it. Events now get
+  300/min and bug reports a separate 5/min. More importantly the loss is now **visible**: a
+  throttled request is recorded and the analytics page warns that the telemetry was dropped, not
+  delayed. The client cannot tell — it clears its queue before sending and never reads the
+  response — so the server is the only place this could be reported from.
+- **Two telemetry metrics counted where a session STARTED as something it achieved.** `on_grid`
+  fired from a state test on the first tick, so the 69 sessions that begin at full power all
+  scored it — it read 69 of 69. And the mode funnel's first observation always emitted, so "how
+  far they get" was largely where people began. A state-derived milestone now fires only on a
+  false→true transition seen within the session, and the funnel's baseline emission is suppressed;
+  starting at power earns nothing, while tripping and re-synchronising still counts. **Figures
+  recorded before this cannot be corrected and must not be trended across the fix.**
+- **Repeated presses of a control collapse into one event carrying a press count** (2026-09-20),
+  and the telemetry batch slows from 15 s to 60 s. `command` was 93 % of all events, with the
+  pressure setpoint at 98 presses per session — those controls are number boxes with arrows, so
+  the repeats are hold-to-repeat plus deliberate clicking. This also corrects a live wrong number:
+  "most-used controls" ranked them top purely because they fire per press, which was never
+  comparable with a single button press. The count is kept because with a number box it measures
+  effort, not pointer noise. A refused press always breaks a run rather than being folded in.
+- **Three raw control bytes had been written into `worker/src/analytics.js`** as map-key separators
+  (a literal NUL and two SOH, rather than `\u0000`/`\u0001` escapes). Valid JavaScript that runs
+  correctly — but git, grep and diff all classified the file as binary and stopped showing its
+  changes. Two of them shipped in Alpha 1.7.6. A gate now scans `worker/src` for raw control bytes.
+- **Device, browser and OS on the site's own telemetry** (2026-09-20), derived at the Worker from
+  the User-Agent it already reads to classify bots — no client change, no new field on the wire,
+  and it takes effect for the deployed site as soon as the Worker ships. They ride on every event,
+  so device is now per-session: "do mobile users leave sooner?" becomes one query instead of an
+  unanswerable join between Cloudflare's RUM and our own stream. Classification is ours and
+  cruder than Cloudflare's; default iPadOS Safari reports a Mac User-Agent, so the tablet count is
+  a floor.
 - **`Manuals/02` §4.1 promised a WARP timer the plant has not had since 2026-09-08.** #660 removed
   `_warpLockedUntil` ("Warp lock should not have a time out, it should either be locked or not")
   and `_warpBlocked` has reported only live conditions ever since; the manual still told the

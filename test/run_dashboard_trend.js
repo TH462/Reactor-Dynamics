@@ -25,8 +25,11 @@
  *   5. A REFUSED COMPARISON PRINTS A NUMBER ANYWAY. `stats.periodDelta` refuses rather than
  *      dividing by a store that has not existed long enough to compare against; the page's
  *      OWN rendering has to honour that refusal rather than reaching for `.pct` regardless.
- *   6. THE TREND LINE JOINS THROUGH A GAP. A null trailing mean means "not enough data", not
- *      zero — drawing a line through it shows a dip that never happened.
+ *   6. THE TREND LINE JOINS THROUGH A GAP. A null ghost (prior-period) value means the
+ *      matching prior-period day was coarse or uncaptured, not zero — drawing a line
+ *      through it shows a dip that never happened. (The OTHER trend line this file used to
+ *      guard, a 7-day trailing mean, was REMOVED 2026-09-20 — owner: "get rid of the
+ *      weekly average" — see section 6 below for what replaced its coverage.)
  *   7. `bucketDays` DRAWS TOO MANY BARS. The old signature took a `days` count and switched
  *      to weekly above 7 because every caller's `days` and row count were the same number;
  *      an arbitrary range has no such guarantee, and a wrong bucket size draws either a wall
@@ -246,6 +249,74 @@ function seed() {
   return db;
 }
 
+/* DEEP-LINK LANDINGS FIXTURES (#795 follow-up) — their OWN, ISOLATED databases, not rows
+ * added to the shared `seed()` store above. Every day in that store is already load-
+ * bearing for an exact sum somewhere in this file (checks 1-2's period-over-period delta
+ * alone spans 2026-09-05..2026-09-18 — the "prior 7 days" plus the default window — and
+ * combined with checks 1/10/13/20a's 2026-09-01..2026-09-07 and check 20c's
+ * 2026-08-25..2026-08-31, there is no day left that is not part of some exact total).
+ * Same idiom check 19 already uses for the empty-store case: a fresh `makeDb()` and a
+ * direct `A.analyticsPage()` call rather than the shared `renderPage()` helper. */
+function seedDeepLinkClosed() {
+  var d = makeDb();
+  // One DIRECT non-home landing (the bookmark case — must count) and one EXTERNAL one
+  // (search discovery of a subpage — must NOT), on a day that never reaches "today".
+  d._ins('traffic_daily', { day: '2026-09-09', country: 'Australia', referrer_host: '',
+    referrer_kind: 'direct', path: '/ui/shell', device: 'desktop', browser: 'Chrome',
+    os: 'Windows', nav_type: 'navigate', bot: 0, pageloads: 6, visits: 5, sample_interval: 1 });
+  d._ins('traffic_daily', { day: '2026-09-09', country: 'Australia', referrer_host: 'www.google.com',
+    referrer_kind: 'external', path: '/about', device: 'desktop', browser: 'Chrome',
+    os: 'Windows', nav_type: 'navigate', bot: 0, pageloads: 1, visits: 1, sample_interval: 1 });
+  d._ins('rollup_runs', { day: '2026-09-09', ran_at: '2026-09-09T05:10:00Z', traffic_rows: 2,
+    usage_rows: 0, coarse: 0, note: '' });
+  return d;
+}
+// A window that DOES reach "today" (2026-09-18, per FAKE_NOW below), so the closed side
+// combines with `DEEPLINK_LIVE`'s canned Cloudflare batch (a direct home row, a direct
+// non-home row, and an external non-home row) through the SAME merge.
+function seedDeepLinkLive() {
+  var d = makeDb();
+  d._ins('traffic_daily', { day: '2026-09-17', country: 'United States', referrer_host: '',
+    referrer_kind: 'direct', path: '/', device: 'desktop', browser: 'Chrome', os: 'Windows',
+    nav_type: 'navigate', bot: 0, pageloads: 14, visits: 7, sample_interval: 1 });
+  d._ins('rollup_runs', { day: '2026-09-17', ran_at: '2026-09-17T05:10:00Z', traffic_rows: 1,
+    usage_rows: 0, coarse: 0, note: '' });
+  return d;
+}
+
+/* DEEP-LINK LANDINGS, PLOTTED PER DAY (owner, 2026-09-20: "show that per day and plot it on
+ * the main plot"). An isolated fixture, own dates, well clear of "today" (2026-09-18) so
+ * every day here is CLOSED and the assertions do not have to reason about a live merge —
+ * that half is already proven by check 23b above. One of each kind of day this new reader
+ * has to tell apart, same convention section 3/4's `dailyTotals` fixture uses:
+ *   day 1  2 deep-link landings (plus a same-day home landing that must not count)
+ *   day 2  a REAL ZERO for deep-link landings — every landing that day is the homepage
+ *   day 3  exactly 1 deep-link landing — the "must still read at a value of 1" case
+ *   day 4  UNCAPTURED — no rollup_runs row at all
+ *   day 5..n  filler clean days (no deep-link landings), so a >14-day request has real
+ *             content past the boundary without inventing more deep-link cases than above */
+function seedDeepLinkByDay(nDays) {
+  var d = makeDb();
+  traffic(d, '2026-09-01', 'United States', 4, 2, 1, 0);
+  d._ins('traffic_daily', { day: '2026-09-01', country: 'United States', referrer_host: '',
+    referrer_kind: 'direct', path: '/ui/shell', device: 'desktop', browser: 'Chrome',
+    os: 'Windows', nav_type: 'navigate', bot: 0, pageloads: 4, visits: 2, sample_interval: 1 });
+  ran(d, '2026-09-01', 2, 1);
+  traffic(d, '2026-09-02', 'United States', 10, 6, 1, 0);
+  ran(d, '2026-09-02', 1, 1);
+  d._ins('traffic_daily', { day: '2026-09-03', country: 'United States', referrer_host: '',
+    referrer_kind: 'direct', path: '/ui/shell', device: 'desktop', browser: 'Chrome',
+    os: 'Windows', nav_type: 'navigate', bot: 0, pageloads: 2, visits: 1, sample_interval: 1 });
+  ran(d, '2026-09-03', 1, 1);
+  // day 4: no rollup_runs row at all -- UNCAPTURED.
+  for (var i = 5; i <= (nDays || 4); i++) {
+    var day = '2026-09-' + (i < 10 ? '0' + i : i);
+    traffic(d, day, 'United States', 4, 2, 1, 0);
+    ran(d, day, 1, 1);
+  }
+  return d;
+}
+
 // ---------------------------------------------------------------- the fake Cloudflare upstream
 var TODAY_LIVE = { rumPageloadEventsAdaptiveGroups: [
   { count: 8, avg: { sampleInterval: 1 }, sum: { visits: 5 }, dimensions: { bot: false } },
@@ -284,6 +355,21 @@ var GENERIC_BREAKDOWN = { rumPageloadEventsAdaptiveGroups: [
     requestPath: '/', countryName: 'Germany', refererHost: '',
     requestHost: 'reactordynamics.com', deviceType: 'desktop', userAgentBrowser: 'Chrome',
     userAgentOS: 'Windows', navigationType: 'navigate', bot: 0 } } ] };
+/* DEEP-LINK LANDINGS' OWN LIVE BATCH (#795 follow-up) — a THIRD dimension combination
+ * (`requestPath refererHost requestHost bot`) distinct from both `GENERIC_BREAKDOWN`'s
+ * ("requestPath bot", used by Top pages/Countries/Devices/Browser/OS) and the referrer
+ * sections' ("refererHost requestHost bot"), so this fixture answers ONLY the Deep-link
+ * Landings live query and cannot silently change any other section's total. One DIRECT
+ * home row (so the window still has ordinary traffic), one DIRECT non-home row (must
+ * count), one EXTERNAL non-home row (must NOT count — the exact narrowing being proven). */
+var DEEPLINK_LIVE = { rumPageloadEventsAdaptiveGroups: [
+  { count: 8, avg: { sampleInterval: 1 }, sum: { visits: 4 }, dimensions: {
+    requestPath: '/', refererHost: '', requestHost: 'reactordynamics.com', bot: 0 } },
+  { count: 6, avg: { sampleInterval: 1 }, sum: { visits: 5 }, dimensions: {
+    requestPath: '/ui/shell', refererHost: '', requestHost: 'reactordynamics.com', bot: 0 } },
+  { count: 2, avg: { sampleInterval: 1 }, sum: { visits: 1 }, dimensions: {
+    requestPath: '/about', refererHost: 'www.google.com', requestHost: 'reactordynamics.com', bot: 0 } },
+] };
 var VITALS_LCP = { rumWebVitalsEventsAdaptiveGroups: [
   { count: 40, avg: { sampleInterval: 1 }, quantiles: { largestContentfulPaintP75: 1500000 },
     dimensions: { largestContentfulPaintPath: '/' } } ] };
@@ -297,6 +383,25 @@ var VITALS_CLS = { rumWebVitalsEventsAdaptiveGroups: [
 // Set true for exactly one render (check 18) to simulate the live referrer fetch failing —
 // everything else must keep working normally around it.
 var FAIL_REFERRER = false;
+
+/* Set to a batch for exactly one render (check 28) to stand in for TODAY_LIVE — a full
+ * 25-hour Eastern day with every hour touched by a bot, which is the shape that makes the
+ * group LIMIT load-bearing. Null everywhere else, so no other check's totals move. */
+var HOURLY_WIDE = null;
+
+/* THE LIMIT IS PART OF THE ANSWER, so the fake honours it. Cloudflare truncates a group
+ * query at `limit:` and says nothing — the rows simply stop, which reads as a quiet
+ * evening rather than as a truncation. A fake that returns its whole canned batch
+ * regardless can never show that, so every check in this file was blind to an undersized
+ * limit however the number had been derived. TODAY_LIVE is 3 rows against a limit of 50,
+ * so this changes nothing for any other check; only a fixture deliberately wider than the
+ * limit can see it. */
+function limited(batch, s) {
+  var m = /limit: (\d+)/.exec(s);
+  if (!m) return batch;
+  return { rumPageloadEventsAdaptiveGroups:
+    (batch.rumPageloadEventsAdaptiveGroups || []).slice(0, +m[1]) };
+}
 
 // Dispatch on the query TEXT, most specific first — a fake that matched loosely would be
 // answering the wrong question and never notice.
@@ -312,8 +417,9 @@ function dispatchGql(q) {
   // `dimensions { … bot }` -- analytics.js's `rumGroup` always appends `bot` to the
   // requested dimensions now, so it can filter bot rows out of the returned rows
   // (`rumRows`' `excludeBots` option) without an unconfirmed GraphQL filter term.
-  if (has('dimensions { datetimeHour bot }')) return TODAY_LIVE;
+  if (has('dimensions { datetimeHour bot }')) return limited(HOURLY_WIDE || TODAY_LIVE, s);
   if (has('dimensions { countryName refererHost requestHost bot }')) return THREE_DIM;
+  if (has('dimensions { requestPath refererHost requestHost bot }')) return DEEPLINK_LIVE;
   if (has('dimensions { refererHost requestHost bot }')) {
     if (FAIL_REFERRER) throw new Error('fakeGql: simulated referrer upstream failure');
     return GENERIC_BREAKDOWN;
@@ -345,18 +451,23 @@ var INJECT = (/--inject=([\w-]+)/.exec(ARG) || [])[1] || null;
  * which is worse than no injection). */
 var INJECTIONS = {
   'closed-days-blind': ['analytics.js',
-    'const closedRows = meanFrom <= closedTo ? await dailyTotals(db, meanFrom, closedTo) : [];',
+    'const closedRows = from <= closedTo ? await dailyTotals(db, from, closedTo) : [];',
     'const closedRows = [];'],
   'today-not-live': ['analytics.js', 'if (includesToday) {', 'if (false) {'],
   'window-error-swallowed': ['analytics.js',
     'catch (e) { return { error: e.message }; }', 'catch (e) { return { from: today, to: today }; }'],
   'clamp-drop': ['analytics.js', 'if (sr && from < sr.first) {', 'if (false) {'],
+  /* RE-ANCHORED (found blind while re-firing every injection for #797: the deep-link-per-
+   * day merge landed between this fix and the anchor's last check, `coarse: c.coarse,`
+   * became `coarse: c.coarse || dl.coarse,`, and the old anchor silently never matched —
+   * the exact "source moved, injection never touches the module" trap this file's own
+   * header warns about, on a check nothing else re-fires). */
   'coarse-hide': ['analytics.js',
-    'return { day, pageloads: c.pageloads, visits: c.visits, coarse: c.coarse, missing: c.missing,',
-    'return { day, pageloads: c.pageloads, visits: c.visits, coarse: false, missing: c.missing,'],
+    'return { day, pageloads: c.pageloads, visits: c.visits, coarse: c.coarse || dl.coarse,',
+    'return { day, pageloads: c.pageloads, visits: c.visits, coarse: false,'],
   'delta-always-ok': ['analytics.js',
     "const deltaLine = '<p>' + (delta.ok", "const deltaLine = '<p>' + (true"],
-  'mean-draws-to-zero': ['render.js',
+  'ghost-draws-to-zero': ['render.js',
     'if (v == null) { if (cur.length > 1) segs.push(cur); cur = []; return; }', ''],
   'legacy-days-ignored': ['analytics.js',
     'const n = Math.max(1, Math.min(90, Math.floor(Number(qDays)) || 7));', 'const n = 7;'],
@@ -387,6 +498,13 @@ var INJECTIONS = {
   'breakdown-today-not-merged': ['analytics.js',
     "const g = rumRows(await gql(apiToken, rumGroup(cfDims, 'count_DESC', Math.max(limit, 200), todayFromIso, todayToIso)),",
     "const g = { rows: [] }; false && rumRows(await gql(apiToken, rumGroup(cfDims, 'count_DESC', Math.max(limit, 200), todayFromIso, todayToIso)),"],
+  /* #797 item 5. The limit as it shipped: 26, sized for the dimension ASKED FOR while
+   * `rumGroup` groups on hour x bot. Ordered ASC, so it truncates the EVENING. The fake
+   * `gql` honours `limit:` (see `limited`), so this is a behavioural red, not a spelling
+   * one — check 28's tile drops from 25 pageloads to 13. */
+  'hourly-limit-26': ['analytics.js',
+    "      const g = rumRows(await gql(apiToken, rumGroup('datetimeHour', 'datetimeHour_ASC', 50,",
+    "      const g = rumRows(await gql(apiToken, rumGroup('datetimeHour', 'datetimeHour_ASC', 26,"],
   'breakdown-span-drift': ['analytics.js',
     "+ esc(from) + ' to ' + esc(closedTo) + ')'", "+ esc(from) + ' to ' + esc(nextDay(closedTo)) + ')'"],
   'referrer-kind-recomputed': ['analytics.js',
@@ -457,6 +575,64 @@ var INJECTIONS = {
   'countryday-missing-note-silent': ['analytics.js',
     'const missingDays = allDays.filter((d) => d <= closedTo && (closedByDay.get(d) || { missing: true }).missing);',
     'const missingDays = [];'],
+  /* DEEP-LINK LANDINGS (#795). THE OFF-BY-ONE THAT INVERTS THE METRIC: counting the
+   * HOMEPAGE as a deep-link landing instead of everything that is not it. */
+  'deeplink-home-counted': ['analytics.js',
+    "    const deepRows = rows.filter((r) => r.path !== '/' && r.referrerKind === 'direct');",
+    "    const deepRows = rows.filter((r) => r.path === '/');"],
+  /* THE NARROWING #795's FOLLOW-UP MADE, PUT BACK: counting ANY non-home landing
+   * regardless of referrer — which counts search-engine DISCOVERY of a subpage
+   * (`/about`, `/download`) as though it were a returning visitor's bookmark. */
+  'deeplink-external-counted': ['analytics.js',
+    "    const deepRows = rows.filter((r) => r.path !== '/' && r.referrerKind === 'direct');",
+    "    const deepRows = rows.filter((r) => r.path !== '/');"],
+  /* THE SECTION READS CLOUDFLARE INSTEAD OF THE STORE for closed days — the same shape
+   * `breakdown-skips-d1` proves for the generic breakdowns, here for the dedicated reader. */
+  'deeplink-skips-store': ['analytics.js',
+    'const closed = from <= closedTo ? await deepLinkLandings(db, from, closedTo, 1000) : { total: 0, deepLink: 0, coarse: false, byPath: [] };',
+    'const closed = { total: 0, deepLink: 0, coarse: false, byPath: [] };'],
+  /* DEEP-LINK LANDINGS, PER DAY, ON THE BY-DAY CHART (owner, 2026-09-20: "show that per
+   * day and plot it on the main plot"). Four behaviours, same shapes the sections above
+   * already prove for the TOTAL form, now for the per-day merge that feeds the chart/table. */
+  'deeplink-byday-skips-store': ['analytics.js',
+    'const closedDeepLink = from <= closedTo ? await deepLinkLandingsByDay(db, from, closedTo) : [];',
+    'const closedDeepLink = [];'],
+  'deeplink-byday-live-not-merged': ['analytics.js',
+    "const dl = rumRows(await gql(apiToken, rumGroup('requestPath refererHost requestHost',",
+    "const dl = { rows: [] }; false && rumRows(await gql(apiToken, rumGroup('requestPath refererHost requestHost',"],
+  'deeplink-byday-live-home-counted': ['analytics.js',
+    "deepLink: dl.rows.filter((r) => r.path !== '/' && r.referrerKind === 'direct')",
+    "deepLink: dl.rows.filter((r) => r.path === '/')"],
+  'deeplink-byday-live-external-counted': ['analytics.js',
+    "deepLink: dl.rows.filter((r) => r.path !== '/' && r.referrerKind === 'direct')",
+    "deepLink: dl.rows.filter((r) => r.path !== '/')"],
+  /* THE PIPELINE-HEALTH LINE (#797 item 2). */
+  /* The anchor carries its trailing newline on purpose: '    + pipelineLine' alone is also
+   * a SUBSTRING of the `!apiToken` branch's '      + pipelineLineNoToken' a few dozen lines
+   * up, and a bare split/join would silently corrupt THAT line's `+` operator too (found by
+   * firing this injection and getting a SyntaxError instead of the one check it should
+   * redden — worse than no injection, since it never touched the composition it targets). */
+  'pipeline-not-wired': ['analytics.js', '    + pipelineLine\n', ''],
+  'health-note-inverted': ['analytics.js',
+    '  return { tokens, warn: tokens.filter((t) => !QUIET_NOTE.test(t)) };',
+    '  return { tokens, warn: tokens.filter((t) => QUIET_NOTE.test(t)) };'],
+  'health-stale-never-fires': ['analytics.js',
+    '  const stale = Number.isFinite(hoursSince) && hoursSince > STALE_HOURS;', '  const stale = false;'],
+  'health-gap-silent': ['analytics.js', '  if (gaps.length) {', '  if (false) {'],
+  /* THE FIVE REMAINING "coarse (±10)" LITERALS (#797). `si-not-carried` blanks the per-row
+   * merge in `hybridBreakdown`/`hybridDeepLink`/`hybridReferrer` at once -- identical text,
+   * same "one physical line, several call sites" shape `batch-coarse-taints-row` already
+   * uses next door. `coarse-note-hardcoded` reverts all four render sites that print a row's
+   * OWN note (by-day table, breakdownTable, Bots, referrerTable) back to the universal
+   * literal. `legend-si-hardcoded`/`legend-worstsi-blind` are two different ways the chart
+   * legend's own figure could go back to a hard-coded 10. */
+  'si-not-carried': ['analytics.js', 'cur.si = Math.max(cur.si || 1, r.si || 1);', ''],
+  'coarse-note-hardcoded': ['analytics.js',
+    "(r.si > 1 ? 'coarse (±' + r.si + ')' : 'coarse')", "'coarse (±10)'"],
+  'legend-si-hardcoded': ['analytics.js', '(worstSi > 1 ? worstSi : 10)', '10'],
+  'legend-worstsi-blind': ['analytics.js',
+    'const worstSi = rows.reduce((m, r) => Math.max(m, r.coarse ? (r.si || 1) : 1), 1);',
+    'const worstSi = 1;'],
 };
 
 if (/--list-injections/.test(ARG)) {
@@ -516,6 +692,17 @@ async function threwAsync(fn) {
     SEEN.length = 0;
     var url = new URL('https://example.invalid/dashboard?view=analytics' + (qs || ''));
     var res = await A.analyticsPage({ STATS: db, CF_ANALYTICS_TOKEN: 'tok' }, url);
+    var body = await res.text();
+    ALL_HTML.push(body);
+    return body;
+  }
+  // Same as `renderPage`, against a CALLER-SUPPLIED database rather than the shared
+  // `seed()` store — for a fixture that needs to be isolated from every other check's
+  // exact totals (see `seedDeepLinkClosed`/`seedDeepLinkLive`'s own header).
+  async function renderPageOn(db2, qs) {
+    SEEN.length = 0;
+    var url = new URL('https://example.invalid/dashboard?view=analytics' + (qs || ''));
+    var res = await A.analyticsPage({ STATS: db2, CF_ANALYTICS_TOKEN: 'tok' }, url);
     var body = await res.text();
     ALL_HTML.push(body);
     return body;
@@ -612,25 +799,42 @@ async function threwAsync(fn) {
        !/<b>(up|down|flat)[^<]*<\/b>/.test(p5.slice(p5.indexOf('No comparable') - 5)));
 
     /* =================================================================== 6. trend line */
-    head('6. the trailing-mean line skips a null window instead of drawing to zero');
-    var p6 = await renderPage('&from=2026-09-01&to=2026-09-14');
-    var meanPoly = /<polyline points="([^"]+)" fill="none" stroke="#5fd9a0"/.exec(p6);
-    ck('a mean polyline is drawn at all', !!meanPoly, meanPoly ? 'found' : 'NOT FOUND');
-    if (meanPoly) {
-      var pts = meanPoly[1].trim().split(/\s+/);
-      var firstX = parseFloat(pts[0].split(',')[0]);
-      var PADL = 34, plotW = 720 - 34 - 96, slot = plotW / 14;
-      var expectFirstX = PADL + 6 * slot + slot / 2;   // day index 6 (2026-09-07), 0-based
-      ck('it has exactly 8 points (days 7..14 of the 14-day window — the first 6 have no '
-       + 'full trailing window and are skipped, not zeroed)',
-         pts.length === 8, pts.length + ' points');
-      ck('...and the FIRST point sits at day index 6, not day 0 — the gap is a gap, not a '
-       + 'flat run to the baseline',
-         Math.abs(firstX - expectFirstX) < 1, 'x=' + firstX.toFixed(1) + ' vs expected ' + expectFirstX.toFixed(1));
+    head('6. the ghost (prior-period) line skips a null gap instead of drawing to zero — '
+       + 'REPOINTED here 2026-09-20 (owner: "get rid of the weekly average on that plot" '
+       + 'removed the mean/7-day-average line this section used to cover; the shared '
+       + 'null-skip logic in render.js is untouched, so the injection that guards it, '
+       + 'renamed ghost-draws-to-zero, is proven against ghost instead)');
+    var p6 = await renderPage('&from=2026-09-01&to=2026-09-07');
+    /* This window's PRIOR period is 08-25..08-31 — the fixture's own coarse/missing week
+     * (checks 4 and 17 use the same days) — so its per-day ghost values are
+     * [6, 5, 0, null, 5, null, null]: three clean days (08-25..08-27, the middle one a REAL
+     * ZERO, not missing) form ONE drawable run, the 08-28 COARSE day breaks it, the lone
+     * 08-29 point (index 4) is one point — too short to draw, a polyline needs more than
+     * one — and 08-30/08-31 being MISSING leaves nothing after it. */
+    var ghostRe = /<polyline points="([^"]+)" fill="none" stroke="#8fa2b3" stroke-width="2" stroke-dasharray="5,4"\/>/;
+    var ghostPolys = p6.match(new RegExp(ghostRe.source, 'g')) || [];
+    ck('exactly ONE ghost polyline is drawn — the lone index-4 point stays a gap, not a '
+     + 'one-point line joined to its neighbours',
+       ghostPolys.length === 1, ghostPolys.length + ' ghost polyline(s)');
+    var ghostMatch = ghostRe.exec(p6);
+    ck('a ghost polyline is drawn at all', !!ghostMatch, ghostMatch ? 'found' : 'NOT FOUND');
+    if (ghostMatch) {
+      var gpts = ghostMatch[1].trim().split(/\s+/);
+      var gFirstX = parseFloat(gpts[0].split(',')[0]);
+      var GPADL = 34, gplotW = 720 - 34 - 96, gslot = gplotW / 7;
+      var gExpectFirstX = GPADL + 0 * gslot + gslot / 2;   // day index 0 (2026-09-01)
+      ck('it has exactly 3 points (08-25..08-27 — the run the 08-28 coarse day breaks)',
+         gpts.length === 3, gpts.length + ' points');
+      ck('...and the FIRST point sits at day index 0 — the gap that follows it does not '
+       + 'shift where the run starts',
+         Math.abs(gFirstX - gExpectFirstX) < 1, 'x=' + gFirstX.toFixed(1) + ' vs expected ' + gExpectFirstX.toFixed(1));
     } else {
-      ck('it has exactly 8 points', false, 'no polyline to inspect');
-      ck('...and the FIRST point sits at day index 6, not day 0', false, 'no polyline to inspect');
+      ck('it has exactly 3 points', false, 'no polyline to inspect');
+      ck('...and the FIRST point sits at day index 0', false, 'no polyline to inspect');
     }
+    ck('the mean (7-day trailing average) line is GONE from the page entirely — no #5fd9a0 '
+     + 'stroke anywhere, and no "7d mean"/"trailing mean" label',
+       !/#5fd9a0/.test(p6) && !/7d mean/.test(p6) && !/trailing mean/.test(p6));
 
     /* =================================================================== 7. no bucketing */
     head('7. bucketDays NEVER buckets any more, at 7 / 30 / 45 / 400 days (rewritten '
@@ -639,8 +843,8 @@ async function threwAsync(fn) {
     function mkRows(n) {
       var rows = [], d = new Date('2026-01-01T00:00:00Z');
       for (var i = 0; i < n; i++) {
-        rows.push({ day: d.toISOString().slice(0, 10), pageloads: 1, visits: 1,
-          coarse: false, missing: false, partial: false, mean: null, ghost: null });
+        rows.push({ day: d.toISOString().slice(0, 10), pageloads: 1, visits: 1, deepLink: 0,
+          coarse: false, missing: false, partial: false, ghost: null });
         d.setUTCDate(d.getUTCDate() + 1);
       }
       return rows;
@@ -679,8 +883,9 @@ async function threwAsync(fn) {
        'is always labelled, and no two labels are drawn close enough to overprint');
     function mkLineRows(n) {
       var rows = mkRows(n);
-      // One real mean value so the direct-label collision-avoidance path is exercised too.
-      rows[rows.length - 1].mean = 3;
+      // One real ghost value so the direct-label collision-avoidance path is exercised too
+      // (the mean line this used to set is gone — see section 6).
+      rows[rows.length - 1].ghost = 3;
       return rows;
     }
     /* 18 is in the list because it is the case that BROKE: stride 2 over 18 days does not
@@ -778,9 +983,9 @@ async function threwAsync(fn) {
     var spanRe = /\((\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2})\)/g;
     var sm;
     while ((sm = spanRe.exec(breakdownHtml))) spans.push(sm[1] + '..' + sm[2]);
-    ck('at least one span was found per breakdown section (5 migrated + 2 referrer + 3 '
-     + 'Cloudflare-only = 10)',
-       spans.length === 10, spans.length + ' span(s) found: ' + spans.join(', '));
+    ck('at least one span was found per breakdown section (6 migrated, incl. Deep-link '
+     + 'landings, + 2 referrer + 3 Cloudflare-only = 11)',
+       spans.length === 11, spans.length + ' span(s) found: ' + spans.join(', '));
     ck('...and EVERY one of them is exactly the picked range, 2026-09-01..2026-09-07 — no '
      + 'section quietly used a different window',
        spans.length > 0 && spans.every(function (s) { return s === '2026-09-01..2026-09-07'; }),
@@ -897,9 +1102,12 @@ async function threwAsync(fn) {
        /<circle[^>]*fill="none" stroke="#3987e5" stroke-width="2"><title>09-18 F — Pageloads: 11 \(today, partial\)<\/title>/.test(by17b));
     ck('today\'s landing-visits point (7) is hollow too',
        /<circle[^>]*fill="none" stroke="#d95926" stroke-width="2"><title>09-18 F — Landing visits: 7 \(today, partial\)<\/title>/.test(by17b));
-    ck('no OTHER day in the window carries the "(today, partial)" flag — exactly the 2 '
-     + 'series points for today, none else',
-       (by17b.match(/\(today, partial\)/g) || []).length === 2,
+    ck('today\'s deep-link-landings point (5, from the live DEEPLINK_LIVE batch) is hollow '
+     + 'too — the third series carries the same partial treatment as the first two',
+       /<circle[^>]*fill="none" stroke="#a374db" stroke-width="2"><title>09-18 F — Deep-link landings: 5 \(today, partial\)<\/title>/.test(by17b));
+    ck('no OTHER day in the window carries the "(today, partial)" flag — exactly the 3 '
+     + 'series points for today (pageloads, landing visits, deep-link landings), none else',
+       (by17b.match(/\(today, partial\)/g) || []).length === 3,
        (by17b.match(/\(today, partial\)/g) || []).length + ' flagged point(s)');
 
     /* ============== 18. a failed referrer fetch degrades, never crashes the page ========= */
@@ -997,6 +1205,386 @@ async function threwAsync(fn) {
        /<td>2026-08-28<\/td><td>France<\/td><td>\(direct\)<\/td><td>direct<\/td><td class="num">20<\/td><td class="num">10<\/td><td>coarse \(±10\)<\/td>/.test(cday20c));
     ck('the source note plainly names which days were never captured, ascending',
        /No data captured<\/b> for 2026-08-30, 2026-08-31/.test(cday20c));
+
+    /* =========== 23. Deep-link landings — not the homepage, AND no referrer (#795 f/u) ==== */
+    head('23. Deep-link landings — narrowed to path <> "/" AND referrer_kind = "direct"');
+    /* ISOLATED database (`seedDeepLinkClosed`, above): a DIRECT non-home landing (must
+     * count) and an EXTERNAL one (search discovery of a subpage — must NOT), and nothing
+     * else in the store, so the totals are exactly the two rows. */
+    var p23a = await renderPageOn(seedDeepLinkClosed(), '&from=2026-09-09&to=2026-09-09');
+    var dl23aStart = p23a.indexOf('<h2>Deep-link landings</h2>');
+    var dl23a = p23a.slice(dl23aStart, p23a.indexOf('<h2>', dl23aStart + 1));
+    ck('the section exists and states the definition, the referrer exclusion, and the '
+     + 'floor/not-a-count caveat',
+       dl23aStart >= 0 && /is not the homepage/.test(dl23a) && /NO REFERRER at all/.test(dl23a)
+       && /that is discovery, the/.test(dl23a) && /FLOOR on returning visitors/.test(dl23a)
+       && /counted[\s\S]{0,10}wrongly as one/.test(dl23a),
+       dl23aStart >= 0 ? 'section found' : 'section missing');
+    ck('5 of 6 landing visits (83.3%) — only the DIRECT /ui/shell landing counts, not the '
+     + 'external /about row',
+       /<b>5 of 6 landing visits<\/b> \(83\.3%\)/.test(dl23a), dl23a.match(/<b>[^<]*<\/b> \([^)]*\)/) || 'no match');
+    ck('THE EXACT DEFECT THIS NARROWING FIXES: the breakdown lists /ui/shell and NEVER '
+     + '/about (external, non-home)',
+       /<td>\/ui\/shell<\/td><td class="num">6<\/td><td class="num">5<\/td>/.test(dl23a)
+       && !/\/about/.test(dl23a), 'checked');
+    ck('its own source note names this exact span and never mentions today',
+       /<h2>Deep-link landings<\/h2><p class="muted">Source: <b>first-party exact<\/b> \(2026-09-09 to 2026-09-09\)/.test(p23a)
+       && !/<h2>Deep-link landings<\/h2>[\s\S]{0,400}plus <b>today<\/b>/.test(p23a));
+
+    /* A window that DOES reach today, so the SAME direct-vs-external exclusion is proven on
+     * the LIVE half of the merge too: `DEEPLINK_LIVE` carries a direct home row, a direct
+     * non-home row (must count) and an external non-home row (must not), in the SAME batch
+     * as `seedDeepLinkLive`'s single closed-store day (7 landing visits, home, direct).
+     * Total = 7 (closed) + 4 + 5 + 1 (live) = 17; deep-link = 0 (closed) + 5 (live) = 5. */
+    var p23b = await renderPageOn(seedDeepLinkLive(), '&from=2026-09-17&to=2026-09-18');
+    var dl23bStart = p23b.indexOf('<h2>Deep-link landings</h2>');
+    var dl23b = p23b.slice(dl23bStart, p23b.indexOf('<h2>', dl23bStart + 1));
+    ck('5 of 17 landing visits (29.4%) — the LIVE direct /ui/shell row counts, the LIVE '
+     + 'external /about row does not, proving the exclusion applies to today’s merge too',
+       /<b>5 of 17 landing visits<\/b> \(29\.4%\)/.test(dl23b), dl23b.match(/<b>[^<]*<\/b> \([^)]*\)/) || 'no match');
+    ck('the breakdown lists /ui/shell and never /about or the homepage, same rule as check 23a',
+       /<td>\/ui\/shell<\/td><td class="num">6<\/td><td class="num">5<\/td>/.test(dl23b)
+       && !/\/about/.test(dl23b) && !/<td>\/<\/td>/.test(dl23b), 'checked');
+    ck('its source note says "plus today (...) live from Cloudflare", same as every other '
+     + 'migrated section on a window that reaches it',
+       /plus <b>today<\/b> \(2026-09-18\) live from Cloudflare/.test(dl23b));
+
+    // A window with NO non-home landings of any kind (the SHARED store, day 2026-09-01,
+    // read-only — no rows added, safe alongside every other check on that store) — the
+    // pre-existing "share is legitimately 0%, not blank" case, unaffected by the narrowing
+    // (there was nothing to narrow away here in the first place).
+    var p23c = await renderPage('&from=2026-09-01&to=2026-09-01');
+    var dl23cStart = p23c.indexOf('<h2>Deep-link landings</h2>');
+    var dl23c = p23c.slice(dl23cStart, p23c.indexOf('<h2>', dl23cStart + 1));
+    ck('0 of 4 landing visits (0%) when every landing in the window is the homepage — not '
+     + 'blank, not omitted',
+       /<b>0 of 4 landing visits<\/b> \(0%\)/.test(dl23c), dl23c.match(/<b>[^<]*<\/b> \([^)]*\)/) || 'no match');
+    ck('...and says so in place of a breakdown table',
+       /No deep-link landings in this window/.test(dl23c));
+
+    // The zero-DENOMINATOR case: a real-zero closed day, on its own, with no live fold-in.
+    var p23d = await renderPage('&from=2026-08-27&to=2026-08-27');
+    var dl23dStart = p23d.indexOf('<h2>Deep-link landings</h2>');
+    var dl23d = p23d.slice(dl23dStart, p23d.indexOf('<h2>', dl23dStart + 1));
+    ck('a window with zero landing visits reads "no landing visits in this window" — never '
+     + 'NaN%, never Infinity%, never a bare 0%',
+       /<b>0 of 0 landing visits<\/b> \(no landing visits in this window\)/.test(dl23d)
+       && !/NaN/.test(dl23d) && !/Infinity/.test(dl23d));
+
+    /* ============================ 24. deep-link landings, PER DAY ======================= */
+    head('24. deep-link landings PLOTTED PER DAY on the by-day chart and table (owner, '
+       + '2026-09-20: "show that per day and plot it on the main plot")');
+    var pDLbar = await renderPageOn(seedDeepLinkByDay(4), '&from=2026-09-01&to=2026-09-04');
+    var dlBarSection = pDLbar.slice(pDLbar.indexOf('<h2>By day</h2>'), pDLbar.indexOf('<h2>', pDLbar.indexOf('<h2>By day</h2>') + 1));
+    ck('the by-day TABLE carries a Deep-link landings column',
+       /<th class="num">Deep-link landings<\/th>/.test(dlBarSection));
+    ck('day 1 (2 deep-link landings, plus a same-day home landing that must not add to it) '
+     + 'shows 2 in that column, against 8 pageloads / 4 landing visits total',
+       /<td>2026-09-01[^<]*<\/td><td class="num">8<\/td><td class="num">4<\/td><td class="num">2<\/td><td><\/td>/.test(dlBarSection),
+       dlBarSection.match(/<td>2026-09-01[^<]*<\/td>(?:<td[^>]*>[^<]*<\/td>){4}/) || 'no row match');
+    ck('day 3 (exactly ONE deep-link landing — must still read as a value, not vanish) shows 1',
+       /<td>2026-09-03[^<]*<\/td><td class="num">2<\/td><td class="num">1<\/td><td class="num">1<\/td><td><\/td>/.test(dlBarSection));
+    ck('day 2 is a REAL ZERO for deep-link landings (every landing that day was the '
+     + 'homepage) — 0, not blank, and NOT marked "no data captured"',
+       /<td>2026-09-02[^<]*<\/td><td class="num">10<\/td><td class="num">6<\/td><td class="num">0<\/td><td><\/td>/.test(dlBarSection));
+    ck('day 4 (no rollup run at all) is marked "no data captured" — distinguishing it from '
+     + 'day 2’s real zero, though both read deep-link 0',
+       /<td>2026-09-04[^<]*<\/td><td class="num">0<\/td><td class="num">0<\/td><td class="num">0<\/td><td>no data captured<\/td>/.test(dlBarSection));
+    ck('the chart draws a THIRD bar series for deep-link landings, in its own colour '
+     + '(#a374db), on the day with 2',
+       /fill="#a374db"><title>09-01[^—]* — Deep-link landings: 2<\/title>/.test(dlBarSection));
+    ck('...and it is still visible — a bar is drawn — at a value of exactly 1',
+       /fill="#a374db"><title>09-03[^—]* — Deep-link landings: 1<\/title>/.test(dlBarSection));
+    ck('...and draws NO bar for the real-zero day — 0 height, the same rule pageloads/'
+     + 'visits already follow, not a special case for this series',
+       !/Deep-link landings: 0/.test(dlBarSection));
+    ck('the 7-day mean line is GONE from this page too — no #5fd9a0 stroke, no "7d mean" '
+     + 'or "trailing mean" text anywhere',
+       !/#5fd9a0/.test(pDLbar) && !/7d mean/.test(pDLbar) && !/trailing mean/.test(pDLbar));
+
+    // Past 14 days the SAME series draws as a LINE (section 7b already proves the shape
+    // switch generally; this proves the THIRD series specifically survives it).
+    var pDLline = await renderPageOn(seedDeepLinkByDay(16), '&from=2026-09-01&to=2026-09-16');
+    var dlLineSection = pDLline.slice(pDLline.indexOf('<h2>By day</h2>'), pDLline.indexOf('<h2>', pDLline.indexOf('<h2>By day</h2>') + 1));
+    ck('past 14 days the deep-link series draws as a LINE too (a <circle> in its own '
+     + 'colour), value 2 on day 1',
+       /<circle[^>]*fill="#a374db"[^>]*><title>09-01[^—]* — Deep-link landings: 2<\/title>/.test(dlLineSection));
+    ck('...and value 1 on day 3, still readable as a distinct point',
+       /<circle[^>]*fill="#a374db"[^>]*><title>09-03[^—]* — Deep-link landings: 1<\/title>/.test(dlLineSection));
+    ck('no second or rescaled axis was introduced for the tiny series — still exactly two '
+     + 'gridline labels (0 and the top), same as every other window',
+       (dlLineSection.match(/text-anchor="end">/g) || []).length === 2,
+       (dlLineSection.match(/text-anchor="end">/g) || []).length + ' gridline label(s)');
+
+    /* ============== 25. no direct label overruns the chart's right-hand gutter ========= */
+    head('25. every direct series label fits the gutter it is drawn in');
+    /* FOUND BY SCREENSHOTTING, not by any assertion here: "Deep-link landings" rendered
+     * CLIPPED as "Deep-link landing:" in both the bar and the line chart. The SVG was
+     * perfectly valid -- the text simply ran past the viewport -- so every markup check
+     * passed. The gutter is PADR = 96 px against a 720 px viewBox, and the label is drawn
+     * at font-size 11. This bounds the DRAWN GEOMETRY rather than the text, so the next
+     * long label cannot clip in silence; the tooltips and the legend keep the full name
+     * and are deliberately not covered by this, having no width limit. */
+    var PADR_PX = 96, LABEL_FONT_PX = 11, CHAR_W = 0.62;   // 0.62em is wide for this stack
+    ['', '&from=2026-08-25&to=2026-09-08'].forEach(function (qs, i) {
+      var svg = i ? p13 : p11;
+      var lbls = (svg.match(/<text x="6[0-9][0-9][^>]*font-size="11"[^>]*>([^<]*)</g) || [])
+        .map(function (t) { return /includes=""|>([^<]*)<$/.exec(t)[1]; });
+      var widest = lbls.reduce(function (m, t) { return Math.max(m, t.length); }, 0);
+      var px = widest * LABEL_FONT_PX * CHAR_W;
+      ck((i ? 'line' : 'bar') + ' chart: widest direct label "' + widest + ' chars" fits '
+         + PADR_PX + ' px (' + px.toFixed(0) + ' px)',
+         lbls.length > 0 && px <= PADR_PX, lbls.join(' | ') + ' -> ' + px.toFixed(0) + ' px');
+    });
+
+    /* ===================== 26. the pipeline-health line (#797 item 2) =================== */
+    head('26. the pipeline-health line -- classifyNote / renderPipelineHealthLine, and its wiring');
+    /* Lifted directly out of analytics.js and executed, same idiom run_telemetry.js already
+     * uses in this same file for renderThrottleLine -- proof by running the real function,
+     * not a source scan (HR10: a string existing in the source is not evidence it renders
+     * the right thing under the right condition). Sliced by two literal, unique anchors
+     * rather than a brace-matching regex, because the function bodies below contain nested
+     * `{ }` a non-greedy regex would stop at early. */
+    /* THROUGH injectSrc, not a bare fs.readFileSync — an injection into `classifyNote` or
+     * `renderPipelineHealthLine` has to reach THIS slice too, or the checks below stay
+     * green against every injection aimed at them: reading the file straight off disk
+     * would silently bypass the same patching `loadEsm` applies to the module A already
+     * uses, which is exactly the "hollow check" shape #797's own brief warns about. */
+    var asrc26 = injectSrc('analytics.js', fs.readFileSync(path.join(ROOT, 'worker', 'src', 'analytics.js'), 'utf8'));
+    var startMark = 'const STALE_HOURS = 30;';
+    var endMark = '// ---------------------------------------------------------------- the page';
+    var i0 = asrc26.indexOf(startMark), i1 = asrc26.indexOf(endMark);
+    ck('classifyNote / renderPipelineHealthLine were found at their expected anchors',
+       i0 >= 0 && i1 > i0, 'i0=' + i0 + ' i1=' + i1);
+    var blob26 = asrc26.slice(i0, i1);
+    var lifted26 = new Function('esc', 'dayLabel', blob26
+      + '; return { classifyNote: classifyNote, renderPipelineHealthLine: renderPipelineHealthLine };')
+      (R.esc, R.dayLabel);
+    var classifyNote = lifted26.classifyNote, renderLine26 = lifted26.renderPipelineHealthLine;
+
+    /* ---- classifyNote: which rollup_runs.note tokens warn, which stay quiet ------------- */
+    ck('an empty note is clean -- nothing to warn about',
+       classifyNote('').warn.length === 0, JSON.stringify(classifyNote('')));
+    ck('the always-present own:N counter is QUIET, never a warning by itself',
+       classifyNote('own:0').warn.length === 0, JSON.stringify(classifyNote('own:0')));
+    ck('a coarse capture is QUIET -- already shown per-row everywhere else on this page',
+       classifyNote('coarse:10').warn.length === 0, JSON.stringify(classifyNote('coarse:10')));
+    ck('the two EXPECTED own-traffic deploy-gap notes are QUIET',
+       classifyNote('own-columns-absent').warn.length === 0
+       && classifyNote('own-predating:3').warn.length === 0,
+       JSON.stringify([classifyNote('own-columns-absent').warn, classifyNote('own-predating:3').warn]));
+    ck('a missing token IS a warning',
+       classifyNote('no CF_ANALYTICS_TOKEN').warn.length === 1,
+       JSON.stringify(classifyNote('no CF_ANALYTICS_TOKEN')));
+    ck('a truncated day (limit-hit) IS a warning -- the only place this ever surfaces at all '
+     + '(stats.dailyTotals’ own `truncated` flag has never been rendered anywhere on this page)',
+       classifyNote('limit-hit').warn.length === 1, JSON.stringify(classifyNote('limit-hit')));
+    ck('each of the three fetch-exception notes IS a warning',
+       classifyNote('traffic failed: upstream 500').warn.length === 1
+       && classifyNote('usage failed: boom').warn.length === 1
+       && classifyNote('own traffic failed: boom').warn.length === 1,
+       JSON.stringify([classifyNote('traffic failed: upstream 500').warn,
+                        classifyNote('usage failed: boom').warn,
+                        classifyNote('own traffic failed: boom').warn]));
+    ck('a MIX of quiet and warn tokens on one note keeps only the warn half',
+       JSON.stringify(classifyNote('coarse:10; own:4; traffic failed: x').warn) === '["traffic failed: x"]',
+       JSON.stringify(classifyNote('coarse:10; own:4; traffic failed: x')));
+    ck('an unrecognised token defaults to WARN, not silence -- an unseen note is exactly the '
+     + 'silent-failure shape #797 exists to catch',
+       classifyNote('some-future-note:7').warn.length === 1, JSON.stringify(classifyNote('some-future-note:7')));
+
+    /* ---- renderPipelineHealthLine: the three independent reasons to draw anything ------- */
+    var HOUR26 = 3600e3;
+    var lastClean = { day: '2026-09-17', ranAt: '2026-09-17T05:10:00Z', note: '' };
+    ck('a healthy pipeline (fresh, clean, no gaps) renders NOTHING',
+       renderLine26({ rows: [lastClean], gaps: [] }, Date.parse(lastClean.ranAt) + 10 * HOUR26) === '',
+       'expected empty string');
+    ck('...and still nothing when the last run’s note is merely QUIET (coarse/own-*)',
+       renderLine26({ rows: [{ day: '2026-09-17', ranAt: '2026-09-17T05:10:00Z', note: 'coarse:10; own:4' }], gaps: [] },
+         Date.parse(lastClean.ranAt) + 10 * HOUR26) === '', 'expected empty string');
+    var staleLine = renderLine26({ rows: [lastClean], gaps: [] }, Date.parse(lastClean.ranAt) + 31 * HOUR26);
+    ck('past the staleness threshold (31h > 30h) the line warns and names the hour count',
+       /class="warn"/.test(staleLine) && /31 h/.test(staleLine), staleLine);
+    var freshLine = renderLine26({ rows: [lastClean], gaps: [] }, Date.parse(lastClean.ranAt) + 29 * HOUR26);
+    ck('...but 29h (under the threshold) stays quiet -- "a few hours late is not yet news"',
+       freshLine === '', JSON.stringify(freshLine));
+    var notedLine = renderLine26({ rows: [
+      { day: '2026-09-16', ranAt: '2026-09-16T05:10:00Z', note: '' },
+      { day: '2026-09-17', ranAt: '2026-09-17T05:10:00Z', note: 'traffic failed: upstream 500' }], gaps: [] },
+      Date.parse('2026-09-17T05:10:00Z') + 1 * HOUR26);
+    ck('a BAD note on a FRESH run still warns -- staleness is not the only trigger',
+       /class="warn"/.test(notedLine) && /traffic failed: upstream 500/.test(notedLine), notedLine);
+    ck('when it warns, the last CLEAN run (09-16, the one before the bad note) is named in '
+     + 'Eastern, so "nothing else is wrong" stays legible at a glance',
+       /Last clean run.*09-16/.test(notedLine), notedLine);
+    var gapLine = renderLine26({ rows: [
+      { day: '2026-09-01', ranAt: '2026-09-01T05:10:00Z', note: '' },
+      { day: '2026-09-03', ranAt: '2026-09-03T05:10:00Z', note: '' }], gaps: ['2026-09-02'] },
+      Date.parse('2026-09-03T05:10:00Z') + 1 * HOUR26);
+    ck('a gap INSIDE the recorded span warns even though the tail is fresh and its note is clean',
+       /class="warn"/.test(gapLine) && /09-02/.test(gapLine), gapLine);
+    var neverLine = renderLine26({ rows: [], gaps: [] }, Date.now());
+    ck('a rollup that has never recorded a run warns outright, rather than computing NaN hours',
+       /class="warn"/.test(neverLine) && /never recorded a run/.test(neverLine), neverLine);
+
+    /* ---- reachability: the SAME line is actually wired into the real page --------------- */
+    var freshDb26 = makeDb();
+    freshDb26._ins('rollup_runs', { day: '2026-09-17',
+      ran_at: new Date(Date.now() - 5 * HOUR26).toISOString(), traffic_rows: 1, usage_rows: 0,
+      coarse: 0, note: '' });
+    var pHealthy26 = await renderPageOn(freshDb26, '');
+    ck('wired into the real page: a healthy pipeline renders no "Data pipeline" banner',
+       !/Data pipeline/.test(pHealthy26), (pHealthy26.match(/Data pipeline[^<]*/) || ['(none)'])[0]);
+    var staleDb26 = makeDb();
+    staleDb26._ins('rollup_runs', { day: '2026-08-01', ran_at: '2026-08-01T05:10:00Z',
+      traffic_rows: 1, usage_rows: 0, coarse: 0, note: '' });
+    var pStale26 = await renderPageOn(staleDb26, '');
+    var idxLine = pStale26.indexOf('Data pipeline'), idxByDay = pStale26.indexOf('<h2>By day</h2>');
+    ck('wired into the real page: a stale pipeline DOES render the banner, near the TOP -- '
+     + 'before the by-day section',
+       idxLine >= 0 && idxByDay > idxLine, 'idx(Data pipeline)=' + idxLine + ' idx(By day)=' + idxByDay);
+
+    /* =================================================================== 27. si (#797) */
+    head('27. the five remaining "coarse (±10)" literals now print the MEASURED interval, '
+       + 'not Cloudflare’s current tier (#797) -- an isolated fixture using 25, a number no '
+       + 'hard-coded renderer would produce, across every remaining site.');
+    /* An ISOLATED fixture (own db), same idiom `seedDeepLinkClosed` above uses -- and dated
+     * 2026-08-20 specifically so a >14-day window (needed for the LINE chart legend) stays
+     * entirely BEFORE "today" (2026-09-18): `storeRange` clamps `from` up to its own first
+     * recorded day, so the window has to start there, not touch the live-merge path. */
+    function seedMeasuredSi() {
+      var d = makeDb();
+      d._ins('traffic_daily', { day: '2026-08-20', country: 'Testland', referrer_host: 'ref.example.net',
+        referrer_kind: 'external', path: '/measured', device: 'desktop', browser: 'Chrome',
+        os: 'Windows', nav_type: 'navigate', bot: 0, pageloads: 4, visits: 2, sample_interval: 25 });
+      d._ins('traffic_daily', { day: '2026-08-20', country: 'Testland', referrer_host: '',
+        referrer_kind: 'direct', path: '/ui/shell', device: 'desktop', browser: 'Chrome',
+        os: 'Windows', nav_type: 'navigate', bot: 0, pageloads: 3, visits: 1, sample_interval: 25 });
+      d._ins('traffic_daily', { day: '2026-08-20', country: 'Testland', referrer_host: '',
+        referrer_kind: 'direct', path: '/', device: 'desktop', browser: 'Chrome',
+        os: 'Windows', nav_type: 'navigate', bot: 1, pageloads: 9, visits: 9, sample_interval: 25 });
+      d._ins('rollup_runs', { day: '2026-08-20', ran_at: '2026-08-20T05:10:00Z', traffic_rows: 3,
+        usage_rows: 0, coarse: 25, note: 'coarse:25' });
+      return d;
+    }
+    var msiDb = seedMeasuredSi();
+
+    // Two days, not one -- `barChart` draws nothing for a single bar ("one bar is a number,
+    // not a chart"), which would leave the legend paragraph absent rather than proven right.
+    var p27bar = await renderPageOn(msiDb, '&from=2026-08-20&to=2026-08-21');
+    var byDay27bar = p27bar.slice(p27bar.indexOf('<h2>By day</h2>'), p27bar.indexOf('<h2>', p27bar.indexOf('<h2>By day</h2>') + 1));
+    ck('the by-day table cell prints the MEASURED interval (25), not a hard-coded 10',
+       /<td>coarse \(±25\)<\/td>/.test(byDay27bar), byDay27bar);
+    ck('...and the BAR chart legend (≤14 days) states the same measured interval',
+       /faded bar = Cloudflare-coarse \(±25\)/.test(byDay27bar), byDay27bar);
+
+    var p27line = await renderPageOn(msiDb, '&from=2026-08-20&to=2026-09-04');   // 16 days
+    var byDay27line = p27line.slice(p27line.indexOf('<h2>By day</h2>'), p27line.indexOf('<h2>', p27line.indexOf('<h2>By day</h2>') + 1));
+    ck('past 14 days the LINE chart legend states the same measured interval too, not the '
+     + 'bar chart’s own literal',
+       /faded point = Cloudflare-coarse \(±25\)/.test(byDay27line), byDay27line);
+
+    var countriesSec27 = p27bar.slice(p27bar.indexOf('<h2>Countries</h2>'), p27bar.indexOf('<h2>', p27bar.indexOf('<h2>Countries</h2>') + 1));
+    ck('the Countries table (hybridBreakdown -> breakdownTable) prints the measured interval',
+       /Testland[\s\S]*?coarse \(±25\)/.test(countriesSec27), countriesSec27);
+
+    var botsSec27 = p27bar.slice(p27bar.indexOf('<h2>Bots</h2>'), p27bar.indexOf('<h2>', p27bar.indexOf('<h2>Bots</h2>') + 1));
+    ck('the Bots table (its OWN inline rendering, not breakdownTable) prints the measured '
+     + 'interval for BOTH the Human and Bot rows',
+       (botsSec27.match(/coarse \(±25\)/g) || []).length === 2, botsSec27);
+
+    var arriveSec27 = p27bar.slice(p27bar.indexOf('<h2>How people arrive</h2>'), p27bar.indexOf('<h2>', p27bar.indexOf('<h2>How people arrive</h2>') + 1));
+    ck('the referrer table ("How people arrive") prints the measured interval',
+       /ref\.example\.net[\s\S]*?coarse \(±25\)/.test(arriveSec27), arriveSec27);
+
+    var deepSec27 = p27bar.slice(p27bar.indexOf('<h2>Deep-link landings</h2>'), p27bar.indexOf('<h2>', p27bar.indexOf('<h2>Deep-link landings</h2>') + 1));
+    ck('the Deep-link landings breakdown prints the measured interval too, not just its total',
+       /coarse \(±25\)/.test(deepSec27), deepSec27);
+
+    /* THE SVG TOOLTIPS, which the first pass at #797 missed entirely: they live in render.js,
+     * not analytics.js, so a grep of the page's own source found four sites and not these two.
+     * They were the LAST hard-coded ±10 on the page, and `bucketDays` had to stop dropping `si`
+     * before the bar chart could even reach the number. A tooltip is exactly where a reader
+     * goes to ask "how rounded is this bar", so a literal there is the worst of the six. */
+    ck('the BAR chart tooltip states the measured interval, not a literal',
+       /<title>[^<]*\(coarse, ±25\)<\/title>/.test(byDay27bar), (byDay27bar.match(/<title>[^<]*coarse[^<]*<\/title>/) || ['(no coarse tooltip)'])[0]);
+    ck('...and so does the LINE chart tooltip',
+       /<title>[^<]*\(coarse, ±25\)<\/title>/.test(byDay27line), (byDay27line.match(/<title>[^<]*coarse[^<]*<\/title>/) || ['(no coarse tooltip)'])[0]);
+    ck('no ±10 survives ANYWHERE in either rendered chart, tooltips included',
+       byDay27bar.indexOf('±10') < 0 && byDay27line.indexOf('±10') < 0,
+       'bar ' + byDay27bar.indexOf('±10') + ', line ' + byDay27line.indexOf('±10'));
+
+    /* Strip the SVG <title> tooltips before this scan: `render.js`'s own point/bar tooltip
+     * text ("(coarse, ±10)") is OUT OF SCOPE here (#797 names five sites in analytics.js;
+     * render.js's `bucketDays` drops `si` before it ever reaches that string, and even where
+     * it does not — the line chart's own `dataLine` closure — the string is hard-coded
+     * independent of it) — see check 17's own `±10` tooltip assertion, unchanged by this
+     * fix. This proves every literal this task DID touch, not the one it named as a
+     * plumbing job not worth forcing. */
+    var stripTitles = (s) => s.replace(/<title>[^<]*<\/title>/g, '');
+    ck('and the hard-coded literal survives NOWHERE this task touched -- every coarse row in '
+     + 'this fixture is si=25, so a stray "±10" outside an SVG tooltip can only be the old '
+     + 'hard-code coming back',
+       !/±10/.test(stripTitles(p27bar)) && !/±10/.test(stripTitles(p27line)),
+       'p27bar has ±10: ' + /±10/.test(stripTitles(p27bar))
+       + ', p27line has ±10: ' + /±10/.test(stripTitles(p27line)));
+
+    /* NO "unmeasured coarse" CASE EXISTS TO PROVE for the by-day table: `rollup_runs.coarse`
+     * IS that run's own real measured interval (`rollup.js`'s `out.coarse = t.coarse`, never a
+     * bare flag), and `dailyTotals`/`deepLinkLandingsByDay`'s `si` is the max of it and
+     * `traffic_daily`'s own -- the SAME two sources `coarse` itself already ORs, so `coarse`
+     * cannot be true here with no number behind it. The `r.si > 1 ? … : 'coarse'` guard in
+     * analytics.js stays as a fail-safe for a future coarse-flagging path that does not keep
+     * that invariant, not because this fixture can reach it today.
+     * `groupBy`/`referrerBreakdown`/`deepLinkLandings` have no separate flag at all -- `coarse`
+     * IS `si > 1` there, so the same is true by construction; see run_dashboard_stats.js. */
+
+    /* ============ 28. the hourly group limit is sized off the GROUPING, not the dim === */
+    head('28. the live "today" hourly limit covers hour x bot, not hour — the evening is '
+       + 'never silently dropped (#797)');
+    /* THE SECOND HALF OF #797, and it pushes the number the OTHER WAY. `rumGroup` appends
+     * `bot` to every dimension list, so `rumGroup('datetimeHour', …)` groups hour x bot.
+     * The limit was 26, sized for 24 hours plus the 25-hour fall-back day plus one spare —
+     * i.e. for the dimension ASKED FOR, not the one grouped on. Ordered `datetimeHour_ASC`,
+     * so once bots had touched about 13 hours of the day the limit fell inside the window
+     * and every hour after it was dropped. Nothing errors. Today just reads low.
+     *
+     * DERIVATION of 50: the window is [Eastern midnight, now], at most ONE Eastern day; the
+     * longest Eastern day is 25 h (fall-back); an Eastern midnight is always on an exact UTC
+     * hour boundary, so that span touches at most 25 `datetimeHour` buckets; `bot` takes two
+     * values. 25 x 2 = 50, exact.
+     *
+     * THE FIXTURE IS THE WORST CASE: all 25 hours, each with a human row (1 pageload,
+     * 1 visit) and a bot row (2 pageloads), interleaved in the ASC order the API returns.
+     * Human total 25. At limit 26 the fake hands back the first 26 groups — 13 human, 13
+     * bot — so the tile reads 13. Own store, one closed REAL-ZERO day, so the tile is
+     * today's live figure and nothing else. */
+    var wide = [];
+    for (var h28 = 0; h28 < 25; h28++) {
+      var hh = '2026-09-18T' + (h28 < 10 ? '0' + h28 : h28) + ':00:00Z';
+      wide.push({ count: 1, avg: { sampleInterval: 1 }, sum: { visits: 1 },
+        dimensions: { datetimeHour: hh, bot: false } });
+      wide.push({ count: 2, avg: { sampleInterval: 1 }, sum: { visits: 1 },
+        dimensions: { datetimeHour: hh, bot: true } });
+    }
+    var db28 = makeDb();
+    ran(db28, '2026-09-17', 0, 1);          // a real zero: the store exists, today is all live
+    HOURLY_WIDE = { rumPageloadEventsAdaptiveGroups: wide };
+    var p28, q28;
+    try {
+      p28 = await renderPageOn(db28, '');
+      q28 = (SEEN.filter(function (q) { return /dimensions \{ datetimeHour bot \}/.test(q); })[0]) || '';
+    } finally { HOURLY_WIDE = null; }
+    var lim28 = (/limit: (\d+)/.exec(String(q28).replace(/\s+/g, ' ')) || [])[1];
+    ck('the query the page actually built groups hour x bot and asks for at least 25 x 2',
+       /dimensions \{ datetimeHour bot \}/.test(q28) && Number(lim28) >= 50,
+       'limit: ' + lim28 + ' for a grouping of hour x bot');
+    ck('all 25 human hours reach the tile — 25 pageloads, not the 13 a limit of 26 leaves',
+       />25<\/div><div class="k">Pageloads<\/div>/.test(p28),
+       (p28.match(/<div class="v">(\d+)<\/div><div class="k">(Pageloads|Landing visits)/g) || []).join(' | '));
+    ck('and the 50 bot pageloads in the same batch are still excluded',
+       !/>75<\/div><div class="k">Pageloads<\/div>/.test(p28)
+       && !/>39<\/div><div class="k">Pageloads<\/div>/.test(p28));
 
     /* =================================================================== 9. no token= */
     head('9. no rendered page anywhere carries a credential in a href');
