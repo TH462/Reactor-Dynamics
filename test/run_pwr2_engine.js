@@ -1143,10 +1143,35 @@ function runSuite(RD, rec, quiet, only) {
    * AFW is the ONE ledger only the facade guard protects, since break/ECCS carry their own
    * held-plant doors and the containment intake rides dt_accepted). Clock still runs; the
    * held snapshot stays stamped. */
+  /* ⚠⚠ THE LATCH IS NOW FORCED, NOT RIDDEN TO — REFIT 2026-09-21 (#588), and the reason is the
+   * whole point of this note. This fixture used to open an 80 cm2 break and run
+   * `while (tH < 300) { ...; if (model_held) break; }`. That loop has TWO exits and the check
+   * only ever named one: once the Courant limiter (#588) stopped the ring going unstable on
+   * near-empty nodes, the plant STOPPED LATCHING and the loop fell out at its 300 s horizon with
+   * `model_held` false — so the check went on comparing ledgers across 500 steps of a plant that
+   * was still running, correctly booking 153.3 kg of break discharge, and read that as the hold
+   * failing. The PRECONDITION had evaporated silently. MEASURED the same day, engine-direct:
+   * 5, 20, 80, 200 and 500 cm2 breaks all ride 1,200 s with NO latch at all, so there is no
+   * break size that restores the old fixture.
+   *
+   * The subject here is the FACADE GUARD — "once beyond_model is up, does every one of the 19
+   * subsystems stop?" — and `run_pwr2_core` owns whether the latch itself fires. So the latch is
+   * set directly, on a plant whose ledgers are demonstrably IN MOTION, which is the condition
+   * #585 is actually about and is no longer hostage to how deep the blowdown happens to go.
+   *
+   * THE VACUITY GUARD IS THE OTHER HALF. "No ledger moved" is trivially true of a plant where
+   * nothing was moving, which is exactly the non-event CLAUDE.md warns a negative check can pin.
+   * The ledgers are therefore asserted to have MOVED over the ride before the latch is set. */
   var engH = EN.createEngine({});
   EN.command(engH, 'break_open', { area_m2: 0.008, node: 'cold_leg' });
   var tsH = null, tH = 0;
+  var hDis0 = engH.brk.discharged_kg, hCtm0 = engH.ctm.mass_in_kg, hM0 = engH.sys.M_total;
   while (tH < 300) { tsH = EN.step(engH, DT); tH += DT; if (tsH.model_held) break; }
+  var hMoved = Math.min(Math.abs(engH.brk.discharged_kg - hDis0),
+                        Math.abs(engH.ctm.mass_in_kg - hCtm0),
+                        Math.abs(engH.sys.M_total - hM0));
+  engH.sys.beyond_model = true;                 /* THE PRECONDITION, set rather than hoped for */
+  tsH = EN.step(engH, DT);
   var hDis = engH.brk.discharged_kg, hCtm = engH.ctm.mass_in_kg, hAfw = engH.aw.delivered_kg,
       hAcc = engH.ec.acc.water_m3, hM = engH.sys.M_total, hSim = engH.simTime;
   for (var hh = 0; hh < 500; hh++) tsH = EN.step(engH, DT);
@@ -1154,10 +1179,14 @@ function runSuite(RD, rec, quiet, only) {
     Math.abs(engH.brk.discharged_kg - hDis), Math.abs(engH.ctm.mass_in_kg - hCtm),
     Math.abs(engH.aw.delivered_kg - hAfw), Math.abs(engH.ec.acc.water_m3 - hAcc),
     Math.abs(engH.sys.M_total - hM));
+  ckT('the ledgers this hold must freeze were MOVING first — the no-drift claim is not a non-event',
+      hMoved > 1.0, 'smallest of break / containment / M_total moved ' + hMoved.toFixed(1) +
+      ' kg over the ' + tH.toFixed(0) + ' s ride before the latch');
   ckT('a latched plant is held WHOLE: 500 more steps move no ledger, and the clock still runs',
       tsH !== null && tsH.model_held === true && hDrift === 0 &&
       Math.abs(engH.simTime - hSim - 500 * DT) < 1e-9,
-      'latched t=' + tH.toFixed(1) + ' s; max ledger drift ' + hDrift.toFixed(6) +
+      'latch FORCED at t=' + tH.toFixed(1) + ' s (#588: no break size latches on its own any ' +
+      'more); max ledger drift ' + hDrift.toFixed(6) +
       ' kg over 10 held s (break, containment, AFW, accumulator, M_total) — exact zero required');
   }
 

@@ -1542,38 +1542,38 @@
            * "RIL + 10 steps" in pwr1's FINE-step currency (4 fine per step) — this bank's
            * steps ARE the currency, so the same physical number is 10. */
           if (a.id === 'rod_limit_approach') return Object.assign({}, a, { setpoint: 10 });
-          /* THE SECOND OVERRIDE (#783, OWNER RULING 2026-09-18 "Containment as you
-           * recommend"): the two containment-pressure captions, which on the shared table
-           * name their own mitigations — "(SI signal)" and "(spray/MSLI)". On the RETIRED
-           * engine that is TRUE and must stay: its actuation table fires the safety-injection
-           * backup, containment spray, the fan-cooler realign and the steam-line isolation
-           * off exactly these two setpoints. On PWR2 not one of the four happens. #778
-           * measured why — `actuations: []` three lines up hands this plant's kernel a
-           * different, EMPTY array — and a large loss-of-coolant accident rides to 78.5 psig
-           * (0.643 MPa) with spray, fans and the main steam isolation valves all untouched.
+          /* THE SECOND OVERRIDE IS RETIRED (#784, OWNER RULING 2026-09-21 "Drop the
+           * override"). It stood here from #783 (OWNER RULING 2026-09-18 "Containment as you
+           * recommend") and rewrote the two containment-pressure captions to name their
+           * SETPOINT -- "(3.5 psig)" and "(30 psig)" -- because the shared table names their
+           * MITIGATIONS, "(SI signal)" and "(spray/MSLI)", and PWR2 performed none of them.
            *
-           * ⚠ AND THE `hi` ROW IS WRONG THE SAME WAY — MEASURED for this issue, not assumed.
-           * PWR2's protection is its own (pwr2_protection.js) and could have carried a
-           * containment safety-injection channel the retired row was merely shadowing. It
-           * does not. Pressurizing the building to 35.3 psig (49.98 psia, 0.345 MPa) on an
-           * otherwise healthy plant lights BOTH annunciators (31.0 s and 32.5 s) and latches
-           * NO safety injection: this plant's ESFAS is three rows — low pressurizer pressure,
-           * low steam pressure, high-high steam flow — and nothing in it reads containment at
-           * all. On the large loss-of-coolant accident the safety injection that does occur is
-           * caused by `si_lo_pzr_press` at 27.02 s, 51.5 s BEFORE containment reaches hi-hi.
+           * ITS OWN COMMENT SAID WHAT WOULD RETIRE IT, and that is the whole reason this
+           * removal is a measurement rather than a preference: "If #784 models spray and the
+           * fan coolers inside this engine the parenthetical is earned back, and
+           * run_pwr2_kernel band 6 grades the PLANT rather than the string, so it will say
+           * so." #784 landed on 2026-09-21 and the plant now performs all four off exactly
+           * these two setpoints -- measured on a large loss-of-coolant accident at severity
+           * 1.0, full power: safety injection 5.58 s (the 3.5 psig backup, ahead of the
+           * low-pressure path), fan coolers 49.5 s, steam-line isolation 59.6 s, spray
+           * demanded 59.6 s and delivering 88.2 s. The shared text is TRUE on this plant, so
+           * PWR2 takes it back and the board teaches what the signal DOES rather than
+           * restating the number already on the gauge.
            *
-           * So both captions state the CONDITION and the line it crossed, and promise nothing.
-           * The industry register is bare already ('CTMT PRESS HI' / 'CTMT PRESS HI HI') and
-           * needs no override. Do NOT "fix" this in pwr_control.js — the shared text is
-           * correct on the plant that fires the rows. If #784 models spray and the fan coolers
-           * inside this engine the parenthetical is earned back, and run_pwr2_kernel band 6
-           * grades the PLANT rather than the string, so it will say so. */
-          if (a.id === 'ctmt_press_hi') {
-            return Object.assign({}, a, { label_learning: 'Containment Pressure High (3.5 psig)' });
-          }
-          if (a.id === 'ctmt_press_hihi') {
-            return Object.assign({}, a, { label_learning: 'Containment Pressure High-High (30 psig)' });
-          }
+           * THE THING TO KNOW IF YOU ARE TEMPTED TO PUT IT BACK: the override's own mutation
+           * in run_pwr2_kernel -- "the PWR2 caption override is reverted, the shared
+           * containment text comes back" -- went BLIND the moment #784 shipped, because the
+           * restored text stopped being a false promise. A mutation going blind is the gate
+           * reporting that the thing it guarded no longer exists; it was retired with its
+           * reason, not re-anchored. Band 6's caption ban still holds the claim, and it holds
+           * it from the POSITIVE side now: cap-no-false-promise cannot red while all four
+           * mitigations measure as firing, so the ban is carried by cap-ride-mitigates --
+           * regress any mitigation and that check reds AND the ban re-arms behind it.
+           *
+           * A STATION BLACKOUT still defeats spray and the fan coolers (they are
+           * alternating-current loads) while the main steam isolation valve, which is not a
+           * motor load, still shuts. The caption promises the SIGNAL's function, not that
+           * every consumer has power, so that is not a false promise either. */
           return a;
         }),
         failures: (function () {

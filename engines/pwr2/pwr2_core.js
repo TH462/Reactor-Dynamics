@@ -328,12 +328,18 @@
      * tolerance to be widened when something else fails. */
     /* Donor-cell: a flow carries the enthalpy of the node it LEAVES. Upwinding is what keeps
      * a transported front from being smeared, and it is why the sign of mdot matters. */
+    /* qIn/qhIn — the SAME inflow terms, accumulated separately for the Courant limiter below.
+     * They add nothing to dH and change no arithmetic on the healthy path; see the limiter. */
+    var qIn = new Array(N), qhIn = new Array(N);
+    for (i = 0; i < N; i++) { qIn[i] = 0; qhIn[i] = 0; }
     flows.forEach(function (f) {
       var A = idx[f.from], B = idx[f.to], md = f.mdot;
       if (A === undefined || B === undefined || !md) return;
       var don = md > 0 ? A : B, rec = md > 0 ? B : A, q = Math.abs(md);
       dH[rec] += q * sys.nodes[don].h;
       dH[rec] -= q * sys.nodes[rec].h;
+      qIn[rec] += q;
+      qhIn[rec] += q * sys.nodes[don].h;
     });
     /* Route each node's expansion imbalance out along its own outgoing flows, donor-cell.
      * Split evenly when a node has several — with one loop this is the loop junction, and at
@@ -344,9 +350,82 @@
       if (A === undefined) return;
       dH[A] += s.mdot * (s.h - sys.nodes[A].h);
       dM += s.mdot;
+      /* An INJECTION is a relaxation toward its own enthalpy, exactly like a junction inflow,
+       * so it belongs in the limiter's conductance. A WITHDRAWAL (mdot < 0) is not: it carries
+       * the node's own h in every caller here, so the term is ~0 and there is no donor to
+       * relax toward. It stays in dH and out of qIn, which leaves it in the unlimited
+       * remainder below — the honest place for a term this limiter cannot speak about. */
+      if (s.mdot > 0) { qIn[A] += s.mdot; qhIn[A] += s.mdot * s.h; }
     });
+    /* ---- THE COURANT LIMITER ON THE ADVECTIVE UPDATE (#588) ----------------------------------
+     *
+     * Donor-cell advection with an explicit step is `h' = h + C*(h_don - h)`, C = dt*q/m. For
+     * C <= 1 that is a CONVEX COMBINATION of the node and its donor: the discrete maximum
+     * principle holds, and the scheme is stable. Past C = 1 the weight on `h` goes NEGATIVE —
+     * the update overshoots past the donor, further every step, and it is unconditionally
+     * unstable. Nothing about that overshoot is physics; it is the scheme leaving its own
+     * validity.
+     *
+     * ⚠ WHAT THIS IS NOT. It is not a cap chosen for taste, and it is not a tolerance. The
+     * exact solution of the linear relaxation this term discretises is
+     *
+     *     h(t+dt) = hbar + (h - hbar) * exp(-C),        hbar = SUM q_k h_k / SUM q_k
+     *
+     * which tends to `hbar` as C grows. C = 1 IS that limit: a node swept clean by its own
+     * inflow in less than one step holds the donor's enthalpy and nothing else. So the limited
+     * value is the correct ASYMPTOTE, not a truncation of it. The exponential form itself is
+     * deliberately NOT used: it differs from forward Euler at the C ~ 0.05 a healthy plant runs
+     * at, which would move every number in the engine for an accuracy claim this change is not
+     * making.
+     *
+     * ⚠⚠ AND IT IS BIT-IDENTICAL BELOW C = 1, WHICH IS THE POINT. The healthy path is the
+     * untouched line above — same operations, same order, same rounding. The branch is taken
+     * only when `dt*qIn > m`, and MEASURED on this plant that is 0 steps of a rated ride and
+     * 0 steps of every gated trajectory but the blowdown endgame (`test/run_pwr2_core.js`
+     * asserts both halves under THE COURANT LIMITER, and its injection self-test proves the
+     * branch can fire — including a mutation that makes the limiter bind ALWAYS, which is the
+     * only thing that can tell a stability fix from a retune).
+     * A limiter that perturbed the healthy plant would be indistinguishable from a retune on a
+     * trajectory this issue has already shown is ulp-sensitive.
+     *
+     * THE CONSTRAINT IS NAMED IN THE CORPUS, THE REMEDY HERE IS NOT — and the difference is
+     * stated rather than blurred. WCAP-16009-NP-A (ML050910161), the same document this engine
+     * already cites for its vapour property group and its extended vapour branch, says verbatim:
+     *
+     *   *"In components which can expect high flow velocities, the fully implicit solution method
+     *    is used to avoid the restriction set by the low Courant limit. The junctions of the
+     *    one-dimensional components are always solved semi-implicitly."*
+     *
+     * So a Courant restriction on explicitly-solved junction transport is a real, named
+     * constraint that a production code engineers around rather than a thing invented here.
+     * WCOBRA's answer is to go implicit at the junction; this is NOT that, and does not claim to
+     * be. It is [derived]: the bounded explicit form, with the correct asymptote. An implicit
+     * junction solve is the larger thing Layer 3's own header already suspects it owes
+     * (*"it probably needs the junction flows SOLVED to balance node mass rather than
+     * specified"*), and it is not being smuggled in under a stability patch.
+     *
+     * WHY IT IS NEEDED HERE AND SUB-STEPPING IS NOT ENOUGH (#588, measured 2026-09-21).
+     * Layer 3 already sub-divides on this exact number — `pwr2_loop.courantLimit` — and caps at
+     * `NSUB_MAX = 16` to bound the per-frame cost. On `hot_full_power` + `large_loca` +
+     * `station_blackout` the ring wants **98 sub-steps at 168.4 s and 28 at 247.9 s** and gets
+     * 16, so the inner step runs at C > 1 anyway. What that produced, measured at the latching
+     * step: derived junction flows of 1.4e+3 kg/s against a 2.6 kg/s loop flow, `dt*dH/m` of
+     * **-174,434 kJ/kg on a 1.55 kg hot leg**, five of ten nodes thrown outside the enthalpy
+     * envelope and clamped onto the 0 degC liquid floor — where their density jumps ~200x, F(P)
+     * stops being monotone, the bracketed solve loses its bracket, and `flooredLow` latches
+     * `beyond_model` at **110.5 psia with the core 91 % uncovered, clad 774 degF and CLIMBING,
+     * and `fuel_damaged` false**. The plant was stopped by an unstable advection scheme, not by
+     * the property envelope: `P_MIN` has been 0.002 MPa (0.29 psia) since #524 and the primary
+     * was 380x above it. The limiter costs nothing and the cap then never has to resolve what
+     * it cannot afford to. */
     for (i = 0; i < N; i++) {
       a[i] = sys.nodes[i].h + dt * dH[i] / m_n[i];
+      if (qIn[i] > 0 && dt * qIn[i] > m_n[i]) {
+        /* the remainder — wall metal, core power, every non-advective duty, and any
+         * withdrawal term — carried at full strength; only the advection is limited */
+        var dHq = dH[i] - (qhIn[i] - qIn[i] * sys.nodes[i].h);
+        a[i] = qhIn[i] / qIn[i] + dt * dHq / m_n[i];
+      }
       /* SPECIFIC VOLUME, CARRIED IN kJ/kg PER MPa — not m3/kg. dh = v*dP is a unit trap:
        * m3/kg x MPa = 10^6 J/kg = 10^3 kJ/kg, so the factor of 1000 is REQUIRED. Without it
        * the compression term is 1000x too small, which does not look wrong — it looks like a
@@ -384,6 +463,28 @@
     var hHi = W.h_v(W.LIMITS.TV_EXT_MAX, sys.P);   /* vapour at the extension ceiling */
     var hLo = W.h_l(0, sys.P);                   /* liquid at 0 degC — the envelope floor */
     function hClamp(h) { return h > hHi ? hHi : (h < hLo ? hLo : h); }
+    /* ⚠ A PER-NODE, PHASE-PRESERVING FLOOR WAS BUILT HERE AND REMOVED, 2026-09-21 (#588) —
+     * recorded because the next person to read this endgame will reach for it as I did.
+     * THE IDEA: a dry node's `v = 1000/rho` is thousands of kJ/kg per MPa, so its linearised
+     * projection lands below saturated liquid and the floor reads superheated steam as 0 degC
+     * WATER — ~1,000 kg per m3 of invented mass. That is real, and it IS the state the
+     * pre-#588 plant latched on: 0.54 kg in the hot leg and crossover became 2,070 kg, F(P)
+     * went positive at every pressure in the envelope, and the solve had no root to find.
+     *
+     * ⚠⚠ IT DOES NOT SURVIVE ITS OWN MEASUREMENT once the Courant limiter above is in.
+     * MEASURED on the ruled casualty over 1,200 s: the phase floor binds 57 times and EVERY
+     * TIME by less than 11 kJ/kg — h_raw 2801.9 against a floor of 2803.7. It never once
+     * catches the thousands-of-kJ/kg case it was built for, and it cannot: a single-phase
+     * vapour node cannot reach the liquid floor by compression alone, because dh = v*dP is
+     * bounded by (1000/rho)*P ~ R_specific*T ~ 0.46*T kJ/kg while the node's own enthalpy is
+     * ~2*T. The thousands-of-kJ/kg projections were the ADVECTIVE overshoot, which the
+     * limiter removes at source.
+     *
+     * Those 57 sub-11 kJ/kg nudges nevertheless flipped the ride from held-at-274.8 s to
+     * never-held. That is not a mechanism — it is #588's own bifurcation picking a branch, and
+     * an ulp sweep says so: the limiter ALONE takes 6 of 8 branches off the hold, limiter plus
+     * floor 5 of 6. Indistinguishable. Its injection mutation was BLIND to every fixture that
+     * could be built for it, which is the same fact arriving from the gate's side. Kept out. */
 
     /* ---- 2. SOLVE P. Bracketed, warm-started, capped. ---- */
     var M_target = sys.M_total + dt * dM;

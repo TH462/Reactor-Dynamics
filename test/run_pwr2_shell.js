@@ -223,20 +223,22 @@ function runSuite(SH, rec, quiet, only) {
    * shared by reference is therefore a real claim here — re-introducing a per-plant copy reds
    * it — and the second clause below pins the shape so "shared" cannot mean "shared and
    * absolute again". */
-  function capOnly(a, b, want, wasRe) {
-    return a.label_learning === want && wasRe.test(b.label_learning || '') &&
-           a.setpoint === b.setpoint && a.priority === b.priority &&
-           a.instrument === b.instrument && a.direction === b.direction &&
-           a.label_industry === b.label_industry;
-  }
+  /* capOnly() AND THE TWO CONTAINMENT ENTRIES ARE RETIRED (#784, OWNER RULING 2026-09-21
+   * "Drop the override"). They asserted that PWR2 rewrote the two containment captions to
+   * name their SETPOINT -- 'Containment Pressure High (3.5 psig)' / 'High-High (30 psig)' --
+   * over the shared table's '(SI signal)' / '(spray/MSLI)', which named mitigations this
+   * plant did not perform. #784 built them: measured on a large loss-of-coolant accident at
+   * severity 1.0, safety injection latches at 5.58 s on the 3.5 psig backup, the fan coolers
+   * realign at 49.5 s, the steam-line isolation shuts at 59.6 s and spray delivers at 88.2 s.
+   * The shared text is TRUE on this plant, so the override went and the rows are shared again.
+   *
+   * WHAT GUARDS THEM NOW IS STRONGER, not weaker, and it is the same argument the #500 note
+   * above makes: with no entry in OVERRIDDEN these two rows fall to the `a === baseAlarms[i]`
+   * IDENTITY clause, so they must be the shared OBJECT -- re-introducing a per-plant copy
+   * reds this check even if the copy is byte-identical. The old capOnly() could only say the
+   * caption differed and everything else matched. */
   var OVERRIDDEN = {
-    rod_limit_approach: function (a, b) { return a.setpoint === 10 && b.setpoint === 40; },
-    ctmt_press_hi: function (a, b) {
-      return capOnly(a, b, 'Containment Pressure High (3.5 psig)', /\(SI signal\)/);
-    },
-    ctmt_press_hihi: function (a, b) {
-      return capOnly(a, b, 'Containment Pressure High-High (30 psig)', /\(spray\/MSLI\)/);
-    }
+    rod_limit_approach: function (a, b) { return a.setpoint === 10 && b.setpoint === 40; }
   };
   var alarmsOk = Array.isArray(pc.alarms) && pc.alarms.length === baseAlarms.length &&
     pc.alarms.every(function (a, i) {
@@ -3119,9 +3121,17 @@ var MUTATIONS = [
    * The sweep above then finds the rows shared by reference and the arm that says only the
    * caption may move reds. run_pwr2_kernel band 6 owns the PLANT half (the mitigations
    * measurably do not happen); this is the config half. */
-  ['the containment caption override is dropped (the shared spray/MSLI text comes back)',
-   "          if (a.id === 'ctmt_press_hi') {\n            return Object.assign({}, a, { label_learning: 'Containment Pressure High (3.5 psig)' });\n          }",
-   '', { grp: 'A' }],
+  /* MUTATION RETIRED (#784, OWNER RULING 2026-09-21 "Drop the override"): 'the containment
+   * caption override is dropped (the shared spray/MSLI text comes back)'. Its anchor was the
+   * override this change removed, so it is ORPHANED -- and, more to the point, it is a
+   * mutation whose SUBJECT no longer exists: dropping the override is now the correct state,
+   * not a defect. Re-anchoring it would have been pinning a non-event.
+   *
+   * The claim it carried has not gone anywhere. The two rows now fall to the sweep's
+   * `a === baseAlarms[i]` identity clause above, and the mutation that exercises THAT clause
+   * -- any per-plant copy of a shared row -- still stands. run_pwr2_kernel's own copy of this
+   * mutation was retired the same day for the same reason: it went BLIND the moment #784
+   * shipped, because the restored shared text stopped being a false promise. */
   ['the shutdown group reverts to the pre-#506 snap (200 -> 0 in one frame on scram)',
    "          steps: Math.round(e.sdSteps), max_steps: bankSteps()," + NL_ +
    "          position_pct: 100 * e.sdSteps / bankSteps(),",

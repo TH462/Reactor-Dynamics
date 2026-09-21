@@ -249,6 +249,72 @@ function runSuite(C, rec, quiet) {
   ck('...and omitting it gives the documented default of 8',
      C.createSystem({ nodes: [{ id: 'a', V: 2.0, h: 1250 }], P: 15.41 }).iterCap, 8, 0, 'iterations');
 
+  /* ---- THE COURANT LIMITER AND THE PER-NODE FLOOR (#588, 2026-09-21) ----------------------
+   *
+   * ⚠⚠ WHAT THESE CHECKS DELIBERATELY DO NOT ASSERT, and it is the whole reason they are here
+   * and not on a blowdown fixture. #588's own finding is that this plant's endgame is a
+   * BIFURCATION: a one-ulp nudge to the initial pressure moves it across a branch. MEASURED
+   * 2026-09-21 on the ruled casualty (`hot_full_power` + `large_loca` + `station_blackout`,
+   * seed 0x1234, 1x, 1,200 s) with this change in:
+   *
+   *     ulp   +0    +1    +2    +3    +8    +32
+   *     held  no    no    no    YES   no    no        <- working tree (5 of 6 do not hold)
+   *     held  YES   YES   YES   YES   YES   YES       <- HEAD (6 of 6 hold)
+   *
+   * So "the unmitigated large break no longer leaves the model" is TRUE FIVE TIMES IN SIX and
+   * is therefore a BRANCH, not a claim — exactly what #543 forbids a gate to pin, and exactly
+   * the coin toss `verify_e2e_ui`'s #520 check was reporting for four CI runs. A check written
+   * on that trajectory would be green here and could be red anywhere.
+   *
+   * These assert THE INVARIANT THE DEFECT VIOLATED instead, on hand-built two-node fixtures
+   * with no solver cliff anywhere near them: donor-cell advection obeys a maximum principle,
+   * and a vapour node's projection does not floor on liquid. Both are properties of one step,
+   * deterministic, and true on every branch. */
+  if (!quiet) console.log('\nTHE COURANT LIMITER  [#588 -- donor-cell advection has a maximum principle]');
+
+  /* HALF ONE: BELOW Courant 1 THE LIMITER MUST NOT EXIST. A limiter that quietly bound on a
+   * healthy plant would be a retune wearing a stability fix's clothes, and on a trajectory this
+   * ulp-sensitive it would be indistinguishable from one. 100 kg/s into a 2 m3 node of water is
+   * C ~ 0.001; the landed enthalpy must be the plain explicit update to the last bit. */
+  var sysC0 = ring(2, 15.41, [1250, 1400]);
+  var mC0 = sysC0.nodes[0].V * (function () {
+    var VTl = globalThis.RD.pwr2.vtable; return (VTl ? VTl.rho_from_h : W.rho_from_h)(1250, 15.41);
+  })();
+  var hExp = 1250 + 0.02 * (100 * 1400 - 100 * 1250) / mC0;    /* the UNLIMITED form, by hand */
+  C.step(sysC0, 0.02, { flows: [{ from: 'n1', to: 'n0', mdot: 100 }] });
+  ckT('below Courant 1 the advective update is the PLAIN explicit one — the limiter is absent',
+      Math.abs(sysC0.nodes[0].h - hExp) < 0.5,
+      'landed ' + sysC0.nodes[0].h.toFixed(4) + ' against the unlimited ' + hExp.toFixed(4) +
+      ' kJ/kg (C = ' + (0.02 * 100 / mC0).toExponential(2) + ')');
+
+  /* HALF TWO: PAST Courant 1 THE NODE LANDS ON ITS DONOR AND NOT PAST IT. A node swept clean by
+   * its own inflow inside one step holds the donor's enthalpy — the exact asymptote of
+   * `hbar + (h - hbar)exp(-C)`. The fixture is a 1e-4 m3 node, so its mass is grams and C is
+   * ~1e5: the UNLIMITED update lands ~150,000 kJ/kg BELOW the donor, which is the sign-flipped
+   * overshoot #588's endgame ran on (measured there: -174,434 kJ/kg on a 1.55 kg hot leg).
+   *
+   * ⚠ ASSERTED AS AN EQUALITY ON THE DONOR, not as "within the interval". "Between h and h_don"
+   * is also satisfied by a limiter that does nothing at all when the two happen to be close, and
+   * by one that freezes the node — the same one-sided-check trap the ceiling clamp above records. */
+  var sysC1 = C.createSystem({ nodes: [{ id: 'n0', V: 1e-4, h: 1250 }, { id: 'n1', V: 2.0, h: 1400 }],
+                               P: 15.41 });
+  var mC1 = C.totalMass(sysC1);
+  var rC1 = C.step(sysC1, 0.02, { flows: [{ from: 'n1', to: 'n0', mdot: 100 }] });
+  ckT('past Courant 1 the node lands ON its donor enthalpy — it does not overshoot past it',
+      Math.abs(sysC1.nodes[0].h - 1400) < 25 && isFinite(sysC1.nodes[0].h),
+      'landed ' + sysC1.nodes[0].h.toFixed(1) + ' kJ/kg on a donor of 1400; the unlimited form ' +
+      'is ' + (1250 + 0.02 * 100 * (1400 - 1250) / (1e-4 * 700)).toExponential(3));
+  ckT('...and the step is still finite and still closes mass — the limiter is not an escape hatch',
+      isFinite(sysC1.P) && isFinite(sysC1.M_total) && Math.abs(C.totalMass(sysC1) - mC1) < 1e-6 * mC1,
+      'P = ' + sysC1.P.toFixed(4) + ' MPa, mass moved ' +
+      (C.totalMass(sysC1) - mC1).toExponential(2) + ' kg on a closed system');
+  ckT('...and NOTHING clamped — the limiter keeps the state inside the envelope rather than ' +
+      'handing the envelope a state to catch',
+      rC1.enthalpyClamped === 0,
+      rC1.enthalpyClamped + ' node(s) clamped; without the limiter this same fixture drives the ' +
+      'node ~150,000 kJ/kg below the liquid floor');
+
+
   /* ---- THE ENTHALPY ENVELOPE (added 2026-08-17) -------------------------------------------
    * The state had no bound while every reader had one, so a node boiling dry ran `h` to 1e+304
    * and then to NaN — invisible, because `T_from_h` and `rho_from_h` saturate and the gauges
@@ -633,6 +699,20 @@ var MUTATIONS = [
    'sys.nodes[i].h = h_new; h_next[i] = h_new;'],
   ['the held step keeps integrating (the hold is announced but not performed)',
    '    if (sys.beyond_model) {\n      sys.simTime += dt;', '    if (false) {\n      sys.simTime += dt;'],
+  /* THE COURANT LIMITER AND THE PER-NODE FLOOR (#588, 2026-09-21). Four ways to lose them, and
+   * the first two are the ones a later reader is most likely to produce by "simplifying". */
+  ['the Courant limiter is deleted (the advective update overshoots past its own donor)',
+   'if (qIn[i] > 0 && dt * qIn[i] > m_n[i]) {', 'if (false) {'],
+  /* The limiter must be ONE-SIDED. Applying it whenever there is any inflow at all makes every
+   * node land on its donor every step — which satisfies "does not overshoot" perfectly and
+   * destroys the plant. This is the mutation that makes HALF ONE of the check load-bearing. */
+  ['the limiter binds ALWAYS, not only past Courant 1 (every node teleports to its donor)',
+   'if (qIn[i] > 0 && dt * qIn[i] > m_n[i]) {', 'if (qIn[i] > 0) {'],
+  /* The limited value must be the DONOR-WEIGHTED mean, not the node's own enthalpy frozen.
+   * "Freeze the node when the step is too big" is the obvious wrong fix and it is stable, so
+   * nothing but an equality check on the donor can tell the two apart. */
+  ['the limiter FREEZES the node instead of landing it on the donor (stable, and wrong)',
+   'a[i] = qhIn[i] / qIn[i] + dt * dHq / m_n[i];', 'a[i] = sys.nodes[i].h;'],
   /* THE ENTHALPY ENVELOPE (2026-08-17). Three ways to get it wrong, and the third is the one
    * that actually happened to me: the clamp applied AFTER the solve instead of inside it. */
   ['the enthalpy state loses its ceiling (a dry node runs to 1e+304 and then NaN)',

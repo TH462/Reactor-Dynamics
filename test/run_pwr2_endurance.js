@@ -471,18 +471,51 @@ head('LONG CASUALTIES  [green today — the window is the point]');
      ', cooldown ' + (r.dTavg * 9 / 5).toFixed(1) + ' degF/hr (latched AFW — unattended)');
 })();
 
-(function () {  /* the seal leak at full severity, 30 min: holdable means HELD */
+(function () {  /* the seal leak at full severity, 30 min: holdable means the INVENTORY is HELD.
+  * ⚠ REWRITTEN 2026-09-21. The first form asserted "level > 15 %, no SI" and the `no SI` half was
+  * A FIXTURE OF A CONTAINMENT THAT COULD NOT ACTUATE ANYTHING. #784 built the sourced 3.5 psig
+  * safety-injection backup — ML11223A310 §12.3, verbatim: *"the high containment pressure signal
+  * would initiate an SI actuation if the break is large enough to cause a sufficient increase in
+  * containment pressure, but not large enough to trigger an SI actuation from any other signal.
+  * The setpoint for this protection signal is 3.5 psig. This SI actuation signal cannot be blocked
+  * by the operator."* That band is this leak exactly: MEASURED 1.807 kg/s at 1276 kJ/kg = 2305 kW
+  * into a 146,154 ft3 (4,139 m3) containment, 3.5 psig at 425 s, SI at 426 s (337.8 s with
+  * instrument noise on — the row's delay is 0.0 s and the channel's sigma is 0.001 MPa / 0.145 psi,
+  * so a 3.5-sigma excursion actuates it 88 s early).
+  * ⚠ AND #799's MISSING STRUCTURAL HEAT SINK DOES NOT RESCUE THE OLD FORM, which is why this is a
+  * rewrite and not a tracked red. Measured with a lumped wall sink wrapped around stepContainment
+  * (offline, engine untouched): UA 40 kW/K -> 3.5 psig at 517 s; 100 kW/K -> 735 s; 210 kW/K with
+  * 200 MJ/K -> 1329 s. Every plausible sink still crosses INSIDE the 1800 s horizon, so "no SI at
+  * 30 min" is unsatisfiable on a corrected containment too, not just on this one.
+  * THE ROW'S TEACHING POINT IS UNCHANGED (BUILD_DECISIONS 2026-07-30g, #262 — every slider
+  * position sits inside make-up authority) and is asserted below as what it always was: INVENTORY.
+  * Measured, level bottoms at 17.7 % and TURNS OVER — 20.4 % at 30 min, 19.0 % at 60 — against
+  * 17.4 % / 18.8 % / 30.2 % with the containment row neutered. Charging carries the leak in both
+  * plants; what #784 added is a second, sourced lesson on top of it. */
   var eng = EN.createEngine({});
   ride(eng, 30);
   EN.command(eng, 'break_open', { area_m2: 1.2e-5, node: 'rcp' });
   eng._plcsAuto = true;
   var ts = ride(eng, 1800);
+  var psia = ts.pressure_mpa * 145.038;
+  var ctmt_psig = ts.containment_pressure_mpa * 145.0377 - 14.696;
+  /* the low-pressurizer-pressure SI setpoint, read from protection so the two cannot drift */
+  var SI_LO_PSIA = globalThis.RD.pwr2.protection.ESFAS.si_lo_pzr_press_psia;
   ck('seal-leak-30min-held',
-     'the full-severity seal leak ridden 30 min is HELD (the row\'s teaching point, ' +
-     'asserted at the horizon instead of the first minutes): level > 15 %, no SI',
-     ts.pzr_level_pct > 15 && eng.pt.si === false && !eng.sys.beyond_model,
-     'level ' + ts.pzr_level_pct.toFixed(1) + ' %, P ' +
-     (ts.pressure_mpa * 145.038).toFixed(0) + ' psia at 30 min');
+     'the full-severity seal leak ridden 30 min is HELD BY MAKE-UP (the row\'s teaching point, ' +
+     'asserted at the horizon instead of the first minutes): level > 15 % and the RCS still ' +
+     'above the ' + SI_LO_PSIA.toFixed(0) + ' psia low-pressurizer-pressure SI setpoint, so ' +
+     'nothing here is an inventory collapse',
+     ts.pzr_level_pct > 15 && psia > SI_LO_PSIA &&
+     eng.pt.si_cause !== 'si_lo_pzr_press' && !eng.sys.beyond_model,
+     'level ' + ts.pzr_level_pct.toFixed(1) + ' %, P ' + psia.toFixed(0) + ' psia at 30 min');
+  ck('seal-leak-30min-ctmt-backup',
+     'and the safety injection that DOES latch is the unblockable containment backup (#784) — ' +
+     'an unmitigated 30 min of seal discharge reaches the sourced 3.5 psig, and that signal, ' +
+     'not low pressurizer pressure, is what actuates',
+     ctmt_psig >= 3.5 && eng.pt.si === true && eng.pt.si_cause === 'si_hi_ctmt_press',
+     'containment ' + ctmt_psig.toFixed(2) + ' psig, si ' + eng.pt.si +
+     ' on ' + (eng.pt.si_cause || 'nothing'));
 })();
 
 /* ================= verdict ============================================================== */
