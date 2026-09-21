@@ -2235,7 +2235,7 @@
          * #618 removed hours earlier: the step still steers on the count rate and the acceptance
          * is unchanged. The numbers are the replay's own `cmd.steps` — 94 / 63 / 31 / 14 / 9,
          * rounded — so they cannot drift from what the harness drives. */
-        { text: 'Press MED, then hold WITHDRAW under CONTROL until SOURCE RANGE passes 7.0e2. Release, let STARTUP RATE fall back to zero, then press Plot point.',
+        { text: 'Hold WITHDRAW at MED until SOURCE RANGE passes 7.0e2. Let STARTUP RATE fall to zero, then press Plot point.',
           /* ⚠ "PLOT POINT DOES NOTHING UNTIL THE COUNTS ARE STEADY" WAS FALSE AND SHIPPED ON THIS
            * CARD (#759, verified 2026-09-15). MEASURED: pressing Plot point with rung 5c unmet
            * ADDS REAL POINTS — 1 -> 2 -> 3 SVG circles, the panel refitting each time — the rung
@@ -2389,7 +2389,7 @@
            * step the first time we mvoe the rods as well"). This is that first move. */
           hl: ['Rod Speed — Normal', 'Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
-        { text: 'Hold WITHDRAW at MED until SOURCE RANGE passes 1.4e3. Release, let STARTUP RATE fall back to zero, press Plot point, then read the prediction.',
+        { text: 'Hold WITHDRAW until SOURCE RANGE passes 1.4e3. Let STARTUP RATE fall to zero, plot, then read the prediction.',
           note: 'Stop when CONTROL ROD POSITION reads about 150 to 175 steps. Wait for the rate before you plot — see step 5.',
           /* NO AUTHORED `wait_hint` (#653 S-5, 2026-09-15): `hold` is 300 s, so ui/app.js already
            * prints "About 5 plant-minutes at 1× — set the speed control to 10×." on this card, and
@@ -2407,7 +2407,7 @@
           overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
-        { text: 'Hold WITHDRAW at MED until SOURCE RANGE passes 3.0e3. Release, let STARTUP RATE fall back to zero, press Plot point, and read the prediction again.',
+        { text: 'Hold WITHDRAW until SOURCE RANGE passes 3.0e3. Let STARTUP RATE fall to zero, plot, then read the prediction again.',
           /* ⚠ "THE SETTLE TAKES LONGER AT EVERY RUNG" WAS AN UNMEASURED CLAIM IN PLAYER COPY
            * (#653 S-11, 2026-09-15). MEASURED on the built pool: all four settle rungs on steps
            * 5-8 carry IDENTICAL acceptances — the bank stopped for 60 s, then `startup_rate ~0
@@ -2467,7 +2467,7 @@
          * supercritical point the ruling removes. 205 is the highest bank in the band that is
          * still subcritical (ρ −12.5 static, −15 measured), so the band ends there. The cue is
          * unchanged and is still the count rate: 7,000 a second lands the authored burst at 202. */
-        { text: 'Hold WITHDRAW at MED until SOURCE RANGE passes 7.0e3. Release, let STARTUP RATE fall back to zero — about six plant-minutes — then plot the last point.',
+        { text: 'Hold WITHDRAW until SOURCE RANGE passes 7.0e3. Let STARTUP RATE fall to zero, then plot the last point.',
           note: 'Stop when CONTROL ROD POSITION reads about 195 to 205 steps. This is the point the prediction is built on, so give it the time: STARTUP RATE takes about six plant-minutes to come back to zero here, and a point plotted before it does throws the predicted position further out than it is. Note the rod position at criticality the 1/M panel predicts — the reactor goes critical at it or just below, so you stop short of it and tap from there.',
           wait_hint: 'STARTUP RATE is still falling when the rods stop, and the prediction is only as good as the wait you give it. Come back to 10× before the next step, where the reactor starts making power.',
           why: 'This is the last plotted point: from here single steps beat one more fitted number, because another burst would land past critical. STARTUP RATE is the speedometer — 1.0 means power is multiplying by ten every minute, and any positive reading with the rods still means the chain reaction is growing. Under 1.0 is a comfortable climb; above it, nothing in the plant slows the rise yet.',
