@@ -758,7 +758,10 @@ wrong-layer figure is visible in the artifact (#266). **Never drive a measuremen
 of wall bought 48.0 s of sim at 10×, which is why #266 believed a long full-stack ride was
 impossible and published two engine-direct numbers instead (one 13× wrong). Driving `tick()`
 directly, 12 plant-hours is **~35 s** and cost is linear in sim duration; per cycle it is
-**87.9 % `engine.step`**, so there is no per-cycle overhead worth optimising.
+**87.9 % `engine.step`**, so there is no per-cycle overhead worth optimising. **That 35 s is the
+RETIRED engine on a QUIET plant, and it is 3x optimistic for a PWR2 endgame** — measured 2026-09-22
+(#802): an uncovered core sub-steps and costs **~100 s of wall per plant-hour**. Budget a long
+casualty ride off a measurement, never off this line.
 
 ## Definition of done
 
