@@ -29,6 +29,196 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-21-develop-b (eight rulings cleared; the null self-test finds eight blind mutations and voids two coverage figures)
+
+*(OWNER, 2026-09-21: "Let's try to clear some of the open issues. What do I need to rule on and
+what's your recommendation?")* Eight rulings put and taken, seven issues closed, two filed.
+
+**Closed on the ruling alone.** #594 — the pump-less normal-spray departure STAYS *(OWNER RULING:
+"Keep it, close the issue")*; its premise had flipped back when the AUX SPRAY box was removed by
+#596, so the stand-in is again the only pump-less path other than the power-operated relief valve.
+#578 — no rod-stop or runback lamps *(OWNER RULING: "Neither — close it")*; the refusal half was
+already built and measured, so the player is told when it matters. #410 — no site provenance
+paragraph *(OWNER RULING: "Keep holding — close as declined")*.
+
+**#706** *(OWNER RULING: "Declare it but don't add a checklist caution")* — a NARROWING of the
+recommendation, recorded as such so a later pass does not "complete" it. `Manuals/12` §12.23
+declares the pressurizer level excursion (+20.4 / +43.07 / +21.19 points on heatup / cooldown /
+shutdown; 82.6 % and climbing with charging secured) against the 585 psig residual-heat-removal
+cross-connect autoclose. No engine constant moved. `f8d3f88d`.
+
+**#721** *(OWNER RULING: "Widen to anywhere + Escape + focus")* — `536cd3ca`. **The check took two
+passes and the first one was HOLLOW, which is the entry worth keeping.** Its cases chained on one
+panel, so with the pre-#721 code restored the Instructor-tab and alarms-strip sub-checks read
+"closed" — not because dismissal worked but because the previous case had left the panel open and
+the opening press hit the toggle-close branch. The aggregate went red, so it "passed its
+injection" while two of its six claims could not have caught their own regression. **An aggregate
+red does not make a sub-check sound.** Each case now force-closes through the opener's own
+unconditional toggle, opens fresh, asserts open, and fails BY NAME if its precondition cannot be
+established.
+
+**#657** *(OWNER RULING: "Null mutation per group")* — `7db3d2e7`, then `9a001d3f`. `MUT.nullSelfTest`
+in `test/mut_flags.js`: a no-op "mutation" per group that must report BLIND. A RED names a check
+red on the replay's own shortened ride and on NO mutation, so every mutant in the group reads as
+caught for the wrong reason. **In the HELPER on purpose** — #644 fixed ten hand-copied instances
+without fixing what produced the eight broken ones.
+
+- run_pwr2_engine: **17 of 17 groups BLIND.** Its positive control took THREE tries: shortening
+  `SETTLE` stayed green (that check rides both sides, so it is ride-length-insensitive) and group
+  N's heatup stayed green (rate-normalised by its own divisor). **A control that does not go red
+  proves nothing.** The issue named six `quiet ?` sites; the file has **53**.
+- Group O records 7 checks clean and 5 in the replay — O4 is inside `if (!quiet)` by cost, so two
+  checks run in NO replay at all and a mutation only they could catch reports BLIND. Deliberate and
+  pre-existing; the null line is the first place the gate says it out loud.
+- Adopted across nine more runners. **Five all-BLIND. FOUR RED**: reactor 5 checks, loadfollow 4,
+  kinetics 1, pressurizer 1.
+- **TWO OF THE ELEVEN COULD NOT BE FIXED BY LENGTHENING.** `run_pwr2_reactor`'s `SETTLE` 1500 → 4200
+  **blinded five mutations**, and 6000 blinded the same five: at 1500 steps each blind mutant reads
+  rho 5.91–8.55 pcm against a clean 8.52 and a heat residual 2014–2583 kW against 2571 —
+  indistinguishable. **The short ride is where those defects are VISIBLE.** The hold ride stays at
+  1500 and the settling claims moved to their own `SETTLE_LONG`. A ride length is not a free
+  parameter.
+- `run_pwr2_loadfollow`'s quiet SCHEDULE was the defect, not its length: `[100, 84, 68]` is 16 MWe
+  per move against the criterion's 8 — a load rejection, not a dispatch sweep. The dump latched
+  armed at 8.28 % of rated steam, power stalled at 91.4 % and never recovered. **No ride length
+  could have cleared it.**
+- **THEN EIGHT BLIND MUTATIONS APPEARED.** reactor's "25/25 caught" was really **20/25**,
+  pressurizer's "50/50" was **47/50** — their `code: 0` baselines were green BECAUSE OF the defect
+  #657 detects. Closed: **superheat was an IDENTITY in every fixture the file had** (all subcooled
+  or two-phase, `superheat_c` exactly 0 — the #362 incidence trap); the clad initial-condition
+  defect **equilibrates by 30 s** (step one pulls −2,728,910 kW, 9.1× rated and backwards, then
+  reads clean, which is why every settled check was blind); the insurge enthalpy check is
+  deliberately NOT on `h_sub`, because that field also reads wrong when the stratified layer is
+  never created, so the energy-per-kg form is placement-blind and unique to its own break.
+- **A KNIFE-EDGE BAR ON THE SHIPPING GATE**, found with them: loadfollow's "restoring demand brings
+  power back up" cleared its `cut.power + 10` bar by at most **0.059 of ten points** across every
+  horizon 80–180 s and went NEGATIVE at the short end. Physical span 10.09, so the bar demanded the
+  entire recovery to within 0.09. Re-pointed to **+9** with the drop asserted alongside the climb.
+  **Red set identical at 9 and at 10**, so verified rather than loosened. A proportional bar was
+  tried and rejected — "90 % of the drop" goes blind exactly where the first mutation lives.
+
+**#784** *(OWNER RULING: "Authorise it — auto-only")* — `a186df09`. Containment spray, the
+recirculation fan coolers and the steam-line isolation, auto-only in the PWR2 engine. Containment
+peak on a large loss-of-coolant accident **78.5 psig (0.6427 MPa) still climbing → 57.8 psig
+(0.4998 MPa), turning over at 403 s**; four-way decomposition because each half is separately
+sufficient.
+
+- **THE "NO CAPACITY EXISTS IN THE CORPUS" DECLARATION WAS AN EXPIRED PREMISE.** The module's own
+  header and the retired engine's config both said so; `find_source` found both the same day in the
+  anchor plant's documents — 1800 gpm per pump and 50 °F refuelling water (ML20339A101 Table
+  15.6-18a), 28.5 s and 44 s responses, fans on the safety-injection signal, one train and two units
+  credited (ML20339A221). **The #460 trap standing in the header of the file it was written in.**
+  Exactly ONE fitted constant survives: the fan heat-transfer coefficient.
+- **Spray is a MASS STREAM, not a sink time constant** — the retired engine needs `1/tau` because
+  its containment is a one-state gain model with nowhere to put water. Nothing about the knockdown
+  is fitted.
+- **THE MARGIN IS THIN AND WAS NOT PAPERED OVER**: 57.8 psig against the sourced 59.7 psig
+  design-basis peak, **1.9 psi**. The fitted fan coefficient was deliberately NOT retuned — this
+  module already declares it models no structural heat sink and that this OVERSTATES peak pressure,
+  so tuning until the number looked comfortable would hide a declared-missing term behind a fitted
+  one AND invert the sourced spray-outruns-fans ordering (GEND-061; 9.2 MW against 3.9 MW). Filed
+  as **#799**.
+- **FOUR GATES HAD TO TURN AROUND, each RECORDING the gap this closed**: an orphaned mutation anchor
+  reporting a BLIND SPOT rather than passing; a check asserting these fields were registered statics
+  (pinning the absence of a system that now exists); two kernel checks that were #778's and #783's
+  record of a plant that could not mitigate; and a blowdown PRECONDITION sampling the END of a
+  1200 s ride, which was the peak only while containment could only climb.
+- Two manual gates carried the same staleness in **hand-maintained maps**: `run_manual_setpoints`
+  held `absent: true` for four rows (a marker assertion, never a plant assertion — #624 item 14),
+  and `run_manual_notmodelled`'s BRIDGE held four entries that **its own direction-2 check caught**.
+  Its `>= 10` parse floor was retired too: that was a claim about how much of the plant is UNBUILT,
+  so it reddened every time a system got built.
+- The manual set said the opposite of what the plant does and **nothing gates its prose** — five
+  chapters rewritten.
+
+**#783 caption override RETIRED** *(OWNER RULING, 2026-09-21: "Drop the override")* — and **its own
+comment named the condition that would retire it**: *"If #784 models spray and the fan coolers
+inside this engine the parenthetical is earned back."* The earlier ruling's stated condition being
+met, not a reversal of it. What guards those rows now is STRONGER: with no entry in `OVERRIDDEN`
+they fall to the `a === baseAlarms[i]` IDENTITY clause, so a per-plant copy reds even if
+byte-identical. Its mutation was RETIRED rather than re-anchored — dropping the override is now the
+correct state, so re-anchoring would pin a non-event.
+
+**#588 first half** *(OWNER RULING: "Extend the physics to core damage")* — `a33a9685`, and it does
+NOT satisfy the ruling.
+
+- **TWO PREMISES IN THE BRIEF WERE STALE AND I WROTE ONE OF THEM.** `P_MIN` has been **0.002 MPa
+  (0.29 psia) since #524**, not 0.1 MPa — `pwr2_water.js:82` says so in its own comment. The plant
+  latches **380× ABOVE** the floor. Owed item 2 of the ruling was written against a wall that moved
+  three weeks earlier; I took it from the issue body. Corrected on the issue.
+- **The plant was stopped by an UNSTABLE ADVECTION SCHEME, not by the property library.** The ring
+  wants **98 sub-steps at 168.4 s** and gets `NSUB_MAX = 16`; junction flows reach 6.3e+4 kg/s
+  against an `mdot_loop` of 2.6 kg/s (the loop momentum state is FINE at rated — the first
+  hypothesis was REFUTED); enthalpies leave the envelope at −174,434 kJ/kg on a 1.55 kg hot leg; a
+  hot leg plus crossover holding 0.54 kg hand `F(P)` **2,070 kg of INVENTED liquid**, so no root
+  exists at any pressure.
+- The limiter clamps the approach factor at 1 — the **exact asymptote** of
+  `hbar + (h − hbar)·exp(−C)`, not a chosen cap. The exponential form was deliberately not used: it
+  differs from forward Euler at the `C ≈ 0.05` a healthy plant runs at. **Bit-identical: 3,844
+  fields × 3 initial conditions, 0 differing.**
+- **A SECOND FIX WAS BUILT, MEASURED AND REMOVED, and this is #588's own historical error nearly
+  shipped again.** A phase-preserving enthalpy floor took the casualty from held to four hours
+  clean. It binds 57 times in 1,200 s and **every time by less than 11 kJ/kg**, and it CANNOT catch
+  the thousands-of-kJ/kg case: a vapour node cannot reach the liquid floor by compression, since
+  `dh = v·dP` is bounded by ~0.46T while its own enthalpy is ~2T. Ulp sweep: limiter alone 6 of 8
+  branches off the hold, limiter plus floor 5 of 6 — indistinguishable. **Those 57 nudges were
+  SELECTING A BRANCH, not fixing anything.** 22 lines of reasoning at the removal site.
+- The gate asserts the INVARIANT and never the trajectory: 0 of 6 branches cleared the hold before
+  and 6 of 8 clear it now, **but the nominal branch still holds**, so "it no longer latches" is a
+  bifurcation (#543) and is asserted nowhere.
+- `run_pwr2_engine_b`'s `held WHOLE` check was a **STALE FIXTURE WITH TWO EXITS AND ONLY ONE
+  NAMED** — `while (tH < 300) { …; if (model_held) break; }` falls out at its horizon as happily as
+  at the latch, so with the plant no longer latching it read 153.3 kg of correctly-booked break
+  discharge as the hold failing.
+
+**#784 fallout: the seal-leak red, adjudicated as a STALE FIXTURE** — and **the alternative was
+MEASURED, not argued**. #799's missing structural heat sink would reach the setpoint early, so a
+lumped wall sink was wrapped around `stepContainment` offline and swept: 3.5 psig at 425 s as
+built, 517 s at 40 kW/K, 735 s at 100 kW/K, **1,329 s at a generous 210 kW/K and 200 MJ/K** — every
+one inside the 1,800 s horizon. **#799 changes WHEN, never WHETHER.** The actuation is the sourced
+design intent (ML11223A310 §12.3, verbatim). The row's teaching point survives on BOTH plants:
+charging carries the leak either way, level bottoms near 17.5 % and turns over, so `level > 15 %`
+was never in danger. One check became two.
+
+**Filed: #800** — safety injection does not trip the reactor. **78.2 s at power with injection
+running** (safety injection 337.8 s, trip 416.1 s), and the trip that comes is `sg_lolo_level`, a
+knock-on of feedwater isolation. Sourced to ML11223A310 §12.3.2.2 item 1. **INVISIBLE UNTIL #784**:
+every other route to safety injection on this plant sits at or below a condition that has already
+tripped the reactor, so the missing wire was an IDENTITY until a new signal moved the regime.
+Second observation folded in: the containment channel latches **88 s early on noise** (337.8 s
+shipped against 426.2 s with noise off) — zero delay, no coincidence, 0.145 psi sigma.
+
+**The `run_hardrules` trap.** 605 → **608**, and the BASELINES edit that should have carried it did
+not. **The check count IS the HR11 citation-site count**, so a ruling quoted into a docs or header
+commit moves it while touching no test file. Bisected one commit at a time: `f8d3f88d` (#706) **+2**,
+`a186df09` (#784) **+1**, the other three commits 0. After any commit that quotes a ruling, re-run
+`run_hardrules`.
+
+**I emptied the shared `node_modules`** — see `2026-09-21-develop-a` for the fix and the retired
+junction. The part that belongs here: **I followed LANES §9's teardown order and it still went
+through, because the PRIMARY tree's own `node_modules` is a reparse point** (tag `0x9000601a`, a
+Synology cloud placeholder) that all three lanes junction INTO. §9 assumed the primary held a real
+directory. `fsutil reparsepoint query` before linking is the check that would have caught it.
+
+### Open at the end of this session
+
+- **`run_pwr2_engine_b` 66/1 — a REAL invariant violation**, not a stale precondition: 6
+  adverse-flow steps of 60000, worst +47.8 psi, coolant climbing the pressure gradient. Caused or
+  exposed by #588's wall/heat-exchange limiter. **Blocks that commit.** Under diagnosis.
+- **The steam generator's primary-side void/flow term** *(OWNER RULING, 2026-09-22: "Ship it and
+  build the SG term now")*. `pwr2_sg.js:225` is `Q = U·wet·area·(primaryT − T_sec)` with a
+  leg-average temperature and a rated-geometry `U` — **no void term and no flow term**, while
+  `pwr2_fuel.filmCoefficient` and `pwr2_core`'s `WALL_FILM` both scale with flow AND phase. Measured
+  at 1,800 s with the core 100 % uncovered: the exchanger removes **7,808 kW against a 5,116 kW
+  decay load**, a WORSE ratio than the 5,301/5,258 that prompted the first ruling, and the cladding
+  peak turns back DOWN from 3,357 °F (1,847 °C) to 1,357 °F. Engine-wide retune behind it.
+- **The wall limiter withholds 485 GJ** over that ride, binding 2,210 node-steps — the whole steam
+  generator duty cancelled at the node most of the time. **A bound doing the model's job**, which is
+  why "the damage chain runs" is not presented as physics until the void term exists.
+- #799 (containment wall heat sink), #800 (safety injection → reactor trip). Neither started.
+- **Nothing pushed.** Eight commits on `develop`; no aggregate run, per the standing rule.
+
+
 ## Session log — 2026-09-21-develop-a (the shared `node_modules` emptied a THIRD time — the junction is retired from scratch worktrees)
 
 *(OWNER, 2026-09-21: "The worker in develop just screwed up. Ask it what happened. Do not fix it
