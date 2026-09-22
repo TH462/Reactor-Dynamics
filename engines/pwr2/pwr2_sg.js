@@ -340,6 +340,14 @@
 
     return {
       duty_kW: Q, T_sec: T_sec, P_sec: sg.P, mass: sg.mass,
+      /* #588 — THE CONDUCTANCE THE DUTY WAS COMPUTED THROUGH, kW/K. `Q = UA*(primaryT - T_sec)`
+       * and `UA = U*wet*area`, so this is the same three factors one line apart rather than a
+       * second copy of them. Layer 5 hands it to Layer 2's maximum-principle limiter, which
+       * cannot bound a relaxation whose conductance it has not been told — and which must never
+       * back one out of `Q/dT`, because that ratio is a 0/0 wherever the plant is near
+       * equilibrium (the limiter's own note has the 1.753e+6 kg/s measurement). Reported whether
+       * or not the duty is 0. */
+      UA_kW_per_K: sg.U * wet * sg.area,
       /* Level as a MASS FRACTION only. D3 §3 lumps the secondary, so there is no geometry here
        * to turn inventory into a gauge reading — the level-geometry map is an instrument-layer
        * concern and inventing one here would be the "gauge-shaped quantity published inside

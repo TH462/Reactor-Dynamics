@@ -259,6 +259,10 @@
   /* stepPlant(sys, dt, drivers)
    *   drivers.corePower kW into the core node
    *   drivers.sgDuty    kW removed at the SG primary (positive = removed)
+   *   drivers.sgTarget_c  degC the SG duty relaxes TOWARD (stepSG's `T_sec`). OPTIONAL. (#588)
+   *   drivers.sgG_kW_per_K  the conductance it drove through (stepSG's `UA_kW_per_K`). OPTIONAL.
+   *                     BOTH are needed to bound the duty; absent, it is forwarded unlimited.
+   *   drivers.exchanges [{node, kW, T_c}] further declared relaxations, forwarded unchanged (#588)
    *   drivers.pumpTrip  true to trip the pump this step
    *
    * PUMP WORK IS A LOCATED SOURCE. It is deposited at the RCP node, not smeared as a fraction
@@ -350,7 +354,38 @@
     if (drivers.sgDuty) heats.sg_primary = (heats.sg_primary || 0) - drivers.sgDuty;
     heats.rcp = (heats.rcp || 0) + pumpKW;
 
-    var r = LOOP.stepLoop(sys, dt, { heats: heats, sources: drivers.sources, mdot: sys.mdot_loop });
+    /* ---- THE DECLARED HEAT EXCHANGES (#588) ---------------------------------------------------
+     * Layer 2's maximum-principle limiter bounds a relaxation at the temperature it is relaxing
+     * TOWARD, and it can only do that for duties whose target temperature it has been told. This
+     * is where the steam generator's is said out loud.
+     *
+     * `drivers.sgTarget_c` is the secondary saturation temperature `stepSG` already returns as
+     * `T_sec` — the body `U*wet*area*(Tavg - T_sec)` exchanges with — and `drivers.sgG_kW_per_K`
+     * is that `U*wet*area`. WITHOUT BOTH the duty is forwarded exactly as before and is NOT
+     * limited: an omitted target must never be guessed, because a guessed one would bound the
+     * plant at a temperature no component chose. Every Layer 2/3 fixture in `test/` passes
+     * `sgDuty` with neither and is therefore untouched.
+     *
+     * ⚠ THE DUTY IS COMPUTED FROM Tavg AND BOOKED AT `sg_primary`, WHICH IS A LUMPING, and the
+     * limiter is only as good as that lumping is: `addExchange` refuses the term outright when the
+     * node is already on the far side of `T_sec`, so what is bounded is never the lumping's own
+     * small inconsistency at hot standby — only a genuinely stiff removal.
+     *
+     * ⚠ THE kW IS THE SAME NUMBER ALREADY IN `heats`, SIGNED THE SAME WAY (into the fluid). It is
+     * DESCRIBED here, never added — see Layer 2's `drivers.exchanges` note. Writing it as
+     * `-drivers.sgDuty` rather than re-deriving it keeps the two literally one expression apart,
+     * so a sign change on the line above cannot leave the limiter bounding the wrong direction.
+     *
+     * Pump work and core power are NOT exchanges and are deliberately absent: they are GENERATION
+     * — there is no body they relax toward, and declaring one would invent a ceiling. */
+    var exch = (drivers.exchanges || []).slice();
+    if (drivers.sgDuty && drivers.sgTarget_c !== undefined && drivers.sgTarget_c !== null) {
+      exch.push({ node: 'sg_primary', kW: -drivers.sgDuty, T_c: drivers.sgTarget_c,
+                  G_kW_per_K: drivers.sgG_kW_per_K });
+    }
+
+    var r = LOOP.stepLoop(sys, dt, { heats: heats, sources: drivers.sources, mdot: sys.mdot_loop,
+                                     exchanges: exch });
     r.omega = sys.omega;
     r.rpm = sys.omega * 60 / (2 * Math.PI);
     r.pumpHead = dPp;

@@ -1538,6 +1538,17 @@
      * that happened to diverge, and went BLIND the moment #574's metal walls moved the ride.
      * A wire nobody can see reads as a working feature — which is the whole subject of #574. */
     eng._brkBackP = br ? sys.P - br.dP_mpa : undefined;
+    /* AND THE RCS PRESSURE THE BREAK SAW, at the same instant, for the same reason (#588).
+     * `_brkBackP` made the backpressure observable; the OTHER half of that comparison was
+     * still only readable from `true_state`, which publishes the END-OF-STEP pressure. Those
+     * are not the same number, and on a near-empty RCS they are not close: measured on the
+     * 20 cm2 cold-leg ride at t = 514.18 s, the break computed its flow at 220.87 psia
+     * (1.5228 MPa) and the step ENDED at 45.53 psia (0.3139 MPa) -- a 175 psi intra-step
+     * excursion, larger than the 150 psi gradient the flow was driven by. A gate comparing
+     * the end-of-step pressure against a mid-step flow therefore reads `adverse` on a step
+     * that discharged downhill by 150 psi. This is the honest instant for that comparison.
+     * A DIAGNOSTIC on the same `eng._*` shelf; nothing in the plant reads it. */
+    eng._brkP = br ? sys.P : undefined;
 
     var rrx = R.stepReactor(eng.rx, sys, dt,
       { boron_ppm: cvr.boron_ppm, rodGroups: eng.rodBank, Q_ox_kW: eng._Qox });
@@ -1604,7 +1615,37 @@
       if (heats === rrx.heats) heats = Object.assign({}, rrx.heats);
       heats.hot_leg = (heats.hot_leg || 0) + eng._pzSurgeHeat;
     }
-    var pr = S.stepPlant(sys, dt, { heats: heats, sgDuty: sr.duty_kW, sources: srcs });
+    /* ---- THE DECLARED HEAT EXCHANGES (#588) ---------------------------------------------------
+     * Layer 2 bounds a relaxation at the temperature it relaxes TOWARD, and only the component
+     * that computed the duty knows what that temperature is. Two duties in this engine are
+     * relaxations and both are declared:
+     *
+     *   the STEAM GENERATOR   `U*wet*area*(Tavg - T_sec)`, toward the secondary's saturation
+     *                         temperature — passed as `sgTarget_c` beside the duty it belongs to.
+     *   RESIDUAL HEAT REMOVAL `UA*(T_hot - ccw)`, toward the component cooling water. Its `heats`
+     *                         map is already spread across the ring by volume fraction, so each
+     *                         share is declared at ITS OWN node — one exchange per node, not one
+     *                         for the train, because the limiter is a PER-NODE bound and a lumped
+     *                         declaration would bound nothing.
+     *
+     * NOT DECLARED, deliberately: core power (generation, no body to relax toward), pump work
+     * (the same), the pressurizer surge enthalpy (a transport term, already bounded by the
+     * advective half at its own node) and the break/ECCS/CVCS streams (mass sources — the
+     * advective half already carries them through `qIn`). */
+    var exch = [];
+    if (rhrR.duty_kW > 0 && rhrR.G_kW_per_K > 0 && rhrR.T_sink_c !== undefined) {
+      /* the duty is spread by volume fraction, so the CONDUCTANCE is spread by the same
+       * fraction — recovered from the shares themselves (`heats[n] / -duty`) rather than by
+       * re-deriving the split, so the two cannot come apart if `shareOut` ever changes. */
+      Object.keys(rhrR.heats).forEach(function (n) {
+        var f = -rhrR.heats[n] / rhrR.duty_kW;
+        exch.push({ node: n, kW: rhrR.heats[n], T_c: rhrR.T_sink_c,
+                    G_kW_per_K: rhrR.G_kW_per_K * f });
+      });
+    }
+    var pr = S.stepPlant(sys, dt, { heats: heats, sgDuty: sr.duty_kW, sources: srcs,
+                                    sgTarget_c: sr.T_sec, sgG_kW_per_K: sr.UA_kW_per_K,
+                                    exchanges: exch });
     /* #625 — the loop's Courant report (courantLimit_s / subSteps / held) had no reader above
      * Layer 3; the shell publishes it through getStepReport() so the service's WARP tier can
      * refuse a step the ring would have to lean on its sub-step ceiling to survive. */

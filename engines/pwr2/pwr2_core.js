@@ -75,6 +75,66 @@
   var RHO = VT ? VT.rho_from_h : W.rho_from_h;
   var TFH = VT ? VT.T_from_h : W.T_from_h;      /* #574 — the wall talks to a TEMPERATURE */
 
+  /* ================================================================ hAtTarget(T, P, heating)
+   * THE ENTHALPY-AT-A-GIVEN-TEMPERATURE INVERSION (#588). kJ/kg of the fluid at `T_c` and `P`.
+   * The heat-exchange limiter below cannot bound anything without it: it must know WHERE the
+   * approach has to stop, and "the wall's temperature" is not a place in an enthalpy state.
+   *
+   * ⚠ THE INVERSION IS ONE-TO-MANY AT SATURATION, AND THAT IS THE WHOLE DIFFICULTY. Every
+   * enthalpy between `h_f(P)` and `h_g(P)` is at the SAME temperature `T_sat(P)`, so `h(T, P)`
+   * has no single value there. A limiter needs the LOOSEST CORRECT BOUND in the direction it is
+   * limiting — anything tighter would bind on a physically legitimate update and be a retune —
+   * and at saturation the two directions genuinely differ:
+   *
+   *   COOLING toward T_sat(P): a node above `h_g` may condense ALL THE WAY to `h_f` without its
+   *     temperature ever crossing the target. The bound is `h_f(P)` — the LIQUID branch.
+   *   HEATING toward T_sat(P): a node below `h_f` may boil all the way to `h_g` the same way.
+   *     The bound is `h_g(P)` — the VAPOUR branch.
+   *
+   * So the branch is picked by the target's side of the saturation line, with the EQUALITY going
+   * to whichever branch is further away in the direction of travel. `h_l` returns `h_f` at
+   * `T_sat` and `h_v` returns `h_g` there, both by construction (see their notes in
+   * pwr2_water.js), so the two cases below are exactly `h_f` and `h_g` at the seam and this is
+   * continuous in value on each side. Getting the equality the other way round would bound a
+   * condensing node at `h_g` and freeze it there with the wall still colder.
+   *
+   * ⚠ RANGE IS THE CALLEE'S: `h_l` clips T into [0, 358] degC and P into [0, 18] MPa, and `h_v`
+   * clips at TV_EXT_MAX. A target outside the library's range therefore yields the library's edge
+   * value rather than an extrapolation, which is the conservative direction for a BOUND.
+   *
+   * ⚠ IT IS COMPUTED ON THE CORRELATIONS WHILE THE NODE'S OWN TEMPERATURE IS READ THROUGH THE
+   * TABLE (`TFH`), so `TFH(hAtTarget(T, P), P)` returns T to the TABLE'S interpolation error and
+   * not to the last bit. That is stated rather than hidden, and it is why the limiter is a bound
+   * and never an equality on a temperature: it binds only past a factor-of-one overshoot, which
+   * no sub-percent property seam can manufacture or hide. `run_pwr2_core` measures the round
+   * trip on both branches rather than assuming it. */
+  function hAtTarget(T_c, P_mpa, heating) {
+    var Ts = W.T_sat(P_mpa);
+    if (heating ? (T_c < Ts) : (T_c <= Ts)) return W.h_l(T_c, P_mpa);
+    return W.h_v(T_c, P_mpa);
+  }
+
+  /* cpLocal(h, P) — kJ/kg-K, the specific heat the exchange limiter divides a conductance by.
+   *
+   * SINGLE-PHASE IT IS THE LIBRARY'S OWN, read at the node's state through the CORRELATIONS (the
+   * same scale `hAtTarget` inverts on, so the pair is self-consistent whatever the vtable says).
+   *
+   * ⚠ TWO-PHASE THERE IS NO SPECIFIC HEAT — `dT/dh` is ZERO across the dome, so the literal
+   * answer is infinite and `G0/cp` would be 0, i.e. no bound at all exactly where the nodes are
+   * smallest. That is the wrong direction to be wrong in. What the limiter needs here is not the
+   * thermodynamic cp but the SMALLEST cp either phase presents at the saturation point, because
+   * that makes the conductance the LARGEST and the bound the most willing to bind — conservative
+   * toward stability, which is the only thing this limiter is for. Stated rather than hidden: a
+   * two-phase node is therefore bounded slightly sooner than a strict temperature argument would,
+   * and never later. */
+  function cpLocal(h, P_mpa) {
+    var hf = W.h_f(P_mpa), hg = W.h_g(P_mpa);
+    if (h >= hg) return W.cp_v(W.T_from_h(h, P_mpa), P_mpa);
+    if (h <= hf) return W.cp_l(W.T_from_h(h, P_mpa));
+    var Ts = W.T_sat(P_mpa), a = W.cp_l(Ts), b = W.cp_v(Ts, P_mpa);
+    return a < b ? a : b;
+  }
+
   /* ================================================================ METAL WALLS (#574)
    * *(OWNER, 2026-08-12: "each node should carry the heat capacity of its own metal wall, not
    * just the fluid it contains"; OWNER RULING, 2026-08-28: "All eleven nodes".)*
@@ -158,10 +218,18 @@
    * ⚠ ONCE PER STEP, OUTSIDE THE PRESSURE SOLVE. `F(P)` is called ~10 times per step on the hot
    * path D1 §26 already carries a performance stop condition against, and the wall does not
    * depend on the candidate pressure — putting it inside would be paid ten times for nothing. */
+  /* wallG0(w, flowFrac, voidFrac) -> kW/K, fluid <-> lump 0: the film and half a lump of metal in
+   * series. FACTORED OUT OF `stepWall` (#588) so the exchange limiter can be handed the SAME
+   * conductance the duty was computed from rather than a second copy of the expression — a
+   * limiter bounding a term through its own private idea of the conductance is the dark-wire
+   * failure in a new place. */
+  function wallG0(w, flowFrac, voidFrac) {
+    var hA = wallFilm(flowFrac, voidFrac) * w.A_m2 / 1000;   /* kW/K */
+    return 1 / (1 / hA + w.R_half_KW);
+  }
   function stepWall(w, T_fluid, flowFrac, voidFrac, dt) {
-    var i, hA = wallFilm(flowFrac, voidFrac) * w.A_m2 / 1000;   /* kW/K */
-    /* film and half a lump of metal in series */
-    var G0 = 1 / (1 / hA + w.R_half_KW);                   /* kW/K, fluid <-> lump 0 */
+    var i;
+    var G0 = wallG0(w, flowFrac, voidFrac);                /* kW/K, fluid <-> lump 0 */
     var Q = G0 * (w.T[0] - T_fluid);                       /* kW, positive = metal heats fluid */
     var dT = new Array(w.n);
     for (i = 0; i < w.n; i++) {
@@ -282,6 +350,80 @@
     var idx = {};
     for (i = 0; i < N; i++) idx[sys.nodes[i].id] = i;
 
+    /* THE LIMITER'S CONDUCTANCE LEDGER — four accumulators, ONE principle (#588).
+     *
+     * `qIn/qhIn` are the ADVECTIVE inflow terms and `gIn/ghIn` the HEAT-EXCHANGE ones. They are
+     * separate arrays only so each half can be read on its own by a gate; the limiter below sums
+     * them, because they are the same algebraic object. Both are accumulated from terms that are
+     * ALREADY in `dH` — neither adds anything to it, and neither changes one arithmetic operation
+     * on the healthy path. See THE MAXIMUM-PRINCIPLE LIMITER below. */
+    var qIn = new Array(N), qhIn = new Array(N), gIn = new Array(N), ghIn = new Array(N),
+        exQ = new Array(N);
+    for (i = 0; i < N; i++) { qIn[i] = 0; qhIn[i] = 0; gIn[i] = 0; ghIn[i] = 0; exQ[i] = 0; }
+
+    /* addExchange(i, Q_kW, T_target_c, G0_kW_per_K) — declare that `Q_kW` of node i's `dH` is a
+     * RELAXATION toward a body at `T_target_c` through a conductance of `G0_kW_per_K`, and
+     * convert it to the kg/s the advective ledger speaks in.
+     *
+     * A heat exchange is `Q = G0*(T_target - T_fluid)`, kW. Divide the CONDUCTANCE by a specific
+     * heat and what comes back is a MASS FLOW: `G = G0/cp`, kg/s, which is exactly the
+     * coefficient that makes the exchange term read `G*(h_target - h)` — the identical form as a
+     * junction inflow's `q*(h_don - h)`. One limiter then covers both, and it is not an analogy:
+     * the discrete maximum principle is a statement about the coefficient matrix, and these two
+     * fill the same off-diagonal.
+     *
+     * ⚠⚠ THE CONDUCTANCE IS THE HARDWARE'S, NOT `Q/(h_target - h)`, AND THE FIRST VERSION OF
+     * THIS USED THE SECANT AND WAS WRONG. The two are algebraically the same, and numerically they
+     * are not: as the fluid approaches the body, BOTH Q and (h_target - h) go to zero, so their
+     * ratio is a 0/0 whose value is decided by whatever disagreement exists between the
+     * temperature scale that produced Q and the one that produced h_target. Those scales are NOT
+     * the same here — `stepWall` differences through the VTABLE (`TFH`) and `hAtTarget` inverts
+     * through the CORRELATIONS — so at a near-zero temperature difference the seam between them,
+     * a few micro-kelvin, becomes the entire denominator.
+     *
+     * MEASURED with the secant form, on `hot_full_power`, 600 s, a perfectly healthy plant:
+     * `sg_primary` at t = 242.4 s sat 0.00006 K from its own wall and the secant returned
+     * **G = 1.753e+6 kg/s** on a 5,500 kg node — a Courant number of 6.4 out of nothing at all.
+     * The limiter bound, threw away the node's real 1,637 kg/s of advective inflow, and withheld
+     * **5,059 kJ**. A limiter that fires hardest when the plant is closest to equilibrium is not a
+     * limiter, and it would have been indistinguishable from a retune on a trajectory this issue
+     * has already shown is ulp-sensitive. `G0/cp` has no such pole: the temperature difference
+     * cancels, so the conductance is the same whether the fluid is 300 K from the body or 6
+     * micro-kelvin from it, which is what a conductance means.
+     *
+     * ⚠ A TERM WHOSE HEAT AND WHOSE TEMPERATURE DIFFERENCE DISAGREE IN SIGN IS NOT A RELAXATION
+     * ON THIS NODE, and it is refused rather than fudged — the same carve-out, for the same
+     * reason, as the withdrawal terms below. It happens for real: `stepSG` computes its duty from
+     * the loop's leg-average Tavg and lands it on `sg_primary`, so a node already on the far side
+     * of the secondary can still be handed a removal. There is no target for such a term to relax
+     * toward, so it stays in `dH` and rides the UNLIMITED remainder — the honest place for a term
+     * this limiter cannot speak about.
+     *
+     * ⚠ AN UNDECLARED CONDUCTANCE IS NOT A BOUND OF ZERO, IT IS NO BOUND AT ALL. `G0 <= 0`
+     * returns without touching the ledger, so the duty rides the unlimited remainder exactly as it
+     * did before this existed. A caller that knows the duty but not the conductance must not have
+     * one invented for it. */
+    function addExchange(node_i, Q_kW, T_target_c, G0_kW_per_K) {
+      if (!Q_kW || !(G0_kW_per_K > 0)) return;
+      var h_t = hAtTarget(T_target_c, sys.P, Q_kW > 0);
+      var dh = h_t - sys.nodes[node_i].h;
+      if (!(Q_kW * dh > 0)) return;               /* not a relaxation toward h_t — see above */
+      var G = G0_kW_per_K / cpLocal(sys.nodes[node_i].h, sys.P);   /* kW/K -> kg/s */
+      gIn[node_i] += G;
+      ghIn[node_i] += G * h_t;
+      /* ⚠ THE DUTY IS BOOKED SEPARATELY FROM THE CONDUCTANCE, and the first version of this did
+       * not do that and was wrong by tens of thousands of kJ/kg. The limiter's remainder is
+       * `dH minus the declared relaxations`, and for ADVECTION `q*(h_don - h)` reconstructs its
+       * own contribution exactly. FOR AN EXCHANGE IT DOES NOT: `G*(h_t - h)` is `G0/cp * (h_t-h)`
+       * and the duty is `G0*(T_t - T)`, which agree only while `cp` is the SECANT over the whole
+       * span. `cpLocal` is the LOCAL one — deliberately, that is what kills the 0/0 — so over a
+       * 300 K span the two differ by ~40 % and the reconstruction left a huge spurious remainder.
+       * MEASURED on the gate's own 600 degC fixture: the node landed at 17.9 kJ/kg, clamped on
+       * the liquid floor, instead of on the wall's 3,576.2. The DECLARED kW is what `dH` actually
+       * carries, so the DECLARED kW is what comes back out. */
+      exQ[node_i] += Q_kW;
+    }
+
     /* ---- 1a. THE METAL WALLS (#574), before anything else touches dH. ----
      * Evaluated at time-n temperatures and OUTSIDE the pressure solve — see stepWall's note.
      * `drivers.flowFrac` is Layer 3's loop flow over rated; absent, the wall assumes rated
@@ -293,10 +435,21 @@
       if (!wn) continue;
       /* THE NODE'S OWN VOID, not the loop's: a dry core and a full cold leg are the same
        * plant, and the wall of each talks to the fluid it is actually in contact with. */
-      var Qw = stepWall(wn, TFH(sys.nodes[i].h, sys.P), flowFrac,
-                        W.quality(sys.nodes[i].h, sys.P), dt);
+      var voidW = W.quality(sys.nodes[i].h, sys.P);
+      /* ⚠ THE WALL TEMPERATURE IS READ BEFORE `stepWall` MOVES IT. `stepWall` computes its duty
+       * from `w.T[0]` and THEN cools the lump by that duty, so the body the fluid is relaxing
+       * toward this step is the temperature at ENTRY. Reading it afterwards looks identical and
+       * is not: on the gate's 600 degC fixture the lump drops 4.7 K inside the call and the node
+       * then lands 12.3 kJ/kg SHORT of the wall it was supposed to reach — a limiter bounding a
+       * term at a target the term never had. */
+      var Tw0 = wn.T[0];
+      var Qw = stepWall(wn, TFH(sys.nodes[i].h, sys.P), flowFrac, voidW, dt);
       dH[i] += Qw;
       wallHeat += Qw;
+      /* SITE 1 of the exchange limiter: the metal is a body at `Tw0` and the fluid relaxes toward
+       * it through `wallG0`, the SAME conductance `stepWall` just used. Declared here, where both
+       * are in hand — a caller reading `wallHeat_kW` could reconstruct neither. */
+      addExchange(i, Qw, Tw0, wallG0(wn, flowFrac, voidW));
     }
 
     /* ⚠ THE ENERGY BUDGET, MEASURED — AND THE DECLARED FIX DOES NOT WORK AS DECLARED.
@@ -328,10 +481,8 @@
      * tolerance to be widened when something else fails. */
     /* Donor-cell: a flow carries the enthalpy of the node it LEAVES. Upwinding is what keeps
      * a transported front from being smeared, and it is why the sign of mdot matters. */
-    /* qIn/qhIn — the SAME inflow terms, accumulated separately for the Courant limiter below.
-     * They add nothing to dH and change no arithmetic on the healthy path; see the limiter. */
-    var qIn = new Array(N), qhIn = new Array(N);
-    for (i = 0; i < N; i++) { qIn[i] = 0; qhIn[i] = 0; }
+    /* qIn/qhIn — the SAME inflow terms, accumulated for the limiter below (declared with the
+     * exchange half at the top of the step; one ledger, one principle). */
     flows.forEach(function (f) {
       var A = idx[f.from], B = idx[f.to], md = f.mdot;
       if (A === undefined || B === undefined || !md) return;
@@ -356,6 +507,30 @@
        * relax toward. It stays in dH and out of qIn, which leaves it in the unlimited
        * remainder below — the honest place for a term this limiter cannot speak about. */
       if (s.mdot > 0) { qIn[A] += s.mdot; qhIn[A] += s.mdot * s.h; }
+    });
+    /* ---- SITES 2+ : THE CALLER'S OWN HEAT EXCHANGES (#588) -----------------------------------
+     * `drivers.exchanges` = [{ node, kW, T_c, G_kW_per_K }] — kW INTO the fluid (negative
+     * removes), the temperature of the body it is exchanging with, and the CONDUCTANCE the duty
+     * was computed through. All four are required; an entry without the conductance is not
+     * limited, because there is nothing to compute the bound from (see `addExchange`).
+     *
+     * ⚠⚠ IT DESCRIBES `heats`; IT DOES NOT ADD TO IT. Every kW declared here is ALREADY in the
+     * caller's `heats` map and is counted exactly once, in the gather at step 1. A caller that
+     * declared an exchange it had not also put in `heats` would silently lose the duty, and one
+     * that added it twice would double it — so the contract is written the same way round as
+     * `qIn`'s: the limiter is told about terms the arithmetic already has, and its only effect is
+     * on WHERE THE APPROACH STOPS.
+     *
+     * WHY THE CALLER AND NOT THIS LAYER. Layer 2 is generic — it has no steam generator, no
+     * residual-heat-removal train, no idea what any entry in `heats` is exchanging with. Only the
+     * component that computed `G0*(T_target - T_fluid)` knows `T_target`, and if it does not say
+     * so the number arrives here indistinguishable from a fission source. Undeclared duties are
+     * NOT limited, which is the same honest default the withdrawal terms above get: this layer
+     * limits what it has been told is a relaxation and nothing else. */
+    (drivers.exchanges || []).forEach(function (x) {
+      var A = idx[x.node];
+      if (A === undefined || !x.kW || x.T_c === undefined || x.T_c === null) return;
+      addExchange(A, x.kW, x.T_c, x.G_kW_per_K);
     });
     /* ---- THE COURANT LIMITER ON THE ADVECTIVE UPDATE (#588) ----------------------------------
      *
@@ -418,13 +593,74 @@
      * the property envelope: `P_MIN` has been 0.002 MPa (0.29 psia) since #524 and the primary
      * was 380x above it. The limiter costs nothing and the cap then never has to resolve what
      * it cannot afford to. */
+    /* ---- THE SAME MAXIMUM PRINCIPLE ON HEAT EXCHANGE (#588, second half) ----------------------
+     *
+     * A HEAT EXCHANGE IS A RELAXATION, AND A RELAXATION OBEYS THE SAME PRINCIPLE. `Q =
+     * G0*(T_target - T_fluid)` is the same object as a donor-cell inflow with `G = G0/cp` in place
+     * of `q` — so it has the same stability bound, the same asymptote, and it fails the same way:
+     * past `dt*G/m = 1` the weight on `h` goes negative and the fluid is driven PAST the body it
+     * is exchanging with, further every step. A fluid crossing the wall it is cooling against is
+     * not a fast transient; it is the second law running backwards, and it is what the update does
+     * once it leaves its own validity.
+     *
+     * ⚠ IT IS NOT A DIFFERENT DEFECT FROM THE ADVECTIVE ONE — it is the SAME defect on a different
+     * off-diagonal of the same coefficient matrix, which is why the two share one ledger above
+     * rather than sitting in two branches.
+     *
+     * WHAT IT COSTS IF IT IS NOT DONE, MEASURED 2026-09-21 on `hot_full_power` + `large_loca` +
+     * `station_blackout` + `afw_failure`, severity 1, seed 0x1234, 1x, full stack, with the
+     * advective limiter of a33a9685 already in:
+     *
+     *     t = 384.52 s   sg_primary   m = 2.945 kg   h = 7,279.6 kJ/kg
+     *                    dH = -5.611e+6 kW  ->  dt*dH/m = -12,702 kJ/kg IN ONE 0.0067 s SUB-STEP
+     *
+     * 5,611 MW into three kilograms. The steam generator's duty is `U*wet*area*(Tavg - T_sec)`,
+     * computed off the LEG AVERAGE and landed on an `sg_primary` node holding grams of steam, and
+     * nothing between those two facts bounded anything. The node's enthalpy leaves the envelope,
+     * `rho_from_h` reads a nearly-empty node as liquid water, and the mass closure loses its root
+     * exactly as the advective overshoot made it do — the same endgame, a second cause.
+     *
+     * ⚠⚠ BIT-IDENTICAL BELOW THE BOUND, WHICH IS AGAIN THE POINT, AND IT IS PROVED RATHER THAN
+     * ARGUED. `gIn` enters only through the `dt*cIn > m_n[i]` test and the branch behind it.
+     * MEASURED by A/B against the pre-change engine, full stack, `hot_full_power` /
+     * `cold_shutdown` / `hot_zero_power`, 600 s each, every numeric and boolean `true_state`
+     * field at 20 s intervals: **11,070 fields, 0 differing, 0 bindings.**
+     * `run_pwr2_core` asserts both halves — that below the bound the update is the plain explicit
+     * one to the last bit, and that past it the node lands ON the target as an EQUALITY — and the
+     * injection self-test proves the branch can fire, including the mutation that makes the
+     * limiter bind ALWAYS, which is the only thing that can tell a stability fix from a retune.
+     *
+     * ⚠ WHAT IT IS NOT: a model of the steam generator's primary side. That duty is still computed
+     * from Tavg with no void term and no flow term. This bounds the ARITHMETIC; it does not give
+     * the exchanger a void fraction. Whether that term is owed is #588's open question, and this
+     * limiter exists so it can be MEASURED rather than inferred from a plant that was leaving its
+     * own envelope first.
+     *
+     * ⚠ ENERGY IS NOT CONSERVED ACROSS A BOUND STEP, AND IT IS COUNTED RATHER THAN SWALLOWED. When
+     * the limiter binds, the fluid does not accept all the kW the exchanging body gave up — the
+     * metal has already cooled by the full `Q` inside `stepWall`. The difference is reported as
+     * `limiterWithheld_kJ` on the step result, signed, so a run that leans on this can say by how
+     * much. It is the same trade the advective half already makes (a donor that gave more than its
+     * receiver took), on the same declared budget, and with the same reading: a step that needs it
+     * was not a valid step, and the alternative is not conservation — it is a state the property
+     * library cannot represent. */
+    var limiterBound = 0, limiterWithheld_kJ = 0;
     for (i = 0; i < N; i++) {
       a[i] = sys.nodes[i].h + dt * dH[i] / m_n[i];
-      if (qIn[i] > 0 && dt * qIn[i] > m_n[i]) {
-        /* the remainder — wall metal, core power, every non-advective duty, and any
-         * withdrawal term — carried at full strength; only the advection is limited */
-        var dHq = dH[i] - (qhIn[i] - qIn[i] * sys.nodes[i].h);
-        a[i] = qhIn[i] / qIn[i] + dt * dHq / m_n[i];
+      /* ONE LEDGER: advective inflow AND declared heat exchange. Summing them is not a
+       * convenience — the asymptote of a node relaxed by several bodies at once is the
+       * CONDUCTANCE-WEIGHTED MEAN of their enthalpies, and limiting the two halves separately
+       * would land it on neither. With no exchange declared, `gIn` is 0 at every node and the
+       * next three lines are byte-identical to the advection-only form they replace. */
+      var cIn = qIn[i] + gIn[i], chIn = qhIn[i] + ghIn[i];
+      if (cIn > 0 && dt * cIn > m_n[i]) {
+        /* the remainder — core power, every UNDECLARED duty, and any withdrawal term — carried
+         * at full strength; only the declared relaxations are limited */
+        var dHq = dH[i] - (qhIn[i] - qIn[i] * sys.nodes[i].h) - exQ[i];
+        var aLim = chIn / cIn + dt * dHq / m_n[i];
+        limiterBound++;
+        limiterWithheld_kJ += (a[i] - aLim) * m_n[i];
+        a[i] = aLim;
       }
       /* SPECIFIC VOLUME, CARRIED IN kJ/kg PER MPa — not m3/kg. dh = v*dP is a unit trap:
        * m3/kg x MPa = 10^6 J/kg = 10^3 kJ/kg, so the factor of 1000 is REQUIRED. Without it
@@ -667,7 +903,13 @@
       /* #574 — net kW the METAL gave the fluid this step. REPORTED so a consumer can see
        * the wall working rather than infer it from a temperature that moved: a dark wire is
        * what this whole issue was about. */
-      wallHeat_kW: wallHeat
+      wallHeat_kW: wallHeat,
+      /* #588 — the maximum-principle limiter's own ledger. `limiterBound` is node-steps where a
+       * relaxation was past its own asymptote; `limiterWithheld_kJ` is the signed energy the
+       * bound did not let the fluid take. Both are 0 on every healthy step by construction, and
+       * a run that reads non-zero here was leaning on the limiter rather than on the physics. */
+      limiterBound: limiterBound,
+      limiterWithheld_kJ: limiterWithheld_kJ
     };
   }
 
@@ -755,6 +997,10 @@
     /* #574 — exported so the gate can drive one wall in isolation. The lump chain is the
      * part most likely to be built in PARALLEL by mistake, which behaves like one lump and
      * looks perfectly reasonable from outside. */
-    buildWall: buildWall, stepWall: stepWall, wallFilm: wallFilm, WALL_FILM: WALL_FILM
+    buildWall: buildWall, stepWall: stepWall, wallFilm: wallFilm, wallG0: wallG0,
+    WALL_FILM: WALL_FILM,
+    /* #588 — exported so the gate can measure the inversion itself (both saturation branches,
+     * and the round trip through the table) rather than inferring it from a limited step. */
+    hAtTarget: hAtTarget, cpLocal: cpLocal
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

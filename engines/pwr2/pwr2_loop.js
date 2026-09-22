@@ -282,7 +282,13 @@
         /* #574 — the wall's film coefficient scales with loop flow, and the FLOOR under it is
          * what keeps the metal coupled when the pumps stop. That is the regime the stored heat
          * matters in, so the fraction has to be the plant's real one, not a constant 1. */
-        flowFrac: Math.abs(sys.mdot_loop) / MDOT_RATED
+        flowFrac: Math.abs(sys.mdot_loop) / MDOT_RATED,
+        /* #588 — the caller's DECLARED heat exchanges, forwarded unchanged. They describe kW
+         * already inside `heats`; this layer neither reads nor re-scales them. Forwarded on
+         * EVERY sub-step, exactly like `heats`: the duty is constant across the sub-interval by
+         * the same convention, and a limiter that only saw the first sub-step would be blind in
+         * precisely the regime the ring sub-divides for. */
+        exchanges: drivers.exchanges || []
       });
       if (r.held !== true) accepted += h;   /* #585 — a refused substep integrated nothing */
 

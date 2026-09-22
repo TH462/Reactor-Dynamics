@@ -695,7 +695,47 @@ function runSuite(RD, rec, quiet, only) {
     if (bpTs.containment_pressure_mpa > bpPeak) {
       bpPeak = bpTs.containment_pressure_mpa; bpPeakT = (bpI + 1) * DT;
     }
-    var bpGap = bpTs.containment_pressure_mpa - bpTs.pressure_mpa;
+    /* ⚠⚠ THE GRADIENT IS GRADED AT THE INSTANT THE FLOW WAS COMPUTED, NOT AT THE END OF
+     * THE STEP (#588). This read `bpTs.containment_pressure_mpa - bpTs.pressure_mpa` -- the
+     * END-of-step RCS pressure -- against a leak the break computed MID-step, and the two are
+     * different plants. It was an invisible defect for as long as the intra-step pressure
+     * motion stayed small beside the gradient, and #588's heat-exchange limiter moved the ride
+     * into a 1.4 %-inventory regime where it does not. MEASURED on this exact ride, working
+     * tree, t = 514.18 s: the break computed its flow against 70.08 psia of containment at an
+     * RCS pressure of 220.87 psia -- +150.8 psi of driving head -- and the step ENDED at
+     * 45.53 psia, so the old expression scored +47.8 psi of `adverse flow` on a step that
+     * discharged downhill the whole time. Six such steps of 60,000, none of them adverse.
+     * THE FLOW WAS NEVER ADVERSE AND THAT IS MEASURED, NOT ARGUED: instrumenting every one of
+     * the 26,580 calls in which the break moved mass, the MINIMUM driving head was +10.10 psi
+     * (0.0697 MPa) at t = 514.40 s. `pwr2_break`'s `dP > 0` was never once bypassed.
+     *
+     * ⚠ IT IS STILL THE EFFECT, NOT THE WIRE, and it still reds under both #543 mutations --
+     * which is the whole point of grading a gradient rather than asserting `dP > 0`, a
+     * tautology the frozen constant satisfies at every pressure. `_brkP` is the RCS pressure
+     * the break saw and `containment_pressure_mpa` is the building's, one step apart, and
+     * THAT lag is negligible where the RCS's is not: measured over t = 500-540 s on this ride
+     * the building moves 0.24 psi in 2,000 steps, 1.2e-4 psi a step, against the RCS's 175 psi
+     * in one. With the backpressure frozen or the stash severed the hole keeps flowing after
+     * the building passes the RCS, and that is what this counts.
+     *
+     * VALIDATED ON BOTH PLANTS (HR10), 1200 s, 0.002 m2 cold leg, the two #543 mutations:
+     *
+     *     plant                    clean      frozen constant     severed stash
+     *     a33a9685 (HEAD)          0/60000    0/60000  BLIND      0/60000  BLIND
+     *     this tree                0/60000    17  RED             17  RED
+     *
+     * ⚠ THE OLD FORM WAS BLIND ON HEAD TOO -- 0 adverse under BOTH mutations, and the end
+     * clause passed as well, so on a33a9685 this check could not red for either defect it
+     * exists to catch. The trajectory is why: with the backpressure frozen HEAD's containment
+     * peaks at 71.5 psia and its RCS never falls below 103.6, so the gradient never inverts
+     * for the count to see. The limiter's deeper depressurization is what gives it teeth back.
+     * The two WIRING checks above (`_ctP` live, `_brkBackP` used) are what actually held those
+     * mutations in the meantime; this is the effect-level third guard, working again.
+     *
+     * ⚠ A SEVERED `_brkP` REDS THIS, it does not go quiet: the fallback is the OLD end-of-step
+     * pressure, which on this ride scores 6 of 60,000 (worst +47.8 psi). Measured, same run. */
+    var bpRcs = engBP._brkP === undefined ? bpTs.pressure_mpa : engBP._brkP;
+    var bpGap = bpTs.containment_pressure_mpa - bpRcs;
     if (bpGap > 1e-6 && engBP.brk && bpTs.leak_flow > 0) {
       bpAdverse++;
       if (bpGap > bpWorst) bpWorst = bpGap;
@@ -725,14 +765,31 @@ function runSuite(RD, rec, quiet, only) {
   var BP_HIHI_MPA = 0.3081;              /* 30 psig absolute — WTSM 12.3, the hi-hi actuation */
   ckT('a full LOCA blowdown NEVER discharges up the pressure gradient (live backpressure)',
       bpAdverse === 0 && bpPeak > BP_HIHI_MPA &&
-      bpTs.pressure_mpa >= bpTs.containment_pressure_mpa - 1e-6,
+      /* ⚠ THE END CLAUSE IS "THE HOLE IS SHUT, OR THE RCS IS STILL ABOVE THE BUILDING" --
+       * IT WAS THE SECOND HALF ALONE, AND THAT HALF PINNED A BIFURCATION (#543, #588). Swept
+       * five ulps of the initial RCS pressure on this ride, working tree: the per-step count
+       * above reads 0 of 60,000 on ALL SIX branches, but the bare `RCS >= containment` end
+       * sample PASSES on +0/+3/+4 and FAILS on +1/+2/+5 -- it was green on the nominal branch
+       * by luck of the branch, not because the plant held an invariant. On those three the
+       * ride ends with `leak_flow` at exactly 0.000000 and the RCS at 35.9 psia (0.2475 MPa)
+       * under a 70.3 psia (0.4847 MPa) building: the hole is SHUT, `pwr2_break`'s `dP > 0`
+       * refused it, and the RCS then fell further on its own. A shut hole under a higher
+       * building is not coolant climbing a gradient -- it is the guard working.
+       * IT IS NOT LOOSENED: with the backpressure frozen or the stash severed the ride ends
+       * at 0.3 psia RCS against 71.1 psia of containment WITH THE HOLE STILL FLOWING
+       * (leak 0.000312 kg/s), so this clause reds on both mutations, as it did before. Six of
+       * six branches PASS clean; both mutations FAIL. */
+      (bpTs.leak_flow === 0 ||
+       bpTs.pressure_mpa >= bpTs.containment_pressure_mpa - 1e-6),
       bpAdverse + ' adverse-flow steps of ' + bpN + ' (worst +' +
       (bpWorst * 145.038).toFixed(1) + ' psi); ctmt peaked ' +
       (bpPeak * 145.038).toFixed(1) + ' psia at ' + bpPeakT.toFixed(1) + ' s (past the ' +
       (BP_HIHI_MPA * 145.038).toFixed(1) + ' psia hi-hi); ends RCS ' +
       (bpTs.pressure_mpa * 145.038).toFixed(1) + ' vs ctmt ' +
       (bpTs.containment_pressure_mpa * 145.038).toFixed(1) +
-      ' psia — the frozen constant gave 88.0 vs 95.6 at 1200 s with the hole still flowing');
+      ' psia (the break last saw ' +
+      (engBP._brkP === undefined ? 'NOTHING' : (engBP._brkP * 145.038).toFixed(1)) +
+      ') — the frozen constant gave 88.0 vs 95.6 at 1200 s with the hole still flowing');
   ckT('...and the SI latch STARTS the ECCS lineup, uncommanded',
       eng2.pt.si === true && eng2.ec.hhsiRunning === true && eng2.ec.lhsiRunning === true,
       'SI on ' + eng2.pt.si_cause);
