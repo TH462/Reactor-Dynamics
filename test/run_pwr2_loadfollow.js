@@ -752,7 +752,7 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
 var MUTATIONS = [
   /* anchors re-pointed #510 batch 1: the SG grew the dryout wet fraction + outflow limiter */
   ['the SG duty stops following primary temperature (the link from primary to secondary is cut)',
-   'var Q = sg.U * wet * sg.area * (primaryT - T_sec);', 'var Q = 300000;'],
+   'var Q = U_eff * wet * sg.area * (primaryT - T_sec);', 'var Q = 300000;'],
   ['the secondary temperature stops tracking its pressure (no back-pressure on the duty)',
    'var T_sec = W.T_sat(sg.P);', 'var T_sec = 272.11;'],
   /* anchors re-pointed #507 wave 5: the SG ledger grew the tube-leak stream */
@@ -766,8 +766,8 @@ var MUTATIONS = [
    'var dM = inflow - steam_eff;', 'var dM = 0;'],
   ['the secondary pressure never updates', '    updatePressure(sg);', ''],
   ['the duty is allowed to run backwards into the primary',
-   'var Q = sg.U * wet * sg.area * (primaryT - T_sec);',
-   'var Q = sg.U * wet * sg.area * (T_sec - primaryT);'],
+   'var Q = U_eff * wet * sg.area * (primaryT - T_sec);',
+   'var Q = U_eff * wet * sg.area * (T_sec - primaryT);'],
   /* A GENUINE HALVING, not a thrown error. The first version of this mutation called an undefined
    * helper, so it was "caught" by crashing — which tests nothing about the physics. A mutation
    * that throws is always caught and is therefore worthless as coverage. */

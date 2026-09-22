@@ -643,9 +643,18 @@ var MUTATIONS = [
    "        if (!gw) throw new Error(\x27Layer 3: no metal wall for node \x27 + id + \x27 — #574 puts one \x27 +\n" +
    "                                 \x27on every node; a missing entry is a defect, not a default\x27);",
    '        if (!gw) gw = { M_kg: 1, A_m2: 1, t_m: 0.01, mat: \'cs\' };'],
+  /* RE-POINTED (#588, 2026-09-22): the expression became `flowFrac(sys)` when Layer 5's steam
+   * generator acquired a SECOND reader for it and the helper was factored out. The old anchor
+   * named the inline form and went BLIND on the refactor -- the runner said so, which is the
+   * only reason it was caught. Read the self-test line, not just the checks tally. */
   ['the wall film stops seeing the loop flow (it is pinned at rated for ever)',
-   '        flowFrac: Math.abs(sys.mdot_loop) / MDOT_RATED',
-   '        flowFrac: 1'],
+   '        flowFrac: flowFrac(sys),',
+   '        flowFrac: 1,'],
+  /* And the HELPER itself, which the engine's steam generator now also reads: a flow fraction
+   * that ignores its argument pins every film in the plant at rated. */
+  ['the flow-fraction helper ignores the plant and returns rated (#588 -- it feeds BOTH the ' +
+   'wall film here and the tube-side film of the steam generator at Layer 5)',
+   'return Math.abs(sys.mdot_loop) / MDOT_RATED;', 'return 1;'],
   ['junction flows seeded at ZERO (heals in one step, corrupts the first)',
    'RING.forEach(function (id) { sys.junctionFlow[id] = sys.mdot_loop; });',
    'RING.forEach(function (id) { sys.junctionFlow[id] = 0; });']

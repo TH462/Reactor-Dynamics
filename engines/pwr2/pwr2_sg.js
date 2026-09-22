@@ -121,6 +121,102 @@
     return 300000 / (SG.area_m2 * (T_prim - T_sec)); // kW/m2-K
   }
 
+  /* ================================================================ THE PRIMARY-SIDE FILM (#588)
+   * *(OWNER RULING, 2026-09-22: "Ship it and build the SG term now")* — taken knowing it retunes
+   * every cooldown, every natural-circulation number and every steam-generator duty.
+   *
+   * WHAT WAS WRONG. `Q = U*wet*area*(primaryT - T_sec)` had a DRYOUT term on the SECONDARY
+   * (`wet`) and NOTHING AT ALL on the primary: no flow term, no phase term. A tube bundle full
+   * of stagnant steam transferred heat as if it were full of subcooled water at rated flow.
+   * MEASURED on HEAD, `hot_full_power` + `large_loca` + `station_blackout`, seed 0x1234, 1x,
+   * at 1,800 s: loop flow 4.1 kg/s (0.25 % of rated), `sg_primary` void fraction 0.998, core
+   * 100 % UNCOVERED — and the exchanger removing 5,239 kW against a 5,114 kW decay load, ratio
+   * 1.024. The steam generator was the heat sink that kept an uncovered core at 968 degF.
+   *
+   * ⚠ THE FORM IS SOURCED, IN A STEAM GENERATOR, EXPLICITLY. Ginna UFSAR ch15 (ML20339A101)
+   * §15.3.2.1, the locked-rotor accident, verbatim: *"heat transfer to the shell side of the
+   * steam generator is reduced: first, because the reduced RCS flow results in a decreased
+   * tube-side film coefficient; second, because the reactor coolant in the tubes cools down
+   * while the shell-side temperature increases."* That is the flow half of this term, named as
+   * a tube-side film coefficient, in the component this file models. The CORRELATION behind the
+   * 0.8 exponent is named in the same document (§15.6, FACTRAN): *"the Dittus-Boelter or
+   * Jens-Lottes correlation to determine the film heat transfer before DNB."*
+   *
+   * ⚠ IT IS A SERIES RESISTANCE, NOT A MULTIPLIER ON U — and that distinction is the whole
+   * design. `sg.U` is an OVERALL coefficient: tube-side film, tube wall, fouling and shell-side
+   * boiling in series. Scaling all of it by the primary film's factor would say a half-flow
+   * plant has half the overall U, which is wrong by a factor of two in exactly the regime a
+   * natural-circulation cooldown lives in. So the primary film is SPLIT OUT of the rated
+   * resistance, degraded alone, and the stack re-summed — which is literally `wallG0`'s shape
+   * (`1/(1/hA + R_half)`), one layer up.
+   *
+   * ⚠ THE PHASE TERM TAKES THE VOID FRACTION, NOT THE QUALITY, and the difference is not small:
+   * at the measurement above the `sg_primary` node is 0.645 QUALITY and 0.998 VOID. A film
+   * coefficient blends on the fraction of the wall the vapour is against, which is a VOLUME
+   * fraction — `pwr2_fuel.filmCoefficient`'s header records this as a measured defect (#490,
+   * audit #488 D10.2) from when it was handed quality by `coreRegime`. Layer 5 passes
+   * `W.voidFraction`, and the engine's call site is the only one that can. */
+  var PRIMARY_FILM = {
+    /* [open] THE ONE NEW OPEN NUMBER IN THIS CHANGE, and it is deliberately the SAME anchor
+     * `pwr2_fuel.OPEN.h_film` carries: forced convection from a metal surface to subcooled
+     * primary water at rated flow is the identical physical situation on a fuel rod and on the
+     * inside of a steam-generator tube. Reusing it rather than typing a second one means the
+     * resistance SPLIT below is derived, not asserted — and it is the only thing here that a
+     * sweep can move (§ the gate's sensitivity table). Carried in kW/m2-K, this file's unit. */
+    h_prim_rated: 30.0,
+    /* [sourced-form] Dittus-Boelter's Reynolds exponent — ML20339A101 §15.6 names the
+     * correlation; `pwr2_fuel.OPEN.dittus_exp` is the same 0.8, same provenance. */
+    dittus_exp: 0.8,
+    /* [derived] film coefficient in pure vapour against pure liquid AT THE SAME MASS FLUX,
+     * from the Dittus-Boelter property group on WCAP-16009-NP-A (ML050910161) Table 10-3.
+     * THE SAME NUMBER as `pwr2_fuel.OPEN.vapor_ratio` and `pwr2_core.WALL_FILM.vapor_ratio`,
+     * not a third one — this file cannot read either (Layer 5 may read Layer 2, but not
+     * Layer 4's fuel model), so the value is retyped and the GATE ties the three together. */
+    vapor_ratio: 0.5,
+    /* [open] the free-convection floor, tube inside to a stagnant fluid. `pwr2_core.WALL_FILM`'s
+     * pair, for the same reason it exists there: h ~ G^0.8 goes to ZERO at zero flow, and a
+     * bundle with literally no coupling is a missing regime rather than physics. */
+    h_stagnant: 0.5,
+    /* [derived] free convection scales with the fluid's own conductivity, and steam's k is about
+     * a tenth of water's here — so the FLOOR needs its own phase factor and must NOT reuse
+     * `vapor_ratio`, which is a forced-convection ratio at equal mass flux.
+     * `pwr2_core.WALL_FILM.vapor_ratio_free`, same value, same argument (#574's second defect). */
+    vapor_ratio_free: 0.10
+  };
+
+  /* primaryFilmFactor(flowFrac, voidFrac) -> h_prim / h_prim_rated, dimensionless.
+   *
+   * ⚠ EXACTLY 1 AT RATED by construction — flowFrac 1, voidFrac 0 — so `ratedU()`'s derivation
+   * and every number solved alongside it keep their meaning, and a caller that declares neither
+   * gets the pre-#588 plant to the last bit (see `stepSG`: an UNDECLARED flow fraction is RATED,
+   * never zero — the same honest default as Layer 2's undeclared conductance). */
+  function primaryFilmFactor(flowFrac, voidFrac) {
+    var f = flowFrac > 0 ? flowFrac : 0;
+    var v = voidFrac > 0 ? (voidFrac > 1 ? 1 : voidFrac) : 0;
+    var forced = Math.pow(f, PRIMARY_FILM.dittus_exp) *
+                 ((1 - v) + v * PRIMARY_FILM.vapor_ratio);
+    var floor = (PRIMARY_FILM.h_stagnant / PRIMARY_FILM.h_prim_rated) *
+                ((1 - v) + v * PRIMARY_FILM.vapor_ratio_free);
+    return forced > floor ? forced : floor;
+  }
+
+  /* effectiveU(U_rated, factor) -> the overall coefficient with the tube-side film degraded.
+   *
+   *     1/U_rated = 1/h_prim_rated + R_rest          (the split, taken at rated)
+   *     1/U_eff   = 1/(h_prim_rated*factor) + R_rest (the same stack, primary film degraded)
+   *
+   * R_rest — tube wall, fouling and the shell-side boiling film — does NOT move: nothing on the
+   * primary side changes any of them. `R_rest` is floored at 0 so a fixture that hands this a
+   * `U` at or above the rated tube-side film (physically impossible for an OVERALL coefficient,
+   * but `createSG` accepts `opts.U`) degrades continuously instead of returning a negative
+   * resistance. The factor's own floor is strictly positive, so there is no division by zero. */
+  function effectiveU(U_rated, factor) {
+    var r_prim0 = 1 / PRIMARY_FILM.h_prim_rated;
+    var r_rest = 1 / U_rated - r_prim0;
+    if (!(r_rest > 0)) r_rest = 0;
+    return 1 / (r_prim0 / factor + r_rest);
+  }
+
   function createSG(opts) {
     opts = opts || {};
     var P = opts.P === undefined ? 825 / 145.038 : opts.P;
@@ -207,6 +303,12 @@
    *                   main-feed enthalpy, and folding it into `feed` would erase exactly the
    *                   cold-injection steam-pressure suppression the stream exists to model.
    *   drivers.afw_h   kJ/kg of that stream (pwr2_afw.js's stepAFW returns it as h_kJkg)
+   *   drivers.flowFrac  loop flow over rated (#588) — get it from `RD.loop.flowFrac(sys)`, never
+   *                   by retyping `|mdot|/1630`. UNDECLARED MEANS RATED, not zero.
+   *   drivers.voidFrac  the `sg_primary` node's HOMOGENEOUS VOID FRACTION (#588), not its
+   *                   quality — `W.voidFraction(node.h, sys.P)`. Undeclared means 0 (liquid).
+   *                   At the measured endgame those two differ by 0.645 against 0.998, so
+   *                   passing the wrong one is not a rounding difference; see PRIMARY_FILM.
    *   drivers.tube_leak_kgs / tube_leak_h  a THIRD stream, HOT (#507 wave 5): a ruptured
    *                   tube's primary-side discharge, arriving at the donor node's enthalpy.
    *                   The mass addition is the SGTR accident's whole hazard -- "overfilling
@@ -222,7 +324,28 @@
      * "sink" ran 1.88 GW at 211 degF. See dryout_mass_frac above for the adopted shape. */
     var mf = sg.mass / SG.mass_nominal;
     var wet = mf >= SG.dryout_mass_frac ? 1 : Math.max(0, mf / SG.dryout_mass_frac);
-    var Q = sg.U * wet * sg.area * (primaryT - T_sec);  // kW, positive = into the secondary
+    /* THE PRIMARY SIDE (#588). `wet` is the SECONDARY's degradation — the wetted fraction of the
+     * bundle, an AREA effect, so it stays a multiplier on the whole UA. The primary film is a
+     * RESISTANCE IN SERIES inside U and is degraded there; see PRIMARY_FILM above.
+     *
+     * ⚠ AN UNDECLARED FLOW FRACTION IS RATED, NEVER ZERO. A Layer 5 fixture stepping this
+     * generator by hand has no loop to be a fraction of and no node to read a void from — the
+     * same reasoning, and the same default, as `pwr2_core.step`'s `drivers.flowFrac`. So
+     * `primary_factor` is exactly 1 for every caller that does not declare, and this line is
+     * bit-identical to the pre-#588 form for them. */
+    var pf = primaryFilmFactor(drivers.flowFrac === undefined ? 1 : drivers.flowFrac,
+                               drivers.voidFrac === undefined ? 0 : drivers.voidFrac);
+    /* ⚠ ONE-SIDED: THE TERM MAY DEGRADE, NEVER CREDIT — and the cap is not cosmetic, it is what
+     * keeps a healthy at-power plant BIT-IDENTICAL. This plant's loop runs slightly ABOVE its
+     * rated 1,630 kg/s (measured, `hot_full_power`: 1,637.6 kg/s at 600 s, flow fraction 1.0046),
+     * so an uncapped Dittus-Boelter term would hand the exchanger +0.07 % of U for free — a real
+     * retune of every at-power number, bought by extrapolating an [open] rated anchor upward past
+     * the point it was solved at. `pwr2_fuel`'s superheat factor takes the identical position for
+     * the identical reason ("may DEGRADE cooling, never improve it"), and `>= 1` rather than
+     * `=== 1` is also what makes the undeclared-caller path exactly the pre-#588 expression
+     * rather than one float rounding away from it. */
+    var U_eff = pf >= 1 ? sg.U : effectiveU(sg.U, pf);
+    var Q = U_eff * wet * sg.area * (primaryT - T_sec);  // kW, positive = into the secondary
 
     var feed = drivers.feed || 0, steam = drivers.steam || 0;
     var afw = drivers.afw_kgs || 0, h_afw = drivers.afw_h || 0;
@@ -341,13 +464,22 @@
     return {
       duty_kW: Q, T_sec: T_sec, P_sec: sg.P, mass: sg.mass,
       /* #588 — THE CONDUCTANCE THE DUTY WAS COMPUTED THROUGH, kW/K. `Q = UA*(primaryT - T_sec)`
-       * and `UA = U*wet*area`, so this is the same three factors one line apart rather than a
-       * second copy of them. Layer 5 hands it to Layer 2's maximum-principle limiter, which
+       * and `UA = U_eff*wet*area`, so this is the same three factors one line apart rather than a
+       * second copy of them. ⚠ `U_eff`, NOT `sg.U`: once the primary-side film degrades (#588,
+       * same issue, second half) the duty is computed through a SMALLER conductance, and a
+       * limiter handed the rated one would be bounding a term at a stiffness the term never had
+       * — the dark-wire failure in a new place, which is the exact thing this field exists to
+       * stop. Layer 5 hands it to Layer 2's maximum-principle limiter, which
        * cannot bound a relaxation whose conductance it has not been told — and which must never
        * back one out of `Q/dT`, because that ratio is a 0/0 wherever the plant is near
        * equilibrium (the limiter's own note has the 1.753e+6 kg/s measurement). Reported whether
        * or not the duty is 0. */
-      UA_kW_per_K: sg.U * wet * sg.area,
+      UA_kW_per_K: U_eff * wet * sg.area,
+      /* #588 — the primary-side film factor and the overall coefficient it produced, REPORTED.
+       * A term whose only evidence is that a duty came out smaller is a dark wire; these are
+       * what the gate asserts against, and what a reader watches collapse on a voided bundle. */
+      primary_factor: pf,
+      U_eff: U_eff,
       /* Level as a MASS FRACTION only. D3 §3 lumps the secondary, so there is no geometry here
        * to turn inventory into a gauge reading — the level-geometry map is an instrument-layer
        * concern and inventing one here would be the "gauge-shaped quantity published inside
@@ -384,6 +516,9 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.sg = {
     SG: SG, createSG: createSG, stepSG: stepSG, primaryTavg: primaryTavg,
-    ratedU: ratedU, boilDryTime: boilDryTime, updatePressure: updatePressure
+    ratedU: ratedU, boilDryTime: boilDryTime, updatePressure: updatePressure,
+    /* #588 — exported so the gate can drive the primary-side film and the series solve in
+     * ISOLATION rather than inferring them from a duty that moved. */
+    PRIMARY_FILM: PRIMARY_FILM, primaryFilmFactor: primaryFilmFactor, effectiveU: effectiveU
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

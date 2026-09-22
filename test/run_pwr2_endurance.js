@@ -332,24 +332,73 @@ head('THE WEDGES  [each ride extends past where the old gate stopped]');
    * coupling is within ~10 psi, and the SG's inventory never falls below its initial 12,796 kg
    * (it ENDS at 17,117 kg with AFW throttled to 1/3). The bands below carry those numbers with
    * margin; the MECHANISM asserted is the same two legs CA-20b carried. */
+  /* ⚠ LEG A IS A DWELL, NOT AN EXTREMUM (owner ruling, 2026-09-22: "Re-express as a dwell, and
+   * file the physics" — taken over widening the band and over leaving it red). #588's
+   * primary-side film term (flow- and void-scaled tube-side h) took the worst single excursion
+   * from -25.7 psi to -156.0 psi, and a single extremum over a 1,680 s graded ride is the
+   * `h.range()` trap: it spans the whole run and cannot tell a SUSTAINED loss of the heat sink
+   * from a transient dip. MEASURED on this ride (2026-09-22, Hard Rule 12): the excursion is
+   * INTERMITTENT — 25.20 s cumulative below the band, in one 25.02 s episode at 669.6-694.9 s,
+   * the window where the core is ~98 % void and loop flow is at its minimum, and the LATE-RIDE
+   * plateau is TIGHTER with the term than without it (from 900 s on the gap holds within ~1 psi,
+   * against -2 to -8.7 psi severed). Both halves moved (at 600 s P_rcs 742.5 -> 733.6, P_sg
+   * 747.7 -> 756.0), so this is not the reference alone (#508).
+   *
+   * HOW 60 s WAS CHOSEN — the plant's own dwell wander, NOT a fit above the observed value
+   * (#524/#543: a threshold set just above the measurement is a fixture on a cliff). The dwell
+   * statistic was re-measured across the perturbation class `tools/perturb_sweep.js` uses and
+   * the fixture's own free parameter: break area 4.5 cm2 -> 23.00 s, 5.0 -> 25.20 s, 5.5 ->
+   * 25.16 s; SG U x0.97 -> 27.28 s. So the healthy plant's dwell floor is 23-27 s, and 60 s
+   * sits at 2.2x the worst of it.
+   *
+   * WHAT THE DWELL FORM STILL CATCHES, by injection (same ride, sg.U scaled at the break — the
+   * SG's ability to hold the primary, broken directly): x0.5 -> 31.1 s (passes), x0.35 -> 43.6 s
+   * (passes), x0.2 -> 105.1 s (REDS), x0.05 -> 115.2 s (REDS). The detection floor is therefore
+   * a ~4x loss of steam-generator heat transfer; a 65 % loss passes, and that is DECLARED, not
+   * hidden. (x0.01 -> 0.00 s: with the tubes effectively gone the SG never pulls the primary
+   * down at all, so leg A's one-directional claim is not violated — leg B and the inventory
+   * checks are what stand there.)
+   *
+   * VALIDATED ON THE OLD BEHAVIOUR TOO (Hard Rule 10): with the #588 film term severed
+   * (flowFrac 1, voidFrac 0 => U_eff = sg.U, the pre-#588 expression to the bit) this ride reads
+   * worst -25.7 psi and 0.00 s of dwell — the new form passes on BOTH plants and reds on the
+   * broken mechanism, which is the only shape that is not a refit. */
   var eng = EN.createEngine({});
   ride(eng, 10);
   EN.command(eng, 'break_open', { area_m2: 0.0005, node: 'cold_leg' });
-  var ts = null, worstGap = 0, sgM0 = eng.sg.mass, minSgM = 1e18, held = false;
+  var DWELL_MAX_S = 60;
+  var ts = null, worstGap = 0, worstAt = 0, sgM0 = eng.sg.mass, minSgM = 1e18, held = false;
+  var dwellS = 0, runNow = 0, runMax = 0, firstLow = null, lastLow = null;
   for (var t = 0; t < 1800; t += DT) {
     ts = EN.step(eng, DT);
     if (ts.model_held) { held = true; break; }
     if (eng.sg.mass < minSgM) minSgM = eng.sg.mass;
     var gap = (ts.pressure_mpa - eng.sg.P) * 145.038;
-    if (t > 120 && gap < worstGap) worstGap = gap;
+    if (t > 120) {
+      if (gap < worstGap) { worstGap = gap; worstAt = t; }
+      if (gap < -50.8) {
+        dwellS += DT; runNow += DT;
+        if (firstLow === null) firstLow = t;
+        lastLow = t;
+      } else {
+        if (runNow > runMax) runMax = runNow;
+        runNow = 0;
+      }
+    }
   }
+  if (runNow > runMax) runMax = runNow;
   ck('loca-small-break-plateau-legA',
-     'the small-break primary never falls a control band below its own heat sink — the plateau ' +
-     'is the SG holding the primary, which is the mechanism CA-20b\'s leg A asserted (0.35 MPa ' +
-     'band, the retired engine measured 266 psi below)',
-     !held && worstGap > -50.8,
-     'worst (P_rcs - P_sg) after 120 s: ' + worstGap.toFixed(1) + ' psi (measured -31.6 at ' +
-     '701 s on the quench transient; late-ride coupling ~10 psi)');
+     'the small-break primary never falls a control band below its own heat sink FOR LONGER ' +
+     'THAN A TRANSIENT — at most ' + DWELL_MAX_S + ' s cumulative outside the 0.35 MPa (50.8 psi) ' +
+     'band over the graded ride, which is the mechanism CA-20b\'s leg A asserted (the retired ' +
+     'engine sat 266 psi below for the whole plateau)',
+     !held && dwellS <= DWELL_MAX_S,
+     'dwell below the band ' + dwellS.toFixed(2) + ' s of ' + DWELL_MAX_S + ' allowed (longest ' +
+     'single episode ' + runMax.toFixed(2) + ' s' +
+     (firstLow === null ? '' : ', ' + firstLow.toFixed(1) + '-' + lastLow.toFixed(1) + ' s') +
+     '); worst (P_rcs - P_sg) after 120 s ' + worstGap.toFixed(1) + ' psi at ' +
+     worstAt.toFixed(1) + ' s (healthy floor 23-27 s; -25.7 psi / 0.00 s with the #588 film ' +
+     'term severed; 105 s at a 5x SG-U loss)');
   ck('loca-small-break-plateau-legB',
      'the heat sink is still a heat sink: the secondary is NOT drained through the tubes ' +
      '(CA-20b leg B — the retired engine pulled the SG to 202 psi through the 5 % reverse path)',

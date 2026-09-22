@@ -44,7 +44,7 @@
       CD = RD.condenser, CV = RD.cvcs, EC = RD.eccs, AW = RD.afw, DG = RD.damage,
       PT = RD.protection, PZ = RD.pressurizer, DC = RD.dumpctl, BK = RD.break_,
       CT = RD.containment, TS = RD.trueState, IN = RD.instruments, RH = RD.rhr,
-      FWM = RD.feedwater;
+      FWM = RD.feedwater, LP = RD.loop;
 
   /* the design point is ONE object, owned by pwr2_sources (its DESIGN — #509 item 3): the
    * pump's rated-density reference and these normalizations must be the same numbers, and
@@ -1474,7 +1474,27 @@
     /* the MDAFW pump is a VITAL load — it lives through a plain LOOP (diesels) and dies in
      * a blackout; the TDAFW pump is steam-driven and NEVER gated (WTSM 5.7.5) */
     var awr = AW.stepAFW(eng.aw, dt, { mdafw_power_ok: acAvail });
+    /* ---- WHAT THE PRIMARY SIDE OF THE BUNDLE IS DOING (#588) --------------------------------
+     * The steam generator's tube-side film scales with flow AND phase, exactly as
+     * `pwr2_fuel.filmCoefficient` and `pwr2_core`'s `WALL_FILM` do — Ginna UFSAR ch15
+     * (ML20339A101) §15.3.2.1 names it in this component: *"the reduced RCS flow results in a
+     * decreased tube-side film coefficient"*. Only this layer can supply either half: Layer 5's
+     * generator has no loop and no node.
+     *
+     * THE FLOW FRACTION comes from Layer 3's own helper, never from a retyped `|mdot|/1630` —
+     * the rated flow has ONE owner and a second copy here is the PROTECTION_DT trap.
+     *
+     * THE VOID FRACTION IS THE `sg_primary` NODE'S OWN, and it is `voidFraction`, NOT `quality`:
+     * a film coefficient blends on the fraction of the tube wall the vapour is against, which is
+     * a VOLUME fraction. Measured at the #588 endgame those differ by 0.645 against 0.998 —
+     * `pwr2_fuel.filmCoefficient` shipped taking quality and #490 recorded it as a defect. */
+    var sgpN = null;
+    for (var iSG = 0; iSG < sys.nodes.length; iSG++) {
+      if (sys.nodes[iSG].id === 'sg_primary') { sgpN = sys.nodes[iSG]; break; }
+    }
     var sr = G.stepSG(eng.sg, tavg, dt, { feed: fwr.feed_frac * eng.rated_steam, steam: out,
+                                          flowFrac: LP.flowFrac(sys),
+                                          voidFrac: sgpN ? W.voidFraction(sgpN.h, sys.P) : 0,
                                           afw_kgs: awr.total_kgs, afw_h: awr.h_kJkg,
                                           /* the SGTR stream, one step old (#507 wave 5):
                                            * stepBreak runs AFTER stepSG, so the discharge

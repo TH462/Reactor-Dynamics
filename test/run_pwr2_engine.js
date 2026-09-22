@@ -872,9 +872,10 @@ function runSuite(RD, rec, quiet, only) {
    * #458 ruling names). TRAJECTORY RE-MEASURED (#510 batch 1): with reverse SG transfer
    * signed instead of |Q|-removed, the hot secondary now SLOWS the blowdown — real
    * small-break physics — so the permissive crossing moved ~74 s → 187.5 s. Measured A/B at
-   * t = 200.0 s: aligned tavg 205.7 degC vs secured 257.0 — the 51 degC gap is the wiring,
-   * and the pinned band below is what the merge-dropped mutation reds against (its
-   * removed_kJ ledger still climbs; only the PLANT tells the truth). */
+   * t = 200.0 s: aligned tavg 205.7 degC vs secured 257.0 — the 51 degC gap is the wiring, and
+   * that GAP is what the merge-dropped mutation reds against (its removed_kJ ledger still
+   * climbs; only the PLANT tells the truth). Both legs are now RUN, not quoted — see the note
+   * on the check itself for what a pinned absolute cost here. */
   head('THE RHR ALIGN  [below the 425 psig permissive, the heat actually leaves the loop]');
   var engR = EN.createEngine({});
   run(engR, 10);
@@ -899,10 +900,44 @@ function runSuite(RD, rec, quiet, only) {
     }
     if (engR.sys.beyond_model) break;
   }
-  ckT('aligned below the permissive: valve open, mode rhr, real energy removed, plant COOLER',
+  /* THE SECURED COMPANION, RUN HERE RATHER THAN QUOTED FROM PROSE (#588, 2026-09-22).
+   *
+   * This check's plant half was the PINNED ABSOLUTE `tavg_c < 230`, sitting 24.3 degC under a
+   * measured 205.7 with the secured reference written only in the comment above. The #588
+   * steam-generator primary-film term moved the aligned ride to 182.5 degC -- legitimately, and
+   * symmetrically: on this fixture the SG is HOTTER than the primary and is SLOWING the
+   * blowdown (the note above says so), so degrading the tube-side film degrades the REVERSE
+   * transfer too and the primary cools faster. Margin went 24.3 -> 47.5 degC and the
+   * merge-dropped mutation landed inside the band: **BLIND, on a gate that had caught it since
+   * #507 wave 2.** A neighbour's change blinding a mutation is the documented trap; the band was
+   * the thing that aged, not the claim.
+   *
+   * SO THE CLAIM IS ASSERTED AS THE DIFFERENCE IT ALWAYS WAS. `removed_kJ` is the RHR module's
+   * OWN ledger and climbs whether or not the heats map ever reaches the plant -- that is exactly
+   * the Q4 orphan -- so only a PLANT-to-PLANT comparison can speak. The secured leg is the same
+   * fixture with the align never commanded.
+   *
+   * NOT REFITTED, and validated on the OLD behaviour (HR10): with the #588 term severed this
+   * pair measures 205.7 aligned against 257.0 secured, a 51.3 degC gap, and passes the same
+   * 25 degC bar. With the term it is 182.5 against a secured leg measured in the same run. Under
+   * the merge-dropped mutation the two legs are the SAME PLANT and the gap goes to ~0, which is
+   * the only thing this bar has ever been about. */
+  var engRS = EN.createEngine({});
+  run(engRS, 10);
+  engRS.ec.acc.valve_open = false;
+  EN.command(engRS, 'break_open', { area_m2: 0.002, node: 'cold_leg' });
+  var tsRS = null, tRS = 0;
+  while (tRS < 200.001) {
+    tsRS = EN.step(engRS, DT); tRS += DT;
+    if (engRS.sys.beyond_model) break;
+  }
+  var rhrGap = tsRS.tavg_c - tsR.tavg_c;
+  ckT('aligned below the permissive: valve open, mode rhr, real energy removed, and the plant ' +
+      'is COOLER THAN THE SAME PLANT SECURED -- the merge reaching stepPlant, not the ledger',
       alignedR && engR.rh.valve_open === true && tsR.eccs_mode === 'rhr' &&
-      engR.rh.removed_kJ > 50000 && tsR.tavg_c < 230,
-      'tavg ' + tsR.tavg_c.toFixed(1) + ' degC at t=200 (secured measures 257.0), removed ' +
+      engR.rh.removed_kJ > 50000 && rhrGap > 25,
+      'tavg ' + tsR.tavg_c.toFixed(1) + ' degC aligned against ' + tsRS.tavg_c.toFixed(1) +
+      ' secured at t=200, gap ' + rhrGap.toFixed(1) + ' degC (bar 25); removed ' +
       (engR.rh.removed_kJ / 1000).toFixed(0) + ' MJ, mode ' + tsR.eccs_mode);
   /* the door refuses an at-power align (the 425 psig permissive), and the autoclose is the
    * valve hardware: a valve forced open above 585 psig shuts on the next step */
