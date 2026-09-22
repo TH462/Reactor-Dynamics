@@ -2,7 +2,7 @@
 
 **Document:** PWR-ARP-01  
 **Title:** Annunciator Response — PWR  
-**Revision:** 21  
+**Revision:** 22  
 
 ---
 
@@ -578,7 +578,7 @@ equivalent annunciator.
 | Field | Content |
 |-------|---------|
 | **Logic** | `ctmt_fan_safety` / `ctmt_fan_active` — **live and built (#784)**. `ctmt_fan_safety` lights on **any safety injection**, not on a containment setpoint of its own [sourced — Ginna TS Bases B 3.6.6: *"In post accident operation following a SI actuation signal, the CRFC System fans are designed to start automatically if not already running"*]; `ctmt_fan_active` lights **44 s** later, once AC power is available, when they are actually delivering. |
-| **Means** | The diverse, slower heat-removal train: two fan units credited (post-single-failure), pulling heat out of the building atmosphere down to its pre-accident condition. Measured at the mitigated peak, the fan coolers remove **3.9 MW** against spray's **9.2 MW** — sourced ordering, GEND-061: *"Heat transfer from the containment atmosphere to containment sprays is rapid compared to heat removal by containment coolers."* **One-shot, no automatic securing** — once realigned the fans stay realigned; this auto-only build has no operator surface to restore normal mode. |
+| **Means** | The diverse, slower heat-removal train: two fan units credited (post-single-failure), pulling heat out of the building atmosphere down to its pre-accident condition. Measured at the mitigated peak, the fan coolers remove **3.9 MWt** against spray's **9.2 MWt** — sourced ordering, GEND-061: *"Heat transfer from the containment atmosphere to containment sprays is rapid compared to heat removal by containment coolers."* **One-shot, no automatic securing** — once realigned the fans stay realigned; this auto-only build has no operator surface to restore normal mode. |
 | **Actions** | None to take — auto-only, no board control. In a **station blackout this tile stays dark**: the fans are AC loads, and `ctmt_fan_safety` can still be lit with nothing delivering. See **A36/A37** for the signal that drives safety injection. |
 
 ---

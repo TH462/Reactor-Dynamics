@@ -34,20 +34,20 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 *(OWNER, 2026-09-21: "Let's try to clear some of the open issues. What do I need to rule on and
 what's your recommendation?")* Eight rulings put and taken, seven issues closed, two filed.
 
-**Closed on the ruling alone.** #594 — the pump-less normal-spray departure STAYS *(OWNER RULING:
-"Keep it, close the issue")*; its premise had flipped back when the AUX SPRAY box was removed by
+**Closed on the ruling alone.** #594 — the pump-less normal-spray departure STAYS
+*(OWNER RULING, 2026-09-21: "Keep it, close the issue")*; its premise had flipped back when the AUX SPRAY box was removed by
 #596, so the stand-in is again the only pump-less path other than the power-operated relief valve.
-#578 — no rod-stop or runback lamps *(OWNER RULING: "Neither — close it")*; the refusal half was
+#578 — no rod-stop or runback lamps *(OWNER RULING, 2026-09-21: "Neither — close it")*; the refusal half was
 already built and measured, so the player is told when it matters. #410 — no site provenance
-paragraph *(OWNER RULING: "Keep holding — close as declined")*.
+paragraph *(OWNER RULING, 2026-09-21: "Keep holding — close as declined")*.
 
-**#706** *(OWNER RULING: "Declare it but don't add a checklist caution")* — a NARROWING of the
+**#706** *(OWNER RULING, 2026-09-21: "Declare it but don't add a checklist caution")* — a NARROWING of the
 recommendation, recorded as such so a later pass does not "complete" it. `Manuals/12` §12.23
 declares the pressurizer level excursion (+20.4 / +43.07 / +21.19 points on heatup / cooldown /
 shutdown; 82.6 % and climbing with charging secured) against the 585 psig residual-heat-removal
 cross-connect autoclose. No engine constant moved. `f8d3f88d`.
 
-**#721** *(OWNER RULING: "Widen to anywhere + Escape + focus")* — `536cd3ca`. **The check took two
+**#721** *(OWNER RULING, 2026-09-21: "Widen to anywhere + Escape + focus")* — `536cd3ca`. **The check took two
 passes and the first one was HOLLOW, which is the entry worth keeping.** Its cases chained on one
 panel, so with the pre-#721 code restored the Instructor-tab and alarms-strip sub-checks read
 "closed" — not because dismissal worked but because the previous case had left the panel open and
@@ -57,7 +57,7 @@ red does not make a sub-check sound.** Each case now force-closes through the op
 unconditional toggle, opens fresh, asserts open, and fails BY NAME if its precondition cannot be
 established.
 
-**#657** *(OWNER RULING: "Null mutation per group")* — `7db3d2e7`, then `9a001d3f`. `MUT.nullSelfTest`
+**#657** *(OWNER RULING, 2026-09-21: "Null mutation per group")* — `7db3d2e7`, then `9a001d3f`. `MUT.nullSelfTest`
 in `test/mut_flags.js`: a no-op "mutation" per group that must report BLIND. A RED names a check
 red on the replay's own shortened ride and on NO mutation, so every mutant in the group reads as
 caught for the wrong reason. **In the HELPER on purpose** — #644 fixed ten hand-copied instances
@@ -97,7 +97,7 @@ without fixing what produced the eight broken ones.
   **Red set identical at 9 and at 10**, so verified rather than loosened. A proportional bar was
   tried and rejected — "90 % of the drop" goes blind exactly where the first mutation lives.
 
-**#784** *(OWNER RULING: "Authorise it — auto-only")* — `a186df09`. Containment spray, the
+**#784** *(OWNER RULING, 2026-09-21: "Authorise it — auto-only")* — `a186df09`. Containment spray, the
 recirculation fan coolers and the steam-line isolation, auto-only in the PWR2 engine. Containment
 peak on a large loss-of-coolant accident **78.5 psig (0.6427 MPa) still climbing → 57.8 psig
 (0.4998 MPa), turning over at 403 s**; four-way decomposition because each half is separately
@@ -116,7 +116,7 @@ sufficient.
   design-basis peak, **1.9 psi**. The fitted fan coefficient was deliberately NOT retuned — this
   module already declares it models no structural heat sink and that this OVERSTATES peak pressure,
   so tuning until the number looked comfortable would hide a declared-missing term behind a fitted
-  one AND invert the sourced spray-outruns-fans ordering (GEND-061; 9.2 MW against 3.9 MW). Filed
+  one AND invert the sourced spray-outruns-fans ordering (GEND-061; 9.2 MWt against 3.9 MWt). Filed
   as **#799**.
 - **FOUR GATES HAD TO TURN AROUND, each RECORDING the gap this closed**: an orphaned mutation anchor
   reporting a BLIND SPOT rather than passing; a check asserting these fields were registered statics
@@ -139,7 +139,7 @@ they fall to the `a === baseAlarms[i]` IDENTITY clause, so a per-plant copy reds
 byte-identical. Its mutation was RETIRED rather than re-anchored — dropping the override is now the
 correct state, so re-anchoring would pin a non-event.
 
-**#588 first half** *(OWNER RULING: "Extend the physics to core damage")* — `a33a9685`, and it does
+**#588 first half** *(OWNER RULING, 2026-09-21: "Extend the physics to core damage")* — `a33a9685`, and it does
 NOT satisfy the ruling.
 
 - **TWO PREMISES IN THE BRIEF WERE STALE AND I WROTE ONE OF THEM.** `P_MIN` has been **0.002 MPa

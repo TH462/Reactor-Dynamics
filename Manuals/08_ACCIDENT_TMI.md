@@ -2,7 +2,7 @@
 
 **Document:** PWR-X01  
 **Title:** Three Mile Island Unit 2 — the four hours in the control room  
-**Revision:** 21  
+**Revision:** 22  
 **Category:** Accident case study (sourced narrative + walkthrough)  
 
 ---
