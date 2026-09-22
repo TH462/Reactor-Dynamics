@@ -114,10 +114,42 @@
     return W.h_v(T_c, P_mpa);
   }
 
-  /* cpLocal(h, P) — kJ/kg-K, the specific heat the exchange limiter divides a conductance by.
+  /* cpLocal(h, P, T_c) — kJ/kg-K, the specific heat the exchange limiter divides a conductance by.
    *
-   * SINGLE-PHASE IT IS THE LIBRARY'S OWN, read at the node's state through the CORRELATIONS (the
-   * same scale `hAtTarget` inverts on, so the pair is self-consistent whatever the vtable says).
+   * SINGLE-PHASE IT IS THE LIBRARY'S OWN, read at the node's TEMPERATURE — which the caller
+   * already has, because the step computed it to drive the wall. `T_c` is therefore an ARGUMENT,
+   * not an inversion, and when it is omitted the fallback reads `TFH` — the table — like every
+   * other temperature in this layer.
+   *
+   * ⚠ IT USED TO INVERT HERE, THROUGH `W.T_from_h`, AND THAT WAS 62 % OF THE ENGINE'S STEP.
+   * The original argument was self-consistency: `hAtTarget` inverts on the correlations, so read
+   * `cp` on the correlations too. MEASURED, that cost 271.5 us of a 438.4 us step — `W.T_from_h`
+   * is 34.201 us against `VT.T_from_h`'s 0.203 us, 168x, and this function took it 10.9 times a
+   * step where the step had needed it once. The engine went 107.8 -> 409.6 us/step, 18.2x the
+   * engine it replaces against an 8x gate, for a bound that binds ZERO times on a healthy plant.
+   * Memoisation was not available: 11.00 of 11.89 calls per step are distinct (h, P) pairs.
+   *
+   * ⚠ AND THE SELF-CONSISTENCY ARGUMENT POINTED THE OTHER WAY ALL ALONG. The temperature that
+   * belongs in `cp` is the one the DUTY was computed at — `stepWall` differences through `TFH`,
+   * so `G0*(T_body - T_fluid)` is a vtable temperature difference and `G0/cp` should be read at
+   * the vtable's temperature. The two scales disagree by 1.255e-3 K (2.26e-3 degF) at
+   * 1250 kJ/kg / 2235 psia (15.41 MPa); it reaches the plant only through `G`, and `G` changes
+   * nothing where the limiter does not bind. MEASURED rather than argued, with the rig #588 used:
+   * hot_full_power / hot_zero_power / cold_shutdown, 600 s, every numeric and boolean true_state
+   * field at 20 s — 11,430 fields, 0 differing.
+   *
+   * ⚠⚠ AND "0 DIFFERING" IS THE WEAK FORM OF THAT RESULT — THE STRONG ONE IS WHY, AND IT IS THE
+   * REASON THIS SWAP IS SAFE AND THE `hAtTarget` ONE WOULD NOT BE. The same rig with `cp`
+   * MULTIPLIED BY TEN also moves 0 of 11,430 fields, while a 1-part-in-10,000 nudge to the wall
+   * duty moves 3,439. So on a healthy plant `cp` is not merely close, it is NOT CONSUMED: the
+   * limiter binds nowhere, `G` is never read, and no value of this function is observable. Which
+   * scale it is read on is therefore a question about the ENDGAME only — `run_pwr2_coredamage_stack`
+   * is where it is answered, and it stays 11/11 with the chain's milestones unmoved.
+   *
+   * ⚠ DO NOT EXTEND THIS REASONING TO `hAtTarget`. `cp` sets only the conductance; `h_t` is the
+   * BOUND ITSELF and lands in `ghIn`, so moving `h_t` onto the table would move the limited value
+   * wherever the limiter does bind — 485 GJ withheld on the ruled casualty. That is a separate
+   * change owing its own adjudication, and it is why `h_l`'s 47.1 us/step is still being paid here.
    *
    * ⚠ TWO-PHASE THERE IS NO SPECIFIC HEAT — `dT/dh` is ZERO across the dome, so the literal
    * answer is infinite and `G0/cp` would be 0, i.e. no bound at all exactly where the nodes are
@@ -127,10 +159,10 @@
    * toward stability, which is the only thing this limiter is for. Stated rather than hidden: a
    * two-phase node is therefore bounded slightly sooner than a strict temperature argument would,
    * and never later. */
-  function cpLocal(h, P_mpa) {
+  function cpLocal(h, P_mpa, T_c) {
     var hf = W.h_f(P_mpa), hg = W.h_g(P_mpa);
-    if (h >= hg) return W.cp_v(W.T_from_h(h, P_mpa), P_mpa);
-    if (h <= hf) return W.cp_l(W.T_from_h(h, P_mpa));
+    if (h >= hg) return W.cp_v(T_c === undefined ? TFH(h, P_mpa) : T_c, P_mpa);
+    if (h <= hf) return W.cp_l(T_c === undefined ? TFH(h, P_mpa) : T_c);
     var Ts = W.T_sat(P_mpa), a = W.cp_l(Ts), b = W.cp_v(Ts, P_mpa);
     return a < b ? a : b;
   }
@@ -403,12 +435,16 @@
      * returns without touching the ledger, so the duty rides the unlimited remainder exactly as it
      * did before this existed. A caller that knows the duty but not the conductance must not have
      * one invented for it. */
-    function addExchange(node_i, Q_kW, T_target_c, G0_kW_per_K) {
+    function addExchange(node_i, Q_kW, T_target_c, G0_kW_per_K, T_fluid_c) {
       if (!Q_kW || !(G0_kW_per_K > 0)) return;
       var h_t = hAtTarget(T_target_c, sys.P, Q_kW > 0);
       var dh = h_t - sys.nodes[node_i].h;
       if (!(Q_kW * dh > 0)) return;               /* not a relaxation toward h_t — see above */
-      var G = G0_kW_per_K / cpLocal(sys.nodes[node_i].h, sys.P);   /* kW/K -> kg/s */
+      /* `T_fluid_c` IS AN OPTIMISATION WITH A PHYSICS ARGUMENT, NOT THE OTHER WAY ROUND — the
+       * wall site below has already read this node's temperature to compute the duty, so handing
+       * it over reads `cp` at the SAME temperature the duty was differenced at instead of
+       * inverting the enthalpy a second time. `cpLocal`'s note has the 271.5 us this cost. */
+      var G = G0_kW_per_K / cpLocal(sys.nodes[node_i].h, sys.P, T_fluid_c);   /* kW/K -> kg/s */
       gIn[node_i] += G;
       ghIn[node_i] += G * h_t;
       /* ⚠ THE DUTY IS BOOKED SEPARATELY FROM THE CONDUCTANCE, and the first version of this did
@@ -443,13 +479,14 @@
        * then lands 12.3 kJ/kg SHORT of the wall it was supposed to reach — a limiter bounding a
        * term at a target the term never had. */
       var Tw0 = wn.T[0];
-      var Qw = stepWall(wn, TFH(sys.nodes[i].h, sys.P), flowFrac, voidW, dt);
+      var Tf0 = TFH(sys.nodes[i].h, sys.P);   /* the node's temperature, read ONCE for the step */
+      var Qw = stepWall(wn, Tf0, flowFrac, voidW, dt);
       dH[i] += Qw;
       wallHeat += Qw;
       /* SITE 1 of the exchange limiter: the metal is a body at `Tw0` and the fluid relaxes toward
        * it through `wallG0`, the SAME conductance `stepWall` just used. Declared here, where both
        * are in hand — a caller reading `wallHeat_kW` could reconstruct neither. */
-      addExchange(i, Qw, Tw0, wallG0(wn, flowFrac, voidW));
+      addExchange(i, Qw, Tw0, wallG0(wn, flowFrac, voidW), Tf0);
     }
 
     /* ⚠ THE ENERGY BUDGET, MEASURED — AND THE DECLARED FIX DOES NOT WORK AS DECLARED.

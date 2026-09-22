@@ -868,7 +868,7 @@ var MUTATIONS = [
    * its own wall returned G = 1.753e+6 kg/s on a 5,500 kg node and withheld 5,059 kJ from a
    * healthy `hot_full_power` ride. This is the mutation the near-equilibrium check exists for. */
   ['the exchange conductance is the SECANT Q/dh, not the hardware G0/cp (it poles at equilibrium)',
-   '      var G = G0_kW_per_K / cpLocal(sys.nodes[node_i].h, sys.P);   /* kW/K -> kg/s */',
+   '      var G = G0_kW_per_K / cpLocal(sys.nodes[node_i].h, sys.P, T_fluid_c);   /* kW/K -> kg/s */',
    '      var G = Q_kW / dh;'],
   /* The limited value must be the TARGET, not the node frozen — the same one-sided-check trap as
    * the advective half, on the other conductance. */
