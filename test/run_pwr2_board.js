@@ -1107,10 +1107,19 @@ function runSuite(quietRec) {
    * reactor trip inside P-11 — and it works because the permissive reads each channel the way
    * the protection system does, gates included. A refusal with no reachable exit would be the
    * dead-button class this whole cluster (#503/#506/#509/#558) exists to kill. */
+  /* #800: SI now trips the reactor off its LATCH, so a latched SI is a standing trip signal
+   * and the exit gains the sourced step between: reset SI at its own panel (P-4 is met — the
+   * reactor is tripped — and the 45-60 s relay has run), then the press takes. */
   w3.cmd({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true }); w3.tick(2);
+  var rReSI = w3.cmd({ action: 'reset_rps' }); w3.tick(1);
+  q('#800: with the trip blocked but SI still latched the reset is REFUSED, not accepted and re-latched',
+    !!rReSI && rReSI.type === 'blocked' && rReSI.reason === 'TRIP_SIGNAL_PRESENT' &&
+    e3.pt.si === true && w3.snap().rps_state.scrammed === true,
+    'resp ' + JSON.stringify(rReSI && rReSI.reason) + ', si ' + e3.pt.si);
+  w3.cmd({ action: 'set_hpi', active: false }); w3.tick(2);
   var rRe2 = w3.cmd({ action: 'reset_rps' }); w3.tick(3);
-  q('...and it is NOT A WEDGE: blocking the low-pressure trip (P-11) releases the permissive ' +
-    'and the same press then takes',
+  q('...and it is NOT A WEDGE: blocking the low-pressure trip (P-11) and resetting SI releases ' +
+    'the permissive and the same press then takes',
     (rRe2 == null || !rRe2.type) && w3.snap().rps_state.scrammed === false,
     'resp ' + JSON.stringify(rRe2) + ', scrammed ' + w3.snap().rps_state.scrammed);
 

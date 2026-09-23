@@ -1121,12 +1121,27 @@ function runSuite(SH, rec, quiet, only) {
      * cooldown action, which is also the proof that the GATE is honoured. The derivation reads
      * `asserted`, and `asserted` is already false under a block, so the shell and the kernel's
      * own version agree by construction rather than by a second copy of the gate tests. */
-    ck('blocking the low-pressure trip (P-11, the sourced cooldown action) RELEASES the ' +
-       'permissive — the derivation honours the gate, so no second copy of the block test',
+    /* #800: a LATCHED SAFETY INJECTION is now a standing trip signal too (SI trips the reactor,
+     * WTSM 12.3.2.2 item 1), so the low-pressure block alone no longer releases it — before
+     * #800 that reset was accepted and, once the SI-to-trip wire existed, re-latched a step
+     * later. The exit is the sourced order: block the trip, reset SI at its own panel (P-4 and
+     * the 45-60 s relay are both met here), then reset the RPS. */
+    eQ.applyCommand({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true });
+    ridek(eQ, kQ, 2);
+    var mSI = facReset(eQ);
+    ck('#800: with the low-pressure trip blocked but SI still LATCHED the reset is REFUSED, ' +
+       'naming safety injection — not accepted and re-latched',
+       eQ.eng.pt.si === true && eQ.getInstruments().no_trip_signal_standing === false &&
+       mSI !== null && /safety injection is latched/.test(mSI) && eQ.eng.pt.reactor_trip === true,
+       mSI ? mSI.slice(0, 95) : 'ACCEPTED!');
+    ck('blocking the low-pressure trip (P-11, the sourced cooldown action) and resetting SI ' +
+       'RELEASES the permissive — the derivation honours the gate, so no second copy of the block test',
        (function () {
-         eQ.applyCommand({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true });
+         /* a build where the refusal above was ACCEPTED has already cleared P-4, so the SI
+          * reset throws there — report that as this check's FAIL, not a crashed runner */
+         try { eQ.applyCommand({ action: 'set_hpi', active: false }); } catch (x) { return false; }
          ridek(eQ, kQ, 2);
-         return eQ.getInstruments().no_trip_signal_standing === true &&
+         return eQ.eng.pt.si === false && eQ.getInstruments().no_trip_signal_standing === true &&
                 kQ.rpsResetBlock(eQ.getInstruments()) === null && facReset(eQ) === null;
        })(), 'blocked -> released, reset accepted');
     ridek(eQ, kQ, 5);

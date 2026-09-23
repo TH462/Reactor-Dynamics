@@ -903,6 +903,16 @@
     if (anyRps && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = anyRps; }
     if (anyEsfas && !pr.si && !pr.si_rearm_block) { pr.si = true; pr.si_cause = anyEsfas; }
 
+    /* SAFETY INJECTION TRIPS THE REACTOR (#800) [sourced] — ML11223A310, Westinghouse TSM
+     * §12.3.2.2, item 1 of the SI actuation's own consequence list: "Reactor trip: A trip
+     * shuts down the reactor if one has not already occurred." Reads the SI LATCH, which the
+     * source calls retentive memory held until the SI reset (§12.3.2.3), so an RPS reset under
+     * a standing SI re-trips — reset SI at its own panel first. Evaluated after the credited
+     * RPS functions (a same-step setpoint trip keeps its cause) and before the anticipatory
+     * turbine trip. Invisible until #784: every other SI path sits past a condition that has
+     * already tripped the reactor; the 3.5 psig containment backup reached SI 78.2 s at power. */
+    if (pr.si && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = 'safety_injection'; }
+
     /* THE AFW STARTS [sourced — the SGLL block]. Same latch law as si; evaluated AFTER the SI
      * latch so a safety injection arriving this very step starts the MDAFW pumps this step.
      * Lo-lo level starts BOTH pumps (the declared single-loop collapse); SI starts the

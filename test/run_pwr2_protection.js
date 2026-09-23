@@ -950,6 +950,21 @@ function runSuite(P, rec, quiet) {
       '; fast: ' + (rawFast - tFast).toFixed(1) + ' s early of ' + rawFast.toFixed(1) +
       ' — only a RATE-sensitive channel can tell a break from a drift');
 
+  /* ---- SAFETY INJECTION TRIPS THE REACTOR (#800) ------------------------------------------ */
+  head('SI -> REACTOR TRIP  [sourced — ML11223A310 §12.3.2.2 item 1: "A trip shuts down the reactor if one has not already occurred"]');
+  /* The containment backup (3.5 psig) is the one SI path that arrives with every RPS function
+   * clear — the regime #800 measured 78.2 s at power in. 0.20 MPa (14.3 psig) is past the SI
+   * setpoint and under the 30 psig high-high, so no other row is crossed. */
+  var prSI = atPower();
+  var rSI0 = P.stepProtection(prSI, DT, healthy());
+  var rSI = ride(prSI, withReading('containment_pressure_mpa', 0.20), 1.0);
+  ckT('a healthy plant at power is neither tripped nor injecting before the step',
+      rSI0.reactor_trip === false && rSI0.si === false, '');
+  ckT('safety injection on high containment pressure TRIPS THE REACTOR, cause safety_injection',
+      rSI.si === true && rSI.si_cause === 'si_hi_ctmt_press' &&
+      rSI.reactor_trip === true && rSI.trip_cause === 'safety_injection' && rSI.rps_asserted_now === false,
+      'no RPS function is asserted — the trip is the actuation\'s own consequence');
+
   /* ---- WHAT IS NOT AVAILABLE IS SAID, NOT ASSUMED SAFE ------------------------------------ */
   head('MISSING READINGS  [an absent secondary must not read as a secondary that is fine]');
   var prN = atPower();
@@ -1036,6 +1051,9 @@ var MUTATIONS = [
    "          of.value >= of.setpoint - (pr.dtApproach ? 0.305 : 0.30)) dtNear = true;"],
   ['the turbine-trip reactor trip is deleted (P-9 reports into a void)',
    "    if (drivers.turbine_tripped && !drivers.p9_defeated && drivers.power_frac >= p9frac && !pr.reactor_trip) {\n      pr.reactor_trip = true; pr.trip_cause = 'turbine_trip';\n    }",
+   ''],
+  ['the SI-to-reactor-trip wire is deleted (injection runs into a critical core) -- #800',
+   "    if (pr.si && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = 'safety_injection'; }",
    ''],
   ['the P-9 defeat wire is cut (the failed channel still trips) -- #515',
    '!drivers.p9_defeated && ',

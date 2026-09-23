@@ -133,7 +133,7 @@ The reset is **permissive-gated** — it will not take until both conditions hol
 
 | Permissive | Why | Caption when it is holding |
 |---|---|---|
-| **No trip signal standing** | A breaker will not hold in against a live trip signal. Whatever tripped the plant has to have cleared first. | *TRIP SIGNAL STANDING* |
+| **No trip signal standing** | A breaker will not hold in against a live trip signal. Whatever tripped the plant has to have cleared first. **A latched safety injection counts** — every safety injection trips the reactor, so reset SI at its own panel first (the ECCS securing click; it needs the reactor tripped and its 45–60 s relay run), then reset the trip. | *TRIP SIGNAL STANDING* |
 | **Rods at bottom** | The physical interlock: the breakers reset with the rods in. | *RODS NOT AT BOTTOM* |
 
 The caption under **SCRAMMED** tells you which one is holding, so you do not have to press

@@ -248,12 +248,19 @@
    * latch INPUTS in pwr2_protection, not table rows, so they never appear in `functions`.
    * That is load-bearing — the turbine stays tripped until it is latched, and `latch_turbine`
    * itself refuses under a standing reactor trip, so a turbine row here would deadlock the
-   * two commands against each other. */
+   * two commands against each other.
+   *
+   * A LATCHED SAFETY INJECTION IS A STANDING TRIP SIGNAL (#800). Since SI trips the reactor
+   * (pwr2_protection, WTSM 12.3.2.2 item 1) off the SI LATCH, an RPS reset under it was accepted
+   * and re-latched one protection step later — this block's own defect class, back through the
+   * new wire. It cannot deadlock the other way: the SI reset needs P-4, a reactor trip, which is
+   * exactly the state this refusal holds. Named AFTER the table rows, which are more specific. */
   function standingTrip(e) {
     var fns = (e.rpsReport && e.rpsReport.functions) || [];
     for (var i = 0; i < fns.length; i++) {
       if (fns[i].kind === 'rps' && fns[i].asserted) return fns[i];
     }
+    if (e.pt && e.pt.si) return { id: 'safety_injection', name: 'safety injection', siLatch: true };
     return null;
   }
 
@@ -466,6 +473,11 @@
        * which is the more fundamental refusal. Rod bottom is the second one. */
       if (e.pt.reactor_trip) {
         var live = standingTrip(e);
+        if (live && live.siLatch) {
+          throw new Error('RPS RESET BLOCKED: safety injection is latched (actuated on ' +
+            (e.pt.si_cause || 'SI') + ') and a safety injection trips the reactor — a breaker ' +
+            'will not hold in against it. Reset SI at its own panel first, then reset the RPS.');
+        }
         if (live) {
           throw new Error('RPS RESET BLOCKED: the ' + live.name + ' trip signal is still ' +
             'asserted (' + live.value.toFixed(3) + ' against a setpoint of ' +

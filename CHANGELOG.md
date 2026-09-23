@@ -30,6 +30,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **Every safety injection now trips the reactor** (#800), sourced to WTSM 12.3.2.2 (ML11223A310)
+  item 1. The containment-pressure backup (3.5 psig) was the one path that reached injection at
+  power: on a full-severity seal leak the reactor ran 78 s with injection running and then tripped
+  on low-low steam generator level. It now trips on the same step, cause `safety_injection`
+  (board: "Reactor Trip — Safety Injection"). A latched SI now also holds the RPS reset
+  (`TRIP SIGNAL STANDING`, named in the refusal): reset SI at its panel first. Without that,
+  the reset was accepted and re-latched a step later, the #571 defect class. Manuals 03 §3.5.1,
+  09 §2.0/§3.0 (Rev 22 row, item c).
+
 ## [Alpha 1.8.0-rc3] — 2026-09-22
 
 ### Added

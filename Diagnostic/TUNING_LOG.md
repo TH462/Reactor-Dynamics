@@ -29,6 +29,30 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-23-develop-b (#800: every safety injection trips the reactor, and a latched SI holds the RPS reset)
+
+- **Wire:** `pwr2_protection.js`, after the SI latch: `pr.si && !pr.reactor_trip` → trip, cause
+  `safety_injection`. Sourced WTSM 12.3.2.2 (ML11223A310) item 1. Reads the LATCH (the source's
+  "retentive memory", §12.3.2.3), placed after the credited RPS rows so a same-step setpoint trip
+  keeps its cause.
+- **Measured** (full stack, `hot_full_power`, `rcp_seal_leak` severity 1, 60×, 6 s samples): SI
+  latches 369 s on both builds; the trip goes **447 s `sg_lolo_level` → 369 s `safety_injection`**.
+- **THE TRAP, and it was caught by two existing gates:** the wire re-opened #571's defect. The
+  "not a wedge" fixtures in `run_pwr2_shell` and `run_pwr2_board` block the low-pressure trip and
+  reset the RPS under a LOCA with SI still latched; the reset was accepted, then re-latched off the
+  SI latch within seconds. Fix: `pwr2_shell.js:standingTrip` counts a latched SI as a standing trip
+  signal, with its own refusal text. No deadlock: the SI reset needs P-4 (reactor tripped), which
+  is exactly the state the refusal holds. **Any new input to the reactor-trip latch must also be
+  asked of `standingTrip`**, or the reset permissive goes blind to it.
+- **Fixtures moved, and why it is not a refit (HR10):** the exit now resets SI before the RPS; a
+  new check asserts the refusal while SI is latched. Run against the OLD build: board's exit check
+  passes and its #800 refusal fails. In shell, the old build's accepted reset clears P-4, so the
+  SI reset in the exit path throws. It used to crash the runner and is now caught as that
+  check's FAIL (192/2 on old).
+- **Not done:** the issue's second half. The containment SI channel latches ~88 s early on noise
+  (`DELAY.si_hi_ctmt_press` 0.0 s, `[open]`). A confirmation delay needs its own evidence pass,
+  and the source is silent on coincidence for this channel. Left open on #800.
+
 ## Session log — 2026-09-23-develop-a (the limiter's bound is computed only where it can bind; the checklist runner outgrew a CI shard)
 
 - **CI run 35810480463 timed out shard 1 on `run_checklist_pwr2`**: 1,553 s on the last green run, 1,986 s solo now. The PWR2 step was **100.3 → 137.5 µs (+37 %)** against `ebf7bc53`, and the limiters (#588) were the cause. Split at the replay / live-runtime line (`f9ea1181`, 1,047 s + 933 s). The name union equals the unsplit run, 352. CI then went green (run 35837085210).

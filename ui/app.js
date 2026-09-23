@@ -3015,6 +3015,7 @@
     'hi_pzr_level':            'Hi Pressurizer Level',
     'sg_lolo_level':           'Lo-Lo Steam Generator Level',
     'turbine_trip':            'Turbine Trip (P-9)',
+    'safety_injection':        'Safety Injection',
     'manual':                  'Manual Trip'
   };
   function tripCauseLabel(reason) {
