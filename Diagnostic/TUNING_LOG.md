@@ -29,6 +29,25 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-23-workbench-a (Mode 3 to Mode 1 walkthrough brought down to the owner's per-substep format; three traps)
+
+`pwr_startup` now carries `Blueprint/walkthrough_steps/02_mode3_to_mode1.md` (reconcile record at
+the end of that file). Traps worth keeping:
+
+- **A "wait, then read the rate" check-off needs a DWELL, and four minutes was too short.** A
+  STARTUP RATE band on its own ticks the post-tap transient; a `steady` row on the rate latched on
+  subcritical banks 205-207 (a slowly decaying rate is "steady"). Rods still 240 s + rate ≥ 0.05
+  DPM ticked bank 207 at −5.1 pcm (seed 7) — SUBCRITICAL; 300 s + 0.05 never did (banks 202-207,
+  seeds 42 and 7), and ticks bank 208 (+2.8 pcm) and the authored 213 at +383 s. The dwell is
+  what makes the reading honest, not the band.
+- **A check that iterates `ckl.accs` is blind to every `acc` step** — `run_checklist_pwr2` 2ah.4's
+  "STILL BLOCKS" read the snapshot from BEFORE its own injection for as long as its only step-1
+  target was an `acc`. Converting that step to `accs` exposed it. Converting acc → accs anywhere
+  can surface a hollow check like this; read what the check inspects before calling it a regression.
+- **An injection must pick a target with nothing to restore.** 2y's one-row-ask injection chose
+  the first single-row step, set `ask`, then `delete`d it — which, once a real ask sat there,
+  deleted the owner's text for the rest of the run and reddened its own cleanup check.
+
 ## Session log — 2026-09-22-develop-a (the endgame's wall limiter cost 290 µs a step through a side door around #514's table; the plant already reached core damage)
 
 Covers `1a684bed`, `373ddf42`, `ee0ddd72`, `5bd1372d`, `148c9384`, `ad583f86`, `79236d93`. The

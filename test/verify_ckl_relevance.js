@@ -802,9 +802,10 @@ function sig(rows) {
 
     /* ---- 9. A LETTERED SUBSTEP CAN OWN MORE THAN ONE CHECK-OFF, ITS OWN NOTE AND ITS OWN
      * "Suggested time warp" LINE (the walkthrough-step-format project, `Blueprint/
-     * walkthrough_steps/02_mode3_to_mode1_test.md`). No pool step authors `accs[].cont` /
-     * `.note` / `.wait_speed` / `.speed_text` yet — a later agent ports that content — so this
-     * is a synthetic fixture, same idiom as section 6.
+     * walkthrough_steps/02_mode3_to_mode1.md`). Written before any pool step authored `accs[].cont` /
+     * `.note` / `.wait_speed` / `.speed_text`; `pwr_startup` has carried all four since
+     * 2026-09-23, but the fixture stays SYNTHETIC on purpose — it pins the letter math on one of
+     * everything, which no single shipped step happens to hold. Same idiom as section 6.
      *
      * THREE THINGS THE LETTER MATH MUST GET RIGHT AT ONCE: a `cont` row draws (still graded,
      * still its own ✓/○) but consumes NO letter, so the substep after it is `1b`, not `1c` — the

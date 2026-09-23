@@ -46,6 +46,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   list, so it cannot go stale and marks arrival rather than tagging. Preview builds are excluded:
   they land on the tester domain and contribute none of the traffic being graphed.
 
+### Changed
+- **Mode 3 to Mode 1 walkthrough (`pwr_startup`) brought down to the owner's new step format**
+  (`Blueprint/walkthrough_steps/02_mode3_to_mode1.md`, now the live file). Each step's line is its
+  goal; each lettered substep carries its own action, note and "Suggested time warp" rung, and
+  the walkthrough's auto-speed follows the substep the player is on. Old step 9 is split into the
+  approach (9) and the climb from critical (10); old step 11 folds into 11's note; still 17 steps.
+  Grading: step 1 now checks his 544-549 °F and 2200-2270 psi; step 9 gains its first graded rows
+  (rods still 60 s, then still five minutes and STARTUP RATE 0.05 to 1.00 — measured never to
+  tick a subcritical core); steps 11, 13 and 17 grade the tile's render-band floor (0.45 %,
+  5.05 %, 10.05 % and OUTPUT 8.51-11.49 MWe); step 17 replaces "Mode 1" with his two rows; step
+  14 is ordered (LATCH, then OUTPUT). His "3 steps short of the 1/M prediction" is not graded —
+  the prediction exists only in the panel.
+
 ### Fixed
 - **Internal rows no longer show `0` landing visits** (#797) in Country × referrer × day. A visit
   is credited only to the page load that starts a session, so an internal row can never carry

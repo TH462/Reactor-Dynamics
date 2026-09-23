@@ -1339,13 +1339,17 @@ if (!only && RUN_B) {
       if (st.cmd.trip_id === 'ir_high') i16 = k;
       if (st.cmd.trip_id === 'pr_low_setpoint') i17 = k;
     });
+    /* the step's ONE grading predicate, `acc` or a single-row `accs` — since 2026-09-23 the owner's
+     * per-substep format carries it as `accs[0]` (with its `ask`), and the claim is unchanged: a
+     * PREDICATE on the lineup param, never a cmd-kind row. Validated against the old form too: the
+     * helper reads the pre-reconcile `acc` and passes it. */
+    function grd(st) { return st && (st.acc || ((st.accs && st.accs.length === 1 && !st.accs[0].cmd) ? st.accs[0] : null)); }
     ck('pwr_startup carries both trip-block steps and BOTH grade on the lineup, not on the press (#731)',
        i16 >= 0 && i17 >= 0 && i16 < i17 &&
-       !!(proc.steps[i16].acc && proc.steps[i16].acc.p === 'ir_high_blocked') &&
-       !!(proc.steps[i17].acc && proc.steps[i17].acc.p === 'pr_low_setpoint_blocked'),
-       'steps ' + (i16 + 1) + '/' + (i17 + 1) + ' acc ' +
-       JSON.stringify(proc.steps[i16] && proc.steps[i16].acc) + ' / ' +
-       JSON.stringify(proc.steps[i17] && proc.steps[i17].acc));
+       !!(grd(proc.steps[i16]) && grd(proc.steps[i16]).p === 'ir_high_blocked') &&
+       !!(grd(proc.steps[i17]) && grd(proc.steps[i17]).p === 'pr_low_setpoint_blocked'),
+       'steps ' + (i16 + 1) + '/' + (i17 + 1) + ' grade ' +
+       JSON.stringify(grd(proc.steps[i16])) + ' / ' + JSON.stringify(grd(proc.steps[i17])));
 
     /* the SENSE, on the mechanism itself — cheap, and it speaks for every leg rather than only
      * this one (`pwr_cooldown` authors two more set_trip_block steps) */
@@ -1855,8 +1859,20 @@ if (!only && RUN_B) {
               if (en.label && en.ask.replace(/[.\s]/g, '').toLowerCase() ===
                               en.label.replace(/[.\s]/g, '').toLowerCase()) r.echoes.push(where);
               var w = en.ask.trim().split(/\s+/).length;
-              if (w > 14) r.tooLong.push(where + ' (' + w + ' words)');
-              if (vis.length < 2) r.onSingles.push(where);
+              /* THE OWNER'S PER-SUBSTEP FORMAT (2026-09-23, `Blueprint/walkthrough_steps/02_mode3_to_mode1.md`,
+               * "Implement the new version of the walk-through"). A head that carries its own
+               * `note` / `wait_speed` / `speed_text` is one of HIS lettered substeps: its `ask` is
+               * the step's action line (the step `text` is now the goal), so it is written by him,
+               * it exists on one-substep steps too, and it runs longer than #741's 14-word row asks.
+               * The two rules below were written by an agent for the older shape (one instruction
+               * line, short per-row asks) and carry no owner quote; for his format the paragraph
+               * guard is kept at 30 words — his longest action line (`pwr_startup` 11a) — and the
+               * one-row rule becomes the thing it was protecting against: an ask that merely
+               * repeats the step's own line. */
+              var fmt = en.note != null || en.wait_speed != null || en.speed_text != null;
+              if (w > (fmt ? 30 : 14)) r.tooLong.push(where + ' (' + w + ' words)');
+              var norm = function (x) { return String(x || '').replace(/[.\s]/g, '').toLowerCase(); };
+              if (vis.length < 2 && (!fmt || norm(en.ask) === norm(st.text))) r.onSingles.push(where);
             });
           });
         });
@@ -1868,10 +1884,10 @@ if (!only && RUN_B) {
        sw.noLabel.length === 0, sw.noLabel.join(', ') || sw.total + ' ask(s) authored, all with a label');
     ck('...and no ask merely echoes its own done-when (the same sentence twice on one row)',
        sw.echoes.length === 0, sw.echoes.join(', ') || 'none');
-    ck('...and every ask is an instruction, not a paragraph (at most 14 words), and is a string',
+    ck('...and every ask is an instruction, not a paragraph (at most 14 words; 30 in the owner per-substep format), and is a string',
        sw.tooLong.length === 0 && sw.notString.length === 0,
        sw.tooLong.concat(sw.notString).join(', ') || 'longest is within the cap, all strings');
-    ck('...and asks sit only on steps that draw more than one row, where the letters mean something',
+    ck('...and asks sit only on steps that draw more than one row (or, in the owner format, say something the step line does not)',
        sw.onSingles.length === 0, sw.onSingles.join(', ') || 'none on single-row steps');
 
     /* AND EVERY acceptance ENTRY CARRIES A LABEL, ask or no ask (#741 quality pass). The card's
@@ -1913,7 +1929,12 @@ if (!only && RUN_B) {
       /* the fourth rule had NO injection at all: three of four were proven and one was not */
       var single = null;
       POOL.forEach(function (proc) { (proc.steps || []).forEach(function (st) {
-        if (!single && st.accs && st.accs.filter(function (e) { return !e.hidden; }).length === 1) single = st.accs[0];
+        /* a LEGACY single-row step with no ask of its own — the owner's format legitimately puts
+         * asks on one-row steps now, and an injection that deleted one of HIS would be the
+         * cleanup defect this check's successor exists to catch (it did, 2026-09-23) */
+        if (!single && st.accs && st.accs.filter(function (e) { return !e.hidden; }).length === 1 &&
+            st.accs[0].ask == null && st.accs[0].note == null && st.accs[0].wait_speed == null &&
+            st.accs[0].speed_text == null) single = st.accs[0];
       }); });
       var r4 = { single: 0 };
       if (single) { single.ask = 'Press the thing.'; r4 = counts(); delete single.ask; }
@@ -2440,8 +2461,11 @@ if (!only && RUN_B) {
         var st = proc && proc.steps[idx], en = st && st.accs && st.accs[0];
         if (!en) return;
         var name = fmtExp(en.v);
-        ['text', 'target'].forEach(function (f) {
-          if (String(st[f] || '').indexOf(name) === -1) strBad.push('step ' + (idx + 1) + ' ' + f + ' does not print ' + name);
+        /* the INSTRUCTION is the head's `ask` since the owner's per-substep format (2026-09-23) —
+         * the step `text` became the goal line and names no count — so the shorthand is looked
+         * for where the player is told to act: `ask` when authored, else `text` (the old form). */
+        [['instruction', en.ask != null ? en.ask : st.text], ['target', st.target]].forEach(function (f) {
+          if (String(f[1] || '').indexOf(name) === -1) strBad.push('step ' + (idx + 1) + ' ' + f[0] + ' does not print ' + name);
         });
         if (String(en.label || '').indexOf(name) === -1) strBad.push('step ' + (idx + 1) + ' label does not print ' + name);
         if (String(en.label || '').indexOf(String(en.v)) !== -1) strBad.push('step ' + (idx + 1) + ' label prints the raw edge ' + en.v);
@@ -2692,6 +2716,13 @@ if (!only && RUN_B) {
   (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
+    /* THE STEP IS FOUND BY CONTENT, NOT BY INDEX (2026-09-23): the climb's two rows were `steps[8]`
+     * until the owner's new-format split made them step 10 — the #739 lesson (`steps[14]`) again.
+     * It is the one pwr_startup step whose `accs` carries an `implied_by`. */
+    var IMPL_IDX = -1;
+    ((proc && proc.steps) || []).forEach(function (st, k) {
+      if (IMPL_IDX < 0 && (st.accs || []).some(function (e) { return e && e.implied_by; })) IMPL_IDX = k;
+    });
 
     /* --- 1. THE AUTHORING SHAPE, swept over the WHOLE pool rather than the one step: an
      * `implied_by` that names nothing, names itself, sits on an ordered step, or covers every
@@ -2729,7 +2760,7 @@ if (!only && RUN_B) {
       var tsSrc = fs.readFileSync(path.join(ROOT, 'engines', 'pwr2', 'pwr2_true_state.js'), 'utf8');
       var kM = /K_IR\s*=\s*([0-9.eE+-]+)/.exec(tsSrc);
       var K_IR = kM ? parseFloat(kM[1]) : NaN;
-      var st2 = proc ? proc.steps[8] : null;
+      var st2 = proc ? proc.steps[IMPL_IDX] : null;
       var irEn = null, pwEn = null;
       ((st2 && st2.accs) || []).forEach(function (e) { if (e.p === 'ir_amps') irEn = e; if (e.p === 'power_pct') pwEn = e; });
       var atPower = (irEn && pwEn && isFinite(K_IR)) ? K_IR * (pwEn.v / 100) : NaN;
@@ -2754,7 +2785,7 @@ if (!only && RUN_B) {
       if (dead) svc.handleCommand({ action: 'set_instrument_failure', instrument_id: dead, mode: 'dead' });
       var il = Object.create(RD.InstructorLayer.prototype);
       var holder = {}, all = false;
-      for (i = 0; i < (ticks || 40); i++) { s = svc.tick(); all = il._gradeAccs(holder, proc.steps[8], s); }
+      for (i = 0; i < (ticks || 40); i++) { s = svc.tick(); all = il._gradeAccs(holder, proc.steps[IMPL_IDX], s); }
       return { all: all, rows: holder.accsState, s: s };
     }
 
@@ -3110,8 +3141,14 @@ if (!only && RUN_B) {
        * has two, and its counts floor is the only predicate row on it, so four more rows became
        * the only row of their step. The graded-step count is unmoved at 84, which is the control:
        * no step gained or lost its grading, only its row count. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned #796: 84 / 127 / 83 / 31)',
-         gradedSteps === 84 && predRows === 127 && rows.length === 83 && soleInst === 31,
+      /* RE-PINNED 2026-09-23 (the owner's new-format reconcile): 127 -> 131 predicate rows, 83 -> 87
+       * instrument-graded, 31 -> 30 sole. +4 rows: step 1 gains PRIMARY PRESSURE, step 9 gains three
+       * (two `stopped`, which are control-state, and the STARTUP RATE band), step 17 trades
+       * `plant_mode` for two; old step 11's `sr_energized` goes. Instrument +4: pressure, rate, and
+       * 17's two. Sole -1: step 1's tavg row now has a sibling. Graded steps unmoved at 84: step 9
+       * gained grading and old step 11 left. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-23: 84 / 131 / 87 / 30)',
+         gradedSteps === 84 && predRows === 131 && rows.length === 87 && soleInst === 30,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -3189,13 +3226,23 @@ if (!only && RUN_B) {
       'pwr_heatup:14:pressure_mpa': 'primary_pressure',      // > 15 [SOLE]   dead 0.000 vs true 2.500 MPa
       'pwr_heatup:15:steam_pressure_mpa': 'steam_pressure',  // ~ 7.03        dead 0.000 vs true 0.0124 MPa
       /* pwr_startup [hot_zero_power] */
-      'pwr_startup:1:tavg_c': 'tavg',                        // ~ 286 [SOLE]  dead 30.00 vs true 286.3 degC
+      /* RE-PINNED 2026-09-23 (the owner's new-format reconcile): old step 9 split into 9 + 10 and
+       * old 11 folded, so the climb's power row is 10 and the 0.5 % row is 11 — keys MOVED, not
+       * re-measured. FOUR ARE NEW and are the ordinary Hard Rule 1 price of the rows he asked
+       * for: step 1's PRIMARY PRESSURE, step 9's STARTUP RATE band (a dead channel reads the
+       * -5.000 DPM floor and strands the approach step — same exposure as step 12's row), and
+       * step 17's two rows (it graded `plant_mode`, a true_state fact, before). */
+      'pwr_startup:1:tavg_c': 'tavg',                        // ~ 285.83      dead 30.00 vs true 286.3 degC
+      'pwr_startup:1:pressure_mpa': 'primary_pressure',      // ~ 15.41       his 2200-2270 psi row
       'pwr_startup:2:boron_ppm': 'boron_analyzer',           // ~ 719 [SOLE]  dead 0.000 vs true 718.9 ppm
-      'pwr_startup:9:power_pct': 'power_range',              // > 0.05        the row #749's relief leans ON
-      'pwr_startup:10:power_pct': 'power_range',             // > 0.5 [SOLE]
+      'pwr_startup:9:startup_rate_dpm': 'startup_rate',      // ~ 0.5275      9b, behind two `stopped` rows
+      'pwr_startup:10:power_pct': 'power_range',             // > 0.05        the row #749's relief leans ON
+      'pwr_startup:11:power_pct': 'power_range',             // >= 0.45 [SOLE]
       'pwr_startup:12:startup_rate_dpm': 'startup_rate',     // ~ 0           dead -5.000 DPM (range floor)
-      'pwr_startup:13:power_pct': 'power_range',             // > 5 [SOLE]
+      'pwr_startup:13:power_pct': 'power_range',             // >= 5.05 [SOLE]
       'pwr_startup:14:mwe_output': 'mwe_output',             // > 8 [SOLE]
+      'pwr_startup:17:power_pct': 'power_range',             // >= 10.05
+      'pwr_startup:17:mwe_output': 'mwe_output',             // ~ 10
       /* pwr_raise_power [low_power] */
       'pwr_raise_power:2:mwe_output': 'mwe_output',          // > 8           dead 0.000 vs true 10.00 MWe
       'pwr_raise_power:4:mwe_output': 'mwe_output',          // > 28
@@ -3237,7 +3284,7 @@ if (!only && RUN_B) {
       'pwr_tmi2_incident:19:subcooling_c': 'subcooling_margin', // > 5.56 [SOLE] dead -28.000 vs true 23.404 degC (#789)
       /* the three `saw` rows — no `implied_by` can reach a `saw`, so these have no relief at all */
       'pwr_heatup:11:saw:tavg_c': 'tavg',                    // > 150         same channel as the step's acc
-      'pwr_startup:10:saw:startup_rate_dpm': 'startup_rate', // > 0           a channel the step's acc does NOT use
+      'pwr_startup:11:saw:startup_rate_dpm': 'startup_rate', // > 0           a channel the step's acc does NOT use
       'pwr_tmi2_incident:3:saw:pressure_mpa': 'primary_pressure', // > 16 [SOLE]  the step's only grading
     };
     /* THE OTHER HALF: a row that reads DOWNWARD is not stranded by a dead gauge, it is TICKED by
@@ -3284,7 +3331,7 @@ if (!only && RUN_B) {
       'pwr_startup:6:sr_counts_cps': 1,
       'pwr_startup:7:sr_counts_cps': 1,
       'pwr_startup:8:sr_counts_cps': 1,
-      'pwr_startup:9:ir_amps': 1,
+      'pwr_startup:10:ir_amps': 1,   // step 9 until the 2026-09-23 split
     };
 
     function diffSet(got, want) {
@@ -3391,8 +3438,10 @@ if (!only && RUN_B) {
       'pwr_heatup:11': 'tavg_c',                              // "wait until AVG COOLANT reaches 542 degF"
       'pwr_heatup:15': 'adv_valve_pct,steam_pressure_mpa',    // the Hot Standby confirm
       'pwr_heatup:17': 'power_pct',
-      'pwr_startup:1': 'tavg_c',
+      'pwr_startup:1': 'tavg_c,pressure_mpa',                // his two bands (2026-09-23)
+      'pwr_startup:10': 'ir_amps,power_pct',                  // the climb, split out of old 9 (had a cmd)
       'pwr_startup:12': 'power_pct,startup_rate_dpm',
+      'pwr_startup:17': 'power_pct,mwe_output',               // his two rows, replacing plant_mode
       'pwr_raise_power:9': 'power_pct,boron_ppm,tavg_c',
       'pwr_raise_power:12': 'mwe_output',                     // the #667 shape, one leg later
       'pwr_cooldown:8': 'pressure_mpa',
@@ -3409,7 +3458,6 @@ if (!only && RUN_B) {
       'pwr_heatup:1': 'plant_mode', 'pwr_heatup:4': 'turbine_tripped',
       'pwr_heatup:6': 'steam_dump_valve_pct', 'pwr_heatup:12': 'rhr_active,letdown_flow_actual',
       'pwr_heatup:15': 'plant_mode', 'pwr_heatup:16': 'reactivity_pcm',
-      'pwr_startup:11': 'sr_energized', 'pwr_startup:17': 'plant_mode',
       'pwr_raise_power:1': 'plant_mode',
       'pwr_cooldown:13': 'plant_mode', 'pwr_cooldown:14': 'accumulator_volume_pct',
       'pwr_cooldown:15': 'rhr_valve_open',
@@ -4404,6 +4452,13 @@ if (!only && RUN_B) {
         svc.handleCommand({ action: 'start_checklist', procedure_id: proc.id });
         s = tkv(svc);
         svc.handleCommand({ action: 'inject_failure', failure_id: L[1] });
+        /* READ THE PLANT AFTER THE INJECTION, not the snapshot from before it (2026-09-23). The
+         * STILL-BLOCKS test below inspects `ckl.accs`, and the first pass of the loop used to read
+         * the pre-injection `s` — a row with no casualty to void it and a debounce still filling.
+         * Hollow until now because every step-1 row it met was an `acc`, which that test never
+         * reads; `pwr_startup` step 1 became `accs` in the owner's new-format reconcile and the
+         * stale snapshot reported "STILL BLOCKS" for a row the casualty does void. */
+        s = tkv(svc);
         L[2].forEach(function (t) {
           var step = t[0], p = t[1], isSaw = !!t[2], st = proc.steps[step - 1];
           var key = proc.id + ':' + step + ':' + (isSaw ? 'saw:' : '') + p;

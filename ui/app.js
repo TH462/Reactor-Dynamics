@@ -5379,7 +5379,8 @@
    * the step can tell a conditional press from a lamp the player is only meant to read. MEASURED
    * on the built pools 2026-09-20: exactly THREE steps in the shipped pwr2 pool carry `hl` with
    * no command behind it — `pwr_startup` 3, 11 and 12 — and all three are real contingency
-   * presses, so all three declare it. `run_manual_controls` gates the claim from the other side:
+   * presses, so all three declare it. (2026-09-23: old step 11, the close-the-1/M-window press,
+   * was folded into step 11's note, so the shipped pair is now `pwr_startup` 3 and 12.) `run_manual_controls` gates the claim from the other side:
    * a pwr2 step with any pulsing label must ask for a press. */
   function stepAsksForPress(st) {
     if (!st) return false;

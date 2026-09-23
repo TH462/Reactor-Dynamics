@@ -614,6 +614,62 @@ function pinChannel(ch) {
     'clock landed at ' + fb.accel + '× with rung ' + fb.rung + ' (step authors 10×, neither accs entry does)');
   await b.ctx.close();
 
+  /* ---- AND ON REAL CONTENT, MID-RUN: THE CLOCK RE-ACTS WHEN THE ACTIVE SUBSTEP CHANGES (2026-09-23,
+   * the pwr_startup reconcile). The two synthetic probes above each read ONE substep from the first
+   * paint; neither proves auto acts AGAIN when the player moves from one substep to the next inside
+   * a running step, which is the case the owner's format exists for. `pwr_startup` step 5 is the
+   * shipped instance: 5a (hold WITHDRAW to 7.0e2) authors 5×, 5b (Plot point) authors 1×, and the
+   * step's own `hold: 300` would give 10× by the 30 s rule — so each phase names a number no other
+   * path produces. Phase 1 reads the clock on 5a; then 5a's latch is set the way the runtime sets
+   * it (`accsState[0].met`, the row's own latch — a non-band row is never re-graded once met) and
+   * phase 2 reads it again on 5b. INJECTION-PROVEN 2026-09-23, two ways: `cklAccsHeadRung` forced
+   * to return null reds it "1× then 1×" (step 5 authors `wait_hint: false` and no step-level
+   * rung, so nothing else speeds it); and auto made to act ONCE per step (the latch compared on
+   * the step part of the key only) reds it "5× then 5×" — the re-act half, which is what the
+   * `zz_pace` probes cannot see. `&init=hot_zero_power` is load-bearing: on the
+   * default at-power plant SOURCE RANGE is already secured, so steps 5-8 are OVERTAKEN on arrival
+   * and the checklist is on step 9 before the first read (measured, the first draft of this). */
+  b = await build('dev', WT2 + '&run=1&dev=1&init=hot_zero_power');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  var subOk = await b.page.evaluate(function () {
+    var btn = document.querySelector('[data-ckl-start="pwr_startup"]');
+    if (!btn) return false;
+    btn.click(); return true;
+  });
+  var sub = { a: null, b: null };
+  if (subOk) {
+    await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 20000 }).catch(function () {});
+    await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service();
+      svc.attentionStops = false;
+      var c = svc.instructor.checklist;
+      c.idx = 4; c.stepAt = null; c.awaitingAck = false; c.accsState = null; c.predBags = null;
+    });
+    await b.page.waitForTimeout(2000);
+    sub.a = await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      return { accel: svc.timeAcceleration, idx: c.idx,
+               met0: !!(c.accsState && c.accsState[0] && c.accsState[0].met) };
+    });
+    await b.page.evaluate(function () {
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      if (c.accsState && c.accsState[0]) c.accsState[0].met = true;
+    });
+    await b.page.waitForTimeout(2000);
+    sub.b = await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      return { accel: svc.timeAcceleration, idx: c.idx,
+               met0: !!(c.accsState && c.accsState[0] && c.accsState[0].met) };
+    });
+  }
+  ck('dev (pwr2): pwr_startup step 5 — the clock re-acts mid-step, 5a 5× then 5b 1×',
+    !!sub.a && !!sub.b && sub.a.idx === 4 && sub.b.idx === 4 && !sub.a.met0 && sub.b.met0 &&
+    sub.a.accel === 5 && sub.b.accel === 1,
+    sub.a ? ('on 5a ' + sub.a.accel + '× (5a met ' + sub.a.met0 + '), then on 5b ' +
+             (sub.b ? sub.b.accel + '× (5a met ' + sub.b.met0 + ', step index ' + sub.b.idx + ')' : '?'))
+          : 'pwr_startup start button not found');
+  await b.ctx.close();
+
   // The player's window (no `mmode` in the URL) offers exactly Free Play and Walkthroughs
   // (#660 item 19); the campaign and scenario areas are reachable only through the door.
   b = await build('dev', SHELL.replace('&mmode=free', ''));
