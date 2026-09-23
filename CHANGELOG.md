@@ -30,28 +30,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-### Fixed
-- **Every safety injection now trips the reactor** (#800), sourced to WTSM 12.3.2.2 (ML11223A310)
-  item 1. The containment-pressure backup (3.5 psig) was the one path that reached injection at
-  power: on a full-severity seal leak the reactor ran 78 s with injection running and then tripped
-  on low-low steam generator level. It now trips on the same step, cause `safety_injection`
-  (board: "Reactor Trip — Safety Injection"). A latched SI now also holds the RPS reset
-  (`TRIP SIGNAL STANDING`, named in the refusal): reset SI at its panel first. Without that,
-  the reset was accepted and re-latched a step later, the #571 defect class. Manuals 03 §3.5.1,
-  09 §2.0/§3.0 (Rev 22 row, item c).
-- **The containment safety-injection signal holds 2.0 s before it actuates** (#800,
-  *OWNER RULING, 2026-09-23: "A"* — option A). The value is [derived], carried from the other SI channels; this
-  single-channel plant filters in time where Ginna votes 2-of-3. At 0.0 s one noise sample latched
-  it with true containment 0.3 psi under the setpoint, and SI now trips the reactor. Measured:
-  - default seal leak trips at 18m39s (was 15m00s);
-  - full-severity seal leak trips at 7m30s on SI, with true containment 18.33 psia (0.1264 MPa),
-    above the setpoint;
-  - large break severity 1.0 (injected at t = 0) trips on overtemperature ΔT at 4.76 s, SI at
-    5.56 s (was both at 3.58 s on SI); fan coolers 47.56 → 49.54 s, the high-high isolation and
-    spray unchanged.
-  Manual 07 PWR-E23 is rewritten for the seal leak now tripping the reactor.
-
-## [Alpha 1.8.0-rc3] — 2026-09-22
+## [Alpha 1.8.0-rc4] — 2026-09-23
 
 ### Added
 - **Ops dashboard: a session-duration histogram and a "first 60 seconds" section** (#797). The
@@ -83,6 +62,25 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   the prediction exists only in the panel.
 
 ### Fixed
+- **Every safety injection now trips the reactor** (#800), sourced to WTSM 12.3.2.2 (ML11223A310)
+  item 1. The containment-pressure backup (3.5 psig) was the one path that reached injection at
+  power: on a full-severity seal leak the reactor ran 78 s with injection running and then tripped
+  on low-low steam generator level. It now trips on the same step, cause `safety_injection`
+  (board: "Reactor Trip — Safety Injection"). A latched SI now also holds the RPS reset
+  (`TRIP SIGNAL STANDING`, named in the refusal): reset SI at its panel first. Without that,
+  the reset was accepted and re-latched a step later, the #571 defect class. Manuals 03 §3.5.1,
+  09 §2.0/§3.0 (Rev 22 row, item c).
+- **The containment safety-injection signal holds 2.0 s before it actuates** (#800,
+  *OWNER RULING, 2026-09-23: "A"* — option A). The value is [derived], carried from the other SI channels; this
+  single-channel plant filters in time where Ginna votes 2-of-3. At 0.0 s one noise sample latched
+  it with true containment 0.3 psi under the setpoint, and SI now trips the reactor. Measured:
+  - default seal leak trips at 18m39s (was 15m00s);
+  - full-severity seal leak trips at 7m30s on SI, with true containment 18.33 psia (0.1264 MPa),
+    above the setpoint;
+  - large break severity 1.0 (injected at t = 0) trips on overtemperature ΔT at 4.76 s, SI at
+    5.56 s (was both at 3.58 s on SI); fan coolers 47.56 → 49.54 s, the high-high isolation and
+    spray unchanged.
+  Manual 07 PWR-E23 is rewritten for the seal leak now tripping the reactor.
 - **Internal rows no longer show `0` landing visits** (#797) in Country × referrer × day. A visit
   is credited only to the page load that starts a session, so an internal row can never carry
   one; it now shows an em dash with the reason. No number changed.
