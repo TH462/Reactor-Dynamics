@@ -164,7 +164,23 @@
 
        ================================================================== -->
 
-    <details class="log-entry" open>
+  <details class="log-entry" open>
+    <summary class="log-head">
+      <h2>Containment protects itself, and the core can now be lost</h2>
+      <span class="log-ver mono">Alpha 1.8.0-rc1</span>
+      <time class="log-date mono" datetime="2026-09-22">22 September 2026</time>
+    </summary>
+    <ul>
+      <li><span class="log-tag added">Added</span><strong>Containment spray, the fan coolers and steam-line isolation.</strong> All three actuate automatically on containment pressure; there is no manual control. On a large break, containment peaks at 57.8&nbsp;psig and then falls, where before it climbed past 78.5&nbsp;psig.</li>
+      <li><span class="log-tag added">Added</span><strong>Safety injection on high containment pressure.</strong> A backup signal the operator cannot block; on a large break it starts injection 3.3&nbsp;seconds before the low-pressure signal would.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Steam-generator heat transfer depends on coolant flow and steam content.</strong> A primary full of steam loses its heat sink instead of keeping it.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>A large break with the station blacked out no longer stops the model partway through the blowdown.</strong> If auxiliary feedwater is also lost, the core now heats up and reaches fuel damage in about 85&nbsp;minutes.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>TRIP BLOCKS panel.</strong> It now closes on Escape or a press anywhere outside it, and hands focus back to its button.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Operator manuals.</strong> They now cover the containment safety systems and their setpoints, and the pressurizer level rise during a heatup on pump heat.</li>
+    </ul>
+  </details>
+
+<details class="log-entry">
     <summary class="log-head">
       <h2>Walkthroughs drive the speed control, and the 1/M ladder goes back to one step per point</h2>
       <span class="log-ver mono">Alpha 1.7.7</span>

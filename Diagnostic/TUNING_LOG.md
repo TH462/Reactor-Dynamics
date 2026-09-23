@@ -29,6 +29,45 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-22-develop-a (the endgame's wall limiter cost 290 µs a step through a side door around #514's table; the plant already reached core damage)
+
+Covers `1a684bed`, `373ddf42`, `ee0ddd72`, `5bd1372d`, `148c9384`, `ad583f86`, `79236d93`. The
+resume record is issue #804. The #588 and #802 comment threads hold the per-commit adjudications.
+
+- **#802: this plant already reached core damage on the shipped engine, and nothing had to be
+  built.** On large break + station blackout + auxiliary feedwater loss, `fuel_damaged` latches
+  at ~5,093 s (85 min). Six branches agree within 21 s. Every measurement for months stopped at
+  1,200–1,800 s, but the secondary does not dry until 2,619 s. **The ride was too short.**
+  `run_pwr2_coredamage_stack` now asserts the chain link by link as invariants, never timestamps
+  (#543).
+- **`run_pwr2_perf` was 18.2× against its 8× budget**: 385 µs/step against the retired engine's
+  21 µs. Attributed per commit in scratch worktrees: `a33a9685` (Courant limiter) and `ee0ddd72`
+  (steam-generator film) cost nothing, and **`1a684bed`'s wall limiter accounts for the entire
+  +290 µs**. The cause: `cpLocal` called `W.T_from_h`, the raw correlation inverse
+  (34.201 µs against the vtable's 0.203 µs), **11.89 times a step instead of 1.00** — 62 % of
+  step time. **This is #514's defect coming back**: the new code reached around the table #514
+  built. The fix passes the temperature the caller already holds, which removes the inversion
+  instead of making it cheaper. **6.7× (134.1 µs vs 20.1) — PASS.** At 60× fast-forward the step
+  goes from 111.8 ms to 40.8 ms of the 100 ms broadcast, so 60× is sustainable in real time again.
+- **Bit-identity was proved in its strong form, and that is the trap worth keeping.** Three
+  initial conditions, 600 s: 11,430 fields, 0 differing. Multiplying `cp` by TEN also moves 0 of
+  11,430, while a 1-in-10,000 nudge to the wall duty moves 3,439. On a healthy plant `cp` is not
+  consumed at all, because the bound never binds. **That is why this swap was safe and the
+  same move on `hAtTarget` is not**: `hAtTarget` produces the bound itself. The residual
+  47 µs/step lives there and was deliberately left alone.
+- The damage chain's milestones did not move by even 0.1 s: dry 2619.3 → sink 2781.5 → on-ramp
+  4749.8 → ignition 4902.1 → latch 5092.6 s. Contrast leg: mass fraction 0.7273, clad peak
+  1541.0 °F (838.3 °C). The ulp-sensitive branch did not switch.
+- **Do not re-band `run_pwr2_perf`.** 8× → 19× would put it back in the 51× defect class it exists
+  to catch.
+- The pre-push aggregate: 121 runners, 4 drifts. All four are closed (`ad583f86` and `79236d93`).
+  Then the release-candidate bump to `Alpha 1.8.0-rc1` *(OWNER RULING, 2026-09-22: "Alpha 1.8.0-rc1")*.
+
+**Still open:** #799 (containment wall heat sink), #800 (safety injection does not trip the
+reactor), #801 (235 psi in one step), #803 (`h_hi` clip on a dry generator), and
+`run_checklist_pwr2`'s tracked red (TMI-2 steps 18/19). That red is attributed to #588's film term
+and the mechanism is undiagnosed.
+
 ## Session log — 2026-09-21-develop-b (eight rulings cleared; the null self-test finds eight blind mutations and voids two coverage figures)
 
 *(OWNER, 2026-09-21: "Let's try to clear some of the open issues. What do I need to rule on and
