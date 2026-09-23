@@ -41,11 +41,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   containment backup signal at 5.58 s (was 8.88 s on low pressurizer pressure alone); fan
   coolers deliver at 49.5 s, the main steam isolation valve shuts at 59.6 s, spray is demanded
   at 59.6 s and delivers at 88.2 s. Automatic only — no board control, no player lever. Sourced:
-  3.5 psig safety-injection backup and 30 psig spray/steam-line-isolation high-high (WTSM 12.3,
+  3.5 psig (18.2 psia, 0.1255 MPa) safety-injection backup and 30 psig (44.7 psia, 0.3081 MPa) spray/steam-line-isolation high-high (WTSM 12.3,
   ML11223A310); 1,800 gpm per spray pump from the refueling water storage tank at 50 °F (10 °C)
   (Ginna UFSAR ch15 Table 15.6-18a, ML20339A101); 28.5 s spray and 44 s fan-cooler response times
   (Ginna Technical Specifications Bases B 3.6.6, ML20339A221). A station blackout defeats both
-  systems and is bit-identical to the unbuilt plant, 57.0 psig at 168.5 s either way.
+  systems and is bit-identical to the unbuilt plant, 57.0 psig (71.7 psia, 0.4943 MPa) at 168.5 s either way.
 
 ### Changed
 - **The steam generator's primary side now accounts for reduced flow and steam voiding in its
@@ -114,13 +114,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   at 2,781.5 s → cladding crosses the sourced 1,800 °F (982 °C) oxidation onset at 4,749.8 s →
   oxidation ignites at 4,902.1 s → `fuel_damaged` latches at 5,092.6 s (85 min) — asserted as an
   ordered chain of invariants, never a pinned timestamp. Without the feedwater failure the plant
-  never damages; its cladding peaks at 1,541 °F and cools.
+  never damages; its cladding peaks at 1,541 °F (838 °C) and cools.
 - **A null-mutation self-test now proves eleven PWR2 mutation-testing runners' short replay
   rides are actually exercising their mutations** (#657). A runner that rides full-length on its
   clean pass but shortened on every replay can report a mutation "caught" for a reason unrelated
-  to the mutation. Of eleven runners checked, five were already clean; four needed longer replay
-  rides (`run_pwr2_reactor`, `run_pwr2_loadfollow`, `run_pwr2_kinetics`, `run_pwr2_pressurizer`),
-  which in turn exposed eight previously-blind mutations, now closed with new checks. Two
+  to the mutation. `run_pwr2_engine`'s 17 groups and five of
+  the nine further runners came back clean; four needed their replay rides fixed (`run_pwr2_reactor`,
+  `run_pwr2_loadfollow`, `run_pwr2_kinetics`, `run_pwr2_pressurizer`), and that exposed eight
+  previously-blind mutations in two of them (reactor 5, pressurizer 3), now closed with new checks. Two
   settle-time claims could not simply be lengthened — past a point the ride itself grows too
   settled to tell a broken mutation from a clean one — and were split into their own longer
   fixture.
