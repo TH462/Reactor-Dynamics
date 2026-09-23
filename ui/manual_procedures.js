@@ -2920,7 +2920,34 @@
            * THE HOLD IS 480 s AND STEP 10's IS 1320 s — the old 1800 split, not lengthened. The
            * authored route meets every row at +383 s (1.25x inside 480); REACTOR POWER 0.1 % came
            * at 1444-1650 s from the creep press across seeds 1/7/42/123 (INHERITED, the table
-           * above), i.e. 964-1170 s into step 10, 1.13x inside 1320. */
+           * above), i.e. 964-1170 s into step 10, 1.13x inside 1320.
+           *
+           * ⚠ `overtaken` CLOSES A SOFT LOCK THE DWELL OPENS (quality pass, 2026-09-23, MEASURED,
+           * full stack, the leg driven as authored to step 9's entry at bank 202, then one
+           * continuous SLOW pull to a fixed bank and the note's policy after every five-minute
+           * dwell: over 1.0 INSERT one, under 0.05 WITHDRAW one). A pull far enough out that power
+           * reaches the heating range before the 300 s dwell ends leaves the rate FEEDBACK-limited
+           * near zero, and every tap the note asks for is cancelled by the temperature coefficient
+           * inside the next dwell — so the band row never meets again:
+           *
+           *   pull to   seed 42                               seed 7
+           *   213       done +405 s (0.178 DPM)               done +404 s (0.162)
+           *   225       done +495 s (0.691, power 0.72 %)     done +495 s (0.693, 0.37 %)
+           *   230       done +532 s (0.095, power 8.7 %)      done +532 s (0.129, 7.9 %)
+           *   235       NEVER in 3600 s — 10 taps, 0.023 DPM after the first dwell, bank 245,
+           *             REACTOR POWER 18.7 % (both seeds)
+           *   240, 250  the INTER RANGE rod stop (20 %) refuses the next tap; same dead step
+           *
+           * So the step is left to the plant once REACTOR POWER reads 0.5 % — step 11's own floor,
+           * the band edge `toFixed(1)` draws as "0.5". Below it no lock exists: under the heating
+           * range a positive reactivity keeps the rate up and one more tap lifts it (MEASURED: taps
+           * one at a time from 205 complete at +2010 s seed 42, +2349 s seed 7; 0.000 % power
+           * throughout). The authored route reads 0.000 % when step 9 completes, so the skip never
+           * fires on it. It also relieves the dead-STARTUP RATE strand of the pinned HR1 set once
+           * power arrives. `run_checklist_pwr2` §2aj drives the 235 pull and the authored creep. */
+          overtaken: { p: 'power_pct', op: '>=', v: 0.45,
+            text: 'This step is overtaken: REACTOR POWER already reads 0.5 %, so the reactor went critical and is carrying power. Leave the rods where they are and go on to the climb.',
+            industry: 'REACTOR POWER 0.5 % — CRITICALITY APPROACH OVERTAKEN. Rods stopped; STARTUP RATE under 1 DPM.' },
           accs_ordered: true,
           accs: [{ p: 'control_bank_steps', op: 'stopped', v: 60,
                    ask: 'Press SLOW, then hold WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position.',
@@ -3595,8 +3622,8 @@
                   * measured landings (569.7 / 575.8 / 579.0 / 578.8 degF): all four sit inside. */
                  { p: 'tavg_c', op: '~', v: 294.75, tol: 7.25, ask: 'Trim AVG COOLANT TEMPERATURE into its band.', label: 'AVG COOLANT TEMPERATURE between 550 and 576 °F (the band is near 556)' }],
           /* + `Rod Speed — Normal` (#735, develop's item 5 sweep): the text says "at MED" and this
-           * is the leg's FIRST rod move. The player arrives from `pwr_startup` step 14, which says
-           * "Press SLOW", so the selector IS at SLOW and nothing before this step changes it —
+           * is the leg's FIRST rod move. The player arrives from `pwr_startup`, whose last rod
+           * step (13 since the 2026-09-23 reconcile) says "Press SLOW", so the selector IS at SLOW and nothing before this step changes it —
            * steps 1-3 touch boron and the turbine only. The press is genuinely required here, and
            * only here: steps 5, 6 and 8 CONTINUE at the speed this step selects and get no ring. */
           hl: ['Withdraw', 'Rod Speed — Normal', 'Turbine Load'], hl_watch: ['Tavg'] },

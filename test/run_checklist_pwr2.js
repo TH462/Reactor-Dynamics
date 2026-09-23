@@ -1941,6 +1941,27 @@ if (!only && RUN_B) {
       ck('...RED BY INJECTION: a dropped label, an echo, a 15-word ask and an ask on a one-row step are each caught',
          r1.noLabel === 1 && r2.echo === 1 && r3.long === 1 && r4.single === 1,
          'noLabel ' + r1.noLabel + ', echo ' + r2.echo + ', long ' + r3.long + ', single ' + r4.single);
+      /* THE OWNER-FORMAT BRANCHES (2026-09-23) GET THEIR OWN INJECTIONS (quality pass, same day):
+       * the four above all land on the LEGACY branch, so the 30-word cap and the narrowed one-row
+       * rule would have stayed green through a `fmt` test that matched everything. On a one-row
+       * owner-format step: a 31-word ask -> long 1; its ask set to the step's own line -> single 1;
+       * a 20-word ask (over the legacy 14, inside his 30) -> long 0. */
+      var fmtSt = null;
+      POOL.forEach(function (proc) { (proc.steps || []).forEach(function (st) {
+        if (!fmtSt && st.accs && st.accs.filter(function (e) { return !e.hidden; }).length === 1 &&
+            st.accs[0].ask != null && st.accs[0].note != null) fmtSt = st;
+      }); });
+      var r5 = { long: -1, single: -1 }, r6 = { single: -1 }, r7 = { long: -1 };
+      if (fmtSt) {
+        var fAsk = fmtSt.accs[0].ask;
+        fmtSt.accs[0].ask = new Array(32).join('word ').trim() + '.'; r5 = counts();
+        fmtSt.accs[0].ask = fmtSt.text;                               r6 = counts();
+        fmtSt.accs[0].ask = new Array(21).join('word ').trim() + '.'; r7 = counts();
+        fmtSt.accs[0].ask = fAsk;
+      }
+      ck('...RED BY INJECTION, owner format: a 31-word ask and an ask repeating its step line are caught; a 20-word ask is not',
+         !!fmtSt && r5.long === 1 && r6.single === 1 && r7.long === 0,
+         fmtSt ? 'long@31 ' + r5.long + ', single@echo ' + r6.single + ', long@20 ' + r7.long : 'no one-row owner-format step in the pool');
       var clean = counts();
       ck('...and every injection was cleaned up (the sweep is green again)',
          !!probe.label && probe.ask === savedAsk && !clean.noLabel && !clean.echo && !clean.long && !clean.single,
@@ -2974,6 +2995,82 @@ if (!only && RUN_B) {
     })();
   })();
 
+  /* 2aj. THE APPROACH STEP CANNOT STRAND A PLAYER WHO PULLED INTO THE HEATING RANGE (quality
+   * pass, 2026-09-23 — the rationale and the per-route table are on `pwr_startup` step 9's
+   * `overtaken` in ui/manual_procedures.js).
+   *
+   * Step 9 is ordered [rods still 60 s, rods still 300 s, STARTUP RATE 0.05-1.00]. A pull far
+   * enough out that power reaches the heating range inside the dwell leaves the rate
+   * feedback-limited near zero, and every tap the note asks for is cancelled inside the next
+   * dwell: MEASURED, a continuous pull to bank 235 never completed in 3600 s on seeds 42 and 7.
+   * Both halves are driven through the LIVE runtime, from the plant the authored replay of steps
+   * 2-8 leaves (bank 202):
+   *   .1  the 235 pull then the note's policy — the step LEAVES (as `overtaken`), the leg moves on
+   *   .2  the authored creep (+11 slow) — the step completes on its OWN rows and the player's
+   *       Continue, not the skip (a met step left un-Continued IS later overtaken, by design:
+   *       measured, the creep sat awaiting Continue until +1926 s, REACTOR POWER 0.46 %)
+   * INJECTION, proven in place: `delete step9.overtaken` -> .1 red (step 9 still active at the
+   * cap); a threshold of 0.0 on the skip -> .2 red (`overtaken`). */
+  (function () {
+    var proc = null;
+    POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
+    var S9 = -1;
+    ((proc && proc.steps) || []).forEach(function (st, k) {
+      if (S9 < 0 && (st.accs || []).some(function (e) { return e && e.p === 'startup_rate_dpm' && e.op === '~' && st.accs_ordered; })) S9 = k;
+    });
+    function route(pull) {
+      var svc = mkSvc('hot_zero_power'), s = null, i;
+      function tick() { var r = svc.tick(); if (r) s = r; return s; }
+      function t() { return s.metadata.sim_time; }
+      function holdS(sec) { var t0 = t(); while (t() - t0 < sec) tick(); }
+      function bank() { return s.control_state.rod_groups.filter(function (g) { return g.id === 'control_rods' || g.function === 'control'; })[0].steps; }
+      tick();
+      for (var k = 1; k < S9; k++) {
+        var st = proc.steps[k];
+        if (st.cmd) svc.handleCommand(JSON.parse(JSON.stringify(st.cmd)));
+        holdS(st.hold || 5);
+      }
+      svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
+      for (i = 0; i < 5; i++) tick();
+      function ckl() { return s.instructor && s.instructor.checklist; }
+      var guard = 0;
+      while (ckl() && ckl().step_index < S9 && guard++ < 100) {
+        svc.handleCommand({ action: 'checklist_check', index: ckl().step_index }); tick();
+      }
+      var entered = ckl() ? ckl().step_index : -1, t9 = t(), goal = bank() + pull;
+      svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: pull, speed: 'slow' });
+      var lastB = bank(), lastMove = t(), left = null, by = null;
+      while (t() - t9 < 2400) {
+        tick();
+        var c = ckl();
+        if (!c || c.step_index !== S9) { left = t() - t9; by = c && c.done_by ? c.done_by[S9] : null; break; }
+        /* the player's Continue: a met step waits for the press, and the skip must not beat it */
+        if (c.awaiting_ack) { svc.handleCommand({ action: 'checklist_check', index: S9 }); continue; }
+        var b = bank();
+        if (b !== lastB) { lastB = b; lastMove = t(); }
+        if (b === goal && t() - lastMove >= 300) {           /* the note's policy, one tap per dwell */
+          var r = s.instruments.startup_rate, d = r > 1.0 ? -1 : (r < 0.05 ? 1 : 0);
+          if (d) {
+            goal += d; lastMove = t();
+            try { svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: d, speed: 'slow' }); }
+            catch (e) { goal -= d; }                          /* a rod stop refusing the tap */
+          }
+        }
+      }
+      return { entered: entered, left: left, by: by, bank: bank(), pw: s.instruments.power_range };
+    }
+    if (S9 < 0) { ck('2aj. pwr_startup carries the ordered STARTUP RATE approach step', false, 'not found'); return; }
+    var far = route(33), crept = route(11);
+    ck('2aj.1 a pull into the heating range does not strand the approach step — it is overtaken (quality pass 2026-09-23)',
+       far.entered === S9 && far.left != null && far.by === 'overtaken',
+       'entered ' + (far.entered + 1) + ', left ' + (far.left == null ? 'NEVER in 2400 s' : '+' + far.left.toFixed(0) + ' s by ' + far.by) +
+       ', bank ' + far.bank + ', REACTOR POWER ' + far.pw.toFixed(2) + ' %');
+    ck('2aj.2 ...and the authored creep completes it on its OWN rows, well before the skip could fire',
+       crept.entered === S9 && crept.left != null && crept.by != null && crept.by !== 'overtaken' && crept.left < 480,
+       'entered ' + (crept.entered + 1) + ', left ' + (crept.left == null ? 'NEVER' : '+' + crept.left.toFixed(0) + ' s by ' + crept.by) +
+       ', REACTOR POWER ' + crept.pw.toFixed(3) + ' %');
+  })();
+
   /* 2ae. A DEAD GAUGE STRANDS THE LEG — THE WHOLE-POOL SWEEP (#773, 2026-09-19).
    *
    * §2ad above closed ONE instance by hand (`pwr_startup` step 9's INTER RANGE row, by
@@ -3235,7 +3332,8 @@ if (!only && RUN_B) {
       'pwr_startup:1:tavg_c': 'tavg',                        // ~ 285.83      dead 30.00 vs true 286.3 degC
       'pwr_startup:1:pressure_mpa': 'primary_pressure',      // ~ 15.41       his 2200-2270 psi row
       'pwr_startup:2:boron_ppm': 'boron_analyzer',           // ~ 719 [SOLE]  dead 0.000 vs true 718.9 ppm
-      'pwr_startup:9:startup_rate_dpm': 'startup_rate',      // ~ 0.5275      9b, behind two `stopped` rows
+      /* 'pwr_startup:9:startup_rate_dpm' moved to RELIEVED_EXPECTED (quality pass 2026-09-23): step 9's
+       * `overtaken` on REACTOR POWER 0.5 % stands it down off-channel once power arrives (§2aj). */
       'pwr_startup:10:power_pct': 'power_range',             // > 0.05        the row #749's relief leans ON
       'pwr_startup:11:power_pct': 'power_range',             // >= 0.45 [SOLE]
       'pwr_startup:12:startup_rate_dpm': 'startup_rate',     // ~ 0           dead -5.000 DPM (range floor)
@@ -3332,6 +3430,7 @@ if (!only && RUN_B) {
       'pwr_startup:7:sr_counts_cps': 1,
       'pwr_startup:8:sr_counts_cps': 1,
       'pwr_startup:10:ir_amps': 1,   // step 9 until the 2026-09-23 split
+      'pwr_startup:9:startup_rate_dpm': 1,   // relieved by step 9's `overtaken` (power_range), §2aj
     };
 
     function diffSet(got, want) {

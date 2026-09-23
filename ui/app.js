@@ -4111,7 +4111,12 @@
    * auto on the second. Omitted entirely when there is no `accs` head to name, so a step that
    * authors none of the new fields gets the exact key it always did. */
   function cklAutoKeyStr(a, s, want) {
-    var head = a.st.accs ? cklActiveAccsHead(a.st, a.ck) : -1;
+    /* ONLY on a step that authors a per-substep rung (quality pass, 2026-09-23): keyed on every
+     * `accs` step, a LEGACY multi-row step whose rows share the step's one rung changed key each
+     * time a row ticked, so auto re-forced that same rung over a player's override mid-step —
+     * the "exact key it always did" claim above was false for every other walkthrough. */
+    var subRungs = !!a.st.accs && a.st.accs.some(function (e) { return e && +e.wait_speed > 0; });
+    var head = subRungs ? cklActiveAccsHead(a.st, a.ck) : -1;
     return a.ck.procedure_id + '#' + a.ck.step_index + '|' + want +
            (head >= 0 ? '|s' + head : '') +
            ((s.true_state && s.true_state.speed_hold) ? '|h' : '');

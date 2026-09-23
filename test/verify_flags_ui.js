@@ -612,6 +612,51 @@ function pinChannel(ch) {
   ck('dev (pwr2): with no accs[].wait_speed authored, the STEP\'s own wait_speed still wins',
     fb.accel === 10 && +fb.rung === 10,
     'clock landed at ' + fb.accel + '× with rung ' + fb.rung + ' (step authors 10×, neither accs entry does)');
+
+  /* ---- AND A LEGACY MULTI-ROW STEP KEEPS THE PLAYER'S OVERRIDE WHEN A ROW TICKS (quality pass,
+   * 2026-09-23). The substep index went into auto's KEY on every `accs` step, so on a step with
+   * no per-substep rung a row ticking mid-step changed the key and auto re-forced the step's one
+   * rung over the player's own speed choice. Same leg as above (rung 10× on the STEP only): the
+   * player presses 1×, then row A latches the way the runtime latches it, and the clock must stay
+   * at 1×. Its own leg, because the fallback leg's row A is met from the first paint (nothing
+   * would tick). INJECTION-PROVEN: the pre-fix key (`a.st.accs ? cklActiveAccsHead(...)`) reds it
+   * at 10×. */
+  await b.ctx.close();
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  await b.page.evaluate(function () {
+    var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_legacy'; });
+    window.RD.MANUAL_PROCEDURES.pwr2 = P;
+    P.push({ id: 'zz_pace_legacy', category: 'control', manual_ref: 'ZZ-07',
+             title: 'Pacing legacy probe', purpose: 'Rung fixture.', from: 'hot_full_power',
+             steps: [{ text: 'A legacy two-row step with one step-level rung.', control: '(observe)',
+                       wait_speed: 10,
+                       accs: [
+                         { p: 'power_pct', op: '<', v: -1, label: 'A not met yet' },
+                         { p: 'power_pct', op: '<', v: -1, label: 'B not met' }
+                       ] }] });
+  });
+  await b.page.click('button[data-ckl-start="zz_pace_legacy"]', { timeout: 4000 }).catch(function () {});
+  await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+  await b.page.waitForTimeout(1800);
+  var lg0 = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  await b.page.evaluate(function () {
+    var btn = document.querySelector('#speed [data-speed="1"]'); if (btn) btn.click();
+  });
+  await b.page.waitForTimeout(1500);
+  var ov0 = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  await b.page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    if (c.accsState && c.accsState[0]) c.accsState[0].met = true;
+  });
+  await b.page.waitForTimeout(2000);
+  var ov1 = await b.page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+    return { accel: svc.timeAcceleration, met0: !!(c.accsState && c.accsState[0] && c.accsState[0].met) };
+  });
+  ck('dev (pwr2): a legacy multi-row step keeps the player\'s speed override when one of its rows ticks',
+    lg0 === 10 && ov0 === 1 && ov1.met0 && ov1.accel === 1,
+    'auto ' + lg0 + '×, player pressed 1× -> ' + ov0 + '×, row A met ' + ov1.met0 + ' -> ' + ov1.accel + '×');
   await b.ctx.close();
 
   /* ---- AND ON REAL CONTENT, MID-RUN: THE CLOCK RE-ACTS WHEN THE ACTIVE SUBSTEP CHANGES (2026-09-23,

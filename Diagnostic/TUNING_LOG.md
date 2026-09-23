@@ -29,6 +29,26 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-23-workbench-b (quality pass on the Mode 3 to Mode 1 port: a soft lock on step 9, and an auto-speed key regression)
+
+- **A DWELL CHECK-OFF CAN BE UNREACHABLE ONCE FEEDBACK OWNS THE RATE.** Step 9 (rods still five
+  minutes, then STARTUP RATE 0.05 to 1.00 per minute) never completes for a player who pulls into
+  the heating range: MEASURED, full stack, one slow pull from bank 202 to 235 then the note's
+  one-tap-per-five-minutes policy, seeds 42 and 7: rate 0.023 after the first dwell, ten taps,
+  REACTOR POWER 18.7 %, never met in 3,600 s. Pulls to 213/216/220/225/230 complete (+404 to
+  +532 s). Fixed with an `overtaken` on REACTOR POWER 0.5 %; the authored route reads 0.000 % at
+  completion so it never fires there. Gate: `run_checklist_pwr2` §2aj, injection-proven.
+- **"Never completes on seed 7" (the port's report) was its 1,800 s cap, not a lock**: tapping one
+  step per five minutes from 205 completes at +2,010 s (seed 42) and +2,349 s (seed 7).
+- **Text/grading gap, not fixed (owner's wording):** a CRITICAL core reads STARTUP RATE 0.006 to
+  0.036 for two hours (bank 208, true reactivity +2.7 to +7.4 pcm) — "positive and steady with the
+  rods stopped", as the card says, yet under the 0.05 floor. The note covers 0.01 and 0.15, not
+  0.02-0.05; one more tap always resolves it.
+- **An auto-speed KEY change is a behaviour change for every leg.** The substep index went into
+  auto's key on every `accs` step, so a legacy multi-row step re-forced its rung over the
+  player's override when a row ticked. Now only when an entry authors `wait_speed`
+  (`verify_flags_ui`, injection-proven: pre-fix reds at 10×).
+
 ## Session log — 2026-09-23-workbench-a (Mode 3 to Mode 1 walkthrough brought down to the owner's per-substep format; three traps)
 
 `pwr_startup` now carries `Blueprint/walkthrough_steps/02_mode3_to_mode1.md` (reconcile record at
