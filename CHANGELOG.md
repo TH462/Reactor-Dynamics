@@ -46,8 +46,9 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   - default seal leak trips at 18m39s (was 15m00s);
   - full-severity seal leak trips at 7m30s on SI, with true containment 18.33 psia (0.1264 MPa),
     above the setpoint;
-  - large break severity 1.0 trips on overtemperature ΔT at 4.56 s, SI at 5.74 s (was both at
-    3.76 s on SI).
+  - large break severity 1.0 (injected at t = 0) trips on overtemperature ΔT at 4.76 s, SI at
+    5.56 s (was both at 3.58 s on SI); fan coolers 47.56 → 49.54 s, the high-high isolation and
+    spray unchanged.
   Manual 07 PWR-E23 is rewritten for the seal leak now tripping the reactor.
 
 ## [Alpha 1.8.0-rc3] — 2026-09-22
