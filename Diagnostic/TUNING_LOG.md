@@ -55,8 +55,11 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
     The TMI sequence, tube rupture and loss of feed are unchanged.
   - **The default seal leak (40 %) now trips the reactor at 15 min**, measured full stack on
     seeds 1, 7, 99 and default. Manual 07 PWR-E23 said "no trip, no ESF" and is rewritten.
-  - **The latch is not random noise:** all four seeds latch at 15m00s with TRUE containment at
-    17.78 psia (0.1226 MPa), 0.3 psi under the 18.1 psia (0.1254 MPa) setpoint. After the trip,
+  - **The latch is NOISE, but deterministic:** all four seeds latch at 15m00s with TRUE
+    containment at 17.78 psia (0.1226 MPa), 0.3 psi (2.9 sigma) under the 18.1 psia (0.1254 MPa)
+    setpoint. The instrument PRNG is seeded from the CHANNEL ID, not the run seed
+    (`pwr2_instruments.js:55`), so `--seed` cannot move it. Do not read seed agreement on an
+    instrument-noise effect as proof the effect is not noise. After the trip,
     true pressure creeps to only 18.16 psia by 39 min. Recorded on #800.
   - The board's refusal text (the kernel permissive row, which refuses before the shell) now
     names the SI latch.
