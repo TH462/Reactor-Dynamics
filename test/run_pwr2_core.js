@@ -504,20 +504,29 @@ function runSuite(C, rec, quiet) {
       return { heats: heats, exchanges: ex, flows: flows };
     }
     function ride(forceFull) {
-      var s = build(), bound = 0, prev = C.EXCHANGE_PRECHECK.forceFull;
+      var s = build(), bound = 0, skipped = 0, prev = C.EXCHANGE_PRECHECK.forceFull;
       C.EXCHANGE_PRECHECK.forceFull = forceFull;
-      try { for (var n = 0; n < 25; n++) bound += C.step(s, DTX, drive(s)).limiterBound; }
+      try {
+        for (var n = 0; n < 25; n++) {
+          var r = C.step(s, DTX, drive(s)); bound += r.limiterBound; skipped += r.exchangeSkipped;
+        }
+      }
       finally { C.EXCHANGE_PRECHECK.forceFull = prev; }
       var st = [s.P];
       s.nodes.forEach(function (nd) { st.push(nd.h); if (nd.wall) st = st.concat(nd.wall.T); });
-      return { st: st, bound: bound };
+      return { st: st, bound: bound, skipped: skipped };
     }
     var fast = ride(false), full = ride(true), diff = 0;
     for (var q = 0; q < full.st.length; q++) if (!Object.is(fast.st[q], full.st[q])) diff++;
     ckT('the exchange pre-check is EXACT — skipping the bound where it cannot bind is bit-identical ' +
         'to booking it everywhere, on a fixture that binds',
-        diff === 0 && full.bound >= 50 && fast.bound === full.bound,
-        diff + ' of ' + full.st.length + ' state values differ; limiter bound ' + fast.bound +
+        /* non-vacuous BOTH ways: the fast ride must actually SKIP (or the A/B compares the full
+         * path with itself) and the limiter must actually BIND (or there is nothing to be exact
+         * about); the forced ride must skip nothing (or the switch is dead) */
+        diff === 0 && full.bound >= 50 && fast.bound === full.bound &&
+          fast.skipped > 0 && full.skipped === 0,
+        diff + ' of ' + full.st.length + ' state values differ; ' + fast.skipped +
+        ' exchange node-steps skipped (skip ride) vs ' + full.skipped + ' (forced); limiter bound ' + fast.bound +
         ' (skip) vs ' + full.bound + ' (forced full) node-steps over 25 steps, Courant ' +
         CS.join(' / '));
   })();

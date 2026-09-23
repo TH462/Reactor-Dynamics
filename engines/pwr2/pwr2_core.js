@@ -160,11 +160,12 @@
    * two-phase node is therefore bounded slightly sooner than a strict temperature argument would,
    * and never later.
    *
-   * THE SATURATION LINE IS MEMOISED ON P (2026-09-23). `h_f`, `h_g` and the two-phase minimum
-   * are pure functions of the pressure alone, and every call inside one `step` passes the same
-   * `sys.P` — eleven identical evaluations a step. The memo returns the value the call would have
-   * computed, from the same functions and the same argument, so it is exact by construction; a
-   * NaN pressure never equals the memo key and simply recomputes. */
+   * THE SATURATION LINE IS MEMOISED ON P (2026-09-23). The memo is MODULE-WIDE — it spans steps,
+   * systems and direct calls — and it is exact because `h_f`, `h_g` and the two-phase minimum are
+   * PURE functions of the pressure alone (pwr2_water holds only constant coefficient tables: no
+   * warm start, no cache). If Layer 0 ever gains state, this memo stops being exact. Within one
+   * `step` every call passes the same `sys.P`, which is why it pays: eleven identical evaluations
+   * a step. A NaN pressure never equals the key and simply recomputes. */
   /* EXCHANGE_PRECHECK.forceFull — a GATE's switch, never a player's (2026-09-23). `true` books
    * every recorded exchange on every node, i.e. the full path the pre-check in `step` skips.
    * `run_pwr2_core` steps one fixture both ways and asserts the states are BIT-IDENTICAL, which
@@ -405,7 +406,10 @@
      *
      * `qIn/qhIn` are the ADVECTIVE inflow terms and `gIn/ghIn` the HEAT-EXCHANGE ones. They are
      * separate arrays only so each half can be read on its own by a gate; the limiter below sums
-     * them, because they are the same algebraic object. Both are accumulated from terms that are
+     * them, because they are the same algebraic object. ⚠ SINCE THE PRE-CHECK (2026-09-23)
+     * `gIn/ghIn/exQ` ARE BOOKED ONLY ON NODES THAT COULD BIND — they are 0 on a skipped node,
+     * so they are NOT a full exchange ledger; a gate wanting the whole ledger must set
+     * `EXCHANGE_PRECHECK.forceFull`. `gUp` is the full per-node upper bound. Both are accumulated from terms that are
      * ALREADY in `dH` — neither adds anything to it, and neither changes one arithmetic operation
      * on the healthy path. See THE MAXIMUM-PRINCIPLE LIMITER below. */
     var qIn = new Array(N), qhIn = new Array(N), gIn = new Array(N), ghIn = new Array(N),
@@ -730,7 +734,7 @@
      * receiver took), on the same declared budget, and with the same reading: a step that needs it
      * was not a valid step, and the alternative is not conservation — it is a state the property
      * library cannot represent. */
-    var limiterBound = 0, limiterWithheld_kJ = 0;
+    var limiterBound = 0, limiterWithheld_kJ = 0, exchangeSkipped = 0;
     for (i = 0; i < N; i++) {
       a[i] = sys.nodes[i].h + dt * dH[i] / m_n[i];
       /* ONE LEDGER: advective inflow AND declared heat exchange. Summing them is not a
@@ -744,7 +748,7 @@
       var cUp = qIn[i] + gUp[i];
       if (xUnsure[i] || !(dt * cUp <= m_n[i]) || EXCHANGE_PRECHECK.forceFull) {
         for (var k = 0; k < xNode.length; k++) if (xNode[k] === i) resolveExchange(k);
-      }
+      } else if (gUp[i] > 0) exchangeSkipped++;
       var cIn = qIn[i] + gIn[i], chIn = qhIn[i] + ghIn[i];
       if (cIn > 0 && dt * cIn > m_n[i]) {
         /* the remainder — core power, every UNDECLARED duty, and any withdrawal term — carried
@@ -1002,7 +1006,11 @@
        * bound did not let the fluid take. Both are 0 on every healthy step by construction, and
        * a run that reads non-zero here was leaning on the limiter rather than on the physics. */
       limiterBound: limiterBound,
-      limiterWithheld_kJ: limiterWithheld_kJ
+      limiterWithheld_kJ: limiterWithheld_kJ,
+      /* node-steps that HAD recorded exchanges and took the pre-check's skip (2026-09-23) — read
+       * by the exactness gate so it can prove the skip actually happened, or its A/B would
+       * compare the full path with itself */
+      exchangeSkipped: exchangeSkipped
     };
   }
 
