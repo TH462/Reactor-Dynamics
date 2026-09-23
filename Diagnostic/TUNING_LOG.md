@@ -37,6 +37,45 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 - The inherited "11,430 fields" does not reproduce; the rig counts 11,070.
 - The owner will test casualty-time fast-forward on slower machines.
 
+## Session log — 2026-09-23-workbench-b (quality pass on the Mode 3 to Mode 1 port: a soft lock on step 9, and an auto-speed key regression)
+
+- **A DWELL CHECK-OFF CAN BE UNREACHABLE ONCE FEEDBACK OWNS THE RATE.** Step 9 (rods still five
+  minutes, then STARTUP RATE 0.05 to 1.00 per minute) never completes for a player who pulls into
+  the heating range: MEASURED, full stack, one slow pull from bank 202 to 235 then the note's
+  one-tap-per-five-minutes policy, seeds 42 and 7: rate 0.023 after the first dwell, ten taps,
+  REACTOR POWER 18.7 %, never met in 3,600 s. Pulls to 213/216/220/225/230 complete (+404 to
+  +532 s). Fixed with an `overtaken` on REACTOR POWER 0.5 %; the authored route reads 0.000 % at
+  completion so it never fires there. Gate: `run_checklist_pwr2` §2aj, injection-proven.
+- **"Never completes on seed 7" (the port's report) was its 1,800 s cap, not a lock**: tapping one
+  step per five minutes from 205 completes at +2,010 s (seed 42) and +2,349 s (seed 7).
+- **Text/grading gap, not fixed (owner's wording):** a CRITICAL core reads STARTUP RATE 0.006 to
+  0.036 for two hours (bank 208, true reactivity +2.7 to +7.4 pcm) — "positive and steady with the
+  rods stopped", as the card says, yet under the 0.05 floor. The note covers 0.01 and 0.15, not
+  0.02-0.05; one more tap always resolves it.
+- **An auto-speed KEY change is a behaviour change for every leg.** The substep index went into
+  auto's key on every `accs` step, so a legacy multi-row step re-forced its rung over the
+  player's override when a row ticked. Now only when an entry authors `wait_speed`
+  (`verify_flags_ui`, injection-proven: pre-fix reds at 10×).
+
+## Session log — 2026-09-23-workbench-a (Mode 3 to Mode 1 walkthrough brought down to the owner's per-substep format; three traps)
+
+`pwr_startup` now carries `Blueprint/walkthrough_steps/02_mode3_to_mode1.md` (reconcile record at
+the end of that file). Traps worth keeping:
+
+- **A "wait, then read the rate" check-off needs a DWELL, and four minutes was too short.** A
+  STARTUP RATE band on its own ticks the post-tap transient; a `steady` row on the rate latched on
+  subcritical banks 205-207 (a slowly decaying rate is "steady"). Rods still 240 s + rate ≥ 0.05
+  DPM ticked bank 207 at −5.1 pcm (seed 7) — SUBCRITICAL; 300 s + 0.05 never did (banks 202-207,
+  seeds 42 and 7), and ticks bank 208 (+2.8 pcm) and the authored 213 at +383 s. The dwell is
+  what makes the reading honest, not the band.
+- **A check that iterates `ckl.accs` is blind to every `acc` step** — `run_checklist_pwr2` 2ah.4's
+  "STILL BLOCKS" read the snapshot from BEFORE its own injection for as long as its only step-1
+  target was an `acc`. Converting that step to `accs` exposed it. Converting acc → accs anywhere
+  can surface a hollow check like this; read what the check inspects before calling it a regression.
+- **An injection must pick a target with nothing to restore.** 2y's one-row-ask injection chose
+  the first single-row step, set `ask`, then `delete`d it — which, once a real ask sat there,
+  deleted the owner's text for the rest of the run and reddened its own cleanup check.
+
 ## Session log — 2026-09-22-develop-a (the endgame's wall limiter cost 290 µs a step through a side door around #514's table; the plant already reached core damage)
 
 Covers `1a684bed`, `373ddf42`, `ee0ddd72`, `5bd1372d`, `148c9384`, `ad583f86`, `79236d93`. The

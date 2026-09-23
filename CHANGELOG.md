@@ -30,7 +30,42 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.8.0-rc2] — 2026-09-22
+## [Alpha 1.8.0-rc3] — 2026-09-22
+
+### Added
+- **Ops dashboard: a session-duration histogram and a "first 60 seconds" section** (#797). The
+  percentiles hid a bimodal shape — 17 of 72 sessions record a span of exactly zero against a
+  tail to 5.6 hours — so the zero-span group now has its own row, labelled as a batching artefact
+  rather than an instant visit. The first-minute view shows which control and panel come first
+  and how far a session gets, on the clock with history behind it, saying so on the page.
+- **Ops dashboard: the Sessions view sorts and filters** (#797). Newest, oldest, longest and
+  shortest; filters on device, country, referrer kind and whether the session scrammed. Device,
+  country and referrer now show on each card so a filter's effect is visible. The 100-row cap
+  interacts with sorting — only oldest-first changes what is fetched — and the page says so
+  rather than implying the longest session in the window is on screen.
+- **Ops dashboard: release markers on the By-day chart** (#797). Each public release is drawn at
+  the day it first reached a real user — taken from the telemetry itself rather than a stamped
+  list, so it cannot go stale and marks arrival rather than tagging. Preview builds are excluded:
+  they land on the tester domain and contribute none of the traffic being graphed.
+
+### Changed
+- **Mode 3 to Mode 1 walkthrough (`pwr_startup`) brought down to the owner's new step format**
+  (`Blueprint/walkthrough_steps/02_mode3_to_mode1.md`, now the live file). Each step's line is its
+  goal; each lettered substep carries its own action, note and "Suggested time warp" rung, and
+  the walkthrough's auto-speed follows the substep the player is on. Old step 9 is split into the
+  approach (9) and the climb from critical (10); old step 11 folds into 11's note; still 17 steps.
+  Grading: step 1 now checks his 544-549 °F and 2200-2270 psi; step 9 gains its first graded rows
+  (rods still 60 s, then still five minutes and STARTUP RATE 0.05 to 1.00 — measured never to
+  tick a subcritical core); steps 11, 13 and 17 grade the tile's render-band floor (0.45 %,
+  5.05 %, 10.05 % and OUTPUT 8.51-11.49 MWe); step 17 replaces "Mode 1" with his two rows; step
+  14 is ordered (LATCH, then OUTPUT). His "3 steps short of the 1/M prediction" is not graded —
+  the prediction exists only in the panel.
+
+### Fixed
+- **Internal rows no longer show `0` landing visits** (#797) in Country × referrer × day. A visit
+  is credited only to the page load that starts a session, so an internal row can never carry
+  one; it now shows an em dash with the reason. No number changed.
+
 
 ### Added
 - **Containment spray, fan coolers and steam-line isolation, auto-only** (#784). PWR2's

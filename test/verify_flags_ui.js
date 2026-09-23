@@ -544,6 +544,177 @@ function pinChannel(ch) {
           : 'no pwr2 step authors wait_speed');
   await b.ctx.close();
 
+  /* ---- SUBSTEP PACING: THE ACTIVE SUBSTEP'S OWN wait_speed WINS OVER AN EARLIER ONE (the
+   * walkthrough-step-format project). Same dark-wire risk #796 names, one field over:
+   * `accs[i].wait_speed` is read in exactly one place (`cklAccsHeadRung`), so this asserts the
+   * CLOCK rather than trusting a source read that the field is "honoured".
+   *
+   * A SYNTHETIC LEG, one step, two `accs` heads: A trivially met (`power_pct > -1`), B trivially
+   * unmet (`power_pct < -1`) — so B is the first unmet VISIBLE row from the instant the step
+   * paints, no plant-state driving required. A's own `wait_speed` (5×) must NOT win; only B's
+   * (60×) may, because B is the substep the player is actually on. THE NEGATIVE HALF IS WHAT
+   * MAKES IT NON-VACUOUS, same shape as #796: a build that ignores `accs[].wait_speed` altogether
+   * reads neither number (no step-level `wait_speed`, `hold` is 0) and never leaves 1×, which
+   * would still show a "PASS" on a check that only asserted "accel !== 5". */
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  await b.page.evaluate(function () {
+    var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_probe'; });
+    window.RD.MANUAL_PROCEDURES.pwr2 = P;
+    P.push({ id: 'zz_pace_probe', category: 'control', manual_ref: 'ZZ-05',
+             title: 'Pacing probe', purpose: 'Rung fixture.', from: 'hot_full_power',
+             steps: [{ text: 'A step whose second substep sets its own rung.', control: '(observe)',
+                       accs: [
+                         { p: 'power_pct', op: '>', v: -1, label: 'A met', wait_speed: 5 },
+                         { p: 'power_pct', op: '<', v: -1, label: 'B not met', wait_speed: 60 }
+                       ] }] });
+  });
+  await b.page.click('button[data-ckl-start="zz_pace_probe"]', { timeout: 4000 }).catch(function () {});
+  await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+  await b.page.waitForTimeout(1800);
+  var pace = await b.page.evaluate(function () {
+    return { accel: globalThis.RD.__dev.service().timeAcceleration,
+             rung: (document.querySelector('#speed .ckl-speed-rung') || {}).getAttribute
+                   ? document.querySelector('#speed .ckl-speed-rung').getAttribute('data-speed') : null };
+  });
+  ck('dev (pwr2): the ACTIVE substep\'s wait_speed sets the clock, not an earlier substep\'s',
+    pace.accel === 60 && +pace.rung === 60,
+    'clock landed at ' + pace.accel + '× with rung ' + pace.rung + ' (A authors 5×, B authors 60×, B is unmet)');
+  await b.ctx.close();
+
+  /* ---- AND THE FALLBACK: NO `accs[].wait_speed` ANYWHERE -> THE STEP'S OWN `wait_speed` STANDS
+   * (or, absent that too, the 30 s/`hold` rule). `cklAccsHeadRung` must return null cleanly rather
+   * than pinning the clock at 1× merely because `st.accs` exists — the shape a half-built
+   * override (checks for `st.accs` but forgets to fall through) would produce. Same leg, no
+   * `wait_speed` on either `accs` entry, a `wait_speed: 10` on the STEP. */
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  await b.page.evaluate(function () {
+    var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_fallback'; });
+    window.RD.MANUAL_PROCEDURES.pwr2 = P;
+    P.push({ id: 'zz_pace_fallback', category: 'control', manual_ref: 'ZZ-06',
+             title: 'Pacing fallback probe', purpose: 'Rung fixture.', from: 'hot_full_power',
+             steps: [{ text: 'A step with accs but no per-substep rung.', control: '(observe)',
+                       wait_speed: 10,
+                       accs: [
+                         { p: 'power_pct', op: '>', v: -1, label: 'A met' },
+                         { p: 'power_pct', op: '<', v: -1, label: 'B not met' }
+                       ] }] });
+  });
+  await b.page.click('button[data-ckl-start="zz_pace_fallback"]', { timeout: 4000 }).catch(function () {});
+  await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+  await b.page.waitForTimeout(1800);
+  var fb = await b.page.evaluate(function () {
+    return { accel: globalThis.RD.__dev.service().timeAcceleration,
+             rung: (document.querySelector('#speed .ckl-speed-rung') || {}).getAttribute
+                   ? document.querySelector('#speed .ckl-speed-rung').getAttribute('data-speed') : null };
+  });
+  ck('dev (pwr2): with no accs[].wait_speed authored, the STEP\'s own wait_speed still wins',
+    fb.accel === 10 && +fb.rung === 10,
+    'clock landed at ' + fb.accel + '× with rung ' + fb.rung + ' (step authors 10×, neither accs entry does)');
+
+  /* ---- AND A LEGACY MULTI-ROW STEP KEEPS THE PLAYER'S OVERRIDE WHEN A ROW TICKS (quality pass,
+   * 2026-09-23). The substep index went into auto's KEY on every `accs` step, so on a step with
+   * no per-substep rung a row ticking mid-step changed the key and auto re-forced the step's one
+   * rung over the player's own speed choice. Same leg as above (rung 10× on the STEP only): the
+   * player presses 1×, then row A latches the way the runtime latches it, and the clock must stay
+   * at 1×. Its own leg, because the fallback leg's row A is met from the first paint (nothing
+   * would tick). INJECTION-PROVEN: the pre-fix key (`a.st.accs ? cklActiveAccsHead(...)`) reds it
+   * at 10×. */
+  await b.ctx.close();
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  await b.page.evaluate(function () {
+    var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_legacy'; });
+    window.RD.MANUAL_PROCEDURES.pwr2 = P;
+    P.push({ id: 'zz_pace_legacy', category: 'control', manual_ref: 'ZZ-07',
+             title: 'Pacing legacy probe', purpose: 'Rung fixture.', from: 'hot_full_power',
+             steps: [{ text: 'A legacy two-row step with one step-level rung.', control: '(observe)',
+                       wait_speed: 10,
+                       accs: [
+                         { p: 'power_pct', op: '<', v: -1, label: 'A not met yet' },
+                         { p: 'power_pct', op: '<', v: -1, label: 'B not met' }
+                       ] }] });
+  });
+  await b.page.click('button[data-ckl-start="zz_pace_legacy"]', { timeout: 4000 }).catch(function () {});
+  await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+  await b.page.waitForTimeout(1800);
+  var lg0 = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  await b.page.evaluate(function () {
+    var btn = document.querySelector('#speed [data-speed="1"]'); if (btn) btn.click();
+  });
+  await b.page.waitForTimeout(1500);
+  var ov0 = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  await b.page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    if (c.accsState && c.accsState[0]) c.accsState[0].met = true;
+  });
+  await b.page.waitForTimeout(2000);
+  var ov1 = await b.page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+    return { accel: svc.timeAcceleration, met0: !!(c.accsState && c.accsState[0] && c.accsState[0].met) };
+  });
+  ck('dev (pwr2): a legacy multi-row step keeps the player\'s speed override when one of its rows ticks',
+    lg0 === 10 && ov0 === 1 && ov1.met0 && ov1.accel === 1,
+    'auto ' + lg0 + '×, player pressed 1× -> ' + ov0 + '×, row A met ' + ov1.met0 + ' -> ' + ov1.accel + '×');
+  await b.ctx.close();
+
+  /* ---- AND ON REAL CONTENT, MID-RUN: THE CLOCK RE-ACTS WHEN THE ACTIVE SUBSTEP CHANGES (2026-09-23,
+   * the pwr_startup reconcile). The two synthetic probes above each read ONE substep from the first
+   * paint; neither proves auto acts AGAIN when the player moves from one substep to the next inside
+   * a running step, which is the case the owner's format exists for. `pwr_startup` step 5 is the
+   * shipped instance: 5a (hold WITHDRAW to 7.0e2) authors 5×, 5b (Plot point) authors 1×, and the
+   * step's own `hold: 300` would give 10× by the 30 s rule — so each phase names a number no other
+   * path produces. Phase 1 reads the clock on 5a; then 5a's latch is set the way the runtime sets
+   * it (`accsState[0].met`, the row's own latch — a non-band row is never re-graded once met) and
+   * phase 2 reads it again on 5b. INJECTION-PROVEN 2026-09-23, two ways: `cklAccsHeadRung` forced
+   * to return null reds it "1× then 1×" (step 5 authors `wait_hint: false` and no step-level
+   * rung, so nothing else speeds it); and auto made to act ONCE per step (the latch compared on
+   * the step part of the key only) reds it "5× then 5×" — the re-act half, which is what the
+   * `zz_pace` probes cannot see. `&init=hot_zero_power` is load-bearing: on the
+   * default at-power plant SOURCE RANGE is already secured, so steps 5-8 are OVERTAKEN on arrival
+   * and the checklist is on step 9 before the first read (measured, the first draft of this). */
+  b = await build('dev', WT2 + '&run=1&dev=1&init=hot_zero_power');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  var subOk = await b.page.evaluate(function () {
+    var btn = document.querySelector('[data-ckl-start="pwr_startup"]');
+    if (!btn) return false;
+    btn.click(); return true;
+  });
+  var sub = { a: null, b: null };
+  if (subOk) {
+    await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 20000 }).catch(function () {});
+    await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service();
+      svc.attentionStops = false;
+      var c = svc.instructor.checklist;
+      c.idx = 4; c.stepAt = null; c.awaitingAck = false; c.accsState = null; c.predBags = null;
+    });
+    await b.page.waitForTimeout(2000);
+    sub.a = await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      return { accel: svc.timeAcceleration, idx: c.idx,
+               met0: !!(c.accsState && c.accsState[0] && c.accsState[0].met) };
+    });
+    await b.page.evaluate(function () {
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      if (c.accsState && c.accsState[0]) c.accsState[0].met = true;
+    });
+    await b.page.waitForTimeout(2000);
+    sub.b = await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      return { accel: svc.timeAcceleration, idx: c.idx,
+               met0: !!(c.accsState && c.accsState[0] && c.accsState[0].met) };
+    });
+  }
+  ck('dev (pwr2): pwr_startup step 5 — the clock re-acts mid-step, 5a 5× then 5b 1×',
+    !!sub.a && !!sub.b && sub.a.idx === 4 && sub.b.idx === 4 && !sub.a.met0 && sub.b.met0 &&
+    sub.a.accel === 5 && sub.b.accel === 1,
+    sub.a ? ('on 5a ' + sub.a.accel + '× (5a met ' + sub.a.met0 + '), then on 5b ' +
+             (sub.b ? sub.b.accel + '× (5a met ' + sub.b.met0 + ', step index ' + sub.b.idx + ')' : '?'))
+          : 'pwr_startup start button not found');
+  await b.ctx.close();
+
   // The player's window (no `mmode` in the URL) offers exactly Free Play and Walkthroughs
   // (#660 item 19); the campaign and scenario areas are reachable only through the door.
   b = await build('dev', SHELL.replace('&mmode=free', ''));

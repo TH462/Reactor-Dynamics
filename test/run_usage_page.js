@@ -99,7 +99,36 @@ function injectSrc(rel, src) {
       .join('+ \'<input type="hidden" name="days" value="30">\'')
       // 9. the small-sample warning threshold is neutered — a two-session release reads
       //    exactly like a thirty-session one (#800).
-      .split('const SMALL_SAMPLE = 10;').join('const SMALL_SAMPLE = 0;');
+      .split('const SMALL_SAMPLE = 10;').join('const SMALL_SAMPLE = 0;')
+      /* --- duration histogram + first-60-seconds (#797 items 6/7) ------------------- */
+      // 10. "Time per session" goes back to the session_end-only population — the exact
+      //     bias that produced the wrong 1.9min figure the owner had to be corrected on
+      //     (tools/site_report.js's usage_length query, not this file, but the same
+      //     defect shape). A fixture with an unended long session must fall out of the
+      //     histogram's long bucket once this is applied.
+      .split("FROM ${DATASET} WHERE blob2 <> 'dev' AND ${since}${versionWhere} GROUP BY session`);")
+      .join("FROM ${DATASET} WHERE blob1 = 'session_end' AND blob2 <> 'dev' AND ${since}${versionWhere} GROUP BY session`);")
+      // 11. the zero-span row folds into "<1m" instead of standing as its own category —
+      //     a batch-floor artefact would then read as "visit lasted under a minute".
+      .split('if (secs <= 0) return -1;').join('if (false) return -1;')
+      // 12. the percentiles are computed over a DIFFERENT population than the histogram
+      //     (silently dropping the zero-span cluster) — the two must read the same array.
+      .split('const p50 = quantile(secs, 0.5), p75 = quantile(secs, 0.75), p95 = quantile(secs, 0.95);')
+      .join('const _p = secs.filter((s) => s > 0); const p50 = quantile(_p, 0.5), p75 = quantile(_p, 0.75), p95 = quantile(_p, 0.95);')
+      // 13. the first-60-seconds window reads the SESSION clock (double6) instead of the
+      //     PAGE clock (double5) it was deliberately built on for its much longer history
+      //     — same defect shape as #791's, reintroduced in the new section.
+      .split('AND timestamp >= ${COLUMNS_SINCE} AND double5 >= 0 AND double5 <= 60')
+      .join('AND timestamp >= ${COLUMNS_SINCE} AND double6 >= 0 AND double6 <= 60')
+      // 14. the first-panel-opened query drops the release filter — every other
+      //     first-60-seconds query still carries it, so this proves the check actually
+      //     reads that section rather than passing on the first query it finds.
+      .split("WHERE blob1 = 'panel_open' AND blob2 <> 'dev' AND ${since}${versionWhere}")
+      .join("WHERE blob1 = 'panel_open' AND blob2 <> 'dev' AND ${since}")
+      // 15. "touched nothing" is forced to 0 instead of `total - touched.size` — the
+      //     0-touch category, a real answer to "how far do they get", disappears.
+      .split('const zeroTouch = Math.max(0, totalSessions - touched.size);')
+      .join('const zeroTouch = 0;');
   }
   if (rel === 'sessions.js') {
     return src
@@ -111,7 +140,42 @@ function injectSrc(rel, src) {
       .join('return sql(apiToken, `SELECT blob4 AS session, max(double5) AS t_last')
       // the 100-session truncation note is silenced (defect 5, #791).
       .split('truncated = counts.length >= 100;')
-      .join('truncated = false;');
+      .join('truncated = false;')
+      /* --- sortable/filterable Sessions view (#797.4) ------------------------------- */
+      // 6. `start_asc` stops changing which 100 rows the SQL fetches — the primary
+      //    query's ORDER BY is pinned to DESC regardless of the requested sort.
+      .split("const fetchDir = sort === 'start_asc' ? 'ASC' : 'DESC';")
+      .join("const fetchDir = 'DESC';")
+      // 7. the device filter stops reaching the primary query's WHERE clause.
+      .split("if (device !== 'all') filterClauses.push('blob13 = ' + sqlStr(device));")
+      .join("if (false) filterClauses.push('blob13 = ' + sqlStr(device));")
+      // 8. the referrer-kind filter stops reaching the primary query's WHERE clause.
+      .split("if (refKind !== 'all') filterClauses.push('blob10 = ' + sqlStr(refKind));")
+      .join("if (false) filterClauses.push('blob10 = ' + sqlStr(refKind));")
+      // 9. the day window stops being carried as a hidden field on the filter form, so
+      //    submitting it resets the window to the default (the trap named in the brief).
+      .split('    + \'<input type="hidden" name="days" value="\' + days + \'">\'')
+      .join('    + \'\'')
+      // 10. a sort link stops carrying the active device filter forward.
+      .split("if (device !== 'all') p.set('device', device);")
+      .join("if (false) p.set('device', device);")
+      // 11. duration-descending sort stops re-ordering the fetched rows.
+      .split('if (sort === \'dur_desc\') rows = rows.slice().sort((a, b) => b.span_secs - a.span_secs);')
+      .join('if (sort === \'dur_desc\') { /* no-op */ }')
+      // 12. duration-ascending sort stops re-ordering the fetched rows.
+      .split('else if (sort === \'dur_asc\') rows = rows.slice().sort((a, b) => a.span_secs - b.span_secs);')
+      .join('else if (sort === \'dur_asc\') { /* no-op */ }')
+      // 13. the scrammed filter stops removing non-matching sessions.
+      .split("rows = rows.filter((r) => (scram === 'yes' ? r.scrams > 0 : r.scrams === 0));")
+      .join('rows = rows;')
+      // 14. the truncation note stops distinguishing the oldest-100 fetch from the
+      //     newest-100 one — it always reads as though the fetch were newest-first.
+      .split("? (fetchDir === 'ASC'")
+      .join('? (false')
+      // 15. a card's own device/country/referrer stops being merged in, so every card
+      //     falls back to the '—' placeholder regardless of what `meta` returned.
+      .split('(meta || []).forEach((r) => { if (!metaBy[r.session]) metaBy[r.session] = r; });')
+      .join('(meta || []).forEach(() => {});');
   }
   return src;
 }
@@ -151,11 +215,36 @@ function dispatch(rows, q) {
     if (has("'walkthrough_step'", 'LIMIT 20000')) return Promise.resolve(rows.dwell);
     if (has("'walkthrough_step'", 'blob5 AS k')) return Promise.resolve(rows.mix);
     if (has("'walkthrough_step'", 'GROUP BY wt, step')) return Promise.resolve(rows.funnel);
-    // "Time per session"'s write-span query — a non-empty answer is what lets that
-    // section go on to its columns-exist probe and its max(double6) query, the one
-    // #791's elapsed-clock check needs to see reach the wire.
-    if (has('min(timestamp) AS first_seen', 'max(timestamp) AS last_seen'))
-      return Promise.resolve([{ session: 's1', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:05:00' }]);
+    /* "The first 60 seconds" (#797 item 7) — matched on the column that names them
+     * uniquely: only these two queries select double5 alongside their own blob1 filter
+     * ("Most-used controls"/"Panels opened" filter on the same blob1 values but name no
+     * double column at all). Injection 13 (double5 -> double6) makes both fall through
+     * to the generic empty-result fallback at the bottom of this function, which is the
+     * point — the fixture then goes missing and every count built from it goes to 0. */
+    // `double5 >= 0` is required IN ADDITION to `double5 AS t` — the SELECT list alone
+    // is not enough to prove injection 13 (double5 -> double6 in the WHERE guard) would
+    // be caught: that injection leaves `double5 AS t` in the SELECT clause untouched, so
+    // a matcher keyed on the SELECT list alone would still serve the fixture as if
+    // nothing had changed (measured — it did, before this line named the guard too).
+    if (has("blob1 = 'command'", 'double5 AS t', 'double5 >= 0')) return Promise.resolve(rows.firstCmd || []);
+    if (has("blob1 = 'panel_open'", 'double5 AS t', 'double5 >= 0')) return Promise.resolve(rows.firstPanel || []);
+    // The first-60-seconds denominator — no GROUP BY, which is what keeps it from
+    // colliding with "Sessions by starting condition" / "How far through a startup they
+    // get" below (both GROUP BY and both also select count(DISTINCT blob4)).
+    if (has('count(DISTINCT blob4) AS sessions') && asked.indexOf('GROUP BY') === -1)
+      return Promise.resolve(rows.total60 || []);
+    /* "Time per session"'s write-span query — a non-empty answer is what lets that
+     * section go on to its columns-exist probe and its max(double6) query, the one
+     * #791's elapsed-clock check needs to see reach the wire. Injection 10 (#797 item 6)
+     * adds a `blob1 = 'session_end'` filter to reproduce the exact bias that produced
+     * the wrong 1.9min figure reported to the owner once already (tools/site_report.js's
+     * separate usage_length query, same defect shape) — `spansEnded` is the fixture's
+     * answer to THAT text, `spans` to the honest, population-complete one. */
+    if (has('min(timestamp) AS first_seen', 'max(timestamp) AS last_seen')) {
+      return Promise.resolve(has("blob1 = 'session_end'")
+        ? (rows.spansEnded || [])
+        : (rows.spans || [{ session: 's1', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:05:00' }]));
+    }
     // Its own columns-exist probe (no blob1 filter, no GROUP BY) — a non-zero count is
     // what lets the max(double6) query fire at all.
     if (has('SELECT count() AS n FROM', 'timestamp >=')) return Promise.resolve([{ n: 5 }]);
@@ -231,6 +320,70 @@ var ROWS = {
   releases: [{ release: 'Alpha 1.7.5', channel: 'public', sessions: 20, last_seen: '2026-09-15 10:00:00' }],
 };
 
+/* THE HISTOGRAM + FIRST-60-SECONDS FIXTURE (#797 items 6/7), separate from ROWS above so
+ * the 94 checks already built on ROWS's exact shape (query counts, NaN-absence, etc.)
+ * cannot be disturbed by adding these.
+ *
+ * TEN SESSIONS for "Time per session": TWO zero-span (the "own category" the histogram
+ * has to keep visible), and eight non-zero spans chosen so quantile(secs, .5) is
+ * FALSIFIABLE against the zero-span-inclusion bug — removing just ONE zero shifts a
+ * ceil()-based quantile index by exactly one slot and can land back on the SAME value
+ * by coincidence (proven while building this fixture: it did, for both p50 and p75, on
+ * a single-zero version of this set); removing TWO does not. Two of the eight
+ * (14400s/20000s) exist ONLY in `spans`, not in `spansEnded` — the "unended long
+ * session" injection 10 needs to make disappear from the long bucket.
+ *
+ *   spans (n=10):     0, 0, 30, 90, 180, 480, 1200, 2700, 14400, 20000 (seconds)
+ *   -> zero-span: 2         <1m: 1 (30)        3h+: 2 (14400, 20000, BOTH unended)
+ *   -> p50 = quantile(.5) = 180s = "3m 0s"    (WITHOUT the two zeros: 480s = "8m 0s")
+ *
+ *   spansEnded (n=8, injection 10's population): the same set minus the two unended
+ *   long sessions — what "session_end only" sees.
+ *
+ * FIRST 60 SECONDS: total60 = 10 sessions (the same window), so a hand reader can check
+ * every percentage here against one denominator. `firstCmd`/`firstPanel` are raw EVENT
+ * rows (not pre-reduced to "first"), because the page itself does the reduction — s1's
+ * SECOND command (boron_add @ t=40) is included specifically to prove the earliest one
+ * (rod_nudge @ t=5) wins, not the other way around. */
+var HIST_ROWS = Object.assign({}, ROWS, {
+  spans: [
+    { session: 's_zero1', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:00:00' },
+    { session: 's_zero2', first_seen: '2026-09-01 11:00:00', last_seen: '2026-09-01 11:00:00' },
+    { session: 's_30', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:00:30' },
+    { session: 's_90', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:01:30' },
+    { session: 's_180', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:03:00' },
+    { session: 's_480', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:08:00' },
+    { session: 's_1200', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:20:00' },
+    { session: 's_2700', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:45:00' },
+    // Unended: only "spans" (the whole-population query) carries these two.
+    { session: 's_14400', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 14:00:00' },
+    { session: 's_20000', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 15:33:20' },
+  ],
+  spansEnded: [
+    { session: 's_zero1', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:00:00' },
+    { session: 's_zero2', first_seen: '2026-09-01 11:00:00', last_seen: '2026-09-01 11:00:00' },
+    { session: 's_30', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:00:30' },
+    { session: 's_90', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:01:30' },
+    { session: 's_180', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:03:00' },
+    { session: 's_480', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:08:00' },
+    { session: 's_1200', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:20:00' },
+    { session: 's_2700', first_seen: '2026-09-01 10:00:00', last_seen: '2026-09-01 10:45:00' },
+  ],
+  total60: [{ sessions: 10 }],
+  firstCmd: [
+    { session: 's1', action: 'rod_nudge', t: 5 },
+    { session: 's1', action: 'boron_add', t: 40 },   // s1's SECOND touch -- must lose to t=5
+    { session: 's2', action: 'rod_nudge', t: 12 },
+    { session: 's3', action: 'boron_add', t: 3 },
+    { session: 's4', action: 'rod_nudge', t: 58 },
+  ],
+  firstPanel: [
+    { session: 's1', panel: 'core', t: 2 },
+    { session: 's2', panel: 'core', t: 20 },
+    { session: 's5', panel: 'secondary', t: 9 },
+  ],
+});
+
 /* ⚠ A NONCE, AND IT IS LOAD-BEARING. `import()` caches by URL and a data: URL is its own
  * content, so two renders built from identical source got the SAME module instance — and
  * `sql` is captured at module evaluation, which pinned every later render to the FIRST
@@ -272,8 +425,36 @@ function dispatchSessions(rows, q) {
     return true;
   }
   var isDetail = asked.indexOf("blob4 = '") !== -1;
-  if (!isDetail && has('GROUP BY session ORDER BY first_seen')) return Promise.resolve(rows.counts || []);
+  /* THE PRIMARY QUERY — sort-aware, playing the role of Analytics Engine itself rather
+   * than a canned fixture, because the sort-actually-reorders check (#797.4) has to prove
+   * the RENDERED order changes, and `start_asc`'s effect is entirely in the SQL `ORDER BY`
+   * (sessions.js has no JS-side re-sort for the two start_* sorts — see its own header
+   * comment). A fixture that ignored ASC/DESC here would let that specific defect through
+   * silently: the page would render fine, just always in DESC order, and nothing above
+   * this fake would ever notice. */
+  if (!isDetail && has('GROUP BY session ORDER BY first_seen')) {
+    var list = (rows.counts || []).slice();
+    var asc = /ORDER BY first_seen ASC/.test(asked);
+    list.sort(function (a, b) {
+      var d = String(a.first_seen) < String(b.first_seen) ? -1
+        : (String(a.first_seen) > String(b.first_seen) ? 1 : 0);
+      return asc ? d : -d;
+    });
+    return Promise.resolve(list);
+  }
   if (!isDetail && has("'session_start'", 'GROUP BY session, initial_state')) return Promise.resolve(rows.starts || []);
+  // Device/country/referrer FOR DISPLAY — the "for display" query's own GROUP BY, distinct
+  // from the one two lines up so the two cannot collide.
+  if (!isDetail && has("'session_start'", 'GROUP BY session, device')) return Promise.resolve(rows.meta || []);
+  // "Scrammed" — milestone:scram rows, one per session that ever scrammed.
+  if (!isDetail && has("blob1 = 'milestone'", "blob5 = 'scram'")) return Promise.resolve(rows.scrams || []);
+  // The two probes are DISTINCT floors (cfapi.js's COLUMNS_SINCE vs rollup.js's
+  // OWN_COLUMNS_SINCE — sessions.js's own comment on why they are never shared), matched
+  // on their own literal timestamps so a test can make one succeed and the other not —
+  // the generic fallback below would answer both identically otherwise.
+  if (!isDetail && has('SELECT count() AS n', 'timestamp >=', '2026-09-21')) {
+    return Promise.resolve(rows.metaProbe || rows.probe || [{ n: 0 }]);
+  }
   if (!isDetail && has('SELECT count() AS n', 'timestamp >=')) return Promise.resolve(rows.probe || [{ n: 0 }]);
   if (!isDetail && has('max(double', 'GROUP BY session')) return Promise.resolve(rows.elapsed || []);
   if (!isDetail && has("'session_end'")) return Promise.resolve(rows.ends || []);
@@ -294,7 +475,50 @@ function mkSessionsRows(n) {
     probe: [{ n: 1 }],
     elapsed: [{ session: 's0', t_last: 42 }],
     ends: [{ session: 's0', last_panel: 'board', secs: 10 }],
+    meta: [],
+    scrams: [],
   };
+}
+
+/* Three sessions chosen so RECENCY order and DURATION order DISAGREE — a check that
+ * happened to sort the same way regardless of the requested axis would still pass by
+ * accident against a fixture where they agreed (#797.4). No `elapsed`/`ends` rows, so
+ * each session's duration is purely the write span between first_seen and last_seen. */
+function mkSortRows() {
+  return {
+    counts: [
+      { session: 's_new', first_seen: '2026-09-19 11:00:00', last_seen: '2026-09-19 11:00:20', raw: 2, est: 2 },
+      { session: 's_mid', first_seen: '2026-09-19 10:00:00', last_seen: '2026-09-19 10:08:20', raw: 2, est: 2 },
+      { session: 's_old', first_seen: '2026-09-19 09:00:00', last_seen: '2026-09-19 09:00:50', raw: 2, est: 2 },
+    ],
+    starts: [], probe: [{ n: 0 }], elapsed: [], ends: [], meta: [], scrams: [],
+  };
+}
+
+// Two sessions, one that scrammed once and one that never did — the minimum fixture the
+// scram filter needs to prove it removes the non-matching session rather than the matching one.
+function mkScramRows() {
+  return {
+    counts: [
+      { session: 's_scrammed', first_seen: '2026-09-19 10:00:00', last_seen: '2026-09-19 10:00:05', raw: 1, est: 1 },
+      { session: 's_clean', first_seen: '2026-09-19 09:00:00', last_seen: '2026-09-19 09:00:05', raw: 1, est: 1 },
+    ],
+    starts: [], probe: [{ n: 0 }], elapsed: [], ends: [], meta: [],
+    scrams: [{ session: 's_scrammed', n: 1 }],
+  };
+}
+
+async function renderSessionListQS(rows, qsStr, seen) {
+  globalThis.__RD_FAKE_SQL = function (token, q) {
+    if (seen) seen.push(String(q));
+    try { return dispatchSessions(rows, q); } catch (e) { return Promise.reject(e); }
+  };
+  var ROOT = path.join(__dirname, '..');
+  var mod = await loadEsm(ROOT, 'sessions.js',
+    { 'cfapi.js': fakeCfapi('// sessions render ' + (++nonce) + '\n') });
+  var url = new URL('https://example.invalid/dashboard?token=t&view=sessions' + qsStr);
+  var res = await mod.sessionList({ CF_ANALYTICS_TOKEN: 'x' }, url);
+  return res.text();
 }
 
 async function renderSessionList(rows, seen) {
@@ -531,6 +755,131 @@ async function renderSessionDetail(rows, sid, seen) {
   ck('...and a short page does not', full100.indexOf('Showing the most recent') !== -1
     && short3.indexOf('Showing the most recent') === -1);
 
+  /* ---------------------------------------- 14.1 sessions.js: sort by start time (#797.4) */
+  head('14.1 sessions.js: sort by start time actually reorders (#797.4)');
+  /* `mkSortRows` is chosen so recency order and duration order DISAGREE (s_mid started
+   * in the middle but ran longest) — a check that passed either way by accident is worth
+   * nothing here. Asserted on the RENDERED page, not the SQL text (the requirement): the
+   * fake `dispatchSessions` plays Analytics Engine and actually honours `ORDER BY
+   * first_seen ASC/DESC`, so if sessions.js stopped sending the right direction the
+   * fixture's own order would leak through unchanged and this would catch it. */
+  var pageNewestFirst = await renderSessionListQS(mkSortRows(), '&days=30&sort=start_desc');
+  var pageOldestFirst = await renderSessionListQS(mkSortRows(), '&days=30&sort=start_asc');
+  function orderIdx(page, ids) { return ids.map(function (id) { return page.indexOf('sid=' + id); }); }
+  var newestOrder = orderIdx(pageNewestFirst, ['s_new', 's_mid', 's_old']);
+  var oldestOrder = orderIdx(pageOldestFirst, ['s_old', 's_mid', 's_new']);
+  ck('default (Newest first) renders s_new, s_mid, s_old in that order',
+    newestOrder[0] < newestOrder[1] && newestOrder[1] < newestOrder[2], newestOrder.join(','));
+  ck('Oldest first renders s_old, s_mid, s_new in that order — the OPPOSITE order',
+    oldestOrder[0] < oldestOrder[1] && oldestOrder[1] < oldestOrder[2], oldestOrder.join(','));
+  ck('...and it is a real reversal, not the same order read backwards by the test',
+    pageNewestFirst.indexOf('sid=s_new') < pageOldestFirst.indexOf('sid=s_new'));
+
+  /* ------------------------------------------- 14.2 sessions.js: sort by duration (#797.4) */
+  head('14.2 sessions.js: sort by duration actually reorders — "show me the longest" (#797.4)');
+  // s_mid = 500s (08:20 span), s_old = 50s, s_new = 20s — write-span only, no elapsed clock.
+  var pageLongest = await renderSessionListQS(mkSortRows(), '&days=30&sort=dur_desc');
+  var pageShortest = await renderSessionListQS(mkSortRows(), '&days=30&sort=dur_asc');
+  var longestOrder = orderIdx(pageLongest, ['s_mid', 's_old', 's_new']);
+  var shortestOrder = orderIdx(pageShortest, ['s_new', 's_old', 's_mid']);
+  ck('Longest first renders s_mid (500s), s_old (50s), s_new (20s) in that order',
+    longestOrder[0] < longestOrder[1] && longestOrder[1] < longestOrder[2], longestOrder.join(','));
+  ck('Shortest first renders the OPPOSITE order: s_new, s_old, s_mid',
+    shortestOrder[0] < shortestOrder[1] && shortestOrder[1] < shortestOrder[2], shortestOrder.join(','));
+  ck('the longest session shows its actual duration ("8m 20s")', pageLongest.indexOf('8m 20s') !== -1);
+
+  /* --------------------------------- 14.3 sessions.js: every param survives (#797.4) */
+  head('14.3 sessions.js: sort links and the filter form preserve days + the active filter');
+  var page7 = await renderSessionListQS(mkSortRows(), '&days=7&sort=dur_desc&device=mobile');
+  ck('the filter form\'s hidden days field carries the ACTUAL window (7)',
+    page7.indexOf('<input type="hidden" name="days" value="7">') !== -1);
+  ck('a sort link (Newest first) carries days=7 AND the active device filter forward',
+    page7.indexOf('href="?view=sessions&days=7&sort=start_desc&device=mobile"') !== -1);
+  ck('the ACTIVE sort (Longest first) is bolded, not a link',
+    /<b>Longest first<\/b>/.test(page7));
+
+  /* ------------------------------------------- 14.4 sessions.js: a filter reaches the query */
+  head('14.4 sessions.js: device/country/referrer filters reach the primary query (#797.4)');
+  var seenDevice = [];
+  await renderSessionListQS(mkSortRows(), '&days=30&device=mobile', seenDevice);
+  ck('the device filter appears in the primary query as blob13',
+    seenDevice.some(function (q) { return q.indexOf("blob13 = 'mobile'") !== -1; }));
+  ck('...guarded by the 2026-09-20 column floor (OWN_COLUMNS_SINCE)',
+    seenDevice.some(function (q) { return q.indexOf("blob13 = 'mobile'") !== -1
+      && q.indexOf('2026-09-21') !== -1; }));
+  var seenCountry = [];
+  await renderSessionListQS(mkSortRows(), '&days=30&country=US', seenCountry);
+  ck('the country filter appears in the primary query as blob11',
+    seenCountry.some(function (q) { return q.indexOf("blob11 = 'US'") !== -1; }));
+  var seenUnknownCountry = [];
+  await renderSessionListQS(mkSortRows(), '&days=30&country=unknown', seenUnknownCountry);
+  ck('"unknown" country filters on the empty string, not the literal word',
+    seenUnknownCountry.some(function (q) { return q.indexOf("blob11 = ''") !== -1; }));
+  var seenRef = [];
+  await renderSessionListQS(mkSortRows(), '&days=30&ref=external', seenRef);
+  ck('the referrer-kind filter appears in the primary query as blob10',
+    seenRef.some(function (q) { return q.indexOf("blob10 = 'external'") !== -1; }));
+  var seenNone = [];
+  await renderSessionListQS(mkSortRows(), '&days=30', seenNone);
+  ck('with no filter selected, no query names blob13/blob11/blob10 at all',
+    seenNone.every(function (q) { return q.indexOf('blob13 =') === -1 && q.indexOf('blob10 =') === -1
+      && q.indexOf('blob11 =') === -1; }));
+
+  /* --------------------------- 14.5 sessions.js: window survives sort + filter TOGETHER */
+  head('14.5 sessions.js: the day window survives a sort change AND a filter change at once');
+  var seenBoth = [];
+  var pageBoth = await renderSessionListQS(mkSortRows(),
+    '&days=14&sort=dur_asc&country=US&scram=yes', seenBoth);
+  ck('the primary query carries the 14-day window',
+    seenBoth.some(function (q) { return q.indexOf("INTERVAL \'14\' DAY") !== -1; }));
+  ck('the filter form\'s hidden days field reads 14, not the 30-day default',
+    pageBoth.indexOf('<input type="hidden" name="days" value="14">') !== -1);
+  ck('a sort link carries the 14-day window AND the active country + scram filters',
+    pageBoth.indexOf('href="?view=sessions&days=14&sort=dur_desc&country=US&scram=yes"') !== -1);
+
+  /* -------------------------------------------------- 14.6 sessions.js: sort-aware cap note */
+  head('14.6 sessions.js: the truncation note names WHICH 100 sessions it is showing (#797.4)');
+  var capOldest = await renderSessionListQS(mkSessionsRows(100), '&days=30&sort=start_asc');
+  ck('sorted oldest-first, the note says OLDEST, not "most recent"',
+    /Showing the OLDEST 100 sessions/.test(capOldest) && capOldest.indexOf('most recent') === -1);
+  var capDur = await renderSessionListQS(mkSessionsRows(100), '&days=30&sort=dur_desc');
+  ck('sorted by duration, the note says the sort applies WITHIN the fetched 100',
+    /sorted by duration/.test(capDur) && /within that set/.test(capDur));
+  var capFiltered = await renderSessionListQS(mkSessionsRows(100), '&days=30&device=mobile');
+  ck('with a filter active and the cap hit, the note says so',
+    capFiltered.indexOf('matching this filter') !== -1);
+  var capShort = await renderSessionListQS(mkSessionsRows(3), '&days=30&sort=start_asc');
+  ck('under the cap, no truncation note at all regardless of sort',
+    capShort.indexOf('Showing the') === -1);
+
+  /* ------------------------------------------------------- 14.7 sessions.js: scram filter */
+  head('14.7 sessions.js: "scrammed" filters sessions without a second query round (#797.4)');
+  var seenScram = [];
+  var pageAny = await renderSessionListQS(mkScramRows(), '&days=30', seenScram);
+  ck('unfiltered, both sessions render',
+    pageAny.indexOf('sid=s_scrammed') !== -1 && pageAny.indexOf('sid=s_clean') !== -1);
+  var pageYes = await renderSessionListQS(mkScramRows(), '&days=30&scram=yes');
+  ck('scram=yes keeps the scrammed session and drops the clean one',
+    pageYes.indexOf('sid=s_scrammed') !== -1 && pageYes.indexOf('sid=s_clean') === -1);
+  var pageNo = await renderSessionListQS(mkScramRows(), '&days=30&scram=no');
+  ck('scram=no keeps the clean session and drops the scrammed one',
+    pageNo.indexOf('sid=s_clean') !== -1 && pageNo.indexOf('sid=s_scrammed') === -1);
+  ck('the "scrammed" milestone query never issues a query per already-fetched session — one query total',
+    seenScram.filter(function (q) { return q.indexOf("blob5 = 'scram'") !== -1; }).length === 1);
+
+  /* --------------------------------------- 14.8 sessions.js: device/country/referrer shown */
+  head('14.8 sessions.js: a card shows its own device/country/referrer');
+  var METogo = {
+    counts: [{ session: 's_meta', first_seen: '2026-09-19 10:00:00', last_seen: '2026-09-19 10:00:05', raw: 1, est: 1 }],
+    starts: [], probe: [{ n: 0 }], metaProbe: [{ n: 1 }], elapsed: [], ends: [],
+    meta: [{ session: 's_meta', device: 'mobile', country: 'US', ref_kind: 'external' }],
+    scrams: [],
+  };
+  var pageMeta = await renderSessionListQS(METogo, '&days=30');
+  ck('the card shows the device, country and referrer kind for its own session',
+    pageMeta.indexOf('mobile') !== -1 && pageMeta.indexOf('>US<') !== -1
+    && pageMeta.indexOf('external') !== -1);
+
   /* --------------------------------------------------- 15. usage.js: the version filter */
   head('15. the RELEASE-VERSION filter on Feature usage (#800)');
   /* THREE (release, channel) combinations, chosen so the default pick is FALSIFIABLE:
@@ -608,6 +957,89 @@ async function renderSessionDetail(rows, sid, seen) {
   var pageBad = await renderQS(VER_ROWS, '&days=30&version=' + encodeURIComponent('Alpha 0.0.0|public'));
   ck('an unrecognised version falls back to the latest release, not to "All versions"',
     pageBad.indexOf('Alpha 1.7.10 — public · 5 sessions') !== -1);
+
+  /* ------------------------------------------ 16. the duration histogram (#797 item 6) */
+  head('16. "Time per session": the histogram + percentiles over the CORRECT population');
+  var pageHist = await render(HIST_ROWS);
+  /* THE ZERO-SPAN CATEGORY IS ITS OWN ROW, never folded into "<1m" — both counts are
+   * checked so a fold-in (injection 11) shows up as a MISMATCH (zero drops to 0, <1m
+   * rises to 2) rather than one check alone having to catch a shift either direction. */
+  ck('the two zero-span sessions get their own row, not folded into "<1m"',
+    /<td>0s \(single batch\)<\/td><td class="num">2<\/td>/.test(pageHist));
+  ck('...and "<1m" itself still reads 1 (the real 30s session only)',
+    /<td>&lt;1m<\/td><td class="num">1<\/td>/.test(pageHist));
+  /* THE UNENDED LONG SESSIONS LAND IN THE LONG BUCKET — the population check. Both
+   * 14400s and 20000s sessions never wrote a session_end row (see HIST_ROWS' header);
+   * if "Time per session" ever goes back to a session_end-only population (injection
+   * 10) this bucket drops from 2 to 0, not just shrinks, because BOTH of this fixture's
+   * long sessions are unended. */
+  ck('the two long, UNENDED sessions both land in the "3h+" bucket',
+    /<td>3h\+<\/td><td class="num">2<\/td>/.test(pageHist));
+  /* PERCENTILES OVER THE SAME POPULATION AS THE HISTOGRAM. p50 over all 10 sessions is
+   * 180s ("3m 0s"); dropping the two zero-span sessions first (injection 12) moves it to
+   * 480s ("8m 0s") instead — built to be false by coincidence, see HIST_ROWS' header. */
+  ck('p50 is computed over ALL 10 sessions (3m 0s), not the 8 non-zero ones (would read 8m 0s)',
+    pageHist.indexOf('<div class="v">3m 0s</div><div class="k">p50</div>') !== -1);
+  ck('p75 and the max tile also render off the same array',
+    pageHist.indexOf('<div class="v">45m 0s</div><div class="k">p75</div>') !== -1
+    && pageHist.indexOf('<div class="v">5h 33m</div><div class="k">Max</div>') !== -1);
+  ck('the Sessions tile counts all 10, zero-span included',
+    pageHist.indexOf('<div class="v">10</div><div class="k">Sessions</div>') !== -1);
+  ck('the page states a span of 0 is a floor artefact, not an instant visit',
+    /single batch/.test(pageHist) && /not evidence the visit was instantaneous/.test(pageHist));
+
+  /* -------------------------------------------- 17. the first 60 seconds (#797 item 7) */
+  head('17. "The first 60 seconds" — first touch, first panel, how far (#797 item 7)');
+  ck('the section heading is on the page',
+    /<h2>The first 60 seconds/.test(pageHist));
+  /* FIRST CONTROL TOUCHED. rod_nudge wins 3 sessions (s1 via its t=5 row, over its own
+   * later t=40 boron_add — the tie-break the fixture exists to prove — plus s2, s4);
+   * boron_add wins only s3. Against the total60 denominator of 10. */
+  ck('rod_nudge is the first control touched by 3 of 10 sessions',
+    /<td>rod_nudge<\/td><td class="num">3<\/td>/.test(pageHist)
+    && pageHist.indexOf('3 / 10') !== -1);
+  ck("s1's EARLIEST command (t=5) wins over its own later one (t=40) — boron_add is only 1 of 10",
+    /<td>boron_add<\/td><td class="num">1<\/td>/.test(pageHist));
+  ck('rod_nudge is ranked above boron_add (3 beats 1)',
+    pageHist.indexOf('>rod_nudge<') < pageHist.indexOf('>boron_add<'));
+  /* FIRST PANEL OPENED. core wins s1 and s2 (2 of 10); secondary wins s5 alone (1 of 10). */
+  ck('core is the first panel opened by 2 of 10 sessions, secondary by 1',
+    /<td>core<\/td><td class="num">2<\/td>/.test(pageHist)
+    && /<td>secondary<\/td><td class="num">1<\/td>/.test(pageHist));
+  /* HOW FAR IN 60 SECONDS. touches per session: s1=3 (2 commands+1 panel), s2=2 (1+1),
+   * s3=1, s4=1, s5=1 -> bucket "1"=3 (s3,s4,s5), bucket "2-3"=2 (s1,s2), and the 5
+   * sessions with NO row at all (of the 10 total) are bucket 0 — the real "touched
+   * nothing" category injection 15 would zero out. */
+  ck('"0 — touched nothing" is a real, non-zero category (5 of 10)',
+    /<td>0 — touched nothing<\/td><td class="num">5<\/td>/.test(pageHist));
+  ck('1 touch: 3 of 10 (s3, s4, s5)',
+    /<td>1<\/td><td class="num">3<\/td><td><div class="bar">.*?3 \/ 10/.test(pageHist));
+  ck('2-3 touches: 2 of 10 (s1, s2)',
+    /<td>2-3<\/td><td class="num">2<\/td><td><div class="bar">.*?2 \/ 10/.test(pageHist));
+  ck('the page names the clock, its resolution and how much history stands behind it',
+    /t_page/.test(pageHist) && /1-second resolution/.test(pageHist)
+    && /t_session/.test(pageHist) && /about a day/.test(pageHist));
+
+  /* THE FIRST-60-SECONDS SECTION HONOURS THE RELEASE FILTER — reusing check 15's own
+   * `eventQueries`/`missingFilter` computation (same seenSel capture, unchanged): those
+   * three new queries are "FROM ... WHERE" queries like any other, so if this section's
+   * panel query drops the filter (injection 14) THAT check goes red already. Named here
+   * too, on the query TEXT directly, so a failure reads as "this file" not "check 15". */
+  /* Read off `seenSel` DIRECTLY rather than the `eventQueries` derived above — that
+   * derivation's `/FROM \S+ WHERE/` regex requires FROM and WHERE on the same physical
+   * line, which two of THIS section's three queries do not (FROM ends one line, WHERE
+   * starts the next), exactly like the walkthrough probe and the Time-per-session probe
+   * it already excludes. A query is still a query whichever line WHERE starts on. */
+  var firstMinuteQueries = seenSel.filter(function (q) {
+    return q.indexOf('double5 AS t') !== -1 || (q.indexOf('count(DISTINCT blob4) AS sessions') !== -1
+      && q.indexOf('GROUP BY') === -1);
+  });
+  ck('all 3 first-60-seconds queries were issued with a version selected',
+    firstMinuteQueries.length === 3, firstMinuteQueries.length + ' seen');
+  ck('...and every one of them carries the selected release and channel',
+    firstMinuteQueries.length > 0 && firstMinuteQueries.every(function (q) {
+      return q.indexOf("blob3 = 'Alpha 1.7.9'") !== -1 && q.indexOf("blob2 = 'public'") !== -1;
+    }));
 
   console.log('\n' + BOLD + (nFail ? RED + 'FAIL' : GREEN + 'PASS') + RST
     + '  ' + nPass + ' passed, ' + nFail + ' failed'

@@ -552,6 +552,48 @@ const GHOST_COLOR = '#8fa2b3';
  * cannot occur once nothing is summed; it is gone, along with the two checks and the
  * `bucket-partial-missing-hidden` injection that pinned it — see `bucketDays`' header.
  */
+/* RELEASE MARKERS (#797 item 5 — "why did traffic spike on 2026-09-19?"). A vertical rule at
+ * the day a release first reached a real user, so a jump can be attributed at a glance.
+ * `opts.releaseAt[i]` is null or an array of version strings for row `i`, POSITIONALLY
+ * aligned to `rows` — built in analytics.js's `markersByDay` from `blob3 GROUP BY release`
+ * (see its own header for why PUBLIC-CHANNEL ONLY). Two releases landing on the SAME day
+ * merge into ONE rule, versions joined "+", rather than two overlapping rules; a release
+ * outside the picked window never reaches this function at all (`markersByDay` already
+ * dropped it), so it draws nothing — same as an empty `releaseAt`.
+ *
+ * DRAWN BEHIND THE DATA, deliberately, same convention as the recessive grid lines: the
+ * caller emits this BEFORE the bars/line so a bar or point painted afterward covers the rule
+ * where they overlap. That is what "must not obscure the data" means here — the marker is a
+ * background guide the data sits on top of, never a shape competing with it.
+ *
+ * THE LABEL STAYS INSIDE THE PLOT, never past `PADL + plotW` — it sits at the marker's own x
+ * (near-right markers right-anchor instead of overflowing right), so it never spends any of
+ * the right-hand gutter the direct series labels are already budgeted to PADR (`barChart`'s
+ * header) and cannot be the next thing that clips there.
+ *
+ * THE COLOUR (`RELEASE_COLOR`) was picked for hue distance from every series/ghost colour
+ * already on this chart and has NOT been run through the ΔE CVD check `SERIES`' header
+ * describes — said plainly rather than implying a validation that never happened (HR12),
+ * the same caveat the third data series' own colour carries above. */
+const RELEASE_COLOR = '#e0c451';
+function releaseMarks(rows, releaseAt, xMid, PADL, PADT, plotW, plotH) {
+  if (!releaseAt || !releaseAt.length) return '';
+  let g = '';
+  rows.forEach((r, i) => {
+    const versions = releaseAt[i];
+    if (!versions || !versions.length) return;
+    const x = xMid(i);
+    const label = versions.join('+');
+    const near = x > PADL + plotW - 60;
+    g += '<line x1="' + x + '" y1="' + PADT + '" x2="' + x + '" y2="' + (PADT + plotH)
+      + '" stroke="' + RELEASE_COLOR + '" stroke-width="1" stroke-dasharray="4,3" opacity="0.6">'
+      + '<title>' + esc(label) + ' released — first seen this day</title></line>'
+      + '<text x="' + (near ? x - 3 : x + 3) + '" y="' + (PADT + 8) + '" fill="' + RELEASE_COLOR
+      + '" font-size="9" text-anchor="' + (near ? 'end' : 'start') + '">' + esc(label) + '</text>';
+  });
+  return g;
+}
+
 export function barChart(rows, opts) {
   opts = opts || {};
   if (!rows || rows.length < 2) return '';          // one bar is a number, not a chart
@@ -584,6 +626,7 @@ export function barChart(rows, opts) {
       + '<text x="' + (PADL - 6) + '" y="' + (y(v) + 4) + '" fill="#8fa2b3" font-size="10" '
       + 'text-anchor="end">' + v + '</text>';
   });
+  g += releaseMarks(rows, opts.releaseAt, xMid, PADL, PADT, plotW, plotH);
   rows.forEach((r, i) => {
     const x0 = PADL + i * slot + (slot - groupW) / 2;
     if (!r.missing) {
@@ -772,6 +815,7 @@ export function lineChart(rows, opts) {
       + '<text x="' + (PADL - 6) + '" y="' + (y(v) + 4) + '" fill="#8fa2b3" font-size="10" '
       + 'text-anchor="end">' + v + '</text>';
   });
+  g += releaseMarks(rows, opts.releaseAt, xMid, PADL, PADT, plotW, plotH);
 
   // Baseline ticks for every MISSING day, drawn first so a marker at the same x is never
   // hidden under one — same visual language as barChart's own missing-bucket tick, just

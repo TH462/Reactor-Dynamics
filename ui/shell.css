@@ -2497,6 +2497,17 @@ select.num-input { width: auto; }
    move .ckl-sub.muted makes for a note, rather than a new colour on a card that already carries
    three (DESIGN_CRITERIA question 4). */
 .ckl-crit-wait { color: var(--muted); font-weight: 600; }
+/* A SUBSTEP'S OWN NOTE, AND ITS OWN "Suggested time warp" LINE (walkthrough-step-format project,
+   `accs[].note` / `accs[].wait_speed` / `accs[].speed_text`). Same box as `.ckl-crit-when` — size,
+   weight, indent — but NEITHER SETS ITS OWN COLOUR, on purpose: undeclared, they inherit whatever
+   this row's enclosing `.ckl-crit` is wearing (cobalt live, --running met, --muted
+   `.ckl-crit-wait`), which is the SAME "one treatment, not two" move the comment above makes for
+   the waiting row's ask text — a substep the sequencer has not reached yet goes quiet along with
+   everything else in its row, with nothing new to teach the renderer. `.ckl-crit-note` is
+   additionally italic, the `.ckl-sub.muted` idiom for a tip in the player's own voice rather than
+   the step's imperative one. */
+.ckl-crit-note { font-weight: 400; font-size: 11px; font-style: italic; margin-left: 20px; line-height: 1.4; }
+.ckl-crit-speed { font-weight: 400; font-size: 11px; margin-left: 20px; line-height: 1.4; }
 /* THE OUT-OF-TURN REASON (#759, owner ruling 2026-09-15). Amber, not red: the press was not an
    error — the plant accepted it and the point really was plotted — it simply does not count
    toward a rung whose turn has not come. Red would say "you broke something", which is the

@@ -1882,7 +1882,7 @@
      * array; when that entry is met and this one is not, this one latches and is flagged
      * `implied` so the card can say so.
      *
-     * WHY IT EXISTS. `pwr_startup` step 9 grades criticality on two instrument rows — INTER
+     * WHY IT EXISTS. `pwr_startup` step 9 (step 10 since the 2026-09-23 split) grades criticality on two instrument rows — INTER
      * RANGE at or above 1.0e-7 A, and REACTOR POWER above 0.05 %. `accs` is a CONJUNCTION, so
      * a channel the player can break takes the step with it: MEASURED on this tree,
      * `hot_full_power`, seed 7, through this function — `set_instrument_failure

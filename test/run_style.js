@@ -303,10 +303,16 @@ var CHECKS = [
          * substep's INSTRUCTION, added for the #741 display and drawn on the card exactly like
          * the label — so it is player-facing and bound by the same 2026-09-06 ruling. A new
          * authoring key that the harvester does not know about ships ungated, which is how the
-         * panel came to print "(116 degC)" while this check stayed green (#670 S-10). */
+         * panel came to print "(116 degC)" while this check stayed green (#670 S-10).
+         * `note` and `speed_text` (walkthrough-step-format project) are the SAME trap in the
+         * same shape: two more per-entry strings the card draws verbatim, so they get the same
+         * harvest line as `ask` rather than trusting the step-level `note` scan above to reach
+         * into `accs`, which it does not — an array is not a string and `chk` no-ops on one. */
         (s.step.accs || []).forEach(function (a, j) {
           chk(s.proc + ' step ' + s.n + '.accs' + j, a.label);
           chk(s.proc + ' step ' + s.n + '.accs' + j + '.ask', a.ask);
+          chk(s.proc + ' step ' + s.n + '.accs' + j + '.note', a.note);
+          chk(s.proc + ' step ' + s.n + '.accs' + j + '.speed_text', a.speed_text);
         });
         if (s.step.overtaken) { chk(s.proc + ' step ' + s.n + '.overtaken', s.step.overtaken.text); chk(s.proc + ' step ' + s.n + '.overtaken', s.step.overtaken.label); }
       });
