@@ -4041,21 +4041,56 @@
    * or a typo'd `wait_speed: 30` becomes a rung the player cannot see, at a rate they cannot
    * reach by hand. The largest rung AT OR BELOW the authored value — rounding DOWN, because the
    * number is a ceiling on how fast this step may be watched. */
-  function cklRungFor(st) {
-    if (!st) return null;
-    var want = +st.wait_speed || 0;
-    if (want > 0) {
-      var lad = speedLadder(), best = lad[0];
-      for (var i = 0; i < lad.length; i++) if (lad[i].speed <= want) best = lad[i];
-      return best;
+  function cklSnapRung(want) {
+    var lad = speedLadder(), best = lad[0];
+    for (var i = 0; i < lad.length; i++) if (lad[i].speed <= want) best = lad[i];
+    return best;
+  }
+  /* A LETTERED SUBSTEP CAN OWN ITS OWN RUNG (the walkthrough-step-format project). `accs[i].cont`
+   * marks a row as another check-off of the PRECEDING (HEAD) entry — no letter, no `ask` — so the
+   * "substep containing row i" is found by walking back from i to the nearest entry that is not
+   * `cont`. THE ACTIVE SUBSTEP is the one holding the first unmet VISIBLE row, scanned in array
+   * order: on an `accs_ordered` step that is exactly the blocking row (position is the sequence),
+   * and on an unordered step it is simply the earliest row still open — there is no other notion
+   * of "the substep the player is on" without one. Returns null once every visible row is met (the
+   * hand-back to the step-level/real-time logic happens in `cklRungFor`), so a finished step never
+   * pins the clock to its last substep's rung. */
+  /* THE HEAD-ENTRY INDEX of the active substep, or -1 (no `accs`, or every visible row already
+   * met). Split out of `cklAccsHeadRung` because `cklAutoKey` needs the SAME index, not just the
+   * rung it resolves to: two substeps that happen to want the same numeric speed must still be
+   * different KEYS, or auto never re-acts crossing the boundary and a player's override on the
+   * first substep silently keeps suppressing auto on the second. */
+  function cklActiveAccsHead(st, ck) {
+    if (!st || !st.accs || !st.accs.length || !ck) return -1;
+    var fu = -1;
+    for (var i = 0; i < st.accs.length; i++) {
+      if (st.accs[i].hidden) continue;
+      if (!((ck.accs && ck.accs[i]) || {}).met) { fu = i; break; }
     }
+    if (fu < 0) return -1;
+    var head = fu;
+    while (head > 0 && st.accs[head].cont) head--;
+    return head;
+  }
+  function cklAccsHeadRung(st, ck) {
+    var head = cklActiveAccsHead(st, ck);
+    if (head < 0) return null;
+    var want = +st.accs[head].wait_speed || 0;
+    return want > 0 ? cklSnapRung(want) : null;
+  }
+  function cklRungFor(st, ck) {
+    if (!st) return null;
+    var subRung = cklAccsHeadRung(st, ck);   // WINS over the step's own wait_speed when present
+    if (subRung) return subRung;
+    var want = +st.wait_speed || 0;
+    if (want > 0) return cklSnapRung(want);
     return cklIsWaitStep(st) ? RD.CklSpeedHint(+st.hold || 0) : null;
   }
   /* What speed should the plant be running at for the step on screen — null when no walkthrough
    * is running, in which case the clock is nobody's business but the player's. */
   function cklStepSpeed(s, a) {
     if (!a) return null;
-    var rung = cklRungFor(a.st);
+    var rung = cklRungFor(a.st, a.ck);
     if (!rung) return 1;
     if (a.ck.acc_met || a.ck.awaiting_ack) return 1;      // the wait is over — hand it back
     if (!rung.warp) return rung.speed;
@@ -4067,13 +4102,25 @@
   }
   /* THE KEY — what "auto has already had its act" is scoped to. Named because TWO places need the
    * same string: this driver, and the speed-button handler that records an override against it.
-   * A second copy computed by hand is how the two would drift. */
+   * A second copy computed by hand is how the two would drift.
+   *
+   * CARRIES THE ACTIVE SUBSTEP INDEX (`|s<n>`) when `st.accs` has one. Two substeps of the same
+   * step can resolve to the same numeric `want` (both 10×, say) yet still be different moments —
+   * without the index in the key, crossing from one to the other looks like no change at all, so
+   * auto never re-acts and a player's override on the first substep goes on silently suppressing
+   * auto on the second. Omitted entirely when there is no `accs` head to name, so a step that
+   * authors none of the new fields gets the exact key it always did. */
+  function cklAutoKeyStr(a, s, want) {
+    var head = a.st.accs ? cklActiveAccsHead(a.st, a.ck) : -1;
+    return a.ck.procedure_id + '#' + a.ck.step_index + '|' + want +
+           (head >= 0 ? '|s' + head : '') +
+           ((s.true_state && s.true_state.speed_hold) ? '|h' : '');
+  }
   function cklAutoKey(s) {
     var a = cklActiveStep(s);
     var want = cklStepSpeed(s, a);
     if (want == null) return null;
-    return a.ck.procedure_id + '#' + a.ck.step_index + '|' + want +
-           ((s.true_state && s.true_state.speed_hold) ? '|h' : '');
+    return cklAutoKeyStr(a, s, want);
   }
   function syncCklAutoSpeed(s) {
     var a = cklActiveStep(s);
@@ -4102,8 +4149,7 @@
       }
       return;
     }
-    var key = a.ck.procedure_id + '#' + a.ck.step_index + '|' + want +
-              ((s.true_state && s.true_state.speed_hold) ? '|h' : '');
+    var key = cklAutoKeyStr(a, s, want);
     /* ---- A STOPPED CLOCK DROPS THE LATCH, AND THAT IS A FIX, NOT A STYLE (quality pass,
      * 2026-09-20) ---- This read `if (!running) return;` with the key ALREADY LATCHED, under a
      * comment claiming "a pause never eats the step's speed change". It ate it in the COMMON
@@ -4141,7 +4187,7 @@
   function cklWaitAdvice(s, a, forBar) {
     var holdS = +a.st.hold || 0;
     var span = cklWaitSpan(a.st, holdS);
-    var rung = cklRungFor(a.st) || RD.CklSpeedHint(holdS);
+    var rung = cklRungFor(a.st, a.ck) || RD.CklSpeedHint(holdS);
     var cur = (s.metadata && s.metadata.time_acceleration) || 1;
     if (a.ck.acc_met || a.ck.awaiting_ack) {
       return 'Wait complete — back at ' + cur + '× (this step fast-forwards at ' + rung.speed + '×).';
@@ -4496,16 +4542,19 @@
    * the step draws letters, else its done-when line. Mirrors the out-of-turn line's derivation
    * (#759) — letters count VISIBLE entries, so a hidden cmd twin does not consume one. */
   function impliedSay(st, en, stepNo) {
+    // `cont` rows are skipped from the letter count here too (walkthrough-step-format project) —
+    // the same non-letter, non-group-starting entries the render loop above excludes, so this
+    // function's `j`-th letter cannot drift from the one actually printed on the card.
     var accs = st.accs || [], j = -1, visN = 0, i;
     for (i = 0; i < accs.length; i++) {
-      if (!accs[i].hidden) visN++;
+      if (!accs[i].hidden && !accs[i].cont) visN++;
       if (j === -1 && accs[i] !== en && accs[i].p === en.implied_by) j = i;
     }
     if (j === -1) return 'another line on this step';
     var lbl = accs[j].label || (accs[j].p ? fmtPredicate(accs[j]) : String(accs[j].cmd || ''));
-    if (visN > 1 && !accs[j].hidden) {
+    if (visN > 1 && !accs[j].hidden && !accs[j].cont) {
       var seen = 0;
-      for (i = 0; i < j; i++) if (!accs[i].hidden) seen++;
+      for (i = 0; i < j; i++) if (!accs[i].hidden && !accs[i].cont) seen++;
       return String(stepNo) + String.fromCharCode(97 + seen) + ': ' + lbl;
     }
     return lbl;
@@ -4827,9 +4876,17 @@
            * drawing, so indexing the letter off `ai` would print 3a, 3c on a step whose middle
            * entry is a hidden cmd twin — `pwr_heatup` 8 is exactly that shape.
            * AND IT IS SUPPRESSED ON A ONE-ROW STEP: a solitary "5a" is noise, since the letters
-           * exist to say "these are parts of one step", which needs at least two parts. */
+           * exist to say "these are parts of one step", which needs at least two parts.
+           *
+           * `cont: true` (the walkthrough-step-format project) IS ANOTHER CHECK-OFF OF THE
+           * PRECEDING SUBSTEP, NOT A SUBSTEP OF ITS OWN — the 1/M leg's "plot the point, THEN
+           * read the printed prediction" shape, two rows the player watches for under one
+           * instruction. It draws (still graded, still gets its own ✓/○ and done-when), but it
+           * consumes no letter and starts no new group: `visN`/`visSeen` count only the HEAD
+           * entries (the non-`cont` ones), which is also what a one-substep step with two `cont`
+           * check-offs needs — that is still ONE part, so the suppression above must still fire. */
           var visN = 0;
-          for (var vi = 0; vi < st.accs.length; vi++) if (!st.accs[vi].hidden) visN++;
+          for (var vi = 0; vi < st.accs.length; vi++) if (!st.accs[vi].hidden && !st.accs[vi].cont) visN++;
           var visSeen = 0;
           /* AN `accs_ordered` STEP'S ROWS ARE A SEQUENCE AND THE CARD HAS TO SAY SO (#756).
            * `ordBlock` is the index of the first row not yet met — the one the player is on.
@@ -4852,9 +4909,26 @@
              * "spray" on the card twice (#660 item 6). Still graded; just not printed. */
             if (en.hidden) continue;
             var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) + modeLiveNote(en, s) : mesc(en.cmd || ''));
-            var tag = visN > 1 ? ((i + 1) + String.fromCharCode(97 + visSeen)) : '';
-            visSeen++;
+            var tag = '';
+            if (!en.cont) { tag = visN > 1 ? ((i + 1) + String.fromCharCode(97 + visSeen)) : ''; visSeen++; }
             var ordWait = st.accs_ordered && ordBlock >= 0 && ai > ordBlock;
+            /* THE SUBSTEP'S OWN NOTE AND SPEED, ON ITS HEAD ENTRY (the walkthrough-step-format
+             * project — the owner's per-substep Note + "Suggested time warp" line). Neither is
+             * drawn on a `cont` row: it is the same substep as its head, so the head already
+             * carries them. NO EXPLICIT COLOUR on either div — they inherit whatever this row's
+             * own state set (cobalt live, --running met, --muted `ckl-crit-wait`), the same "one
+             * treatment, not two" idiom `ckl-crit-wait` already uses for the ask text, so a
+             * substep the sequencer has not reached yet reads as coming, quietly, rather than
+             * being hidden outright (#756's principle) or needing a second waiting-state style. */
+            var subNote = (!en.cont && en.note) ? mesc(en.note) : '';
+            /* `speed_text` carries its OWN trailing punctuation (same trust as `wait_hint`'s
+             * authored string, above) — only the bare-rung fallback gets one appended here, so an
+             * authored sentence is never printed with a mechanically doubled full stop. */
+            var subSpeed = '';
+            if (!en.cont) {
+              if (en.speed_text) subSpeed = mesc(en.speed_text);
+              else if (+en.wait_speed > 0) subSpeed = cklSnapRung(+en.wait_speed).speed + '×.';
+            }
             h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') +
               (ordWait ? ' ckl-crit-wait' : '') + '">' +
               (tag ? '<span class="ckl-crit-n">' + tag + '</span>' : '') +
@@ -4867,6 +4941,8 @@
                * its own line, so the imperative is what the eye lands on. Not on a row that is
                * still waiting its turn (#756) — a done-when for a row nothing is grading yet. */
               (en.ask && !ordWait ? '<div class="ckl-crit-when">' + mesc(enTxt) + '</div>' : '') +
+              (subNote ? '<div class="ckl-crit-note">' + subNote + '</div>' : '') +
+              (subSpeed ? '<div class="ckl-crit-speed">Suggested time warp: ' + subSpeed + '</div>' : '') +
               /* A ROW TICKED BY A SIBLING SAYS SO (`implied_by`, #749 follow-up, OWNER RULING
                * 2026-09-18). Without this the card draws "INTER RANGE reads 1.0e-7 A or more
                * ✓" beside a tile bottomed out at 1.0e-11 — a tick standing for a reading the
@@ -4905,9 +4981,9 @@
           var bEn = oot ? st.accs[oot.blocked_by] : null;
           if (bEn) {
             var bTag = '';
-            if (visN > 1 && !bEn.hidden) {
+            if (visN > 1 && !bEn.hidden && !bEn.cont) {
               var bSeen = 0;
-              for (var bi = 0; bi < oot.blocked_by; bi++) if (!st.accs[bi].hidden) bSeen++;
+              for (var bi = 0; bi < oot.blocked_by; bi++) if (!st.accs[bi].hidden && !st.accs[bi].cont) bSeen++;
               bTag = (i + 1) + String.fromCharCode(97 + bSeen);
             }
             var bTxt = bEn.ask || (bEn.label ? bEn.label
@@ -5011,7 +5087,7 @@
            * that was removed). */
           /* The rung keeps its <b>: the sentence is built as text by the shared formatter, so the
            * emphasis is put back on the one token the eye is hunting for, once. */
-          var rungTxt = (cklRungFor(st) || RD.CklSpeedHint(holdS)).speed + '×';
+          var rungTxt = (cklRungFor(st, ck) || RD.CklSpeedHint(holdS)).speed + '×';
           h += '<div class="ckl-sub ckl-wait">⏩ ' +
             mesc(cklWaitAdvice(s, { ck: ck, pr: pr, st: st }, false)).replace(rungTxt, '<b>' + rungTxt + '</b>') +
             (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
@@ -5543,7 +5619,7 @@
    * be overshoot — the same reason auto drops the clock there. */
   function applyCklSpeedGlow(s, ck, st) {
     clearCklSpeedGlow();
-    var rung0 = cklRungFor(st);
+    var rung0 = cklRungFor(st, ck);
     if (!rung0) return;
     if (ck && (ck.acc_met || ck.awaiting_ack)) return;
     if (warpNote && warpNote.reason === 'hold') return;   // the clock is held; the press would refuse

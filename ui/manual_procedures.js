@@ -168,6 +168,39 @@
  *           too — `test/procedures_harness.js` issues an ordered step's cmd entries when their
  *           predecessors come true rather than all at step entry, so the gate drives the route
  *           the player has to take. `run_checklist_pwr2` §2x is the injection pair.
+ *   accs[].cont  OPTIONAL boolean — ANOTHER CHECK-OFF OF THE PRECEDING (HEAD) ENTRY, not a
+ *           substep of its own (the walkthrough-step-format project, `Blueprint/walkthrough_
+ *           steps/02_mode3_to_mode1_test.md`: one lettered substep, more than one `()` row —
+ *           e.g. "plot the point, THEN read the panel's printed prediction"). It draws — still
+ *           graded, still its own ✓/○ and done-when — but carries NO letter and NO `ask`: it is
+ *           found by walking back from it to the nearest entry that is not `cont`, and that HEAD
+ *           entry is what owns the letter, the `ask`, and the three fields below. A one-substep
+ *           step with two `cont` check-offs is still ONE part for the letter-suppression rule
+ *           (`visN > 1`) — three `accs` rows, one letter's worth of substep.
+ *   accs[].note  OPTIONAL string — THE SUBSTEP'S OWN NOTE, on its HEAD entry (never on a `cont`
+ *           row — the head already carries it). Draws under the `ask`/done-when, same box as the
+ *           step-level `note` in spirit but its own class (`.ckl-crit-note` in ui/shell.css) —
+ *           the step-level `note` stays whatever it was; a step built entirely from per-substep
+ *           notes simply authors none, and the renderer does not draw an empty one.
+ *           Undyed on purpose: it takes whatever colour its row already has (live cobalt, met
+ *           green, or the muted grey a not-yet-live `accs_ordered` row wears), so a substep the
+ *           sequencer has not reached yet still shows its note — #756's "seeing what is coming"
+ *           — quietly, with no second waiting-state style to invent. NO SI (owner ruling
+ *           2026-09-06); `run_style`'s `checklist_no_si` scans this field.
+ *   accs[].wait_speed  OPTIONAL number, on a HEAD entry — THE SUBSTEP'S OWN RUNG, same snap-to-
+ *           the-ladder semantics as the step-level `wait_speed` above, but scoped to whichever
+ *           substep is ACTIVE: the one holding the first unmet VISIBLE row (on an `accs_ordered`
+ *           step that is exactly the blocking row; on an unordered step, the earliest row still
+ *           open). While that substep is active its `wait_speed` WINS over the step's own; once
+ *           every row is met, or while the plant is between substeps, the step-level `wait_speed`
+ *           (or the 30 s/`hold` rule) takes back over. Absent on every entry ⇒ byte-identical to
+ *           a pool that has never seen this field. `ui/app.js` `cklAccsHeadRung`/`cklRungFor`.
+ *   accs[].speed_text  OPTIONAL string, on a HEAD entry — THE PROSE for the "Suggested time
+ *           warp" line when a bare rung does not say enough (the 9b tap-and-wait substep: "10×
+ *           while you wait; back to 1× before every tap"). The card draws "Suggested time warp:
+ *           <speed_text, or the snapped wait_speed as N×>" under the substep's note; a substep
+ *           with neither field draws no line at all. NO SI (owner ruling 2026-09-06); scanned by
+ *           `checklist_no_si` the same way `note` is.
  *   wait_hint OPTIONAL string — rendered as a time-acceleration suggestion on long
  *           steps (#244 M5→3 item 5). Prose only; harnesses ignore it. `false` drops the
  *           generated ⏩ line entirely (#653 S9).

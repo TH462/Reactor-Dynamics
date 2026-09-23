@@ -800,6 +800,92 @@ function sig(rows) {
          out ? JSON.stringify(out.line) : 'no .ckl-oot line');
     })();
 
+    /* ---- 9. A LETTERED SUBSTEP CAN OWN MORE THAN ONE CHECK-OFF, ITS OWN NOTE AND ITS OWN
+     * "Suggested time warp" LINE (the walkthrough-step-format project, `Blueprint/
+     * walkthrough_steps/02_mode3_to_mode1_test.md`). No pool step authors `accs[].cont` /
+     * `.note` / `.wait_speed` / `.speed_text` yet — a later agent ports that content — so this
+     * is a synthetic fixture, same idiom as section 6.
+     *
+     * THREE THINGS THE LETTER MATH MUST GET RIGHT AT ONCE: a `cont` row draws (still graded,
+     * still its own ✓/○) but consumes NO letter, so the substep after it is `1b`, not `1c` — the
+     * defect this proves is real: a naive `visN`/`visSeen` that still counted `cont` rows would
+     * print `1c` here. And a step that is ONE substep wide, even with a `cont` check-off under
+     * it, still suppresses letters altogether (the `single` variant), because the `visN > 1`
+     * test has to count HEADS, not `accs` rows.
+     *
+     * READ OFF THE RENDERED DOM, not a hook — same reason section 6 gives. */
+    await (async function () {
+      async function paint(mode) {
+        await page.goto(url, { waitUntil: 'load' });
+        await page.waitForTimeout(1200);
+        await page.evaluate(function (mode) {
+          var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_substep_probe'; });
+          window.RD.MANUAL_PROCEDURES.pwr2 = P;
+          // head A (met) + its `cont` check-off (met) + head B (unmet) — one of everything.
+          var accs = [
+            { p: 'power_pct', op: '>', v: -1, ask: 'Do thing A.', label: 'A done-when',
+              note: 'Note for substep A.', wait_speed: 5 },
+            { p: 'power_pct', op: '>', v: -1, label: 'A confirmed a second way', cont: true },
+            { p: 'power_pct', op: '<', v: -1, ask: 'Do thing B.', label: 'B done-when',
+              speed_text: 'Custom prose for B, not a bare rung.' }
+          ];
+          if (mode === 'single') accs = accs.slice(0, 2);   // head A + its cont row, nothing else
+          P.push({ id: 'zz_substep_probe', category: 'control', manual_ref: 'ZZ-04',
+                   title: 'Substep probe', purpose: 'Render fixture.', from: 'hot_full_power',
+                   steps: [{ text: 'A step with a cont row and a per-substep speed line.',
+                             control: '(observe)', accs: accs }] });
+        }, mode);
+        await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
+        await page.waitForTimeout(200);
+        await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+        await page.waitForTimeout(2600);
+        await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
+        await page.waitForTimeout(700);
+        await page.click('button[data-ckl-start="zz_substep_probe"]', { timeout: 4000 });
+        await page.waitForTimeout(2200);
+        return page.evaluate(function () {
+          var card = document.querySelector('.ckl-step.ckl-active');
+          if (!card) return null;
+          return [].map.call(card.querySelectorAll('.ckl-crit'), function (r) {
+            var n = r.querySelector('.ckl-crit-n');
+            var note = r.querySelector('.ckl-crit-note');
+            var speed = r.querySelector('.ckl-crit-speed');
+            return { tag: n ? n.textContent.trim() : null,
+                     met: r.classList.contains('ckl-crit-met'),
+                     note: note ? note.textContent.trim() : null,
+                     speed: speed ? speed.textContent.trim() : null };
+          });
+        });
+      }
+
+      var base = await paint(null);
+      ck('#substep render: three rows for a head + its cont row + a second head',
+         !!base && base.length === 3,
+         base ? base.length + ' rows' : 'the probe leg did not render');
+      ck('...the `cont` row draws — still graded — but consumes no letter',
+         !!base && base.length === 3 && base[1].tag === null && base[1].met === true,
+         base ? 'tags ' + JSON.stringify(base.map(function (r) { return r.tag; })) +
+                ' met ' + JSON.stringify(base.map(function (r) { return r.met; })) : 'no rows');
+      ck('...and the SECOND HEAD is lettered `1b`, not `1c` — the letter skips the cont row',
+         !!base && base[0].tag === '1a' && base[2].tag === '1b',
+         base ? 'tags ' + JSON.stringify(base.map(function (r) { return r.tag; })) : 'no rows');
+      ck('...head A draws its own note and its wait_speed as a snapped N× line',
+         !!base && base[0].note === 'Note for substep A.' &&
+         base[0].speed === 'Suggested time warp: 5×.',
+         base ? 'note ' + JSON.stringify(base[0].note) + ' speed ' + JSON.stringify(base[0].speed) : 'no rows');
+      ck('...the cont row draws NEITHER note NOR speed line — the head already carries them',
+         !!base && base[1].note === null && base[1].speed === null,
+         base ? 'cont note ' + JSON.stringify(base[1].note) + ' speed ' + JSON.stringify(base[1].speed) : 'no rows');
+      ck('...head B\'s authored speed_text REPLACES the bare rung, verbatim (its own punctuation, not doubled)',
+         !!base && base[2].speed === 'Suggested time warp: Custom prose for B, not a bare rung.',
+         base ? 'B speed ' + JSON.stringify(base[2].speed) : 'no rows');
+
+      var single = await paint('single');
+      ck('...VARIANT: a head + its cont row is still ONE substep — no letters at all',
+         !!single && single.length === 2 && single[0].tag === null && single[1].tag === null,
+         single ? 'tags ' + JSON.stringify(single.map(function (r) { return r.tag; })) : 'no rows');
+    })();
+
   } catch (err) {
     ck('the gate ran to completion', false, String((err && err.message) || err).slice(0, 160));
   }
