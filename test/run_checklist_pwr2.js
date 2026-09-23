@@ -469,9 +469,11 @@ if (!only && RUN_B) {
     var protSrc = fs.readFileSync(path.join(ROOT, 'engines', 'pwr2', 'pwr2_protection.js'), 'utf8');
     var ids = [], re = /\{ id: '([a-z_0-9]+)', name: '[^']+', kind: 'rps'/g, mm;
     while ((mm = re.exec(protSrc))) ids.push(mm[1]);
-    /* the two causes the table does not carry: the pushbutton and the anticipatory trip, both
-     * assigned literally in pwr2_protection (`trip_cause = 'manual'` / `'turbine_trip'`). */
-    ids.push('manual', 'turbine_trip');
+    /* the causes the table does not carry — the pushbutton, the anticipatory turbine trip and
+     * the SI trip (#800) — are assigned LITERALLY in pwr2_protection, so read every literal
+     * `trip_cause = '...'` rather than keep a hand list that the next one silently misses. */
+    var reLit = /trip_cause = '([a-z_0-9]+)'/g;
+    while ((mm = reLit.exec(protSrc))) if (ids.indexOf(mm[1]) < 0) ids.push(mm[1]);
     var gaps = ids.filter(function (i) { return !keys[i]; });
     ck('every pwr2 reactor-trip cause has a TRIP_CAUSE entry - the tile names it, not a title-cased id (#670 S-11)',
        ids.length >= 10 && gaps.length === 0,

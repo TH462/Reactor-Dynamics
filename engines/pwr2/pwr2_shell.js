@@ -1505,14 +1505,17 @@
          * The message is GENERIC where the kernel's names the channel, because a permissive row
          * carries static text and teaching the kernel to interpolate would be a shared-code
          * change for one plant (HR3). The annunciators name which trip is in — that is what
-         * they are for — and the shell's own reset refusal, which the facade and the board both
-         * reach, quotes the channel, its value and its setpoint. */
+         * they are for — and the shell's own reset refusal quotes the channel, its value and
+         * its setpoint. THE BOARD NEVER REACHES THAT ONE: this row refuses first in the kernel,
+         * so only the facade sees the shell's text. That is why the SI latch (#800) is named in
+         * the static text below rather than only in the shell's. */
         rps_reset_permissive: [{
           instrument: 'no_trip_signal_standing', direction: 'is_true',
           reason: 'TRIP_SIGNAL_PRESENT',
           message_learning: 'A reactor trip signal is still asserted — the breakers will not ' +
             'hold in against it. Clear the condition that tripped the plant first; the ' +
-            'annunciators name which channel is in.',
+            'annunciators name which channel is in. A latched safety injection also holds ' +
+            'it — stop the ECCS pumps to reset SI first.',
           message_industry: 'RPS RESET BLOCKED — trip signal still asserted'
         }].concat(base.rps_reset_permissive || []),
         /* EXACTLY ONE automation channel rides through (#507 wave 1): the boron batch-dose

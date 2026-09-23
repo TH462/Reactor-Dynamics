@@ -788,8 +788,11 @@ chapter, **every setting of this slider is inside what charging can replace.**
 
 ### Why this one is different
 E06 (SGTR) and E09 (Large LOCA) are casualties: they outrun make-up, force a trip and drive an
-EOP. This one does not. Charging simply comes up and holds it, indefinitely, and the plant will
-sit there losing coolant to containment for as long as you let it. It is the everyday leak the
+EOP. This one does not outrun make-up: charging comes up and holds the inventory. **What it does
+not hold is containment.** The leak goes to the containment atmosphere, and at power containment
+pressure climbs until the **3.5 psig safety-injection backup** actuates — and **every safety
+injection trips the reactor** (§3.0 of `09`). Measured, full stack, full power, the default 40 %:
+containment rises about **0.14 psi a minute** and SI plus the reactor trip arrive at **15 minutes**. It is the everyday leak the
 chemical and volume control system exists to make up — and the one that teaches you to read the
 board rather than react to it.
 
@@ -800,7 +803,8 @@ this one does not care what the primary is at. You do not terminate it from the 
 - **CHG FLOW HI (A30)** — the cue, and usually the only alarm you get
 - Charging flow steady and high; letdown unchanged
 - Pressurizer level a per cent or two below program, and *stable* there — not falling
-- **No** reactor trip, no ESF actuation, no subcooling loss
+- Containment pressure rising steadily — the clock on this procedure
+- No subcooling loss; no trip **until** containment reaches the safety-injection backup
 - At low severity, no alarm at all — only an elevated charging trend
 
 ### What the board will NOT tell you
@@ -817,7 +821,7 @@ shift. Likewise **PZR LVL DEV LO (A31) stays clear** — the deviation only open
 | 2 | Rule out the impostors — letdown isolated or throttled, or a deliberate level-setpoint change, produce the same alarm |
 | 3 | Locate it: containment sump level and humidity, pressurizer relief tank pressure/temperature (a weeping PORV or safety), steam generator activity (a tube leak is **E06** territory) |
 | 4 | Trend the charging demand at steady load. Flat = a stable leak you can plan around; rising = it is growing |
-| 5 | Plan a shutdown on your own terms rather than waiting for make-up to lose it |
+| 5 | Shut down on your own terms **before containment reaches 3.5 psig** — at the default leak that is a quarter of an hour, and SI will trip the reactor if you do not |
 
 ### If it grows past make-up
 **PZR LVL DEV LO (A31)** comes in, charging saturates, and level starts a genuine descent. That
@@ -825,8 +829,13 @@ is no longer this procedure — go to the loss-of-coolant response and be ready 
 injection at **PZR LVL LO LO (12 %)**.
 
 ### Acceptance
-Leak identified and its size trended, with the plant still in a stable, alarm-quiet condition —
-no trip, no ESF, and the decision to shut down made deliberately rather than forced.
+Leak identified and its size trended, and the shutdown begun deliberately, before containment
+pressure forces it through a safety injection and reactor trip.
+
+*Known model limits, declared:* this containment has **no structural heat sink** (#799), which
+overstates its pressure rise; and the safety-injection backup currently latches with **true**
+containment about **0.3 psi under** its setpoint (#800). Both make the 15 minutes shorter than a
+real plant's.
 
 ---
 

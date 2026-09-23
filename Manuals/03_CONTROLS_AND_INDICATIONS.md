@@ -133,7 +133,7 @@ The reset is **permissive-gated** — it will not take until both conditions hol
 
 | Permissive | Why | Caption when it is holding |
 |---|---|---|
-| **No trip signal standing** | A breaker will not hold in against a live trip signal. Whatever tripped the plant has to have cleared first. **A latched safety injection counts** — every safety injection trips the reactor, so reset SI at its own panel first (the ECCS securing click; it needs the reactor tripped and its 45–60 s relay run), then reset the trip. | *TRIP SIGNAL STANDING* |
+| **No trip signal standing** | A breaker will not hold in against a live trip signal. Whatever tripped the plant has to have cleared first. **A latched safety injection counts** — every safety injection trips the reactor, so reset SI at its own panel first (the ECCS securing click; it needs the reactor tripped and its 60 s relay run), then reset the trip. | *TRIP SIGNAL STANDING* |
 | **Rods at bottom** | The physical interlock: the breakers reset with the rods in. | *RODS NOT AT BOTTOM* |
 
 The caption under **SCRAMMED** tells you which one is holding, so you do not have to press
@@ -1114,7 +1114,8 @@ to make you own.
 
 **The trap.** The refusal counts down in seconds and reads like a malfunction the first time. It
 is not — it is the relay. Read the message: it names *which* permissive you are short of, and the
-two are cleared in different ways (one by waiting, one by tripping the reactor).
+only one you will meet from the board is the relay — every safety injection trips the reactor on
+the same step, so the P-4 condition is always already met.
 
 *Sourced — the reset circuit's time-delay relay "produces an output (energizes) some time after
 it is started (usually 45–60 sec)", with SI reset additionally requiring the P-4 reactor-trip
