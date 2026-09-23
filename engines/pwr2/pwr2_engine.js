@@ -44,7 +44,7 @@
       CD = RD.condenser, CV = RD.cvcs, EC = RD.eccs, AW = RD.afw, DG = RD.damage,
       PT = RD.protection, PZ = RD.pressurizer, DC = RD.dumpctl, BK = RD.break_,
       CT = RD.containment, TS = RD.trueState, IN = RD.instruments, RH = RD.rhr,
-      FWM = RD.feedwater;
+      FWM = RD.feedwater, LP = RD.loop;
 
   /* the design point is ONE object, owned by pwr2_sources (its DESIGN — #509 item 3): the
    * pump's rated-density reference and these normalizations must be the same numbers, and
@@ -1474,7 +1474,27 @@
     /* the MDAFW pump is a VITAL load — it lives through a plain LOOP (diesels) and dies in
      * a blackout; the TDAFW pump is steam-driven and NEVER gated (WTSM 5.7.5) */
     var awr = AW.stepAFW(eng.aw, dt, { mdafw_power_ok: acAvail });
+    /* ---- WHAT THE PRIMARY SIDE OF THE BUNDLE IS DOING (#588) --------------------------------
+     * The steam generator's tube-side film scales with flow AND phase, exactly as
+     * `pwr2_fuel.filmCoefficient` and `pwr2_core`'s `WALL_FILM` do — Ginna UFSAR ch15
+     * (ML20339A101) §15.3.2.1 names it in this component: *"the reduced RCS flow results in a
+     * decreased tube-side film coefficient"*. Only this layer can supply either half: Layer 5's
+     * generator has no loop and no node.
+     *
+     * THE FLOW FRACTION comes from Layer 3's own helper, never from a retyped `|mdot|/1630` —
+     * the rated flow has ONE owner and a second copy here is the PROTECTION_DT trap.
+     *
+     * THE VOID FRACTION IS THE `sg_primary` NODE'S OWN, and it is `voidFraction`, NOT `quality`:
+     * a film coefficient blends on the fraction of the tube wall the vapour is against, which is
+     * a VOLUME fraction. Measured at the #588 endgame those differ by 0.645 against 0.998 —
+     * `pwr2_fuel.filmCoefficient` shipped taking quality and #490 recorded it as a defect. */
+    var sgpN = null;
+    for (var iSG = 0; iSG < sys.nodes.length; iSG++) {
+      if (sys.nodes[iSG].id === 'sg_primary') { sgpN = sys.nodes[iSG]; break; }
+    }
     var sr = G.stepSG(eng.sg, tavg, dt, { feed: fwr.feed_frac * eng.rated_steam, steam: out,
+                                          flowFrac: LP.flowFrac(sys),
+                                          voidFrac: sgpN ? W.voidFraction(sgpN.h, sys.P) : 0,
                                           afw_kgs: awr.total_kgs, afw_h: awr.h_kJkg,
                                           /* the SGTR stream, one step old (#507 wave 5):
                                            * stepBreak runs AFTER stepSG, so the discharge
@@ -1538,6 +1558,17 @@
      * that happened to diverge, and went BLIND the moment #574's metal walls moved the ride.
      * A wire nobody can see reads as a working feature — which is the whole subject of #574. */
     eng._brkBackP = br ? sys.P - br.dP_mpa : undefined;
+    /* AND THE RCS PRESSURE THE BREAK SAW, at the same instant, for the same reason (#588).
+     * `_brkBackP` made the backpressure observable; the OTHER half of that comparison was
+     * still only readable from `true_state`, which publishes the END-OF-STEP pressure. Those
+     * are not the same number, and on a near-empty RCS they are not close: measured on the
+     * 20 cm2 cold-leg ride at t = 514.18 s, the break computed its flow at 220.87 psia
+     * (1.5228 MPa) and the step ENDED at 45.53 psia (0.3139 MPa) -- a 175 psi intra-step
+     * excursion, larger than the 150 psi gradient the flow was driven by. A gate comparing
+     * the end-of-step pressure against a mid-step flow therefore reads `adverse` on a step
+     * that discharged downhill by 150 psi. This is the honest instant for that comparison.
+     * A DIAGNOSTIC on the same `eng._*` shelf; nothing in the plant reads it. */
+    eng._brkP = br ? sys.P : undefined;
 
     var rrx = R.stepReactor(eng.rx, sys, dt,
       { boron_ppm: cvr.boron_ppm, rodGroups: eng.rodBank, Q_ox_kW: eng._Qox });
@@ -1604,7 +1635,37 @@
       if (heats === rrx.heats) heats = Object.assign({}, rrx.heats);
       heats.hot_leg = (heats.hot_leg || 0) + eng._pzSurgeHeat;
     }
-    var pr = S.stepPlant(sys, dt, { heats: heats, sgDuty: sr.duty_kW, sources: srcs });
+    /* ---- THE DECLARED HEAT EXCHANGES (#588) ---------------------------------------------------
+     * Layer 2 bounds a relaxation at the temperature it relaxes TOWARD, and only the component
+     * that computed the duty knows what that temperature is. Two duties in this engine are
+     * relaxations and both are declared:
+     *
+     *   the STEAM GENERATOR   `U*wet*area*(Tavg - T_sec)`, toward the secondary's saturation
+     *                         temperature — passed as `sgTarget_c` beside the duty it belongs to.
+     *   RESIDUAL HEAT REMOVAL `UA*(T_hot - ccw)`, toward the component cooling water. Its `heats`
+     *                         map is already spread across the ring by volume fraction, so each
+     *                         share is declared at ITS OWN node — one exchange per node, not one
+     *                         for the train, because the limiter is a PER-NODE bound and a lumped
+     *                         declaration would bound nothing.
+     *
+     * NOT DECLARED, deliberately: core power (generation, no body to relax toward), pump work
+     * (the same), the pressurizer surge enthalpy (a transport term, already bounded by the
+     * advective half at its own node) and the break/ECCS/CVCS streams (mass sources — the
+     * advective half already carries them through `qIn`). */
+    var exch = [];
+    if (rhrR.duty_kW > 0 && rhrR.G_kW_per_K > 0 && rhrR.T_sink_c !== undefined) {
+      /* the duty is spread by volume fraction, so the CONDUCTANCE is spread by the same
+       * fraction — recovered from the shares themselves (`heats[n] / -duty`) rather than by
+       * re-deriving the split, so the two cannot come apart if `shareOut` ever changes. */
+      Object.keys(rhrR.heats).forEach(function (n) {
+        var f = -rhrR.heats[n] / rhrR.duty_kW;
+        exch.push({ node: n, kW: rhrR.heats[n], T_c: rhrR.T_sink_c,
+                    G_kW_per_K: rhrR.G_kW_per_K * f });
+      });
+    }
+    var pr = S.stepPlant(sys, dt, { heats: heats, sgDuty: sr.duty_kW, sources: srcs,
+                                    sgTarget_c: sr.T_sec, sgG_kW_per_K: sr.UA_kW_per_K,
+                                    exchanges: exch });
     /* #625 — the loop's Courant report (courantLimit_s / subSteps / held) had no reader above
      * Layer 3; the shell publishes it through getStepReport() so the service's WARP tier can
      * refuse a step the ring would have to lean on its sub-step ceiling to survive. */
@@ -1678,6 +1739,12 @@
       turbine_tripped: eng.tb.tripped,
       steam_dumps_available: eng._cdAvail !== false,
       p9_defeated: eng.p9Defeated === true,           /* #515: the failed channel */
+      /* CONTAINMENT PRESSURE (#784) — HR1, off the instrument like every other analog driver
+       * above, with truth filling in only on the pre-reading first step. The channel is
+       * `containment_pressure` (tau 1.0 s, range [0, 2] MPa), which already holds both sourced
+       * setpoints strictly inside. Absolute MPa: the two rows convert their own psig once. */
+      containment_pressure_mpa: rd.containment_pressure !== undefined
+        ? rd.containment_pressure : eng._ctP,
       /* [sourced ch10] the loss-of-both-feed-pumps MDAFW start's input — a STATE signal
        * (breaker positions), the turbine_tripped convention, not an analog channel */
       main_feed_lost: mfLost,        /* armed only off RHR — see the block above `var mfLost` */
@@ -1731,6 +1798,44 @@
      * against excessive moisture carryover", WTSM 3.2). Level-held while latched. */
     if (ptr.fwi) { eng.fw.isolated = true; eng.tb.tripped = true; }
 
+    /* ---- THE CONTAINMENT ENGINEERED SAFETY FEATURES (#784) ----------------------------------
+     * The caller's half again: `pwr2_protection.js` decided WHETHER on sourced setpoints and
+     * `pwr2_containment.js` owns HOW MUCH; this block owns the three things in between — the
+     * steam-line isolation, the sourced system RESPONSE TIMES, and the AC gate.
+     *
+     * ⚠ EACH HALF IS SEPARATELY SUFFICIENT TO FAIL, which is why the demand and the delivery are
+     * two fields and not one (#295/#545). Break the actuation and the demand never rises; break
+     * the delivery and the demand stands with nothing coming out of the nozzles. A single
+     * boolean would make either injection look like the other's success.
+     *
+     * ⚠ AND THE DE-ENERGIZATION IS IN THE DELIVERY, NEVER IN THE DEMAND (#200/#329/#332). A
+     * blackout takes away the pumped water and the fan motors; it does not reach back and
+     * un-actuate the signal, so `ctmt_spray_demand` stands through a blackout and delivery
+     * resumes the moment a bus comes back — the `afw_pump_running` / `afw_flow_normalized`
+     * split, which is this house's idiom for exactly this. */
+    /* steam-line isolation, sealed in — a valve that shut on the containment signal stays shut */
+    if (ptr.msli_ctmt) eng.msiv.open = false;
+    /* the CRFC safety realign is ON ANY SAFETY INJECTION, not on containment pressure
+     * [sourced — Ginna TS Bases B 3.6.6 (ML20339A221): "In post accident operation following a
+     * SI actuation signal, the CRFC System fans are designed to start automatically if not
+     * already running"]. ONE-SHOT with no automatic securing: realigned fans stay realigned
+     * until an operator restores normal mode, which this auto-only build does not surface. The
+     * retired engine's row keys on the same signal for the same reason. */
+    if (ptr.si) eng.ctmtFanDemand = true;
+    eng.ctmtSprayDemand = !!ptr.ctmt_spray_demand;
+    /* THE SOURCED RESPONSE TIMES, counted on the DEMAND and reset with it [sourced — B 3.6.6:
+     * spray "total response time is 28.5 seconds for one pump to the upper spray header";
+     * "The CRFC System total response time of 44 seconds, includes signal delay, DG startup
+     * (for loss of offsite power), and service water pump and CRFC unit startup times"]. They
+     * are SYSTEM times — valve travel, pump start, line fill — which is why they live here and
+     * not in the protection row's channel delay, where they would have delayed the steam-line
+     * isolation that shares the bistable. */
+    eng._spray_t = eng.ctmtSprayDemand ? (eng._spray_t || 0) + dt : 0;
+    eng._fan_t   = eng.ctmtFanDemand   ? (eng._fan_t   || 0) + dt : 0;
+    var sprayActive = eng.ctmtSprayDemand && eng._spray_t >= CT.CS.spray_response_s && acAvail;
+    var fanActive   = eng.ctmtFanDemand   && eng._fan_t   >= CT.CS.crfc_response_s  && acAvail;
+    eng._sprayActive = sprayActive; eng._fanActive = fanActive;
+
     /* containment receives the break AND the pressurizer relief (PORV/safety discharge ends
      * up there via the relief tank; the tank itself is unmodelled, declared). An SGTR is
      * EXCLUDED — the tube discharges into the SG, a closed receiver, and containment seeing
@@ -1746,12 +1851,29 @@
     var mBr = br && !toSG && br.mdot_kgs > 0 ? br.mdot_kgs : 0;
     var mPz = eng._pzRelief > 0 ? eng._pzRelief : 0;
     var ctIn = mBr + mPz;
-    var ctr = CT.stepContainment(eng.ctm, dtAcc > 0 ? dtAcc : dt,
-      ctIn > 0 && dtAcc > 0
-        ? { mdot_kgs: ctIn,
-            h_kJkg: (mBr * (mBr > 0 ? br.source.h : 0) + mPz * eng._pzReliefH) / ctIn }
-        : { mdot_kgs: 0 });
+    /* #784: the active systems ride the SAME call, so they are stepped over the same interval
+     * the discharge is. DECLARED: on a REFUSED or PARTIAL step that interval is `dtAcc`, the
+     * time the PRIMARY lost inventory over, and spray and the fan coolers are credited for that
+     * interval rather than the full `dt` — they actually ran for `dt`. The two differ only on a
+     * step the solver did not fully accept, where the whole plant's clock is short by the same
+     * amount; splitting them into a second `stepContainment` call over `dt` would make the
+     * atmosphere and the discharge disagree about what time it is, which is worse. */
+    var ctDrv = ctIn > 0 && dtAcc > 0
+      ? { mdot_kgs: ctIn,
+          h_kJkg: (mBr * (mBr > 0 ? br.source.h : 0) + mPz * eng._pzReliefH) / ctIn }
+      : { mdot_kgs: 0 };
+    ctDrv.spray_active = sprayActive;
+    ctDrv.fan_active = fanActive;
+    var ctr = CT.stepContainment(eng.ctm, dtAcc > 0 ? dtAcc : dt, ctDrv);
+    /* the two-field split the contract asks for: DEMANDED, and DELIVERING */
+    ctr.spray_demand = eng.ctmtSprayDemand === true;
+    ctr.spray_active = sprayActive === true;
+    ctr.fan_safety   = eng.ctmtFanDemand === true;
+    ctr.fan_active   = fanActive === true;
     eng._ctP = ctr.containment_pressure_mpa;   /* next step's break backpressure (#543) */
+    /* #784: the containment result itself, for a gate that must assert the EFFECT — the
+     * kg/s and kW the active systems actually moved — rather than that a flag was set. */
+    eng._lastCtr = ctr;
 
     eng.simTime += dt;
     eng._pzr = pzr; eng._dcr = dcr;

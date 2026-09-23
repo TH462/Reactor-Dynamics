@@ -51,6 +51,102 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   is credited only to the page load that starts a session, so an internal row can never carry
   one; it now shows an em dash with the reason. No number changed.
 
+## [Alpha 1.8.0-rc1] — 2026-09-22
+
+### Added
+- **Containment spray, fan coolers and steam-line isolation, auto-only** (#784). PWR2's
+  containment previously had no mitigation and pressure climbed monotonically. Measured on a
+  large loss-of-coolant accident at full power, containment peak at 600 s fell from
+  78.5 psig (93.2 psia, 0.6427 MPa), still climbing, to 57.8 psig (72.5 psia, 0.4998 MPa),
+  peaking at 403 s and falling, with both systems built. Safety injection now also latches on a
+  containment backup signal at 5.58 s (was 8.88 s on low pressurizer pressure alone); fan
+  coolers deliver at 49.5 s, the main steam isolation valve shuts at 59.6 s, spray is demanded
+  at 59.6 s and delivers at 88.2 s. Automatic only — no board control, no player lever. Sourced:
+  3.5 psig (18.2 psia, 0.1255 MPa) safety-injection backup and 30 psig (44.7 psia, 0.3081 MPa) spray/steam-line-isolation high-high (WTSM 12.3,
+  ML11223A310); 1,800 gpm per spray pump from the refueling water storage tank at 50 °F (10 °C)
+  (Ginna UFSAR ch15 Table 15.6-18a, ML20339A101); 28.5 s spray and 44 s fan-cooler response times
+  (Ginna Technical Specifications Bases B 3.6.6, ML20339A221). A station blackout defeats both
+  systems and is bit-identical to the unbuilt plant, 57.0 psig (71.7 psia, 0.4943 MPa) at 168.5 s either way.
+
+### Changed
+- **The steam generator's primary side now accounts for reduced flow and steam voiding in its
+  tubes** (#588), instead of always transferring heat as if full of subcooled water at rated
+  flow. On the large loss-of-coolant accident + station blackout casualty at 1,800 s with the
+  core 100% uncovered, primary-to-secondary driving temperature rose from 1.0 °F (0.6 °C) to
+  64.0 °F (35.6 °C) for the same duty, and peak cladding temperature rose from 976 °F (524 °C)
+  to 1,385 °F (752 °C). Sourced to Ginna UFSAR ch15 (ML20339A101) §15.3.2.1 and §15.6
+  (Dittus-Boelter/Jens-Lottes film correlation, exponent 0.8); the rated film-coefficient
+  constant used to derive the resistance split is an open, unsourced estimate. Bit-identical at
+  hot full power and hot zero power (0 of 3,875 true-state fields differing each); at cold
+  shutdown 1,081 of 3,875 differ but negligibly — average temperature moves 0.006 °F (0.003 °C)
+  over 600 s. Core damage is still not reached on this casualty: peak cladding 1,385 °F against
+  the 2,200 °F (1,204 °C) damage-latch threshold.
+- **Manual: the pressurizer level excursion during a pump-heat heatup is now documented** (#706).
+  With residual-heat-removal letdown autoclosed at 585 psig (4.03 MPa) (WTSM ch.19) partway
+  through a Mode 5 heatup, cooldown or shutdown, orifice letdown cannot keep pace with the
+  heatup rate: level runs 20.4 points above its 25.00% program (peaking 45.37%) for 11.6 of
+  13.4 plant-hours during heatup, +43.07 points during cooldown, +21.19 points during shutdown,
+  and reaches 82.6% and still climbing after 4.2 hours with charging deliberately secured.
+  Characterized, not fixed, per owner ruling — no checklist caution added, no engine constant
+  moved.
+- **Walkthroughs 01 (reactor heatup) and 02 (reactor startup) refreshed from the built checklist
+  pool**, and the TMI walkthrough's step 15 highlight moves from pressurizer level to subcooling
+  margin — level is the instrument that deceived the Three Mile Island operators, subcooling is
+  the one that told the truth.
+- **Internal: scratch worktrees now resolve Node modules via `NODE_PATH` instead of a
+  `node_modules` junction**, after a third recurrence of worktree teardown emptying the shared
+  install and breaking every browser gate across all three lanes.
+
+### Fixed
+- **The TRIP BLOCKS popover now dismisses on a click anywhere outside it (not only on the
+  board) and on Escape, and returns keyboard focus to its opener** (#721).
+- **A numerical instability in the coolant advection model could stall a severe-accident
+  simulation outright** (#588). Past a Courant number of 1 on a near-empty pipe node the update
+  overshot without bound — one measured case invented 2,070 kg of liquid in a 0.54 kg node and
+  the pressure solver could no longer find a root. Fixed with a limiter at the exact stability
+  boundary, sourced as a bounded-explicit form of WCAP-16009-NP-A's (ML050910161)
+  implicit-at-high-flow guidance. Bit-identical on three healthy initial conditions, 0 of 3,844
+  fields differing each. A related check that had been comparing coolant pressure at two
+  different points within the same time step (reading as a spurious "uphill flow") was
+  corrected; the minimum driving head across a full ride is now confirmed always positive
+  (+10.10 psi / 0.0697 MPa at its lowest).
+- **The same unbounded-overshoot defect existed at every wall and heat-exchanger contact**
+  (#588) — measured on a healthy plant, one steam-generator node took −5,611 MW onto 3 kg in a
+  single 0.0067 s sub-step. Fixed with the same limiter applied to every metal wall, the
+  steam-generator duty, and the residual-heat-removal heat exchanger. Bit-identical on the same
+  three initial conditions, 0 of 11,070 fields differing in total.
+- **PWR2 engine performance regressed to 18.2× realtime cost against an 8× budget** after the
+  two limiters above, driven by a water-property inversion (`W.T_from_h`) called 11.89 times
+  per step instead of reading the existing lookup table. Fixed by passing the already-known
+  temperature into the heat-capacity calculation instead of re-deriving it; calls fell to 1.00
+  per step and engine cost fell to 6.7×. At 60× fast-forward, a step now takes 40.8 ms of a
+  100 ms broadcast, down from 111.8 ms. Bit-identical on healthy plants, 0 of 11,430 fields
+  differing.
+- **Manual and gate bookkeeping**: an owner ruling logged without its date, a shipped manual
+  revision row that had been reopened and appended to by two later commits (restored
+  byte-for-byte and reissued as a new revision), and eight bare-megawatt figures in the new
+  containment section missing units (all thermal, never electrical) — all caught by the first
+  full gate run since this work began and corrected.
+
+### Tests
+- **A new full-stack runner (`run_pwr2_coredamage_stack`) confirms the shipped plant already
+  reaches core damage** (#802). On a large loss-of-coolant accident with station blackout and
+  auxiliary feedwater failure, the chain runs secondary dryout at 2,619.3 s → loss of heat sink
+  at 2,781.5 s → cladding crosses the sourced 1,800 °F (982 °C) oxidation onset at 4,749.8 s →
+  oxidation ignites at 4,902.1 s → `fuel_damaged` latches at 5,092.6 s (85 min) — asserted as an
+  ordered chain of invariants, never a pinned timestamp. Without the feedwater failure the plant
+  never damages; its cladding peaks at 1,541 °F (838 °C) and cools.
+- **A null-mutation self-test now proves eleven PWR2 mutation-testing runners' short replay
+  rides are actually exercising their mutations** (#657). A runner that rides full-length on its
+  clean pass but shortened on every replay can report a mutation "caught" for a reason unrelated
+  to the mutation. `run_pwr2_engine`'s 17 groups and five of
+  the nine further runners came back clean; four needed their replay rides fixed (`run_pwr2_reactor`,
+  `run_pwr2_loadfollow`, `run_pwr2_kinetics`, `run_pwr2_pressurizer`), and that exposed eight
+  previously-blind mutations in two of them (reactor 5, pressurizer 3), now closed with new checks. Two
+  settle-time claims could not simply be lengthened — past a point the ride itself grows too
+  settled to tell a broken mutation from a clean one — and were split into their own longer
+  fixture.
+
 ## [Alpha 1.7.7] — 2026-09-21
 
 ### Added

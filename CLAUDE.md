@@ -755,10 +755,10 @@ consequences: **#209** (`run_behavior`/`run_ops` certify on a lineup that never 
 scheduled commands, US-first units, and it stamps the LAYER into its own output so a
 wrong-layer figure is visible in the artifact (#266). **Never drive a measurement with
 `svc.start()`**: it arms `setTimeout(broadcastMs)` and advances in WALL time — measured, 5.0 s
-of wall bought 48.0 s of sim at 10×, which is why #266 believed a long full-stack ride was
-impossible and published two engine-direct numbers instead (one 13× wrong). Driving `tick()`
-directly, 12 plant-hours is **~35 s** and cost is linear in sim duration; per cycle it is
-**87.9 % `engine.step`**, so there is no per-cycle overhead worth optimising.
+of wall bought 48.0 s of sim at 10×, which is why #266 published two engine-direct numbers
+instead (one 13× wrong). Driving `tick()` directly, cost is linear in sim duration. **BUDGET A LONG RIDE OFF
+A MEASUREMENT**: 12 plant-hours is ~35 s on the RETIRED engine QUIET, but **~100 s per plant-hour
+on a PWR2 endgame** — an uncovered core sub-steps (#802).
 
 ## Definition of done
 

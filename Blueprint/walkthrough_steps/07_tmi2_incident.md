@@ -303,7 +303,7 @@ Background
 
 The pumps have been shaking for over an hour because they are pumping steam as much as water. Securing them is the right answer to a cavitating pump, and it also removes the only thing stirring the core.
 
-[HIGHLIGHTED: RCP Run/Stop (pulsing); Pressurizer Level (steady)]
+[HIGHLIGHTED: RCP Run/Stop (pulsing); Subcooling Margin (steady)]
 
 
 ## Step 16

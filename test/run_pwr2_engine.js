@@ -79,6 +79,18 @@ var fs = require('fs');
  * lands in the other half goes BLIND, which this runner would say out loud — so it is filed
  * work, not something to do while re-balancing.
  *
+ * THE NULL SELF-TEST ADDS ONE REPLAY PER GROUP (#657) — the convention and its rationale are
+ * in mut_flags.nullSelfTest, the wiring is beside the MUTATIONS table below. It costs one mean
+ * replay per group, so it reads straight off the mean/replay column above. MEASURED 2026-09-21,
+ * one `--grp=<g> --mut=NULL` process per group, two streams contending: A 6.7 · B 1.8 · C 2.4 ·
+ * D 15.3 · E 24.8 · F 9.4 · G 1.9 · H 2.5 · I 103.9 · K 18.6 · L 4.8 · M 0.6 · N 2.8 · O 1.3 ·
+ * P 0.2 · Q 3.5 · R 6.9 = 207.4 s, i.e. part A +52.5 · part B +51.0 · part C +103.9. Every one
+ * came back BLIND with 0 red, so no group's coverage figure was resting on a short-ride red.
+ * GROUP O IS THE ONE ASYMMETRY the measurement exposed: its clean pass records 7 checks and its
+ * replay 5, because O4 is `if (!quiet)` by cost (see the note there). Two checks therefore run
+ * in NO replay, and a mutation only they could catch would report BLIND — that is documented and
+ * deliberate, and the null line is the first place the gate says it out loud.
+ *
  * PART A KEEPS EVERYTHING UNLISTED. A new grp() block lands in part A by default and moves
  * part A's check tally — so the partition cannot drift silently (the #513 property). GROUPS is
  * DERIVED from this file's own source, so a group letter in PART_B/PART_C that no longer
@@ -677,22 +689,107 @@ function runSuite(RD, rec, quiet, only) {
   run(engBP, quiet ? 10 : 30);
   EN.command(engBP, 'break_open', { area_m2: 0.002, node: 'cold_leg' });
   var bpN = Math.round(1200 / DT), bpAdverse = 0, bpWorst = 0, bpTs = null;   /* adverse hit at 995 s pre-fix */
+  var bpPeak = 0, bpPeakT = 0;                       /* #784 — see the precondition note below */
   for (var bpI = 0; bpI < bpN; bpI++) {
     bpTs = EN.step(engBP, DT);
-    var bpGap = bpTs.containment_pressure_mpa - bpTs.pressure_mpa;
+    if (bpTs.containment_pressure_mpa > bpPeak) {
+      bpPeak = bpTs.containment_pressure_mpa; bpPeakT = (bpI + 1) * DT;
+    }
+    /* ⚠⚠ THE GRADIENT IS GRADED AT THE INSTANT THE FLOW WAS COMPUTED, NOT AT THE END OF
+     * THE STEP (#588). This read `bpTs.containment_pressure_mpa - bpTs.pressure_mpa` -- the
+     * END-of-step RCS pressure -- against a leak the break computed MID-step, and the two are
+     * different plants. It was an invisible defect for as long as the intra-step pressure
+     * motion stayed small beside the gradient, and #588's heat-exchange limiter moved the ride
+     * into a 1.4 %-inventory regime where it does not. MEASURED on this exact ride, working
+     * tree, t = 514.18 s: the break computed its flow against 70.08 psia of containment at an
+     * RCS pressure of 220.87 psia -- +150.8 psi of driving head -- and the step ENDED at
+     * 45.53 psia, so the old expression scored +47.8 psi of `adverse flow` on a step that
+     * discharged downhill the whole time. Six such steps of 60,000, none of them adverse.
+     * THE FLOW WAS NEVER ADVERSE AND THAT IS MEASURED, NOT ARGUED: instrumenting every one of
+     * the 26,580 calls in which the break moved mass, the MINIMUM driving head was +10.10 psi
+     * (0.0697 MPa) at t = 514.40 s. `pwr2_break`'s `dP > 0` was never once bypassed.
+     *
+     * ⚠ IT IS STILL THE EFFECT, NOT THE WIRE, and it still reds under both #543 mutations --
+     * which is the whole point of grading a gradient rather than asserting `dP > 0`, a
+     * tautology the frozen constant satisfies at every pressure. `_brkP` is the RCS pressure
+     * the break saw and `containment_pressure_mpa` is the building's, one step apart, and
+     * THAT lag is negligible where the RCS's is not: measured over t = 500-540 s on this ride
+     * the building moves 0.24 psi in 2,000 steps, 1.2e-4 psi a step, against the RCS's 175 psi
+     * in one. With the backpressure frozen or the stash severed the hole keeps flowing after
+     * the building passes the RCS, and that is what this counts.
+     *
+     * VALIDATED ON BOTH PLANTS (HR10), 1200 s, 0.002 m2 cold leg, the two #543 mutations:
+     *
+     *     plant                    clean      frozen constant     severed stash
+     *     a33a9685 (HEAD)          0/60000    0/60000  BLIND      0/60000  BLIND
+     *     this tree                0/60000    17  RED             17  RED
+     *
+     * ⚠ THE OLD FORM WAS BLIND ON HEAD TOO -- 0 adverse under BOTH mutations, and the end
+     * clause passed as well, so on a33a9685 this check could not red for either defect it
+     * exists to catch. The trajectory is why: with the backpressure frozen HEAD's containment
+     * peaks at 71.5 psia and its RCS never falls below 103.6, so the gradient never inverts
+     * for the count to see. The limiter's deeper depressurization is what gives it teeth back.
+     * The two WIRING checks above (`_ctP` live, `_brkBackP` used) are what actually held those
+     * mutations in the meantime; this is the effect-level third guard, working again.
+     *
+     * ⚠ A SEVERED `_brkP` REDS THIS, it does not go quiet: the fallback is the OLD end-of-step
+     * pressure, which on this ride scores 6 of 60,000 (worst +47.8 psi). Measured, same run. */
+    var bpRcs = engBP._brkP === undefined ? bpTs.pressure_mpa : engBP._brkP;
+    var bpGap = bpTs.containment_pressure_mpa - bpRcs;
     if (bpGap > 1e-6 && engBP.brk && bpTs.leak_flow > 0) {
       bpAdverse++;
       if (bpGap > bpWorst) bpWorst = bpGap;
     }
   }
+  /* ⚠ THE PRECONDITION TRACKS THE PEAK, NOT THE LAST SAMPLE (#784). It read
+   * `bpTs.containment_pressure_mpa > 0.5` — the value at 1200 s — and that WAS the peak, for
+   * as long as containment could do nothing but climb. Spray and the fan coolers turn it over,
+   * so the end sample now measures the RECOVERY and the clause reported "containment never
+   * pressurised" about a ride whose containment reached 55.7 psig. MEASURED both ways on this
+   * exact ride (0.002 m2 cold-leg break, 1200 s, engine-direct):
+   *
+   *     build            adverse steps   ctmt PEAK                       ctmt at 1200 s
+   *     pre-#784             0/60000     0.6888 MPa (99.9 psia) @1200s   99.9 psia (climbing)
+   *     #784 built           0/60000     0.4852 MPa (70.4 psia) @349.0s  58.3 psia (falling)
+   *
+   * ⚠ THE INVARIANT ITSELF NEVER MOVED and is not what was failing: 0 adverse steps of 60,000
+   * on BOTH builds. Only the precondition is re-cut, and it is re-cut to the quantity it always
+   * meant — "containment really did pressurise, so the gradient COULD have inverted".
+   *
+   * ⚠ BANDED ON THE SOURCED 30 psig HIGH-HIGH (0.3081 MPa absolute, WTSM 12.3 / ML11223A310),
+   * not on a round 0.5 and not on either measurement. A band cut to fit the new peak would be a
+   * refit; this one PASSES ON BOTH BUILDS — 0.6888 unmitigated, 0.4852 mitigated — which is
+   * what makes it a better check rather than the same check refitted (HR10). It is also the
+   * only number on this plant that MEANS "pressurised": it is the setpoint at which the
+   * building's own mitigation is called for. */
+  var BP_HIHI_MPA = 0.3081;              /* 30 psig absolute — WTSM 12.3, the hi-hi actuation */
   ckT('a full LOCA blowdown NEVER discharges up the pressure gradient (live backpressure)',
-      bpAdverse === 0 && bpTs.containment_pressure_mpa > 0.5 &&
-      bpTs.pressure_mpa >= bpTs.containment_pressure_mpa - 1e-6,
+      bpAdverse === 0 && bpPeak > BP_HIHI_MPA &&
+      /* ⚠ THE END CLAUSE IS "THE HOLE IS SHUT, OR THE RCS IS STILL ABOVE THE BUILDING" --
+       * IT WAS THE SECOND HALF ALONE, AND THAT HALF PINNED A BIFURCATION (#543, #588). Swept
+       * five ulps of the initial RCS pressure on this ride, working tree: the per-step count
+       * above reads 0 of 60,000 on ALL SIX branches, but the bare `RCS >= containment` end
+       * sample PASSES on +0/+3/+4 and FAILS on +1/+2/+5 -- it was green on the nominal branch
+       * by luck of the branch, not because the plant held an invariant. On those three the
+       * ride ends with `leak_flow` at exactly 0.000000 and the RCS at 35.9 psia (0.2475 MPa)
+       * under a 70.3 psia (0.4847 MPa) building: the hole is SHUT, `pwr2_break`'s `dP > 0`
+       * refused it, and the RCS then fell further on its own. A shut hole under a higher
+       * building is not coolant climbing a gradient -- it is the guard working.
+       * IT IS NOT LOOSENED: with the backpressure frozen or the stash severed the ride ends
+       * at 0.3 psia RCS against 71.1 psia of containment WITH THE HOLE STILL FLOWING
+       * (leak 0.000312 kg/s), so this clause reds on both mutations, as it did before. Six of
+       * six branches PASS clean; both mutations FAIL. */
+      (bpTs.leak_flow === 0 ||
+       bpTs.pressure_mpa >= bpTs.containment_pressure_mpa - 1e-6),
       bpAdverse + ' adverse-flow steps of ' + bpN + ' (worst +' +
-      (bpWorst * 145.038).toFixed(1) + ' psi); ends RCS ' +
+      (bpWorst * 145.038).toFixed(1) + ' psi); ctmt peaked ' +
+      (bpPeak * 145.038).toFixed(1) + ' psia at ' + bpPeakT.toFixed(1) + ' s (past the ' +
+      (BP_HIHI_MPA * 145.038).toFixed(1) + ' psia hi-hi); ends RCS ' +
       (bpTs.pressure_mpa * 145.038).toFixed(1) + ' vs ctmt ' +
       (bpTs.containment_pressure_mpa * 145.038).toFixed(1) +
-      ' psia — the frozen constant gave 88.0 vs 95.6 at 1200 s with the hole still flowing');
+      ' psia (the break last saw ' +
+      (engBP._brkP === undefined ? 'NOTHING' : (engBP._brkP * 145.038).toFixed(1)) +
+      ') — the frozen constant gave 88.0 vs 95.6 at 1200 s with the hole still flowing');
   ckT('...and the SI latch STARTS the ECCS lineup, uncommanded',
       eng2.pt.si === true && eng2.ec.hhsiRunning === true && eng2.ec.lhsiRunning === true,
       'SI on ' + eng2.pt.si_cause);
@@ -775,9 +872,10 @@ function runSuite(RD, rec, quiet, only) {
    * #458 ruling names). TRAJECTORY RE-MEASURED (#510 batch 1): with reverse SG transfer
    * signed instead of |Q|-removed, the hot secondary now SLOWS the blowdown — real
    * small-break physics — so the permissive crossing moved ~74 s → 187.5 s. Measured A/B at
-   * t = 200.0 s: aligned tavg 205.7 degC vs secured 257.0 — the 51 degC gap is the wiring,
-   * and the pinned band below is what the merge-dropped mutation reds against (its
-   * removed_kJ ledger still climbs; only the PLANT tells the truth). */
+   * t = 200.0 s: aligned tavg 205.7 degC vs secured 257.0 — the 51 degC gap is the wiring, and
+   * that GAP is what the merge-dropped mutation reds against (its removed_kJ ledger still
+   * climbs; only the PLANT tells the truth). Both legs are now RUN, not quoted — see the note
+   * on the check itself for what a pinned absolute cost here. */
   head('THE RHR ALIGN  [below the 425 psig permissive, the heat actually leaves the loop]');
   var engR = EN.createEngine({});
   run(engR, 10);
@@ -802,10 +900,44 @@ function runSuite(RD, rec, quiet, only) {
     }
     if (engR.sys.beyond_model) break;
   }
-  ckT('aligned below the permissive: valve open, mode rhr, real energy removed, plant COOLER',
+  /* THE SECURED COMPANION, RUN HERE RATHER THAN QUOTED FROM PROSE (#588, 2026-09-22).
+   *
+   * This check's plant half was the PINNED ABSOLUTE `tavg_c < 230`, sitting 24.3 degC under a
+   * measured 205.7 with the secured reference written only in the comment above. The #588
+   * steam-generator primary-film term moved the aligned ride to 182.5 degC -- legitimately, and
+   * symmetrically: on this fixture the SG is HOTTER than the primary and is SLOWING the
+   * blowdown (the note above says so), so degrading the tube-side film degrades the REVERSE
+   * transfer too and the primary cools faster. Margin went 24.3 -> 47.5 degC and the
+   * merge-dropped mutation landed inside the band: **BLIND, on a gate that had caught it since
+   * #507 wave 2.** A neighbour's change blinding a mutation is the documented trap; the band was
+   * the thing that aged, not the claim.
+   *
+   * SO THE CLAIM IS ASSERTED AS THE DIFFERENCE IT ALWAYS WAS. `removed_kJ` is the RHR module's
+   * OWN ledger and climbs whether or not the heats map ever reaches the plant -- that is exactly
+   * the Q4 orphan -- so only a PLANT-to-PLANT comparison can speak. The secured leg is the same
+   * fixture with the align never commanded.
+   *
+   * NOT REFITTED, and validated on the OLD behaviour (HR10): with the #588 term severed this
+   * pair measures 205.7 aligned against 257.0 secured, a 51.3 degC gap, and passes the same
+   * 25 degC bar. With the term it is 182.5 against a secured leg measured in the same run. Under
+   * the merge-dropped mutation the two legs are the SAME PLANT and the gap goes to ~0, which is
+   * the only thing this bar has ever been about. */
+  var engRS = EN.createEngine({});
+  run(engRS, 10);
+  engRS.ec.acc.valve_open = false;
+  EN.command(engRS, 'break_open', { area_m2: 0.002, node: 'cold_leg' });
+  var tsRS = null, tRS = 0;
+  while (tRS < 200.001) {
+    tsRS = EN.step(engRS, DT); tRS += DT;
+    if (engRS.sys.beyond_model) break;
+  }
+  var rhrGap = tsRS.tavg_c - tsR.tavg_c;
+  ckT('aligned below the permissive: valve open, mode rhr, real energy removed, and the plant ' +
+      'is COOLER THAN THE SAME PLANT SECURED -- the merge reaching stepPlant, not the ledger',
       alignedR && engR.rh.valve_open === true && tsR.eccs_mode === 'rhr' &&
-      engR.rh.removed_kJ > 50000 && tsR.tavg_c < 230,
-      'tavg ' + tsR.tavg_c.toFixed(1) + ' degC at t=200 (secured measures 257.0), removed ' +
+      engR.rh.removed_kJ > 50000 && rhrGap > 25,
+      'tavg ' + tsR.tavg_c.toFixed(1) + ' degC aligned against ' + tsRS.tavg_c.toFixed(1) +
+      ' secured at t=200, gap ' + rhrGap.toFixed(1) + ' degC (bar 25); removed ' +
       (engR.rh.removed_kJ / 1000).toFixed(0) + ' MJ, mode ' + tsR.eccs_mode);
   /* the door refuses an at-power align (the 425 psig permissive), and the autoclose is the
    * valve hardware: a valve forced open above 585 psig shuts on the next step */
@@ -1103,10 +1235,35 @@ function runSuite(RD, rec, quiet, only) {
    * AFW is the ONE ledger only the facade guard protects, since break/ECCS carry their own
    * held-plant doors and the containment intake rides dt_accepted). Clock still runs; the
    * held snapshot stays stamped. */
+  /* ⚠⚠ THE LATCH IS NOW FORCED, NOT RIDDEN TO — REFIT 2026-09-21 (#588), and the reason is the
+   * whole point of this note. This fixture used to open an 80 cm2 break and run
+   * `while (tH < 300) { ...; if (model_held) break; }`. That loop has TWO exits and the check
+   * only ever named one: once the Courant limiter (#588) stopped the ring going unstable on
+   * near-empty nodes, the plant STOPPED LATCHING and the loop fell out at its 300 s horizon with
+   * `model_held` false — so the check went on comparing ledgers across 500 steps of a plant that
+   * was still running, correctly booking 153.3 kg of break discharge, and read that as the hold
+   * failing. The PRECONDITION had evaporated silently. MEASURED the same day, engine-direct:
+   * 5, 20, 80, 200 and 500 cm2 breaks all ride 1,200 s with NO latch at all, so there is no
+   * break size that restores the old fixture.
+   *
+   * The subject here is the FACADE GUARD — "once beyond_model is up, does every one of the 19
+   * subsystems stop?" — and `run_pwr2_core` owns whether the latch itself fires. So the latch is
+   * set directly, on a plant whose ledgers are demonstrably IN MOTION, which is the condition
+   * #585 is actually about and is no longer hostage to how deep the blowdown happens to go.
+   *
+   * THE VACUITY GUARD IS THE OTHER HALF. "No ledger moved" is trivially true of a plant where
+   * nothing was moving, which is exactly the non-event CLAUDE.md warns a negative check can pin.
+   * The ledgers are therefore asserted to have MOVED over the ride before the latch is set. */
   var engH = EN.createEngine({});
   EN.command(engH, 'break_open', { area_m2: 0.008, node: 'cold_leg' });
   var tsH = null, tH = 0;
+  var hDis0 = engH.brk.discharged_kg, hCtm0 = engH.ctm.mass_in_kg, hM0 = engH.sys.M_total;
   while (tH < 300) { tsH = EN.step(engH, DT); tH += DT; if (tsH.model_held) break; }
+  var hMoved = Math.min(Math.abs(engH.brk.discharged_kg - hDis0),
+                        Math.abs(engH.ctm.mass_in_kg - hCtm0),
+                        Math.abs(engH.sys.M_total - hM0));
+  engH.sys.beyond_model = true;                 /* THE PRECONDITION, set rather than hoped for */
+  tsH = EN.step(engH, DT);
   var hDis = engH.brk.discharged_kg, hCtm = engH.ctm.mass_in_kg, hAfw = engH.aw.delivered_kg,
       hAcc = engH.ec.acc.water_m3, hM = engH.sys.M_total, hSim = engH.simTime;
   for (var hh = 0; hh < 500; hh++) tsH = EN.step(engH, DT);
@@ -1114,10 +1271,14 @@ function runSuite(RD, rec, quiet, only) {
     Math.abs(engH.brk.discharged_kg - hDis), Math.abs(engH.ctm.mass_in_kg - hCtm),
     Math.abs(engH.aw.delivered_kg - hAfw), Math.abs(engH.ec.acc.water_m3 - hAcc),
     Math.abs(engH.sys.M_total - hM));
+  ckT('the ledgers this hold must freeze were MOVING first — the no-drift claim is not a non-event',
+      hMoved > 1.0, 'smallest of break / containment / M_total moved ' + hMoved.toFixed(1) +
+      ' kg over the ' + tH.toFixed(0) + ' s ride before the latch');
   ckT('a latched plant is held WHOLE: 500 more steps move no ledger, and the clock still runs',
       tsH !== null && tsH.model_held === true && hDrift === 0 &&
       Math.abs(engH.simTime - hSim - 500 * DT) < 1e-9,
-      'latched t=' + tH.toFixed(1) + ' s; max ledger drift ' + hDrift.toFixed(6) +
+      'latch FORCED at t=' + tH.toFixed(1) + ' s (#588: no break size latches on its own any ' +
+      'more); max ledger drift ' + hDrift.toFixed(6) +
       ' kg over 10 held s (break, containment, AFW, accumulator, M_total) — exact zero required');
   }
 
@@ -3214,6 +3375,15 @@ var MUTATIONS = [
   ['the containment-pressure stash is severed (#543 — the pass reads undefined for ever)',
    'eng._ctP = ctr.containment_pressure_mpa;',
    '', { grp: 'D' }],
+  /* #784: the blowdown check's PRECONDITION, which had no injection of its own while it read
+   * the last sample — the clause is what says "containment really did pressurise, so the
+   * gradient COULD have inverted", and a precondition nothing can red is a precondition that
+   * stops meaning anything the day the ride changes. Which is what happened: the ride's
+   * containment now peaks at 349 s and recovers, and an end-sample clause graded the recovery.
+   * Severed, the building never leaves its 1.0 psig initial condition (MEASURED: peak
+   * 0.1082 MPa / 15.7 psia, against 0.4852 built and 0.6888 pre-#784) and the peak clause reds. */
+  ['the discharge never reaches containment (the building stays at its initial condition)',
+   '    var ctIn = mBr + mPz;', '    var ctIn = 0;', { grp: 'D' }],
   ['the SGTR stash is severed (primary water leaves and never reaches the SG)',
    '    eng._sgtrKgs = toSG && br ? br.mdot_kgs : 0;',
    '    eng._sgtrKgs = 0;', { grp: 'H' }],
@@ -3415,6 +3585,24 @@ var MUTATIONS = [
 ];
 var CORESRC = fs.readFileSync(path.join(SRC, 'pwr2_core.js'), 'utf8').replace(/\r\n/g, '\n');
 
+/* ---- THE NULL MUTATION, ONE PER GROUP (#657, owner ruling 2026-09-21 option A) ---------------
+ * The convention and the whole rationale live in mut_flags.nullSelfTest — deliberately, because
+ * #644's finding was that this repo's test conventions exist as hand-copied paragraphs and the
+ * eleventh copy is the one that silently lacks the guard. THIS runner is the reason it was
+ * written: it runs the clean pass at `quiet = false` and every replay at `quiet = true`, and
+ * `quiet` shortens 53 ride sites here (grep `quiet ?`; the issue named six) — the settle 120 s against 300, the
+ * cooldown 300 against 600, the Mode 5 pressure ride 300 against 900. A check green on the long
+ * ride and red on the short one is red in every mutant of its group and that group's whole
+ * "caught, no blind spots" is a lie #644's clean-run guard cannot see.
+ *
+ * MUT_TOTAL freezes the REAL mutation count first: a null is a self-test OF the instrument, not
+ * a unit of coverage, so it must never enter the caught/total arithmetic below. Entries are
+ * built for EVERY group, not just this part's, so the ownership audit and the partition line
+ * still reason over one whole list; `mine` scopes them to the part exactly as it does the rest. */
+var NULLS = MUT.nullSelfTest({ groups: GROUPS, expect: MY_GROUPS, anchor: "'use strict';" });
+var MUT_TOTAL = MUTATIONS.length;
+MUTATIONS = MUTATIONS.concat(NULLS.entries);
+
 /* ---- THE OWNERSHIP AUDIT (#637) -------------------------------------------------------------
  * The split's ONE new way to lose coverage: a mutation whose `grp` no part owns would simply
  * never replay, in any process, and every part would still print a green "no blind spots".
@@ -3436,10 +3624,13 @@ var mine = MUT.select(MUTATIONS).filter(function (m) {
   var t = (o && typeof o === 'object' && o.grp) || null;
   return t !== null && MY[t] === true;
 });
+/* the caught/total arithmetic is over REAL mutations only (#657) — a null is the instrument
+ * auditing itself, and counting it as coverage would inflate the figure it exists to audit */
+var mineReal = mine.filter(function (m) { return !NULLS.is(m[0]); });
 var ownedTotal = MUTATIONS.filter(function (m) {
   var o = m[m.length - 1];
   var t = (o && typeof o === 'object' && o.grp) || null;
-  return t !== null && GROUPS.indexOf(t) >= 0;
+  return !NULLS.is(m[0]) && t !== null && GROUPS.indexOf(t) >= 0;
 }).length;
 
 /* THE OWNERSHIP AUDIT IS PRINTED FIRST (#644) — it is a STATIC property of the MUTATIONS table
@@ -3464,8 +3655,9 @@ MUT.requireCleanRun(rec, '  ' + RUNNER_NAME + ': ' + pass + ' passed, ' + fail +
   { hint: 'To measure a group that is GREEN while another is red, scope BOTH passes: ' +
           '--groups=' + MY_GROUPS.join(',') + ' (or --grp=<one tag>). Forced non-zero, never a baseline.' });
 
-console.log('\ninjection self-test (' + mine.length + ' of ' + MUTATIONS.length +
-  ' mutations — this part owns groups ' + MY_GROUPS.join(' ') + '):');
+console.log('\ninjection self-test (' + mineReal.length + ' of ' + MUT_TOTAL +
+  ' mutations + ' + (mine.length - mineReal.length) + ' null self-tests — this part owns groups ' +
+  MY_GROUPS.join(' ') + '):');
 var blind = 0;
 var MUTTIME = !!process.env.MUTTIME;
 mine.forEach(function (m) {
@@ -3475,7 +3667,11 @@ mine.forEach(function (m) {
   var grpTag = (opts && opts.grp) || undefined;
   var base = isCore ? CORESRC : ENSRC;
   var mutated = base.replace(m[1], m[2]);
-  if (mutated === base) { console.log('  ANCHOR MISS ' + m[0]); blind++; return; }
+  if (mutated === base) {
+    if (NULLS.is(m[0])) NULLS.score(m[0], { anchorMiss: true });
+    else { console.log('  ANCHOR MISS ' + m[0]); blind++; }
+    return;
+  }
   var rec2 = [], crashed = false;
   try {
     runSuite(isCore ? loadAll(undefined, mutated) : loadAll(mutated), rec2, !process.env.MUTDBG, grpTag);
@@ -3487,7 +3683,13 @@ mine.forEach(function (m) {
    * blind-spot verdict through two full reruns. */
   var realReds = rec2.filter(function (r) { return !r.ok; }).length;
   var f2 = crashed ? 1 : (rec2.length ? realReds : 1);
-  if (f2 === 0) { console.log('  BLIND TO  ' + m[0] + '   <-- THIS GATE CANNOT SEE IT'); blind++; }
+  /* A NULL MUTATION INVERTS EVERY VERDICT BELOW (#657): BLIND is the pass and any red names a
+   * check that is red on the replay's own short ride rather than on a mutation. The scoring
+   * lives in mut_flags so the eleventh runner inherits it instead of re-deriving it. */
+  if (NULLS.is(m[0])) {
+    NULLS.score(m[0], { base: base, mutated: mutated, rec: rec2, crashed: crashed });
+  }
+  else if (f2 === 0) { console.log('  BLIND TO  ' + m[0] + '   <-- THIS GATE CANNOT SEE IT'); blind++; }
   /* a crash-only catch is REPORTED AS ITSELF (#510 LOW): by this suite's own principle a
    * mutation that throws is worthless as coverage — the verdict stays "caught" (the crash
    * rationale above holds), but the label no longer lets it wear a physics check's face */
@@ -3501,18 +3703,21 @@ mine.forEach(function (m) {
 loadAll();
 
 console.log('\n' + '='.repeat(70));
-console.log('  injection self-test: ' + (mine.length - blind) + '/' + mine.length +
+console.log('  injection self-test: ' + (mineReal.length - blind) + '/' + mineReal.length +
   ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
+/* printed BEFORE the tally line, never after: run_all scrapes the LAST token-bearing line. */
+var nullFail = NULLS.report();
 /* the partition's own arithmetic, printed every run: this part's share + the other parts' =
  * the whole list, with nothing unowned. `mine` is filtered by mut_flags too, so this line is
  * about OWNERSHIP and reads off the unfiltered totals. */
-console.log('  partition: ' + ownedTotal + ' of ' + MUTATIONS.length +
+console.log('  partition: ' + ownedTotal + ' of ' + MUT_TOTAL +
   ' mutations owned by a part' + (unowned.length ? '  ** ' + unowned.length +
   ' UNOWNED -- GATE FAILS **' : '') + '; this part owns ' +
   MUTATIONS.filter(function (m) {
-    var o = m[m.length - 1]; return o && o.grp && MY[o.grp] === true;
+    var o = m[m.length - 1];
+    return !NULLS.is(m[0]) && o && o.grp && MY[o.grp] === true;
   }).length);
 console.log('  ' + RUNNER_NAME + ': ' + pass + ' passed, ' + fail + ' failed  (' +
   rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit(fail > 0 || blind > 0 || unowned.length > 0 ? 1 : 0);
+process.exit(fail > 0 || blind > 0 || unowned.length > 0 || nullFail > 0 ? 1 : 0);

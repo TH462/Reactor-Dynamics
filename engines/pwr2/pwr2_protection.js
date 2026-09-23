@@ -160,6 +160,45 @@
     hi_hi_steam_flow_frac:  1.55,
     src: 'Ginna UFSAR ch15 (ML20339A101) Table 15.0-6'
   };
+  /* ---- SOURCED: the two CONTAINMENT PRESSURE actuations (#784) ------------------------------
+   * Westinghouse Technology Systems Manual section 12.3 (ML11223A310), verbatim:
+   *   safety injection on high containment pressure — *"The setpoint for this protection signal
+   *   is 3.5 psig ... This SI actuation signal cannot be blocked by the operator."*
+   *   containment spray on the high-high — *"The setpoint is 30 psig."*, the same signal that
+   *   isolates main steam (*"(1) a high-high containment pressure signal or (2) high steam flow
+   *   coincident with ..."*).
+   *
+   * ⚠ "CANNOT BE BLOCKED BY THE OPERATOR" IS MODELLED, not just quoted. P-11 disarms the whole
+   * `esfas` kind below — all three of the pressure/flow initiating rows — and that is right for
+   * those three and WRONG for this one. `unblockable` on the row is the sourced exception; it is
+   * a named property rather than an id test so the next row that needs it cannot inherit the
+   * wrong behaviour silently (the `blockable` lesson from #601, one door over).
+   *
+   * ⚠ ONE BISTABLE, TWO CONSUMERS — the SGLL shape, for the same reason. The source's hi-hi
+   * signal starts containment spray AND isolates main steam; giving each its own row would put
+   * two setpoints and two hold timers where the plant has one, and they could then drift apart.
+   * The row's kind is 'cse' (containment spray and steam-line isolation) with its own latch, the
+   * way the hi-hi level row's 'fwi' has its own.
+   *
+   * ⚠ NO SOURCED BISTABLE DELAY EXISTS for either row. Table 15.0-6's delay column covers the
+   * reactor-trip and ESFAS functions it lists and contains no containment-pressure row, and the
+   * response times B 3.6.6 gives (28.5 s for spray, 44 s for the fan coolers) are SYSTEM response
+   * times — valve travel, pump start, line fill — not channel delays, and they live where they
+   * belong, in `pwr2_containment.js`'s CS block, applied by the caller between DEMAND and
+   * DELIVERY. Putting them here would delay the steam-line isolation too, which shares the
+   * bistable and has no such travel. Both rows therefore carry delay 0.0, declared.
+   */
+  var CTMT_ESF = {
+    kind: '[sourced]',
+    si_psig:   3.5,
+    hihi_psig: 30.0,
+    /* gauge -> absolute on the containment model's own ambient datum, converted ONCE here */
+    si_mpa:   (3.5  + 14.696) / PSIA_PER_MPA,      /* 0.12546 MPa */
+    hihi_mpa: (30.0 + 14.696) / PSIA_PER_MPA,      /* 0.30817 MPa */
+    src: 'WTSM 12.3 (ML11223A310) — SI backup "The setpoint for this protection signal is 3.5 ' +
+         'psig ... cannot be blocked by the operator"; spray and main steam isolation on the ' +
+         'high-high, "The setpoint is 30 psig."'
+  };
   /* ---- SOURCED: low-low steam generator water level — ONE bistable, TWO consumers ------------
    * Ginna TS Bases B 3.3.1 Function 13 (ML20339A221): the reactor-trip Function "also performs
    * the Engineered Safety Feature Actuation System (ESFAS) function of starting the AFW pumps
@@ -471,6 +510,13 @@
     hi_hi_steam_flow: 2.0,
     hi_hi_sg_level: 2.0,       /* [derived] signal delay by the module's SI-32.0 precedent; the
                                 * table's 22.0 s is the valve's AT-CLOSURE figure, a consequence */
+    si_hi_ctmt_press: 0.0,     /* [open] (#784) — no containment row exists in the 15.0-6 delay
+                                * set and the B 3.6.6 response times are SYSTEM times applied by
+                                * the caller, not channel delays. 0.0 is stated rather than
+                                * borrowed from the pressure channels: a borrowed 2.0 would read
+                                * as sourced next to the rows above it. See the CTMT_ESF block. */
+    ctmt_hihi_press:  0.0,     /* [open] (#784) — same, and it is SHARED by the spray and the
+                                * steam-line isolation because they are one bistable */
     sg_lolo_level: 2.0         /* [sourced] 15.0-6, 15.2.6 LONF: "Low-Low Steam Generator Water
                                 * Level Reactor Trip 0% NRS 2.0". The SAME table's AFW row reads
                                 * "AFW Pump Start 0% NRS 60.0" — that 60 s is the analysis'
@@ -560,6 +606,14 @@
       { id: 'hi_hi_steam_flow', name: 'High-high steam flow', kind: 'esfas', dir: +1,
         sp: ESFAS.hi_hi_steam_flow_frac, unit: 'frac', read: 'steam_flow_frac',
         delay: DELAY.hi_hi_steam_flow },
+      /* THE TWO CONTAINMENT ROWS (#784) — see the CTMT_ESF block for the source and for why the
+       * first one carries `unblockable` and the second carries a kind of its own. */
+      { id: 'si_hi_ctmt_press', name: 'Safety injection on high containment pressure',
+        kind: 'esfas', dir: +1, sp: CTMT_ESF.si_mpa, unit: 'MPa',
+        read: 'containment_pressure_mpa', delay: DELAY.si_hi_ctmt_press, unblockable: true },
+      { id: 'ctmt_hihi_press', name: 'High-high containment pressure', kind: 'cse', dir: +1,
+        sp: CTMT_ESF.hihi_mpa, unit: 'MPa', read: 'containment_pressure_mpa',
+        delay: DELAY.ctmt_hihi_press },
       /* The delta-T pair compare a MEASURED fraction against a COMPUTED setpoint — spFn
        * resolves per step from Tavg and pressure; sp is the nominal-condition value so the
        * row still reads sensibly in a listing. Both need delta_t_frac AND tavg_c: absent
@@ -613,6 +667,17 @@
       afas_mdafw: false,                    /* LATCHED — the AFW starts, same law as si */
       afas_tdafw: false,                    /* LATCHED */
       fwi: false,                           /* LATCHED — hi-hi feedwater isolation */
+      /* LATCHED (#784) — containment spray AND steam-line isolation, one bistable at the
+       * sourced 30 psig high-high. `cse_spray` is the SAME latch with its release condition
+       * applied; see the latch block in stepProtection for why spray releases and isolation
+       * does not. `|| false` at the reader guards a pre-#784 save (the p10_below_s migration
+       * pattern, #752): `undefined` here reads falsy, which is the SAFE side — a restored
+       * plant re-latches the instant the bistable is still met. */
+      cse: false,
+      cse_cause: null,
+      cse_live: false,
+      cse_t: 0,
+      cse_rearm_block: false,
       trip_cause: null,
       si_cause: null,
       afas_mdafw_cause: null,
@@ -638,8 +703,10 @@
     pr.reactor_trip = false; pr.si = false;
     pr.afas_mdafw = false; pr.afas_tdafw = false;
     pr.fwi = false;
+    pr.cse = false;
     pr.trip_cause = null; pr.si_cause = null;
     pr.afas_mdafw_cause = null; pr.afas_tdafw_cause = null; pr.fwi_cause = null;
+    pr.cse_cause = null;
     Object.keys(pr.held_s).forEach(function (k) { pr.held_s[k] = 0; });
     return pr;
   }
@@ -663,6 +730,12 @@
    *                              (drives the lo-lo trip + the AFW starts; absent, that row
    *                              reports available:false — the hi_pzr_level precedent, a
    *                              later-added trip whose reading is not in the REQUIRED three)
+   *   drivers.containment_pressure_mpa  containment pressure, ABSOLUTE     optional (#784)
+   *                              (drives the 3.5 psig SI backup and the 30 psig high-high
+   *                              spray/steam-line isolation; absent, BOTH rows report
+   *                              available:false — the sg_level_frac precedent, never a
+   *                              silent not-asserted. A caller with no containment model
+   *                              should not be made to invent one.)
    *   drivers.main_feed_lost     both main feed pumps failed               optional, STATE
    *                              (starts the MDAFW — sourced ch10; a breaker fact like
    *                              turbine_tripped, so absent simply means "not lost")
@@ -733,7 +806,8 @@
     var BLOCK_REQUEST = { low_flux: pr.blockLowFlux, ir_high: pr.blockIrHigh };
     var blockEffective = pr.blockLowFlux;
 
-    var out = [], fns = functions(), anyRps = null, anyEsfas = null, sgLolo = false, anyFwi = null;
+    var out = [], fns = functions(), anyRps = null, anyEsfas = null, sgLolo = false, anyFwi = null,
+        anyCse = null;
     for (var i = 0; i < fns.length; i++) {
       var f = fns[i];
       var raw = drivers[f.read];
@@ -772,7 +846,10 @@
          * esfas kind (the SI actuation — all three initiating rows are the one disarm the
          * sources describe). Assertion-gated like P-7, so no hold time accumulates. */
         if (f.id === 'lo_pzr_press' && pr.blockLoPress) { asserted = false; gated = true; }
-        if (f.kind === 'esfas' && pr.blockSI) { asserted = false; gated = true; }
+        /* `unblockable` is the SOURCED exception (#784): WTSM 12.3 says of the containment
+         * high-pressure SI that it "cannot be blocked by the operator", so P-11 does not
+         * reach it. Named on the row, never tested by id. */
+        if (f.kind === 'esfas' && f.unblockable !== true && pr.blockSI) { asserted = false; gated = true; }
         /* P-7: an at-power trip is NOT ACTIVE below 10 % power. A plain gate, deliberately --
          * there is no operator request in P-7 to revoke, so the revoke-not-gate lesson from
          * P-10 does not transfer; gating the ASSERTION also zeroes the hold timer below, so
@@ -791,6 +868,7 @@
         if (f.kind === 'esfas' && !anyEsfas) anyEsfas = f.id;
         if (f.id === 'sg_lolo_level') sgLolo = true;   /* the bistable's second consumer */
         if (f.kind === 'fwi' && !anyFwi) anyFwi = f.id;
+        if (f.kind === 'cse' && !anyCse) anyCse = f.id;   /* #784 */
       }
       out.push({
         id: f.id, name: f.name, kind: f.kind, dir: f.dir, available: available,
@@ -852,6 +930,10 @@
      * (The SI-driven isolation lives in pwr2_feedwater with its own sourced 32 s delay.) */
     if (anyFwi && !pr.fwi && !pr.fwi_rearm_block) { pr.fwi = true; pr.fwi_cause = anyFwi; }
 
+    /* CONTAINMENT SPRAY + STEAM-LINE ISOLATION on the sourced 30 psig high-high (#784). Same
+     * latch law again: one bistable, one latch, two consumers, reported and not acted on. */
+    if (anyCse && !pr.cse && !pr.cse_rearm_block) { pr.cse = true; pr.cse_cause = anyCse; }
+
     /* LIVE SIGNALS (#512, the owner's per-system unlatch design): is each function's
      * ACTUATING CONDITION present right now, latch aside. The panel's own securing click
      * refuses while its signal is live and resets-then-executes once it clears — so these
@@ -863,6 +945,7 @@
     pr.afas_mdafw_live = !!(sgLolo || pr.si || drivers.main_feed_lost || drivers.loss_of_offsite);
     pr.afas_tdafw_live = !!(sgLolo || drivers.loss_of_offsite);
     pr.fwi_live = !!anyFwi;
+    pr.cse_live = !!anyCse;
 
     /* THE RESET PERMISSIVE TIMERS (#512) [sourced — the reset circuit's time-delay relay,
      * "usually 45 - 60 sec"]: each latch's age, zeroed when the latch is clear. The SHELL
@@ -875,10 +958,12 @@
     pr.si_t   = pr.si ? pr.si_t + dtT : 0;
     pr.afas_t = (pr.afas_mdafw || pr.afas_tdafw) ? pr.afas_t + dtT : 0;
     pr.fwi_t  = pr.fwi ? pr.fwi_t + dtT : 0;
+    pr.cse_t  = pr.cse ? (pr.cse_t || 0) + dtT : 0;
     /* the re-arm blocks clear when the live signal drops — a recovered plant re-arms */
     if (!pr.si_live) pr.si_rearm_block = false;
     if (!pr.afas_mdafw_live && !pr.afas_tdafw_live) pr.afas_rearm_block = false;
     if (!pr.fwi_live) pr.fwi_rearm_block = false;
+    if (!pr.cse_live) pr.cse_rearm_block = false;
 
     /* TURBINE-TRIP REACTOR TRIP, gated by P-9 [sourced] — Ginna TS Bases B 3.3.1 Function 14
      * (ML20339A221): "A reactor trip is automatically initiated on a turbine trip when it is
@@ -1022,6 +1107,31 @@
        * cannot drift apart, and it is LEVEL-HELD, which is what stops the operator re-latching
        * the turbine into a steam line that is carrying water. */
       turbine_trip_hi_level: !!pr.fwi,
+      /* ---- THE CONTAINMENT HIGH-HIGH ACTUATION (#784), ONE BISTABLE AND TWO CONSUMERS ------
+       * The latch itself, then each consumer NAMED — the `turbine_trip_hi_level` lesson four
+       * lines up, applied on purpose rather than after the fact: a function with two
+       * consequences reported as one boolean is how a reader concludes the second is missing.
+       *
+       * ⚠ THE TWO CONSUMERS DO NOT SHARE A RELEASE CONDITION, and that asymmetry is the
+       * substance of this report.
+       *   `msli_ctmt` is the LATCH, unconditionally. A main steam isolation valve that shut on
+       *   a containment signal stays shut; nothing in any source re-opens it automatically, and
+       *   a valve that re-opened itself on falling containment pressure would be the
+       *   defeatable-protection shape #295 rejected.
+       *   `ctmt_spray_demand` is the latch RELEASED when the building has fallen back below the
+       *   SI signal at 3.5 psig. DECLARED INFERENCE, the retired engine's own (its row carries
+       *   `reset_below: CTMT_SI_MPA`): WTSM documents an SI reset and no spray-reset logic, and
+       *   in an AUTO-ONLY build with no operator surface the securing has to be automatic or a
+       *   fired spray runs until the end of the run. This plant has no RWST inventory node, so
+       *   "runs forever" is literal.
+       * Both are LEVEL-HELD off the latch, so re-crossing the high-high re-demands spray. */
+      cse: pr.cse,
+      cse_cause: pr.cse_cause,
+      cse_live: pr.cse_live,
+      msli_ctmt: !!pr.cse,
+      ctmt_spray_demand: !!pr.cse &&
+        drivers.containment_pressure_mpa !== undefined &&
+        drivers.containment_pressure_mpa >= CTMT_ESF.si_mpa,
       p10_met: p10Met,
       p11_permit: p11Below,
       lo_press_blocked: pr.blockLoPress,
@@ -1039,7 +1149,8 @@
        * sees the latch cannot tell a plant still crossing a setpoint from one that crossed it
        * once and recovered. */
       rps_asserted_now: !!anyRps,
-      esfas_asserted_now: !!anyEsfas
+      esfas_asserted_now: !!anyEsfas,
+      cse_asserted_now: !!anyCse
     };
   }
 
@@ -1051,7 +1162,7 @@
      * fitted DNB surface. The shell hands these coefficients to that layer so the gauge and the
      * trip are one equation instead of two. Exported as data, not as a second evaluator. */
     OTDT: OTDT,
-    RPS: RPS, ESFAS: ESFAS, SGLL: SGLL, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10, P7: P7,
+    RPS: RPS, ESFAS: ESFAS, CTMT_ESF: CTMT_ESF, SGLL: SGLL, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10, P7: P7,
     P11: P11, RESET: RESET,
     /* P-6 and P-9 EXPORTED (#642). Both were locals, and both were consequently unpinnable:
      * `run_manual_setpoints` had to carry their manual rows as `narrative` — "no single plant

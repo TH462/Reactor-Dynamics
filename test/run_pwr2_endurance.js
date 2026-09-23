@@ -332,24 +332,73 @@ head('THE WEDGES  [each ride extends past where the old gate stopped]');
    * coupling is within ~10 psi, and the SG's inventory never falls below its initial 12,796 kg
    * (it ENDS at 17,117 kg with AFW throttled to 1/3). The bands below carry those numbers with
    * margin; the MECHANISM asserted is the same two legs CA-20b carried. */
+  /* ⚠ LEG A IS A DWELL, NOT AN EXTREMUM (owner ruling, 2026-09-22: "Re-express as a dwell, and
+   * file the physics" — taken over widening the band and over leaving it red). #588's
+   * primary-side film term (flow- and void-scaled tube-side h) took the worst single excursion
+   * from -25.7 psi to -156.0 psi, and a single extremum over a 1,680 s graded ride is the
+   * `h.range()` trap: it spans the whole run and cannot tell a SUSTAINED loss of the heat sink
+   * from a transient dip. MEASURED on this ride (2026-09-22, Hard Rule 12): the excursion is
+   * INTERMITTENT — 25.20 s cumulative below the band, in one 25.02 s episode at 669.6-694.9 s,
+   * the window where the core is ~98 % void and loop flow is at its minimum, and the LATE-RIDE
+   * plateau is TIGHTER with the term than without it (from 900 s on the gap holds within ~1 psi,
+   * against -2 to -8.7 psi severed). Both halves moved (at 600 s P_rcs 742.5 -> 733.6, P_sg
+   * 747.7 -> 756.0), so this is not the reference alone (#508).
+   *
+   * HOW 60 s WAS CHOSEN — the plant's own dwell wander, NOT a fit above the observed value
+   * (#524/#543: a threshold set just above the measurement is a fixture on a cliff). The dwell
+   * statistic was re-measured across the perturbation class `tools/perturb_sweep.js` uses and
+   * the fixture's own free parameter: break area 4.5 cm2 -> 23.00 s, 5.0 -> 25.20 s, 5.5 ->
+   * 25.16 s; SG U x0.97 -> 27.28 s. So the healthy plant's dwell floor is 23-27 s, and 60 s
+   * sits at 2.2x the worst of it.
+   *
+   * WHAT THE DWELL FORM STILL CATCHES, by injection (same ride, sg.U scaled at the break — the
+   * SG's ability to hold the primary, broken directly): x0.5 -> 31.1 s (passes), x0.35 -> 43.6 s
+   * (passes), x0.2 -> 105.1 s (REDS), x0.05 -> 115.2 s (REDS). The detection floor is therefore
+   * a ~4x loss of steam-generator heat transfer; a 65 % loss passes, and that is DECLARED, not
+   * hidden. (x0.01 -> 0.00 s: with the tubes effectively gone the SG never pulls the primary
+   * down at all, so leg A's one-directional claim is not violated — leg B and the inventory
+   * checks are what stand there.)
+   *
+   * VALIDATED ON THE OLD BEHAVIOUR TOO (Hard Rule 10): with the #588 film term severed
+   * (flowFrac 1, voidFrac 0 => U_eff = sg.U, the pre-#588 expression to the bit) this ride reads
+   * worst -25.7 psi and 0.00 s of dwell — the new form passes on BOTH plants and reds on the
+   * broken mechanism, which is the only shape that is not a refit. */
   var eng = EN.createEngine({});
   ride(eng, 10);
   EN.command(eng, 'break_open', { area_m2: 0.0005, node: 'cold_leg' });
-  var ts = null, worstGap = 0, sgM0 = eng.sg.mass, minSgM = 1e18, held = false;
+  var DWELL_MAX_S = 60;
+  var ts = null, worstGap = 0, worstAt = 0, sgM0 = eng.sg.mass, minSgM = 1e18, held = false;
+  var dwellS = 0, runNow = 0, runMax = 0, firstLow = null, lastLow = null;
   for (var t = 0; t < 1800; t += DT) {
     ts = EN.step(eng, DT);
     if (ts.model_held) { held = true; break; }
     if (eng.sg.mass < minSgM) minSgM = eng.sg.mass;
     var gap = (ts.pressure_mpa - eng.sg.P) * 145.038;
-    if (t > 120 && gap < worstGap) worstGap = gap;
+    if (t > 120) {
+      if (gap < worstGap) { worstGap = gap; worstAt = t; }
+      if (gap < -50.8) {
+        dwellS += DT; runNow += DT;
+        if (firstLow === null) firstLow = t;
+        lastLow = t;
+      } else {
+        if (runNow > runMax) runMax = runNow;
+        runNow = 0;
+      }
+    }
   }
+  if (runNow > runMax) runMax = runNow;
   ck('loca-small-break-plateau-legA',
-     'the small-break primary never falls a control band below its own heat sink — the plateau ' +
-     'is the SG holding the primary, which is the mechanism CA-20b\'s leg A asserted (0.35 MPa ' +
-     'band, the retired engine measured 266 psi below)',
-     !held && worstGap > -50.8,
-     'worst (P_rcs - P_sg) after 120 s: ' + worstGap.toFixed(1) + ' psi (measured -31.6 at ' +
-     '701 s on the quench transient; late-ride coupling ~10 psi)');
+     'the small-break primary never falls a control band below its own heat sink FOR LONGER ' +
+     'THAN A TRANSIENT — at most ' + DWELL_MAX_S + ' s cumulative outside the 0.35 MPa (50.8 psi) ' +
+     'band over the graded ride, which is the mechanism CA-20b\'s leg A asserted (the retired ' +
+     'engine sat 266 psi below for the whole plateau)',
+     !held && dwellS <= DWELL_MAX_S,
+     'dwell below the band ' + dwellS.toFixed(2) + ' s of ' + DWELL_MAX_S + ' allowed (longest ' +
+     'single episode ' + runMax.toFixed(2) + ' s' +
+     (firstLow === null ? '' : ', ' + firstLow.toFixed(1) + '-' + lastLow.toFixed(1) + ' s') +
+     '); worst (P_rcs - P_sg) after 120 s ' + worstGap.toFixed(1) + ' psi at ' +
+     worstAt.toFixed(1) + ' s (healthy floor 23-27 s; -25.7 psi / 0.00 s with the #588 film ' +
+     'term severed; 105 s at a 5x SG-U loss)');
   ck('loca-small-break-plateau-legB',
      'the heat sink is still a heat sink: the secondary is NOT drained through the tubes ' +
      '(CA-20b leg B — the retired engine pulled the SG to 202 psi through the 5 % reverse path)',
@@ -471,18 +520,51 @@ head('LONG CASUALTIES  [green today — the window is the point]');
      ', cooldown ' + (r.dTavg * 9 / 5).toFixed(1) + ' degF/hr (latched AFW — unattended)');
 })();
 
-(function () {  /* the seal leak at full severity, 30 min: holdable means HELD */
+(function () {  /* the seal leak at full severity, 30 min: holdable means the INVENTORY is HELD.
+  * ⚠ REWRITTEN 2026-09-21. The first form asserted "level > 15 %, no SI" and the `no SI` half was
+  * A FIXTURE OF A CONTAINMENT THAT COULD NOT ACTUATE ANYTHING. #784 built the sourced 3.5 psig
+  * safety-injection backup — ML11223A310 §12.3, verbatim: *"the high containment pressure signal
+  * would initiate an SI actuation if the break is large enough to cause a sufficient increase in
+  * containment pressure, but not large enough to trigger an SI actuation from any other signal.
+  * The setpoint for this protection signal is 3.5 psig. This SI actuation signal cannot be blocked
+  * by the operator."* That band is this leak exactly: MEASURED 1.807 kg/s at 1276 kJ/kg = 2305 kW
+  * into a 146,154 ft3 (4,139 m3) containment, 3.5 psig at 425 s, SI at 426 s (337.8 s with
+  * instrument noise on — the row's delay is 0.0 s and the channel's sigma is 0.001 MPa / 0.145 psi,
+  * so a 3.5-sigma excursion actuates it 88 s early).
+  * ⚠ AND #799's MISSING STRUCTURAL HEAT SINK DOES NOT RESCUE THE OLD FORM, which is why this is a
+  * rewrite and not a tracked red. Measured with a lumped wall sink wrapped around stepContainment
+  * (offline, engine untouched): UA 40 kW/K -> 3.5 psig at 517 s; 100 kW/K -> 735 s; 210 kW/K with
+  * 200 MJ/K -> 1329 s. Every plausible sink still crosses INSIDE the 1800 s horizon, so "no SI at
+  * 30 min" is unsatisfiable on a corrected containment too, not just on this one.
+  * THE ROW'S TEACHING POINT IS UNCHANGED (BUILD_DECISIONS 2026-07-30g, #262 — every slider
+  * position sits inside make-up authority) and is asserted below as what it always was: INVENTORY.
+  * Measured, level bottoms at 17.7 % and TURNS OVER — 20.4 % at 30 min, 19.0 % at 60 — against
+  * 17.4 % / 18.8 % / 30.2 % with the containment row neutered. Charging carries the leak in both
+  * plants; what #784 added is a second, sourced lesson on top of it. */
   var eng = EN.createEngine({});
   ride(eng, 30);
   EN.command(eng, 'break_open', { area_m2: 1.2e-5, node: 'rcp' });
   eng._plcsAuto = true;
   var ts = ride(eng, 1800);
+  var psia = ts.pressure_mpa * 145.038;
+  var ctmt_psig = ts.containment_pressure_mpa * 145.0377 - 14.696;
+  /* the low-pressurizer-pressure SI setpoint, read from protection so the two cannot drift */
+  var SI_LO_PSIA = globalThis.RD.pwr2.protection.ESFAS.si_lo_pzr_press_psia;
   ck('seal-leak-30min-held',
-     'the full-severity seal leak ridden 30 min is HELD (the row\'s teaching point, ' +
-     'asserted at the horizon instead of the first minutes): level > 15 %, no SI',
-     ts.pzr_level_pct > 15 && eng.pt.si === false && !eng.sys.beyond_model,
-     'level ' + ts.pzr_level_pct.toFixed(1) + ' %, P ' +
-     (ts.pressure_mpa * 145.038).toFixed(0) + ' psia at 30 min');
+     'the full-severity seal leak ridden 30 min is HELD BY MAKE-UP (the row\'s teaching point, ' +
+     'asserted at the horizon instead of the first minutes): level > 15 % and the RCS still ' +
+     'above the ' + SI_LO_PSIA.toFixed(0) + ' psia low-pressurizer-pressure SI setpoint, so ' +
+     'nothing here is an inventory collapse',
+     ts.pzr_level_pct > 15 && psia > SI_LO_PSIA &&
+     eng.pt.si_cause !== 'si_lo_pzr_press' && !eng.sys.beyond_model,
+     'level ' + ts.pzr_level_pct.toFixed(1) + ' %, P ' + psia.toFixed(0) + ' psia at 30 min');
+  ck('seal-leak-30min-ctmt-backup',
+     'and the safety injection that DOES latch is the unblockable containment backup (#784) — ' +
+     'an unmitigated 30 min of seal discharge reaches the sourced 3.5 psig, and that signal, ' +
+     'not low pressurizer pressure, is what actuates',
+     ctmt_psig >= 3.5 && eng.pt.si === true && eng.pt.si_cause === 'si_hi_ctmt_press',
+     'containment ' + ctmt_psig.toFixed(2) + ' psig, si ' + eng.pt.si +
+     ' on ' + (eng.pt.si_cause || 'nothing'));
 })();
 
 /* ================= verdict ============================================================== */

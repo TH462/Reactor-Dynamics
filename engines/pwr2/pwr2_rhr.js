@@ -356,6 +356,16 @@
       keeping_up: drivers.decayHeat_kW === undefined ? null : duty >= drivers.decayHeat_kW,
       UA_kW_per_K: rh.UA,
       T_suction_c: Thot,
+      /* #588 — THE BODY THE DUTY RELAXES TOWARD, reported so Layer 5 can declare this exchange
+       * to Layer 2's maximum-principle limiter. The duty above is `UA*(Thot - ccw_temp_c)`, a
+       * relaxation toward the component cooling water, and a caller cannot bound it at a
+       * temperature this module keeps to itself. Reported even when the duty is 0. */
+      T_sink_c: rh.ccw_temp_c,
+      /* ...and the CONDUCTANCE it drove through, kW/K — `duty = avail*hx_fraction*UA*dT`, so
+       * this is that product without the temperature difference. 0 when the train is not
+       * running, which is what makes an un-running train unbounded-by-nothing rather than
+       * bounded-at-zero. */
+      G_kW_per_K: rh.running ? Math.max(0, rh.avail) * rh.hx_fraction * rh.UA : 0,
       /* the interlock, REPORTED */
       permissive_may_open: mayOpen,
       permissive_must_shut: mustShut,

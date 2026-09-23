@@ -80,10 +80,16 @@
   }
   /* the 'failure injection' spray_stuck static RETIRED #507 wave 6 — drivers.spray_stick is
    * a real lever now (the porv_stick twin) and the field is LIVE from the pressurizer result */
-  declareStatic('containment ESF', 'sprays, fans and recombiners are unmodeled (pwr2_containment ' +
-    'header) — false/0 states their absence; a large-LOCA A/B diverges here by design',
-    { ctmt_h2_burned: 0, ctmt_spray_demand: false, ctmt_spray_active: false,
-      ctmt_fan_safety: false, ctmt_fan_active: false,
+  /* ⚠ THIS BLOCK SHRANK ON 2026-09-21 (#784, OWNER RULING: "Authorise it — auto-only"). It used
+   * to read "sprays, fans and recombiners are unmodeled ... false/0 states their absence", and
+   * four of its seven fields are now SUPPLIED from a real actuation and a real heat-removal term
+   * (see the containment block below). What is left is the HYDROGEN half, which the ruling did
+   * not authorise: no recombiner model and no burn. Their statics keep the reason they always
+   * had, narrowed to the systems it is still true of. */
+  declareStatic('containment ESF', 'the hydrogen half is unmodeled (pwr2_containment header) — ' +
+    'no recombiners and no burn; false/0 states their absence. Spray, the fan coolers and the ' +
+    'steam-line isolation that goes with them are BUILT and supplied (#784)',
+    { ctmt_h2_burned: 0,
       ctmt_recomb_demand: false, ctmt_recomb_active: false });
   /* the 'steam lines' msiv_open static RETIRED #511 — the MSIV is a real valve (see the
    * secondary block below) */
@@ -361,6 +367,16 @@
     /* --- containment --- */
     put('containment_pressure_mpa', ct.containment_pressure_mpa);
     put('containment_temp_c',       ct.containment_temp_c);
+    /* THE ENGINEERED SAFETY FEATURES, SUPPLIED (#784) — was four registered statics.
+     * DEMANDED and DELIVERING are two fields because they answer two questions and can
+     * disagree: in a station blackout the demand stands and nothing comes out, which is the
+     * #200 split the whole contract line was written around. Read straight off the engine's
+     * own actuation, never re-derived here — a second copy of the setpoint logic in the shim
+     * is the #557 class. */
+    put('ctmt_spray_demand', ct.spray_demand === true);
+    put('ctmt_spray_active', ct.spray_active === true);
+    put('ctmt_fan_safety',   ct.fan_safety === true);
+    put('ctmt_fan_active',   ct.fan_active === true);
 
     /* --- condenser --- */
     put('condenser_vacuum_kpa',        cd.condenser_vacuum_kpa);

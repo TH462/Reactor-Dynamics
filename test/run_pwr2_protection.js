@@ -1177,7 +1177,11 @@ var MUTATIONS = [
    '    if (!p11Below) {\n      if (pr.blockLoPress) pr.blockLoPress = false;\n      if (pr.blockSI) pr.blockSI = false;\n    }',
    ''],
   ['the SI block gates nothing (a "blocked" shutdown plant injects anyway)',
-   "        if (f.kind === 'esfas' && pr.blockSI) { asserted = false; gated = true; }",
+   /* RE-CUT 2026-09-21 (#784): the line this names grew the `unblockable` exemption, which
+    * ORPHANED the old anchor -- the "a refactor moves the line its anchor names" case, and the
+    * gate reported it as a BLIND SPOT rather than a pass, which is the gate working. The
+    * mutation's meaning is unchanged: delete the P-11 SI gate entirely. */
+   "        if (f.kind === 'esfas' && f.unblockable !== true && pr.blockSI) { asserted = false; gated = true; }",
    ''],
   ['the low-pressure trip block gates nothing',
    "        if (f.id === 'lo_pzr_press' && pr.blockLoPress) { asserted = false; gated = true; }",

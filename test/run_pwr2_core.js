@@ -249,6 +249,280 @@ function runSuite(C, rec, quiet) {
   ck('...and omitting it gives the documented default of 8',
      C.createSystem({ nodes: [{ id: 'a', V: 2.0, h: 1250 }], P: 15.41 }).iterCap, 8, 0, 'iterations');
 
+  /* ---- THE COURANT LIMITER AND THE PER-NODE FLOOR (#588, 2026-09-21) ----------------------
+   *
+   * ⚠⚠ WHAT THESE CHECKS DELIBERATELY DO NOT ASSERT, and it is the whole reason they are here
+   * and not on a blowdown fixture. #588's own finding is that this plant's endgame is a
+   * BIFURCATION: a one-ulp nudge to the initial pressure moves it across a branch. MEASURED
+   * 2026-09-21 on the ruled casualty (`hot_full_power` + `large_loca` + `station_blackout`,
+   * seed 0x1234, 1x, 1,200 s) with this change in:
+   *
+   *     ulp   +0    +1    +2    +3    +8    +32
+   *     held  no    no    no    YES   no    no        <- working tree (5 of 6 do not hold)
+   *     held  YES   YES   YES   YES   YES   YES       <- HEAD (6 of 6 hold)
+   *
+   * So "the unmitigated large break no longer leaves the model" is TRUE FIVE TIMES IN SIX and
+   * is therefore a BRANCH, not a claim — exactly what #543 forbids a gate to pin, and exactly
+   * the coin toss `verify_e2e_ui`'s #520 check was reporting for four CI runs. A check written
+   * on that trajectory would be green here and could be red anywhere.
+   *
+   * These assert THE INVARIANT THE DEFECT VIOLATED instead, on hand-built two-node fixtures
+   * with no solver cliff anywhere near them: donor-cell advection obeys a maximum principle,
+   * and a vapour node's projection does not floor on liquid. Both are properties of one step,
+   * deterministic, and true on every branch. */
+  if (!quiet) console.log('\nTHE COURANT LIMITER  [#588 -- donor-cell advection has a maximum principle]');
+
+  /* HALF ONE: BELOW Courant 1 THE LIMITER MUST NOT EXIST. A limiter that quietly bound on a
+   * healthy plant would be a retune wearing a stability fix's clothes, and on a trajectory this
+   * ulp-sensitive it would be indistinguishable from one. 100 kg/s into a 2 m3 node of water is
+   * C ~ 0.001; the landed enthalpy must be the plain explicit update to the last bit. */
+  var sysC0 = ring(2, 15.41, [1250, 1400]);
+  var mC0 = sysC0.nodes[0].V * (function () {
+    var VTl = globalThis.RD.pwr2.vtable; return (VTl ? VTl.rho_from_h : W.rho_from_h)(1250, 15.41);
+  })();
+  var hExp = 1250 + 0.02 * (100 * 1400 - 100 * 1250) / mC0;    /* the UNLIMITED form, by hand */
+  C.step(sysC0, 0.02, { flows: [{ from: 'n1', to: 'n0', mdot: 100 }] });
+  ckT('below Courant 1 the advective update is the PLAIN explicit one — the limiter is absent',
+      Math.abs(sysC0.nodes[0].h - hExp) < 0.5,
+      'landed ' + sysC0.nodes[0].h.toFixed(4) + ' against the unlimited ' + hExp.toFixed(4) +
+      ' kJ/kg (C = ' + (0.02 * 100 / mC0).toExponential(2) + ')');
+
+  /* HALF TWO: PAST Courant 1 THE NODE LANDS ON ITS DONOR AND NOT PAST IT. A node swept clean by
+   * its own inflow inside one step holds the donor's enthalpy — the exact asymptote of
+   * `hbar + (h - hbar)exp(-C)`. The fixture is a 1e-4 m3 node, so its mass is grams and C is
+   * ~1e5: the UNLIMITED update lands ~150,000 kJ/kg BELOW the donor, which is the sign-flipped
+   * overshoot #588's endgame ran on (measured there: -174,434 kJ/kg on a 1.55 kg hot leg).
+   *
+   * ⚠ ASSERTED AS AN EQUALITY ON THE DONOR, not as "within the interval". "Between h and h_don"
+   * is also satisfied by a limiter that does nothing at all when the two happen to be close, and
+   * by one that freezes the node — the same one-sided-check trap the ceiling clamp above records. */
+  var sysC1 = C.createSystem({ nodes: [{ id: 'n0', V: 1e-4, h: 1250 }, { id: 'n1', V: 2.0, h: 1400 }],
+                               P: 15.41 });
+  var mC1 = C.totalMass(sysC1);
+  var rC1 = C.step(sysC1, 0.02, { flows: [{ from: 'n1', to: 'n0', mdot: 100 }] });
+  ckT('past Courant 1 the node lands ON its donor enthalpy — it does not overshoot past it',
+      Math.abs(sysC1.nodes[0].h - 1400) < 25 && isFinite(sysC1.nodes[0].h),
+      'landed ' + sysC1.nodes[0].h.toFixed(1) + ' kJ/kg on a donor of 1400; the unlimited form ' +
+      'is ' + (1250 + 0.02 * 100 * (1400 - 1250) / (1e-4 * 700)).toExponential(3));
+  ckT('...and the step is still finite and still closes mass — the limiter is not an escape hatch',
+      isFinite(sysC1.P) && isFinite(sysC1.M_total) && Math.abs(C.totalMass(sysC1) - mC1) < 1e-6 * mC1,
+      'P = ' + sysC1.P.toFixed(4) + ' MPa, mass moved ' +
+      (C.totalMass(sysC1) - mC1).toExponential(2) + ' kg on a closed system');
+  ckT('...and NOTHING clamped — the limiter keeps the state inside the envelope rather than ' +
+      'handing the envelope a state to catch',
+      rC1.enthalpyClamped === 0,
+      rC1.enthalpyClamped + ' node(s) clamped; without the limiter this same fixture drives the ' +
+      'node ~150,000 kJ/kg below the liquid floor');
+
+
+  /* ---- THE SAME MAXIMUM PRINCIPLE ON HEAT EXCHANGE (#588, second half, 2026-09-21) ----------
+   *
+   * ⚠⚠ WHAT THESE DELIBERATELY DO NOT ASSERT, for the same reason as the advective half above,
+   * and the ulp sweep is again why. MEASURED 2026-09-21, `hot_full_power` + `large_loca` +
+   * `station_blackout`, seed 0x1234, 1x, 1,200 s, nudging the system pressure by single ulps at
+   * the moment of injection:
+   *
+   *     ulp        0    +1    +2    +3    +8   +32    -1    -2
+   *     HEAD    held    no    no  held    no  held  held  held     <- 5 of 8 hold, 0 of 8 damage
+   *     tree      no    no    no    no  held    no    no    no     <- 1 of 8 holds, 5 of 8 damage
+   *
+   * Peak cladding is 746-998 degF on every HEAD branch and 1,956-3,364 degF on every tree branch,
+   * so the shift is systematic — but `fuel_damaged` is FIVE OF EIGHT, and one branch (+8) holds
+   * EARLIER than HEAD did. "The damage chain now runs" is therefore a BRANCH, not a claim, and it
+   * is asserted NOWHERE. #543 binds exactly as it did for the advective half.
+   *
+   * These assert THE INVARIANT THE DEFECT VIOLATED instead, on hand-built fixtures with a huge
+   * second node anchoring the pressure root so there is no solver cliff anywhere near them: a
+   * heat exchange obeys a maximum principle, and its conductance is the HARDWARE'S. */
+  if (!quiet) console.log('\nTHE EXCHANGE LIMITER  [#588 -- a relaxation has the same maximum principle]');
+
+  /* HALF ZERO: THE INVERSION ITSELF. The limiter cannot bound anything without knowing where the
+   * approach has to stop, and `h(T, P)` is ONE-TO-MANY at saturation — every enthalpy between
+   * h_f and h_g is at the same temperature. Both single-phase branches must round-trip, and the
+   * saturation seam must give the LOOSEST bound in each direction: h_f cooling, h_g heating.
+   * Asserted as EQUALITIES on h_f/h_g, because "near h_f" is also satisfied by an inversion that
+   * returns h_g and happens to be at low pressure where the two are close. */
+  var invOK = true, invNote = '';
+  [[15.41, 290], [15.41, 100], [0.4, 500], [6.0, 800]].forEach(function (c) {
+    var P = c[0], T = c[1], hv = C.hAtTarget(T, P, T > W.T_sat(P));
+    var back = W.T_from_h(hv, P);
+    if (!(Math.abs(back - T) < 1e-6)) { invOK = false; invNote += ' P' + P + '/T' + T + '->' + back.toFixed(6); }
+  });
+  ckT('the enthalpy-at-a-temperature inversion round-trips on BOTH single-phase branches',
+      invOK, invNote || 'liquid 290/100 degC at 15.41 MPa and vapour 500/800 degC at 0.4/6.0 MPa ' +
+      'all return to within 1e-6 degC');
+  var Psat = 6.0, Tsat6 = W.T_sat(Psat);
+  ckT('...and at saturation it is h_f COOLING and h_g HEATING — the loosest bound each way',
+      C.hAtTarget(Tsat6, Psat, false) === W.h_f(Psat) &&
+      C.hAtTarget(Tsat6, Psat, true) === W.h_g(Psat),
+      'at ' + Psat + ' MPa / ' + Tsat6.toFixed(3) + ' degC: cooling ' +
+      C.hAtTarget(Tsat6, Psat, false).toFixed(2) + ' = h_f ' + W.h_f(Psat).toFixed(2) +
+      ', heating ' + C.hAtTarget(Tsat6, Psat, true).toFixed(2) + ' = h_g ' + W.h_g(Psat).toFixed(2));
+
+  /* the fixture builder: one node with a metal wall, one huge node to anchor the pressure root */
+  function exFix(V0, h0, Twall, A_m2) {
+    var sx = C.createSystem({ P: 15.41, nodes: [
+      { id: 'n0', V: V0, h: h0,
+        wall: { M_kg: 2.0e4, cp: 0.50, k: 45, A_m2: A_m2, t_m: 0.20, lumps: 3 } },
+      { id: 'big', V: 6.0, h: h0 } ] });
+    for (var z = 0; z < sx.nodes[0].wall.T.length; z++) sx.nodes[0].wall.T[z] = Twall;
+    return sx;
+  }
+
+  /* HALF ONE: BELOW THE BOUND THE LIMITER MUST NOT EXIST. A 2 m3 node of water against a wall
+   * 40 K hotter is a Courant number of ~1e-3; the landed enthalpy must be the plain explicit
+   * update, and the limiter must report that it did nothing. */
+  var sxA = exFix(2.0, 1250, 330, 40);
+  var mA = sxA.nodes[0].V * (function () {
+    var VTl = globalThis.RD.pwr2.vtable; return (VTl ? VTl.rho_from_h : W.rho_from_h)(1250, 15.41);
+  })();
+  var G0A = C.wallG0(sxA.nodes[0].wall, 1, W.quality(1250, 15.41));
+  var TfA = (globalThis.RD.pwr2.vtable ? globalThis.RD.pwr2.vtable.T_from_h : W.T_from_h)(1250, 15.41);
+  var hExpA = 1250 + 0.02 * (G0A * (330 - TfA)) / mA;          /* the UNLIMITED form, by hand */
+  var rA = C.step(sxA, 0.02, {});
+  ckT('below the bound the exchange update is the PLAIN explicit one — the limiter is absent',
+      rA.limiterBound === 0 && rA.limiterWithheld_kJ === 0 &&
+      Math.abs(sxA.nodes[0].h - hExpA) < 0.05,
+      'landed ' + sxA.nodes[0].h.toFixed(5) + ' against the unlimited ' + hExpA.toFixed(5) +
+      ' kJ/kg (G0 = ' + G0A.toFixed(1) + ' kW/K, dt*G0/(m*cp) = ' +
+      (0.02 * G0A / (mA * C.cpLocal(1250, 15.41))).toExponential(2) + '), ' +
+      rA.limiterBound + ' node(s) bound');
+
+  /* HALF TWO: THE CONDUCTANCE IS THE HARDWARE'S, AND THIS IS THE REGRESSION THAT COST A DAY.
+   * The SAME hardware and the SAME node, with the wall ONE MICRO-KELVIN above the fluid instead
+   * of 40 K. Nothing about the hardware changed, so nothing about the bound may change — but a
+   * secant conductance `Q/(h_target - h)` is a 0/0 here and explodes.
+   *
+   * ⚠ THE FIXTURE IS ANCHORED ON THE CORRELATION TEMPERATURE, NOT THE TABLE'S, AND THAT IS THE
+   * WHOLE FIXTURE. `stepWall` differences through the VTABLE and `hAtTarget` inverts through the
+   * CORRELATIONS; at 1250 kJ/kg / 15.41 MPa those two read **1.255e-3 K apart**. Put the wall a
+   * micro-kelvin above the CORRELATION temperature and the duty is driven by the 1.255e-3 K SEAM
+   * while the enthalpy distance is only `cp * 1e-6` — so the secant returns ~230x the hardware
+   * conductance and binds, on a plant sitting at equilibrium. An earlier version of this check
+   * anchored on the TABLE temperature instead: the seam then put the enthalpy distance on the
+   * OPPOSITE SIDE, the not-a-relaxation guard refused the term for an unrelated reason, and the
+   * mutation was BLIND. MEASURED in the wild before any of this existed: `sg_primary` 0.00006 K
+   * from its own wall, G = 1.753e+6 kg/s on a 5,500 kg node, 5,059 kJ withheld from a healthy
+   * `hot_full_power` ride at t = 242.4 s. */
+  var TcorrB = W.T_from_h(1250, 15.41);
+  var sxB = exFix(2.0, 1250, TcorrB + 1e-6, 2000);
+  var rB = C.step(sxB, 0.02, {});
+  ckT('a wall ONE MICRO-KELVIN above the fluid does not bind — the conductance is the ' +
+      'hardware conductance, not Q/dh',
+      rB.limiterBound === 0 && rB.limiterWithheld_kJ === 0,
+      rB.limiterBound + ' node(s) bound, ' + rB.limiterWithheld_kJ.toExponential(2) +
+      ' kJ withheld; the table/correlation seam here is ' +
+      ((globalThis.RD.pwr2.vtable ? globalThis.RD.pwr2.vtable.T_from_h(1250, 15.41) : TcorrB) -
+       TcorrB).toExponential(3) + ' K, and the secant form turns it into ~230x the hardware ' +
+      'conductance');
+
+  /* HALF TWO(b): A TERM THE NODE IS MOVING AWAY FROM IS NOT A RELAXATION AND MUST NOT BE BOUNDED.
+   * This is not hypothetical: `stepSG` computes its duty from the loop's leg-average Tavg and
+   * books it at `sg_primary`, so a node already colder than the secondary is still handed a
+   * removal. There is no target for such a term to approach, and bounding it at one would pin the
+   * node on the WRONG SIDE of a temperature it is leaving. Declared straight through
+   * `drivers.exchanges` so the case is exact rather than waited for. */
+  var sxD = C.createSystem({ P: 15.41, nodes: [{ id: 'n0', V: 1e-3, h: 1250 },
+                                               { id: 'big', V: 6.0, h: 1250 }] });
+  var rD = C.step(sxD, 0.02, { heats: { n0: -2.0e5 },
+    exchanges: [{ node: 'n0', kW: -2.0e5, T_c: 330, G_kW_per_K: 1e7 }] });
+  ckT('a removal whose target is ABOVE the node is refused by the limiter, not bounded at it',
+      rD.limiterBound === 0 && sxD.nodes[0].h < 1250,
+      rD.limiterBound + ' node(s) bound; the node went ' + sxD.nodes[0].h.toFixed(1) +
+      ' kJ/kg, DOWN from 1250 as -200 MW must — bounded at h(330 degC) it would be pinned ' +
+      C.hAtTarget(330, 15.41, false).toFixed(1) + ', i.e. HEATED by a heat sink');
+
+  /* HALF THREE: PAST THE BOUND THE NODE LANDS ON THE TARGET AND NOT PAST IT. A 1e-4 m3 node
+   * against 2,000 m2 of wall at 600 degC is a Courant number of ~1e+4: the UNLIMITED update lands
+   * tens of thousands of kJ/kg past the metal, which is the fluid ending the step HOTTER THAN THE
+   * BODY HEATING IT — the second law run backwards, and the same sign-flipped overshoot the
+   * advective half has above.
+   *
+   * ⚠ ASSERTED AS AN EQUALITY ON THE TARGET. "Somewhere between h and h_target" is also
+   * satisfied by a limiter that does nothing when the two are close and by one that freezes the
+   * node, which are two separate mutations below. */
+  var sxC = exFix(1e-4, 1250, 600, 2000);
+  var mC = C.totalMass(sxC);
+  var hTgt = C.hAtTarget(600, 15.41, true);
+  var rC = C.step(sxC, 0.02, {});
+  ckT('past the bound the node lands ON the wall\'s own enthalpy — it does not overshoot past it',
+      rC.limiterBound >= 1 && isFinite(sxC.nodes[0].h) &&
+      Math.abs(sxC.nodes[0].h - hTgt) < 5,
+      'landed ' + sxC.nodes[0].h.toFixed(1) + ' kJ/kg on a wall enthalpy of ' + hTgt.toFixed(1) +
+      '; the unlimited form is ' +
+      (1250 + 0.02 * C.wallG0(sxC.nodes[0].wall, 1, W.quality(1250, 15.41)) * (600 - TfA) /
+       (1e-4 * 700)).toExponential(3));
+  ckT('...and the step still closes mass, clamps nothing, and COUNTS what it withheld',
+      isFinite(sxC.P) && Math.abs(C.totalMass(sxC) - mC) < 1e-6 * mC &&
+      rC.enthalpyClamped === 0 && rC.limiterWithheld_kJ !== 0,
+      'P = ' + sxC.P.toFixed(4) + ' MPa, mass moved ' + (C.totalMass(sxC) - mC).toExponential(2) +
+      ' kg, ' + rC.enthalpyClamped + ' clamped, ' + rC.limiterWithheld_kJ.toExponential(3) +
+      ' kJ withheld and REPORTED rather than swallowed');
+
+  /* THE PRE-CHECK IS EXACT — asserted as exactly that (2026-09-23, owner ruling "option 2").
+   * The limiter books an exchange's bound only where `dt*(qIn+gUp) > m` says it could bind.
+   * The claim is not "the plant looks the same"; it is "the skip produces the value the full
+   * path would", so the fixture is stepped TWICE — with the skip, and with
+   * `EXCHANGE_PRECHECK.forceFull` booking every node — and every node enthalpy, every wall lump
+   * and the pressure must agree TO THE BIT.
+   *
+   * THE FIXTURE SPANS THE THRESHOLD ON PURPOSE: six nodes whose exchange Courant numbers
+   * dt*G0/(cp*m) are 0.5, 0.9 (skipped — the skip must actually happen, or this compares the full
+   * path with itself), 1.2, 1.5, 1.9 (just past it — where a MARGINAL over-skip lives, which
+   * nothing else in the pwr2 gates could see: a factor-2 over-skip was measured BLIND to every
+   * one of them) and 50 (deep past it), plus a ring flow for the advective half and a wall on
+   * the first node. And the limiter must bind, or "identical" is vacuous. */
+  (function () {
+    var CS = [0.5, 0.9, 1.2, 1.5, 1.9, 50], P0 = 15.41, DTX = 0.02;
+    var TFHx = VT ? VT.T_from_h : W.T_from_h, RHOx = VT ? VT.rho_from_h : W.rho_from_h;
+    /* a body 3 K above the fluid: enough to relax toward, too little to move a rigid system's
+     * pressure past the root-tracking limit (330 degC did, and every step came back HELD) */
+    var T_BODY = TFHx(1250, P0) + 3;
+    function build() {
+      var nodes = CS.map(function (c, k) {
+        var n = { id: 'x' + k, V: 0.05 * (k + 1), h: 1244 + 2 * k };
+        if (k === 0) n.wall = { M_kg: 2.0e3, cp: 0.50, k: 45, A_m2: 40, t_m: 0.05, lumps: 2 };
+        return n;
+      });
+      nodes.push({ id: 'big', V: 60.0, h: 1250 });
+      var s = C.createSystem({ P: P0, nodes: nodes });
+      s.nodes[0].wall.T[0] = s.nodes[0].wall.T[1] = T_BODY + 1;
+      s._G0 = CS.map(function (c, k) {
+        var m = s.nodes[k].V * RHOx(s.nodes[k].h, P0);
+        return c * C.cpLocal(s.nodes[k].h, P0) * m / DTX;
+      });
+      return s;
+    }
+    function drive(s) {
+      var heats = {}, ex = [], flows = [];
+      CS.forEach(function (c, k) {
+        var id = 'x' + k, kW = s._G0[k] * (T_BODY - TFHx(s.nodes[k].h, s.P));
+        heats[id] = kW;
+        ex.push({ node: id, kW: kW, T_c: T_BODY, G_kW_per_K: s._G0[k] });
+        flows.push({ from: id, to: k + 1 < CS.length ? 'x' + (k + 1) : 'x0', mdot: 0.5 });
+      });
+      return { heats: heats, exchanges: ex, flows: flows };
+    }
+    function ride(forceFull) {
+      var s = build(), bound = 0, prev = C.EXCHANGE_PRECHECK.forceFull;
+      C.EXCHANGE_PRECHECK.forceFull = forceFull;
+      try { for (var n = 0; n < 25; n++) bound += C.step(s, DTX, drive(s)).limiterBound; }
+      finally { C.EXCHANGE_PRECHECK.forceFull = prev; }
+      var st = [s.P];
+      s.nodes.forEach(function (nd) { st.push(nd.h); if (nd.wall) st = st.concat(nd.wall.T); });
+      return { st: st, bound: bound };
+    }
+    var fast = ride(false), full = ride(true), diff = 0;
+    for (var q = 0; q < full.st.length; q++) if (!Object.is(fast.st[q], full.st[q])) diff++;
+    ckT('the exchange pre-check is EXACT — skipping the bound where it cannot bind is bit-identical ' +
+        'to booking it everywhere, on a fixture that binds',
+        diff === 0 && full.bound >= 50 && fast.bound === full.bound,
+        diff + ' of ' + full.st.length + ' state values differ; limiter bound ' + fast.bound +
+        ' (skip) vs ' + full.bound + ' (forced full) node-steps over 25 steps, Courant ' +
+        CS.join(' / '));
+  })();
+
+
   /* ---- THE ENTHALPY ENVELOPE (added 2026-08-17) -------------------------------------------
    * The state had no bound while every reader had one, so a node boiling dry ran `h` to 1e+304
    * and then to NaN — invisible, because `T_from_h` and `rho_from_h` saturate and the gauges
@@ -609,7 +883,7 @@ var MUTATIONS = [
    '      if (n.wall) node.wall = buildWall(n.wall, TFH(n.h, spec.P));',
    '      if (n.wall) node.wall = buildWall(n.wall, 20);'],
   ['the half-lump of metal in series with the film is dropped (a thick wall responds thin)',
-   '    var G0 = 1 / (1 / hA + w.R_half_KW);', '    var G0 = hA;'],
+   '    return 1 / (1 / hA + w.R_half_KW);', '    return hA;'],
   ['the root-tracking limit is deleted (a vanished root is ADOPTED as a teleport)',
    'var P_JUMP_MAX = 2.0;',
    'var P_JUMP_MAX = 1e9;'],
@@ -633,6 +907,66 @@ var MUTATIONS = [
    'sys.nodes[i].h = h_new; h_next[i] = h_new;'],
   ['the held step keeps integrating (the hold is announced but not performed)',
    '    if (sys.beyond_model) {\n      sys.simTime += dt;', '    if (false) {\n      sys.simTime += dt;'],
+  /* THE COURANT LIMITER AND THE PER-NODE FLOOR (#588, 2026-09-21). Four ways to lose them, and
+   * the first two are the ones a later reader is most likely to produce by "simplifying". */
+  ['the Courant limiter is deleted (the advective update overshoots past its own donor)',
+   'if (cIn > 0 && dt * cIn > m_n[i]) {', 'if (false) {'],
+  /* The limiter must be ONE-SIDED. Applying it whenever there is any inflow at all makes every
+   * node land on its donor every step — which satisfies "does not overshoot" perfectly and
+   * destroys the plant. This is the mutation that makes HALF ONE of the check load-bearing. */
+  /* ⚠ 11 red -> 6 red since the exchange pre-check (2026-09-23), and that is expected, not a
+   * lost check: this mutant replaces the bind test the pre-check's proof is written against, so
+   * on a node where the pre-check has skipped booking, `gIn` is 0 and the mutant teleports the
+   * node to its ADVECTIVE donor only. The pre-check's own two mutations below cover the skip. */
+  ['the limiter binds ALWAYS, not only past Courant 1 (every node teleports to its donor)',
+   'if (cIn > 0 && dt * cIn > m_n[i]) {', 'if (cIn > 0) {'],
+  /* The limited value must be the DONOR-WEIGHTED mean, not the node's own enthalpy frozen.
+   * "Freeze the node when the step is too big" is the obvious wrong fix and it is stable, so
+   * nothing but an equality check on the donor can tell the two apart. */
+  ['the limiter FREEZES the node instead of landing it on the donor (stable, and wrong)',
+   'var aLim = chIn / cIn + dt * dHq / m_n[i];', 'var aLim = sys.nodes[i].h;'],
+  /* ---- THE EXCHANGE HALF (#588, second half, 2026-09-21). Five ways to lose it, and the
+   * SECOND is the one I actually built, measured and had to throw away. ---- */
+  ['the exchange limiter is deleted (a heat exchange drives its fluid past the body it cools to)',
+   '      gIn[node_i] += G;', '      gIn[node_i] += 0;'],
+  /* THE CONDUCTANCE MUST BE THE HARDWARE'S. `Q/(h_target - h)` is the same thing algebraically
+   * and a 0/0 numerically: it explodes as the fluid approaches the body, so the limiter fires
+   * hardest on a plant at equilibrium. MEASURED with this form in: `sg_primary` 0.00006 K from
+   * its own wall returned G = 1.753e+6 kg/s on a 5,500 kg node and withheld 5,059 kJ from a
+   * healthy `hot_full_power` ride. This is the mutation the near-equilibrium check exists for. */
+  ['the exchange conductance is the SECANT Q/dh, not the hardware G0/cp (it poles at equilibrium)',
+   '      var G = G0_kW_per_K / cpLocal(sys.nodes[node_i].h, sys.P, T_fluid_c);   /* kW/K -> kg/s */',
+   /* ⚠ REPLACEMENT RE-CUT 2026-09-23: `G` is now computed where the exchange is RECORDED, before
+    * `dh` exists (the bound `h_t` is deferred to where it can bind), so the secant is spelled out
+    * in full. Same defect, same value of `G` as the pre-split mutant. */
+   '      var G = Q_kW / (hAtTarget(T_target_c, sys.P, Q_kW > 0) - sys.nodes[node_i].h);'],
+  /* The limited value must be the TARGET, not the node frozen — the same one-sided-check trap as
+   * the advective half, on the other conductance. */
+  ['the exchange lands the node on its OWN enthalpy instead of the target (stable, and wrong)',
+   '      ghIn[node_i] += G * h_t;', '      ghIn[node_i] += G * sys.nodes[node_i].h;'],
+  /* The sign carve-out: a duty whose heat and whose temperature difference disagree is not a
+   * relaxation on this node and must ride the unlimited remainder. Dropping the guard bounds a
+   * term at a target it is moving AWAY from. */
+  ['the not-a-relaxation carve-out is dropped (a term is bounded at a target it moves away from)',
+   '      if (!(Q_kW * dh > 0)) return;', '      if (false) return;'],
+  /* The inversion is one-to-many at saturation and the EQUALITY decides the branch. Swapping it
+   * bounds a condensing node at h_g and freezes it with the wall still colder. */
+  ['the inversion takes the wrong saturation branch (a condensing node is bounded at h_g)',
+   '    if (heating ? (T_c < Ts) : (T_c <= Ts)) return W.h_l(T_c, P_mpa);',
+   '    if (heating ? (T_c <= Ts) : (T_c < Ts)) return W.h_l(T_c, P_mpa);'],
+  /* THE PRE-CHECK (2026-09-23, owner ruling "option 2"). The exchange bound is booked only where
+   * `dt*(qIn + gUp) > m` says it could bind. Two ways to make the skip TOO AGGRESSIVE — skipping
+   * where the bound does bind — and each must redden the exchange fixtures above. */
+  ['the exchange pre-check skips ALWAYS (the bound is never booked, even where it binds)',
+   'if (xUnsure[i] || !(dt * cUp <= m_n[i]) || EXCHANGE_PRECHECK.forceFull) {',
+   'if (EXCHANGE_PRECHECK.forceFull) {'],
+  /* THE MARGINAL ONE, and the reason the exactness check above exists: a skip that is too
+   * aggressive by a factor of two was measured BLIND to every pwr2 gate (2026-09-23) while it
+   * moved the core-damage chain's milestones ~9 s. Only the Courant 1.2 / 1.5 / 1.9 nodes see it. */
+  ['the exchange pre-check is too aggressive by a factor of TWO (skips a bound at Courant 1-2)',
+   '!(dt * cUp <= m_n[i])', '!(dt * cUp <= 2 * m_n[i])'],
+  ['the exchange pre-check bounds with the ADVECTIVE half only (the conductance it skips is ignored)',
+   'var cUp = qIn[i] + gUp[i];', 'var cUp = qIn[i];'],
   /* THE ENTHALPY ENVELOPE (2026-08-17). Three ways to get it wrong, and the third is the one
    * that actually happened to me: the clamp applied AFTER the solve instead of inside it. */
   ['the enthalpy state loses its ceiling (a dry node runs to 1e+304 and then NaN)',

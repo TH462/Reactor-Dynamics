@@ -643,9 +643,18 @@ var MUTATIONS = [
    "        if (!gw) throw new Error(\x27Layer 3: no metal wall for node \x27 + id + \x27 — #574 puts one \x27 +\n" +
    "                                 \x27on every node; a missing entry is a defect, not a default\x27);",
    '        if (!gw) gw = { M_kg: 1, A_m2: 1, t_m: 0.01, mat: \'cs\' };'],
+  /* RE-POINTED (#588, 2026-09-22): the expression became `flowFrac(sys)` when Layer 5's steam
+   * generator acquired a SECOND reader for it and the helper was factored out. The old anchor
+   * named the inline form and went BLIND on the refactor -- the runner said so, which is the
+   * only reason it was caught. Read the self-test line, not just the checks tally. */
   ['the wall film stops seeing the loop flow (it is pinned at rated for ever)',
-   '        flowFrac: Math.abs(sys.mdot_loop) / MDOT_RATED',
-   '        flowFrac: 1'],
+   '        flowFrac: flowFrac(sys),',
+   '        flowFrac: 1,'],
+  /* And the HELPER itself, which the engine's steam generator now also reads: a flow fraction
+   * that ignores its argument pins every film in the plant at rated. */
+  ['the flow-fraction helper ignores the plant and returns rated (#588 -- it feeds BOTH the ' +
+   'wall film here and the tube-side film of the steam generator at Layer 5)',
+   'return Math.abs(sys.mdot_loop) / MDOT_RATED;', 'return 1;'],
   ['junction flows seeded at ZERO (heals in one step, corrupts the first)',
    'RING.forEach(function (id) { sys.junctionFlow[id] = sys.mdot_loop; });',
    'RING.forEach(function (id) { sys.junctionFlow[id] = 0; });']
@@ -674,6 +683,15 @@ var MUTATIONS = [
   ['extraMass NOT forwarded to Layer 2 (the pressurizer seat is unreachable)',
    'extraMass: opts.extraMass });', '});']];
 
+/* ---- THE NULL MUTATION (#657) -------------------------------------------------------------
+ * This runner has no `grp()` scoping — every replay runs the WHOLE suite quiet — so there is
+ * exactly one group: the one short (quiet) ride every real mutation is also replayed on. One
+ * no-op edit proves that ride is not, on its own, red. MUT_TOTAL freezes the real count first;
+ * a null is a self-test OF the instrument, not a unit of coverage. */
+var MUT_TOTAL = MUTATIONS.length;
+var NULLS = MUT.nullSelfTest({ groups: ['ALL'], anchor: "'use strict';" });
+MUTATIONS = MUTATIONS.concat(NULLS.entries);
+
 /* ---- THE CLEAN-RUN GUARD --------------------------------------------------------------
  * A MUTATION SELF-TEST IS ONLY MEANINGFUL IF THE UNMUTATED SUITE IS GREEN. If any check fails in
  * the clean run it fails in every mutant too, so `f2 > 0` holds unconditionally and EVERY mutation
@@ -701,6 +719,14 @@ console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one ch
 console.log('='.repeat(70));
 var blind = 0;
 MUT.select(MUTATIONS).forEach(function (m) {
+  if (NULLS.is(m[0])) {
+    if (SRC.indexOf(m[1]) === -1) { NULLS.score(m[0], { anchorMiss: true }); return; }
+    var mutatedN = SRC.split(m[1]).join(m[2]);
+    var recN = [], crashedN = false;
+    try { runSuite(loadFrom(mutatedN), recN, true); } catch (e) { crashedN = true; }
+    NULLS.score(m[0], { base: SRC, mutated: mutatedN, rec: recN, crashed: crashedN });
+    return;
+  }
   if (SRC.indexOf(m[1]) === -1) { console.log('  ERROR   anchor not found: ' + m[0]); blind++; return; }
   var r2 = [];
   try { runSuite(loadFrom(SRC.split(m[1]).join(m[2])), r2, true); }
@@ -711,8 +737,9 @@ MUT.select(MUTATIONS).forEach(function (m) {
 });
 
 console.log('\n' + '='.repeat(70));
-console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
+console.log('  injection self-test: ' + (MUT_TOTAL - blind) + '/' + MUT_TOTAL +
   ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
+var nullFail = NULLS.report();
 console.log('  run_pwr2_loop: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit((fail > 0 || blind > 0) ? 1 : 0);
+process.exit((fail > 0 || blind > 0 || nullFail > 0) ? 1 : 0);

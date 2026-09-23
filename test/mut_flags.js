@@ -163,5 +163,157 @@ function requireCleanRun(rec, tallyLine, opts) {
   process.exit(1);
 }
 
+/* ---- THE NULL MUTATION, ONE PER GROUP (#657) ------------------------------------------------
+ *
+ * ⚠ A REPLAY THAT DOES NOT RIDE THE PLANT THE CLEAN PASS RODE SCORES ITS OWN COVERAGE GREEN.
+ *
+ * `requireCleanRun` above refuses to score while the CLEAN pass is red. That is the ride nobody
+ * mutates — and it is not the ride the replays take. Every replay in this directory runs
+ * `quiet = true`, and `quiet` is not only a print flag: in run_pwr2_engine it shortens 53 ride
+ * sites (`grep 'quiet ?'`; #657 named six), because the replay bill is 85 % of the gate. The settle is 120 s against the clean
+ * pass's 300; a heatup 300 s against 600; a Mode 5 pressure ride 300 s against 900. So a check
+ * that is green at 300 s and red at 120 s is red in EVERY mutant of its group, for a reason
+ * that is not the mutation — the group prints "all caught, no blind spots" and that number is a
+ * lie of exactly the #644 shape, one layer down, immune to #644's guard by construction.
+ * MEASURED BEFORE THIS EXISTED: group K was ridden with a null mutation by hand and came back
+ * clean; the other sixteen groups had never been measured at all.
+ *
+ * THE MEASUREMENT: one extra mutation per group whose source edit is a NO-OP. Its replay is the
+ * clean pass re-run at the REPLAY's own ride lengths and scoping, so it must report BLIND with
+ * ZERO red. A red under it NAMES the check that is red on the short ride, and that group's
+ * coverage figure is void until the check is fixed or its ride is lengthened.
+ *
+ * IT LIVES HERE, NOT IN THE RUNNER — THAT IS THE RULING'S OWN REASON (#657, 2026-09-21, option
+ * A). #644 found this repo's most important test convention existing as thirty hand-copied
+ * twelve-line paragraphs, eight of them silently missing the guard, including the largest gate;
+ * it fixed the ten instances and did NOT fix the mechanism that produced the eight. A runner
+ * adopts the convention in two lines:
+ *
+ *     var NULLS = MUT.nullSelfTest({ groups: GROUPS, expect: MY_GROUPS, anchor: "'use strict';" });
+ *     MUTATIONS = MUTATIONS.concat(NULLS.entries);
+ *
+ * hands each outcome back from inside its replay loop instead of scoring it itself:
+ *
+ *     if (NULLS.is(m[0])) { NULLS.score(m[0], { base: base, mutated: mutated,
+ *                                               rec: rec2, crashed: crashed }); return; }
+ *
+ * and ends with `var nullFail = NULLS.report();` before its tally line, `nullFail` in its exit
+ * code — `report()` RETURNS the failure count (it is the only caller that can see the sixth
+ * failure below, so `failures()` is the narrower number and is there for a reader, not a gate).
+ * Counts of CAUGHT mutations must exclude the nulls: a null is a self-test of the instrument,
+ * not a unit of coverage, and adding it to the numerator would inflate the very figure it
+ * exists to audit.
+ *
+ * FIVE WAYS A NULL FAILS, all reported, because four of them are the hollow forms this
+ * instrument is itself made of:
+ *   RED         a check is red on the short ride — the finding this exists for.
+ *   CRASH       the short ride throws where the long one does not. Same verdict, other cause.
+ *   NOT NULL    the edit was not a no-op after all. The marker is deleted from the mutated
+ *               source and it must come back BYTE-IDENTICAL, or the control is an ordinary
+ *               mutation wearing a null's name and its BLIND verdict means nothing.
+ *   EMPTY       the replay recorded ZERO checks. A null scoped to a group tag no block answers
+ *               to rides nothing and reds nothing — which reads exactly like success. This is
+ *               the `range()`-on-a-boolean failure of this gate: ask what it READ, not only
+ *               what it asserted.
+ *   ANCHOR MISS the no-op edit did not apply, so the replay ran the unmutated source. Same
+ *               nothing-happened, one step earlier.
+ * And a sixth, at report time: a group in `expect` that produced NO result at all — the null
+ * was wired and never ran. A 0/0 "all BLIND" is the same lie in the summary line.
+ */
+var NULL_PREFIX = 'NULL MUTATION (a no-op source edit) -- group ';
+/* The marker is what makes the no-op PROVABLE: delete every occurrence of it from the mutated
+ * source and the base must come back exactly. Kept comment-shaped and space-free so the
+ * replacement is `anchor + MARK` with nothing else between them to restore. */
+var NULL_MARK = '/*#657-null*/';
+
+function nullSelfTest(o) {
+  o = o || {};
+  var groups = (o.groups || []).slice();
+  var expect = (o.expect || groups).slice();
+  var anchor = o.anchor;
+  /* the ENTRY SHAPE is the one genuinely per-runner thing, so it is the one thing a caller may
+   * override; the default is the shape every pwr2 runner uses */
+  var build = o.build || function (desc, from, to, g) { return [desc, from, to, { grp: g }]; };
+  if (typeof anchor !== 'string' || !anchor)
+    throw new Error('mut_flags.nullSelfTest: `anchor` must be a non-empty string that occurs in ' +
+                    'the source this runner mutates (an absent anchor reports ANCHOR MISS, which ' +
+                    'is a red, but a missing argument should not get that far)');
+  if (!groups.length)
+    throw new Error('mut_flags.nullSelfTest: `groups` is empty — a null self-test over zero ' +
+                    'groups would print "0/0 groups BLIND" and measure nothing');
+
+  var results = [];
+  function grpOf(desc) { return String(desc).slice(NULL_PREFIX.length); }
+
+  function score(desc, x) {
+    x = x || {};
+    var g = grpOf(desc), rc = x.rec || [];
+    /* `verdict` is the pwr2 record's xfail field; a runner without one has undefined here and
+     * every red counts, which is the conservative direction */
+    var reds = rc.filter(function (r) { return !r.ok && r.verdict !== 'XFAIL'; });
+    var why = null;
+    if (x.anchorMiss) why = 'ANCHOR MISS';
+    else if (x.base !== undefined && x.mutated !== undefined &&
+             x.mutated.split(NULL_MARK).join('') !== x.base) why = 'NOT NULL';
+    else if (x.crashed) why = 'CRASH';
+    else if (!rc.length) why = 'EMPTY';
+    else if (reds.length) why = 'RED';
+    var r = { grp: g, ok: !why, why: why, reds: reds.length, checks: rc.length };
+    results.push(r);
+    if (!why) {
+      console.log('  null grp ' + g + '   BLIND -- 0 red of ' + rc.length +
+                  ' checks on the replay\'s own (short) ride');
+      return r;
+    }
+    console.log('  ** NULL MUTATION ' + why + ', group ' + g + ' ** ' + (
+      why === 'RED'      ? reds.length + ' of ' + rc.length + ' checks are red on the SHORT ' +
+                           'replay ride and on no mutation -- every mutation in group ' + g +
+                           ' reads as caught for THIS reason, so that coverage figure is void'
+    : why === 'EMPTY'    ? 'the replay recorded ZERO checks -- this group tag rides nothing, so ' +
+                           'nothing about it was measured'
+    : why === 'CRASH'    ? 'the short ride THREW where the clean pass does not'
+    : why === 'NOT NULL' ? 'deleting the marker did not restore the source byte-for-byte -- this ' +
+                           'control is an ordinary mutation and its verdict means nothing'
+    :                      'the no-op edit did not apply; the replay ran the unmutated source'));
+    reds.slice(0, 12).forEach(function (r2) {
+      console.log('       RED  ' + (r2.name || r2.id || '(unnamed)'));
+    });
+    if (reds.length > 12) console.log('       RED  ... and ' + (reds.length - 12) + ' more');
+    return r;
+  }
+
+  function report() {
+    var bad = results.filter(function (r) { return !r.ok; });
+    /* THE SIXTH FAILURE. Only enforceable on an UNFILTERED run: every mut_flags filter is free
+     * to replay a subset, and such a run is forced non-zero anyway, so it can never be a
+     * baseline. On a whole run, a group that owed a null and produced no result means the
+     * wiring, not the plant, is broken. */
+    var ran = {};
+    results.forEach(function (r) { ran[r.grp] = true; });
+    var missing = partial() ? [] : expect.filter(function (g) { return !ran[g]; });
+    console.log('  null self-test: ' + (results.length - bad.length) + '/' + results.length +
+      ' groups BLIND to a no-op edit' + (
+        bad.length ? '  ** ' + bad.length + ' GROUP(S) FAIL -- GATE FAILS (' +
+                     bad.map(function (r) { return r.grp + ':' + r.why; }).join(' ') + ') **'
+      : results.length ? ' (no group is red on the replay\'s own ride)'
+      : ''));
+    if (missing.length)
+      console.log('  ** NO NULL MUTATION RAN for group(s) ' + missing.join(' ') +
+                  ' -- the self-test was wired and did not execute; a 0/0 above is not a pass **');
+    return bad.length + missing.length;
+  }
+
+  return {
+    entries: groups.map(function (g) {
+      return build(NULL_PREFIX + g, anchor, anchor + NULL_MARK, g);
+    }),
+    is: function (desc) { return String(desc).indexOf(NULL_PREFIX) === 0; },
+    score: score,
+    report: report,
+    results: function () { return results.slice(); },
+    failures: function () { return results.filter(function (r) { return !r.ok; }).length; }
+  };
+}
+
 module.exports = { select: select, partial: partial, grpTag: grpTag, mutTag: mutTag,
-                   requireCleanRun: requireCleanRun };
+                   requireCleanRun: requireCleanRun, nullSelfTest: nullSelfTest };

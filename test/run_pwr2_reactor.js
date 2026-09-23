@@ -67,8 +67,31 @@ function runSuite(R, rec, quiet) {
    * mutation here shows itself within a few seconds of plant — a double-counted heat path, a lost
    * decay fraction, a wrong node — so the replay horizon is short and only the SETTLING claims get
    * the long one. MEASURED: 4 s clean, ~40 s for the replay. */
-  var SETTLE = quiet ? 1500 : 15000;      /* 30 s vs 300 s */
-  var STEP   = quiet ? 1500 : 6000;       /* 30 s vs 120 s */
+  /* ⚠ LENGTHENING `SETTLE` IS NOT FREE, AND THAT IS WHY THERE ARE TWO OF THEM (#657 null
+   * self-test). At 1 500 steps five checks in this file were red on the replay's OWN short ride
+   * and on no mutation, so every mutation here read as caught for that reason. But the obvious
+   * fix -- ride `hold` longer -- COSTS COVERAGE, measured: SETTLE 1 500 -> 4 200 blinded five
+   * mutations (superheat off the hot leg, no-superheat, the lost decay fraction, a constant
+   * coolant temperature into the fuel, the wrong node), and 1 500 -> 6 000 blinded five as well.
+   * A settled plant equilibrates a defect away: "the coolant temperature handed to the fuel is a
+   * constant" IS the true temperature once nothing is moving. The short ride is where those
+   * defects are visible and it is KEPT.
+   *
+   * So the two SETTLING claims -- zero net reactivity, and heat delivered == heat generated --
+   * ride their own fixture instead (SETTLE_LONG below), and every other check still reads the
+   * 30 s `hold`. MEASURED on this fixture, sampled every 100 steps:
+   *   SETTLE_LONG  |rho| < 5 pcm crosses at ~2 150 steps; |heats.core - Q_core_kW| <= 10 kW
+   *           crosses at 4 100 (9.1 kW) and then sits on a 5.8-6.3 kW PLATEAU -- the xenon drift
+   *           the tolerance note further down names -- out to 6 200. 6 000 reads 5.87 kW, 41 %
+   *           inside the bar and on the flat, with rho at 0.465 pcm.
+   *   STEP    1 500 -> 3 000, and this one is a plain lengthen: it blinded NOTHING (25/25 still
+   *           caught). The +10 % leg binds -- |rho| < 15 crosses at ~2 400 (14.12) and
+   *           core_heat_pct enters 110 +- 2 at ~1 900. 3 000 reads rho 9.31 (38 % inside) and
+   *           109.33 % (|d| 0.67 of a 2.0 bar, 66 % inside); the -10 % leg is 89.48 % / -5.6 pcm.
+   */
+  var SETTLE      = quiet ? 1500 : 15000; /* 30 s vs 300 s  -- where the mutations are visible */
+  var SETTLE_LONG = quiet ? 6000 : 15000; /* 120 s vs 300 s -- where the settling claims live */
+  var STEP        = quiet ? 3000 : 6000;  /* 60 s vs 120 s */
 
   /* A reactor critical AT ITS OWN CONDITION. rho_excess puts the plant critical at the HZP anchor
    * with zero xenon; at rated power with equilibrium xenon present the boron must be trimmed, and
@@ -134,6 +157,27 @@ function runSuite(R, rec, quiet) {
       R.createReactor({ P: 0.5, coolTemp_c: TREF }).fuel.T_fuel_c <
       R.createReactor({ P: 1.0, coolTemp_c: TREF }).fuel.T_fuel_c - 100,
       'the IC follows the power it is built at, not a fixed number');
+  /* THE CLAD'S IC, ASSERTED AS THE CLAIM RATHER THAN AS THE VALUE (#657 blind spot). The clad
+   * carries ~1/50th of the fuel's heat capacity, so a wrong clad IC does not settle quietly the
+   * way a wrong fuel IC does — it dumps or absorbs its whole error in a fraction of a second, and
+   * the witness is the heat crossing into the coolant ON STEP ONE. So this reads that heat, not
+   * the constructor's field: the claim is "no lurch at t=0", and a value comparison against
+   * F.steadyCladTemp would only restate the line it is testing.
+   *
+   * ⚠ IT IS A ONE-STEP FIXTURE AND CANNOT BE ANYTHING ELSE. MEASURED: with the clad started at
+   * 20 degC, step one pulls 2 728 910 kW OUT of the coolant — 9.1x rated, backwards — and by
+   * 30 s (the `hold` ride below) the clad has equilibrated and reads indistinguishable from
+   * clean, which is why every settled check in this file was blind to it.
+   * MEASURED clean, matched plant at TREF: the clad IC is 329.73 degC (F.steadyCladTemp at
+   * RATED/TREF to 3 decimals), the clad-to-coolant drive is 25.23 degC, and step one delivers
+   * 294 632 kW = 98.2 % of rating. The band below is the one the settled heat check uses. */
+  var icP  = S.createPlant({ h: W.h_l(TREF, P0), P: P0 });
+  var icRx = R.createReactor({ P: 1.0, coolTemp_c: TREF });
+  var icQ  = R.stepReactor(icRx, icP, 0.02, { boron_ppm: 800 }).heats.core;
+  ckT('the CLAD is initialised on its steady solve too -- no heat spike on the FIRST step',
+      icQ > 0.9 * RATED && icQ < 1.15 * RATED,
+      icQ.toFixed(0) + ' kW into the coolant at t=0 against a ' + RATED + ' kW rating; a clad ' +
+      'started cold reads -2 728 910 kW here and is INVISIBLE 30 s later');
 
   /* ---- THE COOLANT REGIME (added 2026-08-17) ----------------------------------------------
    * `coreRegime` is what tells `pwr2_fuel.js` whether the rods are being cooled, and that layer
@@ -189,6 +233,68 @@ function runSuite(R, rec, quiet) {
   ckT('...and a COLLAPSING loop flow is seen too, as the fraction it actually is',
       Math.abs(R.coreRegime(rgF).flowFrac - 0.25) < 1e-9,
       'flow ' + R.coreRegime(rgF).flowFrac.toFixed(4) + ' at a quarter of rated');
+
+  /* ---- THE SUPERHEAT WING (#517), ASSERTED WHERE IT IS NON-ZERO (#657 blind spots) ---------
+   * `voidFraction` clips at 1, so above h_g it is a CONSTANT and superheat is the only channel
+   * left that can tell a core at h_g from one 600 kJ/kg above it. Every other fixture in this
+   * file runs subcooled or two-phase, where `superheat_c` is 0 — the identity regime CLAUDE.md
+   * names — so a coreRegime returning 0 superheat unconditionally agreed with all of them and
+   * both #517 mutations were BLIND.
+   *
+   * The claim is not "the number is computed", it is "the fuel can still tell HOW DRY the core
+   * is once it has boiled dry". So the check drives the fuel: two plants identical except for
+   * the core node's enthalpy, both at void 1.0, stepped once each.
+   * MEASURED at 7.0 MPa with the rest of the loop liquid at 280 degC:
+   *   h_g + 20 kJ/kg  ->   4.32 degC superheat, film 14 755.72 W/m2K
+   *   h_g + 600 kJ/kg -> 198.96 degC superheat, film 12 039.59 W/m2K   (-18.4 %, -2 716.13)
+   * With the superheat blanked BOTH read 15 000.00 — the frozen film #517 was filed for. The
+   * 1 000 W/m2K bar is 2.7x inside the measured move and 12 039.59 clear of a frozen pair. */
+  function dryCore(P_MPa, above_h_g) {
+    var p = S.createPlant({ h: W.h_l(280, P_MPa), P: P_MPa });
+    for (var i = 0; i < p.nodes.length; i++) {
+      if (p.nodes[i].id === 'core') { p.nodes[i].h = W.h_g(P_MPa) + above_h_g; break; }
+    }
+    return p;
+  }
+  var shLow  = dryCore(7.0, 20), shHigh = dryCore(7.0, 600);
+  var shFilmLow  = R.stepReactor(R.createReactor({ P: 1.0, coolTemp_c: TREF }),
+                                 shLow,  0.02, { boron_ppm: 800 }).h_film_W_per_m2K;
+  var shFilmHigh = R.stepReactor(R.createReactor({ P: 1.0, coolTemp_c: TREF }),
+                                 shHigh, 0.02, { boron_ppm: 800 }).h_film_W_per_m2K;
+  ckT('a core boiled DRY still tells the fuel how dry -- more superheat, lower film coefficient',
+      R.coreRegime(shLow).voidFrac === 1 && R.coreRegime(shHigh).voidFrac === 1 &&
+      shFilmLow - shFilmHigh > 1000,
+      shFilmLow.toFixed(2) + ' -> ' + shFilmHigh.toFixed(2) + ' W/m2K across ' +
+      R.coreRegime(shLow).superheat_c.toFixed(2) + ' -> ' +
+      R.coreRegime(shHigh).superheat_c.toFixed(2) + ' degC of superheat, both at void 1.0 — ' +
+      'a regime reporting no superheat freezes both at 15 000.00');
+  /* ...AND IT COMES OFF THE CORE NODE. The check above cannot say which node it read: in the
+   * real superheat regime the core is the hottest thing in the loop, so a coreRegime reading
+   * `nodes[0]` reports 0 and reddens it for the wrong reason. This fixture INVERTS that —
+   * `nodes[0]` (the downcomer) is the superheated one and the core is two-phase — so the
+   * honest answer is zero and only a wrong-node read is non-zero. The preconditions are
+   * computed from Layer 0 directly, not from coreRegime, so they cannot be mutated green.
+   * MEASURED: node 0 at 198.96 degC of superheat, core at 30 % quality, coreRegime reports
+   * 0.00; reading nodes[0] reports 198.96. */
+  var shX = dryCore(7.0, 600);
+  for (var sx = 0; sx < shX.nodes.length; sx++) {
+    if (shX.nodes[sx].id === 'core') {
+      shX.nodes[sx].h = W.h_f(7.0) + 0.30 * (W.h_g(7.0) - W.h_f(7.0)); break;
+    }
+  }
+  shX.nodes[0].h = W.h_g(7.0) + 600;
+  var shXcore = null;
+  for (var sy = 0; sy < shX.nodes.length; sy++) {
+    if (shX.nodes[sy].id === 'core') { shXcore = shX.nodes[sy]; break; }
+  }
+  ckT('...and off the CORE node -- a superheated node 0 over a two-phase core reports ZERO',
+      W.superheat_c(shX.nodes[0].h, shX.P) > 150 &&
+      W.quality(shXcore.h, shX.P) > 0.2 && W.quality(shXcore.h, shX.P) < 1 &&
+      R.coreRegime(shX).superheat_c === 0,
+      'node 0 (' + shX.nodes[0].id + ') at ' +
+      W.superheat_c(shX.nodes[0].h, shX.P).toFixed(2) + ' degC of superheat over a ' +
+      (100 * W.quality(shXcore.h, shX.P)).toFixed(0) + ' % quality core; coreRegime reports ' +
+      R.coreRegime(shX).superheat_c.toFixed(2) + ' degC');
   /* AND THE REGIME MUST REACH pwr2_fuel, not merely be computable. A film coefficient that never
    * moves is the defect this whole chain exists to have fixed. */
   /* ⚠ READ ON THE FIRST STEP AFTER THE INJECTION, and the reason is real physics rather than a
@@ -207,6 +313,33 @@ function runSuite(R, rec, quiet) {
       rgCold.h_film_W_per_m2K.toFixed(0) + ' -> ' + rgSlow.h_film_W_per_m2K.toFixed(0) +
       ' W/m2K when the loop drops to 1 % of rated -- a computed regime that never reached ' +
       'pwr2_fuel would leave this unmoved');
+  /* ...AND SO MUST THE COOLANT TEMPERATURE, which is the other half of what pwr2_fuel refuses to
+   * invent and was BLIND until #657. The temperature the fuel is handed is the sink in
+   * q = hA(T_clad - T_cool), so the only witness that cannot be faked is the HEAT: cool the whole
+   * plant and the same fuel must dump more of it.
+   *
+   * ⚠ THE WHOLE PLANT MOVES, NOT THE CORE NODE ALONE, and that is deliberate — a displaced core
+   * node makes this check red under "the reactor reads the wrong node" as well, which is a
+   * different defect with its own check below. Uniform plants keep the two apart.
+   * ⚠ AND IT IS ONE STEP, for the same reason the clad IC check is: the fuel IC is held at the
+   * TREF solve, so the drive is 25.23 degC on the matched plant and 65.23 degC on the cold one.
+   * Ride it and the fuel re-settles against whatever it is given and the difference closes.
+   * MEASURED: 294 632 kW at TREF, 690 456 kW at TREF - 40 — a move of 395 825 kW, 1.3x rated.
+   * With the temperature hard-coded the fuel cannot feel it: 294 616 -> 295 160, a move of
+   * 544 kW, which is 0.14 % of the real one and comes from kinetics' own moderator feedback,
+   * not from the fuel. The 100 000 kW bar sits 4.0x inside the measured move and 184x above
+   * what the defect can produce. */
+  function firstStepHeat(T_c) {
+    return R.stepReactor(R.createReactor({ P: 1.0, coolTemp_c: TREF }),
+                         S.createPlant({ h: W.h_l(T_c, P0), P: P0 }),
+                         0.02, { boron_ppm: 800 }).heats.core;
+  }
+  var qWarm = firstStepHeat(TREF), qCold = firstStepHeat(TREF - 40);
+  ckT('the COOLANT TEMPERATURE reaches the fuel -- a colder plant pulls more heat out of it',
+      qCold - qWarm > 100000,
+      qWarm.toFixed(0) + ' -> ' + qCold.toFixed(0) + ' kW when the whole plant is 40 degC ' +
+      'colder (the clad-to-coolant drive goes 25.23 -> 65.23 degC); a constant handed to ' +
+      'pwr2_fuel moves 544 kW here');
 
   /* ---- THE LOOP HOLDS --------------------------------------------------------------------- */
   head('THE LOOP HOLDS  [a sign error passes one step and diverges over three hundred seconds]');
@@ -215,6 +348,11 @@ function runSuite(R, rec, quiet) {
    * own output, which cannot answer either. */
   var holdF = fixture();
   var hold = ride(holdF, SETTLE);
+  /* THE SETTLING CLAIMS' OWN PLANT. A SEPARATE fixture, not a continuation of holdF: the checks
+   * below interrogate `holdF.sys` directly (pressure, core-node quality, void), so riding it
+   * further would move the plant out from under them. */
+  var settledF = fixture();
+  var settled = ride(settledF, SETTLE_LONG);
   function hold_core() {
     for (var i = 0; i < holdF.sys.nodes.length; i++) {
       if (holdF.sys.nodes[i].id === 'core') return holdF.sys.nodes[i];
@@ -237,8 +375,11 @@ function runSuite(R, rec, quiet) {
   ckT('a critical reactor with a matched sink stays at power',
       hold.power_pct > 95 && hold.power_pct < 105,
       hold.power_pct.toFixed(2) + ' % after ' + (SETTLE * 0.02) + ' s');
+  /* ON THE LONG RIDE, and it has to be: at 30 s the plant is still coasting in at 8.52 pcm and
+   * crosses 5 pcm at ~2 150 steps (43 s). 0.465 pcm at 6 000. */
   ckT('...and settles at ZERO net reactivity, which is what critical MEANS',
-      Math.abs(hold.rho_pcm) < 5, hold.rho_pcm.toFixed(2) + ' pcm');
+      Math.abs(settled.rho_pcm) < 5, settled.rho_pcm.toFixed(2) + ' pcm after ' +
+      (SETTLE_LONG * 0.02) + ' s');
   /* ⚠ RE-POINTED A THIRD TIME, 2026-08-18 — AND BACK TO ITS ORIGINAL FORM, WHICH IS THE POINT.
    *
    * The original check asserted the core node sits above TREF and below TREF+30. On 2026-08-17
@@ -344,8 +485,10 @@ function runSuite(R, rec, quiet) {
    * rho = 0.03 pcm but not frozen. A 1 kW tolerance failed on that, which is a test asking for
    * exactness from a quantity that is still physically moving. The mutation this check exists for
    * — corePower supplied alongside heats — misses by ~300 000 kW. */
+  /* ON THE LONG RIDE (#657): at 30 s the residual is 2 571 kW, not 2.4 -- the plant has not
+   * finished balancing, and a 10 kW bar on a coasting plant is a check about the horizon. */
   ck('at steady state the heat delivered equals the heat generated',
-     hold.heats.core, hold.Q_core_kW, 10.0, 'kW');
+     settled.heats.core, settled.Q_core_kW, 10.0, 'kW');
   ckT('the delivered heat is plant-sized, not a fraction or a duplicate',
       hold.heats.core > 0.9 * RATED && hold.heats.core < 1.15 * RATED,
       hold.heats.core.toFixed(0) + ' kW against a ' + RATED + ' kW rating');
@@ -411,7 +554,11 @@ function runSuite(R, rec, quiet) {
   var f3 = fixture(); var rods3 = [{ steps: 228, max_steps: 228, worth: 0.04068 }];
   ride(f3, 200, null, rods3); rods3[0].steps = 0;
   var recEarly = ride(f3, 50, null, rods3);
-  var scrLong = ride(f3, quiet ? 700 : 1200, null, rods3);
+  /* 700 -> 1100 steps (#657 null self-test): at 14 s the recovery has only walked 1 693 pcm of
+   * the 2 000 this check asks for. MEASURED at 50-step resolution, the walk-back is monotone and
+   * crosses the bar at ~900 steps (18 s, +64 pcm); 1 100 steps (22 s) lands at -1 666 pcm, which
+   * is 2 384 pcm of recovery against the 2 000 bar -- 19 % past it, and 22 % past the edge. */
+  var scrLong = ride(f3, quiet ? 1100 : 1200, null, rods3);
   ckT('...and holding a RATED sink on a scrammed plant walks it back toward critical',
       scrLong.rho_pcm > recEarly.rho_pcm + 2000,
       'rho ' + recEarly.rho_pcm.toFixed(0) + ' -> ' + scrLong.rho_pcm.toFixed(0) + ' pcm — 4068 pcm ' +
@@ -507,9 +654,26 @@ function runSuite(R, rec, quiet) {
         try { F.stepFuel(F.createFuel({}), 0.02, { coolTemp_c: TREF }); return false; }
         catch (e) { return /Q_core_kW/.test(e.message); }
       })(), '');
+  /* ⚠ RE-POINTED (#657 blind spot). The old form read coreTemp off a UNIFORM plant and asserted
+   * it came back within 2 degC of TREF — true of every node in that plant, so the half of the
+   * claim after the comma was an IDENTITY and "the reactor reads the wrong node for coolant
+   * temperature" was BLIND to it. That is the 0.0 degF leg-split family CLAUDE.md names.
+   * The uniform-plant value claim is kept (it still catches a units or scale error); the node
+   * claim now rides a plant where the core is 40 degC below everything else, so the two answers
+   * are 40 degC apart and only one of them is right. MEASURED: core node 264.50 degC against
+   * a hot leg at 304.50; clean reads 264.50, a hot-leg read reports 304.50. Validated against
+   * the old behaviour per HR10 — the clean tree passes both halves. */
+  var TFH_ = RD.vtable ? RD.vtable.T_from_h : W.T_from_h;
+  var ctP = S.createPlant({ h: W.h_l(TREF, P0), P: P0 });
+  for (var ci = 0; ci < ctP.nodes.length; ci++) {
+    if (ctP.nodes[ci].id === 'core') { ctP.nodes[ci].h = W.h_l(TREF - 40, P0); break; }
+  }
+  var ctCore = TFH_(W.h_l(TREF - 40, P0), P0), ctFirst = TFH_(ctP.nodes[0].h, P0);
   ckT('the reactor reads the CORE node, not whichever node comes first',
-      Math.abs(R.coreTemp(S.createPlant({ h: W.h_l(TREF, P0), P: P0 })) - TREF) < 2,
-      'got ' + R.coreTemp(S.createPlant({ h: W.h_l(TREF, P0), P: P0 })).toFixed(2) + ' degC');
+      Math.abs(R.coreTemp(S.createPlant({ h: W.h_l(TREF, P0), P: P0 })) - TREF) < 2 &&
+      Math.abs(ctCore - ctFirst) > 30 && Math.abs(R.coreTemp(ctP) - ctCore) < 0.05,
+      'got ' + R.coreTemp(ctP).toFixed(2) + ' degC off a core node at ' + ctCore.toFixed(2) +
+      ' while every other node sits at ' + ctFirst.toFixed(2));
 }
 
 console.log('\nPWR2 Layer 5 -- REACTOR: the reactivity loop, closed');
@@ -599,6 +763,15 @@ var MUTATIONS = [
    'var sur_dpm = isFinite(period_s) ? 26 / period_s : 0;']
 ];
 
+/* ---- THE NULL MUTATION (#657) -------------------------------------------------------------
+ * This runner has no `grp()` scoping — every replay runs the WHOLE suite quiet — so there is
+ * exactly one group: the one short (quiet) ride every real mutation is also replayed on. One
+ * no-op edit proves that ride is not, on its own, red. MUT_TOTAL freezes the real count first;
+ * a null is a self-test OF the instrument, not a unit of coverage. */
+var MUT_TOTAL = MUTATIONS.length;
+var NULLS = MUT.nullSelfTest({ groups: ['ALL'], anchor: "'use strict';" });
+MUTATIONS = MUTATIONS.concat(NULLS.entries);
+
 /* ---- THE CLEAN-RUN GUARD --------------------------------------------------------------
  * A MUTATION SELF-TEST IS ONLY MEANINGFUL IF THE UNMUTATED SUITE IS GREEN. If any check fails in
  * the clean run it fails in every mutant too, so `f2 > 0` holds unconditionally and EVERY mutation
@@ -617,6 +790,14 @@ console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one ch
 console.log('='.repeat(70));
 var blind = 0;
 MUT.select(MUTATIONS).forEach(function (m) {
+  if (NULLS.is(m[0])) {
+    if (SRC.indexOf(m[1]) === -1) { NULLS.score(m[0], { anchorMiss: true }); return; }
+    var mutatedN = SRC.split(m[1]).join(m[2]);
+    var recN = [], crashedN = false;
+    try { runSuite(loadFrom(mutatedN), recN, true); } catch (e) { crashedN = true; }
+    NULLS.score(m[0], { base: SRC, mutated: mutatedN, rec: recN, crashed: crashedN });
+    return;
+  }
   if (SRC.indexOf(m[1]) === -1) { console.log('  ERROR   anchor not found: ' + m[0]); blind++; return; }
   var r2 = [];
   try { runSuite(loadFrom(SRC.split(m[1]).join(m[2])), r2, true); }
@@ -627,8 +808,9 @@ MUT.select(MUTATIONS).forEach(function (m) {
 });
 
 console.log('\n' + '='.repeat(70));
-console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
+console.log('  injection self-test: ' + (MUT_TOTAL - blind) + '/' + MUT_TOTAL +
   ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
+var nullFail = NULLS.report();
 console.log('  run_pwr2_reactor: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit((fail > 0 || blind > 0) ? 1 : 0);
+process.exit((fail > 0 || blind > 0 || nullFail > 0) ? 1 : 0);

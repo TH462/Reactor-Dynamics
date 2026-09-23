@@ -329,7 +329,12 @@ function runSuite(K, rec, quiet) {
     var rho = -0.0645, Peq = K.sourceLevel(rho);
     var P = Peq * 100, C = [], sur = null;
     for (var i = 0; i < 6; i++) C.push((K.DELAYED.beta_i[i] / K.DELAYED.lambda_i[i]) * P / Lam2);
-    var steps = quiet ? 5000 : 15000, prev = P;
+    /* 5000 -> 13500 (#657 null self-test): at 100 s the plant is still 21 % above source
+     * level and reads -0.097 dpm, so this check was red on the replay's own ride and on no
+     * mutation. MEASURED, the levelling is monotone: P/P_eq - 1 crosses the 0.02 bar at 11 800
+     * steps (236 s); 13 500 lands at 1.285e-2, 36 % inside the bar, and SUR at -0.0044 of a
+     * 0.02 bar. The bound is the SETTLE, not the print flag -- there is no shorter ride. */
+    var steps = quiet ? 13500 : 15000, prev = P;
     for (var n = 0; n < steps; n++) { prev = P; var a = K.advance(P, C, rho, 0.02); P = a.P; C = a.C; }
     var ratio = P / prev, per = (ratio > 0 && ratio !== 1) ? 0.02 / Math.log(ratio) : Infinity;
     sur = isFinite(per) ? (60 / Math.LN10) / per : 0;
@@ -914,6 +919,15 @@ var MUTATIONS = [
    'why: \'tbd\'']
 ];
 
+/* ---- THE NULL MUTATION (#657) -------------------------------------------------------------
+ * This runner has no `grp()` scoping — every replay runs the WHOLE suite quiet — so there is
+ * exactly one group: the one short (quiet) ride every real mutation is also replayed on. One
+ * no-op edit proves that ride is not, on its own, red. MUT_TOTAL freezes the real count first;
+ * a null is a self-test OF the instrument, not a unit of coverage. */
+var MUT_TOTAL = MUTATIONS.length;
+var NULLS = MUT.nullSelfTest({ groups: ['ALL'], anchor: "'use strict';" });
+MUTATIONS = MUTATIONS.concat(NULLS.entries);
+
 /* ---- THE CLEAN-RUN GUARD --------------------------------------------------------------
  * A MUTATION SELF-TEST IS ONLY MEANINGFUL IF THE UNMUTATED SUITE IS GREEN. If any check fails in
  * the clean run it fails in every mutant too, so `f2 > 0` holds unconditionally and EVERY mutation
@@ -941,6 +955,14 @@ console.log('  INJECTION SELF-TEST -- every mutation MUST redden at least one ch
 console.log('='.repeat(70));
 var blind = 0;
 MUT.select(MUTATIONS).forEach(function (m) {
+  if (NULLS.is(m[0])) {
+    if (SRC.indexOf(m[1]) === -1) { NULLS.score(m[0], { anchorMiss: true }); return; }
+    var mutatedN = SRC.split(m[1]).join(m[2]);
+    var recN = [], crashedN = false;
+    try { runSuite(loadFrom(mutatedN), recN, true); } catch (e) { crashedN = true; }
+    NULLS.score(m[0], { base: SRC, mutated: mutatedN, rec: recN, crashed: crashedN });
+    return;
+  }
   if (SRC.indexOf(m[1]) === -1) { console.log('  ERROR   anchor not found: ' + m[0]); blind++; return; }
   var r2 = [];
   try { runSuite(loadFrom(SRC.split(m[1]).join(m[2])), r2, true); }
@@ -951,8 +973,9 @@ MUT.select(MUTATIONS).forEach(function (m) {
 });
 
 console.log('\n' + '='.repeat(70));
-console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
+console.log('  injection self-test: ' + (MUT_TOTAL - blind) + '/' + MUT_TOTAL +
   ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
+var nullFail = NULLS.report();
 console.log('  run_pwr2_kinetics: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit((fail > 0 || blind > 0) ? 1 : 0);
+process.exit((fail > 0 || blind > 0 || nullFail > 0) ? 1 : 0);

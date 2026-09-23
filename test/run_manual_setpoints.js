@@ -170,10 +170,28 @@ var ROWS = [
   { m: /^Feedwater isolation \(on SI\)/,     want: P.ESFAS.si_lo_pzr_press_psia,   unit: 'psi', tol: 1 },
   { m: /^\*\*Atmospheric dump \(ADV\)\*\*/,     want: RD.pwr2.relief.RELIEF.adv_setpoint_psig + 14.7, unit: 'psi', tol: 1 },
   { m: /^\*\*Main steam line isolation \(MSLI\)\*\*/, absent: true, what: 'any automatic main steam line isolation' },
-  { m: /^\*\*MSLI \(containment leg\)\*\*/,      absent: true, what: 'a containment-pressure steam line isolation' },
-  { m: /^\*\*SI backup \(containment\)\*\*/,     absent: true, what: 'a containment-pressure safety injection' },
-  { m: /^\*\*Containment spray\*\*/,           absent: true, what: 'containment spray' },
-  { m: /^\*\*Fan coolers/,                    absent: true, what: 'a containment fan-cooler safety realign' },
+  /* NO LONGER ABSENT (#784, 2026-09-21, OWNER RULING "Authorise it -- auto-only"). All four rows
+   * carried `absent: true` while the systems did not exist; containment spray, the recirculation
+   * fan coolers and the steam-line isolation are now BUILT auto-only inside the PWR2 engine.
+   *
+   * THE SAME LESSON #624 ITEM 14 LEFT ON THE LETDOWN ROW, and it is why these are bound to the
+   * constant rather than re-marked: `absent: true` asserts THE MARKER, never the plant, so a row
+   * that says NOT MODELLED can go on agreeing with a manual for as long as nobody re-reads it.
+   * Both containment rows now check the sourced setpoint out of `P.CTMT_ESF`, so a drift in
+   * either direction -- the constant moving, or the manual's number moving -- reddens.
+   *
+   * The spray and steam-line-isolation rows share the high-high because they are ONE bistable
+   * with two consumers; that is the plant's wiring (WTSM 12.3), so they carry the same `want`
+   * rather than two independently maintained numbers. */
+  { m: /^\*\*MSLI \(containment leg\)\*\*/,      want: P.CTMT_ESF.hihi_mpa * PSI, unit: 'psi', tol: 1 },
+  { m: /^\*\*SI backup \(containment\)\*\*/,     want: P.CTMT_ESF.si_mpa   * PSI, unit: 'psi', tol: 1 },
+  { m: /^\*\*Containment spray\*\*/,           want: P.CTMT_ESF.hihi_mpa * PSI, unit: 'psi', tol: 1 },
+  /* The fan realign has NO setpoint of its own -- it keys on ANY safety injection (Ginna TS Bases
+   * B 3.6.6: "following a SI actuation signal, the CRFC System fans are designed to start
+   * automatically if not already running"), so there is no constant for this row to check and
+   * `narrative` is the honest marking, not a dodge. Its 44 s response time IS a constant and is
+   * asserted where it belongs -- run_pwr2_ctmt_esf's resp-fan check, measured 43.94 s. */
+  { m: /^\*\*Fan coolers/,                    narrative: true },
   { m: /recombiners/,                       absent: true, what: 'hydrogen recombiners' },
   { m: /flammability alarm/,                narrative: true },
   { m: /ignition \(the burn\)/,              absent: true, what: 'a hydrogen deflagration' },

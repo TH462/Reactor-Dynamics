@@ -184,12 +184,45 @@ function runSuite(TS, rec, quiet) {
   /* TURNED AROUND (stage B1, owner ruling "Next: option B"): the shell contract needs every
    * field EMITTED. Spray/fans/recombiners are REGISTERED STATICS — constants stating the
    * systems' absence — and the sump is SUPPLIED from the containment's real tracked mass
-   * through a declared display scale (100 % = the whole primary inventory). */
-  ck('containment ESF fields are REGISTERED STATICS, and the sump is SUPPLIED from real mass',
-     ts.ctmt_spray_active === false && !!TS.STATIC.ctmt_spray_active &&
+   * through a declared display scale (100 % = the whole primary inventory).
+   *
+   * ⚠ TURNED AROUND A THIRD TIME (#784, OWNER RULING 2026-09-21: "Authorise it — auto-only").
+   * `!!TS.STATIC.ctmt_spray_active` was true of spray, the fan coolers AND the recombiners
+   * alike, which is what let one clause stand for all seven fields — until spray and the fan
+   * coolers were BUILT. A check still asserting a static there is pinning the ABSENCE OF A
+   * SYSTEM THAT EXISTS, the same shape as the scram check below, so it guards the repair now.
+   *
+   * IT REDS IN BOTH DIRECTIONS, and that is the point of keeping the hydrogen clause rather
+   * than deleting it. Re-register a static over spray or the fans and the SUPPLIED half reds;
+   * supply a recombiner field (or drop its static) without a ruling and the STATIC half reds.
+   * Kept as ONE check on purpose — the score is the gate's baseline, and these are one claim
+   * about one registry.
+   *
+   * ⚠ AND THE SUPPLIED FALSE IS EARNED. A shim hard-wiring `false` agrees with the healthy
+   * fixture exactly, so the same four fields are read off a containment result that carries
+   * them TRUE — the unearned-false worry the scram check below names, one door over. */
+  var tsEsf = TS.buildTrueState(Object.assign({}, B.ctx, {
+    containment: Object.assign({}, B.ctr, { spray_demand: true, spray_active: true,
+                                            fan_safety: true, fan_active: true })
+  }));
+  ck('the four containment-ESF fields are SUPPLIED and earned-false, the HYDROGEN half is ' +
+     'still STATIC, and the sump is SUPPLIED from real mass',
+     /* SUPPLIED: out of the statics registry, false on a healthy plant... */
+     ts.ctmt_spray_demand === false && ts.ctmt_spray_active === false &&
+     ts.ctmt_fan_safety === false && ts.ctmt_fan_active === false &&
+     TS.STATIC.ctmt_spray_demand === undefined && TS.STATIC.ctmt_spray_active === undefined &&
+     TS.STATIC.ctmt_fan_safety === undefined && TS.STATIC.ctmt_fan_active === undefined &&
+     /* ...and TRUE when the engine's actuation says so, so the false above is earned */
+     tsEsf.ctmt_spray_demand === true && tsEsf.ctmt_spray_active === true &&
+     tsEsf.ctmt_fan_safety === true && tsEsf.ctmt_fan_active === true &&
+     /* STILL STATIC: the hydrogen half, which #784 did not authorise */
+     ts.ctmt_recomb_demand === false && !!TS.STATIC.ctmt_recomb_demand &&
+     ts.ctmt_recomb_active === false && !!TS.STATIC.ctmt_recomb_active &&
+     ts.ctmt_h2_burned === 0 && !!TS.STATIC.ctmt_h2_burned &&
      ts.containment_sump_pct !== undefined && !TS.STATIC.containment_sump_pct,
-     'a static false states the system does not exist; the sump percentage tracks water that ' +
-     'is really there');
+     'spray and the fans follow the engine\'s own actuation, not a registered constant; a ' +
+     'static false still states the recombiners do not exist; the sump percentage tracks ' +
+     'water that is really there');
   /* TURNED AROUND (same rule as the scrammed check below): this asserted the pressurizer was
    * ABSENT ("a level of 0 would be a fabricated TMI trainer") until pwr2_pressurizer.js landed
    * (owner ruling 2026-08-18 "Option 1"). It now guards the repair: a REAL level from the
@@ -960,6 +993,25 @@ var MUTATIONS = [
   ['the sump reads a constant instead of the tracked mass',
    "      put('containment_sump_pct', clip(100 * ct.m_sump_kg / ctx.M_nominal, 0, 100));",
    "      put('containment_sump_pct', 0);"],
+  /* ---- THE CONTAINMENT ESF FIELDS (#784) ----------------------------------------------------
+   * The first is the PRE-#784 SHIM RESTORED: the four fields back in the statics registry, which
+   * is applied AFTER every put and therefore overwrites them — a built system reading as absent,
+   * which is the one defect this whole file exists to stop. The other two are the dark-wire
+   * shape, one per half: the field wears a supplied name while carrying a constant. They are
+   * SEPARATE because each half is separately sufficient (#295/#545) — fabricating spray alone
+   * leaves the fans honest, and a single mutation covering both would let a check that watches
+   * only one of them report as coverage of both. */
+  ['the spray and fan fields go back to REGISTERED STATICS (a built system reads as absent)',
+   "    { ctmt_h2_burned: 0,\n      ctmt_recomb_demand: false, ctmt_recomb_active: false });",
+   "    { ctmt_h2_burned: 0, ctmt_spray_demand: false, ctmt_spray_active: false,\n" +
+   "      ctmt_fan_safety: false, ctmt_fan_active: false,\n" +
+   "      ctmt_recomb_demand: false, ctmt_recomb_active: false });"],
+  ['ctmt_spray_active is fabricated FALSE instead of read from the engine\'s actuation',
+   "    put('ctmt_spray_active', ct.spray_active === true);",
+   "    put('ctmt_spray_active', false);"],
+  ['ctmt_fan_active is fabricated FALSE instead of read from the engine\'s actuation',
+   "    put('ctmt_fan_active',   ct.fan_active === true);",
+   "    put('ctmt_fan_active',   false);"],
 
   ['scram state is never wired through, so a tripped plant reads as no protection system',
    "    put('scrammed', pt.reactor_trip);", ''],

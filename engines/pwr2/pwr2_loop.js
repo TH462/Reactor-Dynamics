@@ -70,6 +70,16 @@
    * rather than by an import. */
   var MDOT_RATED = 1630;
 
+  /* flowFrac(sys) -> loop flow over rated, the film-scaling fraction. FACTORED OUT (#588 SG
+   * term) for the same reason `wallG0` was factored out of `stepWall`: there are now TWO
+   * readers — this layer's own `stepLoop` driver, and Layer 5's steam generator, whose
+   * primary-side film scales with the same flow. A second copy of `|mdot|/MDOT_RATED` written
+   * at the Layer 5 call site is how the PROTECTION_DT trap starts, and the constant itself is
+   * not exported precisely so that it cannot be. */
+  function flowFrac(sys) {
+    return Math.abs(sys.mdot_loop) / MDOT_RATED;
+  }
+
   function geoNode(id) {
     for (var i = 0; i < GEO.NODES.length; i++) if (GEO.NODES[i].id === id) return GEO.NODES[i];
     return null;
@@ -282,7 +292,13 @@
         /* #574 — the wall's film coefficient scales with loop flow, and the FLOOR under it is
          * what keeps the metal coupled when the pumps stop. That is the regime the stored heat
          * matters in, so the fraction has to be the plant's real one, not a constant 1. */
-        flowFrac: Math.abs(sys.mdot_loop) / MDOT_RATED
+        flowFrac: flowFrac(sys),
+        /* #588 — the caller's DECLARED heat exchanges, forwarded unchanged. They describe kW
+         * already inside `heats`; this layer neither reads nor re-scales them. Forwarded on
+         * EVERY sub-step, exactly like `heats`: the duty is constant across the sub-interval by
+         * the same convention, and a limiter that only saw the first sub-step would be blind in
+         * precisely the regime the ring sub-divides for. */
+        exchanges: drivers.exchanges || []
       });
       if (r.held !== true) accepted += h;   /* #585 — a refused substep integrated nothing */
 
@@ -352,6 +368,9 @@
   root.RD.pwr2.loop = {
     RING: RING, OFF_LOOP: OFF_LOOP,
     createLoop: createLoop, stepLoop: stepLoop, transitTime: transitTime,
-    courantLimit: courantLimit
+    courantLimit: courantLimit,
+    /* #588 — the ONE expression for the film-scaling flow fraction; Layer 5's steam
+     * generator reads it rather than re-deriving `|mdot| / 1630`. */
+    flowFrac: flowFrac
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
