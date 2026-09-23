@@ -18,7 +18,14 @@
  *      scan of the param list against the map's keys, so a new checklist cannot quietly
  *      render raw internals, #244 item 7).
  *
- * Run: node test/run_checklist_pwr2.js [proc_id]
+ * SPLIT IN TWO 2026-09-22 (CI shard timeout, run 35810480463) — the two halves above are now
+ * two PROCESSES on the run_pwr2_engine_b.js precedent: bare = part A (REPLAY), the `_b.js`
+ * wrapper = part B (LIVE RUNTIME). See the split note beside `PART` below for the one check
+ * that could not sit on its own side of the boundary and why.
+ *
+ * Run: node test/run_checklist_pwr2.js [proc_id]     part A (the default)
+ *      node test/run_checklist_pwr2_b.js              part B
+ *      node test/run_checklist_pwr2.js --all          the unsplit whole, for local debugging
  */
 'use strict';
 var fs = require('fs');
@@ -52,6 +59,22 @@ function ck(name, cond, note) {
 var POOL = RD.MANUAL_PROCEDURES.pwr2 || [];
 var only = process.argv[2] || null;
 
+/* THE SPLIT (2026-09-22): CI shard timeout, run 35810480463 — this runner measured 1553 s on
+ * the last GREEN CI run and the PWR2 engine has since gone 37 % slower per step (100.3 -> 137.5
+ * us), which put it over CI's 30-min shard timeout. Section 1 (THE REPLAY, ~1040 s solo) is
+ * part A, the bare file; section 2 (THE LIVE RUNTIME, ~810 s solo) is part B,
+ * run_checklist_pwr2_b.js — the run_pwr2_engine_b.js precedent (#637). ONE check, 2ai.1, reads
+ * REPLAY_TRIP, a result array only section 1's replay produces, so a clean cut at the section
+ * boundary would make part B repay the whole replay just to rebuild it; 2ai.1 moved to sit next
+ * to REPLAY_TRIP instead (immediately after section 1, still gated on `!only`) rather than the
+ * boundary moving. Nothing else depends across the boundary — grepped before the split. */
+var PART = globalThis.__PWR2_CHECKLIST_PART || 0;      // 0 = A (default), 1 = B
+var ALL = process.argv.indexOf('--all') >= 0;
+var RUN_A = ALL || PART !== 1;
+var RUN_B = ALL || PART === 1;
+var RUNNER_NAME = 'run_checklist_pwr2' + (PART === 1 && !ALL ? '_b' : '');
+
+if (RUN_A) {
 /* ================================ 1. THE REPLAY ======================================== */
 console.log(B + '\nPWR2 LIVE CHECKLISTS — the chain, replayed on the plant it ships with' + X);
 /* THE CHAIN IS THE OPERATING CYCLE, AND THE INCIDENT LEG IS NOT PART OF IT (#670 Phase 2).
@@ -117,8 +140,38 @@ POOL.forEach(function (proc) {
     c.obs !== undefined ? String(typeof c.obs === 'number' ? c.obs.toFixed(2) : c.obs).slice(0, 90) : undefined); });
 });
 
-/* ============================ 2. THE LIVE RUNTIME ====================================== */
+/* 2ai.1 — THE EXEMPT SET IS RE-DISCOVERED BY DRIVING, NOT READ OFF THE SCANNER (#709). MOVED
+ * HERE FROM SECTION 2 (2026-09-22, the split above) — it reads REPLAY_TRIP, produced by the
+ * loop just above, and RD.InstructorLayer's own scan, no new physics, so it costs nothing to
+ * run beside its data instead of in part B. Full rationale is on the ORIGINAL 2ai header,
+ * retained in section 2 below with the checks (2ai.2 onward) that still belong there.
+ *
+ * A banner reading "this walkthrough cannot continue" on the step that just told the player
+ * to scram is worse than silence, so the legs whose own route trips the reactor are exempt.
+ * The exemption is derived from the authored content (`RD.InstructorLayer.legScriptsScram`),
+ * and this check asks the PLANT the same question: the replay above drove every leg's
+ * authored commands and nothing else, so a trip standing at the end of one is that leg's own
+ * doing. The two sets must be equal — a hand-kept list of ids would certify the list.
+ *
+ * The two legs are reached by DIFFERENT clauses of the scanner, which is why both exist:
+ * `pwr_shutdown` sends `cmd {action:'scram'}`; `pwr_tmi2_incident` sends no scram at all and
+ * is caught by its step-7 `acc {p:'scrammed'}`, the trip arriving out of the loss-of-feedwater
+ * transient its earlier steps inject. Delete either clause and this reddens. */
 if (!only) {
+  (function () {
+    var SCRIPTS_A = {};
+    POOL.forEach(function (p) { SCRIPTS_A[p.id] = RD.InstructorLayer.legScriptsScram(p); });
+    var derivedA = POOL.filter(function (p) { return SCRIPTS_A[p.id]; }).map(function (p) { return p.id; }).sort();
+    var drivenA = POOL.filter(function (p) { return REPLAY_TRIP[p.id]; }).map(function (p) { return p.id; }).sort();
+    ck('2ai.1 the legs the scanner exempts are exactly the legs whose OWN authored replay trips (#709)',
+       derivedA.length >= 2 && derivedA.join(',') === drivenA.join(','),
+       'scanner: [' + derivedA.join(', ') + ']  replay: [' + drivenA.join(', ') + ']  of ' + POOL.length + ' legs');
+  })();
+}
+}   // end if (RUN_A)
+
+/* ============================ 2. THE LIVE RUNTIME ====================================== */
+if (!only && RUN_B) {
   console.log(B + '\nTHE LIVE RUNTIME  [Path 3 on a pwr2 service]' + X);
 
   /* PRESSING AN ORDERED STEP'S BUTTONS THE WAY THE PLAYER HAS TO (#756). A section that walks a
@@ -4493,6 +4546,9 @@ if (!only) {
  *       -> checks 2 and 5 red, 1/3/4 green;
  *   - `_stepExpectsAlarm` returning true unconditionally
  *       -> checks 1, 3, 4 and 5 red, 2 green. */
+if (RUN_B) {   /* gated 2026-09-22 (the split above) — this section carried NO gate at all
+                * before the split (it ran even under a single `only` proc filter), so RUN_B
+                * alone preserves that and stops it from ALSO running, a second time, in part A */
 (function () {
   function svcWithStep(expect) {
     var svc = new RD.SimulationService({ seed: 7 });
@@ -4592,6 +4648,7 @@ if (!only) {
                                      : 'NO step declares expect_alarms — the engine half is inert again'));
   })();
 })();
+}   // end if (RUN_B) -- section 12
 
 
 /* ========================================================================================
@@ -4607,8 +4664,12 @@ if (!only) {
  * HARD RULE 1. The detection reads `rps_state.scrammed` / `true_state.scrammed` to decide
  * whether to INFORM the player. Nothing here grades on it, and 2ai.4 is what proves that
  * rather than asserting it.
+ *
+ * `&& RUN_B` added 2026-09-22 (the split above): this was its own top-level `if (!only) {`,
+ * a SIBLING of the main section-2 block rather than nested inside it, so it ran in EITHER
+ * part until this was added — 2ai.1 alone moved to part A; 2ai.2-2ai.7 stay here.
  * ====================================================================================== */
-if (!only) {
+if (!only && RUN_B) {
   console.log(B + '\n2ai. A REACTOR TRIP UNDER A WALKTHROUGH  [#709 — the leg says so, and moves nothing]' + X);
 
   function mkSvcT(ic) {
@@ -4625,28 +4686,12 @@ if (!only) {
   var SCRIPTS = {};
   POOL.forEach(function (p) { SCRIPTS[p.id] = RD.InstructorLayer.legScriptsScram(p); });
 
-  /* 2ai.1 — THE EXEMPT SET IS RE-DISCOVERED BY DRIVING, NOT READ OFF THE SCANNER.
+  /* 2ai.1 MOVED TO PART A (2026-09-22, the split note at the top of this file) — it read
+   * REPLAY_TRIP, a result of section 1's replay, and running section 1 in this part just to
+   * rebuild that array would repay the whole replay a second time. It runs immediately after
+   * section 1's own loop now, same check name, same assertion, still gated on `!only`.
    *
-   * A banner reading "this walkthrough cannot continue" on the step that just told the player
-   * to scram is worse than silence, so the legs whose own route trips the reactor are exempt.
-   * The exemption is derived from the authored content (`InstructorLayer.legScriptsScram`),
-   * and this check asks the PLANT the same question: the replay above drove every leg's
-   * authored commands and nothing else, so a trip standing at the end of one is that leg's own
-   * doing. The two sets must be equal — a hand-kept list of ids would certify the list.
-   *
-   * The two legs are reached by DIFFERENT clauses of the scanner, which is why both exist:
-   * `pwr_shutdown` sends `cmd {action:'scram'}`; `pwr_tmi2_incident` sends no scram at all and
-   * is caught by its step-7 `acc {p:'scrammed'}`, the trip arriving out of the loss-of-feedwater
-   * transient its earlier steps inject. Delete either clause and this reddens. */
-  (function () {
-    var derived = POOL.filter(function (p) { return SCRIPTS[p.id]; }).map(function (p) { return p.id; }).sort();
-    var driven = POOL.filter(function (p) { return REPLAY_TRIP[p.id]; }).map(function (p) { return p.id; }).sort();
-    ck('2ai.1 the legs the scanner exempts are exactly the legs whose OWN authored replay trips (#709)',
-       derived.length >= 2 && derived.join(',') === driven.join(','),
-       'scanner: [' + derived.join(', ') + ']  replay: [' + driven.join(', ') + ']  of ' + POOL.length + ' legs');
-  })();
-
-  /* 2ai.2 — THE HEALTHY-PLANT NEGATIVE, and it is the check that matters most. A notice that
+   * 2ai.2 — THE HEALTHY-PLANT NEGATIVE, and it is the check that matters most. A notice that
    * fires on a plant nobody tripped is worse than no notice: every leg, at its own initial
    * condition, walked with nothing injected and nothing scrammed, and `trip_notice` must be
    * false on EVERY broadcast — not merely at the end. The instructor's comment is asserted
@@ -4839,6 +4884,6 @@ if (!only) {
 }
 
 console.log('\n' + '='.repeat(74));
-console.log('  run_checklist_pwr2: ' + nPass + ' passed, ' + nFail + ' failed  (' + (nPass + nFail) + ' checks)');
+console.log('  ' + RUNNER_NAME + ': ' + nPass + ' passed, ' + nFail + ' failed  (' + (nPass + nFail) + ' checks)');
 console.log('='.repeat(74) + '\n');
 process.exit(nFail > 0 ? 1 : 0);
