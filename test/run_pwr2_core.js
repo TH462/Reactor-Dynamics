@@ -851,6 +851,10 @@ var MUTATIONS = [
   /* The limiter must be ONE-SIDED. Applying it whenever there is any inflow at all makes every
    * node land on its donor every step — which satisfies "does not overshoot" perfectly and
    * destroys the plant. This is the mutation that makes HALF ONE of the check load-bearing. */
+  /* ⚠ 11 red -> 6 red since the exchange pre-check (2026-09-23), and that is expected, not a
+   * lost check: this mutant replaces the bind test the pre-check's proof is written against, so
+   * on a node where the pre-check has skipped booking, `gIn` is 0 and the mutant teleports the
+   * node to its ADVECTIVE donor only. The pre-check's own two mutations below cover the skip. */
   ['the limiter binds ALWAYS, not only past Courant 1 (every node teleports to its donor)',
    'if (cIn > 0 && dt * cIn > m_n[i]) {', 'if (cIn > 0) {'],
   /* The limited value must be the DONOR-WEIGHTED mean, not the node's own enthalpy frozen.
@@ -869,7 +873,10 @@ var MUTATIONS = [
    * healthy `hot_full_power` ride. This is the mutation the near-equilibrium check exists for. */
   ['the exchange conductance is the SECANT Q/dh, not the hardware G0/cp (it poles at equilibrium)',
    '      var G = G0_kW_per_K / cpLocal(sys.nodes[node_i].h, sys.P, T_fluid_c);   /* kW/K -> kg/s */',
-   '      var G = Q_kW / dh;'],
+   /* ⚠ REPLACEMENT RE-CUT 2026-09-23: `G` is now computed where the exchange is RECORDED, before
+    * `dh` exists (the bound `h_t` is deferred to where it can bind), so the secant is spelled out
+    * in full. Same defect, same value of `G` as the pre-split mutant. */
+   '      var G = Q_kW / (hAtTarget(T_target_c, sys.P, Q_kW > 0) - sys.nodes[node_i].h);'],
   /* The limited value must be the TARGET, not the node frozen — the same one-sided-check trap as
    * the advective half, on the other conductance. */
   ['the exchange lands the node on its OWN enthalpy instead of the target (stable, and wrong)',
@@ -884,6 +891,13 @@ var MUTATIONS = [
   ['the inversion takes the wrong saturation branch (a condensing node is bounded at h_g)',
    '    if (heating ? (T_c < Ts) : (T_c <= Ts)) return W.h_l(T_c, P_mpa);',
    '    if (heating ? (T_c <= Ts) : (T_c < Ts)) return W.h_l(T_c, P_mpa);'],
+  /* THE PRE-CHECK (2026-09-23, owner ruling "option 2"). The exchange bound is booked only where
+   * `dt*(qIn + gUp) > m` says it could bind. Two ways to make the skip TOO AGGRESSIVE — skipping
+   * where the bound does bind — and each must redden the exchange fixtures above. */
+  ['the exchange pre-check skips ALWAYS (the bound is never booked, even where it binds)',
+   'if (xUnsure[i] || !(dt * cUp <= m_n[i])) {', 'if (false) {'],
+  ['the exchange pre-check bounds with the ADVECTIVE half only (the conductance it skips is ignored)',
+   'var cUp = qIn[i] + gUp[i];', 'var cUp = qIn[i];'],
   /* THE ENTHALPY ENVELOPE (2026-08-17). Three ways to get it wrong, and the third is the one
    * that actually happened to me: the clamp applied AFTER the solve instead of inside it. */
   ['the enthalpy state loses its ceiling (a dry node runs to 1e+304 and then NaN)',

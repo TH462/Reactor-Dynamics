@@ -158,13 +158,26 @@
    * that makes the conductance the LARGEST and the bound the most willing to bind — conservative
    * toward stability, which is the only thing this limiter is for. Stated rather than hidden: a
    * two-phase node is therefore bounded slightly sooner than a strict temperature argument would,
-   * and never later. */
+   * and never later.
+   *
+   * THE SATURATION LINE IS MEMOISED ON P (2026-09-23). `h_f`, `h_g` and the two-phase minimum
+   * are pure functions of the pressure alone, and every call inside one `step` passes the same
+   * `sys.P` — eleven identical evaluations a step. The memo returns the value the call would have
+   * computed, from the same functions and the same argument, so it is exact by construction; a
+   * NaN pressure never equals the memo key and simply recomputes. */
+  var cpMemoP = NaN, cpMemoHf = 0, cpMemoHg = 0, cpMemo2 = NaN;
   function cpLocal(h, P_mpa, T_c) {
-    var hf = W.h_f(P_mpa), hg = W.h_g(P_mpa);
+    if (P_mpa !== cpMemoP) {
+      cpMemoHf = W.h_f(P_mpa); cpMemoHg = W.h_g(P_mpa); cpMemo2 = NaN; cpMemoP = P_mpa;
+    }
+    var hf = cpMemoHf, hg = cpMemoHg;
     if (h >= hg) return W.cp_v(T_c === undefined ? TFH(h, P_mpa) : T_c, P_mpa);
     if (h <= hf) return W.cp_l(T_c === undefined ? TFH(h, P_mpa) : T_c);
-    var Ts = W.T_sat(P_mpa), a = W.cp_l(Ts), b = W.cp_v(Ts, P_mpa);
-    return a < b ? a : b;
+    if (cpMemo2 !== cpMemo2) {
+      var Ts = W.T_sat(P_mpa), a = W.cp_l(Ts), b = W.cp_v(Ts, P_mpa);
+      cpMemo2 = a < b ? a : b;
+    }
+    return cpMemo2;
   }
 
   /* ================================================================ METAL WALLS (#574)
@@ -392,6 +405,9 @@
     var qIn = new Array(N), qhIn = new Array(N), gIn = new Array(N), ghIn = new Array(N),
         exQ = new Array(N);
     for (i = 0; i < N; i++) { qIn[i] = 0; qhIn[i] = 0; gIn[i] = 0; ghIn[i] = 0; exQ[i] = 0; }
+    /* the RECORDED exchanges and their per-node upper bound — see `addExchange` */
+    var xNode = [], xQ = [], xT = [], xG = [], gUp = new Array(N), xUnsure = new Array(N);
+    for (i = 0; i < N; i++) { gUp[i] = 0; xUnsure[i] = 0; }
 
     /* addExchange(i, Q_kW, T_target_c, G0_kW_per_K) — declare that `Q_kW` of node i's `dH` is a
      * RELAXATION toward a body at `T_target_c` through a conductance of `G0_kW_per_K`, and
@@ -435,16 +451,43 @@
      * returns without touching the ledger, so the duty rides the unlimited remainder exactly as it
      * did before this existed. A caller that knows the duty but not the conductance must not have
      * one invented for it. */
+    /* ⚠ SPLIT IN TWO (2026-09-23): `addExchange` RECORDS, `resolveExchange` BOOKS — and the
+     * booking, which needs the bound `h_t`, runs only where the limiter could bind.
+     * *(OWNER RULING, 2026-09-23: "Let's do option 2 so it doesn't slow it down during normal
+     * operations.")* `hAtTarget` is `h_l`, whose compressed-liquid term calls `P_sat`, an
+     * 80-iteration bisection on `T_sat`: MEASURED 2.64 us a call, 11 calls a step, ~29 us of a
+     * ~135 us healthy step, for a bound that binds 0 node-steps in 1,800 s of three ICs.
+     *
+     * WHY THE SKIP IS EXACT, not merely "tests pass". `h_t` reaches the step through three
+     * places only — the sign test that decides whether `G` joins `gIn`, and `ghIn`/`exQ` — and
+     * `ghIn`/`exQ` are read ONLY inside the bind branch. So the question is whether the bind
+     * test `dt*cIn > m` can come out true, and that needs only an UPPER BOUND on `gIn`:
+     *   `gUp` sums EVERY recorded `G` of the node, in the SAME order `gIn` would; `gIn` sums the
+     *   subset that passes the sign test. IEEE addition and multiplication are monotone
+     *   (round-to-nearest never reverses an order), and `s + 0` is `s` exactly, so with every
+     *   `G > 0`, by induction `gIn <= gUp`, `qIn + gIn <= qIn + gUp`, `dt*cIn <= dt*cUp`.
+     *   Hence `dt*cUp <= m` proves the branch is not taken, `h_t` is never consumed, and the
+     *   step is the same arithmetic as the full path to the last bit.
+     * Where that argument could fail it is NOT made: a `G` that is not finite and positive
+     * marks the node UNSURE, and a NaN anywhere makes `dt*cUp <= m` false — either way the
+     * node falls through to `resolveExchange`, i.e. to the code exactly as it was.
+     * `G` itself is computed ONCE, here, and reused by the booking, so the bound and the booked
+     * value cannot disagree about the conductance. */
     function addExchange(node_i, Q_kW, T_target_c, G0_kW_per_K, T_fluid_c) {
       if (!Q_kW || !(G0_kW_per_K > 0)) return;
-      var h_t = hAtTarget(T_target_c, sys.P, Q_kW > 0);
-      var dh = h_t - sys.nodes[node_i].h;
-      if (!(Q_kW * dh > 0)) return;               /* not a relaxation toward h_t — see above */
       /* `T_fluid_c` IS AN OPTIMISATION WITH A PHYSICS ARGUMENT, NOT THE OTHER WAY ROUND — the
        * wall site below has already read this node's temperature to compute the duty, so handing
        * it over reads `cp` at the SAME temperature the duty was differenced at instead of
        * inverting the enthalpy a second time. `cpLocal`'s note has the 271.5 us this cost. */
       var G = G0_kW_per_K / cpLocal(sys.nodes[node_i].h, sys.P, T_fluid_c);   /* kW/K -> kg/s */
+      xNode.push(node_i); xQ.push(Q_kW); xT.push(T_target_c); xG.push(G);
+      if (G > 0 && G < Infinity) gUp[node_i] += G; else xUnsure[node_i] = 1;
+    }
+    function resolveExchange(k) {
+      var node_i = xNode[k], Q_kW = xQ[k], G = xG[k];
+      var h_t = hAtTarget(xT[k], sys.P, Q_kW > 0);
+      var dh = h_t - sys.nodes[node_i].h;
+      if (!(Q_kW * dh > 0)) return;               /* not a relaxation toward h_t — see above */
       gIn[node_i] += G;
       ghIn[node_i] += G * h_t;
       /* ⚠ THE DUTY IS BOOKED SEPARATELY FROM THE CONDUCTANCE, and the first version of this did
@@ -689,6 +732,13 @@
        * CONDUCTANCE-WEIGHTED MEAN of their enthalpies, and limiting the two halves separately
        * would land it on neither. With no exchange declared, `gIn` is 0 at every node and the
        * next three lines are byte-identical to the advection-only form they replace. */
+      /* THE PRE-CHECK (2026-09-23) — book this node's recorded exchanges only if the bound
+       * could bind; `addExchange` has the proof that skipping is exact. Resolution walks the
+       * records in ascending order, which is the order the eager form accumulated them in. */
+      var cUp = qIn[i] + gUp[i];
+      if (xUnsure[i] || !(dt * cUp <= m_n[i])) {
+        for (var k = 0; k < xNode.length; k++) if (xNode[k] === i) resolveExchange(k);
+      }
       var cIn = qIn[i] + gIn[i], chIn = qhIn[i] + ghIn[i];
       if (cIn > 0 && dt * cIn > m_n[i]) {
         /* the remainder — core power, every UNDECLARED duty, and any withdrawal term — carried
