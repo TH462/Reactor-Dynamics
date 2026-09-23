@@ -449,9 +449,15 @@ head('THE WEDGES  [each ride extends past where the old gate stopped]');
   var ts = null;
   for (var t = 0; t < 180 && !(eng.pt.si); t += DT) ts = EN.step(eng, DT);
   EN.command(eng, 'break_close', true);
-  /* SI keeps injecting (latched) — ride until level recovers past the restore point */
-  for (t = 0; t < 900 && (eng.pz.lowLevelCut || eng.pz.emptied); t += DT) ts = EN.step(eng, DT);
+  /* SI keeps injecting (latched) — ride until level recovers past the restore point.
+   * THE SHRINK COMES FIRST (#800): the post-trip shrink takes level through the 17 % cut
+   * inside the next minute, so a recovery wait run at break-close exits at once (it did, on
+   * every build: loop 0.0 s) and the cut then lands on the re-load. It was masked while the
+   * containment SI latched on noise at 23.5 s; with the 2.0 s hold the break runs to 31.5 s,
+   * the shrink bottoms below the cut, and the precondition below caught it. Settle, THEN wait
+   * (measured: the wait now does 75 s of work). */
   ride(eng, 60);
+  for (t = 0; t < 900 && (eng.pz.lowLevelCut || eng.pz.emptied); t += DT) ts = EN.step(eng, DT);
   EN.command(eng, 'pzr_heaters_manual', 1.0);   /* the operator re-load, latch cleared */
   ts = ride(eng, 10);
   var pre = { lowCut: eng.pz.lowLevelCut, kW: (eng._pzr.heater_kW) || 0 };

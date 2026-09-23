@@ -164,7 +164,10 @@ function probe(engDir) {
     blockSI: (function () {
       var pr = P2.protection.createProtection({});
       pr.blockSI = true;
-      var rep = P2.protection.stepProtection(pr, 0.02, {
+      /* held 3 s, past the containment row's 2.0 s confirmation (#800 ruling A) — one 0.02 s
+       * step could only ever show the row ASSERTED, never LATCHED */
+      var rep;
+      for (var k = 0; k < 150; k++) rep = P2.protection.stepProtection(pr, 0.02, {
         pressure_mpa: 5.0, power_frac: 0.0, flow_frac: 0.0,
         steam_pressure_mpa: 1.0, containment_pressure_mpa: 0.40 });
       var m = {};
@@ -282,7 +285,9 @@ ck('rows-unavailable', 'with NO containment reading both rows report unavailable
 head('1 -- THE ACTUATION, ridden: large loss-of-coolant accident, severity 1.0, 450 s');
 var L = B.loca;
 ck('act-si-backup', 'safety injection latches when containment crosses the sourced 3.5 psig',
-   L.cross_si !== null && L.si !== null && L.si <= L.cross_si + 1.5,
+   /* 1.5 s for the transmitter lag and noise, plus the row's 2.0 s confirmation hold (#800
+    * ruling A, [derived]) — the window was cross + 1.5 while the hold was 0.0 */
+   L.cross_si !== null && L.si !== null && L.si <= L.cross_si + 2.0 + 1.5,
    'crossed 3.5 psig at ' + fmt(L.cross_si) + ', SI latched at ' + fmt(L.si));
 ck('act-hihi-msiv', 'the main steam isolation valve SHUTS on the sourced 30 psig high-high',
    L.cross_hihi !== null && L.msiv !== null && L.msiv > L.cross_hihi && L.msiv < L.cross_hihi + 8,
@@ -522,7 +527,7 @@ function regrade(r, ids) {
   function no(id, cond) { if (ids.indexOf(id) >= 0 && !cond) out.push(id); }
   no('src-setpoints', r.CTMT_ESF.si_psig === DOC.si_psig && r.CTMT_ESF.hihi_psig === DOC.hihi_psig);
   no('fan-self-limit', r.fan_kW_at_sink === 0 && r.fan_kW_below_sink === 0 && r.fan_kW_at_140 > 1000);
-  no('act-si-backup', L2.cross_si !== null && L2.si !== null && L2.si <= L2.cross_si + 1.5);
+  no('act-si-backup', L2.cross_si !== null && L2.si !== null && L2.si <= L2.cross_si + 2.0 + 1.5);
   no('act-hihi-msiv', L2.cross_hihi !== null && L2.msiv !== null && L2.msiv > L2.cross_hihi &&
                       L2.msiv < L2.cross_hihi + 8);
   no('act-hihi-spray', L2.spray_demand !== null && L2.msiv !== null &&

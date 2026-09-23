@@ -1569,7 +1569,7 @@
            * run_pwr2_kernel band 6 grades the PLANT rather than the string, so it will say
            * so." #784 landed on 2026-09-21 and the plant now performs all four off exactly
            * these two setpoints -- measured on a large loss-of-coolant accident at severity
-           * 1.0, full power: safety injection 5.58 s (the 3.5 psig backup, ahead of the
+           * 1.0, full power: safety injection 5.58 s (+2 s since #800's 2.0 s hold; the 3.5 psig backup, ahead of the
            * low-pressure path), fan coolers 49.5 s, steam-line isolation 59.6 s, spray
            * demanded 59.6 s and delivering 88.2 s. The shared text is TRUE on this plant, so
            * PWR2 takes it back and the board teaches what the signal DOES rather than

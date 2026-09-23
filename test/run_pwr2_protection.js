@@ -957,9 +957,14 @@ function runSuite(P, rec, quiet) {
    * setpoint and under the 30 psig high-high, so no other row is crossed. */
   var prSI = atPower();
   var rSI0 = P.stepProtection(prSI, DT, healthy());
-  var rSI = ride(prSI, withReading('containment_pressure_mpa', 0.20), 1.0);
+  var rSI1 = ride(prSI, withReading('containment_pressure_mpa', 0.20), 1.0);
+  var rSI = ride(prSI, withReading('containment_pressure_mpa', 0.20), 2.0);
   ckT('a healthy plant at power is neither tripped nor injecting before the step',
       rSI0.reactor_trip === false && rSI0.si === false, '');
+  /* #800 ruling A (2026-09-23): the containment channel holds 2.0 s [derived] like the other SI
+   * channels, so one noise sample past the setpoint cannot latch an unblockable SI + trip. */
+  ckT('...and 1.0 s past the containment setpoint is NOT yet a safety injection (2.0 s hold)',
+      rSI1.si === false && rSI1.reactor_trip === false, 'si ' + rSI1.si);
   ckT('safety injection on high containment pressure TRIPS THE REACTOR, cause safety_injection',
       rSI.si === true && rSI.si_cause === 'si_hi_ctmt_press' &&
       rSI.reactor_trip === true && rSI.trip_cause === 'safety_injection' && rSI.rps_asserted_now === false,
@@ -1052,6 +1057,8 @@ var MUTATIONS = [
   ['the turbine-trip reactor trip is deleted (P-9 reports into a void)',
    "    if (drivers.turbine_tripped && !drivers.p9_defeated && drivers.power_frac >= p9frac && !pr.reactor_trip) {\n      pr.reactor_trip = true; pr.trip_cause = 'turbine_trip';\n    }",
    ''],
+  ['the containment SI hold goes back to 0.0 s (one noise sample latches SI + trip) -- #800',
+   '    si_hi_ctmt_press: 2.0,', '    si_hi_ctmt_press: 0.0,'],
   ['the SI-to-reactor-trip wire is deleted (injection runs into a critical core) -- #800',
    "    if (pr.si && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = 'safety_injection'; }",
    ''],

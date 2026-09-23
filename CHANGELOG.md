@@ -39,6 +39,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   (`TRIP SIGNAL STANDING`, named in the refusal): reset SI at its panel first. Without that,
   the reset was accepted and re-latched a step later, the #571 defect class. Manuals 03 §3.5.1,
   09 §2.0/§3.0 (Rev 22 row, item c).
+- **The containment safety-injection signal holds 2.0 s before it actuates** (#800,
+  *OWNER RULING, 2026-09-23: "A"* — option A). The value is [derived], carried from the other SI channels; this
+  single-channel plant filters in time where Ginna votes 2-of-3. At 0.0 s one noise sample latched
+  it with true containment 0.3 psi under the setpoint, and SI now trips the reactor. Measured:
+  - default seal leak trips at 18m39s (was 15m00s);
+  - full-severity seal leak trips at 7m30s on SI, with true containment 18.33 psia (0.1264 MPa),
+    above the setpoint;
+  - large break severity 1.0 trips on overtemperature ΔT at 4.56 s, SI at 5.74 s (was both at
+    3.76 s on SI).
+  Manual 07 PWR-E23 is rewritten for the seal leak now tripping the reactor.
 
 ## [Alpha 1.8.0-rc3] — 2026-09-22
 

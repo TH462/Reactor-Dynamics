@@ -65,7 +65,23 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
     names the SI latch.
   - `run_checklist_pwr2`'s label check read a hand list of literal causes. It now scans every
     `trip_cause = '...'` literal, and was injection-proved on the label.
-- **Not done:** the issue's second half. The containment SI channel latches ~88 s early on noise
+- **Second half, RULED and built:** OWNER RULING (2026-09-23): "A" — the containment SI
+  channel holds **2.0 s [derived]**, carried from the other SI channels. Engine-direct, full power:
+  - large break 1.0: SI 3.76 → 5.74 s, and the trip goes back to overtemperature ΔT at 4.56 s;
+  - leak 0.2: SI 12.50 → 16.82 s, trip on overtemperature ΔT at 15.80 s;
+  - leak 0.05: SI and trip 45.30 → 58.44 s;
+  - tube rupture unchanged.
+  Full stack: the full-severity seal leak trips at 7m30s on SI (true containment 18.33 psia,
+  above the setpoint), and the default leak at 18m39s. **Most of the #800 "78 s at power" was the
+  noise latch**: with the hold, SI arrives about when the old build's low-low level trip did.
+- **Fallout, adjudicated one by one:**
+  - `run_pwr2_ctmt_esf`: two fixtures pinned the 0.0 hold. One was a single 0.02 s protection
+    step; the other allowed a 1.5 s latch window. Both were widened by the 2.0 s hold.
+  - `run_pwr2_endurance` shed-order: the fixture's recovery wait ran BEFORE the post-trip shrink,
+    so it exited at 0.0 s on every build. It was masked while noise latched SI at 23.5 s; at
+    31.5 s the shrink crosses the 17 % cut. The wait now runs after a 60 s settle.
+  - All three rewritten fixtures pass on the pre-hold build too.
+- (superseded) The issue's second half was left open pending that ruling. The containment SI channel latches ~88 s early on noise
   (`DELAY.si_hi_ctmt_press` 0.0 s, `[open]`). A confirmation delay needs its own evidence pass,
   and the source is silent on coincidence for this channel. Left open on #800.
 

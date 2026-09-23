@@ -510,11 +510,17 @@
     hi_hi_steam_flow: 2.0,
     hi_hi_sg_level: 2.0,       /* [derived] signal delay by the module's SI-32.0 precedent; the
                                 * table's 22.0 s is the valve's AT-CLOSURE figure, a consequence */
-    si_hi_ctmt_press: 0.0,     /* [open] (#784) — no containment row exists in the 15.0-6 delay
-                                * set and the B 3.6.6 response times are SYSTEM times applied by
-                                * the caller, not channel delays. 0.0 is stated rather than
-                                * borrowed from the pressure channels: a borrowed 2.0 would read
-                                * as sourced next to the rows above it. See the CTMT_ESF block. */
+    si_hi_ctmt_press: 2.0,     /* [derived] (#800) — CARRIED from the other SI channels above,
+                                * the ir_high_flux precedent; NOT sourced: no containment row
+                                * exists in the 15.0-6 delay set, and the B 3.6.6 response times
+                                * are SYSTEM times applied by the caller, not channel delays.
+                                * It was 0.0 [open] (#784), and on this single-channel plant
+                                * (Manuals/12 §12.6 — Ginna votes 2-of-3, UFSAR ch15
+                                * §15.1.5.3.1 A.3) one noise sample latched an unblockable SI,
+                                * which now trips the reactor, with TRUE containment 0.3 psi
+                                * (2.9 sigma) under the setpoint. OWNER RULING (2026-09-23): "A"
+                                * — given on the option "2.0 s, marked [derived]". Correct it if
+                                * a plant response-time figure turns up. */
     ctmt_hihi_press:  0.0,     /* [open] (#784) — same, and it is SHARED by the spray and the
                                 * steam-line isolation because they are one bistable */
     sg_lolo_level: 2.0         /* [sourced] 15.0-6, 15.2.6 LONF: "Low-Low Steam Generator Water

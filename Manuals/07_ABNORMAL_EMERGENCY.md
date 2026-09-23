@@ -792,7 +792,7 @@ EOP. This one does not outrun make-up: charging comes up and holds the inventory
 not hold is containment.** The leak goes to the containment atmosphere, and at power containment
 pressure climbs until the **3.5 psig safety-injection backup** actuates — and **every safety
 injection trips the reactor** (§3.0 of `09`). Measured, full stack, full power, the default 40 %:
-containment rises about **0.14 psi a minute** and SI plus the reactor trip arrive at **15 minutes**. It is the everyday leak the
+containment rises about **0.14 psi a minute** and SI plus the reactor trip arrive at about **18½ minutes**. It is the everyday leak the
 chemical and volume control system exists to make up — and the one that teaches you to read the
 board rather than react to it.
 
@@ -821,7 +821,7 @@ shift. Likewise **PZR LVL DEV LO (A31) stays clear** — the deviation only open
 | 2 | Rule out the impostors — letdown isolated or throttled, or a deliberate level-setpoint change, produce the same alarm |
 | 3 | Locate it: containment sump level and humidity, pressurizer relief tank pressure/temperature (a weeping PORV or safety), steam generator activity (a tube leak is **E06** territory) |
 | 4 | Trend the charging demand at steady load. Flat = a stable leak you can plan around; rising = it is growing |
-| 5 | Shut down on your own terms **before containment reaches 3.5 psig** — at the default leak that is a quarter of an hour, and SI will trip the reactor if you do not |
+| 5 | Shut down on your own terms **before containment reaches 3.5 psig** — at the default leak that is under twenty minutes, and SI will trip the reactor if you do not |
 
 ### If it grows past make-up
 **PZR LVL DEV LO (A31)** comes in, charging saturates, and level starts a genuine descent. That
@@ -833,9 +833,7 @@ Leak identified and its size trended, and the shutdown begun deliberately, befor
 pressure forces it through a safety injection and reactor trip.
 
 *Known model limits, declared:* this containment has **no structural heat sink** (#799), which
-overstates its pressure rise; and the safety-injection backup currently latches with **true**
-containment about **0.3 psi under** its setpoint (#800). Both make the 15 minutes shorter than a
-real plant's.
+overstates its pressure rise and makes the 18½ minutes shorter than a real plant's.
 
 ---
 
