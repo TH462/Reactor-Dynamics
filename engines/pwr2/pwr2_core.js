@@ -165,6 +165,12 @@
    * `sys.P` — eleven identical evaluations a step. The memo returns the value the call would have
    * computed, from the same functions and the same argument, so it is exact by construction; a
    * NaN pressure never equals the memo key and simply recomputes. */
+  /* EXCHANGE_PRECHECK.forceFull — a GATE's switch, never a player's (2026-09-23). `true` books
+   * every recorded exchange on every node, i.e. the full path the pre-check in `step` skips.
+   * `run_pwr2_core` steps one fixture both ways and asserts the states are BIT-IDENTICAL, which
+   * is the claim "the skip is exact" asserted directly. Default `false`; the shipped plant never
+   * sets it. */
+  var EXCHANGE_PRECHECK = { forceFull: false };
   var cpMemoP = NaN, cpMemoHf = 0, cpMemoHg = 0, cpMemo2 = NaN;
   function cpLocal(h, P_mpa, T_c) {
     if (P_mpa !== cpMemoP) {
@@ -736,7 +742,7 @@
        * could bind; `addExchange` has the proof that skipping is exact. Resolution walks the
        * records in ascending order, which is the order the eager form accumulated them in. */
       var cUp = qIn[i] + gUp[i];
-      if (xUnsure[i] || !(dt * cUp <= m_n[i])) {
+      if (xUnsure[i] || !(dt * cUp <= m_n[i]) || EXCHANGE_PRECHECK.forceFull) {
         for (var k = 0; k < xNode.length; k++) if (xNode[k] === i) resolveExchange(k);
       }
       var cIn = qIn[i] + gIn[i], chIn = qhIn[i] + ghIn[i];
@@ -1088,6 +1094,7 @@
     WALL_FILM: WALL_FILM,
     /* #588 — exported so the gate can measure the inversion itself (both saturation branches,
      * and the round trip through the table) rather than inferring it from a limited step. */
-    hAtTarget: hAtTarget, cpLocal: cpLocal
+    hAtTarget: hAtTarget, cpLocal: cpLocal,
+    EXCHANGE_PRECHECK: EXCHANGE_PRECHECK
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

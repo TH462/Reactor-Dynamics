@@ -459,6 +459,69 @@ function runSuite(C, rec, quiet) {
       ' kg, ' + rC.enthalpyClamped + ' clamped, ' + rC.limiterWithheld_kJ.toExponential(3) +
       ' kJ withheld and REPORTED rather than swallowed');
 
+  /* THE PRE-CHECK IS EXACT — asserted as exactly that (2026-09-23, owner ruling "option 2").
+   * The limiter books an exchange's bound only where `dt*(qIn+gUp) > m` says it could bind.
+   * The claim is not "the plant looks the same"; it is "the skip produces the value the full
+   * path would", so the fixture is stepped TWICE — with the skip, and with
+   * `EXCHANGE_PRECHECK.forceFull` booking every node — and every node enthalpy, every wall lump
+   * and the pressure must agree TO THE BIT.
+   *
+   * THE FIXTURE SPANS THE THRESHOLD ON PURPOSE: six nodes whose exchange Courant numbers
+   * dt*G0/(cp*m) are 0.5, 0.9 (skipped — the skip must actually happen, or this compares the full
+   * path with itself), 1.2, 1.5, 1.9 (just past it — where a MARGINAL over-skip lives, which
+   * nothing else in the pwr2 gates could see: a factor-2 over-skip was measured BLIND to every
+   * one of them) and 50 (deep past it), plus a ring flow for the advective half and a wall on
+   * the first node. And the limiter must bind, or "identical" is vacuous. */
+  (function () {
+    var CS = [0.5, 0.9, 1.2, 1.5, 1.9, 50], P0 = 15.41, DTX = 0.02;
+    var TFHx = VT ? VT.T_from_h : W.T_from_h, RHOx = VT ? VT.rho_from_h : W.rho_from_h;
+    /* a body 3 K above the fluid: enough to relax toward, too little to move a rigid system's
+     * pressure past the root-tracking limit (330 degC did, and every step came back HELD) */
+    var T_BODY = TFHx(1250, P0) + 3;
+    function build() {
+      var nodes = CS.map(function (c, k) {
+        var n = { id: 'x' + k, V: 0.05 * (k + 1), h: 1244 + 2 * k };
+        if (k === 0) n.wall = { M_kg: 2.0e3, cp: 0.50, k: 45, A_m2: 40, t_m: 0.05, lumps: 2 };
+        return n;
+      });
+      nodes.push({ id: 'big', V: 60.0, h: 1250 });
+      var s = C.createSystem({ P: P0, nodes: nodes });
+      s.nodes[0].wall.T[0] = s.nodes[0].wall.T[1] = T_BODY + 1;
+      s._G0 = CS.map(function (c, k) {
+        var m = s.nodes[k].V * RHOx(s.nodes[k].h, P0);
+        return c * C.cpLocal(s.nodes[k].h, P0) * m / DTX;
+      });
+      return s;
+    }
+    function drive(s) {
+      var heats = {}, ex = [], flows = [];
+      CS.forEach(function (c, k) {
+        var id = 'x' + k, kW = s._G0[k] * (T_BODY - TFHx(s.nodes[k].h, s.P));
+        heats[id] = kW;
+        ex.push({ node: id, kW: kW, T_c: T_BODY, G_kW_per_K: s._G0[k] });
+        flows.push({ from: id, to: k + 1 < CS.length ? 'x' + (k + 1) : 'x0', mdot: 0.5 });
+      });
+      return { heats: heats, exchanges: ex, flows: flows };
+    }
+    function ride(forceFull) {
+      var s = build(), bound = 0, prev = C.EXCHANGE_PRECHECK.forceFull;
+      C.EXCHANGE_PRECHECK.forceFull = forceFull;
+      try { for (var n = 0; n < 25; n++) bound += C.step(s, DTX, drive(s)).limiterBound; }
+      finally { C.EXCHANGE_PRECHECK.forceFull = prev; }
+      var st = [s.P];
+      s.nodes.forEach(function (nd) { st.push(nd.h); if (nd.wall) st = st.concat(nd.wall.T); });
+      return { st: st, bound: bound };
+    }
+    var fast = ride(false), full = ride(true), diff = 0;
+    for (var q = 0; q < full.st.length; q++) if (!Object.is(fast.st[q], full.st[q])) diff++;
+    ckT('the exchange pre-check is EXACT — skipping the bound where it cannot bind is bit-identical ' +
+        'to booking it everywhere, on a fixture that binds',
+        diff === 0 && full.bound >= 50 && fast.bound === full.bound,
+        diff + ' of ' + full.st.length + ' state values differ; limiter bound ' + fast.bound +
+        ' (skip) vs ' + full.bound + ' (forced full) node-steps over 25 steps, Courant ' +
+        CS.join(' / '));
+  })();
+
 
   /* ---- THE ENTHALPY ENVELOPE (added 2026-08-17) -------------------------------------------
    * The state had no bound while every reader had one, so a node boiling dry ran `h` to 1e+304
@@ -895,7 +958,13 @@ var MUTATIONS = [
    * `dt*(qIn + gUp) > m` says it could bind. Two ways to make the skip TOO AGGRESSIVE — skipping
    * where the bound does bind — and each must redden the exchange fixtures above. */
   ['the exchange pre-check skips ALWAYS (the bound is never booked, even where it binds)',
-   'if (xUnsure[i] || !(dt * cUp <= m_n[i])) {', 'if (false) {'],
+   'if (xUnsure[i] || !(dt * cUp <= m_n[i]) || EXCHANGE_PRECHECK.forceFull) {',
+   'if (EXCHANGE_PRECHECK.forceFull) {'],
+  /* THE MARGINAL ONE, and the reason the exactness check above exists: a skip that is too
+   * aggressive by a factor of two was measured BLIND to every pwr2 gate (2026-09-23) while it
+   * moved the core-damage chain's milestones ~9 s. Only the Courant 1.2 / 1.5 / 1.9 nodes see it. */
+  ['the exchange pre-check is too aggressive by a factor of TWO (skips a bound at Courant 1-2)',
+   '!(dt * cUp <= m_n[i])', '!(dt * cUp <= 2 * m_n[i])'],
   ['the exchange pre-check bounds with the ADVECTIVE half only (the conductance it skips is ignored)',
    'var cUp = qIn[i] + gUp[i];', 'var cUp = qIn[i];'],
   /* THE ENTHALPY ENVELOPE (2026-08-17). Three ways to get it wrong, and the third is the one
