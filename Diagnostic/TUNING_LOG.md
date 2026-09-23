@@ -29,6 +29,14 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-23-develop-a (the limiter's bound is computed only where it can bind; the checklist runner outgrew a CI shard)
+
+- **CI run 35810480463 timed out shard 1 on `run_checklist_pwr2`**: 1,553 s on the last green run, 1,986 s solo now. The PWR2 step was **100.3 → 137.5 µs (+37 %)** against `ebf7bc53`, and the limiters (#588) were the cause. Split at the replay / live-runtime line (`f9ea1181`, 1,047 s + 933 s). The name union equals the unsplit run, 352. CI then went green (run 35837085210).
+- *(OWNER RULING, 2026-09-23: "Let's do option 2 so it doesn't slow it down during normal operations.")* **`8f9e614c` + `5ff51c01`**: `hAtTarget` (an 80-iteration saturation bisection, 11× a step, ~29 µs) now runs only when `dt*(qIn+gUp) > m`. **~132 → ~100 µs/step.** Bit-identical: 0 of 11,070 fields on healthy plants, and on the core-damage casualty where the limiter binds 150 node-steps. The milestones are unchanged to 0.1 s.
+- **THE TRAP: a factor-2 over-skip went GREEN on every PWR2 runner, `coredamage_stack` included**, because the chain's invariants hold while its milestones drift ~9 s. Pinning the milestones was declined: they are a bifurcation (#543). What catches it is an **A/B exactness check**, skip vs forced-full on a fixture that binds 68 node-steps, with a floor on the bind count so it cannot pass vacuously. **For an optimisation claimed exact, assert the exactness, not the downstream behaviour.**
+- The inherited "11,430 fields" does not reproduce; the rig counts 11,070.
+- The owner will test casualty-time fast-forward on slower machines.
+
 ## Session log — 2026-09-22-develop-a (the endgame's wall limiter cost 290 µs a step through a side door around #514's table; the plant already reached core damage)
 
 Covers `1a684bed`, `373ddf42`, `ee0ddd72`, `5bd1372d`, `148c9384`, `ad583f86`, `79236d93`. The

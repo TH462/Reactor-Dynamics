@@ -30,7 +30,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.8.0-rc1] — 2026-09-22
+## [Alpha 1.8.0-rc2] — 2026-09-22
 
 ### Added
 - **Containment spray, fan coolers and steam-line isolation, auto-only** (#784). PWR2's
@@ -99,8 +99,22 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   per step instead of reading the existing lookup table. Fixed by passing the already-known
   temperature into the heat-capacity calculation instead of re-deriving it; calls fell to 1.00
   per step and engine cost fell to 6.7×. At 60× fast-forward, a step now takes 40.8 ms of a
-  100 ms broadcast, down from 111.8 ms. Bit-identical on healthy plants, 0 of 11,430 fields
-  differing.
+  100 ms broadcast, down from 111.8 ms. Bit-identical on healthy plants, 0 of 11,070 fields
+  differing (the rig's true count; 11,430 did not reproduce).
+- **The limiter's bound is now computed only on steps where it could bind** (rc2, #588;
+  *OWNER RULING, 2026-09-23: "Let's do option 2 so it doesn't slow it down during normal
+  operations."*). The remaining +37 % was `hAtTarget`: an 80-iteration saturation bisection
+  11 times a step, about 29 µs, for a bound that binds on 0 node-steps on a healthy plant. A
+  conservative pre-check (`dt*(qIn+gUp) <= m`, IEEE-monotone, so a skipped node provably could
+  not bind) defers it. **131.4–132.2 → 98.9–100.0 µs/step**, back to the Alpha 1.7.7 cost
+  (100.3). Bit-identical: 0 of 11,070 fields on three initial conditions over 600 s, and 0 of
+  11,070 on the core-damage casualty, where the limiter binds 150 node-steps. The damage-chain
+  milestones are unchanged to 0.1 s. A new `run_pwr2_core` check runs skip against forced-full
+  on a fixture that binds 68 node-steps. It is the only gate that catches a factor-2 over-skip,
+  which went green on every other PWR2 runner.
+- **`run_checklist_pwr2` split in two** (part B = `run_checklist_pwr2_b.js`, the live-runtime
+  half): unsplit it ran 1,986 s solo, past CI's 1,800 s shard budget, which timed out CI run
+  35810480463.
 - **Manual and gate bookkeeping**: an owner ruling logged without its date, a shipped manual
   revision row that had been reopened and appended to by two later commits (restored
   byte-for-byte and reissued as a new revision), and eight bare-megawatt figures in the new
