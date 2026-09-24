@@ -3083,6 +3083,11 @@ if (!only && RUN_B) {
    *      ρ about −5 pcm — the sub-critical guard, re-run because the floor moved to 0.055)
    *   .3 ...then one tap: 20 s later 9a is STILL met and the active substep is still 9b
    *   .4 the rate floor sits on the tile's toFixed(2) render-band edge (x.xx5)
+   *   .5 (layman pass 2, 2026-09-24) during .3's tap, at 1x, the step is never awaiting Continue
+   *      while the bank is travelling. `steps` is the ROUNDED position and one SLOW step is ~8 s
+   *      of travel, so the 300 s `stopped` row stayed met through the first ~4 s of a tap while
+   *      the pull's rate spike met the rate row. INJECTION: `rodMoving` dropped from
+   *      `gradeStopped` -> .5 red (awaiting Continue mid-travel).
    * INJECTIONS, proven in place: `latch` deleted from 9a -> .3 red (met false, head 0); floor
    * 0.035 -> .2 red (completes at bank 207); `latch` moved onto the rate row -> .1 red. */
   (function () {
@@ -3148,8 +3153,16 @@ if (!only && RUN_B) {
        (left == null ? 'never' : 'COMPLETED at +' + left.toFixed(0) + ' s') + ', bank ' + bank() +
        ', STARTUP RATE ' + s.instruments.startup_rate.toFixed(3));
     var pre = ckl() && ckl().accs ? ckl().accs.map(function (a) { return a.met ? 1 : 0; }).join('') : '?';
+    /* .5 is read DURING this tap, at 1x (0.1 s broadcasts, the player's own speed for a tap). */
+    svc.timeAcceleration = 1;
     svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 1, speed: 'slow' });
-    holdS(20);
+    var tTap = t(), ackMoving = 0, travel = 0, peak = -1;
+    while (t() - tTap < 20) {
+      tick();
+      var g = s.control_state.rod_groups.filter(function (x) { return x.id === 'control_rods'; })[0];
+      if (g.moving) { travel += 1; peak = Math.max(peak, s.instruments.startup_rate); if (ckl() && ckl().awaiting_ack) ackMoving++; }
+    }
+    svc.timeAcceleration = 10;
     var c2 = ckl(), post = c2 && c2.accs ? c2.accs.map(function (a) { return a.met ? 1 : 0; }).join('') : '?';
     var hd = c2 && c2.step_index === S9 ? head(c2) : -9;
     ck('2ak.3 ...then one tap: 9a stays met and the active substep stays 9b (pacing cannot fall back to 9a)',
@@ -3157,6 +3170,10 @@ if (!only && RUN_B) {
        'verdicts ' + pre + ' -> ' + post + ', active substep row ' + hd + ', bank ' + bank());
     var rate = st9.accs.filter(function (e) { return e.p === 'startup_rate_dpm'; })[0] || {};
     var lo = rate.v - rate.tol, hi = rate.v + rate.tol;
+    ck('2ak.5 ...and while that tap is still travelling the step is never met (the rate spike is over the floor; the rods are not stopped)',
+       travel > 20 && peak > lo && ackMoving === 0,
+       travel + ' broadcasts in travel, peak STARTUP RATE ' + peak.toFixed(3) + ' vs floor ' + lo.toFixed(3) +
+       ', awaiting Continue on ' + ackMoving + ' of them');
     function onEdge(x) { var f = Math.round(x * 1000) % 10; return Math.abs(x * 1000 - Math.round(x * 1000)) < 1e-6 && f === 5; }
     ck('2ak.4 the STARTUP RATE band edges sit on the tile\'s toFixed(2) render-band edges',
        onEdge(lo) && onEdge(hi), lo.toFixed(4) + ' .. ' + hi.toFixed(4));

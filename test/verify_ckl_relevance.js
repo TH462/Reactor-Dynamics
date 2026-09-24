@@ -847,16 +847,28 @@ function sig(rows) {
         return page.evaluate(function () {
           var card = document.querySelector('.ckl-step.ckl-active');
           if (!card) return null;
-          return [].map.call(card.querySelectorAll('.ckl-crit'), function (r) {
+          /* In DOM order, rows AND the `.ckl-crit-tail` a head with a `cont` row defers its note and
+           * speed into (layman pass 2, 2026-09-24): the tail is folded back onto its head (the
+           * nearest lettered row, or row 0 on an unlettered step) and `order` records where it
+           * drew, so the placement is asserted as well as the text. */
+          var out = [], order = [];
+          [].forEach.call(card.querySelectorAll('.ckl-crit, .ckl-crit-tail'), function (r) {
+            var tail = r.classList.contains('ckl-crit-tail');
             var n = r.querySelector('.ckl-crit-n');
             var note = r.querySelector('.ckl-crit-note');
             var speed = r.querySelector('.ckl-crit-speed');
-            return { tag: n ? n.textContent.trim() : null,
-                     met: r.classList.contains('ckl-crit-met'),
-                     note: note ? note.textContent.trim() : null,
-                     speed: speed ? speed.textContent.trim() : null };
+            order.push(tail ? 'tail' : 'row');
+            var rec = { tag: n ? n.textContent.trim() : null,
+                        met: r.classList.contains('ckl-crit-met'),
+                        note: note ? note.textContent.trim() : null,
+                        speed: speed ? speed.textContent.trim() : null };
+            if (!tail) { out.push(rec); return; }
+            for (var k = out.length - 1; k >= 0; k--) {
+              if (out[k].tag !== null || k === 0) { out[k].note = rec.note; out[k].speed = rec.speed; out[k].tailMet = rec.met; break; }
+            }
           });
-        });
+          return { rows: out, order: order.join(',') };
+        }).then(function (r) { if (!r) return null; r.rows.order = r.order; return r.rows; });
       }
 
       var base = await paint(null);
@@ -880,11 +892,15 @@ function sig(rows) {
       ck('...head B\'s authored speed_text REPLACES the bare rung, verbatim (its own punctuation, not doubled)',
          !!base && base[2].speed === 'Suggested time warp: Custom prose for B, not a bare rung.',
          base ? 'B speed ' + JSON.stringify(base[2].speed) : 'no rows');
+      ck('...and the head\'s note + speed draw AFTER its cont check-off, not between the two (layman pass 2, 2026-09-24)',
+         !!base && base.order === 'row,row,tail,row' && base[0].tailMet === base[0].met,
+         base ? 'DOM order ' + base.order + ' (want row,row,tail,row)' : 'no rows');
 
       var single = await paint('single');
       ck('...VARIANT: a head + its cont row is still ONE substep — no letters at all',
-         !!single && single.length === 2 && single[0].tag === null && single[1].tag === null,
-         single ? 'tags ' + JSON.stringify(single.map(function (r) { return r.tag; })) : 'no rows');
+         !!single && single.length === 2 && single[0].tag === null && single[1].tag === null &&
+         single.order === 'row,row,tail' && single[0].note === 'Note for substep A.',
+         single ? 'order ' + single.order + ' tags ' + JSON.stringify(single.map(function (r) { return r.tag; })) : 'no rows');
     })();
 
   } catch (err) {

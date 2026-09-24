@@ -1436,6 +1436,17 @@
     }
     return undefined;
   }
+  /* Is the bank a rod param names physically travelling right now (`moving`, published by the
+   * control layer beside `steps`)? Only `gradeStopped` asks — see the note there. */
+  function rodMoving(snapshot, p) {
+    var spec = ROD_PARAMS[p];
+    var groups = spec && snapshot && snapshot.control_state && snapshot.control_state.rod_groups;
+    if (!groups) return false;
+    for (var i = 0; i < groups.length; i++) {
+      if (groups[i] && groups[i].id === spec.group) return groups[i].moving === true;
+    }
+    return false;
+  }
 
   /* THE ONE RESOLVER (#605). `test/procedures_harness.js` asserts the same `acc` predicates
    * this layer grades, and it used to read `snapshot.true_state[p]` directly — a second sampler
@@ -1656,7 +1667,14 @@
      * again and the step owes `v` afresh, which is the conservative direction. */
     if (bag.t != null && t < bag.t) { bag.last = null; bag.since = null; }
     bag.t = t;
-    if (bag.last == null || r.value !== bag.last) { bag.last = r.value; bag.since = t; }
+    /* A ROD BANK IN MOTION IS NOT STOPPED, WHATEVER ITS STEP COUNTER SAYS (layman pass 2, 2026-09-24,
+     * #653). `steps` is the ROUNDED position: one SLOW step is ~8 plant-s of travel and the counter
+     * flips only at the half-step, so for ~4 s after a tap the bank is moving and `steps` has not
+     * changed. Measured on `pwr_startup` step 9 at 1x, bank 207 still for 300 s, one tap: the
+     * 300 s `stopped` row stayed met, the pull's rate spike met the rate row, and the step sat
+     * awaiting Continue 0.6 s after the tap, rod still moving, for 32 ticks. The group's own
+     * `moving` flag is the motion; restart the quiet clock on it. */
+    if (bag.last == null || r.value !== bag.last || rodMoving(snapshot, pred.p)) { bag.last = r.value; bag.since = t; }
     out.still = t - bag.since;
     out.met = out.still >= need;
     return out;

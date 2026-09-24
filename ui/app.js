@@ -4908,12 +4908,22 @@
               if (!((ck.accs && ck.accs[ob]) || {}).met) { ordBlock = ob; break; }
             }
           }
+          /* A HEAD'S NOTE AND SPEED LINE DRAW AFTER ITS `cont` CHECK-OFFS, NOT BETWEEN THEM (layman
+           * pass 2, 2026-09-24, #653). Drawn inside the head row, they put "✓ PRIMARY PRESSURE 2200
+           * to 2270 psi" (step 1's second check-off) BELOW the note and the "Suggested time warp"
+           * line, where the reviewer read it as another instruction rather than the second half of
+           * the first one's done-when. So a head with a visible `cont` row after it holds its note
+           * and speed back (`pendTail`) and they are flushed, in a `.ckl-crit-tail` wearing the
+           * head's own state classes, once the last of its `cont` rows has drawn. A head with no
+           * `cont` row draws exactly as before. */
+          var pendTail = '';
           for (var ai = 0; ai < st.accs.length; ai++) {
             var en = st.accs[ai], av = (ck.accs && ck.accs[ai]) || {};
             /* `hidden: true` — a cmd-kind entry the replay needs (it is how the harness presses
              * the button) whose twin predicate entry already draws the lamp; drawing both put
              * "spray" on the card twice (#660 item 6). Still graded; just not printed. */
             if (en.hidden) continue;
+            if (pendTail && !en.cont) { h += pendTail; pendTail = ''; }
             var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) + modeLiveNote(en, s) : mesc(en.cmd || ''));
             var tag = '';
             if (!en.cont) { tag = visN > 1 ? ((i + 1) + String.fromCharCode(97 + visSeen)) : ''; visSeen++; }
@@ -4935,6 +4945,19 @@
               if (en.speed_text) subSpeed = mesc(en.speed_text);
               else if (+en.wait_speed > 0) subSpeed = cklSnapRung(+en.wait_speed).speed + '×.';
             }
+            var hasCont = false;
+            if (!en.cont) {
+              for (var cj = ai + 1; cj < st.accs.length && (st.accs[cj].cont || st.accs[cj].hidden); cj++) {
+                if (st.accs[cj].cont && !st.accs[cj].hidden) { hasCont = true; break; }
+              }
+            }
+            if (hasCont && (subNote || subSpeed)) {
+              pendTail = '<div class="ckl-crit-tail' + (av.met ? ' ckl-crit-met' : '') +
+                (ordWait ? ' ckl-crit-wait' : '') + '">' +
+                (subNote ? '<div class="ckl-crit-note">' + subNote + '</div>' : '') +
+                (subSpeed ? '<div class="ckl-crit-speed">Suggested time warp: ' + subSpeed + '</div>' : '') +
+                '</div>';
+            }
             h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') +
               (ordWait ? ' ckl-crit-wait' : '') + '">' +
               (tag ? '<span class="ckl-crit-n">' + tag + '</span>' : '') +
@@ -4947,8 +4970,8 @@
                * its own line, so the imperative is what the eye lands on. Not on a row that is
                * still waiting its turn (#756) — a done-when for a row nothing is grading yet. */
               (en.ask && !ordWait ? '<div class="ckl-crit-when">' + mesc(enTxt) + '</div>' : '') +
-              (subNote ? '<div class="ckl-crit-note">' + subNote + '</div>' : '') +
-              (subSpeed ? '<div class="ckl-crit-speed">Suggested time warp: ' + subSpeed + '</div>' : '') +
+              (subNote && !hasCont ? '<div class="ckl-crit-note">' + subNote + '</div>' : '') +
+              (subSpeed && !hasCont ? '<div class="ckl-crit-speed">Suggested time warp: ' + subSpeed + '</div>' : '') +
               /* A ROW TICKED BY A SIBLING SAYS SO (`implied_by`, #749 follow-up, OWNER RULING
                * 2026-09-18). Without this the card draws "INTER RANGE reads 1.0e-7 A or more
                * ✓" beside a tile bottomed out at 1.0e-11 — a tick standing for a reading the
@@ -4970,6 +4993,7 @@
                  mesc(av.voided) + ', and this reading comes off that gauge.</div>' : '') +
               '</div>';
           }
+          if (pendTail) { h += pendTail; pendTail = ''; }
           /* A PRESS THAT LANDED OUT OF TURN GETS A REASON ON THE CARD (#759, OWNER RULING
            * 2026-09-15: "Fix the text AND say why"). The sim ACCEPTS the press — measured, the
            * 1/M plot took three real points at 501 counts per second against a 700 target — and

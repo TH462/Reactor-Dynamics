@@ -2468,6 +2468,9 @@ select.num-input { width: auto; }
   font-size: 12.5px; font-weight: 700; color: #7fa8dd; line-height: 1.45;
   margin-bottom: 2px;
 }
+/* A head's note + speed line drawn AFTER its `cont` check-offs (layman pass 2, 2026-09-24): the
+   same colour rules as the .ckl-crit it belongs to, so the met/wait modifiers below still win. */
+.ckl-crit-tail { font-size: 12.5px; color: #7fa8dd; line-height: 1.45; margin-bottom: 2px; }
 .ckl-crit-met { color: var(--running); }
 /* THE LETTERED SUBSTEP PREFIX (#741) — `3a`, `3b`. A quiet fixed-width gutter, not a second
    headline: the row's own text is the thing to read and the letter only says "this is part of

@@ -31,6 +31,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Mode 3 to Mode 1, step 9: Continue can no longer light while a tapped rod is still moving**
+  (second layman pass 2026-09-24, #653). "Rods stopped" read the rounded step counter, which
+  flips halfway through an ~8 s SLOW step, so the pull's startup-rate spike could complete 9b
+  mid-travel (measured: awaiting Continue from +0.6 s after the tap, 32 broadcasts at 1×). The
+  quiet clock now restarts while the bank reports it is moving. `run_checklist_pwr2` 2ak.5.
+- **Walkthrough card: a substep's second check-off now draws directly under its first**, before
+  the note and "Suggested time warp" line (step 1's PRIMARY PRESSURE row read as a new
+  instruction). `verify_ckl_relevance` section 9 (+1 check).
 - **Mode 3 to Mode 1: four owner rulings on the 2026-09-23 layman pass** (#653). Step 12 checks off
   when REACTOR POWER has stopped moving (was: at once on a shallow approach), "near 3 %"; step 17
   grades REACTOR POWER above 9 % (a slow player could not finish at LOAD 10 MWe), "near 10 %"

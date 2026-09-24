@@ -29,6 +29,25 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-24-workbench-a (second layman pass on Mode 3 to Mode 1: a `stopped` row blind to a rod in travel; "just critical" passes the rate floor on noise)
+
+Report and every number: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-24_LAYMAN_PASS2.md`.
+
+- **`op: 'stopped'` ON A ROD PARAM READ THE ROUNDED COUNTER.** `control_rods.steps` flips at the
+  half-step; one SLOW step is ~8 plant-s of travel with `moving: true` throughout. So for ~4 s after
+  a tap the bank was moving and "stopped for 300 s" was still met — with the pull's rate spike
+  (peak 0.115 against a 0.055 floor) `pwr_startup` 9b sat awaiting Continue from +0.6 s after the
+  tap. Only visible at 1× (0.1 s broadcasts beat the 5-broadcast debounce inside the travel); at
+  10× the flip lands first. Fixed in `gradeStopped` off the group's `moving` flag.
+- **ONE TO TWO STEPS PAST CRITICAL, THE RATE TILE STRADDLES THE 0.055 FLOOR.** Critical is bank 207
+  on the reviewer's route (−0.2 to +0.5 pcm); 208 / 209 are +7.6 / +15.3 pcm and read 0.049 to
+  0.064 at the five-minute mark, so whether a step passes there is noise. Three taps to 210
+  (+23 pcm, 0.085) is the typical player result, still ~3 steps short of the text's "0.15, as
+  written" (213). The text's times and levels downstream assume the deeper approach.
+- **POWER BEFORE THE TURBINE DEPENDS ON THE APPROACH TOO.** Stop, level off, +13 SLOW, no load:
+  210 → 223 settles 7.7 to 8.1 %, 213 → 226 at 9.3 to 9.7 %. "Settles near 10 %" (step 13) is
+  the authored route only; near P-10's 8 % on the shallow one.
+
 ## Session log — 2026-09-23-workbench-d (four owner rulings on the Mode 3 to Mode 1 layman pass: a `steady` row across an insert; a `<` row that guarded nothing; power at a fixed LOAD depends on the bank)
 
 Rulings and per-change numbers: the reconcile record (d) at the end of `Blueprint/walkthrough_steps/02_mode3_to_mode1.md`.
