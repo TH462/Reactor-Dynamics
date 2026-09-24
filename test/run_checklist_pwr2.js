@@ -3001,7 +3001,7 @@ if (!only && RUN_B) {
    * pass, 2026-09-23 — the rationale and the per-route table are on `pwr_startup` step 9's
    * `overtaken` in ui/manual_procedures.js).
    *
-   * Step 9 is ordered [rods still 60 s, rods still 300 s, STARTUP RATE 0.05-1.00]. A pull far
+   * Step 9 is ordered [rods still 60 s, rods still 300 s, STARTUP RATE 0.055-1.005]. A pull far
    * enough out that power reaches the heating range inside the dwell leaves the rate
    * feedback-limited near zero, and every tap the note asks for is cancelled inside the next
    * dwell: MEASURED, a continuous pull to bank 235 never completed in 3600 s on seeds 42 and 7.
@@ -3051,7 +3051,7 @@ if (!only && RUN_B) {
         var b = bank();
         if (b !== lastB) { lastB = b; lastMove = t(); }
         if (b === goal && t() - lastMove >= 300) {           /* the note's policy, one tap per dwell */
-          var r = s.instruments.startup_rate, d = r > 1.0 ? -1 : (r < 0.05 ? 1 : 0);
+          var r = s.instruments.startup_rate, d = r > 1.0 ? -1 : (r < 0.055 ? 1 : 0);
           if (d) {
             goal += d; lastMove = t();
             try { svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: d, speed: 'slow' }); }
@@ -3071,6 +3071,95 @@ if (!only && RUN_B) {
        crept.entered === S9 && crept.left != null && crept.by != null && crept.by !== 'overtaken' && crept.left < 480,
        'entered ' + (crept.entered + 1) + ', left ' + (crept.left == null ? 'NEVER' : '+' + crept.left.toFixed(0) + ' s by ' + crept.by) +
        ', REACTOR POWER ' + crept.pw.toFixed(3) + ' %');
+  })();
+
+  /* 2ak. A LATCHED MILESTONE ROW (2026-09-23 layman playtest S-1, S-2). `pwr_startup` 9a is a
+   * `stopped` row, which re-grades: every tap 9b asks for un-ticked it, the active substep fell
+   * back to 9a and auto-speed forced 9a's 1× over 9b's 10× wait. `accs[].latch` keeps it ticked;
+   * the hold it re-asserted lives in the hidden 300 s row, which does not latch.
+   *   .1 every `latch` row is on an `accs_ordered` step, on a re-grading op, and a LATER unlatched
+   *      row re-asserts the same hold (same p/op, v at least as long) — completion is unchanged
+   *   .2 live runtime, stop at bank 207: 1800 s rods still never completes the step (seed 7,
+   *      ρ about −5 pcm — the sub-critical guard, re-run because the floor moved to 0.055)
+   *   .3 ...then one tap: 20 s later 9a is STILL met and the active substep is still 9b
+   *   .4 the rate floor sits on the tile's toFixed(2) render-band edge (x.xx5)
+   * INJECTIONS, proven in place: `latch` deleted from 9a -> .3 red (met false, head 0); floor
+   * 0.035 -> .2 red (completes at bank 207); `latch` moved onto the rate row -> .1 red. */
+  (function () {
+    var proc = null;
+    POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
+    var bad = [], nLatch = 0;
+    POOL.forEach(function (p) {
+      (p.steps || []).forEach(function (st, k) {
+        (st.accs || []).forEach(function (e, i) {
+          if (!e || !e.latch) return;
+          nLatch++;
+          var hold = e.op === '~' || RD.InstructorLayer.isBagOp(e.op);
+          var later = st.accs.slice(i + 1).some(function (f) {
+            return f && !f.latch && f.p === e.p && f.op === e.op && (e.op === '~' || +f.v >= +e.v);
+          });
+          if (!st.accs_ordered || !hold || !later) bad.push(p.id + ':' + (k + 1) + ':' + i);
+        });
+      });
+    });
+    ck('2ak.1 every `latch` row is on an ordered step, re-grading, and re-asserted by a later unlatched row',
+       nLatch > 0 && bad.length === 0, nLatch + ' latch row(s)' + (bad.length ? '; BAD: ' + bad.join(', ') : ''));
+    var S9 = -1;
+    ((proc && proc.steps) || []).forEach(function (st, k) {
+      if (S9 < 0 && st.accs_ordered && (st.accs || []).some(function (e) { return e && e.latch; })) S9 = k;
+    });
+    if (S9 < 0) { ck('2ak.2 pwr_startup carries the latched approach step', false, 'not found'); return; }
+    var st9 = proc.steps[S9];
+    function head(ck9) {
+      var fu = -1;
+      for (var i = 0; i < st9.accs.length; i++) {
+        if (st9.accs[i].hidden) continue;
+        if (!((ck9.accs || [])[i] || {}).met) { fu = i; break; }
+      }
+      if (fu < 0) return -1;
+      while (fu > 0 && st9.accs[fu].cont) fu--;
+      return fu;
+    }
+    var svc = mkSvc('hot_zero_power'), s = null, i;
+    function tick() { var r = svc.tick(); if (r) s = r; return s; }
+    function t() { return s.metadata.sim_time; }
+    function holdS(sec) { var t0 = t(); while (t() - t0 < sec) tick(); }
+    function bank() { return s.control_state.rod_groups.filter(function (g) { return g.id === 'control_rods' || g.function === 'control'; })[0].steps; }
+    function ckl() { return s.instructor && s.instructor.checklist; }
+    tick();
+    for (var k = 1; k < S9; k++) {
+      var st = proc.steps[k];
+      if (st.cmd) svc.handleCommand(JSON.parse(JSON.stringify(st.cmd)));
+      holdS(st.hold || 5);
+    }
+    svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
+    for (i = 0; i < 5; i++) tick();
+    var guard = 0;
+    while (ckl() && ckl().step_index < S9 && guard++ < 100) { svc.handleCommand({ action: 'checklist_check', index: ckl().step_index }); tick(); }
+    svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 207 - bank(), speed: 'slow' });
+    var t9 = t(), left = null;
+    while (t() - t9 < 1800) {
+      tick();
+      var c = ckl();
+      if (!c || c.step_index !== S9 || c.awaiting_ack) { left = t() - t9; break; }
+    }
+    ck('2ak.2 bank 207, rods still 1800 s: the approach step never completes (sub-critical guard at the 0.055 floor)',
+       left == null && bank() === 207,
+       (left == null ? 'never' : 'COMPLETED at +' + left.toFixed(0) + ' s') + ', bank ' + bank() +
+       ', STARTUP RATE ' + s.instruments.startup_rate.toFixed(3));
+    var pre = ckl() && ckl().accs ? ckl().accs.map(function (a) { return a.met ? 1 : 0; }).join('') : '?';
+    svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 1, speed: 'slow' });
+    holdS(20);
+    var c2 = ckl(), post = c2 && c2.accs ? c2.accs.map(function (a) { return a.met ? 1 : 0; }).join('') : '?';
+    var hd = c2 && c2.step_index === S9 ? head(c2) : -9;
+    ck('2ak.3 ...then one tap: 9a stays met and the active substep stays 9b (pacing cannot fall back to 9a)',
+       pre.charAt(0) === '1' && post.charAt(0) === '1' && hd === st9.accs.length - 1 && bank() === 208,
+       'verdicts ' + pre + ' -> ' + post + ', active substep row ' + hd + ', bank ' + bank());
+    var rate = st9.accs.filter(function (e) { return e.p === 'startup_rate_dpm'; })[0] || {};
+    var lo = rate.v - rate.tol, hi = rate.v + rate.tol;
+    function onEdge(x) { var f = Math.round(x * 1000) % 10; return Math.abs(x * 1000 - Math.round(x * 1000)) < 1e-6 && f === 5; }
+    ck('2ak.4 the STARTUP RATE band edges sit on the tile\'s toFixed(2) render-band edges',
+       onEdge(lo) && onEdge(hi), lo.toFixed(4) + ' .. ' + hi.toFixed(4));
   })();
 
   /* 2ae. A DEAD GAUGE STRANDS THE LEG — THE WHOLE-POOL SWEEP (#773, 2026-09-19).

@@ -1843,7 +1843,10 @@
        * `steady` and `stopped` join it (#755, #761) and for the same reason: "it has stopped
        * moving" is a HOLD claim, and a plant — or a player — that starts moving again has left
        * it. */
-      var holds = !!(en && (en.op === '~' || BAG_OPS[en.op]));
+      /* ...UNLESS THE ROW AUTHORS `latch: true` (2026-09-23 layman playtest S-1): then it is a
+       * "you got here" claim like `>`, and the HOLD it would have re-asserted must live in a
+       * later row of the same ordered step (`run_checklist_pwr2` §2ak gates that pairing). */
+      var holds = !!(en && !en.latch && (en.op === '~' || BAG_OPS[en.op]));
       /* THE PLAYER'S OWN CASUALTY (#773/#788) — recomputed here every tick for EVERY row,
        * met or not, so that clearing the failure takes the relief away again. It is kept
        * OUT of `ax.met` on purpose: `met` is a latch, and a latched void would survive the

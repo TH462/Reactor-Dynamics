@@ -30,6 +30,12 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed
+- **Mode 3 to Mode 1, step 9: a tap no longer un-ticks 9a or drops the clock to 1×** (layman
+  playtest 2026-09-23, #653). 9a ("rods stopped") now stays ticked once met (`accs[].latch`); the
+  five-minute hold is still graded by the hidden row. The STARTUP RATE floor moves 0.05 → 0.055 so
+  a tile reading "+0.05" never half-passes (sub-critical banks 205–207 still never complete).
+
 ## [Alpha 1.8.0-rc4] — 2026-09-23
 
 ### Added

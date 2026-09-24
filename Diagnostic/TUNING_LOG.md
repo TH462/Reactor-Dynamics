@@ -29,6 +29,29 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-23-workbench-c (layman pass on the Mode 3 to Mode 1 per-substep port: a re-grading row moved the clock; a rate floor inside its render band)
+
+Report and per-finding verdicts: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-23_LAYMAN.md`.
+
+- **A PER-SUBSTEP RUNG TURNS A RE-GRADING ROW INTO A PACING ROW.** `pwr_startup` 9a (`stopped 60`)
+  un-ticked on every tap 9b asks for; the active substep fell back to 9a and auto forced 1× for 60
+  plant-s AFTER the tap — the port's comment called that "his back to 1× before every tap". Measured
+  verdicts `100 -> 000` within 4 s of each tap. New `accs[].latch` (legal only where a later
+  unlatched row re-asserts the hold; `run_checklist_pwr2` §2ak.1) keeps 9a ticked; completion is
+  unchanged (bank 211, +1554 s both ways). Injection-proven in §2ak.3 and `verify_flags_ui`.
+- **A RATE READ AT A FIXED DWELL READS THE PULL'S TRANSIENT, NOT THE PERIOD.** At the five-minute
+  read every sub-critical bank reads POSITIVE: 205 +0.02, 206 +0.03, 207 +0.046 (−0.2 pcm) /
+  +0.042 (−5.3 pcm); critical-by-+2.3 pcm bank 208 reads 0.056 then 0.009 an hour later. So the
+  owner's "repeat until it reads positive" cannot be graded as written. **And 0.05 sat inside the
+  tile's `toFixed(2)` "+0.05" band** — moved to 0.055 (0.045, the other edge, completed bank 207 at +0.3 pcm in the port's table — inherited).
+- **A "verify" row graded on an OVERSHOOT strands the slow player.** Step 17 grades REACTOR POWER
+  ≥ 10.05 %; at LOAD 10 MWe power settles 9.5–10.0 % and passes 10.05 only on the load pick-up
+  (+112 to +183 s). No tick in 1200–2400 s reached it on four runs. Power ≈ 1 % per MWe of LOAD
+  (11 MWe: 10.5–11.0 %). Owner's text; not fixed here.
+- **A dwell exactly as long as the note's "wait five minutes, then read" loses the race to its own
+  debounce**: the harness, reading at 300 s, tapped at bank 209 (+0.068) one second before the step
+  would have ticked.
+
 ## Session log — 2026-09-23-develop-b (#800: every safety injection trips the reactor, and a latched SI holds the RPS reset)
 
 - **Wire:** `pwr2_protection.js`, after the SI latch: `pr.si && !pr.reactor_trip` → trip, cause

@@ -169,6 +169,17 @@
  *           too — `test/procedures_harness.js` issues an ordered step's cmd entries when their
  *           predecessors come true rather than all at step entry, so the gate drives the route
  *           the player has to take. `run_checklist_pwr2` §2x is the injection pair.
+ *   accs[].latch  OPTIONAL boolean — A RE-GRADING ROW (`~`, `steady`, `stopped`) THAT LATCHES ONCE
+ *           MET, like a `>` row. For the lettered substep whose tick is a MILESTONE the next substep
+ *           is built on, when the next substep's own action would re-grade it: `pwr_startup` 9a
+ *           (rods still 60 s) un-ticked on every tap 9b asks for, the active substep fell back to
+ *           9a, and auto-speed forced 9a's 1× over the 10× wait 9b asks for — after EVERY tap
+ *           (2026-09-23 layman playtest S-1, measured: met 100 -> 000 and the rung 10 -> 1 four
+ *           seconds after each tap). LEGAL ONLY ON AN `accs_ordered` STEP, and only where a LATER
+ *           row of the same step re-asserts the same hold (same `p` and `op`, `v` at least as
+ *           long) without the flag — so the step still cannot COMPLETE unless the hold is true at
+ *           the end; the latch only stops the drawn tick and the pacing from going backwards.
+ *           `run_checklist_pwr2` §2ak gates both halves.
  *   accs[].cont  OPTIONAL boolean — ANOTHER CHECK-OFF OF THE PRECEDING (HEAD) ENTRY, not a
  *           substep of its own (the walkthrough-step-format project, `Blueprint/walkthrough_
  *           steps/02_mode3_to_mode1.md`: one lettered substep, more than one `()` row —
@@ -2892,8 +2903,23 @@
            * minutes, and a tap un-ticks both, which is his "repeat" loop. Hidden, not `cont`, so
            * his one `()` line stays one line; it is still graded, and the drawn rate row cannot
            * show ✓ while it is unmet (an ordered, re-grading row is held off by any unmet row
-           * before it). The ACTIVE substep during the wait is therefore 9b — 10×, his rung — and a
-           * tap hands the clock back to 9a's 1×, which is his "back to 1× before every tap".
+           * before it). The ACTIVE substep during the wait is therefore 9b — 10×, his rung.
+           *
+           * ⚠ 9a LATCHES (`latch: true`, 2026-09-23 layman playtest S-1). This paragraph used to end
+           * "a tap hands the clock back to 9a's 1×, which is his 'back to 1× before every tap'" —
+           * and that was AFTER the tap, not before it. MEASURED, live runtime, seed 42, stop at 207
+           * then one tap per five minutes: every tap took the verdicts from 100 to 000 within 4 s,
+           * the active substep fell to 9a (rung 1×), and 60 plant-s later 9a re-ticked and auto
+           * forced 10× again — so the tap had already landed at whatever speed the player chose,
+           * and the 1× that followed only cancelled the wait. The HOLD 9a re-graded is still graded
+           * by the hidden 300 s row, which does not latch, so completion is unchanged.
+           *
+           * THE FLOOR IS 0.055, NOT 0.05 (S-2, same pass): the tile draws STARTUP RATE with
+           * `toFixed(2)`, so 0.05 sat mid-way through the "+0.05" band — a reviewer read "+0.05" and
+           * the row failed. 0.045 (the band's lower edge) completes the ρ +0.3 bank in the table below (INHERITED; a re-run at ρ −0.2 did not); 0.055 (its
+           * upper edge) was re-measured on banks 205-207, seeds 42 and 7, 3600 s: never. It loses
+           * seed 7's bank 208 (ρ +2.3 pcm, 0.056 at the dwell's end and 0.009 an hour later) — a
+           * core that close to critical is one more tap in his loop, not a lost player.
            *
            * THE RATE BAND IS 0.05 TO 1.00 DPM, AND 0.05 IS A MEASURED LINE, not a round number. His
            * note calls 0.01 "stopped short" and 0.15 "as written"; the floor has to sit between.
@@ -2949,14 +2975,14 @@
             text: 'This step is overtaken: REACTOR POWER already reads 0.5 %, so the reactor went critical and is carrying power. Leave the rods where they are and go on to the climb.',
             industry: 'REACTOR POWER 0.5 % — CRITICALITY APPROACH OVERTAKEN. Rods stopped; STARTUP RATE under 1 DPM.' },
           accs_ordered: true,
-          accs: [{ p: 'control_bank_steps', op: 'stopped', v: 60,
+          accs: [{ p: 'control_bank_steps', op: 'stopped', v: 60, latch: true,   /* S-1, 2026-09-23: the hidden 300 s row carries the hold */
                    ask: 'Press SLOW, then hold WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position.',
                    note: 'The prediction reads HIGH, never low, so stopping short of it is the point.',
                    wait_speed: 1,
                    label: 'Rods stopped 3 steps short of the 1/M prediction' },
                  { p: 'control_bank_steps', op: 'stopped', v: 300, hidden: true,
                    label: 'Rods still for five plant-minutes (graded, not drawn — the dwell in 9b)' },
-                 { p: 'startup_rate_dpm', op: '~', v: 0.5275, tol: 0.4775,
+                 { p: 'startup_rate_dpm', op: '~', v: 0.53, tol: 0.475,   /* 0.055-1.005: both edges on the tile's toFixed(2) render band (S-2, 2026-09-23) */
                    ask: 'Tap WITHDRAW one step, wait about five plant-minutes, and read STARTUP RATE. Repeat until it reads positive with the rods still.',
                    note: 'Read the rate only once it has stopped falling, about five minutes after the last tap. Around 0.15, with PERIOD 150 to 200 seconds, is this approach going as written. Around 0.5, or PERIOD under 60 seconds, is about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher. Over 1.0, tap INSERT once and wait. Near 0.01, with PERIOD in the thousands of seconds and nothing moving, means you have stopped short of critical — tap one more step out and wait.',
                    wait_speed: 10,

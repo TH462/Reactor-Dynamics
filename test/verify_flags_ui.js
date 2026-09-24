@@ -659,6 +659,51 @@ function pinChannel(ch) {
     'auto ' + lg0 + '×, player pressed 1× -> ' + ov0 + '×, row A met ' + ov1.met0 + ' -> ' + ov1.accel + '×');
   await b.ctx.close();
 
+  /* ---- A TAP ON A LATCHED TAP-AND-WAIT STEP DOES NOT HAND THE CLOCK BACK (2026-09-23 layman
+   * playtest S-1). `pwr_startup` 9a is a `stopped` row; before `latch` every tap 9b asks for
+   * un-ticked it, the active substep fell back to 9a and auto forced its 1× over 9b's 10× wait.
+   * Same shape here, synthetic so no plant has to be driven to criticality: A = rods still 5 s,
+   * latched, 1×; a hidden 600 s hold; B unmet, 10×. The first tap puts the bank in MAN (it may be
+   * moving in auto on this IC); once A ticks auto goes to 10×; a second tap must leave it there.
+   * INJECTION-PROVEN: `latch` deleted from A -> 1× on the sample 1.5 s after the tap. */
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  await b.page.evaluate(function () {
+    var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_latch'; });
+    window.RD.MANUAL_PROCEDURES.pwr2 = P;
+    P.push({ id: 'zz_pace_latch', category: 'control', manual_ref: 'ZZ-08',
+             title: 'Pacing latch probe', purpose: 'Rung fixture.', from: 'hot_full_power',
+             steps: [{ text: 'A tap-and-wait step.', control: '(observe)', accs_ordered: true,
+                       accs: [
+                         { p: 'control_bank_steps', op: 'stopped', v: 5, latch: true, label: 'A still', wait_speed: 1 },
+                         { p: 'control_bank_steps', op: 'stopped', v: 600, hidden: true, label: 'hold' },
+                         { p: 'power_pct', op: '<', v: -1, label: 'B not met', wait_speed: 10 }
+                       ] }] });
+  });
+  await b.page.click('button[data-ckl-start="zz_pace_latch"]', { timeout: 4000 }).catch(function () {});
+  await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+  function lt() {
+    return b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      return { accel: svc.timeAcceleration, met0: !!(c && c.accsState && c.accsState[0] && c.accsState[0].met) };
+    });
+  }
+  function tap() {
+    return b.page.evaluate(function () {
+      try { globalThis.RD.__dev.service().handleCommand({ action: 'rod_nudge', group_id: 'control', steps: -1, speed: 'med' }); } catch (e) {}
+    });
+  }
+  await tap();
+  var la = await lt(), waited = 0;
+  while (!(la.met0 && la.accel === 10) && waited < 20000) { await b.page.waitForTimeout(500); waited += 500; la = await lt(); }
+  await tap();
+  await b.page.waitForTimeout(1500);
+  var lb = await lt();
+  ck('dev (pwr2): a tap on a latched tap-and-wait step leaves the clock on the wait\'s rung (S-1)',
+    la.met0 && la.accel === 10 && lb.met0 && lb.accel === 10,
+    'before the tap: A met ' + la.met0 + ' at ' + la.accel + '×; 1.5 s after: A met ' + lb.met0 + ' at ' + lb.accel + '×');
+  await b.ctx.close();
+
   /* ---- AND ON REAL CONTENT, MID-RUN: THE CLOCK RE-ACTS WHEN THE ACTIVE SUBSTEP CHANGES (2026-09-23,
    * the pwr_startup reconcile). The two synthetic probes above each read ONE substep from the first
    * paint; neither proves auto acts AGAIN when the player moves from one substep to the next inside
