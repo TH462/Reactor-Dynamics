@@ -903,6 +903,71 @@ function sig(rows) {
          single ? 'order ' + single.order + ' tags ' + JSON.stringify(single.map(function (r) { return r.tag; })) : 'no rows');
     })();
 
+    /* ---- 10. A `below_1m` ROW PAST THE MARK SAYS WHERE THE MARK IS (quality pass, 2026-09-24,
+     * `pwr_startup` 9a). Measured in headless Edge, seed 42, prediction 211: a stop at 209 or 211
+     * never ticks 9a and the card said only "It ticks after the rods have been still for a
+     * plant-minute". The line draws only once the reading is already past prediction-minus-N.
+     * SYNTHETIC row, and the instructor's 1/M table is planted through RD.OneOverMCore itself so
+     * the printed prediction is exactly bank+d: first d = +5 (mark = bank+2, not past: no line),
+     * then d = +1 on the SAME card (mark = bank-2, past: the line). The second read is also the
+     * render-key proof — `met` and `no_1m` do not move between the two, so a key that ignores
+     * `pred_1m`/`obs` leaves the first paint standing. */
+    await (async function () {
+      await page.goto(url + '&dev=1', { waitUntil: 'load' });
+      await page.waitForTimeout(1200);
+      await page.evaluate(function () {
+        var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_1m_probe'; });
+        window.RD.MANUAL_PROCEDURES.pwr2 = P;
+        P.push({ id: 'zz_1m_probe', category: 'control', manual_ref: 'ZZ-05', title: '1/M mark probe',
+                 purpose: 'Render fixture.', from: 'hot_full_power',
+                 steps: [{ text: 'Stop short of the prediction.', control: '(observe)', accs_ordered: true,
+                           accs: [{ p: 'control_bank_steps', op: 'stopped', v: 600, below_1m: 3,
+                                    ask: 'Stop 3 short.', label: 'Rods stopped 3 short' },
+                                  { p: 'power_pct', op: '<', v: -1, ask: 'Never.', label: 'never' }] }] });
+      });
+      await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(200);
+      await page.click('[data-minit="hot_full_power"]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(200);
+      await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(2600);
+      await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
+      await page.waitForTimeout(700);
+      await page.click('button[data-ckl-start="zz_1m_probe"]', { timeout: 4000 });
+      await page.waitForTimeout(1500);
+      async function plant(d) {
+        var bank = await page.evaluate(function (d) {
+          var C = RD.OneOverMCore, svc = RD.__dev.service(), s = svc.assembleSnapshot();
+          var M = C.fullScale(s), b = C.controlGroup(s).steps, xp = (b + d) / M, tb = svc.instructor.oneOverM;
+          C.clear(tb);
+          C.add(tb, 0, 1000, s.metadata.sim_time);
+          C.add(tb, 0.5, 1000 / (1 - 0.5 / xp), s.metadata.sim_time);
+          return b;
+        }, d);
+        await page.waitForTimeout(1500);
+        var r = await page.evaluate(function () {
+          var card = document.querySelector('.ckl-step.ckl-active');
+          var row = card ? card.querySelector('.ckl-crit') : null;
+          var ws = row ? [].map.call(row.querySelectorAll('.ckl-crit-when'), function (e) { return e.textContent.trim(); }) : [];
+          var svc = RD.__dev.service(), c = svc.instructor.getSnapshotBlock().checklist || {};
+          return { past: ws.filter(function (t) { return /^Past the mark/.test(t); })[0] || null,
+                   acc: (c.accs || [])[0] || null };
+        });
+        r.bank = bank;
+        return r;
+      }
+      var far = await plant(5), near = await plant(1);
+      ck('#1/M mark: the fixture row really is graded against the planted prediction (anti-vacuity)',
+         !!far.acc && far.acc.pred_1m === far.bank + 5 && !!near.acc && near.acc.pred_1m === near.bank + 1 && !near.acc.met,
+         'pred ' + (far.acc && far.acc.pred_1m) + ' / ' + (near.acc && near.acc.pred_1m) + ' bank ' + far.bank + ' / ' + near.bank);
+      ck('...a reading NOT past prediction-minus-3 draws no "Past the mark" line',
+         !far.past, JSON.stringify(far.past));
+      ck('...a reading past it names the prediction, the tick position and the reading — on the SAME card (render key)',
+         !!near.past && near.past.indexOf('predicts step ' + (near.bank + 1)) !== -1 &&
+         near.past.indexOf('at ' + (near.bank - 2) + ' or below') !== -1 && near.past.indexOf('reads ' + near.bank) !== -1,
+         JSON.stringify(near.past));
+    })();
+
   } catch (err) {
     ck('the gate ran to completion', false, String((err && err.message) || err).slice(0, 160));
   }

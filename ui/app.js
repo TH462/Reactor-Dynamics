@@ -4613,7 +4613,11 @@
        * row `acc_met` flips to true with nothing else in the key moving at all. */
       /* `no_1m` joins it too (2026-09-24): pwr_startup 9a's "no prediction" line comes and goes
        * with the 1/M table (a Clear, a rewind) while `met` need not move. */
-      (ck.accs || []).map(function (a) { return (a.voided ? 3 : (a.met ? (a.implied ? 2 : 1) : 0)) + (a.no_1m ? 'n' : ''); }).join(''),
+      /* ...and so does a `below_1m` row's prediction and reading (quality pass, 2026-09-24): the
+       * "past the mark" line below appears when the rods step past prediction-minus-N while
+       * `met` stays 0. Only a `below_1m` row carries a non-null `pred_1m`. */
+      (ck.accs || []).map(function (a) { return (a.voided ? 3 : (a.met ? (a.implied ? 2 : 1) : 0)) + (a.no_1m ? 'n' : '') +
+        (a.pred_1m != null ? 'p' + a.pred_1m + ':' + a.obs : ''); }).join(','),
       ck.acc_voided || '', ck.saw_voided || '',
       /* THE REACTOR-TRIP BANNER JOINS THE KEY (#709) — this file's four-times-learned lesson
        * (#392's precondition banner, #653 defect 4's mode line, #759's out-of-turn note,
@@ -5000,6 +5004,18 @@
                * the runtime's verdict, never re-derived here. */
               (av.no_1m ? '<div class="ckl-crit-when">The 1/M plot shows no prediction, so this ticks ' +
                  'once the rods have been still a plant-minute.</div>' : '') +
+              /* ...AND ONE PAST THE MARK SAYS WHERE THE MARK IS (quality pass, 2026-09-24). Measured in
+               * headless Edge, seed 42, prediction 211: a stop at 209 or 211 never ticks, and the
+               * card said only "It ticks after the rods have been still for a plant-minute" -- true
+               * of 208, silent on why 209 waits for ever (9b is blocked behind it, so the leg sits
+               * until power overtakes the step). Drawn only once CONTROL ROD POSITION is already
+               * past prediction-minus-N, so the player still reads the prediction and does the
+               * subtraction on the way out; `pred_1m` and `obs` are the runtime's, not re-derived. */
+              (!av.met && !ordWait && en.below_1m != null && av.pred_1m != null && typeof av.obs === 'number' &&
+               av.obs > av.pred_1m - en.below_1m
+                ? '<div class="ckl-crit-when">Past the mark: the 1/M plot predicts step ' + av.pred_1m +
+                  ', so this ticks with CONTROL ROD POSITION at ' + (av.pred_1m - en.below_1m) +
+                  ' or below. It reads ' + av.obs + '.</div>' : '') +
               '</div>';
           }
           if (pendTail) { h += pendTail; pendTail = ''; }

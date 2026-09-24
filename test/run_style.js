@@ -197,7 +197,11 @@ var CHECKS = [
     run: function (d) {
       var self = this;
       var hits = scanSteps(d, ['text', 'target', 'note', 'why', 'story'], BARE_MW)
-        .filter(function (h) { return !self.exempt.some(function (e) { return h.indexOf(e) !== -1; }); });
+        /* THE WHOLE FIELD MUST BE THE PHRASE (quality pass, 2026-09-24): a substring test let
+         * any field whose first 90 chars merely CONTAINED it -- "OUTPUT near 10 MW, 30 MW
+         * thermal" -- drop its other bare MW too. A hit ends `in: <field text sliced to 90>`, so
+         * an exact tail match on a phrase under 90 chars is an exact match on the field. */
+        .filter(function (h) { return !self.exempt.some(function (e) { var tail = 'in: ' + e; return e.length < 90 && h.slice(-tail.length) === tail; }); });
       d.manual.forEach(function (f) {
         f.lines.forEach(function (l, i) {
           if (BARE_MW.test(l)) hits.push(f.file + ':' + (i + 1) + ' — ' + l.trim().slice(0, 90));

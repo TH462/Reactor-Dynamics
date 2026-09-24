@@ -31,6 +31,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Mode 3 to Mode 1 9a: a stop PAST the mark now says where the mark is** (quality pass,
+  2026-09-24). Headless Edge, seed 42, the panel and the grader both at step 211 after plots at
+  0/84/156/185/197: a stop at 209 or 211 never ticked 9a and the card said only "It ticks after the
+  rods have been still for a plant-minute". A `below_1m` row whose reading is already past
+  prediction-minus-N now draws "Past the mark: the 1/M plot predicts step 211, so this ticks with
+  CONTROL ROD POSITION at 208 or below. It reads 209." `verify_ckl_relevance` section 10 (+3).
+  `run_style` N6's bare-MW exemption now matches the WHOLE field, not a substring (a target
+  "OUTPUT near 10 MW, 30 MW thermal" passed before). `replay_then` and `accs[].below_1m` are
+  documented in the ui/manual_procedures.js field list.
 - **Mode 3 to Mode 1 9a now grades "3 steps short of the 1/M prediction"** (owner option selected
   2026-09-24: "Build a way for the sim to read the 1/M prediction so '3 short' can be checked (new
   work); keep the cap."). The 1/M panel sends each plotted sample with `plot_1m_point` (and Clear

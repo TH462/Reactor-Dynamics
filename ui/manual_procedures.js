@@ -246,6 +246,17 @@
  *           drives the plant. Replay-side only: the live checklist never issues `cmd`
  *           either (ui/app.js renders text + highlights and grades off `acc`), so a
  *           ramp costs the UI nothing. Both procedure gates implement it.
+ *   replay_then OPTIONAL {after_acc, cmd} — REPLAY-ONLY (2026-09-24, `pwr_startup` 9a): a second
+ *           command `test/procedures_harness.js` issues ONCE, on the first tick `accs[after_acc]`
+ *           has been met inside the hold — the player's next action after a milestone, which a
+ *           single step-entry `cmd` cannot express. The live checklist and the instructor never
+ *           read it (like `cmd` and `ramp`); the harness adds a "replay_then issued inside the
+ *           hold" check so a route that never reaches the milestone reddens.
+ *   accs[].below_1m OPTIONAL number N, on a `stopped` row over the control bank (`pwr_startup` 9a,
+ *           2026-09-24) — the row ALSO needs the reading at or below the prediction the 1/M panel
+ *           PRINTS, minus N (`InstructorLayer.applyBelow1m`, the table is RD.OneOverMCore's). No
+ *           prediction printed ⇒ the row grades on its own op and flags `no_1m`, and the card
+ *           says so; a reading already past the mark draws a "Past the mark" line (ui/app.js).
  *   NOTHING ELSE IS A STEP FIELD. `target` and `control` are the two-column lines above;
  *           `next`, `guard`, `precond`, `outcome`, `outcome_guard`, `prereq`, `cautions`,
  *           `from`, `category`, `manual_ref` and `narrative` are PROCEDURE-level, not per step.
