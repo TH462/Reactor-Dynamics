@@ -2107,7 +2107,7 @@
     {
       id: 'pwr_startup', category: 'startup', manual_ref: 'PWR-T03', next: 'pwr_raise_power',
       title: 'Mode 3, Hot Standby → Mode 1, At Power — startup to power',
-      purpose: 'Start the reactor from Mode 3, Hot Standby: make it critical, bring power up past 5 % into Mode 1, At Power, and put the turbine on line. About 2 plant-hours.',
+      purpose: 'Start the reactor from Mode 3, Hot Standby: make it critical, bring power up past 5 % into Mode 1, At Power, and put the turbine on line. About 2½ plant-hours.',
       from: 'hot_zero_power',
       prereq: ['Plant at Mode 3, Hot Standby: AVG COOLANT TEMPERATURE near 547 °F, PRIMARY PRESSURE 2235 psi, reactor shut down (auto-checked).', 'RCP FLOW on.', 'CONTROL ROD POSITION 0 of 627; SHUTDOWN ROD POSITION 627 of 627.'],
       /* MEASURED on hot_zero_power (2026-08-31, full stack): tavg 286.2 °C, 15.41 MPa,
