@@ -288,6 +288,7 @@
           if (!ordMet[i]) break;
         }
       }
+      var thenIssued = false;
       var sawHits = [], ticks = Math.round((st.hold || 0) / SEC_PER_TICK);
       for (var i = 0; i < ticks; i++) {
         if (st.ramp && (i % RAMP_EVERY === 0)) {
@@ -297,8 +298,30 @@
         var s = svc.tick();
         if (!s) continue;
         lastSnap = s;
-        baggedList.forEach(function (e) { var h = bagOf(e.p, e.k); h.last = RD.InstructorLayer.gradeBagged(h.bag, s, e.p); });
+        baggedList.forEach(function (e) {
+          var h = bagOf(e.p, e.k); h.last = RD.InstructorLayer.gradeBagged(h.bag, s, e.p);
+          /* `below_1m` (pwr_startup 9a, 2026-09-24): the SAME applyBelow1m the live row calls, off
+           * the prediction the instructor publishes from the points this replay plotted. */
+          if (e.p.below_1m != null) {
+            var oom = s.instructor && s.instructor.one_over_m;
+            RD.InstructorLayer.applyBelow1m(h.last, oom ? oom.pred_steps : null, e.p);
+          }
+          /* a `latch` row is a "you got here" claim live, so the replay asserts that it WAS met
+           * inside the hold, not that it still is at the end (the live row never un-ticks). */
+          if (h.last.met) h.ever = true;
+        });
         if (ordMet) ordAdvance(s);
+        /* `replay_then` (2026-09-24, pwr_startup 9a): a REPLAY-ONLY second command, issued once
+         * on the first tick the named accs row has been met — the player's next action after a
+         * milestone, which a single step-entry `cmd` cannot express. The live runtime never reads it. */
+        if (st.replay_then && !thenIssued) {
+          var th = predBags['accs' + st.replay_then.after_acc];
+          if (th && th.ever) {
+            var tc = JSON.parse(JSON.stringify(st.replay_then.cmd));
+            if (tc.group_id === 'control' || tc.group_id === 'shutdown') tc.group_id = groupId(svc, tc.group_id);
+            issue(tc); thenIssued = true;
+          }
+        }
         if (s.metadata && s.metadata.time_acceleration < ACCEL) {
           if (!slowTicks) firstSlow = 'step ' + curStep + ' @ t=' + s.metadata.sim_time.toFixed(1) +
             ' → ' + s.metadata.time_acceleration + '×' +
@@ -330,9 +353,10 @@
         if (!last) return { pass: false, obs: 'never sampled (hold is 0)' };
         var reading = (last.value == null ? '?' : Number(last.value).toFixed(0));
         if (c.op === 'stopped') {
-          return { pass: !!last.met,
+          return { pass: c.latch ? !!h.ever : !!last.met,
                    obs: (last.still == null ? 'nothing to read' : last.still.toFixed(0) + ' s unchanged') +
-                        ' @ ' + reading };
+                        ' @ ' + reading + (c.latch ? (h.ever ? ', latched' : ', never met') : '') +
+                        (c.below_1m != null ? (last.no_1m ? ', no 1/M prediction' : ', 1/M prediction ' + last.pred_1m) : '') };
         }
         return { pass: !!last.met,
                  obs: (last.drift == null ? 'window not covered' : (last.drift * 100).toFixed(2) + '% drift')
@@ -359,6 +383,8 @@
          * also asserts that every cmd entry DID get issued inside the authored hold — i.e. the
          * route the player is forced onto is one the plant actually completes. This is what
          * reddens if a settle predicate is tightened past what its hold delivers. */
+        if (st.replay_then) checks.push({ d: 'step ' + curStep + ' replay_then issued inside the hold',
+          pass: thenIssued, obs: thenIssued ? 'issued' : 'accs[' + st.replay_then.after_acc + '] never met' });
         if (st.accs_ordered) {
           for (var oi = 0; oi < st.accs.length; oi++) {
             if (!st.accs[oi] || !st.accs[oi].cmd) continue;

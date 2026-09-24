@@ -407,8 +407,7 @@ steps, and these substeps are not in the pool. Run it on the split steps 9 and 1
 built; the rung is a ceiling and a 2.5 s glance is the yardstick.
 
 **CHECK-OFFS THAT HAVE NO GRADABLE FIELD TODAY** (the sim will need one, or the row becomes prose):
-9a "Rods stopped 3 steps short of the 1/M prediction" — the prediction lives in the panel, not the
-snapshot. 3a "SG FEED reads AUTO" grades on `feed_coupled` already. Step 1's two rows are the pool's
+9a "Rods stopped 3 steps short of the 1/M prediction" — RESOLVED 2026-09-24, see THE 9a GAP below. 3a "SG FEED reads AUTO" grades on `feed_coupled` already. Step 1's two rows are the pool's
 existing `tavg_c ~ 286 ± 1.5 °C` (544 to 549 °F) plus a pressure band the pool does not grade.
 Step 17's two rows replace the pool's single `plant_mode ~ 1`.
 
@@ -464,11 +463,27 @@ short" and 0.15 "as written". 0.05 is the lowest floor that, with the five-minut
 ticked a subcritical core in the table above; a four-minute dwell did (bank 207, seed 7,
 −5.1 pcm, at +281 s).
 
-**THE 9a GAP — "3 steps short of the 1/M prediction" IS NOT GRADED.** The prediction exists only
-in the 1/M panel, never in the plant snapshot, and grading against the TRUE critical position
-would be grading truth rather than an instrument. So 9a ticks on "the rods have stopped", from
-any position — including a player who never pulled (bank 202 ticks it 60 s in). 9b is what stops
-that from completing the step. Recorded in the code comment on step 9 too.
+**THE 9a GAP — RESOLVED 2026-09-24** (owner option selected that day: "Build a way for the sim to
+read the 1/M prediction so '3 short' can be checked (new work); keep the cap."). It was: the
+prediction existed only in the 1/M panel, so 9a ticked on "the rods have stopped" from any
+position. Now each Plot point press sends its sample down, the instructor keeps the same table
+through one shared fit (`RD.OneOverMCore`, layers/instructor_layer.js), and 9a also needs CONTROL
+ROD POSITION at or below the prediction the panel PRINTS minus 3 — the instrument, not true
+critical. Measured, live runtime, plots at banks 0/84/156/185/197, 120 s settles
+(`run_checklist_pwr2` §2am):
+
+| seed | prediction | stop at prediction | 2 short | 3 short | step completes (tap policy) |
+|---|---|---|---|---|---|
+| 42 | 211 | never | never | +63 s after the stop | +387 s |
+| 7 | 210 | never | never | +63 s after the stop | +1296 s |
+
+Further short still ticks. With no prediction printed (never plotted, one point, Clear, a rewind
+past the last point) 9a ticks on the stop alone and the card says "The 1/M plot shows no
+prediction, so this ticks once the rods have been still a plant-minute." — a row waiting on a
+number the panel does not print would strand the player. The authored replay plotted mid-burst
+and predicted 213, so its single +11 pull stopped AT the prediction; it is now +8 (bank 210),
+then +3 once 9a latches, so the rest of the leg still starts from 213 (a stop at 210 alone left
+REACTOR POWER at 0.003 % / 0.001 % at the end of step 10's 1320 s hold, seeds 42 / 7).
 
 **Speeds 6a and 7a** ("my pick" above), run through `tools/glance_rung.js`: the power-glance
 yardstick reads 0.000 % at every rung (the core is subcritical), so it cannot decide these. The

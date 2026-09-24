@@ -236,6 +236,111 @@
   var OUTCOME_UNVERIFIED_TEXT = "Steps checked off, but the board does not match this leg's " +
     'expected finish. Read the board, not this banner.';
 
+  /* ================================================================ the 1/M table (RD.OneOverMCore)
+   * ONE implementation of the inverse-count-rate plot's arithmetic, read by TWO callers: the
+   * panel that draws it (ui/panels/one_over_m.js) and the grader that checks `pwr_startup` 9a
+   * "Rods stopped 3 steps short of the 1/M prediction" against it (`below_1m` on an accs row,
+   * `applyBelow1m` below). The owner's option, selected 2026-09-24: "Build a way for the sim to
+   * read the 1/M prediction so '3 short' can be checked (new work); keep the cap."
+   *
+   * WHY ONE COPY. The row grades the number the panel PRINTS (Hard Rule 1: the prediction is the
+   * instrument here, not true critical). A second fit, or a second rounding, is free to disagree
+   * with the panel by a step — and one step is a third of the margin being graded.
+   *
+   * WHY IT LIVES IN THIS FILE and not a file of its own: every runner that grades a checklist
+   * already loads this one, and ui/shell.html loads it before the panel. A new file would be one
+   * more line in 30 loader lists, each free to be missed.
+   *
+   * THE TABLE IS SESSION SCRATCH, NOT PLANT STATE, and is deliberately NOT in save files — the
+   * panel's own design (its header). The grader's copy therefore follows the panel's three
+   * clearing rules exactly, so the two cannot drift: plant change, the clock going back past the
+   * last capture (Rewind, a restored save, a reset), and the Clear button (`plot_1m_clear`).
+   *
+   * The fit window (3, the trailing points) is an OWNER RULING recorded beside FIT_WINDOW in
+   * ui/panels/one_over_m.js, with the measurement that settled it. Do not re-open it here. */
+  var OneOverMCore = (function () {
+    var FIT_WINDOW = 3;
+    function controlGroup(s) {
+      var gs = (s && s.control_state && s.control_state.rod_groups) || [];
+      for (var i = 0; i < gs.length; i++) if (gs[i].function === 'control') return gs[i];
+      return null;
+    }
+    function supported(s) {
+      var ins = (s && s.instruments) || {};
+      return ins.source_range !== undefined && !!controlGroup(s);
+    }
+    /* The bank's full travel, read LIVE off the snapshot (#746). typeof FIRST: isFinite(null) is
+     * true (#555). The literal fallbacks fire only with no snapshot and no plant module. */
+    function fullScale(s) {
+      var g = s ? controlGroup(s) : null, n = g && g.max_steps;
+      if (typeof n === 'number' && isFinite(n) && n > 0) return n;
+      var k = RD && RD.pwr2 && RD.pwr2.kinetics && RD.pwr2.kinetics.RODS;
+      if (k && typeof k.max_steps === 'number' && k.max_steps > 0) return k.max_steps;
+      var c = RD && RD.PWR_CONFIG && RD.PWR_CONFIG.rods;
+      if (c && typeof c.max_steps === 'number' && c.max_steps > 0) return c.max_steps;
+      return 627;
+    }
+    /* What a Plot-point press would capture off this snapshot, or why it is refused. The panel's
+     * refusals, in the panel's order: {ok:false, why:'unsupported'|'sr_off'|'no_reading'|
+     * 'pegged'|'no_group'} or {ok:true, x (fraction withdrawn), counts}. */
+    function sample(s) {
+      if (!s) return { ok: false, why: 'no_snapshot' };
+      if (!supported(s)) return { ok: false, why: 'unsupported' };
+      var ins = s.instruments || {};
+      if (!ins.sr_energized) return { ok: false, why: 'sr_off' };
+      var counts = ins.source_range;
+      if (typeof counts !== 'number' || !isFinite(counts) || counts < 1) return { ok: false, why: 'no_reading' };
+      if (counts > 9e5) return { ok: false, why: 'pegged' };
+      var g = controlGroup(s);
+      if (!g) return { ok: false, why: 'no_group' };
+      return { ok: true, x: (g.position_pct || 0) / 100, counts: counts };
+    }
+    function newTable() { return { points: [], c0: null, t: null, plant: null }; }
+    function clear(tbl) { tbl.points = []; tbl.c0 = null; tbl.t = null; }
+    /* First point is the baseline C0 (1/M = 1.0); later ones are C0/C, kept sorted by rod
+     * position. `t` is the sim time of the capture, which the rewind rule compares against. */
+    function add(tbl, x, counts, t) {
+      var p;
+      if (!tbl.points.length) { tbl.c0 = counts; p = { x: x, counts: counts, y: 1.0 }; tbl.points.push(p); }
+      else {
+        p = { x: x, counts: counts, y: tbl.c0 / counts };
+        tbl.points.push(p);
+        tbl.points.sort(function (a, b) { return a.x - b.x; });
+      }
+      tbl.t = t;
+      return p;
+    }
+    /* Least squares over the TRAILING window -> { a, b, x0 } for y = a + b·x. */
+    function fit(points) {
+      if (!points || points.length < 2) return null;
+      var pts = points.slice(Math.max(0, points.length - FIT_WINDOW));
+      var n = pts.length, sx = 0, sy = 0, sxx = 0, sxy = 0;
+      pts.forEach(function (p) { sx += p.x; sy += p.y; sxx += p.x * p.x; sxy += p.x * p.y; });
+      var mx = sx / n, my = sy / n;
+      var den = sxx - n * mx * mx;
+      if (Math.abs(den) < 1e-9) return null;
+      var b = (sxy - n * mx * my) / den;
+      return { a: my - b * mx, b: b, x0: pts[0].x };
+    }
+    /* The zero crossing the panel prints, as a fraction withdrawn, or null ("insufficient
+     * trend"): a falling line, crossing at or past the furthest-out point, inside 1.2. */
+    function predict(points) {
+      var f = fit(points);
+      if (!f || !(f.b < -1e-6)) return null;
+      var xc = -f.a / f.b;
+      return (xc > points[points.length - 1].x - 1e-9 && xc <= 1.2) ? xc : null;
+    }
+    /* The printed step number: `Math.round(pred * fullScale)`, the panel's readout exactly. */
+    function predictSteps(points, maxSteps) {
+      var p = predict(points);
+      return p == null ? null : Math.round(p * maxSteps);
+    }
+    return { FIT_WINDOW: FIT_WINDOW, controlGroup: controlGroup, supported: supported,
+             fullScale: fullScale, sample: sample, newTable: newTable, clear: clear, add: add,
+             fit: fit, predict: predict, predictSteps: predictSteps };
+  })();
+  RD.OneOverMCore = OneOverMCore;
+
   // ================================================================ constructor
   // Signature and connect() must match the placeholder — M5 constructs with null
   // and re-points `below` on every plant rebuild.
@@ -243,6 +348,10 @@
     this.below = controlFailureLayer || null;
     this.register = 'learning';
     this._clear();
+    /* The 1/M table the player plotted (RD.OneOverMCore). Outside `_clear` ON PURPOSE: a
+     * loadState (Rewind, a file load) must not wipe it any more than it wipes the panel's — the
+     * clock rule in `step` does, exactly when the panel's does. */
+    this.oneOverM = OneOverMCore.newTable();
   }
 
   InstructorLayer.prototype._clear = function () {
@@ -382,6 +491,36 @@
 
   // Back to free-play. M5 calls this on stop_scenario/stop_follow and on every
   // plain plant reset so stale progress can't outlive its plant.
+  /* The panel's two per-broadcast clearing rules (`OneOverM.tick`), mirrored so the grader's
+   * table is the panel's table: a different plant, or the clock back past the last capture. */
+  InstructorLayer.prototype._oneOverMTick = function (snapshot) {
+    var tb = this.oneOverM, m = snapshot && snapshot.metadata;
+    if (!tb || !m) return;
+    if (m.plant_id !== tb.plant) { tb.plant = m.plant_id; OneOverMCore.clear(tb); return; }
+    if (tb.t != null && m.sim_time < tb.t - 1e-6) OneOverMCore.clear(tb);
+  };
+  /* The prediction the panel prints right now, in steps, or null when it prints none. */
+  InstructorLayer.prototype._oneOverMPredSteps = function (snapshot) {
+    var tb = this.oneOverM;
+    if (!tb || !tb.points.length) return null;
+    return OneOverMCore.predictSteps(tb.points, OneOverMCore.fullScale(snapshot || this._lastSnapshot));
+  };
+  /* `below_1m: N` on a `stopped` accs row (`pwr_startup` 9a): the row additionally needs the
+   * graded reading (the control bank's step counter) at or below the printed prediction minus
+   * N. Further short is fine — the prediction reads HIGH, so short is the safe side; past it is
+   * not a check-off. NO PREDICTION (fewer than two points, a flat or rising line, the table
+   * cleared by a rewind) grades the row on its own op alone and flags `no_1m`, so the card can
+   * say so: the player cannot be held to a number the panel is not printing, and a row that
+   * waited for one would strand a player who never plotted. ONE implementation for the live
+   * runtimes and the replay harness; mutates and returns `g`. */
+  InstructorLayer.applyBelow1m = function (g, predSteps, en) {
+    if (!g || !en || en.below_1m == null) return g;
+    g.pred_1m = (typeof predSteps === 'number' && isFinite(predSteps)) ? predSteps : null;
+    g.no_1m = g.pred_1m == null;
+    if (!g.no_1m && !(typeof g.value === 'number' && g.value <= g.pred_1m - en.below_1m)) g.met = false;
+    return g;
+  };
+
   InstructorLayer.prototype.unload = function () {
     var reg = this.register;
     this._clear();
@@ -394,6 +533,7 @@
   InstructorLayer.prototype.step = function (snapshot, simTime) {
     this._lastSimTime = simTime;
     this._lastSnapshot = snapshot;    // #715 — outcome_guard re-grades off this, not a latch
+    this._oneOverMTick(snapshot);
     if (this.mode === 'scenario') this._stepScenario(snapshot, simTime);
     else if (this.mode === 'follow') this._stepFollow(snapshot, simTime);
     if (this.checklist) this._stepChecklist(snapshot);
@@ -1759,11 +1899,32 @@
     // mode, then consume — M4 would reject it as an unknown plant command.
     // Never gated: taking a reading is an observation, always allowed.
     if (command && command.action === 'plot_1m_point') {
+      /* RECORD THE SAMPLE THE PLAYER SAW (2026-09-24, 9a's "3 short"). The panel sends the
+       * point it captured — x, counts and its snapshot's time — so this table is the panel's,
+       * reading for reading. A command with no sample (the replay harness, which has no panel)
+       * is sampled here off the last snapshot through the panel's own refusals; a refused
+       * sample records nothing, as the panel would. The check-off latches either way (#641). */
+      var tb = this.oneOverM, ls = this._lastSnapshot;
+      if (tb) {
+        var cx = command.x, cc = command.counts;
+        if (typeof cx === 'number' && isFinite(cx) && typeof cc === 'number' && isFinite(cc) && cc >= 1) {
+          OneOverMCore.add(tb, cx, cc, (typeof command.t === 'number' && isFinite(command.t)) ? command.t
+                                       : (ls && ls.metadata ? ls.metadata.sim_time : null));
+        } else {
+          var smp = OneOverMCore.sample(ls);
+          if (smp.ok) OneOverMCore.add(tb, smp.x, smp.counts, ls.metadata.sim_time);
+        }
+      }
       if (this.mode === 'follow' && this.follow && !this.follow.done) {
         var fst1m = this.follow.proc.steps[this.follow.idx];
         if (fst1m && fst1m.cmd && fst1m.cmd.action === 'plot_1m_point') this.follow.cmdSeen = true;
         if (fst1m) this._accsCmdWatch(this.follow, fst1m, command);  // "point plotted" check-off
       }
+      return null;
+    }
+    // The panel's Clear button — the grader's table clears with it. Consumed, never forwarded.
+    if (command && command.action === 'plot_1m_clear') {
+      if (this.oneOverM) OneOverMCore.clear(this.oneOverM);
       return null;
     }
 
@@ -1876,6 +2037,10 @@
           if (!ax.bag) ax.bag = { s: [] };
           g = InstructorLayer.gradeBagged(ax.bag, snapshot, en);
         } else g = this._grade(snapshot, en);
+        if (en.below_1m != null) {         /* 9a's "3 short of the 1/M prediction" */
+          InstructorLayer.applyBelow1m(g, this._oneOverMPredSteps(snapshot), en);
+          ax.no_1m = g.no_1m; ax.pred_1m = g.pred_1m;
+        }
         ax.obs = g.value; ax.graded_by = g.graded_by;
         ax.streak = g.met ? ax.streak + 1 : 0;
         /* ORDERED STEPS (#756): a blocked entry still GRADES — `obs` keeps updating and a
@@ -2107,6 +2272,11 @@
       // A boolean, not the gate list: which actions are blocked is the layer's business
       // and is already enforced here — the UI only needs to know that it matters.
       gated: this.activeGates.length > 0,
+      /* The 1/M table the grader holds (RD.OneOverMCore): how many points, and the prediction
+       * the panel prints off them, in steps (null = none printed). Read by the replay harness,
+       * which grades `below_1m` off the same number the live row does. */
+      one_over_m: this.oneOverM ? { points: this.oneOverM.points.length,
+                                    pred_steps: this._oneOverMPredSteps(this._lastSnapshot) } : null,
       ui_policy: this.uiPolicy,
       highlight: this.mode === 'follow'
         ? (st && st.control ? { view: null, control_label: st.control, instrument_id: null } : null)
@@ -2123,7 +2293,8 @@
         // `implied` — this row latched on a sibling's threshold, not its own (`implied_by`).
         accs: f.accsState ? f.accsState.map(function (a) {
           return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
-                   voided: a.voided || null };
+                   voided: a.voided || null, no_1m: !!a.no_1m,
+                   pred_1m: (a.pred_1m == null ? null : a.pred_1m) };
         }) : null,
       } : null,
       level_complete: this.levelComplete ? {
@@ -2190,7 +2361,8 @@
         // `voided` — the player's own named casualty took this row's gauge out (#773/#788).
         accs: this.checklist.accsState ? this.checklist.accsState.map(function (a) {
           return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
-                   voided: a.voided || null };
+                   voided: a.voided || null, no_1m: !!a.no_1m,
+                   pred_1m: (a.pred_1m == null ? null : a.pred_1m) };
         }) : null,
         /* THE LAST OUT-OF-TURN PRESS ON THIS STEP (#759) — `{ acc_index, blocked_by }`, both
          * indices into the step's own `accs`. `acc_index` is the row the press WOULD have

@@ -29,6 +29,23 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-24-workbench-b (9a grades "3 short of the 1/M prediction": the replay route stood AT its own prediction; a same-instant restore is not a rewind)
+
+Design and numbers: `pwr_startup` step 9's comment, the step file's "THE 9a GAP — RESOLVED" note.
+
+- **THE AUTHORED REPLAY STOOD EXACTLY ON ITS OWN PREDICTION.** The replay presses Plot point the
+  tick a count target is met, mid-burst (banks 0/79/155/188/202), and that ladder predicts 213 on
+  seeds 1, 7, 42 and 123 (214 on seed 1) — the bank its single +11 pull stopped at. The old 9a
+  ticked it because it graded the stop only. Split into +8 then a replay-only +3 once 9a latches;
+  a stop at 210 alone was measured and left REACTOR POWER at 0.003 % at the end of step 10's hold.
+- **A RESTORE TO THE PRESS'S OWN INSTANT DOES NOT CLEAR THE PLOT.** The panel clears on
+  `sim_time < lastCapture`, strictly; a save taken the same tick as the press restores to equal
+  time and keeps the points. The first draft of the rewind check saved there and passed only
+  because an earlier case had pressed Clear — injection (clock rule deleted) came back 0 red.
+- **THE TABLE IS NOT IN THE SAVE, SO A CHECK THAT EMPTIES IT POISONS EVERY LATER FORK.** Restoring
+  a later save does not bring points back (the panel's design). Cases that clear (Clear, rewind)
+  need a fresh build or must run last.
+
 ## Session log — 2026-09-24-workbench-a (second layman pass on Mode 3 to Mode 1: a `stopped` row blind to a rod in travel; "just critical" passes the rate floor on noise)
 
 Report and every number: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-24_LAYMAN_PASS2.md`.

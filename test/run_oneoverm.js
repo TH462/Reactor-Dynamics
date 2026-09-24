@@ -193,6 +193,31 @@ var pred = win._q['#oomPred'] ? win._q['#oomPred'].textContent : '';
 ck('two points produce a prediction line (or an honest "insufficient trend")',
    /predicted criticality|insufficient trend/.test(pred), 'pred="' + pred + '"');
 
+/* ---- 2b. THE GRADER HOLDS THE PANEL'S TABLE (2026-09-24, pwr_startup 9a "3 short of the 1/M
+ * prediction"). Each Plot point press sends its sample down with `plot_1m_point`; the instructor
+ * keeps the same table through RD.OneOverMCore, and the snapshot publishes the prediction it
+ * would print. A third point first, so there is a real crossing to compare (not two nulls).
+ * INJECTIONS, proven in place: the instructor's `plot_1m_point` recording removed -> .1 red
+ * (0 points, null against the printed step); the panel's `plot_1m_clear` send removed -> .2 red. */
+w.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: Math.round(0.08 * RD.pwr2.kinetics.RODS.max_steps), speed: 'fast' });
+w.tick(120);
+RD.OneOverM.tick(w.snap());
+press(win, 'plot');
+w.tick(1);
+var predTxt = win._q['#oomPred'] ? win._q['#oomPred'].textContent : '';
+var mStep = /step (\d+)/.exec(predTxt), printed = mStep ? +mStep[1] : null;
+var oomG = w.snap().instructor && w.snap().instructor.one_over_m;
+ck('the grader holds the panel\'s three points and the prediction the panel PRINTS',
+   printed != null && !!oomG && oomG.points === 3 && oomG.pred_steps === printed,
+   'panel "' + predTxt + '"; grader ' + (oomG ? oomG.points + ' points, step ' + oomG.pred_steps : 'none'));
+press(win, 'clear');
+w.tick(1);
+oomG = w.snap().instructor && w.snap().instructor.one_over_m;
+ck('...and the panel\'s Clear clears the grader\'s table too',
+   !!oomG && oomG.points === 0 && oomG.pred_steps == null,
+   'grader ' + (oomG ? oomG.points + ' points, step ' + oomG.pred_steps : 'none'));
+press(win, 'plot');   /* section 3 asserts that a plant change clears a NON-empty plot */
+
 /* ============================================================ 3. another supported plant */
 head('3. the guard was NARROWED, not deleted — another supported plant still works');
 

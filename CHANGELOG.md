@@ -31,6 +31,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Mode 3 to Mode 1 9a now grades "3 steps short of the 1/M prediction"** (owner option selected
+  2026-09-24: "Build a way for the sim to read the 1/M prediction so '3 short' can be checked (new
+  work); keep the cap."). The 1/M panel sends each plotted sample with `plot_1m_point` (and Clear
+  as `plot_1m_clear`); the instructor keeps the same table through one shared fit,
+  `RD.OneOverMCore` in layers/instructor_layer.js, and publishes `instructor.one_over_m`
+  `{points, pred_steps}`. 9a (`below_1m: 3`) needs the bank still 60 s AND at or below the printed
+  prediction minus 3; with no prediction it ticks on the stop alone and the card says so. The table
+  is session scratch like the panel's, NOT in saves (no format change); it clears on plant change,
+  a rewind past the last capture, or Clear. Replay route: +8 then `replay_then` +3 (new
+  replay-only field). Measured: prediction 211 / 210 (seeds 42 / 7), a stop at it or 2 short
+  never ticks, 3 short ticks +63 s. Gates: `run_checklist_pwr2` §2am, `run_oneoverm` 2b.
 - **Mode 3 to Mode 1: five owner rulings on the 2026-09-24 layman pass 2** (#653). 9b now names a
   fine-but-shallow 0.06-0.10 STARTUP RATE band, and the times/levels downstream that assumed the
   deeper "as written" approach are ranges covering both routes ("about 25 to 35 plant-minutes",

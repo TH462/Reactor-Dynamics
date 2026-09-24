@@ -2880,20 +2880,36 @@
            * one was measured and recommended against, and the owner has not ruled for one. The
            * note's "over 1.0 with the rods already still, tap INSERT once and wait" is an
            * operator action, not a protection. */
-          cmd: { action: 'rod_nudge', group_id: 'control', steps: 11, speed: 'slow' }, hold: 480,
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 8, speed: 'slow' }, hold: 480,
+          replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 3, speed: 'slow' } },
           /* ---- STEP 9 GRADES THE APPROACH, WHICH NOTHING DID BEFORE (2026-09-23 split) ----
            * His 9a is "Rods stopped 3 steps short of the 1/M prediction" and his 9b "STARTUP RATE
            * positive and steady with the rods stopped". Old step 9 graded neither — its rows were
            * the climb's (INTER RANGE / REACTOR POWER), which moved to step 10 below.
            *
-           * ⚠ 9a's "3 SHORT" HALF IS UNGRADEABLE AND IS NOT GRADED. The 1/M prediction lives only in
-           * the panel (ui/panels/one_over_m.js; layers/instructor_layer.js says so), never in the
-           * snapshot, and grading against TRUE critical position would be grading truth, not an
-           * instrument (Hard Rule 1, instruments versus truth). So 9a is the half that IS on the
-           * board: the control bank has not moved for 60 s. Its label keeps his words; the row
-           * ticks on ANY stop, including a player who never pulled (bank 202 ticks it 60 s after
-           * the step opens). That is harmless only because 9b cannot follow it there — MEASURED
-           * below, bank 202 never completes the step.
+           * 9a's "3 SHORT" HALF IS GRADED (2026-09-24; owner option selected that day: "Build a way
+           * for the sim to read the 1/M prediction so '3 short' can be checked (new work); keep the
+           * cap."). `below_1m: 3` adds to the 60 s `stopped` row: CONTROL ROD POSITION at or below
+           * the prediction the 1/M panel PRINTS, minus 3 — the instrument, not true critical (Hard
+           * Rule 1). The panel sends each sample it plots down with `plot_1m_point`, the instructor
+           * keeps the same table through RD.OneOverMCore (layers/instructor_layer.js), and the fit
+           * and the rounding are that one module's. Further short still ticks (the prediction
+           * reads high); AT the prediction, or 1-2 short, does not. NO PREDICTION (never plotted,
+           * one point, Clear, a rewind past the last point) grades the stop alone and the card
+           * says so — a row waiting on a number the panel is not printing would strand the player.
+           *
+           * MEASURED, live runtime, `hot_zero_power`, plots at banks 0/84/156/185/197 with 120 s
+           * settles, then a SLOW pull from 197 (run_checklist_pwr2 §2am):
+           *   seed 42: prediction 211.  stop 211 or 209: 9a never.  208: 9a +63 s, step done
+           *            +387 s.  205: 9a +63 s.  Clear, stop 211: 9a +63 s, "no prediction" line.
+           *   seed 7:  prediction 210.  stop 210 or 208: never.  207: 9a +63 s, taps to 210,
+           *            step done +1296 s.  Clear: as seed 42.
+           * The AUTHORED replay plots mid-burst (0/79/155/188/202) and predicts 213 on both seeds,
+           * so its old single +11 pull stopped AT the prediction and 9a refused it. The route is
+           * now +8 (bank 210, 3 short), then `replay_then` +3 once 9a latches — the downstream
+           * leg still starts from 213, the bank its holds were measured on. A stop at 210 alone
+           * was measured and REJECTED: power arrives too late for step 10's 1320 s hold (REACTOR
+           * POWER 0.003 % seed 42, 0.001 % seed 7 at its end).
            *
            * 9b IS TWO GRADED ROWS AND ONE DRAWN LINE. His "wait about five plant-minutes, then
            * read" is a DWELL, and a rate band on its own cannot carry one: straight after a tap the
@@ -2944,7 +2960,10 @@
            * "1.00" — so a rate the note says to INSERT on is never a check-off.
            *
            * THE HOLD IS 480 s AND STEP 10's IS 1320 s — the old 1800 split, not lengthened. The
-           * authored route meets every row at +383 s (1.25x inside 480); REACTOR POWER 0.1 % came
+           * authored route met every row at +383 s (1.25x inside 480) as one +11 pull; split +8 then
+           * +3 (2026-09-24, above) the last rod motion is at +142 s, so the 300 s dwell ends +442 s,
+           * 1.09x inside 480 (MEASURED, replay, seeds 42 and 7: 338 s still at the hold's end).
+           * REACTOR POWER 0.1 % came
            * at 1444-1650 s from the creep press across seeds 1/7/42/123 (INHERITED, the table
            * above), i.e. 964-1170 s into step 10, 1.13x inside 1320.
            *
@@ -2976,6 +2995,7 @@
             industry: 'REACTOR POWER 0.5 % — CRITICALITY APPROACH OVERTAKEN. Rods stopped; STARTUP RATE under 1 DPM.' },
           accs_ordered: true,
           accs: [{ p: 'control_bank_steps', op: 'stopped', v: 60, latch: true,   /* S-1, 2026-09-23: the hidden 300 s row carries the hold */
+                   below_1m: 3,   /* 2026-09-24: AND at or below the panel's printed prediction minus 3 (see the 9a note above) */
                    ask: 'Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position.',
                    note: 'The prediction reads HIGH, never low, so stopping short of it is the point. At SLOW the rods move about one step every 8 plant-seconds, so a short hold at 1× moves nothing. It ticks after the rods have been still for a plant-minute.',
                    wait_speed: 1,

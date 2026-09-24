@@ -4611,7 +4611,9 @@
       /* `voided` is a FOURTH state for the same reason (#773/#788): the player's own
        * casualty stood the row down, which draws a different extra line, and on a SOLE
        * row `acc_met` flips to true with nothing else in the key moving at all. */
-      (ck.accs || []).map(function (a) { return a.voided ? 3 : (a.met ? (a.implied ? 2 : 1) : 0); }).join(''),
+      /* `no_1m` joins it too (2026-09-24): pwr_startup 9a's "no prediction" line comes and goes
+       * with the 1/M table (a Clear, a rewind) while `met` need not move. */
+      (ck.accs || []).map(function (a) { return (a.voided ? 3 : (a.met ? (a.implied ? 2 : 1) : 0)) + (a.no_1m ? 'n' : ''); }).join(''),
       ck.acc_voided || '', ck.saw_voided || '',
       /* THE REACTOR-TRIP BANNER JOINS THE KEY (#709) — this file's four-times-learned lesson
        * (#392's precondition banner, #653 defect 4's mode line, #759's out-of-turn note,
@@ -4991,6 +4993,13 @@
                * (`voided` carries the casualty's display string), never re-derived here. */
               (av.voided ? '<div class="ckl-crit-when">Not verified — you injected ' +
                  mesc(av.voided) + ', and this reading comes off that gauge.</div>' : '') +
+              /* A `below_1m` ROW WITH NO PREDICTION TO GRADE AGAINST SAYS SO (2026-09-24, pwr_startup
+               * 9a). The 1/M plot prints no prediction (too few points, a Clear, a rewind past the
+               * last point), so the "3 short" half cannot be checked and the row ticks on the rods
+               * being still alone — rather than stranding a player who never plotted. `no_1m` is
+               * the runtime's verdict, never re-derived here. */
+              (av.no_1m ? '<div class="ckl-crit-when">The 1/M plot shows no prediction, so this ticks ' +
+                 'once the rods have been still a plant-minute.</div>' : '') +
               '</div>';
           }
           if (pendTail) { h += pendTail; pendTail = ''; }

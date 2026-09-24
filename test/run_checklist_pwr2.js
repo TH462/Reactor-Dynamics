@@ -2652,6 +2652,21 @@ if (!only && RUN_B) {
         var step = proc.steps[i];
         if (step.cmd) svc.handleCommand(step.cmd);
         if (i === si) break;
+        /* `replay_then` (2026-09-24): step 9's route is +8, still 60 s (9a), then +3 — the second
+         * pull issued the way the harness issues it, once the bank has been still a minute */
+        if (step.replay_then) {
+          var ts0 = s.metadata.sim_time, tq = null, gC = function () {
+            return s.control_state.rod_groups.filter(function (g) { return g.function === 'control'; })[0]; };
+          while (s.metadata.sim_time - ts0 < (step.hold || 2)) {
+            s = svc.tick();
+            if (tq === null && !gC().moving) tq = s.metadata.sim_time;
+            if (gC().moving) tq = null;
+            if (tq !== null && s.metadata.sim_time - tq >= 61 && step.replay_then) {
+              svc.handleCommand(JSON.parse(JSON.stringify(step.replay_then.cmd))); tq = -1e9; step = { hold: step.hold };
+            }
+          }
+          continue;
+        }
         runFor(step.hold != null ? step.hold : 2);
       }
       var t0 = s.metadata.sim_time;
@@ -3177,6 +3192,140 @@ if (!only && RUN_B) {
     function onEdge(x) { var f = Math.round(x * 1000) % 10; return Math.abs(x * 1000 - Math.round(x * 1000)) < 1e-6 && f === 5; }
     ck('2ak.4 the STARTUP RATE band edges sit on the tile\'s toFixed(2) render-band edges',
        onEdge(lo) && onEdge(hi), lo.toFixed(4) + ' .. ' + hi.toFixed(4));
+  })();
+
+  /* 2am. 9a GRADES "3 SHORT OF THE 1/M PREDICTION" (2026-09-24; owner option selected that day:
+   * "Build a way for the sim to read the 1/M prediction so '3 short' can be checked (new work);
+   * keep the cap."). The route is the 2026-09-24 layman's: plots at banks 0/84/156/185/197 with a
+   * 120 s settle each, pressed the way the panel presses (RD.OneOverMCore.sample, the sample
+   * carried on `plot_1m_point`), then a SLOW pull from 197. Each case is a fork of ONE save taken
+   * at step 9's entry, which also proves the table survives a same-time restore. Seeds 42 and 7.
+   *   .1 the layman's plots print a prediction, and it survives the restore
+   *   .2 a stop AT the prediction never ticks 9a (360 s)
+   *   .3 a stop 2 short never ticks 9a (360 s) — the boundary
+   *   .4 a stop 3 short ticks 9a inside 90 s of the stop, and the note's tap policy completes the
+   *      step on its own rows (not `overtaken`)
+   *   .5 Clear (`plot_1m_clear`): no prediction -> a stop AT the old prediction ticks 9a on the
+   *      stop alone, flagged `no_1m` for the card's line (the no-soft-lock fallback)
+   *   .6 a restore to BEFORE the last plot clears the table — the panel's own rewind rule
+   * MEASURED at build (seed 42 / 7): prediction 211 / 210; 3 short ticks +63 s; step completes
+   * +387 s / +1296 s.
+   * INJECTIONS, proven in place: `below_1m` deleted from 9a -> .2, .3 and .5 red; `<=` -> `<` in
+   * applyBelow1m -> .4 red; the `plot_1m_clear` handler deleted -> .5 red; the clock rule in
+   * `_oneOverMTick` deleted -> .6 red; a null prediction graded as unmet -> .5 red. */
+  (function () {
+    var proc = null;
+    POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
+    var S9 = -1;
+    ((proc && proc.steps) || []).forEach(function (st, k) {
+      if (S9 < 0 && st.accs_ordered && (st.accs || []).some(function (e) { return e && e.latch; })) S9 = k;
+    });
+    if (S9 < 0) { ck('2am. pwr_startup carries the latched approach step', false, 'not found'); return; }
+    [42, 7].forEach(function (seed) {
+      var svc = null, s = null, i, P = null, b9 = null, fork = null, preLast = null;
+      function tick() { var r = svc.tick(); if (r) s = r; return s; }
+      function t() { return s.metadata.sim_time; }
+      function holdS(sec) { var t0 = t(); while (t() - t0 < sec) tick(); }
+      function grp() { return s.control_state.rod_groups.filter(function (g) { return g.function === 'control'; })[0]; }
+      function bank() { return grp().steps; }
+      function pullTo(b, speed) {
+        if (b !== bank()) svc.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: b - bank(), speed: speed });
+        var g = 0; do { tick(); } while ((bank() !== b || grp().moving) && g++ < 200000);
+      }
+      function plot() {
+        var m = RD.OneOverMCore.sample(s);
+        if (m.ok) svc.handleCommand({ action: 'plot_1m_point', x: m.x, counts: m.counts, t: t() });
+        tick();
+      }
+      function ckl() { return s.instructor && s.instructor.checklist; }
+      function oom() { return s.instructor && s.instructor.one_over_m; }
+      /* ONE BUILD PER CLEAR-FREE BATCH: the table is session scratch, never in a save, so once
+       * .6 (or a Clear) empties it no restore brings it back -- .5 gets a build of its own */
+      function build() {
+        svc = new RD.SimulationService({ seed: seed });
+        svc.selectPlant('pwr2', 'hot_zero_power', null, undefined);
+        svc.running = true; svc.timeAcceleration = 10; svc.attentionStops = false;
+        s = null;
+        tick();
+        for (var k = 1; k < 4; k++) {
+          var st = proc.steps[k];
+          if (st.cmd) svc.handleCommand(JSON.parse(JSON.stringify(st.cmd)));
+          holdS(st.hold || 5);
+        }
+        plot();
+        var stops = [84, 156, 185, 197]; preLast = null;
+        /* the save for .6 is taken 10 s BEFORE the last press: a restore to the press's own instant
+         * is not "before the last capture" to the panel either */
+        stops.forEach(function (b, n) {
+          pullTo(b, 'normal'); holdS(n === stops.length - 1 ? 110 : 120);
+          if (n === stops.length - 1) { preLast = svc.saveState(); holdS(10); }
+          plot();
+        });
+        P = oom().pred_steps; b9 = bank();
+        svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
+        for (i = 0; i < 5; i++) tick();
+        var guard = 0;
+        while (ckl() && ckl().step_index < S9 && guard++ < 100) { svc.handleCommand({ action: 'checklist_check', index: ckl().step_index }); tick(); }
+        fork = JSON.stringify(svc.saveState());
+      }
+      function route(target, cap, taps, clear) {
+        svc.loadState(JSON.parse(fork)); tick();
+        var r = { pAfter: oom().pred_steps, met: null, left: null, by: null, row: null };
+        if (clear) { svc.handleCommand({ action: 'plot_1m_clear' }); tick(); }
+        var t9 = t(); pullTo(target, 'slow');
+        var tStop = t(), lastB = bank(), lastMove = t(), goal = target;
+        while (t() - t9 < cap) {
+          tick();
+          var c = ckl();
+          if (!c || c.step_index !== S9) { r.left = t() - t9; r.by = c && c.done_by ? c.done_by[S9] : null; break; }
+          r.row = c.accs && c.accs[0];
+          if (r.row && r.row.met && r.met == null) r.met = t() - tStop;
+          if (c.awaiting_ack) { svc.handleCommand({ action: 'checklist_check', index: S9 }); continue; }
+          if (!taps) continue;
+          var b = bank();
+          if (b !== lastB) { lastB = b; lastMove = t(); }
+          if (b === goal && t() - lastMove >= 300) {           /* the note's policy, one tap per dwell */
+            var sr = s.instruments.startup_rate, d = sr > 1.0 ? -1 : (sr < 0.055 ? 1 : 0);
+            if (d) {
+              goal += d; lastMove = t();
+              try { svc.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: d, speed: 'slow' }); }
+              catch (e) { goal -= d; }
+            }
+          }
+        }
+        return r;
+      }
+      function say(r) {
+        return '9a ' + (r.met == null ? 'never' : '+' + r.met.toFixed(0) + ' s after the stop') +
+               (r.left == null ? '' : ', step left +' + r.left.toFixed(0) + ' s by ' + r.by) +
+               (r.row ? ', row pred_1m ' + r.row.pred_1m + (r.row.no_1m ? ' (no_1m)' : '') : '');
+      }
+      build();
+      var tag = ' (seed ' + seed + ')';
+      var at = route(P, 360, false, false);
+      ck('2am.1 the layman\'s plots print a 1/M prediction, and a same-time restore keeps it' + tag,
+         typeof P === 'number' && P > b9 && at.pAfter === P,
+         'prediction ' + P + ', after restore ' + at.pAfter + ', bank at step 9 ' + b9);
+      ck('2am.2 a stop AT the prediction never ticks 9a' + tag, at.met == null && !!at.row && at.row.pred_1m === P,
+         'stop ' + P + ': ' + say(at));
+      var two = route(P - 2, 360, false, false);
+      ck('2am.3 a stop 2 short never ticks 9a' + tag, two.met == null && !!two.row,
+         'stop ' + (P - 2) + ': ' + say(two));
+      var three = route(P - 3, 2400, true, false);
+      ck('2am.4 a stop 3 short ticks 9a inside 90 s, and the tap policy completes the step on its own rows' + tag,
+         three.met != null && three.met <= 90 && three.left != null && three.by != null && three.by !== 'overtaken',
+         'stop ' + (P - 3) + ': ' + say(three));
+      /* .6 AFTER the clear-free cases: it empties the table, and nothing restores it */
+      svc.loadState(JSON.parse(JSON.stringify(preLast))); tick();
+      ck('2am.6 a restore to before the last plot clears the grader\'s table, as it clears the panel (seed ' + seed + ')',
+         !!oom() && oom().points === 0 && oom().pred_steps == null,
+         'points ' + (oom() && oom().points) + ', prediction ' + (oom() && oom().pred_steps));
+      build();
+      var clr = route(P, 360, false, true);
+      ck('2am.5 after Clear there is no prediction: a stop AT the old one ticks 9a on the stop alone, flagged no_1m' + tag,
+         clr.met != null && clr.met <= 90 && !!clr.row && clr.row.no_1m === true && clr.row.pred_1m == null,
+         'stop ' + P + ': ' + say(clr));
+    });
   })();
 
   /* 2al. STEP 12 GRADES THE LEVEL-OFF, STEP 17 GRADES 9 % (OWNER RULINGS 2026-09-23 — selections
