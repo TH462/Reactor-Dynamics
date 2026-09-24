@@ -3162,6 +3162,85 @@ if (!only && RUN_B) {
        onEdge(lo) && onEdge(hi), lo.toFixed(4) + ' .. ' + hi.toFixed(4));
   })();
 
+  /* 2al. STEP 12 GRADES THE LEVEL-OFF, STEP 17 GRADES 9 % (OWNER RULINGS 2026-09-23 — selections
+   * "Grade real level-off" and "Keep 10 MWe, grade 9 %"; the reviewer's route of the 2026-09-23
+   * layman playtest, S-3 and S-4). Live runtime, stop at bank 210 (a shallow approach: power
+   * levels near 1.4 %, and the old rate row was met the moment step 12 opened).
+   *   .1 step 12 is NOT checked off in its first 600 s (power still climbing), and IS by +2400 s
+   *   .2 ...then +13 SLOW, LATCH, LOAD 10 MWe, and a player who reaches step 15 twenty
+   *      plant-minutes after LOAD: both blocks take, the leg COMPLETES (step 17 at 9 %), and both
+   *      blocks are still set 600 s later
+   * INJECTIONS (2026-09-23, the identical block run from a scratch copy against a mutated pool):
+   * the old rate row back in place of the steady row -> .1 red (ticked at +3 s); step 17's floor
+   * back to 10.05 -> .2 red (never completes: power sits at 9.7 %). */
+  (function () {
+    var proc = null;
+    POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
+    var S9 = 8, S12 = 11;
+    var svc = mkSvc('hot_zero_power'), s = null, i;
+    function tick() { var r = svc.tick(); if (r) s = r; return s; }
+    function t() { return s.metadata.sim_time; }
+    function holdS(sec) { var t0 = t(); while (t() - t0 < sec) tick(); }
+    function bank() { return s.control_state.rod_groups.filter(function (g) { return g.id === 'control_rods' || g.function === 'control'; })[0].steps; }
+    function ckl() { return s.instructor && s.instructor.checklist; }
+    function blk(p) { return RD.InstructorLayer.paramValue(s, p) ? 1 : 0; }
+    // advance the live checklist, acking each completed step, until step index `k` opens (or `lim` s)
+    function toStep(k, lim) {
+      var t0 = t();
+      while (t() - t0 < lim) {
+        var c = ckl();
+        if (!c || c.step_index >= k) return true;
+        if (c.awaiting_ack) svc.handleCommand({ action: 'checklist_check', index: c.step_index });
+        tick();
+      }
+      return false;
+    }
+    tick();
+    for (var k = 1; k < S9; k++) {
+      var st = proc.steps[k];
+      if (st.cmd) svc.handleCommand(JSON.parse(JSON.stringify(st.cmd)));
+      holdS(st.hold || 5);
+    }
+    svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
+    for (i = 0; i < 5; i++) tick();
+    toStep(S9, 60);
+    svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 210 - bank(), speed: 'slow' });
+    var at12 = toStep(S12, 9000), t12 = t(), early = null, done12 = null;
+    while (at12 && t() - t12 < 2400) {
+      tick();
+      var c = ckl();
+      if (c && c.step_index === S12 && c.awaiting_ack) { done12 = t() - t12; break; }
+    }
+    ck('2al.1 bank 210: step 12 is not checked off while power climbs (first 600 s), and is once it levels',
+       at12 && done12 != null && done12 >= 600,
+       (at12 ? 'step 12 checked off at ' + (done12 == null ? 'NEVER in 2400 s' : '+' + done12.toFixed(0) + ' s') +
+        ', REACTOR POWER ' + s.instruments.power_range.toFixed(2) + ' %' : 'step 12 never reached'));
+    toStep(S12 + 1, 30);
+    svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 13, speed: 'slow' });
+    toStep(S12 + 2, 1200);
+    svc.handleCommand({ action: 'latch_turbine' }); holdS(5);
+    svc.handleCommand({ action: 'set_load_target', mwe: 10 });
+    var tL = t();
+    toStep(S12 + 3, 900);
+    holdS(1200 - (t() - tL));
+    var pAt = s.instruments.power_range;
+    svc.handleCommand({ action: 'set_trip_block', trip_id: 'ir_high', blocked: true });
+    toStep(S12 + 4, 120);
+    svc.handleCommand({ action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: true });
+    var t16 = t(), fin = null;
+    while (t() - t16 < 600) {
+      tick();
+      var c2 = ckl();
+      if (c2 && c2.awaiting_ack) svc.handleCommand({ action: 'checklist_check', index: c2.step_index });
+      if (!c2 || c2.complete || c2.step_index >= proc.steps.length) { fin = t() - t16; break; }
+    }
+    holdS(600);
+    ck('2al.2 ...LOAD 10 MWe, blocks pressed 20 plant-minutes later: the leg completes (step 17 at 9 %) and both blocks hold',
+       fin != null && blk('ir_high_blocked') && blk('pr_low_setpoint_blocked'),
+       'pressed at REACTOR POWER ' + pAt.toFixed(2) + ' %; ' + (fin == null ? 'leg NOT complete' : 'complete ' + fin.toFixed(0) + ' s after the second block') +
+       '; blocks ' + blk('ir_high_blocked') + blk('pr_low_setpoint_blocked') + ' 600 s later at ' + s.instruments.power_range.toFixed(2) + ' %');
+  })();
+
   /* 2ae. A DEAD GAUGE STRANDS THE LEG — THE WHOLE-POOL SWEEP (#773, 2026-09-19).
    *
    * §2ad above closed ONE instance by hand (`pwr_startup` step 9's INTER RANGE row, by
@@ -3427,10 +3506,14 @@ if (!only && RUN_B) {
        * `overtaken` on REACTOR POWER 0.5 % stands it down off-channel once power arrives (§2aj). */
       'pwr_startup:10:power_pct': 'power_range',             // > 0.05        the row #749's relief leans ON
       'pwr_startup:11:power_pct': 'power_range',             // >= 0.45 [SOLE]
-      'pwr_startup:12:startup_rate_dpm': 'startup_rate',     // ~ 0           dead -5.000 DPM (range floor)
+      /* RE-PINNED 2026-09-23 (owner ruling "Grade real level-off"): step 12's rate row was REPLACED by a
+       * `steady` row on REACTOR POWER. The key is now the power row; the sweep grades ONE snapshot,
+       * which never covers a `steady` window, so it reads met:false by construction — whether a dead
+       * (constant) power-range reading would satisfy it live was NOT measured. */
+      'pwr_startup:12:power_pct': 'power_range',             // steady 0.03 / 300 s
       'pwr_startup:13:power_pct': 'power_range',             // >= 5.05 [SOLE]
       'pwr_startup:14:mwe_output': 'mwe_output',             // > 8 [SOLE]
-      'pwr_startup:17:power_pct': 'power_range',             // >= 10.05
+      'pwr_startup:17:power_pct': 'power_range',             // >= 9.05 (owner ruling 2026-09-23, was 10.05)
       'pwr_startup:17:mwe_output': 'mwe_output',             // ~ 10
       /* pwr_raise_power [low_power] */
       'pwr_raise_power:2:mwe_output': 'mwe_output',          // > 8           dead 0.000 vs true 10.00 MWe
@@ -3630,7 +3713,7 @@ if (!only && RUN_B) {
       'pwr_heatup:17': 'power_pct',
       'pwr_startup:1': 'tavg_c,pressure_mpa',                // his two bands (2026-09-23)
       'pwr_startup:10': 'ir_amps,power_pct',                  // the climb, split out of old 9 (had a cmd)
-      'pwr_startup:12': 'power_pct,startup_rate_dpm',
+      'pwr_startup:12': 'power_pct',                          // the rate row became a `steady` power row (2026-09-23)
       'pwr_startup:17': 'power_pct,mwe_output',               // his two rows, replacing plant_mode
       'pwr_raise_power:9': 'power_pct,boron_ppm,tavg_c',
       'pwr_raise_power:12': 'mwe_output',                     // the #667 shape, one leg later

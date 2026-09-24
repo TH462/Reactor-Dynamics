@@ -29,6 +29,22 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-23-workbench-d (four owner rulings on the Mode 3 to Mode 1 layman pass: a `steady` row across an insert; a `<` row that guarded nothing; power at a fixed LOAD depends on the bank)
+
+Rulings and per-change numbers: the reconcile record (d) at the end of `Blueprint/walkthrough_steps/02_mode3_to_mode1.md`.
+
+- **A `steady` ROW TICKS AT A TURNOVER.** It compares the two half-window means, and a rise-then-fall
+  (withdraw overshoot, then INSERT) makes them equal at the peak: `pwr_startup` 12 after a 14-step
+  insert ticked at +468 s with power 2.41 % and FALLING (bank 219 → 205), and at the 300 s floor on
+  225 → 211. Not a level-off check across a reversal. Adding the old rate row back would have
+  LOCKED the 219 case instead (subcritical decay holds the rate at −0.05, inside ±0.10, for ever).
+- **A `<` ROW LATCHES, SO "power below 5 %" NEVER GUARDED STEP 12.** It is met at ~0.46 % when the
+  step opens and stays met; measured, bank 225 with a short insert completed step 12 level at 6.6 %.
+- **"POWER FOLLOWS THE TURBINE, NOT THE ROD APPROACH" (inherited, S-4) IS HALF TRUE.** At LOAD 10 MWe,
+  1200–2400 s after LOAD: bank 222–226 → 9.67–9.84 %, 228 → 10.14–10.66 %, 229 → 11.05–11.19 %,
+  233 → 13.1 %. Same load, 3.5 points apart on where the rods ended. Any "near N %" on a step after a
+  free-length pull is a range, not a number.
+
 ## Session log — 2026-09-23-workbench-c (layman pass on the Mode 3 to Mode 1 per-substep port: a re-grading row moved the clock; a rate floor inside its render band)
 
 Report and per-finding verdicts: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-23_LAYMAN.md`.

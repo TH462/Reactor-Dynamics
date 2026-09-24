@@ -88,7 +88,7 @@ Background
 
 5a. Hold WITHDRAW at MED until SOURCE RANGE passes 7.0e2. Let STARTUP RATE fall to zero.
 
-Note: Stop when CONTROL ROD POSITION reads about 80 to 100.
+Note: Stop when CONTROL ROD POSITION reads about 80 to 100. STARTUP RATE is back to 0.00 about half a plant-minute after the rods stop.
 
 Suggested time warp: 5×.
 
@@ -186,19 +186,19 @@ This is the last plotted point: from here single steps beat one more fitted numb
 
 9a. Press SLOW, then hold WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position.
 
-Note: The prediction reads HIGH, never low, so stopping short of it is the point.
+Note: The prediction reads HIGH, never low, so stopping short of it is the point. At SLOW the rods move about one step every 8 plant-seconds, so a short hold at 1× moves nothing.
 
 Suggested time warp: 1×.
 
 ()  Rods stopped 3 steps short of the 1/M prediction
 
-9b. Tap WITHDRAW one step, wait about five plant-minutes, and read STARTUP RATE. Repeat until it reads positive with the rods still.
+9b. Tap WITHDRAW one step, wait about five plant-minutes, and read STARTUP RATE. Repeat until it reads +0.06 or more five minutes after the tap.
 
-Note: Read the rate only once it has stopped falling, about five minutes after the last tap. Around 0.15, with PERIOD 150 to 200 seconds, is this approach going as written. Around 0.5, or PERIOD under 60 seconds, is about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher. Over 1.0, tap INSERT once and wait. Near 0.01, with PERIOD in the thousands of seconds and nothing moving, means you have stopped short of critical — tap one more step out and wait.
+Note: Read the rate only once it has stopped falling, about five minutes after the last tap. Around 0.15, with PERIOD 150 to 200 seconds, is this approach going as written. Around 0.5, or PERIOD under 60 seconds, is about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher. Over 1.0, tap INSERT once and wait. Near 0.01, with PERIOD in the thousands of seconds and nothing moving, means you have stopped short of critical — tap one more step out and wait. 0.02 to 0.05: one more step out.
 
 Suggested time warp: 10× while you wait; back to 1× before every tap.
 
-()  STARTUP RATE positive and steady with the rods stopped
+()  STARTUP RATE +0.06 to +1.00 with the rods stopped
 
 Background
 
@@ -247,14 +247,14 @@ With the reactor just critical, power climbs by itself and every extra rod step 
 
 12. Let power level itself off below 5 %.
 
-12a. Leave the rods alone and watch REACTOR POWER stop rising on its own, near 4 %.
+12a. Leave the rods alone and watch REACTOR POWER stop rising on its own, near 3 %.
 
-Note: The climb stops by itself about twenty plant-minutes after the rods stop, and STARTUP RATE comes back to 0.00 on the way. The step checks off once the rate is under 0.10, which comes about fifteen minutes before power finally levels — leave the rods alone and let it. If power instead runs past 5 %: come back to 1×, press MED and hold INSERT until it comes back — about 14 steps — then release and let the plant settle before you read it. While the bank is driving in, STARTUP RATE is well below zero and power has not finished falling.
+Note: The climb stops by itself about twenty plant-minutes after this step opens, and STARTUP RATE comes back to 0.00 on the way. The step checks off once REACTOR POWER has held still for five plant-minutes — leave the rods alone and let it. If power instead runs past 5 %: come back to 1×, press MED and hold INSERT until it comes back — about 14 steps — then release and let the plant settle before you read it. While the bank is driving in, STARTUP RATE is well below zero and power has not finished falling.
 
 Suggested time warp: 10×; 1× if you have to insert.
 
 ()  REACTOR POWER below 5 %
-()  STARTUP RATE settled between -0.10 and 0.10
+()  REACTOR POWER steady, no longer rising
 
 Background
 
@@ -268,7 +268,7 @@ Warmer water slows this reactor down, so the heat the climb makes is what stops 
 
 13a. Press SLOW, then hold WITHDRAW until REACTOR POWER passes 5 %, about 13 steps.
 
-Note: Power settles near 11 % from here. It needs to: the turbine's startup trips cannot be blocked until REACTOR POWER is above 10 %.
+Note: Power settles near 10 % from here. It needs to: the turbine's startup trips cannot be blocked until REACTOR POWER is above 9 ½ %.
 
 Suggested time warp: 5×.
 
@@ -276,7 +276,7 @@ Suggested time warp: 5×.
 
 Background
 
-Mode 1, At Power, begins at 5 % power. The warming water now holds power back, so each rod step buys a new steady level rather than a runaway — about half a percent of power per step. The extra steps past 5 % are for the turbine: it needs REACTOR POWER above 10 % before the startup trips will stay switched off.
+Mode 1, At Power, begins at 5 % power. The warming water now holds power back, so each rod step buys a new steady level rather than a runaway — about half a percent of power per step. The extra steps past 5 % are for the turbine: it needs REACTOR POWER above 9 ½ % before the startup trips will stay switched off.
 
 [HIGHLIGHTED: Rod Speed — Slow, Withdraw (pulsing); Startup Rate, Intermediate Range, Control Rod Position (steady)]
 
@@ -298,17 +298,17 @@ Suggested time warp: 10×.
 
 Background
 
-LATCH resets the turbine so it can take steam; LOAD is how much electricity the generator is asked for. As the generator picks up load, more steam is drawn, the water cools, and cooler water raises power — the reactor follows the turbine up to about 11 % by itself. That coupling is the central idea of this plant.
+LATCH resets the turbine so it can take steam; LOAD is how much electricity the generator is asked for. As the generator picks up load, more steam is drawn, the water cools, and cooler water raises power — the reactor follows the turbine up to about 10 % by itself. That coupling is the central idea of this plant.
 
 [HIGHLIGHTED: Turbine — Latch, Load Setpoint (pulsing); Turbine Load, Generator Output (steady)]
 
 
 
-15. Block the first startup trip once REACTOR POWER is above 10 %.
+15. Block the first startup trip once REACTOR POWER is above 9 ½ %.
 
 15a. Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the IR HIGH FLUX row.
 
-Note: Do this the moment REACTOR POWER is above 10 %: at 25 % this trip fires. Below 8 % power the BLOCK button is dead and will not take the press at all; between there and about 9 ½ % it takes it and the block then goes out again by itself, because the permissive is read off the power-range meter, which wanders about ± 0.3 % and keeps dipping back under. If that happens, let power come up and press it again. The reactor keeps climbing while the panel is open.
+Note: Do this the moment REACTOR POWER is above 9 ½ %: at 25 % this trip fires. Below 8 % power the BLOCK button is dead and will not take the press at all; between there and about 9 ½ % it takes it and the block then goes out again by itself, because the permissive is read off the power-range meter, which wanders about ± 0.3 % and keeps dipping back under. If that happens, let power come up and press it again. The reactor keeps climbing while the panel is open.
 
 Suggested time warp: 1×.
 
@@ -324,9 +324,9 @@ Two automatic shutdowns exist only to protect a startup, one at 25 % power and o
 
 16. Block the second startup trip and close the panel.
 
-16a. On the TRIP BLOCKS panel press BLOCK on the PR HIGH (LOW SETPT) row, then close the panel.
+16a. Press TRIP BLOCKS to open the panel again, then press BLOCK on the PR HIGH (LOW SETPT) row and close the panel.
 
-Note: This switches off the second startup shutdown, at 35 %. Check both rows read lit — IR HIGH FLUX and PR HIGH (LOW SETPT) — while the panel is still open, then close it with TRIP BLOCKS again: it covers the rod buttons.
+Note: Any click outside the panel closes it, Continue included, so it is shut when this step opens. This switches off the second startup shutdown, at 35 %. Check both rows read lit — IR HIGH FLUX and PR HIGH (LOW SETPT) — while the panel is still open, then close it with TRIP BLOCKS again: it covers the rod buttons.
 
 Suggested time warp: 1×.
 
@@ -342,13 +342,13 @@ The second startup shutdown fires at 35 % if it is still live. Above 10 % the sh
 
 17. Verify Mode 1, At Power.
 
-17a. Read REACTOR POWER above 10 % and OUTPUT near 10 MWe.
+17a. Read REACTOR POWER above 9 % and OUTPUT near 10 MWe.
 
 Note: IR HIGH FLUX and PR HIGH (LOW SETPT) were checked lit in the last step, before the TRIP BLOCKS panel was closed.
 
 Suggested time warp: 1×.
 
-()  REACTOR POWER above 10 %
+()  REACTOR POWER above 9 %
 ()  OUTPUT near 10 MWe
 
 Background
@@ -560,3 +560,78 @@ Two of these — step 4 and the step 2 done-when — are the divergence a4f6c9dd
 resolved. It is now resolved in the sim's favour BY THIS REFRESH, which is what you asked for; if
 you want the other resolution instead, re-edit the step above and say so, and the pool comes down.
 
+
+---
+
+### Reconcile record — 2026-09-23 (d), workbench lane: four owner rulings on the layman playtest
+
+*The four rulings below are **selections** from options put to him in a question dialog on
+2026-09-23. The quoted text is the OPTION he selected, not his own words (Hard Rule 11). Every
+change is in this file AND in `ui/manual_procedures.js`; measurements are the live checklist runtime,
+full stack, `hot_zero_power`, seeds 42 and 7, unless marked INHERITED.*
+
+**1. Step 17 — OWNER RULING (2026-09-23): selected "Keep 10 MWe, grade 9 %"** (option text: "Text
+says power ends 'near 10 %'; step 17 is checked at 9 %. The first trip block needs power above
+10 %, so step 15 gets tight.").
+- 17a and its check-off now read "above 9 %", graded at 9.05 % (where the tile first prints "9.1").
+- "near 11 %" → "near 10 %" in step 13's note and target; "about 11 %" → "about 10 %" in step 14's Background.
+- Measured at LOAD 10 MWe, 1200 to 2400 s after LOAD, eight routes (rod stops 209 to 225): power
+  settles at 9.67 to 10.66 %. The old 10.05 floor was met only on the load overshoot. The new floor
+  ticks 4 to 10 s after step 17 opens on every route, including a player who reaches it 20
+  plant-minutes late.
+- **CHANGED BEYOND THE RULING — for your review.** Step 15's line and note, and step 13's note and
+  Background, said "above 10 %". They now say **"above 9 ½ %"**. Why: on your own route (stop at 213,
+  then +13) power settles at 9.69 to 9.84 %. It reads "10" only during the load overshoot and
+  never again, so "do this the moment REACTOR POWER is above 10 %" is a cue a player can miss for
+  good. Measured: a player who presses once the tile reads 9.5 gets the block on the first press on
+  all five routes, and both blocks are still set 600 to 2400 s after LOAD. The block also held when
+  pressed 20 plant-minutes late at 9.73 %. Step 15's note already said the block "goes out again"
+  only below about 9 ½ %. The next leg's 9 % entry check still clears (lowest reading 9.67 %).
+
+**2. Step 9b — OWNER RULING (2026-09-23): selected "Reword".**
+- 9b now reads "Repeat until it reads +0.06 or more five minutes after the tap". The note gains
+  "0.02 to 0.05: one more step out." (24 words, under the 30-word cap.)
+- **CHANGED BEYOND THE RULING:** the check-off label "STARTUP RATE positive and steady with the rods
+  stopped" became "STARTUP RATE +0.06 to +1.00 with the rods stopped". The old label named the
+  "positive" that the ruling retired. The band is graded at 0.055 to 1.005, which is exactly what
+  the tile prints as +0.06 to +1.00.
+
+**3. Step 12 — OWNER RULING (2026-09-23): selected "Grade real level-off"** (option text: grade
+"REACTOR POWER steady" in place of the rate row, and "near 4 %" becomes "near 3 %").
+- The STARTUP RATE row is replaced by "REACTOR POWER steady, no longer rising". It is graded as
+  under 3 % change between the two halves of a 300-second window, and it cannot tick before
+  300 s.
+- 12a now says "near 3 %".
+- Measured check-off times after step 12 opens:
+
+  | route | checks off | power level |
+  |---|---|---|
+  | your route (stop at 213, no tap) | +1105 s / +1168 s | 2.9 / 2.6 % |
+  | the sim's replay (215) | +982 s | 4.0 % |
+  | the reviewer's route (210) | +1390 s / +1402 s | 1.4 / 1.1 % |
+  | 209 | +1369 s | 0.9 % |
+
+  Before this change it ticked at +3 s at 209 and 210.
+- **CHANGED BEYOND THE RULING:** the note sentence "The step checks off once the rate is under 0.10,
+  which comes about fifteen minutes before power finally levels" described the old grading and now
+  reads "The step checks off once REACTOR POWER has held still for five plant-minutes". "About twenty
+  plant-minutes after the rods stop" now reads "…after this step opens": measured, 16 to 23 minutes
+  from the step opening, but about 45 minutes from the rods stopping on your route.
+- The insert branch completes. A player who inserts until power comes back under 5 % stops 3 steps
+  in, at 216, and the step checks off at +535 s. **Known limit:** after a blind 14-step insert
+  (219 → 205, or 225 → 211) the steady row can tick at the turnover, where power stops rising and
+  starts falling (+468 s at 2.4 % and falling; +301 s). The step still completes, just early. Keeping
+  the rate row as well would have LOCKED the 219 case: a subcritical core decays with the rate
+  steady at −0.05.
+
+**4. Three text gaps — OWNER RULING (2026-09-23): selected "Add all three".** AGENT-ADDED lines, for
+your review:
+- 5a note: "STARTUP RATE is back to 0.00 about half a plant-minute after the rods stop." Measured:
+  the tile reads 0.00 at +26 s and +28 s after the 94-step pull stops. The later rungs are slower
+  (step 6 +80/+85 s, 7 +203/+181 s, 8 +431/+419 s), so step 6's "see step 5" now points at a
+  shorter wait than step 6's own.
+- 9a note: "At SLOW the rods move about one step every 8 plant-seconds, so a short hold at 1× moves
+  nothing." Measured 7.0 to 7.3 s per step (11 steps in 79 s).
+- 16a: "Press TRIP BLOCKS to open the panel again, then press BLOCK on the PR HIGH (LOW SETPT) row and
+  close the panel." Its note gains "Any click outside the panel closes it, Continue included, so it
+  is shut when this step opens."

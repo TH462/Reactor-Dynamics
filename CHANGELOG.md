@@ -31,6 +31,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Mode 3 to Mode 1: four owner rulings on the 2026-09-23 layman pass** (#653). Step 12 checks off
+  when REACTOR POWER has stopped moving (was: at once on a shallow approach), "near 3 %"; step 17
+  grades REACTOR POWER above 9 % (a slow player could not finish at LOAD 10 MWe), "near 10 %"
+  throughout and step 15's cue "above 9 ½ %"; 9b "+0.06 or more"; wait times on 5a and 9a and a
+  reopen-the-panel line on 16. `run_checklist_pwr2_b` §2al (+2).
 - **Mode 3 to Mode 1, step 9: a tap no longer un-ticks 9a or drops the clock to 1×** (layman
   playtest 2026-09-23, #653). 9a ("rods stopped") now stays ticked once met (`accs[].latch`); the
   five-minute hold is still graded by the hidden row. The STARTUP RATE floor moves 0.05 → 0.055 so
