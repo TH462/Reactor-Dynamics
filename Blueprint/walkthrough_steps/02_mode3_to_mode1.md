@@ -112,7 +112,7 @@ The first two points always predict the criticality point too high: near the bot
 
 6a. Hold WITHDRAW until SOURCE RANGE passes 1.4e3. Let STARTUP RATE fall to zero.
 
-Note: Stop when CONTROL ROD POSITION reads about 150 to 175 steps. Wait for the rate before you plot — see step 5.
+Note: Stop when CONTROL ROD POSITION reads about 150 to 175 steps. Wait for the rate before you plot: about a minute and a half after the rods stop.
 
 Suggested time warp: 5×.
 
@@ -249,7 +249,7 @@ With the reactor just critical, power climbs by itself and every extra rod step 
 
 12a. Leave the rods alone and watch REACTOR POWER stop rising on its own, near 3 %.
 
-Note: The climb stops by itself about twenty plant-minutes after this step opens, and STARTUP RATE comes back to 0.00 on the way. The step checks off once REACTOR POWER has held still for five plant-minutes — leave the rods alone and let it. If power instead runs past 5 %: come back to 1×, press MED and hold INSERT until it comes back — about 14 steps — then release and let the plant settle before you read it. While the bank is driving in, STARTUP RATE is well below zero and power has not finished falling.
+Note: The climb stops by itself about twenty plant-minutes after this step opens, and STARTUP RATE comes back to 0.00 on the way. The step checks off once REACTOR POWER has held still for five plant-minutes — leave the rods alone and let it. If power instead runs past 5 %: come back to 1×, press MED and hold INSERT until REACTOR POWER reads under 5 %, then release and let the plant settle before you read it. While the bank is driving in, STARTUP RATE is well below zero and power has not finished falling.
 
 Suggested time warp: 10×; 1× if you have to insert.
 
@@ -635,3 +635,5 @@ your review:
 - 16a: "Press TRIP BLOCKS to open the panel again, then press BLOCK on the PR HIGH (LOW SETPT) row and
   close the panel." Its note gains "Any click outside the panel closes it, Continue included, so it
   is shut when this step opens."
+
+RULED 2026-09-24 — two text changes, selections from options put to the owner (option text, not verbatim words). Step 12's insert branch: selected "Insert until under 5 %" — "about 14 steps" became "until REACTOR POWER reads under 5 %" (measured by the 2026-09-23-d pass: stops after 3–5 steps and completes correctly; a blind 14-step insert let the level-off row tick while power was still falling). Step 6: selected "Own number" — "see step 5" became "about a minute and a half after the rods stop" (measured +80/+85 s on seeds 42/7).

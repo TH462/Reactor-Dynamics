@@ -2492,7 +2492,7 @@
           wait_hint: false,
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 1350,   // the 1.4e3 band's lower edge — see step 5's RENDER BAND block
                    ask: 'Hold WITHDRAW until SOURCE RANGE passes 1.4e3. Let STARTUP RATE fall to zero.',
-                   note: 'Stop when CONTROL ROD POSITION reads about 150 to 175 steps. Wait for the rate before you plot — see step 5.',
+                   note: 'Stop when CONTROL ROD POSITION reads about 150 to 175 steps. Wait for the rate before you plot: about a minute and a half after the rods stop.',
                    wait_speed: 5,
                    label: 'SOURCE RANGE reads 1.4e3 (1,400 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Press Plot point, then read the predicted rod position the panel prints.', wait_speed: 1,
@@ -3301,7 +3301,7 @@
           hold: 420, wait_hint: false,
           accs: [{ p: 'power_pct', op: '<', v: 5,
                    ask: 'Leave the rods alone and watch REACTOR POWER stop rising on its own, near 3 %.',
-                   note: 'The climb stops by itself about twenty plant-minutes after this step opens, and STARTUP RATE comes back to 0.00 on the way. The step checks off once REACTOR POWER has held still for five plant-minutes — leave the rods alone and let it. If power instead runs past 5 %: come back to 1×, press MED and hold INSERT until it comes back — about 14 steps — then release and let the plant settle before you read it. While the bank is driving in, STARTUP RATE is well below zero and power has not finished falling.',
+                   note: 'The climb stops by itself about twenty plant-minutes after this step opens, and STARTUP RATE comes back to 0.00 on the way. The step checks off once REACTOR POWER has held still for five plant-minutes — leave the rods alone and let it. If power instead runs past 5 %: come back to 1×, press MED and hold INSERT until REACTOR POWER reads under 5 %, then release and let the plant settle before you read it. While the bank is driving in, STARTUP RATE is well below zero and power has not finished falling.',
                    wait_speed: 10, speed_text: '10×; 1× if you have to insert.',
                    label: 'REACTOR POWER below 5 %' },
                  { cont: true, p: 'power_pct', op: 'steady', v: 0.03, window: 300, label: 'REACTOR POWER steady, no longer rising' }],
