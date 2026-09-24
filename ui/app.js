@@ -5355,8 +5355,13 @@
           if (!act) { cklState.userScrolled = true; return; }
           /* Back at the active step = back in step with the checklist; let it drive again. */
           var top = act.offsetTop - log.offsetTop;
-          var visible = top >= log.scrollTop - 4 &&
-                        top + act.offsetHeight <= log.scrollTop + log.clientHeight + 4;
+          /* A step TALLER than the log can never be wholly on screen, so for one of those "at the
+           * active step" means the view lies inside it (#653 pass 3: the full-visibility test
+           * alone read every scroll of step 9 — the app's own included — as the reader leaving,
+           * which disarmed the Continue scroll below). */
+          var visible = act.offsetHeight > log.clientHeight
+            ? top <= log.scrollTop + 4 && top + act.offsetHeight >= log.scrollTop + log.clientHeight - 4
+            : top >= log.scrollTop - 4 && top + act.offsetHeight <= log.scrollTop + log.clientHeight + 4;
           cklState.userScrolled = !visible;
         }, { passive: true });
       }
@@ -5406,7 +5411,26 @@
             else if (bot > log.scrollTop + log.clientHeight) log.scrollTop = bot - log.clientHeight;
           }
         }
+        /* CONTINUE LIGHTING BELOW THE FOLD IS AN EVENT TOO (#653, layman pass 3, 2026-09-24).
+         * A step taller than the log opens at its own top (above), which leaves its Continue row
+         * below the fold — MEASURED at 1600x1000 on `pwr_startup` step 9: a 785 px step in a
+         * 728 px log, Continue at y 954 against a log floor of 931. When the step's own check-offs
+         * later light Continue, nothing brought it into view, and headless Edge draws no
+         * scrollbar to hint at it. So the moment the ACTIVE step turns ready (not a repaint, and
+         * not the advance itself — a step that opens ready keeps the open-at-its-top rule), scroll
+         * the least distance that shows the Continue row. Same guards as the advance scroll: a
+         * reader who scrolled away, or whose pointer is in the log, is left where they are. */
+        var readyNow = !!ck.awaiting_ack && !ck.complete;
+        if (readyNow && !advanced && !firstBuild && cklState.readyStep !== ck.step_index &&
+            !cklState.userScrolled) {
+          var ackRow = log.querySelector('.ckl-active .ckl-ack-row');
+          if (ackRow) {
+            var over = ackRow.getBoundingClientRect().bottom - log.getBoundingClientRect().bottom;
+            if (over > 0) log.scrollTop = log.scrollTop + Math.ceil(over) + 4;
+          }
+        }
       }
+      cklState.readyStep = (!!ck.awaiting_ack && !ck.complete) ? ck.step_index : null;
       /* The scroll event is asynchronous, so the guard has to outlive this frame. */
       setTimeout(function () { cklAutoScroll = false; }, 0);
     }

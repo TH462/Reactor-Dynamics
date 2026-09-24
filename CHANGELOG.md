@@ -31,6 +31,12 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Walkthrough panel: a Continue that lights below the fold is scrolled into view** (#653, layman
+  pass 3, 2026-09-24). `pwr_startup` step 9 at 1600x1000: a 785 px step in a 728 px log opens at
+  its own top, and when 9b lit, Continue sat at y 984 against a log floor of 931 with nothing
+  moving it. The ready event now scrolls the least distance that shows the row; and the
+  reader-scrolled guard no longer demands a whole step taller than the log be on screen (it read
+  the app's own open scroll as the reader leaving). `verify_ckl_relevance` +2 checks.
 - **Mode 3 to Mode 1 9a: a stop PAST the mark now says where the mark is** (quality pass,
   2026-09-24). Headless Edge, seed 42, the panel and the grader both at step 211 after plots at
   0/84/156/185/197: a stop at 209 or 211 never ticked 9a and the card said only "It ticks after the

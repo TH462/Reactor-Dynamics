@@ -29,6 +29,22 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-24-workbench-c (third layman pass on Mode 3 to Mode 1: a Continue lit below the fold; `paramValue` is not the tile)
+
+Report and per-finding numbers: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-24_LAYMAN_PASS3.md`.
+
+- **`InstructorLayer.paramValue` READS TRUTH, NOT THE TILE.** The grader's own `readParam` maps
+  `sr_counts_cps` to `instruments.source_range`; `paramValue` does not, so a measurement script
+  that samples through it sees a noise-free count. The first cut measured SOURCE RANGE at bank 73 as
+  690 to 695 and would have refuted the reviewer's "7.4e2 spike"; the tile's own channel reads 601
+  to 797 there, half the time at or above 7.0e2. **Sample `s.instruments.<channel>` for anything a
+  player reads.**
+- **A STEP TALLER THAN ITS LOG CAN NEVER BE "VISIBLE" UNDER A WHOLE-STEP TEST.** The #612
+  reader-scrolled guard asked for the entire active step on screen; step 9 (785 px in a 728 px
+  log) never is, so the app's OWN open-at-its-top scroll armed `userScrolled` and disarmed every
+  later scroll on the step. A guard built for fitting steps must say what it means for the other
+  kind. Fixed together with the missing scroll when Continue lights.
+
 ## Session log — 2026-09-24-workbench-b (9a grades "3 short of the 1/M prediction": the replay route stood AT its own prediction; a same-instant restore is not a rewind)
 
 Design and numbers: `pwr_startup` step 9's comment, the step file's "THE 9a GAP — RESOLVED" note.

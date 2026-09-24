@@ -736,6 +736,82 @@ function sig(rows) {
              : 'no geometry');
     })();
 
+    /* ---- 7b. CONTINUE LIGHTING BELOW THE FOLD IS BROUGHT INTO VIEW (#653, layman pass 3) --
+     *
+     * Measured 2026-09-24 at 1600x1000 on `pwr_startup` step 9 with the 1/M window open: a
+     * 785 px step in a 728 px log opens at its own top (section 7), so its Continue row sits
+     * below the log floor (y 954 against 931), and when 9b lit it nothing scrolled — the player
+     * was told to press a button that was not on screen. Two defects, both in renderChecklist:
+     * no scroll on the READY event, and the reader-scrolled test (`userScrolled`) demanding the
+     * whole active step be visible, which a tall step never is — so any scroll, the app's own
+     * included, disarmed every later auto-scroll on that step.
+     *
+     * Same synthetic-leg reason as section 7. Step 2 is tall and turns ready LATER, on a
+     * command (a `cmd` row), sent through the dev service handle so the pointer stays OFF the
+     * log, as a player's does. The first assertion is the anti-vacuity one: the row must start
+     * below the fold, or the second passes on any renderer.
+     *
+     * INJECTION-PROVEN: deleting the ready-event block reds the second check (row still below
+     * the floor); restoring the full-visibility-only `visible` test reds it too (userScrolled
+     * arms on the open scroll). Nothing else in this runner moves. */
+    await (async function () {
+      await page.goto(url + '&dev=1', { waitUntil: 'load' });
+      await page.waitForTimeout(1200);
+      await page.evaluate(function () {
+        var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_tall_ready'; });
+        window.RD.MANUAL_PROCEDURES.pwr2 = P;
+        var note = [];
+        for (var i = 0; i < 40; i++) note.push('Sentence ' + i + ' of a deliberately long note, written to make this step taller than the panel that draws it.');
+        P.push({ id: 'zz_tall_ready', category: 'control', manual_ref: 'ZZ-03',
+                 title: 'Tall ready probe', purpose: 'Render fixture.', from: 'hot_full_power',
+                 steps: [{ text: 'A step that is met the moment it starts.', control: '(observe)',
+                           accs: [{ p: 'power_pct', op: '>', v: -1, label: 'Already met' }] },
+                         { text: 'THE TALL STEP — it turns ready on a command.', why: 'Fixture.',
+                           control: '(observe)', note: note.join(' '),
+                           accs: [{ cmd: 'set_pressure_setpoint', ask: 'Send the setpoint.', label: 'Setpoint sent' }] }] });
+      });
+      await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(200);
+      await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(2600);
+      await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
+      await page.waitForTimeout(700);
+      await page.click('button[data-ckl-start="zz_tall_ready"]', { timeout: 4000 });
+      await page.waitForTimeout(2200);
+      await page.mouse.move(300, 500);
+      await page.waitForSelector('.ckl-step.ckl-active .ckl-ack:not([disabled])', { timeout: 15000 }).catch(function () {});
+      await page.evaluate(function () {
+        var b = document.querySelector('.ckl-step.ckl-active .ckl-ack');
+        if (b) b.click();
+      });
+      await page.waitForTimeout(1800);
+      function geoFn() {
+        var log = document.querySelector('#cklRun .ckl-log') || document.querySelector('.ckl-log');
+        var act = log ? log.querySelector('.ckl-active') : null;
+        var row = act ? act.querySelector('.ckl-ack-row') : null;
+        var cont = act ? act.querySelector('.wt-continue') : null;
+        if (!log || !act || !row) return null;
+        var L = log.getBoundingClientRect(), R = row.getBoundingClientRect();
+        return { logTop: Math.round(L.top), logBot: Math.round(L.bottom), rowTop: Math.round(R.top),
+                 rowBot: Math.round(R.bottom), actH: act.offsetHeight, clientH: log.clientHeight,
+                 ready: !!cont && /\bready\b/.test(cont.className),
+                 head: ((act.querySelector('.ckl-txt') || {}).textContent || '').trim().slice(0, 30) };
+      }
+      var g0 = await page.evaluate(geoFn);
+      await page.evaluate(function () {
+        window.RD.__dev.service().handleCommand({ action: 'set_pressure_setpoint', mpa: 15.51 });
+      });
+      await page.waitForSelector('.ckl-step.ckl-active .wt-continue.ready', { timeout: 15000 }).catch(function () {});
+      await page.waitForTimeout(1200);
+      var g1 = await page.evaluate(geoFn);
+      ck('#653 pass 3: the tall step opens NOT ready, with its Continue row below the log floor (anti-vacuity)',
+         !!g0 && /^2\./.test(g0.head) && !g0.ready && g0.actH > g0.clientH + 40 && g0.rowBot > g0.logBot,
+         g0 ? JSON.stringify(g0) : 'the fixture did not advance to step 2');
+      ck('...and when Continue lights, the row is scrolled into the log without the pointer in it',
+         !!g1 && g1.ready && g1.rowBot <= g1.logBot + 1 && g1.rowTop >= g1.logTop - 1,
+         g1 ? JSON.stringify(g1) : 'no geometry');
+    })();
+
     /* ---- 8. AN OUT-OF-TURN PRESS SAYS WHY (#759) ---------------------------------------
      * *(OWNER RULING, 2026-09-15: "Fix the text AND say why")*.
      *
