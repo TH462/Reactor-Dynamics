@@ -182,8 +182,22 @@ var CHECKS = [
   {
     id: 'bare_megawatt',
     rule: 'N6 — never a bare MW; MWe for electrical output, MWt for thermal',
+    /* EXEMPT BY EXACT PHRASE, NOT BY RELAXING THE RULE (2026-09-24, walkthrough #653 pass 2,
+     * owner ruling: selections from "Take all" — "'MWe' vs the board's 'MW' (use the board's)").
+     * The PWR2 board's own OUTPUT tile has no unit suffix in its formatter at all —
+     * `ui/diagram/board/pwr_board_wiring.js:1469` (`imrppeh5hkb`) is `r0(IN(s).mwe_output)`, a
+     * bare number; "MW" is a static label printed beside it, never "MWe" appended to the
+     * reading (confirmed against the tile, not assumed). `pwr_startup` step 14's `target` quotes
+     * that reading verbatim rather than the general electrical/thermal register N6 exists to
+     * disambiguate — LOAD/OUTPUT on a turbine card is unambiguously electrical. The step's
+     * nested `accs[].ask`/`.label` strings carry the same board-literal "MW" under the same
+     * ruling; they are not listed here because `scanSteps` never reads inside `accs` (see
+     * `stepFields` above) — this list is only for the top-level fields the check inspects. */
+    exempt: ['OUTPUT near 10 MW'],
     run: function (d) {
-      var hits = scanSteps(d, ['text', 'target', 'note', 'why', 'story'], BARE_MW);
+      var self = this;
+      var hits = scanSteps(d, ['text', 'target', 'note', 'why', 'story'], BARE_MW)
+        .filter(function (h) { return !self.exempt.some(function (e) { return h.indexOf(e) !== -1; }); });
       d.manual.forEach(function (f) {
         f.lines.forEach(function (l, i) {
           if (BARE_MW.test(l)) hits.push(f.file + ':' + (i + 1) + ' — ' + l.trim().slice(0, 90));

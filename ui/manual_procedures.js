@@ -2144,7 +2144,7 @@
           past: { p: 'power_pct', op: '>', v: 1 },
           accs: [{ p: 'tavg_c', op: '~', v: 285.83, tol: 1.66,
                    ask: 'Read AVG COOLANT TEMPERATURE near 547 °F, PRIMARY PRESSURE near 2235 psi, and RCP FLOW on.',
-                   note: 'SOURCE RANGE counts should be steady, not climbing. One alarm is already up and belongs here: Turbine Trip / Low Steam Demand on the ALARMS list, short form TURB TRIP. The turbine is off and the plant is making no steam. Press ACK on the ALARMS list and leave it.',
+                   note: 'SOURCE RANGE counts should be steady, not climbing. One alarm is already up and belongs here: Turbine Trip / Low Steam Demand on the ALARMS list. The turbine is off and the plant is making no steam. Press ACK on the ALARMS list and leave it.',
                    wait_speed: 1,
                    label: 'AVG COOLANT TEMPERATURE 544 to 549 °F' },
                  { cont: true, p: 'pressure_mpa', op: '~', v: 15.41, tol: 0.244,
@@ -2276,11 +2276,11 @@
          * acceptance is the lamp; the replay's plant boots with feed in AUTO and ticks on it. */
         { text: 'Line up the heat sink before the reactor makes any heat.',
           why: 'The steam generator is the boiler: reactor water heats it on one side and steam comes off the other. Once the reactor starts making heat, that steam comes off fast, and AUTO on the feed system is what holds the level.',
-          control: 'Feed Pumps', target: 'SG FEED reads AUTO, STEAM GENERATOR LEVEL near 65 %',
+          control: 'Feed Pumps', target: 'SG FEED AUTO lit (card reads HOLDING), STEAM GENERATOR LEVEL near 65 %',
           hold: 5,
           accs: [{ p: 'feed_coupled', op: '>', v: 0,
-                   ask: 'Check SG FEED reads AUTO. If it does not, press AUTO.',
-                   wait_speed: 1, label: 'SG FEED reads AUTO' }],
+                   ask: 'Check the SG FEED AUTO button is lit. If it is not, press AUTO.',
+                   wait_speed: 1, label: 'SG FEED AUTO lit (card reads HOLDING)' }],
           /* THE RING STAYS BECAUSE THE PRESS IS REAL, AND IT HAS TO SAY SO (#653 S-3b). The step is
            * graded on the LAMP, not on a command — a player who arrives with SG FEED already in
            * AUTO does nothing and the step self-ticks — so nothing in the step declares a press,
@@ -2466,7 +2466,7 @@
           accs_ordered: true,
           wait_hint: false,
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 695,
-                   ask: 'Hold WITHDRAW at MED until SOURCE RANGE passes 7.0e2. Let STARTUP RATE fall to zero.',
+                   ask: 'Hold CONTROL WITHDRAW at MED until SOURCE RANGE passes 7.0e2. Let STARTUP RATE fall to about +0.01 to +0.03.',
                    note: 'Stop when CONTROL ROD POSITION reads about 80 to 100. STARTUP RATE is back to 0.00 about half a plant-minute after the rods stop.',
                    wait_speed: 5,
                    label: 'SOURCE RANGE reads 7.0e2 (700 counts per second) or more' },
@@ -2478,7 +2478,7 @@
            * step the first time we mvoe the rods as well"). This is that first move. */
           hl: ['Rod Speed — Normal', 'Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
-        { text: 'Withdraw again and plot a third point; the fit now prints its first prediction.',
+        { text: 'Withdraw again and plot a third point; the prediction tightens.',
           /* NO AUTHORED `wait_hint` (#653 S-5, 2026-09-15): `hold` is 300 s, so ui/app.js already
            * prints "About 5 plant-minutes at 1× — set the speed control to 10×." on this card, and
            * the authored string said 10× a SECOND time in the same line. Same defect on step 5.
@@ -2491,7 +2491,7 @@
           accs_ordered: true,
           wait_hint: false,
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 1350,   // the 1.4e3 band's lower edge — see step 5's RENDER BAND block
-                   ask: 'Hold WITHDRAW until SOURCE RANGE passes 1.4e3. Let STARTUP RATE fall to zero.',
+                   ask: 'Hold CONTROL WITHDRAW until SOURCE RANGE passes 1.4e3. Let STARTUP RATE fall to about +0.01 to +0.03.',
                    note: 'Stop when CONTROL ROD POSITION reads about 150 to 175 steps. Wait for the rate before you plot: about a minute and a half after the rods stop.',
                    wait_speed: 5,
                    label: 'SOURCE RANGE reads 1.4e3 (1,400 counts per second) or more' },
@@ -2500,7 +2500,7 @@
           overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
-        { text: 'Withdraw a shorter rung and plot a fourth point to tighten the prediction.',
+        { text: 'Withdraw a shorter pull and plot a fourth point to tighten the prediction.',
           /* ⚠ "THE SETTLE TAKES LONGER AT EVERY RUNG" WAS AN UNMEASURED CLAIM IN PLAYER COPY
            * (#653 S-11, 2026-09-15). MEASURED on the built pool: all four settle rungs on steps
            * 5-8 carry IDENTICAL acceptances — the bank stopped for 60 s, then `startup_rate ~0
@@ -2525,8 +2525,8 @@
           accs_ordered: true,
           /* One step per plot point since #796 item 3 — the reasoning is on step 5. */
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 2950,   // the 3.0e3 band's lower edge — see step 5's RENDER BAND block
-                   ask: 'Hold WITHDRAW until SOURCE RANGE passes 3.0e3. Let STARTUP RATE fall to zero.',
-                   note: 'Stop when CONTROL ROD POSITION reads about 180 to 205 steps. This rung is only 25 steps wide, so watch the position, not the clock.',
+                   ask: 'Hold CONTROL WITHDRAW until SOURCE RANGE passes 3.0e3. Let STARTUP RATE fall to about +0.01 to +0.03.',
+                   note: 'Stop when CONTROL ROD POSITION reads about 180 to 205 steps. This pull is only 25 steps wide, so watch the position, not the clock.',
                    wait_speed: 10,
                    label: 'SOURCE RANGE reads 3.0e3 (3,000 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Press Plot point, then read the prediction again.', wait_speed: 1,
@@ -2566,7 +2566,7 @@
          * supercritical point the ruling removes. 205 is the highest bank in the band that is
          * still subcritical (ρ −12.5 static, −15 measured), so the band ends there. The cue is
          * unchanged and is still the count rate: 7,000 a second lands the authored burst at 202. */
-        { text: 'Withdraw the last short rung and plot the final point the approach is built on.',
+        { text: 'Withdraw the last short pull and plot the final point the approach is built on.',
           wait_hint: false,
           why: 'This is the last plotted point: from here single steps beat one more fitted number, because another burst would land past critical. STARTUP RATE is the speedometer — 1.0 means power is multiplying by ten every minute, and any positive reading with the rods still means the chain reaction is growing. Under 1.0 is a comfortable climb; above it, nothing in the plant slows the rise yet.',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e3 (7,000 counts a second); point 5 plotted; STARTUP RATE under 1.0',
@@ -2653,7 +2653,7 @@
           accs_ordered: true,
           /* One step per plot point since #796 item 3 — the reasoning is on step 5. */
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 6950,   // the 7.0e3 band's lower edge — see step 5's RENDER BAND block
-                   ask: 'Hold WITHDRAW until SOURCE RANGE passes 7.0e3. Let STARTUP RATE fall all the way to zero.',
+                   ask: 'Hold CONTROL WITHDRAW until SOURCE RANGE passes 7.0e3. Let STARTUP RATE fall to about +0.01 to +0.03.',
                    note: 'Stop when CONTROL ROD POSITION reads about 195 to 205 steps. This is the point the prediction is built on, so give it the time: STARTUP RATE takes about six plant-minutes to come back to zero here, and a point plotted before it does throws the predicted position further out than it is.',
                    wait_speed: 10,
                    label: 'SOURCE RANGE reads 7.0e3 (7,000 counts per second) or more' },
@@ -2976,15 +2976,15 @@
             industry: 'REACTOR POWER 0.5 % — CRITICALITY APPROACH OVERTAKEN. Rods stopped; STARTUP RATE under 1 DPM.' },
           accs_ordered: true,
           accs: [{ p: 'control_bank_steps', op: 'stopped', v: 60, latch: true,   /* S-1, 2026-09-23: the hidden 300 s row carries the hold */
-                   ask: 'Press SLOW, then hold WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position.',
-                   note: 'The prediction reads HIGH, never low, so stopping short of it is the point. At SLOW the rods move about one step every 8 plant-seconds, so a short hold at 1× moves nothing.',
+                   ask: 'Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position.',
+                   note: 'The prediction reads HIGH, never low, so stopping short of it is the point. At SLOW the rods move about one step every 8 plant-seconds, so a short hold at 1× moves nothing. It ticks after the rods have been still for a plant-minute.',
                    wait_speed: 1,
                    label: 'Rods stopped 3 steps short of the 1/M prediction' },
                  { p: 'control_bank_steps', op: 'stopped', v: 300, hidden: true,
                    label: 'Rods still for five plant-minutes (graded, not drawn — the dwell in 9b)' },
                  { p: 'startup_rate_dpm', op: '~', v: 0.53, tol: 0.475,   /* 0.055-1.005: both edges on the tile's toFixed(2) render band (S-2, 2026-09-23) */
                    ask: 'Tap WITHDRAW one step, wait about five plant-minutes, and read STARTUP RATE. Repeat until it reads +0.06 or more five minutes after the tap.',
-                   note: 'Read the rate only once it has stopped falling, about five minutes after the last tap. Around 0.15, with PERIOD 150 to 200 seconds, is this approach going as written. Around 0.5, or PERIOD under 60 seconds, is about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher. Over 1.0, tap INSERT once and wait. Near 0.01, with PERIOD in the thousands of seconds and nothing moving, means you have stopped short of critical — tap one more step out and wait. 0.02 to 0.05: one more step out.',
+                   note: 'Read the rate only once it has stopped falling, about five minutes after the last tap. Around 0.15, with PERIOD 150 to 200 seconds, is this approach going as written. Around 0.5, or PERIOD under 60 seconds, is about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher. Over 1.0, tap INSERT once and wait. Near 0.01, with PERIOD in the thousands of seconds and nothing moving, means you have stopped short of critical — tap one more step out and wait. 0.02 to 0.05: one more step out. 0.06 to 0.10: fine, power just arrives later and levels lower (about 1 to 1½ %). SOURCE RANGE switches itself off above 1.0e5 and its tile goes blank; INTER RANGE carries the reading.',
                    wait_speed: 10,
                    speed_text: '10× while you wait; back to 1× before every tap.',
                    label: 'STARTUP RATE +0.06 to +1.00 with the rods stopped' }],
@@ -3086,7 +3086,7 @@
            * #772 with the rest of the #749 residuals. */
           accs: [{ p: 'ir_amps', op: '>=', v: 1e-7,
                    ask: 'Leave the rods still. Watch INTER RANGE and STARTUP RATE; REACTOR POWER stays at 0.0 % for a long while.',
-                   note: 'REACTOR POWER reads 0.0 % for about twenty-five plant-minutes while INTER RANGE climbs three decades. Never 60×, where a 2 ½ second glance away is two and a half plant-minutes of reactor. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.',
+                   note: 'REACTOR POWER reads 0.0 % for about twenty-five to thirty-five plant-minutes while INTER RANGE climbs three decades. Never 60×, where a 2 ½ second glance away is two and a half plant-minutes of reactor. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.',
                    wait_speed: 10,
                    label: 'INTER RANGE reads 1.0e-7 A or more',
                    /* AND THE SOFT-LOCK THE PARAGRAPH ABOVE MEASURED IS CLOSED HERE *(OWNER
@@ -3300,7 +3300,7 @@
            * 240 -> 420: the replay arrives level, so it owes the 300 s window plus margin. */
           hold: 420, wait_hint: false,
           accs: [{ p: 'power_pct', op: '<', v: 5,
-                   ask: 'Leave the rods alone and watch REACTOR POWER stop rising on its own, near 3 %.',
+                   ask: 'Leave the rods alone and watch REACTOR POWER stop rising on its own, near 1 to 3 %.',
                    note: 'The climb stops by itself about twenty plant-minutes after this step opens, and STARTUP RATE comes back to 0.00 on the way. The step checks off once REACTOR POWER has held still for five plant-minutes — leave the rods alone and let it. If power instead runs past 5 %: come back to 1×, press MED and hold INSERT until REACTOR POWER reads under 5 %, then release and let the plant settle before you read it. While the bank is driving in, STARTUP RATE is well below zero and power has not finished falling.',
                    wait_speed: 10, speed_text: '10×; 1× if you have to insert.',
                    label: 'REACTOR POWER below 5 %' },
@@ -3359,7 +3359,7 @@
          * own climb step already put it. Do not shorten this without re-running the #731 trio. */
         { text: 'Cross the 5 % line deliberately. That is Mode 1, At Power.',
           why: 'Mode 1, At Power, begins at 5 % power. The warming water now holds power back, so each rod step buys a new steady level rather than a runaway — about half a percent of power per step. The extra steps past 5 % are for the turbine: it needs REACTOR POWER above 9 ½ % before the startup trips will stay switched off.',
-          control: 'Control Bank', target: 'REACTOR POWER above 5 %, settling near 10 %',
+          control: 'Control Bank', target: 'REACTOR POWER above 5 %, climbing toward 8 to 10 %',
           /* 5×, AND IT IS THE ROD PULL THAT DECIDES IT *(OWNER, 2026-09-20, #796 item 5:
            * "walkthrough mode 3-1 step 13 should also suggest a warp seting. probably 5x.")*. The
            * 30 s rule would return 60× for a 400 s dwell, which is why this step could not simply
@@ -3397,12 +3397,12 @@
            * +45 s, `>= 5.05` at +47 s; the step ends at 10.57 %. Two plant-seconds. */
           accs: [{ p: 'power_pct', op: '>=', v: 5.05,
                    ask: 'Press SLOW, then hold WITHDRAW until REACTOR POWER passes 5 %, about 13 steps.',
-                   note: "Power settles near 10 % from here. It needs to: the turbine's startup trips cannot be blocked until REACTOR POWER is above 9 ½ %.",
+                   note: "Power climbs toward 8 to 10 %, and past 9 ½ % once the turbine takes load in the next step. It needs to: the turbine's startup trips cannot be blocked until REACTOR POWER is above 9 ½ %.",
                    wait_speed: 5, label: 'REACTOR POWER above 5 %' }],
           hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
         { text: 'Put the turbine on line and let the reactor follow it up.',
           why: 'LATCH resets the turbine so it can take steam; LOAD is how much electricity the generator is asked for. As the generator picks up load, more steam is drawn, the water cools, and cooler water raises power — the reactor follows the turbine up to about 10 % by itself. That coupling is the central idea of this plant.',
-          control: 'Turbine Load', target: 'OUTPUT near 10 MWe',
+          control: 'Turbine Load', target: 'OUTPUT near 10 MW',
           cmd: { action: 'set_load_target', mwe: 10 }, hold: 240, wait_hint: false,
           /* ORDERED SINCE 2026-09-23: his 14a is LATCH and 14b is LOAD, and the second cannot be
            * true before the first — no generator makes MWe on an unlatched turbine — so the order
@@ -3412,8 +3412,8 @@
           accs_ordered: true,
           accs: [{ cmd: 'latch_turbine', ask: 'Press LATCH on the TURBINE-GENERATOR card.', wait_speed: 1,
                    label: 'Turbine latched' },
-                 { p: 'mwe_output', op: '>', v: 8, ask: 'Set LOAD to 10 MWe.', wait_speed: 10,
-                   label: 'Generator above 8 MWe' }],
+                 { p: 'mwe_output', op: '>', v: 8, ask: 'Set LOAD to 10 MW.', wait_speed: 10,
+                   label: 'Generator above 8 MW' }],
           hl: ['Turbine — Latch', 'Load Setpoint'], hl_watch: ['Turbine Load', 'Generator Output'] },
         /* "ABOVE 9 ½ %", NOT "ABOVE 10 %" (2026-09-23, an agent change for owner review, made under
          * the ruling on step 17 above). At LOAD 10 MWe the player's own route (bank 213, +13) settles
@@ -3425,7 +3425,7 @@
          * "between there and about 9 ½ % it … goes out again" already named this threshold. */
         { text: 'Block the first startup trip once REACTOR POWER is above 9 ½ %.',
           why: 'Two automatic shutdowns exist only to protect a startup, one at 25 % power and one at 35 %. Once power is up they would trip the reactor on the way to full power, so they are switched off one at a time. The plant keeps checking power is still up there, and switches them back on by itself if it falls, whoever switched them off.',
-          control: 'Trip Blocks', target: 'IR HIGH FLUX lit on the TRIP BLOCKS panel',
+          control: 'Trip Blocks', target: 'IR HIGH FLUX reads BLOCKED on the TRIP BLOCKS panel',
           cmd: { action: 'set_trip_block', trip_id: 'ir_high', blocked: true }, hold: 10,
           /* GRADED ON THE LINEUP, NOT ON THE PRESS (#731, owner playtest #724 item 13). These two
            * steps carried a bare `cmd`, so the live checklist graded them on SEEING the command
@@ -3437,17 +3437,17 @@
            * follow-mode family. */
           accs: [{ p: 'ir_high_blocked', op: '>', v: 0,
                    ask: 'Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the IR HIGH FLUX row.',
-                   note: 'Do this the moment REACTOR POWER is above 9 ½ %: at 25 % this trip fires. Below 8 % power the BLOCK button is dead and will not take the press at all; between there and about 9 ½ % it takes it and the block then goes out again by itself, because the permissive is read off the power-range meter, which wanders about ± 0.3 % and keeps dipping back under. If that happens, let power come up and press it again. The reactor keeps climbing while the panel is open.',
-                   wait_speed: 1, label: 'IR HIGH FLUX lit on the TRIP BLOCKS panel' }],
+                   note: "Do this the moment REACTOR POWER is above 9 ½ %: at 25 % this trip fires. Below 8 % power the BLOCK button is dead and will not take the press at all; between there and about 9 ½ % it takes it and the block then goes out again by itself, because the block's automatic permission — the panel calls it P-10 PERMISSIVE — is read off the power-range meter, which wanders about ± 0.3 % and keeps dipping back under. If that happens, let power come up and press it again. The reactor keeps climbing while the panel is open.",
+                   wait_speed: 1, label: 'IR HIGH FLUX reads BLOCKED on the TRIP BLOCKS panel' }],
           hl: ['Trip Blocks'] },
         { text: 'Block the second startup trip and close the panel.',
           why: 'The second startup shutdown fires at 35 % if it is still live. Above 10 % the shutdown at 118 % power takes over the job of catching a runaway. Two separate presses on purpose: on a real board, switching one off never quietly switches off the other.',
-          control: 'Trip Blocks', target: 'PR HIGH (LOW SETPT) lit on the TRIP BLOCKS panel',
+          control: 'Trip Blocks', target: 'PR HIGH (LOW SETPT) reads BLOCKED on the TRIP BLOCKS panel',
           cmd: { action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: true }, hold: 10,
           accs: [{ p: 'pr_low_setpoint_blocked', op: '>', v: 0,   /* see step 15 — #731 */
                    ask: 'Press TRIP BLOCKS to open the panel again, then press BLOCK on the PR HIGH (LOW SETPT) row and close the panel.',
-                   note: 'Any click outside the panel closes it, Continue included, so it is shut when this step opens. This switches off the second startup shutdown, at 35 %. Check both rows read lit — IR HIGH FLUX and PR HIGH (LOW SETPT) — while the panel is still open, then close it with TRIP BLOCKS again: it covers the rod buttons.',
-                   wait_speed: 1, label: 'PR HIGH (LOW SETPT) lit on the TRIP BLOCKS panel' }],
+                   note: 'Any click outside the panel closes it, Continue included, so it is shut when this step opens. This switches off the second startup shutdown, at 35 %. Check both rows read BLOCKED — IR HIGH FLUX and PR HIGH (LOW SETPT) — while the panel is still open, then close it with TRIP BLOCKS again: it covers the rod buttons.',
+                   wait_speed: 1, label: 'PR HIGH (LOW SETPT) reads BLOCKED on the TRIP BLOCKS panel' }],
           hl: ['Trip Blocks'] },
         /* 9 %, NOT 10 % *(OWNER RULING, 2026-09-23: selected "Keep 10 MWe, grade 9 %" — option text:
          * "Text says power ends 'near 10 %'; step 17 is checked at 9 %. The first trip block needs
@@ -3467,10 +3467,10 @@
         { text: 'Verify Mode 1, At Power.',
           why: 'The reactor is critical, the generator is carrying load, and both startup shutdowns are switched off. The plant is in Mode 1, At Power. From here the climb to full power is rods leading and the turbine following.',
           accs: [{ p: 'power_pct', op: '>=', v: 9.05,
-                   ask: 'Read REACTOR POWER above 9 % and OUTPUT near 10 MWe.',
-                   note: 'IR HIGH FLUX and PR HIGH (LOW SETPT) were checked lit in the last step, before the TRIP BLOCKS panel was closed.',
+                   ask: 'Read REACTOR POWER above 9 % and OUTPUT near 10 MW.',
+                   note: 'IR HIGH FLUX and PR HIGH (LOW SETPT) were checked BLOCKED in the last step, before the TRIP BLOCKS panel was closed.',
                    wait_speed: 1, label: 'REACTOR POWER above 9 %' },
-                 { cont: true, p: 'mwe_output', op: '~', v: 10, tol: 1.49, label: 'OUTPUT near 10 MWe' }],
+                 { cont: true, p: 'mwe_output', op: '~', v: 10, tol: 1.49, label: 'OUTPUT near 10 MW' }],
           hl_watch: ['Reactor Power', 'Turbine Load', 'SG Level'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },

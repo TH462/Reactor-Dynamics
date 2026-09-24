@@ -17,7 +17,7 @@
 
 1a. Read AVG COOLANT TEMPERATURE near 547 °F, PRIMARY PRESSURE near 2235 psi, and RCP FLOW on.
 
-Note: SOURCE RANGE counts should be steady, not climbing. One alarm is already up and belongs here: Turbine Trip / Low Steam Demand on the ALARMS list, short form TURB TRIP. The turbine is off and the plant is making no steam. Press ACK on the ALARMS list and leave it.
+Note: SOURCE RANGE counts should be steady, not climbing. One alarm is already up and belongs here: Turbine Trip / Low Steam Demand on the ALARMS list. The turbine is off and the plant is making no steam. Press ACK on the ALARMS list and leave it.
 
 Suggested time warp: 1×.
 
@@ -52,11 +52,11 @@ Boron dissolved in the water soaks up neutrons, so the control rods do not have 
 
 3. Line up the heat sink before the reactor makes any heat.
 
-3a. Check SG FEED reads AUTO. If it does not, press AUTO.
+3a. Check the SG FEED AUTO button is lit. If it is not, press AUTO.
 
 Suggested time warp: 1×.
 
-()  SG FEED reads AUTO
+()  SG FEED AUTO lit (card reads HOLDING)
 
 Background
 
@@ -86,7 +86,7 @@ Background
 
 5. Withdraw the control rod group and plot a second point on the 1/M plot to begin forming a fit line.
 
-5a. Hold WITHDRAW at MED until SOURCE RANGE passes 7.0e2. Let STARTUP RATE fall to zero.
+5a. Hold CONTROL WITHDRAW at MED until SOURCE RANGE passes 7.0e2. Let STARTUP RATE fall to about +0.01 to +0.03.
 
 Note: Stop when CONTROL ROD POSITION reads about 80 to 100. STARTUP RATE is back to 0.00 about half a plant-minute after the rods stop.
 
@@ -108,9 +108,9 @@ The first two points always predict the criticality point too high: near the bot
 
 
 
-6. Withdraw again and plot a third point; the fit now prints its first prediction.
+6. Withdraw again and plot a third point; the prediction tightens.
 
-6a. Hold WITHDRAW until SOURCE RANGE passes 1.4e3. Let STARTUP RATE fall to zero.
+6a. Hold CONTROL WITHDRAW until SOURCE RANGE passes 1.4e3. Let STARTUP RATE fall to about +0.01 to +0.03.
 
 Note: Stop when CONTROL ROD POSITION reads about 150 to 175 steps. Wait for the rate before you plot: about a minute and a half after the rods stop.
 
@@ -132,11 +132,11 @@ Each new point is taken closer to critical, where a step is worth more, so the l
 
 
 
-7. Withdraw a shorter rung and plot a fourth point to tighten the prediction.
+7. Withdraw a shorter pull and plot a fourth point to tighten the prediction.
 
-7a. Hold WITHDRAW until SOURCE RANGE passes 3.0e3. Let STARTUP RATE fall to zero.
+7a. Hold CONTROL WITHDRAW until SOURCE RANGE passes 3.0e3. Let STARTUP RATE fall to about +0.01 to +0.03.
 
-Note: Stop when CONTROL ROD POSITION reads about 180 to 205 steps. This rung is only 25 steps wide, so watch the position, not the clock.
+Note: Stop when CONTROL ROD POSITION reads about 180 to 205 steps. This pull is only 25 steps wide, so watch the position, not the clock.
 
 Suggested time warp: 10×.
 
@@ -156,9 +156,9 @@ Each step now buys more reactivity than the last, so the pulls get smaller from 
 
 
 
-8. Withdraw the last short rung and plot the final point the approach is built on.
+8. Withdraw the last short pull and plot the final point the approach is built on.
 
-8a. Hold WITHDRAW until SOURCE RANGE passes 7.0e3. Let STARTUP RATE fall all the way to zero.
+8a. Hold CONTROL WITHDRAW until SOURCE RANGE passes 7.0e3. Let STARTUP RATE fall to about +0.01 to +0.03.
 
 Note: Stop when CONTROL ROD POSITION reads about 195 to 205 steps. This is the point the prediction is built on, so give it the time: STARTUP RATE takes about six plant-minutes to come back to zero here, and a point plotted before it does throws the predicted position further out than it is.
 
@@ -184,9 +184,9 @@ This is the last plotted point: from here single steps beat one more fitted numb
 
 9. Bring the control rods to the edge of criticality without going past it.
 
-9a. Press SLOW, then hold WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position.
+9a. Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position.
 
-Note: The prediction reads HIGH, never low, so stopping short of it is the point. At SLOW the rods move about one step every 8 plant-seconds, so a short hold at 1× moves nothing.
+Note: The prediction reads HIGH, never low, so stopping short of it is the point. At SLOW the rods move about one step every 8 plant-seconds, so a short hold at 1× moves nothing. It ticks after the rods have been still for a plant-minute.
 
 Suggested time warp: 1×.
 
@@ -194,7 +194,7 @@ Suggested time warp: 1×.
 
 9b. Tap WITHDRAW one step, wait about five plant-minutes, and read STARTUP RATE. Repeat until it reads +0.06 or more five minutes after the tap.
 
-Note: Read the rate only once it has stopped falling, about five minutes after the last tap. Around 0.15, with PERIOD 150 to 200 seconds, is this approach going as written. Around 0.5, or PERIOD under 60 seconds, is about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher. Over 1.0, tap INSERT once and wait. Near 0.01, with PERIOD in the thousands of seconds and nothing moving, means you have stopped short of critical — tap one more step out and wait. 0.02 to 0.05: one more step out.
+Note: Read the rate only once it has stopped falling, about five minutes after the last tap. Around 0.15, with PERIOD 150 to 200 seconds, is this approach going as written. Around 0.5, or PERIOD under 60 seconds, is about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher. Over 1.0, tap INSERT once and wait. Near 0.01, with PERIOD in the thousands of seconds and nothing moving, means you have stopped short of critical — tap one more step out and wait. 0.02 to 0.05: one more step out. 0.06 to 0.10: fine, power just arrives later and levels lower (about 1 to 1½ %). SOURCE RANGE switches itself off above 1.0e5 and its tile goes blank; INTER RANGE carries the reading.
 
 Suggested time warp: 10× while you wait; back to 1× before every tap.
 
@@ -212,7 +212,7 @@ Critical means the chain reaction keeps itself going: power rises with the rods 
 
 10a. Leave the rods still. Watch INTER RANGE and STARTUP RATE; REACTOR POWER stays at 0.0 % for a long while.
 
-Note: REACTOR POWER reads 0.0 % for about twenty-five plant-minutes while INTER RANGE climbs three decades. Never 60×, where a 2 ½ second glance away is two and a half plant-minutes of reactor. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
+Note: REACTOR POWER reads 0.0 % for about twenty-five to thirty-five plant-minutes while INTER RANGE climbs three decades. Never 60×, where a 2 ½ second glance away is two and a half plant-minutes of reactor. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
 
 Suggested time warp: 10×.
 
@@ -247,7 +247,7 @@ With the reactor just critical, power climbs by itself and every extra rod step 
 
 12. Let power level itself off below 5 %.
 
-12a. Leave the rods alone and watch REACTOR POWER stop rising on its own, near 3 %.
+12a. Leave the rods alone and watch REACTOR POWER stop rising on its own, near 1 to 3 %.
 
 Note: The climb stops by itself about twenty plant-minutes after this step opens, and STARTUP RATE comes back to 0.00 on the way. The step checks off once REACTOR POWER has held still for five plant-minutes — leave the rods alone and let it. If power instead runs past 5 %: come back to 1×, press MED and hold INSERT until REACTOR POWER reads under 5 %, then release and let the plant settle before you read it. While the bank is driving in, STARTUP RATE is well below zero and power has not finished falling.
 
@@ -268,7 +268,7 @@ Warmer water slows this reactor down, so the heat the climb makes is what stops 
 
 13a. Press SLOW, then hold WITHDRAW until REACTOR POWER passes 5 %, about 13 steps.
 
-Note: Power settles near 10 % from here. It needs to: the turbine's startup trips cannot be blocked until REACTOR POWER is above 9 ½ %.
+Note: Power climbs toward 8 to 10 %, and past 9 ½ % once the turbine takes load in the next step. It needs to: the turbine's startup trips cannot be blocked until REACTOR POWER is above 9 ½ %.
 
 Suggested time warp: 5×.
 
@@ -290,11 +290,11 @@ Suggested time warp: 1×.
 
 ()  Turbine latched
 
-14b. Set LOAD to 10 MWe.
+14b. Set LOAD to 10 MW.
 
 Suggested time warp: 10×.
 
-()  Generator above 8 MWe
+()  Generator above 8 MW
 
 Background
 
@@ -308,11 +308,11 @@ LATCH resets the turbine so it can take steam; LOAD is how much electricity the 
 
 15a. Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the IR HIGH FLUX row.
 
-Note: Do this the moment REACTOR POWER is above 9 ½ %: at 25 % this trip fires. Below 8 % power the BLOCK button is dead and will not take the press at all; between there and about 9 ½ % it takes it and the block then goes out again by itself, because the permissive is read off the power-range meter, which wanders about ± 0.3 % and keeps dipping back under. If that happens, let power come up and press it again. The reactor keeps climbing while the panel is open.
+Note: Do this the moment REACTOR POWER is above 9 ½ %: at 25 % this trip fires. Below 8 % power the BLOCK button is dead and will not take the press at all; between there and about 9 ½ % it takes it and the block then goes out again by itself, because the block's automatic permission — the panel calls it P-10 PERMISSIVE — is read off the power-range meter, which wanders about ± 0.3 % and keeps dipping back under. If that happens, let power come up and press it again. The reactor keeps climbing while the panel is open.
 
 Suggested time warp: 1×.
 
-()  IR HIGH FLUX lit on the TRIP BLOCKS panel
+()  IR HIGH FLUX reads BLOCKED on the TRIP BLOCKS panel
 
 Background
 
@@ -326,11 +326,11 @@ Two automatic shutdowns exist only to protect a startup, one at 25 % power and o
 
 16a. Press TRIP BLOCKS to open the panel again, then press BLOCK on the PR HIGH (LOW SETPT) row and close the panel.
 
-Note: Any click outside the panel closes it, Continue included, so it is shut when this step opens. This switches off the second startup shutdown, at 35 %. Check both rows read lit — IR HIGH FLUX and PR HIGH (LOW SETPT) — while the panel is still open, then close it with TRIP BLOCKS again: it covers the rod buttons.
+Note: Any click outside the panel closes it, Continue included, so it is shut when this step opens. This switches off the second startup shutdown, at 35 %. Check both rows read BLOCKED — IR HIGH FLUX and PR HIGH (LOW SETPT) — while the panel is still open, then close it with TRIP BLOCKS again: it covers the rod buttons.
 
 Suggested time warp: 1×.
 
-()  PR HIGH (LOW SETPT) lit on the TRIP BLOCKS panel
+()  PR HIGH (LOW SETPT) reads BLOCKED on the TRIP BLOCKS panel
 
 Background
 
@@ -342,14 +342,14 @@ The second startup shutdown fires at 35 % if it is still live. Above 10 % the sh
 
 17. Verify Mode 1, At Power.
 
-17a. Read REACTOR POWER above 9 % and OUTPUT near 10 MWe.
+17a. Read REACTOR POWER above 9 % and OUTPUT near 10 MW.
 
-Note: IR HIGH FLUX and PR HIGH (LOW SETPT) were checked lit in the last step, before the TRIP BLOCKS panel was closed.
+Note: IR HIGH FLUX and PR HIGH (LOW SETPT) were checked BLOCKED in the last step, before the TRIP BLOCKS panel was closed.
 
 Suggested time warp: 1×.
 
 ()  REACTOR POWER above 9 %
-()  OUTPUT near 10 MWe
+()  OUTPUT near 10 MW
 
 Background
 
@@ -637,3 +637,79 @@ your review:
   is shut when this step opens."
 
 RULED 2026-09-24 — two text changes, selections from options put to the owner (option text, not verbatim words). Step 12's insert branch: selected "Insert until under 5 %" — "about 14 steps" became "until REACTOR POWER reads under 5 %" (measured by the 2026-09-23-d pass: stops after 3–5 steps and completes correctly; a blind 14-step insert let the level-off row tick while power was still falling). Step 6: selected "Own number" — "see step 5" became "about a minute and a half after the rods stop" (measured +80/+85 s on seeds 42/7).
+
+---
+
+### Reconcile record — 2026-09-24 (e), workbench lane: five owner rulings on the 2026-09-24 layman pass 2 (#653)
+
+*Selections from options put to him in a question dialog on 2026-09-24. The quoted option text is
+what he selected, not his own words (Hard Rule 11). Changed in this file AND in
+`ui/manual_procedures.js`'s `pwr_startup` pool. Measurements are `Diagnostic/CHECKLIST_PLAYTEST_2026-09-24_LAYMAN_PASS2.md`.*
+
+**1. Selected "Add a 0.06–0.10 band".**
+- 9b note gains "0.06 to 0.10: fine, power just arrives later and levels lower (about 1 to 1½ %)."
+  before → after: unchanged text, sentence appended.
+- Step 10 note: "about twenty-five plant-minutes" → "about twenty-five to thirty-five plant-minutes"
+  (owner's authored ~25 min; the 0.06–0.10 route measured ~35 min).
+- Step 12 action line: "near 3 %" → "near 1 to 3 %" (authored route ~2.6–2.9 %; the 0.06–0.10 route
+  measured 0.9–1.5 %).
+- No other line in steps 10–13 had a measured bound for both routes in the report, so none else
+  was touched (step 11's "About 15 plant-minutes" has only the shallow-route number, ~17 min — left
+  as is; NOT verified for the authored route).
+
+**2. Step 13 note — selected "Reword".** "Power settles near 10 % from here." → "Power climbs toward
+8 to 10 %, and past 9 ½ % once the turbine takes load in the next step." The rest of the note
+("It needs to: the turbine's startup trips cannot be blocked...") is unchanged; still true. Step
+13's pool `target` field carried the same claim ("settling near 10 %") and was moved to match
+("climbing toward 8 to 10 %") for consistency — that field has no MD counterpart, so it is not a
+ruling item, but leaving it stale would contradict the reworded note.
+
+**3. Selected "Take all" — six items:**
+- 9b note gains "SOURCE RANGE switches itself off above 1.0e5 and its tile goes blank; INTER RANGE
+  carries the reading."
+- 9a note gains "It ticks after the rods have been still for a plant-minute."
+- Step 6 goal line: "the fit now prints its first prediction" → "the prediction tightens" (also the
+  pool's step 6 `text` field, the only other place the claim appeared).
+- "Hold WITHDRAW" → "Hold CONTROL WITHDRAW" on steps 5a, 6a, 7a, 8a, 9a, 13a (every substep asking
+  for a hold on the control bank). "Tap WITHDRAW" (9b, 11a) was left as written — the ruling named
+  the "Hold WITHDRAW" phrase, and S-8's confusion was specifically about the held pull. Verified
+  against `ui/diagram/board/pwr_board_wiring.js`: both rod-group WITHDRAW buttons carry the bare
+  label "WITHDRAW" (tooltip-distinguished as "(control bank)" / "(shutdown bank)"), so "CONTROL
+  WITHDRAW" names the button by its card column, matching S-8's own suggested fix.
+- "lit" → "reads BLOCKED" for every TRIP BLOCKS row reference: steps 15a, 16a (note and both
+  check-offs), 17a note, and the pool's `target` fields on steps 15 and 16. Verified against
+  `pwr_board_wiring.js` line 3841: the row's own text is `blocked ? 'BLOCKED' : 'BLOCK'` — there is
+  no "lit" state on this control.
+- Steps 5–8: "Let STARTUP RATE fall to zero" / "fall all the way to zero" → "Let STARTUP RATE fall
+  to about +0.01 to +0.03" (S-4, confirmed deliberate grading — the rate parks at +0.01 to +0.03
+  and the row grades on rod-stop, not on the rate reaching literal zero).
+
+**4. Selected "Add all three" (word/on-board gaps, item 6 of the dialog):**
+- Step 1 note: dropped ", short form TURB TRIP" — verified against `layers/control/pwr_control.js`:
+  the alarm's `label_industry` is `'TURB TRIP'`, real, but it is the Industry-register form of the
+  row and is not printed alongside the Learning label the step already names; claiming it as a
+  "short form" on the list the player sees was the S-7 confusion.
+- Step 3a: "Check SG FEED reads AUTO." → "Check the SG FEED AUTO button is lit." Check-off "SG FEED
+  reads AUTO" → "SG FEED AUTO lit (card reads HOLDING)". Verified against
+  `ui/diagram/board/pwr_board_wiring.js`: the SG FEED card's corner status word is the literal
+  string `'HOLDING'` when feed is engaged and healthy (lines 393/417/5431); the card never draws
+  the word "AUTO" as its status — only the AUTO button itself lights.
+- Step 15a note: "because the permissive is read off the power-range meter" → "because the block's
+  automatic permission — the panel calls it P-10 PERMISSIVE — is read off the power-range meter."
+  Verified against `pwr_board_wiring.js` lines 3114/3116: both startup-trip rows on the TRIP BLOCKS
+  panel print `(P-10 PERMISSIVE)`; P-11 belongs to the unrelated pressure-trip rows elsewhere on the
+  same panel and is not named here.
+- Steps 7 and 8 ("rung"): "a shorter rung" → "a shorter pull", "the last short rung" → "the last
+  short pull", "This rung is only 25 steps wide" → "This pull is only 25 steps wide". No on-board
+  control uses the word "rung"; it was narrative shorthand only.
+- Step 14: "10 MWe" → "10 MW" (goal-line target, check-off, and the pool's `target`/`label` fields);
+  step 17: same, "near 10 MWe" → "near 10 MW". Verified: the board's LOAD box and OUTPUT tile both
+  print "MW", never "MWe" (S-10; `mwe_output` is the engine's internal channel name, not a rendered
+  string).
+
+**NOT changed, and why.** "permissive" and P-10/P-11 in step 16 were left alone — step 16's text
+never uses the word "permissive", so there was nothing to gloss there; both its rows share step
+15's P-10, already explained on first use. Step 9a's check-off label and grading are untouched per
+the coordinator's instruction (another agent is re-grading it). Step 11's "About 15 plant-minutes"
+was not converted to a range — the report gives only the shallow-route number (~17 min) for this
+particular row, no authored-route figure to pair it with.

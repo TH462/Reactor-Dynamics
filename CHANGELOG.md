@@ -31,6 +31,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Mode 3 to Mode 1: five owner rulings on the 2026-09-24 layman pass 2** (#653). 9b now names a
+  fine-but-shallow 0.06-0.10 STARTUP RATE band, and the times/levels downstream that assumed the
+  deeper "as written" approach are ranges covering both routes ("about 25 to 35 plant-minutes",
+  "near 1 to 3 %"); step 13's note now says power climbs toward 8-10 %, past 9 ½ % once the
+  turbine loads; every "Hold WITHDRAW" reads "Hold CONTROL WITHDRAW", TRIP BLOCKS rows read
+  "reads BLOCKED" not "lit", "rung" reads "pull", the SG FEED and turbine steps quote the board's
+  actual words ("HOLDING", bare "MW"), and "the fit now prints its first prediction" reads "the
+  prediction tightens". `run_style`'s N6 (never a bare MW) gained a scoped exemption for the one
+  string that quotes the OUTPUT tile's own bare-MW reading.
 - **Mode 3 to Mode 1, step 9: Continue can no longer light while a tapped rod is still moving**
   (second layman pass 2026-09-24, #653). "Rods stopped" read the rounded step counter, which
   flips halfway through an ~8 s SLOW step, so the pull's startup-rate spike could complete 9b
