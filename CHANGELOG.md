@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.8.0-rc5] — 2026-09-24
+
 ### Fixed
 - **Mode 3 to Mode 1, steps 5-8: the rod-position window leads, the count confirms** (owner
   rulings, 2026-09-24, layman pass 3, #653). Each pull substep's instruction now leads with the
@@ -95,8 +97,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   playtest 2026-09-23, #653). 9a ("rods stopped") now stays ticked once met (`accs[].latch`); the
   five-minute hold is still graded by the hidden row. The STARTUP RATE floor moves 0.05 → 0.055 so
   a tile reading "+0.05" never half-passes (sub-critical banks 205–207 still never complete).
-
-## [Alpha 1.8.0-rc4] — 2026-09-23
 
 ### Added
 - **Ops dashboard: a session-duration histogram and a "first 60 seconds" section** (#797). The

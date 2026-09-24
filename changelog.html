@@ -167,8 +167,8 @@
     <details class="log-entry" open>
     <summary class="log-head">
       <h2>Containment protects itself, and the core can now be lost</h2>
-      <span class="log-ver mono">Alpha 1.8.0-rc4</span>
-      <time class="log-date mono" datetime="2026-09-23">23 September 2026</time>
+      <span class="log-ver mono">Alpha 1.8.0-rc5</span>
+      <time class="log-date mono" datetime="2026-09-24">24 September 2026</time>
     </summary>
     <ul>
       <li><span class="log-tag added">Added</span><strong>Containment spray, the fan coolers and steam-line isolation.</strong> Spray and steam-line isolation actuate at 30&nbsp;psig (0.31&nbsp;MPa) containment pressure, and the fan coolers start with safety injection; none has a manual control. On a large break, containment peaks at 57.8&nbsp;psig (0.50&nbsp;MPa) and then falls, where before it climbed past 78.5&nbsp;psig (0.64&nbsp;MPa).</li>
@@ -177,7 +177,7 @@
       <li><span class="log-tag fixed">Fixed</span><strong>A large break with the station blacked out no longer stops the model partway through the blowdown.</strong> If auxiliary feedwater is also lost, the core now heats up and reaches fuel damage in about 85&nbsp;minutes.</li>
       <li><span class="log-tag fixed">Fixed</span><strong>TRIP BLOCKS panel.</strong> It now closes on Escape or a press anywhere outside it, and hands focus back to its button.</li>
       <li><span class="log-tag changed">Changed</span><strong>Mode&nbsp;3 to Mode&nbsp;1 walkthrough rewritten in a per-substep format.</strong> Each lettered substep has its own note, suggested time-warp rung and check-offs, and the auto-speed follows the substep you are on.</li>
-      <li><span class="log-tag fixed">Fixed</span><strong>Mode&nbsp;3 to Mode&nbsp;1 step&nbsp;9 could not be completed after a long rod pull.</strong> It now checks itself off once reactor power reaches 0.5&nbsp;%; a multi-row step no longer overrides a speed you chose.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Mode&nbsp;3 to Mode&nbsp;1 step&nbsp;9 could not be completed after a long rod pull.</strong> It now checks itself off once reactor power reaches 0.5&nbsp;%; a multi-row step no longer overrides a speed you chose. The rod stop in step&nbsp;9 is graded against your own 1/M plot (3 steps short of its prediction), a still-moving rod no longer lights Continue, and each pull step leads with its rod-position window.</li>
       <li><span class="log-tag changed">Changed</span><strong>Operator manuals.</strong> They now cover the containment safety systems and their setpoints, and the pressurizer level rise during a heatup on pump heat.</li>
     </ul>
   </details>
