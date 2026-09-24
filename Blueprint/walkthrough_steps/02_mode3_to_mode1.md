@@ -17,7 +17,7 @@
 
 1a. Read AVG COOLANT TEMPERATURE near 547 °F, PRIMARY PRESSURE near 2235 psi, and RCP FLOW on.
 
-Note: SOURCE RANGE counts should be steady, not climbing. One alarm is already up and belongs here: Turbine Trip / Low Steam Demand on the ALARMS list. The turbine is off and the plant is making no steam. Press ACK on the ALARMS list and leave it.
+Note: SOURCE RANGE counts should be wandering around one level, not climbing. One alarm is already up and belongs here: Turbine Trip / Low Steam Demand on the ALARMS list. The turbine is off and the plant is making no steam. Press ACK on the ALARMS list and leave it.
 
 Suggested time warp: 1×.
 
@@ -86,15 +86,15 @@ Background
 
 5. Withdraw the control rod group and plot a second point on the 1/M plot to begin forming a fit line.
 
-5a. Hold CONTROL WITHDRAW at MED until SOURCE RANGE passes 7.0e2. Let STARTUP RATE fall to about +0.01 to +0.03.
-
-Note: Stop when CONTROL ROD POSITION reads about 80 to 100. STARTUP RATE is back to 0.00 about half a plant-minute after the rods stop.
+5a. Hold CONTROL WITHDRAW at MED until CONTROL ROD POSITION is 80 to 100. SOURCE RANGE should read about 7.0e2 or more.
 
 Suggested time warp: 5×.
 
 ()  SOURCE RANGE reads 7.0e2 (700 counts per second) or more
 
-5b. Press Plot point to plot the second point.
+5b. Wait for STARTUP RATE +0.03 or less, then press Plot point to plot the second point.
+
+Note: STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop.
 
 Suggested time warp: 1×.
 
@@ -110,15 +110,15 @@ The first two points always predict the criticality point too high: near the bot
 
 6. Withdraw again and plot a third point; the prediction tightens.
 
-6a. Hold CONTROL WITHDRAW until SOURCE RANGE passes 1.4e3. Let STARTUP RATE fall to about +0.01 to +0.03.
-
-Note: Stop when CONTROL ROD POSITION reads about 150 to 175 steps. Wait for the rate before you plot: about a minute and a half after the rods stop.
+6a. Hold CONTROL WITHDRAW until CONTROL ROD POSITION is 150 to 175. SOURCE RANGE should read about 1.4e3 or more.
 
 Suggested time warp: 5×.
 
 ()  SOURCE RANGE reads 1.4e3 (1,400 counts per second) or more
 
-6b. Press Plot point, then read the predicted rod position the panel prints.
+6b. Wait for STARTUP RATE +0.03 or less, then press Plot point and read the predicted rod position the panel prints.
+
+Note: STARTUP RATE reaches +0.03 or less about a minute and a half after the rods stop.
 
 Suggested time warp: 1×.
 
@@ -134,15 +134,15 @@ Each new point is taken closer to critical, where a step is worth more, so the l
 
 7. Withdraw a shorter pull and plot a fourth point to tighten the prediction.
 
-7a. Hold CONTROL WITHDRAW until SOURCE RANGE passes 3.0e3. Let STARTUP RATE fall to about +0.01 to +0.03.
+7a. Hold CONTROL WITHDRAW until CONTROL ROD POSITION is 180 to 205. SOURCE RANGE should read about 3.0e3 or more.
 
-Note: Stop when CONTROL ROD POSITION reads about 180 to 205 steps. This pull is only 25 steps wide, so watch the position, not the clock.
+Note: This pull is only 25 steps wide, so watch the position, not the clock.
 
-Suggested time warp: 10×.
+Suggested time warp: 5×.
 
 ()  SOURCE RANGE reads 3.0e3 (3,000 counts per second) or more
 
-7b. Press Plot point, then read the prediction again.
+7b. Wait for STARTUP RATE +0.03 or less, then press Plot point and read the prediction again.
 
 Suggested time warp: 1×.
 
@@ -158,19 +158,19 @@ Each step now buys more reactivity than the last, so the pulls get smaller from 
 
 8. Withdraw the last short pull and plot the final point the approach is built on.
 
-8a. Hold CONTROL WITHDRAW until SOURCE RANGE passes 7.0e3. Let STARTUP RATE fall to about +0.01 to +0.03.
+8a. Hold CONTROL WITHDRAW until CONTROL ROD POSITION is 195 to 205. SOURCE RANGE should read about 7.0e3 or more.
 
-Note: Stop when CONTROL ROD POSITION reads about 195 to 205 steps. This is the point the prediction is built on, so give it the time: STARTUP RATE takes about six plant-minutes to come back to zero here, and a point plotted before it does throws the predicted position further out than it is.
+Note: This is the point the prediction is built on, so give it the time: STARTUP RATE takes about three to three and a half plant-minutes to reach +0.03 here, and a point plotted before it does throws the predicted position further out than it is.
 
 Suggested time warp: 10×.
 
 ()  SOURCE RANGE reads 7.0e3 (7,000 counts per second) or more
 
-8b. Press Plot point, then note the critical rod position the 1/M panel predicts.
+8b. Wait for STARTUP RATE +0.03 or less, then press Plot point and note the critical rod position the 1/M panel predicts.
 
 Note: The reactor goes critical at that position or just below it, so the next step stops short of it and taps from there.
 
-Suggested time warp: 1×.
+Suggested time warp: 10×.
 
 ()  Point plotted
 
@@ -212,7 +212,7 @@ Critical means the chain reaction keeps itself going: power rises with the rods 
 
 10a. Leave the rods still. Watch INTER RANGE and STARTUP RATE; REACTOR POWER stays at 0.0 % for a long while.
 
-Note: REACTOR POWER reads 0.0 % for about twenty-five to thirty-five plant-minutes while INTER RANGE climbs three decades. Never 60×, where a 2 ½ second glance away is two and a half plant-minutes of reactor. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
+Note: REACTOR POWER reads 0.0 % for about 45 to 60 plant-minutes after a read of 0.06 to 0.10; under 10 if you tapped on to about 0.15 while INTER RANGE climbs three decades. Never 60×, where a 2 ½ second glance away is two and a half plant-minutes of reactor. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
 
 Suggested time warp: 10×.
 
@@ -231,7 +231,7 @@ INTER RANGE is a current, not a percentage, and it can read a climb three decade
 
 11a. While STARTUP RATE is positive, leave the rods alone. Only if it falls back to 0.00 with REACTOR POWER below 0.5 %, press SLOW, tap WITHDRAW once, and wait again.
 
-Note: SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE carries the reading from here; there is no button for it. Once it has gone, close the 1/M PLOT window with the ✕ in its corner — its work is done. About 15 plant-minutes.
+Note: SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE carries the reading from here; there is no button for it. Once it has gone, close the 1/M PLOT window with the ✕ in its corner — its work is done. About 20 to 25 plant-minutes (about 7 after a 0.15 approach).
 
 Suggested time warp: 5×, back to 1× before a tap. The plant behaves the same at any speed, but this is the step that may want a tap, and at 10× a tap has landed before you have read the rate.
 
@@ -266,7 +266,7 @@ Warmer water slows this reactor down, so the heat the climb makes is what stops 
 
 13. Cross the 5 % line deliberately. That is Mode 1, At Power.
 
-13a. Press SLOW, then hold WITHDRAW until REACTOR POWER passes 5 %, about 13 steps.
+13a. Press SLOW, then hold CONTROL WITHDRAW for about 13 steps, then release and wait: power passes 5 % a few minutes later.
 
 Note: Power climbs toward 8 to 10 %, and past 9 ½ % once the turbine takes load in the next step. It needs to: the turbine's startup trips cannot be blocked until REACTOR POWER is above 9 ½ %.
 
@@ -306,9 +306,9 @@ LATCH resets the turbine so it can take steam; LOAD is how much electricity the 
 
 15. Block the first startup trip once REACTOR POWER is above 9 ½ %.
 
-15a. Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the IR HIGH FLUX row.
+15a. Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the IR HIGH FLUX (IR is INTER RANGE) row.
 
-Note: Do this the moment REACTOR POWER is above 9 ½ %: at 25 % this trip fires. Below 8 % power the BLOCK button is dead and will not take the press at all; between there and about 9 ½ % it takes it and the block then goes out again by itself, because the block's automatic permission — the panel calls it P-10 PERMISSIVE — is read off the power-range meter, which wanders about ± 0.3 % and keeps dipping back under. If that happens, let power come up and press it again. The reactor keeps climbing while the panel is open.
+Note: Do this the moment REACTOR POWER is above 9 ½ %: at 25 % this trip fires. Below 8 % power the BLOCK button is dead and will not take the press at all; between there and about 9 ½ % it takes it and the block then goes out again by itself, because the block's automatic permission — the panel calls it P-10 PERMISSIVE — is read off REACTOR POWER, which wanders about ± 0.3 % and keeps dipping back under. If that happens, let power come up and press it again. The reactor keeps climbing while the panel is open.
 
 Suggested time warp: 1×.
 
@@ -392,8 +392,9 @@ becoming steps. Until then the line is prose only.
 |---|---|---|
 | 5a | 5× | OWNER, the 2026-09-22 example |
 | 6a | 5× | my pick, same shape as 5a (63-step rung, 300 s settle) |
-| 7a | 10× | my pick, overriding the pool's generated 60× — its own hint says 60× is wrong for the pull half, and the owner's item 3 names the same failure on 8 |
+| 7a | 5× | OWNER RULING, 2026-09-24 ("7a 5×, 8b 10×") — SUPERSEDES the earlier 10× "my pick" row below: a 25-step window at 10× measured ~3 s of wall time (layman pass 3, #653 S-2), too fast to release on |
 | 8a | 10× | OWNER, item 3 |
+| 8b | 10× | OWNER RULING, 2026-09-24 ("7a 5×, 8b 10×") — 8b now carries the "wait for +0.03 or less, then plot" rate-wait (rod-window-leads reword), a real 3.0-3.5 plant-minute wait; measured 8.0 steps/wall-second at 10× vs 4.0 at 5× for MED |
 | 9a | 1× | the old step 9 note ("come back to 1× before you move a rod again") |
 | 9b, 10a | 10× | OWNER, item 3; matches the pool's MEASURED `wait_speed: 10` on old step 9 (`tools/glance_rung.js`, #796) |
 | 11a | 5× | the pool's MEASURED `wait_speed: 5` on old step 10 |
@@ -490,6 +491,10 @@ yardstick reads 0.000 % at every rung (the core is subcritical), so it cannot de
 number that does is wall clock per rod step at MED: 0.25 s at 5× (6a), 0.12 s at 10× (7a) — the
 same 0.12 s as his own 8a at 10×. Kept as written. Step 10 at 10× moves true power 0.086 % per
 glance (0.186 % was accepted for the same window before the split).
+
+**SUPERSEDED for 7a, 2026-09-24** — see the "Reconcile record — 2026-09-24 (f)" section below and
+the SPEED PROVENANCE table above: the owner ruled 7a to 5× directly (measured too fast at 10× for
+a 25-step window, layman pass 3 #653 S-2). 6a is unaffected.
 
 ---
 
@@ -728,3 +733,92 @@ never uses the word "permissive", so there was nothing to gloss there; both its 
 the coordinator's instruction (another agent is re-grading it). Step 11's "About 15 plant-minutes"
 was not converted to a range — the report gives only the shallow-route number (~17 min) for this
 particular row, no authored-route figure to pair it with.
+
+---
+
+### Reconcile record — 2026-09-24 (f), workbench lane: six owner rulings on the 2026-09-24 layman
+pass 3 (#653) and its comment
+
+*Selections from options put to him in a question dialog on 2026-09-24. The quoted option text is
+what he selected, not his own words (Hard Rule 11). Changed in this file AND in
+`ui/manual_procedures.js`'s `pwr_startup` pool. Measurements are
+`Diagnostic/CHECKLIST_PLAYTEST_2026-09-24_LAYMAN_PASS3.md` and the #653 comment
+(github.com/TH462/Reactor-Dynamics/issues/653#issuecomment-5816333693), used verbatim per the
+coordinator's numbers — none re-measured in this pass.*
+
+**1. Selected "Take all" (S-4 timing gaps, S-7 wording, S-8 wording):**
+- Step 10 note: "about twenty-five to thirty-five plant-minutes" → "about 45 to 60 plant-minutes
+  after a read of 0.06 to 0.10; under 10 if you tapped on to about 0.15". Matches the report's own
+  numbers: the 0.06-0.10 route measures step 10 at 45.4-56.7 min; the as-written ~0.15 route
+  measures 5.7-8.0 min (both seeds).
+- Step 11 note: "About 15 plant-minutes." → "About 20 to 25 plant-minutes (about 7 after a 0.15
+  approach)." Matches: the 0.06-0.10 route measures step 11 at 20.0-24.8 min; the ~0.15 route
+  measures 7.1-7.7 min.
+- Step 15: "power-range meter" → "REACTOR POWER" (S-7: not a board label). "IR HIGH FLUX" glossed
+  once, at its first appearance (15a's action line): "IR HIGH FLUX (IR is INTER RANGE)". Not
+  repeated on step 15's check-off or step 17's note, which both name it a second time.
+- Step 1 note: "counts should be steady" → "counts should be wandering around one level, not
+  climbing" (S-8: SOURCE RANGE flickers 4.9e2-5.5e2 with nothing moving; a layman read the noise
+  as "not steady").
+
+**2. Selected "Rod window leads" (S-1, steps 5-8, two stop rules on one card).**
+The rod-position window is now the STOP RULE in each pull substep's action line; the SOURCE RANGE
+count is a confirmation, "should read about … or more". "Wait for STARTUP RATE +0.03 or less,
+then plot" now appears once per step, in the plot substep (5b/6b/7b/8b), replacing the old
+"Let STARTUP RATE fall to about +0.01 to +0.03" clause that sat on the pull substep. "back to
+0.00"/"back to zero" is removed from steps 5 and 8's notes (both described a threshold the rate
+does not literally reach — it parks at +0.01 to +0.03 — and the new "+0.03 or less" language is
+the actual gate).
+
+| substep | before (`ask` / relevant note text) | after |
+|---|---|---|
+| 5a | "Hold CONTROL WITHDRAW at MED until SOURCE RANGE passes 7.0e2. Let STARTUP RATE fall to about +0.01 to +0.03." / note: "Stop when CONTROL ROD POSITION reads about 80 to 100. STARTUP RATE is back to 0.00 about half a plant-minute after the rods stop." | "Hold CONTROL WITHDRAW at MED until CONTROL ROD POSITION is 80 to 100. SOURCE RANGE should read about 7.0e2 or more." / no note |
+| 5b | "Press Plot point to plot the second point." | "Wait for STARTUP RATE +0.03 or less, then press Plot point to plot the second point." / note: "STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop." |
+| 6a | "Hold CONTROL WITHDRAW until SOURCE RANGE passes 1.4e3. Let STARTUP RATE fall to about +0.01 to +0.03." / note: "Stop when CONTROL ROD POSITION reads about 150 to 175 steps. Wait for the rate before you plot: about a minute and a half after the rods stop." | "Hold CONTROL WITHDRAW until CONTROL ROD POSITION is 150 to 175. SOURCE RANGE should read about 1.4e3 or more." / no note |
+| 6b | "Press Plot point, then read the predicted rod position the panel prints." | "Wait for STARTUP RATE +0.03 or less, then press Plot point and read the predicted rod position the panel prints." / note: "STARTUP RATE reaches +0.03 or less about a minute and a half after the rods stop." |
+| 7a | "Hold CONTROL WITHDRAW until SOURCE RANGE passes 3.0e3. Let STARTUP RATE fall to about +0.01 to +0.03." / note: "Stop when CONTROL ROD POSITION reads about 180 to 205 steps. This pull is only 25 steps wide, so watch the position, not the clock." | "Hold CONTROL WITHDRAW until CONTROL ROD POSITION is 180 to 205. SOURCE RANGE should read about 3.0e3 or more." / note: "This pull is only 25 steps wide, so watch the position, not the clock." |
+| 7b | "Press Plot point, then read the prediction again." | "Wait for STARTUP RATE +0.03 or less, then press Plot point and read the prediction again." |
+| 8a | "Hold CONTROL WITHDRAW until SOURCE RANGE passes 7.0e3. Let STARTUP RATE fall to about +0.01 to +0.03." / note: "Stop when CONTROL ROD POSITION reads about 195 to 205 steps. This is the point the prediction is built on, so give it the time: STARTUP RATE takes about six plant-minutes to come back to zero here, and a point plotted before it does throws the predicted position further out than it is." | "Hold CONTROL WITHDRAW until CONTROL ROD POSITION is 195 to 205. SOURCE RANGE should read about 7.0e3 or more." / note: "This is the point the prediction is built on, so give it the time: STARTUP RATE takes about three to three and a half plant-minutes to reach +0.03 here, and a point plotted before it does throws the predicted position further out than it is." |
+| 8b | "Press Plot point, then note the critical rod position the 1/M panel predicts." | "Wait for STARTUP RATE +0.03 or less, then press Plot point and note the critical rod position the 1/M panel predicts." |
+
+The "about six plant-minutes to come back to zero" figure on step 8 is corrected to "about three to
+three and a half plant-minutes to reach +0.03": the ruling's own instruction (fix step 8's timing
+to match the "+0.03 or less" gate) and the task's measured figure of 3.0-3.5 plant-minutes.
+
+**Grading is UNCHANGED on all eight rows** — `p`/`op`/`v` (`sr_counts_cps >= 695/1350/2950/6950`)
+stay the grading predicates for 5a-8a; the check-off `label` text ("SOURCE RANGE reads … or more")
+is left as written, since it is a factual reading and does not itself claim to be the stop rule.
+**Grading question for the owner, not decided here:** whether the check-off `label` on 5a-8a should
+also be reworded to read as a confirmation (e.g. "… confirmed" or similar) now that the action line
+leads with the rod-position window — left as is per the instruction to reword the label only if it
+falsely claims to be the stop rule, which it does not.
+
+**3. Selected "7a 5×, 8b 10×" (S-2, a 25-step window at 10× is ~3 s of wall time).**
+- 7a: `wait_speed` 10× → 5×; "Suggested time warp" line "10×." → "5×."
+- 8b: `wait_speed` 1× → 10×, with the new "wait for the rate" ask above giving the line a reason to
+  need one — the plot substep is now a real 3.0-3.5 plant-minute wait, not an instant press.
+  Measured: 8.0 steps per wall-second at 10× vs 4.0 at 5× for MED.
+- Speed-provenance table above updated (7a, new 8b row); the older "Speeds 6a and 7a" paragraph
+  gained a superseding pointer rather than being rewritten, since it is a historical record of the
+  2026-09-23 pick that this ruling replaces for 7a only.
+
+**4. Selected "Take all" (S-6, step 13, "about 13 steps" took 18).**
+- 13a: "Press SLOW, then hold WITHDRAW until REACTOR POWER passes 5 %, about 13 steps." →
+  "Press SLOW, then hold CONTROL WITHDRAW for about 13 steps, then release and wait: power passes
+  5 % a few minutes later." Grading is unchanged (`power_pct >= 5.05`, "REACTOR POWER above 5 %").
+- **CHANGED BEYOND THE RULING, a correction found during this pass:** the previous ("d") reconcile
+  record claimed 13a already read "Hold CONTROL WITHDRAW" (part of the "Hold WITHDRAW → Hold
+  CONTROL WITHDRAW" rewording on steps 5a/6a/7a/8a/9a/13a), but the file and the pool both still
+  read bare "hold WITHDRAW" on 13a — that record was written but the edit was never applied to this
+  step. This pass's rewrite adds "CONTROL" as originally ruled, fixing the gap while it was open
+  for this step anyway.
+
+**5. Selected "Reword" (option: step 15's card).** Already covered under item 1 above (the "power-
+range meter" → "REACTOR POWER" swap and the "IR" gloss) — filed together here since both came off
+the same S-7 finding.
+
+**6. Selected "Keep both" (a question on the "Past the mark" card line and 9a's "at least 3 short"
+grading).** No text or code change: the `ui/app.js`-drawn "Past the mark: the 1/M plot predicts
+step …" card line stays exactly as built, and 9a's `below_1m: 3` grading — which already accepts
+ANY stop at or below prediction-minus-3, i.e. "at least 3 short" — is unchanged. Recorded here only
+because a ruling was asked for and given; nothing in the sim or this file moved.

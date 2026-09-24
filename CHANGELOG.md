@@ -31,6 +31,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Fixed
+- **Mode 3 to Mode 1, steps 5-8: the rod-position window leads, the count confirms** (owner
+  rulings, 2026-09-24, layman pass 3, #653). Each pull substep's instruction now leads with the
+  CONTROL ROD POSITION stop window; the SOURCE RANGE count is a "should read about … or more"
+  confirmation. "Wait for STARTUP RATE +0.03 or less, then plot" now appears once per step, in the
+  plot substep, replacing a duplicated "let the rate fall" clause on the pull substep. Grading
+  (`sr_counts_cps >= 695/1350/2950/6950`) is unchanged. 7a's rung drops 10×→5× (a 25-step window
+  measured ~3 s of wall time at 10×); 8b's rises 1×→10×, since it now carries a real 3.0-3.5
+  plant-minute rate-wait. Step 13's pull reads "hold for about 13 steps, then release and wait";
+  steps 10 and 11's dwell notes now give ranges covering both the 0.06-0.10 and ~0.15 approach
+  routes; step 15 says "REACTOR POWER" instead of "power-range meter" and glosses IR once; step
+  1's SOURCE RANGE note says "wandering around one level" instead of "steady". Record:
+  `Blueprint/walkthrough_steps/02_mode3_to_mode1.md`, "Reconcile record — 2026-09-24 (f)".
 - **Walkthrough panel: a Continue that lights below the fold is scrolled into view** (#653, layman
   pass 3, 2026-09-24). `pwr_startup` step 9 at 1600x1000: a 785 px step in a 728 px log opens at
   its own top, and when 9b lit, Continue sat at y 984 against a log floor of 931 with nothing
