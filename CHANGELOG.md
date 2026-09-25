@@ -30,6 +30,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Shutdown to Mode 3 walkthrough in the per-substep format** (owner directive, 2026-09-24:
+  "Adopt the format for the other walkthroughs."). 3 steps, 4 substeps, 7 check-offs; goal lines
+  agent-drafted for review. Step 2 now checks both rod positions at 0 of 627; the OUTPUT and
+  REACTOR POWER rows grade at their tile's render-band floor (4.5 MWe, 4.95 %, 0.95 %). Record:
+  `Blueprint/walkthrough_steps/05_shutdown.md` Notes.
+
 ## [Alpha 1.8.0-rc5] — 2026-09-24
 
 ### Fixed
