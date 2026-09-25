@@ -1918,8 +1918,12 @@ if (!only && RUN_B) {
                * guard is kept at 30 words — his longest action line (`pwr_startup` 11a) — and the
                * one-row rule becomes the thing it was protecting against: an ask that merely
                * repeats the step's own line. */
-              var fmt = en.note != null || en.wait_speed != null || en.speed_text != null;
-              if (w > (fmt ? 30 : 14)) r.tooLong.push(where + ' (' + w + ' words)');
+              /* ...AND A STEP IN THE WHAT / WHY / HOW FORMAT (2026-09-25): a step carrying `aim`
+               * (its one-line WHY) is his, whether or not a head carries a note or speed — a warp
+               * the substeps share now lives on the STEP. The cap is 40: his longest action line
+               * is `pwr_startup` 11a, 38 words, since the 2026-09-24 reword (it was 30). */
+              var fmt = en.note != null || en.wait_speed != null || en.speed_text != null || st.aim != null;
+              if (w > (fmt ? 40 : 14)) r.tooLong.push(where + ' (' + w + ' words)');
               var norm = function (x) { return String(x || '').replace(/[.\s]/g, '').toLowerCase(); };
               if (vis.length < 2 && (!fmt || norm(en.ask) === norm(st.text))) r.onSingles.push(where);
             });
@@ -1966,7 +1970,7 @@ if (!only && RUN_B) {
     var probe = null;
     POOL.forEach(function (lpp) { (lpp.steps || []).forEach(function (st) {
       (st.accs || []).forEach(function (e) {
-        if (e.ask && !probe && e.note == null && e.wait_speed == null && e.speed_text == null) probe = e;
+        if (e.ask && !probe && !st.aim && e.note == null && e.wait_speed == null && e.speed_text == null) probe = e;
       });
     }); });
     /* NO LEGACY ASK LEFT IS THE INTENDED END STATE, NOT A BLIND CHECK (2026-09-24): all five
@@ -2023,14 +2027,14 @@ if (!only && RUN_B) {
       var r5 = { long: -1, single: -1 }, r6 = { single: -1 }, r7 = { long: -1 };
       if (fmtSt) {
         var fAsk = fmtSt.accs[0].ask;
-        fmtSt.accs[0].ask = new Array(32).join('word ').trim() + '.'; r5 = counts();
+        fmtSt.accs[0].ask = new Array(42).join('word ').trim() + '.'; r5 = counts();
         fmtSt.accs[0].ask = fmtSt.text;                               r6 = counts();
         fmtSt.accs[0].ask = new Array(21).join('word ').trim() + '.'; r7 = counts();
         fmtSt.accs[0].ask = fAsk;
       }
-      ck('...RED BY INJECTION, owner format: a 31-word ask and an ask repeating its step line are caught; a 20-word ask is not',
+      ck('...RED BY INJECTION, owner format: a 41-word ask and an ask repeating its step line are caught; a 20-word ask is not',
          !!fmtSt && r5.long === 1 && r6.single === 1 && r7.long === 0,
-         fmtSt ? 'long@31 ' + r5.long + ', single@echo ' + r6.single + ', long@20 ' + r7.long : 'no one-row owner-format step in the pool');
+         fmtSt ? 'long@41 ' + r5.long + ', single@echo ' + r6.single + ', long@20 ' + r7.long : 'no one-row owner-format step in the pool');
       var clean = counts();
       ck('...and every injection was cleaned up (the sweep is green again)',
          !!probe.label && probe.ask === savedAsk && !clean.noLabel && !clean.echo && !clean.long && !clean.single,
@@ -3701,11 +3705,12 @@ if (!only && RUN_B) {
       /* RE-PINNED 2026-09-24 (rp_start): 135 -> 137 predicate rows, 87 -> 90 instrument-graded. `pwr_heatup` 16
        * trades NET REACTIVITY (true_state) for SOURCE RANGE steady + STARTUP RATE near 0 (+1 row, +2 instrument);
        * `pwr_startup` 9 gains a hidden STARTUP RATE `steady` row, the settle (+1, +1). Graded steps and sole unmoved. */
-      /* RE-PINNED 2026-09-25 (layman pass 4, exp/v5-ct): 137 -> 135 predicate rows. `pwr_raise_power` 8 loses
-       * "CONTROL ROD POSITION above 300"; step 10's "above 351" becomes a command check-off (the pull). Both
-       * were control-state rows, so instrument-graded (90) and sole (29) are unmoved; graded steps unmoved. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25: 84 / 135 / 90 / 29)',
-         gradedSteps === 84 && predRows === 135 && rows.length === 90 && soleInst === 29,
+      /* RE-PINNED 2026-09-25 (`pwr_startup` what / why / how bring-down): 137 -> 141 predicate rows (develop +6 here, and workbench -2 from raise-power 8/10 in the layman pass 4 fixes; SUM on a merge),
+       * 90 -> 92 instrument-graded, sole 29 -> 28. Step 1 +2 (RCP FLOW, STARTUP RATE — both
+       * instrument), step 2 +2 (the ON lamp and target box, control-state), step 3 +2 (STEAM DUMP
+       * AUTO and DUMP SETPOINT, control-state); step 2's BORON CHEM row stops being the only one. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25: 84 / 141 / 92 / 28)',
+         gradedSteps === 84 && predRows === 141 && rows.length === 92 && soleInst === 28,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -3793,7 +3798,9 @@ if (!only && RUN_B) {
        * step 17's two rows (it graded `plant_mode`, a true_state fact, before). */
       'pwr_startup:1:tavg_c': 'tavg',                        // ~ 285.83      dead 30.00 vs true 286.3 degC
       'pwr_startup:1:pressure_mpa': 'primary_pressure',      // ~ 15.41       his 2200-2270 psi row
-      'pwr_startup:2:boron_ppm': 'boron_analyzer',           // ~ 719 [SOLE]  dead 0.000 vs true 718.9 ppm
+      'pwr_startup:1:pump_flow_pct': 'rcs_flow',             // >= 89.5      1c, 2026-09-25
+      'pwr_startup:1:startup_rate_dpm': 'startup_rate',      // ~ 0 ± 0.025  1d, 2026-09-25
+      'pwr_startup:2:boron_ppm': 'boron_analyzer',           // ~ 719        dead 0.000 vs true 718.9 ppm (2c; not SOLE since 2026-09-25)
       /* 'pwr_startup:9:startup_rate_dpm' moved to RELIEVED_EXPECTED (quality pass 2026-09-23): step 9's
        * `overtaken` on REACTOR POWER 0.5 % stands it down off-channel once power arrives (§2aj). */
       'pwr_startup:10:power_pct': 'power_range',             // > 0.05        the row #749's relief leans ON
@@ -4004,7 +4011,7 @@ if (!only && RUN_B) {
       'pwr_heatup:15': 'adv_valve_pct,steam_pressure_mpa',    // the Hot Standby confirm
       'pwr_heatup:16': 'sr_counts_cps,startup_rate_dpm',      // SOURCE RANGE steady + STARTUP RATE near 0 (owner ruling 2026-09-24; was reactivity_pcm)
       'pwr_heatup:17': 'power_pct',
-      'pwr_startup:1': 'tavg_c,pressure_mpa',                // his two bands (2026-09-23)
+      'pwr_startup:1': 'tavg_c,pressure_mpa,pump_flow_pct,startup_rate_dpm',   // 1a-1d (2026-09-25)
       'pwr_startup:10': 'ir_amps,power_pct',                  // the climb, split out of old 9 (had a cmd)
       'pwr_startup:12': 'power_pct',                          // the rate row became a `steady` power row (2026-09-23)
       'pwr_startup:17': 'power_pct,mwe_output',               // his two rows, replacing plant_mode

@@ -5,20 +5,24 @@
 > This is the LIVE step file: the sim's `pwr_shutdown` walkthrough is brought down to it, word for
 > word. Edit it freely — it is the step text.
 >
-> **The format.** Line one of a step is what the step accomplishes. Each lettered substep opens
-> with the action that accomplishes it, then its own Note, its own **Suggested time warp**, and
-> its check-off lines drawn `()`. Background closes the step. Agent notes go at the END of the
-> file, never between the steps.
+> **The format** (OWNER RULING, 2026-09-24: "I like putting the why where you put it. i choose
+> a."; model: `02_mode3_to_mode1.md` steps 1-3). Line one of a step is WHAT the step accomplishes,
+> never how. Directly under it, one italic line says WHY. Each lettered substep is HOW: it opens
+> with a verb, and it is its own check-off, drawn `()`. **Suggested time warp** appears once per
+> step, or under a substep only when the substeps differ. A Note follows the warp it belongs to.
+> Background closes the step. Agent notes go at the END of the file, never between the steps.
 
 ---
 
 1. Take the load off the generator before the scram.
 
-1a. Set LOAD to 0 MW and wait for OUTPUT to fall below 5 MW.
+*The scram should come with no electricity on the generator, so the load comes off first.*
+
+()1a. Set LOAD to 0 MW and wait for OUTPUT to fall below 5 MW.
 
 Suggested time warp: 1×.
 
-()  OUTPUT below 5 MW
+
 
 Background
 
@@ -28,15 +32,19 @@ Taking the load off the turbine first means the scram happens with no electricit
 
 
 
-2. Shut the reactor down with a planned scram.
+2. Shut the reactor down.
 
-2a. Press SCRAM on the ROD CONTROL card: once to arm it (PRESS TO ARM), then again to scram.
+*Hot Standby is a shut-down reactor, and with the load already off a scram gets it there in seconds.*
+
+()2a. Press SCRAM on the ROD CONTROL card: once to arm it (PRESS TO ARM), then again to scram.
+
+()2b. Check CONTROL ROD POSITION and SHUTDOWN ROD POSITION both read 0 of 627.
+
+()2c. Check REACTOR POWER is falling below 5 %.
 
 Suggested time warp: 1×.
 
-()  CONTROL ROD POSITION 0 of 627
-()  SHUTDOWN ROD POSITION 0 of 627
-()  REACTOR POWER falling below 5 %
+
 
 Background
 
@@ -48,18 +56,21 @@ A planned scram from low power. Both rod banks drop into the core and the chain 
 
 3. Put the decay heat on the steam dump: Mode 3, Hot Standby.
 
-3a. Press AUTO on the STEAM DUMP card until its status reads PRESS.
+*The fuel keeps making heat after the scram, and with the turbine off line the steam dump is where that heat leaves.*
+
+()3a. Press AUTO on the STEAM DUMP card until its status reads PRESS.
 
 Suggested time warp: 1×.
 
-()  STEAM DUMP AUTO lit, status PRESS
+()3b. Check REACTOR POWER reads below 1 %.
 
-3b. Then check REACTOR POWER below 1 %, STEAM PRESS holding near 1020 psi, and the STEAM DUMP open a little.
+()3c. Check STEAM PRESS is holding near 1020 psi.
+
+()3d. Check the STEAM DUMP is open a little.
 
 Suggested time warp: 10×.
 
-()  STEAM DUMP open, carrying the decay heat
-()  REACTOR POWER below 1 %
+
 
 Background
 
@@ -158,3 +169,42 @@ The hollow tick in the ⚠ paragraph above is gone: step 3 now waits for the pre
 Injection (`run_checklist_pwr2_b`): the old lamp grading planted back ticks step 3 with no press.
 Route harness: the new `dump_auto_late` route (press after 120 s) completes in 2.4 plant-min
 against the typical route's 1.1.
+
+### Reword record — 2026-09-25, `exp/w6-shutdown` scratch lane: the what / why / how format
+
+*OWNER RULING, 2026-09-24, selected "Yes, all five": "Opus agents restyle heatup, raise, lower,
+shutdown and cooldown to match, using your Mode 3 → Mode 1 steps 1–3 as the model. Measured
+numbers stay; the gates and a layman pass confirm."* The shape is `02_mode3_to_mode1.md` record
+(h). **Phase 1, this file only: the `pwr_shutdown` pool block in `ui/manual_procedures.js` is NOT
+brought down yet**, so the "word-for-word identical" line in the header and in the first reconcile
+record above is false until phase 2.
+
+**Counts.** 3 steps (kept). Before: 4 lettered substeps, 7 check-off lines hung under them. After:
+8 lettered substeps, each its own check-off (1 + 3 + 4). No number changed.
+
+**What moved.**
+- Step 1: unchanged except the new why line. 1a stays ONE substep — "Set … and wait for …" is the
+  same action-until-reading shape as the model's 7a ("Hold … until …"); OUTPUT falls within 0.7 s
+  of the press (measured above), so a separate wait would tick on the same broadcast.
+- Step 2 first line "Shut the reactor down with a planned scram." -> "Shut the reactor down." (the
+  scram is HOW; it is 2a and the Background's first words). 2a is his line verbatim. His three
+  check-off lines became 2b (both rod positions, one substep — they fall together, 0 by 3.0 s) and
+  2c (REACTOR POWER).
+- Step 3: 3a verbatim. His old 3b ("Then check REACTOR POWER below 1 %, STEAM PRESS holding near
+  1020 psi, and the STEAM DUMP open a little.") split into 3b / 3c / 3d in his order, "Then"
+  dropped. Warps differ (3a 1×, the checks 10×), so each group carries its own.
+- Why lines are new and AGENT-DRAFTED FOR OWNER REVIEW. Each is drawn from that step's own
+  Background; none carries a number the Background does not.
+
+**Needs an acceptance in phase 2** (substeps with no grading row today):
+- **2a** (press SCRAM) — the rod rows now grade 2b. Grade 2a on the scram itself (the reactor
+  trip / scram latch in the service state), so it ticks at the press and 2b ~3 s later.
+- **2b** carries TWO existing rows (CONTROL and SHUTDOWN ROD POSITION, each `< 0.5`); it ticks
+  when both are met. Phase 2 must merge them into one substep's acceptance.
+- **3c** (STEAM PRESS near 1020 psi) — never graded; it was only in the old note-turned-action.
+  Measured above: 1019-1022 psi (7.03-7.05 MPa) 600 s in with PRESS selected, but 1004 psi and
+  still rising when step 3 completes on the chained route — outside a ±15 psi band, so a band
+  that tight would hold the player there. Measure the wait before choosing it.
+
+Existing rows map 1a -> OUTPUT `< 4.5`; 2c -> REACTOR POWER `< 4.95`; 3a -> `steam_dump_press_mode`;
+3b -> REACTOR POWER `< 0.95`; 3d -> dump `> 0.5` %.

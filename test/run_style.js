@@ -161,14 +161,18 @@ var CHECKS = [
   {
     id: 'checklist_vague',
     rule: 'W12 — no vague quantifier in a checklist step',
-    run: function (d) { return scanSteps(d, ['text', 'target', 'control', 'note', 'story'], VAGUE); },
-    inject: function (d) { d.steps[0].step.text = 'Raise pressure slowly to the program point.'; },
+    run: function (d) { return scanSteps(d, ['text', 'aim', 'target', 'control', 'note', 'story'], VAGUE); },
+    /* `aim` (the step's one-line WHY, 2026-09-25) gets its OWN injection — a per-field harvest
+     * needs a per-field proof, the #741 lesson on `checklist_no_si` below. */
+    inject: [function (d) { d.steps[0].step.text = 'Raise pressure slowly to the program point.'; },
+             function (d) { d.steps[0].step.aim = 'Pressure comes up slowly here.'; }],
   },
   {
     id: 'checklist_modal',
     rule: 'W16 — no shall/should/must in a checklist step (the step is an imperative)',
-    run: function (d) { return scanSteps(d, ['text'], MODAL); },
-    inject: function (d) { d.steps[0].step.text = 'The operator must open the valve.'; },
+    run: function (d) { return scanSteps(d, ['text', 'aim'], MODAL); },
+    inject: [function (d) { d.steps[0].step.text = 'The operator must open the valve.'; },
+             function (d) { d.steps[0].step.aim = 'The valve should be open before heat is added.'; }],
   },
   {
     id: 'checklist_reversal',
@@ -179,8 +183,9 @@ var CHECKS = [
   {
     id: 'checklist_percent',
     rule: 'N4 — a space before the percent sign (house style is 629 spaced to 12)',
-    run: function (d) { return scanSteps(d, ['text', 'target', 'note', 'story'], TIGHT_PCT); },
-    inject: function (d) { d.steps[0].step.target = 'level 40%'; },
+    run: function (d) { return scanSteps(d, ['text', 'aim', 'target', 'note', 'story'], TIGHT_PCT); },
+    inject: [function (d) { d.steps[0].step.target = 'level 40%'; },
+             function (d) { d.steps[0].step.aim = 'Mode 1 begins at 5%.'; }],
   },
   {
     id: 'bare_megawatt',
@@ -199,7 +204,7 @@ var CHECKS = [
     exempt: ['OUTPUT near 10 MW'],
     run: function (d) {
       var self = this;
-      var hits = scanSteps(d, ['text', 'target', 'note', 'why', 'story'], BARE_MW)
+      var hits = scanSteps(d, ['text', 'aim', 'target', 'note', 'why', 'story'], BARE_MW)
         /* THE WHOLE FIELD MUST BE THE PHRASE (quality pass, 2026-09-24): a substring test let
          * any field whose first 90 chars merely CONTAINED it -- "OUTPUT near 10 MW, 30 MW
          * thermal" -- drop its other bare MW too. A hit ends `in: <field text sliced to 90>`, so
@@ -212,7 +217,8 @@ var CHECKS = [
       });
       return hits;
     },
-    inject: function (d) { d.manual[0].lines.push('The plant is rated 100 MW gross.'); },
+    inject: [function (d) { d.manual[0].lines.push('The plant is rated 100 MW gross.'); },
+             function (d) { d.steps[0].step.aim = 'The generator carries 10 MW from here.'; }],
   },
   /* THE DETAILS PARAGRAPH IS SUPPLEMENTAL CONTEXT, NOT A CHAPTER *(OWNER, 2026-09-03, #619
    * item 12: "the click to expand description is way to verbose. nobody is going to read all
@@ -325,7 +331,7 @@ var CHECKS = [
         (p.precond || []).forEach(function (c, i) { chk(p.id + '.precond' + i, c.text); });
       });
       d.steps.forEach(function (s) {
-        ['text', 'note', 'why', 'target', 'wait_hint'].forEach(function (k) { chk(s.proc + ' step ' + s.n + '.' + k, s.step[k]); });
+        ['text', 'aim', 'note', 'why', 'target', 'wait_hint', 'speed_text'].forEach(function (k) { chk(s.proc + ' step ' + s.n + '.' + k, s.step[k]); });
         // the incident walkthrough's narrative block (#670) — four strings on the card, bound by
         // the ruling exactly as `why` is. It is prose ABOUT a plant, which is where an "(11 MPa)"
         // is most likely to be written without thinking.
@@ -355,10 +361,10 @@ var CHECKS = [
      * "CAN FAIL", because `target` alone kept it able to fail. Proven: with the ask harvest
      * removed, the old inject still self-tested green. A per-field harvest needs a per-field
      * injection or the newest field is the one nothing proves. */
-    inject: function (d) {
+    inject: [function (d) {
       d.steps[0].step.accs = [{ label: 'Load target set to 50 MWe',
                                 ask: 'Set LOAD to 50 MWe at 11.14 MPa.' }];
-    },
+    }, function (d) { d.steps[0].step.aim = 'Steam pressure holds at 7.03 MPa here.'; }],
   },
   /* THE NARRATIVE BLOCK IS FOUR LINES, NOT FOUR PARAGRAPHS (#670 Phase 1).
    *
@@ -437,9 +443,19 @@ if (SELF_TEST) {
   CHECKS.forEach(function (c) {
     var clean = build();
     var okClean = c.run(clean).length === 0;
-    var dirty = build();
-    c.inject(dirty);
-    var firedDirty = c.run(dirty).length > 0;
+    /* `inject` may be an ARRAY (2026-09-25): one injection per harvested field that needs its own
+     * proof, and EVERY one must fire. The pool objects are shared across builds (require cache),
+     * so each injection runs on a snapshot of step 0 that is put back afterwards. */
+    var firedDirty = [].concat(c.inject).every(function (inj) {
+      var dirty = build();
+      var st0 = dirty.steps[0] && dirty.steps[0].step, saved = st0 ? JSON.parse(JSON.stringify(st0)) : null;
+      var nMan = dirty.manual[0] ? dirty.manual[0].lines.length : 0;
+      inj(dirty);
+      var fired = c.run(dirty).length > 0;
+      if (st0) { Object.keys(st0).forEach(function (k) { delete st0[k]; }); Object.keys(saved).forEach(function (k) { st0[k] = saved[k]; }); }
+      if (dirty.manual[0]) dirty.manual[0].lines.length = nMan;
+      return fired;
+    });
     var ok = okClean && firedDirty;
     if (!ok) selfFailed++;
     console.log((ok ? G + 'CAN FAIL' : R + 'INERT  ') + X + '  ' + c.id +

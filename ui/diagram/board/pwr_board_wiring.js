@@ -3724,6 +3724,10 @@
      *                     against 'Dump SP', which is the card around it.
      *   'Load Setpoint'   imro8rmka2y — the generator LOAD input, as against 'Turbine Load',
      *                     which is the TURBINE-GENERATOR card. */
+    /* 'Boron ON' imrqp6com2b — the BORON card's ON button (CHANNEL_BUTTONS above: it engages the
+     * `boron_conc` channel), the press `pwr_startup` 2a "Turn the boron dilution system ON"
+     * names (2026-09-25). */
+    'Boron ON': 'imrqp6com2b',
     'Boron Target': 'imrpq29jo7t', 'Boron Status': 'ims3wy5oym4',
     'Boron Concentration': 'ims2jva1ff5',
     'Dump Setpoint': 'ims31tq7mgc', 'Load Setpoint': 'imro8rmka2y',
