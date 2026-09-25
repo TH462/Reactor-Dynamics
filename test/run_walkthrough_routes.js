@@ -75,8 +75,10 @@ var ROUTES = {
       '#6': { policy: 'pull_plot', to: 150, top: 175 },    // "150 to 175"
       '#7': { policy: 'pull_plot', to: 180, top: 205 },    // "180 to 205"
       '#8': { policy: 'pull_plot', to: 195, top: 205 },    // "195 to 205"
-      // 9 and 10 are slow by the card's own design (a tap, a 5-minute read, repeat; then 45 to 60
-      // minutes of climb after a 0.06 read), so their bound is the card's, not 3 x hold.
+      // 9 and 10 are slow by the card's own design (a tap, a read once the rate has stopped falling —
+      // about 10 minutes — repeat; then 30 to 60 minutes of climb after a 0.06 to 0.10 read), so their
+      // bound is the card's, not 3 x hold. Measured 2026-09-24: step 9 21.6 / 26.7 min, step 10
+      // 31.1 / 45.5 min (seeds 42 / 7). The policy still reads every 300 s and taps under 0.06.
       '#9': { policy: 'approach', short: 3, min_rate: 0.06, max_rate: 1.0, dwell: 300, tap: 1, bound_s: 5400 },
       '#10': { policy: 'observe', bound_s: 5400 },
       '#11': { policy: 'wait_tap', rate_below: 0.005, power_below: 0.5, dwell: 300 },
@@ -183,6 +185,9 @@ var MUTATIONS = [
   { id: 'step12_rate_row', route: 'typical_pass3', expect: 'hollow',
     why: "step 12's steady row replaced by a rate-only row (RECONSTRUCTED: SUR < 0.1 — the old row ticked on entry)",
     mutate: function (P) { P.steps[11].accs[1] = { cont: true, p: 'startup_rate_dpm', op: '<', v: 0.1, label: 'rate row' }; } },
+  { id: 'no_settle_9', route: 'typical', expect: 'complete',
+    why: 'step 9 without its STARTUP RATE `steady` row (passed on one falling read of 0.069; step 10 stranded at 90 min, 2026-09-24)',
+    mutate: function (P) { P.steps[8].accs = P.steps[8].accs.filter(function (e) { return e.op !== 'steady'; }); } },
   { id: 'no_latch_9a', route: 'typical_pass3', expect: 'flash',
     why: "9a without `latch` (a WITHDRAW tap un-ticked it, layman pass 2)",
     mutate: function (P) { delete P.steps[8].accs[0].latch; } },
@@ -540,9 +545,10 @@ if (!ROUTE_F && ARGV.indexOf('--no-mutations') < 0)
  * agents own the content). Key: 'leg:route:check'. Each carries its measured numbers in
  * BASELINES' note; this map only keeps the tally honest about which reds are expected. */
 var TRACKED = {
-  // step 8 CLEARED by the owner's reading of the window (2026-09-24 ruling, see ROUTES): 3 taps to
-  // bank 198, 7,244 cps. The literal route then reaches NEW ground and strands at step 10:
-  'pwr_startup:typical:complete': 'step 10: after step 9 passed on ONE read of 0.069 DPM at bank 208, 5 plant-min after the pull (still falling, to 0.024), the climb to 0.05 % takes 127.3 plant-min vs the card\'s "45 to 60" (bound 90) — owner text/grading, measured 2026-09-24',
+  // RESOLVED 2026-09-24 (rp_start): 'pwr_startup:typical:complete' — step 9 passed on ONE read of
+  // 0.069 DPM at bank 208 while the rate was still falling (to 0.024) and step 10 stranded at 90
+  // min. Step 9 now carries a hidden STARTUP RATE `steady` row (5 % over 240 s): the typical route
+  // taps on to 210 (read 0.084) and completes, 113.0 plant-min; mutation `no_settle_9` re-opens it.
   // measured 2026-09-24, both need the OWNER'S text, not a grading fix:
   'pwr_raise_power:rods_first_pull_x2:invariant': 'KNOWN LIMITATION, OWNER RULING 2026-09-24 ("The way I see it the range means that the source range target will be within that range not that hitting the lower part of the range will put you over the target. So let\'s leave then"): a 60-step first pull strands step 7 at 103.9 % power, Tavg 586.8 F over the 585 F band; the card has no recovery and the text stays',
   // RESOLVED 2026-09-24 (workbench-i): step 12's flash (steady hysteresis), raise-power 2's entry

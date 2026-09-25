@@ -2136,10 +2136,31 @@
           null, null,
           'There is no gauge for "how shut down" a reactor is. The signs are SOURCE RANGE counts holding at a steady background instead of climbing, and STARTUP RATE sitting at zero. With the control bank in and boron at the cold concentration, the core is a long way from critical.',
           null, ['Source Range', 'Startup Rate'],
-          { accs: [{ p: 'reactivity_pcm', op: '<', v: -300,
+          /* REGRADED ON THE BOARD (OWNER RULING, 2026-09-24, selected "Grade board readings": "Grade
+           * SOURCE RANGE and STARTUP RATE after a measurement pass, so the check-off matches what the
+           * step tells them to read."). NET REACTIVITY < −300 pcm was true_state and ticked on ANY
+           * shut-down plant — including one being diluted toward critical (−3254 pcm at +5 min).
+           * Both rows grade the INSTRUMENT the tile draws (`source_range`, `startup_rate`).
+           * MEASURED, the live runtime (run_walkthrough_routes machinery), step 16 held open 60 min:
+           *   SOURCE RANGE instrument at 168 cps true wanders 147-194 cps (±13 %); STARTUP RATE
+           *   −0.013 to +0.012 on a still plant — so `~ 0 ± 0.025` (every value toFixed(2) draws
+           *   −0.02..+0.02) never flickers, and the rate row CANNOT see a slow approach: it read
+           *   +0.004 to +0.009 through a dilution and a slow rod pull. The SR `steady` row is the
+           *   discriminator; its window sets the dwell. Offline sweep of W 300/600/900 × v 1-3 %:
+           *   W 300 ticked every approach case (up to 194 of 327 samples); W 600 v 1.2 % none.
+           *   With the rows as built: player route seeds 42/7 and a replay-dwell route complete at
+           *   10.1 min (the window). Approaching cases, 60 min, never tick: dilution 918 -> 719 ppm
+           *   (seeds 42/7/123, SR 168 -> 310 cps, ρ −3400 -> −1840 pcm); rods out 210 + dilution to
+           *   600 ppm (ρ −678 pcm at 60 min, SR 837 cps); a SLOW 200-step pull ticks only 5.9 min
+           *   after the rods stop. INJECTION: the SR row removed, or the old −300 pcm row, and the
+           *   dilution case completes in 0.1 min. */
+          { hold: 720,   /* the replay must see the 600 s window full: 1.2x */
+            accs: [{ p: 'sr_counts_cps', op: 'steady', v: 0.012, window: 600,
                      ask: 'Read SOURCE RANGE counts steady and STARTUP RATE near 0.00.',
-                     note: 'The done-when line reads NET REACTIVITY in pcm — hundredths of a percent of reactivity, a computed diagnostic on the Indications tab, not a board gauge. Below zero means shut down, and −300 pcm is a long way below. On the board the same fact is SOURCE RANGE steady and STARTUP RATE at 0.00.',
-                     wait_speed: 1, label: 'NET REACTIVITY below −300 pcm' }] }),
+                     note: 'SOURCE RANGE wanders by about a tenth either way with nothing moving; steady means it is not climbing, and the check-off watches it for ten plant-minutes before it ticks. STARTUP RATE on a shut-down core flickers between about −0.01 and +0.01. Either one climbing with the rods still means something is adding reactivity: stop and find out what moved.',
+                     wait_speed: 10, label: 'SOURCE RANGE steady' },
+                   { cont: true, p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025,   /* −0.025 to +0.025: every value the tile's toFixed(2) draws as −0.02 to +0.02 */
+                     label: 'STARTUP RATE −0.02 to +0.02' }] }),
         /* #685 — THIS STEP GLOWED NOTHING. No `control` and no `hl`, on a "verify the
          * indication" step whose whole content is one gauge: one of four such steps measured in
          * the shipped pool. The two rod/boron labels are in the WATCH list, not the press list —
@@ -2963,7 +2984,7 @@
            * one was measured and recommended against, and the owner has not ruled for one. The
            * note's "over 1.0 with the rods already still, tap INSERT once and wait" is an
            * operator action, not a protection. */
-          cmd: { action: 'rod_nudge', group_id: 'control', steps: 8, speed: 'slow' }, hold: 480,
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 8, speed: 'slow' }, hold: 720,
           replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 3, speed: 'slow' } },
           /* ---- STEP 9 GRADES THE APPROACH, WHICH NOTHING DID BEFORE (2026-09-23 split) ----
            * His 9a is "Rods stopped 3 steps short of the 1/M prediction" and his 9b "STARTUP RATE
@@ -3042,7 +3063,31 @@
            * The top of the band is "over 1.0" in his note — 1.005 is the edge the tile draws as
            * "1.00" — so a rate the note says to INSERT on is never a check-off.
            *
-           * THE HOLD IS 480 s AND STEP 10's IS 1320 s — the old 1800 split, not lengthened. The
+           * 9b READS A SETTLED RATE (2026-09-24, coordinator's call on a grading defect the route gate
+           * found). The 300 s dwell was a CLOCK, not a settle: MEASURED, run_walkthrough_routes typical
+           * route, seed 42, stop at bank 208 (prediction 211 minus 3): the band row met on ONE read of
+           * 0.069 DPM 5 plant-min after the pull while the rate was still falling — 0.048 at 10 min,
+           * 0.024 at 40 — and step 10's climb to 0.05 % then took 127.3 plant-min against the card's
+           * "45 to 60". So a hidden `steady` row on the rate sits between the dwell and the band:
+           * half-window means within 5 % over a trailing 240 s. `v` is RELATIVE, which step 5's note
+           * calls meaningless on a channel that settles to ZERO — this one never grades near zero
+           * while it matters: the band after it needs 0.055 or more, so the window mean is >= ~0.05.
+           * MEASURED, the live runtime, one fixed bank from the typical route's step-9 entry, seed 42
+           * (first meet of stopped 300 + steady + band, after the last rod motion; settled = +30 min):
+           *   bank 208  old rule +6.3 min at 0.066, settles 0.022      NEW never (it must be tapped on)
+           *   bank 209  old +6.5 min at 0.086, settles 0.051           NEW +13.2 min at 0.062; climb 56.6 min
+           *   bank 210  old +6.5 min at 0.106, settles 0.077           NEW +12.6 min at 0.089; climb 34.3 min
+           *   bank 211  old +6.7 min at 0.125, settles 0.104           NEW +10.4 min at 0.115; climb 24.6 min
+           *   bank 213  old +7.0 min at 0.184                          NEW +8.8 min at 0.179; climb 14.2 min
+           * (W 120 s did not refuse bank 208 at v 0.08-0.10; W 180-300 s all refuse it — 240 s is the
+           * middle.) A falling rate at 0.06 drifts ~12 % per window; settled noise at 0.06 is ~4 %.
+           * Typical route, now: reads 208/0.069 (wait), 208/0.048 (tap), 209/0.059 (tap), 210/0.084 —
+           * step 9 21.6 min, 10 31.1, 11 14.4 (seed 42); seed 7 26.7 / 45.5 / 20.6 (final read 0.063).
+           * A settled read under the floor is the note's own "0.02 to 0.05: one more step out".
+           * Sub-critical banks cannot complete: the row is one more conjunct in front of the 0.055 band.
+           *
+           * THE HOLD IS 720 s (480 before the settle row; the replay's rate was still drifting 5.6 %
+           * at 480 s) AND STEP 10's IS 1320 s — the old 1800 split, not lengthened. The
            * authored route met every row at +383 s (1.25x inside 480) as one +11 pull; split +8 then
            * +3 (2026-09-24, above) the last rod motion is at +142 s, so the 300 s dwell ends +442 s,
            * 1.09x inside 480 (MEASURED, replay, seeds 42 and 7: 338 s still at the hold's end).
@@ -3085,12 +3130,14 @@
                    label: 'Rods stopped 3 steps short of the 1/M prediction' },
                  { p: 'control_bank_steps', op: 'stopped', v: 300, hidden: true,
                    label: 'Rods still for five plant-minutes (graded, not drawn — the dwell in 9b)' },
+                 { p: 'startup_rate_dpm', op: 'steady', v: 0.05, window: 240, hidden: true,   /* 2026-09-24: the SETTLE — see "9b READS A SETTLED RATE" above */
+                   label: 'STARTUP RATE no longer falling (graded, not drawn — the settle in 9b)' },
                  { p: 'startup_rate_dpm', op: '~', v: 0.53, tol: 0.475,   /* 0.055-1.005: both edges on the tile's toFixed(2) render band (S-2, 2026-09-23) */
-                   ask: 'Tap WITHDRAW one step, wait about five plant-minutes, and read STARTUP RATE. Repeat until it reads +0.06 or more five minutes after the tap.',
-                   note: 'Read the rate only once it has stopped falling, about five minutes after the last tap. Around 0.15, with PERIOD 150 to 200 seconds, is this approach going as written. Around 0.5, or PERIOD under 60 seconds, is about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher. Over 1.0, tap INSERT once and wait. Near 0.01, with PERIOD in the thousands of seconds and nothing moving, means you have stopped short of critical — tap one more step out and wait. 0.02 to 0.05: one more step out. 0.06 to 0.10: fine, power just arrives later and levels lower (about 1 to 1½ %). SOURCE RANGE switches itself off above 1.0e5 and its tile goes blank; INTER RANGE carries the reading.',
+                   ask: 'Tap WITHDRAW one step, wait about five plant-minutes, and read STARTUP RATE. Repeat until it reads +0.06 or more once it has stopped falling.',
+                   note: 'Read the rate only once it has stopped falling, about ten plant-minutes after the last tap — the check-off waits for that too. Around 0.15, with PERIOD 150 to 200 seconds, is this approach going as written. Around 0.5, or PERIOD under 60 seconds, is about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher. Over 1.0, tap INSERT once and wait. Near 0.01, with PERIOD in the thousands of seconds and nothing moving, means you have stopped short of critical — tap one more step out and wait. 0.02 to 0.05: one more step out. 0.06 to 0.10: fine, power just arrives later and levels lower (about 1 to 1½ %). SOURCE RANGE switches itself off above 1.0e5 and its tile goes blank; INTER RANGE carries the reading.',
                    wait_speed: 10,
                    speed_text: '10× while you wait; back to 1× before every tap.',
-                   label: 'STARTUP RATE +0.06 to +1.00 with the rods stopped' }],
+                   label: 'STARTUP RATE +0.06 to +1.00 and steady, with the rods stopped' }],
           hl: ['Withdraw', 'Rod Speed — Slow'],
           hl_watch: ['Startup Rate', 'Reactor Period', 'Source Range', 'Control Rod Position'] },
         /* STEP 10 — THE CLIMB FROM CRITICAL (2026-09-23, split out of old step 9). Its two rows,
@@ -3189,7 +3236,7 @@
            * #772 with the rest of the #749 residuals. */
           accs: [{ p: 'ir_amps', op: '>=', v: 1e-7,
                    ask: 'Leave the rods still. Watch INTER RANGE and STARTUP RATE; REACTOR POWER stays at 0.0 % for a long while.',
-                   note: 'REACTOR POWER reads 0.0 % for about 45 to 60 plant-minutes after a read of 0.06 to 0.10; under 10 if you tapped on to about 0.15 while INTER RANGE climbs three decades. Never 60×, where a 2 ½ second glance away is two and a half plant-minutes of reactor. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.',
+                   note: 'REACTOR POWER reads 0.0 % for about 30 to 60 plant-minutes after a read of 0.06 to 0.10; under 15 if you tapped on to about 0.15 while INTER RANGE climbs three decades. Never 60×, where a 2 ½ second glance away is two and a half plant-minutes of reactor. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.',
                    wait_speed: 10,
                    label: 'INTER RANGE reads 1.0e-7 A or more',
                    /* AND THE SOFT-LOCK THE PARAGRAPH ABOVE MEASURED IS CLOSED HERE *(OWNER
@@ -3275,7 +3322,7 @@
            * this note, and it was never gradeable (a UI window is not a plant command). */
           accs: [{ p: 'power_pct', op: '>=', v: 0.45,
                    ask: 'While STARTUP RATE is positive, leave the rods alone. Only if it falls back to 0.00 with REACTOR POWER below 0.5 %, press SLOW, tap WITHDRAW once, and wait again.',
-                   note: 'SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE carries the reading from here; there is no button for it. Once it has gone, close the 1/M PLOT window with the ✕ in its corner — its work is done. About 20 to 25 plant-minutes (about 7 after a 0.15 approach).',
+                   note: 'SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE carries the reading from here; there is no button for it. Once it has gone, close the 1/M PLOT window with the ✕ in its corner — its work is done. About 15 to 25 plant-minutes (about 5 to 7 after a 0.15 approach).',
                    wait_speed: 5,
                    speed_text: '5×, back to 1× before a tap. The plant behaves the same at any speed, but this is the step that may want a tap, and at 10× a tap has landed before you have read the rate.',
                    label: 'REACTOR POWER reads 0.5 % or more' }],

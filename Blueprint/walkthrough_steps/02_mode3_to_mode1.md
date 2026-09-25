@@ -192,13 +192,13 @@ Suggested time warp: 1×.
 
 ()  Rods stopped 3 steps short of the 1/M prediction
 
-9b. Tap WITHDRAW one step, wait about five plant-minutes, and read STARTUP RATE. Repeat until it reads +0.06 or more five minutes after the tap.
+9b. Tap WITHDRAW one step, wait about five plant-minutes, and read STARTUP RATE. Repeat until it reads +0.06 or more once it has stopped falling.
 
-Note: Read the rate only once it has stopped falling, about five minutes after the last tap. Around 0.15, with PERIOD 150 to 200 seconds, is this approach going as written. Around 0.5, or PERIOD under 60 seconds, is about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher. Over 1.0, tap INSERT once and wait. Near 0.01, with PERIOD in the thousands of seconds and nothing moving, means you have stopped short of critical — tap one more step out and wait. 0.02 to 0.05: one more step out. 0.06 to 0.10: fine, power just arrives later and levels lower (about 1 to 1½ %). SOURCE RANGE switches itself off above 1.0e5 and its tile goes blank; INTER RANGE carries the reading.
+Note: Read the rate only once it has stopped falling, about ten plant-minutes after the last tap — the check-off waits for that too. Around 0.15, with PERIOD 150 to 200 seconds, is this approach going as written. Around 0.5, or PERIOD under 60 seconds, is about eight steps further out than you meant to be — power will arrive about three times sooner and level off higher. Over 1.0, tap INSERT once and wait. Near 0.01, with PERIOD in the thousands of seconds and nothing moving, means you have stopped short of critical — tap one more step out and wait. 0.02 to 0.05: one more step out. 0.06 to 0.10: fine, power just arrives later and levels lower (about 1 to 1½ %). SOURCE RANGE switches itself off above 1.0e5 and its tile goes blank; INTER RANGE carries the reading.
 
 Suggested time warp: 10× while you wait; back to 1× before every tap.
 
-()  STARTUP RATE +0.06 to +1.00 with the rods stopped
+()  STARTUP RATE +0.06 to +1.00 and steady, with the rods stopped
 
 Background
 
@@ -212,7 +212,7 @@ Critical means the chain reaction keeps itself going: power rises with the rods 
 
 10a. Leave the rods still. Watch INTER RANGE and STARTUP RATE; REACTOR POWER stays at 0.0 % for a long while.
 
-Note: REACTOR POWER reads 0.0 % for about 45 to 60 plant-minutes after a read of 0.06 to 0.10; under 10 if you tapped on to about 0.15 while INTER RANGE climbs three decades. Never 60×, where a 2 ½ second glance away is two and a half plant-minutes of reactor. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
+Note: REACTOR POWER reads 0.0 % for about 30 to 60 plant-minutes after a read of 0.06 to 0.10; under 15 if you tapped on to about 0.15 while INTER RANGE climbs three decades. Never 60×, where a 2 ½ second glance away is two and a half plant-minutes of reactor. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
 
 Suggested time warp: 10×.
 
@@ -231,7 +231,7 @@ INTER RANGE is a current, not a percentage, and it can read a climb three decade
 
 11a. While STARTUP RATE is positive, leave the rods alone. Only if it falls back to 0.00 with REACTOR POWER below 0.5 %, press SLOW, tap WITHDRAW once, and wait again.
 
-Note: SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE carries the reading from here; there is no button for it. Once it has gone, close the 1/M PLOT window with the ✕ in its corner — its work is done. About 20 to 25 plant-minutes (about 7 after a 0.15 approach).
+Note: SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE carries the reading from here; there is no button for it. Once it has gone, close the 1/M PLOT window with the ✕ in its corner — its work is done. About 15 to 25 plant-minutes (about 5 to 7 after a 0.15 approach).
 
 Suggested time warp: 5×, back to 1× before a tap. The plant behaves the same at any speed, but this is the step that may want a tap, and at 10× a tap has landed before you have read the rate.
 
@@ -822,3 +822,38 @@ grading).** No text or code change: the `ui/app.js`-drawn "Past the mark: the 1/
 step …" card line stays exactly as built, and 9a's `below_1m: 3` grading — which already accepts
 ANY stop at or below prediction-minus-3, i.e. "at least 3 short" — is unchanged. Recorded here only
 because a ruling was asked for and given; nothing in the sim or this file moved.
+
+### Reconcile record — 2026-09-24 (g), rp_start lane: step 9b grades a SETTLED rate
+
+*Coordinator's call on a grading defect (no owner ruling asked): `test/run_walkthrough_routes.js`
+found the typical route stranding at step 10. Changed in this file AND in `ui/manual_procedures.js`'s
+`pwr_startup` pool.*
+
+**The defect (MEASURED, typical route, seed 42).** 9b passed on ONE read of STARTUP RATE 0.069 at
+bank 208, taken 5 plant-minutes after the pull while the rate was still falling (0.048 at 10 min,
+0.024 at 40). Step 10's climb to 0.05 % then took 127.3 plant-minutes against this card's "45 to 60".
+The card's own note already said "Read the rate only once it has stopped falling"; the grading did not.
+
+**The grading change.** A hidden `steady` row on STARTUP RATE (half-window means within 5 % over a
+trailing 240 s) sits between the hidden five-minute dwell and the drawn rate row. One more conjunct:
+it cannot make a sub-critical bank complete. Measured per fixed bank (first meet after the last rod
+motion): 208 never (it must be tapped on — settles 0.022); 209 +13.2 min at 0.062; 210 +12.6 min at
+0.089; 211 +10.4 min at 0.115; 213 +8.8 min at 0.179. Typical route now: reads 208/0.069 (wait),
+208/0.048 (tap), 209/0.059 (tap), 210/0.084, done. Removing the row re-opens the strand (mutation
+`no_settle_9` in the route gate). Step 9's replay `hold` 480 → 720 s.
+
+**Text changed (four lines; everything else as written):**
+- 9b action: "Repeat until it reads +0.06 or more five minutes after the tap." → "Repeat until it
+  reads +0.06 or more once it has stopped falling."
+- 9b note, first sentence: "Read the rate only once it has stopped falling, about five minutes after
+  the last tap." → "Read the rate only once it has stopped falling, about ten plant-minutes after the
+  last tap — the check-off waits for that too." (measured 7-12 min after the last rod motion)
+- 9b check-off: "STARTUP RATE +0.06 to +1.00 with the rods stopped" → "STARTUP RATE +0.06 to +1.00
+  and steady, with the rods stopped"
+- Step 10 note: "about 45 to 60 plant-minutes after a read of 0.06 to 0.10; under 10 if you tapped on
+  to about 0.15" → "about 30 to 60 …; under 15 …". Measured step 10: 31.1 min (seed 42, read 0.084),
+  45.5 (seed 7, read 0.063), 56.6 (fixed bank 209, read 0.062); 0.1-2.6 min on a tap-to-0.15 route,
+  14.2 min on a single pull to 213.
+- Step 11 note: "About 20 to 25 plant-minutes (about 7 after a 0.15 approach)." → "About 15 to 25
+  plant-minutes (about 5 to 7 after a 0.15 approach)." Measured 14.4 / 20.6 min (seeds 42 / 7) and
+  6.0 / 5.0 min on the tap-to-0.15 route.
