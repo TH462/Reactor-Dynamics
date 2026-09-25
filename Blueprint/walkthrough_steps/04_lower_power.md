@@ -229,3 +229,9 @@ comment.
 this leg is decided by it, because no substep asks the player to read REACTOR POWER inside a
 window. Its step 3 table records the replay's rod pull: 40 steps in 49.9 plant-seconds, 10.0 s of
 wall clock at 5×.
+
+### Owner rulings — 2026-09-24 (workbench-j), no text change
+
+- **Rod counts:** OWNER RULING 2026-09-24, selected "Keep the ranges" (option selection, option text not verbatim) — the agent-edited ranges above stand as written.
+- **Durations:** OWNER RULING 2026-09-24, selected "Accept all" — the measured durations in the step text stand.
+- **Goal lines:** OWNER RULING 2026-09-24, selected "Accept as drafted" — the agent-drafted goal lines above are accepted.
