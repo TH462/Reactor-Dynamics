@@ -45,7 +45,7 @@ In Hot Standby (Mode 3), the plant is at operating temperature and at pressure w
 
 *Less boron in the water lets the reactor go critical with the control rods low in their travel.*
 
-()2a. Turn the boron dilution system ON.
+()2a. Check ON is lit on the BORON card. If ON is not lit, press ON.
 
 ()2b. Set the boron target to 719 ppm.
 
@@ -1056,3 +1056,10 @@ target to "MWe" on the belief that N6 forced it; it does not — the exemption c
 target by exact phrase and `scanSteps` never reads `accs`. The layman pass 5 then saw "MWe" in
 the text against "MW" on the tile (S-9). Pool restored to the step file's "MW"; nothing else
 changed.
+
+### Consistency batch — 2026-09-25 (o), develop lane
+
+*OWNER, 2026-09-25: selected "Take all defaults" on the workbench's cross-leg consistency batch
+(relayed by the workbench session).* 2a now reads like cooldown 1a ("Check ON is lit … If ON is
+not lit, press ON."; no BORON STATUS word, since the dilution status was not measured here);
+14b's check-off label says the tile's name, "OUTPUT above 8 MW". Grading unchanged.
