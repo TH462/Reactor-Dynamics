@@ -29,6 +29,12 @@ player typed, and a step whose lamp said done while its check-off said not done.
   tiles a step names, or the speed bar.
 - Before shipping walkthrough work: a pass is not finished until **6 of 6 legs complete**.
 - One leg is a legitimate run — pass a single id and skip the chain.
+- **Run `node test/run_walkthrough_routes.js` FIRST** (owner directive 2026-09-24). It drives every
+  leg's live checklist on a typical-player route and on scripted mistakes (overshoot, press early,
+  Rewind mid-step, …), and fails on a silent strand, a step that ticks on entry, or a Continue
+  that lights and goes out. Clear what it finds before you spend a pass: the layman pass then
+  *confirms* the harness rather than *discovering* defects, and a number the step text states is
+  checked against the harness's per-step typical-route table, not only the authored replay.
 - **Swap the persona and the skill still holds.** An "operator" run (knows plant terms, does
   not know THIS board) finds label and layout defects a layman never reaches. Change only the
   persona paragraph of the prompt; the protocol, the report contract and the verification pass
