@@ -839,6 +839,10 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
   **51/51**), `run_m6.js`, `run_procedures.js`.
 - **UI change** → `run` the app and drive the affected flow (see `/run` and the
   headless Edge workflow); `verify_e2e_ui.js` must stay **PASS**.
+- **Walkthrough change** *(OWNER DIRECTIVE, 2026-09-24: "Make the adjustments to your process as you
+  recommend")* → `run_walkthrough_routes` (typical-player and scripted-mistake routes: no silent
+  strand, no tick on entry, no Continue flash); every number in step text measured on BOTH routes;
+  then a layman pass before done: it confirms, never discovers.
 - **Snapshot/contract or save-format change** → old saves must still migrate (see the
   migration-note pattern in `CHANGELOG.md`); re-run `run_m7.js`. **A new/renamed/removed
   `true_state` field also needs its §6.3 line in `Blueprint/CONTEXT.md`** — `run_contract.js`
