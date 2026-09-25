@@ -35,7 +35,7 @@ Coming down is the climb in reverse. Every percent of power shed hands reactivit
 
 2a. Set LOAD to 75 MW and let the reactor follow it down. Leave the rods alone for now.
 
-Note: Power walks down on its own over about five plant-minutes. AVG COOLANT TEMPERATURE rises out of the green band on its tile while it does — that is expected, and the next step is what brings it back.
+Note: Power walks down on its own over about five plant-minutes. AVG COOLANT TEMPERATURE rises out of the green band on its tile while it does — that is expected, and the next step is what brings it back. Go on to it as soon as this step ticks: the temperature keeps climbing until the rods go in.
 
 Suggested time warp: 10×.
 
@@ -52,9 +52,9 @@ The reactor follows the turbine: less steam drawn means the heat has nowhere to 
 
 3. Bring AVG COOLANT TEMPERATURE back into its band with the rods.
 
-3a. Now hold INSERT at MED until AVG COOLANT TEMPERATURE is back inside the green band on its tile.
+3a. Now insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE is back inside the green band on its tile.
 
-Note: About 40 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down.
+Note: About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it.
 
 Suggested time warp: 5×.
 
@@ -79,7 +79,7 @@ Suggested time warp: 10×.
 ()  Generator settled near 50 MW
 ()  Reactor following through 70 %
 
-4b. Hold INSERT at MED until AVG COOLANT TEMPERATURE is back in its band.
+4b. Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE is back in its band.
 
 Note: About 20 to 65 steps at MED.
 
@@ -104,7 +104,7 @@ Suggested time warp: 10×.
 ()  Generator settled near 30 MW
 ()  Reactor following through 45 %
 
-5b. Hold INSERT at MED until AVG COOLANT TEMPERATURE is back in its band.
+5b. Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE is back in its band.
 
 Note: About 10 to 45 steps at MED.
 
@@ -129,7 +129,7 @@ Suggested time warp: 10×.
 ()  Generator settled near 15 MW
 ()  Reactor below 40 % and falling as the boration finishes (rod trims take it to about 15 %)
 
-6b. Hold INSERT at MED until AVG COOLANT TEMPERATURE is back in its band.
+6b. Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE is back in its band.
 
 Note: About 6 to 40 steps at MED. Stop here; the shutdown walkthrough takes over.
 
@@ -235,3 +235,23 @@ wall clock at 5×.
 - **Rod counts:** OWNER RULING 2026-09-24, selected "Keep the ranges" (option selection, option text not verbatim) — the agent-edited ranges above stand as written.
 - **Durations:** OWNER RULING 2026-09-24, selected "Accept all" — the measured durations in the step text stand.
 - **Goal lines:** OWNER RULING 2026-09-24, selected "Accept as drafted" — the agent-drafted goal lines above are accepted.
+
+### Reconcile record — 2026-09-25, `exp/v5-ct` scratch lane (layman pass 4)
+
+**AGENT-DRAFTED FOR OWNER REVIEW.** Measured with `run_walkthrough_routes`, preset
+(`hot_full_power`) and chain, seed 42.
+
+- **3a, 4b, 5b, 6b: "Hold INSERT at MED until …" → "Insert at MED in pulls of about 5 steps, half a
+  plant-minute apart, until …"**, and 3a's note adds that the tile trails the rods. Power at the
+  bottom of each step, pulses vs holding straight through: preset 71.0 / 44.7 / 26.2 / 9.8 % vs
+  70.2 / 43.8 / 22.8 / 8.7 %; chain 64.8 / 44.4 / 24.9 / 12.5 % vs 64.3 / 39.1 / 20.4 / 7.5 %.
+  Pulled steps with pulses: preset 25 / 50 / 35 / 25, chain 15 / 35 / 30 / 25, so step 3's "About
+  40 to 75" became "About 15 to 75". The reviewer's 49 at step 3 was inside the old range; his 59
+  at step 5 was not.
+- **Step 2's note adds "Go on to it as soon as this step ticks…".** Step 2 ticks at 0.4 plant-min
+  on both routes.
+- **The 593 °F the reviewer saw is the chain seam, not this card**: the chained leg starts at
+  589.8 °F and peaks at 600.3 °F whether INSERT is held, pulsed, or held then pulsed (preset peak
+  584.2 °F). See `03_raise_power.md`'s record.
+- **Open question B (one-sided rows labelled "inside its band") is left as is**: a two-sided row
+  would ask for a withdrawal against the boration that step 1 started.

@@ -3701,8 +3701,11 @@ if (!only && RUN_B) {
       /* RE-PINNED 2026-09-24 (rp_start): 135 -> 137 predicate rows, 87 -> 90 instrument-graded. `pwr_heatup` 16
        * trades NET REACTIVITY (true_state) for SOURCE RANGE steady + STARTUP RATE near 0 (+1 row, +2 instrument);
        * `pwr_startup` 9 gains a hidden STARTUP RATE `steady` row, the settle (+1, +1). Graded steps and sole unmoved. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-24: 84 / 137 / 90 / 29)',
-         gradedSteps === 84 && predRows === 137 && rows.length === 90 && soleInst === 29,
+      /* RE-PINNED 2026-09-25 (layman pass 4, exp/v5-ct): 137 -> 135 predicate rows. `pwr_raise_power` 8 loses
+       * "CONTROL ROD POSITION above 300"; step 10's "above 351" becomes a command check-off (the pull). Both
+       * were control-state rows, so instrument-graded (90) and sole (29) are unmoved; graded steps unmoved. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25: 84 / 135 / 90 / 29)',
+         gradedSteps === 84 && predRows === 135 && rows.length === 90 && soleInst === 29,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();

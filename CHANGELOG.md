@@ -31,6 +31,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Walkthroughs, layman pass 4 (the six legs as one plant).** Raise power: each stage now says
+  "hold WITHDRAW until AVG COOLANT TEMPERATURE is back in its band, about N steps" (the gauge
+  leads); step 8 drops its "CONTROL ROD POSITION above 300" check-off and says what the 103 % rod
+  stop looks like; step 9 waits for BORON under 663 ppm and says to insert if the dilution's tail
+  heats the plant; step 10 grades the pull instead of "above 351"; board alarm words for the
+  insertion limit; step 3 and 11 name the chained plant's 59 ppm and the 43 ppm still to come.
+  Lower power: insert in pulls of about 5 steps; go straight to the rods after step 2. Cooldown
+  step 4: a fixed 5 plant-minute wait, "about an hour and a half". Startup 8b: where the rate step
+  9 asks for shows against the prediction. `run_walkthrough_routes` gains a **chain** run (all six
+  legs on one plant), the `to_band` and `stair` player policies, a stated-time check, and three
+  injections that re-open what the pass found.
 - **Walkthrough fast-forward waits for your action (layman pass 4).** A step whose action is a
   press or a typed value stays at 1× until that command lands, then takes its rung; entering
   cooldown 11 used to run ~76 plant-minutes per 10 s of reading. `wait_first: true` marks the two
