@@ -314,7 +314,7 @@ RHR is the only thing removing heat now. If its suction valve shut, the decay he
 
 ## Notes — agent record, NOT step text
 
-### Reconcile record — 2026-09-24, wt-cooldown (TUNING_LOG 2026-09-24-workbench-d) (the step format adopted, brought down to the sim)
+### Reconcile record — 2026-09-24, wt-cooldown (TUNING_LOG 2026-09-24-workbench-e) (the step format adopted, brought down to the sim)
 
 *OWNER DIRECTIVE, 2026-09-24: "Adopt the format for the other walkthroughs." The sim's `pwr_cooldown`
 (`ui/manual_procedures.js`, the PWR2 pool) carries this text word for word: step `text` = the goal

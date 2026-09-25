@@ -29,7 +29,7 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Session log — 2026-09-24-workbench-e (Raise power ported to the owner's step format: two traps)
+## Session log — 2026-09-24-workbench-h (Raise power ported to the owner's step format: two traps)
 
 The port itself changed no predicate; the record is `Blueprint/walkthrough_steps/03_raise_power.md`
 Notes. Two traps, measured 2026-09-24 on the full stack (`low_power`, seeds 42 and 7, tile channels):
@@ -46,7 +46,7 @@ Notes. Two traps, measured 2026-09-24 on the full stack (`low_power`, seeds 42 a
   over his own 590 °F caution; LOAD first peaked at 589.7 °F. There was no trip on any route.
 
 ---
-## Session log — 2026-09-24-workbench-f (Shutdown to Mode 3 in the per-substep format: a status-word check-off that grades a lamp)
+## Session log — 2026-09-24-workbench-g (Shutdown to Mode 3 in the per-substep format: a status-word check-off that grades a lamp)
 
 Record: `Blueprint/walkthrough_steps/05_shutdown.md` Notes.
 
@@ -59,7 +59,7 @@ Record: `Blueprint/walkthrough_steps/05_shutdown.md` Notes.
 - **#697'S PREMISE IS PER-ROW.** It made the AUTO press optional because the plant already
   produced the press's EFFECT (dump open, power low). That holds for the valve rows and not for the
   status word: the plant never selects pressure mode by itself.
-## Session log — 2026-09-24-workbench-g (Mode 5 to Mode 3 ported to the step format: a one-row step's rung covers its presses; a stated time from another engine)
+## Session log — 2026-09-24-workbench-f (Mode 5 to Mode 3 ported to the step format: a one-row step's rung covers its presses; a stated time from another engine)
 
 Record and every number: the 2026-09-24 reconcile record in `Blueprint/walkthrough_steps/01_mode5_to_mode3.md`.
 
@@ -80,7 +80,7 @@ Record and every number: the 2026-09-24 reconcile record in `Blueprint/walkthrou
   tests for `.test(st.text)` before porting.
 - **IN A FAST HARNESS, ROW LATENCY IS BROADCAST RESOLUTION.** At 600× a broadcast is 60 plant-s, so
   the 5-broadcast debounce reads as "+300 s" on 9a — the player at 1× sees ~5 s.
-## Session log — 2026-09-24-workbench-d (the cooldown leg ported to the per-substep format: every stated time was off on the player's route)
+## Session log — 2026-09-24-workbench-e (the cooldown leg ported to the per-substep format: every stated time was off on the player's route)
 
 Full record, tables and speed provenance: `Blueprint/walkthrough_steps/06_cooldown.md` Notes.
 
@@ -98,7 +98,7 @@ Full record, tables and speed provenance: `Blueprint/walkthrough_steps/06_cooldo
   picked `pwr_cooldown` step 1 for its generated speed line; the format sets `wait_hint: false`
   there, and after this port no pwr2 step 1 draws that line. The fixture now forces it in-page.
 - **`glance_rung.js` is blind on a shutdown leg** — its yardstick is REACTOR POWER, 0 % throughout.
-## Session log — 2026-09-24-workbench-h (Lower power brought down to the owner's per-substep format; a rod count that depends on the route)
+## Session log — 2026-09-24-workbench-d (Lower power brought down to the owner's per-substep format; a rod count that depends on the route)
 
 Record: `Blueprint/walkthrough_steps/04_lower_power.md` Notes. Traps only:
 

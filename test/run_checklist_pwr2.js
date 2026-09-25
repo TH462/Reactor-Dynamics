@@ -1931,6 +1931,20 @@ if (!only && RUN_B) {
         if (e.ask && !probe && e.note == null && e.wait_speed == null && e.speed_text == null) probe = e;
       });
     }); });
+    /* NO LEGACY ASK LEFT IS THE INTENDED END STATE, NOT A BLIND CHECK (2026-09-24): all five
+     * operating legs moved to the owner's format that day, so the legacy branch has no subject in
+     * the shipped pool. It still ships, so it still gets proven: plant a temporary legacy ask on a
+     * multi-row step with no owner-format fields (TMI-2 has them), and take it off afterwards. */
+    var planted = null;
+    if (!probe) {
+      POOL.forEach(function (lpp) { (lpp.steps || []).forEach(function (st) {
+        var vis = (st.accs || []).filter(function (e) { return !e.hidden; });
+        if (!planted && vis.length >= 2 && vis.every(function (e) {
+              return e.ask == null && e.note == null && e.wait_speed == null && e.speed_text == null && e.label; }))
+          planted = vis[0];
+      }); });
+      if (planted) { planted.ask = 'Press the button.'; probe = planted; }
+    }
     if (probe) {
       /* THE INJECTION DRIVES THE SHIPPED SWEEP (#741 quality pass). An earlier version defined a
        * parallel `sweepOne()` with the same four conditions re-implemented — which proves only
@@ -1983,6 +1997,7 @@ if (!only && RUN_B) {
       ck('...and every injection was cleaned up (the sweep is green again)',
          !!probe.label && probe.ask === savedAsk && !clean.noLabel && !clean.echo && !clean.long && !clean.single,
          'label restored, ask restored, sweep ' + JSON.stringify(clean));
+      if (planted) delete planted.ask;
     } else {
       ck('...RED BY INJECTION: an ask exists to mutate', false, 'no accs[].ask authored anywhere');
     }
