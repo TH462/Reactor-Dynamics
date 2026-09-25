@@ -184,14 +184,15 @@ var ROUTES = {
     ],
   },
   pwr_lower_power: {
-    /* 2026-09-25 (layman pass 4): "insert at MED in pulls of about 5 steps, half a plant-minute
-     * apart, until AVG COOLANT TEMPERATURE is back in its band" — the player stops at the first
+    /* 2026-09-25 (layman pass 4; pace ruled "about 3 steps, one plant-minute apart" the same day,
+     * workbench-h): "insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG
+     * COOLANT TEMPERATURE is back in its band" — the player stops at the first
      * read inside the row's edge (1 degF under it), as the reviewer did. */
     steps: {
-      '#3': { policy: 'to_band', tref: 576, dead: 0, dir: 'insert', pull: 5, dwell: 30 },
-      'cmd:set_load_target:2': { policy: 'to_band', tref: 567, dead: 0, dir: 'insert', pull: 5, dwell: 30 },
-      'cmd:set_load_target:3': { policy: 'to_band', tref: 561, dead: 0, dir: 'insert', pull: 5, dwell: 30 },
-      'cmd:set_load_target:4': { policy: 'to_band', tref: 556, dead: 0, dir: 'insert', pull: 5, dwell: 30 },
+      '#3': { policy: 'to_band', tref: 576, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
+      'cmd:set_load_target:2': { policy: 'to_band', tref: 567, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
+      'cmd:set_load_target:3': { policy: 'to_band', tref: 561, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
+      'cmd:set_load_target:4': { policy: 'to_band', tref: 556, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
     },
     mistakes: [
       { id: 'double_load75', kind: 'double press', at: 'cmd:set_load_target', set: { repeat: 2 } },

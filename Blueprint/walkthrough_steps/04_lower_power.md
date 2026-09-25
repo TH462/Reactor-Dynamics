@@ -63,7 +63,7 @@ The reactor follows the turbine: less steam drawn means the heat has nowhere to 
 
 *The load drop left the reactor hot, and this is the half of the evolution the plant cannot do for you.*
 
-()3a. Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 577 °F, the top of the green band on its tile.
+()3a. Insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 577 °F, the top of the green band on its tile.
 
 ()3b. Check REACTOR POWER has followed down to about 73 %, below 80 %.
 
@@ -71,7 +71,7 @@ The reactor follows the turbine: less steam drawn means the heat has nowhere to 
 
 Suggested time warp: 5×.
 
-Note: About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it. PRIMARY PRESSURE sags as the rods cool the plant, to about 1820 to 1900 psi by the last stage, with the heaters full on and the Pressurizer Pressure Low alarm in. The pace of this walkthrough does that; the low-pressure trip is at 1775 psi.
+Note: About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it. PRIMARY PRESSURE sags as the rods cool the plant: to about 2200 psi from a fresh start, and to about 1940 psi after the raise-power walkthrough, with the heaters full on and the Pressurizer Pressure Low alarm in. Pull faster than this and it sags further; the low-pressure trip is at 1775 psi.
 
 
 
@@ -93,7 +93,7 @@ The load drop left the reactor hot: it settles above its program until rods take
 
 Suggested time warp: 10×.
 
-()4c. Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.
+()4c. Insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.
 
 Suggested time warp: 5×.
 
@@ -119,7 +119,7 @@ Same order: LOAD first, then rods, so the temperature does not sit hot above its
 
 Suggested time warp: 10×.
 
-()5c. Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.
+()5c. Insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.
 
 Suggested time warp: 5×.
 
@@ -147,7 +147,7 @@ Suggested time warp: 10×.
 
 Note: Power keeps falling as the boration finishes; the rod trims in 6c take it to about 15 %.
 
-()6c. Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.
+()6c. Insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.
 
 Suggested time warp: 5×.
 
@@ -368,3 +368,21 @@ so the four former `cont` power rows and step 3's OUTPUT row each carry their ow
 ### Layman pass 5 record — 2026-09-25, workbench-g (AGENT-DRAFTED: step 3's pressure sentence)
 
 Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`. PRIMARY PRESSURE floors, chain route, steps 3/4/5/6: 2059 / 1992 / 1934 / 1889 psia; the reviewer 1947 / 1902 / 1853 / 1819 psi; the low-pressure trip is 1775 psi. Pressurizer Pressure Low raised in step 3; the PORV-open alarm in step 2. The note states the measured range; whether the sag is prototypical is an open ruling (#653).
+
+### Rod pace record — 2026-09-25, workbench-h (OWNER RULING (2026-09-25), selected "C: both, B first" — option text, not verbatim: "B now: the card slows to 'about 3 steps, one plant-minute apart'")
+
+3a/4c/5c/6c read "about 3 steps, one plant-minute apart" (were "about 5 steps, half a plant-minute
+apart"); step 3's pressure sentence and the `purpose` leg length were re-measured. MEASURED, full
+stack, the route gate's typical route at 3 steps per 60 s with step 3's 40-step command NOT sent:
+
+| route | PRIMARY PRESSURE floor, steps 3/4/5/6 (psia) | rods inserted, steps 3/4/5/6 | leg length |
+|---|---|---|---|
+| `hot_full_power` preset | 2210 / 2205 / 2203 / 2206 | 27 / 30 / 21 / 15 | 29.6 plant-min |
+| chain (after raise power) | 2001 / 1938 / 1936 / 1941 | 21 / 24 / 18 / 12 | 24.1 plant-min |
+| chain, OLD pace (5 per 30 s) | 2032 / 1949 / 1885 / 1848 | — | — |
+
+Tavg falls about 3.5 °F/min (1.9 °C/min) at the new pace against about 7 °F/min at the old; the
+design ramp (5 %/min) is about 1.55 °F/min on this plant's program. The rod-count ranges in the
+Notes (15-75, 20-65, 10-45, 6-40) still hold every measured count. `purpose` now "About 25 to 50
+plant-minutes". Why the chained plant sags ~260 psi deeper than the preset: a stratified layer of
+insurge water in the pressurizer (`Diagnostic/TUNING_LOG.md` 2026-09-25-workbench-h).
