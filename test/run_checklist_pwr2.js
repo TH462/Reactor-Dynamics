@@ -637,7 +637,7 @@ if (!only && RUN_B) {
        * both the climb and the cover-gas acceptance, so it is the one to read. `>= 0` is asserted
        * below rather than left to `spIdx === -1` quietly matching nothing. */
       /* 2026-09-24 (wt-heatup): the press is now substep 9a's `ask`, the step `text` its goal. */
-      if (/press AUTO under HEATER/.test(st.text + ' ' + (st.accs || []).map(function (e) { return e.ask || ''; }).join(' '))) spIdx = k;
+      if (/press AUTO under HEATER/i.test(st.text + ' ' + (st.accs || []).map(function (e) { return e.ask || ''; }).join(' '))) spIdx = k;
     });
     var s = null, issued = {}, issuedAt = {}, holdTick = null, stepAtHold = null, ticksToAcc = null;
     var pAtHold = 0, pAtAcc = 0, chatter = 0, refused = 0, accepted = 0;
@@ -1676,8 +1676,12 @@ if (!only && RUN_B) {
      * under discussion moves exactly these steps. It is the heatup step whose `accs` carries the
      * Mode 3 confirmation — which is the thing the check is about. */
     var victim = (POOLS.pwr2 || []).filter(function (p) { return p.id === 'pwr_heatup'; })[0];
+    /* RETARGETED 2026-09-25 (phase 2 of the what / why / how restyle): the Mode 3 step no longer
+     * grades `plant_mode` — its row was retired for the tile checks (AVG COOLANT TEMPERATURE,
+     * PRIMARY PRESSURE, CONTROL ROD POSITION) — so it is found by its ATMOS DUMP row, which only
+     * that step carries. The injected `acc` is still the old `plant_mode ~ 3`. */
     var vIdx = victim ? victim.steps.findIndex(function (s) {
-      return (s.accs || []).some(function (e) { return e.p === 'plant_mode'; });
+      return (s.accs || []).some(function (e) { return e.p === 'adv_valve_pct'; });
     }) : -1;
     var step = vIdx >= 0 ? victim.steps[vIdx] : null;
     if (step) {
@@ -1689,7 +1693,7 @@ if (!only && RUN_B) {
       ck('...and the injection was cleaned up (the sweep is green again)', sweep().length === 0, '');
     } else {
       ck('...RED BY INJECTION: the injection target exists', false,
-         'no pwr_heatup step carries a plant_mode acceptance entry');
+         'no pwr_heatup step carries an ATMOS DUMP (adv_valve_pct) acceptance entry');
     }
   })();
 
@@ -3709,8 +3713,14 @@ if (!only && RUN_B) {
        * 90 -> 92 instrument-graded, sole 29 -> 28. Step 1 +2 (RCP FLOW, STARTUP RATE — both
        * instrument), step 2 +2 (the ON lamp and target box, control-state), step 3 +2 (STEAM DUMP
        * AUTO and DUMP SETPOINT, control-state); step 2's BORON CHEM row stops being the only one. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25: 84 / 141 / 92 / 28)',
-         gradedSteps === 84 && predRows === 141 && rows.length === 92 && soleInst === 28,
+      /* RE-PINNED 2026-09-25 (`pwr_heatup` what / why / how bring-down, exp/p2-heatup): 141 -> 150 predicate rows
+       * (+9; SUM on a merge), 92 -> 97 instrument-graded (+5), sole and graded steps unmoved. Step 1 trades
+       * `plant_mode` for five (AVG COOLANT TEMPERATURE and PRIMARY PRESSURE — instrument — the RCP OFF lamp
+       * `rcp_running`, a STATUS word with no transmitter to fail, and both rod banks, control-state): +4. Step 4 +1 (OUTPUT, instrument), step 6 +1 (STEAM
+       * DUMP MANUAL, control-state), step 13 +1 (DUMP SETPOINT, control-state), step 15 trades `plant_mode`
+       * for AVG COOLANT TEMPERATURE, PRIMARY PRESSURE (instrument) and CONTROL ROD POSITION: +2. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25: 84 / 150 / 97 / 28)',
+         gradedSteps === 84 && predRows === 150 && rows.length === 97 && soleInst === 28,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -3787,6 +3797,10 @@ if (!only && RUN_B) {
       'pwr_heatup:11:tavg_c': 'tavg',                        // > 283 [SOLE]  dead 30.00 vs true 50.00 degC
       'pwr_heatup:14:pressure_mpa': 'primary_pressure',      // > 15 [SOLE]   dead 0.000 vs true 2.500 MPa
       'pwr_heatup:15:steam_pressure_mpa': 'steam_pressure',  // ~ 7.03        dead 0.000 vs true 0.0124 MPa
+      /* 2026-09-25 (exp/p2-heatup bring-down): the Hot Standby tile checks. A dead gauge reads 0 and a
+       * two-sided band cannot be met by it -- the honest answer (a row a player cannot verify). */
+      'pwr_heatup:15:tavg_c': 'tavg',                        // ~ 285.83 +/-1.66 (544-549 degF)
+      'pwr_heatup:15:pressure_mpa': 'primary_pressure',      // ~ 15.41 +/-0.244 (2200-2270 psi)
       'pwr_heatup:16:sr_counts_cps': 'source_range',         // steady 1.2 %/600 s (2026-09-24, replaced NET REACTIVITY, a true_state row)
       'pwr_heatup:16:startup_rate_dpm': 'startup_rate',      // ~ 0 +/-0.025 (same change)
       /* pwr_startup [hot_zero_power] */
@@ -3862,6 +3876,10 @@ if (!only && RUN_B) {
      * one — the floor satisfies it. Pinned for the same reason, and it is the larger set. */
     var TICK_EXPECTED = {
       'pwr_heatup:15:adv_valve_pct': 1, 'pwr_heatup:17:power_pct': 1,
+      /* 2026-09-25 (exp/p2-heatup): step 1's "below" checks and 4b's OUTPUT 0 MW read DOWNWARD, so the
+       * dead floor satisfies them -- the same shape as 15's ATMOS DUMP and 17's REACTOR POWER. They sit
+       * on verify steps whose true values already meet them at the leg's own IC (122 degF, 363 psi, 0 MW). */
+      'pwr_heatup:1:tavg_c': 1, 'pwr_heatup:1:pressure_mpa': 1, 'pwr_heatup:4:mwe_output': 1,
       'pwr_startup:12:power_pct': 1,
       'pwr_raise_power:9:boron_ppm': 1, 'pwr_raise_power:11:boron_ppm': 1,
       'pwr_lower_power:2:power_pct': 1, 'pwr_lower_power:3:tavg_c': 1,
@@ -4008,7 +4026,9 @@ if (!only && RUN_B) {
 
     var LIVE_QUANTITY_EXPECTED = {
       'pwr_heatup:11': 'tavg_c',                              // "wait until AVG COOLANT reaches 542 degF"
-      'pwr_heatup:15': 'adv_valve_pct,steam_pressure_mpa',    // the Hot Standby confirm
+      'pwr_heatup:1': 'tavg_c,pressure_mpa',                  // the cold-state confirm (2026-09-25; was plant_mode, true_state)
+      'pwr_heatup:4': 'mwe_output',                           // 4b OUTPUT 0 MW (2026-09-25)
+      'pwr_heatup:15': 'tavg_c,pressure_mpa,adv_valve_pct,steam_pressure_mpa',    // the Hot Standby confirm (15a/15b added 2026-09-25)
       'pwr_heatup:16': 'sr_counts_cps,startup_rate_dpm',      // SOURCE RANGE steady + STARTUP RATE near 0 (owner ruling 2026-09-24; was reactivity_pcm)
       'pwr_heatup:17': 'power_pct',
       'pwr_startup:1': 'tavg_c,pressure_mpa,pump_flow_pct,startup_rate_dpm',   // 1a-1d (2026-09-25)
@@ -4028,9 +4048,9 @@ if (!only && RUN_B) {
       'pwr_tmi2_incident:17': 'subcooling_c',
     };
     var TRUE_STATE_EXPECTED = {
-      'pwr_heatup:1': 'plant_mode', 'pwr_heatup:4': 'turbine_tripped',
+      /* pwr_heatup:1 and :15 left 2026-09-25: their `plant_mode` rows were retired for tile checks */
+      'pwr_heatup:4': 'turbine_tripped',
       'pwr_heatup:6': 'steam_dump_valve_pct', 'pwr_heatup:12': 'rhr_active,letdown_flow_actual',
-      'pwr_heatup:15': 'plant_mode',
       'pwr_raise_power:1': 'plant_mode',
       'pwr_cooldown:13': 'plant_mode', 'pwr_cooldown:14': 'accumulator_volume_pct',
       'pwr_cooldown:15': 'rhr_valve_open',
@@ -4403,6 +4423,7 @@ if (!only && RUN_B) {
     var DRIFT_STRAND = {
       /* the gauge refuses a criterion the plant has already met */
       'pwr_startup:1:tavg_c': 1,                               // ~286 +/-8  [SOLE]
+      'pwr_heatup:1:tavg_c': 1,                                // < 93.05 (below 200 degF); drifted 343 degC on a true 50 (2026-09-25)
       'pwr_lower_power:3:tavg_c': 1, 'pwr_lower_power:4:tavg_c': 1,
       'pwr_lower_power:5:tavg_c': 1, 'pwr_lower_power:6:tavg_c': 1,
     };

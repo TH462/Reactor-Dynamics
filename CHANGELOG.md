@@ -31,6 +31,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Walkthrough Mode 5 to Mode 3 in the what / why / how shape (phase 2).** The `pwr_heatup` pool
+  now carries `Blueprint/walkthrough_steps/01_mode5_to_mode3.md` word for word: an `aim` line on all
+  17 steps, one time warp per step (3 and 9 per substep), 31 check-offs. New graded rows: 1a–1d
+  (AVG COOLANT TEMPERATURE below 200 °F, PRIMARY PRESSURE below 725 psi, the RCP card's OFF lamp,
+  both rod banks at 0), 4b OUTPUT 0 MW, 6a STEAM DUMP in MANUAL, 15a–c (544 to 549 °F, 2200 to
+  2270 psi, CONTROL ROD POSITION 0); the `plant_mode` rows on steps 1 and 15 are retired. 6a and 15b
+  gained inline recoveries ("If AUTO is lit, press CLOSE"; "If it does not, set SET PZR PRESSURE to
+  2235 psi"). Step 13 gained 13a, DUMP SETPOINT 1020 psi before AUTO (owner ruling "Both A and B":
+  a plant cooled down by the walkthrough otherwise trips on low steam pressure at step 14); 1c reads
+  "Check OFF is lit on the RCP FLOW card" (ruling "Reword"). Instructor: `rcp_running` read off the
+  instrument the OFF lamp draws. Route gate: heatup step 6/13/15 policies, a `dump_auto_early` mistake.
 - **Walkthroughs, layman pass 4 (the six legs as one plant).** Raise power: each stage now says
   "hold WITHDRAW until AVG COOLANT TEMPERATURE is back in its band, about N steps" (the gauge
   leads); step 8 drops its "CONTROL ROD POSITION above 300" check-off and says what the 103 % rod
