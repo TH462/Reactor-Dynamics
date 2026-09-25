@@ -149,7 +149,7 @@ in Free Play and takes the steam generator level as soon as it acts — measured
 out within about three minutes of a full-power start. Treat three-element AUTO as the level
 backbone (**PWR-N12**); coupled feed is what remains when it is off.
 
-**Rule of thumb:** Rods lead up; turbine leads down. Mismatch floods or drains the SG.
+**Rule of thumb:** The turbine leads, up and down: set LOAD, then move the rods to hold AVG COOLANT TEMPERATURE on program (Westinghouse Technology Systems Manual 19.0, ADAMS ML11223A342, App. 19-1 step 22: "Increase generator load at the desired rate while maintaining Tavg with manual rod control."). Mismatch floods or drains the SG.
 
 These are **never** called Mode 1, At Power / Mode 5, Cold Shutdown.
 

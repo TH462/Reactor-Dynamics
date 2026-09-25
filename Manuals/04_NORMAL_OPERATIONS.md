@@ -527,7 +527,7 @@ Increase power and MWe within Mode 1 from a partial-power plateau.
 Mode 1: critical, power > 5 %, turbine on line, stable.
 
 ### Precautions
-- Rods **lead** up; turbine **follows**.
+- Turbine **leads** up; rods **follow**: raise Turbine Load, then withdraw to bring Tavg back to program (**01** §6.0).
 - Avoid SUR alarms; let Tavg and xenon follow.
 - **A load INCREASE ramps at 5 % of rated per minute — 5 MWe/min** (**09** §10.0). What you dial
   lands on the board at once; the machine takes a minute for every 5 MWe. Trim rods against the
@@ -545,8 +545,8 @@ Mode 1: critical, power > 5 %, turbine on line, stable.
 
 | Step | Action | Control | Acceptance |
 |------|--------|---------|------------|
-| 1 | Withdraw Control Bank in short bursts | Rods | Small steady power rise |
-| 2 | Raise Turbine Load to new MWe — the target walks up at 5 MWe/min | Turbine Load | Higher MWe settled after the ramp |
+| 1 | Raise Turbine Load to new MWe — the target walks up at 5 MWe/min | Turbine Load | Higher MWe settled after the ramp |
+| 2 | Withdraw Control Bank in short bursts to bring Tavg back to program | Rods | Tavg in its band |
 | 3 | Verify SG level and PZR P/level | SG / PZR | Normal bands |
 | 4 | Trim rods or dilute if xenon requires | Rods / Dilute | Power holds |
 

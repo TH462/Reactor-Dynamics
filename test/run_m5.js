@@ -243,7 +243,7 @@ T.push(test('Attention stop — a plant event snaps fast-forward back to real ti
    * NAMES the alarm. A synthetic alarm is appended to the layer's own list so nothing else in
    * the plant moves. INJECTION: with ALARM_DROP_PRIORITIES emptied the warning check fails;
    * with the priority filter removed the caution check fails. */
-  function prioProbe(prio) {
+  function prioProbe(prio, shape) {
     var q = svc({ initial_state: 'hot_full_power' });
     q.advanceCycles(3);
     q.handleCommand({ action: 'set_speed', value: 60 });
@@ -251,7 +251,7 @@ T.push(test('Attention stop — a plant event snaps fast-forward back to real ti
     var realGet = q.layer.getAlarms.bind(q.layer), on = false;
     q.layer.getAlarms = function () {
       var list = realGet().slice();
-      if (on) list.push({ id: 'probe_' + prio, state: 'active_unacknowledged', priority: prio, label: 'Probe ' + prio });
+      if (on) list.push(shape || { id: 'probe_' + prio, state: 'active_unacknowledged', priority: prio, label: 'Probe ' + prio });
       return list;
     };
     on = true;
@@ -264,6 +264,16 @@ T.push(test('Attention stop — a plant event snaps fast-forward back to real ti
   var pwar = prioProbe('warning');
   ck('a new WARNING on a quiet board snaps to 1x and names the alarm (#655)', pwar.speed + '/' + JSON.stringify(pwar.snap),
      pwar.speed === 1 && !!pwar.snap && pwar.snap.reason === 'alarm' && /Probe warning/.test(pwar.snap.detail || ''), '1/alarm: Probe warning');
+
+  /* …AND THE NAME IS THE CARD'S, ON THE SHAPE THE CONTROL LAYER ACTUALLY EMITS (layman pass 4,
+   * 2026-09-24). The probe above carries `label`, which no real alarm has — control_kernel.js
+   * emits `tile_label` — so it stayed green while every real drop printed the internal id
+   * ("new alarm: high_tavg"). This one mirrors the kernel's object: `tile_label`, no `label`.
+   * INJECTION: with `alarmBoardName` reverted to `a.label || a.id` it reads "probe_tile". */
+  var ptile = prioProbe('warning', { id: 'probe_tile', state: 'active_unacknowledged', priority: 'warning',
+                                     panel: 'A', tile_label: 'Probe Tile Warning' });
+  ck('a drop names the alarm by its CARD text (tile_label), never its id', JSON.stringify(ptile.snap),
+     !!ptile.snap && ptile.snap.detail === 'new alarm: Probe Tile Warning', 'new alarm: Probe Tile Warning');
 
   // Settings → Fast-forward dropout = Off: nothing touches the clock, not even a scram.
   var off = svc();

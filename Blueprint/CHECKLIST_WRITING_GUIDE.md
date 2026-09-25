@@ -869,7 +869,7 @@ say what must be there, never what may not be.**
 ## 16. What / why / how — the step shape (2026-09-24)
 
 *(OWNER, 2026-09-24: "My general thought is that first line is the general 'what we are doing in
-this step' and the substeps are 'how to do this'."; OWNER RULING, same day: "I like putting the
+this step' and the substeps are 'how to do this'."; OWNER RULING, 2026-09-24: "I like putting the
 why where you put it. i choose a. using this standard, and the standards first three steps as
 examples of how i want things worded, adjust all the steps in the mode 3-1 file.")*
 

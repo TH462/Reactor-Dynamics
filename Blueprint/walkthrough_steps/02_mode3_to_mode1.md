@@ -911,6 +911,41 @@ because a ruling was asked for and given; nothing in the sim or this file moved.
 
 
 
+### Reconcile record — 2026-09-24 (g), rp_start lane: step 9b grades a SETTLED rate
+
+*Coordinator's call on a grading defect (no owner ruling asked): `test/run_walkthrough_routes.js`
+found the typical route stranding at step 10. Changed in this file AND in `ui/manual_procedures.js`'s
+`pwr_startup` pool.*
+
+**The defect (MEASURED, typical route, seed 42).** 9b passed on ONE read of STARTUP RATE 0.069 at
+bank 208, taken 5 plant-minutes after the pull while the rate was still falling (0.048 at 10 min,
+0.024 at 40). Step 10's climb to 0.05 % then took 127.3 plant-minutes against this card's "45 to 60".
+The card's own note already said "Read the rate only once it has stopped falling"; the grading did not.
+
+**The grading change.** A hidden `steady` row on STARTUP RATE (half-window means within 5 % over a
+trailing 240 s) sits between the hidden five-minute dwell and the drawn rate row. One more conjunct:
+it cannot make a sub-critical bank complete. Measured per fixed bank (first meet after the last rod
+motion): 208 never (it must be tapped on — settles 0.022); 209 +13.2 min at 0.062; 210 +12.6 min at
+0.089; 211 +10.4 min at 0.115; 213 +8.8 min at 0.179. Typical route now: reads 208/0.069 (wait),
+208/0.048 (tap), 209/0.059 (tap), 210/0.084, done. Removing the row re-opens the strand (mutation
+`no_settle_9` in the route gate). Step 9's replay `hold` 480 → 720 s.
+
+**Text changed (four lines; everything else as written):**
+- 9b action: "Repeat until it reads +0.06 or more five minutes after the tap." → "Repeat until it
+  reads +0.06 or more once it has stopped falling."
+- 9b note, first sentence: "Read the rate only once it has stopped falling, about five minutes after
+  the last tap." → "Read the rate only once it has stopped falling, about ten plant-minutes after the
+  last tap — the check-off waits for that too." (measured 7-12 min after the last rod motion)
+- 9b check-off: "STARTUP RATE +0.06 to +1.00 with the rods stopped" → "STARTUP RATE +0.06 to +1.00
+  and steady, with the rods stopped"
+- Step 10 note: "about 45 to 60 plant-minutes after a read of 0.06 to 0.10; under 10 if you tapped on
+  to about 0.15" → "about 30 to 60 …; under 15 …". Measured step 10: 31.1 min (seed 42, read 0.084),
+  45.5 (seed 7, read 0.063), 56.6 (fixed bank 209, read 0.062); 0.1-2.6 min on a tap-to-0.15 route,
+  14.2 min on a single pull to 213.
+- Step 11 note: "About 20 to 25 plant-minutes (about 7 after a 0.15 approach)." → "About 15 to 25
+  plant-minutes (about 5 to 7 after a 0.15 approach)." Measured 14.4 / 20.6 min (seeds 42 / 7) and
+  6.0 / 5.0 min on the tap-to-0.15 route.
+
 ### Reword record — 2026-09-24 (h), develop lane: the what / why / how format
 
 *OWNER RULING, 2026-09-24: "I like putting the why where you put it. i choose a. using this

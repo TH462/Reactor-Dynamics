@@ -29,6 +29,166 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-24-workbench-k (layman pass 4 runtime: speed the wait, not the action; drop notes that outlived their drop)
+
+Traps only.
+
+- **A rung on the substep that holds the ACTION warps the reading time.** Entering cooldown 11,
+  heatup 14, startup 2 or cooldown 1 with no input ran 75–77 plant-min per 10 s wall at 600×.
+  Auto now holds 1× until the step's `cmd` family is seen (`cmd_seen`); a step whose wait comes
+  first needs `wait_first: true` (startup 11, TMI-2 15). A measurement that presses 1× itself
+  latches auto's key and reads 1× on the unfixed build — measure with no speed input.
+- **A synthetic fixture with a field the real object lacks hides the real path.** run_m5's alarm
+  probe carried `label`; kernel alarms carry only `tile_label`, so every real drop printed the id.
+- **A note retired only by a PLAYER act outlives an AUTO act.** The walkthrough raising the clock
+  is not a press, so "Held at real time" stood under 3600×.
+- **An alarm label can claim a predicate its gate never tests.** PWR-A33 said "below the RHR entry
+  pressure"; it is gated on mode only and came in at 665 psi on the heatup.
+- **Mirroring the gate in `run_walkthrough_routes` blinds mutation `no_settle_9`** (typical
+  completes at 117.8 plant-min instead of stranding). The harness still paces the read at the rung;
+  mirroring it needs that injection re-aimed first.
+
+## Session log — 2026-09-24-workbench-j (round-4 walkthrough rulings: load first, dump mode, settled rate, board-graded step 16)
+
+Traps only; the per-step numbers are in each step file's Notes and the merge commit.
+
+- **A threshold set as arrival + N breaks when an upstream route changes where the plant arrives.**
+  Raise power step 10's `> 355` (arrival 351 + 4) stranded every route once load first ended the
+  climb at bank 347. Re-derive arrival-relative bounds after any reorder upstream.
+- **A dwell is a clock, not a settle.** Five minutes of rods-still passed Mode 3 → Mode 1 step 9 on
+  STARTUP RATE 0.069 while it was still falling to 0.024; the climb then took 127 plant-min against
+  the card's 45–60. Grade the settle with a `steady` row; 240 s was the shortest window that refused
+  bank 208 (120 s passed it at 0.057).
+- **A rate band cannot see a slow approach.** STARTUP RATE read +0.004 to +0.009 through a dilution
+  toward critical, inside a still plant's ±0.013 noise; heatup step 16's approach test has to come
+  from SOURCE RANGE over 600 s (a 300 s window ticked every approach case).
+- **A lamp lit in both modes cannot grade a status word.** `steam_dump_auto` is `mode !== 'off'`, so
+  "status PRESS" ticked on a card reading TAVG. Grade the word's own test.
+- **A lagged rate tile and the true rate are different numbers.** Cooldown step 11's true 5-minute
+  rate peaks at −158 °F/hr where the COOLDOWN RATE tile (600 s lag) peaks at −106. Word a step on
+  the channel the tile draws, measured on the player's route.
+- **Load first's lower peak comes from pulling to the gauge, not from the order.** Pulling the card's
+  literal 35 steps after LOAD peaks at 581.7 °F, above rods-first with the same 35 (579.9 °F); the
+  player route that pulls until the tile is in band peaks at 572.0 °F.
+
+## Session log — 2026-09-24-workbench-i (route-harness reds: two grading flickers, one honest re-grade)
+
+Measured on `test/run_walkthrough_routes.js` (full stack, seed 42). Traps only:
+
+- **A slow statistic crossing its limit flickers like noise.** `pwr_startup` 12's `steady` drift
+  fell 0.0306 -> 0.0293 with +/-0.0005 jitter; met, un-met, met — Continue lit 1-2 s and went
+  dark (135.4 and 67.3 plant-min). A sample debounce cannot fix it (the drift sat over 0.03 for
+  5-10 s); hysteresis does: release at 1.25 x `v`. Largest drift after first meet: 0.0303.
+- **A debounce on un-tick must not protect a tick the grading never gave.** A `cmd`-kind `~` row
+  is set met by the PRESS; the first cut of the band debounce kept cooldown 6's "SPRAY at 50 %"
+  ticked 0.4 s while flow was still ramping — a new flicker the old instant un-tick had hidden.
+  The debounce now covers only a band its own grading ticked (`bandHeld`).
+- **A band row that ticks on arrival and un-ticks after the step's own pull is the #683 design,
+  not a defect.** Raise power 6: 577.5 °F on entry (in band), the card's 35-step pull peaks at
+  590.0 °F (4.5 °F over), back in after 3.7 plant-min. The harness now counts a `~` un-tick only
+  when the row was met under 10 s (transient pass or noise); the narrowed-band injection proves
+  it still fires (met 7.5 s).
+- **A route policy is a reading of the card, and the owner can rule it wrong.** *(OWNER RULING,
+  2026-09-24: "The way I see it the range means that the source range target will be within that
+  range not that hitting the lower part of the range will put you over the target. So let's leave
+  then")*. Read that way (pull to the window bottom, settle, keep withdrawing inside it until the
+  SOURCE RANGE row), Mode 3 to Mode 1 step 8 completes at bank 198, 7,244 cps (3 taps). The
+  literal route then strands at step 10 instead: step 9 passed on ONE read of 0.069 DPM at bank
+  208 taken 5 plant-min after the pull, still falling (to 0.024), and the climb to 0.05 % took
+  127.3 plant-min against the card's "45 to 60". Clearing one strand moves the route onto ground
+  no gate had walked.
+
+---
+
+## Session log — 2026-09-24-workbench-h (Raise power ported to the owner's step format: two traps)
+
+The port itself changed no predicate; the record is `Blueprint/walkthrough_steps/03_raise_power.md`
+Notes. Two traps, measured 2026-09-24 on the full stack (`low_power`, seeds 42 and 7, tile channels):
+
+- **`glance_rung` cannot rate a step whose second action is an `accs` command.** It traces only
+  the step's own `cmd`. On the stage steps that is the rod pull, never the LOAD, so its power
+  columns describe a rods-only plant: 65 % at the end of step 8 against 98.7 % on a player's
+  route. Its rod-pull table is still right. Measure a pull-then-LOAD step with a probe that
+  issues both.
+- **A wide trim band plus the previous stage's trim make every stage's trim substep tick at
+  entry.** The tile read 550.2-584.0 °F at step entry, inside the band on every stage. The step
+  still grades, because every row must be true together after LOAD, but a `b` substep draws done
+  before the player acts. The owner's order (rods first) also peaks stage 6 at **591.2-591.8 °F**,
+  over his own 590 °F caution; LOAD first peaked at 589.7 °F. There was no trip on any route.
+
+---
+## Session log — 2026-09-24-workbench-g (Shutdown to Mode 3 in the per-substep format: a status-word check-off that grades a lamp)
+
+Record: `Blueprint/walkthrough_steps/05_shutdown.md` Notes.
+
+- **A CHECK-OFF LABEL CAN NAME A STATE ITS ROW CANNOT READ.** `pwr_shutdown` step 3's row is
+  labelled "STEAM DUMP AUTO lit, status PRESS" and grades `steam_dump_auto > 0`, true from the
+  preset lineup. The status word is a STRING (`control_state.steam_dump_mode`) the grader cannot
+  compare. Measured on the chained route (seeds 42 and 7): the whole step completes 0.3 s after
+  entry with the status reading TAVG; it reads PRESS only after the AUTO press. **Before you
+  keep a label, read which field the row grades and whether it can be false on arrival.**
+- **#697'S PREMISE IS PER-ROW.** It made the AUTO press optional because the plant already
+  produced the press's EFFECT (dump open, power low). That holds for the valve rows and not for the
+  status word: the plant never selects pressure mode by itself.
+## Session log — 2026-09-24-workbench-f (Mode 5 to Mode 3 ported to the step format: a one-row step's rung covers its presses; a stated time from another engine)
+
+Record and every number: the 2026-09-24 reconcile record in `Blueprint/walkthrough_steps/01_mode5_to_mode3.md`.
+
+- **A ONE-ROW WAIT STEP PLAYS ITS PRESSES AT THE WAIT'S RUNG.** The 30 s rule keys on the step's
+  `hold`, so `pwr_heatup` 3 ran FAST + WITHDRAW at 60× and 9 ran the HEATER press at 600× from step
+  entry. Splitting press from wait needs a gradeable row for the press: 3a grades SHUTDOWN ROD
+  POSITION above 0 (unmet at entry, ticks 5 s after the click on both routes). Step 14 could not
+  split — `pressure_setpoint` is not a `CTL_PARAMS` channel, so the typed SET PZR PRESSURE is
+  ungradeable without a runtime change.
+- **A LEG'S STATED TIME CAN BELONG TO ANOTHER ENGINE.** The purpose said "About 12 plant-hours";
+  the leg completes in **6.35 / 6.37 plant-hours** (replay / player route). 12 matches the retired
+  engine's full settle (~12.3 h to 567 °F (297.2 °C), INHERITED from its pool comment), which this leg never waits for.
+- **`run_style` N6 SCANS `target` BUT NOT `accs`.** A board-literal "0 MW" moved into `target`
+  reddened; the same string in `ask`/`label` passes unseen. The card draws `target` only on an
+  observe step, so the target kept "MWe".
+- **A TEST THAT FINDS A STEP BY REGEX ON `text` GOES BLIND WHEN THE ACTION MOVES INTO `ask`.**
+  `run_checklist_pwr2` 2j's `/press AUTO under HEATER/` now reads text + asks. Grep every leg's
+  tests for `.test(st.text)` before porting.
+- **IN A FAST HARNESS, ROW LATENCY IS BROADCAST RESOLUTION.** At 600× a broadcast is 60 plant-s, so
+  the 5-broadcast debounce reads as "+300 s" on 9a — the player at 1× sees ~5 s.
+## Session log — 2026-09-24-workbench-e (the cooldown leg ported to the per-substep format: every stated time was off on the player's route)
+
+Full record, tables and speed provenance: `Blueprint/walkthrough_steps/06_cooldown.md` Notes.
+
+- **A TILE-PRINTED NUMBER AT THE CENTRE OF A `<` EDGE TICKS ON THE WRONG READING.** Six of the leg's
+  thresholds sat inside the band their own tile prints (`P < 11.14` MPa is 1615.7 psi, drawn
+  "1616", under a label "below 1615"). Moved to the floor of the next reading down; the replay's
+  step 11 now meets `Tavg < 92.5 °C` 91 s before its 7200 s hold ends — the leg's thinnest margin.
+- **THE REPLAY'S HOLD IS NOT THE PLAYER'S DWELL, SO THE 30 s RULE ON IT PICKS THE WRONG RUNG.** Steps
+  2 and 5 hold 1500 s (a ramp) and would run at 60×; a player typing the setpoint once ticks in
+  15-20 s. Derive a rung from the measured player dwell.
+- **STATED TIMES ROT ON THE ROUTE NOBODY REPLAYS.** The accumulator window "about 5 plant-minutes"
+  measures 7.9-8.5 on every route; the dump walk "about two plant-hours" is 44 min when the player
+  waits for Tavg to settle, as told.
+- **A GATE FIXTURE CHOSEN BY "FIRST MATCHING STEP 1" MOVES WITH THE POOL.** `verify_flags_ui` #686
+  picked `pwr_cooldown` step 1 for its generated speed line; the format sets `wait_hint: false`
+  there, and after this port no pwr2 step 1 draws that line. The fixture now forces it in-page.
+- **`glance_rung.js` is blind on a shutdown leg** — its yardstick is REACTOR POWER, 0 % throughout.
+## Session log — 2026-09-24-workbench-d (Lower power brought down to the owner's per-substep format; a rod count that depends on the route)
+
+Record: `Blueprint/walkthrough_steps/04_lower_power.md` Notes. Traps only:
+
+- **A rod count in a note is a function of how long the player waited.** The boration does the
+  rods' job given time: the replay (full holds) inserts 40 / 0 / 0 / 0 steps in steps 3-6, a
+  player who inserts the moment the load check-offs tick needs 72-74 / 60-64 / 45-46 / 36-38
+  (seeds 42, 7, 99). His "about 6" was wrong by 6x on the fast route. Measure both ends.
+- **A band's span is not the stopping window when the tile lags.** Top-to-floor of the green
+  band is 37-50 rod steps at MED, but a stop at the floor crossing went on to read 14.9 °F
+  (8.3 °C) under the floor. At 10x the span alone is 4.6-6.2 s of wall clock; 5x is the rung.
+- **The 30 s rule plays a long-`hold` load step at 60x.** Steps 4-6 (`hold` 720/600/900) had no
+  `wait_speed`; a substep rung now wins while it is active.
+- **An injection probe keyed on a leg moves branch when the leg is ported.** `run_checklist_pwr2`'s
+  ask-sweep probe was "the first ask in `pwr_lower_power`"; once every ask there carried a
+  `wait_speed`, the 15-word injection sat under the 30-word owner cap. It now takes the first
+  LEGACY ask in the pool — and goes null once every leg is ported.
+- **Parallel agents share one session scratchpad.** A `glance_rung` output written to a generic
+  filename was overwritten mid-read by another leg's run. Use a per-leg directory.
+
 ## Session log — 2026-09-24-workbench-c (third layman pass on Mode 3 to Mode 1: a Continue lit below the fold; `paramValue` is not the tile)
 
 Report and per-finding numbers: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-24_LAYMAN_PASS3.md`.

@@ -30,9 +30,65 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Walkthrough fast-forward waits for your action (layman pass 4).** A step whose action is a
+  press or a typed value stays at 1× until that command lands, then takes its rung; entering
+  cooldown 11 used to run ~76 plant-minutes per 10 s of reading. `wait_first: true` marks the two
+  steps whose wait comes before the press. The line under the speed buttons names alarms by their
+  card text, drops a stale drop/hold note once the step changes or the clock is raised, and no
+  longer says "fast-forwarding at 1×". TRIP BLOCKS rows no longer shrink under the cursor while the
+  card is open (a re-block moved the next row 17.6 px). Alarm PWR-A33 reads "Shutdown Cooling Not
+  In Service — RHR Not Aligned in Mode 4 or 5" (it claimed a pressure it never tests).
+- **Walkthrough rulings, 2026-09-24 round 4.** Raise power stages 4–8 are **load first**: set
+  LOAD, then withdraw rods (about 20/20/35/25/20 steps) to bring AVG COOLANT TEMPERATURE back into
+  its band, per Westinghouse Technology Systems Manual 19.0 (ML11223A342) Appendix 19-1 step 22;
+  the temperature check-off can no longer tick before LOAD is in, and step 10's rod check is above
+  351. Shutdown step 3 and cooldown step 4's "status PRESS" check-off now reads the steam dump's
+  mode (new derived `steam_dump_press_mode`), so it waits for PRESS instead of the AUTO lamp.
+  Mode 3 → Mode 1 step 9b waits for STARTUP RATE to stop falling (a hidden 240 s `steady` row)
+  before its rate band can tick; steps 10–11 times re-measured. Mode 5 → Mode 3 step 16 grades
+  SOURCE RANGE steady (600 s) and STARTUP RATE −0.02 to +0.02 on the board instead of NET
+  REACTIVITY. Cooldown step 11 now gives the rate the COOLDOWN RATE tile shows (a little over
+  100 °F/hr at 12 %). `Manuals/01` §6.0: the turbine leads, up and down.
+- **Raise power walkthrough in the new step format** (owner directive, 2026-09-24: "Adopt the
+  format for the other walkthroughs."). `pwr_raise_power` now matches
+  `Blueprint/walkthrough_steps/03_raise_power.md` word for word. Each of its 12 steps opens with a
+  goal line; there are 17 lettered substeps, each with its own note and suggested time warp, and
+  33 check-offs. On the stage steps 4-8, the pull and the LOAD share one substep and the trim is
+  the second. No grading predicate changed. The stage pulls run at 1× (one rod step is 1.25 s of
+  wall clock), then 10× while OUTPUT climbs.
+- **Shutdown to Mode 3 walkthrough in the per-substep format** (owner directive, 2026-09-24:
+  "Adopt the format for the other walkthroughs."). 3 steps, 4 substeps, 7 check-offs; goal lines
+  agent-drafted for review. Step 2 now checks both rod positions at 0 of 627; the OUTPUT and
+  REACTOR POWER rows grade at their tile's render-band floor (4.5 MWe, 4.95 %, 0.95 %). Record:
+  `Blueprint/walkthrough_steps/05_shutdown.md` Notes.
+- **Mode 5 to Mode 3 walkthrough (`pwr_heatup`) ported to the step format** (owner directive, 2026-09-24,
+  "adopt the format"). Each step opens with its goal; lettered substeps carry the action, their own
+  note, a suggested time warp and their check-offs. 17 steps, 19 substeps, 23 check-offs. One new
+  row (3a, SHUTDOWN ROD POSITION counting up) so the FAST/WITHDRAW presses run at 1x and only the
+  bank's run goes to 60x; 9a likewise at 1x before 9b's 600x climb. Step text in
+  `Blueprint/walkthrough_steps/01_mode5_to_mode3.md`.
+- **Mode 3 to Mode 5 cooldown walkthrough in the per-substep format** (owner directive, 2026-09-24:
+  "Adopt the format for the other walkthroughs."). 15 steps, 20 substeps, 23 check-offs; goal lines
+  agent-drafted for review; every tile threshold graded at its render-band floor; step 15 now also
+  checks HX SPLIT above 0 %; stated times re-measured on a player and the replay route (window
+  about 8, not 5, plant-minutes). Record: `Blueprint/walkthrough_steps/06_cooldown.md` Notes.
+- **Lower power walkthrough in the owner's per-substep format** (owner, 2026-09-24: "Adopt the
+  format for the other walkthroughs."). Six steps, nine substeps, 15 check-offs; each step opens
+  with a goal line, each substep carries its own note and time warp (1× press, 10× load waits,
+  5× rod trims). Grading values unchanged; step 1's press is now a drawn check-off. Rod-count
+  notes became measured ranges (e.g. 6 → 6 to 40 steps); the leg reads 7 to 50 plant-minutes.
+
 ## [Alpha 1.8.0-rc5] — 2026-09-24
 
 ### Fixed
+- **Walkthrough check-offs no longer flicker at their edge** (2026-09-24, `run_walkthrough_routes`).
+  Mode 3 to Mode 1 step 12's "REACTOR POWER steady" row, once met, now lets go only when the
+  drift passes 1.25 times its limit (0.0375, was 0.03): its Continue had lit for 1-2 s and gone
+  dark twice on two player routes while the drift sat at 0.0293-0.0303. A met temperature/flow
+  band (`~` row) now un-ticks after 5 consecutive out-of-band readings or 2 plant-seconds out,
+  not on one noisy reading (raise power step 6: 585.51 / 585.31 / 585.55 °F against a 585.5 °F
+  edge ticked, un-ticked and re-ticked). Tick thresholds are unchanged.
 - **Mode 3 to Mode 1, steps 5-8: the rod-position window leads, the count confirms** (owner
   rulings, 2026-09-24, layman pass 3, #653). Each pull substep's instruction now leads with the
   CONTROL ROD POSITION stop window; the SOURCE RANGE count is a "should read about … or more"

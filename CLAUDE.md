@@ -385,12 +385,6 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   target, the authored route peaking at 9.91e4. Steps now author `overtaken: {p,op,v,text}`, the
   condition under which they no longer apply. **Grep every `{cmd:…}` acceptance for the plant state
   that makes its control refuse.**
-- **TWO CORRECT MECHANISMS TWO DAYS APART CAN DISAGREE BY 17 psi — AND A HOLD RE-DECIDED EVERY
-  STEP CHATTERS AT 1×** (2026-09-04, #627). #608 ticked the Pressure SP step at 682 psia to clear the
-  cover gas; #622 held the clock AT the 665 psia cover gas. Between them the checklist waited on a
-  number while the plant asked for the valve — and the hold, "pressure rose since the last 0.02 s
-  step", rose, cleared and re-rose **three times over 24 psi**; its gate SAMPLED the first rise and
-  passed. Assert the span, and grep the checklist for the step that is active when a cue fires.
 - **A FRESH-READER REVIEW REPORTS WHAT THE RENDERER SHOWS, AND WHAT YOUR EXTRACT LEFT OUT**
   (2026-09-06, #653). Two minimal-context reviewers both filed "30 of 67 steps have no
   acceptance"; the panel draws the done-when on the ACTIVE step only and the extract had dropped
@@ -828,6 +822,10 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 >   coordinator half stands, the model does not. **Well-scoped = the brief already names the files,
 >   the interface and the checks.** Opus buys an open diagnosis or per-probe adjudication. Guessing
 >   low is cheap — re-dispatch on Opus.
+>   **OPUS WRITES PROSE** *(OWNER DIRECTIVE, 2026-09-24: "I'm thinking of changing the policy to
+>   have you use opus to write prose." — then "Record it")*: anything a player or the owner reads
+>   that is being DRAFTED — step and card text, notes, changelog entries, write-ups. Applying
+>   wording he already ruled on is transcription, and stays Sonnet.
 > - **A brief carries constraints and numbers, not rationale.** The *why* is for the owner.
 > - **One doc-budget pass**: compute what the block costs, cut that much in the same edit, measure
 >   once.
@@ -841,6 +839,10 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
   **51/51**), `run_m6.js`, `run_procedures.js`.
 - **UI change** → `run` the app and drive the affected flow (see `/run` and the
   headless Edge workflow); `verify_e2e_ui.js` must stay **PASS**.
+- **Walkthrough change** *(OWNER DIRECTIVE, 2026-09-24: "Make the adjustments to your process as you
+  recommend")* → `run_walkthrough_routes` (typical-player and scripted-mistake routes: no silent
+  strand, no tick on entry, no Continue flash); every number in step text measured on BOTH routes;
+  then a layman pass before done: it confirms, never discovers.
 - **Snapshot/contract or save-format change** → old saves must still migrate (see the
   migration-note pattern in `CHANGELOG.md`); re-run `run_m7.js`. **A new/renamed/removed
   `true_state` field also needs its §6.3 line in `Blueprint/CONTEXT.md`** — `run_contract.js`
