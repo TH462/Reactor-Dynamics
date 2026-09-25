@@ -29,6 +29,29 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-24-workbench-j (round-4 walkthrough rulings: load first, dump mode, settled rate, board-graded step 16)
+
+Traps only; the per-step numbers are in each step file's Notes and the merge commit.
+
+- **A threshold set as arrival + N breaks when an upstream route changes where the plant arrives.**
+  Raise power step 10's `> 355` (arrival 351 + 4) stranded every route once load first ended the
+  climb at bank 347. Re-derive arrival-relative bounds after any reorder upstream.
+- **A dwell is a clock, not a settle.** Five minutes of rods-still passed Mode 3 → Mode 1 step 9 on
+  STARTUP RATE 0.069 while it was still falling to 0.024; the climb then took 127 plant-min against
+  the card's 45–60. Grade the settle with a `steady` row; 240 s was the shortest window that refused
+  bank 208 (120 s passed it at 0.057).
+- **A rate band cannot see a slow approach.** STARTUP RATE read +0.004 to +0.009 through a dilution
+  toward critical, inside a still plant's ±0.013 noise; heatup step 16's approach test has to come
+  from SOURCE RANGE over 600 s (a 300 s window ticked every approach case).
+- **A lamp lit in both modes cannot grade a status word.** `steam_dump_auto` is `mode !== 'off'`, so
+  "status PRESS" ticked on a card reading TAVG. Grade the word's own test.
+- **A lagged rate tile and the true rate are different numbers.** Cooldown step 11's true 5-minute
+  rate peaks at −158 °F/hr where the COOLDOWN RATE tile (600 s lag) peaks at −106. Word a step on
+  the channel the tile draws, measured on the player's route.
+- **Load first's lower peak comes from pulling to the gauge, not from the order.** Pulling the card's
+  literal 35 steps after LOAD peaks at 581.7 °F, above rods-first with the same 35 (579.9 °F); the
+  player route that pulls until the tile is in band peaks at 572.0 °F.
+
 ## Session log — 2026-09-24-workbench-i (route-harness reds: two grading flickers, one honest re-grade)
 
 Measured on `test/run_walkthrough_routes.js` (full stack, seed 42). Traps only:

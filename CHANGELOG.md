@@ -31,6 +31,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Walkthrough rulings, 2026-09-24 round 4.** Raise power stages 4–8 are **load first**: set
+  LOAD, then withdraw rods (about 20/20/35/25/20 steps) to bring AVG COOLANT TEMPERATURE back into
+  its band, per Westinghouse Technology Systems Manual 19.0 (ML11223A342) Appendix 19-1 step 22;
+  the temperature check-off can no longer tick before LOAD is in, and step 10's rod check is above
+  351. Shutdown step 3 and cooldown step 4's "status PRESS" check-off now reads the steam dump's
+  mode (new derived `steam_dump_press_mode`), so it waits for PRESS instead of the AUTO lamp.
+  Mode 3 → Mode 1 step 9b waits for STARTUP RATE to stop falling (a hidden 240 s `steady` row)
+  before its rate band can tick; steps 10–11 times re-measured. Mode 5 → Mode 3 step 16 grades
+  SOURCE RANGE steady (600 s) and STARTUP RATE −0.02 to +0.02 on the board instead of NET
+  REACTIVITY. Cooldown step 11 now gives the rate the COOLDOWN RATE tile shows (a little over
+  100 °F/hr at 12 %). `Manuals/01` §6.0: the turbine leads, up and down.
 - **Raise power walkthrough in the new step format** (owner directive, 2026-09-24: "Adopt the
   format for the other walkthroughs."). `pwr_raise_power` now matches
   `Blueprint/walkthrough_steps/03_raise_power.md` word for word. Each of its 12 steps opens with a
