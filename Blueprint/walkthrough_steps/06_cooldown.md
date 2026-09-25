@@ -86,7 +86,7 @@ Suggested time warp: 1×.
 
 4b. Lower DUMP SETPOINT 50 psi at a time from 1020 to 120.
 
-Note: Small steps: one big jump drops the coolant fast and empties the pressurizer. Wait between steps until AVG COOLANT TEMPERATURE stops falling, about 1 to 5 plant-minutes. About 45 plant-minutes to two and a half plant-hours in all.
+Note: Small steps: one big jump drops the coolant fast and empties the pressurizer. Wait about 5 plant-minutes between steps, 5 seconds at 60×: the temperature never quite stops falling, so do not wait for it to. About an hour and a half in all.
 
 Suggested time warp: 60×.
 
@@ -149,7 +149,7 @@ The heaters go off first, or they boil water as fast as the spray condenses it a
 
 7a. Close the accumulator valve: click the valve symbol inside the pulsing ring while PRIMARY PRESSURE is 1615 to 665 psi.
 
-Note: The symbol sits above and right of the ACCUMULATORS tile, beside ECCS FLOW. At 50 % spray the window is about 8 plant-minutes wide.
+Note: The symbol sits just above the ACCUMULATORS tile, to the left of ECCS INJ FLOW. At 50 % spray the window is about 8 plant-minutes wide.
 
 Suggested time warp: 1×.
 
@@ -448,3 +448,20 @@ faster, lower HX SPLIT…") is his and stands: it is what keeps a player under t
 **NOT RE-MEASURED:** the "25 % measures 193 °F per hour" figure is #729's TRUE rate from a 300 °F
 entry, not the tile from this step's 341 °F entry. The route harness's typical route now types
 12 % once at step 11 (`policy: 'final'`), the route these numbers came from.
+
+### Reconcile record — 2026-09-25, `exp/v5-ct` scratch lane (layman pass 4)
+
+**AGENT-DRAFTED FOR OWNER REVIEW — his 4b note, minimally rewritten.** "Wait between steps until
+AVG COOLANT TEMPERATURE stops falling, about 1 to 5 plant-minutes. About 45 plant-minutes to two
+and a half plant-hours in all." → "Wait about 5 plant-minutes between steps, 5 seconds at 60×: the
+temperature never quite stops falling, so do not wait for it to. About an hour and a half in all."
+Measured, 18 entries from 1020 to 120 psi: waiting for the whole-degree tile to read the same twice
+five plant-minutes apart, 231.3 plant-min (preset); a fixed 5-minute wait, 90.7 (preset) and 91.0
+(chain). The route gate's `stated` check now fails the old reading (`cooldown_until_flat`).
+
+7a's note: "above and right of the ACCUMULATORS tile, beside ECCS FLOW" → "just above the
+ACCUMULATORS tile, to the left of ECCS INJ FLOW" — the reviewer's reading of the board, NOT
+re-measured (no browser run here).
+
+**Not verified.** The COOLDOWN RATE tile during the stair (the reviewer read −125 °F per hour on
+the last step); the true 5-minute rate this harness reads is not the lagged tile.

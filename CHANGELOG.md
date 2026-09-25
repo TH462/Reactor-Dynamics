@@ -31,6 +31,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Walkthroughs, layman pass 4 (the six legs as one plant).** Raise power: each stage now says
+  "hold WITHDRAW until AVG COOLANT TEMPERATURE is back in its band, about N steps" (the gauge
+  leads); step 8 drops its "CONTROL ROD POSITION above 300" check-off and says what the 103 % rod
+  stop looks like; step 9 waits for BORON under 663 ppm and says to insert if the dilution's tail
+  heats the plant; step 10 grades the pull instead of "above 351"; board alarm words for the
+  insertion limit; step 3 and 11 name the chained plant's 59 ppm and the 43 ppm still to come.
+  Lower power: insert in pulls of about 5 steps; go straight to the rods after step 2. Cooldown
+  step 4: a fixed 5 plant-minute wait, "about an hour and a half". Startup 8b: where the rate step
+  9 asks for shows against the prediction. `run_walkthrough_routes` gains a **chain** run (all six
+  legs on one plant), the `to_band` and `stair` player policies, a stated-time check, and three
+  injections that re-open what the pass found.
 - **Walkthrough rulings, 2026-09-24 round 4.** Raise power stages 4–8 are **load first**: set
   LOAD, then withdraw rods (about 20/20/35/25/20 steps) to bring AVG COOLANT TEMPERATURE back into
   its band, per Westinghouse Technology Systems Manual 19.0 (ML11223A342) Appendix 19-1 step 22;

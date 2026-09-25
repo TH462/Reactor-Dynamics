@@ -29,6 +29,33 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-24-workbench-l (layman pass 4, the six legs as one plant: the route gate reloaded every leg's own starting condition)
+
+Traps only; the per-step numbers are in each step file's Notes and `Diagnostic/CHECKLIST_PLAYTEST_2026-09-24_LAYMAN_CHAIN.md`.
+
+- **A leg's `from` preset is a fixture, and "Next ▸" does not hand the player that fixture.** The
+  raise-power preset (`low_power`) carries the xenon of a plant that has run at 10 %; the startup
+  hands over a xenon-free plant at 719 ppm, not 684. So step 3's dilution is 59 ppm, not 24, it is
+  still arriving at full power 35 plant-minutes later, and the leg's fixed pull counts trip the
+  reactor on overtemperature-delta-T at step 9 (`chain_count_pulls`). Every route gate reloaded the
+  preset, so none of it showed until a player pressed Next. `run_walkthrough_routes --leg=chain`
+  now drives all six legs on one plant.
+- **A graded rod POSITION is a route claim.** Raise step 10's "above 351" was arrival + 4 on the
+  preset; the chained plant arrives near 306 and reaches 351 only as xenon builds, about 5
+  plant-hours (the reviewer's 16 pulls, and 349 plant-min measured). Grade the action (the pull)
+  and the gauge, not a bank number another route cannot reach.
+- **"Wait until X stops falling" on a whole-degree tile is not a wait a player can finish.** Read
+  twice five plant-minutes apart, the cooldown's 18-entry stair took 231 plant-min against a
+  stated 45 min–2.5 h; a fixed 5-minute wait takes 91. The route gate now fails a step that
+  overruns its card's stated time (`stated_max_min`).
+- **A route that copies the replay's counts cannot find a count defect.** The typical routes pulled
+  the card's 20/20/35/25/20 because the replay does; the reviewer followed the gauge, and so does
+  the card now. A typical route encodes what the TEXT says to do, not what the replay issues.
+- **Where the insert method is not the cause, no text fixes the peak.** Lowering power from the
+  chained plant peaks at 600.3 °F whether the player holds INSERT, pulses it, or holds then pulses:
+  the leg starts at 589.8 °F because raise steps 10–11 pull and dose a xenon-free plant. The peak
+  belongs to the chain seam, not to the lower-power card.
+
 ## Session log — 2026-09-24-workbench-j (round-4 walkthrough rulings: load first, dump mode, settled rate, board-graded step 16)
 
 Traps only; the per-step numbers are in each step file's Notes and the merge commit.

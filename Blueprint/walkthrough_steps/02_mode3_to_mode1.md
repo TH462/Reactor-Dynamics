@@ -168,7 +168,7 @@ Suggested time warp: 10×.
 
 8b. Wait for STARTUP RATE +0.03 or less, then press Plot point and note the critical rod position the 1/M panel predicts.
 
-Note: The reactor goes critical at that position or just below it, so the next step stops short of it and taps from there.
+Note: The reactor goes critical at that position or just below it, so the next step stops short of it and taps from there. The rate step 9 asks for shows a little further out: measured, anywhere from 2 steps short of the prediction to 3 past it.
 
 Suggested time warp: 10×.
 
@@ -857,3 +857,22 @@ motion): 208 never (it must be tapped on — settles 0.022); 209 +13.2 min at 0.
 - Step 11 note: "About 20 to 25 plant-minutes (about 7 after a 0.15 approach)." → "About 15 to 25
   plant-minutes (about 5 to 7 after a 0.15 approach)." Measured 14.4 / 20.6 min (seeds 42 / 7) and
   6.0 / 5.0 min on the tap-to-0.15 route.
+
+### Reconcile record — 2026-09-25, `exp/v5-ct` scratch lane (layman pass 4)
+
+**AGENT-DRAFTED FOR OWNER REVIEW.** 8b's note gains one sentence: "The rate step 9 asks for shows a
+little further out: measured, anywhere from 2 steps short of the prediction to 3 past it."
+Measured, `run_walkthrough_routes` typical route, seeds 1–10: 9b ticked at the prediction +0, −2,
++3, +3, −1, −1, +1, −1, 0, +2 steps (above it on 4 of 10); the chain +0; the reviewer +1. His
+"goes critical at that position or just below it" is left standing: it is about true criticality,
+and 9b's +0.06 is past it.
+
+**PROPOSED, NOT SHIPPED — a 9b note in 58 words for his decision** (his note is about 150 words and
+seven bands):
+
+> Read STARTUP RATE only once it has stopped falling, about ten plant-minutes after a tap; the
+> check-off waits for that too. Under 0.06: one more step out. 0.06 to 0.20: done. Over 0.5: one
+> step further than meant, power comes sooner. Over 1.0: tap INSERT once and wait. SOURCE RANGE
+> blanks above 1.0e5; INTER RANGE carries on.
+
+Chained from the heatup, step 2's 918 → 719 ppm wash took 77.1 plant-min (the card: "about 90").
