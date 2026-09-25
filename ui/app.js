@@ -3182,6 +3182,10 @@
    * refusing. `latest` (the last-rendered snapshot, assigned synchronously at the top of
    * `render()`) is read rather than re-deriving anything: if the hold is still live, the note
    * survives; once it has genuinely lifted, the next player act clears it exactly as before. */
+  function cklNoteStepKey(s) {
+    var ck = s && s.instructor && s.instructor.checklist;
+    return ck && !ck.complete ? ck.procedure_id + '#' + ck.step_index : '';
+  }
   function retireWarpNote() {
     if (warpNote && warpNote.reason === 'hold' && latest && latest.true_state && latest.true_state.speed_hold) return;
     warpNote = null;
@@ -3222,6 +3226,22 @@
      * facts are wanted at once: why it stopped, and what to press now. Not under `hold` — the
      * service REFUSES `set_speed` above 1× while that stands, so offering the rung there is the
      * same contradiction one level down (the speed-rung glow already stands down for it). */
+    /* A DROP NOTE IS ONLY TRUE WHILE THE CLOCK IS STILL WHERE THE DROP PUT IT (layman pass 4,
+     * 2026-09-24). MEASURED on a9eae479: "Held at real time — the plant needs you here" stood
+     * under a lit 3600× for the whole of pwr_heatup step 11 (the walkthrough raised the clock
+     * itself, which is not a player act, so nothing retired the note), and "Dropped to real time —
+     * new alarm: …" from the lower-power leg stood through every step of the cooldown leg. Two
+     * retirements, both of which leave a STANDING accumulator hold alone (#710):
+     *   1. the clock is above the rate the note names — 1× for a drop to real time or a hold,
+     *      60× for a WARP drop or refusal. `set_speed` above 1× is refused while a hold stands,
+     *      so a clock above 1× already proves the hold has lifted;
+     *   2. the walkthrough step it was raised on is no longer the active step (retireWarpNote,
+     *      which keeps a hold that is still standing). */
+    if (warpNote) {
+      var noteRate = (warpNote.reason === 'transient' || warpNote.reason === 'warp_locked') ? 60 : 1;
+      if (((s.metadata && s.metadata.time_acceleration) || 1) > noteRate) warpNote = null;
+      else if (warpNote.step !== cklNoteStepKey(s)) retireWarpNote();
+    }
     if (warpNote) {
       cls = 'dropped';
       text = warpNote.text + (warpNote.reason !== 'hold' && advice ? '. ' + advice : '');
@@ -3297,7 +3317,7 @@
        * speed buttons until the player next acts — the other reasons rely on the toast +
        * flash above since #686; carrying `reason` is what lets `syncWarpInfo` single out this
        * one case without re-deriving it from the text. */
-      warpNote = { text: speedSnapText(snap), reason: snap.reason };
+      warpNote = { text: speedSnapText(snap), reason: snap.reason, step: cklNoteStepKey(s) };
       /* FLASH THE SPEED BUTTONS *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp,
        * flash the warp buttons for a moment to make it more obvious.")*. The toast says what
        * happened; the flash says WHERE, which is the control the player now has to touch to
@@ -4079,6 +4099,13 @@
     var want = +st.accs[head].wait_speed || 0;
     return want > 0 ? cklSnapRung(want) : null;
   }
+  /* The fastest rung any of the step's own substeps (or the step itself) authors — the speed a
+   * step at a 1× action substep will move to next. 1 when nothing faster is authored. */
+  function cklStepTopRung(st) {
+    var top = +st.wait_speed || 1;
+    (st.accs || []).forEach(function (e) { if (e && !e.hidden && +e.wait_speed > top) top = +e.wait_speed; });
+    return top > 1 ? cklSnapRung(top).speed : 1;
+  }
   function cklRungFor(st, ck) {
     if (!st) return null;
     var subRung = cklAccsHeadRung(st, ck);   // WINS over the step's own wait_speed when present
@@ -4087,6 +4114,23 @@
     if (want > 0) return cklSnapRung(want);
     return cklIsWaitStep(st) ? RD.CklSpeedHint(+st.hold || 0) : null;
   }
+  /* SPEED THE WAIT, NOT THE ACTION (2026-09-24 layman pass 4, S-1; owner #796's own design).
+   * A step whose `cmd` is a press or a typed value used to open straight onto its substep's rung:
+   * MEASURED on a9eae479, entering pwr_cooldown step 11, pwr_heatup step 14, pwr_startup step 2
+   * or pwr_cooldown step 1 and touching NOTHING put the clock at 600× at once and ran 75 to 77
+   * plant-minutes in 10 s of wall — the player's reading time, spent on the old lineup (the
+   * reviewer arrived at 13 psi and a 14 °F subcooling margin on cooldown 11). So auto holds
+   * real time until the instructor has SEEN the step's own `cmd` family descend (`cmd_seen`,
+   * the same evidence that grades a command-only step), then applies the rung.
+   *
+   * A RUNTIME RULE, NOT PER-STEP AUTHORING, so a step written tomorrow is safe by default. The
+   * one shape it would break is a step whose wait comes BEFORE its action ("wait for the margin
+   * to bottom, THEN secure the pumps"); such a step says so with `wait_first: true` and is
+   * paced from entry as before. It never HOLDS the clock down: a player who presses a speed
+   * button during the gate keeps it (the override latch below), and `set_speed` is not refused. */
+  function cklActionPending(a) {
+    return !!(a && a.st && a.st.cmd && !a.st.wait_first && a.ck && a.ck.cmd_seen === false);
+  }
   /* What speed should the plant be running at for the step on screen — null when no walkthrough
    * is running, in which case the clock is nobody's business but the player's. */
   function cklStepSpeed(s, a) {
@@ -4094,6 +4138,7 @@
     var rung = cklRungFor(a.st, a.ck);
     if (!rung) return 1;
     if (a.ck.acc_met || a.ck.awaiting_ack) return 1;      // the wait is over — hand it back
+    if (rung.speed > 1 && cklActionPending(a)) return 1;  // the action first, then the wait (S-1)
     if (!rung.warp) return rung.speed;
     var p = s.metadata && s.metadata.pacing;
     if (!p || p.warp_available !== false) return rung.speed;
@@ -4201,6 +4246,14 @@
     var lead = span ? 'About ' + span + (forBar ? ' left' : '') + ' at 1× — '
                     : 'A wait whose length depends on the plant — ';
     var want = cklStepSpeed(s, a);
+    /* NEVER "fast-forwarding at 1×" (layman pass 4): that sentence contradicts itself, and it is
+     * what the line printed on an action substep authored at 1× (pwr_heatup 3a) and would have
+     * printed under the action gate above. Say what is actually true: real time now, and the rung
+     * this step moves to once the player has acted. */
+    if (want === 1 && cur === 1) {
+      var next = rung.speed > 1 ? rung.speed : cklStepTopRung(a.st);
+      return lead + (next > 1 ? 'real time until you make this change, then ' + next + '×.' : 'at real time.');
+    }
     if (cur !== want) return lead + 'set the speed control to ' + rung.speed + '×.';
     /* The WARP clamp says so rather than printing the rung it is not on: `want` is 60× here and
      * `rung.speed` is 600×, and a line reading "fast-forwarding at 600×" over a 60× clock is the

@@ -513,6 +513,30 @@ var TOOLKIT = [
   ck('  …and so is the card\'s status line',
     /\bbd-pop-status-msg\b/.test(opened.status.cls) && opened.status.color === AMBER,
     opened.status.cls + ' / ' + opened.status.color);
+  /* THE ROWS DO NOT MOVE UNDER THE CURSOR WHEN A MESSAGE CLEARS (layman pass 4, 2026-09-24, S-9).
+   * Blocking a row the plant had released deletes its message line and the status line's, and
+   * everything under it rose — measured 17.6 px on the live cooldown, a second click at the old
+   * spot hitting the card background. Re-block ROW_A with the card OPEN (two renders: the first
+   * is where `noteTripBlockEvents` clears the message, the second draws the short text) and read
+   * every BLOCK button's position in the same turn, before a live broadcast can re-release it.
+   * INJECTION: with `holdTripPopHeights()` not called, the rows below ROW_A rise. */
+  var shift = await page.evaluate(function (a) {
+    /* the ROW's top, not the button's: a row whose own caption re-wraps moves its button inside
+     * itself, which is not the defect — the defect is a row pushed by a shrinking row above it */
+    function ys() { var o = {}; [].slice.call(document.querySelectorAll('.bd-pop button[data-trip]')).forEach(function (b) {
+      o[b.getAttribute('data-trip')] = b.parentNode.getBoundingClientRect().y; }); return o; }
+    var y0 = ys();
+    window.__c.tb(JSON.parse('{"' + a.A + '":true}'));
+    window.__c.tb(JSON.parse('{"' + a.A + '":true}'));
+    var y1 = ys(), worst = 0, had = /RELEASED BY THE PLANT/.test((window.__c.row(a.A) || {}).text || '');
+    Object.keys(y0).forEach(function (k) { if (y1[k] != null) worst = Math.max(worst, Math.abs(y1[k] - y0[k])); });
+    window.__c.tb(JSON.parse('{"' + a.A + '":false}'));   // put the revoke back for the checks below
+    window.__c.tb(JSON.parse('{"' + a.A + '":false}'));
+    return { worst: +worst.toFixed(2), msgGone: !had, n: Object.keys(y0).length };
+  }, { A: ROW_A });
+  ck('re-blocking a released row with the card open moves no row under the cursor (S-9)',
+    shift.msgGone && shift.n >= 2 && shift.worst < 1,
+    'largest row move ' + shift.worst + ' px over ' + shift.n + ' rows; message cleared: ' + shift.msgGone);
   /* THE ROW IS NOT SCROLLED OUT OF SIGHT. "Viewed" is defined as "the open card rendered this row",
    * which would be a lie if the card could clip a row away. The panel is content-sized with four
    * rows; assert it, because a fifth blockable trip would silently break the definition. */

@@ -3308,8 +3308,11 @@
            * reason is not fidelity — #753 measured the plant indistinguishable at every rung
            * through here — it is that this is the step that may want a TAP, and at 10x the tap
            * lands before the rate has been read. The 30 s rule would have returned 60x for a 900 s
-           * dwell. Line still suppressed: the note says it better and in the step's own voice. */
-          wait_hint: false, wait_speed: 5,
+           * dwell. Line still suppressed: the note says it better and in the step's own voice.
+           * `wait_first`: the WAIT is this step's action and the tap is conditional, so the
+           * app's speed-the-wait-not-the-action gate (layman pass 4, S-1) must not hold 1x
+           * waiting for a WITHDRAW the player is told not to press. */
+          wait_hint: false, wait_speed: 5, wait_first: true,
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 2, speed: 'slow' }, hold: 900,
           saw: { p: 'startup_rate_dpm', op: '>', v: 0 },
           /* 0.45, NOT 0.5 (2026-09-23): his check-off reads "REACTOR POWER reads 0.5 % or more", and a
@@ -5567,6 +5570,7 @@
           why: 'The pumps have been shaking for over an hour because they are pumping steam as much as water. Securing them is the right answer to a cavitating pump, and it also removes the only thing stirring the core.',
           note: 'One handswitch here for all the pumps. The crew stopped the loop B pumps at 1 hour 13 minutes and the loop A pumps 28 minutes later.',
           wait_hint: 'SUBCOOLING MARGIN reaches the bottom of its scale near 57 plant-minutes. That is the reading to wait for before securing the pumps.',
+          wait_first: true,   // the wait comes BEFORE the press — see cklActionPending (ui/app.js)
           story: { clock: '05:13:37',
             saw: 'Rising vibration on the loop B pumps, with flow and amperage falling away.',
             knew: '"Further operation could cause severe damage." The pumps had been running without suction head for an hour.',

@@ -31,6 +31,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Walkthrough fast-forward waits for your action (layman pass 4).** A step whose action is a
+  press or a typed value stays at 1× until that command lands, then takes its rung; entering
+  cooldown 11 used to run ~76 plant-minutes per 10 s of reading. `wait_first: true` marks the two
+  steps whose wait comes before the press. The line under the speed buttons names alarms by their
+  card text, drops a stale drop/hold note once the step changes or the clock is raised, and no
+  longer says "fast-forwarding at 1×". TRIP BLOCKS rows no longer shrink under the cursor while the
+  card is open (a re-block moved the next row 17.6 px). Alarm PWR-A33 reads "Shutdown Cooling Not
+  In Service — RHR Not Aligned in Mode 4 or 5" (it claimed a pressure it never tests).
 - **Walkthrough rulings, 2026-09-24 round 4.** Raise power stages 4–8 are **load first**: set
   LOAD, then withdraw rods (about 20/20/35/25/20 steps) to bring AVG COOLANT TEMPERATURE back into
   its band, per Westinghouse Technology Systems Manual 19.0 (ML11223A342) Appendix 19-1 step 22;

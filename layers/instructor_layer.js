@@ -2376,6 +2376,11 @@
         steps_done: this.checklist.done.slice(),
         done_by: this.checklist.doneBy.slice(),
         acc_met: this.checklist.accMetNow,
+        /* THE STEP'S OWN `cmd` FAMILY HAS DESCENDED since the step was entered (2026-09-24
+         * layman pass 4, S-1). ui/app.js holds the walkthrough's auto speed at 1× until this is
+         * true on a step whose `cmd` is the action, so the fast-forward buys the WAIT and never
+         * the player's reading of the step (owner #796: speed the wait, not the action). */
+        cmd_seen: !!this.checklist.cmdSeen,
         /* THE SOLE ROW THE PLAYER'S OWN CASUALTY STOOD DOWN (#773/#788) — the display
          * name of the failure they injected, or null. `acc_met` is TRUE alongside it, so
          * without this the step would tick with nothing asserting it and nothing said;

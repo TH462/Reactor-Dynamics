@@ -711,6 +711,100 @@ function pinChannel(ch) {
     'before the tap: A met ' + la.met0 + ' at ' + la.accel + '×; 1.5 s after: A met ' + lb.met0 + ' at ' + lb.accel + '×');
   await b.ctx.close();
 
+  /* ---- SPEED THE WAIT, NOT THE ACTION (2026-09-24 layman pass 4, S-1) — and the line under the
+   * speed buttons stays true. MEASURED before the fix: entering pwr_cooldown 11 / pwr_heatup 14 /
+   * pwr_startup 2 / pwr_cooldown 1 with no input put the clock at 600× at once, 75-77 plant-minutes
+   * per 10 s of wall. A synthetic two-step leg, each step a `cmd` (a pressure setpoint) whose only
+   * row is unmet and carries a 60× rung, `hold` 600 s so the fast-forward line is drawn:
+   *   1. on entry the clock stays 1× and the line says real time now, 60× after the change —
+   *      never "fast-forwarding at 1×";
+   *   2. a drop note raised on step 1 is gone once step 2 is active (it was carried whole legs);
+   *   3. a "Held at real time" note is gone once the walkthrough itself has raised the clock
+   *      (it stood under a lit 3600× for all of pwr_heatup 11);
+   *   4. the step's own command lands -> the clock goes to the 60× rung.
+   * A `wait_first` step (its wait comes before its press) is paced from entry — the opt-out.
+   * INJECTION-PROVEN: without the `cklActionPending` line, (1) reads 60×; without the rate
+   * retirement, (3) still reads "Held at real time"; without the step retirement, (2) reads the
+   * old note. */
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  await b.page.evaluate(function () {
+    var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_action' && x.id !== 'zz_pace_wfirst'; });
+    window.RD.MANUAL_PROCEDURES.pwr2 = P;
+    function st(t, extra) {
+      return Object.assign({ text: t, control: '(observe)', hold: 600, cmd: { action: 'set_pressure_setpoint', mpa: 15.41 },
+               accs: [{ p: 'power_pct', op: '<', v: -1, label: 'the wait', wait_speed: 60 }] }, extra || {});
+    }
+    P.push({ id: 'zz_pace_action', category: 'control', manual_ref: 'ZZ-09', title: 'Action-then-wait probe',
+             purpose: 'Rung fixture.', from: 'hot_full_power', steps: [st('Set the pressure, then wait.'), st('Again.')] });
+    P.push({ id: 'zz_pace_wfirst', category: 'control', manual_ref: 'ZZ-10', title: 'Wait-then-act probe',
+             purpose: 'Rung fixture.', from: 'hot_full_power', steps: [st('Wait, then set the pressure.', { wait_first: true })] });
+  });
+  function paceRead() {
+    return b.page.evaluate(function () {
+      var el = document.getElementById('warpInfo');
+      return { accel: globalThis.RD.__dev.service().timeAcceleration, info: el && !el.hidden ? el.textContent : '' };
+    });
+  }
+  function injectSnap(snap) {
+    return b.page.evaluate(function (snap) {
+      var svc = globalThis.RD.__dev.service(), orig = svc.assembleSnapshot, left = 1;
+      svc.assembleSnapshot = function () { var q = orig.apply(svc, arguments);
+        if (left > 0 && q && q.metadata) { left--; q.metadata.speed_snap = snap; svc.assembleSnapshot = orig; } return q; };
+    }, snap);
+  }
+  await b.page.click('button[data-ckl-start="zz_pace_action"]', { timeout: 4000 }).catch(function () {});
+  await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+  await b.page.evaluate(function () { globalThis.RD.__dev.service().attentionStops = false; });
+  await b.page.waitForTimeout(1800);
+  var pa1 = await paceRead();
+  ck('dev (pwr2): a step whose action is a command opens at 1×, not on the rung of its wait (S-1)',
+    pa1.accel === 1 && /real time until you make this change, then 60×/.test(pa1.info) && !/fast-forwarding at 1×/.test(pa1.info),
+    'clock ' + pa1.accel + '× · line: "' + pa1.info + '"');
+  await injectSnap({ reason: 'alarm', detail: 'new alarm: Probe Note' });
+  await b.page.waitForTimeout(1200);
+  var pa2a = await paceRead();
+  await b.page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    c.idx = 1; c.stepAt = null; c.awaitingAck = false; c.cmdSeen = false;
+  });
+  await b.page.waitForTimeout(1500);
+  var pa2b = await paceRead();
+  ck('dev (pwr2): a drop note from the previous step is gone once the next step is active',
+    /Probe Note/.test(pa2a.info) && !/Probe Note/.test(pa2b.info) && pa2b.accel === 1,
+    'on step 1: "' + pa2a.info + '" · on step 2: "' + pa2b.info + '" at ' + pa2b.accel + '×');
+  await injectSnap({ reason: 'hold' });
+  await b.page.waitForTimeout(1200);
+  var pa3a = await paceRead();
+  await b.page.evaluate(function () {
+    globalThis.RD.__dev.service().handleCommand({ action: 'set_pressure_setpoint', mpa: 15.41 });
+  });
+  await b.page.waitForTimeout(2000);
+  var pa3b = await paceRead();
+  ck('dev (pwr2): once the command of the step lands the clock takes the rung of the wait (S-1)',
+    pa3b.accel === 60, 'clock ' + pa3b.accel + '× 2 s after the command');
+  ck('dev (pwr2): "Held at real time" does not stand under a clock the walkthrough has raised',
+    /Held at real time/.test(pa3a.info) && !/Held at real time/.test(pa3b.info),
+    'before: "' + pa3a.info + '" · after, at ' + pa3b.accel + '×: "' + pa3b.info + '"');
+  await b.ctx.close();
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  await b.page.evaluate(function () {
+    var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_wfirst'; });
+    window.RD.MANUAL_PROCEDURES.pwr2 = P;
+    P.push({ id: 'zz_pace_wfirst', category: 'control', manual_ref: 'ZZ-10', title: 'Wait-then-act probe',
+             purpose: 'Rung fixture.', from: 'hot_full_power',
+             steps: [{ text: 'Wait, then set the pressure.', control: '(observe)', hold: 600, wait_first: true,
+                       cmd: { action: 'set_pressure_setpoint', mpa: 15.41 },
+                       accs: [{ p: 'power_pct', op: '<', v: -1, label: 'the wait', wait_speed: 60 }] }] });
+  });
+  await b.page.click('button[data-ckl-start="zz_pace_wfirst"]', { timeout: 4000 }).catch(function () {});
+  await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+  await b.page.waitForTimeout(1800);
+  var pw1 = await paceRead();
+  ck('dev (pwr2): a wait_first step is paced from entry (the opt-out)', pw1.accel === 60, 'clock ' + pw1.accel + '×');
+  await b.ctx.close();
+
   /* ---- AND ON REAL CONTENT, MID-RUN: THE CLOCK RE-ACTS WHEN THE ACTIVE SUBSTEP CHANGES (2026-09-23,
    * the pwr_startup reconcile). The two synthetic probes above each read ONE substep from the first
    * paint; neither proves auto acts AGAIN when the player moves from one substep to the next inside
@@ -733,15 +827,23 @@ function pinChannel(ch) {
     if (!btn) return false;
     btn.click(); return true;
   });
-  var sub = { a: null, b: null };
+  var sub = { z: null, a: null, b: null };
   if (subOk) {
     await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 20000 }).catch(function () {});
     await b.page.evaluate(function () {
       var svc = globalThis.RD.__dev.service();
       svc.attentionStops = false;
       var c = svc.instructor.checklist;
-      c.idx = 4; c.stepAt = null; c.awaitingAck = false; c.accsState = null; c.predBags = null;
+      c.idx = 4; c.stepAt = null; c.awaitingAck = false; c.accsState = null; c.predBags = null; c.cmdSeen = false;
     });
+    await b.page.waitForTimeout(2000);
+    /* PHASE 0 (layman pass 4, S-1): 5a is "hold WITHDRAW" — the ACTION is the press, the 5× is
+     * for the wait it starts. Until the step's `cmd` family (rod_nudge) has been seen the clock
+     * stays 1×; the runtime's own latch (`cmdSeen`) is then set the way the instructor sets it
+     * on the first press, without moving a rod that could tick 5a. REFIT 2026-09-24: this probe
+     * read 5× on entry, which pinned the S-1 defect; phases 1-2 still pass on the pre-fix build. */
+    sub.z = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+    await b.page.evaluate(function () { globalThis.RD.__dev.service().instructor.checklist.cmdSeen = true; });
     await b.page.waitForTimeout(2000);
     sub.a = await b.page.evaluate(function () {
       var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
@@ -759,10 +861,10 @@ function pinChannel(ch) {
                met0: !!(c.accsState && c.accsState[0] && c.accsState[0].met) };
     });
   }
-  ck('dev (pwr2): pwr_startup step 5 — the clock re-acts mid-step, 5a 5× then 5b 1×',
-    !!sub.a && !!sub.b && sub.a.idx === 4 && sub.b.idx === 4 && !sub.a.met0 && sub.b.met0 &&
+  ck('dev (pwr2): pwr_startup step 5 — the clock re-acts mid-step, 5a 1× until WITHDRAW, then 5×, then 5b 1×',
+    sub.z === 1 && !!sub.a && !!sub.b && sub.a.idx === 4 && sub.b.idx === 4 && !sub.a.met0 && sub.b.met0 &&
     sub.a.accel === 5 && sub.b.accel === 1,
-    sub.a ? ('on 5a ' + sub.a.accel + '× (5a met ' + sub.a.met0 + '), then on 5b ' +
+    sub.a ? ('on 5a before the press ' + sub.z + '×, after ' + sub.a.accel + '× (5a met ' + sub.a.met0 + '), then on 5b ' +
              (sub.b ? sub.b.accel + '× (5a met ' + sub.b.met0 + ', step index ' + sub.b.idx + ')' : '?'))
           : 'pwr_startup start button not found');
   await b.ctx.close();

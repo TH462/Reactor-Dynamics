@@ -29,6 +29,25 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-24-workbench-k (layman pass 4 runtime: speed the wait, not the action; drop notes that outlived their drop)
+
+Traps only.
+
+- **A rung on the substep that holds the ACTION warps the reading time.** Entering cooldown 11,
+  heatup 14, startup 2 or cooldown 1 with no input ran 75–77 plant-min per 10 s wall at 600×.
+  Auto now holds 1× until the step's `cmd` family is seen (`cmd_seen`); a step whose wait comes
+  first needs `wait_first: true` (startup 11, TMI-2 15). A measurement that presses 1× itself
+  latches auto's key and reads 1× on the unfixed build — measure with no speed input.
+- **A synthetic fixture with a field the real object lacks hides the real path.** run_m5's alarm
+  probe carried `label`; kernel alarms carry only `tile_label`, so every real drop printed the id.
+- **A note retired only by a PLAYER act outlives an AUTO act.** The walkthrough raising the clock
+  is not a press, so "Held at real time" stood under 3600×.
+- **An alarm label can claim a predicate its gate never tests.** PWR-A33 said "below the RHR entry
+  pressure"; it is gated on mode only and came in at 665 psi on the heatup.
+- **Mirroring the gate in `run_walkthrough_routes` blinds mutation `no_settle_9`** (typical
+  completes at 117.8 plant-min instead of stranding). The harness still paces the read at the rung;
+  mirroring it needs that injection re-aimed first.
+
 ## Session log — 2026-09-24-workbench-j (round-4 walkthrough rulings: load first, dump mode, settled rate, board-graded step 16)
 
 Traps only; the per-step numbers are in each step file's Notes and the merge commit.

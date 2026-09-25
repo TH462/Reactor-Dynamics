@@ -925,7 +925,10 @@
     // cooling", which is exactly what the operator needs to know before they stop injecting.
     { id: 'rhr_not_aligned', instrument: 'rhr_active', direction: 'is_false', setpoint: null, priority: 'warning', panel: 'B', category: 'safety_system',
       condition: { instrument: 'plant_mode', in: COLD_MODES },
-      label_learning: 'Shutdown Cooling Not In Service — RCS Is Below the RHR Entry Pressure', label_industry: 'RHR NOT IN SERVICE' },
+      // LABEL NAMES THE PREDICATE (layman pass 4, 2026-09-24): it read "— RCS Is Below the RHR Entry
+      // Pressure", which the predicate never tests (mode + valve only, Manuals/06 PWR-A33 "Why gated
+      // on the mode"), so on the heatup it came in at 665 psi, ABOVE the 400 psi entry, and read backwards.
+      label_learning: 'Shutdown Cooling Not In Service — RHR Not Aligned in Mode 4 or 5', label_industry: 'RHR NOT IN SERVICE' },
     { id: 'sbo',            instrument: 'station_blackout', direction: 'is_true',  setpoint: null, priority: 'critical', panel: 'B', category: 'safety_system', label_learning: 'Station Blackout — AC Power Lost', label_industry: 'SBO' },
     // Turbine trip / low steam demand. Reclassified in Modes 4/5 ONLY: below the
     // hot band the machine is secured by design and RHR is the heat sink, so zero

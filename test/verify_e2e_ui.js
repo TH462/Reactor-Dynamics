@@ -3138,7 +3138,12 @@ async function testSpeedRungGlowRendered(page) {
       if ((+s.hold || 0) >= 180 && s.wait_hint !== false) { target = i; break; }
     }
     if (target < 0) return { ok: false };
-    c.idx = target; c.stepAt = null; c.awaitingAck = false;
+    /* …with the step's own ACTION already taken (layman pass 4, S-1): since 2026-09-24 auto holds
+     * 1× on a `cmd` step until that command has been seen (speed the wait, not the action), and
+     * this step is pwr_heatup 3, a rod press. The latch is set the way the instructor sets it on
+     * the press; the claim under test — the WAIT gets its rung — is unchanged, and passes on the
+     * pre-fix build too. The gate itself is verify_flags_ui's zz_pace_action probe. */
+    c.idx = target; c.stepAt = null; c.awaitingAck = false; c.cmdSeen = true;
     return { ok: true, idx: target, hold: +c.proc.steps[target].hold };
   });
   if (!jumped.ok) throw new Error('#743 fixture: pwr_heatup authors no step with hold >= 180');
@@ -3370,7 +3375,7 @@ async function testSpeedRungGlowRendered(page) {
   await page.waitForTimeout(800);
   await page.evaluate(function (idx) {
     var c = globalThis.RD.__dev.service().instructor.checklist;
-    c.idx = idx; c.stepAt = null; c.awaitingAck = false;
+    c.idx = idx; c.stepAt = null; c.awaitingAck = false; c.cmdSeen = true;   // action taken (S-1, above)
   }, jumped.idx);
   await page.waitForTimeout(2000);
   var beforeStop = await page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });

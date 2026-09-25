@@ -3973,6 +3973,25 @@
       }
     }
     renderTripBlockStatus(s, rows);
+    holdTripPopHeights();
+  }
+  /* THE ROWS NEVER SHRINK WHILE THE CARD IS OPEN (layman pass 4, 2026-09-24, S-9). Blocking a
+   * row clears its "RELEASED BY THE PLANT" line and the status block above loses one too, so
+   * everything under it rose. MEASURED on a9eae479: after the plant had released PZR PRESS
+   * LO-LO once, BLOCK on that row moved the SI REACTOR TRIP button 441.8 -> 424.2 px (17.6 px:
+   * 10.0 from the status block, 7.6 from the row) and a second click at the old centre hit the
+   * card's background — the two-click step the cooldown asks for, missed. Each row and the
+   * status block keep the tallest height they have had since the card opened; a new card starts
+   * fresh, so nothing is reserved that was never shown. Border-box, so the floor is the height
+   * itself and cannot creep up by the padding on every refresh. */
+  function holdTripPopHeights() {
+    if (!pop) return;
+    var els = [pop.querySelector('.bd-pop-status')].concat([].slice.call(pop.querySelectorAll('.bd-pop-row')));
+    els.forEach(function (el) {
+      if (!el) return;
+      var h = el.offsetHeight, m = parseFloat(el.style.minHeight) || 0;
+      if (h > m) { el.style.boxSizing = 'border-box'; el.style.minHeight = h + 'px'; }
+    });
   }
 
   /* THE CARD'S OWN STATUS BLOCK (#738/#716). Two things the board could not say before, and
