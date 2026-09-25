@@ -2656,10 +2656,10 @@
           wait_hint: false,
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 695,
                    ask: 'Hold CONTROL WITHDRAW at MED until CONTROL ROD POSITION reads 80 to 100 and SOURCE RANGE reads 7.0e2 or more.',
-                   wait_speed: 5,
+                   wait_speed: 5, speed_text: '5×, set by itself once the rods start moving.',
                    label: 'SOURCE RANGE reads 7.0e2 (700 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Wait for STARTUP RATE to read +0.03 or less, then press Plot point.',
-                   note: 'STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop.',
+                   note: 'STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop. If BORON still reads above 719 ppm, the step 2 dilution is still adding reactivity and STARTUP RATE takes longer to fall.',
                    wait_speed: 1,
                    label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
@@ -2683,7 +2683,7 @@
           wait_hint: false,
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 1350,   // the 1.4e3 band's lower edge — see step 5's RENDER BAND block
                    ask: 'Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 150 to 175 and SOURCE RANGE reads 1.4e3 or more.',
-                   wait_speed: 5,
+                   wait_speed: 5, speed_text: '5×, set by itself once the rods start moving.',
                    label: 'SOURCE RANGE reads 1.4e3 (1,400 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the predicted rod position the panel prints.',
                    note: 'STARTUP RATE reaches +0.03 or less about a minute and a half after the rods stop.',
@@ -2720,7 +2720,7 @@
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 2950,   // the 3.0e3 band's lower edge — see step 5's RENDER BAND block
                    ask: 'Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 180 to 205 and SOURCE RANGE reads 3.0e3 or more.',
                    note: 'This pull is only 25 steps wide, so watch the position, not the clock.',
-                   wait_speed: 5,
+                   wait_speed: 5, speed_text: '5×, set by itself once the rods start moving.',
                    label: 'SOURCE RANGE reads 3.0e3 (3,000 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the prediction again.', wait_speed: 1,
                    label: 'Point plotted' }],
@@ -2766,7 +2766,7 @@
           /* ONE WARP FOR BOTH SUBSTEPS (2026-09-25): his 8a and 8b share 10×, so it is the step's
            * rung, drawn once, with the Note after it; neither head carries a speed or a note. */
           wait_speed: 10, speed_text: true,
-          note: 'STARTUP RATE takes about three to three and a half plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical at the predicted position or just below it, so the next step stops short of it and taps from there. The rate step 9 asks for shows a little further out: measured, anywhere from 2 steps short of the prediction to 3 past it.',
+          note: 'STARTUP RATE takes about three to three and a half plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 9 asks for shows anywhere from 2 steps short of the prediction to 3 past it (measured).',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e3 (7,000 counts a second); point 5 plotted; STARTUP RATE under 1.0',
           /* THE SETTLE IS 600 s, NOT 150 *(OWNER RULING, 2026-09-14/15, on options put as
            * "rewrite step 8's settle / rewrite step 9 / both": selected "Rewrite both")*.
@@ -2932,7 +2932,7 @@
          * a plant reading 1e-4 %. Measured across seeds 1/7/42/123 the crossing is at 1444, 1506,
          * 1650 and 1506 s; 1800 leaves 9 % over the worst. Move the creep and this hold moves. */
         { text: 'Take the reactor just critical.',
-          aim: 'The prediction reads high, never low, so the rods stop short of it and single steps find the real critical position.',
+          aim: 'The prediction is only good to within about three steps either way, so the rods stop short of it and single steps find the real critical position.',
           /* ⚠ THE NOTE WAS 2,103 CHARACTERS AND THE PLAYER LOST THE ACTION IN IT (#653 S-12,
            * 2026-09-15 layman playtest). MEASURED on the built pool before this edit: note 2103
            * chars, `why` 502, `text` 107 — eleven numeric thresholds and three conditional

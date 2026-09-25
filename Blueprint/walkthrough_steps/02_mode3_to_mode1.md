@@ -121,13 +121,13 @@ The panel fits the last three points, so each new point sharpens the prediction.
 
 ()5a. Hold CONTROL WITHDRAW at MED until CONTROL ROD POSITION reads 80 to 100 and SOURCE RANGE reads 7.0e2 or more.
 
-Suggested time warp: 5×.
+Suggested time warp: 5×, set by itself once the rods start moving.
 
 ()5b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point.
 
 Suggested time warp: 1×.
 
-Note: STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop.
+Note: STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop. If BORON still reads above 719 ppm, the step 2 dilution is still adding reactivity and STARTUP RATE takes longer to fall.
 
 
 
@@ -147,7 +147,7 @@ While the reactor is shut down, SOURCE RANGE counts are the only thing that show
 
 ()6a. Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 150 to 175 and SOURCE RANGE reads 1.4e3 or more.
 
-Suggested time warp: 5×.
+Suggested time warp: 5×, set by itself once the rods start moving.
 
 ()6b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the predicted rod position the panel prints.
 
@@ -173,7 +173,7 @@ That number still reads high. It improves with every point.
 
 ()7a. Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 180 to 205 and SOURCE RANGE reads 3.0e3 or more.
 
-Suggested time warp: 5×.
+Suggested time warp: 5×, set by itself once the rods start moving.
 
 Note: This pull is only 25 steps wide, so watch the position, not the clock.
 
@@ -201,7 +201,7 @@ The prediction is starting to be useful, which makes the wait matter more. While
 
 Suggested time warp: 10×.
 
-Note: STARTUP RATE takes about three to three and a half plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical at the predicted position or just below it, so the next step stops short of it and taps from there. The rate step 9 asks for shows a little further out: measured, anywhere from 2 steps short of the prediction to 3 past it.
+Note: STARTUP RATE takes about three to three and a half plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 9 asks for shows anywhere from 2 steps short of the prediction to 3 past it (measured).
 
 
 
@@ -217,7 +217,7 @@ STARTUP RATE is the speedometer. 1.0 means power multiplies by ten every minute,
 
 9. Take the reactor just critical.
 
-*The prediction reads high, never low, so the rods stop short of it and single steps find the real critical position.*
+*The prediction is only good to within about three steps either way, so the rods stop short of it and single steps find the real critical position.*
 
 ()9a. Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position.
 
@@ -1063,3 +1063,12 @@ changed.
 (relayed by the workbench session).* 2a now reads like cooldown 1a ("Check ON is lit … If ON is
 not lit, press ON."; no BORON STATUS word, since the dilution status was not measured here);
 14b's check-off label says the tile's name, "OUTPUT above 8 MW". Grading unchanged.
+
+### Workbench layman pass 5 — 2026-09-25 (p), develop lane
+
+Verified by the workbench (route gate chain, seed 42; #653 comment 5839874334). (1) "reads high,
+never low" is REFUTED: prediction 209 vs critical 210 on the gate route, 207 vs 210 on the layman's;
+step 9's why line and 8b's note now say "within about three steps" (measured -2 to +3). (2) The layman's step 5 stall was the
+dilution tail (BORON 749 ppm, still diluting): 5b's note says so. (4) 5a/6a/7a held at 1x until the
+pull, as designed (the step's `cmd` is `rod_nudge`); the warp line now says 5x arrives by itself once
+the rods move. (3), step 7's window 180-205 containing step 8's 195-205, is put to the owner.
