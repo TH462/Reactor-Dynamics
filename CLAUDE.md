@@ -84,6 +84,9 @@ docs.
 > that appears every turn stops being read, which is the failure mode the First Principles rule
 > already names. It is a *status report*: it never substitutes for asking when a decision
 > genuinely blocks (SOP §5), and it never turns an unmeasured claim into a plan (HR12).
+>
+> **Show it only when it CHANGED since your last reply, or carries a decision for him** *(OWNER,
+> 2026-09-25: "Do it")*. Unchanged, it is one status line.
 
 > **When you ask the owner something, bring the recommendation with it** *(OWNER RULING,
 > 2026-07-29: "I think we should add to SOP to have you automatically give your recommendation
@@ -378,13 +381,6 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   at 5.5 s and the reseat near 25 s, so armed at 0–20 s the accident follows, at 30–60 s the valve
   reseats at 1985 psia (13.69 MPa) and nothing happens. A step's `inject` must fire before the
   event its failure waits for — **measure the window.**
-- **A COMMAND-KIND CHECK-OFF IS ONLY SATISFIABLE WHILE THE PLANT STILL LETS THE PLAYER PRODUCE
-  THE COMMAND** (2026-09-05, #641). Six 1/M steps waited for `plot_1m_point`; the tool refuses the
-  press once the source range secures (1e5 cps, flux alone, no lever) and sends nothing, and the
-  manual tick was removed by directive — a soft lock **20 s** past the last step's 20,000 cps
-  target, the authored route peaking at 9.91e4. Steps now author `overtaken: {p,op,v,text}`, the
-  condition under which they no longer apply. **Grep every `{cmd:…}` acceptance for the plant state
-  that makes its control refuse.**
 - **A FRESH-READER REVIEW REPORTS WHAT THE RENDERER SHOWS, AND WHAT YOUR EXTRACT LEFT OUT**
   (2026-09-06, #653). Two minimal-context reviewers both filed "30 of 67 steps have no
   acceptance"; the panel draws the done-when on the ACTIVE step only and the extract had dropped
@@ -827,6 +823,9 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 >   that is being DRAFTED — step and card text, notes, changelog entries, write-ups. Applying
 >   wording he already ruled on is transcription, and stays Sonnet.
 > - **A brief carries constraints and numbers, not rationale.** The *why* is for the owner.
+> - **"Gate X forces Y" is a claim — grep for a RULING on Y first** *(OWNER, 2026-09-25: "Do
+>   it")*: a bring-down overrode his "use the board's" MW on a misread N6. **Kill processes by
+>   PID, never by filter.**
 > - **One doc-budget pass**: compute what the block costs, cut that much in the same edit, measure
 >   once.
 

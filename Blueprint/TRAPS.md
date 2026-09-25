@@ -550,3 +550,8 @@ budget stops the loop and credits only what it stepped. What the bullet said, ve
   one-character error ten lines away. The lesson filed was "rules that must win go last"; the lesson
   available was "nobody parsed the file after editing it."**
 
+- **A command-kind check-off is only satisfiable while the plant still lets the player produce the
+  command** (evicted from CLAUDE.md's Recent themes 2026-09-25; #641, 2026-09-05). Six 1/M steps
+  waited for `plot_1m_point` after the source range had secured and the tool refused the press — a
+  soft lock. Steps now author `overtaken`. **Grep every `{cmd:…}` acceptance for the plant state
+  that makes its control refuse.**
