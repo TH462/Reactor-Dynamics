@@ -3198,7 +3198,7 @@ if (!only && RUN_B) {
        'entered ' + (far.entered + 1) + ', left ' + (far.left == null ? 'NEVER in 2400 s' : '+' + far.left.toFixed(0) + ' s by ' + far.by) +
        ', bank ' + far.bank + ', REACTOR POWER ' + far.pw.toFixed(2) + ' %');
     ck('2aj.2 ...and the authored creep completes it on its OWN rows, well before the skip could fire',
-       crept.entered === S9 && crept.left != null && crept.by != null && crept.by !== 'overtaken' && crept.left < 480,
+       crept.entered === S9 && crept.left != null && crept.by != null && crept.by !== 'overtaken' && crept.left < proc.steps[S9].hold,   /* the step's own hold (480 -> 720 with the settle row, 2026-09-24) */
        'entered ' + (crept.entered + 1) + ', left ' + (crept.left == null ? 'NEVER' : '+' + crept.left.toFixed(0) + ' s by ' + crept.by) +
        ', REACTOR POWER ' + crept.pw.toFixed(3) + ' %');
   })();
@@ -3298,7 +3298,7 @@ if (!only && RUN_B) {
     ck('2ak.3 ...then one tap: 9a stays met and the active substep stays 9b (pacing cannot fall back to 9a)',
        pre.charAt(0) === '1' && post.charAt(0) === '1' && hd === st9.accs.length - 1 && bank() === 208,
        'verdicts ' + pre + ' -> ' + post + ', active substep row ' + hd + ', bank ' + bank());
-    var rate = st9.accs.filter(function (e) { return e.p === 'startup_rate_dpm'; })[0] || {};
+    var rate = st9.accs.filter(function (e) { return e.p === 'startup_rate_dpm' && e.op === '~'; })[0] || {};   /* the drawn band, not the hidden settle row */
     var lo = rate.v - rate.tol, hi = rate.v + rate.tol;
     ck('2ak.5 ...and while that tap is still travelling the step is never met (the rate spike is over the floor; the rods are not stopped)',
        travel > 20 && peak > lo && ackMoving === 0,
@@ -3698,8 +3698,11 @@ if (!only && RUN_B) {
       /* RE-PINNED 2026-09-24 (`pwr_shutdown` new-format port): 131 -> 135 predicate rows (pwr_shutdown +2, pwr_heatup 3a +1, pwr_cooldown 15 HX SPLIT +1; SUM the deltas on a merge), sole
        * 30 -> 29. Step 2 gains CONTROL and SHUTDOWN ROD POSITION rows (control-state, so the
        * instrument count is unmoved at 87), and its REACTOR POWER row stops being the only one. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-24: 84 / 135 / 87 / 29)',
-         gradedSteps === 84 && predRows === 135 && rows.length === 87 && soleInst === 29,
+      /* RE-PINNED 2026-09-24 (rp_start): 135 -> 137 predicate rows, 87 -> 90 instrument-graded. `pwr_heatup` 16
+       * trades NET REACTIVITY (true_state) for SOURCE RANGE steady + STARTUP RATE near 0 (+1 row, +2 instrument);
+       * `pwr_startup` 9 gains a hidden STARTUP RATE `steady` row, the settle (+1, +1). Graded steps and sole unmoved. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-24: 84 / 137 / 90 / 29)',
+         gradedSteps === 84 && predRows === 137 && rows.length === 90 && soleInst === 29,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -3776,6 +3779,8 @@ if (!only && RUN_B) {
       'pwr_heatup:11:tavg_c': 'tavg',                        // > 283 [SOLE]  dead 30.00 vs true 50.00 degC
       'pwr_heatup:14:pressure_mpa': 'primary_pressure',      // > 15 [SOLE]   dead 0.000 vs true 2.500 MPa
       'pwr_heatup:15:steam_pressure_mpa': 'steam_pressure',  // ~ 7.03        dead 0.000 vs true 0.0124 MPa
+      'pwr_heatup:16:sr_counts_cps': 'source_range',         // steady 1.2 %/600 s (2026-09-24, replaced NET REACTIVITY, a true_state row)
+      'pwr_heatup:16:startup_rate_dpm': 'startup_rate',      // ~ 0 +/-0.025 (same change)
       /* pwr_startup [hot_zero_power] */
       /* RE-PINNED 2026-09-23 (the owner's new-format reconcile): old step 9 split into 9 + 10 and
        * old 11 folded, so the climb's power row is 10 and the 0.5 % row is 11 — keys MOVED, not
@@ -3994,6 +3999,7 @@ if (!only && RUN_B) {
     var LIVE_QUANTITY_EXPECTED = {
       'pwr_heatup:11': 'tavg_c',                              // "wait until AVG COOLANT reaches 542 degF"
       'pwr_heatup:15': 'adv_valve_pct,steam_pressure_mpa',    // the Hot Standby confirm
+      'pwr_heatup:16': 'sr_counts_cps,startup_rate_dpm',      // SOURCE RANGE steady + STARTUP RATE near 0 (owner ruling 2026-09-24; was reactivity_pcm)
       'pwr_heatup:17': 'power_pct',
       'pwr_startup:1': 'tavg_c,pressure_mpa',                // his two bands (2026-09-23)
       'pwr_startup:10': 'ir_amps,power_pct',                  // the climb, split out of old 9 (had a cmd)
@@ -4014,7 +4020,7 @@ if (!only && RUN_B) {
     var TRUE_STATE_EXPECTED = {
       'pwr_heatup:1': 'plant_mode', 'pwr_heatup:4': 'turbine_tripped',
       'pwr_heatup:6': 'steam_dump_valve_pct', 'pwr_heatup:12': 'rhr_active,letdown_flow_actual',
-      'pwr_heatup:15': 'plant_mode', 'pwr_heatup:16': 'reactivity_pcm',
+      'pwr_heatup:15': 'plant_mode',
       'pwr_raise_power:1': 'plant_mode',
       'pwr_cooldown:13': 'plant_mode', 'pwr_cooldown:14': 'accumulator_volume_pct',
       'pwr_cooldown:15': 'rhr_valve_open',

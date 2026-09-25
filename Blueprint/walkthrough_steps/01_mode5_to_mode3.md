@@ -287,11 +287,12 @@ Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. Th
 
 16a. Read SOURCE RANGE counts steady and STARTUP RATE near 0.00.
 
-Note: The done-when line reads NET REACTIVITY in pcm — hundredths of a percent of reactivity, a computed diagnostic on the Indications tab, not a board gauge. Below zero means shut down, and −300 pcm is a long way below. On the board the same fact is SOURCE RANGE steady and STARTUP RATE at 0.00.
+Note: SOURCE RANGE wanders by about a tenth either way with nothing moving; steady means it is not climbing, and the check-off watches it for ten plant-minutes before it ticks. STARTUP RATE on a shut-down core flickers between about −0.01 and +0.01. Either one climbing with the rods still means something is adding reactivity: stop and find out what moved.
 
-Suggested time warp: 1×.
+Suggested time warp: 10×.
 
-()  NET REACTIVITY below −300 pcm
+()  SOURCE RANGE steady
+()  STARTUP RATE −0.02 to +0.02
 
 Background
 
@@ -419,6 +420,39 @@ reads either (passes on the old shape too). `run_checklist_pwr2` baseline 190 �
   early, lenient and never stranding. Left as is; the tile's rounding was not checked.
 
 ---
+
+### Reconcile record — 2026-09-24 (b), rp_start lane: step 16 graded on the board
+
+*OWNER RULING (2026-09-24): selected "Grade board readings" — "Grade SOURCE RANGE and STARTUP RATE
+after a measurement pass, so the check-off matches what the step tells them to read." A selection,
+not his own words (Hard Rule 11). Changed in this file AND in `ui/manual_procedures.js`'s
+`pwr_heatup` pool. Closes the "Step 16 still grades NET REACTIVITY" flag above.*
+
+**Grading.** NET REACTIVITY below −300 pcm (true_state) → two rows on the INSTRUMENTS the tiles draw:
+SOURCE RANGE `steady` (1.2 % over a trailing 600 s) and STARTUP RATE −0.025 to +0.025 (every value
+the tile's two decimals draw as −0.02 to +0.02). Replay `hold` 0 → 720 s. MEASURED, live runtime,
+step 16 held open 60 plant-min: a still plant's SOURCE RANGE wanders ±13 % (147-194 cps at 168
+true) and STARTUP RATE −0.013 to +0.012, so the rate row cannot see a slow approach (+0.004 to
++0.009 through a dilution) and the SOURCE RANGE window is the discriminator. Player route (seeds 42,
+7) and a replay-dwell route: done at 10.1 min. Approaching critical, never in 60 min: dilution
+918 → 719 ppm (seeds 42/7/123; −3400 → −1840 pcm), rods to 210 plus dilution to 600 ppm (−678 pcm
+at 60 min). A slow 200-step pull ticks 5.9 min after the rods stop. Injection: the SOURCE RANGE row
+removed, or the old −300 pcm row restored, and the dilution case completes in 0.1 min.
+
+**Text changed (the rest as written):**
+- 16a note: "The done-when line reads NET REACTIVITY in pcm — … On the board the same fact is SOURCE
+  RANGE steady and STARTUP RATE at 0.00." → "SOURCE RANGE wanders by about a tenth either way with
+  nothing moving; steady means it is not climbing, and the check-off watches it for ten
+  plant-minutes before it ticks. STARTUP RATE on a shut-down core flickers between about −0.01 and
+  +0.01. Either one climbing with the rods still means something is adding reactivity: stop and find
+  out what moved."
+- 16a speed: "1×." → "10×." (a ten-plant-minute window is ten wall-minutes at 1×)
+- 16a check-off: "NET REACTIVITY below −300 pcm" → two lines, "SOURCE RANGE steady" and "STARTUP
+  RATE −0.02 to +0.02".
+
+**What it no longer grades:** the shutdown MARGIN. A plant stopped subcritical but close to critical
+(rods out, boron diluted, then left alone) settles and ticks; the whole-run guard (true reactivity
+never above 0) still stands.
 
 ### Carried over — the previous live file's agent record (verbatim, 2026-09-15 to 2026-09-21)
 
