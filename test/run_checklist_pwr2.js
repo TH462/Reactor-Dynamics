@@ -636,7 +636,8 @@ if (!only && RUN_B) {
        * span's own bottom (2026-09-15) and retired the dial step — the HEATER press now carries
        * both the climb and the cover-gas acceptance, so it is the one to read. `>= 0` is asserted
        * below rather than left to `spIdx === -1` quietly matching nothing. */
-      if (/press AUTO under HEATER/.test(st.text)) spIdx = k;
+      /* 2026-09-24 (wt-heatup): the press is now substep 9a's `ask`, the step `text` its goal. */
+      if (/press AUTO under HEATER/.test(st.text + ' ' + (st.accs || []).map(function (e) { return e.ask || ''; }).join(' '))) spIdx = k;
     });
     var s = null, issued = {}, issuedAt = {}, holdTick = null, stepAtHold = null, ticksToAcc = null;
     var pAtHold = 0, pAtAcc = 0, chatter = 0, refused = 0, accepted = 0;
@@ -3580,8 +3581,11 @@ if (!only && RUN_B) {
        * `plant_mode` for two; old step 11's `sr_energized` goes. Instrument +4: pressure, rate, and
        * 17's two. Sole -1: step 1's tavg row now has a sibling. Graded steps unmoved at 84: step 9
        * gained grading and old step 11 left. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-23: 84 / 131 / 87 / 30)',
-         gradedSteps === 84 && predRows === 131 && rows.length === 87 && soleInst === 30,
+      /* RE-PINNED 2026-09-24 (wt-heatup, the Mode 5 to Mode 3 format port): 131 -> 132 predicate
+       * rows — `pwr_heatup` 3a, SHUTDOWN ROD POSITION above 0, a control-state row, so the
+       * instrument count and the sole count do not move. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-24: 84 / 132 / 87 / 30)',
+         gradedSteps === 84 && predRows === 132 && rows.length === 87 && soleInst === 30,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -4965,10 +4969,13 @@ if (!only && RUN_B) {
       for (i = 0; i < 20; i++) { if (s.instructor.checklist.awaiting_ack) beforeAck = true; s = tkv(svc); }
       svc.handleCommand({ action: 'inject_failure', failure_id: 'tavg_sensor_failure' });
       for (i = 0; i < 5; i++) s = tkv(svc);
-      var midV = s.instructor.checklist.acc_voided, midAck = !!s.instructor.checklist.awaiting_ack;
+      /* the void is per-ROW once a step authors `accs` (2026-09-24, wt-heatup: step 11's `acc`
+       * became its substep row) — read either, so the check holds on both shapes. */
+      function voidOf(c) { return c.acc_voided || ((c.accs || [])[0] || {}).voided || null; }
+      var midV = voidOf(s.instructor.checklist), midAck = !!s.instructor.checklist.awaiting_ack;
       svc.handleCommand({ action: 'clear_failure', failure_id: 'tavg_sensor_failure' });
       for (i = 0; i < 5; i++) s = tkv(svc);
-      var afterV = s.instructor.checklist.acc_voided, afterAck = !!s.instructor.checklist.awaiting_ack;
+      var afterV = voidOf(s.instructor.checklist), afterAck = !!s.instructor.checklist.awaiting_ack;
       ck('2ah.5 clear_failure takes the relief BACK — the void is re-derived every tick, never latched (#773/#788)',
          beforeAck === false && !!midV && midAck === true && afterV == null && afterAck === false,
          'pwr_heatup step 11: healthy ack ' + beforeAck + ' / injected ack ' + midAck +

@@ -30,6 +30,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Mode 5 to Mode 3 walkthrough (`pwr_heatup`) ported to the step format** (owner directive, 2026-09-24,
+  "adopt the format"). Each step opens with its goal; lettered substeps carry the action, their own
+  note, a suggested time warp and their check-offs. 17 steps, 19 substeps, 23 check-offs. One new
+  row (3a, SHUTDOWN ROD POSITION counting up) so the FAST/WITHDRAW presses run at 1x and only the
+  bank's run goes to 60x; 9a likewise at 1x before 9b's 600x climb. Step text in
+  `Blueprint/walkthrough_steps/01_mode5_to_mode3.md`.
+
 ## [Alpha 1.8.0-rc5] — 2026-09-24
 
 ### Fixed
