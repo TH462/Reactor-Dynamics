@@ -31,6 +31,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Walkthroughs: Shutdown to Mode 3 in the what / why / how shape.** Each step carries its why
+  line; 8 substeps. New check-offs: "Press SCRAM" ticks on the trip itself; STEAM PRESS 1015 to
+  1025 psi (7.00 to 7.07 MPa) after the steam dump goes to PRESS. Both rod positions are one
+  substep.
 - **Walkthroughs, layman pass 4 (the six legs as one plant).** Raise power: each stage now says
   "hold WITHDRAW until AVG COOLANT TEMPERATURE is back in its band, about N steps" (the gauge
   leads); step 8 drops its "CONTROL ROD POSITION above 300" check-off and says what the 103 % rod

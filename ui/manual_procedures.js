@@ -4633,6 +4633,13 @@
        * `cont` rows, `why` is his Background. Every step sets `wait_hint: false` because its
        * substeps carry their own speed line. The two copies are word-for-word identical.
        *
+       * THE WHAT / WHY / HOW BRING-DOWN (2026-09-25, `exp/p2-shutdown`; the step file's reword
+       * record): `aim` = his italic why line, one lettered substep = one HEAD entry, a warp the
+       * substeps share is authored ONCE on the step (`wait_speed` + `speed_text: true`), 3a keeps
+       * its own 1× because 3b-3d differ. 3 steps, 8 substeps, 9 check-offs (2b is ONE substep with
+       * a `cont` row: one gauge per row). New grading, all MEASURED in the step file's
+       * "Bring-down record": 2a `scrammed`, 3c STEAM PRESS 1015-1025 psi.
+       *
        * STEP 1: `acc` -> one head row. `< 5` became `< 4.5` — OUTPUT is drawn `r0()` (whole MWe),
        * so 4.5-4.99 still draws "5"; 4.5 is the floor of the band that draws "4" (#749). MEASURED,
        * live checklist, full stack: chained from `pwr_lower_power` (seeds 42 and 7) OUTPUT falls
@@ -4641,12 +4648,14 @@
        * (14.6 / 15.6 / 100.1 MWe). */
       steps: [
         { text: 'Take the load off the generator before the scram.',
+          aim: 'The scram is meant to come with no electricity on the generator, so the load comes off first.',
           why: 'Taking the load off the turbine first means the scram happens with no electricity on the generator. The reactor follows the falling steam demand down by itself.',
           control: 'Turbine Load', target: 'OUTPUT below 5 MWe',
           cmd: { action: 'set_load_target', mwe: 0 }, hold: 120, wait_hint: false,
+          wait_speed: 1, speed_text: true,
           accs: [{ p: 'mwe_output', op: '<', v: 4.5,
                    ask: 'Set LOAD to 0 MW and wait for OUTPUT to fall below 5 MW.',
-                   wait_speed: 1, label: 'OUTPUT below 5 MW' }],
+                   label: 'OUTPUT below 5 MW' }],
           hl: ['Turbine Load'] },
         /* STEP 2: his Target ("both rod positions 0 of 627; REACTOR POWER falling below 5 %") is now
          * the check-off, three rows. The two ROD POSITION rows are NEW (control_state, exact
@@ -4654,15 +4663,22 @@
          * after the scram and 0/0 by 3.0 s; standalone 606/627 -> 0/0 inside 3.0 s. Neither is met
          * on entry. The power row `< 5` became `< 4.95` (REACTOR POWER draws one decimal, so 4.95-4.99
          * still draws "5.0"); the tile falls 12.9 -> 2.8 % in 0.8 s, same broadcast either way. */
-        { text: 'Shut the reactor down with a planned scram.',
+        { text: 'Shut the reactor down.',
+          aim: 'Hot Standby is a shut-down reactor, and with the load already off a scram gets it there in seconds.',
           why: 'A planned scram from low power. Both rod banks drop into the core and the chain reaction stops in seconds. The fuel keeps making about 2 % of full power from radioactive decay, and that heat has to go somewhere; the next step checks where.',
           control: 'SCRAM', target: 'both rod positions 0 of 627; REACTOR POWER falling below 5 %',
           cmd: { action: 'scram' }, hold: 60, wait_hint: false,
-          accs: [{ p: 'control_bank_steps', op: '<', v: 0.5,
+          wait_speed: 1, speed_text: true,
+          accs: [{ p: 'scrammed', op: '>', v: 0,
                    ask: 'Press SCRAM on the ROD CONTROL card: once to arm it (PRESS TO ARM), then again to scram.',
-                   wait_speed: 1, label: 'CONTROL ROD POSITION 0 of 627' },
+                   label: 'Reactor tripped: SCRAM reads PRESS TO RESET' },
+                 { p: 'control_bank_steps', op: '<', v: 0.5,
+                   ask: 'Check CONTROL ROD POSITION and SHUTDOWN ROD POSITION both read 0 of 627.',
+                   label: 'CONTROL ROD POSITION 0 of 627' },
                  { cont: true, p: 'shutdown_bank_steps', op: '<', v: 0.5, label: 'SHUTDOWN ROD POSITION 0 of 627' },
-                 { cont: true, p: 'power_pct', op: '<', v: 4.95, label: 'REACTOR POWER falling below 5 %' }],
+                 { p: 'power_pct', op: '<', v: 4.95,
+                   ask: 'Check REACTOR POWER is falling below 5 %.',
+                   label: 'REACTOR POWER below 5 %' }],
           hl: ['SCRAM'] },
         /* THE DUMP'S MODE IS THE SHUTDOWN LEG'S TO SET (layman playtest pass 2, #653 S-11; the seam
          * pass 1 found as S2). After the scram the dump is still in 'tavg' mode from power; AUTO
@@ -4707,14 +4723,21 @@
          * press (the turbine is tripped, so AUTO selects pressure mode). */
         { text: 'Put the decay heat on the steam dump: Mode 3, Hot Standby.',
           why: 'The chain reaction is gone, but the fuel still makes about 2 % of full power from radioactive decay, and REACTOR POWER does not show it. With the turbine tripped, AUTO puts the steam dump into pressure-holding mode and it carries that heat to the condenser. Hot, at pressure, shut down: Mode 3, Hot Standby.',
+          aim: 'The fuel keeps making heat after the scram, and with the turbine off line the steam dump is where that heat leaves.',
           hold: 120, wait_hint: false,
+          wait_speed: 10, speed_text: true,
           accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_press_mode', op: '>', v: 0,
                    ask: 'Press AUTO on the STEAM DUMP card until its status reads PRESS.',
                    wait_speed: 1, label: 'STEAM DUMP AUTO lit, status PRESS' },
+                 { p: 'power_pct', op: '<', v: 0.95,
+                   ask: 'Check REACTOR POWER reads below 1 %.',
+                   label: 'REACTOR POWER below 1 %' },
+                 { p: 'steam_pressure_mpa', op: '~', v: 7.0327, tol: 0.0378,
+                   ask: 'Check STEAM PRESS is holding near 1020 psi.',
+                   label: 'STEAM PRESS 1015 to 1025 psi' },
                  { p: 'steam_dump_valve_pct', op: '>', v: 0.5,
-                   ask: 'Then check REACTOR POWER below 1 %, STEAM PRESS holding near 1020 psi, and the STEAM DUMP open a little.',
-                   wait_speed: 10, label: 'STEAM DUMP open, carrying the decay heat' },
-                 { cont: true, p: 'power_pct', op: '<', v: 0.95, label: 'REACTOR POWER below 1 %' }],
+                   ask: 'Check the STEAM DUMP is open a little.',
+                   label: 'STEAM DUMP open, carrying the decay heat' }],
           hl: ['Steam Dump'], hl_watch: ['Tavg', 'SG Pressure'] },
       ],
       guard: { never_melted: true },

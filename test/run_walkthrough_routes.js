@@ -183,9 +183,10 @@ var ROUTES = {
   },
   pwr_shutdown: {
     steps: {},
-    // chained, the dump has been in AUTO / PRESS since the heatup's step 13, so step 3 is already
-    // true on arrival (layman pass 4: "Both substeps were already ticked"). Honest, not hollow.
-    chain_entry_met: ['#3'],
+    // chained, the dump has been in AUTO / PRESS since the heatup's step 13, so 3a is true on
+    // arrival (layman pass 4). The step is no longer: 3c's STEAM PRESS 1015-1025 psi row
+    // (2026-09-25 bring-down) holds it until the pressure comes down from 1043 psi (34 s,
+    // measured on this chain), so `chain_entry_met: ['#3']` came out and the hollow check binds.
     mistakes: [
       { id: 'scram_early', kind: 'press early', at: 'cmd:set_load_target', set: { policy: 'seq', cmds: [
         { action: 'set_load_target', mwe: 0 }, { action: 'scram' }] } },

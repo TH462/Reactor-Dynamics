@@ -1160,7 +1160,7 @@ if (!only && RUN_B) {
     var sdNoPress = driveShutdownStep3(600, false);
     ck('pwr_shutdown step 3 HOLDS with AUTO never pressed: status reads TAVG, the row reads the mode (ruling 2026-09-24, reverses #697 for this row)',
        sdNoPress.done === false && sdNoPress.step === 2 && sdNoPress.mode === 'tavg' && sdNoPress.accs &&
-       sdNoPress.accs[0].met === false && sdNoPress.accs[1].met === true && sdNoPress.accs[2].met === true,
+       sdNoPress.accs[0].met === false && sdNoPress.accs[1].met === true && sdNoPress.accs[3].met === true,   /* 3b power, 3d dump (3c STEAM PRESS sits at index 2 since the 2026-09-25 bring-down) */
        'mode ' + sdNoPress.mode + ' ' + JSON.stringify(sdNoPress.accs));
     var sdPress = driveShutdownStep3(600, true);
     ck('pwr_shutdown step 3 completes once AUTO is pressed (the turbine is tripped, so AUTO selects PRESS)',
@@ -1171,8 +1171,63 @@ if (!only && RUN_B) {
       entry.p = 'steam_dump_auto';                     // the #697 lamp grading, planted back
       try { return driveShutdownStep3(600, false); } finally { entry.p = savedP; }
     })();
-    ck('...RED BY INJECTION: graded on the AUTO lamp (#697), step 3 ticks with no press on a card reading TAVG',
-       sdLamp.done === true, 'done=' + sdLamp.done + ' step_index=' + sdLamp.step);
+    /* Asserts the ROW, not the step, since the 2026-09-25 bring-down: 3c's STEAM PRESS band
+     * (1015-1025 psi) independently refuses TAVG mode (it holds 1026-1029 psi), so the step no
+     * longer completes under the injection — the lamp-graded row still ticks with no press. */
+    ck('...RED BY INJECTION: graded on the AUTO lamp (#697), the "status PRESS" row ticks with no press on a card reading TAVG',
+       sdLamp.done === true || !!(sdLamp.accs && sdLamp.accs[0].met === true && sdLamp.mode === 'tavg'), 'done=' + sdLamp.done + ' step_index=' + sdLamp.step + ' mode ' + sdLamp.mode + ' ' + JSON.stringify(sdLamp.accs));
+
+    /* THE 2026-09-25 BRING-DOWN'S TWO NEW ROWS (`Blueprint/walkthrough_steps/05_shutdown.md`,
+     * "Bring-down record"). 2a "Press SCRAM" is graded on the trip latch, so it must be unmet for
+     * as long as the player has not pressed and tick on the broadcast after the press — the old
+     * shape (rod rows first) ticked 2.6 s after. 3c "STEAM PRESS holding near 1020 psi" comes DOWN
+     * to the band after the scram (1113 psi at step 3 entry standalone), so it must not tick
+     * while the gauge still reads above 1025 psi. */
+    function driveShutdownNew(waitS) {
+      var svc = mkSvc('hot_full_power');
+      svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_shutdown' });
+      var s = null, didLoad = false, t2 = null, tScram = null, pre = false, tick2a = null, auto = false, first3c = null;
+      for (var i = 0; i < 20000; i++) {
+        s = svc.tick();
+        var c = s.instructor && s.instructor.checklist; if (!c) continue;
+        if (c.complete) break;
+        if (c.step_index === 0 && !didLoad) { svc.handleCommand({ action: 'set_load_target', mwe: 0 }); didLoad = true; }
+        if (c.step_index === 1) {
+          var t = s.metadata.sim_time;
+          if (t2 == null) t2 = t;
+          if (tScram == null && c.accs[0].met) pre = true;               // ticked before any press
+          if (tScram == null && t - t2 >= waitS) { svc.handleCommand({ action: 'scram' }); tScram = t; continue; }
+          if (tScram != null && tick2a == null && c.accs[0].met) tick2a = t - tScram;
+        }
+        if (c.step_index === 2) {
+          if (!auto) { svc.handleCommand({ action: 'set_steam_dump', mode: 'auto' }); auto = true; }
+          if (first3c == null && c.accs[2].met) first3c = c.accs[2].obs * 145.0377;
+        }
+        if (c.awaiting_ack) svc.handleCommand({ action: 'checklist_check', index: c.step_index });
+      }
+      return { pre: pre, tick2a: tick2a, first3c: first3c, done: !!(s.instructor.checklist && s.instructor.checklist.complete) };
+    }
+    function withShutdownEdit(fn, run) {
+      var proc = POOL2.filter(function (p) { return p.id === 'pwr_shutdown'; })[0];
+      var saved = JSON.stringify(proc.steps.map(function (st) { return st.accs; }));
+      try { fn(proc); return run(); }
+      finally { var a = JSON.parse(saved); proc.steps.forEach(function (st, k) { st.accs = a[k]; }); }
+    }
+    var sdNew = driveShutdownNew(30);
+    ck('pwr_shutdown 2a (SCRAM) is unmet while nobody presses and ticks within the grader debounce of the press (2026-09-25 bring-down)',
+       sdNew.pre === false && sdNew.tick2a != null && sdNew.tick2a <= 4.5,   /* measured 3.5 plant-s at this 10x harness (0.3 s at the card's 1x on the route gate; the 10x lag is not traced); the old shape 7.5 */
+       'ticked before the press: ' + sdNew.pre + ', plant-s from press to tick: ' + sdNew.tick2a);
+    ck('pwr_shutdown 3c (STEAM PRESS) ticks only once the gauge reads 1025 psi or less, and the leg completes',
+       sdNew.done && sdNew.first3c != null && sdNew.first3c <= 1025.5,
+       'first met at ' + (sdNew.first3c == null ? '?' : sdNew.first3c.toFixed(1)) + ' psi, complete ' + sdNew.done);
+    var sdOld2a = withShutdownEdit(function (proc) { proc.steps[1].accs.shift(); }, function () { return driveShutdownNew(30); });
+    ck("...RED BY INJECTION: without the latch row (the old rod-rows-first shape), step 2's first row does NOT tick at the press",
+       !(sdOld2a.pre === false && sdOld2a.tick2a != null && sdOld2a.tick2a <= 4.5),
+       'plant-s from press to tick: ' + sdOld2a.tick2a);
+    var sdWide3c = withShutdownEdit(function (proc) { proc.steps[2].accs[2].tol = 0.15; }, function () { return driveShutdownNew(30); });
+    ck("...RED BY INJECTION: with the heatup's +/-0.15 MPa band, 3c ticks while STEAM PRESS still reads above 1025 psi",
+       sdWide3c.first3c != null && sdWide3c.first3c > 1025.5,
+       'first met at ' + (sdWide3c.first3c == null ? '?' : sdWide3c.first3c.toFixed(1)) + ' psi');
 
   })();
 
@@ -3709,8 +3764,11 @@ if (!only && RUN_B) {
        * 90 -> 92 instrument-graded, sole 29 -> 28. Step 1 +2 (RCP FLOW, STARTUP RATE — both
        * instrument), step 2 +2 (the ON lamp and target box, control-state), step 3 +2 (STEAM DUMP
        * AUTO and DUMP SETPOINT, control-state); step 2's BORON CHEM row stops being the only one. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25: 84 / 141 / 92 / 28)',
-         gradedSteps === 84 && predRows === 141 && rows.length === 92 && soleInst === 28,
+      /* RE-PINNED 2026-09-25 (`pwr_shutdown` what / why / how bring-down, exp/p2-shutdown): 141 -> 143
+       * predicate rows (+2: 2a `scrammed`, 3c STEAM PRESS), 92 -> 93 instrument-graded (3c; `scrammed`
+       * is true_state). Graded steps and sole unmoved. SUM the deltas with the sibling bring-downs on a merge. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25: 84 / 143 / 93 / 28)',
+         gradedSteps === 84 && predRows === 143 && rows.length === 93 && soleInst === 28,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -3841,6 +3899,8 @@ if (!only && RUN_B) {
       'pwr_lower_power:4:mwe_output': 'mwe_output',          // ~ 50
       'pwr_lower_power:5:mwe_output': 'mwe_output',          // ~ 30
       'pwr_lower_power:6:mwe_output': 'mwe_output',          // ~ 15
+      /* pwr_shutdown [hot_full_power] */
+      'pwr_shutdown:3:steam_pressure_mpa': 'steam_pressure', // ~ 7.0327 (1015-1025 psi, 3c, 2026-09-25 bring-down); a dead gauge reads 0
       /* pwr_cooldown [hot_zero_power] */
       'pwr_cooldown:1:boron_ppm': 'boron_analyzer',          // > 880 [SOLE]  dead 0.000 vs true 718.9 ppm
       'pwr_cooldown:6:spray_flow_pct': 'pzr_spray_flow',     // ~ 50          dead 0.000 %
