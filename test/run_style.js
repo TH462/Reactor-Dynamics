@@ -154,6 +154,9 @@ function scanSteps(data, fields, re) {
   return hits;
 }
 
+/* `checklist_why_length`'s cap — see the TEN, NOT THREE note on that check. */
+var WHY_MAX_SENTENCES = 10;
+
 var CHECKS = [
   {
     id: 'checklist_vague',
@@ -231,10 +234,20 @@ var CHECKS = [
    * sentences."; OWNER, 2026-09-09 playtest sheet §B, filed as #692: "Steps shouldn't be more
    * than 2-3 sentences.")*, and a gate looser than a twice-stated owner rule is the gate being
    * wrong. Seven blocks sat in the one-sentence gap it left open and were rewritten in the same
-   * change. When it binds, CUT — the reasoning belongs in the manual chapter the step cites. */
+   * change. When it binds, CUT — the reasoning belongs in the manual chapter the step cites.
+   *
+   * TEN, NOT THREE (2026-09-25). Raised by the owner's pick of option (c), "raise the cap", over
+   * (a) fold the Background and (b) cut every Background to three *(OWNER RULING, 2026-09-25:
+   * "C")*. The 2026-09-24 what / why / how format (`Blueprint/CHECKLIST_WRITING_GUIDE.md` §16)
+   * adds a one-line WHY under each step's first line, and the owner adopted multi-paragraph
+   * Backgrounds for `pwr_startup` steps 2 and 3 as the wording model. MEASURED with this
+   * check's own splitter on `Blueprint/walkthrough_steps/02_mode3_to_mode1.md`: step 3 = 10,
+   * step 2 = 8, every other step 1 to 5. Ten is the model's longest, not a round number.
+   * The two 2-3 sentence quotes above are superseded for `why`, not deleted: they are the record
+   * of why the cap was once three. WHY_MAX_SENTENCES is declared above CHECKS. */
   {
     id: 'checklist_why_length',
-    rule: 'W-detail — a step\'s details paragraph is supplemental context: at most 3 sentences',
+    rule: 'W-detail — a step\'s details paragraph is supplemental context: at most ' + WHY_MAX_SENTENCES + ' sentences',
     run: function (d) {
       return d.steps.filter(function (s) { return typeof s.step.why === 'string'; })
         .map(function (s) {
@@ -242,13 +255,13 @@ var CHECKS = [
             .filter(function (x) { return x.trim().length > 1; }).length;
           return { s: s, n: n };
         })
-        .filter(function (r) { return r.n > 3; })
+        .filter(function (r) { return r.n > WHY_MAX_SENTENCES; })
         .map(function (r) {
           return r.s.proc + ' step ' + r.s.n + ' — ' + r.n + ' sentences: ' + r.s.step.why.slice(0, 90);
         });
     },
     inject: function (d) {
-      d.steps[0].step.why = 'One. Two. Three. Four sentences is a chapter, not a note.';
+      d.steps[0].step.why = 'One. Two. Three. Four. Five. Six. Seven. Eight. Nine. Ten. Eleven sentences is a chapter.';
     },
   },
   /* THE STEP LINE'S WORD CAP, SCORED (#692, 2026-09-11). `Blueprint/STYLE_GUIDE.md` W2 caps a

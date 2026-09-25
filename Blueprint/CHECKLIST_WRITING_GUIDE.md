@@ -346,6 +346,10 @@ Two rules the table implies, both broken repeatedly in the shipped set:
   load-bearing action, and each is in dim grey behind a click. Move it into the step line of
   the step *before* the one it protects.
 - **F2. The `why` is at most three sentences and one causal chain, with at most one number.**
+  **⚠ CAP RAISED TO TEN, 2026-09-25** *(OWNER RULING, 2026-09-25: "C" — option (c), raise the
+  cap, over folding the Background or cutting it to three)*. `run_style` `WHY_MAX_SENTENCES` = 10,
+  the longest Background in the owner's §16 model. The rest of this bullet is the record of the
+  three-sentence rule; one causal chain per paragraph still reads best.
   **GATED since #692** (2026-09-11) — `run_style` `checklist_why_length`, which had been set at
   FOUR, one rung looser than this rule and than the owner's own words. Seven blocks were sitting
   in the gap.
@@ -723,6 +727,11 @@ Every element of his shape already has a field. **No new field is needed and non
 
 ### T2. A DO step is one imperative and, usually, no `note`
 
+> **⚠ PARTLY SUPERSEDED 2026-09-24 — see §16.** The owner's own newer edit of the same feed check
+> reads *"Check SG FEED AUTO is lit and the card reads HOLDING. If AUTO is not lit, press AUTO."*
+> — a Check with its recovery inline, as the substep line. The rule below that a `note` must earn
+> its place still holds.
+
 His step 5 is the sharpest instruction in the file, because of what he deleted. The shipped text
 was *"Check SG FEED reads AUTO. If it does not, press AUTO."* with a 38-word `note` hedging the
 already-in-AUTO case. He cut both to **`Set SG FEED to AUTO.`**
@@ -854,3 +863,45 @@ say what must be there, never what may not be.**
   headless Chromium on the live `pwr_heatup` card — the note paints `italic`, the sibling
   `.ckl-sub.ckl-use` stays `normal`, and deleting that single rule at runtime returns the note to
   `normal`, so the italic is provably coming from it and not from an inherited style.
+
+---
+
+## 16. What / why / how — the step shape (2026-09-24)
+
+*(OWNER, 2026-09-24: "My general thought is that first line is the general 'what we are doing in
+this step' and the substeps are 'how to do this'."; OWNER RULING, same day: "I like putting the
+why where you put it. i choose a. using this standard, and the standards first three steps as
+examples of how i want things worded, adjust all the steps in the mode 3-1 file.")*
+
+**The model is `Blueprint/walkthrough_steps/02_mode3_to_mode1.md` steps 1–3, in the owner's
+wording; steps 4–17 were reworded to match.** Where this section and §§1–15 disagree, this section
+is newer. The shape, in order:
+
+| part | rule | example (Mode 3 → Mode 1 step 3) |
+|---|---|---|
+| **First line** | WHAT the step accomplishes. Never HOW: no button, no rod count, no "then". If a line reads "Do X and plot Y", the X is a substep. | `Line up the steam generator before taking the reactor critical.` |
+| **Why line** | ONE italic sentence directly under the first line: why this step, here, before acting. It is read BEFORE the substeps, which is its point — Background is read after. It must not repeat Background's first sentence. | *`Once the reactor makes power, its heat has to leave through the steam generator, or the reactor water heats up.`* |
+| **Substeps** | HOW. Each is `()Na.`, opens with a verb (Check, Set, Press, Hold, Wait, Tap, Leave), and IS its own check-off — the condition that ticks it is written into the line (`… until SOURCE RANGE reads 7.0e2 or more`). One check-off per lettered line: two conditions on one action become two letters. A recovery goes inline: `If AUTO is not lit, press AUTO.` | `()3a. Check SG FEED AUTO is lit and the card reads HOLDING. If AUTO is not lit, press AUTO.` |
+| **Suggested time warp** | Once per step, after the substeps, when every substep runs at the same speed. Under a substep only when the substeps differ. | `Suggested time warp: 1×.` |
+| **Note** | Follows the time warp it belongs to. Operating facts only (§7). A note that walks several readings may be a list, one reading per line (step 9b). | |
+| **Background** | Last. Technical but approachable — the owner's words for the step 2 and 3 text he adopted: "informative, technical but approachable". Short paragraphs. | |
+
+**Wording, from the owner's model steps:**
+
+- **Name the physical thing, not the concept, in the first line.** "Line up the steam generator"
+  beat "Line up the heat sink": the player can find a steam generator on the board.
+- **A first line must be TRUE at the moment it is read.** "Before the reactor makes any heat" was
+  cut because the plant was already hot and the dump already open (0 to 1.95 %, MEASURED). The
+  real milestone was "before taking the reactor critical".
+- **The first line and the substeps must agree.** Step 9 said "to the edge of criticality without
+  going past it" while 9b took the reactor critical.
+- **Name the target in the board's words.** "Set the boron target", not "Set boron
+  concentration", when the control sets a target and the tile reads the concentration.
+- Numbers in ranges read "between 679 and 759", never "between 679 to 759".
+
+**RESOLVED — Background length** *(OWNER RULING, 2026-09-25: "C")*. Of (a) fold Background under
+the why line, (b) cut every Background to three sentences, (c) raise the cap, he chose (c).
+`run_style`'s `checklist_why_length` now caps `why` at **10** sentences — the model's longest,
+`pwr_startup` step 3, measured with the check's own splitter (step 2 = 8, the rest 1 to 5).
+Background is still drawn always open, so its length is still paid on every step: short
+paragraphs, one idea each.
