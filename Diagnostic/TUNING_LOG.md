@@ -29,6 +29,24 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-25-workbench-d (Shutdown to Mode 3 brought down to the what / why / how file: a band that is approached from ABOVE)
+
+Record: `Blueprint/walkthrough_steps/05_shutdown.md`, "Bring-down record — 2026-09-25".
+
+- **A "HOLDING NEAR" BAND IS SIZED BY THE SIDE THE PLANT ARRIVES FROM.** After the scram STEAM
+  PRESS comes DOWN to 1020 psi (1113 psi at step 3 entry standalone, 1043 on the chain), so the
+  band's UPPER edge decides the tick. The heatup's "near 1020" band (±0.15 MPa, 1000-1042 psi,
+  sized for a plant rising into it) first ticks at 1037.7 psi here, still falling. 1015-1025 psi
+  ticks at 1023.7-1025 psi and never strands (the dump in PRESS holds 1019-1024). **Reuse a
+  sibling leg's band only after checking which way the plant crosses it.**
+- **A NEW ROW CAN MAKE AN OLD INJECTION PASS FOR THE WRONG REASON.** The #697 lamp injection
+  asserted "step 3 completes with no press"; 3c's band independently refuses the TAVG mode
+  (1026-1029 psi), so the step stopped completing and the injection went RED with the lamp still
+  ticking. Re-pointed at the row. **When you add a sibling row, re-read every injection that
+  asserts the STEP.**
+- **A step that was met on arrival stops being met when a row joins it.** The route table's
+  `chain_entry_met: ['#3']` (step 3 true 0.3 s into the chain) was a pardon for the old grading;
+  with 3c the step holds 34 s, so the pardon came out and the hollow check binds again.
 ## Session log — 2026-09-25-workbench-c (Lower power brought down to the what / why / how step file: a Note's home decides which style scan reads it)
 
 Record: `Blueprint/walkthrough_steps/04_lower_power.md` Notes, bring-down record 2026-09-25. Traps only:

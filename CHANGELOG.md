@@ -31,6 +31,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Walkthroughs: Shutdown to Mode 3 in the what / why / how shape.** Each step carries its why
+  line; 8 substeps. New check-offs: "Press SCRAM" ticks on the trip itself; STEAM PRESS 1015 to
+  1025 psi (7.00 to 7.07 MPa) after the steam dump goes to PRESS. Both rod positions are one
+  substep.
 - **Lower power walkthrough in the what / why / how shape.** Each step now carries its one-line
   why; every check-off is its own lettered substep (15), so REACTOR POWER and OUTPUT rows gained
   their own instruction and the rod trims moved to 4c/5c/6c; the four temperature check-offs read

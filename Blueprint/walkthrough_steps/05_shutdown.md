@@ -16,7 +16,7 @@
 
 1. Take the load off the generator before the scram.
 
-*The scram should come with no electricity on the generator, so the load comes off first.*
+*The scram is meant to come with no electricity on the generator, so the load comes off first.*
 
 ()1a. Set LOAD to 0 MW and wait for OUTPUT to fall below 5 MW.
 
@@ -208,3 +208,37 @@ record above is false until phase 2.
 
 Existing rows map 1a -> OUTPUT `< 4.5`; 2c -> REACTOR POWER `< 4.95`; 3a -> `steam_dump_press_mode`;
 3b -> REACTOR POWER `< 0.95`; 3d -> dump `> 0.5` %.
+
+### Bring-down record — 2026-09-25, `exp/p2-shutdown` scratch lane (phase 2: the pool matches)
+
+The `pwr_shutdown` pool block now matches this file word for word (script compare of step line,
+italic why, every substep, every warp line and Background: 3 steps, 8 substeps, identical), so
+the header's claim is true again. One text change, made in BOTH copies: step 1's why line said
+"should", which the style gate bans in a checklist step (W16); it now reads "The scram is meant to
+come with no electricity on the generator, so the load comes off first." Why lines stay
+AGENT-DRAFTED FOR OWNER REVIEW.
+
+**Shape.** `aim` = the italic line; one substep = one head row; a shared warp is authored once on
+the step (steps 1 and 2 at 1×, step 3 at 10× after 3d), 3a keeps its own 1×. 9 check-offs.
+
+**New grading** (live checklist, full stack, seed 42; standalone = the leg's own `hot_full_power`
+start; chain = the route gate's six legs on one plant; replay = the authored cmd/hold replay):
+
+| row | predicate | standalone | chain | replay |
+|---|---|---|---|---|
+| 2a SCRAM | `scrammed > 0` (the trip latch; SCRAM then reads PRESS TO RESET) | ticks on the broadcast after the press (5.3 s into the step, press at 5 s) | same, 5.4 s | met at the step's end |
+| 2b both rod positions | head `control_bank_steps < 0.5` + `cont` `shutdown_bank_steps < 0.5` — one substep, one gauge per row | 2.6 s after the press | 2.7 s after | met |
+| 3c STEAM PRESS | `steam_pressure_mpa ~ 7.0327 ± 0.0378` = 1015 to 1025 psi, the render bands' edges | entry 1113 psi, falling; met 55 s after the AUTO press at 1025 psi, then 1024 | entry 1043 psi, falling; met 34 s into the step at 1024 psi | met at the 120 s hold |
+
+**3c's band, and why not the heatup's.** STEAM PRESS comes DOWN to its setpoint after the scram on
+every route measured (standalone from 1113 psi, chained from 1043), so a band's upper edge is what
+decides when it ticks. The heatup's "near 1020" band is ±0.15 MPa (1000 to 1042 psi): here it
+would tick at entry on the chain and while the dump is still catching the pressure standalone. ±5
+psi ticks as the pressure arrives (1024-1025 psi) and never strands: the dump in PRESS holds
+1019-1024 psi (the first reconcile record's 600 s measurement, 1019-1022). Left in TAVG it holds
+1026-1029 psi, outside the band, which 3a already refuses.
+
+**Chain entry.** 3a is met on arrival on the chain (the dump has been in PRESS since the heatup),
+and before this change the whole step was too (0.3 s, the route table's `chain_entry_met`). 3c now
+holds it 34 s, so `chain_entry_met: ['#3']` came out of `test/run_walkthrough_routes.js` and the
+hollow check binds there.
