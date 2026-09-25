@@ -1431,7 +1431,7 @@
         /* 2026-09-24 (wt-heatup): the owner's line split into GOAL (`text`) and ACTION (`ask`),
          * per the walkthrough step format (Blueprint/walkthrough_steps/02_mode3_to_mode1.md). The
          * word-cap note above now applies to the `ask`; the goal line is his opening clause. */
-        obs('Verify the plant is cold and shut down.',
+        obs('Confirm the plant is cold and shut down.',
           null, null, null,
           'In Cold Shutdown (Mode 5) the water is far below boiling, pressure is low, the Residual Heat Removal (RHR) loop is carrying the small amount of heat the fuel still makes, and both rod banks are fully inserted.',
           [{ p: 'pump_flow_pct', op: '>', v: 90 }, { p: 'shutdown_bank_pct', op: '>=', v: 98 }, { p: 'plant_mode', op: '<', v: 5 }],
@@ -1574,7 +1574,7 @@
          * so dropping `hl` swapped one pulsing control for another and reddened
          * `run_manual_controls`' distinct-element check. That fallback now asks
          * `stepAsksForPress` first; see the note on `stepHlLabels`. */
-        { text: 'Verify the turbine is tripped, nothing to press.',
+        { text: 'Confirm the turbine is tripped, nothing to press.',
           why: 'The cold plant starts with the turbine tripped. It matters because a turbine taking any steam on pump heat would carry away the very heat you are trying to build up.',
           aim: 'A tripped turbine takes no steam, so the heat the pumps make stays in the plant.',
           wait_speed: 1, speed_text: true,
@@ -1666,7 +1666,7 @@
          * nothing to press. CLOSE keeps its ring — it is the owner's drawing (the #744 quote
          * below) — as the steady watch treatment. This step authors no `control` at all, so
          * unlike the turbine verify it needed nothing from `stepHlLabels`' fallback. */
-        { text: 'Verify the STEAM DUMP is closed, nothing to press.',
+        { text: 'Confirm the STEAM DUMP is closed, nothing to press.',
           why: 'The steam dump sends steam straight to the condenser instead of the turbine. Kept shut, the steam side bottles up and the pump heat stays in the plant. The DUMP SETPOINT box already reads 1020 psi, but that number does nothing until AUTO is pressed, which a later step does once the steam side is hot.',
           aim: 'Any steam the dump lets out is pump heat leaving the plant.',
           wait_speed: 1, speed_text: true,
@@ -2182,7 +2182,7 @@
          * header at 7.29 MPa — EXACTLY these two go red, the other 30 stay green. That is the
          * defect this leg owns: whether the press reaches the plant and the plant answers over a
          * full heatup. The mode it selects is the shell's to prove. */
-        { text: 'Verify Hot Standby.',
+        { text: 'Confirm Hot Standby.',
           aim: 'Confirming the end state catches a pressure that never came up or a steam side venting to the sky.',
           why: 'Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. The control bank never moved: the pumps did all the heating. STEAM PRESS holding near 1020 psi with the ATMOS DUMP shut says the steam dump is carrying the heat, not the sky.',
           /* THE MODE CONFIRMATION WAS A DEAD FIELD (#739, 2026-09-13). This step carried BOTH an
@@ -2240,7 +2240,7 @@
          * pwr2 pool's `acc`/`accs`/`precond` params for the same shape (33 unique fields):
          * `plant_mode` already carries its own live-value note (`modeLiveNote`, #653 defect 4)
          * and every other one names a tile on the board. This is the only other case. */
-        obs('Verify the reactor stayed shut down.',
+        obs('Confirm the reactor stayed shut down.',
           null,
           /* HISTORY — SUPERSEDED 2026-09-24 (the regrade below): no `pcm` line is drawn on this step now.
            * THE DONE-WHEN LINE ON THIS STEP WAS THE ONLY `pcm` IN EITHER LEG, AND IT WAS NEVER
@@ -3760,7 +3760,7 @@
            * +45 s, `>= 5.05` at +47 s; the step ends at 10.57 %. Two plant-seconds. */
           accs: [{ p: 'power_pct', op: '>=', v: 5.05,
                    ask: 'Press SLOW, hold CONTROL WITHDRAW for about 13 steps, then release and wait for REACTOR POWER to read above 5 %.',
-                   note: 'Power passes 5 % about a plant-minute after the rods stop and climbs toward 8 to 10 %. It passes 9½ % once the turbine takes load in the next step. It needs to: the two startup trips cannot be blocked until REACTOR POWER is above 9½ %.',
+                   note: 'Power passes 5 % about a plant-minute after you release WITHDRAW and climbs toward 8 to 10 %. It passes 9½ % once the turbine takes load in the next step. It needs to: the two startup trips cannot be blocked until REACTOR POWER is above 9½ %.',
                    wait_speed: 5, label: 'REACTOR POWER above 5 %' }],
           hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
         /* "MWe", NOT HIS "MW" (2026-09-25): his 14b and 17b write a bare "MW", and N6
@@ -4029,7 +4029,7 @@
            * channel is defaultOn, so it is met on entry on every route — a confirm, "press ON only
            * if it is not lit". */
           accs: [{ p: 'boron_auto_on', op: '>', v: 0,
-                   ask: 'Check BORON ON is lit. If it is not, press ON.',
+                   ask: 'Check ON is lit on the BORON card. If ON is not lit, press ON.',
                    label: 'ON is lit on the BORON card' },
                  /* cmd + `p` (the #697 shape): graded on the TARGET the press produces, 660 in the box
                   * (the box draws whole ppm, as pwr_startup 2b), so 3a's lamp sibling — met at boot —
@@ -4536,7 +4536,7 @@
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 }, hold: 30,
           accs: [{ cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 },
                    ask: 'Set 719 ppm on the BORON card and press Enter.',
-                   note: 'Press ON only if it is not already lit. The boration then runs in the background while you take the plant down.',
+                   note: 'Check ON is lit on the BORON card first. If ON is not lit, press ON, then set the target: pressing ON resets the target to the current reading. The boration then runs in the background while you take the plant down.',
                    wait_speed: 1,
                    label: 'BORON target reads 719 ppm' }],
           hl: ['Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
@@ -5006,10 +5006,10 @@
           wait_speed: 600, speed_text: true,
           note: 'The boration runs at a steady 3 ppm a minute and does not slow down as it closes: about 54 plant-minutes to 880 ppm. Do not start cooling until BORON STATUS reads BORATING.',
           accs: [{ p: 'boron_auto_on', op: '>', v: 0,
-                   ask: 'Check ON is lit and BORON STATUS reads BORATING. If ON is not lit, press ON.',
+                   ask: 'Check ON is lit on the BORON card. If ON is not lit, press ON.',
                    label: 'ON is lit on the BORON card' },
                  { p: 'boron_target_ppm', op: '~', v: 1710, tol: 790.5,   /* 919.5-2500.5 ppm: the "920" floor to the box's ceiling */
-                   ask: 'Set the boron target to 920 ppm on the BORON card and press Enter.',
+                   ask: 'Set the boron target to 920 ppm on the BORON card, press Enter, and check BORON STATUS reads BORATING.',
                    label: 'BORON target reads 920 ppm' },
                  { p: 'boron_ppm', op: '>=', v: 879.5,
                    ask: 'Wait for BORON CHEM to read 880 ppm or more.',

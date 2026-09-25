@@ -66,7 +66,7 @@ A tripped turbine takes no steam, so LOAD does nothing and the heat you make goe
 
 *Boron pays for most of the reactivity the climb costs, and it takes about 25 plant-minutes to arrive, so it starts first.*
 
-()3a. Check BORON ON is lit. If it is not, press ON.
+()3a. Check ON is lit on the BORON card. If ON is not lit, press ON.
 
 ()3b. Set the BORON target to 660 ppm and press Enter.
 
@@ -721,3 +721,11 @@ nets (stage 5 measures 9 / 12 against "about 15").
   N %` → `REACTOR POWER near N %`, `Still at full load, 100 MW` → `OUTPUT still 100 MW`, `BORON set
   to 660 ppm` → `BORON target reads 660 ppm` (the cooldown's and startup's form). Grading unchanged.
 - **`act_first` not authored.** 4c-8c (10×) are checks, not presses; 4b-8b are presses at 1×.
+
+### One boron ON check — 2026-09-25, workbench-f
+
+*OWNER RULING, 2026-09-25, selected "Take all defaults" (option selection, not verbatim; relayed by the coordinator)*, item 3: the boron ON check reads the same in every leg. 3a is now "Check ON is lit on the
+BORON card. If ON is not lit, press ON." (was "Check BORON ON is lit. If it is not, press ON.").
+The cooldown's 1a wording minus its "BORON STATUS reads BORATING" clause: this leg dilutes (the
+status reads DILUTING), and since the cooldown's ON-first swap the status only moves after the
+target is set, so the clause went to the cooldown's target substep. Grading unchanged.

@@ -25,7 +25,7 @@
 
 Suggested time warp: 1×.
 
-Note: Press ON only if it is not already lit. The boration then runs in the background while you take the plant down.
+Note: Check ON is lit on the BORON card first. If ON is not lit, press ON, then set the target: pressing ON resets the target to the current reading. The boration then runs in the background while you take the plant down.
 
 
 
@@ -354,3 +354,13 @@ so the four former `cont` power rows and step 3's OUTPUT row each carry their ow
   so the speed-the-action hold is spent and 4c opens at 5×. `act_first` waits for a press of the
   STEP's cmd family, so on 4c it would hold 1× until another LOAD press — never. Reported, not
   changed.
+
+### One boron ON check; 4c-6c at 5× accepted — 2026-09-25, workbench-f
+
+*OWNER RULING, 2026-09-25, selected "Take all defaults" (option selection, not verbatim; relayed by the coordinator)*:
+- Item 3: 1a's Note now reads "Check ON is lit on the BORON card first. If ON is not lit, press
+  ON, then set the target: pressing ON resets the target to the current reading. …". The old Note
+  ("Press ON only if it is not already lit") sat under the target instruction, so a player with ON
+  unlit pressed it after typing 719 and lost the target — the cooldown's 1a/1b trap (ON
+  re-captures the target from the analyzer, INHERITED from the cooldown bring-down).
+- Item 5: 4c/5c/6c opening at 5× before the first insert (entry above) is ACCEPTED as is.

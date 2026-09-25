@@ -38,7 +38,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   "switched off" (raise power step 1, cooldown steps 2 and 3). The Mode 5 to Mode 3 heatup no
   longer prints two speed lines on its five long steps (`wait_hint: false`, as the other legs).
   Check-off labels name the tile (OUTPUT, LOAD, REACTOR POWER, BORON target … ppm); lower power
-  1 says "719 ppm"; "programme" → "program".
+  1 says "719 ppm"; "programme" → "program". Owner selection "Take all defaults" (2026-09-25): one
+  boron ON check ("Check ON is lit on the BORON card. If ON is not lit, press ON.") in raise 3a,
+  cooldown 1a and lower power 1a's Note (which now says to press ON before setting the target);
+  the heatup's check steps open "Confirm", not "Verify"; startup 13a's note says the minute runs
+  from releasing WITHDRAW.
 - **`run_style` W12 reads the substep strings** (`accs[].ask/label/note/speed_text`), with one
   injection per field. Three substep notes it then caught were reworded.
 

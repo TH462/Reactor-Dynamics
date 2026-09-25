@@ -18,9 +18,9 @@
 
 *Cold water makes the chain reaction easier, so the extra boron has to be in before the cold arrives.*
 
-()1a. Check ON is lit and BORON STATUS reads BORATING. If ON is not lit, press ON.
+()1a. Check ON is lit on the BORON card. If ON is not lit, press ON.
 
-()1b. Set the boron target to 920 ppm on the BORON card and press Enter.
+()1b. Set the boron target to 920 ppm on the BORON card, press Enter, and check BORON STATUS reads BORATING.
 
 ()1c. Wait for BORON CHEM to read 880 ppm or more.
 
@@ -612,3 +612,11 @@ with the pumps secured), never OFF; OFF is the lamp on the RCP card. Graded on t
   Background, and step 3's line ("Block the protection that would read the cooldown as a leak.").
 - **`act_first` not authored.** 4b's first DUMP SETPOINT press is the step's own `cmd`, so the
   speed-the-action hold already covers it; 6c and 16 carry no repeated press of the step's family.
+
+### One boron ON check — 2026-09-25, workbench-f
+
+*OWNER RULING, 2026-09-25, selected "Take all defaults" (option selection, not verbatim; relayed by the coordinator)*, item 3. 1a is now "Check ON is lit on the BORON card. If ON is not lit, press ON." and 1b
+"Set the boron target to 920 ppm on the BORON card, press Enter, and check BORON STATUS reads
+BORATING." With ON first, BORON STATUS has no reason to read BORATING at 1a: the tile draws it from the
+channel's `boron_adjust` demand (pwr_board_wiring `ims3wy5oym4`), which moves once a target above
+the reading is set (read from the code, not measured). The status check moved to 1b. Grading unchanged.

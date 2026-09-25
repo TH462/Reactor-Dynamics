@@ -14,7 +14,7 @@
 
 ---
 
-1. Verify the plant is cold and shut down.
+1. Confirm the plant is cold and shut down.
 
 *The heatup begins from a known state: cold, depressurized, pumps stopped, every rod in.*
 
@@ -74,7 +74,7 @@ In a PWR, shutdown rod groups (shutdown banks) stay fully withdrawn during norma
 
 
 
-4. Verify the turbine is tripped, nothing to press.
+4. Confirm the turbine is tripped, nothing to press.
 
 *A tripped turbine takes no steam, so the heat the pumps make stays in the plant.*
 
@@ -110,7 +110,7 @@ The steam generator is the boiler: reactor water heats it on one side and steam 
 
 
 
-6. Verify the STEAM DUMP is closed, nothing to press.
+6. Confirm the STEAM DUMP is closed, nothing to press.
 
 *Any steam the dump lets out is pump heat leaving the plant.*
 
@@ -276,7 +276,7 @@ The second stage of the pressurization. Crossing the 1972 psi gate re-arms the e
 
 
 
-15. Verify Hot Standby.
+15. Confirm Hot Standby.
 
 *Confirming the end state catches a pressure that never came up or a steam side venting to the sky.*
 
@@ -300,7 +300,7 @@ Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. Th
 
 
 
-16. Verify the reactor stayed shut down.
+16. Confirm the reactor stayed shut down.
 
 *The startup that follows assumes a core a long way from critical, so that is confirmed before handing over.*
 
@@ -670,3 +670,8 @@ five set it for that reason. The rung is unchanged (it comes from `wait_speed`).
 long-step fixture had been landing on step 3 and drawing its speed-bar rung from the hint (0 rungs
 once it went, in that jumped state only; live play grades an active head first). It now picks the
 first long step with its own `wait_speed`, step 11 (3600×), and passes.
+
+### "Confirm", not "Verify" — 2026-09-25, workbench-f
+
+*OWNER RULING, 2026-09-25, selected "Take all defaults" (option selection, not verbatim; relayed by the coordinator)*, item 4: end-state goal lines use "Confirm". Steps 1, 4, 6, 15 and 16 now open "Confirm…" (the
+other four legs already did). Grading unchanged.

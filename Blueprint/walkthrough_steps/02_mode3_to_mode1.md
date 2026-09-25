@@ -330,7 +330,7 @@ Below about 1 % that feedback was too weak to feel. From here it is what makes t
 
 Suggested time warp: 5×.
 
-Note: Power passes 5 % about a plant-minute after the rods stop and climbs toward 8 to 10 %. It passes 9½ % once the turbine takes load in the next step. It needs to: the two startup trips cannot be blocked until REACTOR POWER is above 9½ %.
+Note: Power passes 5 % about a plant-minute after you release WITHDRAW and climbs toward 8 to 10 %. It passes 9½ % once the turbine takes load in the next step. It needs to: the two startup trips cannot be blocked until REACTOR POWER is above 9½ %.
 
 
 
@@ -1066,3 +1066,12 @@ notes failed it. Minimal rewording, nothing else changed:
   routes, of which the 13-step SLOW pull is about 1.7 (8 plant-s a step, INHERITED from 9a's note).
 - 15a: "Do this as soon as REACTOR POWER is above 9½ %" → "Do this the moment REACTOR POWER is
   above 9½ %".
+
+### 13a made unambiguous — 2026-09-25 (workbench-f, second pass, at develop's request)
+
+"about a plant-minute after the rods stop" → "about a plant-minute after you release WITHDRAW".
+The split: step 13 takes 2.7 plant-min on the typical, pass-3 and chained routes (MEASURED, route
+gate seed 42); the 13-step SLOW pull is 13 / (8 steps a plant-minute) = 97.5 plant-s, 1.6 min
+(`ROD_SPEEDS.slow`, pwr2_engine.js); so power passes 5 % about 1.1 plant-min after release. The
+sentence describes the time after release, not the whole step. The 13a and 15a edits were already
+in this file (record above), word for word with the pool (script compare, 0 mismatches).
