@@ -3580,8 +3580,11 @@ if (!only && RUN_B) {
        * `plant_mode` for two; old step 11's `sr_energized` goes. Instrument +4: pressure, rate, and
        * 17's two. Sole -1: step 1's tavg row now has a sibling. Graded steps unmoved at 84: step 9
        * gained grading and old step 11 left. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-23: 84 / 131 / 87 / 30)',
-         gradedSteps === 84 && predRows === 131 && rows.length === 87 && soleInst === 30,
+      /* RE-PINNED 2026-09-24 (`pwr_shutdown` new-format port): 131 -> 133 predicate rows, sole
+       * 30 -> 29. Step 2 gains CONTROL and SHUTDOWN ROD POSITION rows (control-state, so the
+       * instrument count is unmoved at 87), and its REACTOR POWER row stops being the only one. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-24: 84 / 133 / 87 / 29)',
+         gradedSteps === 84 && predRows === 133 && rows.length === 87 && soleInst === 29,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();

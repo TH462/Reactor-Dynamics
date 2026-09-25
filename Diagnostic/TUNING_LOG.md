@@ -46,6 +46,19 @@ Notes. Two traps, measured 2026-09-24 on the full stack (`low_power`, seeds 42 a
   over his own 590 °F caution; LOAD first peaked at 589.7 °F. There was no trip on any route.
 
 ---
+## Session log — 2026-09-24-wt-shutdown-a (Shutdown to Mode 3 in the per-substep format: a status-word check-off that grades a lamp)
+
+Record: `Blueprint/walkthrough_steps/05_shutdown.md` Notes.
+
+- **A CHECK-OFF LABEL CAN NAME A STATE ITS ROW CANNOT READ.** `pwr_shutdown` step 3's row is
+  labelled "STEAM DUMP AUTO lit, status PRESS" and grades `steam_dump_auto > 0`, true from the
+  preset lineup. The status word is a STRING (`control_state.steam_dump_mode`) the grader cannot
+  compare. Measured on the chained route (seeds 42 and 7): the whole step completes 0.3 s after
+  entry with the status reading TAVG; it reads PRESS only after the AUTO press. **Before you
+  keep a label, read which field the row grades and whether it can be false on arrival.**
+- **#697'S PREMISE IS PER-ROW.** It made the AUTO press optional because the plant already
+  produced the press's EFFECT (dump open, power low). That holds for the valve rows and not for the
+  status word: the plant never selects pressure mode by itself.
 
 ## Session log — 2026-09-24-workbench-c (third layman pass on Mode 3 to Mode 1: a Continue lit below the fold; `paramValue` is not the tile)
 
