@@ -1532,7 +1532,12 @@
            * 3b cannot be true before 3a, so there is nothing to sequence and nothing to strand. */
           accs: [{ p: 'shutdown_bank_steps', op: '>', v: 0,
                    ask: 'Press FAST on the ROD CONTROL card, then click WITHDRAW under SHUTDOWN once and check SHUTDOWN ROD POSITION starts counting up.',
-                   note: 'One click starts the shutdown bank and it runs to 627 of 627 by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early.',
+                   /* THE LATCHED-TRIP LINE (2026-09-25, AGENT-DRAFTED, layman pass 5 S-1): a heatup
+                    * entered from the cooldown's end found SCRAM still reading PRESS TO RESET, and
+                    * WITHDRAW did nothing -- the rod drive refuses every move while the reactor trip
+                    * is latched (pwr2_engine.js rodDriveDoor). The cooldown's 16d now resets it; this
+                    * line is for a player who arrives any other way. */
+                   note: 'If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once first: no rod moves while the reactor trip is latched. One click starts the shutdown bank and it runs to 627 of 627 by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early.',
                    wait_speed: 1, label: 'SHUTDOWN ROD POSITION counting up' },
                  { p: 'shutdown_bank_steps', op: '>=', v: 615,
                    ask: 'Watch SHUTDOWN ROD POSITION count up to near 627 of 627.',
@@ -1679,8 +1684,8 @@
                    ask: 'Check the STEAM DUMP card reads MANUAL with CLOSE lit. If AUTO is lit, press CLOSE.',
                    label: 'STEAM DUMP in MANUAL' },
                  { p: 'steam_dump_valve_pct', op: '<', v: 1,
-                   ask: 'Check the STEAM DUMP opening reads under 1 %.',
-                   label: 'STEAM DUMP opening under 1 %' }],
+                   ask: 'Check the % beside the STEAM DUMP valve on the diagram reads 0 %.',
+                   label: 'STEAM DUMP valve 0 %' }],
           /* THE LAMP PULSES, THE CARD AND THE VALVE ARE WATCHED *(OWNER, 2026-09-13, #744:
            * "[HIGHLIGHTED: STEAM DUMP CARD (steady), CLOSE (pulsing), the physical STEAM DUMP and
            * opening percentage (steady)]")*. This read `['Dump SP', 'Steam Dump']` and BOTH labels
@@ -1716,11 +1721,11 @@
           cmd: { action: 'set_letdown_orifices', a: true, b: true }, hold: 10,
           accs: [
             { p: 'letdown_orifice_a', op: '>', v: 0,
-              ask: 'Press A+B 7 % on the LETDOWN card and check orifice A is in service.',
-              label: 'Orifice A in service' },
+              ask: 'Press A+B 7 % on the LETDOWN card and check A+B 7 % is lit.',
+              label: 'Orifice A open' },
             { p: 'letdown_orifice_b', op: '>', v: 0,
-              ask: 'Check orifice B is in service.',
-              label: 'Orifice B in service' },
+              ask: 'Check it is A+B 7 % that is lit, not A 3 % alone.',
+              label: 'Orifice B open: A+B 7 % lit' },
           ],
           /* The `target` says "LETDOWN reads above 0 gpm" and there was no ring on that number
            * — the vocabulary had no key for it until #744. The orifice card is the press. */
@@ -1776,7 +1781,7 @@
           cmd: { action: 'set_spray', auto: true }, hold: 10,
           aim: 'A brake goes in service before the climb it has to stop, not during it.',
           wait_speed: 1, speed_text: true,
-          note: 'Nothing moves yet. The spray only opens when pressure runs above the SET PZR PRESSURE box, and the cold plant is about 1340 psi below it.',
+          note: 'Nothing moves yet. The spray only opens when pressure runs above the SET PZR PRESSURE box, and the cold plant starts more than 1300 psi below it.',
           accs: [{ p: 'spray_auto', op: '>', v: 0,
                    ask: 'Press AUTO under SPRAY on the PRESSURIZER (PZR) card and check AUTO is lit.',
                    label: 'AUTO lit under SPRAY' }],
@@ -1878,7 +1883,7 @@
               wait_speed: 1, label: 'AUTO lit under HEATER' },
             { p: 'pressure_mpa', op: '>', v: 4.585,
               ask: 'Wait while PRIMARY PRESSURE climbs to 665 psi.',
-              note: 'At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open.',
+              note: 'At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open. Coming from the cooldown the plant starts near 50 psi or lower, not 363, and the climb takes about an hour and a half of plant time.',
               wait_speed: 600, label: 'PRIMARY PRESSURE at 665 psi, the accumulator window' },
           ],
           /* ⚠ THIS STEP'S OWN ALARM DOES NOT INTERRUPT FAST-FORWARD *(OWNER RULING, 2026-09-14:
@@ -1983,6 +1988,11 @@
           /* 3600x is the rung the 30 s rule gave `hold: 40000` (carried over). */
           accs: [{ p: 'tavg_c', op: '>', v: 283,
                    ask: 'Wait until AVG COOLANT TEMPERATURE reaches 542 °F. Do not move rods or change BORON.',
+                   /* 2026-09-25, AGENT-DRAFTED (layman pass 5): MEASURED on the route gate's chain, seed
+                    * 42, both heatups -- `pzr_pressure_lolo` (1800 psia, critical outside Modes 4-5)
+                    * and `pzr_pressure_low` raise in this step at 1726 psia as the plant enters Mode 3
+                    * with the pressure setpoint at its 1700 psi floor; the step ends at 1715 psia. */
+                   note: 'Near the end the red Pressurizer Pressure Very Low alarm comes in, with Pressurizer Pressure Low. Both are expected: PRIMARY PRESSURE is held near 1700 psi on purpose, and step 14 raises it.',
                    label: 'AVG COOLANT TEMPERATURE 542 °F or higher' }],
           /* ⚠ AND THE LONG RIDE DECLARES THE ONE THE RIDE ITSELF CAUSES (same 2026-09-14 ruling).
            * This is the leg's longest hold — 40,000 s — i.e. exactly where the player is at 600x.
@@ -2138,8 +2148,8 @@
           hl: ['Steam Dump — Auto'],
           hl_watch: ['Steam Dump', 'Steam Dump Status', 'SG Pressure', 'Dump Setpoint'] },
         { text: 'Bring PRIMARY PRESSURE up to normal operating pressure.',
-          why: 'The second stage of the pressurization. Crossing the 1972 psi gate re-arms the emergency injection, and that is safe now because the steam side is hot: STEAM PRESS sits near 1020 psi, far above the 328 psi that would trigger it. That is why this setting waited for the heatup to finish.',
-          aim: 'With the steam side hot, the 1972 psi gate can be crossed without firing the emergency injection.',
+          why: 'The second stage of the pressurization. Crossing 1972 psi re-arms the emergency injection, and that is safe now because the steam side is hot: STEAM PRESS sits near 1020 psi, far above the 328 psi that would trigger it. That is why this setting waited for the heatup to finish.',
+          aim: 'With the steam side hot, PRIMARY PRESSURE can pass 1972 psi without firing the emergency injection.',
           wait_speed: 600, speed_text: true,
           control: 'Pressure SP', target: 'PRIMARY PRESSURE above 2175 psi',
           /* THE AUTHORED HINT CONTRADICTED THE GENERATED SPAN, AND THE OWNER CAUGHT IT (#755
@@ -2220,8 +2230,8 @@
               ask: 'Check CONTROL ROD POSITION still reads 0.',
               label: 'CONTROL ROD POSITION 0' },
             { p: 'adv_valve_pct', op: '<', v: 1,
-              ask: 'Check ATMOS DUMP is shut.',
-              label: 'ATMOS DUMP shut' },
+              ask: 'Check ATMOS DUMP reads 0 %.',
+              label: 'ATMOS DUMP 0 %' },
             { p: 'steam_pressure_mpa', op: '~', v: 7.03, tol: 0.15,
               ask: 'Check STEAM PRESS reads near 1020 psi.',
               label: 'STEAM PRESS near 1020 psi' },
@@ -4108,7 +4118,7 @@
                    wait_speed: 1, label: 'LOAD set to 30 MW' },
                  { cmd: { action: 'rod_nudge', group_id: 'control' },
                    ask: 'Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 20 steps.',
-                   note: 'MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is the temperature the plant is meant to hold at the power it is making, near 556 °F here. It rises with load, from 547 °F at no load to 578 °F at 100 %. Temperature below the band: withdraw. Above: insert. Read the gauge, not the count: while the boron dilution is still running it does part of the work, and the pull comes out shorter. The plant trips on temperature before it trips on power: keep AVG COOLANT TEMPERATURE under 590 °F on every stage.',
+                   note: 'MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is the temperature the plant is meant to hold at the power it is making, near 556 °F here. It rises with load, from 547 °F at no load to 578 °F at 100 %. Temperature below the band: withdraw. Above: insert. The gauge keeps rising about 2 to 5 °F after you let go, so let go 2 to 5 °F short of the band. Read the gauge, not the count: while the boron dilution is still running it does part of the work, and the pull comes out shorter. The plant trips on temperature before it trips on power: keep AVG COOLANT TEMPERATURE under 590 °F on every stage.',
                    wait_speed: 1, label: 'Rods withdrawn' },
                  { p: 'mwe_output', op: '>', v: 28,
                    ask: 'Check OUTPUT reads 30 MW, REACTOR POWER is near 30 % and AVG COOLANT TEMPERATURE is in its band, 550 to 576 °F.',
@@ -4237,8 +4247,8 @@
                    label: 'REACTOR POWER near 100 %' },
                  { cont: true, p: 'mwe_output', op: '>', v: 97, label: 'OUTPUT 100 MW' },
                  { p: 'boron_ppm', op: '<', v: 663,
-                   ask: 'Check BORON reads 660 ppm or below.',
-                   label: 'BORON down to its 660 ppm setting' },
+                   ask: 'Check BORON reads 663 ppm or below.',
+                   label: 'BORON 663 ppm or below' },
                  { p: 'tavg_c', op: '~', v: 303.2, tol: 8,
                    ask: 'Hold INSERT 3 steps at a time whenever AVG COOLANT TEMPERATURE rises above its band, until it holds between 563 and 592 °F.',
                    label: 'AVG COOLANT TEMPERATURE between 563 and 592 °F' }],
@@ -4600,7 +4610,7 @@
           control: 'Rod Speed', target: 'AVG COOLANT TEMPERATURE back inside the band; OUTPUT still 75 MWe',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: -40, speed: 'normal' }, hold: 300, wait_hint: false,
           wait_speed: 5, speed_text: true,
-          note: 'About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it.',
+          note: 'About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it. PRIMARY PRESSURE sags as the rods cool the plant, to about 1820 to 1900 psi by the last stage, with the heaters full on and the Pressurizer Pressure Low alarm in. The pace of this walkthrough does that; the low-pressure trip is at 1775 psi.',
           /* MEASURED at the end of this hold (40 steps in, 300 s): Tavg 570.7 degF (299.28 degC)
            * against a 571.8 degF programme — 1.1 degF inside a band whose half width is
            * 5.0 degF (`tavg_c < 302.7` is the band's own top edge: pwr_board_wiring `tavgBand`
@@ -4937,7 +4947,11 @@
       outcome: 'Reactor shut down at Mode 3, Hot Standby; decay heat going to the steam dump. The cooldown walkthrough takes the plant to Mode 5.',
     },
     {
-      id: 'pwr_cooldown', category: 'shutdown', manual_ref: 'PWR-N15', stack_only: true,
+      /* `next: 'pwr_heatup'` CLOSES THE ROUND TRIP (2026-09-25, layman pass 5 S-2): the finished
+       * card said "The heatup walkthrough takes it back up" and offered no Next, the only cycle leg
+       * without one. The pool's chain check (run_checklist_pwr2) asserts each leg names its
+       * successor and exempts only the LAST, so a last leg that names the first is legal. */
+      id: 'pwr_cooldown', category: 'shutdown', manual_ref: 'PWR-N15', stack_only: true, next: 'pwr_heatup',
       title: 'Mode 3, Hot Standby → Mode 5, Cold Shutdown — controlled cooldown',
       purpose: 'Take a hot, shut-down plant from Mode 3, Hot Standby to Mode 5, Cold Shutdown, ending with residual heat removal (RHR) carrying the heat. About 3½ to 7 plant-hours.',
       from: 'hot_zero_power',
@@ -5428,7 +5442,7 @@
           ramp: [{ action: 'set_rhr_hx', arg: 'pct', points: [7, 10, 12] }],
           /* `< 93` (199.4 °F, printed "199") -> `< 92.5` (198.5 °F, the floor of "198"). */
           wait_speed: 600, speed_text: true,
-          note: 'Keep COOLDOWN RATE under 100 °F per hour: if it runs faster, lower HX SPLIT. Watch SUBCOOLING MARGIN: the spray is still running and it keeps taking the margin down. The next step shuts it.',
+          note: 'Keep COOLDOWN RATE under 100 °F per hour: if the Cooldown Rate High alarm comes in, lower HX SPLIT to 10 %. The spray is still running and keeps taking SUBCOOLING MARGIN down: if it falls below 20 °F, press OFF under SPRAY now.',
           accs: [{ p: 'tavg_c', op: '<', v: 92.5,
                    ask: 'Raise HX SPLIT to 12 % and wait for AVG COOLANT TEMPERATURE to read below 199 °F.',
                    label: 'AVG COOLANT TEMPERATURE below 199 °F' }],
@@ -5444,7 +5458,7 @@
           cmd: { action: 'set_spray', open: false }, hold: 60,
           wait_speed: 1, speed_text: true,
           accs: [{ p: 'spray_flow_pct', op: '<', v: 1,
-                   ask: 'Press OFF under SPRAY on the PRESSURIZER (PZR) card.',
+                   ask: 'Press OFF under SPRAY on the PRESSURIZER (PZR) card, if step 11 has not already.',
                    label: 'OFF lit under SPRAY' }],
           hl: ['Pressurizer Spray (PZR)'] },
         /* 13a / 13b SINCE THE 2026-09-25 bring-down: the old single `plant_mode ~ 5` row splits
@@ -5523,8 +5537,8 @@
          * a `~` row, so a player who retypes it un-ticks it. */
         { text: 'Leave the plant lined up for the next heatup.',
           aim: 'The heatup starts from what this step leaves, and a steam dump left in AUTO at a low setpoint opens wide the moment the heatup asks for it.',
-          why: 'The cooldown walked DUMP SETPOINT down to 120 psi. Left there with the dump in AUTO, the next heatup\'s first AUTO press opens the dump wide against a setpoint far below its steam pressure, and the plant trips on low steam pressure. Closing the dump and putting the setpoint back to 1020 psi hands the next heatup the lineup it expects; inserting the shutdown bank leaves both banks in, the way the heatup starts.',
-          control: 'Shutdown Bank', target: 'SHUTDOWN ROD POSITION 0 of 627; STEAM DUMP CLOSE lit; DUMP SETPOINT 1020 psi',
+          why: 'The cooldown walked DUMP SETPOINT down to 120 psi. Left there with the dump in AUTO, the next heatup\'s first AUTO press opens the dump wide against a setpoint far below its steam pressure, and the plant trips on low steam pressure. Closing the dump and putting the setpoint back to 1020 psi hands the next heatup the lineup it expects; inserting the shutdown bank leaves both banks in, the way the heatup starts. The scram from the shutdown is still latched, and while it is no rod can move: resetting it moves nothing, it gives the rod drive its power back so the heatup can withdraw the shutdown bank.',
+          control: 'Shutdown Bank', target: 'SHUTDOWN ROD POSITION 0 of 627; STEAM DUMP CLOSE lit; DUMP SETPOINT 1020 psi; SCRAM reset',
           /* The INSERT is the STEP `cmd`, not a row `cmd`: a row carrying a `cmd` is latched met by
            * the press itself (`_accsCmdWatch`), so 16a ticked with the bank at 577 of 627 on the
            * first route run — the wait it asks for was never graded. */
@@ -5542,8 +5556,20 @@
                  { cmd: { action: 'set_steam_dump_setpoint', mpa: 7.03 },
                    p: 'steam_dump_setpoint', op: '~', v: 7.0327, tol: 0.0034,
                    ask: 'Set DUMP SETPOINT to 1020 psi.',
-                   label: 'DUMP SETPOINT reads 1020 psi' }],
-          hl: ['Rod Speed — Fast', 'Shutdown Bank — Insert', 'Steam Dump — Close', 'Dump Setpoint'],
+                   label: 'DUMP SETPOINT reads 1020 psi' },
+                 /* 16d (2026-09-25, AGENT-DRAFTED, layman pass 5 S-1). The round trip stranded at
+                  * the NEXT heatup's step 3: the shutdown's scram was still latched, the rod drive
+                  * refused WITHDRAW, and only a hover line said so. Graded on `scrammed` (the SCRAM
+                  * button's own state) so a standalone cooldown, which starts unscrammed, meets it
+                  * on arrival. The `cmd` is what the route gate presses (round_trip_no_reset proves
+                  * the seam reddens without it). MEASURED: the reset is accepted on a cold plant
+                  * with the pumps OFF (363 psi, rods in; inbox/v6/probe_reset.js) and on this route
+                  * at the cooldown's end (run_walkthrough_routes chain, pwr_heatup#2). */
+                 { cmd: { action: 'reset_rps' },
+                   p: 'scrammed', op: '<', v: 1,
+                   ask: 'If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once.',
+                   label: 'SCRAM no longer reads PRESS TO RESET' }],
+          hl: ['Rod Speed — Fast', 'Shutdown Bank — Insert', 'Steam Dump — Close', 'Dump Setpoint', 'SCRAM'],
           hl_watch: ['Shutdown Rod Position', 'Steam Dump Status'] },
       ],
       guard: {

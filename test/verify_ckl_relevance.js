@@ -522,6 +522,24 @@ function sig(rows) {
                      : (si.bad.length ? si.bad.length + ' offending line(s): ' + si.bad.join(' | ').slice(0, 200)
                                       : 'clean over ' + si.len + ' chars' + (si.hasBanner ? ', precondition banner drawn' : ', NO banner — fixture may have stopped covering the banner path')));
 
+    /* ---- 5b. "← All walkthroughs" LANDS ON A LIST, WITH A WALKTHROUGH LOADED (layman pass 5
+     * S-2, 2026-09-25). The card's own back button switched to the Walkthroughs tab and the tab
+     * was EMPTY until Close: the list was hidden whenever a checklist was in the snapshot, a
+     * #607 rule from when the list and the card shared one pane. Read on the PAINTED list — the
+     * picker row visible AND at least one start button inside it visible. */
+    await page.click('#cklRun [data-ckl-list]');
+    await page.waitForTimeout(500);
+    var back = await page.evaluate(function () {
+      function vis(el) { if (!el) return false; var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
+      var on = document.querySelector('#tabbar button.on');
+      var btns = [].filter.call(document.querySelectorAll('#instrCklRow [data-ckl-start]'), vis);
+      return { tab: on && on.getAttribute('data-tab'), row: vis(document.getElementById('instrCklRow')), starts: btns.length };
+    });
+    ck('"← All walkthroughs" on a running card opens the Walkthroughs tab WITH its list drawn (layman pass 5 S-2)',
+       back.tab === 'checklists' && back.row && back.starts > 0, JSON.stringify(back));
+    await page.click('#tabbar [data-tab="instructor"]');
+    await page.waitForTimeout(300);
+
     /* ---- 6. THE LETTERED SUBSTEP ROWS, ON THE RENDERED PANEL (#741) --------------------
      * *(OWNER RULING, 2026-09-13: "1:A, 2:A, 3:a now." — option A being: extend the browser gate
      * to assert the rows actually draw.)*

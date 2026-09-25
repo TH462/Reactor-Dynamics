@@ -60,7 +60,7 @@ A shut-down reactor makes very little heat compared to a critical reactor, but t
 
 Suggested time warp: 1×.
 
-Note: One click starts the shutdown bank and it runs to 627 of 627 by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early.
+Note: If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once first: no rod moves while the reactor trip is latched. One click starts the shutdown bank and it runs to 627 of 627 by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early.
 
 ()3b. Watch SHUTDOWN ROD POSITION count up to near 627 of 627.
 
@@ -116,7 +116,7 @@ The steam generator is the boiler: reactor water heats it on one side and steam 
 
 ()6a. Check the STEAM DUMP card reads MANUAL with CLOSE lit. If AUTO is lit, press CLOSE.
 
-()6b. Check the STEAM DUMP opening reads under 1 %.
+()6b. Check the % beside the STEAM DUMP valve on the diagram reads 0 %.
 
 Suggested time warp: 1×.
 
@@ -134,9 +134,9 @@ The steam dump sends steam straight to the condenser instead of the turbine. Kep
 
 *Once pressure passes 600 psi, the orifices are the only way water leaves the loop.*
 
-()7a. Press A+B 7 % on the LETDOWN card and check orifice A is in service.
+()7a. Press A+B 7 % on the LETDOWN card and check A+B 7 % is lit.
 
-()7b. Check orifice B is in service.
+()7b. Check it is A+B 7 % that is lit, not A 3 % alone.
 
 Suggested time warp: 1×.
 
@@ -156,7 +156,7 @@ Water is always being pumped into the reactor loop (charging), so it always need
 
 Suggested time warp: 1×.
 
-Note: Nothing moves yet. The spray only opens when pressure runs above the SET PZR PRESSURE box, and the cold plant is about 1340 psi below it.
+Note: Nothing moves yet. The spray only opens when pressure runs above the SET PZR PRESSURE box, and the cold plant starts more than 1300 psi below it.
 
 Background
 
@@ -178,7 +178,7 @@ Suggested time warp: 1×.
 
 Suggested time warp: 600×.
 
-Note: At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open.
+Note: At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open. Coming from the cooldown the plant starts near 50 psi or lower, not 363, and the climb takes about an hour and a half of plant time.
 
 Background
 
@@ -213,6 +213,8 @@ The accumulators are tanks of borated water pushed by nitrogen gas at 665 psi. T
 ()11a. Wait until AVG COOLANT TEMPERATURE reaches 542 °F. Do not move rods or change BORON.
 
 Suggested time warp: 3600×.
+
+Note: Near the end the red Pressurizer Pressure Very Low alarm comes in, with Pressurizer Pressure Low. Both are expected: PRIMARY PRESSURE is held near 1700 psi on purpose, and step 14 raises it.
 
 Background
 
@@ -262,7 +264,7 @@ From here the plant makes more heat than it needs, and the steam dump sends the 
 
 14. Bring PRIMARY PRESSURE up to normal operating pressure.
 
-*With the steam side hot, the 1972 psi gate can be crossed without firing the emergency injection.*
+*With the steam side hot, PRIMARY PRESSURE can pass 1972 psi without firing the emergency injection.*
 
 ()14a. Raise SET PZR PRESSURE to 2235 psi and wait for PRIMARY PRESSURE to read above 2175 psi.
 
@@ -270,7 +272,7 @@ Suggested time warp: 600×.
 
 Background
 
-The second stage of the pressurization. Crossing the 1972 psi gate re-arms the emergency injection, and that is safe now because the steam side is hot: STEAM PRESS sits near 1020 psi, far above the 328 psi that would trigger it. That is why this setting waited for the heatup to finish.
+The second stage of the pressurization. Crossing 1972 psi re-arms the emergency injection, and that is safe now because the steam side is hot: STEAM PRESS sits near 1020 psi, far above the 328 psi that would trigger it. That is why this setting waited for the heatup to finish.
 
 [HIGHLIGHTED: Pressure SP (pulsing); Primary Pressure (steady)]
 
@@ -286,7 +288,7 @@ The second stage of the pressurization. Crossing the 1972 psi gate re-arms the e
 
 ()15c. Check CONTROL ROD POSITION still reads 0.
 
-()15d. Check ATMOS DUMP is shut.
+()15d. Check ATMOS DUMP reads 0 %.
 
 ()15e. Check STEAM PRESS reads near 1020 psi.
 
@@ -675,3 +677,11 @@ first long step with its own `wait_speed`, step 11 (3600×), and passes.
 
 *OWNER RULING, 2026-09-25, selected "Take all defaults" (option selection, not verbatim; relayed by the coordinator)*, item 4: end-state goal lines use "Confirm". Steps 1, 4, 6, 15 and 16 now open "Confirm…" (the
 other four legs already did). Grading unchanged.
+
+### Layman pass 5 record — 2026-09-25, workbench-g (AGENT-DRAFTED notes; board words)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`.
+- **3a's note** opens "If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once first": a heatup entered with the trip latched cannot move a rod (the cooldown's 16d now resets it; this is for any other way in).
+- **9b's note**: the round trip starts near 50 psi or lower (52 psia measured after the cooldown's new step 11), step 9 86.1 plant-min against 49.6 on the fresh plant. **8's note**: "more than 1300 psi below" (1337 fresh, 1687 from a 13 psi start).
+- **11a's note**: Pressurizer Pressure Very Low (1800 psi, critical in Mode 3, Hot Standby) and Pressurizer Pressure Low raised at 1726 psia in this step on both chain heatups; the step ends at 1715 psia.
+- Board words: 6b (the % beside the STEAM DUMP valve), 7a/7b (A+B 7 % lit), 14 (no "gate"), 15d (ATMOS DUMP reads 0 %).

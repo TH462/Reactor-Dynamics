@@ -935,19 +935,25 @@
    * through the same runtime and get the same treatment with no per-pool list to maintain. */
   var SCRAM_CMD_RE = /scram/i;
   function stepCmdAction(c) { return !c ? null : (typeof c === 'string' ? c : c.action) || null; }
+  /* A PREDICATE THAT ASSERTS THE TRIP, not one that merely names `scrammed` (layman pass 5,
+   * 2026-09-25). Cooldown 16d grades `scrammed < 1` -- "the SCRAM button is reset" -- and the old
+   * name-only test read that as the leg scripting its own scram: the cooldown lost its trip notice
+   * (a real trip in it would have drawn no banner) and the route gate stopped seeing a trip on it
+   * (`pwr_cooldown:pressure_sp_ramped` stranded instead of ending on its named trip). */
+  function assertsTrip(pr) { return !!pr && pr.p === 'scrammed' && pr.op !== '<' && pr.op !== '<='; }
   InstructorLayer.legScriptsScram = function (proc) {
     var steps = (proc && proc.steps) || [];
     for (var i = 0; i < steps.length; i++) {
       var st = steps[i] || {};
       if (SCRAM_CMD_RE.test(stepCmdAction(st.cmd) || '')) return true;
-      if (st.acc && st.acc.p === 'scrammed') return true;
-      if (st.saw && st.saw.p === 'scrammed') return true;
-      if (st.overtaken && st.overtaken.p === 'scrammed') return true;
+      if (assertsTrip(st.acc)) return true;
+      if (assertsTrip(st.saw)) return true;
+      if (assertsTrip(st.overtaken)) return true;
       var accs = st.accs || [];
       for (var j = 0; j < accs.length; j++) {
         var en = accs[j] || {};
         if (SCRAM_CMD_RE.test(stepCmdAction(en.cmd) || '')) return true;
-        if (en.p === 'scrammed') return true;
+        if (assertsTrip(en)) return true;
       }
     }
     return false;

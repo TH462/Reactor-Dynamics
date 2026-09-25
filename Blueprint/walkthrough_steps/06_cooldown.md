@@ -220,7 +220,7 @@ With RHR circulating, the reactor coolant pumps are only adding heat, so they co
 
 Suggested time warp: 600×.
 
-Note: Keep COOLDOWN RATE under 100 °F per hour: if it runs faster, lower HX SPLIT. Watch SUBCOOLING MARGIN: the spray is still running and it keeps taking the margin down. The next step shuts it.
+Note: Keep COOLDOWN RATE under 100 °F per hour: if the Cooldown Rate High alarm comes in, lower HX SPLIT to 10 %. The spray is still running and keeps taking SUBCOOLING MARGIN down: if it falls below 20 °F, press OFF under SPRAY now.
 
 Background
 
@@ -234,7 +234,7 @@ HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back.
 
 *The pressurizer shell has given up most of its stored heat, so the spray has nothing left to take away.*
 
-()12a. Press OFF under SPRAY on the PRESSURIZER (PZR) card.
+()12a. Press OFF under SPRAY on the PRESSURIZER (PZR) card, if step 11 has not already.
 
 Suggested time warp: 1×.
 
@@ -310,15 +310,17 @@ RHR is the only thing removing heat now. If its suction valve shut, the decay he
 
 ()16c. Set DUMP SETPOINT to 1020 psi.
 
+()16d. If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once.
+
 Suggested time warp: 60×.
 
 Note: If SHUTDOWN ROD POSITION already reads 0, the bank is in: go on to 16b. The bank runs in by itself, about 9 plant-minutes. The round trip is complete.
 
 Background
 
-The cooldown walked DUMP SETPOINT down to 120 psi. Left there with the dump in AUTO, the next heatup's first AUTO press opens the dump wide against a setpoint far below its steam pressure, and the plant trips on low steam pressure. Closing the dump and putting the setpoint back to 1020 psi hands the next heatup the lineup it expects; inserting the shutdown bank leaves both banks in, the way the heatup starts.
+The cooldown walked DUMP SETPOINT down to 120 psi. Left there with the dump in AUTO, the next heatup's first AUTO press opens the dump wide against a setpoint far below its steam pressure, and the plant trips on low steam pressure. Closing the dump and putting the setpoint back to 1020 psi hands the next heatup the lineup it expects; inserting the shutdown bank leaves both banks in, the way the heatup starts. The scram from the shutdown is still latched, and while it is no rod can move: resetting it moves nothing, it gives the rod drive its power back so the heatup can withdraw the shutdown bank.
 
-[HIGHLIGHTED: Rod Speed — Fast, Shutdown Bank — Insert, Steam Dump — Close, Dump Setpoint (pulsing); Shutdown Rod Position, Steam Dump Status (steady)]
+[HIGHLIGHTED: Rod Speed — Fast, Shutdown Bank — Insert, Steam Dump — Close, Dump Setpoint, SCRAM (pulsing); Shutdown Rod Position, Steam Dump Status (steady)]
 
 
 
@@ -620,3 +622,11 @@ with the pumps secured), never OFF; OFF is the lamp on the RCP card. Graded on t
 BORATING." With ON first, BORON STATUS has no reason to read BORATING at 1a: the tile draws it from the
 channel's `boron_adjust` demand (pwr_board_wiring `ims3wy5oym4`), which moves once a target above
 the reading is set (read from the code, not measured). The status check moved to 1b. Grading unchanged.
+
+### Layman pass 5 record — 2026-09-25, workbench-g (AGENT-DRAFTED: 16d, step 11's note, 12a)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`. Measured on `run_walkthrough_routes --leg=chain` (seed 42), which now runs the heatup a second time.
+- **16d, "If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once."** The round trip stranded at the next heatup's step 3: the shutdown's scram was still latched and the rod drive refused WITHDRAW (33.0 plant-min strand, subcooling margin down to 5.3 °F at 16 psia with the pumps heating). Graded `scrammed < 1`, so a standalone cooldown meets it on arrival; reset accepted cold with the pumps off (363 psi, `inbox/v6/probe_reset.js`). Injection `round_trip_no_reset` reddens the seam without it. The scram scanner (`legScriptsScram`) now counts only a predicate that ASSERTS the trip — the name-only test had exempted this leg from trip notices.
+- **Step 11's note** now names both numbers: the Cooldown Rate High alarm → HX SPLIT 10 %; SUBCOOLING MARGIN under 20 °F → SPRAY OFF now. Old note (spray on): pressure floor 13 psia, margin 13.4 °F, both alarms, 107.5 plant-min. New route: margin floor 18.1 °F, pressure floor 31 psia, ends 50 psia, 127.0 plant-min. **12a** is conditional ("if step 11 has not already"); the route gate's cooldown `entry_met` carries #12.
+- **Not changed, a ruling:** the Cooldown Rate High alarm still comes in on step 4's "about 5 plant-minutes" pacing (reviewer's tile −149 °F/hr) and at the start of step 11 (owner-ruled wording).
+- `next: 'pwr_heatup'` on the pool entry: the finished card offers the heatup.

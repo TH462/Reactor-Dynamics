@@ -29,6 +29,31 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-25-workbench-g (layman pass 5 verified: the round trip's seam, and a harness that crashed on the refusal it was looking for)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`. Traps only:
+- **A chain that stops at the last leg's end card cannot see the seam back to the first.** The route
+  gate drove heatup → cooldown as one plant and was green while the round trip stranded: the
+  shutdown's scram was still latched at the cooldown's end, and the next heatup's WITHDRAW was
+  refused at step 3. The chain now runs the heatup a second time (`pwr_heatup#2`), and
+  `round_trip_no_reset` proves the seam reddens without cooldown 16d.
+- **A refusal the engine THROWS crashes a harness that expects an error object.** `rodDriveDoor`
+  throws on a latched trip; the first chain run died as `error` with no step table, which reads as
+  a harness bug, not the strand the player met. `send()` now records a refused command on the step
+  (`REFUSED`) and the run goes on to the bound.
+- **A list hidden "while a walkthrough runs" outlived the pane it shared.** Since #660 the running
+  card lives in the Instructor tab, but the Walkthroughs list still hid itself whenever a checklist
+  was in the snapshot — so "← All walkthroughs" on EVERY running card opened an empty tab, not just
+  the finished one the layman reported. `verify_ckl_relevance` 5b reads the painted list.
+- **A scanner keyed on a param's NAME reads a reset as a scram.** Cooldown 16d grades `scrammed < 1`;
+  `legScriptsScram` exempted any leg naming `scrammed`, so the cooldown silently lost its trip
+  notice and the route gate's `pressure_sp_ramped` stranded at step 8 instead of ending on its SI
+  trip at step 4. It now counts only a predicate that ASSERTS the trip (`run_checklist_pwr2` 2ai.1
+  went red on the scanner/replay mismatch — that check is the witness).
+- **An instrument the tile draws is not a `paramValue`.** `tavg_rate` and `subcooling_margin` are
+  `instruments.*`; `IL.paramValue` resolves only true_state and control params, so a trigger on
+  them returned undefined and never fired. The route's `when` policy takes `ins: true`.
+
 ## Session log — 2026-09-25-workbench-f (cross-leg quality pass on the six walkthroughs; W12 reads the substeps)
 
 Records: each step file's Notes, "Cross-leg quality pass — 2026-09-25, workbench-f". Traps only:

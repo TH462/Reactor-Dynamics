@@ -96,7 +96,7 @@ Suggested time warp: 1×.
 
 Suggested time warp: 1×.
 
-Note: MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is the temperature the plant is meant to hold at the power it is making, near 556 °F here. It rises with load, from 547 °F at no load to 578 °F at 100 %. Temperature below the band: withdraw. Above: insert. Read the gauge, not the count: while the boron dilution is still running it does part of the work, and the pull comes out shorter. The plant trips on temperature before it trips on power: keep AVG COOLANT TEMPERATURE under 590 °F on every stage.
+Note: MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is the temperature the plant is meant to hold at the power it is making, near 556 °F here. It rises with load, from 547 °F at no load to 578 °F at 100 %. Temperature below the band: withdraw. Above: insert. The gauge keeps rising about 2 to 5 °F after you let go, so let go 2 to 5 °F short of the band. Read the gauge, not the count: while the boron dilution is still running it does part of the work, and the pull comes out shorter. The plant trips on temperature before it trips on power: keep AVG COOLANT TEMPERATURE under 590 °F on every stage.
 
 ()4c. Check OUTPUT reads 30 MW, REACTOR POWER is near 30 % and AVG COOLANT TEMPERATURE is in its band, 550 to 576 °F.
 
@@ -232,7 +232,7 @@ The last 10 MWe of LOAD, then a smaller pull to bring the temperature back up. R
 
 ()9a. Check REACTOR POWER reads about 100 % and OUTPUT 100 MW.
 
-()9b. Check BORON reads 660 ppm or below.
+()9b. Check BORON reads 663 ppm or below.
 
 ()9c. Hold INSERT 3 steps at a time whenever AVG COOLANT TEMPERATURE rises above its band, until it holds between 563 and 592 °F.
 
@@ -729,3 +729,7 @@ BORON card. If ON is not lit, press ON." (was "Check BORON ON is lit. If it is n
 The cooldown's 1a wording minus its "BORON STATUS reads BORATING" clause: this leg dilutes (the
 status reads DILUTING), and since the cooldown's ON-first swap the status only moves after the
 target is set, so the clause went to the cooldown's target substep. Grading unchanged.
+
+### Layman pass 5 record — 2026-09-25, workbench-g
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`. 4b's note: "The gauge keeps rising about 2 to 5 °F after you let go" — chain route overshoot after release, stages 1-5: 5.3 / 5.0 / 3.2 / 2.6 / 1.8 °F; the reviewer's stage 1 went to 563 °F. The tile's green band is real at power (17 of 178 px, `#74dc9c`, headless capture at 580 °F). 9b now reads "663 ppm or below", its grading threshold (`< 663`, pass 4's settling margin); it had said 660 and ticked with the tile on 663.

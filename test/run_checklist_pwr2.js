@@ -3792,8 +3792,11 @@ if (!only && RUN_B) {
       /* RE-PINNED 2026-09-25 (workbench-f): cooldown 13b now grades the RCP FLOW card's OFF lamp
        * (`rcp_running`, a STATUS param, as heatup 1c does) instead of the RCP FLOW tile, so
        * instrument-graded 102 -> 101; steps and predicate rows unchanged. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25 (workbench-f): 86 / 166 / 101 / 26 -- cooldown 13b to the OFF lamp, -1 instrument)',
-         gradedSteps === 86 && predRows === 166 && rows.length === 101 && soleInst === 26,
+      /* RE-PINNED 2026-09-25 (workbench-g, layman pass 5 S-1): cooldown 16d grades the SCRAM
+       * button's reset (`scrammed < 1`, true_state, not an instrument), so predicate rows
+       * 166 -> 167; steps, instrument-graded and sole unchanged. SUM on a merge. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25 (workbench-g): 86 / 167 / 101 / 26 -- cooldown 16d, the SCRAM reset row)',
+         gradedSteps === 86 && predRows === 167 && rows.length === 101 && soleInst === 26,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();

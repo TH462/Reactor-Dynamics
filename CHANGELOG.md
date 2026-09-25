@@ -31,6 +31,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Walkthroughs: layman pass 5 (workbench-g).** The round trip no longer strands: cooldown step
+  16 gains 16d, "If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once." (the
+  shutdown's scram was still latched and the next heatup's WITHDRAW was refused), and heatup 3a's
+  note says the same for any other way in. The cooldown's finished card offers **Next: Mode 5 →
+  Mode 3** (`next: 'pwr_heatup'`). "← All walkthroughs" now lands on the list while a walkthrough
+  is loaded (the Walkthroughs tab was empty until Close). Cooldown 11 gives numbers to act at
+  (Cooldown Rate High → HX SPLIT 10 %; SUBCOOLING MARGIN under 20 °F → SPRAY OFF), 12a is
+  conditional. Notes added: heatup 11 (the red Pressurizer Pressure Very Low alarm is expected at
+  1700 psi), heatup 9b (the climb from the cooldown's end), raise 4b (the gauge keeps rising 2 to
+  5 °F after release), lower 3 (pressure sags to about 1820 to 1900 psi; the trip is 1775 psi).
+  Board words: heatup 6b, 7a/7b, 8, 14, 15d; raise 9b reads "663 ppm or below", its grading
+  threshold. The rod-block message names the SCRAM button. `run_walkthrough_routes`' chain runs
+  the heatup a second time and records per-step pressure/subcooling floors, raised alarms and
+  refused commands. The trip-notice scanner no longer reads a reset check (`scrammed < 1`) as
+  a leg that scripts its own scram.
 - **Walkthroughs: cross-leg quality pass (workbench-f).** Cooldown step 1 asks for the ON check
   before the 920 ppm target, so its own "If ON is not lit, press ON" can no longer wipe the typed
   target (ON re-captures it from the analyzer). Cooldown 13b reads "Check OFF is lit on the RCP

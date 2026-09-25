@@ -133,6 +133,9 @@ var ROUTES = {
              '#6': { policy: 'seq', cmds: [{ action: 'set_steam_dump', mode: 'closed' }] },
              // 13a then 13b as the card orders them: the box to 1020 psi (a no-op on the preset, 7.03 MPa), then AUTO
              '#13': { policy: 'seq', cmds: [{ action: 'set_steam_dump_setpoint', mpa: 7.03 }, { action: 'set_steam_dump', mode: 'auto' }] } },
+    // the heatup AGAIN, from the cooldown's end (layman pass 5): SG FEED is still in AUTO and the
+    // orifices still open, as cooldown step 16 leaves them, so 5 and 7 are met on arrival
+    round_entry_met: ['#5', '#7'],
     mistakes: [
       { id: 'double_rcp', kind: 'double press', at: 'cmd:set_rcp', set: { repeat: 2 } },
       { id: 'pressure_sp_high', kind: 'overshoot', at: 'cmd:set_pressure_setpoint',
@@ -215,6 +218,9 @@ var ROUTES = {
     ],
   },
   pwr_cooldown: {
+    // 12 ("Press OFF under SPRAY ..., if step 11 has not already"): the typical route shut the spray in
+    // step 11 on its SUBCOOLING MARGIN line (layman pass 5), so 12 is met on arrival
+    entry_met: ['#12'],
     // "Lower SET PZR PRESSURE to 1900 psi": one entry, not the replay's ramp. Ramped, the step
     // ticks at 13.6 MPa with the setpoint still mid-ramp and the player moves on (measured
     // 2026-09-24: the SI low-steam-pressure trip at step 4, 1951 psia).
@@ -222,7 +228,12 @@ var ROUTES = {
     // across the whole hold (2026-09-24, the step 11 reword was measured on this route: COOLDOWN
     // RATE tile peak -106 degF/hr at +27 min, Mode 5 in 100 plant-min; the ramp peaks -83).
     steps: { 'cmd:set_pressure_setpoint': { policy: 'final' }, 'cmd:set_pressure_setpoint:2': { policy: 'final' },
-             'cmd:set_rhr_hx:2': { policy: 'final' },
+             /* step 11 as its note reads since layman pass 5 (2026-09-25): HX SPLIT 12 % typed once;
+              * if COOLDOWN RATE runs past 100 degF/hr (-55.6 degC/hr, the alarm), lower HX SPLIT to
+              * 10 %; if SUBCOOLING MARGIN falls below 20 degF (11.1 degC, the alarm), SPRAY OFF. */
+             'cmd:set_rhr_hx:2': { policy: 'when', base: 'final', on: [
+               { ins: true, p: 'tavg_rate', op: '<', v: -55.6, cmd: { action: 'set_rhr_hx', pct: 10 } },
+               { ins: true, p: 'subcooling_margin', op: '<', v: 11.1, cmd: { action: 'set_spray', open: false } }] },
              /* step 6 (2026-09-25 bring-down): the spray is no longer a row `cmd` (a press-latched
               * `~` row flashed off while the flow ramped), so the player's two presses are named:
               * HEATER OFF, then SPRAY MANUAL at 50 %, one per tick. */
@@ -247,12 +258,19 @@ var ROUTES = {
  * reactivity through every stage. One `chain` run drives all six legs on ONE service, each leg on
  * its typical route plus its `chain_steps` (the literal player's gauge-following, where the card
  * says "until"), and reports every leg as `chain:<leg>`. */
-var CHAIN = ['pwr_heatup', 'pwr_startup', 'pwr_raise_power', 'pwr_lower_power', 'pwr_shutdown', 'pwr_cooldown'];
+/* THE ROUND TRIP (2026-09-25, layman pass 5 S-1): the heatup AGAIN, on the plant the cooldown
+ * hands it. Pass 5 stranded there at step 3 -- the shutdown's scram was still latched, WITHDRAW did
+ * nothing, and no route reached the seam because the chain stopped at the cooldown's end card. A
+ * repeated leg reports as `<leg>#2`, takes `round_entry_met` on top of `chain_entry_met`, and a
+ * chain injection names which pass it targets with `pass: 2` (default: the first). */
+var CHAIN = ['pwr_heatup', 'pwr_startup', 'pwr_raise_power', 'pwr_lower_power', 'pwr_shutdown', 'pwr_cooldown', 'pwr_heatup'];
 function runChain(mutId) {
   var legs = [], ctx = { chain: true }, M = mutId ? MUTATIONS.filter(function (m) { return m.id === mutId; })[0] : null;
   for (var i = 0; i < CHAIN.length; i++) {
-    var r = runJob(CHAIN[i], 'typical', M && M.leg === CHAIN[i] ? mutId : null, ctx);
-    ctx = r._ctx; delete r._ctx; r.route = 'chain'; legs.push(r);
+    var round = CHAIN.indexOf(CHAIN[i]) < i;
+    ctx.round = round;
+    var r = runJob(CHAIN[i], 'typical', M && M.leg === CHAIN[i] && (M.pass || 1) === (round ? 2 : 1) ? mutId : null, ctx);
+    ctx = r._ctx; delete r._ctx; r.route = 'chain'; if (round) r.leg = CHAIN[i] + '#2'; legs.push(r);
     if (r.result.kind !== 'complete') break;
   }
   return { leg: 'chain', route: 'chain', chain: legs, result: { kind: legs[legs.length - 1].result.kind }, steps: [], flags: [] };
@@ -299,6 +317,13 @@ var MUTATIONS = [
   { id: 'chain_step10_bank', chain: true, leg: 'pwr_raise_power', route: 'chain', expect: 'complete',
     why: 'raise-power 10 graded on CONTROL ROD POSITION above 351 again (a bank number the chained plant reaches only as xenon builds, about 5 plant-hours)',
     mutate: function (P) { P.steps[9].accs[0] = { p: 'control_bank_steps', op: '>', v: 351, ask: P.steps[9].accs[0].ask, label: 'CONTROL ROD POSITION above 351' }; } },
+  /* LAYMAN PASS 5 (2026-09-25), S-1: the round trip. The mutation is on the COOLDOWN (step 16's
+   * PRESS TO RESET row deleted) and the check is on the heatup that follows it (`check`): with no
+   * reset the shutdown's scram is still latched, the rod drive refuses WITHDRAW, and heatup 3
+   * strands -- exactly what the layman met at 13 psi. */
+  { id: 'round_trip_no_reset', chain: true, leg: 'pwr_cooldown', check: 'pwr_heatup#2', route: 'chain', expect: 'complete',
+    why: "cooldown 16 without its SCRAM reset row (layman pass 5: the scram stayed latched into the next heatup, WITHDRAW refused at step 3)",
+    mutate: function (P) { P.steps[15].accs = P.steps[15].accs.filter(function (e) { return !(e.cmd && e.cmd.action === 'reset_rps'); }); } },
   { id: 'cooldown_until_flat', leg: 'pwr_cooldown', route: 'typical', expect: 'stated',
     why: 'cooldown 4 as the OLD card read it: after each 50 psi, wait until the whole-degree tile reads the same twice, 5 plant-minutes apart',
     override: { 'cmd:set_steam_dump_setpoint': { policy: 'stair', from: 1020, to: 120, step: 50, read_s: 300, stated_max_min: 120 } } },
@@ -373,7 +398,8 @@ function runJob(legId, routeId, mutId, ctx) {
     if (mIdx < 0) return { leg: legId, route: routeId, result: { kind: 'unresolved', why: 'step key ' + mistake.at + ' not in the current pool' }, steps: [], flags: [] };
   }
   var entryMet = {};
-  (table.entry_met || []).concat(ctx && ctx.chain ? (table.chain_entry_met || []) : []).forEach(function (k) { var i = resolveKey(proc, k); if (i >= 0) entryMet[i] = true; });
+  (table.entry_met || []).concat(ctx && ctx.chain ? (table.chain_entry_met || []) : [])
+    .concat(ctx && ctx.round ? (table.round_entry_met || []) : []).forEach(function (k) { var i = resolveKey(proc, k); if (i >= 0) entryMet[i] = true; });
   if (!table.final) proc.steps.forEach(function (st, i) {   // provisional default: a step with no operator action
     if (!st.cmd && !(st.accs || []).some(function (e) { return e.cmd; })) entryMet[i] = true;
   });
@@ -407,7 +433,18 @@ function runJob(legId, routeId, mutId, ctx) {
     var pt = svc.engine && svc.engine.eng && svc.engine.eng.pt;   // the SI signal's own cause, if any
     return why + (pt && pt.si_cause ? ' (SI on ' + pt.si_cause + ')' : '');
   }
-  function send(c) { return svc.handleCommand(c); }
+  /* A REFUSED COMMAND IS THE PLAYER'S "Command error" LINE, NOT A HARNESS CRASH (layman pass 5
+   * S-1): the rod drive THROWS on a latched trip, and uncaught it took the whole chain down with it
+   * instead of reporting the strand the player met. Recorded on the step, then the run goes on. */
+  function send(c) {
+    try { return svc.handleCommand(c); }
+    catch (e) {
+      var msg = String((e && e.message) || e).slice(0, 60);
+      if (cur >= 0 && out[cur]) (out[cur].errs = out[cur].errs || []).push((c && c.action) + ': ' + msg);
+      return { type: 'error', message: msg };
+    }
+  }
+  function activeAlarms() { var o = {}; (s.alarms || []).forEach(function (a) { if (a.state && a.state !== 'clear' && a.priority !== 'status') o[a.id] = 1; }); return o; }
   function nudge(n, sp) { if (n) send({ action: 'rod_nudge', group_id: 'control', steps: n, speed: sp || 'normal' }); }
   function plot() {
     var m = RD.OneOverMCore.sample(s);
@@ -453,7 +490,18 @@ function runJob(legId, routeId, mutId, ctx) {
       S = { t0: t(), spec: spec, memo: {}, rowsMet: [], rowsMetAt: [], ack0: null, acts: 0, pressedAck: false,
             bound: spec.bound_s || Math.max(3 * (st.hold || 0), BOUND_FLOOR_S) };
       out[k] = { n: k + 1, policy: spec.policy || 'default', stated_max_min: spec.stated_max_min };
+      S.alarm0 = activeAlarms();
     }
+    /* the step's pressure / subcooling floor and the alarms it RAISED (layman pass 5, S-4/S-5/S-6:
+     * a stepped report of what the player's board did, printed by stepTable, asserted nowhere) */
+    var pNow = pv('pressure_mpa') * 145.0377, scNow = pv('subcooling_c') * 9 / 5;
+    if (isFinite(pNow)) out[k].prlo = Math.min(out[k].prlo == null ? 1e9 : out[k].prlo, pNow);
+    if (isFinite(scNow)) out[k].sclo = Math.min(out[k].sclo == null ? 1e9 : out[k].sclo, scNow);
+    (s.alarms || []).forEach(function (a) {
+      if (a.state && a.state !== 'clear' && !S.alarm0[a.id] && a.priority !== 'status') {
+        S.alarm0[a.id] = 1; (out[k].raised = out[k].raised || []).push(a.id + '@' + f(pNow, 0) + 'psia');
+      }
+    });
     var el = t() - S.t0, rows = c.accs || [];
     /* --- flags: hollow / flash / row un-tick ---------------------------------------- */
     if (c.awaiting_ack) {
@@ -672,6 +720,21 @@ function runJob(legId, routeId, mutId, ctx) {
       if (!S.memo.rel && !moving()) { nudge(1, spec.speed || 'slow'); S.acts++; }
       return;
     }
+    /* `when` (layman pass 5, 2026-09-25): the step's `base` policy, plus one-shot presses the card
+     * makes CONDITIONAL on a reading -- "if COOLDOWN RATE runs over 100 degF/hr, lower HX SPLIT",
+     * "if SUBCOOLING MARGIN falls below 20 degF, shut the spray". Each trigger fires once. */
+    if (P === 'when') {
+      policy({ policy: spec.base || 'default' }, st2, c2, rows2, el2);
+      (spec.on || []).forEach(function (w, i) {
+        if (S.memo['w' + i]) return;
+        var v = w.ins ? (s.instruments || {})[w.p] : pv(w.p);   // `ins`: the TILE's instrument, what the player reads
+        if (v != null && isFinite(v) && (w.op === '<' ? v < w.v : v > w.v)) {
+          S.memo['w' + i] = true; S.acts++; press(w.cmd);
+          (out[cur].fired = out[cur].fired || []).push(cmdAction(w.cmd) + '@' + f(t() - S.t0, 0) + 's');
+        }
+      });
+      return;
+    }
     if (P === 'nudge') {
       if (!S.memo.go) { S.memo.go = true; S.acts++; nudge(spec.steps, spec.speed); }
       return;
@@ -799,7 +862,8 @@ function stepTable(r, head) {
     console.log(D + '      ' + ('  ' + st.n).slice(-2) + ' ' + ('       ' + st.policy).slice(-13) + '  ' +
       (st.dur_min != null ? f(st.dur_min) + ' min, done_by ' + st.by + ' @ ' + f(st.t_done_min) + ' | ' + rd(st.at_done) : 'NOT DONE | ' + rd(st.at_end)) +
       (st.pred != null ? ' | pred ' + st.pred + ' goal ' + st.goal : '') + (st.reads ? ' | reads ' + JSON.stringify(st.reads) : '') +
-      (st.taps ? ' | taps ' + st.taps : '') + (st.inserted ? ' | inserted' : '') + (st.withdrawn ? ' | withdrew ' + st.withdrawn : '') + (st.inserted_n ? ' | inserted ' + st.inserted_n : '') + (st.tlo != null ? ' | Tavg ' + f(st.tlo) + '-' + f(st.thi) + ' °F, power low ' + f(st.plo) + ' %' : '') + (st.entries ? ' | entries ' + st.entries + ', peak rate ' + st.peak_cool_F_hr + ' degF/hr' : '') + X);
+      (st.taps ? ' | taps ' + st.taps : '') + (st.inserted ? ' | inserted' : '') + (st.withdrawn ? ' | withdrew ' + st.withdrawn : '') + (st.inserted_n ? ' | inserted ' + st.inserted_n : '') + (st.tlo != null ? ' | Tavg ' + f(st.tlo) + '-' + f(st.thi) + ' °F, power low ' + f(st.plo) + ' %' : '') + (st.entries ? ' | entries ' + st.entries + ', peak rate ' + st.peak_cool_F_hr + ' degF/hr' : '') +
+      (st.prlo != null ? ' | P low ' + f(st.prlo, 0) + ' psia, subcool low ' + f(st.sclo) + ' degF' : '') + (st.raised ? ' | RAISED ' + st.raised.join(', ') : '') + (st.fired ? ' | fired ' + st.fired.join(', ') : '') + (st.errs ? ' | REFUSED ' + st.errs.length + 'x ' + st.errs[0] : '') + X);
   });
 }
 function report() {
@@ -816,7 +880,7 @@ function report() {
     Object.keys(v).forEach(function (k) { ck(tag + ': ' + v[k].name, v[k].ok, v[k].note, tag + ':' + k); });
   });
   results.filter(function (r) { return r.leg === 'chain' && !r.mut; }).forEach(function (cr) {
-    console.log(B + '\n  — chain: the six legs on ONE plant, each offered by the last one\'s Next —' + X);
+    console.log(B + '\n  — chain: the six legs on ONE plant then the heatup again, each offered by the last one\'s Next —' + X);
     cr.chain.forEach(function (r) {
       var tag = 'chain:' + r.leg, v = verdicts(r);
       stepTable(r, r.leg + ' on the chained plant, per step:');
@@ -828,8 +892,8 @@ function report() {
   if (muts.length) console.log(B + '\n  — INJECTION PROOFS (pool mutated in the child, per leg) —' + X);
   muts.forEach(function (r) {
     var m = MUTATIONS.filter(function (x) { return x.id === r.mut; })[0];
-    var rr = r.leg === 'chain' ? (r.chain.filter(function (x) { return x.leg === m.leg; })[0] || null) : r;
-    var v = rr ? verdicts(rr)[m.expect] : { ok: false, note: 'the chain stopped before ' + m.leg };
+    var rr = r.leg === 'chain' ? (r.chain.filter(function (x) { return x.leg === (m.check || m.leg); })[0] || null) : r;
+    var v = rr ? verdicts(rr)[m.expect] : { ok: false, note: 'the chain stopped before ' + (m.check || m.leg) };
     ck('INJECTION ' + m.id + ': ' + m.why + ' -> ' + r.route + ' "' + m.expect + '" goes RED', !!v && !v.ok,
        v ? v.note : 'check not produced');
   });

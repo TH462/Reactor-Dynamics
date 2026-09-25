@@ -71,7 +71,7 @@ The reactor follows the turbine: less steam drawn means the heat has nowhere to 
 
 Suggested time warp: 5×.
 
-Note: About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it.
+Note: About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it. PRIMARY PRESSURE sags as the rods cool the plant, to about 1820 to 1900 psi by the last stage, with the heaters full on and the Pressurizer Pressure Low alarm in. The pace of this walkthrough does that; the low-pressure trip is at 1775 psi.
 
 
 
@@ -364,3 +364,7 @@ so the four former `cont` power rows and step 3's OUTPUT row each carry their ow
   unlit pressed it after typing 719 and lost the target — the cooldown's 1a/1b trap (ON
   re-captures the target from the analyzer, INHERITED from the cooldown bring-down).
 - Item 5: 4c/5c/6c opening at 5× before the first insert (entry above) is ACCEPTED as is.
+
+### Layman pass 5 record — 2026-09-25, workbench-g (AGENT-DRAFTED: step 3's pressure sentence)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`. PRIMARY PRESSURE floors, chain route, steps 3/4/5/6: 2059 / 1992 / 1934 / 1889 psia; the reviewer 1947 / 1902 / 1853 / 1819 psi; the low-pressure trip is 1775 psi. Pressurizer Pressure Low raised in step 3; the PORV-open alarm in step 2. The note states the measured range; whether the sag is prototypical is an open ruling (#653).
