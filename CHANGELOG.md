@@ -31,6 +31,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Lower power walkthrough in the what / why / how shape.** Each step now carries its one-line
+  why; every check-off is its own lettered substep (15), so REACTOR POWER and OUTPUT rows gained
+  their own instruction and the rod trims moved to 4c/5c/6c; the four temperature check-offs read
+  "below 577 / 569 / 562 / 557 °F". No grading value moved. Record:
+  `Blueprint/walkthrough_steps/04_lower_power.md`, bring-down record 2026-09-25.
 - **Walkthroughs, layman pass 4 (the six legs as one plant).** Raise power: each stage now says
   "hold WITHDRAW until AVG COOLANT TEMPERATURE is back in its band, about N steps" (the gauge
   leads); step 8 drops its "CONTROL ROD POSITION above 300" check-off and says what the 103 % rod

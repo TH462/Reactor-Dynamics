@@ -29,6 +29,18 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-25-workbench-c (Lower power brought down to the what / why / how step file: a Note's home decides which style scan reads it)
+
+Record: `Blueprint/walkthrough_steps/04_lower_power.md` Notes, bring-down record 2026-09-25. Traps only:
+
+- **Moving a Note from a substep to the step moves it under a different scan.** `run_style` W12
+  (vague quantifier) scans the step `note` but not `accs[].note`, so step 2's "as soon as this step
+  ticks" — shipped for a day as a substep note — reddened the moment it became the step Note
+  (`soon`). The words did not change; the harvester did. Authored back on 2b (same draw order).
+- **A step-level rung is also the rung once every row is met.** Adding `wait_speed` to the step
+  so substep a can fall back to it changes the clock for the done-but-not-continued window too:
+  steps 4-6 went from the 30 s rule's 60× to 10× there. Harmless here; say it when you do it.
+
 ## Session log — 2026-09-24-workbench-l (layman pass 4, the six legs as one plant: the route gate reloaded every leg's own starting condition)
 
 Traps only; the per-step numbers are in each step file's Notes and `Diagnostic/CHECKLIST_PLAYTEST_2026-09-24_LAYMAN_CHAIN.md`.

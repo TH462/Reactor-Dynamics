@@ -4346,9 +4346,16 @@
        * `cont` row, and `why` is the Background. Every step sets `wait_hint: false` because its
        * substeps print their own speed line. The count stays 6; no grading value moved — the
        * rows are the old ones, regrouped. Speed provenance and every measurement behind this
-       * port are in that file's Notes (reconcile record 2026-09-24, wt-lower). */
+       * port are in that file's Notes (reconcile record 2026-09-24, wt-lower).
+       * WHAT / WHY / HOW BRING-DOWN (2026-09-25, `exp/p2-lower`): `aim` = the italic WHY; every
+       * check-off row is now its own lettered substep (15 heads, no `cont` left), so each former
+       * `cont` power / OUTPUT row carries its own `ask`, and the Tavg rows moved from 4b/5b/6b to
+       * 4c/5c/6c. Step 3's shared 5× sits ONCE on the step (`wait_speed` + `speed_text`, its
+       * Note the step `note`); in step 2 and in 4-6 a/b share 10×, drawn under b (a falls back
+       * to the step's rung), and c is 5×. No predicate or threshold moved. */
       steps: [
         { text: 'Start adding boron before any load comes off.',
+          aim: 'Every percent of power shed hands reactivity back, and boron is too slow to catch it unless it is already working.',
           why: 'Coming down is the climb in reverse. Every percent of power shed hands reactivity back (the fuel cools, the water thickens), and it has to go somewhere. Adding boron carries most of it out; rods trim the rest over the next few minutes.',
           control: 'Boron control', target: 'BORON reads 719 ppm, ON lit',
           /* MEASURED (#753, full stack from this leg's own initial condition): 612.3 ppm to 719 is
@@ -4366,7 +4373,7 @@
           wait_hint: false,
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 }, hold: 30,
           accs: [{ cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 },
-                   ask: 'On the BORON card set 719 and press Enter.',
+                   ask: 'Set 719 on the BORON card and press Enter.',
                    note: 'Press ON only if it is not already lit. The boration then runs in the background while you take the plant down.',
                    wait_speed: 1,
                    label: 'BORON target set to 719' }],
@@ -4402,25 +4409,36 @@
          * against a 571.8 degF programme). It reaches no protection setpoint and does not scram.
          * Out of band, not dangerous — the dangerous part was the check-off. */
         { text: 'Take the first load off the turbine and let the reactor follow it down.',
-          why: 'The reactor follows the turbine: less steam drawn means the heat has nowhere to go, the water warms, and warmer water walks power down by itself. Load first, rods second, every time — insert first and you take reactivity out of a reactor still being asked for full steam, which walks the steam generator down instead.',
+          aim: 'The reactor follows the turbine, so the load comes off first and the rods wait.',
+          why:'The reactor follows the turbine: less steam drawn means the heat has nowhere to go, the water warms, and warmer water walks power down by itself. Load first, rods second, every time — insert first and you take reactivity out of a reactor still being asked for full steam, which walks the steam generator down instead.',
           control: 'Turbine Load', target: 'OUTPUT 75 MWe',
           cmd: { action: 'set_load_target', mwe: 75 }, hold: 300, wait_hint: false,
+          /* THE SHARED 10× AND THE NOTE SIT ON 2b, NOT THE STEP (2026-09-25 bring-down): same draw
+           * (2a, 2b, warp, Note) and 2a falls back to the step's rung. Authored as the step `note`,
+           * `run_style` W12 read "as soon as" as the vague quantifier "soon" and reddened — the
+           * step-level scan reaches `note`, the per-entry one does not scan W12 at all. */
+          wait_speed: 10,
           /* MEASURED at the end of this hold: OUTPUT 75.00 MWe, REACTOR POWER 85.79 %. Both
            * entries are FALSE at the step's own entry (100.00 MWe, 98.91 %), so neither can be
            * had for free, and the OUTPUT band is two-sided so it cannot latch.
            * 2026-09-24 port, MEASURED on the live runtime (a player who sets LOAD the moment the
            * step opens, seed 42): entry 00, OUTPUT met +5 s, power met +14 s. */
           accs: [{ p: 'mwe_output', op: '~', v: 75, tol: 5,
-                   ask: 'Set LOAD to 75 MW and let the reactor follow it down. Leave the rods alone for now.',
-                   note: 'Power walks down on its own over about five plant-minutes. AVG COOLANT TEMPERATURE rises out of the green band on its tile while it does — that is expected, and the next step is what brings it back. Go on to it as soon as this step ticks: the temperature keeps climbing until the rods go in.',
-                   wait_speed: 10,
+                   ask: 'Set LOAD to 75 MW and wait for OUTPUT to settle near 75 MW.',
                    label: 'OUTPUT settled near 75 MW' },
-                 { cont: true, p: 'power_pct', op: '<', v: 95, label: 'Reactor following the load down' }],
+                 { p: 'power_pct', op: '<', v: 95,
+                   ask: 'Leave the rods alone and watch REACTOR POWER follow the load down, below 95 %.',
+                   wait_speed: 10,
+                   note: 'Power walks down on its own over about five plant-minutes. AVG COOLANT TEMPERATURE rises out of the green band on its tile while it does — that is expected, and the next step is what brings it back. Go on to it as soon as this step ticks: the temperature keeps climbing until the rods go in.',
+                   label: 'REACTOR POWER below 95 %' }],
           hl: ['Turbine Load'], hl_watch: ['Tavg', 'Reactor Power'] },
         { text: 'Bring AVG COOLANT TEMPERATURE back into its band with the rods.',
-          why: 'The load drop left the reactor hot: it settles above its programme until rods take the extra reactivity out. This is the half of the evolution the plant cannot do for you, and it is why the order matters — the turbine leads, the rods follow.',
+          aim: 'The load drop left the reactor hot, and this is the half of the evolution the plant cannot do for you.',
+          why:'The load drop left the reactor hot: it settles above its programme until rods take the extra reactivity out. This is the half of the evolution the plant cannot do for you, and it is why the order matters — the turbine leads, the rods follow.',
           control: 'Rod Speed', target: 'AVG COOLANT TEMPERATURE back inside the band; OUTPUT still 75 MWe',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: -40, speed: 'normal' }, hold: 300, wait_hint: false,
+          wait_speed: 5, speed_text: true,
+          note: 'About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it.',
           /* MEASURED at the end of this hold (40 steps in, 300 s): Tavg 570.7 degF (299.28 degC)
            * against a 571.8 degF programme — 1.1 degF inside a band whose half width is
            * 5.0 degF (`tavg_c < 302.7` is the band's own top edge: pwr_board_wiring `tavgBand`
@@ -4439,15 +4457,18 @@
            * crossing went on to read 551.9 °F, 14.9 °F under the band floor. 5x is the rung that
            * leaves more than about 5 s. Same measurement for 4b/5b/6b: 38/37/50 steps. */
           accs: [{ p: 'tavg_c', op: '<', v: 302.7,
-                   ask: 'Now insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE is back inside the green band on its tile.',
-                   note: 'About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it.',
-                   wait_speed: 5,
-                   label: 'AVG COOLANT TEMPERATURE back below 577 °F, inside its band' },
-                 { cont: true, p: 'power_pct', op: '<', v: 80, label: 'Reactor followed down to about 73 %' },
-                 { cont: true, p: 'mwe_output', op: '~', v: 75, tol: 5, label: 'Generator still carrying about 75 MW' }],
+                   ask: 'Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 577 °F, the top of the green band on its tile.',
+                   label: 'AVG COOLANT TEMPERATURE below 577 °F' },
+                 { p: 'power_pct', op: '<', v: 80,
+                   ask: 'Check REACTOR POWER has followed down to about 73 %, below 80 %.',
+                   label: 'REACTOR POWER below 80 %' },
+                 { p: 'mwe_output', op: '~', v: 75, tol: 5,
+                   ask: 'Check OUTPUT still reads about 75 MW.',
+                   label: 'OUTPUT still near 75 MW' }],
           hl: ['Rod Speed — Normal', 'Insert'], hl_watch: ['Tavg', 'Turbine Load'] },
         { text: 'Take the load down to 50 MWe, then trim AVG COOLANT TEMPERATURE back into its band.',
-          why: 'Same order: LOAD first, then rods, so the temperature does not sit hot above its band. STEAM GENERATOR LEVEL dips before it recovers on each drop; that is normal, and SG FEED in AUTO handles it.',
+          aim: 'Each load drop is the same pair of moves, turbine first and rods second, so the temperature never sits hot above its band.',
+          why:'Same order: LOAD first, then rods, so the temperature does not sit hot above its band. STEAM GENERATOR LEVEL dips before it recovers on each drop; that is normal, and SG FEED in AUTO handles it.',
           control: 'Turbine Load', target: 'OUTPUT 50 MWe; AVG COOLANT TEMPERATURE inside its band',
           cmd: { action: 'set_load_target', mwe: 50 }, hold: 720, wait_hint: false,
           /* PAIRED (#715), AND THE PAIR IS TWO-SIDED (#736). MEASURED: mwe_output settles to
@@ -4475,16 +4496,19 @@
            * had brought it in (seed 42). So `accs_ordered` buys nothing on this leg today. Rod
            * count range, MEASURED: 0 (the replay's full-length wait — the boration does it) to 60-64
            * (a player who inserts as soon as 4a ticks, seeds 42/7/99); the note keeps his 20 as its low end. */
-          accs: [{ p: 'mwe_output', op: '~', v: 50, tol: 5, ask: 'Set LOAD to 50 MW and let power follow.',
-                   wait_speed: 10, label: 'Generator settled near 50 MW' },
-                 { cont: true, p: 'power_pct', op: '<', v: 70, label: 'Reactor following through 70 %' },
-                 { p: 'tavg_c', op: '<', v: 298.1, ask: 'Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE is back in its band.',
+          wait_speed: 10,
+          accs: [{ p: 'mwe_output', op: '~', v: 50, tol: 5, ask: 'Set LOAD to 50 MW and wait for OUTPUT to settle near 50 MW.',
+                   label: 'OUTPUT settled near 50 MW' },
+                 { p: 'power_pct', op: '<', v: 70, ask: 'Watch REACTOR POWER follow the load down through 70 %.',
+                   wait_speed: 10, label: 'REACTOR POWER below 70 %' },
+                 { p: 'tavg_c', op: '<', v: 298.1, ask: 'Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.',
                    note: 'About 20 to 65 steps at MED.',
                    wait_speed: 5,
-                   label: 'AVG COOLANT TEMPERATURE back below 568 °F, inside its band' }],
+                   label: 'AVG COOLANT TEMPERATURE below 569 °F' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
         { text: 'Take the load down to 30 MWe, then trim AVG COOLANT TEMPERATURE back into its band.',
-          why: 'Lower power needs smaller rod moves. The band is walking back down toward 547 °F. A plant left hot at low load sends the difference to the condenser through the steam dump.',
+          aim: 'Lower power needs smaller rod moves, and the band keeps walking down toward its no-load value.',
+          why:'Lower power needs smaller rod moves. The band is walking back down toward 547 °F. A plant left hot at low load sends the difference to the condenser through the steam dump.',
           control: 'Turbine Load', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE inside its band',
           cmd: { action: 'set_load_target', mwe: 30 }, hold: 600, wait_hint: false,
           /* PAIRED (#715), TWO-SIDED (#736). MEASURED: 30.00 at the end of this hold, 50.00 at
@@ -4495,18 +4519,22 @@
            * step 3's trim removed 295.36 degC (563.6 degF) FAIL. */
           /* 2026-09-24 port — regrouped, not re-valued (see step 4). Rod count range, MEASURED:
            * 0 (the replay's full wait) to 45-46 (a player who inserts as soon as 5a ticks, seeds 42/7/99). */
-          accs: [{ p: 'mwe_output', op: '~', v: 30, tol: 5, ask: 'Set LOAD to 30 MW and let power follow.',
-                   wait_speed: 10, label: 'Generator settled near 30 MW' },
-                 { cont: true, p: 'power_pct', op: '<', v: 45, label: 'Reactor following through 45 %' },
-                 { p: 'tavg_c', op: '<', v: 294.4, ask: 'Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE is back in its band.',
+          wait_speed: 10,
+          accs: [{ p: 'mwe_output', op: '~', v: 30, tol: 5, ask: 'Set LOAD to 30 MW and wait for OUTPUT to settle near 30 MW.',
+                   label: 'OUTPUT settled near 30 MW' },
+                 { p: 'power_pct', op: '<', v: 45, ask: 'Watch REACTOR POWER follow the load down through 45 %.',
+                   wait_speed: 10, label: 'REACTOR POWER below 45 %' },
+                 { p: 'tavg_c', op: '<', v: 294.4, ask: 'Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.',
                    note: 'About 10 to 45 steps at MED.',
                    wait_speed: 5,
-                   label: 'AVG COOLANT TEMPERATURE back below 562 °F, inside its band' }],
+                   label: 'AVG COOLANT TEMPERATURE below 562 °F' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
         { text: 'Take the load down to 15 MWe, then trim AVG COOLANT TEMPERATURE back into its band.',
-          why: 'Scramming from full power is a thermal shock to the plant. About 15 % is low enough that the trip is gentle and high enough that the steam generator still has steam to dump afterwards.',
+          aim: 'About 15 % is where the shutdown walkthrough trips the reactor, so this leg ends there.',
+          why:'Scramming from full power is a thermal shock to the plant. About 15 % is low enough that the trip is gentle and high enough that the steam generator still has steam to dump afterwards.',
           control: 'Turbine Load', target: 'OUTPUT 15 MWe; REACTOR POWER near 15 %',
           cmd: { action: 'set_load_target', mwe: 15 }, hold: 900, wait_hint: false,
+          wait_speed: 10,
           /* BAND RE-DERIVED (#508, 2026-09-06). It read v: 30 and the 547 degF re-anchor puts the
            * plant at 33.94 %. NOT a regression -- the old number was calibrated on the plant #508
            * fixed. MEASURED at the end of this step, one fixture, three trees:
@@ -4551,9 +4579,12 @@
           accs: [/* TWO-SIDED (#736): 15.00 at the end of this hold, 30.00 at its entry, 0 on a
                   * scram — and this is the leg's LAST step, the one whose latched floor let the
                   * completion banner fire on a dead plant. */
-                 { p: 'mwe_output', op: '~', v: 15, tol: 5, ask: 'Set LOAD to 15 MW and let power follow.',
-                   wait_speed: 10, label: 'Generator settled near 15 MW' },
-                 { cont: true, p: 'power_pct', op: '<', v: 40, label: 'Reactor below 40 % and falling as the boration finishes (rod trims take it to about 15 %)' },
+                 { p: 'mwe_output', op: '~', v: 15, tol: 5, ask: 'Set LOAD to 15 MW and wait for OUTPUT to settle near 15 MW.',
+                   label: 'OUTPUT settled near 15 MW' },
+                 { p: 'power_pct', op: '<', v: 40, ask: 'Check REACTOR POWER reads below 40 %.',
+                   wait_speed: 10,
+                   note: 'Power keeps falling as the boration finishes; the rod trims in 6c take it to about 15 %.',
+                   label: 'REACTOR POWER below 40 %' },
                  /* ROD TRIM GRADED (#739) — see step 4 for the derivation and the three-way
                   * discrimination run. Band top at the measured 0.1495 steam flow is 291.60 degC;
                   * authored 291.6, 557 degF. MEASURED at the end of this hold: authored route
@@ -4566,10 +4597,10 @@
                   * of the two is the one that matters, and a two-sided band would still red the
                   * shipping leg. Said as "below the band" in an earlier draft, which overstated the
                   * margin fourfold (#741 quality pass). */
-                 { p: 'tavg_c', op: '<', v: 291.6, ask: 'Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE is back in its band.',
+                 { p: 'tavg_c', op: '<', v: 291.6, ask: 'Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.',
                    note: 'About 6 to 40 steps at MED. Stop here; the shutdown walkthrough takes over.',
                    wait_speed: 5,
-                   label: 'AVG COOLANT TEMPERATURE back below 557 °F, inside its band' }],
+                   label: 'AVG COOLANT TEMPERATURE below 557 °F' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },

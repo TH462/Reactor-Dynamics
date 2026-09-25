@@ -4,8 +4,8 @@
 
 > This is the LIVE step file: the sim's `pwr_lower_power` walkthrough was brought down to it on
 > 2026-09-24 (the owner: "Adopt the format for the other walkthroughs."). Edit it freely — it is
-> the step text, and it is what the sim is brought down to. **The 2026-09-25 reword below is NOT
-> brought down yet** — the pool still carries the 2026-09-24 wording (see the Notes).
+> the step text, and it is what the sim is brought down to. The 2026-09-25 reword below was
+> brought down the same day (see the Notes, bring-down record 2026-09-25).
 >
 > **The format** (OWNER RULING, 2026-09-24: "I like putting the why where you put it. i choose
 > a."; the model is `02_mode3_to_mode1.md` steps 1–3). Line one of a step is WHAT the step
@@ -322,3 +322,22 @@ apart" wording, the goal lines, Background and HIGHLIGHTED lines.
 **NOT verified:** nothing was stepped — this is text only; whether the tile's whole-degree draw
 matches the 569 °F wording at step 4 on the player route is inherited from the 2026-09-24 record's
 render-boundary argument, not re-measured. No layman pass yet.
+
+### Bring-down record — 2026-09-25, `exp/p2-lower` scratch lane (phase 2)
+
+The `pwr_lower_power` pool now carries this file's wording word for word (script-compared: step
+line, italic why, every substep, every warp line, every Note and Background, in the card's draw
+order). **No predicate, threshold or grading row moved**; every row is its own lettered substep,
+so the four former `cont` power rows and step 3's OUTPUT row each carry their own `ask`.
+
+- **Warp placement.** Step 3's 5× is authored once on the step and its Note is the step Note. Step 2
+  and steps 4-6 put the shared 10× on substep b (substep a falls back to the step's own rung,
+  10×), so the line draws once, under b, as written here. Step 2's Note sits on 2b rather than
+  on the step because `run_style`'s vague-word check reads "as soon as" as the vague "soon" on a
+  step Note (it does not scan substep notes).
+- **Clock change, not a grading change:** steps 3-6 now carry a step rung (5×, 10×, 10×, 10×).
+  Before, a step with every row met fell back to the 30 s rule on its `hold` — 10× for step 3,
+  60× for steps 4-6.
+- **Check-off labels** now read the tile names and the graded edge: `REACTOR POWER below 95 %`
+  (80, 70, 45, 40), `OUTPUT settled near N MW`, `OUTPUT still near 75 MW`, and
+  `AVG COOLANT TEMPERATURE below 577 °F` (569, 562, 557).
