@@ -7,22 +7,30 @@
 > other walkthroughs."). Edit it freely — it is the step text, and it is what the sim is brought
 > down to.
 >
-> **The format.** Line one of a step is what the step accomplishes. Each lettered substep opens
-> with the action that accomplishes it, then its own Note, its own **Suggested time warp**, and
-> its check-off lines drawn `()`. Background closes the step. Agent notes go at the END of the
-> file, never between the steps.
+> **The format** (the what / why / how shape, ruled 2026-09-24 and quoted verbatim in
+> `02_mode3_to_mode1.md` record (h)). Line one of a step is WHAT it accomplishes; under it, one italic line says WHY.
+> Each substep is HOW: it opens with a verb and is its own check-off, drawn `()`. The suggested
+> time warp is given once per step, or per substep where they differ; a Note follows what it
+> explains; Background closes the step. Agent notes go at the END of the file, never between the
+> steps. **Phase 1**: this file is restyled, the sim's pool is not yet (2026-09-25 reword record).
 
 ---
 
 1. Confirm the plant the startup handed over is ready to climb.
 
-1a. Verify Mode 1, At Power: REACTOR POWER 10 %, SG FEED AUTO, both startup trips reading BLOCKED on TRIP BLOCKS.
+*The climb starts from the plant the startup left: critical, on the grid, with its startup trips switched off.*
 
-Note: The two rows are IR HIGH FLUX and PR HIGH (LOW SETPT), both blocked by the startup walkthrough.
+()1a. Check REACTOR POWER reads about 10 % and the plant is in Mode 1, At Power.
+
+()1b. Check SG FEED AUTO is lit.
+
+()1c. Check IR HIGH FLUX and PR HIGH (LOW SETPT) both read BLOCKED on TRIP BLOCKS.
 
 Suggested time warp: 1×.
 
-()  Plant in Mode 1, At Power
+Note: Both rows were blocked by the startup walkthrough.
+
+
 
 Background
 
@@ -34,14 +42,17 @@ This is the plant the startup hands over: critical, on the grid, feed holding le
 
 2. Make sure the turbine is on line and taking steam.
 
-2a. Check the TURBINE-GENERATOR card is on line: LATCH lit and OUTPUT above 8 MW.
+*Raising LOAD does nothing until the turbine is taking steam.*
 
-Note: If it reads TRIP, press LATCH; OUTPUT returns to the LOAD you last set. If OUTPUT stays at 0.0 MW, set LOAD to 10 MW. LATCH is refused while whatever tripped the turbine is still there, and the card names the reason.
+()2a. Check the TURBINE-GENERATOR card shows LATCH lit and TRIP not lit. If it reads TRIP, press LATCH.
+
+()2b. Check OUTPUT reads above 8 MW. If it stays at 0.0 MW, set LOAD to 10 MW.
 
 Suggested time warp: 1×.
 
-()  Turbine latched, TRIP not lit
-()  Generator above 8 MW
+Note: After LATCH, OUTPUT returns to the LOAD you last set. LATCH is refused while whatever tripped the turbine is still there, and the card names the reason.
+
+
 
 Background
 
@@ -53,17 +64,21 @@ A tripped turbine takes no steam, so LOAD does nothing and the heat you make goe
 
 3. Start the boron dilution that carries most of the climb.
 
-3a. On the BORON card set 660 and press Enter.
+*Boron pays for most of the reactivity the climb costs, and it takes about 25 plant-minutes to arrive, so it starts first.*
 
-Note: Press ON only if it is not already lit. The dilution then runs in the background while you take the first stages. From the startup walkthrough BORON starts near 719, not 684: the move is 59 ppm, and the last of it is still arriving at full power, about 35 plant-minutes after you set it.
+()3a. Check BORON ON is lit. If it is not, press ON.
+
+()3b. Set the BORON target to 660 ppm and press Enter.
 
 Suggested time warp: 1×.
 
-()  BORON set to 660 ppm
+Note: The dilution then runs in the background while you take the first stages. BORON starts near 719, so the move is 59 ppm, and the last of it is still arriving at full power, about 25 plant-minutes after you set it.
+
+
 
 Background
 
-Every percent of power costs reactivity: the fuel heats up and the water thins out. Rods could pay for all of it but would end up deep in the core, so real plants dilute boron for the bulk and use rods for the fine trim. Dilution is not instant and it slows as it closes on the number you typed: this 24 ppm move takes about ten plant-minutes, and a 10 ppm trim later takes about the same again.
+Every percent of power costs reactivity: the fuel heats up and the water thins out. Rods could pay for all of it but would end up deep in the core, so real plants dilute boron for the bulk and use rods for the fine trim. Dilution is not instant and it slows as it closes on the number you typed: this 59 ppm move takes about 25 plant-minutes, and a 10 ppm trim later takes about ten.
 
 [HIGHLIGHTED: Boron Target (pulsing); Boron Status, Boron Concentration (steady)]
 
@@ -71,21 +86,23 @@ Every percent of power costs reactivity: the fuel heats up and the water thins o
 
 4. Take the first stage to 30 MWe, load leading and rods following.
 
-4a. Set LOAD to 30 MW.
+*The turbine asks for the power first; the rods then bring the temperature back to where it belongs at that load.*
+
+()4a. Set LOAD to 30 MW.
 
 Suggested time warp: 1×.
 
-()  Load target set to 30 MW
-()  Generator at 30 MW
-()  Reactor following, near 30 %
+()4b. Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 20 steps.
 
-4b. Hold WITHDRAW at MED until AVG COOLANT TEMPERATURE is back in its band, about 20 steps.
+Suggested time warp: 1×.
 
 Note: MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is the temperature the plant is meant to hold at the power it is making, near 556 °F here. It rises with load, from 547 °F at no load to 578 °F at 100 %. Temperature below the band: withdraw. Above: insert. Read the gauge, not the count: while the boron dilution is still running it does part of the work, and the pull comes out shorter. The plant trips on temperature before it trips on power: keep AVG COOLANT TEMPERATURE under 590 °F on every stage.
 
-Suggested time warp: 1× for the pull; 10× once it is done, while OUTPUT and the temperature settle.
+()4c. Check OUTPUT reads 30 MW, REACTOR POWER is near 30 % and AVG COOLANT TEMPERATURE is in its band, 550 to 576 °F.
 
-()  AVG COOLANT TEMPERATURE between 550 and 576 °F (the band is near 556)
+Suggested time warp: 10×, while OUTPUT and the temperature settle.
+
+
 
 Background
 
@@ -97,21 +114,23 @@ Raising LOAD draws more steam and cools the water; colder water adds reactivity,
 
 5. Take the second stage to 50 MWe the same way.
 
-5a. Set LOAD to 50 MW.
+*Same order as the first stage: the turbine leads, the rods follow.*
+
+()5a. Set LOAD to 50 MW.
 
 Suggested time warp: 1×.
 
-()  Load target set to 50 MW
-()  Generator at 50 MW
-()  Reactor following, near 50 %
+()5b. Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 15 steps.
 
-5b. Hold WITHDRAW at MED until AVG COOLANT TEMPERATURE is back in its band, about 20 steps.
+Suggested time warp: 1×.
 
 Note: The band is near 562 °F at this load.
 
-Suggested time warp: 1× for the pull; 10× once it is done, while OUTPUT and the temperature settle.
+()5c. Check OUTPUT reads 50 MW, REACTOR POWER is near 50 % and AVG COOLANT TEMPERATURE is in its band, 550 to 583 °F.
 
-()  AVG COOLANT TEMPERATURE between 550 and 583 °F (the band is near 562)
+Suggested time warp: 10×, while OUTPUT and the temperature settle.
+
+
 
 Background
 
@@ -123,21 +142,23 @@ Same order as the last stage: LOAD, then rods. Halfway up, xenon is starting to 
 
 6. Take the third stage to 75 MWe the same way.
 
-6a. Set LOAD to 75 MW.
+*The band keeps climbing with the load, so each pull aims a little higher.*
+
+()6a. Set LOAD to 75 MW.
 
 Suggested time warp: 1×.
 
-()  Load target set to 75 MW
-()  Generator at 75 MW
-()  Reactor following, near 75 %
+()6b. Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 25 steps.
 
-6b. Hold WITHDRAW at MED until AVG COOLANT TEMPERATURE is back in its band, about 35 steps.
+Suggested time warp: 1×.
 
 Note: The band is near 570 °F at this load.
 
-Suggested time warp: 1× for the pull; 10× once it is done, while OUTPUT and the temperature settle.
+()6c. Check OUTPUT reads 75 MW, REACTOR POWER is near 75 % and AVG COOLANT TEMPERATURE is in its band, 558 to 585 °F.
 
-()  AVG COOLANT TEMPERATURE between 558 and 585 °F (the band is near 570)
+Suggested time warp: 10×, while OUTPUT and the temperature settle.
+
+
 
 Background
 
@@ -149,20 +170,23 @@ Three-quarter power. The band has climbed with the load, toward 578 °F at 100 %
 
 7. Take the fourth stage to 90 MWe with a smaller pull.
 
-7a. Set LOAD to 90 MW.
+*Near full power the 103 % rod stop is close, so the pulls get smaller.*
+
+()7a. Set LOAD to 90 MW.
 
 Suggested time warp: 1×.
 
-()  Load target set to 90 MW
-()  Generator at 90 MW
+()7b. Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 20 steps.
 
-7b. Hold WITHDRAW at MED until AVG COOLANT TEMPERATURE is back in its band, about 25 steps.
+Suggested time warp: 1×.
 
 Note: The band is near 575 °F at this load, and the pulls get smaller from here: above 103 % power the plant stops the rods. If LOAD changes by itself, the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.
 
-Suggested time warp: 1× for the pull; 10× once it is done, while OUTPUT and the temperature settle.
+()7c. Check OUTPUT reads 90 MW and AVG COOLANT TEMPERATURE is in its band, 564 to 585 °F.
 
-()  AVG COOLANT TEMPERATURE between 564 and 585 °F (the band is near 575)
+Suggested time warp: 10×, while OUTPUT and the temperature settle.
+
+
 
 Background
 
@@ -174,21 +198,25 @@ Above 103 % power the plant refuses to move the rods, and at 118 % it trips the 
 
 8. Take the last stage to full load and settle the temperature on 578 °F.
 
-8a. Set LOAD to 100 MW.
+*578 °F is the temperature this plant is meant to hold at full power.*
+
+()8a. Set LOAD to 100 MW.
 
 Suggested time warp: 1×.
 
-()  Load target set to 100 MW
-()  Generator at 100 MW
+()8b. Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it settles on 578 °F, about 10 steps.
 
-8b. Hold WITHDRAW at MED until AVG COOLANT TEMPERATURE settles on 578 °F, about 20 steps.
+Suggested time warp: 1×.
 
 Note: Above 103 % REACTOR POWER the plant stops rod withdrawal, and the step to 100 MW can carry power past it: if CONTROL ROD POSITION stops moving while you hold WITHDRAW, let go, wait for REACTOR POWER to settle back under 103 %, then pull again.
 
-Suggested time warp: 1× for the pull; 10× once it is done, while OUTPUT and the temperature settle.
+()8c. Check OUTPUT reads 100 MW and AVG COOLANT TEMPERATURE is near 578 °F, between 563 and 592 °F.
 
-()  AVG COOLANT TEMPERATURE near 578 °F
-()  CONTROL ROD POSITION below 600 (not on its top stop)
+()8d. Check CONTROL ROD POSITION reads below 600, not on its top stop.
+
+Suggested time warp: 10×, while OUTPUT and the temperature settle.
+
+
 
 Background
 
@@ -200,15 +228,19 @@ The last 10 MWe of LOAD, then a smaller pull to bring the temperature back up. R
 
 9. Confirm full power, with the boron dilution done.
 
-9a. Verify full power: REACTOR POWER 100 %, OUTPUT 100 MW, AVG COOLANT TEMPERATURE 578 °F, BORON 660 ppm or below.
+*The climb is not finished until the boron dilution has fully arrived.*
 
-Note: CONTROL ROD POSITION should be part-way out, not on its stop. Come from the startup walkthrough and the last of the dilution is still arriving here: AVG COOLANT TEMPERATURE climbs while it does, so hold INSERT a few steps whenever it rises above its band. BORON is the one to read twice: leave the climb with more of it in the water than the plant wants and AVG COOLANT TEMPERATURE sinks over the following hours, taking PZR LEVEL with it.
+()9a. Check REACTOR POWER reads about 100 % and OUTPUT 100 MW.
+
+()9b. Check BORON reads 660 ppm or below.
+
+()9c. Hold INSERT 3 steps at a time whenever AVG COOLANT TEMPERATURE rises above its band, until it holds between 563 and 592 °F.
 
 Suggested time warp: 1×.
 
-()  REACTOR POWER near 100 %
-()  BORON down to its 660 ppm setting
-()  AVG COOLANT TEMPERATURE between 563 and 592 °F
+Note: CONTROL ROD POSITION should be part-way out, not on its stop. The last of the dilution is still arriving here: AVG COOLANT TEMPERATURE climbs while it does, so hold INSERT 3 steps at a time whenever it rises above its band. BORON is the one to read twice: leave the climb with more of it in the water than the plant wants and AVG COOLANT TEMPERATURE sinks over the following hours, taking PZR LEVEL with it.
+
+
 
 Background
 
@@ -220,19 +252,21 @@ Full power, with almost no xenon in the fuel yet. Over the next hours xenon buil
 
 10. Start giving back the reactivity xenon takes, rods first.
 
-10a. Hold WITHDRAW at MED for about 6 steps.
+*Xenon takes reactivity away over about two days; rods give it back first, but only once it has taken some.*
 
-Note: Xenon is building, and it will keep pulling AVG COOLANT TEMPERATURE down. Repeat this pull whenever the temperature drops out of its band. Small pulls, then wait for it to settle. The Control Rods — Insertion Limit alarm (ROD LIMIT LO-LO) is up and that is normal — the bank is low because there is no xenon yet, and it clears as you walk the bank up.
+()10a. If AVG COOLANT TEMPERATURE reads below its band, hold WITHDRAW at MED 3 to 6 steps; otherwise leave the rods where they are.
+
+()10b. Check OUTPUT still reads 100 MW.
 
 Suggested time warp: 1×.
 
-()  Rods withdrawn a few steps
-()  Still at full load, 100 MW
-()  AVG COOLANT TEMPERATURE near 580 °F
+Note: Right after the climb there is almost no xenon, and the temperature holds by itself. Pulling now only heats the plant, far enough that it cuts the turbine back on its own. As xenon builds over the next hours the temperature drifts down: pull 3 to 6 steps each time it leaves its band, then wait for it to settle. The Control Rods — Insertion Limit alarm (ROD LIMIT LO-LO) is up and that is normal — the bank is low because there is no xenon yet, and it clears as you walk the bank up.
+
+
 
 Background
 
-Xenon is a neutron absorber that builds in the fuel over about two days, takes reactivity away, and the plant answers by making the same power at a lower temperature. Left alone this plant does not just settle cold: measured from here, PZR LEVEL is on its floor in 7 plant-hours and the reactor trips on STEAM GENERATOR LEVEL LO-LO in 17, with REACTOR POWER reading 100 % the whole way down. You give the reactivity back with two levers, rods leading because they are fast and reversible: the bank has about 250 steps to go, worth roughly 56 °F between them, and each ppm of boron about 0.6 °F.
+Xenon is a neutron absorber that builds in the fuel over about two days, takes reactivity away, and the plant answers by making the same power at a lower temperature. Left alone this plant does not just settle cold: measured from here, PZR LEVEL is on its floor in 7 plant-hours and the reactor trips on STEAM GENERATOR LEVEL LO-LO in 17, with REACTOR POWER reading 100 % the whole way down. You give the reactivity back with two levers, rods leading because they are fast and reversible: the bank has about 290 steps to go, worth roughly 110 °F between them, and each ppm of boron about 0.6 °F.
 
 [HIGHLIGHTED: Control Bank (pulsing); Tavg, Control Rod Position (steady)]
 
@@ -240,18 +274,21 @@ Xenon is a neutron absorber that builds in the fuel over about two days, takes r
 
 11. Give boron its first small dose as xenon builds.
 
-11a. On the BORON card set 650 and press Enter.
+*Rods alone cannot carry all of the xenon still to come; boron takes the rest, a small dose at a time, once the rods fall behind.*
 
-Note: One 10 ppm dose, not the whole 43 ppm still to come (660 down to 617). It takes about ten plant-minutes to arrive and lifts AVG COOLANT TEMPERATURE about 5 °F on the way, to near 587 °F; xenon then takes it back down. Repeat a dose whenever the rods alone stop holding the temperature in its band.
+()11a. If the rods alone no longer hold AVG COOLANT TEMPERATURE in its band, set the BORON target 10 ppm lower; otherwise leave it.
 
-Suggested time warp: 10×. Give the dose ten plant-minutes to arrive before you judge it.
+()11b. Check OUTPUT still reads 100 MW.
 
-()  BORON coming down off 660 ppm
-()  Still at full load, 100 MW
+Suggested time warp: 10×. Give a dose ten plant-minutes to arrive before you judge it.
+
+Note: A dose is 10 ppm, never the whole 43 ppm still to come (660 down to 617). Each takes about ten plant-minutes to arrive and lifts AVG COOLANT TEMPERATURE about 5 °F. Right after the climb the rods have hours of travel to give, so the first dose is hours away.
+
+
 
 Background
 
-Rods are fast, but they run out: the bank has about 250 steps left and the xenon still to come costs more than they carry. Boron carries the rest, and it has to go in small doses — dial the whole way in one press and the plant heats far faster than xenon can absorb it, which trips the reactor on overtemperature.
+Rods are fast, but they run out: the bank has about 290 steps left and the xenon still to come costs more than they carry. Boron carries the rest, and it has to go in small doses — dial the whole way in one press and the plant heats far faster than xenon can absorb it, which trips the reactor on overtemperature.
 
 [HIGHLIGHTED: Boron Target (pulsing); Boron Concentration, Tavg (steady)]
 
@@ -259,17 +296,21 @@ Rods are fast, but they run out: the bank has about 250 steps left and the xenon
 
 12. Hold full power on programme while xenon builds.
 
-12a. Full power and on programme: OUTPUT 100 MW, AVG COOLANT TEMPERATURE 580 °F, CONTROL ROD POSITION rising.
+*Xenon keeps building for two plant-days, so full power is held by hand until it levels off.*
 
-Note: Keep trimming for the next two plant-days.
+()12a. Check OUTPUT still reads 100 MW.
+
+()12b. Check AVG COOLANT TEMPERATURE reads about 580 °F and CONTROL ROD POSITION is part-way out, below 600.
 
 Suggested time warp: 1×.
 
-()  Still at full load, 100 MW
+Note: Keep trimming for the next two plant-days.
+
+
 
 Background
 
-Where this ends up, if you keep at it: CONTROL ROD POSITION about 606 of 627 and BORON about 617 ppm, which is where this plant runs at full power with xenon at equilibrium (the settled point measures 612.3 ppm; 617 is the target you dial toward). Rods carry the first 56 °F; once the bank is near the top it has only about 21 steps of travel left, worth 4.6 °F, and BORON carries the rest — four more doses like the one you just set, 10 ppm at a time, never in one press. Type 617 in one go and the plant heats far faster than xenon can absorb it: measured, that trips the reactor on overtemperature.
+Where this ends up, if you keep at it: CONTROL ROD POSITION about 606 of 627 and BORON about 617 ppm, which is where this plant runs at full power with xenon at equilibrium (the settled point measures 612.3 ppm; 617 is the target you dial toward). Rods carry the first 110 °F or so; once the bank is near the top it has only about 21 steps of travel left, worth 4.6 °F, and BORON carries the rest — about four doses of 10 ppm, one at a time, never in one press. Type 617 in one go and the plant heats far faster than xenon can absorb it: measured, that trips the reactor on overtemperature.
 
 [HIGHLIGHTED: Control Rod Position, Boron (steady)]
 
@@ -531,3 +572,139 @@ initial condition) so this leg's numbers are measured on the plant the startup h
 10–11 become conditional on the temperature being below the band.
 
 **Not verified.** No browser or layman re-run of this text. Seed 42 only for the chain.
+
+### Reword and re-measure record — 2026-09-25, `exp/w6-raise` scratch lane
+
+**Two OWNER RULINGS, 2026-09-24, option selections (option text, not verbatim — Hard Rule 11):**
+**"Rebuild the preset"** ("Make the low-power starting condition match what the startup walkthrough
+actually hands over (no xenon), and re-measure raise power's numbers.") and **"Yes, all five"**
+(restyle this file into the what / why / how shape of `02_mode3_to_mode1.md` record (h)).
+
+**A. The preset.** `low_power` (`engines/pwr2/pwr2_engine.js`) now seeds iodine and xenon at zero
+and the bank at 222. MEASURED at the start of this leg on the chained route (heatup, then startup,
+one service, seed 42): xenon 0.008 % of full-power equilibrium, bank 222, 718.7 ppm, 10.0 MWe,
+Tavg 547.6 °F and still rising (STARTUP RATE +0.05 DPM). The rebuilt preset boots 718.5 ppm at
+the programme Tavg, 550.3 °F, and holds 550.5 → 550.0 °F over its first hour. Before: 17.2 %
+xenon, bank 227, 683.8 ppm.
+
+**Numbers, re-measured** (`run_walkthrough_routes`, live checklist, full stack, seed 42; preset
+route vs chain route; the two now agree):
+
+| | before (preset / chain) | after (preset / chain) |
+|---|---|---|
+| step 3 move | 24 / 59 ppm | **59 / 59 ppm** |
+| 719 → 660 ppm arrives | — | 663 ppm at 24.1 plant-min, 660.5 at 25.2 (preset, dilution alone) |
+| gauge-route net pull, stages 4–8 | 23/12/37/28/19 (old record) / 21/16/25/22/12 | **23/12/24/22/12 / 21/16/25/22/12** |
+| step 9 time, rods inserted | 0.1 min, 0 / 9.0 min, 12 | **8.1 min, 9 / 9.0 min, 12** |
+| bank after step 9 / after step 10 / leg end | 346 / 357 / 358 · 306 / 315 / 318 | **306 / 316 / 318 · 306 / 315 / 318** |
+| leg end Tavg, time | 586.0 °F, 27.2 min / 589.7 °F, 36.8 min | **589.7 °F, 35.5 min / 589.7 °F, 36.8 min** |
+
+Text moved with it, word for word in this file and the pool: 3a note "near 719, not 684 … about 35
+plant-minutes" → "near 719, so the move is 59 ppm … about 25"; 3 Background "this 24 ppm move takes
+about ten plant-minutes, and a 10 ppm trim later takes about the same again" → "this 59 ppm move
+takes about 25 plant-minutes, and a 10 ppm trim later takes about ten"; the stage counts 20/20/35/25/20
+→ **20/15/25/20/10** (the gauge route's nets, rounded); 9a note drops "Come from the startup
+walkthrough and"; 10 Background "about 250 steps … roughly 56 °F" → "about 290 steps … roughly
+110 °F"; 11 Background "about 250 steps" → "about 290"; 11a note "to near 587 °F; xenon then takes
+it back down" → "to near 590 °F; xenon takes hours to take it back"; 12 Background "the first 56 °F"
+→ "the first 110 °F or so"; pool `outcome` "about 353 of 627 … about 250 steps, roughly 56 °F" →
+"about 318 … about 290 steps, roughly 110 °F".
+- **The 110 °F**: static reactivity, `hot_full_power` state, bank 318 → 606 = **1907 pcm**, at the
+  plant's own 9.98 pcm/ppm and 0.567 °F/ppm. **The old 56 °F was wrong on the old preset too**: the
+  same calculation gives 353 → 606 = 1600 pcm = **91 °F**. It had multiplied the steps by the
+  top-of-bank worth (0.22 °F a step), which its own pool comment said is 2.3× too small at 357.
+- Step 9's `< 663` BORON row and step 10's "near 580 °F" row are unchanged; both routes meet them.
+
+**MEASURED, NOT FIXED — NEEDS A RULING: steps 10–11 overheat a xenon-free plant, now on BOTH
+routes.** After the leg completes (preset, no further input): 589.7 °F → **601.6 °F at +19.5
+plant-min**, and the plant **runs the turbine back from 100 to 80.7 MW** (6 min after the leg ends),
+holding ~601 °F for the hour measured. Counter-case, the same route with steps 10 and 11 deleted:
+Tavg **579.7 °F** 30 plant-min after step 9, on its band. So "lifts about 5 °F … xenon takes hours
+to take it back" is true as far as it goes; what it leaves out is the runback. The previous record's
+option (b), making 10–11 conditional on the temperature being below its band, is the fix; it was
+not selected because (a) was expected to settle it, and it does not.
+
+**The authored replay** (`run_checklist_pwr2`, fixed pulls): on the xenon-free preset its old
+20/20/35/25/20 pulls trip the reactor on overtemperature-delta-T at step 8 (the `chain_count_pulls`
+finding, now on the preset too). Its `replay_then` pulls moved to the card's **20/15/25/20/10**: no
+trip, every stage row met. **One red left, tracked, pending the ruling above:** step 10's
+temperature row reads **586.9 °F** at the end of the replay's hour, over the row's 585.3 °F edge —
+the same steps 10–11 overheating. A replay-only INSERT at step 9 cannot fire (step 9 has no hold).
+
+**B. The restyle (phase 1, this file only; the pool keeps its old shape).** 12 steps, numbering
+unchanged; every step gains a one-line italic WHY (agent-drafted, for owner review); every substep
+opens with a verb and is its own check-off. Check-offs **32 → 32**: four new (1b, 1c, 3a, 12b) and four pairs of rows now share one check-off (4c, 5c, 6c, 10b). Time warp: once per step, per substep in 4–8 (1× / 1× / 10×). "MWe" kept in goal
+lines (ruled "leave"); board strings say MW.
+
+**Substep ↔ grading row, for the phase-2 bring-down:**
+- 1a = the Mode 1 row. **1b, 1c: no row — need an acceptance in phase 2.**
+- 2a = `turbine_tripped`; 2b = `mwe_output > 8`.
+- **3a: no row — needs an acceptance in phase 2** (ON lit); 3b = the `set_auto_setpoint 660` cmd row.
+- 4a–6a = the LOAD cmd row; 4b–6b = the temperature row; **4c–6c = TWO rows each** (generator,
+  reactor following) on one check-off. ⚠ In the pool these two rows sit BEFORE the temperature row
+  in `accs_ordered`, so the substep order (pull, then check) and the grading order disagree: phase 2
+  must move one of them.
+- 7a = LOAD; 7b = temperature; 7c = generator (same ordering note).
+- 8a = LOAD; 8b = temperature; 8c = generator; 8d = `control_bank_steps < 600` (same ordering note).
+- 9a = `power_pct > 96` (OUTPUT has no row of its own); 9b = `boron_ppm < 663`; 9c = the temperature row.
+- 10a = the rod-press cmd row; **10b = two rows** (load, temperature) on one check-off.
+- 11a = `boron_ppm < 655`; 11b = the load row.
+- 12a = the load row. **12b: no row — needs an acceptance in phase 2.**
+
+**Manuals** (pending Rev 22, items (h) and (i)): `09` §11.0's `low_power` column (bank 222, boron
+719, xenon 0; the gated rows re-booted by `run_manual_setpoints`) and `12` §7.3's 30 MWe load-ramp
+table, re-measured on the new preset: Tavg low 534.9 → **533.0 °F** (4 min 35 s), level low
+21.7 → **20.6 %** (3.6 points clear of the 17 % cut), settling 536.0 → **534.4 °F**; the old preset
+re-run on the same script reproduces the old figures (534.8 °F, 21.5 %).
+
+**Not verified.** Seed 42 only. No browser or layman playthrough of the restyled text (the pool
+does not carry it yet). Decay heat is still seeded at the 10 % equilibrium (0.60 %) where the
+startup hands over 0.29 %; the routes converged without it, so it was left. The WHY lines are
+drafted, not measured claims, except step 3's 25 plant-minutes.
+
+### Ruling and bring-down record — 2026-09-25 (b), `exp/w6-raise` scratch lane (phase 2)
+
+**OWNER RULING 2026-09-24/25, option selection "Make them conditional"** (option text, not
+verbatim: "Pull or dose only when AVG COOLANT TEMPERATURE is below its band; the check-off becomes
+'on band and at full load'."). Steps 10 and 11 now ask for a pull or a dose ONLY below the band;
+both grade the temperature row (near 580 °F, 574.5 to 585.3) and the load row, and carry
+`press_expected` (a real conditional press). The replay issues nothing on either (was a 6-step pull
+and a 650 ppm dose). 11a's "set the BORON target 10 ppm lower" replaces "set 650"; 12b now says
+"part-way out, below 600" and grades it, since the bank no longer rises by instruction.
+
+**Measured** (`run_walkthrough_routes`, seed 42, full stack, live checklist):
+
+| | preset | chain |
+|---|---|---|
+| leg ends | **580.5 °F**, bank 306, 25.7 plant-min | **581.2 °F**, bank 309, 27.0 plant-min |
+| steps 10–12 | met on arrival, 0.1 min each (listed `entry_met`) | same |
+| lower power peak (chain) | — | **593.0 °F** (was 600.3 °F) |
+
+The runback is gone: with 10–11 asking for nothing on an on-band plant, the leg's end is the plant
+of the earlier "10–11 deleted" run, 579.7 °F 30 plant-min on and no turbine cut (record (a) above).
+Gauge-route net pulls, stages 4–8: preset 24/9/28/18/14, chain 27/12/26/18/13 (card "about"
+20/15/25/20/10, unchanged).
+
+**Phase 2: the pool brought down to this file.** Every step has `aim` (the italic line) and the
+step-level `speed_text` where its substeps share a rung (1–3, 9–12); 4–8 keep per-substep speeds.
+Script-compared, file vs pool: text, aim, every substep `ask`, notes, speed lines and Background —
+**identical, 12 steps** (the comparator was injected with three edits and reported 7 differences).
+- **The four new check-offs are graded**: 1b `feed_coupled`, 1c `ir_high_blocked` +
+  `pr_low_setpoint_blocked`, 3a `boron_auto_on`, 12b `tavg_c` + `control_bank_steps < 600`.
+  Injection-proved on the live runtime from `low_power`: SG FEED to MANUAL unticks 1b, each
+  unblock unticks 1c, and 3b stays unmet until the press.
+- **The 4–8 ordering is resolved by making 4b–8b a rod-press row** (`rod_nudge`, any control-rod
+  press), and moving the temperature row into c under the OUTPUT check, graded after it. Grading
+  order now equals text order: LOAD, pull, then OUTPUT / power / temperature. Measured: a LOAD
+  with no pull leaves 4b unmet after 300 plant-seconds (rows 1 0 0 0 0).
+- 3b is cmd + `p` (`boron_target_ppm ~ 660`), so the #697 sweep no longer reads 3a's lamp as the
+  press's own state; `pwr_raise_power:3` leaves its no-observable-state list.
+- Retired injection `band_transient_pass`: with the temperature row a `cont` graded after OUTPUT,
+  the transient tick it guarded cannot light Continue, and no placement of a narrowed band made it
+  tick at all on the xenon-free plant (measured four ways). `no_latch_9a` still proves the detector.
+- "a few steps" (run_style W12) → "3 steps at a time" (9) and "3 to 6 steps" (10): the gauge route
+  inserts in 3-step pulls, 9 to 12 in all.
+
+**Not verified.** Seed 42 only. No layman or browser playthrough of the reworded text
+(`verify_e2e_ui` and `verify_manual_follow` pass). The stage counts were not re-rounded to the new
+nets (stage 5 measures 9 / 12 against "about 15").

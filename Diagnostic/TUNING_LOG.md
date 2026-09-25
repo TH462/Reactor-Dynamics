@@ -58,6 +58,26 @@ Record: `Blueprint/walkthrough_steps/04_lower_power.md` Notes, bring-down record
 - **A step-level rung is also the rung once every row is met.** Adding `wait_speed` to the step
   so substep a can fall back to it changes the clock for the done-but-not-continued window too:
   steps 4-6 went from the 30 s rule's 60× to 10× there. Harmless here; say it when you do it.
+## Session log — 2026-09-25-workbench-a (raise power on a xenon-free preset: the seam was not the preset)
+
+Traps only; the numbers are in `Blueprint/walkthrough_steps/03_raise_power.md` Notes (2026-09-25).
+
+- **An at-power IC seeded at its OWN equilibrium carries a history the route never had.**
+  `createKinetics` puts iodine and xenon at the IC's power equilibrium — a plant run at 10 % for
+  days — so `low_power` held 17 % xenon and 684 ppm while the startup hands over none and 719.
+  Seeding I = X = 0 and the bank at 222 makes the preset and chained raise routes end identically
+  (589.7 °F, bank 318). The handover itself is a transient (Tavg 547.6 °F, +0.05 DPM): take the
+  boron and bank from it and let the programme Tavg fall out of the trim (718.5 ppm, 0.2 off).
+- **Fixing the fixture exposed the procedure.** With both routes on the real plant, steps 10–11
+  (pull 6, dose 10 ppm with no xenon yet) take the plant to 601.6 °F and a turbine runback to
+  80.7 MW within 20 plant-min of the leg's end; with them deleted it holds 579.7 °F. The chain
+  seam was never the preset's fault alone.
+- **Ordering a text list does not order the grading.** 4c checked OUTPUT after the pull while
+  `accs_ordered` graded OUTPUT before the temperature row: the fix is a row per substep in text
+  order (a rod-press row for the pull), not a reworded note. An injection built on a head row went
+  green once the row became a `cont` graded after OUTPUT — re-aim or retire it, never re-band it.
+- **A rod-worth total built from the top-of-bank per-step worth is 40 % light.** "250 steps,
+  roughly 56 °F" was 0.22 °F × steps; the static integral 353 → 606 is 1600 pcm = 91 °F.
 
 ## Session log — 2026-09-24-workbench-l (layman pass 4, the six legs as one plant: the route gate reloaded every leg's own starting condition)
 

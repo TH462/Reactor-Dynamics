@@ -311,8 +311,25 @@
      * the seed was 9.3 % high and the IC — whose whole contract is to open SETTLED — rang
      * 10.50 -> 9.60 % over its first 600 s. Measured at #650, on the same harness as every
      * other figure here. `load_mwe` is the authority because the turbine enforces it; `pf`
-     * follows the plant's own heat rate at that draw and is re-measured when it moves. */
-    low_power:      { pf: 0.09604, load_mwe: 10, ctrl_steps: 227 },
+     * follows the plant's own heat rate at that draw and is re-measured when it moves.
+     *
+     * ⚠ XENON-FREE, AND THE BANK AT 222 *(OWNER RULING, 2026-09-24, option selection "Rebuild the
+     * preset"; option text, not verbatim: "Make the low-power starting condition match what the
+     * startup walkthrough actually hands over (no xenon)")*. The createKinetics default seeds
+     * iodine and xenon at the IC's OWN power equilibrium, i.e. a plant that has run at 10 % for
+     * days: 17.2 % of full-power xenon, 684 ppm. The startup hands over a core that went critical
+     * minutes ago. MEASURED, `run_walkthrough_routes --leg=chain` (seed 42), the plant at the
+     * start of `pwr_raise_power` after heatup + startup on one service: xenon 0.008 % of
+     * full-power equilibrium, iodine 0.9 % of its 10 % equilibrium, bank 222, 718.7 ppm, 10.0
+     * MWe, Tavg 547.6 degF and still rising (STARTUP RATE +0.05 DPM — the handover is a
+     * transient, not a settled state). So `xenon_free` seeds I = X = 0 and the bank at 222; the
+     * criticalBoron trim then lands at **718.5 ppm** at the programme Tavg (550.3 degF), 0.2 ppm
+     * from the handover, and the state opens settled (550.5 -> 550.0 degF over its first hour
+     * as xenon starts to build). With it, the raise leg's preset and chained routes end at the
+     * same place: 589.7 degF, bank 318 (preset 35.5 plant-min, chain 36.8). Decay heat is still
+     * seeded at the 10 % equilibrium (0.60 %); the handover carries 0.29 % — left, unmeasured
+     * in effect beyond that convergence. */
+    low_power:      { pf: 0.09604, load_mwe: 10, ctrl_steps: 222, xenon_free: true },
     hot_zero_power: { pf: 0,   load_mwe: 0, subcritical: true },
     /* THE SHUTDOWN IC (#507 wave 10) is MODE 4, HOT SHUTDOWN — 250 degF / 350 psig,
      * RHR-held, RCPs secured, both banks in, the P-11 blocks taken (the cooldown's own
@@ -469,7 +486,8 @@
      *
      * Read off the BUILT plant rather than recomputed, so designHmap's node map and this seed
      * cannot drift apart. The no-load and cold ICs have dT0 = 0 and are byte-identical. */
-    var rx = R.createReactor({ P: powf, coolTemp_c: tLeg(sys, 'core') });
+    var rx = R.createReactor({ P: powf, coolTemp_c: tLeg(sys, 'core'),
+                               I: ic.xenon_free ? 0 : undefined, X: ic.xenon_free ? 0 : undefined });
     /* TWO BANKS (#506.3, 2026-08-22): control + shutdown, worths from the kinetics module's
      * own gated pair (WTSM 2.2 Table 2.2-1: 4068 / 3676 pcm — the citation, ML11216A051, is
      * NOT in the corpus; the figures are cited-but-uncorroborated, recorded in

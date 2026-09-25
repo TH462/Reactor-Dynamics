@@ -152,7 +152,9 @@ var ROUTES = {
     // "Make sure the turbine is on line and taking steam": a CONFIRM step — the ask is "Check the
     // TURBINE-GENERATOR card is on line", LATCH only "if it reads TRIP" — and the low_power start
     // arrives latched at 10 MWe. Added to the provisional no-action default, not replacing it.
-    entry_met: ['cmd:latch_turbine'],
+    // 10 and 11 are CONDITIONAL since 2026-09-25 (owner ruling "Make them conditional"): on the
+    // plant the climb leaves they are met on arrival — the player's act is to leave rods and boron alone.
+    entry_met: ['cmd:latch_turbine', '#10', '#11'],
     mistakes: [
       { id: 'double_boron', kind: 'double press', at: 'cmd:set_auto_setpoint', set: { repeat: 2 } },
       // the OLD order: the pull first, LOAD after it
@@ -282,13 +284,14 @@ var MUTATIONS = [
   { id: 'cooldown_until_flat', leg: 'pwr_cooldown', route: 'typical', expect: 'stated',
     why: 'cooldown 4 as the OLD card read it: after each 50 psi, wait until the whole-degree tile reads the same twice, 5 plant-minutes apart',
     override: { 'cmd:set_steam_dump_setpoint': { policy: 'stair', from: 1020, to: 120, step: 50, read_s: 300, stated_max_min: 120 } } },
-  { id: 'band_transient_pass', leg: 'pwr_raise_power', route: 'typical', expect: 'flash',
-    why: "raise-power 6 unordered, its Tavg band narrowed to 569.5-571.5 degF (the pull crosses it in seconds)",
-    /* RE-AIMED 2026-09-25: the typical player now follows the gauge a step at a time, which never
-     * crosses a 2 degF band in under PASS_S (measured: the injection went GREEN). The fast crossing
-     * is the old card's fixed 35-step pull, so this run makes it. */
-    override: { 'cmd:set_load_target:3': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 75 }, { action: 'rod_nudge', group_id: 'control', steps: 35, speed: 'normal' }] } },
-    mutate: function (P) { P.steps[5].accs_ordered = false; var e = P.steps[5].accs[3]; e.v = (570.5 - 32) * 5 / 9; e.tol = 1 * 5 / 9; } },
+  /* `band_transient_pass` RETIRED 2026-09-25 (exp/w6-raise, raise-power phase 2). It narrowed stage
+   * 6's Tavg row to a 2 degF band and un-ordered the step, to prove a transient pass through the band
+   * is flagged. On the xenon-free `low_power` the 35-step pull crosses that band faster than the
+   * runtime's ACC_STABLE_N streak, so the row never ticks at all (MEASURED, four placements: tol 1,
+   * 1.5, 2.5 degF, head and `cont`, before and after the rod row — never met, or met with the step
+   * completing at once). The row is now a `cont` of 6c, graded after OUTPUT arrives and under
+   * `accs_ordered`, so the transient tick it guarded cannot light Continue. The detector itself is
+   * still proven by `no_latch_9a` (expect flash). */
 ];
 
 /* ================================ THE CHILD: ONE RUN ==================================== */

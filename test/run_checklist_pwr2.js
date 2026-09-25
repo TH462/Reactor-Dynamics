@@ -1020,7 +1020,9 @@ if (!only && RUN_B) {
      * is `pwr_raise_power:3`'s shape exactly, for the same reason: boration runs about 36
      * plant-minutes in the background (MEASURED, #753), so a state row would stall the leg on
      * chemistry. NOT MEASURED HERE: whether re-entering an unchanged 719 re-sends the command. */
-    var NO_STATE_EXPECTED = { 'pwr_raise_power:3': 1, 'pwr_lower_power:1': 1 };
+    /* `pwr_raise_power:3` LEFT THIS SET BY BEING FIXED (2026-09-25, raise-power phase 2): 3b now
+     * grades `boron_target_ppm ~ 660` beside its cmd (the #697 cmd + `p` shape). */
+    var NO_STATE_EXPECTED = { 'pwr_lower_power:1': 1 };
     var noStateTally = {};
     NO_STATE.forEach(function (r) { var k = r.proc + ':' + r.step; noStateTally[k] = (noStateTally[k] || 0) + 1; });
     var noStateKeys = Object.keys(noStateTally), expectedKeys = Object.keys(NO_STATE_EXPECTED);
@@ -3764,11 +3766,12 @@ if (!only && RUN_B) {
        * 90 -> 92 instrument-graded, sole 29 -> 28. Step 1 +2 (RCP FLOW, STARTUP RATE — both
        * instrument), step 2 +2 (the ON lamp and target box, control-state), step 3 +2 (STEAM DUMP
        * AUTO and DUMP SETPOINT, control-state); step 2's BORON CHEM row stops being the only one. */
-      /* RE-PINNED 2026-09-25 (`pwr_shutdown` what / why / how bring-down, exp/p2-shutdown): 141 -> 143
-       * predicate rows (+2: 2a `scrammed`, 3c STEAM PRESS), 92 -> 93 instrument-graded (3c; `scrammed`
-       * is true_state). Graded steps and sole unmoved. SUM the deltas with the sibling bring-downs on a merge. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25: 84 / 143 / 93 / 28)',
-         gradedSteps === 84 && predRows === 143 && rows.length === 93 && soleInst === 28,
+      /* RE-PINNED 2026-09-25 (b) (`pwr_raise_power` what / why / how bring-down, exp/w6-raise): +1 graded step
+       * (3, was cmd-only), +8 predicate rows (1b, 1c x2, 3a, 3b's target, 9's OUTPUT, 12b x2; 10 and 11
+       * trade cmd/boron for temperature), +2 instrument-graded (9 OUTPUT, 12 temperature; 11 trades
+       * boron for temperature), sole 28 -> 27 (12 is no longer one row). SUM these deltas on a merge. MERGED with the shutdown bring-down (+2 rows, +1 instrument): 85 / 151 / 95 / 27. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25 (b): 85 / 151 / 95 / 27)',
+         gradedSteps === 85 && predRows === 151 && rows.length === 95 && soleInst === 27,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -3888,11 +3891,14 @@ if (!only && RUN_B) {
       'pwr_raise_power:8:mwe_output': 'mwe_output',          // > 97
       'pwr_raise_power:8:tavg_c': 'tavg',                    // ~ 303.2
       'pwr_raise_power:9:power_pct': 'power_range',          // > 96
+      'pwr_raise_power:9:mwe_output': 'mwe_output',          // > 97   9a's OUTPUT row (phase 2, 2026-09-25)
       'pwr_raise_power:9:tavg_c': 'tavg',                    // ~ 303.2
       'pwr_raise_power:10:mwe_output': 'mwe_output',         // > 97
       'pwr_raise_power:10:tavg_c': 'tavg',                   // ~ 304.4
+      'pwr_raise_power:11:tavg_c': 'tavg',                   // ~ 304.4  conditional dose (2026-09-25 ruling)
       'pwr_raise_power:11:mwe_output': 'mwe_output',         // ~ 100
-      'pwr_raise_power:12:mwe_output': 'mwe_output',         // > 97 [SOLE]   the #667 shape exactly
+      'pwr_raise_power:12:mwe_output': 'mwe_output',         // > 97   no longer SOLE (phase 2: 12b's temperature row)
+      'pwr_raise_power:12:tavg_c': 'tavg',                   // ~ 304.4
       /* pwr_lower_power [hot_full_power] */
       'pwr_lower_power:2:mwe_output': 'mwe_output',          // ~ 75          dead 0.000 vs true 100.0 MWe
       'pwr_lower_power:3:mwe_output': 'mwe_output',          // ~ 75
@@ -3923,7 +3929,7 @@ if (!only && RUN_B) {
     var TICK_EXPECTED = {
       'pwr_heatup:15:adv_valve_pct': 1, 'pwr_heatup:17:power_pct': 1,
       'pwr_startup:12:power_pct': 1,
-      'pwr_raise_power:9:boron_ppm': 1, 'pwr_raise_power:11:boron_ppm': 1,
+      'pwr_raise_power:9:boron_ppm': 1,   /* 11's boron row left 2026-09-25: the dose is conditional */
       'pwr_lower_power:2:power_pct': 1, 'pwr_lower_power:3:tavg_c': 1,
       'pwr_lower_power:3:power_pct': 1, 'pwr_lower_power:4:power_pct': 1,
       'pwr_lower_power:4:tavg_c': 1, 'pwr_lower_power:5:power_pct': 1,
@@ -4075,8 +4081,10 @@ if (!only && RUN_B) {
       'pwr_startup:10': 'ir_amps,power_pct',                  // the climb, split out of old 9 (had a cmd)
       'pwr_startup:12': 'power_pct',                          // the rate row became a `steady` power row (2026-09-23)
       'pwr_startup:17': 'power_pct,mwe_output',               // his two rows, replacing plant_mode
-      'pwr_raise_power:9': 'power_pct,boron_ppm,tavg_c',
-      'pwr_raise_power:12': 'mwe_output',                     // the #667 shape, one leg later
+      'pwr_raise_power:9': 'power_pct,mwe_output,boron_ppm,tavg_c',
+      'pwr_raise_power:10': 'tavg_c,mwe_output',            // conditional since 2026-09-25 (owner ruling)
+      'pwr_raise_power:11': 'tavg_c,mwe_output',
+      'pwr_raise_power:12': 'mwe_output,tavg_c',                     // the #667 shape, one leg later
       'pwr_cooldown:8': 'pressure_mpa',
       'pwr_tmi2_incident:1': 'power_pct',
       'pwr_tmi2_incident:3': 'pressure_mpa',                  // a `saw` row, not an `acc`
