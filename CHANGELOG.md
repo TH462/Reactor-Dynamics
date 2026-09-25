@@ -30,6 +30,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Lower power walkthrough in the owner's per-substep format** (owner, 2026-09-24: "Adopt the
+  format for the other walkthroughs."). Six steps, nine substeps, 15 check-offs; each step opens
+  with a goal line, each substep carries its own note and time warp (1× press, 10× load waits,
+  5× rod trims). Grading values unchanged; step 1's press is now a drawn check-off. Rod-count
+  notes became measured ranges (e.g. 6 → 6 to 40 steps); the leg reads 7 to 50 plant-minutes.
+
 ## [Alpha 1.8.0-rc5] — 2026-09-24
 
 ### Fixed

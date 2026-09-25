@@ -29,6 +29,26 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-24-wt-lower-a (Lower power brought down to the owner's per-substep format; a rod count that depends on the route)
+
+Record: `Blueprint/walkthrough_steps/04_lower_power.md` Notes. Traps only:
+
+- **A rod count in a note is a function of how long the player waited.** The boration does the
+  rods' job given time: the replay (full holds) inserts 40 / 0 / 0 / 0 steps in steps 3-6, a
+  player who inserts the moment the load check-offs tick needs 72-74 / 60-64 / 45-46 / 36-38
+  (seeds 42, 7, 99). His "about 6" was wrong by 6x on the fast route. Measure both ends.
+- **A band's span is not the stopping window when the tile lags.** Top-to-floor of the green
+  band is 37-50 rod steps at MED, but a stop at the floor crossing went on to read 14.9 °F
+  (8.3 °C) under the floor. At 10x the span alone is 4.6-6.2 s of wall clock; 5x is the rung.
+- **The 30 s rule plays a long-`hold` load step at 60x.** Steps 4-6 (`hold` 720/600/900) had no
+  `wait_speed`; a substep rung now wins while it is active.
+- **An injection probe keyed on a leg moves branch when the leg is ported.** `run_checklist_pwr2`'s
+  ask-sweep probe was "the first ask in `pwr_lower_power`"; once every ask there carried a
+  `wait_speed`, the 15-word injection sat under the 30-word owner cap. It now takes the first
+  LEGACY ask in the pool — and goes null once every leg is ported.
+- **Parallel agents share one session scratchpad.** A `glance_rung` output written to a generic
+  filename was overwritten mid-read by another leg's run. Use a per-leg directory.
+
 ## Session log — 2026-09-24-workbench-c (third layman pass on Mode 3 to Mode 1: a Continue lit below the fold; `paramValue` is not the tile)
 
 Report and per-finding numbers: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-24_LAYMAN_PASS3.md`.
