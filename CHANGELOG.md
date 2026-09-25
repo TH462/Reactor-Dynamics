@@ -31,6 +31,12 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Cooldown walkthrough in the what / why / how shape, and a closing step 16.** The pool matches
+  `Blueprint/walkthrough_steps/06_cooldown.md` (16 steps, 29 check-offs). New check-offs: boron
+  target 920 ppm and ON lit (1a/1b), temperature and RCP FLOW (13a/13b). New step 16 (owner ruling
+  2026-09-25, option B): insert the shutdown bank, CLOSE the steam dump, DUMP SETPOINT back to
+  1020 psi, so the next heatup's AUTO press no longer opens the dump against a 197 psi setpoint
+  and trips the plant. Step 6's spray row no longer ticks on the AUTO spray passing 50 %.
 - **Walkthroughs, layman pass 4 (the six legs as one plant).** Raise power: each stage now says
   "hold WITHDRAW until AVG COOLANT TEMPERATURE is back in its band, about N steps" (the gauge
   leads); step 8 drops its "CONTROL ROD POSITION above 300" check-off and says what the 103 % rod

@@ -206,6 +206,10 @@ var ROUTES = {
     // RATE tile peak -106 degF/hr at +27 min, Mode 5 in 100 plant-min; the ramp peaks -83).
     steps: { 'cmd:set_pressure_setpoint': { policy: 'final' }, 'cmd:set_pressure_setpoint:2': { policy: 'final' },
              'cmd:set_rhr_hx:2': { policy: 'final' },
+             /* step 6 (2026-09-25 bring-down): the spray is no longer a row `cmd` (a press-latched
+              * `~` row flashed off while the flow ramped), so the player's two presses are named:
+              * HEATER OFF, then SPRAY MANUAL at 50 %, one per tick. */
+             'cmd:set_heater': { policy: 'seq', cmds: [{ action: 'set_heater', power_pct: 0 }, { action: 'set_spray', open: true, pct: 50 }] },
              /* step 4 since 2026-09-25 (layman pass 4): "Lower DUMP SETPOINT 50 psi at a time from 1020
               * to 120 ... Wait about 5 plant-minutes between steps ... About an hour and a half in all." */
              'cmd:set_steam_dump_setpoint': { policy: 'stair', from: 1020, to: 120, step: 50, wait_s: 300, stated_max_min: 120 } },

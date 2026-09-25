@@ -4744,8 +4744,14 @@
          * a `hold` of 180 s or more carries `wait_hint: false` — the substep prints its own speed
          * line, and the app's generated one would print a second. Step numbers are UNCHANGED (15), so every comment
          * below that cites a step number still means the same step. Measurements, rungs and the
-         * render-band floors: the step file's Notes, reconcile record 2026-09-24 (wt-cooldown). */
+         * render-band floors: the step file's Notes, reconcile record 2026-09-24 (wt-cooldown).
+         * WHAT / WHY / HOW SINCE 2026-09-25 (phase 2, exp/p2-cooldown; `pwr_startup` is the model):
+         * `aim` = the italic why line, ONE head entry per lettered substep (26), a warp the
+         * substeps share authored once on the step (`wait_speed` + `speed_text: true`), a Note
+         * that follows it = the step `note`. Steps 4 and 6 keep per-substep rungs (1× then 60×,
+         * 1× then 5×). Record: the step file's Notes, "Bring-down record — 2026-09-25". */
         { text: 'Add the boron a cold core needs before any cooling starts.',
+          aim: 'Cold water makes the chain reaction easier, so the extra boron has to be in before the cold arrives.',
           why: 'Hot, the plant is comfortably shut down on about 719 ppm of boron. Cold water makes the chain reaction easier, and the same core at 122 °F needs about 920 ppm for the same margin. Adding it first means the margin arrives before the cold does.',
           control: 'Boron control', target: 'BORON reads 920 ppm, ON lit',
           /* 3 ppm A MINUTE IS THE PLANT'S OWN NUMBER, AND IT IS FLAT (#753, re-measured 2026-09-14
@@ -4762,16 +4768,33 @@
            * (`r0`, whole ppm) — the old edge ticked with the tile already reading 880 and a label
            * would have said "above 880". The old wait_hint's "Start it and carry on; the next steps
            * run while it works" was dropped: the card holds on this step until the row ticks. */
+          /* ---- THE WHAT / WHY / HOW BRING-DOWN (2026-09-25, exp/p2-cooldown) ----
+           * 1a / 1b ARE NEW CHECK-OFFS. 1a grades the TARGET BOX (`boron_target_ppm`, the
+           * `boron_conc` channel's setpoint the board draws), 1b the ON lamp (`boron_auto_on`).
+           * "BORON STATUS reads BORATING" has no gradeable param (finding (c), 06_cooldown.md).
+           * 1a IS A BAND, 919.5 to 2500.5 ppm (the box's whole-ppm floor of "920" up to its
+           * 2500 ppm ceiling), NOT a latching `>=`: pressing ON — lit or not — re-captures the
+           * target to the analyzer (control_kernel `_toggleChannel`). MEASURED on the preset:
+           * target 920 then ON pressed while lit -> 718.7; ON pressed while unlit -> 719.0.
+           * The card orders the target BEFORE the ON check, so a player who presses ON after
+           * typing 920 loses the target; a latched `>=` row would stay ticked over a 719 ppm box
+           * and 1c would never come (a silent strand). The band un-ticks and asks again. */
           wait_hint: false,
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 920 }, hold: 3900,
-          accs: [{ p: 'boron_ppm', op: '>=', v: 879.5,
-                   ask: 'On the BORON card set 920 and press Enter.',
-                   note: 'Press ON only if it is not already lit. Do not start cooling until BORON STATUS reads BORATING.',
-                   wait_speed: 600,
-                   speed_text: '600× — the boration runs at a steady 3 ppm a minute and does not slow down as it closes: about 54 plant-minutes to 880 ppm.',
+          wait_speed: 600, speed_text: true,
+          note: 'The boration runs at a steady 3 ppm a minute and does not slow down as it closes: about 54 plant-minutes to 880 ppm. Do not start cooling until BORON STATUS reads BORATING.',
+          accs: [{ p: 'boron_target_ppm', op: '~', v: 1710, tol: 790.5,   /* 919.5-2500.5 ppm: the "920" floor to the box's ceiling */
+                   ask: 'Set the boron target to 920 ppm on the BORON card and press Enter.',
+                   label: 'BORON target reads 920 ppm' },
+                 { p: 'boron_auto_on', op: '>', v: 0,
+                   ask: 'Check ON is lit and BORON STATUS reads BORATING. If ON is not lit, press ON.',
+                   label: 'ON is lit on the BORON card' },
+                 { p: 'boron_ppm', op: '>=', v: 879.5,
+                   ask: 'Wait for BORON CHEM to read 880 ppm or more.',
                    label: 'BORON CHEM 880 ppm or more' }],
           hl: ['Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
         { text: 'Bring pressure under the point where the low-pressure protection can be switched off.',
+          aim: 'The plant only lets you switch off its low-pressure protection below 1972 psi.',
           why: 'Two automatic protections watch for falling pressure, because on a running plant falling pressure means a leak. They can only be switched off below 1972 psi, so the setpoint comes under that first. This is not the depressurization; it only unlocks the next step.',
           control: 'Pressure SP', target: 'PRIMARY PRESSURE below 1972 psi',
           /* `< 13.6` (1972.5 psi, which PRIMARY PRESSURE prints as "1972") -> `< 13.593` (1971.5 psi,
@@ -4779,12 +4802,13 @@
           wait_hint: false,
           cmd: { action: 'set_pressure_setpoint', mpa: 13.1 }, hold: 1500,
           ramp: [{ action: 'set_pressure_setpoint', arg: 'mpa', points: [15.41, 13.1] }],
+          wait_speed: 1, speed_text: true,
           accs: [{ p: 'pressure_mpa', op: '<', v: 13.593,
-                   ask: 'Lower SET PZR PRESSURE to 1900 psi.',
-                   note: 'Below 1972 psi the plant lets you switch off the protection in the next step.',
-                   wait_speed: 1, label: 'PRIMARY PRESSURE below 1972 psi' }],
+                   ask: 'Lower SET PZR PRESSURE to 1900 psi and wait for PRIMARY PRESSURE to read below 1972 psi.',
+                   label: 'PRIMARY PRESSURE below 1972 psi' }],
           hl: ['Pressure SP'], hl_watch: ['Primary Pressure'] },
         { text: 'Switch off the protection that would read the cooldown as a leak.',
+          aim: 'To the automatic protection a cooldown looks like a leak, and left on it would trip the reactor and start the emergency injection pumps.',
           why: 'To the automatic protection, a cooldown looks exactly like a leak: pressure falling on a hot plant. Left on, the first cooling stage would trip the reactor and start the emergency injection pumps, flooding the plant with cold water you did not ask for. STOP on the ECCS card takes the injection pump out of standby as well.',
           control: 'Trip Blocks', target: 'PZR PRESS LO-LO and SI REACTOR TRIP read BLOCKED on the TRIP BLOCKS panel; ECCS STOP lit',
           cmd: { action: 'set_trip_block', trip_id: 'lo_press', blocked: true }, hold: 30,
@@ -4842,16 +4866,20 @@
            * (`hpi_active < 1`) is true at boot, so it would skip the two trip blocks as well.
            * ORDER MATTERS: third in the array, so the replay issues it AFTER both blocks, which
            * is the order the text reads and the order the plant wants. */
+          /* 3b is its own substep since the 2026-09-25 bring-down (was a `cont` of 3a); the row
+           * order and every `cmd` are unchanged, so the replay's issue order is too. */
+          wait_speed: 1, speed_text: true,
           accs: [{ cmd: { action: 'set_trip_block', trip_id: 'lo_press', blocked: true },
                    p: 'lo_press_blocked', op: '>', v: 0,
-                   ask: 'Press TRIP BLOCKS, then BLOCK the PZR PRESS LO-LO and SI REACTOR TRIP rows.',
-                   note: 'TRIP BLOCKS is on the ROD CONTROL card.',
-                   wait_speed: 1, label: 'PZR PRESS LO-LO reads BLOCKED' },
-                 { cont: true, cmd: { action: 'set_trip_block', trip_id: 'si_trip', blocked: true },
-                   p: 'si_trip_blocked', op: '>', v: 0, label: 'SI REACTOR TRIP reads BLOCKED' },
+                   ask: 'Press TRIP BLOCKS on the ROD CONTROL card, then press BLOCK on the PZR PRESS LO-LO row. Check the row reads BLOCKED.',
+                   label: 'PZR PRESS LO-LO reads BLOCKED' },
+                 { cmd: { action: 'set_trip_block', trip_id: 'si_trip', blocked: true },
+                   p: 'si_trip_blocked', op: '>', v: 0,
+                   ask: 'Press BLOCK on the SI REACTOR TRIP row. Check the row reads BLOCKED.',
+                   label: 'SI REACTOR TRIP reads BLOCKED' },
                  { cmd: { action: 'set_hpi', active: false },
-                   ask: 'Press STOP on ECCS.', note: 'STOP is on the ECCS card.',
-                   wait_speed: 1, label: 'STOP pressed on the ECCS card' }],
+                   ask: 'Press STOP on the ECCS card.',
+                   label: 'STOP pressed on the ECCS card' }],
           hl: ['Trip Blocks', 'ECCS'] },
         /* THE DUMP MUST BE IN PRESSURE MODE, AND THE CHAIN DOES NOT LEAVE IT THERE (layman playtest
          * 2026-09-07, #653 S2). `set_steam_dump auto` maps to 'pressure' only when the turbine is
@@ -4889,6 +4917,7 @@
          * the step's Continue waits on 4b. Injection: the dump put in TAVG before this step and
          * AUTO never pressed leaves the row unmet (see 06_cooldown.md Notes). */
         { text: 'Cool the plant on the steam dump to where RHR can take over.',
+          aim: 'The steam pressure the dump holds sets the temperature the steam generator boils at, and the reactor water follows it down.',
           why: 'Steam pressure and steam temperature go together: lower the pressure the dump holds and the steam generator boils at a lower temperature, which pulls the reactor water down after it. It cannot pull the water below its own boiling point, so the walk goes all the way to 120 psi, about 341 °F, low enough for RHR to take over.',
           control: 'Dump SP', target: 'STEAM DUMP status PRESS; AVG COOLANT TEMPERATURE below 347 °F',
           wait_hint: false,
@@ -4896,26 +4925,34 @@
           ramp: [{ action: 'set_steam_dump_setpoint', arg: 'mpa', points: [7.03, 4.42, 2.76, 1.66, 0.83] }],
           saw: { p: 'tavg_c', op: '<', v: 250 },
           /* 4b: `< 175` (347.0 °F, printed "347") -> `< 174.72` (346.5 °F, the floor of "346"). */
+          /* 4a IS A CHECK SINCE THE 2026-09-25 bring-down ("Check ... If it does not, press AUTO").
+           * The `cmd` stays so the replay still exercises the press. MEASURED, `hot_zero_power`,
+           * seed 42: AUTO pressed once and then twice more on a dump already in PRESS -> mode
+           * stays 'pressure', DUMP SETPOINT stays 7.03 MPa (1020 psi) over 100 plant-s. The press
+           * cannot take the dump OFF PRESS while the turbine is tripped (pwr2_shell
+           * `set_steam_dump`: auto -> 'pressure' when `tb.tripped`), which it is on every route
+           * into this leg. */
           accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_press_mode', op: '>', v: 0,
-                   ask: 'Press AUTO on the STEAM DUMP card.',
-                   note: 'Press AUTO until the status reads PRESS; in TAVG mode the setpoint does nothing.',
+                   ask: 'Check STEAM DUMP AUTO is lit and its status reads PRESS. If it does not, press AUTO until the status reads PRESS.',
+                   note: 'In TAVG mode the setpoint does nothing.',
                    wait_speed: 1, label: 'STEAM DUMP AUTO lit, status PRESS' },
                  { p: 'tavg_c', op: '<', v: 174.72,
-                   ask: 'Lower DUMP SETPOINT 50 psi at a time from 1020 to 120.',
+                   ask: 'Lower DUMP SETPOINT 50 psi at a time from 1020 to 120, until AVG COOLANT TEMPERATURE reads below 347 °F.',
                    note: 'Small steps: one big jump drops the coolant fast and empties the pressurizer. Wait about 5 plant-minutes between steps, 5 seconds at 60×: the temperature never quite stops falling, so do not wait for it to. About an hour and a half in all.',
                    wait_speed: 60, label: 'AVG COOLANT TEMPERATURE below 347 °F' }],
           hl: ['Steam Dump — Auto', 'Dump Setpoint'], hl_watch: ['Steam Dump Status', 'Tavg'] },
         { text: 'Take the pressure setpoint to the bottom of its range.',
+          aim: 'The setpoint box stops at 1700 psi, and from here pressure comes down by hand.',
           why: 'The setpoint box is the at-power pressure control and it stops at 1700 psi. A real cooldown leaves it exactly there: below it the heaters have nothing to hold, and the operator lowers pressure with the spray instead.',
           control: 'Pressure SP', target: 'SET PZR PRESSURE 1700 psi; PRIMARY PRESSURE below 1770 psi',
           cmd: { action: 'set_pressure_setpoint', mpa: 11.83 }, hold: 1500,
           ramp: [{ action: 'set_pressure_setpoint', arg: 'mpa', points: [13.1, 11.83] }],
           /* 12.2 MPa is 1769.5 psi, already under the "1770" band: the edge stands. */
           wait_hint: false,
+          wait_speed: 1, speed_text: true,
           accs: [{ p: 'pressure_mpa', op: '<', v: 12.2,
-                   ask: 'Lower SET PZR PRESSURE to 1700 psi, as low as the box goes.',
-                   note: 'From here pressure comes down by hand.',
-                   wait_speed: 1, label: 'PRIMARY PRESSURE below 1770 psi' }],
+                   ask: 'Lower SET PZR PRESSURE to 1700 psi, as low as the box goes, and wait for PRIMARY PRESSURE to read below 1770 psi.',
+                   label: 'PRIMARY PRESSURE below 1770 psi' }],
           hl: ['Pressure SP'], hl_watch: ['Primary Pressure'] },
         /* 50 %, NOT 100 % (layman playtest pass 2, #653 S-3/S-8). The player's pressurizer went
          * SOLID on 100 % spray (level 48 -> 100 % in three plant-minutes, spray then shut itself
@@ -4944,9 +4981,9 @@
          * "grade the lineup, not the press" rule #731 settled for trip blocks. Merging it back as
          * a cmd entry would revert #653 S-5; that is the one thing this step must never become.
          *
-         * COMMAND ORDER SURVIVES THE MERGE. `st.cmd` is issued before any `accs[].cmd`
-         * (procedures_harness), so heaters-off lands first and the spray second, which is the
-         * order the text states and the order the plant needs.
+         * COMMAND ORDER SURVIVES THE MERGE. `st.cmd` (heaters off) is issued at step entry and
+         * the spray is `replay_then` on the heater row (since 2026-09-25), so heaters-off lands
+         * first and the spray second, which is the order the text states and the plant needs.
          * ⚠ NOT a #729 coupling — an earlier draft of this comment said so and sent the reader to
          * the wrong measurement. #729's order lesson is several steps later and is about shutting
          * the SPRAY before the RHR align. Heaters-before-spray predates it and was authored in the
@@ -4960,6 +4997,7 @@
          * and not a soft lock — but nothing on the card explained why, which is what the first
          * sentence of the `note` is now for. */
         { text: 'Hand pressure control from the heaters to the spray.',
+          aim: 'The spray lowers pressure only once the heaters stop boiling the water back.',
           why: 'The heaters go off first, or they boil water as fast as the spray condenses it and pressure goes nowhere. Spray condenses steam in the pressurizer and pressure falls; the setpoint box has nothing left to hold. Lowering pressure spends SUBCOOLING MARGIN, how far the reactor water is below boiling, and that has to stay positive.',
           control: 'Pressurizer Heaters (PZR)', target: 'OFF lit under HEATER; SPRAY MANUAL at 50 %; PRIMARY PRESSURE below 1615 psi',
           cmd: { action: 'set_heater', power_pct: 0 }, hold: 240,
@@ -4981,37 +5019,65 @@
            * player cannot follow. */
           /* 6b's pressure row: `< 11.14` (1615.7 psi, printed "1616") -> `< 11.131` (1614.4 psi,
            * under the "1614" floor of 1614.5). It is a `cont` of 6b: the consequence of the spray. */
+          /* 2026-09-25 bring-down: the pressure row is its own substep, 6c ("Wait for PRIMARY
+           * PRESSURE to read below 1615 psi"), and carries the 5× and the spray note — the file
+           * puts both after 6c. 6b draws no speed line of its own; while it is the active substep
+           * the step's 1× applies. */
+          /* THE SPRAY PRESS IS `replay_then`, NOT A ROW `cmd` (2026-09-25 bring-down). A `cmd`-kind
+           * `~` row is set met BY THE PRESS in handleCommand, before the flow agrees, and then the
+           * gauge grading takes it back off while the flow ramps (the instructor's own note names
+           * this row). MEASURED on the route gate's typical player: "untick step 6 row 2 (PZR SPRAY
+           * at 50 %) after 0.7 s met" — a tick that flashes off for the ~3.4 plant-s the delivered
+           * flow takes to reach 45 % (pzr_spray_flow sampled every 0.1 s at 1x: 44.87 % at +2.3 s,
+           * 45.36 % at +2.4 s after the press). Graded on the flow alone it ticks once, when the
+           * gauge is in band. The replay issues the press once the heater row is met — heaters
+           * first, one tick apart, the order the text states. */
+          replay_then: { after_acc: 0, cmd: { action: 'set_spray', open: true, pct: 50 } },
+          /* ORDERED (2026-09-25 bring-down). MEASURED on the route gate's typical player, step 6
+           * entry at 1746 psia against the 1700 psi setpoint: the spray is still in AUTO and
+           * already DELIVERING — 55.1 % falling to 39.1 % over the first 1.2 plant-s — so the
+           * unordered "PZR SPRAY at 50 %" row ticked on the AUTO spray passing through its 45-55 %
+           * band with nothing pressed, then let go 0.7 s later. Ordered, it cannot latch until the
+           * heater row has (the order the text states, and the one the plant needs: sprayed with
+           * the heaters in AUTO, pressure climbs back). */
+          accs_ordered: true,
           wait_hint: false,
+          wait_speed: 1,
           accs: [{ p: 'heater_auto', op: '<', v: 1,
                    ask: 'Press OFF under HEATER.',
                    note: 'Heaters first: with them still in AUTO the spray will not hold and pressure climbs back instead of falling.',
                    wait_speed: 1, label: 'OFF lit under HEATER' },
-                 { cmd: { action: 'set_spray', open: true, pct: 50 },
-                   p: 'spray_flow_pct', op: '~', v: 50, tol: 5,
+                 { p: 'spray_flow_pct', op: '~', v: 50, tol: 5,
                    ask: 'Press MANUAL under SPRAY with its box at 50 %, not more.',
+                   label: 'PZR SPRAY at 50 %' },
+                 { p: 'pressure_mpa', op: '<', v: 11.131,
+                   ask: 'Wait for PRIMARY PRESSURE to read below 1615 psi.',
                    note: 'Spray water goes into the pressurizer and PRESSURIZER LEVEL climbs as pressure falls. At 100 % a pressurizer that starts high fills completely, after which the spray shuts itself off. At 50 % pressure falls about 3 psi a second with room to spare.',
-                   wait_speed: 5, label: 'PZR SPRAY at 50 %' },
-                 { cont: true, p: 'pressure_mpa', op: '<', v: 11.131, label: 'PRIMARY PRESSURE below 1615 psi' }],
+                   wait_speed: 5, label: 'PRIMARY PRESSURE below 1615 psi' }],
           hl: ['Pressurizer Heaters (PZR)', 'Pressurizer Spray (PZR)'], hl_watch: ['Primary Pressure'] },
         /* "green ring" -> "pulsing ring" — the sibling of the heatup step, same #653 S-8 fix. */
         { text: 'Isolate the accumulators while pressure is inside their window.',
+          aim: 'Closed inside the window, the tanks stay full for the next heatup instead of emptying into the plant.',
           why: 'The same window as the heatup, in reverse. Above 1615 psi the valve has no power; below 665 psi the nitrogen in the tanks pushes their water into the plant. Close it in between and the tanks stay full for the next heatup.',
           control: 'Accumulator valve', target: 'ACCUMULATORS tile reads ISOLATED and 100 %',
           cmd: { action: 'close_accumulator_valve' }, hold: 30,
+          wait_speed: 1, speed_text: true,
+          note: 'The symbol sits just above the ACCUMULATORS tile, to the left of ECCS INJ FLOW. At 50 % spray the window is about 8 plant-minutes wide.',
           accs: [{ p: 'accumulator_valve_open', op: '<', v: 0.5,
-                   ask: 'Close the accumulator valve: click the valve symbol inside the pulsing ring while PRIMARY PRESSURE is 1615 to 665 psi.',
-                   note: 'The symbol sits just above the ACCUMULATORS tile, to the left of ECCS INJ FLOW. At 50 % spray the window is about 8 plant-minutes wide.',
-                   wait_speed: 1, label: 'ACCUMULATORS tile reads ISOLATED' }],
+                   ask: 'Click the accumulator valve symbol inside the pulsing ring while PRIMARY PRESSURE is 1615 to 665 psi, and check the ACCUMULATORS tile reads ISOLATED.',
+                   label: 'ACCUMULATORS tile reads ISOLATED' }],
           hl: ['Accumulator valve'], hl_watch: ['Primary Pressure'] },
         { text: 'Bring pressure under the RHR limit on the spray.',
+          aim: 'RHR cannot be aligned above 440 psi, and the spray is what takes pressure that low.',
           why: 'ALIGN on the RHR card refuses to open the suction valve above 440 psi. Switch the spray off now and pressure bounces back over that number before you get there. SUBCOOLING MARGIN stays well above 100 °F on this spray.',
           control: '(observe)', target: 'PRIMARY PRESSURE below 413 psi with SPRAY still at 50 %; PRESSURIZER LEVEL below 80 %',
           /* `< 2.85` (413.4 psi, printed "413") -> `< 2.844` (412.5 psi, the floor of "412"). */
           hold: 1200, wait_hint: false,
+          wait_speed: 60, speed_text: true,
+          note: 'About 10 to 13 plant-minutes. If PRESSURIZER LEVEL climbs past 80 %, lower SPRAY.',
           accs: [{ p: 'pressure_mpa', op: '<', v: 2.844,
-                   ask: 'Wait, with SPRAY still at 50 %, until PRIMARY PRESSURE falls below 413 psi. Do not switch the spray off.',
-                   note: 'About 10 to 13 plant-minutes. If PRESSURIZER LEVEL climbs past 80 %, lower SPRAY.',
-                   wait_speed: 60, label: 'PRIMARY PRESSURE below 413 psi' }],
+                   ask: 'Leave SPRAY at 50 % and wait for PRIMARY PRESSURE to read below 413 psi. Do not switch the spray off.',
+                   label: 'PRIMARY PRESSURE below 413 psi' }],
           /* NO PULSE ON A STEP WHOSE OWN TEXT SAYS "DO NOT SWITCH THE SPRAY OFF" (#653 S-3b,
            * 2026-09-15). This carried `hl: ['Pressurizer Spray (PZR)']` — the ACT-ON-THIS cue on
            * the one control the step tells the player to leave alone, on a step with no `cmd`.
@@ -5019,6 +5085,7 @@
            * '(observe)', so `stepHlLabels`' fallback produces no press target at all. */
           hl_watch: ['Pressurizer Spray (PZR)', 'Primary Pressure', 'Pressurizer Level'] },
         { text: 'Put RHR in service as the cooldown loop.',
+          aim: 'From here to cold, RHR is the loop that carries the heat out of the plant.',
           why: 'RHR is the low-pressure cooling loop that carries heat out of a shut-down plant. ALIGN opens its suction valve, which the plant only allows below 440 psi. HX SPLIT is how much of that loop goes through the heat exchanger; from here it is the cooldown throttle, 7 % is a gentle start, and COOLDOWN RATE beside it shows what that choice is doing.',
           control: 'Residual Heat Removal (RHR)', target: 'ALIGN lit on the RHR card; HX SPLIT 7 %',
           cmd: { action: 'set_rhr', active: true }, hold: 60,
@@ -5035,13 +5102,14 @@
            * step 12's ramp, so a bare predicate would simply red), and `p` so a plant already
            * throttled there ticks the box. `rhr_hx_fraction` is a FRACTION on the wire and 7 %
            * on the card; tol 0.02 is +/- 2 points. */
+          wait_speed: 1, speed_text: true,
           accs: [{ p: 'rhr_valve_open', op: '>', v: 0,
-                   ask: 'With the spray still on, press ALIGN on the RHR card.',
-                   wait_speed: 1, label: 'ALIGN lit on the RHR card' },
+                   ask: 'Press ALIGN on the RHR card, with the spray still on.',
+                   label: 'ALIGN lit on the RHR card' },
                  { cmd: { action: 'set_rhr_hx', pct: 7 },
                    p: 'rhr_hx_fraction', op: '~', v: 0.07, tol: 0.02,
                    ask: 'Set HX SPLIT to 7 %.',
-                   wait_speed: 1, label: 'HX SPLIT at 7 %' }],
+                   label: 'HX SPLIT at 7 %' }],
           hl: ['Residual Heat Removal (RHR)'], hl_watch: ['Primary Pressure'] },
         /* ⚠ THE SPRAY STAYS ON HERE. THIS STEP USED TO SHUT IT AND THAT WAS THE #729 BLOCKER
          * (owner playtest #724 item 19, 2026-09-12: "the RHR put itself into ISOLOATE and now i
@@ -5069,16 +5137,18 @@
          * measured, the order is the lesson"* — and the manual never told the operator to shut
          * it. Only this step did. */
         { text: 'Take the reactor coolant pumps off now that RHR is circulating.',
+          aim: 'With RHR circulating, the reactor coolant pumps are only adding heat.',
           why: 'With RHR circulating, the reactor coolant pumps are only adding heat, so they come off. The spray stays: the pressurizer shell is still hot metal and it keeps boiling water off the top of the pressurizer, which puts pressure back up. It is the only thing taking that heat away now — the heaters are already off and the SET PZR PRESSURE box stopped reaching at 1700 psi.',
           control: 'RCP ON/OFF', target: 'RCP FLOW falling; SPRAY still MANUAL at 50 %',
           cmd: { action: 'set_rcp', running: false }, hold: 60,
+          wait_speed: 1, speed_text: true,
+          note: 'Do not switch the spray off yet — a later step does that, once the plant is cold.',
           accs: [{ p: 'pump_flow_pct', op: '<', v: 50,
-                   ask: 'Press OFF on the RCP FLOW card.',
-                   wait_speed: 1, label: 'Pumps coasting down' },
+                   ask: 'Press OFF on the RCP FLOW card and check the pumps coast down.',
+                   label: 'Pumps coasting down' },
                  { p: 'spray_flow_pct', op: '~', v: 50, tol: 20,
                    ask: 'Leave SPRAY at 50 %.',
-                   note: 'Do not switch the spray off yet — a later step does that, once the plant is cold.',
-                   wait_speed: 1, label: 'SPRAY still on' }],
+                   label: 'SPRAY still on' }],
           /* THE CARD, NOT ALSO THE PUMP *(OWNER, 2026-09-09 playtest, #684 §D: "When the RCP is
            * highlighted it should highlight the RCP card not the pump. Currently both get
            * highlighted.")* — his SECOND report of it, after #607 item 1. One label lights one
@@ -5114,6 +5184,7 @@
          * 5-minute rate peaks -158 degF/hr at +4 min. Authored replay (ramps 7 -> 12) -> tile peak
          * -85 at +42 min, never over 100, 199 degF at +120 min. Split and physics unchanged. */
         { text: 'Cool on RHR into Mode 5, at about the 100 °F per hour limit.',
+          aim: 'HX SPLIT is the cooldown throttle now, and COOLDOWN RATE beside it shows what that choice is doing.',
           why: 'HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. At 12 % the read-back climbs to a little over 100 °F per hour in the first half hour, then eases off as the plant closes on the RHR sink, reaching Mode 5 in about an hour and a half to two hours; the read-back is smoothed over about ten minutes, so for the first few minutes the plant itself cools faster, near 150 °F per hour. Turn it higher and you go well over the 100 °F per hour limit: 25 % measures 193 °F per hour.',
           control: 'Residual Heat Removal (RHR)', target: 'AVG COOLANT TEMPERATURE below 199 °F',
           wait_hint: false,
@@ -5134,29 +5205,48 @@
           cmd: { action: 'set_rhr_hx', pct: 12 }, hold: 7200,
           ramp: [{ action: 'set_rhr_hx', arg: 'pct', points: [7, 10, 12] }],
           /* `< 93` (199.4 °F, printed "199") -> `< 92.5` (198.5 °F, the floor of "198"). */
+          wait_speed: 600, speed_text: true,
+          note: 'Keep COOLDOWN RATE under 100 °F per hour: if it runs faster, lower HX SPLIT. Watch SUBCOOLING MARGIN: the spray is still running and it keeps taking the margin down. The next step shuts it.',
           accs: [{ p: 'tavg_c', op: '<', v: 92.5,
-                   ask: 'Raise HX SPLIT to 12 % and wait until AVG COOLANT TEMPERATURE reads below 199 °F.',
-                   note: 'Keep COOLDOWN RATE under 100 °F per hour: if it runs faster, lower HX SPLIT. Watch SUBCOOLING MARGIN: the spray is still running and it keeps taking the margin down. The next step shuts it.',
-                   wait_speed: 600, label: 'AVG COOLANT TEMPERATURE below 199 °F' }],
+                   ask: 'Raise HX SPLIT to 12 % and wait for AVG COOLANT TEMPERATURE to read below 199 °F.',
+                   label: 'AVG COOLANT TEMPERATURE below 199 °F' }],
           hl: ['Residual Heat Removal (RHR)'], hl_watch: ['Tavg'] },
         /* THE SPRAY COMES OFF HERE, NOT AT THE RCP STEP — see the note on that step. The plant
          * is cold by now, so the pressurizer shell has almost nothing left to give: MEASURED,
          * shutting the spray at 274.7 degF put pressure up 33 psi/min and cost the leg its RHR;
          * shutting it at Mode 5 moves pressure +1 psi per 5 plant-minutes. */
         { text: 'Shut the spray now that the plant is cold.',
+          aim: 'The pressurizer shell has given up most of its stored heat, so the spray has nothing left to take away.',
           why: 'The plant is cold now and the pressurizer shell has given up most of its stored heat, so there is nothing left for the spray to take away. Shut it and pressure sits where it is. This is the lineup the Cold Shutdown preset holds: heaters off, spray in hand and shut.',
           control: 'Pressurizer Spray (PZR)', target: 'OFF lit under SPRAY',
           cmd: { action: 'set_spray', open: false }, hold: 60,
+          wait_speed: 1, speed_text: true,
           accs: [{ p: 'spray_flow_pct', op: '<', v: 1,
-                   ask: 'On the PRESSURIZER (PZR) card press OFF under SPRAY.',
-                   wait_speed: 1, label: 'OFF lit under SPRAY' }],
+                   ask: 'Press OFF under SPRAY on the PRESSURIZER (PZR) card.',
+                   label: 'OFF lit under SPRAY' }],
           hl: ['Pressurizer Spray (PZR)'] },
+        /* 13a / 13b SINCE THE 2026-09-25 bring-down: the old single `plant_mode ~ 5` row splits
+         * into the two readings the card names. 13a = AVG COOLANT TEMPERATURE at step 11's floor
+         * (`< 92.5 °C`, 198.5 °F, under the "199" band). 13b "RCP FLOW reads OFF" is graded on the
+         * RCP FLOW tile (`rcs_flow`, the same channel `pwr_startup` 1c grades "RCP FLOW reads ON"
+         * on) under 9.5 % — the floor of "10" on a whole-percent tile. The tile prints a NUMBER,
+         * never the word OFF: with the pumps secured it settles near 2 % on natural circulation
+         * (MEASURED 2.08 % 60 plant-s after `set_rcp off` on `hot_zero_power`) against ~100 %
+         * running. The OFF LAMP (the breaker, `instruments.rcp_running`) is not a gradeable param.
+         * Both rows are true on arrival — step 10 stopped the pumps and step 11 took the plant
+         * under 199 °F — which is what a confirm step is; the route gate treats a step with no
+         * operator command as entry-met. */
         { text: 'Confirm the plant is in Mode 5, Cold Shutdown.',
+          aim: 'Confirming the end state catches a plant still above 199 °F or a pump still running.',
           why: 'This is the cold-shutdown picture: water below 199 °F, pumps off, RHR carrying the heat, pressure low with the spray shut. The heatup walkthrough takes it back up.',
-          accs: [{ p: 'plant_mode', op: '~', v: 5, tol: 0.1,
-                   ask: 'Verify Cold Shutdown: AVG COOLANT TEMPERATURE below 199 °F, RCP FLOW off, ALIGN lit on the RHR card.',
-                   note: 'PRIMARY PRESSURE will be low — the spray took it there.',
-                   wait_speed: 1, label: 'Plant in Mode 5, Cold Shutdown' }],
+          wait_speed: 1, speed_text: true,
+          note: 'PRIMARY PRESSURE will be low — the spray took it there. ALIGN on the RHR card is checked in step 15.',
+          accs: [{ p: 'tavg_c', op: '<', v: 92.5,
+                   ask: 'Check AVG COOLANT TEMPERATURE reads below 199 °F.',
+                   label: 'AVG COOLANT TEMPERATURE below 199 °F' },
+                 { p: 'pump_flow_pct', op: '<', v: 9.5,
+                   ask: 'Check RCP FLOW reads OFF.',
+                   label: 'RCP FLOW under 10 %: the pumps are off' }],
           hl: null, hl_watch: ['Tavg', 'Primary Pressure'] },
         /* THE TILE THE TEXT NAMES, NOT THE VALVE *(OWNER, 2026-09-09 playtest, #684 §C: "Mode
          * 3>5 step 14 – this step has you look at the accumulators card but it highlights the
@@ -5170,22 +5260,65 @@
          * the player to read. MEASURED 100.00 % at this step on both routes (the leg's own guard is
          * `< 99` never). */
         { text: 'Confirm the accumulators are still full and isolated.',
+          aim: 'The next heatup opens the tanks again, and empty tanks then are a missing safety system.',
           why: 'You isolated the tanks on the way down so they would not empty into a depressurized plant. They have to still be full: the next heatup opens them again inside its window, and empty tanks then are a missing safety system.',
+          wait_speed: 1, speed_text: true,
           accs: [{ p: 'accumulator_volume_pct', op: '>=', v: 99.5,
-                   ask: 'Verify the ACCUMULATORS tile reads 100 % and ISOLATED.',
-                   wait_speed: 1, label: 'ACCUMULATORS reads 100 %' }],
+                   ask: 'Check the ACCUMULATORS tile reads 100 % and ISOLATED.',
+                   label: 'ACCUMULATORS reads 100 %' }],
           hl: null, hl_watch: ['Accumulators'] },
         /* HIS SECOND CHECK IS GRADED NOW (2026-09-24): "HX SPLIT is above 0 %" had no row. The HX
          * SPLIT box prints whole per cent, so "above 0" is the floor of "1", 0.5 % (fraction 0.005).
          * `rhr_hx_fraction` is a control-state read, the box's own value. MEASURED 0.12 at this
          * step on both routes; a player who shut the split to 0 is exactly who this row is for. */
         { text: 'Confirm RHR is carrying the heat.',
+          aim: 'RHR is the only thing removing heat now, and if its suction valve shut the decay heat would have nowhere to go.',
           why: 'RHR is the only thing removing heat now. If its suction valve shut, the decay heat would have nowhere to go. The heatup walkthrough is the way back.',
+          wait_speed: 1, speed_text: true,
           accs: [{ p: 'rhr_valve_open', op: '>', v: 0,
-                   ask: 'Verify ALIGN is lit on the RHR card and HX SPLIT is above 0 %. The round trip is complete.',
-                   wait_speed: 1, label: 'ALIGN lit on the RHR card' },
-                 { cont: true, p: 'rhr_hx_fraction', op: '>=', v: 0.005, label: 'HX SPLIT above 0 %' }],
+                   ask: 'Check ALIGN is lit on the RHR card.',
+                   label: 'ALIGN lit on the RHR card' },
+                 { p: 'rhr_hx_fraction', op: '>=', v: 0.005,
+                   ask: 'Check HX SPLIT reads above 0 %.',
+                   label: 'HX SPLIT above 0 %' }],
           hl: null, hl_watch: ['Residual Heat Removal (RHR)'] },
+        /* STEP 16 IS NEW (2026-09-25, AGENT-DRAFTED) — OWNER RULING, 2026-09-25, selected "Both A
+         * and B" (option text, not verbatim; relayed by the coordinator). Option B: the cooldown
+         * ENDS by inserting the shutdown bank, closing the steam dump and resetting DUMP SETPOINT
+         * to 1020 psi, so the round trip hands the heatup a clean Mode 5. The defect, measured by
+         * the heatup lane on one continuous plant (seed 42): the cooldown left DUMP SETPOINT near
+         * 197 psi (1.36 MPa) with the dump in AUTO, the heatup's step-13 AUTO press opened it 100 %
+         * against that setpoint and the reactor tripped on safety injection (low steam pressure)
+         * at its step 14. Measurements for each row: the step file's Notes, bring-down record.
+         * 16a grades the bank (steps, the unit the tile prints; 0 of 627 exactly, `< 0.5`). 16b
+         * grades the SELECTION (`steam_dump_auto`, false in CLOSED — the valve position cannot
+         * tell CLOSED from an AUTO dump sitting shut). 16c grades DUMP SETPOINT in the whole-psi
+         * render band of "1020", 1019.5-1020.5 psi = 7.0327 ± 0.0034 MPa, `pwr_startup` 3b's band;
+         * a `~` row, so a player who retypes it un-ticks it. */
+        { text: 'Leave the plant lined up for the next heatup.',
+          aim: 'The heatup starts from what this step leaves, and a steam dump left in AUTO at a low setpoint opens wide the moment the heatup asks for it.',
+          why: 'The cooldown walked DUMP SETPOINT down to 120 psi. Left there with the dump in AUTO, the next heatup\'s first AUTO press opens the dump wide against a setpoint far below its steam pressure, and the plant trips on low steam pressure. Closing the dump and putting the setpoint back to 1020 psi hands the next heatup the lineup it expects; inserting the shutdown bank leaves both banks in, the way the heatup starts.',
+          control: 'Shutdown Bank', target: 'SHUTDOWN ROD POSITION 0 of 627; STEAM DUMP CLOSE lit; DUMP SETPOINT 1020 psi',
+          /* The INSERT is the STEP `cmd`, not a row `cmd`: a row carrying a `cmd` is latched met by
+           * the press itself (`_accsCmdWatch`), so 16a ticked with the bank at 577 of 627 on the
+           * first route run — the wait it asks for was never graded. */
+          cmd: { action: 'rod_nudge', group_id: 'shutdown_rods', steps: -627, speed: 'fast' },
+          hold: 660, wait_hint: false,
+          wait_speed: 60, speed_text: true,
+          note: 'If SHUTDOWN ROD POSITION already reads 0, the bank is in: go on to 16b. The bank runs in by itself, about 9 plant-minutes. The round trip is complete.',
+          accs: [{ p: 'shutdown_bank_steps', op: '<', v: 0.5,
+                   ask: 'Press FAST on the ROD CONTROL card, then click INSERT under SHUTDOWN once. Wait for SHUTDOWN ROD POSITION to read 0 of 627.',
+                   label: 'SHUTDOWN ROD POSITION 0 of 627' },
+                 { cmd: { action: 'set_steam_dump', mode: 'closed' },
+                   p: 'steam_dump_auto', op: '<', v: 1,
+                   ask: 'Press CLOSE on the STEAM DUMP card.',
+                   label: 'STEAM DUMP CLOSE lit' },
+                 { cmd: { action: 'set_steam_dump_setpoint', mpa: 7.03 },
+                   p: 'steam_dump_setpoint', op: '~', v: 7.0327, tol: 0.0034,
+                   ask: 'Set DUMP SETPOINT to 1020 psi.',
+                   label: 'DUMP SETPOINT reads 1020 psi' }],
+          hl: ['Rod Speed — Fast', 'Shutdown Bank — Insert', 'Steam Dump — Close', 'Dump Setpoint'],
+          hl_watch: ['Shutdown Rod Position', 'Steam Dump Status'] },
       ],
       guard: {
         never_melted: true,
@@ -5201,7 +5334,7 @@
           { p: 'tavg_rate_c_per_hr', op: '<', v: -600 },
         ],
       },
-      outcome: 'Mode 5, Cold Shutdown: water below 199 °F, RHR carrying the plant, reactor coolant pumps off, accumulators full and isolated, boron at the cold concentration. The heatup walkthrough takes it back up.',
+      outcome: 'Mode 5, Cold Shutdown: water below 199 °F, RHR carrying the plant, reactor coolant pumps off, accumulators full and isolated, boron at the cold concentration, both rod banks in, the steam dump closed at 1020 psi. The heatup walkthrough takes it back up.',
     },
     /* ============================ THE TMI-2 INCIDENT WALKTHROUGH (#670 Phase 2) ============
      * *(OWNER, 2026-09-08: "plan the building of a three mile island incident walkthrough…

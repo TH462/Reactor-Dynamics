@@ -1781,7 +1781,9 @@ if (!only && RUN_B) {
      * a merge is precisely when an authored command changes which object carries it. */
     var sprayCmd = null, sprayEn = null;
     (cd ? cd.steps : []).forEach(function (st) {
-      [st.cmd].concat((st.accs || []).map(function (e) { return e.cmd; })).forEach(function (c) {
+      /* ...and on `replay_then` since the 2026-09-25 bring-down (the spray press left the row: a
+       * press-latched `~` row flashed). Same finder lesson as the paragraph above. */
+      [st.cmd, st.replay_then && st.replay_then.cmd].concat((st.accs || []).map(function (e) { return e.cmd; })).forEach(function (c) {
         if (c && c.action === 'set_spray' && c.pct != null && !sprayCmd) {
           sprayCmd = c;
           sprayEn = (st.accs || []).filter(function (e) { return e.p === 'spray_flow_pct'; })[0];
@@ -3709,8 +3711,13 @@ if (!only && RUN_B) {
        * 90 -> 92 instrument-graded, sole 29 -> 28. Step 1 +2 (RCP FLOW, STARTUP RATE — both
        * instrument), step 2 +2 (the ON lamp and target box, control-state), step 3 +2 (STEAM DUMP
        * AUTO and DUMP SETPOINT, control-state); step 2's BORON CHEM row stops being the only one. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25: 84 / 141 / 92 / 28)',
-         gradedSteps === 84 && predRows === 141 && rows.length === 92 && soleInst === 28,
+      /* RE-PINNED 2026-09-25 (`pwr_cooldown` what / why / how bring-down, exp/p2-cooldown): 84 -> 85 graded
+       * steps (new step 16), 141 -> 147 predicate rows (+6: 1a target and 1b ON lamp, 13 splits plant_mode
+       * into Tavg + RCP FLOW (+1), 16's three rows), 92 -> 94 instrument-graded (13a tavg, 13b rcs_flow;
+       * plant_mode was true_state, the rest are control-state), sole 28 -> 27 (step 1's BORON CHEM row
+       * gains siblings). COOLDOWN DELTA +1 / +6 / +2 / -1 — SUM with the sibling lanes on a merge. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25: 85 / 147 / 94 / 27)',
+         gradedSteps === 85 && predRows === 147 && rows.length === 94 && soleInst === 27,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -3874,6 +3881,7 @@ if (!only && RUN_B) {
       'pwr_cooldown:6:pressure_mpa': 1, 'pwr_cooldown:8:pressure_mpa': 1,
       'pwr_cooldown:10:pump_flow_pct': 1, 'pwr_cooldown:11:tavg_c': 1,
       'pwr_cooldown:12:spray_flow_pct': 1,
+      'pwr_cooldown:13:tavg_c': 1, 'pwr_cooldown:13:pump_flow_pct': 1,   // 13a/13b (2026-09-25 bring-down), both read DOWNWARD
       /* STEP 15 USED TO BE HERE, on `pzr_level_pct < 80` (#788's content pass, 2026-09-19). The
        * entry was the pressurizer level gauge doing a clock's job on the one leg two of the four
        * named casualties can freeze, and it broke in BOTH directions depending on when the player
@@ -4018,6 +4026,7 @@ if (!only && RUN_B) {
       'pwr_raise_power:9': 'power_pct,boron_ppm,tavg_c',
       'pwr_raise_power:12': 'mwe_output',                     // the #667 shape, one leg later
       'pwr_cooldown:8': 'pressure_mpa',
+      'pwr_cooldown:13': 'tavg_c,pump_flow_pct',              // 13a/13b replace plant_mode (2026-09-25)
       'pwr_tmi2_incident:1': 'power_pct',
       'pwr_tmi2_incident:3': 'pressure_mpa',                  // a `saw` row, not an `acc`
       'pwr_tmi2_incident:5': 'sg_level_pct',
@@ -4032,7 +4041,7 @@ if (!only && RUN_B) {
       'pwr_heatup:6': 'steam_dump_valve_pct', 'pwr_heatup:12': 'rhr_active,letdown_flow_actual',
       'pwr_heatup:15': 'plant_mode',
       'pwr_raise_power:1': 'plant_mode',
-      'pwr_cooldown:13': 'plant_mode', 'pwr_cooldown:14': 'accumulator_volume_pct',
+      'pwr_cooldown:14': 'accumulator_volume_pct',
       'pwr_cooldown:15': 'rhr_valve_open',
       'pwr_tmi2_incident:4': 'turbine_tripped', 'pwr_tmi2_incident:7': 'scrammed',
       'pwr_tmi2_incident:9': 'hpi_active', 'pwr_tmi2_incident:13': 'rcp_cavitating',

@@ -29,6 +29,19 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-25-workbench-e (cooldown brought down to the what / why / how shape; a closing lineup step; two grading traps)
+
+Record and every number: `Blueprint/walkthrough_steps/06_cooldown.md` Notes, bring-down record
+2026-09-25. Traps only here:
+- **A row `cmd` latches the row on the PRESS.** Step 16a carried the shutdown-bank INSERT as a row
+  `cmd` and ticked with the bank at 577 of 627 — the wait it names was never graded. A "wait for
+  X" row gets no `cmd`; put the press on the step.
+- **A `~` band can tick on a plant passing through it with nothing pressed.** Cooldown 6 enters
+  with the spray still in AUTO and delivering 55 % → 39 % in 1.2 plant-s; the unordered "SPRAY at
+  50 %" row ticked on the way through and let go. `accs_ordered` behind the heater row fixed it.
+- **Pressing ON on the boron channel re-captures the target** (lit or not): 920 → 718 ppm. A
+  latching `>=` target row would stay ticked over a 719 ppm box. Graded as a re-grading band.
+
 ## Session log — 2026-09-24-workbench-l (layman pass 4, the six legs as one plant: the route gate reloaded every leg's own starting condition)
 
 Traps only; the per-step numbers are in each step file's Notes and `Diagnostic/CHECKLIST_PLAYTEST_2026-09-24_LAYMAN_CHAIN.md`.
