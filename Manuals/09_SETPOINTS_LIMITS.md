@@ -512,7 +512,7 @@ Commercial practice keeps boron sufficient for at least **1 % Δk/k** (WTSM 19.2
 Expected readings at each named engine initial condition, captured from the live engine after
 settling **70 s at 10x, the same for every column** — the low-power states are still walking their pressure up at 6 s, which is how the old table came to quote a hot-standby pressure 9 psi (0.06 MPa) light. **These six are the whole list** and the engine refuses any other name, but only **four** are on the Free Play picker: `hot_full_power`, `50_percent`, `hot_zero_power` and `cold_shutdown`. `hot_shutdown` and `low_power` are **engine-only** — real, loadable by the gates and the walkthroughs, not offered to the player.
 
-> **`low_power` is where the startup walkthrough hands you the plant** (added 2026-09-04, #624 item 28). Its control bank sits at **227 of 627 steps**, which is what the startup actually hands over: Ginna UFSAR §15.4.5.1.1 (ML20339A101), *"the reactor is operated with the RCCAs inserted only far enough to permit load follow."*
+> **`low_power` is where the startup walkthrough hands you the plant** (added 2026-09-04, #624 item 28). Its control bank sits at **222 of 627 steps**, which is what the startup actually hands over: Ginna UFSAR §15.4.5.1.1 (ML20339A101), *"the reactor is operated with the RCCAs inserted only far enough to permit load follow."* **Since 2026-09-25 it is also xenon-free**, like the plant the startup hands over — a core that went critical minutes ago, not one that has run at 10 % for days: that is why its boron reads **719 ppm** (the startup's own concentration) and its xenon **0 %**. Xenon then starts building the moment you load the plant, over about two days.
 >
 > **The other two at-power columns used to boot on the top stop, 627 of 627, and no longer do** (added 2026-09-11, #704). They sit at **606 of 627 — 96.7 % withdrawn**, the sourced full-power position: NUREG-1431 Rev 4 STS Bases B 3.2.3A (ML12100A228) puts control bank D *"near its normal position (i.e., 210 steps withdrawn)"* at high power, and with banks A, B and C fully out that is **627 − (231 − 210) = 606** on this plant's bank-overlap step scale (WTSM §8.1.5.4, ML11223A252). Booting on the stop left the operator **no upward rod authority at all** — measured full stack, commanding the bank out moved settled T-avg by **−0.01 °F**; from 606 the same command gives **+4.67 °F (+2.59 °C)**, and insertion is unchanged. The design point itself does not move (T-avg, level, power and output are identical to 0.01 °F at every bank position from 439 to 627, because critical boron re-trims); **only boron moves — 621 → 612 ppm at full power and 777 → 768 ppm at half.**
 
@@ -577,7 +577,7 @@ persists is either a transient in progress or a failed instrument.
 | Plant MODE | At Power (1) | At Power (1) | **At Power (1)** — *engine only, not on the Free Play menu* | Hot Standby (3) | **Hot Shutdown (4)** — *engine only, not on the Free Play menu* | **Cold Shutdown (5)** |
 | Reactor power (%) | 99.6 | 49.6 | 9.6 | ~0 (source) | ~0 (source) | ~0 (source) |
 | Generator output (MWe) | 100.0 | 50.0 | 10.0 | 0 | 0 | 0 |
-| Control bank (steps of 627) | 606 | 606 | **227** | 0 | 0 | 0 |
+| Control bank (steps of 627) | 606 | 606 | **222** | 0 | 0 | 0 |
 | Tavg °F (°C) | 580.4 (304.7) | 563.9 (295.5) | 550.3 (288.0) | 547.2 (286.2) | 250.4 (121.3) | 123.0 (50.6) |
 | T-hot / T-cold °F (°C) | 609.8 / 550.9 (321.0 / 288.3) | 579.2 / 548.5 (304.0 / 286.9) | 553.4 / 547.3 (289.7 / 286.3) | 547.2 / 547.2 (286.2 / 286.2) | 250.4 / 250.5 (121.3 / 121.4) | 123.0 / 123.0 (50.6 / 50.6) |
 | Primary pressure psi (MPa) | 2247 (15.493) | 2243 (15.466) | 2240 (15.441) | 2246 (15.482) | 364 (2.510) | 363 (2.500) |
@@ -588,8 +588,8 @@ persists is either a transient in progress or a failed instrument.
 | Steam / feed flow (norm.) | 1.00 | 0.50 | 0.10 | 0 | 0 | 0 |
 | Fuel average temp °F (°C) | 1295 (701.5) | 893 (478.3) | 610 (321.4) | 547 (286.1) | 250 (121.1) | 123 (50.5) |
 | Decay heat (%) | 6.23 | 3.11 | 0.60 | ~0 | ~0 | ~0 |
-| Xenon (% of equilibrium) | 100 | 66 | 19 | 0 | 0 | 0 |
-| Boron (ppm) | 612 | 768 | 684 | 719 | 894 | 918 |
+| Xenon (% of equilibrium) | 100 | 66 | 0 | 0 | 0 | 0 |
+| Boron (ppm) | 612 | 768 | 719 | 719 | 894 | 918 |
 | Net reactivity (pcm) | 0 | 0 | 0 | ≈ −1141 | ≈ −5635 | ≈ −5809 |
 | Source range (cps) | 0 (de-energized) | 0 (de-energized) | 0 (de-energized) | ≈ 501 | ≈ 101 | ≈ 98 |
 | Intermediate range (A) | ≈ 8.3e-3 | ≈ 4.1e-3 | ≈ 8.0e-4 | ≈ 1.6e-11 | ≈ 3.2e-12 | ≈ 3.2e-12 |

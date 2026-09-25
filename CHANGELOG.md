@@ -31,6 +31,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **PWR2 `low_power` starting condition is xenon-free** (owner ruling 2026-09-24, "Rebuild the
+  preset"): the state the raise-power walkthrough starts from now matches what the startup hands
+  over — control bank 227 → 222, boron 684 → 719 ppm, xenon 17 % → 0 of full-power equilibrium.
+  Raise power's preset and chained routes now end at the same point (589.7 °F, bank 318). Raise
+  power text re-measured: step 3's dilution is 59 ppm over about 25 plant-minutes; stage pulls
+  about 20/15/25/20/10 steps; the rod travel left for xenon is about 290 steps, roughly 110 °F.
+  Manuals 09 §11.0 and 12 §7.3 re-captured (pending Rev 22 items h, i). Step file
+  `03_raise_power.md` restyled to the what / why / how shape (phase 1, file only).
 - **Walkthroughs, layman pass 4 (the six legs as one plant).** Raise power: each stage now says
   "hold WITHDRAW until AVG COOLANT TEMPERATURE is back in its band, about N steps" (the gauge
   leads); step 8 drops its "CONTROL ROD POSITION above 300" check-off and says what the 103 % rod
