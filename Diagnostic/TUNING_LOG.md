@@ -80,6 +80,24 @@ Record and every number: the 2026-09-24 reconcile record in `Blueprint/walkthrou
   tests for `.test(st.text)` before porting.
 - **IN A FAST HARNESS, ROW LATENCY IS BROADCAST RESOLUTION.** At 600× a broadcast is 60 plant-s, so
   the 5-broadcast debounce reads as "+300 s" on 9a — the player at 1× sees ~5 s.
+## Session log — 2026-09-24-workbench-d (the cooldown leg ported to the per-substep format: every stated time was off on the player's route)
+
+Full record, tables and speed provenance: `Blueprint/walkthrough_steps/06_cooldown.md` Notes.
+
+- **A TILE-PRINTED NUMBER AT THE CENTRE OF A `<` EDGE TICKS ON THE WRONG READING.** Six of the leg's
+  thresholds sat inside the band their own tile prints (`P < 11.14` MPa is 1615.7 psi, drawn
+  "1616", under a label "below 1615"). Moved to the floor of the next reading down; the replay's
+  step 11 now meets `Tavg < 92.5 °C` 91 s before its 7200 s hold ends — the leg's thinnest margin.
+- **THE REPLAY'S HOLD IS NOT THE PLAYER'S DWELL, SO THE 30 s RULE ON IT PICKS THE WRONG RUNG.** Steps
+  2 and 5 hold 1500 s (a ramp) and would run at 60×; a player typing the setpoint once ticks in
+  15-20 s. Derive a rung from the measured player dwell.
+- **STATED TIMES ROT ON THE ROUTE NOBODY REPLAYS.** The accumulator window "about 5 plant-minutes"
+  measures 7.9-8.5 on every route; the dump walk "about two plant-hours" is 44 min when the player
+  waits for Tavg to settle, as told.
+- **A GATE FIXTURE CHOSEN BY "FIRST MATCHING STEP 1" MOVES WITH THE POOL.** `verify_flags_ui` #686
+  picked `pwr_cooldown` step 1 for its generated speed line; the format sets `wait_hint: false`
+  there, and after this port no pwr2 step 1 draws that line. The fixture now forces it in-page.
+- **`glance_rung.js` is blind on a shutdown leg** — its yardstick is REACTOR POWER, 0 % throughout.
 
 ## Session log — 2026-09-24-workbench-c (third layman pass on Mode 3 to Mode 1: a Continue lit below the fold; `paramValue` is not the tile)
 

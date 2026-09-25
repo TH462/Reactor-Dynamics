@@ -49,6 +49,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   row (3a, SHUTDOWN ROD POSITION counting up) so the FAST/WITHDRAW presses run at 1x and only the
   bank's run goes to 60x; 9a likewise at 1x before 9b's 600x climb. Step text in
   `Blueprint/walkthrough_steps/01_mode5_to_mode3.md`.
+- **Mode 3 to Mode 5 cooldown walkthrough in the per-substep format** (owner directive, 2026-09-24:
+  "Adopt the format for the other walkthroughs."). 15 steps, 20 substeps, 23 check-offs; goal lines
+  agent-drafted for review; every tile threshold graded at its render-band floor; step 15 now also
+  checks HX SPLIT above 0 %; stated times re-measured on a player and the replay route (window
+  about 8, not 5, plant-minutes). Record: `Blueprint/walkthrough_steps/06_cooldown.md` Notes.
 
 ## [Alpha 1.8.0-rc5] — 2026-09-24
 
