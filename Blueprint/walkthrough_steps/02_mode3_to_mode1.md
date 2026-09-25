@@ -199,7 +199,7 @@ The prediction is starting to be useful, which makes the wait matter more. While
 
 Suggested time warp: 10×.
 
-Note: STARTUP RATE takes about three to three and a half plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical at the predicted position or just below it, so the next step stops short of it and taps from there.
+Note: STARTUP RATE takes about three to three and a half plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical at the predicted position or just below it, so the next step stops short of it and taps from there. The rate step 9 asks for shows a little further out: measured, anywhere from 2 steps short of the prediction to 3 past it.
 
 
 
@@ -1006,3 +1006,12 @@ written, this is what it does instead:*
 * **9b's Note** is one reading per line, each opened with "•" (the card draws text, not markdown).
 * **A warp shared by every substep draws once**, after the substeps and before the Note (steps 1,
   2, 3, 8, 10, 12, 17); a substep's own warp now draws ABOVE its Note, as the file orders them.
+
+### Carried from workbench — 2026-09-25 (j), develop lane: the 8b sentence
+
+*OWNER, 2026-09-24: selected "Accept" on the agent-drafted rewrites, which named "one added
+sentence in startup 8b".* The sentence, "The rate step 9 asks for shows a little further out:
+measured, anywhere from 2 steps short of the prediction to 3 past it.", was in workbench
+47a9791c and was lost when develop's bring-down (i) was taken in the workbench merge; re-added to
+8b's note here and in the pool. MEASURED by workbench (`run_walkthrough_routes` typical route,
+seeds 1-10): 9b ticked at the prediction +0, -2, +3, +3, -1, -1, +1, -1, 0, +2 steps.
