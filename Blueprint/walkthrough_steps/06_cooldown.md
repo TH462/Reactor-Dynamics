@@ -1,6 +1,6 @@
 # Cooldown to Mode 5, Cold Shutdown
 
-**Walkthrough id: `pwr_cooldown`  ·  15 steps**
+**Walkthrough id: `pwr_cooldown`  ·  16 steps**
 
 > Edit this freely — it is the step text, and it is what the sim is brought down to.
 >
@@ -292,13 +292,33 @@ You isolated the tanks on the way down so they would not empty into a depressuri
 
 Suggested time warp: 1×.
 
-Note: The round trip is complete.
-
 Background
 
 RHR is the only thing removing heat now. If its suction valve shut, the decay heat would have nowhere to go. The heatup walkthrough is the way back.
 
 [HIGHLIGHTED: Residual Heat Removal (RHR) (steady)]
+
+
+
+16. Leave the plant lined up for the next heatup.
+
+*The heatup starts from what this step leaves, and a steam dump left in AUTO at a low setpoint opens wide the moment the heatup asks for it.*
+
+()16a. Press FAST on the ROD CONTROL card, then click INSERT under SHUTDOWN once. Wait for SHUTDOWN ROD POSITION to read 0 of 627.
+
+()16b. Press CLOSE on the STEAM DUMP card.
+
+()16c. Set DUMP SETPOINT to 1020 psi.
+
+Suggested time warp: 60×.
+
+Note: If SHUTDOWN ROD POSITION already reads 0, the bank is in: go on to 16b. The bank runs in by itself, about 9 plant-minutes. The round trip is complete.
+
+Background
+
+The cooldown walked DUMP SETPOINT down to 120 psi. Left there with the dump in AUTO, the next heatup's first AUTO press opens the dump wide against a setpoint far below its steam pressure, and the plant trips on low steam pressure. Closing the dump and putting the setpoint back to 1020 psi hands the next heatup the lineup it expects; inserting the shutdown bank leaves both banks in, the way the heatup starts.
+
+[HIGHLIGHTED: Rod Speed — Fast, Shutdown Bank — Insert, Steam Dump — Close, Dump Setpoint (pulsing); Shutdown Rod Position, Steam Dump Status (steady)]
 
 
 
@@ -518,3 +538,59 @@ differ. Rungs unchanged.
 **Not verified:** no layman pass, no browser run, no route gate — the pool is untouched, so
 `run_walkthrough_routes` and `run_checklist_pwr2` grade the old text. Board labels "ON" (BORON
 card) and "RCP FLOW reads OFF" are read off the old text, not the board.
+
+### Bring-down record — 2026-09-25, `exp/p2-cooldown` scratch lane (phase 2: the pool matches this file)
+
+The `pwr_cooldown` pool in `ui/manual_procedures.js` now carries this file word for word (script
+compare: 16 steps, 29 substeps, `text`/`aim`/`why`/every `ask`/every note/every warp line equal).
+`aim` = the italic line; one `accs` head per lettered substep; a warp once per step is
+`wait_speed` + `speed_text: true` and the Note after it is the step `note`; steps 4 and 6 keep
+per-substep rungs. All seed 42, full stack.
+
+**STEP 16 IS NEW — AGENT-DRAFTED FOR OWNER REVIEW.** *OWNER RULING, 2026-09-25, selected "Both A
+and B" (option text, not verbatim; relayed by the coordinator).* Option B: the cooldown ends by
+inserting the shutdown bank, closing the steam dump and resetting DUMP SETPOINT to 1020 psi.
+Why (measured by the heatup lane on one continuous plant): the cooldown left DUMP SETPOINT near
+197 psi with the dump in AUTO; the heatup's step 13 AUTO press opened it 100 % and the reactor
+tripped on safety injection (low steam pressure) in its step 14. "The round trip is complete."
+moved from 15's Note to 16's. Measured:
+- Cold Shutdown preset lineup (what 16 reproduces): dump mode CLOSED (`off`), DUMP SETPOINT
+  7.03 MPa (1020 psi), shutdown bank 0 of 627.
+- Harmless at cold, A/B on the Cold Shutdown preset for 30 plant-minutes: CLOSE + setpoint 1020 +
+  INSERT vs nothing — Tavg 122.03 °F both, pressure 363.3 psia both, RHR aligned both. Inserting
+  from 627 at cold shutdown: no trip, Tavg moved 0.004 °F, shutdown margin −2131 → −5807 pcm.
+- Insert time at FAST: 523 plant-s (8.7 min); NORMAL 784 s. Hence "about 9 plant-minutes".
+- Typical route (preset): step 16 entry sd 627, dump PRESS at 0.83 MPa (120 psi) — all three rows
+  unmet; completes in 9.5 plant-min, exits sd 0, dump CLOSED, 7.03 MPa; Tavg 197.4 → 189.5 °F
+  across the step (RHR still cooling). Chain: arrives sd 0 (the shutdown leg's scram) — 16a met on
+  arrival, 16b/16c unmet, step not hollow; completes in 0.8 min, exits CLOSED at 7.03 MPa.
+- **Caught on the first run:** 16a carried the INSERT as a row `cmd`, and a row `cmd` is latched
+  met by the press — it ticked with the bank at 577 of 627. The INSERT is now the step `cmd`.
+
+**NEW GRADING (injection-proven, live checklist):**
+
+| row | predicate | measured |
+|---|---|---|
+| 1a | `boron_target_ppm ~ 1710 ± 790.5` (919.5-2500.5, re-grades) | unmet at entry (719.2); met at 920; **ON pressed after it → box re-captured to 718.2, row un-ticks** |
+| 1b | `boron_auto_on > 0` | met at entry on both routes (channel engaged); channel OFF before entry → unmet |
+| 13a | `tavg_c < 92.5` | met at entry (step 11's floor) |
+| 13b | `pump_flow_pct < 9.5` (RCP FLOW tile) | pumps running 100.5 % unmet; secured 60 s 2.03 % met; restarted 100.2 % unmet |
+| 16a/b/c | bank `< 0.5` · `steam_dump_auto < 1` · `steam_dump_setpoint ~ 7.0327 ± 0.0034` | see step 16 above |
+
+1a is a BAND, not the brief's latching `>= 919.5`: pressing ON — lit or not — re-captures the
+target to the analyzer (`_toggleChannel`), so a latched row would sit ticked over a 719 ppm box
+while 1c never comes. **4a:** AUTO pressed three times on a dump already in PRESS: mode stays
+PRESS, DUMP SETPOINT stays 1020 psi — the press cannot take it off PRESS while the turbine is
+tripped, which it is on every route here. The text's premise does not hold; the text is harmless.
+
+**STEP 6 IS NOW ORDERED, and the spray press is `replay_then`.** Step 6 entry is at 1746 psia over
+the 1700 psi setpoint with the spray still in AUTO and delivering, 55.1 % falling to 39.1 % in
+1.2 plant-s: the unordered "PZR SPRAY at 50 %" row ticked on that pass through its band with
+nothing pressed and let go 0.7 s later (route gate: typical and three mistake routes FAILED on
+it). Ordered, it cannot latch before HEATER OFF.
+
+**FOR THE OWNER:** (1) 1a before 1b is the one order in which the card's own contingency ("If ON
+is not lit, press ON") undoes 1a; `pwr_startup` 2 puts ON first for this reason. Recommend
+swapping 1a and 1b. (2) 13b "RCP FLOW reads OFF": the RCP FLOW tile prints a number (about 2 %
+with the pumps secured), never OFF; OFF is the lamp on the RCP card. Graded on the tile, as
+`pwr_startup` 1c grades "reads ON". (3) The 16 text above.

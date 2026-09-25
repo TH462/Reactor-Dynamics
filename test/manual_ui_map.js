@@ -248,6 +248,10 @@ var STEP_UI = {
      * stored heat and cost the leg its RHR. It is still the last step; its index came down by
      * one with everything else when the handover merged, 12 -> 11. */
     { i: 11, view: 'board', control: 'Pressurizer Spray (PZR)' },
+    /* step 16 APPENDED at i:15 (2026-09-25, owner ruling "Both A and B", option B): the closing
+     * lineup — shutdown bank in, steam dump CLOSED, DUMP SETPOINT 1020 psi. Appended, so no row
+     * above moved. Its `control` is the first action's card. */
+    { i: 15, view: 'board', control: 'Shutdown Bank' },
   ],
   /* THE TMI-2 INCIDENT WALKTHROUGH (#670 Phase 2). Its own block, appended — the six cycle
    * legs above are untouched, because this table is POSITIONAL and the four historical
