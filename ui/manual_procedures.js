@@ -273,6 +273,8 @@
  *           A cmd-kind `after_acc` row counts as met once the replay has issued it, so
  *           `after_acc: 0` on a step whose `cmd` is the row's own command means "one tick after"
  *           (`pwr_raise_power` 4-8, load first, 2026-09-24).
+ *           `when: {p, op, v}` in place of `after_acc` (2026-09-25, `pwr_cooldown` 11): issue it on
+ *           the first tick that predicate holds — a card's CONDITIONAL press, replayed.
  *   accs[].below_1m OPTIONAL number N, on a `stopped` row over the control bank (`pwr_startup` 9a,
  *           2026-09-24) — the row ALSO needs the reading at or below the prediction the 1/M panel
  *           PRINTS, minus N (`InstructorLayer.applyBelow1m`, the table is RD.OneOverMCore's). No
@@ -4953,7 +4955,7 @@
        * successor and exempts only the LAST, so a last leg that names the first is legal. */
       id: 'pwr_cooldown', category: 'shutdown', manual_ref: 'PWR-N15', stack_only: true, next: 'pwr_heatup',
       title: 'Mode 3, Hot Standby → Mode 5, Cold Shutdown — controlled cooldown',
-      purpose: 'Take a hot, shut-down plant from Mode 3, Hot Standby to Mode 5, Cold Shutdown, ending with residual heat removal (RHR) carrying the heat. About 3½ to 7 plant-hours.',
+      purpose: 'Take a hot, shut-down plant from Mode 3, Hot Standby to Mode 5, Cold Shutdown, ending with residual heat removal (RHR) carrying the heat. About 7 plant-hours.',
       from: 'hot_zero_power',
       prereq: [
         'Plant at Mode 3, Hot Standby: AVG COOLANT TEMPERATURE near 547 °F, PRIMARY PRESSURE 2235 psi, reactor shut down (auto-checked).',
@@ -5173,8 +5175,8 @@
                    note: 'In TAVG mode the setpoint does nothing.',
                    wait_speed: 1, label: 'STEAM DUMP AUTO lit, status PRESS' },
                  { p: 'tavg_c', op: '<', v: 174.72,
-                   ask: 'Lower DUMP SETPOINT 50 psi at a time from 1020 to 120, until AVG COOLANT TEMPERATURE reads below 347 °F.',
-                   note: 'Small steps: one big jump drops the coolant fast and empties the pressurizer. Wait about 5 plant-minutes between steps, 5 seconds at 60×: the temperature never quite stops falling, so do not wait for it to. About an hour and a half in all.',
+                   ask: 'Lower DUMP SETPOINT in steps from 1020 to 120, until AVG COOLANT TEMPERATURE reads below 347 °F.',
+                   note: 'Steps of 50 psi down to 720, then 25 psi down to 270, then 15 psi: near the bottom the same 50 psi cools about four times as far, and one big jump sets off the Cooldown Rate High alarm and empties the pressurizer. Wait about 6 plant-minutes between steps, 6 seconds at 60×: the temperature never quite stops falling, so do not wait for it to. About three and a half hours in all.',
                    wait_speed: 60, label: 'AVG COOLANT TEMPERATURE below 347 °F' }],
           hl: ['Steam Dump — Auto', 'Dump Setpoint'], hl_watch: ['Steam Dump Status', 'Tavg'] },
         { text: 'Take the pressure setpoint to the bottom of its range.',
@@ -5419,9 +5421,9 @@
          * -106 at +27, over 100 for 12.7 plant-min, -86 at +60, 199 degF at +100 min; the true
          * 5-minute rate peaks -158 degF/hr at +4 min. Authored replay (ramps 7 -> 12) -> tile peak
          * -85 at +42 min, never over 100, 199 degF at +120 min. Split and physics unchanged. */
-        { text: 'Cool on RHR into Mode 5, at about the 100 °F per hour limit.',
+        { text: 'Cool on RHR into Mode 5, inside the 100 °F per hour limit.',
           aim: 'HX SPLIT is the cooldown throttle now, and COOLDOWN RATE beside it shows what that choice is doing.',
-          why: 'HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. At 12 % the read-back climbs to a little over 100 °F per hour in the first half hour, then eases off as the plant closes on the RHR sink, reaching Mode 5 in about an hour and a half to two hours; the read-back is smoothed over about ten minutes, so for the first few minutes the plant itself cools faster, near 150 °F per hour. Turn it higher and you go well over the 100 °F per hour limit: 25 % measures 193 °F per hour.',
+          why: 'HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. At 9 % the read-back climbs to about 85 °F per hour in the first half hour, then eases off as the plant closes on the RHR sink, reaching Mode 5 in about two and a quarter hours; the read-back is smoothed over about ten minutes, so for the first few minutes the plant itself cools faster, near 130 °F per hour. Turn it higher and you go over the 100 °F per hour limit: 12 % reads about 110 °F per hour and sets off the Cooldown Rate High alarm.',
           control: 'Residual Heat Removal (RHR)', target: 'AVG COOLANT TEMPERATURE below 199 °F',
           wait_hint: false,
           /* HOLD 9000 -> 7200 s (#729), and 5400 was tried first — see the end of this note. 9000 s was authored for the 25 % split, which reaches
@@ -5438,13 +5440,20 @@
            * split is ~9.5 % and the leg runs ~1.7 plant-h where a player who types 12 once takes
            * 1.36. 7200 s carries the ramp with ~17 min of slack, and leaves subcooling margin
            * near 14 degF when the next step shuts the spray. */
-          cmd: { action: 'set_rhr_hx', pct: 12 }, hold: 7200,
-          ramp: [{ action: 'set_rhr_hx', arg: 'pct', points: [7, 10, 12] }],
+          /* RE-PACED 2026-09-25 (OWNER RULINGS, selected "Re-pace to stay under", then "Middle
+           * ground"): 12 -> 9 %. The player who types 12 once raised Cooldown Rate High (tile -110
+           * degF/hr); at 9 % the tile peaks -83 to -90, Mode 5 in 131-142 plant-min. The replay types 9 once like the
+           * player (no 7 -> 8 ramp): a 9600 s ramp overstayed Mode 5 with the spray still open and
+           * walked subcooling margin into the leg's own `subcooling_c < 5` guard (measured). */
+          cmd: { action: 'set_rhr_hx', pct: 9 }, hold: 9300,
+          /* the note's "if SUBCOOLING MARGIN falls below 20 degF, press OFF under SPRAY now", replayed
+           * on the truth channel (11.1 degC); the live route presses it off the tile. */
+          replay_then: { when: { p: 'subcooling_c', op: '<', v: 11.1 }, cmd: { action: 'set_spray', open: false } },
           /* `< 93` (199.4 °F, printed "199") -> `< 92.5` (198.5 °F, the floor of "198"). */
           wait_speed: 600, speed_text: true,
-          note: 'Keep COOLDOWN RATE under 100 °F per hour: if the Cooldown Rate High alarm comes in, lower HX SPLIT to 10 %. The spray is still running and keeps taking SUBCOOLING MARGIN down: if it falls below 20 °F, press OFF under SPRAY now.',
+          note: 'Keep COOLDOWN RATE under 100 °F per hour: if the Cooldown Rate High alarm comes in, lower HX SPLIT. The spray is still running and keeps taking SUBCOOLING MARGIN down: if it falls below 20 °F, press OFF under SPRAY now.',
           accs: [{ p: 'tavg_c', op: '<', v: 92.5,
-                   ask: 'Raise HX SPLIT to 12 % and wait for AVG COOLANT TEMPERATURE to read below 199 °F.',
+                   ask: 'Raise HX SPLIT to 9 % and wait for AVG COOLANT TEMPERATURE to read below 199 °F.',
                    label: 'AVG COOLANT TEMPERATURE below 199 °F' }],
           hl: ['Residual Heat Removal (RHR)'], hl_watch: ['Tavg'] },
         /* THE SPRAY COMES OFF HERE, NOT AT THE RCP STEP — see the note on that step. The plant

@@ -31,6 +31,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Walkthroughs: the cooldown stays under the 100 °F/hr limit** (owner rulings 2026-09-25, "Re-pace
+  to stay under", then "Middle ground"). Step 4 lowers DUMP SETPOINT 50 psi to 720, then 25 psi to
+  270, then 15 psi, about 6 plant-minutes apart, 34 entries (was 50 psi every 5 minutes; COOLDOWN
+  RATE tile −240 °F/hr → −87 to −90); step 11 sets HX SPLIT 9 % (was 12 %; −110 → −83 to −90) and
+  its goal line reads "inside the 100 °F per hour limit". Stated times: step 4 about three and a
+  half hours, step 11 about two and a quarter, the leg about 7 plant-hours. `run_walkthrough_routes`
+  fails a cooldown route that raises the rate alarm or passes −95 (`cooldown_old_pacing` injection).
 - **Walkthroughs: layman pass 5 (workbench-g).** The round trip no longer strands: cooldown step
   16 gains 16d, "If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once." (the
   shutdown's scram was still latched and the next heatup's WITHDRAW was refused), and heatup 3a's

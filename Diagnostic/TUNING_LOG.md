@@ -29,6 +29,28 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-25-workbench-i (cooldown re-paced under the 100 °F/hr alarm; the raise-power rod worth re-measured)
+
+Record: `Blueprint/walkthrough_steps/06_cooldown.md`, re-pace record. Traps only:
+- **A longer wait cannot fix a step that is too big.** The rate alarm reads a 600 s lagged
+  derivative, so one fast drop of ΔT °F lifts the tile by about 6·ΔT °F/hr whatever follows it. Near
+  the bottom of the saturation curve 50 psi is ~22 °F: 5, 8, 10 and 15 minute waits ALL raised
+  Cooldown Rate High (tile −240 → −141 °F/hr). Only a smaller step at low pressure got under.
+- **A card's pacing was never graded against the alarm it teaches.** Step 11's note told the player
+  what to do when Cooldown Rate High came in, on a route the card's own numbers drove into it. The
+  route gate now fails a leg with `rate_max_F_hr` if any step raises the rate alarm or its tile
+  channel passes the margin; a chained leg counts the tile only after it has read inside the limit,
+  so the shutdown's scram seam is not charged to the cooldown.
+- **The margin is a ruling, not a measurement.** 9 % peaked −83 to −87 standalone and −90 chained;
+  a 10 °F/hr margin forced 8 % and a 42-entry stair (leg about 8 h). The owner took a 5 °F/hr margin
+  ("Middle ground"): 9 %, 34 entries, leg about 7 h. The fastest stair measured (15 psi from 320,
+  5 min) peaked −97 — under the alarm, outside the margin; one seed would not have shown which.
+- **A per-step worth quoted at the top of the bank is not the bank's worth.** Raise-power 10's
+  "about 290 steps, roughly 110 °F" was challenged with the top-of-bank 0.22 °F/step (≈ 64 °F).
+  Measured A/B on the xenon-free preset (typical route end, bank 306): a 20-step pull is +10.4 °F at
+  +10 min against the unpulled twin, 0.52 °F/step at mid-bank; on the engine's own S-curve that is
+  17.0 pcm/°F and 306 → 606 is ≈ 118 °F (318 → 606 ≈ 112). The text stands.
+
 ## Session log — 2026-09-25-workbench-g (layman pass 5 verified: the round trip's seam, and a harness that crashed on the refusal it was looking for)
 
 Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`. Traps only:

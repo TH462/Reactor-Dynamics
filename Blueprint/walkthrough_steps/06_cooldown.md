@@ -82,11 +82,11 @@ Suggested time warp: 1×.
 
 Note: In TAVG mode the setpoint does nothing.
 
-()4b. Lower DUMP SETPOINT 50 psi at a time from 1020 to 120, until AVG COOLANT TEMPERATURE reads below 347 °F.
+()4b. Lower DUMP SETPOINT in steps from 1020 to 120, until AVG COOLANT TEMPERATURE reads below 347 °F.
 
 Suggested time warp: 60×.
 
-Note: Small steps: one big jump drops the coolant fast and empties the pressurizer. Wait about 5 plant-minutes between steps, 5 seconds at 60×: the temperature never quite stops falling, so do not wait for it to. About an hour and a half in all.
+Note: Steps of 50 psi down to 720, then 25 psi down to 270, then 15 psi: near the bottom the same 50 psi cools about four times as far, and one big jump sets off the Cooldown Rate High alarm and empties the pressurizer. Wait about 6 plant-minutes between steps, 6 seconds at 60×: the temperature never quite stops falling, so do not wait for it to. About three and a half hours in all.
 
 Background
 
@@ -212,19 +212,19 @@ With RHR circulating, the reactor coolant pumps are only adding heat, so they co
 
 
 
-11. Cool on RHR into Mode 5, at about the 100 °F per hour limit.
+11. Cool on RHR into Mode 5, inside the 100 °F per hour limit.
 
 *HX SPLIT is the cooldown throttle now, and COOLDOWN RATE beside it shows what that choice is doing.*
 
-()11a. Raise HX SPLIT to 12 % and wait for AVG COOLANT TEMPERATURE to read below 199 °F.
+()11a. Raise HX SPLIT to 9 % and wait for AVG COOLANT TEMPERATURE to read below 199 °F.
 
 Suggested time warp: 600×.
 
-Note: Keep COOLDOWN RATE under 100 °F per hour: if the Cooldown Rate High alarm comes in, lower HX SPLIT to 10 %. The spray is still running and keeps taking SUBCOOLING MARGIN down: if it falls below 20 °F, press OFF under SPRAY now.
+Note: Keep COOLDOWN RATE under 100 °F per hour: if the Cooldown Rate High alarm comes in, lower HX SPLIT. The spray is still running and keeps taking SUBCOOLING MARGIN down: if it falls below 20 °F, press OFF under SPRAY now.
 
 Background
 
-HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. At 12 % the read-back climbs to a little over 100 °F per hour in the first half hour, then eases off as the plant closes on the RHR sink, reaching Mode 5 in about an hour and a half to two hours; the read-back is smoothed over about ten minutes, so for the first few minutes the plant itself cools faster, near 150 °F per hour. Turn it higher and you go well over the 100 °F per hour limit: 25 % measures 193 °F per hour.
+HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. At 9 % the read-back climbs to about 85 °F per hour in the first half hour, then eases off as the plant closes on the RHR sink, reaching Mode 5 in about two and a quarter hours; the read-back is smoothed over about ten minutes, so for the first few minutes the plant itself cools faster, near 130 °F per hour. Turn it higher and you go over the 100 °F per hour limit: 12 % reads about 110 °F per hour and sets off the Cooldown Rate High alarm.
 
 [HIGHLIGHTED: Residual Heat Removal (RHR) (pulsing); Tavg (steady)]
 
@@ -451,7 +451,7 @@ First hour on the player route: 341.6 → 239.7 °F, about 102 °F.
 
 | where | was | now |
 |---|---|---|
-| goal line | Cool on RHR into Mode 5, inside the 100 °F per hour limit. | Cool on RHR into Mode 5, at about the 100 °F per hour limit. |
+| goal line | Cool on RHR into Mode 5, inside the 100 °F per hour limit. | Cool on RHR into Mode 5, inside the 100 °F per hour limit. |
 | Background, sentence 2 | 12 % holds about 95 °F per hour at the start and eases off as the plant closes on the RHR sink, reaching Mode 5 in about an hour and a half to two hours. | At 12 % the read-back climbs to a little over 100 °F per hour in the first half hour, then eases off as the plant closes on the RHR sink, reaching Mode 5 in about an hour and a half to two hours; the read-back is smoothed over about ten minutes, so for the first few minutes the plant itself cools faster, near 150 °F per hour. |
 | Background, last sentence | Turn it higher and you go over the 100 °F per hour limit: 25 % measures 193 °F per hour. | Turn it higher and you go well over the 100 °F per hour limit: 25 % measures 193 °F per hour. |
 
@@ -630,3 +630,79 @@ Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`. Measured on 
 - **Step 11's note** now names both numbers: the Cooldown Rate High alarm → HX SPLIT 10 %; SUBCOOLING MARGIN under 20 °F → SPRAY OFF now. Old note (spray on): pressure floor 13 psia, margin 13.4 °F, both alarms, 107.5 plant-min. New route: margin floor 18.1 °F, pressure floor 31 psia, ends 50 psia, 127.0 plant-min. **12a** is conditional ("if step 11 has not already"); the route gate's cooldown `entry_met` carries #12.
 - **Not changed, a ruling:** the Cooldown Rate High alarm still comes in on step 4's "about 5 plant-minutes" pacing (reviewer's tile −149 °F/hr) and at the start of step 11 (owner-ruled wording).
 - `next: 'pwr_heatup'` on the pool entry: the finished card offers the heatup.
+
+### Re-pace record — 2026-09-25, `exp/r7-rp` scratch lane (TUNING_LOG 2026-09-25-workbench-i)
+
+**OWNER RULING, 2026-09-25, selected "Re-pace to stay under"** — option text (a selection, not his
+words): "Measure longer waits in step 4 and a lower HX SPLIT in step 11, then change the numbers so
+the card's own route stays under 100 °F/hr."
+
+**The alarm's channel.** `cooldown_rate_high` (`layers/control/pwr_control.js`) reads
+`instruments.tavg_rate`: indicated Tavg differentiated and lagged 600 s (`pwr_config.js`
+`rate_tau: 600`), setpoint −55.6 °C/hr (−100 °F/hr). The COOLDOWN RATE tile draws the same channel.
+
+MEASURED, route harness `pwr_cooldown` typical, seed 42 (tile peak on the alarm channel; the
+engine's 60-second-filtered rate in brackets):
+
+| step 4 pacing | step 4 time | tile peak | alarm |
+|---|---|---|---|
+| 50 psi every 5 min (the old card) | 90.7 min | −240 (−364) at 120 psi | yes |
+| 50 psi every 8 / 10 / 15 min | 142 / 177 / 261 min | −178 / −160 / −141 | yes, all |
+| 50→520, 25→220, 10 psi; every 5 / 7 / 8 min | 158 / 218 / 248 min | −124 / −102 / −95 | yes / yes / no |
+| 50→720, 25→320, 10 psi; every 5 / 6 min | 207 / 248 min | −99 / −87 | yes / no |
+| 50→520, 20 psi; every 8 / 10 min | 236 / 295 min | −95 / −84 | no |
+| 50→770, 25→320, 10 psi; every 6 min (first pick, 42 entries) | 253.9 min (seed 7 253.3; chain 253.9) | −82 (seed 7 −83; chain −83) | no |
+| 50→770, 25→320, 10 psi; every 5 min (43 entries) | 212 min | −90 | no |
+| 50→670, 25→270, 10 psi; every 6 min (37–38 entries) | 224 min | −94 / −95 (seed 7) | no, margin 5 |
+| 50→770, 25→320, 15 psi; every 5 min (36 entries) | 179.7 min | −97 at 125 psi | no, but under 5 margin |
+| **50→720, 25→270, 15 psi; every 6 min (chosen, 34 entries)** | **201.7 min** (seed 7 201.7) | **−87** (seed 7 −90) | no |
+
+Longer waits alone never get under the limit: at low pressure the saturation curve steepens, so a
+50 psi entry near 170 psi drops the coolant about 22 °F within minutes, and the lagged tile jumps by
+about six times the drop in °F/hr however long the player then waits.
+
+| step 11 HX SPLIT (typed once) | step 11 time | tile peak | alarm |
+|---|---|---|---|
+| 12 % | 100 min | −110 (−160) | yes |
+| 10 % | 119 min | −92 (−142) | no, 8 °F/hr over the 90 margin |
+| **9 % (chosen)** | **131–135 min (chain 141.5)** | **−83 to −87 (chain −90)** (−126 to −135) | no |
+| 8 % (first pick) | 148–151 min | −77 (−118 to −124) | no |
+| 6 % | 195 min | −63 | no |
+
+**SECOND OWNER RULING, 2026-09-25, selected "Middle ground"** — option text (a selection): "Accept a
+thinner margin to save time: e.g. HX SPLIT 9 % (peak −83 to −90) and a coarser stair." The first
+pick (8 %, the 42-entry stair, margin 10 °F/hr, leg about 8 plant-hours) was replaced by the fastest
+pacing that holds a 5 °F/hr margin (tile no worse than −95) on both seeds: 34 entries, 9 %, leg
+about 7 plant-hours. The fastest candidate measured (15 psi from 320, every 5 min: 180 min, 36
+entries) reached −97 at the bottom, inside the alarm but outside the margin.
+
+**THIRD OWNER RULING, 2026-09-25, selected "'inside the 100 °F per hour limit'"** — option text (a
+selection): the step 11 goal line. Applied below.
+
+| where | was | now |
+|---|---|---|
+| 4b | "Lower DUMP SETPOINT 50 psi at a time from 1020 to 120, …" | "Lower DUMP SETPOINT in steps from 1020 to 120, …" |
+| 4b note | 50 psi, "about 5 plant-minutes … 5 seconds at 60× … About an hour and a half in all." | 50 psi to 720, 25 to 270, then 15; "about 6 plant-minutes … 6 seconds at 60× … About three and a half hours in all." (34 entries) |
+| 11 goal line | "at about the 100 °F per hour limit" (owner-ruled 2026-09-24, "Reword only") | "inside the 100 °F per hour limit" (owner-ruled 2026-09-25, third ruling above) |
+| 11a | HX SPLIT 12 % | 9 % |
+| 11 note | alarm → "lower HX SPLIT to 10 %" | alarm → "lower HX SPLIT" (10 % is no longer lower) |
+| 11 Background | 12 %, "a little over 100", "an hour and a half to two hours", "near 150", "25 % measures 193" | 9 %, "about 85", "about two and a quarter hours", "near 130", "12 % reads about 110 °F per hour and sets off the Cooldown Rate High alarm" |
+| pool step 11 | `pct: 12`, hold 7200, ramp 7→10→12 | `pct: 9` typed once (no ramp), hold 9300, `replay_then` SPRAY OFF when subcooling margin < 11.1 °C (20 °F) |
+| leg `purpose` (sim only) | About 3½ to 7 plant-hours | About 7 plant-hours (typical route about 420 plant-min) |
+
+The pool replay first carried 8 % on a 9600 s 7→8 ramp: it overstayed Mode 5 with the spray open
+and walked subcooling margin into the leg's own `subcooling_c < 5` guard (measured, `run_checklist_pwr2`).
+It now types the split once and replays the note's SPRAY OFF line (`replay_then.when`, new in
+`test/procedures_harness.js`). AGENT-DRAFTED: the note's dropped "to 10 %" (10 % is barely lower
+than 9 %); the alarm response stays because a player who types more than 9 % can still raise it.
+**Gate:** `run_walkthrough_routes` gives `pwr_cooldown` `rate_max_F_hr: 95` (typical and chain);
+injection `cooldown_old_pacing` (the old 5-minute stair and 12 %) goes red with the alarm raised at
+steps 4 and 11.
+
+**Gate run, chosen pacing (seed 42):** typical 420.4 plant-min, step 4 201.7 min / 34 entries / tile
+−87, step 11 131.1 min / −87, leg peak −90.5 (step 6, the step-4 tail through the 600 s lag); chain
+433.9 min, step 4 −88, step 11 139.5 min / −89, leg peak −89.5. **Seam, not pacing:** on the chain
+the tile read −96.9 °F/hr during step 1 (boration only), the shutdown's scram transient arriving
+with the leg; the alarm did not come in. The tile margin is therefore graded from step 4
+(`rate_from_step: 4`); a RAISED alarm still fails at any step. Not acted on: whether the shutdown
+leg should hand over a quieter plant is outside this ruling.
