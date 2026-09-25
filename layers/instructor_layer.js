@@ -1594,6 +1594,26 @@
   function derivedCtlParam(snapshot, p) {
     return DERIVED_CTL_PARAMS[p](snapshot && snapshot.control_state);
   }
+  /* THE BORON CARD'S ON LAMP AND TARGET BOX, READ-ONLY (2026-09-25, `pwr_startup` 2a/2b: "Turn
+   * the boron dilution system ON", "Set the boron target to 719 ppm"). Both live on the control
+   * layer's `boron_conc` automation channel — the board draws ON from `engaged` and the box from
+   * `setpoint` (pwr_board_wiring `imrqp6com2b` / `imrpq29jo7t`) — and neither is in true_state or
+   * control_state, so without these the two substeps had nothing to grade. Same numbers the board
+   * reads, so the row and the lamp cannot disagree. No channel (a plant without one) resolves
+   * undefined, which `_predMet` fails closed on. */
+  function boronChan(snapshot) {
+    var ch = snapshot && snapshot.automation && snapshot.automation.channels;
+    if (!ch) return null;
+    for (var i = 0; i < ch.length; i++) if (ch[i] && ch[i].id === 'boron_conc') return ch[i];
+    return null;
+  }
+  var AUTO_CHAN_PARAMS = {
+    boron_auto_on: function (s) { var c = boronChan(s); return c ? (c.engaged ? 1 : 0) : undefined; },
+    boron_target_ppm: function (s) {
+      var c = boronChan(s);
+      return c && c.setpoint != null && isFinite(c.setpoint) ? +c.setpoint : undefined;
+    }
+  };
   function rodParam(snapshot, p) {
     var spec = ROD_PARAMS[p];
     if (!spec) return undefined;
@@ -1627,6 +1647,7 @@
     if (ROD_PARAMS[p]) return rodParam(snapshot, p);
     if (RPS_BLOCK_PARAMS[p]) return rpsBlockParam(snapshot, p);
     if (DERIVED_CTL_PARAMS[p]) return derivedCtlParam(snapshot, p);
+    if (AUTO_CHAN_PARAMS[p]) return AUTO_CHAN_PARAMS[p](snapshot);
     if (CTL_PARAMS[p]) {
       var cv = snapshot && snapshot.control_state ? snapshot.control_state[p] : undefined;
       if (cv == null || (typeof cv === 'number' && isNaN(cv))) return undefined;
@@ -1643,6 +1664,7 @@
     if (RPS_BLOCK_PARAMS[p]) return { value: rpsBlockParam(snapshot, p), graded_by: 'rps_state' };
     if (ROD_PARAMS[p]) return { value: rodParam(snapshot, p), graded_by: 'control_state' };
     if (DERIVED_CTL_PARAMS[p]) return { value: derivedCtlParam(snapshot, p), graded_by: 'control_state' };
+    if (AUTO_CHAN_PARAMS[p]) return { value: AUTO_CHAN_PARAMS[p](snapshot), graded_by: 'control_state' };
     if (CTL_PARAMS[p]) {
       var cv = snapshot && snapshot.control_state ? snapshot.control_state[p] : undefined;
       if (typeof cv === 'boolean') cv = cv ? 1 : 0;

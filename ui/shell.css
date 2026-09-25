@@ -2418,6 +2418,14 @@ select.num-input { width: auto; }
 .ckl-ico { font-weight: 700; width: 16px; text-align: center; flex: none; }
 .ckl-body { flex: 1; min-width: 0; }
 .ckl-txt { font-size: 14px; line-height: 1.4; color: var(--text); }
+/* THE STEP'S ONE-LINE WHY (OWNER RULING 2026-09-24, the what / why / how format): directly under
+   .ckl-txt, above the substep rows. Italic like a note but its own class, full width (no 20 px
+   substep indent) and the secondary text token, so it reads as the reason for the whole step and
+   not as a substep's tip. */
+.ckl-aim { font-size: 12.5px; font-style: italic; line-height: 1.4; color: var(--text-2); margin: 2px 0 4px; }
+/* An authored line break in a note or Background is a line break on the card (2026-09-25, the
+   pwr_startup 9b reading list, one reading per line). No shipped string carried a newline. */
+.ckl-crit-note, .ckl-step-note, .ckl-why { white-space: pre-line; }
 /* THE INCIDENT WALKTHROUGH'S NARRATIVE BLOCK (#670 Phase 1) — clock, what the crew saw, what
    they knew, what they did — ABOVE the numbered instruction. Quieter than the instruction and
    louder than a .ckl-sub: it is the reason the step exists, but the step is still the thing to

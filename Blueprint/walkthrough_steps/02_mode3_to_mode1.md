@@ -199,7 +199,7 @@ The prediction is starting to be useful, which makes the wait matter more. While
 
 Suggested time warp: 10×.
 
-Note: STARTUP RATE takes about three to three and a half plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical at the predicted position or just below it, so the next step stops short of it and taps from there. The rate step 9 asks for shows a little further out: measured, anywhere from 2 steps short of the prediction to 3 past it.
+Note: STARTUP RATE takes about three to three and a half plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical at the predicted position or just below it, so the next step stops short of it and taps from there.
 
 
 
@@ -977,29 +977,32 @@ AUTO in pressure mode, steam pressure 1020 psi (7.03 MPa), dump 0 to 1.95 % open
 * Chained-route dump, PARTLY measured (seed 42, heatup replay stopped at 7834 s, Tavg 309.4 degF):
   AUTO, pressure mode, setpoint 1019.6 psi (7.03 MPa). No later heatup step commands the dump.
 
-### Reconcile record — 2026-09-25 (i), `exp/v5-ct` scratch lane (layman pass 4)
+### Bring-down record — 2026-09-25 (i), develop lane: the reworded steps 1-17 in the sim
 
-**AGENT-DRAFTED FOR OWNER REVIEW.** 8b's note gains one sentence: "The rate step 9 asks for shows a
-little further out: measured, anywhere from 2 steps short of the prediction to 3 past it."
-Measured, `run_walkthrough_routes` typical route, seeds 1–10: 9b ticked at the prediction +0, −2,
-+3, +3, −1, −1, +1, −1, 0, +2 steps (above it on 4 of 10); the chain +0; the reviewer +1. His
-"goes critical at that position or just below it" is left standing: it is about true criticality,
-and 9b's +0.06 is past it.
+*Every step's first line, italic WHY (new pool field `aim`, drawn under the first line and above
+the substeps), substeps, warps, Notes and Background are in `ui/manual_procedures.js`
+`pwr_startup`. 32 check-offs. Shortened, not waived — where the sim could not take a line as
+written, this is what it does instead:*
 
-**PROPOSED, NOT SHIPPED — a 9b note in 58 words for his decision** (his note is about 150 words and
-seven bands):
-
-> Read STARTUP RATE only once it has stopped falling, about ten plant-minutes after a tap; the
-> check-off waits for that too. Under 0.06: one more step out. 0.06 to 0.20: done. Over 0.5: one
-> step further than meant, power comes sooner. Over 1.0: tap INSERT once and wait. SOURCE RANGE
-> blanks above 1.0e5; INTER RANGE carries on.
-
-Chained from the heatup, step 2's 918 → 719 ppm wash took 77.1 plant-min (the card: "about 90").
-
-**Merged onto the (h) rewording, 2026-09-25, workbench lane.** The 8b sentence above was written
-against the pre-(h) text and lands verbatim at the end of the reworded 8b note (the reword folded
-8a's and 8b's notes into one; nothing else in it moved). The PROPOSED 9b note was measured against
-the pre-(h) paragraph note, which (h) turned into a one-reading-per-line list with no number
-changed; it stays proposed. Step 2: (h) reads "about 1½ plant-hours" on 88.4 min measured; this
-lane's chained 77.1 min runs about 13 min under it; left unchanged, two measurements a seed apart. **Neither this record nor (h) is brought down yet**: the
-`pwr_startup` pool still carries the pre-(h) wording (plus this 8b sentence), per 9d2bee3e.
+* **1c "RCP FLOW reads ON".** The RCP FLOW tile prints a percentage, not the word ON. Graded on
+  that tile (the RCS flow channel) at 90 % or more, the low-flow trip setpoint; its done-when reads
+  "RCP FLOW 90 % or more: the pumps are running". MEASURED 100.2 % (preset), 100.5 % (chained).
+* **1d "STARTUP RATE reads 0.00 DPM"** is graded on −0.02 to +0.02 (the heatup's last step uses
+  the same band), not on the tile's "0.00" band. MEASURED after the chained arrival: the reading
+  swings −0.014 to +0.015 and is inside the "0.00" band on only 476 of 600 samples, so the strict
+  band would flicker. A tick-once latch was tried and rejected: the gate's replay reads this step
+  once (+0.02), and giving it ticks shifted the rest of the leg's replay enough to redden four
+  later checks.
+* **2a / 2b** grade the BORON card's ON lamp and target box (new read-only params
+  `boron_auto_on`, `boron_target_ppm`, off the channel the board draws them from). Step 2 is
+  ordered: ON, then the target, then the wash, because pressing ON after the target cancels the
+  dose. Target band 718.5-719.5 ppm (the box draws whole ppm). "ON" glows through a new board
+  label, `Boron ON`.
+* **3b** grades the STEAM DUMP AUTO lamp and DUMP SETPOINT in the whole-psi band of 1020
+  (1019.5-1020.5 psi). MEASURED at the chained arrival (`run_walkthrough_routes` pwr_heatup,
+  typical and pressure_sp_high routes, seed 42): AUTO, pressure mode, setpoint 1019.6 psi (7.03
+  MPa) flat for 600 s, dump 0.8-1.3 % open, Tavg 547.3 °F. Same constant on the preset.
+* **14b, 17b: "MW" is "MWe"** in the sim (style rule N6).
+* **9b's Note** is one reading per line, each opened with "•" (the card draws text, not markdown).
+* **A warp shared by every substep draws once**, after the substeps and before the Note (steps 1,
+  2, 3, 8, 10, 12, 17); a substep's own warp now draws ABOVE its Note, as the file orders them.
