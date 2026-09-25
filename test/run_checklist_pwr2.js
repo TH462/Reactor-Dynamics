@@ -2321,6 +2321,53 @@ if (!only && RUN_B) {
            firstMet !== null && firstMet >= 120,
            firstMet === null ? 'never met on a dead-flat channel' : 'first met at ' + firstMet + ' s of a 120 s window');
       })();
+      /* HYSTERESIS (2026-09-24, run_walkthrough_routes step-12 flash): a drift of ~0.034 — over
+       * `v` 0.03, under the 1.25 x release — must NOT tick an unmet row and must NOT un-tick a met
+       * one. Both halves, or a release factor of 1 (the flash) and a tick threshold moved up to
+       * 1.25 (a hollow tick) would each pass. */
+      (function () {
+        var il3 = Object.create(RD.InstructorLayer.prototype);
+        var st3 = { accs: [{ p: 'sr_counts_cps', op: 'steady', v: 0.03, window: 120 }] }, h3 = {};
+        var t3 = 0, c3 = 9000, metSlow = false, metFlat = false, heldSlow = true, offFast = false;
+        function feed3(secs, perSec, cb) {
+          for (var k = 0; k < secs; k++) {
+            t3 += 1; c3 *= (1 + perSec);
+            cb(il3._gradeAccs(h3, st3, { metadata: { sim_time: t3, plant_id: 'pwr2' },
+                                        true_state: { sr_counts_cps: c3 }, instruments: {} }));
+          }
+        }
+        feed3(400, 0.00055, function (m) { if (m) metSlow = true; });          // drift ~0.034
+        feed3(300, 0, function (m) { if (m) metFlat = true; });
+        feed3(400, 0.00055, function (m) { if (!m) heldSlow = false; });      // the same drift, met first
+        feed3(200, 0.002, function (m) { if (!m) offFast = true; });          // drift ~0.13
+        ck('`steady` hysteresis: a drift of ~0.034 (over v 0.03) does not TICK an unmet row, and once met does not UN-tick it; 0.13 does',
+           !metSlow && metFlat && heldSlow && offFast,
+           'ticked on 0.034: ' + metSlow + ', met flat: ' + metFlat + ', held through 0.034: ' + heldSlow + ', let go at 0.13: ' + offFast);
+      })();
+      /* `~` NOISE DEBOUNCE (2026-09-24, pwr_raise_power 6: the gauge read 585.51 / 585.31 / 585.55
+       * degF against a 585.5 edge and the row went tick-untick-tick). One out-of-band sample must
+       * not un-tick a met band; a sustained excursion must; and at WARP spacing (60 s a sample) the
+       * second miss must, not the fifth. */
+      (function () {
+        var il4 = Object.create(RD.InstructorLayer.prototype);
+        function run(seq, dt) {
+          var st4 = { accs: [{ p: 'sr_counts_cps', op: '~', v: 100, tol: 5 }] }, h4 = {}, out = [];
+          seq.forEach(function (v, k) {
+            out.push(il4._gradeAccs(h4, st4, { metadata: { sim_time: (k + 1) * dt, plant_id: 'pwr2' },
+                                               true_state: { sr_counts_cps: v }, instruments: {} }));
+          });
+          return out;
+        }
+        var ten = [100, 100, 100, 100, 100, 100, 100, 100, 100, 100];
+        var blip = run(ten.concat([106]).concat(ten), 0.1);
+        var sus = run(ten.concat([106, 106, 106, 106, 106, 106, 106]), 0.1);
+        var warp = run(ten.concat([106, 106]), 60);
+        var blipHeld = blip.slice(9).every(Boolean);
+        var susOff = !sus[sus.length - 1], warpOff = warp[9] && !warp[11];
+        ck('`~` debounce: a met band survives ONE noisy out-of-band sample, lets go on a sustained excursion, and at WARP spacing on the second miss',
+           blipHeld && susOff && warpOff,
+           'held through one sample: ' + blipHeld + ', off after 7 at 0.1 s: ' + susOff + ', off on 2nd miss at 60 s: ' + warpOff);
+      })();
     })();
 
     (function () {

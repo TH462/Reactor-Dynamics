@@ -133,6 +133,7 @@
   // consecutive broadcast evaluations before the step completes, so a parameter
   // sweeping through its target band doesn't advance the procedure in passing.
   var ACC_STABLE_N = 5;
+  var BAND_RELEASE_S = 2;             // a met `~` row's longest noise tolerance, plant-s (see _gradeAccs)
   // Seconds of SIM time an observation step stands before it checks itself off. Long
   // enough to read a line and look at the board, short enough not to feel stuck.
   var OBSERVE_DWELL_S = 12;
@@ -176,6 +177,15 @@
    * per-step state bag. `run_checklist_pwr2` §2w reddens on a `steady` authored anywhere else —
    * `saw`, `overtaken`, `precond`, a `when` gate — rather than letting it read false for ever. */
   var STEADY_WINDOW_S = 120;        // default trailing window when a step authors none
+  /* ONCE MET, A `steady` ROW LETS GO ONLY AT 1.25 x ITS `v` (2026-09-24, run_walkthrough_routes).
+   * The drift is a slow statistic of a noisy gauge, so it crosses `v` with the noise riding on
+   * it: MEASURED on `pwr_startup` 12 (v 0.03, 300 s), the drift fell through 0.0306 -> 0.0293
+   * with +/-0.0005 of jitter, the row met, went back off, met again, and Continue lit for 1-2 s
+   * and went dark twice (routes `window_overshoot` at 135.4 plant-min, `plot_early` at 67.3).
+   * After the first meet the largest drift seen was 0.0303 — 1.01 x `v`. 1.25 x is 8x that
+   * margin, and a plant that starts climbing again is far past it (0.2 %/s over a 120 s window
+   * is ~0.12, 4 x `v`). The TICK threshold is untouched, so the row still cannot tick on entry. */
+  var STEADY_RELEASE_K = 1.25;
 
   /* HAS THE CONTROL STOPPED MOVING — `op: 'stopped'` *(OWNER RULING, 2026-09-17: selected
    * "Gate on rods stopped + startup rate" from three options put to him — gate on rod-stop plus
@@ -1759,14 +1769,14 @@
     /* THE CLOCK WENT BACKWARDS — a Rewind, a restored save, a re-selected plant. The ring
      * describes a plant that no longer exists, so it starts again; the step then owes its
      * window afresh, which is the conservative direction. */
-    if (s.length && t < s[s.length - 1].t) s.length = 0;
+    if (s.length && t < s[s.length - 1].t) { s.length = 0; bag.held = false; }
     var gap = Math.max(0.05, W / 120);          // ~120 samples per window at 1x; cheap at 60x
     if (!s.length || t - s[s.length - 1].t >= gap) s.push({ t: t, v: r.value });
     // keep exactly one sample at or before the window's trailing edge, so `covered` is honest
     while (s.length > 1 && t - s[1].t > W) s.shift();
     out.n = s.length;
     out.covered = s.length > 1 && (t - s[0].t) >= W;
-    if (!out.covered) return out;
+    if (!out.covered) { bag.held = false; return out; }
     var tm = t - W / 2, a = 0, na = 0, b = 0, nb = 0;
     for (var i = 0; i < s.length; i++) {
       if (t - s[i].t > W) continue;             // the one sample outside the window
@@ -1783,7 +1793,8 @@
     }
     var mid = Math.abs((lo + hi) / 2);
     out.drift = mid > 1e-9 ? Math.abs(hi - lo) / mid : Math.abs(hi - lo);
-    out.met = out.drift <= pred.v;
+    out.met = out.drift <= (bag.held ? pred.v * STEADY_RELEASE_K : pred.v);   // hysteresis, above
+    bag.held = out.met;
     return out;
   };
 
@@ -2048,8 +2059,30 @@
          * LATCH. Grading it is not cosmetic: measured on the 1/M ladder, the settle window has
          * to run from the step's start or the settle row would owe a fresh 120 s after the count
          * row ticks, and the crossing is at the same wall-clock instant either way. */
-        if (ax.streak >= ACC_STABLE_N && !blocked) ax.met = true;
-        else if (holds) ax.met = false;        // left the band — the check-off comes back off
+        /* A MET `~` BAND LETS GO ON A SUSTAINED EXCURSION, NOT ON ONE NOISY SAMPLE (2026-09-24,
+         * run_walkthrough_routes). The band grades the INSTRUMENT (Hard Rule 1), and at its edge
+         * the gauge's noise straddles the limit: MEASURED on `pwr_raise_power` 6, true Tavg
+         * 584.7 degF against a 585.5 degF edge, the channel read 307.508 / 307.396 / 307.525 degC
+         * (585.51 / 585.31 / 585.55 degF) on successive broadcasts and the row went tick-untick-tick.
+         * It un-ticks after ACC_STABLE_N consecutive out-of-band gradings — the tick side's own
+         * debounce, mirrored — or once it has been out for BAND_RELEASE_S plant-seconds, whichever
+         * is first, so at WARP (a broadcast can be minutes) a real departure is not certified for
+         * five broadcasts. `steady`/`stopped` are not debounced here: `steady` has its own
+         * hysteresis (gradeSteady) and `stopped` reads an exact control. */
+        var t_ = snapshot && snapshot.metadata ? snapshot.metadata.sim_time : null;
+        if (g.met) { ax.miss = 0; ax.missT = null; }
+        else if (ax.met && ax.bandHeld && holds && en.op === '~') {
+          ax.miss = (ax.miss || 0) + 1;
+          if (ax.missT == null) ax.missT = t_;
+        }
+        /* ...and only a band that its OWN grading ticked: a `cmd`-kind `~` row is set met by the
+         * press in handleCommand before the gauge agrees (cooldown 6, SPRAY at 50 %, flow still
+         * ramping), and the debounce would draw that press as a 0.4 s tick. */
+        if (ax.streak >= ACC_STABLE_N && !blocked) { ax.met = true; ax.bandHeld = true; }
+        else if (holds && !(en.op === '~' && ax.met && ax.bandHeld && ax.miss < ACC_STABLE_N &&
+                            !(t_ != null && ax.missT != null && t_ - ax.missT >= BAND_RELEASE_S))) {
+          ax.met = false; ax.bandHeld = false;  // left the band — the check-off comes back off
+        }
       }
       // a voided row neither holds the step nor blocks its successors — it is an
       // observation the player deliberately made impossible, not an unmet one.

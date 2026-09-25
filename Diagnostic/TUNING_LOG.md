@@ -29,6 +29,35 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-24-workbench-i (route-harness reds: two grading flickers, one honest re-grade)
+
+Measured on `test/run_walkthrough_routes.js` (full stack, seed 42). Traps only:
+
+- **A slow statistic crossing its limit flickers like noise.** `pwr_startup` 12's `steady` drift
+  fell 0.0306 -> 0.0293 with +/-0.0005 jitter; met, un-met, met — Continue lit 1-2 s and went
+  dark (135.4 and 67.3 plant-min). A sample debounce cannot fix it (the drift sat over 0.03 for
+  5-10 s); hysteresis does: release at 1.25 x `v`. Largest drift after first meet: 0.0303.
+- **A debounce on un-tick must not protect a tick the grading never gave.** A `cmd`-kind `~` row
+  is set met by the PRESS; the first cut of the band debounce kept cooldown 6's "SPRAY at 50 %"
+  ticked 0.4 s while flow was still ramping — a new flicker the old instant un-tick had hidden.
+  The debounce now covers only a band its own grading ticked (`bandHeld`).
+- **A band row that ticks on arrival and un-ticks after the step's own pull is the #683 design,
+  not a defect.** Raise power 6: 577.5 °F on entry (in band), the card's 35-step pull peaks at
+  590.0 °F (4.5 °F over), back in after 3.7 plant-min. The harness now counts a `~` un-tick only
+  when the row was met under 10 s (transient pass or noise); the narrowed-band injection proves
+  it still fires (met 7.5 s).
+- **A route policy is a reading of the card, and the owner can rule it wrong.** *(OWNER RULING,
+  2026-09-24: "The way I see it the range means that the source range target will be within that
+  range not that hitting the lower part of the range will put you over the target. So let's leave
+  then")*. Read that way (pull to the window bottom, settle, keep withdrawing inside it until the
+  SOURCE RANGE row), Mode 3 to Mode 1 step 8 completes at bank 198, 7,244 cps (3 taps). The
+  literal route then strands at step 10 instead: step 9 passed on ONE read of 0.069 DPM at bank
+  208 taken 5 plant-min after the pull, still falling (to 0.024), and the climb to 0.05 % took
+  127.3 plant-min against the card's "45 to 60". Clearing one strand moves the route onto ground
+  no gate had walked.
+
+---
+
 ## Session log — 2026-09-24-workbench-h (Raise power ported to the owner's step format: two traps)
 
 The port itself changed no predicate; the record is `Blueprint/walkthrough_steps/03_raise_power.md`

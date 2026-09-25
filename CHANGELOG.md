@@ -63,6 +63,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Alpha 1.8.0-rc5] — 2026-09-24
 
 ### Fixed
+- **Walkthrough check-offs no longer flicker at their edge** (2026-09-24, `run_walkthrough_routes`).
+  Mode 3 to Mode 1 step 12's "REACTOR POWER steady" row, once met, now lets go only when the
+  drift passes 1.25 times its limit (0.0375, was 0.03): its Continue had lit for 1-2 s and gone
+  dark twice on two player routes while the drift sat at 0.0293-0.0303. A met temperature/flow
+  band (`~` row) now un-ticks after 5 consecutive out-of-band readings or 2 plant-seconds out,
+  not on one noisy reading (raise power step 6: 585.51 / 585.31 / 585.55 °F against a 585.5 °F
+  edge ticked, un-ticked and re-ticked). Tick thresholds are unchanged.
 - **Mode 3 to Mode 1, steps 5-8: the rod-position window leads, the count confirms** (owner
   rulings, 2026-09-24, layman pass 3, #653). Each pull substep's instruction now leads with the
   CONTROL ROD POSITION stop window; the SOURCE RANGE count is a "should read about … or more"

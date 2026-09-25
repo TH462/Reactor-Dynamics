@@ -45,6 +45,13 @@ var ARGV = process.argv.slice(2);
 function flag(n) { for (var i = 0; i < ARGV.length; i++) if (ARGV[i].indexOf('--' + n + '=') === 0) return ARGV[i].slice(n.length + 3); return null; }
 
 var ENTRY_S = 5;        // hollow window: plant-seconds after step entry with no player action
+/* A two-sided `~` band is a HOLD claim that un-ticks BY DESIGN when the plant leaves it (#683):
+ * `pwr_raise_power` 6 arrives at 577.5 degF inside its 558-585 degF band, the card's own 35-step
+ * pull carries Tavg to 590.0 degF, the row goes back off and returns when LOAD catches up (3.7
+ * plant-min, measured 2026-09-24). That is honest re-grading, not a defect. What IS a defect is a
+ * band that ticks and lets go inside PASS_S — a transient pass through the band, or gauge noise
+ * at its edge — so a `~` row's un-tick counts only when it had been met for less than PASS_S. */
+var PASS_S = 10;
 var ACK_S = 3;          // the player notices a lit Continue after this many plant-seconds
 var BOUND_FLOOR_S = 1800;
 
@@ -57,12 +64,17 @@ var BOUND_FLOOR_S = 1800;
 var ROUTES = {
   pwr_startup: {
     final: true,
-    entry_met: ['#1', '#2', '#3', '#17'],   // the card says these read true on arrival
+    entry_met: ['#1', '#2', '#3', '#17'],   // the card says these read true on arrival (final: the whole list)
     steps: {
-      '#5': { policy: 'pull_plot', to: 80 },     // "80 to 100": the first stopping point
-      '#6': { policy: 'pull_plot', to: 150 },    // "150 to 175"
-      '#7': { policy: 'pull_plot', to: 180 },    // "180 to 205"
-      '#8': { policy: 'pull_plot', to: 195 },    // "195 to 205"
+      /* THE WINDOW IS WHERE THE COUNT TARGET LIES, NOT A STOP THAT GUARANTEES IT *(OWNER RULING,
+       * 2026-09-24: "The way I see it the range means that the source range target will be within
+       * that range not that hitting the lower part of the range will put you over the target. So
+       * let's leave then")*. The player pulls to the window's bottom, lets the counts settle, and
+       * keeps withdrawing inside the window until SOURCE RANGE meets the row — the top at most. */
+      '#5': { policy: 'pull_plot', to: 80, top: 100 },     // "80 to 100"
+      '#6': { policy: 'pull_plot', to: 150, top: 175 },    // "150 to 175"
+      '#7': { policy: 'pull_plot', to: 180, top: 205 },    // "180 to 205"
+      '#8': { policy: 'pull_plot', to: 195, top: 205 },    // "195 to 205"
       // 9 and 10 are slow by the card's own design (a tap, a 5-minute read, repeat; then 45 to 60
       // minutes of climb after a 0.06 read), so their bound is the card's, not 3 x hold.
       '#9': { policy: 'approach', short: 3, min_rate: 0.06, max_rate: 1.0, dwell: 300, tap: 1, bound_s: 5400 },
@@ -113,6 +125,10 @@ var ROUTES = {
   },
   pwr_raise_power: {
     steps: {},
+    // "Make sure the turbine is on line and taking steam": a CONFIRM step — the ask is "Check the
+    // TURBINE-GENERATOR card is on line", LATCH only "if it reads TRIP" — and the low_power start
+    // arrives latched at 10 MWe. Added to the provisional no-action default, not replacing it.
+    entry_met: ['cmd:latch_turbine'],
     mistakes: [
       { id: 'double_boron', kind: 'double press', at: 'cmd:set_auto_setpoint', set: { repeat: 2 } },
       { id: 'rods_first_pull_x2', kind: 'overshoot', at: 'cmd:rod_nudge', set: { policy: 'seq', cmds: [
@@ -170,6 +186,11 @@ var MUTATIONS = [
   { id: 'no_latch_9a', route: 'typical_pass3', expect: 'flash',
     why: "9a without `latch` (a WITHDRAW tap un-ticked it, layman pass 2)",
     mutate: function (P) { delete P.steps[8].accs[0].latch; } },
+  /* the PASS_S exemption must not swallow a band that ticks on a TRANSIENT PASS: step 6's Tavg
+   * band narrowed to 581.5-583.5 degF, which the 35-step pull crosses at ~0.3 degF/s */
+  { id: 'band_transient_pass', leg: 'pwr_raise_power', route: 'typical', expect: 'flash',
+    why: "raise-power 6's Tavg band narrowed to 581.5-583.5 degF (the pull crosses it in seconds)",
+    mutate: function (P) { var e = P.steps[5].accs[3]; e.v = (582.5 - 32) * 5 / 9; e.tol = 1 * 5 / 9; } },
 ];
 
 /* ================================ THE CHILD: ONE RUN ==================================== */
@@ -228,7 +249,7 @@ function runJob(legId, routeId, mutId) {
   }
   var entryMet = {};
   if (table.entry_met) table.entry_met.forEach(function (k) { var i = resolveKey(proc, k); if (i >= 0) entryMet[i] = true; });
-  else proc.steps.forEach(function (st, i) {   // provisional default: a step with no operator action
+  if (!table.final) proc.steps.forEach(function (st, i) {   // provisional default: a step with no operator action
     if (!st.cmd && !(st.accs || []).some(function (e) { return e.cmd; })) entryMet[i] = true;
   });
   function specFor(i) {
@@ -298,7 +319,7 @@ function runJob(legId, routeId, mutId) {
       if (k < cur) flags.push({ kind: 'rewind', step: k + 1, t_min: (t() - T0) / 60 });
       cur = k;
       var spec = specFor(k);
-      S = { t0: t(), spec: spec, memo: {}, rowsMet: [], ack0: null, acts: 0, pressedAck: false,
+      S = { t0: t(), spec: spec, memo: {}, rowsMet: [], rowsMetAt: [], ack0: null, acts: 0, pressedAck: false,
             bound: spec.bound_s || Math.max(3 * (st.hold || 0), BOUND_FLOOR_S) };
       out[k] = { n: k + 1, policy: spec.policy || 'default' };
     }
@@ -315,7 +336,10 @@ function runJob(legId, routeId, mutId) {
     }
     rows.forEach(function (r, i) {
       var e = (st.accs || [])[i] || {};
-      if (S.rowsMet[i] && !r.met && !e.cont && !e.hidden) flags.push({ kind: 'untick', step: k + 1, row: i + 1, label: e.label, t_min: (t() - T0) / 60 });
+      if (!S.rowsMet[i] && r.met) S.rowsMetAt[i] = t();
+      var band = e.op === '~' && !e.latch, heldS = t() - (S.rowsMetAt[i] == null ? t() : S.rowsMetAt[i]);
+      if (S.rowsMet[i] && !r.met && !e.cont && !e.hidden && !(band && heldS >= PASS_S))
+        flags.push({ kind: 'untick', step: k + 1, row: i + 1, label: e.label, t_min: (t() - T0) / 60, held_s: heldS });
       S.rowsMet[i] = !!r.met;
     });
     S.lastReadings = readings();
@@ -417,7 +441,14 @@ function runJob(legId, routeId, mutId) {
     }
     if (P === 'pull_plot') {
       if (!S.memo.go) { S.memo.go = true; S.acts++; nudge(spec.to - bank(), spec.speed || 'normal'); }
-      if (!moving() && bank() === spec.to && S.memo.stop == null) S.memo.stop = t();
+      if (!moving() && bank() === (S.memo.at || spec.to) && S.memo.stop == null) S.memo.stop = t();
+      /* `top`: counts row unmet once settled (rate at or under 0.03, 60 s still) -> one more step,
+       * inside the window only (the owner's reading of the window, 2026-09-24 ruling above) */
+      if (spec.top != null && S.memo.stop != null && !(rows2[0] && rows2[0].met) && t() - S.memo.stop >= 60 &&
+          pv('startup_rate_dpm') <= 0.03 && (S.memo.at || spec.to) < spec.top) {
+        S.memo.at = (S.memo.at || spec.to) + 1; S.memo.stop = null; nudge(1, 'slow'); S.acts++;
+        out[cur].taps = (out[cur].taps || 0) + 1;
+      }
       var plotRow = -1;
       (st2.accs || []).forEach(function (e, i) { if (cmdAction(e.cmd) === 'plot_1m_point') plotRow = i; });
       if (S.memo.stop != null && plotRow >= 0 && !S.memo.plotted && !(rows2[plotRow] && rows2[plotRow].met)) {
@@ -502,23 +533,20 @@ Object.keys(ROUTES).forEach(function (leg) {
     jobs.push(leg + ':' + r);
   });
 });
-if (!ROUTE_F && (!LEG_F || LEG_F === 'pwr_startup') && ARGV.indexOf('--no-mutations') < 0)
-  MUTATIONS.forEach(function (m) { jobs.push('pwr_startup:' + m.route + ':' + m.id); });
+if (!ROUTE_F && ARGV.indexOf('--no-mutations') < 0)
+  MUTATIONS.filter(function (m) { return !LEG_F || LEG_F === (m.leg || 'pwr_startup'); })
+    .forEach(function (m) { jobs.push((m.leg || 'pwr_startup') + ':' + m.route + ':' + m.id); });
 /* TRACKED REDS — a known red on an unported leg, recorded rather than fixed here (the port
  * agents own the content). Key: 'leg:route:check'. Each carries its measured numbers in
  * BASELINES' note; this map only keeps the tally honest about which reds are expected. */
 var TRACKED = {
-  // pwr_startup (final) — measured 2026-09-24, need a ruling / a grading fix, not this runner:
-  'pwr_startup:typical:complete': 'step 8 window "195 to 205": a stop at 195 settles at ~6,375 cps vs the 6,950 row',
-  'pwr_startup:window_overshoot:flash': 'step 12 Continue lights 1-2 s and goes out (steady row at its edge)',
-  'pwr_startup:plot_early:flash': 'step 12 Continue lights 1-2 s and goes out (steady row at its edge)',
-  // pwr_raise_power (PROVISIONAL, port in flight — the port agent owns the content):
-  'pwr_raise_power:typical:hollow': 'step 2 (LATCH) ticks on entry: the low_power IC is already latched at 10 MWe',
-  'pwr_raise_power:typical:flash': 'Tavg band rows on steps 6-7 un-tick (no latch)',
-  'pwr_raise_power:double_boron:flash': 'same Tavg band un-tick',
-  'pwr_raise_power:rods_first_pull_x2:flash': 'same Tavg band un-tick',
-  'pwr_raise_power:rewind_mid_rods3:flash': 'same Tavg band un-tick',
-  'pwr_raise_power:rods_first_pull_x2:invariant': 'a 60-step first pull: step 7 strands at 103.8 % power, Tavg 586.9 F above the 585 F band, no recovery on the card',
+  // step 8 CLEARED by the owner's reading of the window (2026-09-24 ruling, see ROUTES): 3 taps to
+  // bank 198, 7,244 cps. The literal route then reaches NEW ground and strands at step 10:
+  'pwr_startup:typical:complete': 'step 10: after step 9 passed on ONE read of 0.069 DPM at bank 208, 5 plant-min after the pull (still falling, to 0.024), the climb to 0.05 % takes 127.3 plant-min vs the card\'s "45 to 60" (bound 90) — owner text/grading, measured 2026-09-24',
+  // measured 2026-09-24, both need the OWNER'S text, not a grading fix:
+  'pwr_raise_power:rods_first_pull_x2:invariant': 'KNOWN LIMITATION, OWNER RULING 2026-09-24 ("The way I see it the range means that the source range target will be within that range not that hitting the lower part of the range will put you over the target. So let\'s leave then"): a 60-step first pull strands step 7 at 103.9 % power, Tavg 586.8 F over the 585 F band; the card has no recovery and the text stays',
+  // RESOLVED 2026-09-24 (workbench-i): step 12's flash (steady hysteresis), raise-power 2's entry
+  // tick (entry_met: a confirm step), the raise-power Tavg un-ticks (honest band re-grading, PASS_S)
 };
 
 var nPass = 0, nFail = 0, nTracked = 0, wall0 = Date.now();
@@ -579,7 +607,7 @@ function verdicts(r) {
   }
   var fz = fl('flash').concat(fl('untick'));
   v.flash = { ok: fz.length === 0, name: 'Continue never lights and goes out again (flash), no drawn row un-ticks',
-    note: fz.map(function (x) { return x.kind + ' step ' + x.step + (x.row ? ' row ' + x.row + ' (' + x.label + ')' : '') + (x.lit_s != null ? ' lit ' + f(x.lit_s) + ' s' : '') + ' @ ' + f(x.t_min) + ' min'; }).join('; ') || 'none' };
+    note: fz.map(function (x) { return x.kind + ' step ' + x.step + (x.row ? ' row ' + x.row + ' (' + x.label + ')' : '') + (x.lit_s != null ? ' lit ' + f(x.lit_s) + ' s' : '') + (x.held_s != null ? ' after ' + f(x.held_s) + ' s met' : '') + ' @ ' + f(x.t_min) + ' min'; }).join('; ') || 'none' };
   var rf = fl('rewind_refused');
   if (rf.length) v.rewind = { ok: false, name: 'the walkthrough Rewind lands', note: rf[0].why };
   return v;
@@ -607,7 +635,7 @@ function report() {
     Object.keys(v).forEach(function (k) { ck(tag + ': ' + v[k].name, v[k].ok, v[k].note, tag + ':' + k); });
   });
   var muts = results.filter(function (r) { return r.mut; });
-  if (muts.length) console.log(B + '\n  — INJECTION PROOFS (pwr_startup pool mutated in the child) —' + X);
+  if (muts.length) console.log(B + '\n  — INJECTION PROOFS (pool mutated in the child, per leg) —' + X);
   muts.forEach(function (r) {
     var m = MUTATIONS.filter(function (x) { return x.id === r.mut; })[0], v = verdicts(r)[m.expect];
     ck('INJECTION ' + m.id + ': ' + m.why + ' -> ' + r.route + ' "' + m.expect + '" goes RED', !!v && !v.ok,
