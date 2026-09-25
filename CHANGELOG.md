@@ -31,6 +31,12 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Mode 3 to Mode 1 walkthrough in the what / why / how shape (#653).** Each step's first line
+  says what the step does; a new one-line italic why (`aim`) sits under it; each lettered
+  substep opens with a verb and is its own check-off (32). New 3b checks STEAM DUMP AUTO and
+  DUMP SETPOINT 1020 psi. Boron dilution ON and target are graded (new read-only instructor
+  params `boron_auto_on`, `boron_target_ppm`). One time warp per step where the substeps share
+  it. The Background cap is 10 sentences (owner ruling 2026-09-25).
 - **Walkthrough fast-forward waits for your action (layman pass 4).** A step whose action is a
   press or a typed value stays at 1× until that command lands, then takes its rung; entering
   cooldown 11 used to run ~76 plant-minutes per 10 s of reading. `wait_first: true` marks the two

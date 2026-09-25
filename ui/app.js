@@ -4392,7 +4392,11 @@
     /* the dump's MODE, as the card's status word reads it (OWNER RULING 2026-09-24, "Grade the
      * mode") — derived by the instructor layer from `control_state.steam_dump_mode` */
     steam_dump_press_mode:  { bool: 'STEAM DUMP status reads PRESS' },
-    adv_valve_pct:          { label: 'ATMOS DUMP opening', u: '%' },
+    /* the BORON card's ON lamp and target box (2026-09-25, pwr_startup 2a/2b) — read off the
+     * `boron_conc` automation channel by the instructor layer (AUTO_CHAN_PARAMS there) */
+    boron_auto_on:          { bool: 'ON is lit on the BORON card' },
+    boron_target_ppm:       { label: 'BORON target', u: 'ppm' },
+    adv_valve_pct:         { label: 'ATMOS DUMP opening', u: '%' },
     vessel_level_pct:       { label: 'Vessel level', u: '%' },
     drum_level_pct:         { label: 'Drum level', u: '%' },
     plant_mode:             { mode: true },
@@ -4915,6 +4919,15 @@
        * sentence to a student and to an operator. */
       h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) +
         (st.crew ? ' <span class="ckl-crew">the crew\'s action, as taken — not a recommendation</span>' : '') + '</div>';
+      /* THE ONE-LINE WHY, DIRECTLY UNDER THE STEP'S FIRST LINE *(OWNER RULING, 2026-09-24: "I like
+       * putting the why where you put it. i choose a.")* — the what / why / how format
+       * (`Blueprint/CHECKLIST_WRITING_GUIDE.md` §16): line one says WHAT, this italic line says WHY,
+       * the lettered substeps below say HOW. Its own class (`.ckl-aim`), not `.ckl-crit-note`: a
+       * substep's note is a contingency the player may have to act on, this is the reason for the
+       * whole step, and it sits ABOVE every substep row. Drawn on every step that authors it,
+       * active or not, because it belongs to the step line it explains. `verify_ckl_relevance`
+       * §10 reads it off the rendered card. */
+      if (st.aim) h += '<div class="ckl-aim">' + mesc(st.aim) + '</div>';
       if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
       /* a step the plant moved past (#641) says so on the card, with the authored reason, so a
        * tick the player never earned is not read as one they did */
@@ -5013,11 +5026,13 @@
                 if (st.accs[cj].cont && !st.accs[cj].hidden) { hasCont = true; break; }
               }
             }
+            /* SPEED BEFORE NOTE (2026-09-25): the step format puts "Suggested time warp" first and
+             * "A Note follows the warp it belongs to" (the step file's header). Order only. */
             if (hasCont && (subNote || subSpeed)) {
               pendTail = '<div class="ckl-crit-tail' + (av.met ? ' ckl-crit-met' : '') +
                 (ordWait ? ' ckl-crit-wait' : '') + '">' +
-                (subNote ? '<div class="ckl-crit-note">' + subNote + '</div>' : '') +
                 (subSpeed ? '<div class="ckl-crit-speed">Suggested time warp: ' + subSpeed + '</div>' : '') +
+                (subNote ? '<div class="ckl-crit-note">' + subNote + '</div>' : '') +
                 '</div>';
             }
             h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') +
@@ -5032,8 +5047,8 @@
                * its own line, so the imperative is what the eye lands on. Not on a row that is
                * still waiting its turn (#756) — a done-when for a row nothing is grading yet. */
               (en.ask && !ordWait ? '<div class="ckl-crit-when">' + mesc(enTxt) + '</div>' : '') +
-              (subNote && !hasCont ? '<div class="ckl-crit-note">' + subNote + '</div>' : '') +
               (subSpeed && !hasCont ? '<div class="ckl-crit-speed">Suggested time warp: ' + subSpeed + '</div>' : '') +
+              (subNote && !hasCont ? '<div class="ckl-crit-note">' + subNote + '</div>' : '') +
               /* A ROW TICKED BY A SIBLING SAYS SO (`implied_by`, #749 follow-up, OWNER RULING
                * 2026-09-18). Without this the card draws "INTER RANGE reads 1.0e-7 A or more
                * ✓" beside a tile bottomed out at 1.0e-11 — a tick standing for a reading the
@@ -5075,6 +5090,18 @@
               '</div>';
           }
           if (pendTail) { h += pendTail; pendTail = ''; }
+          /* ONE TIME WARP FOR THE WHOLE STEP (2026-09-25, the step format: "Suggested time warp
+           * appears once per step, or under a substep only when the substeps differ"). A step whose
+           * substeps share a rung authors it ONCE, on the step: `wait_speed` is the clock (a head
+           * without its own `wait_speed` falls back to it in `cklRungFor`) and `speed_text` opts
+           * in to this line — a string verbatim, or `true` for the snapped rung as "N×.". Opt-in,
+           * so a leg that never authored the field draws exactly what it did. Drawn once, after
+           * every substep row and before the step's Note, which is where the format puts it. */
+          if (st.speed_text) {
+            var stSpeed = typeof st.speed_text === 'string' ? mesc(st.speed_text)
+              : (+st.wait_speed > 0 ? cklSnapRung(+st.wait_speed).speed + '×.' : '');
+            if (stSpeed) h += '<div class="ckl-crit-speed ckl-step-speed">Suggested time warp: ' + stSpeed + '</div>';
+          }
           /* A PRESS THAT LANDED OUT OF TURN GETS A REASON ON THE CARD (#759, OWNER RULING
            * 2026-09-15: "Fix the text AND say why"). The sim ACCEPTS the press — measured, the
            * 1/M plot took three real points at 501 counts per second against a 700 target — and
@@ -5248,7 +5275,7 @@
         h += '</div>';
       }
       var det = '';
-      if (st.note) det += '<div class="ckl-sub muted">' + mesc(st.note) + '</div>';
+      if (st.note) det += '<div class="ckl-sub muted ckl-step-note">' + mesc(st.note) + '</div>';
       if (st.wait_hint && !waitLineShown) {
         det += '<div class="ckl-sub ckl-wait">⏩ ' + mesc(st.wait_hint === true
           ? 'This takes a while in plant time — use time acceleration (the speed control, top bar).'

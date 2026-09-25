@@ -979,6 +979,61 @@ function sig(rows) {
          single ? 'order ' + single.order + ' tags ' + JSON.stringify(single.map(function (r) { return r.tag; })) : 'no rows');
     })();
 
+    /* ---- 11. THE STEP'S ONE-LINE WHY, AND ONE WARP FOR THE WHOLE STEP (2026-09-25, the what /
+     * why / how format — OWNER RULING, 2026-09-24: "I like putting the why where you put it. i
+     * choose a."). `aim` draws directly under the step's first line and ABOVE the first substep
+     * row, in its own class — not `.ckl-crit-note`, which is a substep's tip. A step-level
+     * `speed_text` draws ONE "Suggested time warp" line after the rows, and a head without its own
+     * `wait_speed` draws none of its own. SYNTHETIC, like section 9, and READ OFF THE DOM.
+     * INJECTIONS, proven in place 2026-09-25: the `.ckl-aim` line removed from ui/app.js -> .1 red;
+     * the step-level speed block removed -> .3 red. */
+    await (async function () {
+      await page.goto(url, { waitUntil: 'load' });
+      await page.waitForTimeout(1200);
+      await page.evaluate(function () {
+        var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_aim_probe'; });
+        window.RD.MANUAL_PROCEDURES.pwr2 = P;
+        P.push({ id: 'zz_aim_probe', category: 'control', manual_ref: 'ZZ-05',
+                 title: 'Aim probe', purpose: 'Render fixture.', from: 'hot_full_power',
+                 steps: [{ text: 'Verify the probe state.', aim: 'Why this step exists, in one line.',
+                           control: '(observe)', wait_speed: 1, speed_text: true,
+                           note: 'The step note.',
+                           accs: [{ p: 'power_pct', op: '<', v: -1, ask: 'Check thing A.', label: 'A' },
+                                  { p: 'power_pct', op: '<', v: -1, ask: 'Check thing B.', label: 'B' }] }] });
+      });
+      await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(200);
+      await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(2600);
+      await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
+      await page.waitForTimeout(700);
+      await page.click('button[data-ckl-start="zz_aim_probe"]', { timeout: 4000 });
+      await page.waitForTimeout(2200);
+      var r = await page.evaluate(function () {
+        var card = document.querySelector('.ckl-step.ckl-active');
+        if (!card) return null;
+        var txt = card.querySelector('.ckl-txt'), aim = card.querySelector('.ckl-aim');
+        var rows = card.querySelectorAll('.ckl-crit');
+        var speeds = [].map.call(card.querySelectorAll('.ckl-crit-speed'), function (e) { return e.textContent.trim(); });
+        var note = card.querySelector('.ckl-step-note');
+        function before(a, b) { return !!(a && b) && !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING); }
+        /* "directly under": the aim is the next element after the step line */
+        return { aim: aim ? aim.textContent.trim() : null, next: !!txt && txt.nextElementSibling === aim,
+                 aboveRows: rows.length === 2 && before(aim, rows[0]),
+                 italic: aim ? getComputedStyle(aim).fontStyle : null, isNote: !!aim && aim.classList.contains('ckl-crit-note'),
+                 speeds: speeds, speedAfterRows: speeds.length === 1 && before(rows[1], card.querySelector('.ckl-step-speed')),
+                 speedBeforeNote: before(card.querySelector('.ckl-step-speed'), note) };
+      });
+      ck('#aim: the one-line WHY draws directly under the step line and ABOVE the first substep row',
+         !!r && r.aim === 'Why this step exists, in one line.' && r.next && r.aboveRows,
+         r ? JSON.stringify({ aim: r.aim, next: r.next, aboveRows: r.aboveRows }) : 'the probe leg did not render');
+      ck('...italic, and its own class, not a substep note',
+         !!r && r.italic === 'italic' && !r.isNote, r ? 'font-style ' + r.italic + ', ckl-crit-note ' + r.isNote : 'no card');
+      ck('...a step-level warp draws ONCE, after the substep rows and before the step Note; the heads draw none',
+         !!r && r.speeds.length === 1 && r.speeds[0] === 'Suggested time warp: 1×.' && r.speedAfterRows && r.speedBeforeNote,
+         r ? JSON.stringify(r.speeds) + ' after rows ' + r.speedAfterRows + ' before note ' + r.speedBeforeNote : 'no card');
+    })();
+
     /* ---- 10. A `below_1m` ROW PAST THE MARK SAYS WHERE THE MARK IS (quality pass, 2026-09-24,
      * `pwr_startup` 9a). Measured in headless Edge, seed 42, prediction 211: a stop at 209 or 211
      * never ticks 9a and the card said only "It ticks after the rods have been still for a

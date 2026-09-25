@@ -976,3 +976,33 @@ AUTO in pressure mode, steam pressure 1020 psi (7.03 MPa), dump 0 to 1.95 % open
   ppm on the chained route; the preset boots at 718.9 ppm, already in band).
 * Chained-route dump, PARTLY measured (seed 42, heatup replay stopped at 7834 s, Tavg 309.4 degF):
   AUTO, pressure mode, setpoint 1019.6 psi (7.03 MPa). No later heatup step commands the dump.
+
+### Bring-down record — 2026-09-25 (i), develop lane: the reworded steps 1-17 in the sim
+
+*Every step's first line, italic WHY (new pool field `aim`, drawn under the first line and above
+the substeps), substeps, warps, Notes and Background are in `ui/manual_procedures.js`
+`pwr_startup`. 32 check-offs. Shortened, not waived — where the sim could not take a line as
+written, this is what it does instead:*
+
+* **1c "RCP FLOW reads ON".** The RCP FLOW tile prints a percentage, not the word ON. Graded on
+  that tile (the RCS flow channel) at 90 % or more, the low-flow trip setpoint; its done-when reads
+  "RCP FLOW 90 % or more: the pumps are running". MEASURED 100.2 % (preset), 100.5 % (chained).
+* **1d "STARTUP RATE reads 0.00 DPM"** is graded on −0.02 to +0.02 (the heatup's last step uses
+  the same band), not on the tile's "0.00" band. MEASURED after the chained arrival: the reading
+  swings −0.014 to +0.015 and is inside the "0.00" band on only 476 of 600 samples, so the strict
+  band would flicker. A tick-once latch was tried and rejected: the gate's replay reads this step
+  once (+0.02), and giving it ticks shifted the rest of the leg's replay enough to redden four
+  later checks.
+* **2a / 2b** grade the BORON card's ON lamp and target box (new read-only params
+  `boron_auto_on`, `boron_target_ppm`, off the channel the board draws them from). Step 2 is
+  ordered: ON, then the target, then the wash, because pressing ON after the target cancels the
+  dose. Target band 718.5-719.5 ppm (the box draws whole ppm). "ON" glows through a new board
+  label, `Boron ON`.
+* **3b** grades the STEAM DUMP AUTO lamp and DUMP SETPOINT in the whole-psi band of 1020
+  (1019.5-1020.5 psi). MEASURED at the chained arrival (`run_walkthrough_routes` pwr_heatup,
+  typical and pressure_sp_high routes, seed 42): AUTO, pressure mode, setpoint 1019.6 psi (7.03
+  MPa) flat for 600 s, dump 0.8-1.3 % open, Tavg 547.3 °F. Same constant on the preset.
+* **14b, 17b: "MW" is "MWe"** in the sim (style rule N6).
+* **9b's Note** is one reading per line, each opened with "•" (the card draws text, not markdown).
+* **A warp shared by every substep draws once**, after the substeps and before the Note (steps 1,
+  2, 3, 8, 10, 12, 17); a substep's own warp now draws ABOVE its Note, as the file orders them.
