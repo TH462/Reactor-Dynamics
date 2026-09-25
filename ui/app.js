@@ -4498,6 +4498,7 @@
       var mant = vv, exp = 0;
       while (Math.abs(mant) >= 10) { mant /= 10; exp++; }
       while (mant !== 0 && Math.abs(mant) < 1) { mant *= 10; exp--; }
+      if (Math.abs(+mant.toFixed(1)) >= 10) { mant /= 10; exp++; }   // 9.96e2 draws 1.0e3, never 10.0e2 (#653, 2026-09-25)
       /* THE BRACKET IS AN AID, AND BELOW 1 IT STOPS BEING ONE (#749 item 2, 2026-09-18). The
        * owner's form is "7.0e2 (700 counts per second)" — the meter's notation with the plain
        * number beside it — and the plain number is what makes it an aid. `Math.round` on a

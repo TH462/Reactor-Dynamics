@@ -2711,8 +2711,9 @@ if (!only && RUN_B) {
      * rungs, on the same board formatter: graded on the channel the card draws, thresholded at
      * the floor of the band the card draws it in. `intermediate_range` carries no DISPLAY_DAMP
      * entry either, which is what keeps this clear of the #670 ruling exactly as check 2 does
-     * for the source range. `fmtExp(1e-7 - ulp)` is `10.0e-8` — the formatter's own quirk at a
-     * mantissa of ten — so for this one the band floor IS the target. */
+     * for the source range. `fmtExp(1e-7 - ulp)` WAS `10.0e-8` — the formatter's quirk at a
+     * mantissa of ten, FIXED 2026-09-25 (#653 layman pass 5) — so the floor is now below the
+     * target, 9.950000000000001e-8, like every other band here. */
     (function () {
       var st = null, si = -1;
       (proc ? proc.steps : []).forEach(function (s2, i) {
@@ -2740,6 +2741,18 @@ if (!only && RUN_B) {
          !!en && String(en.label || '').indexOf(fmtExp(v)) !== -1 &&
          String(en.label || '').indexOf(String(v)) === -1,
          en ? JSON.stringify(en.label) : 'no row');
+      /* A MANTISSA OF TEN IS NEVER DRAWN (2026-09-25, #653 layman pass 5: the INTER RANGE tile
+       * read "10.0e-5"). Just below every decade edge from SOURCE RANGE counts down to INTER
+       * RANGE amps, the board must draw the next decade's "1.0", never "10.0". */
+      var tens = [];
+      for (var de = -11; de <= 5; de++) {
+        [0.996, 0.9999].forEach(function (f) {
+          var x = f * Math.pow(10, de), out = fmtExp(x);
+          if (/^10\./.test(out)) tens.push(x.toExponential(4) + ' -> ' + out);
+        });
+      }
+      ck('2ab.6 ...and the board never draws a mantissa of 10 ("10.0e-5"), it carries the decade',
+         tens.length === 0, tens.length ? tens.slice(0, 3).join(' · ') : '34 edge values, none');
     })();
 
     /* --- 7. AND IT ONLY EARNS ITS PLACE IF IT MOVES FIRST. `accs` is a CONJUNCTION: this row

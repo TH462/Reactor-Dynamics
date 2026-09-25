@@ -1663,7 +1663,9 @@
     if (v >= sp) return NIS_TRIP_COLOR;
     return (Math.log10(sp) - Math.log10(v) <= NIS_NEAR_DECADES) ? SR_HANDOFF_COLOR : SR_NORMAL_COLOR;
   }
-  function fmtExp(v) { if (!v || v <= 0) return '0'; var e = Math.floor(Math.log10(v)); var m = v / Math.pow(10, e); return m.toFixed(1) + 'e' + e; }
+  // A mantissa that ROUNDS to 10.0 carries into the exponent (2026-09-25, #653 layman pass 5): it
+  // printed "10.0e-5" for 9.95e-5..1e-4. Every value now draws in 1.0..9.9.
+  function fmtExp(v) { if (!v || v <= 0) return '0'; var e = Math.floor(Math.log10(v)); var m = v / Math.pow(10, e); if (+m.toFixed(1) >= 10) { m /= 10; e++; } return m.toFixed(1) + 'e' + e; }
   function accIsolated(s) { return CS(s).accumulator_valve_open === false; }
   function accFill(s) { var t = s.true_state || {}; return t.accumulator_volume_pct != null ? t.accumulator_volume_pct : 78; }
   // N2 cover-gas pressure. Older saves predate the engine field — show a dash rather than a

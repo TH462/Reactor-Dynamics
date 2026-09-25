@@ -3308,8 +3308,9 @@
            * already met and cannot serve. 1.0e-7 A is the round decade that lands mid-wait on
            * every route measured. It follows the same render-band rule as everything else here:
            * the tile draws `fmtExp(intermediate_range)`, and 1.0e-7 is the FIRST value drawn as
-           * `1.0e-7` — one ulp below prints `10.0e-8`, which is the formatter's own quirk at a
-           * mantissa of 10 and is why the edge coincides with the target for this one.
+           * `1.0e-7` — one ulp below printed `10.0e-8`, the formatter's quirk at a mantissa of 10.
+           * FIXED 2026-09-25 (#653 layman pass 5, the tile read "10.0e-5"): fmtExp now carries it,
+           * so "1.0e-7" is drawn from 9.950000000000001e-8 and the row grades that floor.
            *
            * ON A HEALTHY BOARD IT CANNOT GATE: `ir_amps` and `power_pct` are both `K × pFrac` of
            * the SAME flux (pwr2_true_state), so on TRUE STATE the rows are strictly ordered by
@@ -3331,7 +3332,7 @@
            * Hard Rule 1 grading — every instrument-graded row in the pool carries it — and it is
            * NOT a reason to grade truth; it is a reason not to write "cannot" here. Tracked on
            * #772 with the rest of the #749 residuals. */
-          accs: [{ p: 'ir_amps', op: '>=', v: 1e-7,
+          accs: [{ p: 'ir_amps', op: '>=', v: 9.950000000000001e-8,   /* 2026-09-25: the band floor of "1.0e-7" now fmtExp carries a 10.0 mantissa -- 9.95e-8 itself still draws 9.9e-8 (binary), measured by bisection (#749) */
                    ask: 'Leave the rods still and wait for INTER RANGE to read 1.0e-7 A or more.',
                    label: 'INTER RANGE reads 1.0e-7 A or more',
                    /* AND THE SOFT-LOCK THE PARAGRAPH ABOVE MEASURED IS CLOSED HERE *(OWNER
