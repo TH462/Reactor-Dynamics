@@ -59,6 +59,27 @@ Record: `Blueprint/walkthrough_steps/05_shutdown.md` Notes.
 - **#697'S PREMISE IS PER-ROW.** It made the AUTO press optional because the plant already
   produced the press's EFFECT (dump open, power low). That holds for the valve rows and not for the
   status word: the plant never selects pressure mode by itself.
+## Session log — 2026-09-24-wt-heatup-a (Mode 5 to Mode 3 ported to the step format: a one-row step's rung covers its presses; a stated time from another engine)
+
+Record and every number: the 2026-09-24 reconcile record in `Blueprint/walkthrough_steps/01_mode5_to_mode3.md`.
+
+- **A ONE-ROW WAIT STEP PLAYS ITS PRESSES AT THE WAIT'S RUNG.** The 30 s rule keys on the step's
+  `hold`, so `pwr_heatup` 3 ran FAST + WITHDRAW at 60× and 9 ran the HEATER press at 600× from step
+  entry. Splitting press from wait needs a gradeable row for the press: 3a grades SHUTDOWN ROD
+  POSITION above 0 (unmet at entry, ticks 5 s after the click on both routes). Step 14 could not
+  split — `pressure_setpoint` is not a `CTL_PARAMS` channel, so the typed SET PZR PRESSURE is
+  ungradeable without a runtime change.
+- **A LEG'S STATED TIME CAN BELONG TO ANOTHER ENGINE.** The purpose said "About 12 plant-hours";
+  the leg completes in **6.35 / 6.37 plant-hours** (replay / player route). 12 matches the retired
+  engine's full settle (~12.3 h to 567 °F (297.2 °C), INHERITED from its pool comment), which this leg never waits for.
+- **`run_style` N6 SCANS `target` BUT NOT `accs`.** A board-literal "0 MW" moved into `target`
+  reddened; the same string in `ask`/`label` passes unseen. The card draws `target` only on an
+  observe step, so the target kept "MWe".
+- **A TEST THAT FINDS A STEP BY REGEX ON `text` GOES BLIND WHEN THE ACTION MOVES INTO `ask`.**
+  `run_checklist_pwr2` 2j's `/press AUTO under HEATER/` now reads text + asks. Grep every leg's
+  tests for `.test(st.text)` before porting.
+- **IN A FAST HARNESS, ROW LATENCY IS BROADCAST RESOLUTION.** At 600× a broadcast is 60 plant-s, so
+  the 5-broadcast debounce reads as "+300 s" on 9a — the player at 1× sees ~5 s.
 
 ## Session log — 2026-09-24-workbench-c (third layman pass on Mode 3 to Mode 1: a Continue lit below the fold; `paramValue` is not the tile)
 
