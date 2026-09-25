@@ -3580,8 +3580,12 @@ if (!only && RUN_B) {
        * `plant_mode` for two; old step 11's `sr_energized` goes. Instrument +4: pressure, rate, and
        * 17's two. Sole -1: step 1's tavg row now has a sibling. Graded steps unmoved at 84: step 9
        * gained grading and old step 11 left. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-23: 84 / 131 / 87 / 30)',
-         gradedSteps === 84 && predRows === 131 && rows.length === 87 && soleInst === 30,
+      /* RE-PINNED 2026-09-24 (wt-cooldown, the cooldown leg's format port): 131 -> 132 predicate
+       * rows. `pwr_cooldown` step 15 gains "HX SPLIT above 0 %" (`rhr_hx_fraction`, control-state,
+       * so instrument-graded and sole counts do not move). ⚠ The other legs' ports move this too:
+       * on a merge, SUM the deltas, do not take either side. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-24: 84 / 132 / 87 / 30)',
+         gradedSteps === 84 && predRows === 132 && rows.length === 87 && soleInst === 30,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();

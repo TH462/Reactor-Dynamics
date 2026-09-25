@@ -30,6 +30,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Mode 3 to Mode 5 cooldown walkthrough in the per-substep format** (owner directive, 2026-09-24:
+  "Adopt the format for the other walkthroughs."). 15 steps, 20 substeps, 23 check-offs; goal lines
+  agent-drafted for review; every tile threshold graded at its render-band floor; step 15 now also
+  checks HX SPLIT above 0 %; stated times re-measured on a player and the replay route (window
+  about 8, not 5, plant-minutes). Record: `Blueprint/walkthrough_steps/06_cooldown.md` Notes.
+
 ## [Alpha 1.8.0-rc5] — 2026-09-24
 
 ### Fixed

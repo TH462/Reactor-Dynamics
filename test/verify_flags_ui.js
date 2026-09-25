@@ -425,8 +425,15 @@ function pinChannel(ch) {
       if ((+pool[i].steps[0].hold || 0) < 180) continue;
       var btn = document.querySelector('[data-ckl-start="' + pool[i].id + '"]');
       if (!btn) continue;
+      /* THE FIXTURE, NOT THE CLAIM (2026-09-24, wt-cooldown). This picked `pwr_cooldown` step 1,
+       * which the owner's per-substep format ported to `wait_hint: false` (its substep prints its
+       * own speed line) — so no step 1 in the pwr2 pool draws the generated line any more, and
+       * the check read card="" bar="". The claim is about the #686 consolidation, so the step is
+       * made to qualify IN THIS PAGE ONLY (the pool object the renderer reads), and says so. */
+      var forced = pool[i].steps[0].wait_hint === false;
+      if (forced) delete pool[i].steps[0].wait_hint;
       btn.click();
-      return { id: pool[i].id, hold: +pool[i].steps[0].hold };
+      return { id: pool[i].id, hold: +pool[i].steps[0].hold, forced: forced };
     }
     return { id: null };
   });
