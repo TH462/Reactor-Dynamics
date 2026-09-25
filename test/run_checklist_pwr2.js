@@ -3789,8 +3789,11 @@ if (!only && RUN_B) {
        * (3, was cmd-only), +8 predicate rows (1b, 1c x2, 3a, 3b's target, 9's OUTPUT, 12b x2; 10 and 11
        * trade cmd/boron for temperature), +2 instrument-graded (9 OUTPUT, 12 temperature; 11 trades
        * boron for temperature), sole 28 -> 27 (12 is no longer one row). SUM these deltas on a merge. MERGED with the shutdown bring-down (+2 rows, +1 instrument): 85 / 151 / 95 / 27. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25 (d): 86 / 166 / 102 / 26 -- raise + shutdown + cooldown + heatup (+0/+9/+5/0) summed)',
-         gradedSteps === 86 && predRows === 166 && rows.length === 102 && soleInst === 26,
+      /* RE-PINNED 2026-09-25 (workbench-f): cooldown 13b now grades the RCP FLOW card's OFF lamp
+       * (`rcp_running`, a STATUS param, as heatup 1c does) instead of the RCP FLOW tile, so
+       * instrument-graded 102 -> 101; steps and predicate rows unchanged. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25 (workbench-f): 86 / 166 / 101 / 26 -- cooldown 13b to the OFF lamp, -1 instrument)',
+         gradedSteps === 86 && predRows === 166 && rows.length === 101 && soleInst === 26,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -3967,7 +3970,7 @@ if (!only && RUN_B) {
       'pwr_cooldown:6:pressure_mpa': 1, 'pwr_cooldown:8:pressure_mpa': 1,
       'pwr_cooldown:10:pump_flow_pct': 1, 'pwr_cooldown:11:tavg_c': 1,
       'pwr_cooldown:12:spray_flow_pct': 1,
-      'pwr_cooldown:13:tavg_c': 1, 'pwr_cooldown:13:pump_flow_pct': 1,   // 13a/13b (2026-09-25 bring-down), both read DOWNWARD
+      'pwr_cooldown:13:tavg_c': 1,   // 13a (2026-09-25 bring-down), reads DOWNWARD; 13b grades the OFF lamp since workbench-f, not an instrument
       /* STEP 15 USED TO BE HERE, on `pzr_level_pct < 80` (#788's content pass, 2026-09-19). The
        * entry was the pressurizer level gauge doing a clock's job on the one leg two of the four
        * named casualties can freeze, and it broke in BOTH directions depending on when the player
@@ -4116,7 +4119,7 @@ if (!only && RUN_B) {
       'pwr_raise_power:11': 'tavg_c,mwe_output',
       'pwr_raise_power:12': 'mwe_output,tavg_c',                     // the #667 shape, one leg later
       'pwr_cooldown:8': 'pressure_mpa',
-      'pwr_cooldown:13': 'tavg_c,pump_flow_pct',              // 13a/13b replace plant_mode (2026-09-25)
+      'pwr_cooldown:13': 'tavg_c',              // 13a/13b replace plant_mode (2026-09-25); 13b is the OFF lamp since workbench-f
       'pwr_tmi2_incident:1': 'power_pct',
       'pwr_tmi2_incident:3': 'pressure_mpa',                  // a `saw` row, not an `acc`
       'pwr_tmi2_incident:5': 'sg_level_pct',

@@ -138,6 +138,19 @@ function stepFields(s, fields) {
       if (sy) STORY_KEYS.forEach(function (k) { if (typeof sy[k] === 'string') out.push(sy[k]); });
       return;
     }
+    /* `accs` EXPANDS TO EVERY PER-ENTRY STRING THE CARD DRAWS (2026-09-25, workbench-f): the
+     * lettered substep's `ask`, its done-when `label`, its own `note` and its `speed_text`.
+     * Found by the lower-power bring-down: W12 scanned the STEP's `note` and never reached
+     * into `accs`, so three substep notes shipped "a few" / "as soon as" under a green run —
+     * the same blind spot `checklist_no_si` closed for itself at #741. Opt-in per check,
+     * because the imperative rules (W16/W17) are about the step LINE and a done-when label is
+     * not an imperative. */
+    if (f === 'accs') {
+      (s.step.accs || []).forEach(function (a) {
+        ['ask', 'label', 'note', 'speed_text'].forEach(function (k) { if (typeof a[k] === 'string') out.push(a[k]); });
+      });
+      return;
+    }
     if (typeof s.step[f] === 'string') out.push(s.step[f]);
   });
   return out;
@@ -161,11 +174,17 @@ var CHECKS = [
   {
     id: 'checklist_vague',
     rule: 'W12 — no vague quantifier in a checklist step',
-    run: function (d) { return scanSteps(d, ['text', 'aim', 'target', 'control', 'note', 'story'], VAGUE); },
+    run: function (d) { return scanSteps(d, ['text', 'aim', 'target', 'control', 'note', 'story', 'accs'], VAGUE); },
     /* `aim` (the step's one-line WHY, 2026-09-25) gets its OWN injection — a per-field harvest
-     * needs a per-field proof, the #741 lesson on `checklist_no_si` below. */
+     * needs a per-field proof, the #741 lesson on `checklist_no_si` below. So does each of the
+     * four `accs` strings (workbench-f): delete any one from the harvest and its injection
+     * alone reports CAN'T FAIL. */
     inject: [function (d) { d.steps[0].step.text = 'Raise pressure slowly to the program point.'; },
-             function (d) { d.steps[0].step.aim = 'Pressure comes up slowly here.'; }],
+             function (d) { d.steps[0].step.aim = 'Pressure comes up slowly here.'; },
+             function (d) { d.steps[0].step.accs = [{ label: 'Pressure steady', note: 'Wait a few plant-minutes.' }]; },
+             function (d) { d.steps[0].step.accs = [{ label: 'Pressure steady', ask: 'Raise it slowly.' }]; },
+             function (d) { d.steps[0].step.accs = [{ label: 'Adequate pressure' }]; },
+             function (d) { d.steps[0].step.accs = [{ label: 'Pressure steady', speed_text: '10×, periodically 1×.' }]; }],
   },
   {
     id: 'checklist_modal',

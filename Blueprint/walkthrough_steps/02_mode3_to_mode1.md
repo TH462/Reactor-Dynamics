@@ -330,7 +330,7 @@ Below about 1 % that feedback was too weak to feel. From here it is what makes t
 
 Suggested time warp: 5×.
 
-Note: Power passes 5 % a few minutes after the rods stop and climbs toward 8 to 10 %. It passes 9½ % once the turbine takes load in the next step. It needs to: the two startup trips cannot be blocked until REACTOR POWER is above 9½ %.
+Note: Power passes 5 % about a plant-minute after the rods stop and climbs toward 8 to 10 %. It passes 9½ % once the turbine takes load in the next step. It needs to: the two startup trips cannot be blocked until REACTOR POWER is above 9½ %.
 
 
 
@@ -374,7 +374,7 @@ As the generator picks up load, more steam is drawn, the water cools, and cooler
 
 Suggested time warp: 1×.
 
-Note: Do this as soon as REACTOR POWER is above 9½ %. Below 8 % the BLOCK button will not take the press at all. Between 8 % and about 9½ % it takes it, then the block goes out again by itself: its automatic permission, which the panel calls P-10 PERMISSIVE, is read off REACTOR POWER, and that reading wanders about ±0.3 % and dips back under. If that happens, let power come up and press it again. The reactor keeps climbing while the panel is open.
+Note: Do this the moment REACTOR POWER is above 9½ %. Below 8 % the BLOCK button will not take the press at all. Between 8 % and about 9½ % it takes it, then the block goes out again by itself: its automatic permission, which the panel calls P-10 PERMISSIVE, is read off REACTOR POWER, and that reading wanders about ±0.3 % and dips back under. If that happens, let power come up and press it again. The reactor keeps climbing while the panel is open.
 
 
 
@@ -1056,3 +1056,13 @@ target to "MWe" on the belief that N6 forced it; it does not — the exemption c
 target by exact phrase and `scanSteps` never reads `accs`. The layman pass 5 then saw "MWe" in
 the text against "MW" on the tile (S-9). Pool restored to the step file's "MW"; nothing else
 changed.
+
+### Style fixes — 2026-09-25 (workbench-f): two substep notes the W12 scan now reaches
+
+`run_style` W12 (vague quantifiers) did not read `accs[].note`; it does now, and two of this leg's
+notes failed it. Minimal rewording, nothing else changed:
+- 13a: "Power passes 5 % a few minutes after the rods stop" → "about a plant-minute after". MEASURED
+  on the route gate (seed 42): step 13 takes 2.7 plant-min on the typical, pass-3 and chained
+  routes, of which the 13-step SLOW pull is about 1.7 (8 plant-s a step, INHERITED from 9a's note).
+- 15a: "Do this as soon as REACTOR POWER is above 9½ %" → "Do this the moment REACTOR POWER is
+  above 9½ %".

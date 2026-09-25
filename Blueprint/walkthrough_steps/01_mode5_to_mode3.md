@@ -660,3 +660,13 @@ arrives at 0.827 MPa (120 psi); set to 1020 psi, 13a ticks +5.6 s, AUTO +5.7 s, 
 (0 %) with STEAM PRESS 1023 psi, step 14 reaches 2217 psi with no trip, step 15 is met on entry, and
 the leg completes, 398.9 plant-min. Still on that route until the cooldown's half lands: step 1
 skipped and steps 3, 5 and 7 met on entry.
+
+### Cross-leg quality pass — 2026-09-25, workbench-f (pool only; no step text changed)
+
+Steps 3, 9, 11, 14 and 16 now author `wait_hint: false` in the pool (11 had `true`). With a hold of
+180 s or more and no `wait_hint: false`, the card printed the app's generated fast-forward line AND
+this file's "Suggested time warp" line on the same step, the only leg still doing so; the other
+five set it for that reason. The rung is unchanged (it comes from `wait_speed`). `verify_e2e_ui`'s
+long-step fixture had been landing on step 3 and drawing its speed-bar rung from the hint (0 rungs
+once it went, in that jumped state only; live play grades an active head first). It now picks the
+first long step with its own `wait_speed`, step 11 (3600×), and passes.

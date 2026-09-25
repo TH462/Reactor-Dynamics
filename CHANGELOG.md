@@ -30,6 +30,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Walkthroughs: cross-leg quality pass (workbench-f).** Cooldown step 1 asks for the ON check
+  before the 920 ppm target, so its own "If ON is not lit, press ON" can no longer wipe the typed
+  target (ON re-captures it from the analyzer). Cooldown 13b reads "Check OFF is lit on the RCP
+  FLOW card." and grades the pumps' OFF lamp, as heatup 1c does. Trip blocks are "blocked", never
+  "switched off" (raise power step 1, cooldown steps 2 and 3). The Mode 5 to Mode 3 heatup no
+  longer prints two speed lines on its five long steps (`wait_hint: false`, as the other legs).
+  Check-off labels name the tile (OUTPUT, LOAD, REACTOR POWER, BORON target … ppm); lower power
+  1 says "719 ppm"; "programme" → "program".
+- **`run_style` W12 reads the substep strings** (`accs[].ask/label/note/speed_text`), with one
+  injection per field. Three substep notes it then caught were reworded.
+
 ## [Alpha 1.8.0-rc6] — 2026-09-25
 
 ### Changed

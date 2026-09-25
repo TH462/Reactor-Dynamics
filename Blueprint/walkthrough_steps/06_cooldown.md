@@ -18,9 +18,9 @@
 
 *Cold water makes the chain reaction easier, so the extra boron has to be in before the cold arrives.*
 
-()1a. Set the boron target to 920 ppm on the BORON card and press Enter.
+()1a. Check ON is lit and BORON STATUS reads BORATING. If ON is not lit, press ON.
 
-()1b. Check ON is lit and BORON STATUS reads BORATING. If ON is not lit, press ON.
+()1b. Set the boron target to 920 ppm on the BORON card and press Enter.
 
 ()1c. Wait for BORON CHEM to read 880 ppm or more.
 
@@ -36,9 +36,9 @@ Hot, the plant is comfortably shut down on about 719 ppm of boron. Cold water ma
 
 
 
-2. Bring pressure under the point where the low-pressure protection can be switched off.
+2. Bring pressure under the point where the low-pressure protection can be blocked.
 
-*The plant only lets you switch off its low-pressure protection below 1972 psi.*
+*The plant only lets you block its low-pressure protection below 1972 psi.*
 
 ()2a. Lower SET PZR PRESSURE to 1900 psi and wait for PRIMARY PRESSURE to read below 1972 psi.
 
@@ -46,13 +46,13 @@ Suggested time warp: 1×.
 
 Background
 
-Two automatic protections watch for falling pressure, because on a running plant falling pressure means a leak. They can only be switched off below 1972 psi, so the setpoint comes under that first. This is not the depressurization; it only unlocks the next step.
+Two automatic protections watch for falling pressure, because on a running plant falling pressure means a leak. They can only be blocked below 1972 psi, so the setpoint comes under that first. This is not the depressurization; it only unlocks the next step.
 
 [HIGHLIGHTED: Pressure SP (pulsing); Primary Pressure (steady)]
 
 
 
-3. Switch off the protection that would read the cooldown as a leak.
+3. Block the protection that would read the cooldown as a leak.
 
 *To the automatic protection a cooldown looks like a leak, and left on it would trip the reactor and start the emergency injection pumps.*
 
@@ -252,7 +252,7 @@ The plant is cold now and the pressurizer shell has given up most of its stored 
 
 ()13a. Check AVG COOLANT TEMPERATURE reads below 199 °F.
 
-()13b. Check RCP FLOW reads OFF.
+()13b. Check OFF is lit on the RCP FLOW card.
 
 Suggested time warp: 1×.
 
@@ -594,3 +594,21 @@ is not lit, press ON") undoes 1a; `pwr_startup` 2 puts ON first for this reason.
 swapping 1a and 1b. (2) 13b "RCP FLOW reads OFF": the RCP FLOW tile prints a number (about 2 %
 with the pumps secured), never OFF; OFF is the lamp on the RCP card. Graded on the tile, as
 `pwr_startup` 1c grades "reads ON". (3) The 16 text above.
+
+### Cross-leg quality pass — 2026-09-25, workbench-f
+
+- **1a and 1b swapped** (the bring-down's recommendation (1) above). 1a is now "Check ON is lit…
+  If ON is not lit, press ON.", 1b the 920 ppm target. Before, the ON check's own contingency was
+  the press that wiped the typed target (ON re-captures it from the analyzer: 920 → 718.2 ppm,
+  INHERITED from the bring-down). The target row keeps its re-grading band (919.5-2500.5 ppm).
+  MEASURED, route gate seed 42: typical route completes in 278.9 plant-min, no hollow step, no
+  flash, no row un-tick; chained, step 1 takes 77.5 plant-min.
+- **13b "Check OFF is lit on the RCP FLOW card."**, graded on that lamp (`rcp_running < 1`, the
+  instructor's STATUS_PARAMS), replacing the `pump_flow_pct < 9.5` tile row. This extends *OWNER
+  RULING, 2026-09-25, selected "Reword"* on `pwr_heatup` 1c to this step for consistency — the
+  coordinator's call, not a separate ruling. MEASURED: met on arrival on the typical and chained
+  routes (step 13 is 0.1 plant-min on the chain, the pumps stopped at step 10).
+- **Trips are "blocked"** *(OWNER RULING, 2026-09-25: "A")*: step 2's line, italic line and
+  Background, and step 3's line ("Block the protection that would read the cooldown as a leak.").
+- **`act_first` not authored.** 4b's first DUMP SETPOINT press is the step's own `cmd`, so the
+  speed-the-action hold already covers it; 6c and 16 carry no repeated press of the step's family.

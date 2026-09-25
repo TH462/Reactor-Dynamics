@@ -29,6 +29,24 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-25-workbench-f (cross-leg quality pass on the six walkthroughs; W12 reads the substeps)
+
+Records: each step file's Notes, "Cross-leg quality pass — 2026-09-25, workbench-f". Traps only:
+- **A style scan that reads named fields misses a new nested field.** W12 read the step `note` and
+  never `accs[].note`; three substep notes shipped "a few" / "as soon as" under a green run. The
+  same blind spot `checklist_no_si` closed at #741. Each harvested field now carries its own
+  injection; dropping any one of the four from the harvest turns the check INERT.
+- **A contingency inside a substep can undo the substep before it.** Cooldown 1 put the 920 ppm
+  target first and "If ON is not lit, press ON" second, and pressing ON re-captures the target.
+  Order substeps so a recovery press never lands after the value it resets.
+- **`act_first` only waits for the STEP's `cmd` family.** Lower power 4c/5c/6c open on their first
+  rod press at 5×, but the step's cmd is the LOAD set that 4a already sent; `act_first` there
+  would hold 1× until a second LOAD press that never comes. Not authored; reported.
+- **`wait_hint` omitted on a long step prints two speed lines** once the substep format adds its
+  own. The heatup was the one leg left doing it (5 steps). Removing it reddened `verify_e2e_ui`
+  (#743): the fixture's jumped heatup step 3 had been drawing its speed-bar rung FROM the hint
+  (0 rungs without it). The fixture now picks a step with its own `wait_speed` (step 11, 3600×).
+
 ## Session log — 2026-09-25-workbench-e (cooldown brought down to the what / why / how shape; a closing lineup step; two grading traps)
 
 Record and every number: `Blueprint/walkthrough_steps/06_cooldown.md` Notes, bring-down record

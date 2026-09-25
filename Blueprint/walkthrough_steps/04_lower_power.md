@@ -21,7 +21,7 @@
 
 *Every percent of power shed hands reactivity back, and boron is too slow to catch it unless it is already working.*
 
-()1a. Set 719 on the BORON card and press Enter.
+()1a. Set 719 ppm on the BORON card and press Enter.
 
 Suggested time warp: 1×.
 
@@ -47,7 +47,7 @@ Coming down is the climb in reverse. Every percent of power shed hands reactivit
 
 Suggested time warp: 10×.
 
-Note: Power walks down on its own over about five plant-minutes. AVG COOLANT TEMPERATURE rises out of the green band on its tile while it does — that is expected, and the next step is what brings it back. Go on to it as soon as this step ticks: the temperature keeps climbing until the rods go in.
+Note: Power walks down on its own over about five plant-minutes. AVG COOLANT TEMPERATURE rises out of the green band on its tile while it does — that is expected, and the next step is what brings it back. Go on to it the moment this step ticks: the temperature keeps climbing until the rods go in.
 
 
 
@@ -77,7 +77,7 @@ Note: About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card.
 
 Background
 
-The load drop left the reactor hot: it settles above its programme until rods take the extra reactivity out. This is the half of the evolution the plant cannot do for you, and it is why the order matters — the turbine leads, the rods follow.
+The load drop left the reactor hot: it settles above its program until rods take the extra reactivity out. This is the half of the evolution the plant cannot do for you, and it is why the order matters — the turbine leads, the rods follow.
 
 [HIGHLIGHTED: Rod Speed — Normal, Insert (pulsing); Tavg, Turbine Load (steady)]
 
@@ -341,3 +341,16 @@ so the four former `cont` power rows and step 3's OUTPUT row each carry their ow
 - **Check-off labels** now read the tile names and the graded edge: `REACTOR POWER below 95 %`
   (80, 70, 45, 40), `OUTPUT settled near N MW`, `OUTPUT still near 75 MW`, and
   `AVG COOLANT TEMPERATURE below 577 °F` (569, 562, 557).
+
+### Cross-leg quality pass — 2026-09-25, workbench-f
+
+- **1a says the unit**: "Set 719 ppm on the BORON card and press Enter." (was "Set 719"); label
+  `BORON target set to 719` → `BORON target reads 719 ppm`. Grading unchanged.
+- **2b's note**: "Go on to it as soon as this step ticks" → "Go on to it the moment this step
+  ticks". `run_style` W12 now scans substep notes and flags "soon"; the meaning is unchanged.
+- **Step 3's Background: "programme" → "program".**
+- **`act_first` not authored, and a gap it cannot close.** 4c/5c/6c ("Insert at MED…", 5×) are
+  the step's first ROD presses, but the step's `cmd` is `set_load_target`, which 4a already sent,
+  so the speed-the-action hold is spent and 4c opens at 5×. `act_first` waits for a press of the
+  STEP's cmd family, so on 4c it would hold 1× until another LOAD press — never. Reported, not
+  changed.
