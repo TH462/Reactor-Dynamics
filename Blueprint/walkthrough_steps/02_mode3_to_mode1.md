@@ -29,6 +29,8 @@
 
 Suggested time warp: 1×.
 
+Note: STARTUP RATE is in decades per minute (DPM): 1.0 means power grows tenfold every minute.
+
 
 
 Background
@@ -236,7 +238,7 @@ Note: Read the rate only once it has stopped falling, about ten plant-minutes af
 * Around 0.5, or PERIOD under 60 seconds: about eight steps further out than you meant. Power arrives about three times sooner and levels off higher.
 * Over 1.0: tap INSERT once and wait.
 
-SOURCE RANGE switches itself off above 1.0e5 and its tile goes blank; INTER RANGE carries the reading.
+SOURCE RANGE switches itself off above 1.0e5 and its tile goes blank; INTER RANGE carries the reading. PERIOD is the seconds for power to grow by about 2.7 times; a smaller number is a faster rise.
 
 
 
@@ -260,7 +262,7 @@ Below about 1 % power, where the reactor starts warming the water, nothing in th
 
 Suggested time warp: 10×.
 
-Note: Never 60×, where a 2½-second glance away is two and a half plant-minutes of reactor. REACTOR POWER reads 0.0 % for about 30 to 60 plant-minutes after a STARTUP RATE of 0.06 to 0.10, and under 15 plant-minutes after about 0.15, while INTER RANGE climbs three decades. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
+Note: Never 60×, where a 2½-second glance away is two and a half plant-minutes of reactor. REACTOR POWER reads 0.0 % for about 30 to 60 plant-minutes after a STARTUP RATE of 0.06 to 0.10, and under 15 plant-minutes after about 0.15, while INTER RANGE climbs three decades, a thousandfold. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
 
 
 
@@ -394,7 +396,7 @@ The plant keeps checking that power is still up there, and unblocks them by itse
 
 Suggested time warp: 1×.
 
-Note: Any click outside the panel closes it, Continue included, so it is shut when this step opens. Close it when you are done: it covers the rod buttons.
+Note: Any click outside the panel closes it, Continue included, so it is shut when this step opens. Close it when you are done: it covers the rod buttons. PR is POWER RANGE; LOW SETPT is its low setpoint.
 
 
 
@@ -1015,3 +1017,10 @@ measured, anywhere from 2 steps short of the prediction to 3 past it.", was in w
 47a9791c and was lost when develop's bring-down (i) was taken in the workbench merge; re-added to
 8b's note here and in the pool. MEASURED by workbench (`run_walkthrough_routes` typical route,
 seeds 1-10): 9b ticked at the prediction +0, -2, +3, +3, -1, -1, +1, -1, 0, +2 steps.
+
+### Definitions — 2026-09-25 (k), develop lane: layman pass 5 S-2/S-3
+
+*OWNER RULING, 2026-09-25: "A" — add plain definitions where each term is first used.* Step 1
+note defines DPM; 9b's note defines PERIOD; step 10's note says three decades is a thousandfold;
+step 16's note expands PR and LOW SETPT. Built pool, before: PERIOD, DPM, "decades" and PR
+defined nowhere (`Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN.md`).

@@ -2284,6 +2284,7 @@
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025,   /* −0.025 to +0.025: every value toFixed(2) draws as −0.02 to +0.02 */
                    ask: 'Check STARTUP RATE reads 0.00 DPM.',
                    label: 'STARTUP RATE −0.02 to +0.02' }],
+          note: 'STARTUP RATE is in decades per minute (DPM): 1.0 means power grows tenfold every minute.',   /* OWNER RULING 2026-09-25 "A" (#653 layman pass 5 S-2) */
           hl_watch: ['Startup Rate', 'Tavg', 'Primary Pressure', 'Reactor Coolant Pumps (RCP)', 'Boron Concentration'] },
         /* THE NUMBER CAME OUT *(OWNER RULING, 2026-09-14/15: selected "Drop the number entirely")*.
          * This `why` said "boron is already near 719 ppm", which is true of ONE of the two routes
@@ -3229,7 +3230,7 @@
                          '• Around 0.15, with PERIOD 150 to 200 seconds: the approach going as written.\n' +
                          '• Around 0.5, or PERIOD under 60 seconds: about eight steps further out than you meant. Power arrives about three times sooner and levels off higher.\n' +
                          '• Over 1.0: tap INSERT once and wait.\n' +
-                         'SOURCE RANGE switches itself off above 1.0e5 and its tile goes blank; INTER RANGE carries the reading.',
+                         'SOURCE RANGE switches itself off above 1.0e5 and its tile goes blank; INTER RANGE carries the reading. PERIOD is the seconds for power to grow by about 2.7 times; a smaller number is a faster rise.',
                    wait_speed: 10,
                    speed_text: '10× while you wait; 1× before every tap.',
                    label: 'STARTUP RATE +0.06 to +1.00 and steady, with the rods stopped' }],
@@ -3245,7 +3246,7 @@
           why: 'INTER RANGE measures a current, not a percentage. It shows a climb three decades below the point where REACTOR POWER shows its first tenth of a percent.\n\nThat is why STARTUP RATE, PERIOD and INTER RANGE are the instruments to steer on from criticality up. The power meter only joins at the end.',
           control: 'Control Bank', target: 'INTER RANGE 1.0e-7 A, then REACTOR POWER 0.1 %, rods still',
           wait_hint: false, wait_speed: 10, speed_text: true, hold: 1320,
-          note: 'Never 60×, where a 2½-second glance away is two and a half plant-minutes of reactor. REACTOR POWER reads 0.0 % for about 30 to 60 plant-minutes after a STARTUP RATE of 0.06 to 0.10, and under 15 plant-minutes after about 0.15, while INTER RANGE climbs three decades. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.',
+          note: 'Never 60×, where a 2½-second glance away is two and a half plant-minutes of reactor. REACTOR POWER reads 0.0 % for about 30 to 60 plant-minutes after a STARTUP RATE of 0.06 to 0.10, and under 15 plant-minutes after about 0.15, while INTER RANGE climbs three decades, a thousandfold. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.',
           /* 0.1, not 0.02: the done-when renders at the tile's resolution, and 0.02 drew "When
            * Reactor power ≥ 0 %" beside a tile reading 0.0 — true of every plant, unmet for four
            * minutes (layman playtest pass 2, #653 S-5). 0.1 is the first digit the tile shows.
@@ -3707,7 +3708,7 @@
           cmd: { action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: true }, hold: 10,
           accs: [{ p: 'pr_low_setpoint_blocked', op: '>', v: 0,   /* see step 15 — #731 */
                    ask: 'Press TRIP BLOCKS to open the panel, then press BLOCK on the PR HIGH (LOW SETPT) row. Check both rows, IR HIGH FLUX and PR HIGH (LOW SETPT), read BLOCKED, then press TRIP BLOCKS again to close the panel.',
-                   note: 'Any click outside the panel closes it, Continue included, so it is shut when this step opens. Close it when you are done: it covers the rod buttons.',
+                   note: 'Any click outside the panel closes it, Continue included, so it is shut when this step opens. Close it when you are done: it covers the rod buttons. PR is POWER RANGE; LOW SETPT is its low setpoint.',
                    wait_speed: 1, label: 'PR HIGH (LOW SETPT) reads BLOCKED on the TRIP BLOCKS panel' }],
           hl: ['Trip Blocks'] },
         /* 9 %, NOT 10 % *(OWNER RULING, 2026-09-23: selected "Keep 10 MWe, grade 9 %" — option text:
