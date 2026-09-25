@@ -29,6 +29,95 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-25-workbench-e (cooldown brought down to the what / why / how shape; a closing lineup step; two grading traps)
+
+Record and every number: `Blueprint/walkthrough_steps/06_cooldown.md` Notes, bring-down record
+2026-09-25. Traps only here:
+- **A row `cmd` latches the row on the PRESS.** Step 16a carried the shutdown-bank INSERT as a row
+  `cmd` and ticked with the bank at 577 of 627 — the wait it names was never graded. A "wait for
+  X" row gets no `cmd`; put the press on the step.
+- **A `~` band can tick on a plant passing through it with nothing pressed.** Cooldown 6 enters
+  with the spray still in AUTO and delivering 55 % → 39 % in 1.2 plant-s; the unordered "SPRAY at
+  50 %" row ticked on the way through and let go. `accs_ordered` behind the heater row fixed it.
+- **Pressing ON on the boron channel re-captures the target** (lit or not): 920 → 718 ppm. A
+  latching `>=` target row would stay ticked over a 719 ppm box. Graded as a re-grading band.
+## Session log — 2026-09-25-workbench-d (Shutdown to Mode 3 brought down to the what / why / how file: a band that is approached from ABOVE)
+
+Record: `Blueprint/walkthrough_steps/05_shutdown.md`, "Bring-down record — 2026-09-25".
+
+- **A "HOLDING NEAR" BAND IS SIZED BY THE SIDE THE PLANT ARRIVES FROM.** After the scram STEAM
+  PRESS comes DOWN to 1020 psi (1113 psi at step 3 entry standalone, 1043 on the chain), so the
+  band's UPPER edge decides the tick. The heatup's "near 1020" band (±0.15 MPa, 1000-1042 psi,
+  sized for a plant rising into it) first ticks at 1037.7 psi here, still falling. 1015-1025 psi
+  ticks at 1023.7-1025 psi and never strands (the dump in PRESS holds 1019-1024). **Reuse a
+  sibling leg's band only after checking which way the plant crosses it.**
+- **A NEW ROW CAN MAKE AN OLD INJECTION PASS FOR THE WRONG REASON.** The #697 lamp injection
+  asserted "step 3 completes with no press"; 3c's band independently refuses the TAVG mode
+  (1026-1029 psi), so the step stopped completing and the injection went RED with the lamp still
+  ticking. Re-pointed at the row. **When you add a sibling row, re-read every injection that
+  asserts the STEP.**
+- **A step that was met on arrival stops being met when a row joins it.** The route table's
+  `chain_entry_met: ['#3']` (step 3 true 0.3 s into the chain) was a pardon for the old grading;
+  with 3c the step holds 34 s, so the pardon came out and the hollow check binds again.
+## Session log — 2026-09-25-workbench-c (Lower power brought down to the what / why / how step file: a Note's home decides which style scan reads it)
+
+Record: `Blueprint/walkthrough_steps/04_lower_power.md` Notes, bring-down record 2026-09-25. Traps only:
+
+- **Moving a Note from a substep to the step moves it under a different scan.** `run_style` W12
+  (vague quantifier) scans the step `note` but not `accs[].note`, so step 2's "as soon as this step
+  ticks" — shipped for a day as a substep note — reddened the moment it became the step Note
+  (`soon`). The words did not change; the harvester did. Authored back on 2b (same draw order).
+- **A step-level rung is also the rung once every row is met.** Adding `wait_speed` to the step
+  so substep a can fall back to it changes the clock for the done-but-not-continued window too:
+  steps 4-6 went from the 30 s rule's 60× to 10× there. Harmless here; say it when you do it.
+## Session log — 2026-09-25-workbench-a (raise power on a xenon-free preset: the seam was not the preset)
+
+Traps only; the numbers are in `Blueprint/walkthrough_steps/03_raise_power.md` Notes (2026-09-25).
+
+- **An at-power IC seeded at its OWN equilibrium carries a history the route never had.**
+  `createKinetics` puts iodine and xenon at the IC's power equilibrium — a plant run at 10 % for
+  days — so `low_power` held 17 % xenon and 684 ppm while the startup hands over none and 719.
+  Seeding I = X = 0 and the bank at 222 makes the preset and chained raise routes end identically
+  (589.7 °F, bank 318). The handover itself is a transient (Tavg 547.6 °F, +0.05 DPM): take the
+  boron and bank from it and let the programme Tavg fall out of the trim (718.5 ppm, 0.2 off).
+- **Fixing the fixture exposed the procedure.** With both routes on the real plant, steps 10–11
+  (pull 6, dose 10 ppm with no xenon yet) take the plant to 601.6 °F and a turbine runback to
+  80.7 MW within 20 plant-min of the leg's end; with them deleted it holds 579.7 °F. The chain
+  seam was never the preset's fault alone.
+- **Ordering a text list does not order the grading.** 4c checked OUTPUT after the pull while
+  `accs_ordered` graded OUTPUT before the temperature row: the fix is a row per substep in text
+  order (a rod-press row for the pull), not a reworded note. An injection built on a head row went
+  green once the row became a `cont` graded after OUTPUT — re-aim or retire it, never re-band it.
+- **A rod-worth total built from the top-of-bank per-step worth is 40 % light.** "250 steps,
+  roughly 56 °F" was 0.22 °F × steps; the static integral 353 → 606 is 1600 pcm = 91 °F.
+
+## Session log — 2026-09-24-workbench-l (layman pass 4, the six legs as one plant: the route gate reloaded every leg's own starting condition)
+
+Traps only; the per-step numbers are in each step file's Notes and `Diagnostic/CHECKLIST_PLAYTEST_2026-09-24_LAYMAN_CHAIN.md`.
+
+- **A leg's `from` preset is a fixture, and "Next ▸" does not hand the player that fixture.** The
+  raise-power preset (`low_power`) carries the xenon of a plant that has run at 10 %; the startup
+  hands over a xenon-free plant at 719 ppm, not 684. So step 3's dilution is 59 ppm, not 24, it is
+  still arriving at full power 35 plant-minutes later, and the leg's fixed pull counts trip the
+  reactor on overtemperature-delta-T at step 9 (`chain_count_pulls`). Every route gate reloaded the
+  preset, so none of it showed until a player pressed Next. `run_walkthrough_routes --leg=chain`
+  now drives all six legs on one plant.
+- **A graded rod POSITION is a route claim.** Raise step 10's "above 351" was arrival + 4 on the
+  preset; the chained plant arrives near 306 and reaches 351 only as xenon builds, about 5
+  plant-hours (the reviewer's 16 pulls, and 349 plant-min measured). Grade the action (the pull)
+  and the gauge, not a bank number another route cannot reach.
+- **"Wait until X stops falling" on a whole-degree tile is not a wait a player can finish.** Read
+  twice five plant-minutes apart, the cooldown's 18-entry stair took 231 plant-min against a
+  stated 45 min–2.5 h; a fixed 5-minute wait takes 91. The route gate now fails a step that
+  overruns its card's stated time (`stated_max_min`).
+- **A route that copies the replay's counts cannot find a count defect.** The typical routes pulled
+  the card's 20/20/35/25/20 because the replay does; the reviewer followed the gauge, and so does
+  the card now. A typical route encodes what the TEXT says to do, not what the replay issues.
+- **Where the insert method is not the cause, no text fixes the peak.** Lowering power from the
+  chained plant peaks at 600.3 °F whether the player holds INSERT, pulses it, or holds then pulses:
+  the leg starts at 589.8 °F because raise steps 10–11 pull and dose a xenon-free plant. The peak
+  belongs to the chain seam, not to the lower-power card.
+
 ## Session log — 2026-09-24-workbench-k (layman pass 4 runtime: speed the wait, not the action; drop notes that outlived their drop)
 
 Traps only.

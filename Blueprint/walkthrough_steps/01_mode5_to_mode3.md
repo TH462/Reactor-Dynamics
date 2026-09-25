@@ -4,22 +4,29 @@
 
 > Edit this freely — it is the step text, and it is what the sim is brought down to.
 >
-> **The format.** Line one of a step is what the step accomplishes. Each lettered substep opens
-> with the action that accomplishes it, then its own Note, its own **Suggested time warp**, and
-> its check-off lines drawn `()`. Background closes the step. Agent notes go at the END of the
-> file, never between the steps.
+> **The format** (OWNER RULING, 2026-09-24: "I like putting the why where you put it. i choose
+> a."; the shape is `Blueprint/CHECKLIST_WRITING_GUIDE.md` §16, modelled on
+> `02_mode3_to_mode1.md` steps 1–3). Line one of a step is WHAT the step accomplishes, never how.
+> Directly under it, one italic line says WHY. Each lettered substep is HOW: it opens with a verb,
+> and it is its own check-off, drawn `()`. **Suggested time warp** appears once per step, or under
+> a substep only when the substeps differ. A Note follows the warp it belongs to. Background closes
+> the step. Agent notes go at the END of the file, never between the steps.
 
 ---
 
 1. Verify the plant is cold and shut down.
 
-1a. Read AVG COOLANT TEMPERATURE 122 °F, PRIMARY PRESSURE 363 psi, and RCP FLOW OFF.
+*The heatup begins from a known state: cold, depressurized, pumps stopped, every rod in.*
 
-Note: Both rod positions read 0 of 627.
+()1a. Check AVG COOLANT TEMPERATURE reads below 200 °F.
+
+()1b. Check PRIMARY PRESSURE reads low.
+
+()1c. Check RCP FLOW reads OFF.
+
+()1d. Check CONTROL ROD POSITION and SHUTDOWN ROD POSITION both read 0 of 627.
 
 Suggested time warp: 1×.
-
-()  Plant in Mode 5, Cold Shutdown
 
 Background
 
@@ -31,11 +38,11 @@ In Cold Shutdown (Mode 5) the water is far below boiling, pressure is low, the R
 
 2. Start the reactor coolant pumps.
 
-2a. Press ON on the RCP FLOW card.
+*With the reactor kept shut down, the pumps are what heat the plant.*
+
+()2a. Press ON on the RCP FLOW card and check RCP FLOW reads above 90 %.
 
 Suggested time warp: 1×.
-
-()  RCP FLOW above 90 %
 
 Background
 
@@ -47,19 +54,17 @@ A shut-down reactor makes very little heat compared to a critical reactor, but t
 
 3. Withdraw the shutdown bank all the way out.
 
-3a. On the ROD CONTROL card press FAST, then click WITHDRAW under SHUTDOWN once.
+*Once out, the shutdown bank is the reserve that drops in on a trip, so it comes out first and stays out.*
 
-Note: One click starts the shutdown bank and it runs to 627 of 627 by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early.
+()3a. Press FAST on the ROD CONTROL card, then click WITHDRAW under SHUTDOWN once and check SHUTDOWN ROD POSITION starts counting up.
 
 Suggested time warp: 1×.
 
-()  SHUTDOWN ROD POSITION counting up
+Note: One click starts the shutdown bank and it runs to 627 of 627 by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early.
 
-3b. Watch SHUTDOWN ROD POSITION count up.
+()3b. Watch SHUTDOWN ROD POSITION count up to near 627 of 627.
 
 Suggested time warp: 60×.
-
-()  SHUTDOWN ROD POSITION near 627 of 627
 
 Background
 
@@ -71,13 +76,15 @@ In a PWR, shutdown rod groups (shutdown banks) stay fully withdrawn during norma
 
 4. Verify the turbine is tripped, nothing to press.
 
-4a. Read TRIP lit on the TURBINE-GENERATOR card and OUTPUT 0 MW.
+*A tripped turbine takes no steam, so the heat the pumps make stays in the plant.*
 
-Note: The ring on TRIP marks the lamp to read, not a button to push. If LOAD reads anything but 0, press UNLOAD. UNLOAD is not TRIP: UNLOAD walks the load setting to zero, TRIP shuts the steam valves.
+()4a. Check TRIP is lit on the TURBINE-GENERATOR card.
+
+()4b. Check OUTPUT reads 0 MW. If LOAD reads anything but 0, press UNLOAD.
 
 Suggested time warp: 1×.
 
-()  TRIP lit
+Note: The ring on TRIP marks the lamp to read, not a button to push. UNLOAD is not TRIP: UNLOAD walks the load setting to zero, TRIP shuts the steam valves.
 
 Background
 
@@ -89,11 +96,11 @@ The cold plant starts with the turbine tripped. It matters because a turbine tak
 
 5. Put steam generator level control in AUTO while the plant is quiet.
 
-5a. Set SG FEED to AUTO.
+*Once the water in the steam generator starts to boil, its level starts to move, and AUTO has to be holding it by then.*
+
+()5a. Set SG FEED to AUTO and check AUTO is lit.
 
 Suggested time warp: 1×.
-
-()  SG FEED AUTO lit
 
 Background
 
@@ -105,13 +112,15 @@ The steam generator is the boiler: reactor water heats it on one side and steam 
 
 6. Verify the STEAM DUMP is closed, nothing to press.
 
-6a. Read CLOSE lit on the STEAM DUMP card, status reading MANUAL.
+*Any steam the dump lets out is pump heat leaving the plant.*
 
-Note: The ring on CLOSE marks the lamp to read, not a button to push.
+()6a. Check the STEAM DUMP card reads MANUAL with CLOSE lit.
+
+()6b. Check the STEAM DUMP opening reads under 1 %.
 
 Suggested time warp: 1×.
 
-()  STEAM DUMP opening under 1 %
+Note: The ring on CLOSE marks the lamp to read, not a button to push.
 
 Background
 
@@ -123,12 +132,13 @@ The steam dump sends steam straight to the condenser instead of the turbine. Kep
 
 7. Open the letdown orifices before the pressure climb shuts the RHR path.
 
-7a. Press A+B 7 % on the LETDOWN card to open the letdown path.
+*Once pressure passes 600 psi, the orifices are the only way water leaves the loop.*
+
+()7a. Press A+B 7 % on the LETDOWN card and check orifice A is in service.
+
+()7b. Check orifice B is in service.
 
 Suggested time warp: 1×.
-
-()  Orifice A in service
-()  Orifice B in service
 
 Background
 
@@ -140,13 +150,13 @@ Water is always being pumped into the reactor loop (charging), so it always need
 
 8. Put pressurizer spray in service before the heaters start the climb.
 
-8a. On the PRESSURIZER (PZR) card press AUTO under SPRAY.
+*A brake goes in service before the climb it has to stop, not during it.*
 
-Note: Nothing moves yet. The spray only opens when pressure runs above the SET PZR PRESSURE box, and the cold plant is about 1340 psi below it.
+()8a. Press AUTO under SPRAY on the PRESSURIZER (PZR) card and check AUTO is lit.
 
 Suggested time warp: 1×.
 
-()  AUTO lit under SPRAY
+Note: Nothing moves yet. The spray only opens when pressure runs above the SET PZR PRESSURE box, and the cold plant is about 1340 psi below it.
 
 Background
 
@@ -158,19 +168,17 @@ The pressurizer is a tank of half water, half steam that sets the pressure of th
 
 9. Raise PRIMARY PRESSURE to the 665 psi accumulator window on the heaters.
 
-9a. On the PRESSURIZER (PZR) card press AUTO under HEATER.
+*The accumulator valve can only be opened between 665 and 1615 psi, so pressure has to come up into that window first.*
+
+()9a. Press AUTO under HEATER on the PRESSURIZER (PZR) card and check AUTO is lit.
 
 Suggested time warp: 1×.
 
-()  AUTO lit under HEATER
-
-9b. Wait while PRIMARY PRESSURE climbs to 665 psi.
-
-Note: At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open.
+()9b. Wait while PRIMARY PRESSURE climbs to 665 psi.
 
 Suggested time warp: 600×.
 
-()  PRIMARY PRESSURE at 665 psi, the accumulator window
+Note: At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open.
 
 Background
 
@@ -182,13 +190,13 @@ The heaters boil water in the pressurizer, and that steam sets the pressure of t
 
 10. Open the accumulator valve while PRIMARY PRESSURE is inside its window.
 
-10a. Click the valve symbol inside the pulsing ring while PRIMARY PRESSURE is 665 to 1615 psi.
+*With the valve open, the accumulators stand ready to inject by themselves if loop pressure is ever lost.*
 
-Note: Above 1615 psi the valve locks, and the ACCUMULATORS caution is expected until pressure passes 1000 psi. If the window is missed: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO.
+()10a. Click the valve symbol inside the pulsing ring while PRIMARY PRESSURE reads 665 to 1615 psi, and check the ACCUMULATORS tile no longer reads ISOLATED.
 
 Suggested time warp: 1×.
 
-()  ACCUMULATORS tile no longer reads ISOLATED
+Note: Above 1615 psi the valve locks, and the ACCUMULATORS caution is expected until pressure passes 1000 psi. If the window is missed: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO.
 
 Background
 
@@ -200,11 +208,11 @@ The accumulators are tanks of borated water pushed by nitrogen gas at 665 psi. T
 
 11. Heat the plant to 542 °F on pump heat alone.
 
-11a. Wait until AVG COOLANT TEMPERATURE reaches 542 °F. Do not move rods or change BORON.
+*Hot Standby needs the water near its operating temperature, and the pumps get it there without the reactor.*
+
+()11a. Wait until AVG COOLANT TEMPERATURE reaches 542 °F. Do not move rods or change BORON.
 
 Suggested time warp: 3600×.
-
-()  AVG COOLANT TEMPERATURE 542 °F or higher
 
 Background
 
@@ -216,12 +224,13 @@ The pumps are doing the work now. Watch AVG COOLANT TEMPERATURE, PRESSURIZER LEV
 
 12. Confirm letdown now leaves only through the orifices.
 
-12a. Verify ISOLATE is lit on the RHR card and LETDOWN reads above 0 gpm.
+*Charging keeps pumping water in, so a letdown path that is not flowing slowly fills the plant solid.*
+
+()12a. Check ISOLATE is lit on the RHR card.
+
+()12b. Check LETDOWN reads above 0 gpm.
 
 Suggested time warp: 1×.
-
-()  ISOLATE lit on the RHR card (the suction valve shut itself)
-()  LETDOWN above 0 gpm
 
 Background
 
@@ -233,13 +242,13 @@ The Residual Heat Removal (RHR) suction valve shut itself when PRIMARY PRESSURE 
 
 13. Hand STEAM PRESS to the steam dump to hold.
 
-13a. Press AUTO on the STEAM DUMP card.
+*Pump heat has brought STEAM PRESS up toward 1020 psi, and from here something has to hold it there.*
 
-Note: The dump now holds STEAM PRESS at the 1020 psi in the DUMP SETPOINT box.
+()13a. Press AUTO on the STEAM DUMP card and check AUTO is lit.
 
 Suggested time warp: 1×.
 
-()  AUTO lit on the STEAM DUMP card
+Note: The dump now holds STEAM PRESS at the 1020 psi in the DUMP SETPOINT box.
 
 Background
 
@@ -251,11 +260,11 @@ From here the plant makes more heat than it needs, and the steam dump sends the 
 
 14. Bring PRIMARY PRESSURE up to normal operating pressure.
 
-14a. Raise SET PZR PRESSURE to 2235 psi.
+*With the steam side hot, the 1972 psi gate can be crossed without firing the emergency injection.*
+
+()14a. Raise SET PZR PRESSURE to 2235 psi and wait for PRIMARY PRESSURE to read above 2175 psi.
 
 Suggested time warp: 600×.
-
-()  PRIMARY PRESSURE above 2175 psi
 
 Background
 
@@ -267,13 +276,19 @@ The second stage of the pressurization. Crossing the 1972 psi gate re-arms the e
 
 15. Verify Hot Standby.
 
-15a. Read AVG COOLANT TEMPERATURE 547 °F, PRIMARY PRESSURE 2235 psi, CONTROL ROD POSITION still 0.
+*Confirming the end state catches a pressure that never came up or a steam side venting to the sky.*
+
+()15a. Check AVG COOLANT TEMPERATURE reads 547 °F.
+
+()15b. Check PRIMARY PRESSURE reads 2235 psi.
+
+()15c. Check CONTROL ROD POSITION still reads 0.
+
+()15d. Check ATMOS DUMP is shut.
+
+()15e. Check STEAM PRESS reads near 1020 psi.
 
 Suggested time warp: 1×.
-
-()  Plant in Mode 3, Hot Standby
-()  ATMOS DUMP shut
-()  STEAM PRESS near 1020 psi
 
 Background
 
@@ -285,14 +300,15 @@ Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. Th
 
 16. Verify the reactor stayed shut down.
 
-16a. Read SOURCE RANGE counts steady and STARTUP RATE near 0.00.
+*The startup that follows assumes a core a long way from critical, so that is confirmed before handing over.*
 
-Note: SOURCE RANGE wanders by about a tenth either way with nothing moving; steady means it is not climbing, and the check-off watches it for ten plant-minutes before it ticks. STARTUP RATE on a shut-down core flickers between about −0.01 and +0.01. Either one climbing with the rods still means something is adding reactivity: stop and find out what moved.
+()16a. Check SOURCE RANGE counts read steady.
+
+()16b. Check STARTUP RATE reads −0.02 to +0.02.
 
 Suggested time warp: 10×.
 
-()  SOURCE RANGE steady
-()  STARTUP RATE −0.02 to +0.02
+Note: SOURCE RANGE wanders by about a tenth either way with nothing moving; steady means it is not climbing, and the check-off watches it for ten plant-minutes before it ticks. STARTUP RATE on a shut-down core flickers between about −0.01 and +0.01. Either one climbing with the rods still means something is adding reactivity: stop and find out what moved.
 
 Background
 
@@ -304,13 +320,13 @@ There is no gauge for "how shut down" a reactor is. The signs are SOURCE RANGE c
 
 17. Confirm the heatup made no fission power.
 
-17a. Verify REACTOR POWER reads 0.0 %.
+*Any power at all would mean a chain reaction, not the pumps, was doing the heating.*
 
-Note: If it is not, stop and find out what moved: the control bank or BORON.
+()17a. Check REACTOR POWER reads 0.0 %.
 
 Suggested time warp: 1×.
 
-()  REACTOR POWER below 1 %
+Note: If it is not, stop and find out what moved: the control bank or BORON.
 
 Background
 
@@ -492,3 +508,77 @@ for the pool to come back down.** Left of the arrow is what this file said, righ
 Your spell-out edits (RCP, PWR, SG, RHR, SG FEED) are the standing "spell out every code" directive
 applied to player copy and are the largest single group here. They were never carried into the pool,
 so this refresh dropped them; re-applying them is one edit above plus a reconcile, not new work.
+
+---
+
+### Reword record — 2026-09-25, `exp/w6-heatup` scratch lane: the what / why / how format
+
+*OWNER RULING (2026-09-24), selected "Yes, all five" — option text: "Opus agents restyle heatup,
+raise, lower, shutdown and cooldown to match, using your Mode 3 → Mode 1 steps 1–3 as the model.
+Measured numbers stay; the gates and a layman pass confirm." A selection, not his own words (Hard
+Rule 11). The shape is `02_mode3_to_mode1.md` record (h) and `CHECKLIST_WRITING_GUIDE.md` §16.
+**Step file only (phase 1):** the `pwr_heatup` pool in `ui/manual_procedures.js` is NOT changed and
+still carries the pre-reword text; it comes down in phase 2, once the runtime supports this shape.*
+
+**Tally.** 17 steps in, 17 out (no split, no fold). Lettered substeps 19 → **31**; check-off lines
+23 → **31** (one per substep). Every step gained one italic WHY line, all 17 AGENT-DRAFTED for your
+review. No Background, highlight line, time-warp rung or Note number changed.
+
+**Step 1's line — OWNER RULING (2026-09-24), selected "Take all defaults".** "Read AVG COOLANT
+TEMPERATURE 122 °F, PRIMARY PRESSURE 363 psi, and RCP FLOW OFF" was true only on the preset (the
+chain arrives near 197 °F and 14 psi, INHERITED from the ruling's own text, not re-measured here). It
+is now 1a "below 200 °F" and 1b "reads low". The old note "Both rod positions read 0 of 627" became
+check-off 1d. **Still carrying the preset-only numbers, NOT changed (pool fields, phase 2):** the
+leg's `prereq` text and two `precond` labels ("near 122 °F", "near 363 psi"); their predicates are
+`tavg_c < 95` (203 °F) and `pressure_mpa < 5` (725 psi), so the grading already admits both routes.
+
+**Lines whose MEANING changed:**
+- 1a / 1b — the ruling above (a preset reading became a bound).
+- 4b — "If LOAD reads anything but 0, press UNLOAD" moved from the Note into the substep as its
+  inline recovery (the §16 rule). The Note keeps the TRIP-ring and UNLOAD-is-not-TRIP sentences.
+- 6a — "status reading MANUAL" became part of its own check-off; before, only the dump opening under
+  1 % was graded and MANUAL was read but not checked.
+- 14a — gained "and wait for PRIMARY PRESSURE to read above 2175 psi", the existing check-off's
+  condition written into the line (§16: the line IS the check-off).
+- 15a–c — the one "Read … 547 °F, … 2235 psi, CONTROL ROD POSITION still 0" line became three
+  check-offs, each a reading the step now claims to check. Before, only "Plant in Mode 3, Hot
+  Standby", ATMOS DUMP and STEAM PRESS were graded.
+
+**Wording only, no meaning change:** "Read" / "Verify" → "Check" on every observe substep (1, 4, 6,
+12, 15, 16, 17 — the 02 model's verb; "Read" was an agent's word per the 2026-09-24 port record, 12a's
+and 17a's "Verify" were yours). Every action substep gained "and check … is lit" / "reads …", the
+existing check-off label folded into the line. 3b "Watch … count up" → "Watch … count up to near 627
+of 627" (your sentence plus its check-off). 7a / 7b and 12a / 12b split one line with two check-offs
+into two letters. 16b's "near 0.00" → "−0.02 to +0.02", the existing check-off's wording. "Read TRIP
+lit … and OUTPUT 0 MW" → 4a TRIP + 4b OUTPUT. All 17 first lines are unchanged (the 11 agent-drafted
+at the 2026-09-24 port are still up for your review), including "nothing to press" on 4 and 6 (it
+names the step's kind, not a button). No first line carried HOW, so none was cut.
+
+**NEW CHECK-OFFS NEEDING AN ACCEPTANCE IN PHASE 2** (substeps with no grading row of their own today):
+
+| substep | should grade | note |
+|---|---|---|
+| 1a | AVG COOLANT TEMPERATURE below 200 °F (93.3 °C) | the leg's `precond` already grades `tavg_c < 95` (203 °F); grade on the tile's drawn value |
+| 1b | PRIMARY PRESSURE "low" | needs a number: must tick at 14 psi (chain) AND 363 psi (preset); the leg's `precond` uses < 725 psi (5 MPa). Measure both routes before choosing |
+| 1c | RCP FLOW OFF | pump-flow channel the tile draws |
+| 1d | both rod groups at 0 steps | `control_state` step counts |
+| 4b | OUTPUT 0 MW | generator output channel |
+| 6a | STEAM DUMP in MANUAL, CLOSE lit | `steam_dump_auto` 0; CLOSE may be the same state as 6b's opening, check before adding a row that cannot differ from it |
+| 15a | AVG COOLANT TEMPERATURE 547 °F | needs a band; step 11 ends at 542 °F, so measure where the tile sits when step 15 opens on both routes |
+| 15b | PRIMARY PRESSURE 2235 psi | needs a band; 14a already grades > 2175 psi |
+| 15c | CONTROL ROD POSITION 0 | step count |
+
+**Existing rows left WITHOUT a substep** — step 1's `plant_mode ~ 5` and step 15's `plant_mode ~ 3`
+("Plant in Mode 5, Cold Shutdown", "Plant in Mode 3, Hot Standby"). Recommendation for phase 2: retire
+both in favour of the tile substeps, as `02` step 17 did ("Step 17's two rows replace the pool's
+single `plant_mode ~ 1`"); or keep them as hidden rows. Every other existing row maps one-to-one to a
+substep: 2a, 3a, 3b, 4a, 5a, 6b, 7a, 7b, 8a, 9a, 9b, 10a, 11a, 12a, 12b, 13a, 14a, 15d, 15e, 16a,
+16b, 17a (22).
+
+**Time warp.** Once per step everywhere except 3 and 9, where the substeps differ (1× / 60×, 1× /
+600×), unchanged from the 2026-09-24 port. 16's 10× now sits under both 16a and 16b; only 16a's
+ten-minute window needs it.
+
+**NOT verified:** nothing was run against the plant — this is text. The WHY lines make no new
+number; 7's "600 psi" and 9's "665 and 1615 psi" are this file's own Background/Note figures, and
+14's "without firing the emergency injection" restates 14's Background. No layman pass yet.

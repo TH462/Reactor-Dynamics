@@ -1,25 +1,32 @@
 # Cooldown to Mode 5, Cold Shutdown
 
-**Walkthrough id: `pwr_cooldown`  ·  15 steps**
+**Walkthrough id: `pwr_cooldown`  ·  16 steps**
 
 > Edit this freely — it is the step text, and it is what the sim is brought down to.
 >
-> **The format** (adopted 2026-09-24 from `02_mode3_to_mode1.md`). Line one of a step is what the
-> step accomplishes. Each lettered substep opens with the action that accomplishes it, then its
-> own Note, its own **Suggested time warp**, and its check-off lines drawn `()`. Background closes
-> the step. Agent notes go at the END of the file, never between the steps.
+> **The format** (OWNER RULING, 2026-09-24: "I like putting the why where you put it. i choose
+> a."; restyled to it 2026-09-25, record at the end). Line one of a step is WHAT the step
+> accomplishes, never how. Directly under it, one italic line says WHY. Each lettered substep is
+> HOW: it opens with a verb, and it is its own check-off, drawn `()`. **Suggested time warp**
+> appears once per step, or under a substep only when the substeps differ. A Note follows the
+> warp it belongs to. Background closes the step. Agent notes go at the END of the file, never
+> between the steps.
 
 ---
 
 1. Add the boron a cold core needs before any cooling starts.
 
-1a. On the BORON card set 920 and press Enter.
+*Cold water makes the chain reaction easier, so the extra boron has to be in before the cold arrives.*
 
-Note: Press ON only if it is not already lit. Do not start cooling until BORON STATUS reads BORATING.
+()1a. Set the boron target to 920 ppm on the BORON card and press Enter.
 
-Suggested time warp: 600× — the boration runs at a steady 3 ppm a minute and does not slow down as it closes: about 54 plant-minutes to 880 ppm.
+()1b. Check ON is lit and BORON STATUS reads BORATING. If ON is not lit, press ON.
 
-()  BORON CHEM 880 ppm or more
+()1c. Wait for BORON CHEM to read 880 ppm or more.
+
+Suggested time warp: 600×.
+
+Note: The boration runs at a steady 3 ppm a minute and does not slow down as it closes: about 54 plant-minutes to 880 ppm. Do not start cooling until BORON STATUS reads BORATING.
 
 Background
 
@@ -31,13 +38,11 @@ Hot, the plant is comfortably shut down on about 719 ppm of boron. Cold water ma
 
 2. Bring pressure under the point where the low-pressure protection can be switched off.
 
-2a. Lower SET PZR PRESSURE to 1900 psi.
+*The plant only lets you switch off its low-pressure protection below 1972 psi.*
 
-Note: Below 1972 psi the plant lets you switch off the protection in the next step.
+()2a. Lower SET PZR PRESSURE to 1900 psi and wait for PRIMARY PRESSURE to read below 1972 psi.
 
 Suggested time warp: 1×.
-
-()  PRIMARY PRESSURE below 1972 psi
 
 Background
 
@@ -49,22 +54,15 @@ Two automatic protections watch for falling pressure, because on a running plant
 
 3. Switch off the protection that would read the cooldown as a leak.
 
-3a. Press TRIP BLOCKS, then BLOCK the PZR PRESS LO-LO and SI REACTOR TRIP rows.
+*To the automatic protection a cooldown looks like a leak, and left on it would trip the reactor and start the emergency injection pumps.*
 
-Note: TRIP BLOCKS is on the ROD CONTROL card.
+()3a. Press TRIP BLOCKS on the ROD CONTROL card, then press BLOCK on the PZR PRESS LO-LO row. Check the row reads BLOCKED.
 
-Suggested time warp: 1×.
+()3b. Press BLOCK on the SI REACTOR TRIP row. Check the row reads BLOCKED.
 
-()  PZR PRESS LO-LO reads BLOCKED
-()  SI REACTOR TRIP reads BLOCKED
-
-3b. Press STOP on ECCS.
-
-Note: STOP is on the ECCS card.
+()3c. Press STOP on the ECCS card.
 
 Suggested time warp: 1×.
-
-()  STOP pressed on the ECCS card
 
 Background
 
@@ -76,21 +74,19 @@ To the automatic protection, a cooldown looks exactly like a leak: pressure fall
 
 4. Cool the plant on the steam dump to where RHR can take over.
 
-4a. Press AUTO on the STEAM DUMP card.
+*The steam pressure the dump holds sets the temperature the steam generator boils at, and the reactor water follows it down.*
 
-Note: Press AUTO until the status reads PRESS; in TAVG mode the setpoint does nothing.
+()4a. Check STEAM DUMP AUTO is lit and its status reads PRESS. If it does not, press AUTO until the status reads PRESS.
 
 Suggested time warp: 1×.
 
-()  STEAM DUMP AUTO lit, status PRESS
+Note: In TAVG mode the setpoint does nothing.
 
-4b. Lower DUMP SETPOINT 50 psi at a time from 1020 to 120.
-
-Note: Small steps: one big jump drops the coolant fast and empties the pressurizer. Wait between steps until AVG COOLANT TEMPERATURE stops falling, about 1 to 5 plant-minutes. About 45 plant-minutes to two and a half plant-hours in all.
+()4b. Lower DUMP SETPOINT 50 psi at a time from 1020 to 120, until AVG COOLANT TEMPERATURE reads below 347 °F.
 
 Suggested time warp: 60×.
 
-()  AVG COOLANT TEMPERATURE below 347 °F
+Note: Small steps: one big jump drops the coolant fast and empties the pressurizer. Wait about 5 plant-minutes between steps, 5 seconds at 60×: the temperature never quite stops falling, so do not wait for it to. About an hour and a half in all.
 
 Background
 
@@ -102,13 +98,11 @@ Steam pressure and steam temperature go together: lower the pressure the dump ho
 
 5. Take the pressure setpoint to the bottom of its range.
 
-5a. Lower SET PZR PRESSURE to 1700 psi, as low as the box goes.
+*The setpoint box stops at 1700 psi, and from here pressure comes down by hand.*
 
-Note: From here pressure comes down by hand.
+()5a. Lower SET PZR PRESSURE to 1700 psi, as low as the box goes, and wait for PRIMARY PRESSURE to read below 1770 psi.
 
 Suggested time warp: 1×.
-
-()  PRIMARY PRESSURE below 1770 psi
 
 Background
 
@@ -120,22 +114,21 @@ The setpoint box is the at-power pressure control and it stops at 1700 psi. A re
 
 6. Hand pressure control from the heaters to the spray.
 
-6a. Press OFF under HEATER.
+*The spray lowers pressure only once the heaters stop boiling the water back.*
 
-Note: Heaters first: with them still in AUTO the spray will not hold and pressure climbs back instead of falling.
+()6a. Press OFF under HEATER.
 
 Suggested time warp: 1×.
 
-()  OFF lit under HEATER
+Note: Heaters first: with them still in AUTO the spray will not hold and pressure climbs back instead of falling.
 
-6b. Press MANUAL under SPRAY with its box at 50 %, not more.
+()6b. Press MANUAL under SPRAY with its box at 50 %, not more.
 
-Note: Spray water goes into the pressurizer and PRESSURIZER LEVEL climbs as pressure falls. At 100 % a pressurizer that starts high fills completely, after which the spray shuts itself off. At 50 % pressure falls about 3 psi a second with room to spare.
+()6c. Wait for PRIMARY PRESSURE to read below 1615 psi.
 
 Suggested time warp: 5×.
 
-()  PZR SPRAY at 50 %
-()  PRIMARY PRESSURE below 1615 psi
+Note: Spray water goes into the pressurizer and PRESSURIZER LEVEL climbs as pressure falls. At 100 % a pressurizer that starts high fills completely, after which the spray shuts itself off. At 50 % pressure falls about 3 psi a second with room to spare.
 
 Background
 
@@ -147,13 +140,13 @@ The heaters go off first, or they boil water as fast as the spray condenses it a
 
 7. Isolate the accumulators while pressure is inside their window.
 
-7a. Close the accumulator valve: click the valve symbol inside the pulsing ring while PRIMARY PRESSURE is 1615 to 665 psi.
+*Closed inside the window, the tanks stay full for the next heatup instead of emptying into the plant.*
 
-Note: The symbol sits above and right of the ACCUMULATORS tile, beside ECCS FLOW. At 50 % spray the window is about 8 plant-minutes wide.
+()7a. Click the accumulator valve symbol inside the pulsing ring while PRIMARY PRESSURE is 1615 to 665 psi, and check the ACCUMULATORS tile reads ISOLATED.
 
 Suggested time warp: 1×.
 
-()  ACCUMULATORS tile reads ISOLATED
+Note: The symbol sits just above the ACCUMULATORS tile, to the left of ECCS INJ FLOW. At 50 % spray the window is about 8 plant-minutes wide.
 
 Background
 
@@ -165,13 +158,13 @@ The same window as the heatup, in reverse. Above 1615 psi the valve has no power
 
 8. Bring pressure under the RHR limit on the spray.
 
-8a. Wait, with SPRAY still at 50 %, until PRIMARY PRESSURE falls below 413 psi. Do not switch the spray off.
+*RHR cannot be aligned above 440 psi, and the spray is what takes pressure that low.*
 
-Note: About 10 to 13 plant-minutes. If PRESSURIZER LEVEL climbs past 80 %, lower SPRAY.
+()8a. Leave SPRAY at 50 % and wait for PRIMARY PRESSURE to read below 413 psi. Do not switch the spray off.
 
 Suggested time warp: 60×.
 
-()  PRIMARY PRESSURE below 413 psi
+Note: About 10 to 13 plant-minutes. If PRESSURIZER LEVEL climbs past 80 %, lower SPRAY.
 
 Background
 
@@ -183,17 +176,13 @@ ALIGN on the RHR card refuses to open the suction valve above 440 psi. Switch th
 
 9. Put RHR in service as the cooldown loop.
 
-9a. With the spray still on, press ALIGN on the RHR card.
+*From here to cold, RHR is the loop that carries the heat out of the plant.*
+
+()9a. Press ALIGN on the RHR card, with the spray still on.
+
+()9b. Set HX SPLIT to 7 %.
 
 Suggested time warp: 1×.
-
-()  ALIGN lit on the RHR card
-
-9b. Set HX SPLIT to 7 %.
-
-Suggested time warp: 1×.
-
-()  HX SPLIT at 7 %
 
 Background
 
@@ -205,19 +194,15 @@ RHR is the low-pressure cooling loop that carries heat out of a shut-down plant.
 
 10. Take the reactor coolant pumps off now that RHR is circulating.
 
-10a. Press OFF on the RCP FLOW card.
+*With RHR circulating, the reactor coolant pumps are only adding heat.*
+
+()10a. Press OFF on the RCP FLOW card and check the pumps coast down.
+
+()10b. Leave SPRAY at 50 %.
 
 Suggested time warp: 1×.
-
-()  Pumps coasting down
-
-10b. Leave SPRAY at 50 %.
 
 Note: Do not switch the spray off yet — a later step does that, once the plant is cold.
-
-Suggested time warp: 1×.
-
-()  SPRAY still on
 
 Background
 
@@ -229,13 +214,13 @@ With RHR circulating, the reactor coolant pumps are only adding heat, so they co
 
 11. Cool on RHR into Mode 5, at about the 100 °F per hour limit.
 
-11a. Raise HX SPLIT to 12 % and wait until AVG COOLANT TEMPERATURE reads below 199 °F.
+*HX SPLIT is the cooldown throttle now, and COOLDOWN RATE beside it shows what that choice is doing.*
 
-Note: Keep COOLDOWN RATE under 100 °F per hour: if it runs faster, lower HX SPLIT. Watch SUBCOOLING MARGIN: the spray is still running and it keeps taking the margin down. The next step shuts it.
+()11a. Raise HX SPLIT to 12 % and wait for AVG COOLANT TEMPERATURE to read below 199 °F.
 
 Suggested time warp: 600×.
 
-()  AVG COOLANT TEMPERATURE below 199 °F
+Note: Keep COOLDOWN RATE under 100 °F per hour: if it runs faster, lower HX SPLIT. Watch SUBCOOLING MARGIN: the spray is still running and it keeps taking the margin down. The next step shuts it.
 
 Background
 
@@ -247,11 +232,11 @@ HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back.
 
 12. Shut the spray now that the plant is cold.
 
-12a. On the PRESSURIZER (PZR) card press OFF under SPRAY.
+*The pressurizer shell has given up most of its stored heat, so the spray has nothing left to take away.*
+
+()12a. Press OFF under SPRAY on the PRESSURIZER (PZR) card.
 
 Suggested time warp: 1×.
-
-()  OFF lit under SPRAY
 
 Background
 
@@ -263,13 +248,15 @@ The plant is cold now and the pressurizer shell has given up most of its stored 
 
 13. Confirm the plant is in Mode 5, Cold Shutdown.
 
-13a. Verify Cold Shutdown: AVG COOLANT TEMPERATURE below 199 °F, RCP FLOW off, ALIGN lit on the RHR card.
+*Confirming the end state catches a plant still above 199 °F or a pump still running.*
 
-Note: PRIMARY PRESSURE will be low — the spray took it there.
+()13a. Check AVG COOLANT TEMPERATURE reads below 199 °F.
+
+()13b. Check RCP FLOW reads OFF.
 
 Suggested time warp: 1×.
 
-()  Plant in Mode 5, Cold Shutdown
+Note: PRIMARY PRESSURE will be low — the spray took it there. ALIGN on the RHR card is checked in step 15.
 
 Background
 
@@ -281,11 +268,11 @@ This is the cold-shutdown picture: water below 199 °F, pumps off, RHR carrying 
 
 14. Confirm the accumulators are still full and isolated.
 
-14a. Verify the ACCUMULATORS tile reads 100 % and ISOLATED.
+*The next heatup opens the tanks again, and empty tanks then are a missing safety system.*
+
+()14a. Check the ACCUMULATORS tile reads 100 % and ISOLATED.
 
 Suggested time warp: 1×.
-
-()  ACCUMULATORS reads 100 %
 
 Background
 
@@ -297,18 +284,41 @@ You isolated the tanks on the way down so they would not empty into a depressuri
 
 15. Confirm RHR is carrying the heat.
 
-15a. Verify ALIGN is lit on the RHR card and HX SPLIT is above 0 %. The round trip is complete.
+*RHR is the only thing removing heat now, and if its suction valve shut the decay heat would have nowhere to go.*
+
+()15a. Check ALIGN is lit on the RHR card.
+
+()15b. Check HX SPLIT reads above 0 %.
 
 Suggested time warp: 1×.
-
-()  ALIGN lit on the RHR card
-()  HX SPLIT above 0 %
 
 Background
 
 RHR is the only thing removing heat now. If its suction valve shut, the decay heat would have nowhere to go. The heatup walkthrough is the way back.
 
 [HIGHLIGHTED: Residual Heat Removal (RHR) (steady)]
+
+
+
+16. Leave the plant lined up for the next heatup.
+
+*The heatup starts from what this step leaves, and a steam dump left in AUTO at a low setpoint opens wide the moment the heatup asks for it.*
+
+()16a. Press FAST on the ROD CONTROL card, then click INSERT under SHUTDOWN once. Wait for SHUTDOWN ROD POSITION to read 0 of 627.
+
+()16b. Press CLOSE on the STEAM DUMP card.
+
+()16c. Set DUMP SETPOINT to 1020 psi.
+
+Suggested time warp: 60×.
+
+Note: If SHUTDOWN ROD POSITION already reads 0, the bank is in: go on to 16b. The bank runs in by itself, about 9 plant-minutes. The round trip is complete.
+
+Background
+
+The cooldown walked DUMP SETPOINT down to 120 psi. Left there with the dump in AUTO, the next heatup's first AUTO press opens the dump wide against a setpoint far below its steam pressure, and the plant trips on low steam pressure. Closing the dump and putting the setpoint back to 1020 psi hands the next heatup the lineup it expects; inserting the shutdown bank leaves both banks in, the way the heatup starts.
+
+[HIGHLIGHTED: Rod Speed — Fast, Shutdown Bank — Insert, Steam Dump — Close, Dump Setpoint (pulsing); Shutdown Rod Position, Steam Dump Status (steady)]
 
 
 
@@ -448,3 +458,139 @@ faster, lower HX SPLIT…") is his and stands: it is what keeps a player under t
 **NOT RE-MEASURED:** the "25 % measures 193 °F per hour" figure is #729's TRUE rate from a 300 °F
 entry, not the tile from this step's 341 °F entry. The route harness's typical route now types
 12 % once at step 11 (`policy: 'final'`), the route these numbers came from.
+
+### Reconcile record — 2026-09-25, `exp/v5-ct` scratch lane (layman pass 4)
+
+**AGENT-DRAFTED FOR OWNER REVIEW — his 4b note, minimally rewritten.** "Wait between steps until
+AVG COOLANT TEMPERATURE stops falling, about 1 to 5 plant-minutes. About 45 plant-minutes to two
+and a half plant-hours in all." → "Wait about 5 plant-minutes between steps, 5 seconds at 60×: the
+temperature never quite stops falling, so do not wait for it to. About an hour and a half in all."
+Measured, 18 entries from 1020 to 120 psi: waiting for the whole-degree tile to read the same twice
+five plant-minutes apart, 231.3 plant-min (preset); a fixed 5-minute wait, 90.7 (preset) and 91.0
+(chain). The route gate's `stated` check now fails the old reading (`cooldown_until_flat`).
+
+7a's note: "above and right of the ACCUMULATORS tile, beside ECCS FLOW" → "just above the
+ACCUMULATORS tile, to the left of ECCS INJ FLOW" — the reviewer's reading of the board, NOT
+re-measured (no browser run here).
+
+**Not verified.** The COOLDOWN RATE tile during the stair (the reviewer read −125 °F per hour on
+the last step); the true 5-minute rate this harness reads is not the lagged tile.
+
+### Reword record — 2026-09-25, `exp/w6-cooldown` scratch lane: the what / why / how format
+
+*OWNER RULING, 2026-09-24, selected "Yes, all five": "Opus agents restyle heatup, raise, lower,
+shutdown and cooldown to match, using your Mode 3 → Mode 1 steps 1–3 as the model. Measured
+numbers stay; the gates and a layman pass confirm."* The shape is `02_mode3_to_mode1.md` record
+(h). **STEP FILE ONLY — the `pwr_cooldown` pool in `ui/manual_procedures.js` still carries the
+previous wording; bringing it down is phase 2.** Previous text: `git show HEAD~1:<this file>`.
+
+**Tally.** 15 steps (unchanged). Lettered substeps 20 → 26; check-offs 23 → 26, now one per
+substep. Every number in the step text is unchanged, including 4b's "Wait about 5 plant-minutes
+… About an hour and a half in all" and step 11's "at about the 100 °F per hour limit" (both ruled).
+
+**Why lines — AGENT-DRAFTED FOR OWNER REVIEW**, one italic sentence each, drawn from the step's
+own Background or note (steps 2, 5, 11, 12, 14, 15 reuse his sentences nearly verbatim).
+
+**Old check-off → new substep** (phase 2 maps each substep to one `accs` head):
+
+| old row | new substep |
+|---|---|
+| 1 BORON CHEM 880 ppm or more | 1c |
+| 2 PRIMARY PRESSURE below 1972 psi | 2a (action and wait on one line, as 02's 14b) |
+| 3 PZR PRESS LO-LO BLOCKED / SI REACTOR TRIP BLOCKED / ECCS STOP | 3a / 3b / 3c |
+| 4a dump AUTO, status PRESS · 4b Tavg below 347 °F | 4a · 4b |
+| 5 PRIMARY PRESSURE below 1770 psi | 5a |
+| 6a HEATER OFF · 6b SPRAY 50 % · 6b cont PRESSURE below 1615 psi | 6a · 6b · 6c |
+| 7, 8, 11, 12, 14 | 7a, 8a, 11a, 12a, 14a |
+| 9 ALIGN · HX SPLIT 7 % | 9a · 9b |
+| 10 pumps coasting · SPRAY still on | 10a · 10b |
+| 13 Plant in Mode 5 | 13a (Tavg below 199 °F) + 13b (RCP FLOW OFF) |
+| 15 ALIGN · HX SPLIT above 0 % | 15a · 15b |
+
+**NEW CHECK-OFFS — need an acceptance in phase 2:**
+- **1a** "Set the boron target to 920 ppm" — grade the boron TARGET at or above 919.5 ppm (render
+  floor of "920"), not the concentration.
+- **1b** "Check ON is lit and BORON STATUS reads BORATING" — grade the boron system ON. BORATING
+  itself has no gradeable param (finding (c) of the first 2026-09-24 record); if phase 2 adds
+  one, grade it too. Met on entry if the IC boots with the system ON — check for a hollow row.
+- **13b** "Check RCP FLOW reads OFF" — the old single "Plant in Mode 5" predicate split; grade
+  pumps off. 13a takes the Tavg half (`< 92.5 °C`, 198.5 °F, the step 11 floor). Both are met on
+  entry (step 11 and 10 already made them true) — declare `entry_met` or confirm the route gate
+  accepts it, as step 14.
+
+**Lines whose meaning changed:**
+- **4a** "Press AUTO on the STEAM DUMP card" → "Check STEAM DUMP AUTO is lit and its status
+  reads PRESS. If it does not, press AUTO until the status reads PRESS." The old line told every
+  player to press; the rp_dump record MEASURED the row met on arrival on every route, and a press
+  on an already-PRESS dump may move it off PRESS (NOT verified — whether AUTO cycles the mode).
+- **13** no longer lists ALIGN; step 15a checks it, and 13's note now says so. Removes a
+  duplicate check-off.
+- **15a** "The round trip is complete." moved from the action line to a Note.
+- **1b** is a check the old text only implied ("Press ON only if it is not already lit").
+- Old notes folded into lines: 3's "TRIP BLOCKS is on the ROD CONTROL card" and "STOP is on the
+  ECCS card" (3a, 3c); 2's "Below 1972 psi the plant lets you switch off the protection in the
+  next step" and 5's "From here pressure comes down by hand" became their why lines; 4a's "in
+  TAVG mode the setpoint does nothing" stays as 4a's note.
+
+**Time warp.** Once per step except 4 (1× then 60×) and 6 (1× then 5×), where the substeps
+differ. Rungs unchanged.
+
+**Not verified:** no layman pass, no browser run, no route gate — the pool is untouched, so
+`run_walkthrough_routes` and `run_checklist_pwr2` grade the old text. Board labels "ON" (BORON
+card) and "RCP FLOW reads OFF" are read off the old text, not the board.
+
+### Bring-down record — 2026-09-25, `exp/p2-cooldown` scratch lane (phase 2: the pool matches this file)
+
+The `pwr_cooldown` pool in `ui/manual_procedures.js` now carries this file word for word (script
+compare: 16 steps, 29 substeps, `text`/`aim`/`why`/every `ask`/every note/every warp line equal).
+`aim` = the italic line; one `accs` head per lettered substep; a warp once per step is
+`wait_speed` + `speed_text: true` and the Note after it is the step `note`; steps 4 and 6 keep
+per-substep rungs. All seed 42, full stack.
+
+**STEP 16 IS NEW — AGENT-DRAFTED FOR OWNER REVIEW.** *OWNER RULING, 2026-09-25, selected "Both A
+and B" (option text, not verbatim; relayed by the coordinator).* Option B: the cooldown ends by
+inserting the shutdown bank, closing the steam dump and resetting DUMP SETPOINT to 1020 psi.
+Why (measured by the heatup lane on one continuous plant): the cooldown left DUMP SETPOINT near
+197 psi with the dump in AUTO; the heatup's step 13 AUTO press opened it 100 % and the reactor
+tripped on safety injection (low steam pressure) in its step 14. "The round trip is complete."
+moved from 15's Note to 16's. Measured:
+- Cold Shutdown preset lineup (what 16 reproduces): dump mode CLOSED (`off`), DUMP SETPOINT
+  7.03 MPa (1020 psi), shutdown bank 0 of 627.
+- Harmless at cold, A/B on the Cold Shutdown preset for 30 plant-minutes: CLOSE + setpoint 1020 +
+  INSERT vs nothing — Tavg 122.03 °F both, pressure 363.3 psia both, RHR aligned both. Inserting
+  from 627 at cold shutdown: no trip, Tavg moved 0.004 °F, shutdown margin −2131 → −5807 pcm.
+- Insert time at FAST: 523 plant-s (8.7 min); NORMAL 784 s. Hence "about 9 plant-minutes".
+- Typical route (preset): step 16 entry sd 627, dump PRESS at 0.83 MPa (120 psi) — all three rows
+  unmet; completes in 9.5 plant-min, exits sd 0, dump CLOSED, 7.03 MPa; Tavg 197.4 → 189.5 °F
+  across the step (RHR still cooling). Chain: arrives sd 0 (the shutdown leg's scram) — 16a met on
+  arrival, 16b/16c unmet, step not hollow; completes in 0.8 min, exits CLOSED at 7.03 MPa.
+- **Caught on the first run:** 16a carried the INSERT as a row `cmd`, and a row `cmd` is latched
+  met by the press — it ticked with the bank at 577 of 627. The INSERT is now the step `cmd`.
+
+**NEW GRADING (injection-proven, live checklist):**
+
+| row | predicate | measured |
+|---|---|---|
+| 1a | `boron_target_ppm ~ 1710 ± 790.5` (919.5-2500.5, re-grades) | unmet at entry (719.2); met at 920; **ON pressed after it → box re-captured to 718.2, row un-ticks** |
+| 1b | `boron_auto_on > 0` | met at entry on both routes (channel engaged); channel OFF before entry → unmet |
+| 13a | `tavg_c < 92.5` | met at entry (step 11's floor) |
+| 13b | `pump_flow_pct < 9.5` (RCP FLOW tile) | pumps running 100.5 % unmet; secured 60 s 2.03 % met; restarted 100.2 % unmet |
+| 16a/b/c | bank `< 0.5` · `steam_dump_auto < 1` · `steam_dump_setpoint ~ 7.0327 ± 0.0034` | see step 16 above |
+
+1a is a BAND, not the brief's latching `>= 919.5`: pressing ON — lit or not — re-captures the
+target to the analyzer (`_toggleChannel`), so a latched row would sit ticked over a 719 ppm box
+while 1c never comes. **4a:** AUTO pressed three times on a dump already in PRESS: mode stays
+PRESS, DUMP SETPOINT stays 1020 psi — the press cannot take it off PRESS while the turbine is
+tripped, which it is on every route here. The text's premise does not hold; the text is harmless.
+
+**STEP 6 IS NOW ORDERED, and the spray press is `replay_then`.** Step 6 entry is at 1746 psia over
+the 1700 psi setpoint with the spray still in AUTO and delivering, 55.1 % falling to 39.1 % in
+1.2 plant-s: the unordered "PZR SPRAY at 50 %" row ticked on that pass through its band with
+nothing pressed and let go 0.7 s later (route gate: typical and three mistake routes FAILED on
+it). Ordered, it cannot latch before HEATER OFF.
+
+**FOR THE OWNER:** (1) 1a before 1b is the one order in which the card's own contingency ("If ON
+is not lit, press ON") undoes 1a; `pwr_startup` 2 puts ON first for this reason. Recommend
+swapping 1a and 1b. (2) 13b "RCP FLOW reads OFF": the RCP FLOW tile prints a number (about 2 %
+with the pumps secured), never OFF; OFF is the lamp on the RCP card. Graded on the tile, as
+`pwr_startup` 1c grades "reads ON". (3) The 16 text above.

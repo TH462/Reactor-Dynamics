@@ -36,6 +36,46 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   `accs[].act_first`; instructor snapshot field `checklist.cmd_head`). Before: 10× on entry, 9a's
   hold having spent the step-level gate. Also 1c reads "about 100 %", the outcome says the trips
   are "blocked", and step 1 notes the standing Turbine Trip / Low Steam Demand alarm.
+- **Walkthroughs: Shutdown to Mode 3 in the what / why / how shape.** Each step carries its why
+  line; 8 substeps. New check-offs: "Press SCRAM" ticks on the trip itself; STEAM PRESS 1015 to
+  1025 psi (7.00 to 7.07 MPa) after the steam dump goes to PRESS. Both rod positions are one
+  substep.
+- **Lower power walkthrough in the what / why / how shape.** Each step now carries its one-line
+  why; every check-off is its own lettered substep (15), so REACTOR POWER and OUTPUT rows gained
+  their own instruction and the rod trims moved to 4c/5c/6c; the four temperature check-offs read
+  "below 577 / 569 / 562 / 557 °F". No grading value moved. Record:
+  `Blueprint/walkthrough_steps/04_lower_power.md`, bring-down record 2026-09-25.
+- **PWR2 `low_power` starting condition is xenon-free** (owner ruling 2026-09-24, "Rebuild the
+  preset"): the state the raise-power walkthrough starts from now matches what the startup hands
+  over — control bank 227 → 222, boron 684 → 719 ppm, xenon 17 % → 0 of full-power equilibrium.
+  Raise power's preset and chained routes now end at the same point (589.7 °F, bank 318). Raise
+  power text re-measured: step 3's dilution is 59 ppm over about 25 plant-minutes; stage pulls
+  about 20/15/25/20/10 steps; the rod travel left for xenon is about 290 steps, roughly 110 °F.
+  Manuals 09 §11.0 and 12 §7.3 re-captured (pending Rev 22 items h, i). Step file
+  `03_raise_power.md` restyled to the what / why / how shape, and the walkthrough brought down
+  to it (phase 2): a one-line why under every step, every substep its own graded check-off (SG
+  FEED AUTO, the two trip blocks, BORON ON and the full-power end state newly graded).
+- **Raise power steps 10–11 are conditional** (owner ruling "Make them conditional"): pull rods or
+  dose boron only when AVG COOLANT TEMPERATURE is below its band. The fixed pull and dose on a
+  xenon-free plant drove it to 601.6 °F and a turbine runback to 80.7 MW; the leg now ends on band
+  (580.5 °F), and lowering power from there peaks at 593.0 °F instead of 600.3 °F.
+- **Cooldown walkthrough in the what / why / how shape, and a closing step 16.** The pool matches
+  `Blueprint/walkthrough_steps/06_cooldown.md` (16 steps, 29 check-offs). New check-offs: boron
+  target 920 ppm and ON lit (1a/1b), temperature and RCP FLOW (13a/13b). New step 16 (owner ruling
+  2026-09-25, option B): insert the shutdown bank, CLOSE the steam dump, DUMP SETPOINT back to
+  1020 psi, so the next heatup's AUTO press no longer opens the dump against a 197 psi setpoint
+  and trips the plant. Step 6's spray row no longer ticks on the AUTO spray passing 50 %.
+- **Walkthroughs, layman pass 4 (the six legs as one plant).** Raise power: each stage now says
+  "hold WITHDRAW until AVG COOLANT TEMPERATURE is back in its band, about N steps" (the gauge
+  leads); step 8 drops its "CONTROL ROD POSITION above 300" check-off and says what the 103 % rod
+  stop looks like; step 9 waits for BORON under 663 ppm and says to insert if the dilution's tail
+  heats the plant; step 10 grades the pull instead of "above 351"; board alarm words for the
+  insertion limit; step 3 and 11 name the chained plant's 59 ppm and the 43 ppm still to come.
+  Lower power: insert in pulls of about 5 steps; go straight to the rods after step 2. Cooldown
+  step 4: a fixed 5 plant-minute wait, "about an hour and a half". Startup 8b: where the rate step
+  9 asks for shows against the prediction. `run_walkthrough_routes` gains a **chain** run (all six
+  legs on one plant), the `to_band` and `stair` player policies, a stated-time check, and three
+  injections that re-open what the pass found.
 - **Mode 3 to Mode 1 walkthrough in the what / why / how shape (#653).** Each step's first line
   says what the step does; a new one-line italic why (`aim`) sits under it; each lettered
   substep opens with a verb and is its own check-off (32). New 3b checks STEAM DUMP AUTO and

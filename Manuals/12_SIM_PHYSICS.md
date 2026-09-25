@@ -600,12 +600,12 @@ deliver:
 
 | | |
 |---|---|
-| **Tavg** | 550.3 °F (287.9 °C) → **534.9 °F (279.4 °C)** at 4 min 40 s, a **15.4 °F (8.6 °C)** swing, settling at 536.0 °F (280.0 °C) |
-| **level** | 28.7 % → **21.7 %** at 4 min (**21.5 %** indicated) — **4.7 points clear of the 17 % cut** |
-| **recovery** | back on programme within about **10 minutes**, and flat there for the next two hours |
+| **Tavg** | 550.3 °F (287.9 °C) → **533.0 °F (278.3 °C)** at 4 min 35 s, a **17.3 °F (9.6 °C)** swing, settling at 534.4 °F (279.1 °C) |
+| **level** | 28.7 % → **20.6 %** at 4 min (**20.4 %** indicated) — **3.6 points clear of the 17 % cut** |
+| **recovery** | back on programme within about **10 minutes**, and flat there for the next two hours (Tavg drifts **2.4 °F (1.3 °C)** lower over them as xenon builds in a core that started with none) |
 
 **And the programme it returns to is its 25 % floor, not the 28.7 % it left.** With the rods in
-MANUAL the reactor answers the load through moderator feedback alone, so Tavg settles about 11 °F (6.1 °C)
+MANUAL the reactor answers the load through moderator feedback alone, so Tavg settles about 13 °F (7.2 °C)
 *below* the no-load anchor the programme is drawn from and the programme sits on its clamp.
 That is the honest reading of a part-load plant on this lineup; it is not a level fault.
 
@@ -613,7 +613,7 @@ The lesson is the Tier A one and it is not about the controller: **an operator c
 on a real machine, and a plant that let them made a first-order coupling look like a broken level
 loop.** Before the ramp existed the same 20 MWe delivered instantly took true level to **16.92 %**,
 through the cut; the ramp-rate series taken with it — 30 %/min still at the cut, 10 %/min 18.29 %,
-5 %/min 21.52 %, 2.5 %/min 22.92 % — is recorded in `engines/pwr2/pwr2_shell.js` (#624,
+5 %/min 21.52 %, 2.5 %/min 22.92 %, all on the initial condition as it was before it became xenon-free (2026-09-25) — is recorded in `engines/pwr2/pwr2_shell.js` (#624,
 2026-09-04, this engine). The sourced rate is the slowest of them that keeps any margin at all.
 
 **LOWERING load runs the same coupling backwards, which is why it is NOT ramped.** Less steam

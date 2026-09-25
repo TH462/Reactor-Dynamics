@@ -1020,7 +1020,9 @@ if (!only && RUN_B) {
      * is `pwr_raise_power:3`'s shape exactly, for the same reason: boration runs about 36
      * plant-minutes in the background (MEASURED, #753), so a state row would stall the leg on
      * chemistry. NOT MEASURED HERE: whether re-entering an unchanged 719 re-sends the command. */
-    var NO_STATE_EXPECTED = { 'pwr_raise_power:3': 1, 'pwr_lower_power:1': 1 };
+    /* `pwr_raise_power:3` LEFT THIS SET BY BEING FIXED (2026-09-25, raise-power phase 2): 3b now
+     * grades `boron_target_ppm ~ 660` beside its cmd (the #697 cmd + `p` shape). */
+    var NO_STATE_EXPECTED = { 'pwr_lower_power:1': 1 };
     var noStateTally = {};
     NO_STATE.forEach(function (r) { var k = r.proc + ':' + r.step; noStateTally[k] = (noStateTally[k] || 0) + 1; });
     var noStateKeys = Object.keys(noStateTally), expectedKeys = Object.keys(NO_STATE_EXPECTED);
@@ -1160,7 +1162,7 @@ if (!only && RUN_B) {
     var sdNoPress = driveShutdownStep3(600, false);
     ck('pwr_shutdown step 3 HOLDS with AUTO never pressed: status reads TAVG, the row reads the mode (ruling 2026-09-24, reverses #697 for this row)',
        sdNoPress.done === false && sdNoPress.step === 2 && sdNoPress.mode === 'tavg' && sdNoPress.accs &&
-       sdNoPress.accs[0].met === false && sdNoPress.accs[1].met === true && sdNoPress.accs[2].met === true,
+       sdNoPress.accs[0].met === false && sdNoPress.accs[1].met === true && sdNoPress.accs[3].met === true,   /* 3b power, 3d dump (3c STEAM PRESS sits at index 2 since the 2026-09-25 bring-down) */
        'mode ' + sdNoPress.mode + ' ' + JSON.stringify(sdNoPress.accs));
     var sdPress = driveShutdownStep3(600, true);
     ck('pwr_shutdown step 3 completes once AUTO is pressed (the turbine is tripped, so AUTO selects PRESS)',
@@ -1171,8 +1173,63 @@ if (!only && RUN_B) {
       entry.p = 'steam_dump_auto';                     // the #697 lamp grading, planted back
       try { return driveShutdownStep3(600, false); } finally { entry.p = savedP; }
     })();
-    ck('...RED BY INJECTION: graded on the AUTO lamp (#697), step 3 ticks with no press on a card reading TAVG',
-       sdLamp.done === true, 'done=' + sdLamp.done + ' step_index=' + sdLamp.step);
+    /* Asserts the ROW, not the step, since the 2026-09-25 bring-down: 3c's STEAM PRESS band
+     * (1015-1025 psi) independently refuses TAVG mode (it holds 1026-1029 psi), so the step no
+     * longer completes under the injection — the lamp-graded row still ticks with no press. */
+    ck('...RED BY INJECTION: graded on the AUTO lamp (#697), the "status PRESS" row ticks with no press on a card reading TAVG',
+       sdLamp.done === true || !!(sdLamp.accs && sdLamp.accs[0].met === true && sdLamp.mode === 'tavg'), 'done=' + sdLamp.done + ' step_index=' + sdLamp.step + ' mode ' + sdLamp.mode + ' ' + JSON.stringify(sdLamp.accs));
+
+    /* THE 2026-09-25 BRING-DOWN'S TWO NEW ROWS (`Blueprint/walkthrough_steps/05_shutdown.md`,
+     * "Bring-down record"). 2a "Press SCRAM" is graded on the trip latch, so it must be unmet for
+     * as long as the player has not pressed and tick on the broadcast after the press — the old
+     * shape (rod rows first) ticked 2.6 s after. 3c "STEAM PRESS holding near 1020 psi" comes DOWN
+     * to the band after the scram (1113 psi at step 3 entry standalone), so it must not tick
+     * while the gauge still reads above 1025 psi. */
+    function driveShutdownNew(waitS) {
+      var svc = mkSvc('hot_full_power');
+      svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_shutdown' });
+      var s = null, didLoad = false, t2 = null, tScram = null, pre = false, tick2a = null, auto = false, first3c = null;
+      for (var i = 0; i < 20000; i++) {
+        s = svc.tick();
+        var c = s.instructor && s.instructor.checklist; if (!c) continue;
+        if (c.complete) break;
+        if (c.step_index === 0 && !didLoad) { svc.handleCommand({ action: 'set_load_target', mwe: 0 }); didLoad = true; }
+        if (c.step_index === 1) {
+          var t = s.metadata.sim_time;
+          if (t2 == null) t2 = t;
+          if (tScram == null && c.accs[0].met) pre = true;               // ticked before any press
+          if (tScram == null && t - t2 >= waitS) { svc.handleCommand({ action: 'scram' }); tScram = t; continue; }
+          if (tScram != null && tick2a == null && c.accs[0].met) tick2a = t - tScram;
+        }
+        if (c.step_index === 2) {
+          if (!auto) { svc.handleCommand({ action: 'set_steam_dump', mode: 'auto' }); auto = true; }
+          if (first3c == null && c.accs[2].met) first3c = c.accs[2].obs * 145.0377;
+        }
+        if (c.awaiting_ack) svc.handleCommand({ action: 'checklist_check', index: c.step_index });
+      }
+      return { pre: pre, tick2a: tick2a, first3c: first3c, done: !!(s.instructor.checklist && s.instructor.checklist.complete) };
+    }
+    function withShutdownEdit(fn, run) {
+      var proc = POOL2.filter(function (p) { return p.id === 'pwr_shutdown'; })[0];
+      var saved = JSON.stringify(proc.steps.map(function (st) { return st.accs; }));
+      try { fn(proc); return run(); }
+      finally { var a = JSON.parse(saved); proc.steps.forEach(function (st, k) { st.accs = a[k]; }); }
+    }
+    var sdNew = driveShutdownNew(30);
+    ck('pwr_shutdown 2a (SCRAM) is unmet while nobody presses and ticks within the grader debounce of the press (2026-09-25 bring-down)',
+       sdNew.pre === false && sdNew.tick2a != null && sdNew.tick2a <= 4.5,   /* measured 3.5 plant-s at this 10x harness (0.3 s at the card's 1x on the route gate; the 10x lag is not traced); the old shape 7.5 */
+       'ticked before the press: ' + sdNew.pre + ', plant-s from press to tick: ' + sdNew.tick2a);
+    ck('pwr_shutdown 3c (STEAM PRESS) ticks only once the gauge reads 1025 psi or less, and the leg completes',
+       sdNew.done && sdNew.first3c != null && sdNew.first3c <= 1025.5,
+       'first met at ' + (sdNew.first3c == null ? '?' : sdNew.first3c.toFixed(1)) + ' psi, complete ' + sdNew.done);
+    var sdOld2a = withShutdownEdit(function (proc) { proc.steps[1].accs.shift(); }, function () { return driveShutdownNew(30); });
+    ck("...RED BY INJECTION: without the latch row (the old rod-rows-first shape), step 2's first row does NOT tick at the press",
+       !(sdOld2a.pre === false && sdOld2a.tick2a != null && sdOld2a.tick2a <= 4.5),
+       'plant-s from press to tick: ' + sdOld2a.tick2a);
+    var sdWide3c = withShutdownEdit(function (proc) { proc.steps[2].accs[2].tol = 0.15; }, function () { return driveShutdownNew(30); });
+    ck("...RED BY INJECTION: with the heatup's +/-0.15 MPa band, 3c ticks while STEAM PRESS still reads above 1025 psi",
+       sdWide3c.first3c != null && sdWide3c.first3c > 1025.5,
+       'first met at ' + (sdWide3c.first3c == null ? '?' : sdWide3c.first3c.toFixed(1)) + ' psi');
 
   })();
 
@@ -1781,7 +1838,9 @@ if (!only && RUN_B) {
      * a merge is precisely when an authored command changes which object carries it. */
     var sprayCmd = null, sprayEn = null;
     (cd ? cd.steps : []).forEach(function (st) {
-      [st.cmd].concat((st.accs || []).map(function (e) { return e.cmd; })).forEach(function (c) {
+      /* ...and on `replay_then` since the 2026-09-25 bring-down (the spray press left the row: a
+       * press-latched `~` row flashed). Same finder lesson as the paragraph above. */
+      [st.cmd, st.replay_then && st.replay_then.cmd].concat((st.accs || []).map(function (e) { return e.cmd; })).forEach(function (c) {
         if (c && c.action === 'set_spray' && c.pct != null && !sprayCmd) {
           sprayCmd = c;
           sprayEn = (st.accs || []).filter(function (e) { return e.p === 'spray_flow_pct'; })[0];
@@ -3718,12 +3777,16 @@ if (!only && RUN_B) {
       /* RE-PINNED 2026-09-24 (rp_start): 135 -> 137 predicate rows, 87 -> 90 instrument-graded. `pwr_heatup` 16
        * trades NET REACTIVITY (true_state) for SOURCE RANGE steady + STARTUP RATE near 0 (+1 row, +2 instrument);
        * `pwr_startup` 9 gains a hidden STARTUP RATE `steady` row, the settle (+1, +1). Graded steps and sole unmoved. */
-      /* RE-PINNED 2026-09-25 (`pwr_startup` what / why / how bring-down): 137 -> 143 predicate rows,
+      /* RE-PINNED 2026-09-25 (`pwr_startup` what / why / how bring-down): 137 -> 141 predicate rows (develop +6 here, and workbench -2 from raise-power 8/10 in the layman pass 4 fixes; SUM on a merge),
        * 90 -> 92 instrument-graded, sole 29 -> 28. Step 1 +2 (RCP FLOW, STARTUP RATE — both
        * instrument), step 2 +2 (the ON lamp and target box, control-state), step 3 +2 (STEAM DUMP
        * AUTO and DUMP SETPOINT, control-state); step 2's BORON CHEM row stops being the only one. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25: 84 / 143 / 92 / 28)',
-         gradedSteps === 84 && predRows === 143 && rows.length === 92 && soleInst === 28,
+      /* RE-PINNED 2026-09-25 (b) (`pwr_raise_power` what / why / how bring-down, exp/w6-raise): +1 graded step
+       * (3, was cmd-only), +8 predicate rows (1b, 1c x2, 3a, 3b's target, 9's OUTPUT, 12b x2; 10 and 11
+       * trade cmd/boron for temperature), +2 instrument-graded (9 OUTPUT, 12 temperature; 11 trades
+       * boron for temperature), sole 28 -> 27 (12 is no longer one row). SUM these deltas on a merge. MERGED with the shutdown bring-down (+2 rows, +1 instrument): 85 / 151 / 95 / 27. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25 (c): 86 / 157 / 97 / 26 -- raise + shutdown + cooldown (+1/+6/+2/-1) summed)',
+         gradedSteps === 86 && predRows === 157 && rows.length === 97 && soleInst === 26,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -3843,17 +3906,22 @@ if (!only && RUN_B) {
       'pwr_raise_power:8:mwe_output': 'mwe_output',          // > 97
       'pwr_raise_power:8:tavg_c': 'tavg',                    // ~ 303.2
       'pwr_raise_power:9:power_pct': 'power_range',          // > 96
+      'pwr_raise_power:9:mwe_output': 'mwe_output',          // > 97   9a's OUTPUT row (phase 2, 2026-09-25)
       'pwr_raise_power:9:tavg_c': 'tavg',                    // ~ 303.2
       'pwr_raise_power:10:mwe_output': 'mwe_output',         // > 97
       'pwr_raise_power:10:tavg_c': 'tavg',                   // ~ 304.4
+      'pwr_raise_power:11:tavg_c': 'tavg',                   // ~ 304.4  conditional dose (2026-09-25 ruling)
       'pwr_raise_power:11:mwe_output': 'mwe_output',         // ~ 100
-      'pwr_raise_power:12:mwe_output': 'mwe_output',         // > 97 [SOLE]   the #667 shape exactly
+      'pwr_raise_power:12:mwe_output': 'mwe_output',         // > 97   no longer SOLE (phase 2: 12b's temperature row)
+      'pwr_raise_power:12:tavg_c': 'tavg',                   // ~ 304.4
       /* pwr_lower_power [hot_full_power] */
       'pwr_lower_power:2:mwe_output': 'mwe_output',          // ~ 75          dead 0.000 vs true 100.0 MWe
       'pwr_lower_power:3:mwe_output': 'mwe_output',          // ~ 75
       'pwr_lower_power:4:mwe_output': 'mwe_output',          // ~ 50
       'pwr_lower_power:5:mwe_output': 'mwe_output',          // ~ 30
       'pwr_lower_power:6:mwe_output': 'mwe_output',          // ~ 15
+      /* pwr_shutdown [hot_full_power] */
+      'pwr_shutdown:3:steam_pressure_mpa': 'steam_pressure', // ~ 7.0327 (1015-1025 psi, 3c, 2026-09-25 bring-down); a dead gauge reads 0
       /* pwr_cooldown [hot_zero_power] */
       'pwr_cooldown:1:boron_ppm': 'boron_analyzer',          // > 880 [SOLE]  dead 0.000 vs true 718.9 ppm
       'pwr_cooldown:6:spray_flow_pct': 'pzr_spray_flow',     // ~ 50          dead 0.000 %
@@ -3876,7 +3944,7 @@ if (!only && RUN_B) {
     var TICK_EXPECTED = {
       'pwr_heatup:15:adv_valve_pct': 1, 'pwr_heatup:17:power_pct': 1,
       'pwr_startup:12:power_pct': 1,
-      'pwr_raise_power:9:boron_ppm': 1, 'pwr_raise_power:11:boron_ppm': 1,
+      'pwr_raise_power:9:boron_ppm': 1,   /* 11's boron row left 2026-09-25: the dose is conditional */
       'pwr_lower_power:2:power_pct': 1, 'pwr_lower_power:3:tavg_c': 1,
       'pwr_lower_power:3:power_pct': 1, 'pwr_lower_power:4:power_pct': 1,
       'pwr_lower_power:4:tavg_c': 1, 'pwr_lower_power:5:power_pct': 1,
@@ -3887,6 +3955,7 @@ if (!only && RUN_B) {
       'pwr_cooldown:6:pressure_mpa': 1, 'pwr_cooldown:8:pressure_mpa': 1,
       'pwr_cooldown:10:pump_flow_pct': 1, 'pwr_cooldown:11:tavg_c': 1,
       'pwr_cooldown:12:spray_flow_pct': 1,
+      'pwr_cooldown:13:tavg_c': 1, 'pwr_cooldown:13:pump_flow_pct': 1,   // 13a/13b (2026-09-25 bring-down), both read DOWNWARD
       /* STEP 15 USED TO BE HERE, on `pzr_level_pct < 80` (#788's content pass, 2026-09-19). The
        * entry was the pressurizer level gauge doing a clock's job on the one leg two of the four
        * named casualties can freeze, and it broke in BOTH directions depending on when the player
@@ -4028,9 +4097,12 @@ if (!only && RUN_B) {
       'pwr_startup:10': 'ir_amps,power_pct',                  // the climb, split out of old 9 (had a cmd)
       'pwr_startup:12': 'power_pct',                          // the rate row became a `steady` power row (2026-09-23)
       'pwr_startup:17': 'power_pct,mwe_output',               // his two rows, replacing plant_mode
-      'pwr_raise_power:9': 'power_pct,boron_ppm,tavg_c',
-      'pwr_raise_power:12': 'mwe_output',                     // the #667 shape, one leg later
+      'pwr_raise_power:9': 'power_pct,mwe_output,boron_ppm,tavg_c',
+      'pwr_raise_power:10': 'tavg_c,mwe_output',            // conditional since 2026-09-25 (owner ruling)
+      'pwr_raise_power:11': 'tavg_c,mwe_output',
+      'pwr_raise_power:12': 'mwe_output,tavg_c',                     // the #667 shape, one leg later
       'pwr_cooldown:8': 'pressure_mpa',
+      'pwr_cooldown:13': 'tavg_c,pump_flow_pct',              // 13a/13b replace plant_mode (2026-09-25)
       'pwr_tmi2_incident:1': 'power_pct',
       'pwr_tmi2_incident:3': 'pressure_mpa',                  // a `saw` row, not an `acc`
       'pwr_tmi2_incident:5': 'sg_level_pct',
@@ -4045,7 +4117,7 @@ if (!only && RUN_B) {
       'pwr_heatup:6': 'steam_dump_valve_pct', 'pwr_heatup:12': 'rhr_active,letdown_flow_actual',
       'pwr_heatup:15': 'plant_mode',
       'pwr_raise_power:1': 'plant_mode',
-      'pwr_cooldown:13': 'plant_mode', 'pwr_cooldown:14': 'accumulator_volume_pct',
+      'pwr_cooldown:14': 'accumulator_volume_pct',
       'pwr_cooldown:15': 'rhr_valve_open',
       'pwr_tmi2_incident:4': 'turbine_tripped', 'pwr_tmi2_incident:7': 'scrammed',
       'pwr_tmi2_incident:9': 'hpi_active', 'pwr_tmi2_incident:13': 'rcp_cavitating',
