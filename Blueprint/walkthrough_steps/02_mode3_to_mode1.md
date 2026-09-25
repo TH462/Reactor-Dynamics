@@ -51,7 +51,7 @@ In Hot Standby (Mode 3), the plant is at operating temperature and at pressure w
 
 Suggested time warp: 600×.
 
-Note: It can take several plant-hours to dilute the boron out of the primary loop.
+Note: Dilution takes about 1½ plant-hours coming from the Mode 5 to Mode 3 walkthrough, which arrives near 918 ppm. The Hot Standby preset starts at 719 ppm, so the step ticks at once.
 
 
 
@@ -73,7 +73,7 @@ Boron and rods do different jobs. Boron changes slowly, over plant-hours, so it 
 
 ()3a. Check SG FEED AUTO is lit and the card reads HOLDING. If AUTO is not lit, press AUTO.
 
-()3b. Check STEAM DUMP AUTO is lit and Dump SP reads 1020 psi. If AUTO is not lit, press AUTO.
+()3b. Check STEAM DUMP AUTO is lit and DUMP SETPOINT reads 1020 psi. If AUTO is not lit, press AUTO.
 
 Suggested time warp: 1×.
 
@@ -87,7 +87,7 @@ In AUTO, the steam dump holds steam pressure at 1020 psi. At that pressure water
 
 Feed AUTO puts back the water that leaves as steam, which holds SG level. Once the reactor goes critical and power rises, the dump opens further and feed follows it. Both need to be in AUTO before that happens.
 
-\[HIGHLIGHTED: SG Feed AUTO, Steam Dump AUTO (pulsing); SG Level, Steam Pressure, Dump SP (steady)]
+\[HIGHLIGHTED: SG Feed AUTO, Steam Dump AUTO (pulsing); SG Level, SG Pressure, Dump Setpoint (steady)]
 
 
 
@@ -223,11 +223,11 @@ Suggested time warp: 1×.
 
 Note: At SLOW the rods move about one step every 8 plant-seconds, so a short hold at 1× moves nothing. This check-off ticks after the rods have been still for a plant-minute.
 
-()9b. Tap WITHDRAW one step, wait about five plant-minutes, and read STARTUP RATE. Repeat until STARTUP RATE reads +0.06 to +1.00 with the rods stopped.
+()9b. Tap WITHDRAW one step, wait about five plant-minutes, and read STARTUP RATE. Repeat until STARTUP RATE reads +0.06 to +1.00 and steady, with the rods stopped.
 
 Suggested time warp: 10× while you wait; 1× before every tap.
 
-Note: Read the rate only once it has stopped falling, about five minutes after the last tap. What the reading means:
+Note: Read the rate only once it has stopped falling, about ten plant-minutes after the last tap; the check-off waits for that too. What the reading means:
 
 * Near 0.01, with PERIOD in the thousands of seconds and nothing moving: still short of critical. Tap one more step out and wait.
 * 0.02 to 0.05: tap one more step out.
@@ -260,7 +260,7 @@ Below about 1 % power, where the reactor starts warming the water, nothing in th
 
 Suggested time warp: 10×.
 
-Note: Never 60×, where a 2½-second glance away is two and a half plant-minutes of reactor. REACTOR POWER reads 0.0 % for about 45 to 60 plant-minutes after a STARTUP RATE of 0.06 to 0.10, and under 10 plant-minutes after about 0.15, while INTER RANGE climbs three decades. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
+Note: Never 60×, where a 2½-second glance away is two and a half plant-minutes of reactor. REACTOR POWER reads 0.0 % for about 30 to 60 plant-minutes after a STARTUP RATE of 0.06 to 0.10, and under 15 plant-minutes after about 0.15, while INTER RANGE climbs three decades. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
 
 
 
@@ -282,7 +282,7 @@ That is why STARTUP RATE, PERIOD and INTER RANGE are the instruments to steer on
 
 Suggested time warp: 5×; 1× before a tap. The plant behaves the same at any speed, but at 10× a tap has landed before you have read the rate.
 
-Note: This takes about 20 to 25 plant-minutes, or about 7 after a 0.15 approach. SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE carries the reading from here; there is no button for it. Once it has gone, close the 1/M PLOT window with the ✕ in its corner. Its work is done.
+Note: This takes about 15 to 25 plant-minutes, or about 5 to 7 after a 0.15 approach. SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE carries the reading from here; there is no button for it. Once it has gone, close the 1/M PLOT window with the ✕ in its corner. Its work is done.
 
 
 
@@ -424,7 +424,7 @@ Note: IR HIGH FLUX and PR HIGH (LOW SETPT) were checked BLOCKED in the last step
 
 Background
 
-The reactor is critical, the generator is carrying load, and both startup trips are blocked. The plant is in Mode 1, At Power. From here the climb to full power is rods leading and the turbine following.
+The reactor is critical, the generator is carrying load, and both startup trips are blocked. The plant is in Mode 1, At Power. From here the climb to full power is the turbine leading and the rods following.
 
 \[HIGHLIGHTED: Reactor Power, Turbine Load, SG Level (steady)]
 
@@ -911,7 +911,7 @@ because a ruling was asked for and given; nothing in the sim or this file moved.
 
 
 
-### Reword record — 2026-09-24 (g), develop lane: the what / why / how format
+### Reword record — 2026-09-24 (h), develop lane: the what / why / how format
 
 *OWNER RULING, 2026-09-24: "I like putting the why where you put it. i choose a. using this
 standard, and the standards first three steps as examples of how i want things worded, adjust all
@@ -930,3 +930,14 @@ AUTO in pressure mode, steam pressure 1020 psi (7.03 MPa), dump 0 to 1.95 % open
 (IR HIGH FLUX, PR HIGH LOW SETPT), step 15/16.
 * Step 9b's note became a list, one reading per line. No number changed.
 
+* **Ported onto this rewording, 2026-09-25**: workbench's record (g) text changes (9b settled
+  rate; step 10 "30 to 60 / under 15"; step 11 "15 to 25 / 5 to 7"; step 17 "the turbine leading
+  and the rods following", which also removes the step 14 vs 17 contradiction). Workbench's
+  record (g) itself lives on that lane and lands at the merge.
+* 3b's "Dump SP" -> "DUMP SETPOINT": the board draws "DUMP" / "SETPOINT" beside box
+  `ims31tq7mgc` (bring-down agent, read off the board source). Highlight ids: press `SG Feed AUTO`,
+  `imrppqg6mcc`; watch SG Level, `imrr1gwi93j` (SG Pressure), `ims31tq7mgc`.
+* Step 2 note: "several plant-hours" -> about 1½ (pool MEASURED 88.4 plant-min, 917.6 -> 718.7
+  ppm on the chained route; the preset boots at 718.9 ppm, already in band).
+* Chained-route dump, PARTLY measured (seed 42, heatup replay stopped at 7834 s, Tavg 309.4 degF):
+  AUTO, pressure mode, setpoint 1019.6 psi (7.03 MPa). No later heatup step commands the dump.
