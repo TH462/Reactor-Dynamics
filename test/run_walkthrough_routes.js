@@ -679,7 +679,13 @@ function runJob(legId, routeId, mutId, ctx) {
      * card names), in the directions `dir` allows, `pull` steps a press, `dwell` s between presses
      * (0 = held). It reads the INSTRUMENT channel, as the tile does, and so inherits its lag. */
     if (P === 'to_band') {
-      if (!(spec.no_cmd)) { issueStepCmd(st2, el2); pressRows(st2, c2); }
+      /* THE STEP'S OWN rod_nudge IS NOT THE PLAYER'S ACTION (2026-09-25, workbench-h). The live
+       * checklist never issues `cmd`; on a to_band step the player's rods are the card's pulls
+       * below. Sending the replay's `rod_nudge -40` too put 40 steps in at once on lower power 3
+       * and, at bank ~250 (~0.6 degF/step), cooled the loop 18-19 degF/min: PRIMARY PRESSURE floors
+       * 2067/1972/1915/1915 psia on the chain at the card's pace against 2001/1938/1936/1941 without it
+       * (steps 3-6). A LOAD command (steps 4-6, raise power) is still the player's and is still sent. */
+      if (!(spec.no_cmd)) { if (!(st2.cmd && cmdAction(st2.cmd) === 'rod_nudge')) issueStepCmd(st2, el2); pressRows(st2, c2); }
       var tf = pv('tavg_c') * 9 / 5 + 32, far = spec.near != null && Math.abs(tf - spec.tref) > spec.near;   // `near`: held straight through until within it
       if (el2 < (spec.after_s || 0) || moving() || (!far && t() - (S.memo.lastPull || -1e9) < (spec.dwell || 0))) return;
       var pull = far ? 1 : (spec.pull || 1);
