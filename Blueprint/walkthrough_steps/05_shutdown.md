@@ -14,11 +14,11 @@
 
 1. Take the load off the generator before the scram.
 
-1a. Set LOAD to 0 MWe and wait for OUTPUT to fall below 5 MWe.
+1a. Set LOAD to 0 MW and wait for OUTPUT to fall below 5 MW.
 
 Suggested time warp: 1×.
 
-()  OUTPUT below 5 MWe
+()  OUTPUT below 5 MW
 
 Background
 

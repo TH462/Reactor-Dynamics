@@ -29,8 +29,9 @@
  * ROUTES ARE DATA. `ROUTES[leg]` names a policy per step (a small vocabulary below) and each
  * mistake is an override of ONE step's policy/params. Steps are keyed so a re-numbering port
  * costs little: '#n' (1-based), 'cmd:<action>[:k]' (k-th step whose cmd or a row cmd is that
- * action), 'p:<param>[:k]' (k-th step whose first graded param is that). Legs other than
- * pwr_startup are PROVISIONAL (five ports to the owner step format are in flight, 2026-09-24).
+ * action), 'p:<param>[:k]' (k-th step whose first graded param is that). The five other legs'
+ * ports to the owner step format landed 2026-09-24; a leg with no `steps` entry runs the default
+ * policy on every step.
  *
  *   node test/run_walkthrough_routes.js                 all legs, all routes (the gate)
  *   node test/run_walkthrough_routes.js --leg=pwr_startup --route=typical   FILTERED: forced non-zero
@@ -115,7 +116,7 @@ var ROUTES = {
       { id: 'never_tap_11', kind: 'skip optional', at: '#11', set: { skip: true } },
     ],
   },
-  /* ---- PROVISIONAL (ports in flight): typical = default policy on every step ---- */
+  /* ---- the other legs: typical = default policy on every step unless `steps` names one ---- */
   pwr_heatup: {
     steps: {},
     mistakes: [

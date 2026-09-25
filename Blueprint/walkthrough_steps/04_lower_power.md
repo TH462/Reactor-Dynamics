@@ -33,13 +33,13 @@ Coming down is the climb in reverse. Every percent of power shed hands reactivit
 
 2. Take the first load off the turbine and let the reactor follow it down.
 
-2a. Set LOAD to 75 MWe and let the reactor follow it down. Leave the rods alone for now.
+2a. Set LOAD to 75 MW and let the reactor follow it down. Leave the rods alone for now.
 
 Note: Power walks down on its own over about five plant-minutes. AVG COOLANT TEMPERATURE rises out of the green band on its tile while it does — that is expected, and the next step is what brings it back.
 
 Suggested time warp: 10×.
 
-()  OUTPUT settled near 75 MWe
+()  OUTPUT settled near 75 MW
 ()  Reactor following the load down
 
 Background
@@ -60,7 +60,7 @@ Suggested time warp: 5×.
 
 ()  AVG COOLANT TEMPERATURE back below 577 °F, inside its band
 ()  Reactor followed down to about 73 %
-()  Generator still carrying about 75 MWe
+()  Generator still carrying about 75 MW
 
 Background
 
@@ -72,11 +72,11 @@ The load drop left the reactor hot: it settles above its programme until rods ta
 
 4. Take the load down to 50 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
 
-4a. Set LOAD to 50 MWe and let power follow.
+4a. Set LOAD to 50 MW and let power follow.
 
 Suggested time warp: 10×.
 
-()  Generator settled near 50 MWe
+()  Generator settled near 50 MW
 ()  Reactor following through 70 %
 
 4b. Hold INSERT at MED until AVG COOLANT TEMPERATURE is back in its band.
@@ -97,11 +97,11 @@ Same order: LOAD first, then rods, so the temperature does not sit hot above its
 
 5. Take the load down to 30 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
 
-5a. Set LOAD to 30 MWe and let power follow.
+5a. Set LOAD to 30 MW and let power follow.
 
 Suggested time warp: 10×.
 
-()  Generator settled near 30 MWe
+()  Generator settled near 30 MW
 ()  Reactor following through 45 %
 
 5b. Hold INSERT at MED until AVG COOLANT TEMPERATURE is back in its band.
@@ -122,11 +122,11 @@ Lower power needs smaller rod moves. The band is walking back down toward 547 °
 
 6. Take the load down to 15 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
 
-6a. Set LOAD to 15 MWe and let power follow.
+6a. Set LOAD to 15 MW and let power follow.
 
 Suggested time warp: 10×.
 
-()  Generator settled near 15 MWe
+()  Generator settled near 15 MW
 ()  Reactor below 40 % and falling as the boration finishes (rod trims take it to about 15 %)
 
 6b. Hold INSERT at MED until AVG COOLANT TEMPERATURE is back in its band.

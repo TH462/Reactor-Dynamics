@@ -55,8 +55,8 @@ Note: TRIP BLOCKS is on the ROD CONTROL card.
 
 Suggested time warp: 1×.
 
-()  PZR PRESS LO-LO blocked
-()  SI REACTOR TRIP blocked
+()  PZR PRESS LO-LO reads BLOCKED
+()  SI REACTOR TRIP reads BLOCKED
 
 3b. Press STOP on ECCS.
 

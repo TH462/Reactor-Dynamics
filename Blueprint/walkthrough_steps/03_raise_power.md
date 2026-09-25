@@ -16,9 +16,9 @@
 
 1. Confirm the plant the startup handed over is ready to climb.
 
-1a. Verify Mode 1, At Power: REACTOR POWER 10 %, SG FEED AUTO, both startup trips lit on TRIP BLOCKS.
+1a. Verify Mode 1, At Power: REACTOR POWER 10 %, SG FEED AUTO, both startup trips reading BLOCKED on TRIP BLOCKS.
 
-Note: The two rows are IR HIGH FLUX and PR HIGH (LOW SETPT), both lit by the startup walkthrough.
+Note: The two rows are IR HIGH FLUX and PR HIGH (LOW SETPT), both blocked by the startup walkthrough.
 
 Suggested time warp: 1×.
 
@@ -34,14 +34,14 @@ This is the plant the startup hands over: critical, on the grid, feed holding le
 
 2. Make sure the turbine is on line and taking steam.
 
-2a. Check the TURBINE-GENERATOR card is on line: LATCH lit and OUTPUT above 8 MWe.
+2a. Check the TURBINE-GENERATOR card is on line: LATCH lit and OUTPUT above 8 MW.
 
-Note: If it reads TRIP, press LATCH; OUTPUT returns to the LOAD you last set. If OUTPUT stays at 0.0 MWe, set LOAD to 10 MWe. LATCH is refused while whatever tripped the turbine is still there, and the card names the reason.
+Note: If it reads TRIP, press LATCH; OUTPUT returns to the LOAD you last set. If OUTPUT stays at 0.0 MW, set LOAD to 10 MW. LATCH is refused while whatever tripped the turbine is still there, and the card names the reason.
 
 Suggested time warp: 1×.
 
 ()  Turbine latched, TRIP not lit
-()  Generator above 8 MWe
+()  Generator above 8 MW
 
 Background
 
@@ -71,12 +71,12 @@ Every percent of power costs reactivity: the fuel heats up and the water thins o
 
 4. Take the first stage to 30 MWe, load leading and rods following.
 
-4a. Set LOAD to 30 MWe.
+4a. Set LOAD to 30 MW.
 
 Suggested time warp: 1×.
 
-()  Load target set to 30 MWe
-()  Generator at 30 MWe
+()  Load target set to 30 MW
+()  Generator at 30 MW
 ()  Reactor following, near 30 %
 
 4b. Hold WITHDRAW at MED about 20 steps to bring AVG COOLANT TEMPERATURE back into its band.
@@ -97,12 +97,12 @@ Raising LOAD draws more steam and cools the water; colder water adds reactivity,
 
 5. Take the second stage to 50 MWe the same way.
 
-5a. Set LOAD to 50 MWe.
+5a. Set LOAD to 50 MW.
 
 Suggested time warp: 1×.
 
-()  Load target set to 50 MWe
-()  Generator at 50 MWe
+()  Load target set to 50 MW
+()  Generator at 50 MW
 ()  Reactor following, near 50 %
 
 5b. Hold WITHDRAW at MED about 20 steps to bring AVG COOLANT TEMPERATURE back into its band.
@@ -123,12 +123,12 @@ Same order as the last stage: LOAD, then rods. Halfway up, xenon is starting to 
 
 6. Take the third stage to 75 MWe the same way.
 
-6a. Set LOAD to 75 MWe.
+6a. Set LOAD to 75 MW.
 
 Suggested time warp: 1×.
 
-()  Load target set to 75 MWe
-()  Generator at 75 MWe
+()  Load target set to 75 MW
+()  Generator at 75 MW
 ()  Reactor following, near 75 %
 
 6b. Hold WITHDRAW at MED about 35 steps to bring AVG COOLANT TEMPERATURE back into its band.
@@ -149,12 +149,12 @@ Three-quarter power. The band has climbed with the load, toward 578 °F at 100 %
 
 7. Take the fourth stage to 90 MWe with a smaller pull.
 
-7a. Set LOAD to 90 MWe.
+7a. Set LOAD to 90 MW.
 
 Suggested time warp: 1×.
 
-()  Load target set to 90 MWe
-()  Generator at 90 MWe
+()  Load target set to 90 MW
+()  Generator at 90 MW
 
 7b. Hold WITHDRAW at MED about 25 steps to bring AVG COOLANT TEMPERATURE back into its band.
 
@@ -174,12 +174,12 @@ Above 103 % power the plant refuses to move the rods, and at 118 % it trips the 
 
 8. Take the last stage to full load and settle the temperature on 578 °F.
 
-8a. Set LOAD to 100 MWe.
+8a. Set LOAD to 100 MW.
 
 Suggested time warp: 1×.
 
-()  Load target set to 100 MWe
-()  Generator at 100 MWe
+()  Load target set to 100 MW
+()  Generator at 100 MW
 
 8b. Hold WITHDRAW at MED about 20 steps to settle AVG COOLANT TEMPERATURE on 578 °F.
 
@@ -199,7 +199,7 @@ The last 10 MWe of LOAD, then a smaller pull to bring the temperature back up. R
 
 9. Confirm full power, with the boron dilution done.
 
-9a. Verify full power: REACTOR POWER 100 %, OUTPUT 100 MWe, AVG COOLANT TEMPERATURE 578 °F, BORON 660 ppm or below.
+9a. Verify full power: REACTOR POWER 100 %, OUTPUT 100 MW, AVG COOLANT TEMPERATURE 578 °F, BORON 660 ppm or below.
 
 Note: CONTROL ROD POSITION should be part-way out, not on its stop. BORON is the one to read twice: leave the climb with more of it in the water than the plant wants and AVG COOLANT TEMPERATURE sinks over the following hours, taking PZR LEVEL with it.
 
@@ -226,7 +226,7 @@ Note: Xenon is building, and it will keep pulling AVG COOLANT TEMPERATURE down. 
 Suggested time warp: 1×.
 
 ()  CONTROL ROD POSITION above 351
-()  Still at full load, 100 MWe
+()  Still at full load, 100 MW
 ()  AVG COOLANT TEMPERATURE near 580 °F
 
 Background
@@ -246,7 +246,7 @@ Note: One 10 ppm dose, not the whole 43. It takes about ten plant-minutes to arr
 Suggested time warp: 10×. Give the dose ten plant-minutes to arrive before you judge it.
 
 ()  BORON coming down off 660 ppm
-()  Still at full load, 100 MWe
+()  Still at full load, 100 MW
 
 Background
 
@@ -258,13 +258,13 @@ Rods are fast, but they run out: the bank has about 250 steps left and the xenon
 
 12. Hold full power on programme while xenon builds.
 
-12a. Full power and on programme: OUTPUT 100 MWe, AVG COOLANT TEMPERATURE 580 °F, CONTROL ROD POSITION rising.
+12a. Full power and on programme: OUTPUT 100 MW, AVG COOLANT TEMPERATURE 580 °F, CONTROL ROD POSITION rising.
 
 Note: Keep trimming for the next two plant-days.
 
 Suggested time warp: 1×.
 
-()  Still at full load, 100 MWe
+()  Still at full load, 100 MW
 
 Background
 
@@ -480,3 +480,13 @@ card's literal 35 steps after LOAD peaks 581.7 °F, higher than rods-first with 
 plant-hour" in the purpose was not re-measured. The tripped-turbine route through step 2 was not
 re-run. `Manuals/01` still reads "Rule of thumb: Rods lead up; turbine leads down." — not edited
 here (it goes through the manual revision process).
+
+### Reconcile record — 2026-09-25, workbench lane (cross-leg review, no ruling needed)
+
+- Board words, extending the 2026-09-24 startup ruling ("use the board's"): check-off, precondition
+  and prerequisite strings say "MW" (the OUTPUT tile and LOAD box print MW), and the trip-block rows
+  "read BLOCKED" (the panel button's word). Goal lines, Background and `target` keep "MWe".
+- Step 10 `target` "coming up off 351" → "off 347", and the pool `outcome` "about 357 of 627" →
+  "about 353". MEASURED 2026-09-25, `run_walkthrough_routes --leg=pwr_raise_power --route=typical`:
+  bank 347 at step 9, 353 after step 10's 6-step pull, 353 at the leg's end (26.8 plant-min). 351
+  stays as step 10's graded floor (arrival + 4, record (b)).
