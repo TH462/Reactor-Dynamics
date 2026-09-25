@@ -4,24 +4,30 @@
 
 > This is the LIVE step file: the sim's `pwr_lower_power` walkthrough was brought down to it on
 > 2026-09-24 (the owner: "Adopt the format for the other walkthroughs."). Edit it freely — it is
-> the step text, and it is what the sim is brought down to.
+> the step text, and it is what the sim is brought down to. **The 2026-09-25 reword below is NOT
+> brought down yet** — the pool still carries the 2026-09-24 wording (see the Notes).
 >
-> **The format.** Line one of a step is what the step accomplishes. Each lettered substep opens
-> with the action that accomplishes it, then its own Note, its own **Suggested time warp**, and
-> its check-off lines drawn `()`. Background closes the step. Agent notes go at the END of the
-> file, never between the steps.
+> **The format** (OWNER RULING, 2026-09-24: "I like putting the why where you put it. i choose
+> a."; the model is `02_mode3_to_mode1.md` steps 1–3). Line one of a step is WHAT the step
+> accomplishes, never how. Directly under it, one italic line says WHY. Each lettered substep is
+> HOW: it opens with a verb, and it is its own check-off, drawn `()`. **Suggested time warp**
+> appears once per step, or under a substep only when the substeps differ. A Note follows the
+> warp it belongs to. Background closes the step. Agent notes go at the END of the file, never
+> between the steps.
 
 ---
 
 1. Start adding boron before any load comes off.
 
-1a. On the BORON card set 719 and press Enter.
+*Every percent of power shed hands reactivity back, and boron is too slow to catch it unless it is already working.*
 
-Note: Press ON only if it is not already lit. The boration then runs in the background while you take the plant down.
+()1a. Set 719 on the BORON card and press Enter.
 
 Suggested time warp: 1×.
 
-()  BORON target set to 719
+Note: Press ON only if it is not already lit. The boration then runs in the background while you take the plant down.
+
+
 
 Background
 
@@ -33,14 +39,17 @@ Coming down is the climb in reverse. Every percent of power shed hands reactivit
 
 2. Take the first load off the turbine and let the reactor follow it down.
 
-2a. Set LOAD to 75 MW and let the reactor follow it down. Leave the rods alone for now.
+*The reactor follows the turbine, so the load comes off first and the rods wait.*
 
-Note: Power walks down on its own over about five plant-minutes. AVG COOLANT TEMPERATURE rises out of the green band on its tile while it does — that is expected, and the next step is what brings it back. Go on to it as soon as this step ticks: the temperature keeps climbing until the rods go in.
+()2a. Set LOAD to 75 MW and wait for OUTPUT to settle near 75 MW.
+
+()2b. Leave the rods alone and watch REACTOR POWER follow the load down, below 95 %.
 
 Suggested time warp: 10×.
 
-()  OUTPUT settled near 75 MW
-()  Reactor following the load down
+Note: Power walks down on its own over about five plant-minutes. AVG COOLANT TEMPERATURE rises out of the green band on its tile while it does — that is expected, and the next step is what brings it back. Go on to it as soon as this step ticks: the temperature keeps climbing until the rods go in.
+
+
 
 Background
 
@@ -52,15 +61,19 @@ The reactor follows the turbine: less steam drawn means the heat has nowhere to 
 
 3. Bring AVG COOLANT TEMPERATURE back into its band with the rods.
 
-3a. Now insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE is back inside the green band on its tile.
+*The load drop left the reactor hot, and this is the half of the evolution the plant cannot do for you.*
 
-Note: About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it.
+()3a. Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 577 °F, the top of the green band on its tile.
+
+()3b. Check REACTOR POWER has followed down to about 73 %, below 80 %.
+
+()3c. Check OUTPUT still reads about 75 MW.
 
 Suggested time warp: 5×.
 
-()  AVG COOLANT TEMPERATURE back below 577 °F, inside its band
-()  Reactor followed down to about 73 %
-()  Generator still carrying about 75 MW
+Note: About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it.
+
+
 
 Background
 
@@ -72,20 +85,21 @@ The load drop left the reactor hot: it settles above its programme until rods ta
 
 4. Take the load down to 50 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
 
-4a. Set LOAD to 50 MW and let power follow.
+*Each load drop is the same pair of moves, turbine first and rods second, so the temperature never sits hot above its band.*
+
+()4a. Set LOAD to 50 MW and wait for OUTPUT to settle near 50 MW.
+
+()4b. Watch REACTOR POWER follow the load down through 70 %.
 
 Suggested time warp: 10×.
 
-()  Generator settled near 50 MW
-()  Reactor following through 70 %
-
-4b. Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE is back in its band.
-
-Note: About 20 to 65 steps at MED.
+()4c. Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.
 
 Suggested time warp: 5×.
 
-()  AVG COOLANT TEMPERATURE back below 568 °F, inside its band
+Note: About 20 to 65 steps at MED.
+
+
 
 Background
 
@@ -97,20 +111,21 @@ Same order: LOAD first, then rods, so the temperature does not sit hot above its
 
 5. Take the load down to 30 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
 
-5a. Set LOAD to 30 MW and let power follow.
+*Lower power needs smaller rod moves, and the band keeps walking down toward its no-load value.*
+
+()5a. Set LOAD to 30 MW and wait for OUTPUT to settle near 30 MW.
+
+()5b. Watch REACTOR POWER follow the load down through 45 %.
 
 Suggested time warp: 10×.
 
-()  Generator settled near 30 MW
-()  Reactor following through 45 %
-
-5b. Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE is back in its band.
-
-Note: About 10 to 45 steps at MED.
+()5c. Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.
 
 Suggested time warp: 5×.
 
-()  AVG COOLANT TEMPERATURE back below 562 °F, inside its band
+Note: About 10 to 45 steps at MED.
+
+
 
 Background
 
@@ -122,20 +137,23 @@ Lower power needs smaller rod moves. The band is walking back down toward 547 °
 
 6. Take the load down to 15 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
 
-6a. Set LOAD to 15 MW and let power follow.
+*About 15 % is where the shutdown walkthrough trips the reactor, so this leg ends there.*
+
+()6a. Set LOAD to 15 MW and wait for OUTPUT to settle near 15 MW.
+
+()6b. Check REACTOR POWER reads below 40 %.
 
 Suggested time warp: 10×.
 
-()  Generator settled near 15 MW
-()  Reactor below 40 % and falling as the boration finishes (rod trims take it to about 15 %)
+Note: Power keeps falling as the boration finishes; the rod trims in 6c take it to about 15 %.
 
-6b. Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE is back in its band.
-
-Note: About 6 to 40 steps at MED. Stop here; the shutdown walkthrough takes over.
+()6c. Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.
 
 Suggested time warp: 5×.
 
-()  AVG COOLANT TEMPERATURE back below 557 °F, inside its band
+Note: About 6 to 40 steps at MED. Stop here; the shutdown walkthrough takes over.
+
+
 
 Background
 
@@ -255,3 +273,52 @@ wall clock at 5×.
   584.2 °F). See `03_raise_power.md`'s record.
 - **Open question B (one-sided rows labelled "inside its band") is left as is**: a two-sided row
   would ask for a withdrawal against the boration that step 1 started.
+
+### Reword record — 2026-09-25, `exp/w6-lower` scratch lane: the what / why / how format
+
+*OWNER RULING, 2026-09-24, selected "Yes, all five" (option text: "Opus agents restyle heatup,
+raise, lower, shutdown and cooldown to match, using your Mode 3 → Mode 1 steps 1–3 as the model.
+Measured numbers stay; the gates and a layman pass confirm.")*, applying the format of
+`02_mode3_to_mode1.md` record (h). Also *OWNER RULING, 2026-09-24, selected "Take all defaults"*:
+a temperature check-off that says "inside its band" but grades one side reads "below X °F" at the
+row's graded edge. That settles the previous record's open question B. **STEP FILE ONLY — the
+`pwr_lower_power` pool is NOT brought down** (phase 2, after the runtime support for this shape
+lands on develop).
+
+**Tally.** 6 steps (unchanged), 9 lettered substeps → **15**, 15 check-off lines → **15**. Every
+check-off row is now its own substep; no row was added or removed, so **no substep lacks an
+existing grading row**. Mapping (pool row → substep): step 1 boron command → 1a; step 2
+`mwe_output ~75` → 2a, `power_pct < 95` → 2b; step 3 `tavg_c < 302.7` → 3a, `power_pct < 80` →
+3b, `mwe_output ~75` → 3c; steps 4/5/6 load row → a, power row → b, Tavg row → c.
+
+**Phase 2 must:** give each former `cont: true` power / output row its own `ask` (the substep
+line above); move 4b/5b/6b's Tavg asks to 4c/5c/6c; relabel the four Tavg rows. Graded edges, from
+the pool: 302.7 °C = 576.9 °F, 298.1 °C = 568.6 °F, 294.4 °C = 561.9 °F, 291.6 °C = 556.9 °F.
+
+**Lines whose meaning changed (agent-drafted, for review):**
+- **Step 4's Tavg check-off: "below 568 °F" → "below 569 °F".** The old label mis-rounded its
+  own threshold (568.58 °F). No grading value moves; the text now matches the graded edge, and a
+  whole-degree reading of "568" always ticks, "569" may — the same relation as 577 / 562 / 557.
+- **"inside its band" dropped** from all four Tavg check-offs, per the ruling; each now reads
+  "below X °F, the top of the green band" so the colour cue he told the player to watch stays in
+  the line. 3a's old action "back inside the green band on its tile" is the same row and got the
+  same wording.
+- **2b and 3b now print the graded power edge** (95 %, 80 %). His labels "Reactor following the
+  load down" / "Reactor followed down to about 73 %" did not; a substep that is its own check-off
+  says what ticks it, as 02's do.
+- **6b split**: "Reactor below 40 % and falling as the boration finishes (rod trims take it to
+  about 15 %)" → check-off "Check REACTOR POWER reads below 40 %." plus a Note carrying the rest.
+- **1a**: "On the BORON card set 719 and press Enter." → "Set 719 on the BORON card and press
+  Enter." (verb first); its Note now follows the warp line.
+- **2a's "Leave the rods alone for now"** moved into 2b, which opens with it.
+- **The six WHY lines are new**, drawn from each step's own Background (step 6's from the
+  shutdown hand-off in 6c's note).
+
+**Unchanged:** every measured number (rod-step ranges, "about five plant-minutes", the 578 / 547 °F
+band ends, 73 %, 15 %), every speed (1a 1×; 2 10×; 3 5×; a/b 10×, c 5× in 4–6 — the substeps
+differ, so the warp sits under each group), the "pulls of about 5 steps, half a plant-minute
+apart" wording, the goal lines, Background and HIGHLIGHTED lines.
+
+**NOT verified:** nothing was stepped — this is text only; whether the tile's whole-degree draw
+matches the 569 °F wording at step 4 on the player route is inherited from the 2026-09-24 record's
+render-boundary argument, not re-measured. No layman pass yet.
