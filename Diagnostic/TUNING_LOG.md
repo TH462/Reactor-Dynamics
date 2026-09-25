@@ -43,6 +43,10 @@ Traps only; the numbers are in `Blueprint/walkthrough_steps/03_raise_power.md` N
   (pull 6, dose 10 ppm with no xenon yet) take the plant to 601.6 °F and a turbine runback to
   80.7 MW within 20 plant-min of the leg's end; with them deleted it holds 579.7 °F. The chain
   seam was never the preset's fault alone.
+- **Ordering a text list does not order the grading.** 4c checked OUTPUT after the pull while
+  `accs_ordered` graded OUTPUT before the temperature row: the fix is a row per substep in text
+  order (a rod-press row for the pull), not a reworded note. An injection built on a head row went
+  green once the row became a `cont` graded after OUTPUT — re-aim or retire it, never re-band it.
 - **A rod-worth total built from the top-of-bank per-step worth is 40 % light.** "250 steps,
   roughly 56 °F" was 0.22 °F × steps; the static integral 353 → 606 is 1600 pcm = 91 °F.
 

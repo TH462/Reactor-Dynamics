@@ -38,7 +38,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   power text re-measured: step 3's dilution is 59 ppm over about 25 plant-minutes; stage pulls
   about 20/15/25/20/10 steps; the rod travel left for xenon is about 290 steps, roughly 110 °F.
   Manuals 09 §11.0 and 12 §7.3 re-captured (pending Rev 22 items h, i). Step file
-  `03_raise_power.md` restyled to the what / why / how shape (phase 1, file only).
+  `03_raise_power.md` restyled to the what / why / how shape, and the walkthrough brought down
+  to it (phase 2): a one-line why under every step, every substep its own graded check-off (SG
+  FEED AUTO, the two trip blocks, BORON ON and the full-power end state newly graded).
+- **Raise power steps 10–11 are conditional** (owner ruling "Make them conditional"): pull rods or
+  dose boron only when AVG COOLANT TEMPERATURE is below its band. The fixed pull and dose on a
+  xenon-free plant drove it to 601.6 °F and a turbine runback to 80.7 MW; the leg now ends on band
+  (580.5 °F), and lowering power from there peaks at 593.0 °F instead of 600.3 °F.
 - **Walkthroughs, layman pass 4 (the six legs as one plant).** Raise power: each stage now says
   "hold WITHDRAW until AVG COOLANT TEMPERATURE is back in its band, about N steps" (the gauge
   leads); step 8 drops its "CONTROL ROD POSITION above 300" check-off and says what the 103 % rod

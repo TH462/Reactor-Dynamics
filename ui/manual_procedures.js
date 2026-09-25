@@ -3800,11 +3800,24 @@
            * startup hands over" actually means, it is true from the first broadcast, and the
            * 10 % row is already the leg's own precondition banner. */
           why: 'This is the plant the startup hands over: critical, on the grid, feed holding level. Both startup shutdowns have to be switched off. With them on, the climb trips at 25 %, then 35 %.',
+          aim: 'The climb starts from the plant the startup left: critical, on the grid, with its startup trips switched off.',
           past: { p: 'power_pct', op: '>', v: 40 },
+          note: 'Both rows were blocked by the startup walkthrough.',
+          wait_speed: 1, speed_text: true,
+          /* PHASE 2 (2026-09-25): 1b and 1c were read-only in the old single `ask`; each is now its
+           * own graded check-off, on the lamp the board draws (`feed_coupled`, as pwr_startup 3a;
+           * the two block flags, as pwr_startup 15/16). All three are true on the plant the
+           * startup hands over, so this confirm step ticks on entry — as it did before. */
           accs: [{ p: 'plant_mode', op: '~', v: 1, tol: 0.1,
-                   ask: 'Verify Mode 1, At Power: REACTOR POWER 10 %, SG FEED AUTO, both startup trips reading BLOCKED on TRIP BLOCKS.',
-                   note: 'The two rows are IR HIGH FLUX and PR HIGH (LOW SETPT), both blocked by the startup walkthrough.',
-                   wait_speed: 1, label: 'Plant in Mode 1, At Power' }],
+                   ask: 'Check REACTOR POWER reads about 10 % and the plant is in Mode 1, At Power.',
+                   label: 'Plant in Mode 1, At Power' },
+                 { p: 'feed_coupled', op: '>', v: 0,
+                   ask: 'Check SG FEED AUTO is lit.',
+                   label: 'SG FEED AUTO lit' },
+                 { p: 'ir_high_blocked', op: '>', v: 0,
+                   ask: 'Check IR HIGH FLUX and PR HIGH (LOW SETPT) both read BLOCKED on TRIP BLOCKS.',
+                   label: 'IR HIGH FLUX reads BLOCKED' },
+                 { cont: true, p: 'pr_low_setpoint_blocked', op: '>', v: 0, label: 'PR HIGH (LOW SETPT) reads BLOCKED' }],
           hl_watch: ['Reactor Power', 'SG Feed AUTO', 'Trip Blocks'] },
         /* THE TURBINE IS THE THING THAT IS MISSING AFTER A TRIP (#664, filed off #663's
          * measurement; OWNER RULING, 2026-09-08, on #663: "C — leave the logic as sourced; fix
@@ -3854,11 +3867,15 @@
           why: 'A tripped turbine takes no steam, so LOAD does nothing and the heat you make goes to the steam dumps instead. The plant trips the reactor on a tripped turbine the moment REACTOR POWER passes 50 %, and at 8 % if the condenser is gone as well.',
           control: 'Turbine Load', target: 'OUTPUT above 8 MWe',
           cmd: { action: 'latch_turbine' }, hold: 240, wait_hint: false,
+          aim: 'Raising LOAD does nothing until the turbine is taking steam.',
+          note: 'After LATCH, OUTPUT returns to the LOAD you last set. LATCH is refused while whatever tripped the turbine is still there, and the card names the reason.',
+          wait_speed: 1, speed_text: true,
           accs: [{ p: 'turbine_tripped', op: '<', v: 1,
-                   ask: 'Check the TURBINE-GENERATOR card is on line: LATCH lit and OUTPUT above 8 MW.',
-                   note: 'If it reads TRIP, press LATCH; OUTPUT returns to the LOAD you last set. If OUTPUT stays at 0.0 MW, set LOAD to 10 MW. LATCH is refused while whatever tripped the turbine is still there, and the card names the reason.',
-                   wait_speed: 1, label: 'Turbine latched, TRIP not lit' },
-                 { cont: true, p: 'mwe_output', op: '>', v: 8, label: 'Generator above 8 MW' }],
+                   ask: 'Check the TURBINE-GENERATOR card shows LATCH lit and TRIP not lit. If it reads TRIP, press LATCH.',
+                   label: 'Turbine latched, TRIP not lit' },
+                 { p: 'mwe_output', op: '>', v: 8,
+                   ask: 'Check OUTPUT reads above 8 MW. If it stays at 0.0 MW, set LOAD to 10 MW.',
+                   label: 'Generator above 8 MW' }],
           hl: ['Turbine Load'], hl_watch: ['Generator Output'] },
         { text: 'Start the boron dilution that carries most of the climb.',
           /* ⚠ "ABOUT 3 ppm A MINUTE" WAS A CONSTANT WHERE THE PLANT HAS A CURVE (#752 fix 2).
@@ -3896,10 +3913,21 @@
            * climb waiting for chemistry the leg is designed to do in the background. What has to
            * be true NOW is that the operator set the setpoint; that the plant actually got there
            * is checked at the end of the climb, on the verify step. */
-          accs: [{ cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 660 },
-                   ask: 'On the BORON card set 660 and press Enter.',
-                   note: 'Press ON only if it is not already lit. The dilution then runs in the background while you take the first stages. BORON starts near 719, so the move is 59 ppm, and the last of it is still arriving at full power, about 25 plant-minutes after you set it.',
-                   wait_speed: 1, label: 'BORON set to 660 ppm' }],
+          aim: 'Boron pays for most of the reactivity the climb costs, and it takes about 25 plant-minutes to arrive, so it starts first.',
+          note: 'The dilution then runs in the background while you take the first stages. BORON starts near 719, so the move is 59 ppm, and the last of it is still arriving at full power, about 25 plant-minutes after you set it.',
+          wait_speed: 1, speed_text: true,
+          /* PHASE 2 (2026-09-25): 3a grades the ON lamp (`boron_auto_on`, as pwr_startup 2a). The
+           * channel is defaultOn, so it is met on entry on every route — a confirm, "press ON only
+           * if it is not lit". */
+          accs: [{ p: 'boron_auto_on', op: '>', v: 0,
+                   ask: 'Check BORON ON is lit. If it is not, press ON.',
+                   label: 'ON is lit on the BORON card' },
+                 /* cmd + `p` (the #697 shape): graded on the TARGET the press produces, 660 in the box
+                  * (the box draws whole ppm, as pwr_startup 2b), so 3a's lamp sibling — met at boot —
+                  * is not read as the press's own state by the #697 sweep. */
+                 { cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 660 }, p: 'boron_target_ppm', op: '~', v: 660, tol: 0.5,
+                   ask: 'Set the BORON target to 660 ppm and press Enter.',
+                   label: 'BORON set to 660 ppm' }],
           hl: ['Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
         /* THE "DRAW A SAMPLE" STEP WAS DELETED HERE, 2026-09-11 *(OWNER RULING, 2026-09-10,
          * option B, #698)*. It read "Press SAMPLE on the BORON card…" and was graded
@@ -3960,6 +3988,7 @@
          * only after LOAD, OUTPUT and REACTOR POWER: met at entry on no stage, and every row is met
          * at the same second as unordered (MEASURED, both seeds). Bands unchanged. */
         { text: 'Take the first stage to 30 MWe, load leading and rods following.',
+          aim: 'The turbine asks for the power first; the rods then bring the temperature back to where it belongs at that load.',
           why: 'Raising LOAD draws more steam and cools the water; colder water adds reactivity, so REACTOR POWER follows the turbine up by itself, but the temperature sags on the way. Pulling rods then warms the water back up into its band. Doing it in that order, the rods answer what the temperature gauge shows instead of guessing ahead of the turbine.',
           control: 'Control Bank', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE inside its band, near 556 °F',
           cmd: { action: 'set_load_target', mwe: 30 }, hold: 480, wait_hint: false,
@@ -3968,36 +3997,15 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 30 },
                    ask: 'Set LOAD to 30 MW.',
                    wait_speed: 1, label: 'Load target set to 30 MW' },
-                 { cont: true, p: 'mwe_output', op: '>', v: 28, label: 'Generator at 30 MW' },
-                 { cont: true, p: 'power_pct', op: '>', v: 28, label: 'Reactor following, near 30 %' },
-                 /* THE TEMPERATURE CHECK THESE STAGES NEVER HAD (layman playtest pass 2, #653 S-1/S-9):
-                  * the four stages ticked on load and power alone while the player's coolant ran
-                  * 581 -> 600 degF and tripped on OTdT at 93 %. Bounds are what the replay itself lands
-                  * (measured: 569.7 / 575.8 / 579.0 / 578.8 degF at 30 / 50 / 75 / 90 MWe, untrimmed)
-                  * plus ~3 degC — a ceiling under the trip, not the program band, which is the tile's.
-                  *
-                  * ⚠ NOW TWO-SIDED, AND THE CEILING IS UNCHANGED (#683). All four stage checks were
-                  * `op: '<'` — upper bound only — so A COLD PLANT PASSED EVERY ONE OF THEM
-                  * TRIVIALLY. They were written to catch overshoot, which is the failure mode a
-                  * plant with automatic rod control has; the rod AUTO channel does not exist on
-                  * PWR2 (measured: the snapshot carries `boron_conc` and `afw_level` and nothing
-                  * else), so the failure inverted and the guard did not follow it.
-                  *
-                  * THE FLOOR IS THE STAGE'S OWN PROGRAM BAND MINUS 6 degC (10.8 degF), RAISED
-                  * WHERE THAT WOULD LAND ON OR UNDER THE NO-LOAD KNOT. The knot is 547.0 degF
-                  * (286.11 degC); below it the pressurizer level program is clamped at its 25 %
-                  * floor, which is the symptom this whole issue is named for, so a plant sitting
-                  * on the knot must FAIL every stage. The minus-6 rule gives 550.4 / 558.5 /
-                  * 563.9 degF at 50 / 75 / 90 MWe, all clear of it. At 30 MWe the band is only
-                  * 9 degF above the knot and the rule produced a 545.0 degF floor — UNDER it, so
-                  * a cold plant still passed. Caught by injection, not by reading: the floor
-                  * there is 549.5 degF (287.5 degC) instead, 2.5 degF clear of the knot. The #653 ceilings
-                  * are carried through UNTOUCHED (302 / 306 / 307.5 / 307.5 degC) — this widens
-                  * nothing, it closes the open end. Checked against the untrimmed replay's own
-                  * measured landings (569.7 / 575.8 / 579.0 / 578.8 degF): all four sit inside. */
-                 { p: 'tavg_c', op: '~', v: 294.75, tol: 7.25, ask: 'Hold WITHDRAW at MED until AVG COOLANT TEMPERATURE is back in its band, about 20 steps.',
+                 { cmd: { action: 'rod_nudge', group_id: 'control' },
+                   ask: 'Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 20 steps.',
                    note: 'MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is the temperature the plant is meant to hold at the power it is making, near 556 °F here. It rises with load, from 547 °F at no load to 578 °F at 100 %. Temperature below the band: withdraw. Above: insert. Read the gauge, not the count: while the boron dilution is still running it does part of the work, and the pull comes out shorter. The plant trips on temperature before it trips on power: keep AVG COOLANT TEMPERATURE under 590 °F on every stage.',
-                   wait_speed: 1, speed_text: '1× for the pull; 10× once it is done, while OUTPUT and the temperature settle.', label: 'AVG COOLANT TEMPERATURE between 550 and 576 °F (the band is near 556)' }],
+                   wait_speed: 1, label: 'Rods withdrawn' },
+                 { p: 'mwe_output', op: '>', v: 28,
+                   ask: 'Check OUTPUT reads 30 MW, REACTOR POWER is near 30 % and AVG COOLANT TEMPERATURE is in its band, 550 to 576 °F.',
+                   wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'Generator at 30 MW' },
+                 { cont: true, p: 'power_pct', op: '>', v: 28, label: 'Reactor following, near 30 %' },
+                 { cont: true, p: 'tavg_c', op: '~', v: 294.75, tol: 7.25, label: 'AVG COOLANT TEMPERATURE between 550 and 576 °F (the band is near 556)' }],
           /* + `Rod Speed — Normal` (#735, develop's item 5 sweep): the text says "at MED" and this
            * is the leg's FIRST rod move. The player arrives from `pwr_startup`, whose last rod
            * step (13 since the 2026-09-23 reconcile) says "Press SLOW", so the selector IS at SLOW and nothing before this step changes it —
@@ -4005,6 +4013,7 @@
            * only here: steps 5, 6 and 8 CONTINUE at the speed this step selects and get no ring. */
           hl: ['Withdraw', 'Rod Speed — Normal', 'Turbine Load'], hl_watch: ['Tavg'] },
         { text: 'Take the second stage to 50 MWe the same way.',
+          aim: 'Same order as the first stage: the turbine leads, the rods follow.',
           why: 'Same order as the last stage: LOAD, then rods. Halfway up, xenon is starting to build in the fuel. Boron takes care of that over the coming hours; rods take care of the next few minutes.',
           control: 'Control Bank', target: 'OUTPUT 50 MWe; AVG COOLANT TEMPERATURE inside its band, near 562 °F',
           cmd: { action: 'set_load_target', mwe: 50 }, hold: 480, wait_hint: false,
@@ -4013,12 +4022,18 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 50 },
                    ask: 'Set LOAD to 50 MW.',
                    wait_speed: 1, label: 'Load target set to 50 MW' },
-                 { cont: true, p: 'mwe_output', op: '>', v: 48, label: 'Generator at 50 MW' },
+                 { cmd: { action: 'rod_nudge', group_id: 'control' },
+                   ask: 'Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 15 steps.',
+                   note: 'The band is near 562 °F at this load.',
+                   wait_speed: 1, label: 'Rods withdrawn' },
+                 { p: 'mwe_output', op: '>', v: 48,
+                   ask: 'Check OUTPUT reads 50 MW, REACTOR POWER is near 50 % and AVG COOLANT TEMPERATURE is in its band, 550 to 583 °F.',
+                   wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'Generator at 50 MW' },
                  { cont: true, p: 'power_pct', op: '>', v: 47, label: 'Reactor following, near 50 %' },
-                 { p: 'tavg_c', op: '~', v: 297, tol: 9, ask: 'Hold WITHDRAW at MED until AVG COOLANT TEMPERATURE is back in its band, about 15 steps.',
-                   note: 'The band is near 562 °F at this load.', wait_speed: 1, speed_text: '1× for the pull; 10× once it is done, while OUTPUT and the temperature settle.', label: 'AVG COOLANT TEMPERATURE between 550 and 583 °F (the band is near 562)' }],
+                 { cont: true, p: 'tavg_c', op: '~', v: 297, tol: 9, label: 'AVG COOLANT TEMPERATURE between 550 and 583 °F (the band is near 562)' }],
           hl: ['Withdraw', 'Turbine Load'], hl_watch: ['Tavg'] },
         { text: 'Take the third stage to 75 MWe the same way.',
+          aim: 'The band keeps climbing with the load, so each pull aims a little higher.',
           why: 'Three-quarter power. The band has climbed with the load, toward 578 °F at 100 %. If the temperature is still below the band once the pull is done, the pull was short: withdraw a few more steps before you add more megawatts.',
           control: 'Control Bank', target: 'OUTPUT 75 MWe; AVG COOLANT TEMPERATURE inside its band, near 570 °F',
           cmd: { action: 'set_load_target', mwe: 75 }, hold: 480, wait_hint: false,
@@ -4027,12 +4042,18 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 75 },
                    ask: 'Set LOAD to 75 MW.',
                    wait_speed: 1, label: 'Load target set to 75 MW' },
-                 { cont: true, p: 'mwe_output', op: '>', v: 72, label: 'Generator at 75 MW' },
+                 { cmd: { action: 'rod_nudge', group_id: 'control' },
+                   ask: 'Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 25 steps.',
+                   note: 'The band is near 570 °F at this load.',
+                   wait_speed: 1, label: 'Rods withdrawn' },
+                 { p: 'mwe_output', op: '>', v: 72,
+                   ask: 'Check OUTPUT reads 75 MW, REACTOR POWER is near 75 % and AVG COOLANT TEMPERATURE is in its band, 558 to 585 °F.',
+                   wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'Generator at 75 MW' },
                  { cont: true, p: 'power_pct', op: '>', v: 70, label: 'Reactor following, near 75 %' },
-                 { p: 'tavg_c', op: '~', v: 300, tol: 7.5, ask: 'Hold WITHDRAW at MED until AVG COOLANT TEMPERATURE is back in its band, about 25 steps.',
-                   note: 'The band is near 570 °F at this load.', wait_speed: 1, speed_text: '1× for the pull; 10× once it is done, while OUTPUT and the temperature settle.', label: 'AVG COOLANT TEMPERATURE between 558 and 585 °F (the band is near 570)' }],
+                 { cont: true, p: 'tavg_c', op: '~', v: 300, tol: 7.5, label: 'AVG COOLANT TEMPERATURE between 558 and 585 °F (the band is near 570)' }],
           hl: ['Withdraw', 'Turbine Load'], hl_watch: ['Tavg'] },
         { text: 'Take the fourth stage to 90 MWe with a smaller pull.',
+          aim: 'Near full power the 103 % rod stop is close, so the pulls get smaller.',
           why: 'Above 103 % power the plant refuses to move the rods, and at 118 % it trips the reactor. Overshoot is real on this plant: 100 MWe of LOAD lands REACTOR POWER near 101 %. Small pulls keep you clear of the stop.',
           control: 'Control Bank', target: 'OUTPUT 90 MWe; AVG COOLANT TEMPERATURE inside its band, near 575 °F',
           cmd: { action: 'set_load_target', mwe: 90 }, hold: 480, wait_hint: false,
@@ -4041,15 +4062,20 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 90 },
                    ask: 'Set LOAD to 90 MW.',
                    wait_speed: 1, label: 'Load target set to 90 MW' },
-                 { cont: true, p: 'mwe_output', op: '>', v: 86, label: 'Generator at 90 MW' },
-                 { p: 'tavg_c', op: '~', v: 301.5, tol: 6, ask: 'Hold WITHDRAW at MED until AVG COOLANT TEMPERATURE is back in its band, about 20 steps.',
+                 { cmd: { action: 'rod_nudge', group_id: 'control' },
+                   ask: 'Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 20 steps.',
                    note: 'The band is near 575 °F at this load, and the pulls get smaller from here: above 103 % power the plant stops the rods. If LOAD changes by itself, the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.',
-                   wait_speed: 1, speed_text: '1× for the pull; 10× once it is done, while OUTPUT and the temperature settle.', label: 'AVG COOLANT TEMPERATURE between 564 and 585 °F (the band is near 575)' }],
+                   wait_speed: 1, label: 'Rods withdrawn' },
+                 { p: 'mwe_output', op: '>', v: 86,
+                   ask: 'Check OUTPUT reads 90 MW and AVG COOLANT TEMPERATURE is in its band, 564 to 585 °F.',
+                   wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'Generator at 90 MW' },
+                 { cont: true, p: 'tavg_c', op: '~', v: 301.5, tol: 6, label: 'AVG COOLANT TEMPERATURE between 564 and 585 °F (the band is near 575)' }],
           /* + `Insert` (#735): this step's note carries a contingency — "If LOAD changes by itself,
            * the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG
            * COOLANT TEMPERATURE is back in its band" — and `hl` offered no INSERT target. */
           hl: ['Withdraw', 'Insert', 'Turbine Load'], hl_watch: ['Tavg'] },
         { text: 'Take the last stage to full load and settle the temperature on 578 °F.',
+          aim: '578 °F is the temperature this plant is meant to hold at full power.',
           why: 'The last 10 MWe of LOAD, then a smaller pull to bring the temperature back up. REACTOR POWER settles near 101 %. The control bank ends part-way out, because boron carried most of the reactivity the climb cost.',
           control: 'Control Bank', target: 'OUTPUT 100 MWe; AVG COOLANT TEMPERATURE 578 °F',
           cmd: { action: 'set_load_target', mwe: 100 }, hold: 900, wait_hint: false,
@@ -4058,23 +4084,17 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 100 },
                    ask: 'Set LOAD to 100 MW.',
                    wait_speed: 1, label: 'Load target set to 100 MW' },
-                 { cont: true, p: 'mwe_output', op: '>', v: 97, label: 'Generator at 100 MW' },
-                 { p: 'tavg_c', op: '~', v: 303.2, tol: 8, ask: 'Hold WITHDRAW at MED until AVG COOLANT TEMPERATURE settles on 578 °F, about 10 steps.',
-                   note: 'Above 103 % REACTOR POWER the plant stops rod withdrawal, and the step to 100 MW can carry power past it: if CONTROL ROD POSITION stops moving while you hold WITHDRAW, let go, wait for REACTOR POWER to settle back under 103 %, then pull again.', wait_speed: 1, speed_text: '1× for the pull; 10× once it is done, while OUTPUT and the temperature settle.', label: 'AVG COOLANT TEMPERATURE near 578 °F' },
-                 /* THE ROD CHECK THIS LEG NEVER HAD. Every "Withdraw N steps" line above was a
-                  * no-op for as long as the leg started from `50_percent`, which boots the bank
-                  * on its top stop — and no acceptance read the bank, so the replay certified an
-                  * ascension whose rods could not move. Asserted as a FLOOR, not a band: the end
-                  * position is a function of xenon (351 of 627 at the 18.6 % this leg reaches),
-                  * and pinning the arrival value would re-break the moment that moves. What must
-                  * never be true again is that the bank sat where it started.
-                  *
-                  * A BAND, and the upper half is the one that bites. `> 300` alone does NOT
-                  * catch the defect this exists for: the old leg ended at 627, which passes it.
-                  * `< 600` is the assertion that the bank is not pinned on its top stop —
-                  * verified by injection, not by reading: with `from: '50_percent'` restored
-                  * this check goes RED at 627 while every other check in the leg stays green. */
-                 { cont: true, p: 'control_bank_steps', op: '<', v: 600, label: 'CONTROL ROD POSITION below 600 (not on its top stop)' }],
+                 { cmd: { action: 'rod_nudge', group_id: 'control' },
+                   ask: 'Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it settles on 578 °F, about 10 steps.',
+                   note: 'Above 103 % REACTOR POWER the plant stops rod withdrawal, and the step to 100 MW can carry power past it: if CONTROL ROD POSITION stops moving while you hold WITHDRAW, let go, wait for REACTOR POWER to settle back under 103 %, then pull again.',
+                   wait_speed: 1, label: 'Rods withdrawn' },
+                 { p: 'mwe_output', op: '>', v: 97,
+                   ask: 'Check OUTPUT reads 100 MW and AVG COOLANT TEMPERATURE is near 578 °F, between 563 and 592 °F.',
+                   wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'Generator at 100 MW' },
+                 { cont: true, p: 'tavg_c', op: '~', v: 303.2, tol: 8, label: 'AVG COOLANT TEMPERATURE near 578 °F' },
+                 { p: 'control_bank_steps', op: '<', v: 600,
+                   ask: 'Check CONTROL ROD POSITION reads below 600, not on its top stop.',
+                   label: 'CONTROL ROD POSITION below 600 (not on its top stop)' }],
           hl: ['Withdraw', 'Turbine Load'], hl_watch: ['Tavg'] },
         /* THE VERIFY STEP NOW VERIFIES THE TWO THINGS THAT DECIDE THE NEXT SIXTEEN HOURS (#683).
          * It graded on `power_pct > 96` ALONE — one bound, on the one quantity that is fine in
@@ -4098,14 +4118,21 @@
          * past; this one is the plant's settled state at the load it will hold. Both are `~`, so
          * both re-grade rather than latch — see the note in instructor_layer's _gradeAccs. */
         { text: 'Confirm full power, with the boron dilution done.',
+          aim: 'The climb is not finished until the boron dilution has fully arrived.',
           why: 'Full power, with almost no xenon in the fuel yet. Over the next hours xenon builds, and the plant settles into its long-term full-power state: less boron and the control bank high — 606 of 627 steps, which is where a full-power plant runs. The next step is how you get from here to there.',
           control: 'Boron control', target: 'BORON at or below 660 ppm',
+          note: 'CONTROL ROD POSITION should be part-way out, not on its stop. The last of the dilution is still arriving here: AVG COOLANT TEMPERATURE climbs while it does, so hold INSERT 3 steps at a time whenever it rises above its band. BORON is the one to read twice: leave the climb with more of it in the water than the plant wants and AVG COOLANT TEMPERATURE sinks over the following hours, taking PZR LEVEL with it.',
+          wait_speed: 1, speed_text: true,
           accs: [{ p: 'power_pct', op: '>', v: 96,
-                   ask: 'Verify full power: REACTOR POWER 100 %, OUTPUT 100 MW, AVG COOLANT TEMPERATURE 578 °F, BORON 660 ppm or below.',
-                   note: 'CONTROL ROD POSITION should be part-way out, not on its stop. The last of the dilution is still arriving here: AVG COOLANT TEMPERATURE climbs while it does, so hold INSERT a few steps whenever it rises above its band. BORON is the one to read twice: leave the climb with more of it in the water than the plant wants and AVG COOLANT TEMPERATURE sinks over the following hours, taking PZR LEVEL with it.',
-                   wait_speed: 1, label: 'REACTOR POWER near 100 %' },
-                 { cont: true, p: 'boron_ppm', op: '<', v: 663, label: 'BORON down to its 660 ppm setting' },
-                 { cont: true, p: 'tavg_c', op: '~', v: 303.2, tol: 8, label: 'AVG COOLANT TEMPERATURE between 563 and 592 °F' }],
+                   ask: 'Check REACTOR POWER reads about 100 % and OUTPUT 100 MW.',
+                   label: 'REACTOR POWER near 100 %' },
+                 { cont: true, p: 'mwe_output', op: '>', v: 97, label: 'OUTPUT 100 MW' },
+                 { p: 'boron_ppm', op: '<', v: 663,
+                   ask: 'Check BORON reads 660 ppm or below.',
+                   label: 'BORON down to its 660 ppm setting' },
+                 { p: 'tavg_c', op: '~', v: 303.2, tol: 8,
+                   ask: 'Hold INSERT 3 steps at a time whenever AVG COOLANT TEMPERATURE rises above its band, until it holds between 563 and 592 °F.',
+                   label: 'AVG COOLANT TEMPERATURE between 563 and 592 °F' }],
           /* ⚠ NOTHING CHANGED HERE AND THAT IS THE POINT — THE THIRD STEP OF THE 2026-09-15
            * RING RULING IS FIXED IN `ui/app.js`, NOT IN THIS FILE *(OWNER RULING, 2026-09-15:
            * "Move them to the watch ring")*. This step authors no `hl`, so `stepHlLabels` fell
@@ -4246,7 +4273,8 @@
            * this rewrite ran to five — the measured consequence is in the second one, which is
            * the sentence the whole fix exists for. */
           why: 'Xenon is a neutron absorber that builds in the fuel over about two days, takes reactivity away, and the plant answers by making the same power at a lower temperature. Left alone this plant does not just settle cold: measured from here, PZR LEVEL is on its floor in 7 plant-hours and the reactor trips on STEAM GENERATOR LEVEL LO-LO in 17, with REACTOR POWER reading 100 % the whole way down. You give the reactivity back with two levers, rods leading because they are fast and reversible: the bank has about 290 steps to go, worth roughly 110 °F between them, and each ppm of boron about 0.6 °F.',
-          control: 'Control Bank', target: 'CONTROL ROD POSITION coming up; AVG COOLANT TEMPERATURE back near 580 °F',
+          control: 'Control Bank', target: 'AVG COOLANT TEMPERATURE near 580 °F; OUTPUT 100 MWe',
+          press_expected: true,   /* a real CONDITIONAL press (the 2026-09-25 ruling): pull / dose only below the band */
           /* "Use the speed buttons" dropped (#653 S-5): the generated line above it already reads
            * "About 60 plant-minutes at 1× — set the speed control to 600×." */
           /* `wait_hint` ("Xenon takes about two days to level off. Keep the pulls small.") dropped
@@ -4265,13 +4293,24 @@
            * on every route of `run_walkthrough_routes`. Arrival + 4, the same rule as before. A
            * player's own climb arrives at 348 / 352 (seeds 42 / 7); from 352 the row is met at
            * entry and the step still waits on its temperature row. */
-          cmd: { action: 'rod_nudge', group_id: 'control', steps: 6, speed: 'normal' }, hold: 3600,
-          accs: [{ cmd: { action: 'rod_nudge', group_id: 'control', steps: 6, speed: 'normal' },
-                   ask: 'Hold WITHDRAW at MED for about 6 steps.',
-                   note: 'Xenon is building, and it will keep pulling AVG COOLANT TEMPERATURE down. Repeat this pull whenever the temperature drops out of its band. Small pulls, then wait for it to settle. The Control Rods — Insertion Limit alarm (ROD LIMIT LO-LO) is up and that is normal — the bank is low because there is no xenon yet, and it clears as you walk the bank up.',
-                   wait_speed: 1, label: 'Rods withdrawn a few steps' },
-                 { cont: true, p: 'mwe_output', op: '>', v: 97, label: 'Still at full load, 100 MW' },
-                 { cont: true, p: 'tavg_c', op: '~', v: 304.4, tol: 3, label: 'AVG COOLANT TEMPERATURE near 580 °F' }],
+          /* CONDITIONAL SINCE 2026-09-25 *(OWNER RULING 2026-09-24/25, option selection "Make them
+           * conditional"; option text, not verbatim: "Pull or dose only when AVG COOLANT TEMPERATURE
+           * is below its band; the check-off becomes 'on band and at full load'.")*. The fixed 6-step
+           * pull (and step 11's fixed dose) on the xenon-free plant the startup hands over took the
+           * plant to 601.6 degF and a turbine runback to 80.7 MW within 20 plant-min of the leg's end
+           * (MEASURED, preset, seed 42); with neither it holds 579.7 degF. The pull is now optional
+           * and graded on its EFFECT: the temperature row, met on entry when the plant is on band.
+           * The replay issues nothing and holds the hour. */
+          hold: 3600,
+          aim: 'Xenon takes reactivity away over about two days; rods give it back first, but only once it has taken some.',
+          note: 'Right after the climb there is almost no xenon, and the temperature holds by itself. Pulling now only heats the plant, far enough that it cuts the turbine back on its own. As xenon builds over the next hours the temperature drifts down: pull 3 to 6 steps each time it leaves its band, then wait for it to settle. The Control Rods — Insertion Limit alarm (ROD LIMIT LO-LO) is up and that is normal — the bank is low because there is no xenon yet, and it clears as you walk the bank up.',
+          wait_speed: 1, speed_text: true,
+          accs: [{ p: 'tavg_c', op: '~', v: 304.4, tol: 3,
+                   ask: 'If AVG COOLANT TEMPERATURE reads below its band, hold WITHDRAW at MED 3 to 6 steps; otherwise leave the rods where they are.',
+                   label: 'AVG COOLANT TEMPERATURE near 580 °F' },
+                 { p: 'mwe_output', op: '>', v: 97,
+                   ask: 'Check OUTPUT still reads 100 MW.',
+                   label: 'Still at full load, 100 MW' }],
           hl: ['Control Bank'], hl_watch: ['Tavg', 'Control Rod Position'] },
         /* ======= THE FIRST DILUTION DOSE — THE ACT THE LEG ONLY EVER DESCRIBED (#752) =========
          * The leg's LAST boron action was the 660 ppm setpoint eight steps up, and the whole
@@ -4307,29 +4346,40 @@
          * a scram during the step (#736's lesson on the rampdown leg). */
         { text: 'Give boron its first small dose as xenon builds.',
           why: 'Rods are fast, but they run out: the bank has about 290 steps left and the xenon still to come costs more than they carry. Boron carries the rest, and it has to go in small doses — dial the whole way in one press and the plant heats far faster than xenon can absorb it, which trips the reactor on overtemperature.',
-          control: 'Boron control', target: 'BORON coming down off 660 ppm, heading for 650',
+          control: 'Boron control', target: 'AVG COOLANT TEMPERATURE near 580 °F; BORON 660 ppm until the rods fall behind',
+          press_expected: true,   /* a real CONDITIONAL press (the 2026-09-25 ruling): pull / dose only below the band */
           /* The string `wait_hint` moved into 11a's `speed_text` (2026-09-24), behind the rung the
            * old 30 s rule gave this `hold: 600` (10×); glance_rung MEASURED the worst true REACTOR
            * POWER change in one 2.5 s glance at 0.359 % there. */
           wait_hint: false,
-          cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 650 }, hold: 600,
-          accs: [{ p: 'boron_ppm', op: '<', v: 655,
-                   ask: 'On the BORON card set 650 and press Enter.',
-                   note: 'One 10 ppm dose, not the whole 43 ppm still to come (660 down to 617). It takes about ten plant-minutes to arrive and lifts AVG COOLANT TEMPERATURE about 5 °F on the way, to near 590 °F; xenon takes hours to take it back. Repeat a dose whenever the rods alone stop holding the temperature in its band.',
-                   wait_speed: 10, speed_text: '10×. Give the dose ten plant-minutes to arrive before you judge it.',
-                   label: 'BORON coming down off 660 ppm' },
-                 { cont: true, p: 'mwe_output', op: '~', v: 100, tol: 5, label: 'Still at full load, 100 MW' }],
+          /* CONDITIONAL SINCE 2026-09-25 — the same ruling as step 10 (see there). */
+          hold: 600,
+          aim: 'Rods alone cannot carry all of the xenon still to come; boron takes the rest, a small dose at a time, once the rods fall behind.',
+          note: 'A dose is 10 ppm, never the whole 43 ppm still to come (660 down to 617). Each takes about ten plant-minutes to arrive and lifts AVG COOLANT TEMPERATURE about 5 °F. Right after the climb the rods have hours of travel to give, so the first dose is hours away.',
+          wait_speed: 10, speed_text: '10×. Give a dose ten plant-minutes to arrive before you judge it.',
+          accs: [{ p: 'tavg_c', op: '~', v: 304.4, tol: 3,
+                   ask: 'If the rods alone no longer hold AVG COOLANT TEMPERATURE in its band, set the BORON target 10 ppm lower; otherwise leave it.',
+                   label: 'AVG COOLANT TEMPERATURE near 580 °F' },
+                 { p: 'mwe_output', op: '~', v: 100, tol: 5,
+                   ask: 'Check OUTPUT still reads 100 MW.',
+                   label: 'Still at full load, 100 MW' }],
           hl: ['Boron Target'], hl_watch: ['Boron Concentration', 'Tavg'] },
         { text: 'Hold full power on programme while xenon builds.',
+          aim: 'Xenon keeps building for two plant-days, so full power is held by hand until it levels off.',
+          note: 'Keep trimming for the next two plant-days.',
+          wait_speed: 1, speed_text: true,
           accs: [{ p: 'mwe_output', op: '>', v: 97,
-                   ask: 'Full power and on programme: OUTPUT 100 MW, AVG COOLANT TEMPERATURE 580 °F, CONTROL ROD POSITION rising.',
-                   note: 'Keep trimming for the next two plant-days.',
-                   wait_speed: 1, label: 'Still at full load, 100 MW' }],
-          why: 'Where this ends up, if you keep at it: CONTROL ROD POSITION about 606 of 627 and BORON about 617 ppm, which is where this plant runs at full power with xenon at equilibrium (the settled point measures 612.3 ppm; 617 is the target you dial toward). Rods carry the first 110 °F or so; once the bank is near the top it has only about 21 steps of travel left, worth 4.6 °F, and BORON carries the rest — four more doses like the one you just set, 10 ppm at a time, never in one press. Type 617 in one go and the plant heats far faster than xenon can absorb it: measured, that trips the reactor on overtemperature.',
+                   ask: 'Check OUTPUT still reads 100 MW.',
+                   label: 'Still at full load, 100 MW' },
+                 { p: 'tavg_c', op: '~', v: 304.4, tol: 3,
+                   ask: 'Check AVG COOLANT TEMPERATURE reads about 580 °F and CONTROL ROD POSITION is part-way out, below 600.',
+                   label: 'AVG COOLANT TEMPERATURE near 580 °F' },
+                 { cont: true, p: 'control_bank_steps', op: '<', v: 600, label: 'CONTROL ROD POSITION below 600' }],
+          why: 'Where this ends up, if you keep at it: CONTROL ROD POSITION about 606 of 627 and BORON about 617 ppm, which is where this plant runs at full power with xenon at equilibrium (the settled point measures 612.3 ppm; 617 is the target you dial toward). Rods carry the first 110 °F or so; once the bank is near the top it has only about 21 steps of travel left, worth 4.6 °F, and BORON carries the rest — about four doses of 10 ppm, one at a time, never in one press. Type 617 in one go and the plant heats far faster than xenon can absorb it: measured, that trips the reactor on overtemperature.',
           hl_watch: ['Control Rod Position', 'Boron'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
-      outcome: 'Full power with almost no xenon: BORON on its way to 650 ppm and CONTROL ROD POSITION about 318 of 627 — the no-xenon end of the curve, not a fault. Over the next two plant-days xenon builds and you hand the reactivity back: the bank walks up toward 606 of 627 (about 290 steps, roughly 110 °F) and BORON comes down toward 617 ppm, 10 ppm at a time. Leave it undone and the plant does not just run cold — measured, PZR LEVEL is on its floor in 7 plant-hours and the reactor trips on STEAM GENERATOR LEVEL LO-LO in 17. The round trip back down starts with the load rampdown walkthrough.',
+      outcome: 'Full power with almost no xenon: BORON at 660 ppm and CONTROL ROD POSITION about 318 of 627 — the no-xenon end of the curve, not a fault. Over the next two plant-days xenon builds and you hand the reactivity back: the bank walks up toward 606 of 627 (about 290 steps, roughly 110 °F) and BORON comes down toward 617 ppm, 10 ppm at a time. Leave it undone and the plant does not just run cold — measured, PZR LEVEL is on its floor in 7 plant-hours and the reactor trips on STEAM GENERATOR LEVEL LO-LO in 17. The round trip back down starts with the load rampdown walkthrough.',
     },
     {
       id: 'pwr_lower_power', category: 'power', manual_ref: 'PWR-N08', next: 'pwr_shutdown',
