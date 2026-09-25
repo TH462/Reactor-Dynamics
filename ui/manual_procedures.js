@@ -2507,7 +2507,7 @@
           wait_speed: 600, speed_text: true,
           accs_ordered: true,
           accs: [{ p: 'boron_auto_on', op: '>', v: 0,
-                   ask: 'Turn the boron dilution system ON.',
+                   ask: 'Check ON is lit on the BORON card. If ON is not lit, press ON.',
                    label: 'ON is lit on the BORON card' },
                  { p: 'boron_target_ppm', op: '~', v: 719, tol: 0.5,   /* 718.5-719.5: the box draws whole ppm */
                    ask: 'Set the boron target to 719 ppm.',
@@ -3780,7 +3780,7 @@
           accs: [{ cmd: 'latch_turbine', ask: 'Press LATCH on the TURBINE-GENERATOR card.', wait_speed: 1,
                    label: 'Turbine latched' },
                  { p: 'mwe_output', op: '>', v: 8, ask: 'Set LOAD to 10 MW and wait for the generator to read above 8 MW.', wait_speed: 10,
-                   label: 'Generator above 8 MW' }],
+                   label: 'OUTPUT above 8 MW' }],
           hl: ['Turbine — Latch', 'Load Setpoint'], hl_watch: ['Turbine Load', 'Generator Output'] },
         /* "ABOVE 9 ½ %", NOT "ABOVE 10 %" (2026-09-23, an agent change for owner review, made under
          * the ruling on step 17 above). At LOAD 10 MWe the player's own route (bank 213, +13) settles

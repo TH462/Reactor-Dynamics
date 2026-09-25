@@ -45,7 +45,7 @@ In Hot Standby (Mode 3), the plant is at operating temperature and at pressure w
 
 *Less boron in the water lets the reactor go critical with the control rods low in their travel.*
 
-()2a. Turn the boron dilution system ON.
+()2a. Check ON is lit on the BORON card. If ON is not lit, press ON.
 
 ()2b. Set the boron target to 719 ppm.
 
@@ -1075,3 +1075,10 @@ gate seed 42); the 13-step SLOW pull is 13 / (8 steps a plant-minute) = 97.5 pla
 (`ROD_SPEEDS.slow`, pwr2_engine.js); so power passes 5 % about 1.1 plant-min after release. The
 sentence describes the time after release, not the whole step. The 13a and 15a edits were already
 in this file (record above), word for word with the pool (script compare, 0 mismatches).
+
+### Consistency batch — 2026-09-25 (o), develop lane
+
+*OWNER, 2026-09-25: selected "Take all defaults" on the workbench's cross-leg consistency batch
+(relayed by the workbench session).* 2a now reads like cooldown 1a ("Check ON is lit … If ON is
+not lit, press ON."; no BORON STATUS word, since the dilution status was not measured here);
+14b's check-off label says the tile's name, "OUTPUT above 8 MW". Grading unchanged.
