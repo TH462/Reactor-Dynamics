@@ -30,6 +30,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Raise power walkthrough in the new step format** (owner directive, 2026-09-24: "Adopt the
+  format for the other walkthroughs."). `pwr_raise_power` now matches
+  `Blueprint/walkthrough_steps/03_raise_power.md` word for word. Each of its 12 steps opens with a
+  goal line; there are 17 lettered substeps, each with its own note and suggested time warp, and
+  33 check-offs. On the stage steps 4-8, the pull and the LOAD share one substep and the trim is
+  the second. No grading predicate changed. The stage pulls run at 1× (one rod step is 1.25 s of
+  wall clock), then 10× while OUTPUT climbs.
+
 ## [Alpha 1.8.0-rc5] — 2026-09-24
 
 ### Fixed
