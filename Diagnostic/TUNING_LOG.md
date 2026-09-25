@@ -29,6 +29,24 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-24-wt-raise-a (Raise power ported to the owner's step format: two traps)
+
+The port itself changed no predicate; the record is `Blueprint/walkthrough_steps/03_raise_power.md`
+Notes. Two traps, measured 2026-09-24 on the full stack (`low_power`, seeds 42 and 7, tile channels):
+
+- **`glance_rung` cannot rate a step whose second action is an `accs` command.** It traces only
+  the step's own `cmd`. On the stage steps that is the rod pull, never the LOAD, so its power
+  columns describe a rods-only plant: 65 % at the end of step 8 against 98.7 % on a player's
+  route. Its rod-pull table is still right. Measure a pull-then-LOAD step with a probe that
+  issues both.
+- **A wide trim band plus the previous stage's trim make every stage's trim substep tick at
+  entry.** The tile read 550.2-584.0 °F at step entry, inside the band on every stage. The step
+  still grades, because every row must be true together after LOAD, but a `b` substep draws done
+  before the player acts. The owner's order (rods first) also peaks stage 6 at **591.2-591.8 °F**,
+  over his own 590 °F caution; LOAD first peaked at 589.7 °F. There was no trip on any route.
+
+---
+
 ## Session log — 2026-09-24-workbench-c (third layman pass on Mode 3 to Mode 1: a Continue lit below the fold; `paramValue` is not the tile)
 
 Report and per-finding numbers: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-24_LAYMAN_PASS3.md`.
