@@ -1047,3 +1047,12 @@ expected with the turbine off line — MEASURED, `measure_stack --plant=pwr2 --i
 "MW") NOT changed: the unit is `unit: "MW"` on `imrppeh5hkb` in the imported design export
 `ui/diagram/board/pwr_board_data.js` (LOAD input `imro8rmka2y` carries the same), and the
 2026-09-24 "use the board's" ruling is exempted in `run_style` N6 against it.
+
+### MW restored — 2026-09-25 (n), develop lane: steps 14 and 17 say the board's "MW"
+
+*OWNER RULING, 2026-09-24: "'MWe' vs the board's 'MW' (use the board's)"* (selections from
+"Take all", recorded at `run_style` `bare_megawatt`). Bring-down (i) turned 14b/17b and step 14's
+target to "MWe" on the belief that N6 forced it; it does not — the exemption covers step 14's
+target by exact phrase and `scanSteps` never reads `accs`. The layman pass 5 then saw "MWe" in
+the text against "MW" on the tile (S-9). Pool restored to the step file's "MW"; nothing else
+changed.

@@ -3669,7 +3669,7 @@
         { text: 'Put the turbine on line and let the reactor follow it up.',
           aim: 'From here the turbine leads and the reactor follows, with no rod motion.',
           why: 'LATCH resets the turbine so it can take steam. LOAD is how much electricity the generator is asked for.\n\nAs the generator picks up load, more steam is drawn, the water cools, and cooler water raises power. The reactor follows the turbine up to about 10 % by itself. That coupling is the central idea of this plant.',
-          control: 'Turbine Load', target: 'OUTPUT near 10 MWe',
+          control: 'Turbine Load', target: 'OUTPUT near 10 MW',
           cmd: { action: 'set_load_target', mwe: 10 }, hold: 240, wait_hint: false,
           /* ORDERED SINCE 2026-09-23: his 14a is LATCH and 14b is LOAD, and the second cannot be
            * true before the first — no generator makes MWe on an unlatched turbine — so the order
@@ -3679,8 +3679,8 @@
           accs_ordered: true,
           accs: [{ cmd: 'latch_turbine', ask: 'Press LATCH on the TURBINE-GENERATOR card.', wait_speed: 1,
                    label: 'Turbine latched' },
-                 { p: 'mwe_output', op: '>', v: 8, ask: 'Set LOAD to 10 MWe and wait for the generator to read above 8 MWe.', wait_speed: 10,
-                   label: 'Generator above 8 MWe' }],
+                 { p: 'mwe_output', op: '>', v: 8, ask: 'Set LOAD to 10 MW and wait for the generator to read above 8 MW.', wait_speed: 10,
+                   label: 'Generator above 8 MW' }],
           hl: ['Turbine — Latch', 'Load Setpoint'], hl_watch: ['Turbine Load', 'Generator Output'] },
         /* "ABOVE 9 ½ %", NOT "ABOVE 10 %" (2026-09-23, an agent change for owner review, made under
          * the ruling on step 17 above). At LOAD 10 MWe the player's own route (bank 213, +13) settles
@@ -3742,8 +3742,8 @@
                    ask: 'Check REACTOR POWER reads above 9 %.',
                    label: 'REACTOR POWER above 9 %' },
                  { p: 'mwe_output', op: '~', v: 10, tol: 1.49,   /* 17b, its own substep since the 2026-09-24 reword (was a `cont` row) */
-                   ask: 'Check OUTPUT reads near 10 MWe.',
-                   label: 'OUTPUT near 10 MWe' }],
+                   ask: 'Check OUTPUT reads near 10 MW.',
+                   label: 'OUTPUT near 10 MW' }],
           hl_watch: ['Reactor Power', 'Turbine Load', 'SG Level'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
