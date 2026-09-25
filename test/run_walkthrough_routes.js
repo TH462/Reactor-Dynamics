@@ -124,16 +124,31 @@ var ROUTES = {
     ],
   },
   pwr_raise_power: {
-    steps: {},
+    /* LOAD FIRST since 2026-09-24 (b) (owner ruling, option selection "Load first"): each stage
+     * is `a` set LOAD, `b` hold WITHDRAW at MED about K steps — read literally, one press each,
+     * in the card's order. The step `cmd` is the LOAD and the pull is replay-only
+     * (`replay_then`), so the provisional default would never pull and strands at stage 5 (a
+     * no-pull player measured 549.4 -> 541.8 degF against the 550.4 degF floor). */
+    steps: {
+      'cmd:set_load_target:1': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 30 }, { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' }] },
+      'cmd:set_load_target:2': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 50 }, { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' }] },
+      'cmd:set_load_target:3': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 75 }, { action: 'rod_nudge', group_id: 'control', steps: 35, speed: 'normal' }] },
+      'cmd:set_load_target:4': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 90 }, { action: 'rod_nudge', group_id: 'control', steps: 25, speed: 'normal' }] },
+      'cmd:set_load_target:5': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 100 }, { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' }] },
+    },
     // "Make sure the turbine is on line and taking steam": a CONFIRM step — the ask is "Check the
     // TURBINE-GENERATOR card is on line", LATCH only "if it reads TRIP" — and the low_power start
     // arrives latched at 10 MWe. Added to the provisional no-action default, not replacing it.
     entry_met: ['cmd:latch_turbine'],
     mistakes: [
       { id: 'double_boron', kind: 'double press', at: 'cmd:set_auto_setpoint', set: { repeat: 2 } },
-      { id: 'rods_first_pull_x2', kind: 'overshoot', at: 'cmd:rod_nudge', set: { policy: 'seq', cmds: [
-        { action: 'rod_nudge', group_id: 'control', steps: 60, speed: 'normal' }] } },
-      { id: 'rewind_mid_rods3', kind: 'rewind mid-step', at: 'cmd:rod_nudge:3', set: { rewind_after: 120 } },
+      // the OLD order: the pull first, LOAD after it
+      { id: 'rods_before_load', kind: 'wrong order', at: 'cmd:set_load_target:1', set: { cmds: [
+        { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' }, { action: 'set_load_target', mwe: 30 }] } },
+      // LOAD, then a 60-step first pull, three times the card's "about 20"
+      { id: 'overpull_60', kind: 'overshoot', at: 'cmd:set_load_target:1', set: { cmds: [
+        { action: 'set_load_target', mwe: 30 }, { action: 'rod_nudge', group_id: 'control', steps: 60, speed: 'normal' }] } },
+      { id: 'rewind_mid_stage3', kind: 'rewind mid-step', at: 'cmd:set_load_target:3', set: { rewind_after: 120 } },
     ],
   },
   pwr_lower_power: {
@@ -188,9 +203,14 @@ var MUTATIONS = [
     mutate: function (P) { delete P.steps[8].accs[0].latch; } },
   /* the PASS_S exemption must not swallow a band that ticks on a TRANSIENT PASS: step 6's Tavg
    * band narrowed to 581.5-583.5 degF, which the 35-step pull crosses at ~0.3 degF/s */
+  /* RE-AIMED 2026-09-24 (b), load first: the stage steps are `accs_ordered` now, so the Tavg row
+   * cannot latch until OUTPUT is in (~4.8 plant-min) and the old 581.5-583.5 degF band was never
+   * crossed at a latchable moment — this injection went GREEN (measured). The mutation takes the
+   * order off and narrows the band onto the 35-step pull's rise instead (564 -> 581.7 degF, about
+   * 0.4 degF a second): crossed in ~5 s, under PASS_S. */
   { id: 'band_transient_pass', leg: 'pwr_raise_power', route: 'typical', expect: 'flash',
-    why: "raise-power 6's Tavg band narrowed to 581.5-583.5 degF (the pull crosses it in seconds)",
-    mutate: function (P) { var e = P.steps[5].accs[3]; e.v = (582.5 - 32) * 5 / 9; e.tol = 1 * 5 / 9; } },
+    why: "raise-power 6 unordered, its Tavg band narrowed to 569.5-571.5 degF (the pull crosses it in seconds)",
+    mutate: function (P) { P.steps[5].accs_ordered = false; var e = P.steps[5].accs[3]; e.v = (570.5 - 32) * 5 / 9; e.tol = 1 * 5 / 9; } },
 ];
 
 /* ================================ THE CHILD: ONE RUN ==================================== */
@@ -544,7 +564,7 @@ var TRACKED = {
   // bank 198, 7,244 cps. The literal route then reaches NEW ground and strands at step 10:
   'pwr_startup:typical:complete': 'step 10: after step 9 passed on ONE read of 0.069 DPM at bank 208, 5 plant-min after the pull (still falling, to 0.024), the climb to 0.05 % takes 127.3 plant-min vs the card\'s "45 to 60" (bound 90) — owner text/grading, measured 2026-09-24',
   // measured 2026-09-24, both need the OWNER'S text, not a grading fix:
-  'pwr_raise_power:rods_first_pull_x2:invariant': 'KNOWN LIMITATION, OWNER RULING 2026-09-24 ("The way I see it the range means that the source range target will be within that range not that hitting the lower part of the range will put you over the target. So let\'s leave then"): a 60-step first pull strands step 7 at 103.9 % power, Tavg 586.8 F over the 585 F band; the card has no recovery and the text stays',
+  'pwr_raise_power:overpull_60:invariant': 'KNOWN LIMITATION, OWNER RULING 2026-09-24 ("The way I see it the range means that the source range target will be within that range not that hitting the lower part of the range will put you over the target. So let\'s leave then"): LOAD then a 60-step first pull (3x the card\'s about 20) strands step 7 at 102.7 % power, Tavg 586.3 F over the 585 F band (was rods_first_pull_x2 before the 2026-09-24 load-first reorder: 103.9 %, 586.8 F); the card has no recovery and the text stays',
   // RESOLVED 2026-09-24 (workbench-i): step 12's flash (steady hysteresis), raise-power 2's entry
   // tick (entry_met: a confirm step), the raise-power Tavg un-ticks (honest band re-grading, PASS_S)
 };

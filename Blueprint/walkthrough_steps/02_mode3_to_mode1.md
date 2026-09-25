@@ -353,7 +353,7 @@ Suggested time warp: 1×.
 
 Background
 
-The reactor is critical, the generator is carrying load, and both startup shutdowns are switched off. The plant is in Mode 1, At Power. From here the climb to full power is rods leading and the turbine following.
+The reactor is critical, the generator is carrying load, and both startup shutdowns are switched off. The plant is in Mode 1, At Power. From here the climb to full power is the turbine leading and the rods following.
 
 [HIGHLIGHTED: Reactor Power, Turbine Load, SG Level (steady)]
 

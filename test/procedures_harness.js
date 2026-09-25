@@ -314,8 +314,14 @@
         /* `replay_then` (2026-09-24, pwr_startup 9a): a REPLAY-ONLY second command, issued once
          * on the first tick the named accs row has been met — the player's next action after a
          * milestone, which a single step-entry `cmd` cannot express. The live runtime never reads it. */
+        /* A NON-BAGGED row (2026-09-24, `pwr_raise_power` 4-8, load first): a cmd-kind row counts
+         * as met once the replay has issued it — at step entry on an unordered step, by `ordMet`
+         * on an ordered one — and a plain predicate row is read off this tick. Before this only a
+         * bagged row could name the milestone, and any other `after_acc` never fired. */
         if (st.replay_then && !thenIssued) {
-          var th = predBags['accs' + st.replay_then.after_acc];
+          var thI = st.replay_then.after_acc, thEn = (st.accs || [])[thI];
+          var th = predBags['accs' + thI];
+          if (!th && thEn) th = { ever: thEn.cmd ? (ordMet ? !!ordMet[thI] : true) : !!(thEn.p && pred(s, thEn)) };
           if (th && th.ever) {
             var tc = JSON.parse(JSON.stringify(st.replay_then.cmd));
             if (tc.group_id === 'control' || tc.group_id === 'shutdown') tc.group_id = groupId(svc, tc.group_id);

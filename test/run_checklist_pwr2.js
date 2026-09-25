@@ -853,7 +853,10 @@ if (!only && RUN_B) {
     });
     var firstRod = -1;
     (proc ? proc.steps : []).forEach(function (st, k) {
-      if (firstRod < 0 && st.cmd && st.cmd.action === 'rod_nudge') firstRod = k;
+      /* the stage pulls are `replay_then` since the 2026-09-24 load-first reorder (the step's
+       * own `cmd` is the LOAD), so the first rod pull is looked for in both */
+      if (firstRod < 0 && ((st.cmd && st.cmd.action === 'rod_nudge') ||
+          (st.replay_then && st.replay_then.cmd && st.replay_then.cmd.action === 'rod_nudge'))) firstRod = k;
     });
     ck('the ascension leg carries a step that re-latches the turbine, ahead of its first rod pull (#664)',
        idx >= 0 && firstRod >= 0 && idx < firstRod,
@@ -875,7 +878,9 @@ if (!only && RUN_B) {
       }
     }
     ride(60);
-    /* the ascension, the leg's own shape: rods lead, load follows — up to ~40 %, under P-9 */
+    /* the ascension up to ~40 %, under P-9 — rods then load, the order when #664 was measured.
+     * The leg is LOAD FIRST since 2026-09-24; this ride's order was kept, not re-measured, because
+     * its claim is the turbine trip and the re-latch, not the stage order. */
     [{ steps: 30, mwe: 30 }, { steps: 12, mwe: 40 }].forEach(function (stg) {
       if (trip) return;
       svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: stg.steps, speed: 'normal' });
