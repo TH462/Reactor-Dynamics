@@ -504,6 +504,13 @@ function pinChannel(ch) {
     for (var i = 0; i < pool.length; i++) {
       for (var j = 0; j < (pool[i].steps || []).length; j++) {
         if (!(+pool[i].steps[j].wait_speed > 0)) continue;
+        /* 2026-09-25: skip a step whose authored rung EQUALS the hold rule (the negative half
+         * below could never pass on it — pwr_startup step 1 gained `wait_speed: 1` and the check
+         * went red on the fixture, not the plant), and a step whose `cmd` is still owed (the
+         * action gate holds it at 1× by design, `cklActionPending`). */
+        var sj = pool[i].steps[j];
+        if (+sj.wait_speed === RD.CklSpeedHint(+sj.hold || 0).speed) continue;
+        if (sj.cmd && !sj.wait_first) continue;
         var btn = document.querySelector('[data-ckl-start="' + pool[i].id + '"]');
         if (!btn) continue;
         btn.click();
@@ -866,6 +873,51 @@ function pinChannel(ch) {
     sub.a.accel === 5 && sub.b.accel === 1,
     sub.a ? ('on 5a before the press ' + sub.z + '×, after ' + sub.a.accel + '× (5a met ' + sub.a.met0 + '), then on 5b ' +
              (sub.b ? sub.b.accel + '× (5a met ' + sub.b.met0 + ', step index ' + sub.b.idx + ')' : '?'))
+          : 'pwr_startup start button not found');
+  /* ---- …AND A LATER SUBSTEP WHOSE ACTION IS A PRESS OF A FAMILY ALREADY SPENT (2026-09-25,
+   * layman pass 5 S-1, #653). `pwr_startup` 9b ("Tap WITHDRAW one step, wait…", 10×) follows 9a's
+   * hold, so the step-level `cmd_seen` is already true and 9b opened straight onto 10× before the
+   * first tap (reviewer: ~13 plant-minutes). 9b authors `act_first`: on entering it the clock holds
+   * 1× until a rod-family press lands WHILE 9b IS ACTIVE (`cmd_head`), then takes 10×. Driven by
+   * real commands through the service: a `rod_stop` (rod family, moves nothing) on 9a, 9a's latch
+   * set the way the runtime sets it, then a second `rod_stop` on 9b. INJECTION-PROVEN 2026-09-25:
+   * `act_first` removed from 9b reds it "9b on entry 10×, after the tap 10×" (the filed defect);
+   * the instructor's `cmdSeenHead` line removed reds it "1×, after the tap 1×" (never releases). */
+  var s9 = { a: null, b: null, c: null };
+  if (subOk) {
+    await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      c.idx = 8; c.stepAt = null; c.awaitingAck = false; c.accsState = null; c.predBags = null;
+      c.cmdSeen = false; c.cmdSeenHead = -1;
+      svc.handleCommand({ action: 'rod_stop', group_id: 'control' });   // 9a's press
+    });
+    await b.page.waitForTimeout(2000);
+    s9.a = await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      if (c.accsState && c.accsState[0]) c.accsState[0].met = true;      // 9a done: 9b is active
+      return { accel: svc.timeAcceleration, idx: c.idx, head: c.cmdSeenHead };
+    });
+    await b.page.waitForTimeout(2000);
+    s9.b = await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      return { accel: svc.timeAcceleration, idx: c.idx, head: c.cmdSeenHead,
+               met0: !!(c.accsState && c.accsState[0] && c.accsState[0].met) };
+    });
+    await b.page.evaluate(function () {
+      globalThis.RD.__dev.service().handleCommand({ action: 'rod_stop', group_id: 'control' });   // 9b's first tap
+    });
+    await b.page.waitForTimeout(2000);
+    s9.c = await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      return { accel: svc.timeAcceleration, idx: c.idx, head: c.cmdSeenHead };
+    });
+  }
+  ck('dev (pwr2): pwr_startup 9b holds 1× on entry until its first tap lands, then takes its 10× (act_first)',
+    !!s9.a && !!s9.b && !!s9.c && s9.a.idx === 8 && s9.b.idx === 8 && s9.c.idx === 8 && s9.a.head === 0 &&
+    s9.b.met0 && s9.b.accel === 1 && s9.c.head === 3 && s9.c.accel === 10,
+    s9.a ? ('9a after its press ' + s9.a.accel + '× (cmd_head ' + s9.a.head + '); 9b on entry ' +
+            (s9.b ? s9.b.accel + '× (9a met ' + s9.b.met0 + ')' : '?') + '; after the tap ' +
+            (s9.c ? s9.c.accel + '× (cmd_head ' + s9.c.head + ', step index ' + s9.c.idx + ')' : '?'))
           : 'pwr_startup start button not found');
   await b.ctx.close();
 

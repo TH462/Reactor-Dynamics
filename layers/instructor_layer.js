@@ -1472,6 +1472,7 @@
     c.doneBy[c.idx] = by;
     c.idx++;
     c.cmdSeen = false; c.sawSeen = false; c.accStreak = 0; c.accMetNow = false; c.gradedBy = null;
+    c.cmdSeenHead = -1;
     c.accVoided = null; c.sawVoided = null;
     c.accsState = null;                 // per-entry multi-check-off latches (#244 item 8)
     c.outOfTurn = null;                 // #759 — the out-of-turn note belongs to the step it was pressed on
@@ -1943,7 +1944,15 @@
     // check. Recording only — the command is never blocked or altered.
     if (this.checklist && !this.checklist.complete && command && command.action) {
       var cst = this.checklist.proc.steps[this.checklist.idx];
-      if (cst && this._cmdEvidence(cst.cmd, command)) this.checklist.cmdSeen = true;
+      if (cst && this._cmdEvidence(cst.cmd, command)) {
+        this.checklist.cmdSeen = true;
+        /* WHICH SUBSTEP WAS ACTIVE WHEN IT LANDED (2026-09-25, layman pass 5 S-1, #653). An
+         * `act_first` head is a press that a LATER substep asks for after an earlier one already
+         * sent the same family (startup 9b's first tap, after 9a's hold) — step-level `cmdSeen`
+         * is already true there. ui/app.js holds 1× on such a head until this names it. Taken
+         * BEFORE `_accsCmdWatch` so a press that ticks a cmd row is credited to that row's head. */
+        this.checklist.cmdSeenHead = this._accsActiveHead(this.checklist, cst);
+      }
       if (cst) this._accsCmdWatch(this.checklist, cst, command);   // multi-check-off cmd entries
     }
 
@@ -2204,6 +2213,22 @@
   // On an `accs_ordered` step a cmd entry is DEAF until its predecessors are met — that is the
   // half of the sequencer the player actually feels (#756: pressing Plot point early does nothing
   // instead of latching a stale point), because the press, not the predicate, is what they do.
+  /* The active substep HEAD — the same rule as ui/app.js `cklActiveAccsHead`: the first
+   * non-hidden unmet row, walked back over `cont` rows to the head they continue. -1 when the
+   * step has no `accs` or every drawn row is met. Two copies, so keep them in step. */
+  InstructorLayer.prototype._accsActiveHead = function (holder, st) {
+    if (!st || !st.accs || !st.accs.length) return -1;
+    var state = holder.accsState || [];
+    var fu = -1;
+    for (var i = 0; i < st.accs.length; i++) {
+      if (st.accs[i].hidden) continue;
+      if (!(state[i] || {}).met) { fu = i; break; }
+    }
+    if (fu < 0) return -1;
+    while (fu > 0 && st.accs[fu].cont) fu--;
+    return fu;
+  };
+
   InstructorLayer.prototype._accsCmdWatch = function (holder, st, command) {
     if (!st || !st.accs || !st.accs.length) return;
     var state = this._ensureAccsState(holder, st);
@@ -2403,6 +2428,8 @@
          * true on a step whose `cmd` is the action, so the fast-forward buys the WAIT and never
          * the player's reading of the step (owner #796: speed the wait, not the action). */
         cmd_seen: !!this.checklist.cmdSeen,
+        // The `accs` head active when that command last landed, or -1 (see handleCommand).
+        cmd_head: (this.checklist.cmdSeenHead == null ? -1 : this.checklist.cmdSeenHead),
         /* THE SOLE ROW THE PLAYER'S OWN CASUALTY STOOD DOWN (#773/#788) — the display
          * name of the failure they injected, or null. `acc_met` is TRUE alongside it, so
          * without this the step would tick with nothing asserting it and nothing said;

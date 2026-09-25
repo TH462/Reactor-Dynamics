@@ -23,13 +23,13 @@
 
 ()1b. Check PRIMARY PRESSURE reads 2200 to 2270 psi.
 
-()1c. Check RCP FLOW reads ON.
+()1c. Check RCP FLOW reads about 100 %.
 
 ()1d. Check STARTUP RATE reads 0.00 DPM.
 
 Suggested time warp: 1×.
 
-Note: STARTUP RATE is in decades per minute (DPM): 1.0 means power grows tenfold every minute.
+Note: STARTUP RATE is in decades per minute (DPM): 1.0 means power grows tenfold every minute. The Turbine Trip / Low Steam Demand alarm is expected while the turbine is off line.
 
 
 
@@ -1024,3 +1024,26 @@ seeds 1-10): 9b ticked at the prediction +0, -2, +3, +3, -1, -1, +1, -1, 0, +2 s
 note defines DPM; 9b's note defines PERIOD; step 10's note says three decades is a thousandfold;
 step 16's note expands PR and LOW SETPT. Built pool, before: PERIOD, DPM, "decades" and PR
 defined nowhere (`Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN.md`).
+
+### 9b speed — 2026-09-25 (l), develop lane: layman pass 5 S-1
+
+The "speed the wait, not the action" hold (`cklActionPending`, ui/app.js) is per STEP: 9a's hold
+spent step 9's `cmd_seen` (rod family), so 9b opened on its 10× before the first tap (reviewer:
+~13 plant-minutes). 9b's head now authors `act_first: true`; the instructor reports the head that
+was active when a rod-family press landed (`cmd_head`), and auto holds 1× until it names 9b.
+MEASURED in `verify_flags_ui` on the real leg (service-driven): 9b on entry 10× before, 1× after;
+10× 2 s after the first tap. No other startup head has the shape (5-7 open on the first rod press
+of the step; 5b-8b are Plot point, a different family, at 1×; 11 is `wait_first`; 14b's
+`set_load_target` is unseen until pressed).
+
+### Layman pass 5 text fixes — 2026-09-25 (m), develop lane: S-8/S-9/S-11/S-12
+
+*OWNER RULING, 2026-09-25: "A".* 1c now asks "RCP FLOW reads about 100 %" (the tile prints a
+percent, never ON; grading unchanged at 89.5 % or more). The completion outcome says the two
+startup trips are "blocked", matching the panel's BLOCKED (was "switched off"; the one pool
+occurrence in this leg). Step 1's Note adds that the Turbine Trip / Low Steam Demand alarm is
+expected with the turbine off line — MEASURED, `measure_stack --plant=pwr2 --ic=hot_zero_power`:
+`steam_demand_low` [inst] and `turbine_tripped` true at 0, 6 and 12 s. S-12 (board OUTPUT prints
+"MW") NOT changed: the unit is `unit: "MW"` on `imrppeh5hkb` in the imported design export
+`ui/diagram/board/pwr_board_data.js` (LOAD input `imro8rmka2y` carries the same), and the
+2026-09-24 "use the board's" ruling is exempted in `run_style` N6 against it.

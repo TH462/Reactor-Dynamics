@@ -4127,9 +4127,20 @@
    * one shape it would break is a step whose wait comes BEFORE its action ("wait for the margin
    * to bottom, THEN secure the pumps"); such a step says so with `wait_first: true` and is
    * paced from entry as before. It never HOLDS the clock down: a player who presses a speed
-   * button during the gate keeps it (the override latch below), and `set_speed` is not refused. */
+   * button during the gate keeps it (the override latch below), and `set_speed` is not refused.
+   *
+   * …AND PER SUBSTEP WHERE THE STEP-LEVEL EVIDENCE IS ALREADY SPENT (2026-09-25, layman pass 5
+   * S-1, #653). `cmd_seen` is per STEP, so a later substep whose action is a press of the SAME
+   * family an earlier substep already sent opened straight onto its rung: startup 9b ("Tap
+   * WITHDRAW one step, wait…", 10×) after 9a's hold. Such a head authors `act_first: true`, and
+   * auto holds 1× until the instructor reports a press of the step's `cmd` family landing WHILE
+   * THAT HEAD WAS ACTIVE (`cmd_head`). Opt-in: a later substep that is a pure wait must not be
+   * held, and the runtime cannot tell the two apart. */
   function cklActionPending(a) {
-    return !!(a && a.st && a.st.cmd && !a.st.wait_first && a.ck && a.ck.cmd_seen === false);
+    if (!(a && a.st && a.st.cmd && a.ck)) return false;
+    var head = cklActiveAccsHead(a.st, a.ck);
+    if (head >= 0 && a.st.accs[head].act_first) return a.ck.cmd_head !== head;
+    return !a.st.wait_first && a.ck.cmd_seen === false;
   }
   /* What speed should the plant be running at for the step on screen — null when no walkthrough
    * is running, in which case the clock is nobody's business but the player's. */

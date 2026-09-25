@@ -225,6 +225,12 @@
  *           <speed_text, or the snapped wait_speed as N×>" under the substep's note; a substep
  *           with neither field draws no line at all. NO SI (owner ruling 2026-09-06); scanned by
  *           `checklist_no_si` the same way `note` is.
+ *   accs[].act_first  OPTIONAL true, on a HEAD entry with a `wait_speed` above 1 — THE SUBSTEP
+ *           OPENS ON A PRESS of the step's `cmd` family that an EARLIER substep already sent
+ *           (startup 9b's first tap, after 9a's hold), so the step-level "speed the wait, not the
+ *           action" hold (`cklActionPending`) is already spent. Auto holds 1× until a press of
+ *           that family lands while this head is active (instructor `cmd_head`), then applies the
+ *           rung. Opt-in, because a later substep that is a pure wait must not be held.
  *   wait_hint OPTIONAL string — rendered as a time-acceleration suggestion on long
  *           steps (#244 M5→3 item 5). Prose only; harnesses ignore it. `false` drops the
  *           generated ⏩ line entirely (#653 S9).
@@ -2279,12 +2285,12 @@
                    ask: 'Check PRIMARY PRESSURE reads 2200 to 2270 psi.',
                    label: 'PRIMARY PRESSURE 2200 to 2270 psi' },
                  { p: 'pump_flow_pct', op: '>=', v: 89.5,
-                   ask: 'Check RCP FLOW reads ON.',
+                   ask: 'Check RCP FLOW reads about 100 %.',   /* OWNER RULING 2026-09-25 "A" (#653 layman pass 5 S-8): the tile prints a percent, not ON */
                    label: 'RCP FLOW 90 % or more: the pumps are running' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025,   /* −0.025 to +0.025: every value toFixed(2) draws as −0.02 to +0.02 */
                    ask: 'Check STARTUP RATE reads 0.00 DPM.',
                    label: 'STARTUP RATE −0.02 to +0.02' }],
-          note: 'STARTUP RATE is in decades per minute (DPM): 1.0 means power grows tenfold every minute.',   /* OWNER RULING 2026-09-25 "A" (#653 layman pass 5 S-2) */
+          note: 'STARTUP RATE is in decades per minute (DPM): 1.0 means power grows tenfold every minute. The Turbine Trip / Low Steam Demand alarm is expected while the turbine is off line.',   /* OWNER RULING 2026-09-25 "A" (#653 layman pass 5 S-2) */
           hl_watch: ['Startup Rate', 'Tavg', 'Primary Pressure', 'Reactor Coolant Pumps (RCP)', 'Boron Concentration'] },
         /* THE NUMBER CAME OUT *(OWNER RULING, 2026-09-14/15: selected "Drop the number entirely")*.
          * This `why` said "boron is already near 719 ppm", which is true of ONE of the two routes
@@ -3232,6 +3238,7 @@
                          '• Over 1.0: tap INSERT once and wait.\n' +
                          'SOURCE RANGE switches itself off above 1.0e5 and its tile goes blank; INTER RANGE carries the reading. PERIOD is the seconds for power to grow by about 2.7 times; a smaller number is a faster rise.',
                    wait_speed: 10,
+                   act_first: true,   /* 1× until the first tap lands on THIS substep — 9a's hold already spent the step's cmd_seen (layman pass 5 S-1) */
                    speed_text: '10× while you wait; 1× before every tap.',
                    label: 'STARTUP RATE +0.06 to +1.00 and steady, with the rods stopped' }],
           hl: ['Withdraw', 'Rod Speed — Slow'],
@@ -3740,7 +3747,7 @@
           hl_watch: ['Reactor Power', 'Turbine Load', 'SG Level'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
-      outcome: 'Reactor critical in Mode 1, At Power, OUTPUT 10 MWe, IR HIGH FLUX and PR HIGH (LOW SETPT) both switched off. Ready for the power ascension.',
+      outcome: 'Reactor critical in Mode 1, At Power, OUTPUT 10 MWe, IR HIGH FLUX and PR HIGH (LOW SETPT) both blocked. Ready for the power ascension.',
     },
     {
       id: 'pwr_raise_power', category: 'power', manual_ref: 'PWR-N07', next: 'pwr_lower_power',

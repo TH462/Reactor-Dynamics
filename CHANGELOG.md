@@ -31,6 +31,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Mode 3 to Mode 1 step 9b opens at real time (#653 layman pass 5 S-1).** Its first tap is the
+  action, so auto speed holds 1× until a rod press lands on 9b, then takes its 10× (new optional
+  `accs[].act_first`; instructor snapshot field `checklist.cmd_head`). Before: 10× on entry, 9a's
+  hold having spent the step-level gate. Also 1c reads "about 100 %", the outcome says the trips
+  are "blocked", and step 1 notes the standing Turbine Trip / Low Steam Demand alarm.
 - **Mode 3 to Mode 1 walkthrough in the what / why / how shape (#653).** Each step's first line
   says what the step does; a new one-line italic why (`aim`) sits under it; each lettered
   substep opens with a verb and is its own check-off (32). New 3b checks STEAM DUMP AUTO and
