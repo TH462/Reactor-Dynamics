@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.8.0-rc6] — 2026-09-25
+
 ### Changed
 - **Mode 3 to Mode 1 step 9b opens at real time (#653 layman pass 5 S-1).** Its first tap is the
   action, so auto speed holds 1× until a rod press lands on 9b, then takes its 10× (new optional
@@ -129,8 +131,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   with a goal line, each substep carries its own note and time warp (1× press, 10× load waits,
   5× rod trims). Grading values unchanged; step 1's press is now a drawn check-off. Rod-count
   notes became measured ranges (e.g. 6 → 6 to 40 steps); the leg reads 7 to 50 plant-minutes.
-
-## [Alpha 1.8.0-rc5] — 2026-09-24
 
 ### Fixed
 - **Walkthrough check-offs no longer flicker at their edge** (2026-09-24, `run_walkthrough_routes`).
