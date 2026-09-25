@@ -4513,14 +4513,21 @@
          * became `< 0.95` (the one-decimal tile's "0.9" floor). ⚠ MEASURED, chained route (seeds 42
          * and 7, scram 5 s and 40 s into step 2): all three rows are met 0.3 s after entry and the
          * step completes with STEAM DUMP status still TAVG — it reads PRESS only after the AUTO
-         * press — so 3a's "status PRESS" is not what the row grades. Grading the status word needs
-         * a numeric param for `control_state.steam_dump_mode`, a shared-runtime change
-         * (layers/instructor_layer.js) held back for the owner; see 05_shutdown.md Notes. STEAM
-         * PRESS 1019-1022 psi with PRESS selected, 1026-1029 psi left in TAVG (600 s after). */
+         * press — so 3a's "status PRESS" was not what the row graded. STEAM PRESS 1019-1022 psi
+         * with PRESS selected, 1026-1029 psi left in TAVG (600 s after).
+         *
+         * GRADED ON THE MODE since 2026-09-24 (OWNER RULING, selected "Grade the mode": "Give the
+         * grader a numeric 'dump in pressure mode' value so PRESS is actually required. This is a
+         * small shared change and reverses #697's 'press optional' for these rows."). accs[0]'s `p`
+         * is `steam_dump_press_mode` (derived in instructor_layer.js from
+         * `control_state.steam_dump_mode`, 1 only when the card reads PRESS). MEASURED live
+         * checklist, standalone and chained from `pwr_lower_power`: TAVG at step entry, row unmet
+         * for 120 s with AUTO never pressed, met and Continue lit on the first broadcast after the
+         * press (the turbine is tripped, so AUTO selects pressure mode). */
         { text: 'Put the decay heat on the steam dump: Mode 3, Hot Standby.',
           why: 'The chain reaction is gone, but the fuel still makes about 2 % of full power from radioactive decay, and REACTOR POWER does not show it. With the turbine tripped, AUTO puts the steam dump into pressure-holding mode and it carries that heat to the condenser. Hot, at pressure, shut down: Mode 3, Hot Standby.',
           hold: 120, wait_hint: false,
-          accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_auto', op: '>', v: 0,
+          accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_press_mode', op: '>', v: 0,
                    ask: 'Press AUTO on the STEAM DUMP card until its status reads PRESS.',
                    wait_speed: 1, label: 'STEAM DUMP AUTO lit, status PRESS' },
                  { p: 'steam_dump_valve_pct', op: '>', v: 0.5,
@@ -4691,7 +4698,15 @@
          * design, not a hole: the real gate stays the sibling `tavg_c < 175` predicate below,
          * which still cannot be faked — TAVG mode carries the setpoint nowhere (this step's own
          * `note`), so a player who never actually switches the dump to pressure mode never sees
-         * tavg fall and the step correctly does not complete. */
+         * tavg fall and the step correctly does not complete.
+         *
+         * GRADED ON THE MODE since 2026-09-24 (OWNER RULING, selected "Grade the mode" — the ruling
+         * is quoted on `pwr_shutdown` step 3). `p` is `steam_dump_press_mode`, no longer the lamp,
+         * so "status PRESS" is what the row now reads. It is STILL met on arrival on every route
+         * measured — standalone (`hot_zero_power` boots in pressure mode) and chained (the shutdown
+         * leg's step 3 now requires PRESS) — and that is the plant's true state, not a hollow tick:
+         * the step's Continue waits on 4b. Injection: the dump put in TAVG before this step and
+         * AUTO never pressed leaves the row unmet (see 06_cooldown.md Notes). */
         { text: 'Cool the plant on the steam dump to where RHR can take over.',
           why: 'Steam pressure and steam temperature go together: lower the pressure the dump holds and the steam generator boils at a lower temperature, which pulls the reactor water down after it. It cannot pull the water below its own boiling point, so the walk goes all the way to 120 psi, about 341 °F, low enough for RHR to take over.',
           control: 'Dump SP', target: 'STEAM DUMP status PRESS; AVG COOLANT TEMPERATURE below 347 °F',
@@ -4700,7 +4715,7 @@
           ramp: [{ action: 'set_steam_dump_setpoint', arg: 'mpa', points: [7.03, 4.42, 2.76, 1.66, 0.83] }],
           saw: { p: 'tavg_c', op: '<', v: 250 },
           /* 4b: `< 175` (347.0 °F, printed "347") -> `< 174.72` (346.5 °F, the floor of "346"). */
-          accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_auto', op: '>', v: 0,
+          accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_press_mode', op: '>', v: 0,
                    ask: 'Press AUTO on the STEAM DUMP card.',
                    note: 'Press AUTO until the status reads PRESS; in TAVG mode the setpoint does nothing.',
                    wait_speed: 1, label: 'STEAM DUMP AUTO lit, status PRESS' },
@@ -4909,8 +4924,16 @@
          * (WTSM App 19-1, ML11223A342; NUREG-1431 LCO 3.4.3; ruled 2026-08-09 on #398), and at 12 %
          * "about two plant-hours" becomes very nearly true instead of being off by 3x.
          * `Manuals/04` PWR-N15 step 6 said "walk it 7 -> 25 %" and moves with this. */
-        { text: 'Cool on RHR into Mode 5, inside the 100 °F per hour limit.',
-          why: 'HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. 12 % holds about 95 °F per hour at the start and eases off as the plant closes on the RHR sink, reaching Mode 5 in about an hour and a half to two hours. Turn it higher and you go over the 100 °F per hour limit: 25 % measures 193 °F per hour.',
+        /* REWORDED 2026-09-24 (OWNER RULING, selected "Reword only": "Change the text to describe the
+         * rate the plant actually gives."). The #729 figures above were taken from 300 degF; the
+         * leg enters this step near 341.6 degF. MEASURED on the COOLDOWN RATE tile
+         * (`bdRhrCooldownRate` = round(instruments.tavg_rate x 9/5), whole degF/hr, a 600 s lag):
+         * player who types 12 once (route harness, seed 42) -> -92 at +10 min, -104 at +20, peak
+         * -106 at +27, over 100 for 12.7 plant-min, -86 at +60, 199 degF at +100 min; the true
+         * 5-minute rate peaks -158 degF/hr at +4 min. Authored replay (ramps 7 -> 12) -> tile peak
+         * -85 at +42 min, never over 100, 199 degF at +120 min. Split and physics unchanged. */
+        { text: 'Cool on RHR into Mode 5, at about the 100 °F per hour limit.',
+          why: 'HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. At 12 % the read-back climbs to a little over 100 °F per hour in the first half hour, then eases off as the plant closes on the RHR sink, reaching Mode 5 in about an hour and a half to two hours; the read-back is smoothed over about ten minutes, so for the first few minutes the plant itself cools faster, near 150 °F per hour. Turn it higher and you go well over the 100 °F per hour limit: 25 % measures 193 °F per hour.',
           control: 'Residual Heat Removal (RHR)', target: 'AVG COOLANT TEMPERATURE below 199 °F',
           wait_hint: false,
           /* HOLD 9000 -> 7200 s (#729), and 5400 was tried first — see the end of this note. 9000 s was authored for the 25 % split, which reaches

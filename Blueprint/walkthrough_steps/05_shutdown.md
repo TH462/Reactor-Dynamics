@@ -132,3 +132,29 @@ moment step 3 completes on the chained route it reads 1004 psi, still rising.
 
 No rod or load walk inside a substep: LOAD is typed, and it steps down at once (the dial walks
 raises only).
+
+### Reconcile record — 2026-09-24, rp_dump lane (step 3a graded on the dump MODE)
+
+*OWNER RULING, 2026-09-24, selected "Grade the mode": "Give the grader a numeric 'dump in pressure
+mode' value so PRESS is actually required. This is a small shared change and reverses #697's
+'press optional' for these rows."* No step text changed; the pool block and this file stay
+word-for-word identical.
+
+**What changed.** 3a's row "STEAM DUMP AUTO lit, status PRESS" grades `steam_dump_press_mode`
+(was `steam_dump_auto`, the lamp, lit in TAVG too). The param is DERIVED in
+`layers/instructor_layer.js` from `control_state.steam_dump_mode` — 1 only when the card's status
+word reads PRESS, the same test the board uses — so no `true_state` field and no contract line.
+The row keeps its AUTO command half.
+
+**Measured** (live checklist, full stack, seed 42; standalone = `hot_full_power`, chained =
+`pwr_lower_power` replayed first):
+
+| route | step 3 entry | AUTO never pressed | after the AUTO press |
+|---|---|---|---|
+| standalone | status TAVG, row unmet | 122 plant-s later: TAVG, row unmet, both 3b rows met, Continue dark | PRESS; row met and Continue lit on the next broadcast |
+| chained | status TAVG, row unmet | 123 plant-s later: same | same |
+
+The hollow tick in the ⚠ paragraph above is gone: step 3 now waits for the press on both routes.
+Injection (`run_checklist_pwr2_b`): the old lamp grading planted back ticks step 3 with no press.
+Route harness: the new `dump_auto_late` route (press after 120 s) completes in 2.4 plant-min
+against the typical route's 1.1.
