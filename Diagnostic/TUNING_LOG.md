@@ -70,6 +70,26 @@ Record: `Blueprint/walkthrough_steps/04_lower_power.md` Notes, bring-down record
 - **A step-level rung is also the rung once every row is met.** Adding `wait_speed` to the step
   so substep a can fall back to it changes the clock for the done-but-not-continued window too:
   steps 4-6 went from the 30 s rule's 60× to 10× there. Harmless here; say it when you do it.
+## Session log — 2026-09-25-workbench-b (Mode 5 to Mode 3 brought down to the what / why / how step file: the verify rows a route cannot reach)
+
+Traps only; the per-row numbers are in `Blueprint/walkthrough_steps/01_mode5_to_mode3.md` Notes.
+
+- **A mistake scripted AT a verify step is hollow.** The first `dump_auto_early` pressed AUTO at
+  step 6; step 6 is met on entry, Continue goes at 3 s and the route's first press waits for the
+  5 s read, so nothing was ever pressed and the route passed. Script the mistake on the step
+  BEFORE, so the verify step opens with its row unmet.
+- **A band on a verify step turns a harmless overshoot into a strand.** `plant_mode ~ 3` passed a
+  plant at 2306 psi; "2200 to 2270 psi" did not, and with no instruction the route sat 30 plant-min
+  on step 15. A new band on a check-off owes an inline recovery for every route that lands outside it.
+- **The cooldown hands the heatup a plant its step 1 does not describe.** Measured at the seam:
+  197.0 °F, 14.3 psi, pumps off, but the shutdown bank at 627 and the steam dump in AUTO. Step 1's
+  `past` (shutdown bank at 98 % or more) skips the whole cold-state check, step 3 ticks on entry,
+  and 6a needs CLOSE. The chain route gate starts at the heatup's preset, so it cannot see it.
+- **"RCP FLOW reads OFF" is a lamp, not the number.** With the pumps stopped the RCP FLOW tile
+  reads natural circulation, 3.9 %; OFF is the card's lamp (`!rcp_running`). Grade the lamp's source
+  — and it is a STATUS word, not a transmitter: put in `PARAM_INSTRUMENT` it crashed
+  `run_checklist_pwr2_b` 2ae ("no channel rcp_running"), which fails every mapped channel in turn.
+  It now resolves through `STATUS_PARAMS` in the instructor layer.
 ## Session log — 2026-09-25-workbench-a (raise power on a xenon-free preset: the seam was not the preset)
 
 Traps only; the numbers are in `Blueprint/walkthrough_steps/03_raise_power.md` Notes (2026-09-25).

@@ -125,12 +125,26 @@ var ROUTES = {
   },
   /* ---- the other legs: typical = default policy on every step unless `steps` names one ---- */
   pwr_heatup: {
-    steps: {},
+    /* 15b's own recovery (2026-09-25): "If it does not, set SET PZR PRESSURE to 2235 psi." Inert
+     * on a route that arrives in the band — the step is met on entry and Continue is pressed at
+     * ACK_S, before the player's ENTRY_S read ends — and the way out for `pressure_sp_high`. */
+    steps: { '#15': { policy: 'seq', cmds: [{ action: 'set_pressure_setpoint', mpa: 15.41 }] },
+             // 6a's own recovery, "If AUTO is lit, press CLOSE." -- inert the same way when 6a is met on entry
+             '#6': { policy: 'seq', cmds: [{ action: 'set_steam_dump', mode: 'closed' }] },
+             // 13a then 13b as the card orders them: the box to 1020 psi (a no-op on the preset, 7.03 MPa), then AUTO
+             '#13': { policy: 'seq', cmds: [{ action: 'set_steam_dump_setpoint', mpa: 7.03 }, { action: 'set_steam_dump', mode: 'auto' }] } },
     mistakes: [
       { id: 'double_rcp', kind: 'double press', at: 'cmd:set_rcp', set: { repeat: 2 } },
       { id: 'pressure_sp_high', kind: 'overshoot', at: 'cmd:set_pressure_setpoint',
         set: { policy: 'seq', cmds: [{ action: 'set_pressure_setpoint', mpa: 15.9 }] } },
       { id: 'rewind_mid_heaters', kind: 'rewind mid-step', at: 'cmd:set_heater', set: { rewind_after: 600 } },
+      /* 6a's inline recovery (2026-09-25, phase 2): "If AUTO is lit, press CLOSE." The dump pressed
+       * to AUTO early — step 13's press, made at step 5 — so step 6 opens with 6a unmet, which is
+       * also how a plant cooled down by `pwr_cooldown` arrives (dump in AUTO, measured). The
+       * `steps['#6']` policy above is the card's recovery. A first draft put this mistake AT step 6
+       * and was hollow: 6a is met on entry there, Continue goes at 3 s, and the presses never ran. */
+      { id: 'dump_auto_early', kind: 'press early', at: 'cmd:set_feed_coupled', set: { policy: 'seq', cmds: [
+        { action: 'set_feed_coupled', active: true }, { action: 'set_steam_dump', mode: 'auto' }] } },
     ],
   },
   pwr_raise_power: {

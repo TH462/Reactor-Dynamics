@@ -4375,6 +4375,7 @@
     sg_level_pct:           { label: 'STEAM GENERATOR LEVEL', u: '%' },
     pzr_level_pct:          { label: 'PRESSURIZER LEVEL', u: '%' },
     pump_flow_pct:          { label: 'RCP FLOW', u: '%' },
+    rcp_running:            { bool: 'ON is lit on the RCP FLOW card' },   // pwr_heatup 1c grades its OFF lamp (2026-09-25)
     /* ROD POSITION (#605). Resolved out of `control_state.rod_groups` by the instructor layer,
      * not out of `true_state` — see ROD_PARAMS there. The `_pct` forms are what a step should
      * normally check: "fully withdrawn" is 100 % on any bank scale, where a step count is only

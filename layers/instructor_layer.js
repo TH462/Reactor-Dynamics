@@ -1592,6 +1592,20 @@
       return typeof m === 'string' ? (m === 'pressure' ? 1 : 0) : undefined;
     }
   };
+  /* A STATUS WORD THE BOARD LIGHTS A LAMP FROM (2026-09-25, `pwr_heatup` 1c "Check OFF is lit on the
+   * RCP FLOW card"). The card lights OFF from `!IN(s).rcp_running` (pwr_board_wiring `imrsjy59pnu`):
+   * a STATUS passthrough in `snapshot.instruments` (pwr2_shell `_instrExtras`, the breaker), not a
+   * transmitter channel — it has no lag, no noise and no failure mode, so it is NOT in
+   * PARAM_INSTRUMENT (whose channels `run_checklist_pwr2` 2ae fails one by one; mapping it there
+   * threw "no channel rcp_running"). true_state carries no such field. The RCP FLOW number beside
+   * the lamp reads natural circulation, 3.9 % with the pumps stopped, so it cannot say OFF.
+   * Boolean on the wire, normalised to 1/0. */
+  var STATUS_PARAMS = { rcp_running: 1 };
+  function statusParam(snapshot, p) {
+    var v = snapshot && snapshot.instruments ? snapshot.instruments[p] : undefined;
+    if (typeof v === 'boolean') return v ? 1 : 0;
+    return v == null ? undefined : v;
+  }
   function derivedCtlParam(snapshot, p) {
     return DERIVED_CTL_PARAMS[p](snapshot && snapshot.control_state);
   }
@@ -1654,6 +1668,7 @@
       if (cv == null || (typeof cv === 'number' && isNaN(cv))) return undefined;
       return (typeof cv === 'boolean') ? (cv ? 1 : 0) : cv;
     }
+    if (STATUS_PARAMS[p]) return statusParam(snapshot, p);
     return snapshot && snapshot.true_state ? snapshot.true_state[p] : undefined;
   };
 
@@ -1665,6 +1680,7 @@
     if (RPS_BLOCK_PARAMS[p]) return { value: rpsBlockParam(snapshot, p), graded_by: 'rps_state' };
     if (ROD_PARAMS[p]) return { value: rodParam(snapshot, p), graded_by: 'control_state' };
     if (DERIVED_CTL_PARAMS[p]) return { value: derivedCtlParam(snapshot, p), graded_by: 'control_state' };
+    if (STATUS_PARAMS[p]) return { value: statusParam(snapshot, p), graded_by: 'status' };
     if (AUTO_CHAN_PARAMS[p]) return { value: AUTO_CHAN_PARAMS[p](snapshot), graded_by: 'control_state' };
     if (CTL_PARAMS[p]) {
       var cv = snapshot && snapshot.control_state ? snapshot.control_state[p] : undefined;
