@@ -29,7 +29,7 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Session log — 2026-09-24-wt-raise-a (Raise power ported to the owner's step format: two traps)
+## Session log — 2026-09-24-workbench-e (Raise power ported to the owner's step format: two traps)
 
 The port itself changed no predicate; the record is `Blueprint/walkthrough_steps/03_raise_power.md`
 Notes. Two traps, measured 2026-09-24 on the full stack (`low_power`, seeds 42 and 7, tile channels):
@@ -46,7 +46,7 @@ Notes. Two traps, measured 2026-09-24 on the full stack (`low_power`, seeds 42 a
   over his own 590 °F caution; LOAD first peaked at 589.7 °F. There was no trip on any route.
 
 ---
-## Session log — 2026-09-24-wt-shutdown-a (Shutdown to Mode 3 in the per-substep format: a status-word check-off that grades a lamp)
+## Session log — 2026-09-24-workbench-f (Shutdown to Mode 3 in the per-substep format: a status-word check-off that grades a lamp)
 
 Record: `Blueprint/walkthrough_steps/05_shutdown.md` Notes.
 
@@ -59,7 +59,7 @@ Record: `Blueprint/walkthrough_steps/05_shutdown.md` Notes.
 - **#697'S PREMISE IS PER-ROW.** It made the AUTO press optional because the plant already
   produced the press's EFFECT (dump open, power low). That holds for the valve rows and not for the
   status word: the plant never selects pressure mode by itself.
-## Session log — 2026-09-24-wt-heatup-a (Mode 5 to Mode 3 ported to the step format: a one-row step's rung covers its presses; a stated time from another engine)
+## Session log — 2026-09-24-workbench-g (Mode 5 to Mode 3 ported to the step format: a one-row step's rung covers its presses; a stated time from another engine)
 
 Record and every number: the 2026-09-24 reconcile record in `Blueprint/walkthrough_steps/01_mode5_to_mode3.md`.
 
@@ -98,6 +98,25 @@ Full record, tables and speed provenance: `Blueprint/walkthrough_steps/06_cooldo
   picked `pwr_cooldown` step 1 for its generated speed line; the format sets `wait_hint: false`
   there, and after this port no pwr2 step 1 draws that line. The fixture now forces it in-page.
 - **`glance_rung.js` is blind on a shutdown leg** — its yardstick is REACTOR POWER, 0 % throughout.
+## Session log — 2026-09-24-workbench-h (Lower power brought down to the owner's per-substep format; a rod count that depends on the route)
+
+Record: `Blueprint/walkthrough_steps/04_lower_power.md` Notes. Traps only:
+
+- **A rod count in a note is a function of how long the player waited.** The boration does the
+  rods' job given time: the replay (full holds) inserts 40 / 0 / 0 / 0 steps in steps 3-6, a
+  player who inserts the moment the load check-offs tick needs 72-74 / 60-64 / 45-46 / 36-38
+  (seeds 42, 7, 99). His "about 6" was wrong by 6x on the fast route. Measure both ends.
+- **A band's span is not the stopping window when the tile lags.** Top-to-floor of the green
+  band is 37-50 rod steps at MED, but a stop at the floor crossing went on to read 14.9 °F
+  (8.3 °C) under the floor. At 10x the span alone is 4.6-6.2 s of wall clock; 5x is the rung.
+- **The 30 s rule plays a long-`hold` load step at 60x.** Steps 4-6 (`hold` 720/600/900) had no
+  `wait_speed`; a substep rung now wins while it is active.
+- **An injection probe keyed on a leg moves branch when the leg is ported.** `run_checklist_pwr2`'s
+  ask-sweep probe was "the first ask in `pwr_lower_power`"; once every ask there carried a
+  `wait_speed`, the 15-word injection sat under the 30-word owner cap. It now takes the first
+  LEGACY ask in the pool — and goes null once every leg is ported.
+- **Parallel agents share one session scratchpad.** A `glance_rung` output written to a generic
+  filename was overwritten mid-read by another leg's run. Use a per-leg directory.
 
 ## Session log — 2026-09-24-workbench-c (third layman pass on Mode 3 to Mode 1: a Continue lit below the fold; `paramValue` is not the tile)
 

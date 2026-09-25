@@ -1007,7 +1007,15 @@ if (!only && RUN_B) {
      * pressed STOP before reaching step 3 has nothing to re-press against, and `eccsStop`
      * refuses only with safety injection latched, which the leg reaches this step without
      * (1923 psi, `si_actuated` false, measured). */
-    var NO_STATE_EXPECTED = { 'pwr_raise_power:3': 1 };
+    /* `pwr_lower_power:1` JOINED THIS SET BY COMING INTO SCOPE, NOT BY A GRADING CHANGE
+     * (2026-09-24, the owner-format port). The step always graded on SEEING its
+     * `set_auto_setpoint` boron press — a bare step `cmd`, which this sweep does not read
+     * because it walks `accs` only. The port gave the press the owner's substep text, which in
+     * this pool means a cmd-kind `accs` entry, so the same observation is now visible here. It
+     * is `pwr_raise_power:3`'s shape exactly, for the same reason: boration runs about 36
+     * plant-minutes in the background (MEASURED, #753), so a state row would stall the leg on
+     * chemistry. NOT MEASURED HERE: whether re-entering an unchanged 719 re-sends the command. */
+    var NO_STATE_EXPECTED = { 'pwr_raise_power:3': 1, 'pwr_lower_power:1': 1 };
     var noStateTally = {};
     NO_STATE.forEach(function (r) { var k = r.proc + ':' + r.step; noStateTally[k] = (noStateTally[k] || 0) + 1; });
     var noStateKeys = Object.keys(noStateTally), expectedKeys = Object.keys(NO_STATE_EXPECTED);
@@ -1912,11 +1920,17 @@ if (!only && RUN_B) {
        unlabelled.length === 0, unlabelled.join(', ') || 'all labelled');
 
     /* RED BY INJECTION, all four, in place. */
-    var lp = POOL.filter(function (p) { return p.id === 'pwr_lower_power'; })[0];
+    /* THE PROBE IS THE FIRST *LEGACY* ASK IN THE POOL (2026-09-24). It was the first ask in
+     * `pwr_lower_power`, and that leg moved to the owner's per-substep format the same day: every
+     * one of its asks now carries its own `wait_speed`, so the 15-word injection below sits under
+     * the 30-word owner-format cap and `long` read 0 — the injection had moved onto the other
+     * branch, not the check going blind. The owner-format branch has its own injections below. */
     var probe = null;
-    (lp.steps || []).forEach(function (st) {
-      (st.accs || []).forEach(function (e) { if (e.ask && !probe) probe = e; });
-    });
+    POOL.forEach(function (lpp) { (lpp.steps || []).forEach(function (st) {
+      (st.accs || []).forEach(function (e) {
+        if (e.ask && !probe && e.note == null && e.wait_speed == null && e.speed_text == null) probe = e;
+      });
+    }); });
     if (probe) {
       /* THE INJECTION DRIVES THE SHIPPED SWEEP (#741 quality pass). An earlier version defined a
        * parallel `sweepOne()` with the same four conditions re-implemented — which proves only
