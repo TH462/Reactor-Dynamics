@@ -4336,6 +4336,9 @@
      * confirmation reads both, because "the dumps are in service" and "the ADV is shut" are
      * the two halves of the claim that the condenser, not the atmosphere, is the heat sink */
     steam_dump_auto:        { bool: 'AUTO is lit on the STEAM DUMP card' },
+    /* the dump's MODE, as the card's status word reads it (OWNER RULING 2026-09-24, "Grade the
+     * mode") — derived by the instructor layer from `control_state.steam_dump_mode` */
+    steam_dump_press_mode:  { bool: 'STEAM DUMP status reads PRESS' },
     adv_valve_pct:          { label: 'ATMOS DUMP opening', u: '%' },
     vessel_level_pct:       { label: 'Vessel level', u: '%' },
     drum_level_pct:         { label: 'Drum level', u: '%' },

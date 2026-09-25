@@ -167,13 +167,21 @@ var ROUTES = {
         { action: 'set_load_target', mwe: 0 }, { action: 'scram' }] } },
       { id: 'double_scram', kind: 'double press', at: 'cmd:scram', set: { repeat: 2 } },
       { id: 'rewind_mid_dumps', kind: 'rewind mid-step', at: 'cmd:set_steam_dump', set: { rewind_after: 30 } },
+      // Step 3's row grades the dump MODE since 2026-09-24 (owner ruling "Grade the mode"): the
+      // step must WAIT for the AUTO press, not tick on the lamp. A player who reads for two
+      // plant-minutes before pressing: step 3 held unmet (TAVG) until the press, then completes.
+      { id: 'dump_auto_late', kind: 'press late', at: 'cmd:set_steam_dump', set: { delay_s: 120 } },
     ],
   },
   pwr_cooldown: {
     // "Lower SET PZR PRESSURE to 1900 psi": one entry, not the replay's ramp. Ramped, the step
     // ticks at 13.6 MPa with the setpoint still mid-ramp and the player moves on (measured
     // 2026-09-24: the SI low-steam-pressure trip at step 4, 1951 psia).
-    steps: { 'cmd:set_pressure_setpoint': { policy: 'final' }, 'cmd:set_pressure_setpoint:2': { policy: 'final' } },
+    // "Raise HX SPLIT to 12 %" (step 11): the player types 12 once, not the replay's 7 -> 12 ramp
+    // across the whole hold (2026-09-24, the step 11 reword was measured on this route: COOLDOWN
+    // RATE tile peak -106 degF/hr at +27 min, Mode 5 in 100 plant-min; the ramp peaks -83).
+    steps: { 'cmd:set_pressure_setpoint': { policy: 'final' }, 'cmd:set_pressure_setpoint:2': { policy: 'final' },
+             'cmd:set_rhr_hx:2': { policy: 'final' } },
     mistakes: [
       { id: 'pressure_sp_ramped', kind: 'press early', at: 'cmd:set_pressure_setpoint', set: { policy: 'default' } },
       { id: 'hpi_before_blocks', kind: 'wrong order', at: 'cmd:set_trip_block', set: { policy: 'seq', order: [2, 0, 1] } },

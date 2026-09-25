@@ -1054,11 +1054,26 @@ if (!only && RUN_B) {
    * runtime with the fixed command NEVER pressed. Each also proves RED BY INJECTION: the fixed
    * entry is mutated back to its pre-#697 shape (pure cmd, no `.p`) for one drive, then restored —
    * the pre-fix shape must soft-lock (stick at the step forever, `met: false, obs: null`, the
-   * SAME two siblings already true underneath it), the fixed shape must complete. */
+   * SAME two siblings already true underneath it), the fixed shape must complete.
+   *
+   * ⚠ REVERSED FOR THESE TWO ROWS, 2026-09-24 (OWNER RULING, selected "Grade the mode": "Give the
+   * grader a numeric 'dump in pressure mode' value so PRESS is actually required. This is a small
+   * shared change and reverses #697's 'press optional' for these rows."). #697 graded the row on
+   * the AUTO LAMP (`steam_dump_auto`, `mode !== 'off'`), which is lit in TAVG mode too, so the
+   * shutdown's "status PRESS" row ticked on a card reading TAVG. The row now reads
+   * `steam_dump_press_mode`. The merged cmd+`p` SHAPE #697 introduced stays (the soft-lock
+   * injection below still proves it); what changed is WHICH state it grades:
+   *   - shutdown step 3: the plant never selects pressure mode by itself, so AUTO never pressed
+   *     must now HOLD the step (the old check asserted it completed), and pressing AUTO must
+   *     complete it; the #697 lamp grading, planted back, must tick it with no press (the hollow
+   *     tick the ruling removed) — that is this group's red-by-injection now.
+   *   - cooldown step 4: `hot_zero_power` BOOTS in pressure mode, so the row is met on arrival
+   *     and the old completion check stands; the new half is that a dump left in TAVG (selected
+   *     at step 3, AUTO never pressed) leaves the row unmet — the lamp would have ticked it. */
   (function () {
     var POOL2 = RD.MANUAL_PROCEDURES.pwr2;
 
-    function driveCooldownStep4(maxTicks) {
+    function driveCooldownStep4(maxTicks, tavgAtStep3) {
       var svc = mkSvc('hot_zero_power');
       svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_cooldown' });
       var s = null, didBoron = false, didPressure1 = false, didTripBlocks = false, rampIdx = 0;
@@ -1081,6 +1096,7 @@ if (!only && RUN_B) {
            * the driver being wrong to model a player: the fix is for the stand-in operator to
            * perform the whole step, the same way it already presses both trip blocks. */
           svc.handleCommand({ action: 'set_hpi', active: false });
+          if (tavgAtStep3) svc.handleCommand({ action: 'set_steam_dump', mode: 'tavg' });   // the lamp stays lit
           didTripBlocks = true;
         }
         // step 4 (index 3): drive the dump setpoint ramp; NEVER press set_steam_dump auto.
@@ -1094,10 +1110,10 @@ if (!only && RUN_B) {
       return { done: false, step: f && f.step_index, accs: f && f.accs, tavg_c: s.true_state.tavg_c };
     }
 
-    function driveShutdownStep3(maxTicks) {
+    function driveShutdownStep3(maxTicks, pressAuto) {
       var svc = mkSvc('hot_full_power');
       svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_shutdown' });
-      var s = null, didLoad = false, didScram = false;
+      var s = null, didLoad = false, didScram = false, didAuto = false;
       for (var i = 0; i < maxTicks; i++) {
         s = svc.tick();
         var c = s.instructor && s.instructor.checklist;
@@ -1105,12 +1121,14 @@ if (!only && RUN_B) {
         if (c.complete) return { done: true, step: c.step_index };
         if (c.step_index === 0 && !didLoad) { svc.handleCommand({ action: 'set_load_target', mwe: 0 }); didLoad = true; }
         if (c.step_index === 1 && !didScram) { svc.handleCommand({ action: 'scram' }); didScram = true; }
-        // step 3 (index 2): NEVER press set_steam_dump auto.
+        // step 3 (index 2): press set_steam_dump auto only when asked to.
+        if (c.step_index === 2 && pressAuto && !didAuto) { svc.handleCommand({ action: 'set_steam_dump', mode: 'auto' }); didAuto = true; }
         if (c.awaiting_ack && !c.complete) svc.handleCommand({ action: 'checklist_check', index: c.step_index });
       }
       var f = s.instructor && s.instructor.checklist;
       return { done: false, step: f && f.step_index, accs: f && f.accs,
-        power_pct: s.true_state.power_pct, valve: s.true_state.steam_dump_valve_pct };
+        power_pct: s.true_state.power_pct, valve: s.true_state.steam_dump_valve_pct,
+        mode: s.control_state.steam_dump_mode };
     }
 
     function withReverted(proc_id, stepIdx, fn) {
@@ -1132,15 +1150,30 @@ if (!only && RUN_B) {
        cdRed.done === false && cdRed.step === 3 && cdRed.accs && cdRed.accs[0].met === false && cdRed.accs[1].met === true,
        JSON.stringify(cdRed.accs));
 
-    var sdFixed = driveShutdownStep3(600);
-    ck('pwr_shutdown step 3 completes with the fix, AUTO never pressed (#697 — the reported instance)',
-       sdFixed.done === true,
-       'done=' + sdFixed.done + ' step_index=' + sdFixed.step);
-    var sdRed = withReverted('pwr_shutdown', 2, function () { return driveShutdownStep3(600); });
-    ck('...RED BY INJECTION: the pre-#697 shape soft-locks step 3 forever (siblings already true)',
-       sdRed.done === false && sdRed.step === 2 && sdRed.accs && sdRed.accs[0].met === false &&
-       sdRed.accs[1].met === true && sdRed.accs[2].met === true,
-       JSON.stringify(sdRed.accs));
+    var cdTavg = driveCooldownStep4(6000, true);
+    ck('pwr_cooldown step 4 "status PRESS" row stays unmet with the dump left in TAVG, AUTO never pressed (ruling 2026-09-24, "Grade the mode")',
+       cdTavg.done === false && cdTavg.step === 3 && cdTavg.accs && cdTavg.accs[0].met === false,
+       JSON.stringify(cdTavg.accs));
+
+    /* shutdown step 3: PRESS is required now (ruling 2026-09-24). The siblings are still true
+     * without the press — the dump answers the scram in TAVG mode — so only the mode holds it. */
+    var sdNoPress = driveShutdownStep3(600, false);
+    ck('pwr_shutdown step 3 HOLDS with AUTO never pressed: status reads TAVG, the row reads the mode (ruling 2026-09-24, reverses #697 for this row)',
+       sdNoPress.done === false && sdNoPress.step === 2 && sdNoPress.mode === 'tavg' && sdNoPress.accs &&
+       sdNoPress.accs[0].met === false && sdNoPress.accs[1].met === true && sdNoPress.accs[2].met === true,
+       'mode ' + sdNoPress.mode + ' ' + JSON.stringify(sdNoPress.accs));
+    var sdPress = driveShutdownStep3(600, true);
+    ck('pwr_shutdown step 3 completes once AUTO is pressed (the turbine is tripped, so AUTO selects PRESS)',
+       sdPress.done === true, 'done=' + sdPress.done + ' step_index=' + sdPress.step);
+    var sdLamp = (function () {
+      var proc = POOL2.filter(function (p) { return p.id === 'pwr_shutdown'; })[0];
+      var entry = proc.steps[2].accs[0], savedP = entry.p;
+      entry.p = 'steam_dump_auto';                     // the #697 lamp grading, planted back
+      try { return driveShutdownStep3(600, false); } finally { entry.p = savedP; }
+    })();
+    ck('...RED BY INJECTION: graded on the AUTO lamp (#697), step 3 ticks with no press on a card reading TAVG',
+       sdLamp.done === true, 'done=' + sdLamp.done + ' step_index=' + sdLamp.step);
+
   })();
 
   /* 2p. #696 — `pwr_shutdown`'s precondition now has an UPPER bound. Only `power_pct > 10` was

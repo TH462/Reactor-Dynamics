@@ -1573,6 +1573,27 @@
                       * undefined and `pwr_cooldown` step 10's acceptance could never grade. It is
                       * a FRACTION here (0.07) and per cent on the card. */
                      rhr_hx_fraction: 1 };
+  /* STEAM DUMP IN PRESSURE MODE — the card's status word PRESS, as a number the grader can read
+   * *(OWNER RULING, 2026-09-24, selected "Grade the mode": "Give the grader a numeric 'dump in
+   * pressure mode' value so PRESS is actually required. This is a small shared change and
+   * reverses #697's 'press optional' for these rows.")*. `control_state.steam_dump_mode` is TEXT
+   * ('pressure' | 'tavg' | 'off') and `_predMet` compares numbers, so the "status PRESS" rows
+   * graded the AUTO lamp instead — `steam_dump_auto` is `mode !== 'off'` and reads 1 in TAVG too.
+   * Derived HERE, not minted as a true_state field: the mode is the operator's selection, which
+   * lives in control_state beside the lamp (same reason as CTL_PARAMS above), and a contract field
+   * would exist for the checklists alone. Same test the board's status word uses
+   * (`imrppq5r7kw`, pwr_board_wiring.js: `m === 'pressure'` -> "PRESS"), so the row and the word
+   * cannot disagree. A plant that publishes no mode (the retired engine) resolves undefined,
+   * which `_predMet` fails closed on. */
+  var DERIVED_CTL_PARAMS = {
+    steam_dump_press_mode: function (cs) {
+      var m = cs ? cs.steam_dump_mode : undefined;
+      return typeof m === 'string' ? (m === 'pressure' ? 1 : 0) : undefined;
+    }
+  };
+  function derivedCtlParam(snapshot, p) {
+    return DERIVED_CTL_PARAMS[p](snapshot && snapshot.control_state);
+  }
   function rodParam(snapshot, p) {
     var spec = ROD_PARAMS[p];
     if (!spec) return undefined;
@@ -1605,6 +1626,7 @@
   InstructorLayer.paramValue = function (snapshot, p) {
     if (ROD_PARAMS[p]) return rodParam(snapshot, p);
     if (RPS_BLOCK_PARAMS[p]) return rpsBlockParam(snapshot, p);
+    if (DERIVED_CTL_PARAMS[p]) return derivedCtlParam(snapshot, p);
     if (CTL_PARAMS[p]) {
       var cv = snapshot && snapshot.control_state ? snapshot.control_state[p] : undefined;
       if (cv == null || (typeof cv === 'number' && isNaN(cv))) return undefined;
@@ -1620,6 +1642,7 @@
   function readParam(snapshot, p) {
     if (RPS_BLOCK_PARAMS[p]) return { value: rpsBlockParam(snapshot, p), graded_by: 'rps_state' };
     if (ROD_PARAMS[p]) return { value: rodParam(snapshot, p), graded_by: 'control_state' };
+    if (DERIVED_CTL_PARAMS[p]) return { value: derivedCtlParam(snapshot, p), graded_by: 'control_state' };
     if (CTL_PARAMS[p]) {
       var cv = snapshot && snapshot.control_state ? snapshot.control_state[p] : undefined;
       if (typeof cv === 'boolean') cv = cv ? 1 : 0;

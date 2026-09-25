@@ -227,7 +227,7 @@ With RHR circulating, the reactor coolant pumps are only adding heat, so they co
 
 
 
-11. Cool on RHR into Mode 5, inside the 100 °F per hour limit.
+11. Cool on RHR into Mode 5, at about the 100 °F per hour limit.
 
 11a. Raise HX SPLIT to 12 % and wait until AVG COOLANT TEMPERATURE reads below 199 °F.
 
@@ -239,7 +239,7 @@ Suggested time warp: 600×.
 
 Background
 
-HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. 12 % holds about 95 °F per hour at the start and eases off as the plant closes on the RHR sink, reaching Mode 5 in about an hour and a half to two hours. Turn it higher and you go over the 100 °F per hour limit: 25 % measures 193 °F per hour.
+HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. At 12 % the read-back climbs to a little over 100 °F per hour in the first half hour, then eases off as the plant closes on the RHR sink, reaching Mode 5 in about an hour and a half to two hours; the read-back is smoothed over about ten minutes, so for the first few minutes the plant itself cools faster, near 150 °F per hour. Turn it higher and you go well over the 100 °F per hour limit: 25 % measures 193 °F per hour.
 
 [HIGHLIGHTED: Residual Heat Removal (RHR) (pulsing); Tavg (steady)]
 
@@ -404,3 +404,47 @@ the true `tavg_rate` reaches −143 to −151 °F/h on the player route (enterin
 measured. (b) 4a's check-off says "status PRESS" but grades `steam_dump_auto` (the lamp), true in
 TAVG mode too; the mode is a string and no grader param reads it — a runtime change, not made.
 (c) BORON STATUS BORATING has no gradeable param either, same reason.
+
+### Reconcile record — 2026-09-24, rp_dump lane (4a graded on the dump MODE; step 11 reworded)
+
+**4a — OWNER RULING, 2026-09-24, selected "Grade the mode"** (quoted in full in
+`05_shutdown.md`'s record of the same date). Finding (b) above is acted on: the "status PRESS"
+row grades `steam_dump_press_mode` (derived from `control_state.steam_dump_mode` in
+`layers/instructor_layer.js`, no contract field), no longer the AUTO lamp. **It is still met on
+arrival on every route measured** — standalone (`hot_zero_power` boots in pressure mode; measured
+PRESS at boot, and AUTO from CLOSED gives PRESS because the turbine is tripped) and chained from
+the shutdown leg (whose step 3 now requires PRESS): row met on the first graded broadcast after
+step entry, 4b unmet, so the step's Continue stays dark — the route gate does not flag it hollow.
+That is the plant's true state, so no `entry_met` was declared. **Injection:** the dump put in
+TAVG at step 3 and AUTO never pressed — row unmet at step 4 entry and still unmet 600 plant-s
+later; AUTO then ticks it on the next broadcast. The lamp would have ticked it at once.
+
+**11 — OWNER RULING, 2026-09-24, selected "Reword only"**: "Change the text to describe the rate
+the plant actually gives." Finding (a) above is acted on. Split and physics unchanged.
+
+MEASURED on the COOLDOWN RATE tile (`bdRhrCooldownRate`: indicated Tavg differentiated and lagged
+600 s, drawn in whole °F per hour), seed 42, both routes entering near 341 °F:
+
+| minutes into step 11 | player types 12 % once | authored replay (7 → 12 % ramp) |
+|---|---|---|
+| +10 | −92 | −56 |
+| +20 | −104 | −70 |
+| +30 | −98 | −73 |
+| +60 | −86 | −79 |
+| peak tile | **−106 at +27 min**; over 100 for 12.7 plant-min | −85 at +42 min; never over 100 |
+| true 5-minute rate, peak | **−158 °F per hour at +4 min** | −90 °F per hour |
+| reaches 199 °F | +100 min | +120 min |
+
+First hour on the player route: 341.6 → 239.7 °F, about 102 °F.
+
+| where | was | now |
+|---|---|---|
+| goal line | Cool on RHR into Mode 5, inside the 100 °F per hour limit. | Cool on RHR into Mode 5, at about the 100 °F per hour limit. |
+| Background, sentence 2 | 12 % holds about 95 °F per hour at the start and eases off as the plant closes on the RHR sink, reaching Mode 5 in about an hour and a half to two hours. | At 12 % the read-back climbs to a little over 100 °F per hour in the first half hour, then eases off as the plant closes on the RHR sink, reaching Mode 5 in about an hour and a half to two hours; the read-back is smoothed over about ten minutes, so for the first few minutes the plant itself cools faster, near 150 °F per hour. |
+| Background, last sentence | Turn it higher and you go over the 100 °F per hour limit: 25 % measures 193 °F per hour. | Turn it higher and you go well over the 100 °F per hour limit: 25 % measures 193 °F per hour. |
+
+AGENT-DRAFTED for owner review. The smoothing clause rides sentence 2 after a semicolon because `run_style` caps a Background at three sentences. The note ("Keep COOLDOWN RATE under 100 °F per hour: if it runs
+faster, lower HX SPLIT…") is his and stands: it is what keeps a player under the limit.
+**NOT RE-MEASURED:** the "25 % measures 193 °F per hour" figure is #729's TRUE rate from a 300 °F
+entry, not the tile from this step's 341 °F entry. The route harness's typical route now types
+12 % once at step 11 (`policy: 'final'`), the route these numbers came from.
