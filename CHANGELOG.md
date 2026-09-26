@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.8.0-rc7] — 2026-09-26
+
 ### Added
 - **A "Walkthrough sets time warp" checkbox under the speed bar** (#807 item 7). On (default,
   today's behaviour) lets the running walkthrough raise and drop the clock for you; off leaves
@@ -195,8 +197,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   from releasing WITHDRAW.
 - **`run_style` W12 reads the substep strings** (`accs[].ask/label/note/speed_text`), with one
   injection per field. Three substep notes it then caught were reworded.
-
-## [Alpha 1.8.0-rc6] — 2026-09-25
 
 ### Changed
 - **Mode 3 to Mode 1 step 9b opens at real time (#653 layman pass 5 S-1).** Its first tap is the
