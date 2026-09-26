@@ -4410,6 +4410,9 @@
     /* the dump's MODE, as the card's status word reads it (OWNER RULING 2026-09-24, "Grade the
      * mode") — derived by the instructor layer from `control_state.steam_dump_mode` */
     steam_dump_press_mode:  { bool: 'STEAM DUMP status reads PRESS' },
+    /* the BORON card's status word (#807 item 5, pwr_heatup 16d) — derived by the instructor layer
+     * from `control_state.boron_adjust` with the tile's own test */
+    boron_status_hold:      { bool: 'BORON STATUS reads HOLD' },
     /* the BORON card's ON lamp and target box (2026-09-25, pwr_startup 2a/2b) — read off the
      * `boron_conc` automation channel by the instructor layer (AUTO_CHAN_PARAMS there) */
     boron_auto_on:          { bool: 'ON is lit on the BORON card' },

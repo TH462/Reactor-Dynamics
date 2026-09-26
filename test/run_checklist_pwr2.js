@@ -3794,9 +3794,12 @@ if (!only && RUN_B) {
        * instrument-graded 102 -> 101; steps and predicate rows unchanged. */
       /* RE-PINNED 2026-09-25 (workbench-g, layman pass 5 S-1): cooldown 16d grades the SCRAM
        * button's reset (`scrammed < 1`, true_state, not an instrument), so predicate rows
-       * 166 -> 167; steps, instrument-graded and sole unchanged. SUM on a merge. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25 (workbench-g): 86 / 167 / 101 / 26 -- cooldown 16d, the SCRAM reset row)',
-         gradedSteps === 86 && predRows === 167 && rows.length === 101 && soleInst === 26,
+       * 166 -> 167; steps, instrument-graded and sole unchanged. SUM on a merge.
+       * RE-PINNED 2026-09-26 (#807, exp/807a): 167 -> 168 predicate rows -- `pwr_heatup` 15c's
+       * CONTROL ROD POSITION row moved to 16c and 16d BORON STATUS HOLD is new; both are control-state
+       * rows, so instrument-graded (101) and sole (26) are unchanged. SUM on a merge. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807): 86 / 168 / 101 / 26 -- heatup 16c/16d)',
+         gradedSteps === 86 && predRows === 168 && rows.length === 101 && soleInst === 26,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -3877,7 +3880,7 @@ if (!only && RUN_B) {
        * two-sided band cannot be met by it -- the honest answer (a row a player cannot verify). */
       'pwr_heatup:15:tavg_c': 'tavg',                        // ~ 285.83 +/-1.66 (544-549 degF)
       'pwr_heatup:15:pressure_mpa': 'primary_pressure',      // ~ 15.41 +/-0.244 (2200-2270 psi)
-      'pwr_heatup:16:sr_counts_cps': 'source_range',         // steady 1.2 %/600 s (2026-09-24, replaced NET REACTIVITY, a true_state row)
+      'pwr_heatup:16:sr_counts_cps': 'source_range',         // steady 8 %/90 s since #807 (was 1.2 %/600 s, 2026-09-24, replaced NET REACTIVITY, a true_state row)
       'pwr_heatup:16:startup_rate_dpm': 'startup_rate',      // ~ 0 +/-0.025 (same change)
       /* pwr_startup [hot_zero_power] */
       /* RE-PINNED 2026-09-23 (the owner's new-format reconcile): old step 9 split into 9 + 10 and

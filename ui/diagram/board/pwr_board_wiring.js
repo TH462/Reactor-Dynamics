@@ -3776,6 +3776,16 @@
     'Rod Speed — Fast': 'imrpk8kjsjs',
     'Shutdown Bank — Withdraw': 'imrpnyaxsb3', 'Shutdown Bank — Insert': 'imrpnyf37ju',
     'SG Feed AUTO': 'imrsgjmrjfg', 'SG Feed MAN': 'imrsgjuh7l0',
+    /* THE BUTTON INSIDE THE CARD (#807 item 3, owner playtest of 1.8.0-rc6: "the A+B 7% button
+     * should have the dashed line around it not the whole card. the glowing line should be around
+     * the card ... step 8 should have the PZR SPRAY AUTO button lit with the dashed line and the
+     * card glowing"). The pulse goes on the one button the step presses and the steady ring on
+     * the card that holds it — the split `pwr_heatup` 13 already had for the STEAM DUMP. These
+     * four had no key, so every step pressing them pulsed the whole card. Ids read off the press
+     * handlers above (set_rcp running:true, set_letdown_orifices a+b, set_spray auto,
+     * set_heater auto). */
+    'RCP — On': 'imrsjy1m9g', 'Letdown — A+B 7%': 'imrmtimyxef',
+    'Pressurizer Spray — Auto': 'imro8zestdm', 'Pressurizer Heater — Auto': 'imro969lnex',
     'Plot point': 'bdOneOverM',
     'Primary Pressure': 'ims2immsvn6',
     // #341 / #319 item 2 — the post-trip procedure's restore step points here.

@@ -46,9 +46,9 @@ Suggested time warp: 1×.
 
 Background
 
-A shut-down reactor makes very little heat compared to a critical reactor, but the running pumps put about half a percent of full power into the water as friction. That is enough to warm the whole plant. Real crews heat up exactly this way, with the reactor never critical.
+A shut-down reactor makes very little heat. The running pumps make heat of their own: the work that drives the water around the loop ends up in it as friction. That is enough to warm the whole plant. Real crews heat up exactly this way, with the reactor never critical.
 
-[HIGHLIGHTED: RCP Run/Stop (pulsing)]
+[HIGHLIGHTED: RCP — On (pulsing); RCP ON/OFF (steady)]
 
 
 
@@ -68,13 +68,15 @@ Suggested time warp: 60×.
 
 Background
 
-In a PWR, shutdown rod groups (shutdown banks) stay fully withdrawn during normal power operation. Their purpose is to supply a large, rapid insertion of negative reactivity on a reactor trip (SCRAM) so the core goes subcritical and stays that way. They are withdrawn first during startup and are not used for routine power or temperature (Tavg) control.
+The shutdown bank is a set of control rods that is never used to steer the reactor. It stays fully withdrawn whenever the plant is running, so that on a reactor trip (SCRAM) it drops into the core and shuts the reactor down hard.
 
-[HIGHLIGHTED: Rod Speed — Fast, Shutdown Bank — Withdraw (pulsing); Shutdown Rod Position (steady)]
+It comes out first during a startup and stays out. Power and temperature are steered with the control bank and boron.
+
+[HIGHLIGHTED: Rod Speed — Fast, Shutdown Bank — Withdraw (pulsing); Shutdown Bank, Shutdown Rod Position (steady)]
 
 
 
-4. Confirm the turbine is tripped, nothing to press.
+4. Confirm the turbine is tripped.
 
 *A tripped turbine takes no steam, so the heat the pumps make stays in the plant.*
 
@@ -84,7 +86,7 @@ In a PWR, shutdown rod groups (shutdown banks) stay fully withdrawn during norma
 
 Suggested time warp: 1×.
 
-Note: The ring on TRIP marks the lamp to read, not a button to push. UNLOAD is not TRIP: UNLOAD walks the load setting to zero, TRIP shuts the steam valves.
+Note: TRIP is a lamp to read here, not a button to press. UNLOAD is not TRIP: UNLOAD walks the load setting to zero, TRIP shuts the steam valves.
 
 Background
 
@@ -98,7 +100,7 @@ The cold plant starts with the turbine tripped. It matters because a turbine tak
 
 *Once the water in the steam generator starts to boil, its level starts to move, and AUTO has to be holding it by then.*
 
-()5a. Set SG FEED to AUTO and check AUTO is lit.
+()5a. Press AUTO on the SG FEED card and check AUTO is lit.
 
 Suggested time warp: 1×.
 
@@ -106,11 +108,11 @@ Background
 
 The steam generator is the boiler: reactor water heats it on one side and steam comes off the other. Nothing is boiling yet, so the feed pumps start out stopped. Putting level control in AUTO now, while the plant is quiet, means it is already holding level when the water starts to boil later in the heatup.
 
-[HIGHLIGHTED: SG Feed AUTO (pulsing); SG Level (steady)]
+[HIGHLIGHTED: SG Feed AUTO (pulsing); Feed Pumps, SG Level (steady)]
 
 
 
-6. Confirm the STEAM DUMP is closed, nothing to press.
+6. Confirm the steam dump is closed.
 
 *Any steam the dump lets out is pump heat leaving the plant.*
 
@@ -119,8 +121,6 @@ The steam generator is the boiler: reactor water heats it on one side and steam 
 ()6b. Check the % beside the STEAM DUMP valve on the diagram reads 0 %.
 
 Suggested time warp: 1×.
-
-Note: The ring on CLOSE marks the lamp to read, not a button to push.
 
 Background
 
@@ -136,15 +136,13 @@ The steam dump sends steam straight to the condenser instead of the turbine. Kep
 
 ()7a. Press A+B 7 % on the LETDOWN card and check A+B 7 % is lit.
 
-()7b. Check it is A+B 7 % that is lit, not A 3 % alone.
-
 Suggested time warp: 1×.
 
 Background
 
 Water is always being pumped into the reactor loop (charging), so it always needs a way out (letdown). Right now letdown leaves through the RHR loop, and that path closes itself at 600 psi once the heaters start the pressure climb. The letdown orifices, two fixed holes, are the only way out after that; with them shut the plant would slowly fill solid.
 
-[HIGHLIGHTED: Letdown Orifices (CVCS) (pulsing); Letdown Flow (steady)]
+[HIGHLIGHTED: Letdown — A+B 7% (pulsing); Letdown Orifices (CVCS), Letdown Flow (steady)]
 
 
 
@@ -162,7 +160,7 @@ Background
 
 The pressurizer is a tank of half water, half steam that sets the pressure of the reactor loop: heaters inside the pressurizer boil water to create steam and raise pressure, spray condenses steam to lower it. The cold plant starts with both off. Spray goes in first because it is the only brake on the climb the next step starts, and a control you want in service before you need it is one you put in service while nothing is happening.
 
-[HIGHLIGHTED: Pressurizer Spray (PZR) (pulsing)]
+[HIGHLIGHTED: Pressurizer Spray — Auto (pulsing); Pressurizer Spray (PZR) (steady)]
 
 
 
@@ -182,9 +180,13 @@ Note: At 665 psi the clock drops to 1× by itself and stays there until the accu
 
 Background
 
-The heaters boil water in the pressurizer, and that steam sets the pressure of the whole reactor loop; the SET PZR PRESSURE box is already sitting at 1700 psi, the lowest it goes, so they go to full power and stay there until the plant gets near it. Pressure stops at 1700 rather than going straight to normal because of an automatic gate at 1972 psi: above that gate the emergency injection pumps re-arm, and with the steam side still cold they would fire on a healthy plant. On the way up the plant passes 665 psi, the accumulator window the next step needs.
+The heaters boil water in the pressurizer, and that steam sets the pressure of the whole reactor loop. The SET PZR PRESSURE box already reads 1700 psi, the lowest it goes, so the heaters run at full power until pressure nears it.
 
-[HIGHLIGHTED: Pressurizer Heaters (PZR) (pulsing); Primary Pressure (steady)]
+Pressure stops at 1700 psi rather than going straight to normal because of an automatic gate at 1972 psi. Above it the emergency injection pumps re-arm, and with the steam side still cold they would fire on a healthy plant.
+
+On the way up the plant passes 665 psi, the accumulator window the next step needs.
+
+[HIGHLIGHTED: Pressurizer Heater — Auto (pulsing); Pressurizer Heaters (PZR), Primary Pressure (steady)]
 
 
 
@@ -192,7 +194,7 @@ The heaters boil water in the pressurizer, and that steam sets the pressure of t
 
 *With the valve open, the accumulators stand ready to inject by themselves if loop pressure is ever lost.*
 
-()10a. Click the valve symbol inside the pulsing ring while PRIMARY PRESSURE reads 665 to 1615 psi, and check the ACCUMULATORS tile no longer reads ISOLATED.
+()10a. Open the accumulator valve while PRIMARY PRESSURE reads 665 to 1615 psi, and check the ACCUMULATORS tile no longer reads ISOLATED.
 
 Suggested time warp: 1×.
 
@@ -202,7 +204,7 @@ Background
 
 The accumulators are tanks of borated water pushed by nitrogen gas at 665 psi. They fire by themselves if loop pressure ever falls below that pressure, which is why they are kept isolated while the plant is cold. Above 1615 psi the plant removes power from the valve, so it has to be opened before that point.
 
-[HIGHLIGHTED: Accumulator valve (pulsing); Primary Pressure (steady)]
+[HIGHLIGHTED: Accumulator valve (pulsing); Accumulators, Primary Pressure (steady)]
 
 
 
@@ -272,7 +274,7 @@ Suggested time warp: 600×.
 
 Background
 
-The second stage of the pressurization. Crossing 1972 psi re-arms the emergency injection, and that is safe now because the steam side is hot: STEAM PRESS sits near 1020 psi, far above the 328 psi that would trigger it. That is why this setting waited for the heatup to finish.
+This is the second half of the pressure climb. Crossing 1972 psi re-arms the emergency injection, and that is safe now because the steam side is hot: STEAM PRESS sits near 1020 psi, far above the 328 psi that would trigger it. That is why this step waited for the heatup to finish.
 
 [HIGHLIGHTED: Pressure SP (pulsing); Primary Pressure (steady)]
 
@@ -286,19 +288,17 @@ The second stage of the pressurization. Crossing 1972 psi re-arms the emergency 
 
 ()15b. Check PRIMARY PRESSURE reads 2200 to 2270 psi. If it does not, set SET PZR PRESSURE to 2235 psi.
 
-()15c. Check CONTROL ROD POSITION still reads 0.
+()15c. Check ATMOS DUMP reads 0 %.
 
-()15d. Check ATMOS DUMP reads 0 %.
-
-()15e. Check STEAM PRESS reads near 1020 psi.
+()15d. Check STEAM PRESS reads near 1020 psi.
 
 Suggested time warp: 1×.
 
 Background
 
-Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. The control bank never moved: the pumps did all the heating. STEAM PRESS holding near 1020 psi with the ATMOS DUMP shut says the steam dump is carrying the heat, not the sky.
+Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. STEAM PRESS holding near 1020 psi with the ATMOS DUMP shut says the steam dump is carrying the heat, not the sky.
 
-[HIGHLIGHTED: Tavg, Primary Pressure, SG Pressure, Control Rod Position (steady)]
+[HIGHLIGHTED: Tavg, Primary Pressure, SG Pressure, ADV (steady)]
 
 
 
@@ -310,15 +310,19 @@ Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. Th
 
 ()16b. Check STARTUP RATE reads −0.02 to +0.02.
 
+()16c. Check CONTROL ROD POSITION reads 0.
+
+()16d. Check BORON STATUS reads HOLD.
+
 Suggested time warp: 10×.
 
-Note: SOURCE RANGE wanders by about a tenth either way with nothing moving; steady means it is not climbing, and the check-off watches it for ten plant-minutes before it ticks. STARTUP RATE on a shut-down core flickers between about −0.01 and +0.01. Either one climbing with the rods still means something is adding reactivity: stop and find out what moved.
+Note: SOURCE RANGE wanders a little with nothing moving; steady means it is not climbing, and the check-off watches it for a minute and a half of plant time. STARTUP RATE on a shut-down core flickers between about −0.01 and +0.01. A rod out or BORON STATUS reading DILUTING means something is adding reactivity: stop and find out what moved.
 
 Background
 
 There is no gauge for "how shut down" a reactor is. The signs are SOURCE RANGE counts holding at a steady background instead of climbing, and STARTUP RATE sitting at zero. With the control bank in and boron at the cold concentration, the core is a long way from critical.
 
-[HIGHLIGHTED: Source Range, Startup Rate (steady)]
+[HIGHLIGHTED: Source Range, Startup Rate, Control Rod Position, Boron Status (steady)]
 
 
 
@@ -685,3 +689,10 @@ Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`.
 - **9b's note**: the round trip starts near 50 psi or lower (52 psia measured after the cooldown's new step 11), step 9 86.1 plant-min against 49.6 on the fresh plant. **8's note**: "more than 1300 psi below" (1337 fresh, 1687 from a 13 psi start).
 - **11a's note**: Pressurizer Pressure Very Low (1800 psi, critical in Mode 3, Hot Standby) and Pressurizer Pressure Low raised at 1726 psia in this step on both chain heatups; the step ends at 1715 psia.
 - Board words: 6b (the % beside the STEAM DUMP valve), 7a/7b (A+B 7 % lit), 14 (no "gate"), 15d (ATMOS DUMP reads 0 %).
+
+### #807 record — 2026-09-26, `exp/807a` scratch lane (items 3–6 of the rc6 playtest)
+
+- **Highlights** (item 3): pulse on the button, steady ring on its card — 2 (`RCP — On` in `RCP ON/OFF`), 7 (`Letdown — A+B 7%` in the LETDOWN card), 8 (`Pressurizer Spray — Auto` in SPRAY), 9 (`Pressurizer Heater — Auto` in HEATER); cards added to 3 (SHUTDOWN), 5 (SG FEED), 10 (ACCUMULATORS), 15 (ATMOS DUMP, which 15c reads). Rendered in headless Chromium, every pulse inside its ring.
+- **No ring in step text** (item 4): 4 and 6 lose "The ring on … marks the lamp to read"; 10a reads "Open the accumulator valve while …".
+- **Step 16 in about a minute and a half** (item 5): SOURCE RANGE steady 90 s / 8 % (was 600 s / 1.2 %; 60 s / 2 % was tried and un-ticked 9-17 times in 30 held plant-minutes at 10x — gauge noise up to 4.5 % — a flashing Continue). A window that short cannot see the approach cases above (a dilution from here ticks it at 1.0–2.3 min at any tolerance down to 0.2 %), so 16c CONTROL ROD POSITION reads 0 (moved from 15) and 16d BORON STATUS reads HOLD carry that claim, both graded `~` so they re-grade. Measured, live route runtime: typical seeds 42/7/123, all four mistake routes and the round-trip heatup (3 seeds) 1.63 plant-min (was 10.1), no flash; held 30 min with nothing moving, zero un-ticks at 1x/10x/60x; a dilution or a 200-step pull started at step 16 never ticks in 30 min.
+- **Wording** (item 6): 4 and 6 drop "nothing to press" (both carry an inline press recovery); 7b folded into 7a (it restated it); 2's unmeasured "about half a percent of full power" removed; 3, 9, 14 Background rewritten plainer and in short paragraphs. Numbers NOT re-measured this pass (inherited from the records above): 600 psi RHR isolation, 1972 psi, 328 psi, 1000 psi accumulator caution, 11 gpm, 1300 psi.
