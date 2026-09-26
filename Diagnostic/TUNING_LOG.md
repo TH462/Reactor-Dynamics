@@ -29,6 +29,28 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-workbench-c (lower power 4-6 walked; the trip-block reason clears with its cause)
+
+Owner rulings 2026-09-26 (selected options): lower power 4-6 "Walk them too"; TRIP BLOCKS "Clear it". Traps only:
+
+- **A WALKED CARD IS NOT COOLER ON EVERY ENTRY.** Chained (the leg's intended entry) the walk took
+  step 4 from 585.4 to 576.5 °F and two alarms to none, step 5 from 574.6 to 568.0 °F. On the
+  `hot_full_power` preset it runs HOTTER: 576.6 -> 578.2, 567.8 -> 570.0, 561.1 -> 563.2 °F, because
+  the one cut drops power at once and the inserts wait for the tile to pass the band top. A peak
+  claim ("under about N °F") has to hold on both; `peak_check` now grades it on every route.
+- **AT 15 MWe THE ONE CUT DOES NO MEASURED HARM** (chain 563.8 against 561.5 °F, no alarm), so step
+  6 has no old-card injection. Do not tune a claim until an injection goes red. The +/-5 OUTPUT
+  mutation stayed GREEN on step 6 too (its tread noise never crossed 20.0 in time): a flash
+  injection that rides on gauge noise is proven only where it was measured red (step 4).
+- **A `~` ROW'S TOLERANCE MUST BE SMALLER THAN THE STAIR TREAD.** At +/-5 around 50 MWe the 55 MWe
+  tread met the row (54.8 on the gauge) and the next reading (55.07) un-ticked it, a flash at
+  12.7 plant-min. +/-2, as step 2.
+- **A MESSAGE THAT NAMES A CONDITION MUST GO WHEN THE CONDITION DOES.** "Pressure rose above P-11"
+  stood at 1930 psi on a cooldown. It now clears when the row's `permissive` returns. The browser
+  gate's fabricated revoke drew EVERY row `permissive: true`, a revoke the engine cannot make
+  (it revokes only on a lost permissive) and one the new rule retires on the same render: a fixture
+  must model the event, not just the flag.
+
 ## Session log — 2026-09-26-workbench-b (layman pass 7 verified: the gate pressed a button the player never would)
 
 Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`. Traps only:

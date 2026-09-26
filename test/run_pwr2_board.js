@@ -1222,22 +1222,24 @@ function runSuite(quietRec) {
      * not a fixture, it is a second source of events. `held` is the lineup; a feed mutates it. */
     var held = {};
     Object.keys(st).forEach(function (id) { held[id] = (st[id] || {}).blocked === true; });
-    function snapWith(blocks) {
+    function snapWith(blocks, perm) {
       Object.keys(blocks).forEach(function (id) { held[id] = blocks[id]; });
+      perm = perm || {};
       var c = { metadata: snapNow.metadata, instruments: snapNow.instruments,
                 true_state: snapNow.true_state, control_state: snapNow.control_state,
                 automation: snapNow.automation, alarms: snapNow.alarms,
                 rps_state: { scrammed: false, trip_blocks: {}, trip_block_status: {} } };
       Object.keys(st).forEach(function (id) {
         var src = st[id] || {}, b = held[id] === true;
-        c.rps_state.trip_block_status[id] = { blocked: b, asserted: false, permissive: src.permissive,
-                                              can_block: !b && src.permissive, can_clear: b, setpoint: src.setpoint };
+        var pm = Object.prototype.hasOwnProperty.call(perm, id) ? perm[id] : src.permissive;
+        c.rps_state.trip_block_status[id] = { blocked: b, asserted: false, permissive: pm,
+                                              can_block: !b && pm, can_clear: b, setpoint: src.setpoint };
         if (b) c.rps_state.trip_blocks[id] = true;
       });
       return c;
     }
     var D2 = RD.PwrBoardDriver;
-    function feed(blocks) { D2.afterRender(snapWith(blocks)); }
+    function feed(blocks, perm) { D2.afterRender(snapWith(blocks, perm)); }
     function msgFor(id) {
       var m = D2.tripBlockMessages().filter(function (r) { return r.id === id; })[0];
       return m || null;
@@ -1266,6 +1268,15 @@ function runSuite(quietRec) {
     q('msg: acknowledging stops the flash', D2.tripBlockUnacked() === false);
     q('msg: …but the message SURVIVES it — an acked message still says the trip is live',
       !!(m2 && m2.msg), m2 ? m2.msg : 'message was destroyed by the acknowledge');
+
+    /* (3b) THE REASON CLEARS WHEN IT STOPS BEING TRUE *(OWNER RULING, 2026-09-26, selected "Clear
+     * it": "The message disappears once the permissive allows blocking again, so the panel only
+     * shows reasons that are currently true.")*. Still unblocked, P-11 back (a cooldown under
+     * 1972 psia): the message goes. INJECTION: without the clear, m2b still carries the text. */
+    feed({ lo_press: false }, { lo_press: true });
+    var m2b = msgFor('lo_press');
+    q('msg: the message CLEARS once the permissive allows blocking again (the reason is no longer true)',
+      !(m2b && m2b.msg), m2b ? m2b.msg : 'cleared');
 
     /* (4) A NEW EVENT AFTER AN ACKNOWLEDGE FLASHES AGAIN. This is the check that fails if the
      * acknowledge is ever written as a time window or as a global "seen" flag. */

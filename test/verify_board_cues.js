@@ -145,7 +145,12 @@ var TOOLKIT = [
   '    var st = {}, blocks = {};',
   '    Object.keys(live).forEach(function (id) {',
   '      var b = Object.prototype.hasOwnProperty.call(over, id) ? !!over[id] : live[id].blocked === true;',
-  '      st[id] = { blocked: b, permissive: true, asserted: false, can_block: true, can_clear: true };',
+  /* a row this call names takes `permissive` = its blocked state: the plant only takes a block
+   * when the permissive is LOST, and since 2026-09-26 (owner ruling "Clear it") a released row
+   * whose permissive reads true clears its message on the same render — the old `permissive: true`
+   * for every row would fabricate a revoke the rule instantly retires */
+  '      var pm = Object.prototype.hasOwnProperty.call(over, id) ? b : live[id].permissive === true;',
+  '      st[id] = { blocked: b, permissive: pm, asserted: false, can_block: !b && pm, can_clear: true };',
   '      if (b) blocks[id] = true;',
   '    });',
   '    s.rps_state.trip_block_status = st;',
@@ -717,6 +722,44 @@ var TOOLKIT = [
     !/\bbd-sub-msg\b/.test(rAgain.row.cls) && rAgain.row.color !== AMBER &&
       /RELEASED BY THE PLANT/.test(rAgain.row.text),
     rAgain.row.cls + ' / ' + rAgain.row.color);
+
+  /* THE REASON GOES WHEN IT STOPS BEING TRUE *(OWNER RULING, 2026-09-26, selected "Clear it": "The
+   * message disappears once the permissive allows blocking again, so the panel only shows reasons
+   * that are currently true.")*. Layman pass 7 read "pressure rose above the shutdown permissive
+   * (P-11)" at 1930 psi on a cooldown. The card is left OPEN through a real depressurization back
+   * under P-11 and read at or below 1930 psia (true): no P-11 message, no line on the row, none in
+   * the status count, and no row moved (the pass-5 height hold). INJECTION: without the clear in
+   * `noteTripBlockEvents` both messages stand and the first check reads 2. */
+  await page.waitForTimeout(320);
+  var clr0 = await page.evaluate(function () {
+    var o = {}; [].slice.call(document.querySelectorAll('.bd-pop button[data-trip]')).forEach(function (b) {
+      o[b.getAttribute('data-trip')] = b.parentNode.getBoundingClientRect().y; });
+    window.__c.cmd({ action: 'set_pressure_setpoint', mpa: 13.31 });   // 1930 psia, the pass-7 reading
+    return o;
+  });
+  var perm = null, low = null, lastOut = null;
+  for (var ci = 0; ci < 400 && !low; ci++) {   // 6 plant-s a read
+    var cq = await page.evaluate(function () { return window.__c.adv(1, 60); });
+    if (!perm && cq.st.lo_press && cq.st.lo_press.permissive === true) perm = cq;
+    if (!perm) lastOut = cq;
+    if (perm && cq.mpa * 145.038 <= 1935) low = cq;
+  }
+  await page.waitForTimeout(400);
+  var clr = await page.evaluate(function (y0) {
+    var worst = 0; [].slice.call(document.querySelectorAll('.bd-pop button[data-trip]')).forEach(function (b) {
+      var k = b.getAttribute('data-trip'); if (y0[k] != null) worst = Math.max(worst, Math.abs(b.parentNode.getBoundingClientRect().y - y0[k])); });
+    return { msgs: RD.PwrBoardDriver.tripBlockMessages(), row: window.__c.row('lo_press'), si: window.__c.row('si_trip'),
+             status: window.__c.status(), open: !!document.querySelector('.bd-pop'), worst: +worst.toFixed(2) };
+  }, clr0);
+  ck('back under P-11 at 1930 psi, the stale "pressure rose above P-11" is GONE (owner ruling 2026-09-26, "Clear it")',
+    !!low && clr.open && clr.msgs.filter(function (m) { return /P-11/.test(m.msg || ''); }).length === 0 &&
+      !/RELEASED BY THE PLANT/.test(clr.row.text) && !/RELEASED BY THE PLANT/.test(clr.si.text),
+    (perm ? 'permissive back between ' + (lastOut ? (lastOut.mpa * 145.038).toFixed(0) : '?') + ' and ' + (perm.mpa * 145.038).toFixed(0) + ' psia' : 'P-11 never came back') +
+      (low ? ', read at ' + (low.mpa * 145.038).toFixed(0) + ' psia (' + low.mpa.toFixed(2) + ' MPa)' : '') +
+      ' · P-11 messages ' + clr.msgs.filter(function (m) { return /P-11/.test(m.msg || ''); }).length);
+  ck('  …and the card\'s status count carries only current reasons, with no row moved under the cursor',
+    !!low && !/RELEASED BY THE PLANT/.test(clr.status.text) && clr.worst < 1,
+    clr.status.text + ' · largest row move ' + clr.worst + ' px');
   await page.evaluate(function () { window.__c.click('imrsk4xz2dm'); });
 
   // ============================================================ 5. the two walkthrough highlights

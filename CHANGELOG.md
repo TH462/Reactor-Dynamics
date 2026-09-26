@@ -31,6 +31,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Walkthroughs: lower power 4-6 walked** (2026-09-26, owner ruling "Walk them too"; AGENT-DRAFTED
+  wording). LOAD comes down 5 MWe a plant-minute with 3-step inserts above the band top, as step 2;
+  OUTPUT rows +/-2 MWe; replay ramps at the card's pace. Chain peaks: step 4 585.4 -> 576.5 °F
+  (Pressurizer Pressure High and SG Pressure High -> none), step 5 574.6 -> 568.0 °F (SG Pressure
+  High -> none), step 6 563.8 -> 561.5 °F. `run_walkthrough_routes`: `peak` verdict (a note's
+  "under about N °F"), injections `lower_load_step4`, `lower_load_step5`, `lower_output_tol4` (step 6's one cut does no
+  measured harm, so it has none).
+- **TRIP BLOCKS: a "released by the plant" reason clears once its permissive allows blocking again**
+  (2026-09-26, owner ruling "Clear it"), and the card's count with it. Gated in `run_pwr2_board`
+  and, on a real depressurization under P-11, `verify_board_cues`.
 - **Walkthroughs: layman pass 7** (2026-09-26, AGENT-DRAFTED wording, record
   `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`). Raise power 4b-8b grade the
   temperature, not a rod press, and are conditional (5b soft-locked with the gauge in band); pulls

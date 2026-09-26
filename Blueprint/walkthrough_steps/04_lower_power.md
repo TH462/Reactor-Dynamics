@@ -87,17 +87,19 @@ The load drop left the reactor hot: it settles above its program until rods take
 
 *Each load drop is the same pair of moves, turbine first and rods second, so the temperature never sits hot above its band.*
 
-()4a. Set LOAD to 50 MW and wait for OUTPUT to settle near 50 MW.
+()4a. Lower LOAD 5 MW at a time, one plant-minute apart, to 50 MW: 70, 65, 60, 55, 50.
 
-()4b. Watch REACTOR POWER follow the load down through 70 %.
-
-Suggested time warp: 10×.
-
-()4c. Insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.
+()4b. After each cut, if AVG COOLANT TEMPERATURE reads above 569 °F, insert 3 steps at MED. Watch REACTOR POWER follow the load down through 70 %.
 
 Suggested time warp: 5×.
 
-Note: About 20 to 65 steps at MED.
+Note: The load comes off over about five plant-minutes and power walks down behind it; the 3-step inserts hold AVG COOLANT TEMPERATURE under about 580 °F. Taken in one cut after the raise-power walkthrough, 75 to 50 MW at once, it climbs to about 585 °F and brings in the Pressurizer Pressure High and Steam Generator Pressure High alarms.
+
+()4c. Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.
+
+Suggested time warp: 5×.
+
+Note: About 20 to 30 steps at MED in all, the inserts after each cut included.
 
 
 
@@ -113,17 +115,19 @@ Same order: LOAD first, then rods, so the temperature does not sit hot above its
 
 *Lower power needs smaller rod moves, and the band keeps walking down toward its no-load value.*
 
-()5a. Set LOAD to 30 MW and wait for OUTPUT to settle near 30 MW.
+()5a. Lower LOAD 5 MW at a time, one plant-minute apart, to 30 MW: 45, 40, 35, 30.
 
-()5b. Watch REACTOR POWER follow the load down through 45 %.
-
-Suggested time warp: 10×.
-
-()5c. Insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.
+()5b. After each cut, if AVG COOLANT TEMPERATURE reads above 562 °F, insert 3 steps at MED. Watch REACTOR POWER follow the load down through 45 %.
 
 Suggested time warp: 5×.
 
-Note: About 10 to 45 steps at MED.
+Note: The load comes off over about four plant-minutes; the 3-step inserts hold AVG COOLANT TEMPERATURE under about 572 °F. Taken in one cut after the raise-power walkthrough, 50 to 30 MW at once, it climbs to about 575 °F and brings in the Steam Generator Pressure High alarm.
+
+()5c. Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.
+
+Suggested time warp: 5×.
+
+Note: About 15 to 25 steps at MED in all, the inserts after each cut included.
 
 
 
@@ -139,19 +143,19 @@ Lower power needs smaller rod moves. The band is walking back down toward 547 °
 
 *About 15 % is where the shutdown walkthrough trips the reactor, so this leg ends there.*
 
-()6a. Set LOAD to 15 MW and wait for OUTPUT to settle near 15 MW.
+()6a. Lower LOAD 5 MW at a time, one plant-minute apart, to 15 MW: 25, 20, 15.
 
-()6b. Check REACTOR POWER reads below 40 %.
-
-Suggested time warp: 10×.
-
-Note: Power keeps falling as the boration finishes; the rod trims in 6c take it to about 15 %.
-
-()6c. Insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.
+()6b. After each cut, if AVG COOLANT TEMPERATURE reads above 557 °F, insert 3 steps at MED. Check REACTOR POWER reads below 40 %.
 
 Suggested time warp: 5×.
 
-Note: About 6 to 40 steps at MED. Stop here; the shutdown walkthrough takes over.
+Note: The load comes off over about three plant-minutes; the 3-step inserts hold AVG COOLANT TEMPERATURE under about 565 °F. Power keeps falling as the boration finishes; the rod trims take it to about 15 %.
+
+()6c. Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.
+
+Suggested time warp: 5×.
+
+Note: About 10 to 15 steps at MED in all, the inserts after each cut included. Stop here; the shutdown walkthrough takes over.
 
 
 
@@ -401,3 +405,24 @@ plant's. On the chain the one 25 MWe cut peaked the tile at 595.3 °F with six a
 5 MWe a plant-minute with 3-step inserts above 577 °F peaked 581.8 °F with none (rods held still:
 590.8 °F). Load still leads every cut. 3's range "15 to 75" became "5 to 75" (6-15 measured).
 Steps 4-6 are the same shape and were not reworked (step 4, chain: 587.9 °F, two alarms).
+
+
+### Steps 4-6 walked — 2026-09-26, workbench-c (the owner selected "Walk them too"; wording AGENT-DRAFTED)
+
+*(Owner, 2026-09-26, the option he selected: "5 MW per plant-minute with inserts, the same pace as
+step 2. That is the sourced 5 %-a-minute design ramp, and it gives the whole leg one pace.")*
+4a/5a/6a walk LOAD 5 MW a plant-minute; 4b/5b/6b insert 3 steps after each cut above the band top
+the c row names (569 / 562 / 557 °F); c keeps the same pulls until the tile reads under it. OUTPUT
+rows +/-2 MW (at +/-5 the 55 MW tread met the 50 MW row and un-ticked it). Measured,
+`run_walkthrough_routes` seed 42, peak AVG COOLANT TEMPERATURE per step, one cut -> walked:
+
+| step | chain | preset (`hot_full_power`) | rods inserted, walked (chain / preset) |
+|---|---|---|---|
+| 4 | 585.4 -> 576.5 °F; PZR PRESS HIGH + SG PRESS HIGH -> none | 576.6 -> 578.2 °F | 21 / 27 |
+| 5 | 574.6 -> 568.0 °F; SG PRESS HIGH (+ PZR PRESS LOW) -> none | 567.8 -> 570.0 °F | 15 / 21 |
+| 6 | 563.8 -> 561.5 °F; none -> none | 561.1 -> 563.2 °F | 12 / 15 |
+
+The notes' "under about 580 / 572 / 565 °F" cover the hotter preset. Leg: 22.6 plant-min chained,
+29.3 preset (purpose now "about 20 to 50"). The replay's `ramp` walks at the card's pace (points
+60 s apart, then holds the target); its trim is still the boration, 0 steps.
+

@@ -58,6 +58,9 @@ var PASS_S = 10;
 var ACK_S = +(process.env.WR_ACK_S || 3);   // the player notices a lit Continue after this many plant-seconds (WR_ACK_S: a measurement knob, never the gate)
 var BOUND_FLOOR_S = 1800;
 var CMDWAIT_S = 120;    // a rod row waited on with every graded row met (pass 7 S-1: 3 plant-min dark)
+/* lower power: the alarms a load cut taken at once raised on the chain (layman pass 7; SG PRESS HIGH
+ * at step 4, 2026-09-26) */
+var LP_FORBID = ['pzr_pressure_high', 'high_tavg', 'heatup_rate_high', 'sg_press_high'];
 
 /* ================================ THE ROUTE TABLES ====================================== */
 /* Policies: default | final (a ramp step's end value, typed once) | pull_plot{to,speed,plot_rate,repeat} | approach{short,min_rate,max_rate,
@@ -218,7 +221,8 @@ var ROUTES = {
     ],
   },
   pwr_lower_power: {
-    forbid_raise: { '#2': ['pzr_pressure_high', 'high_tavg', 'heatup_rate_high'], '#3': ['pzr_pressure_high', 'high_tavg', 'heatup_rate_high'] },
+    forbid_raise: { '#2': LP_FORBID, '#3': LP_FORBID, '#4': LP_FORBID, '#5': LP_FORBID, '#6': LP_FORBID },
+    peak_check: true,   // 2026-09-26: "under about N °F" in a step's note is graded (verdict `peak`)
     /* 2026-09-25 (layman pass 4; pace ruled "about 3 steps, one plant-minute apart" the same day,
      * workbench-h): "insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG
      * COOLANT TEMPERATURE is back in its band" — the player stops at the first
@@ -228,9 +232,13 @@ var ROUTES = {
        * whenever the tile reads above 577 degF; the alarms that one 25 MW cut raised are forbidden */
       '#2': { policy: 'load_stair', from: 100, to: 75, step: 5, wait_s: 60, ins_above: 577, pull: 3, dwell: 60 },
       '#3': { policy: 'to_band', tref: 576, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
-      'cmd:set_load_target:2': { policy: 'to_band', tref: 567, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
-      'cmd:set_load_target:3': { policy: 'to_band', tref: 561, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
-      'cmd:set_load_target:4': { policy: 'to_band', tref: 556, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
+      /* OWNER RULING 2026-09-26 ("Walk them too"): 4-6 walk LOAD the same way, 5 MW a plant-minute,
+       * 3-step inserts whenever the tile reads above the band top the step's c row names, and the
+       * inserts go on after the last cut until it reads under it (c). The OLD one-cut routes are
+       * the injections `lower_load_step4/5/6` below. */
+      '#4': { policy: 'load_stair', from: 75, to: 50, step: 5, wait_s: 60, ins_above: 569, pull: 3, dwell: 60 },
+      '#5': { policy: 'load_stair', from: 50, to: 30, step: 5, wait_s: 60, ins_above: 562, pull: 3, dwell: 60 },
+      '#6': { policy: 'load_stair', from: 30, to: 15, step: 5, wait_s: 60, ins_above: 557, pull: 3, dwell: 60 },
     },
     mistakes: [
       { id: 'double_load75', kind: 'double press', at: 'cmd:set_load_target', set: { repeat: 2 } },
@@ -431,6 +439,26 @@ var MUTATIONS = [
   /* LAYMAN PASS 7 (2026-09-26) S-5: lower-power 2 as the old card read it, LOAD 100 -> 75 MW at once and
    * the rods left alone. MEASURED on the chain: tile 595.3 degF, Pressurizer Pressure High, High
    * Coolant Temperature and Heatup Rate High in steps 2-3. */
+  /* OWNER RULING 2026-09-26 ("Walk them too"): lower-power 4/5/6 as the OLD card read them -- LOAD
+   * straight to 50/30/15 MW, then 3-step inserts a plant-minute apart to the band top. MEASURED on
+   * the chain (walked -> one cut): step 4 576.5 -> 585.4 degF with Pressurizer Pressure High and
+   * SG Pressure High; step 5 568.0 -> 574.6 degF (card: "under about 572") with SG Pressure High;
+   * step 6 561.5 -> 563.8 degF, no alarm -- the one cut does no measured harm at 15 MW and step 6
+   * has NO old-card injection (none goes red honestly). The OTHER half of the change is proven on
+   * step 4: its OUTPUT row back at +/-5, where the 55 MW tread (54.8 on the gauge) meets it and the
+   * next reading (55.07) un-ticks it, MEASURED 6.5 s met. The same mutation on step 6 stayed green
+   * (the 20 MW tread's noise did not cross 20.0 inside PASS_S), so it is not claimed there. */
+  { id: 'lower_load_step4', chain: true, leg: 'pwr_lower_power', route: 'chain', expect: 'forbid',
+    why: 'lower-power 4 as one 25 MW cut, then the trim (585 degF, two high-pressure alarms)',
+    mutate: function (P) { delete P.steps[3].ramp; },   // the old card: LOAD typed once, no walk
+    override: { '#4': { policy: 'to_band', tref: 567, dead: 0, dir: 'insert', pull: 3, dwell: 60 } } },
+  { id: 'lower_load_step5', chain: true, leg: 'pwr_lower_power', route: 'chain', expect: 'peak',
+    why: 'lower-power 5 as one 20 MW cut, then the trim (575 degF against the card, under about 572)',
+    mutate: function (P) { delete P.steps[4].ramp; },   // the old card: LOAD typed once, no walk
+    override: { '#5': { policy: 'to_band', tref: 561, dead: 0, dir: 'insert', pull: 3, dwell: 60 } } },
+  { id: 'lower_output_tol4', leg: 'pwr_lower_power', route: 'typical', expect: 'flash',
+    why: 'lower-power 4a OUTPUT row back at +/-5 MW (the 55 MW tread ticks it, the next reading un-ticks it)',
+    mutate: function (P) { P.steps[3].accs[0].tol = 5; } },
   { id: 'lower_load_step', chain: true, leg: 'pwr_lower_power', route: 'chain', expect: 'forbid',
     why: 'lower-power 2 as one 25 MW cut with the rods left alone (pass 7: 596 degF and four unwarned alarms)',
     override: { '#2': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 75 }] } } },
@@ -606,6 +634,10 @@ function runJob(legId, routeId, mutId, ctx) {
       /* pass 6: "settle(s) on N degF" (settle_check) and the alarms a step must not raise (forbid_raise) */
       var stx = [st.text].concat((st.accs || []).map(function (e) { return e.ask || ''; })).join(' '), sm = /settles? (?:the temperature )?on (\d{3}) °F/.exec(stx);
       if (table.settle_check && sm) out[k].settle = +sm[1];
+      /* 2026-09-26 (lower-power 4-6 walked, owner ruling "Walk them too"): a note that says the tile
+       * stays "under about N °F" is a peak claim, graded on the player route (`peak_check`) */
+      var ntx = [st.note || ''].concat((st.accs || []).map(function (e) { return e.note || ''; })).join(' '), pk = /under about (\d{3}) °F/.exec(ntx);
+      if (table.peak_check && pk) out[k].peak_max = +pk[1];
       Object.keys(table.forbid_raise || {}).forEach(function (fk) { if (resolveKey(proc, fk) === k) out[k].forbid = table.forbid_raise[fk]; });
       S.alarm0 = activeAlarms();
     }
@@ -1096,6 +1128,10 @@ function verdicts(r) {
   if ((r.steps || []).some(function (st) { return st.settle != null; }))
     v.settle = { ok: st8.length === 0, name: 'a step that says "settle on N degF" completes within 5.4 degF of N',
       note: st8.length ? st8.map(function (st) { return 'step ' + st.n + ' done at ' + f(st.at_done.tavg_F) + ' degF against ' + st.settle; }).join('; ') : 'all inside' };
+  var pkx = (r.steps || []).filter(function (st) { return st.peak_max != null && st.thi != null && st.thi > st.peak_max; });
+  if ((r.steps || []).some(function (st) { return st.peak_max != null; }))
+    v.peak = { ok: pkx.length === 0, name: 'a step whose note says AVG COOLANT TEMPERATURE stays "under about N °F" stays under N on the player route',
+      note: pkx.length ? pkx.map(function (st) { return 'step ' + st.n + ' peaked ' + f(st.thi) + ' degF against ' + st.peak_max; }).join('; ') : 'all under' };
   var fb = [];
   (r.steps || []).forEach(function (st) { (st.forbid || []).forEach(function (id) { (st.raised || []).forEach(function (a) { if (a.indexOf(id + '@') === 0) fb.push('step ' + st.n + ' ' + a); }); }); });
   if ((r.steps || []).some(function (st) { return st.forbid; }))
