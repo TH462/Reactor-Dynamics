@@ -62,7 +62,7 @@ Two automatic protections watch for falling pressure, because on a running plant
 
 ()3b. Press BLOCK on the SI REACTOR TRIP row. Check the row reads BLOCKED.
 
-()3c. Press STOP on the ECCS card.
+()3c. Press STOP on the ECCS card. It is usually lit already, because STOP is what the card shows while the pump is idle: press it anyway, so the walkthrough records it.
 
 Suggested time warp: 1×.
 
@@ -88,7 +88,7 @@ Note: In TAVG mode the setpoint does nothing.
 
 Suggested time warp: 60×.
 
-Note: Steps of 50 psi down to 720, then 25 psi down to 270, then 15 psi: near the bottom the same 50 psi cools about four times as far, and one big jump sets off the Cooldown Rate High alarm and empties the pressurizer. Wait about 6 plant-minutes between steps, timed on the plant clock, not in seconds on your own: 4 plant-minutes apart sets off the Cooldown Rate High alarm. The temperature never quite stops falling, so do not wait for it to. Near the bottom the Shutdown Cooling Not In Service alarm comes in as the plant enters Mode 4: expected, RHR goes in service at step 9. About three and a half hours in all. Low Coolant Temperature comes in near 530 °F: expected on a cooldown, and it becomes an expected-status tile below 350 °F.
+Note: Steps of 50 psi down to 720, then 25 psi down to 270, then 15 psi: near the bottom the same 50 psi cools about four times as far, and one big jump sets off the Cooldown Rate High alarm and empties the pressurizer. Wait about 6 plant-minutes between steps, timed on the plant clock, not in seconds on your own: 4 plant-minutes apart sets off the Cooldown Rate High alarm. The temperature never quite stops falling, so do not wait for it to. Near the bottom the Shutdown Cooling Not In Service alarm comes in as the plant enters Mode 4: expected, RHR goes in service at step 9. About three and a half hours in all. Low Coolant Temperature comes in near 530 °F: expected on a cooldown, and it becomes an expected-status tile below 350 °F. The clock moves to 60× by itself once your first new setpoint goes in.
 
 Background
 
@@ -224,7 +224,7 @@ With RHR circulating, the reactor coolant pumps are only adding heat, so they co
 
 Suggested time warp: 60×: at 600× the margin can fall 10 °F between two glances.
 
-Note: The spray is still running and keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it much earlier and pressure climbs back over the RHR limit.
+Note: The spray is still running and keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it much earlier and pressure climbs back over the RHR limit. The clock moves to 60× by itself once HX SPLIT is raised.
 
 ()11b. Wait for AVG COOLANT TEMPERATURE to read below 199 °F.
 
@@ -727,3 +727,12 @@ Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`. 3 Background
 2a and 5a name Pressure Relief Valve Open (open 11 s and 5 s, same channel as the diagram's PORV
 label) and Pressurizer Pressure Low; 4b names Low Coolant Temperature (tile 530.5 °F at the alarm,
 setpoint 532.4 °F). Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`.
+
+### Layman pass 8 record — 2026-09-26, workbench-d (AGENT-DRAFTED)
+
+- 3c: STOP is usually lit already; the row is a press (no observable behind an idle pump), so the
+  text now says to press it anyway rather than "check it is lit", which would strand the row.
+- 4b and 11a: one sentence each saying the clock moves to 60× by itself after the first entry.
+  Measured in the browser: 1× on entry, 60× 2.5 s after a typed DUMP SETPOINT / HX SPLIT.
+- 11: one "Suggested time warp: 600×." line (the step-level `speed_text` duplicated 11b's).
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`.

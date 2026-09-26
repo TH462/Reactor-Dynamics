@@ -29,6 +29,25 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-workbench-d (layman pass 8 verified: the non-startup findings)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`. Startup findings (S-1..S-3) are develop's lane. Traps only:
+
+- **"THE SPEED WAS NOT SET FOR ME" CAN BE THE DESIGN WORKING, UNANNOUNCED.** Cooldown 4 and 11 hold
+  1× until the step's own command lands, then go to 60× (measured in the browser, 2.5 s after one
+  typed entry). The reviewer pressed 60× first because `wait_hint: false` hides the line that says
+  so. Measure the driver before touching the matcher; the fix was one sentence per Note.
+- **"BELOW X" MUST GRADE THE RENDER FLOOR, NOT X.** A `< X` threshold on a `toFixed(0)` tile ticks
+  while the tile still prints X (561.9 °F reads "562" against "below 562"). Grade X - 0.5. The mirror
+  of #749's floor rule: there the box was dark at the target, here it was lit at the limit.
+  `run_checklist_pwr2`'s #739 tie asserted threshold == band top and so PINNED the defect; it now
+  derives the render floor of the band top and ties the label too.
+- **A FIXTURE THAT JUMPS TO A STEP MUST REPRODUCE THE ROUTE'S LINEUP.** The standalone
+  `pwr_cooldown` boots with the dump in TAVG and the turbine latched, so 4a never met and the probe
+  read 1× after the entry — a false "defect" until the turbine was tripped, as the chain has it.
+- **A PRESS-ONLY ROW CANNOT BE REWORDED TO "CHECK IT IS LIT".** Cooldown 3c has no predicate (#741);
+  "check STOP is lit; if not, press it" would strand every player who only checks.
+
 ## Session log — 2026-09-26-workbench-c (lower power 4-6 walked; the trip-block reason clears with its cause)
 
 Owner rulings 2026-09-26 (selected options): lower power 4-6 "Walk them too"; TRIP BLOCKS "Clear it". Traps only:

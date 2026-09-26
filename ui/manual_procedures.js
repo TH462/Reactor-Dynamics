@@ -1890,7 +1890,7 @@
               wait_speed: 1, label: 'AUTO lit under HEATER' },
             { p: 'pressure_mpa', op: '>', v: 4.585,
               ask: 'Wait while PRIMARY PRESSURE climbs to 665 psi.',
-              note: 'At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open. Coming from the cooldown the plant starts near 240 psi, not 363, and the climb takes about an hour of plant time; from under 50 psi it takes an hour and a half or more. The Shutdown Cooling Not In Service alarm comes in on the way up, near 600 psi: expected on a heatup, not a fault.',
+              note: 'At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open. Coming from the cooldown the plant starts near 240 psi, not 363, and the climb takes about an hour of plant time; from under 50 psi it takes an hour and a half or more. The Shutdown Cooling Not In Service alarm comes in on the way up, near 600 psi: expected on a heatup, not a fault. Pressurizer Level Above Program comes in near the top of the climb, about when the clock drops to 1×: expected, and it clears by itself partway through the heat-up.',
               wait_speed: 600, label: 'PRIMARY PRESSURE at 665 psi, the accumulator window' },
           ],
           /* ⚠ THIS STEP'S OWN ALARM DOES NOT INTERRUPT FAST-FORWARD *(OWNER RULING, 2026-09-14:
@@ -1973,7 +1973,7 @@
           why: 'The accumulators are tanks of borated water pushed by nitrogen gas at 665 psi. They fire by themselves if loop pressure ever falls below that pressure, which is why they are kept isolated while the plant is cold. Above 1615 psi the plant removes power from the valve, so it has to be opened before that point.',
           aim: 'With the valve open, the accumulators stand ready to inject by themselves if loop pressure is ever lost.',
           wait_speed: 1, speed_text: true,
-          note: 'Above 1615 psi the valve locks, and the ACCUMULATORS caution is expected until pressure passes 1000 psi. If the window is missed: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO. Pressurizer Level Above Program comes in about here: expected, and it clears by itself partway through the heat-up.',
+          note: 'Above 1615 psi the valve locks, and the ACCUMULATORS caution is expected until pressure passes 1000 psi. If the window is missed: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO.',
           control: 'Accumulator valve', target: 'ACCUMULATORS tile no longer reads ISOLATED',
           cmd: { action: 'open_accumulator_valve' }, hold: 10,
           accs: [{ p: 'accumulator_valve_open', op: '>', v: 0,
@@ -4138,8 +4138,8 @@
                   * not a press. The press-only "Rods withdrawn" never ticked when the gauge stayed in its band (pass 7
                   * stage 5, 561-563 degF): conditional, as 10-11 are (ruling 2026-09-25 "Make them conditional"). */
                  { p: 'tavg_c', op: '~', v: 294.75, tol: 7.25,
-                   ask: 'If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, about 20 steps. Otherwise leave the rods.',
-                   note: 'MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is the temperature the plant is meant to hold at the power it is making, near 556 °F here. It rises with load, from 547 °F at no load to 578 °F at 100 %. Temperature below the band: withdraw. Above: insert. The tile trails the rods: the gauge keeps rising about 2 °F for a minute after each pull, so read it again before the next one. Held straight through instead, it keeps rising 5 to 8 °F after you let go. Read the gauge, not the count: while the boron dilution is still running it does part of the work, and the pull comes out shorter. The plant trips on temperature before it trips on power: keep AVG COOLANT TEMPERATURE under 590 °F on every stage.',
+                   ask: 'If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 5 to 20 steps. Otherwise leave the rods.',
+                   note: 'MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is the temperature the plant is meant to hold at the power it is making, near 556 °F here. The check-off accepts 550 to 576 °F, wider than the green band: aim for the green, not the tick. It rises with load, from 547 °F at no load to 578 °F at 100 %. Temperature below the band: withdraw. Above: insert. The tile trails the rods: the gauge keeps rising about 2 °F for a minute after each pull, so read it again before the next one. Held straight through instead, it keeps rising 5 to 8 °F after you let go. Read the gauge, not the count: while the boron dilution is still running it does part of the work, and the pull comes out shorter. The plant trips on temperature before it trips on power: keep AVG COOLANT TEMPERATURE under 590 °F on every stage.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 550 and 576 °F (the band is near 556)' },
                  { p: 'mwe_output', op: '>', v: 28,
                    ask: 'Check OUTPUT reads 30 MW and REACTOR POWER is near 30 %.',
@@ -4162,8 +4162,8 @@
                    ask: 'Set LOAD to 50 MW.',
                    wait_speed: 1, label: 'LOAD set to 50 MW' },
                  { p: 'tavg_c', op: '~', v: 297, tol: 9,
-                   ask: 'If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, about 20 steps. Otherwise leave the rods.',
-                   note: 'The band is near 562 °F at this load. The Control Rods — Approaching Insertion Limit alarm may come in during this stage or the next: expected, the bank is low because boron is carrying the climb, and it clears as xenon builds and you walk the bank up. PRIMARY PRESSURE can sag under 2150 psi during this stage, bringing in Pressurizer Pressure Low: the heaters bring it back within about three plant-minutes.',
+                   ask: 'If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, about 10 steps. Otherwise leave the rods.',
+                   note: 'The green band is near 562 °F at this load; the check-off accepts 550 to 583 °F, so aim for the green, not the tick. The Control Rods — Approaching Insertion Limit alarm may come in during this stage or the next: expected, the bank is low because boron is carrying the climb, and it clears as xenon builds and you walk the bank up. PRIMARY PRESSURE can sag under 2150 psi during this stage, bringing in Pressurizer Pressure Low: the heaters bring it back within about three plant-minutes.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 550 and 583 °F (the band is near 562)' },
                  { p: 'mwe_output', op: '>', v: 48,
                    ask: 'Check OUTPUT reads 50 MW and REACTOR POWER is near 50 %.',
@@ -4181,8 +4181,8 @@
                    ask: 'Set LOAD to 75 MW.',
                    wait_speed: 1, label: 'LOAD set to 75 MW' },
                  { p: 'tavg_c', op: '~', v: 300, tol: 7.5,
-                   ask: 'If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, about 25 steps. Otherwise leave the rods.',
-                   note: 'The band is near 570 °F at this load. Control Rods — Insertion Limit may follow the Approaching alarm during this stage: expected for the same reason, and it clears as you walk the bank up.',
+                   ask: 'If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 20 to 25 steps. Otherwise leave the rods.',
+                   note: 'The green band is near 570 °F at this load; the check-off accepts 558 to 585 °F, so aim for the green, not the tick. Control Rods — Insertion Limit may follow the Approaching alarm during this stage: expected for the same reason, and it clears as you walk the bank up.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 558 and 585 °F (the band is near 570)' },
                  { p: 'mwe_output', op: '>', v: 72,
                    ask: 'Check OUTPUT reads 75 MW and REACTOR POWER is near 75 %.',
@@ -4201,7 +4201,7 @@
                    wait_speed: 1, label: 'LOAD set to 90 MW' },
                  { p: 'tavg_c', op: '~', v: 301.5, tol: 6,
                    ask: 'If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, about 15 steps. Otherwise leave the rods.',
-                   note: 'The band is near 575 °F at this load, and the pulls get smaller from here: above 103 % power the plant stops the rods. If LOAD changes by itself, the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.',
+                   note: 'The green band is near 575 °F at this load and the check-off accepts 564 to 585 °F, so aim for the green, not the tick. The pulls get smaller from here: above 103 % power the plant stops the rods. If LOAD changes by itself, the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 564 and 585 °F (the band is near 575)' },
                  { p: 'mwe_output', op: '>', v: 86,
                    ask: 'Check OUTPUT reads 90 MW.',
@@ -4231,7 +4231,7 @@
                  /* v 302.78 -> 303.33 (layman pass 7, 2026-09-26): 302.78 degC is 577.0 degF, so the band was
                   * 572-582 degF, not the 573-583 its label and pass 6 named; a slow pull ticked at 572.4. */
                  { p: 'tavg_c', op: '~', v: 303.33, tol: 2.78,
-                   ask: 'If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it settles on 578 °F, about 15 steps. Otherwise leave the rods.',
+                   ask: 'If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it settles on 578 °F, 15 to 25 steps. Otherwise leave the rods.',
                    note: 'Above 103 % REACTOR POWER the plant stops rod withdrawal, and the step to 100 MW can carry power past it: if CONTROL ROD POSITION stops moving during a pull, wait for REACTOR POWER to settle back under 103 %, then pull again.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 573 and 583 °F (near 578)' },
                  { p: 'mwe_output', op: '>', v: 97,
@@ -4516,7 +4516,7 @@
           hl: ['Boron Target'], hl_watch: ['Boron Concentration', 'Tavg'] },
         { text: 'Hold full power on program while xenon builds.',
           aim: 'Xenon keeps building for two plant-days, so full power is held by hand until it levels off.',
-          note: 'Keep trimming for the next two plant-days.',
+          note: 'This walkthrough ends here, and nothing on this card waits for the xenon. Stay at full power instead and the trimming in steps 10 and 11 goes on for about two plant-days.',
           wait_speed: 1, speed_text: true,
           accs: [{ p: 'mwe_output', op: '>', v: 97,
                    ask: 'Check OUTPUT still reads 100 MW.',
@@ -4665,7 +4665,12 @@
            * window is shorter than that span, because the tile lags the rods: a stop at the floor
            * crossing went on to read 551.9 °F, 14.9 °F under the band floor. 5x is the rung that
            * leaves more than about 5 s. Same measurement for 4b/5b/6b: 38/37/50 steps. */
-          accs: [{ p: 'tavg_c', op: '<', v: 302.7,
+          /* LAYMAN PASS 8 (2026-09-26, workbench-d, AGENT-DRAFTED) S-7: the four "below X °F" Tavg rows
+           * (steps 3-6) grade the RENDER FLOOR of X, as cooldown 4b does: 302.7/298.1/294.4/291.6 degC
+           * (576.9/568.6/561.9/556.9 degF) ticked while the tile, toFixed(0), still read X — the reviewer
+           * saw Continue lit at "562" against "below 562". Now 302.49/298.05/294.16/291.38 degC
+           * (576.48/568.49/561.49/556.48 degF): the tile reads X-1 or less when the row ticks. */
+          accs: [{ p: 'tavg_c', op: '<', v: 302.49,
                    ask: 'Insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 577 °F, the top of the green band on its tile.',
                    label: 'AVG COOLANT TEMPERATURE below 577 °F' },
                  { p: 'power_pct', op: '<', v: 80,
@@ -4720,8 +4725,8 @@
                    wait_speed: 5,
                    note: 'The load comes off over about five plant-minutes and power walks down behind it; the 3-step inserts hold AVG COOLANT TEMPERATURE under about 580 °F. Taken in one cut after the raise-power walkthrough, 75 to 50 MW at once, it climbs to about 585 °F and brings in the Pressurizer Pressure High and Steam Generator Pressure High alarms.',
                    label: 'REACTOR POWER below 70 %' },
-                 { p: 'tavg_c', op: '<', v: 298.1, ask: 'Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.',
-                   note: 'About 20 to 30 steps at MED in all, the inserts after each cut included.',
+                 { p: 'tavg_c', op: '<', v: 298.05, ask: 'Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.',
+                   note: 'About 15 to 25 steps at MED in all, the inserts after each cut included.',
                    wait_speed: 5,
                    label: 'AVG COOLANT TEMPERATURE below 569 °F' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
@@ -4748,8 +4753,8 @@
                    wait_speed: 5,
                    note: 'The load comes off over about four plant-minutes; the 3-step inserts hold AVG COOLANT TEMPERATURE under about 572 °F. Taken in one cut after the raise-power walkthrough, 50 to 30 MW at once, it climbs to about 575 °F and brings in the Steam Generator Pressure High alarm.',
                    label: 'REACTOR POWER below 45 %' },
-                 { p: 'tavg_c', op: '<', v: 294.4, ask: 'Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.',
-                   note: 'About 15 to 25 steps at MED in all, the inserts after each cut included.',
+                 { p: 'tavg_c', op: '<', v: 294.16, ask: 'Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.',
+                   note: 'About 10 to 20 steps at MED in all, the inserts after each cut included.',
                    wait_speed: 5,
                    label: 'AVG COOLANT TEMPERATURE below 562 °F' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
@@ -4823,8 +4828,8 @@
                   * of the two is the one that matters, and a two-sided band would still red the
                   * shipping leg. Said as "below the band" in an earlier draft, which overstated the
                   * margin fourfold (#741 quality pass). */
-                 { p: 'tavg_c', op: '<', v: 291.6, ask: 'Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.',
-                   note: 'About 10 to 15 steps at MED in all, the inserts after each cut included. Stop here; the shutdown walkthrough takes over.',
+                 { p: 'tavg_c', op: '<', v: 291.38, ask: 'Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.',
+                   note: 'About 10 to 20 steps at MED in all, the inserts after each cut included. Stop here; the shutdown walkthrough takes over.',
                    wait_speed: 5,
                    label: 'AVG COOLANT TEMPERATURE below 557 °F' }],
           hl: ['Turbine Load', 'Insert'], hl_watch: ['Tavg'] },
@@ -4988,7 +4993,7 @@
                    wait_speed: 1, label: 'STEAM DUMP AUTO lit, status PRESS' },
                  { p: 'power_pct', op: '<', v: 0.95,
                    ask: 'Check REACTOR POWER reads below 1 %.',
-                   note: 'Cooldown Rate High (>100 °F/hr) comes in about a minute after the trip: expected, it is the coolant settling to its no-load temperature.',
+                   note: 'Cooldown Rate High (>100 °F/hr) may come in about a minute after the trip, or not at all from a cooler plant: expected either way, it is the coolant settling to its no-load temperature.',
                    label: 'REACTOR POWER below 1 %' },
                  { p: 'steam_pressure_mpa', op: '~', v: 7.0327, tol: 0.0378,
                    ask: 'Check STEAM PRESS is holding near 1020 psi.',
@@ -5170,7 +5175,7 @@
                    ask: 'Press BLOCK on the SI REACTOR TRIP row. Check the row reads BLOCKED.',
                    label: 'SI REACTOR TRIP reads BLOCKED' },
                  { cmd: { action: 'set_hpi', active: false },
-                   ask: 'Press STOP on the ECCS card.',
+                   ask: 'Press STOP on the ECCS card. It is usually lit already, because STOP is what the card shows while the pump is idle: press it anyway, so the walkthrough records it.',
                    label: 'STOP pressed on the ECCS card' }],
           hl: ['Trip Blocks', 'ECCS'] },
         /* THE DUMP MUST BE IN PRESSURE MODE, AND THE CHAIN DOES NOT LEAVE IT THERE (layman playtest
@@ -5230,7 +5235,7 @@
                    wait_speed: 1, label: 'STEAM DUMP AUTO lit, status PRESS' },
                  { p: 'tavg_c', op: '<', v: 174.72,
                    ask: 'Lower DUMP SETPOINT in steps from 1020 to 120, until AVG COOLANT TEMPERATURE reads below 347 °F.',
-                   note: 'Steps of 50 psi down to 720, then 25 psi down to 270, then 15 psi: near the bottom the same 50 psi cools about four times as far, and one big jump sets off the Cooldown Rate High alarm and empties the pressurizer. Wait about 6 plant-minutes between steps, timed on the plant clock, not in seconds on your own: 4 plant-minutes apart sets off the Cooldown Rate High alarm. The temperature never quite stops falling, so do not wait for it to. Near the bottom the Shutdown Cooling Not In Service alarm comes in as the plant enters Mode 4: expected, RHR goes in service at step 9. About three and a half hours in all. Low Coolant Temperature comes in near 530 °F: expected on a cooldown, and it becomes an expected-status tile below 350 °F.',
+                   note: 'Steps of 50 psi down to 720, then 25 psi down to 270, then 15 psi: near the bottom the same 50 psi cools about four times as far, and one big jump sets off the Cooldown Rate High alarm and empties the pressurizer. Wait about 6 plant-minutes between steps, timed on the plant clock, not in seconds on your own: 4 plant-minutes apart sets off the Cooldown Rate High alarm. The temperature never quite stops falling, so do not wait for it to. Near the bottom the Shutdown Cooling Not In Service alarm comes in as the plant enters Mode 4: expected, RHR goes in service at step 9. About three and a half hours in all. Low Coolant Temperature comes in near 530 °F: expected on a cooldown, and it becomes an expected-status tile below 350 °F. The clock moves to 60× by itself once your first new setpoint goes in.',
                    wait_speed: 60, label: 'AVG COOLANT TEMPERATURE below 347 °F' }],
           hl: ['Steam Dump — Auto', 'Dump Setpoint'], hl_watch: ['Steam Dump Status', 'Tavg'] },
         { text: 'Take the pressure setpoint to the bottom of its range.',
@@ -5512,11 +5517,13 @@
            * START instead, pressure climbs to 593 psia, past the RHR limit, and step 15 strands. */
           replay_then: { when: { p: 'subcooling_c', op: '<', v: 16.7 }, cmd: { action: 'set_spray', open: false } },
           /* `< 93` (199.4 °F, printed "199") -> `< 92.5` (198.5 °F, the floor of "198"). */
-          wait_speed: 600, speed_text: true,
+          /* LAYMAN PASS 8 (2026-09-26) S-11: `speed_text: true` dropped — 11a and 11b each print their own
+           * line, and the step-level one printed "600×." a second time under 11b. */
+          wait_speed: 600,
           note: 'Keep COOLDOWN RATE under 100 °F per hour: if the Cooldown Rate High alarm comes in, lower HX SPLIT.',
           accs: [{ p: 'spray_flow_pct', op: '<', v: 1,
                    ask: 'Raise HX SPLIT to 9 %, then watch SUBCOOLING MARGIN: when it reads below 30 °F, press OFF under SPRAY on the PRESSURIZER (PZR) card.',
-                   note: 'The spray is still running and keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it much earlier and pressure climbs back over the RHR limit.',
+                   note: 'The spray is still running and keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it much earlier and pressure climbs back over the RHR limit. The clock moves to 60× by itself once HX SPLIT is raised.',
                    wait_speed: 60, speed_text: '60×: at 600× the margin can fall 10 °F between two glances.', label: 'OFF lit under SPRAY' },
                  { p: 'tavg_c', op: '<', v: 92.5,
                    ask: 'Wait for AVG COOLANT TEMPERATURE to read below 199 °F.',

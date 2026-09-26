@@ -31,6 +31,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Walkthroughs: layman pass 8, non-startup findings** (2026-09-26, AGENT-DRAFTED wording).
+  Lower power's four "below X °F" Tavg rows grade X - 0.5 °F (no tick while the tile still reads X);
+  heatup's Pressurizer Level Above Program forewarning moved to 9b; cooldown 11 prints one speed
+  line; cooldown 4b/11a say the clock moves to 60× after the first entry; raise-power 12 no longer
+  promises a two-day wait; raise 4b-7b say the check-off is wider than the green band; rod
+  estimates widened to measured; shutdown 3b's Cooldown Rate High "may" come in; cooldown 3c says
+  STOP is usually lit already. Record `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`.
 - **Walkthroughs: lower power 4-6 walked** (2026-09-26, owner ruling "Walk them too"; AGENT-DRAFTED
   wording). LOAD comes down 5 MWe a plant-minute with 3-step inserts above the band top, as step 2;
   OUTPUT rows +/-2 MWe; replay ramps at the card's pace. Chain peaks: step 4 585.4 -> 576.5 °F

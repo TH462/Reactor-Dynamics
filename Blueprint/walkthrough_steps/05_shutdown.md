@@ -64,7 +64,7 @@ Suggested time warp: 1×.
 
 ()3b. Check REACTOR POWER reads below 1 %.
 
-Note: Cooldown Rate High (>100 °F/hr) comes in about a minute after the trip: expected, it is the coolant settling to its no-load temperature.
+Note: Cooldown Rate High (>100 °F/hr) may come in about a minute after the trip, or not at all from a cooler plant: expected either way, it is the coolant settling to its no-load temperature.
 
 ()3c. Check STEAM PRESS is holding near 1020 psi.
 
@@ -250,3 +250,8 @@ hollow check binds there.
 
 3b names Cooldown Rate High, raised about a minute after the scram on the preset and the chain.
 Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`.
+
+### Layman pass 8 record — 2026-09-26, workbench-d (AGENT-DRAFTED: "comes in" -> "may come in")
+
+3b's Cooldown Rate High is marginal: the chain gate raises it with the tile at -104 °F/hr against
+the -100 setpoint; the reviewer never saw it in two rounds. Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`.

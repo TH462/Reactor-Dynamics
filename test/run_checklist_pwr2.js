@@ -1796,6 +1796,22 @@ if (!only && RUN_B) {
        'trefProgram=' + typeof CTL.trefProgram + ' deadband=' + CTL.TAVG_DEADBAND_C + ' rated=' + RATED);
 
     var half = BAND_HALF_MULT * (CTL.TAVG_DEADBAND_C || 0);
+    /* THE RENDER FLOOR OF THE BAND TOP (layman pass 8 S-7, 2026-09-26, workbench-d). The row says
+     * "below X °F" with X the band top as the tile prints it (`toFixed(0)` in °F), and it must not
+     * tick while the tile still prints X — so the grade is X - 0.5 °F, not the band top itself.
+     * Graded at the top (the #739 form), 561.5-561.9 °F printed "562" with "below 562 °F" met; the
+     * reviewer saw Continue lit at "562". The tie to the programme is unchanged: a retune moves X.
+     * VALIDATED BOTH WAYS: the pre-change literals (302.7/298.1/294.4/291.6) fail this form, the
+     * render-floor ones pass it — this is the refit HR10 asks to be named, and it is. */
+    function lpWant(mwe) {
+      var topC = CTL.trefProgram(mwe.v / RATED) + half;
+      var x = Math.round(topC * 1.8 + 32);
+      return { x: x, c: (x - 0.5 - 32) / 1.8 };
+    }
+    function lpMatch(tav, w) {
+      return tav.v <= w.c + 1e-9 && w.c - tav.v < 0.02 &&
+             (tav.label || '').indexOf('below ' + w.x + ' °F') >= 0;
+    }
     var lp = POOL.filter(function (p) { return p.id === 'pwr_lower_power'; })[0];
     var bad = [], checked = 0;
     (lp ? lp.steps : []).forEach(function (st, i) {
@@ -1804,10 +1820,10 @@ if (!only && RUN_B) {
       var mwe = st.accs.filter(function (e) { return e.p === 'mwe_output'; })[0];
       if (!tav || !mwe) return;
       checked++;
-      var want = Math.round((CTL.trefProgram(mwe.v / RATED) + half) * 10) / 10;
-      if (Math.abs(tav.v - want) > 0.051) {
-        bad.push('step ' + (i + 1) + ' authored ' + tav.v + ' degC, programme top at ' +
-                 (mwe.v / RATED).toFixed(2) + ' load is ' + want + ' degC');
+      var w = lpWant(mwe);
+      if (!lpMatch(tav, w)) {
+        bad.push('step ' + (i + 1) + ' authored ' + tav.v + ' degC "' + tav.label + '", render floor of the programme top at ' +
+                 (mwe.v / RATED).toFixed(2) + ' load is ' + w.c.toFixed(3) + ' degC ("below ' + w.x + ' °F")');
       }
     });
     ck('pwr_lower_power: every tavg_c acceptance IS the Tavg programme band top at that step\'s own commanded load (#739)',
@@ -1825,8 +1841,7 @@ if (!only && RUN_B) {
         var tav = st.accs.filter(function (e) { return e.p === 'tavg_c'; })[0];
         var mwe = st.accs.filter(function (e) { return e.p === 'mwe_output'; })[0];
         if (!tav || !mwe) return;
-        var want = Math.round((CTL.trefProgram(mwe.v / RATED) + half) * 10) / 10;
-        if (Math.abs(tav.v - want) > 0.051) red.push(i + 1);
+        if (!lpMatch(tav, lpWant(mwe))) red.push(i + 1);
       });
       CTL.trefProgram = real;
       ck('...RED BY INJECTION: a 2 degC shift in the Tavg programme staleness-reds every one of them',

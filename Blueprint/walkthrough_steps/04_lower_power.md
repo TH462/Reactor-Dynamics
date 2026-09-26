@@ -99,7 +99,7 @@ Note: The load comes off over about five plant-minutes and power walks down behi
 
 Suggested time warp: 5×.
 
-Note: About 20 to 30 steps at MED in all, the inserts after each cut included.
+Note: About 15 to 25 steps at MED in all, the inserts after each cut included.
 
 
 
@@ -127,7 +127,7 @@ Note: The load comes off over about four plant-minutes; the 3-step inserts hold 
 
 Suggested time warp: 5×.
 
-Note: About 15 to 25 steps at MED in all, the inserts after each cut included.
+Note: About 10 to 20 steps at MED in all, the inserts after each cut included.
 
 
 
@@ -155,7 +155,7 @@ Note: The load comes off over about three plant-minutes; the 3-step inserts hold
 
 Suggested time warp: 5×.
 
-Note: About 10 to 15 steps at MED in all, the inserts after each cut included. Stop here; the shutdown walkthrough takes over.
+Note: About 10 to 20 steps at MED in all, the inserts after each cut included. Stop here; the shutdown walkthrough takes over.
 
 
 
@@ -426,3 +426,11 @@ The notes' "under about 580 / 572 / 565 °F" cover the hotter preset. Leg: 22.6 
 29.3 preset (purpose now "about 20 to 50"). The replay's `ramp` walks at the card's pace (points
 60 s apart, then holds the target); its trim is still the boration, 0 steps.
 
+
+### Layman pass 8 record — 2026-09-26, workbench-d (AGENT-DRAFTED: grading at the render floor)
+
+- The four "below X °F" Tavg rows (3a, 4c, 5c, 6c) grade X - 0.5 °F now (302.49 / 298.05 / 294.16 /
+  291.38 °C), so the tile reads X-1 or less when the row ticks; the reviewer saw Continue lit at
+  "562" against "below 562". This reverses the record above's "'569' may tick". Labels unchanged.
+- Rod totals widened to what was measured: 4 15 to 25 (18/18/21), 5 10 to 20 (12/18/18), 6 10 to
+  20 (18/9/12). Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`.

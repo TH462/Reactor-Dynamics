@@ -180,7 +180,7 @@ Suggested time warp: 1×.
 
 Suggested time warp: 600×.
 
-Note: At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open. Coming from the cooldown the plant starts near 240 psi, not 363, and the climb takes about an hour of plant time; from under 50 psi it takes an hour and a half or more. The Shutdown Cooling Not In Service alarm comes in on the way up, near 600 psi: expected on a heatup, not a fault.
+Note: At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open. Coming from the cooldown the plant starts near 240 psi, not 363, and the climb takes about an hour of plant time; from under 50 psi it takes an hour and a half or more. The Shutdown Cooling Not In Service alarm comes in on the way up, near 600 psi: expected on a heatup, not a fault. Pressurizer Level Above Program comes in near the top of the climb, about when the clock drops to 1×: expected, and it clears by itself partway through the heat-up.
 
 Background
 
@@ -198,7 +198,7 @@ The heaters boil water in the pressurizer, and that steam sets the pressure of t
 
 Suggested time warp: 1×.
 
-Note: Above 1615 psi the valve locks, and the ACCUMULATORS caution is expected until pressure passes 1000 psi. If the window is missed: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO. Pressurizer Level Above Program comes in about here: expected, and it clears by itself partway through the heat-up.
+Note: Above 1615 psi the valve locks, and the ACCUMULATORS caution is expected until pressure passes 1000 psi. If the window is missed: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO.
 
 Background
 
@@ -711,3 +711,9 @@ Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`. 2a gains a N
 
 10a names Pressurizer Level Above Program: raised at 696 psia, 212 °F, cleared 108 plant-min later
 (preset). Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`.
+
+### Layman pass 8 record — 2026-09-26, workbench-d (AGENT-DRAFTED: one sentence moved)
+
+Pressurizer Level Above Program moved from 10a's Note to 9b's: both heatups raised it at the end of
+step 9, at 665 psi, as the clock dropped to 1× (the chain gate: step 9 done at 691 psia, the alarm
+at 696 psia 0.1 plant-min later). Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`.
