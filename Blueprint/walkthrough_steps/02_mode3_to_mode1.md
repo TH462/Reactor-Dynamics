@@ -53,7 +53,7 @@ In Hot Standby (Mode 3), the plant is at operating temperature and at pressure w
 
 Suggested time warp: 600×.
 
-Note: Dilution takes about 1½ plant-hours coming from the Mode 5 to Mode 3 walkthrough, which arrives near 918 ppm. The Hot Standby preset starts at 719 ppm, so the step ticks at once.
+Note: Dilution takes about 1¾ plant-hours coming from the Mode 5 to Mode 3 walkthrough, which arrives near 918 ppm. The Hot Standby preset starts at 719 ppm, so the step ticks at once.
 
 
 

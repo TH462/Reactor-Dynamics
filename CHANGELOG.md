@@ -31,6 +31,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **PWR2: a boron change now takes time to reach the loop** (#807 item 1, owner playtest of
+  1.8.0-rc6: "When setting boron the changes start immediately"). The makeup path carries a
+  holdup: a boration enters the charging line (~1 plant-minute), a dilution goes through the
+  volume control tank first (~9 plant-minutes), both draining at the charging-pump flow — the
+  routing in WTSM §4.1.3.2 (ML11223A214). Full stack: +10 ppm at full power moved the loop
+  +1.0 ppm in its first 20 s before, +0.1 after; −20 ppm in Mode 3 moved it −3.9 ppm in 2 min
+  before, −0.1 after, and keeps diluting ~30 min after the blender stops. The dose is conserved
+  (the loop still ends at the target); the batch totalizer still counts at the blender. The VCT
+  liquid volume and the charging-line volume are unsourced `[tune]` estimates. `run_pwr2_cvcs`
+  +5 checks, +3 mutations.
 - **Walkthroughs: the cooldown stays under the 100 °F/hr limit** (owner rulings 2026-09-25, "Re-pace
   to stay under", then "Middle ground"). Step 4 lowers DUMP SETPOINT 50 psi to 720, then 25 psi to
   270, then 15 psi, about 6 plant-minutes apart, 34 entries (was 50 psi every 5 minutes; COOLDOWN
