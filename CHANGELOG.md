@@ -38,6 +38,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   localStorage.
 
 ### Changed
+- **Mode 3 → Mode 1 steps 12-13: climb to 5 % from the point of adding heat** (#807 item 11). Step 12
+  now waits for REACTOR POWER 1 % and STARTUP RATE +0.10 or less, not the ~18-minute level-off; step
+  13 withdraws 2 steps at a time, waiting for the rate between pulls. 0.5 % to 5 %: 19.9 → 7.5
+  plant-min, same peak startup rate (0.25 DPM).
+- **Mode 3 → Mode 1 steps 5-8: the SOURCE RANGE count is the target** (owner selection "Guide, count
+  is the target"). The rod window is now a note on where the count lands at 719 ppm (re-measured:
+  75-80, 150-155, about 190, 205); short at the window top, tap one step at a time. The count rows grade
+  a 30 s mean (`mean_s`), so gauge noise cannot tick one early.
+- **The 1/M plot clears itself when the startup walkthrough starts** (layman pass 8 S-1): a second
+  startup no longer inherits the first one's baseline and points.
 - **Boron: a new target no longer re-doses what is still in the makeup path** (#807 review). The
   batch-dose books compared the analyzer, which only sees boron that has arrived, with what had been
   metered; after a long dilution ~19 ppm is still in the VCT and charging line, so a retarget dosed it

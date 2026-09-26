@@ -29,6 +29,47 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-develop-f (#807 item 11, the count leads steps 5-8, the 1/M plot clears on a new startup)
+
+Scratch worktree exp/807f. Full stack, `run_walkthrough_routes` live-checklist routes, seed 42 unless
+stated; seeds 42/7/1/123 plus the chained plant (heatup → startup) where marked.
+
+- **Steps 12-13 (#807 item 11, coordinator's call on the owner's question).** Step 12 is now "Let power
+  climb to the point of adding heat, about 1 %": 12a REACTOR POWER ≥ 0.95 (the "1.0" floor), then 12b
+  STARTUP RATE < 0.105 ("+0.10 or less"), ordered. Step 13: "Press SLOW. Withdraw CONTROL 2 steps, then
+  wait for STARTUP RATE to fall back to +0.10 or less. Repeat until REACTOR POWER reads above 5 %."
+  MEASURED, from step 12 entry (0.46-0.47 %) to REACTOR POWER above 5 %: old route 19.9 plant-min (12:
+  18.4 level-off to 2.95 %; 13: one 13-step pull, peak STARTUP RATE 0.25 DPM); new 7.5 (12: 2.7-3.3,
+  13: 4.7-4.8, 5 pulls, bank 213 → 223, peak 0.24-0.25 DPM) on four seeds + chain. Grid (seed 42, pull
+  size × rate): 2/+0.10 7.5 min peak 0.25; 3/+0.10 7.2 min 0.28; 5/+0.10 6.5 min 0.34; +0.05 waits
+  add 3-3.4 min at peak 0.20-0.27. Leg 90.1 → 77.6-81.4 plant-min. Downstream: step 15 blocks at
+  9.63 %, step 17 at 10.05-10.10 %; the chained raise-power leg completes. Declared departure: NRC
+  HRTD ch. 19 (ML11223A342 p. 19-8) holds ~2 % while the main feed pump is started; this plant has
+  no such step there (SG FEED in AUTO from step 3). The replay keeps its single 13-step `cmd`.
+- **Count is the target, steps 5-8** *(OWNER, workbench session 2026-09-26, selected "Guide, count is
+  the target"; relayed, confirmed in the develop session)*. Each `a` asks "Hold CONTROL WITHDRAW until
+  SOURCE RANGE reads X"; the window moved to the note as where it lands at 719 ppm, re-measured on the
+  count-led route (4 seeds + chain): 77-79, 153-154, 191-192, and 205 (the count reaches 7.0e3 as the
+  rods reach 205, every run). The owner's 90-110 window was 12+ steps above where 7.0e2 lands on a
+  fresh core. 6b "a minute and a half" → "half a plant-minute" (measured ~0.4-0.5); 8's settle "3 to
+  3½" → "5½ to 6½ plant-minutes" (the last point is now at 205, not 198-202); step 9 from 3 short:
+  6-8 taps, 36-46 plant-min (card: "6 to 8 taps … 35 to 45"); +0.15 at 3-5 past the prediction
+  (208-210).
+- **Noise early tick → `mean_s: 30` on the four count rows.** MEASURED (900 s at a fixed bank, 10×,
+  seeds 42/7): the tile's sigma is 31-33 cps at 7.0e2 (4.5 %) and 400 at 6.6e3; 7.0e2 settles at bank
+  73 (mean 695-696, half the readings ≥ 7.0e2 — layman pass 3's "about half the time" is the TARGET
+  bank on this core, not an early one). The five-sample debounce still latched at bank 67 (mean 672)
+  after 354 s and 71 (688) after 183-593 s. A 30 s trailing mean (`InstructorLayer.gradeMean`, still a
+  latch) closes it: route `flicker_release_5` (let go at bank 69 at 1×, wait 10 plant-min) ticks at
+  75 (30 s tile mean 693); mutation `no_mean_counts` ticks at 69 (mean 674) and goes red on the new
+  `early` verdict (tile's 30 s mean < 99 % of the row at the tick).
+- **1/M plot clears when `pwr_startup` starts** (layman pass 8 S-1, UNVERIFIED as filed; the mechanism
+  reproduced: before the fix the grader's table kept its point across `start_checklist`). Procedure
+  flag `clear_1m`; `loadChecklist` clears the grader's table and bumps `one_over_m.gen`, the panel
+  clears its copy on the change ("new startup walkthrough — plot cleared"). Chosen over a "press Clear"
+  step: a step can be skipped, and 9a's "3 short" grades off the grader's table either way.
+  `run_oneoverm` §2c, injection-proven both halves.
+
 ## Session log — 2026-09-26-develop-e (#807 review fixes: the makeup-path boron tail, re-anchor double dose, MIXING, warp toggle OFF)
 
 Quality review of the merged #807 work (exp/807int). All plant numbers full stack, pwr2, seed 7

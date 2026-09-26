@@ -192,6 +192,10 @@
  *           long) without the flag — so the step still cannot COMPLETE unless the hold is true at
  *           the end; the latch only stops the drawn tick and the pacing from going backwards.
  *           `run_checklist_pwr2` §2ak gates both halves.
+ *   accs[].mean_s  OPTIONAL seconds, on a latching `>`/`>=`/`<` row — GRADE THE TRAILING MEAN of the
+ *           reading over that many plant-seconds, not five raw samples (`InstructorLayer.gradeMean`).
+ *           For a noisy tile whose reading IS the target (`pwr_startup` 5a-8a, SOURCE RANGE sigma 4.5 %,
+ *           owner selection "Guide, count is the target", 2026-09-26). Live runtime only.
  *   accs[].cont  OPTIONAL boolean — ANOTHER CHECK-OFF OF THE PRECEDING (HEAD) ENTRY, not a
  *           substep of its own (the walkthrough-step-format project, `Blueprint/walkthrough_
  *           steps/02_mode3_to_mode1.md`: one lettered substep, more than one `()` row —
@@ -254,6 +258,9 @@
  *           `text` as the instructor's comment and moves on. For a step whose evidence the
  *           plant can make impossible — the 1/M plot once the source range de-energizes.
  *           Replay-side it is ignored: the replay drives the step as authored.
+ *   clear_1m (procedure-level) OPTIONAL true — starting this walkthrough CLEARS the 1/M table, the
+ *           grader's and (through `one_over_m.gen` in the snapshot) the panel's, because its first
+ *           plot is a fresh baseline (`pwr_startup`, layman pass 8 S-1). `run_oneoverm` §2c gates it.
  *   next    (procedure-level) OPTIONAL id of the chain's next checklist — the
  *           completion card offers "Next: <title> ▸ Start" (#244 the round trip).
  *   ramp    [{action, arg, points:[…]}] — a setpoint WALKED along a polyline across
@@ -2344,6 +2351,7 @@
     },
     {
       id: 'pwr_startup', category: 'startup', manual_ref: 'PWR-T03', next: 'pwr_raise_power',
+      clear_1m: true,   // a new startup is a new 1/M plot (layman pass 8 S-1, 2026-09-26)
       title: 'Mode 3, Hot Standby → Mode 1, At Power — startup to power',
       purpose: 'Start the reactor from Mode 3, Hot Standby: make it critical, bring power up past 5 % into Mode 1, At Power, and put the turbine on line. About 2½ plant-hours.',
       from: 'hot_zero_power',
@@ -2649,6 +2657,13 @@
          * rises 1×→10× because it is now a real multi-minute rate-wait, not an instant press. Full
          * record and measurements: `Blueprint/walkthrough_steps/02_mode3_to_mode1.md` Notes,
          * "Reconcile record — 2026-09-24 (f)". */
+        /* ⚰ SUPERSEDED 2026-09-26 (807f): the COUNT LEADS again *(OWNER, workbench session, relayed and
+         * confirmed in the develop session: selected "Guide, count is the target")*. Each `a` is "Hold
+         * CONTROL WITHDRAW until SOURCE RANGE reads X"; the rod window is a note on where that lands at
+         * 719 ppm, RE-MEASURED on the count-led route (four seeds + chain): 77-79 / 153-154 / 191-192 /
+         * 205, and each window TOP is where the player switches to single taps. The count rows carry
+         * `mean_s: 30` (the tile's sigma is 4.5 %; five raw readings latched 5a at bank 67-71 with the
+         * count settled at 672-688). Record: the step file's Notes, "(807f)". */
         { text: 'Take the second 1/M point, after the first rod pull.',
           aim: 'One point cannot make a line. The second gives the plot its first prediction of where the reactor goes critical.',
           /* ⚠ "PLOT POINT DOES NOTHING UNTIL THE COUNTS ARE STEADY" WAS FALSE AND SHIPPED ON THIS
@@ -2804,9 +2819,9 @@
           wait_speed: 10, speed_text: '10×, set by itself once the rods start moving.',
           accs_ordered: true,
           wait_hint: false,
-          accs: [{ p: 'sr_counts_cps', op: '>=', v: 695,
-                   ask: 'Hold CONTROL WITHDRAW at MED until CONTROL ROD POSITION reads 90 to 110 and SOURCE RANGE reads 7.0e2 or more.',
-                   note: 'If CONTROL ROD POSITION reaches 110 and SOURCE RANGE is still under 7.0e2, stop and wait: the step 2 dilution is still finishing, and the counts climb to 7.0e2 on their own.',
+          accs: [{ p: 'sr_counts_cps', op: '>=', v: 695, mean_s: 30,
+                   ask: 'Hold CONTROL WITHDRAW at MED until SOURCE RANGE reads 7.0e2 or more.',
+                   note: 'On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 75 to 80; the position shifts with boron and recent power, the count does not. If SOURCE RANGE is still under 7.0e2 at 110, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.',
                    label: 'SOURCE RANGE reads 7.0e2 (700 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Wait for STARTUP RATE to read +0.03 or less, then press Plot point.',
                    note: 'STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop. If BORON still reads above 719 ppm, the step 2 dilution is still adding reactivity and STARTUP RATE takes longer to fall.',
@@ -2832,11 +2847,12 @@
           wait_speed: 10, speed_text: '10×, set by itself once the rods start moving.',
           accs_ordered: true,
           wait_hint: false,
-          accs: [{ p: 'sr_counts_cps', op: '>=', v: 1350,   // the 1.4e3 band's lower edge — see step 5's RENDER BAND block
-                   ask: 'Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 150 to 175 and SOURCE RANGE reads 1.4e3 or more.',
+          accs: [{ p: 'sr_counts_cps', op: '>=', v: 1350, mean_s: 30,   // the 1.4e3 band's lower edge — see step 5's RENDER BAND block
+                   ask: 'Hold CONTROL WITHDRAW until SOURCE RANGE reads 1.4e3 or more.',
+                   note: 'On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 150 to 155. If SOURCE RANGE is still under 1.4e3 at 175, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.',
                    label: 'SOURCE RANGE reads 1.4e3 (1,400 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the predicted rod position the panel prints.',
-                   note: 'STARTUP RATE reaches +0.03 or less about a minute and a half after the rods stop.',
+                   note: 'STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop.',
                    label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', 'Plot point'],
@@ -2868,9 +2884,9 @@
           wait_speed: 10, speed_text: '10×, set by itself once the rods start moving.',
           accs_ordered: true,
           /* One step per plot point since #796 item 3 — the reasoning is on step 5. */
-          accs: [{ p: 'sr_counts_cps', op: '>=', v: 2950,   // the 3.0e3 band's lower edge — see step 5's RENDER BAND block
-                   ask: 'Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 180 to 194 and SOURCE RANGE reads 3.0e3 or more.',
-                   note: 'This window is only 14 steps wide, under 2 seconds of holding at 10×, so watch the position, not the clock.',
+          accs: [{ p: 'sr_counts_cps', op: '>=', v: 2950, mean_s: 30,   // the 3.0e3 band's lower edge — see step 5's RENDER BAND block
+                   ask: 'Hold CONTROL WITHDRAW until SOURCE RANGE reads 3.0e3 or more.',
+                   note: 'On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 190. If SOURCE RANGE is still under 3.0e3 at 194, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.',
                    label: 'SOURCE RANGE reads 3.0e3 (3,000 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the prediction again.',
                    label: 'Point plotted' }],
@@ -2916,7 +2932,7 @@
           /* ONE WARP FOR BOTH SUBSTEPS (2026-09-25): his 8a and 8b share 10×, so it is the step's
            * rung, drawn once, with the Note after it; neither head carries a speed or a note. */
           wait_speed: 10, speed_text: true,
-          note: 'STARTUP RATE takes about three to three and a half plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 9 asks for shows 3 to 4 steps past the predicted position (measured).',
+          note: 'STARTUP RATE takes about 5½ to 6½ plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 9 asks for shows 3 to 5 steps past the predicted position (measured).',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e3 (7,000 counts a second); point 5 plotted; STARTUP RATE under 1.0',
           /* THE SETTLE IS 600 s, NOT 150 *(OWNER RULING, 2026-09-14/15, on options put as
            * "rewrite step 8's settle / rewrite step 9 / both": selected "Rewrite both")*.
@@ -3000,8 +3016,9 @@
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 14, speed: 'normal' }, hold: 600,
           accs_ordered: true,
           /* One step per plot point since #796 item 3 — the reasoning is on step 5. */
-          accs: [{ p: 'sr_counts_cps', op: '>=', v: 6950,   // the 7.0e3 band's lower edge — see step 5's RENDER BAND block
-                   ask: 'Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 195 to 205 and SOURCE RANGE reads 7.0e3 or more.',
+          accs: [{ p: 'sr_counts_cps', op: '>=', v: 6950, mean_s: 30,   // the 7.0e3 band's lower edge — see step 5's RENDER BAND block
+                   ask: 'Hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.',
+                   note: 'On a fresh core at 719 ppm the count reaches 7.0e3 about when CONTROL ROD POSITION reaches 205. Do not hold past 205: if SOURCE RANGE is still under 7.0e3 there, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps. Stay at least 3 steps below the position the 1/M panel predicts.',
                    label: 'SOURCE RANGE reads 7.0e3 (7,000 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Wait for STARTUP RATE to read +0.03 or less, then press Plot point and note the critical rod position the 1/M panel predicts.',
                    label: 'Point plotted' }],
@@ -3400,7 +3417,7 @@
                   * it is the "five plant-minutes" the action line names. */
                  { p: 'startup_rate_dpm', op: '>=', v: 0.145,
                    ask: 'Tap WITHDRAW one step, wait five plant-minutes, and read STARTUP RATE. Repeat until it reads +0.15 or more.',
-                   note: 'Expect about 5 to 7 taps from 3 short, so 25 to 35 plant-minutes. Each step out adds about +0.03 to where STARTUP RATE settles. Over 1.0, tap INSERT once. SOURCE RANGE switches itself off above 1.0e5; INTER RANGE carries the reading.',
+                   note: 'Expect about 6 to 8 taps from 3 short, so 35 to 45 plant-minutes. Each step out adds about +0.03 to where STARTUP RATE settles. Over 1.0, tap INSERT once. SOURCE RANGE switches itself off above 1.0e5; INTER RANGE carries the reading.',
                    wait_speed: 10,
                    act_first: true,   /* 1× until the first tap lands on THIS substep — 9a's hold already spent the step's cmd_seen (layman pass 5 S-1) */
                    speed_text: '10× while you wait; 1× before every tap.',
@@ -3673,69 +3690,44 @@
          * rate falls to 0.00, so a player who does not tap sits at bank 213 and levels near 3 %,
          * outside any band centred on the replay's 4 %. The `note` states the gap in the player's
          * own words rather than leaving the tick unexplained. */
-        { text: 'Let power level itself off below 5 %.',
-          aim: 'This is the first time the plant\'s own feedback, not the rods, holds power steady.',
-          why: 'Warmer water slows this reactor down, so the heat the climb makes is what stops the climb. Power finds a level for the rod position it was left at, and no further rod motion is needed to hold it.\n\nBelow about 1 % that feedback was too weak to feel. From here it is what makes the plant steady.',
-          wait_speed: 10, speed_text: '10×; 1× if you have to insert.',
-          note: 'The climb stops by itself about twenty plant-minutes after this step opens, and STARTUP RATE comes back to 0.00 on the way. The step checks off once REACTOR POWER has held still for five plant-minutes. If power instead runs past 5 %: come back to 1×, press MED and hold INSERT until REACTOR POWER reads under 5 %, then release and let the plant settle before you read it. While the rods are driving in, STARTUP RATE is well below zero and power has not finished falling.',
-          control: 'Control Bank', target: 'REACTOR POWER below 5 % and level',
-          /* THE `wait_hint: false` IS GONE, WHICH RESTORES THE RUNG *(OWNER, 2026-09-20, #796 item
-           * 4: "walkthrough mnode 3-1 step 12 should suggest a higher warp setting than 1x to wait
-           * for the startup rate to settle.")*. The suppression came from the #653 S-9 pass, which
-           * applied it across this region because the hint was offering 60× on the 1800 s dwells
-           * either side of it. THIS step holds 240 s, so the 30 s rule returns 10× — not 60× — and
-           * it needs no cap: it is the wrong number on the neighbours that was the problem, never
-           * the line.
-           *
-           * MEASURED 2026-09-20 (#796, seed 42, full stack, the shipped replay to step 11 then
-           * 0.1 s samples), on #753's own yardstick — the worst REACTOR POWER change inside one
-           * 2.5 s glance, i.e. 2.5×N plant-seconds at rung N:
-           *
-           *     rung   indicated   TRUE
-           *       1×    0.150 %    0.002 %
-           *       5×    0.177 %    0.009 %
-           *      10×    0.191 %    0.012 %
-           *      60×    0.185 %    0.038 %
-           *
-           * The plant is STANDING STILL here — 3.891 % to 4.118 % over the whole four minutes — so
-           * the indicated column is this channel's own noise (sigma 0.3 %) and says nothing about
-           * the rung; read the TRUE column. 10× moves 0.012 %, against the 0.186 % that was
-           * ACCEPTED for step 9. Even 60× would be safe on movement alone; 10× is taken because
-           * the step also authorises a corrective INSERT, and a rung is only as fast as the
-           * fastest thing it asks you to do.
-           *
-           * ⚠ ON THE REPLAY ROUTE THIS STEP IS SATISFIED ON ARRIVAL: step 11's dwell settles the
-           * rate, so both entries hold at t=0 (power 3.97 %, rate 0.006) and auto never accelerates
-           * it at all. The wait is real on the PLAYER's route, where the rate is still positive
-           * when the step opens — which is the route the owner is reporting from and the one the
-           * rung is for. */
-          /* GRADED ON THE LEVEL-OFF SINCE 2026-09-23 *(OWNER RULING, 2026-09-23: selected "Grade real
-           * level-off" — the option text, not his words: grade REACTOR POWER steady in place of the rate
-           * row, and "near 4 %" becomes "near 3 %")*. The rate row (|STARTUP RATE| <= 0.10) and `power
-           * < 5` (a `<` row LATCHES, so it is met the moment the step opens at ~0.46 %) were both true
-           * on entry for every stop at or below bank 211 — the 2026-09-23 layman S-3. MEASURED, live
-           * runtime, full stack, `steady` 0.03 over 300 s, ticks at (from step entry): bank 213 no tap
-           * (the player's authored route, levels 2.6-2.9 %) +1105 s / +1168 s (seeds 42/7); 215 (the
-           * replay, step 11's +2) +982 s at 3.97 %; 210 +1390/+1402 s at 1.05-1.39 %; 209 +1369 s at
-           * 0.88 %. Never before +300 s (the window is the minimum dwell). The rate row is GONE, not
-           * kept beside it: kept, a 14-step INSERT from bank 219 lands a subcritical core (205) whose
-           * rate sits at -0.05 inside ±0.10 while power decays for ever, and the conjunction never
-           * closes. ⚠ KNOWN LIMIT: on the INSERT branch the row can tick at the TURNOVER, where the
-           * two half-window means are equal — 219 -14: +468 s at 2.41 % and falling; 225 -14: +301 s.
-           * The step completes on every measured branch; on those two it completes early. `hold`
-           * 240 -> 420: the replay arrives level, so it owes the 300 s window plus margin. */
+        /* ⚰ STEP 12 NO LONGER WAITS FOR THE LEVEL-OFF *(#807 item 11, owner, 1.8.0-rc6 playtest:
+         * "instead of waiting for the power to raise to above 1% in step 12, would it make sense to
+         * have the player watch the startup rate and start the asension to 5%? they would just have
+         * to wait a bit for the startup rate to drop before pulling the rods more. this might give a
+         * smoother transition into pulling the rods." — the coordinator's call, recommended yes,
+         * reversible)*. The 2026-09-23 "Grade real level-off" selection above graded a step that
+         * asked the player to WAIT for the level-off; this step no longer asks for it, so that
+         * grading goes with the ask. The level-off still happens — on the rods step 13 leaves.
+         *
+         * ⚠ A DECLARED DEPARTURE (DESIGN_COMPANION §8 sense). NRC HRTD Westinghouse Technology
+         * manual ch. 19, ML11223A342 p. 19-8: "the control rods are positioned to increase power to
+         * the point of adding heat, approximately one percent power as indicated on the power range
+         * instruments, and then to stabilize power at about two percent", and "care is exercised
+         * to ensure that the power level does not exceed two percent" — because the motor-driven
+         * auxiliary feedwater pump "can supply only about two percent of rated feed flow" while the
+         * main feed pump is started. This walkthrough has no feed-pump change at that point (SG FEED
+         * is in AUTO from step 3), so the 2 % hold buys the player nothing to do; the climb to 5 %
+         * starts from the point of adding heat instead. Kept: the point of adding heat itself (~1 %)
+         * as the cue, which is the sourced half. The corpus copy is in RD_backshop's inbox/sources.
+         *
+         * 12b's rate row is `<` 0.105: the tile draws two decimals, so "+0.10 or less" is every
+         * value under 0.105 (#749 render-band floor). MEASURED numbers: the step file's Notes,
+         * "#807 item 11 — 2026-09-26 (807f)". */
+        { text: 'Let power climb to the point of adding heat, about 1 %.',
+          aim: 'From about 1 % the core starts warming the water, and the warmer water starts holding the climb back.',
+          why: 'Warmer water slows this reactor down, so once power is high enough to warm the water, the climb starts slowing itself. Below about 1 % that feedback is too weak to feel.\n\nThis point is called the point of adding heat. On the board it shows as STARTUP RATE falling while the rods are still.',
+          wait_speed: 10, speed_text: true,
+          note: 'This takes about 3 plant-minutes. If STARTUP RATE reaches 0.00 with REACTOR POWER still under 1 %, press SLOW, tap WITHDRAW once, and wait again.',
+          control: 'Control Bank', target: 'REACTOR POWER 1 % or more; STARTUP RATE +0.10 or less',
           hold: 420, wait_hint: false,
-          accs: [{ p: 'power_pct', op: '<', v: 5,
-                   ask: 'Check REACTOR POWER is below 5 %.',
-                   label: 'REACTOR POWER below 5 %' },
-                 { p: 'power_pct', op: 'steady', v: 0.03, window: 300,   /* 12b, its own substep since the 2026-09-24 reword (was a `cont` row) */
-                   ask: 'Leave the rods alone and wait for REACTOR POWER to stop rising, near 1 to 3 %.',
-                   label: 'REACTOR POWER steady, no longer rising' }],
-          /* `press_expected` (#653 S-3b): both acceptances read the PLANT settling, and the two
-           * pulsing labels are for the branch the text names — "If it does not, press MED and
-           * hold INSERT". A real contingency press, so it is declared rather than demoted. */
-          press_expected: true,
-          hl: ['Rod Speed — Normal', 'Insert'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
+          accs_ordered: true,
+          accs: [{ p: 'power_pct', op: '>=', v: 0.95,
+                   ask: 'Leave the rods alone until REACTOR POWER reads 1.0 % or more.',
+                   label: 'REACTOR POWER reads 1.0 % or more' },
+                 { p: 'startup_rate_dpm', op: '<', v: 0.105,
+                   ask: 'Wait for STARTUP RATE to fall to +0.10 or less.',
+                   label: 'STARTUP RATE reads +0.10 or less' }],
+          hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
         /* ⚠ STILL THIRTEEN, AND #750 TRIED EIGHT FIRST — THE STEP AFTER NEXT IS WHAT DECIDES IT.
          * The 13 was measured from bank 214, where the -14 INSERT used to leave the plant; the leg
          * now arrives at bank 215 already making 4.0 %, and +8 SLOW from there lands bank 223 at
@@ -3786,7 +3778,7 @@
         { text: 'Raise power past 5 %, into Mode 1, At Power.',
           aim: 'Mode 1 begins at 5 %, and the steps after this one need power higher still.',
           why: 'Mode 1, At Power, begins at 5 % power. The warming water now holds power back, so each rod step buys a new steady level rather than a runaway, about half a percent of power per step.',
-          control: 'Control Bank', target: 'REACTOR POWER above 5 %, climbing toward 8 to 10 %',
+          control: 'Control Bank', target: 'REACTOR POWER above 5 %',
           /* 5×, AND IT IS THE ROD PULL THAT DECIDES IT *(OWNER, 2026-09-20, #796 item 5:
            * "walkthrough mode 3-1 step 13 should also suggest a warp seting. probably 5x.")*. The
            * 30 s rule would return 60× for a 400 s dwell, which is why this step could not simply
@@ -3818,13 +3810,18 @@
            * The rung is right with no honest number beside it, which is exactly what the field is
            * for (#628). */
           wait_speed: 5, wait_est_s: false, wait_hint: false,
+          /* THE REPLAY KEEPS ITS ONE 13-STEP PULL (#807 item 11, 2026-09-26): the card now asks for
+           * 2-step pulls with a rate wait between them, which the replay's single `cmd` cannot say.
+           * The pull is the SAME rods in one go, and the #731 trio above is sized on its arrival, so
+           * it stays; the card's own route is `run_walkthrough_routes`' `pulses` policy (bank 213 ->
+           * 223 in 5 pulls, 4.7-4.8 plant-min, peak STARTUP RATE 0.24-0.25 DPM, four seeds + chain). */
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 13, speed: 'slow' }, hold: 400,
           /* 5.05, NOT 5 (2026-09-23): "above 5 %" on a one-decimal tile is first TRUE of the board at
            * "5.1", from 5.05 — the render-band floor. MEASURED, authored route, seed 42: `> 5` at
            * +45 s, `>= 5.05` at +47 s; the step ends at 10.57 %. Two plant-seconds. */
           accs: [{ p: 'power_pct', op: '>=', v: 5.05,
-                   ask: 'Press SLOW, hold CONTROL WITHDRAW for about 13 steps, then release and wait for REACTOR POWER to read above 5 %.',
-                   note: 'Power passes 5 % about a plant-minute after you release WITHDRAW and climbs toward 8 to 10 %. It passes 9½ % once the turbine takes load in the next step. It needs to: the two startup trips cannot be blocked until REACTOR POWER is above 9½ %.',
+                   ask: 'Press SLOW. Withdraw CONTROL 2 steps, then wait for STARTUP RATE to fall back to +0.10 or less. Repeat until REACTOR POWER reads above 5 %.',
+                   note: 'Each pull lifts STARTUP RATE and the warming water brings it back down; waiting for it keeps the climb gentle. Expect about 5 pulls and 5 plant-minutes. Power keeps climbing for a while after the last pull. It passes 9½ % once the turbine takes load in the next step. It needs to: the two startup trips cannot be blocked until REACTOR POWER is above 9½ %.',
                    wait_speed: 5, label: 'REACTOR POWER above 5 %' }],
           hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
         /* "MWe", NOT HIS "MW" (2026-09-25): his 14b and 17b write a bare "MW", and N6
