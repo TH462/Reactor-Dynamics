@@ -29,6 +29,36 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-develop-c (#807 item 1: boron reached the loop the instant it was asked for)
+
+Owner, 1.8.0-rc6 playtest: "When setting boron the changes start immediately which makes it not seem
+realistic." Full stack, `measure_stack --plant=pwr2`, `boron_conc` setpoint:
+- **Before: the RCS concentration itself, and so reactivity and power, moved from the first step.**
+  +10 ppm at full power: reactivity −1.0 pcm and power −0.26 % within 4 s; loop +1.0 ppm at 20 s.
+  −20 ppm in Mode 3: −3.9 ppm in 2 min. The blend was applied to charging AT the cold leg.
+- **Sourced (WTSM §4.1.3.2, ML11223A214):** boration goes to the charging pump SUCTION; dilution goes to
+  the VCT and must "drain from the top of the VCT to the charging pump suction". NUREG/CR-2798 in
+  ML082911010 (St. Lucie 1, LER 335/80-71): "dilution via the VCT is a slow process". Ginna VCT
+  1,500 gal (UFSAR §15.7.1.2, ML20339A101). Ginna's own dilution analysis assumes INSTANT mixing —
+  conservative for an accident, not a description of normal ops.
+- **Built:** two holdups in series (VCT for dilution only, then the charging line), draining at
+  charging + seal flow; the dose is conserved and the totalizer still counts at the blender.
+  **UNSOURCED, `[tune]`: VCT liquid fraction 0.5, charging path 80 Ginna-gallons.** After: +0.1 ppm at
+  20 s, target reached ~8 min; Mode 3 −0.1 ppm in 2 min, ~30 min tail after the blender stops.
+- **Trap: four `run_pwr2_cvcs` checks measured "metered" as the RCS change over 1–120 s** — true only
+  while transit was zero. Re-stated as RCS change + in-transit (conservation); passes on both plants.
+  A "bit-identical after idling" check read the holdup as actuator residue — equalized as plant state.
+- **Residual:** the post-dose lab sample posts 30 min after the dose ends and can still see
+  ≤ ~1 ppm in transit; the kernel snaps the target to it (rounded). Not fixed.
+- **Walkthroughs:** chained Mode 3 → 1 step 2 (918 → 719 ppm) 93.0 → 103.0 plant-min; its note
+  "about 1½" → "about 1¾ plant-hours" (the only text changed). Standalone startup unchanged (115.2 →
+  115.6 min). `run_walkthrough_routes` 128/0 → 126/2, TRACKED, both seed-42 knife edges: the
+  `no_settle_9` injection is ALSO blind on the pre-#807 tree at seeds 7 and 123; the heatup#2 step-16
+  SOURCE RANGE `steady` flash (met 1.0 s) is on a leg with no boron action and neither tree flashes at
+  seed 7. **Trap: an injection that catches at one seed only is pinning a bifurcation** — re-aim it.
+
+---
+
 ## Session log — 2026-09-26-develop-d (#807 item 7: "Walkthrough sets time warp" toggle)
 
 `ui/shell.html` (`#cklWarpPrefRow`/`#cklWarpPrefBox`, hidden by default), `ui/shell.css`

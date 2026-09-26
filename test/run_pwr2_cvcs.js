@@ -49,6 +49,8 @@ function loadFrom(src) {
  * instead of masquerading as a "caught" crash inside a replay. */
 function runSuite(C, rec, quiet, only) {
   function grp(g) { return only === undefined || only === g; }
+  /* #807: ppm still in the makeup path (VCT + charging line); absent (pre-#807) reads 0 */
+  function TRANSIT(cv) { return cv.boron_in_transit_ppm || 0; }
   function ck(name, got, want, tol, unit) {
     var d = Math.abs(got - want), ok = d <= tol && isFinite(got);
     rec.push({ name: name, ok: ok });
@@ -318,9 +320,13 @@ function runSuite(C, rec, quiet, only) {
   (function () {
     var s = plant(), cv = C.createCVCS({ boron_ppm: 719, boron_rate_cmd: -0.05, chargingDemand: 0.1 });
     C.stepCVCS(cv, s, 0.02);                           /* one step to seed the field */
-    var b0 = cv.boron_ppm, sum = 0, n = 0;
+    /* #807: what the blender meters enters the MAKEUP PATH first (VCT / charging line) and
+     * reaches the RCS later, so "realised" is the RCS change PLUS the change in what is in
+     * transit — the dose is conserved, and on the pre-#807 plant (no transit) this is the
+     * old assertion exactly. */
+    var b0 = cv.boron_ppm + TRANSIT(cv), sum = 0, n = 0;
     for (var q = 0; q < 50; q++) { C.stepCVCS(cv, s, 0.02); sum += cv.boron_rate_delivered; n++; }
-    var realised = (cv.boron_ppm - b0) / (50 * 0.02);
+    var realised = (cv.boron_ppm + TRANSIT(cv) - b0) / (50 * 0.02);
     ck('boron_rate_delivered IS the realised d(ppm)/dt of the makeup path', sum / n, realised, 2e-4, 'ppm/s');
     ckT('...and sits UNDER the -0.05 command when the pure-water clamp binds (small charging lineup)',
         sum / n < 0 && sum / n > -0.05 + 0.005,
@@ -339,6 +345,9 @@ function runSuite(C, rec, quiet, only) {
         for (var q = 0; q < N(1500); q++) C.stepCVCS(c2, s2, 0.02);
         c2.boron_rate_cmd = 0;                        /* ...then idle it */
         c1.boron_ppm = c2.boron_ppm;                  /* equalize the states */
+        /* #807: the makeup path's holdups are PLANT state (water in a pipe), not actuator
+         * state — equalized too, so this still catches a residue in the ACTUATOR */
+        c1._vctExcess = c2._vctExcess; c1._lineExcess = c2._lineExcess;
         for (q = 0; q < N(1500); q++) { C.stepCVCS(c1, s1, 0.02); C.stepCVCS(c2, s2, 0.02); }
         return c1.boron_ppm === c2.boron_ppm;
       })(), 'residual actuator state after use would red this; the old vacuous form could not');
@@ -346,8 +355,9 @@ function runSuite(C, rec, quiet, only) {
   cvR.boron_rate_cmd = 0.02;
   var sysR = plant();
   for (var r2 = 0; r2 < N(6000); r2++) C.stepCVCS(cvR, sysR, 0.02);
+  /* #807: METERED = what the blender put into the path — RCS change plus what is in transit */
   ck('an unclamped mid-range command is METERED exactly (ppm/s achieved)',
-     (cvR.boron_ppm - 700) / (N(6000) * 0.02), 0.02, 0.001, 'ppm/s');
+     (cvR.boron_ppm + TRANSIT(cvR) - 700) / (N(6000) * 0.02), 0.02, 0.001, 'ppm/s');
   /* the ceiling: a firehose demand achieves exactly what tank concentration and the current
    * lineup can carry — measured against the closed form, not a remembered number */
   var cvF = C.createCVCS({ boron_ppm: 700, chargingDemand: 0.5, letdownOpen: 1 });
@@ -357,10 +367,10 @@ function runSuite(C, rec, quiet, only) {
   var Mf = 0;
   for (var kf = 0; kf < sysF.nodes.length; kf++) Mf += sysF.nodes[kf].V * W.rho_from_h(sysF.nodes[kf].h, sysF.P);
   var ceil = (res0.charging_kgs + res0.seal_kgs) * (C.CVCS.boric_acid_ppm - 700) / Mf;
-  var cF0 = cvF.boron_ppm;
+  var cF0 = cvF.boron_ppm + TRANSIT(cvF);
   for (r2 = 0; r2 < N(3000); r2++) C.stepCVCS(cvF, sysF, 0.02);
   ck('a firehose demand is CLAMPED to the tank-and-lineup ceiling',
-     (cvF.boron_ppm - cF0) / (N(3000) * 0.02), ceil, ceil * 0.05, 'ppm/s');
+     (cvF.boron_ppm + TRANSIT(cvF) - cF0) / (N(3000) * 0.02), ceil, ceil * 0.05, 'ppm/s');
   ckT('a firehose DILUTION stays PROPORTIONAL to concentration through the actuator — fast ' +
       'at high boron, slow at low (#510 M-9: the old name said the inverse of the assertion)',
       (function () {
@@ -374,6 +384,61 @@ function runSuite(C, rec, quiet, only) {
         var hi = rate(1400), lo = rate(350);
         return hi / lo > 3.4 && hi / lo < 4.6;      /* ~4x, the balance's own proportionality */
       })(), 'C_in clamps at 0, so dilution rate stays proportional to concentration');
+  /* ---- 3c. THE MAKEUP PATH'S HOLDUP (#807 item 1) ------------------------------------
+   * Owner, playtest of 1.8.0-rc6: "When setting boron the changes start immediately which makes
+   * it not seem realistic." Measured before: +10 ppm at hot full power moved power -0.26 % in
+   * 4 s. Sourced routing (WTSM §4.1.3.2): boration enters at the charging pump suction, dilution
+   * enters the VCT and must "drain from the top of the VCT to the charging pump suction". Each
+   * claim below is asserted on the RCS concentration itself, and each has a mutation. */
+  function doseRun(rate, secs, stopAt) {
+    var cv = C.createCVCS({ boron_ppm: 700 }), sy = plant(), t = 0, met = 0, arr = [], dt = 0.02;
+    cv.boron_rate_cmd = rate;
+    for (var q = 0; q < Math.round(secs / dt); q++) {
+      if (stopAt != null && t >= stopAt) cv.boron_rate_cmd = 0;
+      C.stepCVCS(cv, sy, dt); t += dt; met += cv.boron_rate_delivered * dt;
+      arr.push({ t: t, dC: cv.boron_ppm - 700, met: met, arriving: cv.boron_rate_arriving || 0,
+                 delivered: cv.boron_rate_delivered });
+    }
+    return { cv: cv, sy: sy, rows: arr };
+  }
+  function t50(rows) {           /* first time the RCS receives half of what the blender meters */
+    for (var i = 0; i < rows.length; i++)
+      if (rows[i].delivered !== 0 && rows[i].arriving / rows[i].delivered >= 0.5) return rows[i].t;
+    return Infinity;
+  }
+  (function () {
+    var b = doseRun(+0.02, N(1200) * 1.0 > 600 ? 1200 : 600, null);
+    var r5 = b.rows[Math.round(5 / 0.02) - 1];
+    ckT('a BORATION does not reach the RCS in the same step — after 5 s the RCS has under 15 % ' +
+        'of what the blender metered (#807; was 100 %)',
+        r5.met > 0 && r5.dC / r5.met < 0.15,
+        'RCS +' + r5.dC.toFixed(4) + ' ppm of +' + r5.met.toFixed(4) + ' metered at 5 s (' +
+        (100 * r5.dC / r5.met).toFixed(1) + ' %)');
+    var last = b.rows[b.rows.length - 1];
+    ckT('...but it is a DELAY, not a loss: at 10 min the RCS receives over 90 % of the metered rate',
+        last.arriving / last.delivered > 0.9,
+        'arriving ' + last.arriving.toFixed(5) + ' of ' + last.delivered.toFixed(5) + ' ppm/s');
+    var d = doseRun(-0.02, 1200, null);
+    var tb = t50(b.rows), td = t50(d.rows);
+    ckT('a DILUTION goes through the VCT and is at least 3x slower to arrive than a boration ' +
+        '(WTSM §4.1.3.2: dilution water must "drain from the top of the VCT")',
+        isFinite(td) && td > 3 * tb,
+        'half-arrival: boration ' + tb.toFixed(0) + ' s, dilution ' + td.toFixed(0) + ' s');
+    var c = doseRun(-0.02, 3600, 120);
+    var atStop = c.rows[Math.round(120 / 0.02) - 1], end = c.rows[c.rows.length - 1];
+    ckT('the dose is CONSERVED: stop the blender and the RCS keeps moving until it has received ' +
+        'what was metered (within 2 % after an hour)',
+        end.dC < atStop.dC - 0.1 && Math.abs(end.dC - atStop.met) < 0.02 * Math.abs(atStop.met),
+        'metered ' + atStop.met.toFixed(3) + ' ppm by the stop (RCS ' + atStop.dC.toFixed(3) +
+        '); RCS ' + end.dC.toFixed(3) + ' ppm an hour later');
+    var z = doseRun(-0.02, 300, 120);
+    var tr0 = TRANSIT(z.cv), c0 = z.cv.boron_ppm;
+    z.cv.isolated = true;
+    for (var q = 0; q < 3000; q++) C.stepCVCS(z.cv, z.sy, 0.02);
+    ckT('no charging flow, no transit — the dose waits in the pipe (isolated 60 s)',
+        tr0 < -0.01 && TRANSIT(z.cv) === tr0 && z.cv.boron_ppm === c0,
+        TRANSIT(z.cv).toFixed(4) + ' ppm held in transit, RCS ' + z.cv.boron_ppm.toFixed(4) + ' unchanged');
+  })();
   /* the lab sample: request -> pending -> posts with a new seq; a pending sample is not
    * re-drawn (the timer is shortened white-box — 1800 s is a counter, not physics) */
   ckT('the lab sample posts on expiry and a pending sample is not re-drawn',
@@ -588,11 +653,12 @@ var MUTATIONS = [
    '(iso || cv.letdownOpen <= 0 || dP <= 0) ? 0 :', '(iso || cv.letdownOpen <= 0) ? 0 :',
    { grp: 'B' }],
   ['the SI boron term is dropped (#510 M-1 re-armed: injection dilutes instead of borating)',
-   'var dC = (inFlow * C_in + si * C_si - letdown * cv.boron_ppm) / M;',
-   'var dC = (inFlow * C_in - letdown * cv.boron_ppm) / M;', { grp: 'C' }],
+   /* anchor re-pointed #807: charging arrives at the RCS ppm plus the makeup path's delivery */
+   'var dC = (inFlow * cv.boron_ppm + fluxIn + si * C_si - letdown * cv.boron_ppm) / M;',
+   'var dC = (inFlow * cv.boron_ppm + fluxIn - letdown * cv.boron_ppm) / M;', { grp: 'C' }],
   ['letdown stops carrying the RCS concentration away (boron shape breaks)',
-   'var dC = (inFlow * C_in + si * C_si - letdown * cv.boron_ppm) / M;',
-   'var dC = (inFlow * C_in + si * C_si - letdown * 0) / M;', { grp: 'C' }],
+   'var dC = (inFlow * cv.boron_ppm + fluxIn + si * C_si - letdown * cv.boron_ppm) / M;',
+   'var dC = (inFlow * cv.boron_ppm + fluxIn + si * C_si - letdown * 0) / M;', { grp: 'C' }],
   ['the re-concentration term dropped (inventory change stops affecting ppm)',
    'cv.boron_ppm = cv.boron_ppm + dt * (dC - cv.boron_ppm * dM / M);',
    'cv.boron_ppm = cv.boron_ppm + dt * dC;', { grp: 'C' }],
@@ -656,6 +722,19 @@ var MUTATIONS = [
   ['the tank clamp is deleted (a firehose demand borates at any rate the caller likes)',
    '      C_in = Math.max(0, Math.min(CVCS.boric_acid_ppm,\n        cv.boron_ppm + cv.boron_rate_cmd * M / inFlow));',
    '      C_in = cv.boron_ppm + cv.boron_rate_cmd * M / inFlow;', { grp: 'F' }],
+  /* THE MAKEUP PATH'S HOLDUP (#807) — the pre-#807 plant, and each half of the routing */
+  ['the makeup path is bypassed (the blend reaches the RCS in the same step — the #807 defect)',
+   '      var dC = (inFlow * cv.boron_ppm + fluxIn + si * C_si - letdown * cv.boron_ppm) / M;',
+   '      var dC = (inFlow * cv.boron_ppm + qMakeup + si * C_si - letdown * cv.boron_ppm) / M;',
+   { grp: 'F' }],
+  ['a dilution skips the VCT (enters the charging line like a boration)',
+   '    var Ev = (cv._vctExcess || 0) + (qMakeup < 0 ? qMakeup * dt : 0);\n    var El = (cv._lineExcess || 0) + (qMakeup > 0 ? qMakeup * dt : 0);',
+   '    var Ev = (cv._vctExcess || 0);\n    var El = (cv._lineExcess || 0) + qMakeup * dt;',
+   { grp: 'F' }],
+  ['the holdup leaks (drains at a fixed rate with no charging flow)',
+   "    if (!(E !== 0) || !(flow > 0) || !(M > 0)) return { E: E || 0, out: 0 };",
+   "    if (!(E !== 0) || !(M > 0)) return { E: E || 0, out: 0 }; if (!(flow > 0)) flow = 0.5;",
+   { grp: 'F' }],
   ['the lab result never posts (the sample clock counts to nothing)',
    '        cv.sample_ppm = Math.round(cv.boron_ppm);\n        cv.sample_seq = (cv.sample_seq || 0) + 1;',
    '', { grp: 'F' }]

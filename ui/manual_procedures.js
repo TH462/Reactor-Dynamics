@@ -2502,7 +2502,7 @@
         { text: 'Dilute boron to the estimated critical concentration, 719 ppm.',
           aim: 'Less boron in the water lets the reactor go critical with the control rods low in their travel.',
           why: 'Boron dissolved in the reactor water absorbs neutrons. At this point it is one of the things keeping the reactor shut down. Dilution replaces some borated water with clean water, so the boron\'s hold gets weaker and the control rods can finish the job taking the plant critical.\n\n719 ppm is set so that the reactor goes critical with the control rods about a third of the way out (around step 208 of 627). That leaves most of the rod travel free to control power.\n\nBoron and rods do different jobs. Boron changes slowly, over plant-hours, so it sets the starting point. Rods change reactivity within seconds, so they do the fine work of approaching critical.',
-          note: 'Dilution takes about 1½ plant-hours coming from the Mode 5 to Mode 3 walkthrough, which arrives near 918 ppm. The Hot Standby preset starts at 719 ppm, so the step ticks at once.',
+          note: 'Dilution takes about 1¾ plant-hours coming from the Mode 5 to Mode 3 walkthrough, which arrives near 918 ppm. The Hot Standby preset starts at 719 ppm, so the step ticks at once.',
           control: 'Boron control', target: 'BORON box 719; BORON STATUS counting down; BORON CHEM tracking live',
           /* 90, not 65 (#749). MEASURED end to end on the full stack: 917.6 → 718.7 ppm takes
            * 88.4 plant-minutes (850 at +28.4, 800 at +50.0, 760 at +68.4, 740 at +78.4, 725 at
