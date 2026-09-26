@@ -29,6 +29,68 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-develop-b (#807 items 8-11: the startup ladder's window and warp, and 9b's target rate)
+
+Owner playtest of 1.8.0-rc6, `pwr_startup` (Mode 3 → Mode 1). All numbers full stack, pwr2
+`hot_zero_power`, `run_walkthrough_routes` typical route unless stated; seeds 42 / 7 / 1.
+
+- **Item 8, step 5 window 80-100 → 90-110.** SOURCE RANGE settled vs bank (3 plant-min settle, seeds
+  42 and 7 identical to the count): at 719 ppm, 646 cps at 60, 683 at 70, 724 at 80, 772 at 90, 830 at
+  100, 899 at 110; 700 is met from about bank 74. Boron is the lever: at 729 ppm 633 at 80, 712 at
+  100, 763 at 110; at 739 ppm 624 at 100; at 759 ppm (the old 2c band top) 500 at 100 — the owner's
+  "barely 7.0e2 at 100" is a 729 ppm plant. 90-110 meets the row with 10 % margin at 719 ppm and
+  still at the top at 729 ppm. Typical route: step 5 clears at bank 90, 748-753 cps (was bank 80,
+  711). Steps 6-8 unchanged: at 719 ppm 1.4e3 is met from ~147, 3.0e3 from ~181, 7.0e3 from ~196.
+  At 729 ppm steps 7 and 8 are never met inside their windows (2,686 at 194; 4,370 at 205) — the
+  ladder needs the dilution finished, which the 2c band (record t) already enforces.
+- **Item 9, steps 5-7 at 10× for both substeps.** The per-substep rungs (pull 5×, plot 1×) were the
+  "jump out of warp": auto keyed the plot substep's 1× the moment the count row ticked. Now one
+  step-level `wait_speed: 10` (like step 8); auto still holds 1× until the rods move. Supersedes
+  the 2026-09-24 "7a 5×" selection. Overshoot risk: MED is 48 steps/plant-min (ROD_SPEEDS), 8 steps
+  per wall-second at 10×; step 7's 14-step window passes in 1.75 s of holding, and its note now
+  says so. Not measured with a human hand — no harness models release latency.
+- **Item 10, 9b's root cause.** Near critical the rate keeps FALLING for 20-30 plant-min after the
+  rods stop (single pull, bank 209: 0.080 at 5 min, 0.060 at 10, 0.049 at 20, 0.045 at 30). The
+  hidden `steady` row (5 % relative, 240 s) met while the rate was still falling (record g: 209 at
+  +13.2 min, 0.062) and the drawn band's 0.055 floor sat between that read and where the rate went
+  next: lit, then dark. At 208 (settles 0.02-0.03) the relative test flickered met/unmet 20 times in
+  25 plant-min (seed 42, rows logged per broadcast). **Fix:** one target, "+0.15 or more five
+  plant-minutes after a tap", graded by a latching `>=` 0.145 row behind the existing hidden 300 s
+  `stopped` row; the `steady` row is gone. Asymptotes by bank (single pull): 209 0.045, 210 0.07,
+  211 0.10, 212 0.13, 213 0.165, 214 0.19; 5-minute reads 0.080 / 0.103 / 0.122 / 0.149 / 0.176 /
+  0.207. So the row first latches at 212-213, whose settled rate is 0.13-0.165. Typical route, three
+  seeds: 9a stops at 206-207 (prediction 209-210), 7-8 taps, 9b ticks at 213 (read 0.150-0.169),
+  step 9 36.7 / 37.1 / 41.7 min, step 10 1.8 / 5.5 / 2.6, step 11 6.0 / 7.1 / 6.3, step 12 18.7 /
+  19.2 / 19.1; the leg 85.8 / 93.7 / 93.8 plant-min (was 115.2 on seed 42). No flash, no un-tick.
+  Steps 8, 10, 11 notes re-stated from these numbers. 9b cut to one action line and a
+  three-sentence note. Route injection `low_floor_9` (the old 0.055 floor on the latching row)
+  replaces `no_settle_9`. **The target is UNSOURCED:** no startup-rate target in the three lanes'
+  corpus (`find_source` "decades? per minute", "[0-9.]+ ?(dpm|DPM)"); HRTD 2.1 (ML11223A207) only
+  gives the worth of a 1 DPM rate (175 pcm) as an example.
+- **Item 10, IR question — MEASURE ONLY.** PWR2 has NO operator action at the source → intermediate
+  hand-over: `set_sr_detector` is refused and SOURCE RANGE de-energizes itself at 1.0e5 cps (IR
+  3.21e-9 A; owner directive 2026-09-01, #598 item 7). P-6 (1.0e-10 A, sourced) is met at bank 184 /
+  3,121 cps — subcritical, mid-ladder — and permits nothing (`pwr2_protection.js` P6, a declared
+  departure). Real plant: USNRC HRTD 19.0 Plant Operations (ML11223A342) p. 19-8: "After criticality
+  is achieved, the control rods are positioned to increase nuclear power to 10-8 amps in the
+  intermediate range. When power exceeds the source range block permissive (P-6) setpoint, the
+  source range trip is manually blocked and the source range high voltage supply is de-energized.
+  Power is stabilized at 10-8 amps to record actual critical conditions." NUREG-1431 Rev 4 Bases
+  (ML12100A228) B 3.3.1: P-6 "allows the manual block of the NIS Source Range, Neutron Flux reactor
+  trip ... allows the operator to ensure that the intermediate range is OPERABLE prior to leaving
+  the source range. When the source range trip is blocked, the high voltage to the detectors is
+  also removed". So in a real startup the IR hand-over comes AFTER criticality, as an operator block.
+- **Item 11, prototype (scratch only, not committed).** Seed 42, bank 210, from 0.45 % power, a
+  13-step SLOW pull: (A) current — wait for power level (flat within 0.02 % over 300 s): pull at
+  +34.3 min (1.35 %), 5 % at +36.9 min; (B) pull once power ≥ 0.9 % and STARTUP RATE < 0.05: pull at
+  +9.1 min, 5 % at +12.1 min; (C) pull at 0.45 %: 5 % at +3.6 min. Peak STARTUP RATE 0.36 / 0.44 /
+  0.55; peak power 8.03 / 8.05 / 8.05 %, all settling at 7.9 %. B saves about 25 plant-min with no
+  extra overshoot. Source: HRTD 19.0 p. 19-8 — "the control rods are positioned to increase power
+  to the point of adding heat, approximately one percent power as indicated on the power range
+  instruments, and then to stabilize power at about two percent", with the 2 % hold used for
+  secondary work (procedure steps 13-17: steam dump check, start a main feed pump "at 2% power").
+  Awaiting the owner's ruling.
+- Gates: see the commit message.
 ## Session log — 2026-09-26-develop-a (#807 items 3–6: Mode 5 to Mode 3 highlights, step 16 in 1.6 plant-minutes, wording pass)
 
 Scratch lane `exp/807a`. Traps only; the diff carries the rest.

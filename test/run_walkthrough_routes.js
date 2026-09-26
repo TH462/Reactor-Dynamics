@@ -76,7 +76,7 @@ var ROUTES = {
        * that range not that hitting the lower part of the range will put you over the target. So
        * let's leave then")*. The player pulls to the window's bottom, lets the counts settle, and
        * keeps withdrawing inside the window until SOURCE RANGE meets the row — the top at most. */
-      '#5': { policy: 'pull_plot', to: 80, top: 100 },     // "80 to 100"
+      '#5': { policy: 'pull_plot', to: 90, top: 110 },     // "90 to 110" (#807 item 8, 2026-09-26)
       '#6': { policy: 'pull_plot', to: 150, top: 175 },    // "150 to 175"
       '#7': { policy: 'pull_plot', to: 180, top: 194 },    // "180 to 194" (owner "A", 2026-09-25)
       '#8': { policy: 'pull_plot', to: 195, top: 205 },    // "195 to 205"
@@ -84,8 +84,8 @@ var ROUTES = {
       // about 10 minutes — repeat; then 30 to 60 minutes of climb after a 0.06 to 0.10 read), so their
       // bound is the card's, not 3 x hold. Measured 2026-09-24: step 9 21.6 / 26.7 min, step 10
       // 31.1 / 45.5 min (seeds 42 / 7). The policy still reads every 300 s and taps under 0.06.
-      '#9': { policy: 'approach', short: 3, min_rate: 0.06, max_rate: 1.0, dwell: 300, tap: 1, bound_s: 5400 },
-      '#10': { policy: 'observe', bound_s: 5400 },
+      '#9': { policy: 'approach', short: 3, min_rate: 0.15, max_rate: 1.0, dwell: 300, tap: 1, bound_s: 5400 },   // "five plant-minutes ... until +0.15" (#807 item 10)
+      '#10': { policy: 'observe', bound_s: 5400, stated_max_min: 10 },   // card: "about 2 to 6 plant-minutes" after the +0.15 (#807; measured 1.8 / 5.5 / 2.6)
       '#11': { policy: 'wait_tap', rate_below: 0.005, power_below: 0.5, dwell: 300 },
       '#12': { policy: 'hold_below', p: 5 },
       '#13': { policy: 'nudge', steps: 13, speed: 'slow' },
@@ -302,10 +302,20 @@ var MUTATIONS = [
     mutate: function (P) { P.steps[16].accs[0].v = 10.05; } },
   { id: 'step12_rate_row', route: 'typical_pass3', expect: 'hollow',
     why: "step 12's steady row replaced by a rate-only row (RECONSTRUCTED: SUR < 0.1 — the old row ticked on entry)",
-    mutate: function (P) { P.steps[11].accs[1] = { cont: true, p: 'startup_rate_dpm', op: '<', v: 0.1, label: 'rate row' }; } },
-  { id: 'no_settle_9', route: 'typical', expect: 'complete',
-    why: 'step 9 without its STARTUP RATE `steady` row (passed on one falling read of 0.069; step 10 stranded at 90 min, 2026-09-24)',
-    mutate: function (P) { P.steps[8].accs = P.steps[8].accs.filter(function (e) { return e.op !== 'steady'; }); } },
+    /* RE-AIMED 2026-09-26 (#807): 9b now hands step 12 a plant at STARTUP RATE 0.12-0.14 (the +0.15
+     * approach), so the reconstructed `< 0.1` no longer ticks on entry and this went BLIND. `< 0.2`
+     * is the same defect (a rate-only row the entering plant already satisfies) on today's plant. */
+    mutate: function (P) { P.steps[11].accs[1] = { cont: true, p: 'startup_rate_dpm', op: '<', v: 0.2, label: 'rate row' }; } },
+  /* #807 item 10 (2026-09-26): the settle row is gone and 9b latches on a TARGET (>= 0.145, first met
+   * at 212-213). Put the old 0.055 floor back on that latching row and it ticks on the first
+   * falling five-minute read low in the approach, and step 10 takes the slow climb the old card had. */
+  { id: 'low_floor_9', route: 'typical', expect: 'stated',
+    why: "9b's target back to the old 0.055 floor (latches on a falling five-minute read; step 10 runs far past its stated minutes — measured: the leg 147.0 plant-min against 85.8)",
+    /* the route reads at 330 s, not 300: at exactly 300 the policy's tap and the hidden rods-still
+     * row land on the same broadcast and the row never gets a still plant to grade (measured: the
+     * mutation was BLIND at dwell 300 — the typical route finished identically, 85.8 plant-min) */
+    override: { '#9': { policy: 'approach', short: 3, min_rate: 0.15, max_rate: 1.0, dwell: 330, tap: 1, bound_s: 5400 } },
+    mutate: function (P) { P.steps[8].accs.forEach(function (e) { if (e.p === 'startup_rate_dpm' && e.op === '>=') e.v = 0.055; }); } },
   { id: 'no_latch_9a', route: 'typical_pass3', expect: 'flash',
     why: "9a without `latch` (a WITHDRAW tap un-ticked it, layman pass 2)",
     mutate: function (P) { delete P.steps[8].accs[0].latch; } },
