@@ -38,6 +38,12 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   localStorage.
 
 ### Changed
+- **Shutdown, cooldown and TMI-2 walkthroughs: the pulse is on the button, the card rings steady**
+  (#807 item 2). Fourteen steps that pulsed a whole card (LOAD, STEAM DUMP, ECCS, HEATER, SPRAY,
+  RHR, RCP, AUX FEED) now pulse the button or box pressed. Cooldown to the Mode 3 → Mode 1 template:
+  step 4's dump-setpoint stair is three substeps (50 psi to 720, 25 to 270, 15 to 120), step 11's HX
+  SPLIT raise is its own check-off, 7a no longer names the ring, step 1's boration reads "about 55
+  plant-minutes" (measured 55.5 with the makeup-path holdup).
 - **Mode 3 → Mode 1 steps 12-13: climb to 5 % from the point of adding heat** (#807 item 11). Step 12
   now waits for REACTOR POWER 1 % and STARTUP RATE +0.10 or less, not the ~18-minute level-off; step
   13 withdraws 2 steps at a time, waiting for the rate between pulls. 0.5 % to 5 %: 19.9 → 7.5

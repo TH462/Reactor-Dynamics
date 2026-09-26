@@ -3809,6 +3809,16 @@
      * set_heater auto). */
     'RCP — On': 'imrsjy1m9g', 'Letdown — A+B 7%': 'imrmtimyxef',
     'Pressurizer Spray — Auto': 'imro8zestdm', 'Pressurizer Heater — Auto': 'imro969lnex',
+    /* THE SAME SPLIT FOR THE SHUTDOWN, COOLDOWN AND TMI-2 LEGS (#807 item 2, 2026-09-26): nine
+     * buttons/boxes those steps press, each of which pulsed its whole card for want of a key. Ids
+     * read off the press/set handlers above (set_hpi false/true, set_rcp running:false,
+     * set_heater 0, set_spray manual/0, set_rhr active:true, set_rhr_hx box, set_afw_block) and
+     * each one's card checked with `PwrBoardInspect.parentOf` (the HPI pair sits in ECCS PANEL
+     * `imrzpfd4qox` = 'HPI/LPI', the RHR pair in the RHR card). The AFW block valve has no card. */
+    'ECCS — Stop': 'imrldz0wqds', 'ECCS — Start': 'imrldymb837', 'RCP — Off': 'imrsjy59pnu',
+    'Pressurizer Heater — Off': 'imro96h8lip', 'Pressurizer Spray — Manual': 'imro900yzeq',
+    'Pressurizer Spray — Off': 'imro901sddd', 'RHR — Align': 'ims3wg27iif', 'RHR — HX Split': 'ims3xu86zm5',
+    'AFW — Block Valve': 'imrpp2g2m8k',
     'Plot point': 'bdOneOverM',
     'Primary Pressure': 'ims2immsvn6',
     // #341 / #319 item 2 — the post-trip procedure's restore step points here.

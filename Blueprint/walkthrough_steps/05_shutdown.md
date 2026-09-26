@@ -28,7 +28,7 @@ Background
 
 Taking the load off the turbine first means the scram happens with no electricity on the generator. The reactor follows the falling steam demand down by itself.
 
-[HIGHLIGHTED: Turbine Load (pulsing)]
+[HIGHLIGHTED: Load Setpoint (pulsing); Turbine Load, Generator Output (steady)]
 
 
 
@@ -50,7 +50,7 @@ Background
 
 A planned scram from low power. Both rod banks drop into the core and the chain reaction stops in seconds. The fuel keeps making about 2 % of full power from radioactive decay, and that heat has to go somewhere; the next step checks where.
 
-[HIGHLIGHTED: SCRAM (pulsing)]
+[HIGHLIGHTED: SCRAM (pulsing); Control Rod Position, Shutdown Rod Position, Reactor Power (steady)]
 
 
 
@@ -78,7 +78,7 @@ Background
 
 The chain reaction is gone, but the fuel still makes about 2 % of full power from radioactive decay, and REACTOR POWER does not show it. With the turbine tripped, AUTO puts the steam dump into pressure-holding mode and it carries that heat to the condenser. Hot, at pressure, shut down: Mode 3, Hot Standby.
 
-[HIGHLIGHTED: Steam Dump (pulsing); Tavg, SG Pressure (steady)]
+[HIGHLIGHTED: Steam Dump — Auto (pulsing); Steam Dump, Steam Dump Status, Reactor Power, SG Pressure, Steam Dump Opening (steady)]
 
 
 
@@ -255,3 +255,11 @@ Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`.
 
 3b's Cooldown Rate High is marginal: the chain gate raises it with the tile at -104 °F/hr against
 the -100 setpoint; the reviewer never saw it in two rounds. Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`.
+
+### Template pass — 2026-09-26, `exp/807e2` scratch lane (TUNING_LOG 2026-09-26-develop-h; #807 item 2)
+
+Highlights only; the text already had the template's shape and every number stands. 1 pulses the
+LOAD box (`Load Setpoint`), with the TURBINE-GENERATOR card and OUTPUT steady (was: the whole card
+pulsing); 2 adds the two rod-position readouts and REACTOR POWER steady; 3 pulses STEAM DUMP AUTO,
+with the STEAM DUMP card, its status word, REACTOR POWER, STEAM PRESS and the dump opening steady
+(was: the whole card pulsing, AVG COOLANT TEMPERATURE steady though no substep reads it).
