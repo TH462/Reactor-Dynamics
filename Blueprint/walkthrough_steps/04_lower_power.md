@@ -441,4 +441,4 @@ The notes' "under about 580 / 572 / 565 °F" cover the hotter preset. Leg: 22.6 
 
 Re-measured on the holdup plant (seeds 42/7/123 and the chain) and re-authored to it; highlights moved
 to the pressed button (`Load Setpoint`, `Boron ON`, `Turbine — Latch`, `Insert`) with the card on the
-steady ring. Every number and why: `Diagnostic/TUNING_LOG.md`, session `2026-09-26-develop-g`.
+steady ring. Every number and why: `Diagnostic/TUNING_LOG.md`, session `2026-09-26-develop-h`.

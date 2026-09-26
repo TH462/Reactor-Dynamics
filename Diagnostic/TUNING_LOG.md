@@ -29,7 +29,7 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Session log — 2026-09-26-develop-g (#807 item 2: raise and lower power re-walked on the boron-holdup plant)
+## Session log — 2026-09-26-develop-h (#807 item 2: raise and lower power re-walked on the boron-holdup plant)
 
 Scratch worktree exp/807e1 (from exp/807int 061f37d9). Route runner `--job` runs, full stack, seeds
 42/7/123 plus the chain (seeds 42 and 7) unless stated. The merge agent's severed A/B had already
@@ -77,7 +77,7 @@ attributed the reds to the boron makeup-path holdup; each was re-adjudicated her
   red on them, not re-read here); "clears as xenon builds and you walk the bank up"; the tile "keeps
   rising for about a minute" after a pull; any browser paint of the new highlight lists beyond
   verify_board_cues / verify_e2e_ui.
-## Session log — 2026-09-26-develop-h (#807 item 2: shutdown and cooldown to the Mode 3 → Mode 1 template; button pulses on shutdown, cooldown and TMI-2)
+## Session log — 2026-09-26-develop-g (#807 item 2: shutdown and cooldown to the Mode 3 → Mode 1 template; button pulses on shutdown, cooldown and TMI-2)
 
 *Owner, #807 item 2: "using the mode 3-1 walkthrough as a template, adjust the steps of the other
 walkthroughs."* Scratch lane `exp/807e2`. Records: `05_shutdown.md`, `06_cooldown.md` (Template pass).

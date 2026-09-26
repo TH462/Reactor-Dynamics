@@ -256,7 +256,7 @@ Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`.
 3b's Cooldown Rate High is marginal: the chain gate raises it with the tile at -104 °F/hr against
 the -100 setpoint; the reviewer never saw it in two rounds. Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`.
 
-### Template pass — 2026-09-26, `exp/807e2` scratch lane (TUNING_LOG 2026-09-26-develop-h; #807 item 2)
+### Template pass — 2026-09-26, `exp/807e2` scratch lane (TUNING_LOG 2026-09-26-develop-g; #807 item 2)
 
 Highlights only; the text already had the template's shape and every number stands. 1 pulses the
 LOAD box (`Load Setpoint`), with the TURBINE-GENERATOR card and OUTPUT steady (was: the whole card

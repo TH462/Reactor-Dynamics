@@ -713,4 +713,4 @@ Background). **This supersedes the 2026-09-25 "Make them conditional" ruling on 
 
 Re-measured on the holdup plant (seeds 42/7/123 and the chain) and re-authored to it; highlights moved
 to the pressed button (`Load Setpoint`, `Boron ON`, `Turbine — Latch`, `Insert`) with the card on the
-steady ring. Every number and why: `Diagnostic/TUNING_LOG.md`, session `2026-09-26-develop-g`.
+steady ring. Every number and why: `Diagnostic/TUNING_LOG.md`, session `2026-09-26-develop-h`.

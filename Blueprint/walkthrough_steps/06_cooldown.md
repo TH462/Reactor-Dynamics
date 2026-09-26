@@ -747,7 +747,7 @@ setpoint 532.4 °F). Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PA
 - 11: one "Suggested time warp: 600×." line (the step-level `speed_text` duplicated 11b's).
 Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`.
 
-### Template pass — 2026-09-26, `exp/807e2` scratch lane (TUNING_LOG 2026-09-26-develop-h; #807 item 2)
+### Template pass — 2026-09-26, `exp/807e2` scratch lane (TUNING_LOG 2026-09-26-develop-g; #807 item 2)
 
 *Owner, #807 item 2: "using the mode 3-1 walkthrough as a template, adjust the steps of the other
 walkthroughs."* AGENT-DRAFTED for owner review.
