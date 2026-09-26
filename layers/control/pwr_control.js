@@ -1736,6 +1736,19 @@
         var v = s.control_state ? s.control_state.boron_rate_delivered : null;
         return (v != null && isFinite(v)) ? v : null;
       },
+      /* METERED BUT NOT YET ARRIVED (#807 review, 2026-09-26). The makeup path (VCT + charging
+       * line) holds a dose for minutes after the blender stops — ~19 ppm of a long dilution,
+       * measured — and the analyzer sees only what has reached the loop. A new target compared
+       * the books with the bare analyzer, found them >15 ppm apart, re-anchored to the analyzer
+       * and dosed the in-transit boron a SECOND time (measured: 894 -> 820 retargeted to 815
+       * mid-dose landed 795.7; 840 set 30 s after an 850 dose landed 821.1). The plant publishes
+       * its own path holdup (control_state.boron_in_transit_ppm, pwr2 only — actuator
+       * bookkeeping, like the delivered rate above); the kernel compares analyzer + transit.
+       * Absent (the retired engine has no path), the kernel reads 0: byte-identical. */
+      inTransit: function (s) {
+        var v = s.control_state ? s.control_state.boron_in_transit_ppm : null;
+        return (v != null && Number.isFinite(v)) ? v : null;
+      },
       // rate: 0.05 ppm/s. The old 0.5 was a firehose: ~5 pcm/s spiked power ~10 % per
       // 10 ppm asked (TUNING_LOG S9). [tune]
       //
@@ -1758,7 +1771,10 @@
       // reAnchorPpm: a new target re-samples the analyzer for the dose books only
       // when they've drifted beyond this (e.g. ECCS boration) — beyond noise (±2σ≈4),
       // below any dose worth caring about.
-      rate: 0.05, reAnchorPpm: 15, pvTau: 5.0, period: 2.0 },
+      // sampleDeadband: the confirmatory lab result is WHOLE ppm; a result within 1 ppm of the
+      // books is a confirmation, not a correction, and leaves the operator's target alone
+      // (#807 review, 2026-09-26: 894 -> 719 posted 720 and re-typed the target box to 720).
+      rate: 0.05, reAnchorPpm: 15, sampleDeadband: 1, pvTau: 5.0, period: 2.0 },
 
     { id: 'pzr_pressure', kind: 'mode', group: 'Primary',
       label: 'Pressurizer pressure (heaters + spray)',

@@ -828,6 +828,77 @@ if (!only && RUN_B) {
     ck('...and the channel still reports the 719 the operator set, not a re-anchored shortfall',
        !!ch && Math.abs(ch.setpoint - 719) <= 3 && /idle/.test(ch.note || ''),
        ch ? 'setpoint ' + ch.setpoint.toFixed(0) + ' [' + ch.note + ']' : 'no boron_conc channel');
+    /* ...and the confirmatory sample that posted in those 2.5 hours CONFIRMED rather than re-typed
+     * it (#807 review, 2026-09-26): the result is whole ppm, a dose landing at 719.3 posts as 719
+     * or 720 on rounding alone, and the kernel snapped the box to it — which un-met the Mode 3 to
+     * Mode 1 step 2 row graded on the box (719 +/- 0.5). `sampleDeadband: 1` leaves a result within
+     * 1 ppm of the books alone. INJECTION — the deadband removed — reads 720 here. */
+    ck('...and the post-dose lab sample leaves the typed 719 alone (whole-ppm result, not a correction)',
+       !!ch && Math.abs(ch.setpoint - 719) < 0.5,
+       ch ? 'setpoint ' + ch.setpoint.toFixed(2) + ', plant ' + s.true_state.boron_ppm.toFixed(1) + ' ppm' : 'no boron_conc channel');
+  })();
+
+  /* 2l2. A RETARGET WHILE A DOSE IS STILL IN THE MAKEUP PATH DOES NOT DOSE IT TWICE (#807 review,
+   * 2026-09-26). #807 put the dose through the VCT and charging line, so the analyzer trails the
+   * books by what is still in the pipe — ~19 ppm on a long dilution, measured. A new target
+   * re-anchored the books to the BARE analyzer whenever they were >15 ppm apart, and the
+   * in-transit boron was then metered again. MEASURED before the fix, hot shutdown, seed 7:
+   *   (a) 894 -> 820, retargeted to 815 at +20 min      -> 800.0 ppm 45 min later (795.7 final)
+   *   (b) 850 dose lands, 840 set 30 s later              -> 821.3 ppm 45 min later (821.1 final)
+   * After: 816.7 and 840.4. INJECTION — the kernel's `pv + transit` back to bare `pv` — reads
+   * 800.0 / 821.3 and reddens both. The HOLD rows below ride the same run: BORON STATUS must read
+   * MIXING, and `boron_status_hold` 0, while the tail arrives, and they must agree sample by
+   * sample (the board's `boronMixing` is LIFTED from the wiring, not re-typed). */
+  (function () {
+    function bchan(s) { return (s.automation && s.automation.channels || []).filter(function (c) { return c.id === 'boron_conc'; })[0]; }
+    function run(svc, s, sec, each) { var end = s.metadata.sim_time + sec; while (s.metadata.sim_time < end) { s = svc.tick(); if (each) each(s); } return s; }
+    var wiring = fs.readFileSync(path.join(ROOT, 'ui', 'diagram', 'board', 'pwr_board_wiring.js'), 'utf8');
+    var mixSrc = /function boronMixing\s*\([\s\S]*?\n  \}\n/.exec(wiring), boronMixing = null;
+    try { if (mixSrc) boronMixing = new Function('CS', 'return (' + mixSrc[0].trim() + ');')(function (s) { return s.control_state || {}; }); }
+    catch (e) { boronMixing = null; }
+    var P = RD.InstructorLayer.paramValue;
+    /* (a) */
+    var svc = mkSvc('hot_shutdown'), s = null;
+    for (var i = 0; i < 20; i++) s = svc.tick();
+    svc.handleCommand({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 820 });
+    s = run(svc, s, 20 * 60);
+    var trA = s.control_state.boron_in_transit_ppm;
+    svc.handleCommand({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 815 });
+    s = run(svc, s, 45 * 60);
+    ck('2l2(a). 894 -> 820 retargeted to 815 mid-dose lands at 815, not a second dose of the pipe',
+       Math.abs(s.true_state.boron_ppm - 815) <= 3 && trA < -10,
+       s.true_state.boron_ppm.toFixed(1) + ' ppm 45 min after the retarget (' + trA.toFixed(1) +
+       ' ppm in transit when it was issued; before the fix 800.0)');
+    /* (b) */
+    svc = mkSvc('hot_shutdown'); s = null;
+    for (i = 0; i < 20; i++) s = svc.tick();
+    svc.handleCommand({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 850 });
+    var t0 = s.metadata.sim_time;
+    while (!(s.control_state.boron_adjust === 0 && s.metadata.sim_time - t0 > 60) && s.metadata.sim_time - t0 < 3600) s = run(svc, s, 1);
+    var trB = s.control_state.boron_in_transit_ppm, landT = s.metadata.sim_time;
+    var nMix = 0, nDis = 0, nHoldAtMix = 0, firstHold = null;
+    function watch(x) {
+      var h = P(x, 'boron_status_hold'), m = boronMixing ? boronMixing(x) : null;
+      if (x.control_state.boron_adjust === 0) {
+        if (m) { nMix++; if (h === 1) nHoldAtMix++; }
+        if ((m === true && h !== 0) || (m === false && h !== 1)) nDis++;
+        if (h === 1 && firstHold == null) firstHold = x.metadata.sim_time;
+      }
+    }
+    s = run(svc, s, 30, watch);
+    svc.handleCommand({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 840 });
+    s = run(svc, s, 45 * 60, watch);
+    ck('2l2(b). 840 set 30 s after an 850 dose landed lands at 840, not 15-20 ppm past it',
+       Math.abs(s.true_state.boron_ppm - 840) <= 3 && trB < -10,
+       s.true_state.boron_ppm.toFixed(1) + ' ppm 45 min after the retarget (' + trB.toFixed(1) +
+       ' ppm in transit when the 850 dose landed; before the fix 821.3)');
+    ck('2l2(c). BORON STATUS reads MIXING, and boron_status_hold 0, while a landed dose is still arriving',
+       !!boronMixing && nMix > 100 && nHoldAtMix === 0 && firstHold != null && firstHold - landT > 600,
+       !boronMixing ? 'could not lift `function boronMixing(` out of pwr_board_wiring.js'
+         : nMix + ' blender-stopped broadcasts read MIXING, ' + nHoldAtMix + ' of them graded HOLD; first HOLD ' +
+           (firstHold == null ? 'never' : ((firstHold - landT) / 60).toFixed(1) + ' plant-min after the dose landed'));
+    ck('2l2(d). ...and the board word and the checklist row agree on every blender-stopped broadcast',
+       !!boronMixing && nDis === 0, nDis + ' disagreements');
   })();
 
   /* 2m. A PLAYER WHO TAKES A TURBINE TRIP AT POWER CAN STILL CLIMB THROUGH P-9 (#664, filed off
@@ -3300,7 +3371,7 @@ if (!only && RUN_B) {
    *      ρ about −5 pcm — the sub-critical guard, re-run because the floor moved to 0.055)
    *   .3 ...then one tap: 20 s later 9a is STILL met and the active substep is still 9b
    *   .4 the rate floor sits on the tile's toFixed(2) render-band edge (x.xx5)
-   *   .5 (layman pass 2, 2026-09-24) during .3's tap, at 1x, the step is never awaiting Continue
+   *   .5 (layman pass 2, 2026-09-24; re-aimed to a 211 -> 212 tap, #807 review) at 1x, the step is never awaiting Continue
    *      while the bank is travelling. `steps` is the ROUNDED position and one SLOW step is ~8 s
    *      of travel, so the 300 s `stopped` row stayed met through the first ~4 s of a tap while
    *      the pull's rate spike met the rate row. INJECTION: `rodMoving` dropped from
@@ -3387,17 +3458,39 @@ if (!only && RUN_B) {
        'verdicts ' + pre + ' -> ' + post + ', active substep row ' + hd + ', bank ' + bank());
     var rate = st9.accs.filter(function (e) { return e.p === 'startup_rate_dpm' && !e.hidden; })[0] || {};   /* the drawn row: a `~` band until #807, a latching `>=` target since */
     var lo = rate.op === '~' ? rate.v - rate.tol : rate.v, hi = rate.op === '~' ? rate.v + rate.tol : 1.005;
-    /* ⚠ WEAKENED 2026-09-26 (#807): with 9b's target at 0.145 the 207 -> 208 tap's spike (0.090,
-     * measured) no longer crosses the floor, so this no longer proves the hidden rods-still row is
-     * what refuses the step mid-travel — the floor refuses it first. `peak > lo` dropped rather than
-     * the fixture moved to bank ~212; the remaining claim (never met while travelling) still holds. */
-    ck('2ak.5 ...and while that tap is still travelling the step is never met (rods not stopped; the spike ' + (peak > lo ? 'over' : 'UNDER') + ' the floor)',
-       travel > 20 && ackMoving === 0,
-       travel + ' broadcasts in travel, peak STARTUP RATE ' + peak.toFixed(3) + ' vs floor ' + lo.toFixed(3) +
-       ', awaiting Continue on ' + ackMoving + ' of them');
     function onEdge(x) { var f = Math.round(x * 1000) % 10; return Math.abs(x * 1000 - Math.round(x * 1000)) < 1e-6 && f === 5; }
     ck('2ak.4 the STARTUP RATE band edges sit on the tile\'s toFixed(2) render-band edges',
        onEdge(lo) && onEdge(hi), lo.toFixed(4) + ' .. ' + hi.toFixed(4));
+    /* .5 RE-AIMED (#807 review, 2026-09-26). With 9b's target at 0.145 the 207 -> 208 tap's spike
+     * (0.090, measured) never reached the floor, so the floor refused the step before the hidden
+     * rods-still row was tested at all. The tap is now taken at 211 -> 212, 330 s after the
+     * 208 -> 211 pull — the 300 s row is MET going in (so the rounded position's first ~4 s of
+     * travel is exactly the hole `rodMoving` closes), 211's own five-minute read is ~0.10, under
+     * the floor, so nothing completes before the tap, and the tap's spike DOES cross 0.145.
+     * INJECTION (2026-09-26): the hidden row's 300 s cut to 1 s -> .5 red (the step completes on
+     * the 208 -> 211 pull's own spike, "ALREADY awaiting before the tap"). `rodMoving` dropped from
+     * `gradeStopped` ALONE no longer reds it — measured: the rounded position flips to 212 before
+     * the lagged rate crosses the floor, so the value change resets the hold first; with the 1 s
+     * cut AND `rodMoving` dropped the step awaits Continue on 59 of 74 travelling broadcasts. */
+    svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 211 - bank(), speed: 'slow' });
+    var tPull = t();
+    while (t() - tPull < 600 && (bank() !== 211 || s.control_state.rod_groups.filter(function (x) { return x.id === 'control_rods'; })[0].moving)) tick();
+    holdS(330);
+    var c3 = ckl(), preAck = !!(c3 && c3.awaiting_ack), preIdx = c3 ? c3.step_index : -1;
+    svc.timeAcceleration = 1;
+    svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 1, speed: 'slow' });
+    var tTap2 = t(), ackMoving2 = 0, travel2 = 0, peak2 = -1;
+    while (t() - tTap2 < 20) {
+      tick();
+      var g2 = s.control_state.rod_groups.filter(function (x) { return x.id === 'control_rods'; })[0];
+      if (g2.moving) { travel2 += 1; peak2 = Math.max(peak2, s.instruments.startup_rate); if (ckl() && ckl().awaiting_ack) ackMoving2++; }
+    }
+    svc.timeAcceleration = 10;
+    ck('2ak.5 ...a tap whose spike CROSSES the floor, still travelling: the step is never met (the hidden rods-still row refuses it)',
+       !preAck && preIdx === S9 && travel2 > 20 && peak2 > lo && ackMoving2 === 0 && bank() === 212,
+       '211 -> 212: ' + travel2 + ' broadcasts in travel, peak STARTUP RATE ' + peak2.toFixed(3) + ' vs floor ' + lo.toFixed(3) +
+       ', awaiting Continue on ' + ackMoving2 + ' of them' + (preAck ? ' (ALREADY awaiting before the tap)' : '') +
+       ' (the 207 -> 208 tap above peaked ' + peak.toFixed(3) + ', ' + ackMoving + ' awaiting)');
   })();
 
   /* 2am. 9a GRADES "3 SHORT OF THE 1/M PREDICTION" (2026-09-24; owner option selected that day:
@@ -3811,8 +3904,8 @@ if (!only && RUN_B) {
        * rows, so instrument-graded (101) and sole (26) are unchanged. SUM on a merge.
        * MERGED 2026-09-26 (#807 exp/807a + exp/807b): 168 -> 167 predicate rows and 101 -> 100
        * instrument-graded -- exp/807b removed `pwr_startup` 9b's hidden STARTUP RATE `steady` row. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807): 86 / 167 / 100 / 26 -- heatup 16c/16d, startup 9b settle row removed)',
-         gradedSteps === 86 && predRows === 167 && rows.length === 100 && soleInst === 26,
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 review): 86 / 168 / 100 / 26 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added (control_state-graded, not instrument))',
+         gradedSteps === 86 && predRows === 168 && rows.length === 100 && soleInst === 26,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();

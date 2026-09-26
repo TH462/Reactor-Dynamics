@@ -38,6 +38,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   localStorage.
 
 ### Changed
+- **Boron: a new target no longer re-doses what is still in the makeup path** (#807 review). The
+  batch-dose books compared the analyzer, which only sees boron that has arrived, with what had been
+  metered; after a long dilution ~19 ppm is still in the VCT and charging line, so a retarget dosed it
+  twice (894 → 820 retargeted to 815 landed 795.7; now 815.3). The plant publishes
+  `control_state.boron_in_transit_ppm`. A post-dose lab result within 1 ppm of the books no longer
+  re-types the target (719 was being snapped to 720 on rounding).
+- **BORON STATUS reads MIXING** while a finished dose is still arriving (≥ 1 ppm in transit): about
+  1 plant-minute after a boration, about 30 after a long dilution. The Mode 5 to Mode 3 step 16d and the
+  new Mode 3 to Mode 1 step 2d ("Wait for BORON STATUS to read HOLD") grade the same test, so the 1/M
+  approach starts on settled boron (chained: step 2 103 → 124 plant-min). Manual 04 PWR-N09's "mixing
+  lag ~30 s" caution replaced with the measured tail.
+- **"Walkthrough sets time warp" off now means off**: the end of a walkthrough no longer drops the
+  clock to 1×, and ticking it back on applies the current step's rung at once.
 - **Walkthroughs: Mode 3 → Mode 1 startup, owner playtest #807 items 8-10.** Step 5's rod window is
   90 to 110 (was 80 to 100; SOURCE RANGE reads 772 cps at 90 and 899 at 110 on a 719 ppm plant, and
   the old window's top only just reached 7.0e2 at 729 ppm). Steps 5, 6 and 7 run both substeps at

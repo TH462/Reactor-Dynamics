@@ -573,9 +573,12 @@
       'display at all, so this pairing is a teaching departure from the real board, recorded in ' +
       'Simulator Physics and Simplifications.', CI, '7.5'),
     ims3wy5oym4: e('Boron Status',
-      'Whether a dose is running: BORATING, DILUTING or HOLD, with the ppm remaining.',
+      'Whether a dose is running: BORATING, DILUTING, MIXING or HOLD, with the ppm remaining.',
       'The arrow figure counts down the metered ppm still to deliver. It pauses if the charging pump ' +
-      'stops and resumes when it restarts — a dose is a delivery, not a timer.', CI, '7.5'),
+      'stops and resumes when it restarts — a dose is a delivery, not a timer. MIXING means the ' +
+      'metering has stopped but the last of the dose is still in the volume control tank and charging ' +
+      'line, reaching the loop; the figure is the ppm still to arrive. After a long dilution that ' +
+      'tail takes about half an hour.', CI, '7.5'),
     /* The SAMPLE button's entry went with the button itself (#698, 2026-09-11) — see
      * DOC_REMOVE in pwr_board_wiring.js. It is deleted rather than left: `run_inspect`
      * reads DOC_REMOVE and fails an entry with no live item behind it. */

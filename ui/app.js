@@ -4223,6 +4223,13 @@
     var want = cklStepSpeed(s, a);
     var cur = (s.metadata && s.metadata.time_acceleration) || 1;
     var idle = !service || !service.running || Object.keys(pauseWhy).length > 0;
+    /* ---- THE BOX OFF MEANS NO AUTOMATIC RAISE *OR DROP*, ANYWHERE (#807 review, 2026-09-26) ----
+     * This test used to sit below the hand-back branch, so with the box off a rung-less step or
+     * the walkthrough's end still dropped the clock to 1x. It also forgets what auto last set:
+     * a speed the player kept after switching the box off is theirs, and must not be handed back
+     * later as "still ours". The change handler clears the latch so ticking it back ON takes
+     * effect on the current step. */
+    if (!cklAutoWarpOn) { cklAuto.key = null; cklAuto.set = 0; return; }
     /* ---- NO WALKTHROUGH: HAND THE CLOCK BACK IF IT IS STILL OURS (quality pass, 2026-09-20) ----
      * `stop_checklist` tears the checklist down and never touches `timeAcceleration`, so ending a
      * walkthrough mid-wait — or finishing one — left the plant running at a rung AUTO chose, with
@@ -4245,7 +4252,6 @@
       }
       return;
     }
-    if (!cklAutoWarpOn) return;   // player switched the box off -- no raise, no drop, this step
     var key = cklAutoKeyStr(a, s, want);
     /* ---- A STOPPED CLOCK DROPS THE LATCH, AND THAT IS A FIX, NOT A STYLE (quality pass,
      * 2026-09-20) ---- This read `if (!running) return;` with the key ALREADY LATCHED, under a
@@ -9125,6 +9131,9 @@
     if (cwBox) cwBox.addEventListener('change', function () {
       cklAutoWarpOn = cwBox.checked;
       saveCklAutoWarpPref(cklAutoWarpOn);
+      // back ON = the walkthrough may pace THIS step again: forget the stale latch and any
+      // override of it, or the step's rung would wait for the next step to apply
+      if (cklAutoWarpOn) { cklAuto.key = null; cklAuto.over = null; }
     });
     // Settings: Units only under Display (#277 removed Values / Terminology /
     // Physics Overlay). RBMK/BWR All-view Instruments/True/Both still lives on

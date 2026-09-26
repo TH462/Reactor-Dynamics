@@ -240,6 +240,12 @@
 
   function cmd(c) { if (ctxRef && ctxRef.cmd) ctxRef.cmd(c); }
   function CS(s) { return s.control_state || {}; }
+  /* a metered boron dose still in the makeup path (#807 review): |transit| >= 1 ppm. The SAME
+   * threshold as instructor_layer DERIVED_CTL_PARAMS.boron_status_hold — change both. */
+  function boronMixing(s) {
+    var t = CS(s).boron_in_transit_ppm;
+    return typeof t === 'number' && Math.abs(t) >= 1;
+  }
   // ---- indicator damping (#234) -----------------------------------------------------
   // Every board reading goes through here. This is the PANEL INDICATOR's own damping, not
   // the transmitter's: one transmitter feeds both the control system and the meter, but the
@@ -1491,6 +1497,11 @@
       // Batch-dose totalizer: append the metered ppm remaining while a channel dose runs.
       var c = chan(s, 'boron_conc'), rem = c && c.dose_remaining;
       if (r !== 0 && rem != null && Math.abs(rem) > 0.05) base += ' ' + Math.round(Math.abs(rem)) + '→';
+      // MIXING (#807 review, 2026-09-26): the blender has stopped but a metered dose is still in
+      // the VCT / charging line and arriving — ~19 ppm after a long dilution, a ~30 min tail. The
+      // same test as instructor_layer's `boron_status_hold`, so a row grading HOLD and this word
+      // cannot disagree. Pure display; the retired engine publishes no transit and never mixes.
+      else if (r === 0 && boronMixing(s)) base = 'MIXING ' + Math.round(Math.abs(CS(s).boron_in_transit_ppm)) + '→';
       return base;
     },
     // ADV position (#371). No VALUE_UNIT entry — % is unit-neutral, and a conversion

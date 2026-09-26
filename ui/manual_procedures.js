@@ -2523,8 +2523,8 @@
         { text: 'Dilute boron to the estimated critical concentration, 719 ppm.',
           aim: 'Less boron in the water lets the reactor go critical with the control rods low in their travel.',
           why: 'Boron dissolved in the reactor water absorbs neutrons. At this point it is one of the things keeping the reactor shut down. Dilution replaces some borated water with clean water, so the boron\'s hold gets weaker and the control rods can finish the job taking the plant critical.\n\n719 ppm is set so that the reactor goes critical with the control rods about a third of the way out (around step 208 of 627). That leaves most of the rod travel free to control power.\n\nBoron and rods do different jobs. Boron changes slowly, over plant-hours, so it sets the starting point. Rods change reactivity within seconds, so they do the fine work of approaching critical.',
-          note: 'Dilution takes about 1¾ plant-hours coming from the Mode 5 to Mode 3 walkthrough, which arrives near 918 ppm. The Hot Standby preset starts at 719 ppm, so the step ticks at once.',
-          control: 'Boron control', target: 'BORON box 719; BORON STATUS counting down; BORON CHEM tracking live',
+          note: 'Dilution takes about 2 plant-hours coming from the Mode 5 to Mode 3 walkthrough, which arrives near 918 ppm: about 1¾ to reach 729 ppm, then about 20 plant-minutes of MIXING while the last of it arrives. The Hot Standby preset starts at 719 ppm, so the step ticks at once.',
+          control: 'Boron control', target: 'BORON box 719; BORON STATUS counting down, then MIXING, then HOLD; BORON CHEM tracking live',
           /* 90, not 65 (#749). MEASURED end to end on the full stack: 917.6 → 718.7 ppm takes
            * 88.4 plant-minutes (850 at +28.4, 800 at +50.0, 760 at +68.4, 740 at +78.4, 725 at
            * +85.0). Dilution is not linear and is not the boration rate read backwards — 857 → 719
@@ -2547,7 +2547,16 @@
                    label: 'BORON target reads 719 ppm' },
                  { p: 'boron_ppm', op: '~', v: 719, tol: 10.49,   /* 709 to 729 as the whole-ppm tile draws it (owner "B", 2026-09-26: tightened from 679-759 so step 5 starts after the dilution, #653 pass 7 S-2) */
                    ask: 'Wait for boron concentration to read between 709 and 729 ppm.',
-                   label: 'BORON CHEM 709 to 729 ppm' }],
+                   label: 'BORON CHEM 709 to 729 ppm' },
+                 /* AND THE DILUTION HAS FINISHED ARRIVING (#807 review, 2026-09-26). The makeup path
+                  * holds the dose for minutes: on the chained plant the tile crosses 729 with ~8-10 ppm
+                  * still in the VCT / charging line, which kept falling through the 1/M approach. The
+                  * board says so — BORON STATUS reads MIXING until < 1 ppm is left to arrive — and
+                  * this is that word's own test (instructor_layer `boron_status_hold`). From the Hot
+                  * Standby preset nothing is in transit and it reads HOLD on arrival. */
+                 { p: 'boron_status_hold', op: '~', v: 1, tol: 0.5,
+                   ask: 'Wait for BORON STATUS to read HOLD. While it reads MIXING, the last of the dilution is still reaching the reactor.',
+                   label: 'BORON STATUS reads HOLD' }],
           hl: ['Boron ON', 'Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
         /* CONFIRM, NOT ACT *(OWNER, 2026-09-03, #619 item 16: "mode 3 CL has me put SG feed in
          * AUTO but its already in AUTO when I get there")*. Both routes into this leg arrive
@@ -3391,7 +3400,7 @@
                   * it is the "five plant-minutes" the action line names. */
                  { p: 'startup_rate_dpm', op: '>=', v: 0.145,
                    ask: 'Tap WITHDRAW one step, wait five plant-minutes, and read STARTUP RATE. Repeat until it reads +0.15 or more.',
-                   note: 'Each step out adds about +0.03 to where STARTUP RATE settles. Over 1.0, tap INSERT once. SOURCE RANGE switches itself off above 1.0e5; INTER RANGE carries the reading.',
+                   note: 'Expect about 5 to 7 taps from 3 short, so 25 to 35 plant-minutes. Each step out adds about +0.03 to where STARTUP RATE settles. Over 1.0, tap INSERT once. SOURCE RANGE switches itself off above 1.0e5; INTER RANGE carries the reading.',
                    wait_speed: 10,
                    act_first: true,   /* 1× until the first tap lands on THIS substep — 9a's hold already spent the step's cmd_seen (layman pass 5 S-1) */
                    speed_text: '10× while you wait; 1× before every tap.',

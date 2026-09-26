@@ -1922,9 +1922,16 @@
     // A NEW target = a new dose computation. Re-anchor the books from the
     // (filtered) analyzer only if they have clearly drifted — otherwise
     // sequential nudges meter exactly from where the last dose ended.
+    // What the analyzer cannot see yet: dose already metered into the plant's makeup path
+    // (def.inTransit, ppm signed; a plant with no path publishes nothing and reads 0). The
+    // loop is heading for analyzer + transit, so that — not the bare analyzer — is what the
+    // books are compared with and re-anchored to (#807 review: comparing the bare analyzer
+    // re-dosed the ~19 ppm still in the pipe).
+    var transit = def.inTransit ? (def.inTransit(ctx) || 0) : 0;
     if (sp !== c.concLastSp || c.concBasis == null) {
-      if (c.concBasis == null || (pv != null && Math.abs(pv - c.concBasis) > (def.reAnchorPpm || 15))) {
-        c.concBasis = pv != null ? pv : sp;
+      var est = pv != null ? pv + transit : null;
+      if (c.concBasis == null || (est != null && Math.abs(est - c.concBasis) > (def.reAnchorPpm || 15))) {
+        c.concBasis = est != null ? est : sp;
       }
       c.concLastSp = sp;
     }
@@ -1940,7 +1947,12 @@
       else if (seq !== c.concSampleSeq) {
         c.concSampleSeq = seq;
         var lab = ctx.instruments.boron_sample;
-        if (c.concMode === 'hold' && lab != null && isFinite(lab)) {
+        // ...unless the lab AGREES with the books to within its own resolution (def.sampleDeadband,
+        // ppm; 0 = always snap). The result is whole ppm, so a dose that landed at 719.3 posts as
+        // 719 or 720 on rounding alone, and snapping the operator's typed 719 to 720 is noise
+        // presented as chemistry (#807 review: it un-met a walkthrough row graded on the box).
+        if (c.concMode === 'hold' && lab != null && isFinite(lab) &&
+            !(def.sampleDeadband && c.concBasis != null && Math.abs(lab - c.concBasis) <= def.sampleDeadband)) {
           c.concBasis = lab;
           c.sp = def.sp ? clip(lab, def.sp.min, def.sp.max) : lab;
           c.concLastSp = c.sp;

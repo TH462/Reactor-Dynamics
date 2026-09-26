@@ -600,7 +600,7 @@ Charging pump available.
 |------|------|
 | **NOTE** | Boron is slow vs rods. Concentration is known by **chemistry sample** (a real 30-minute lab turnaround), not a live meter. |
 | **NOTE** | Charging must be **On** for borate/dilute. |
-| **CAUTION** | Mixing lag ~30 s — stop early, do not chase. |
+| **CAUTION** | Boron keeps arriving after a dose stops: the last of it is still in the volume control tank and charging line. After a boration it finishes arriving in about 1 plant-minute; after a long dilution the loop keeps diluting for about 30 plant-minutes, up to about 19 ppm more, while BORON STATUS reads **MIXING**. Wait for **HOLD** before judging the result — do not chase it with a second dose. |
 
 ### Procedure — routine boron adjust
 

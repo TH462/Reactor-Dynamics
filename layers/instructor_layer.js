@@ -1604,9 +1604,16 @@
      * the heatup's own step-16 arrival (seeds 42/7/123), a 918 -> 719 ppm dilution climbs the
      * count 168 -> 174 cps in 4 min and a 60 s steady window ticks it inside 1.0-2.3 min, while
      * `boron_adjust` reads -0.05 from the first broadcast. */
+    /* ...AND NOTHING STILL ARRIVING (#807 review, 2026-09-26): after the blender stops, a long
+     * dilution's last ~19 ppm is still in the VCT / charging line and keeps reaching the loop for
+     * ~30 plant-minutes, which a HOLD read off the command alone called finished. The board word
+     * now reads MIXING until |control_state.boron_in_transit_ppm| < 1 ppm — the SAME threshold as
+     * pwr_board_wiring `boronMixing`, change both. A plant that publishes no transit reads 0. */
     boron_status_hold: function (cs) {
       var r = cs ? cs.boron_adjust : undefined;
-      return typeof r === 'number' ? (r === 0 ? 1 : 0) : undefined;
+      if (typeof r !== 'number') return undefined;
+      var t = typeof cs.boron_in_transit_ppm === 'number' ? cs.boron_in_transit_ppm : 0;
+      return (r === 0 && Math.abs(t) < 1) ? 1 : 0;
     }
   };
   /* A STATUS WORD THE BOARD LIGHTS A LAMP FROM (2026-09-25, `pwr_heatup` 1c "Check OFF is lit on the

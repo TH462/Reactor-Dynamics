@@ -2056,6 +2056,14 @@
        * totalizer counts this, not the command, because the blender clamps at pure water /
        * the acid tank and the plant then delivers less than it was asked */
       boron_rate_delivered: e.cv.boron_rate_delivered || 0,
+      /* WHAT HAS BEEN METERED AND HAS NOT YET ARRIVED, ppm signed (#807 review, 2026-09-26) — the
+       * boron the blender has put into the VCT and charging line that the RCS has not received
+       * (pwr2_cvcs `boron_in_transit_ppm`). ACTUATOR bookkeeping, not a plant measurement (HR1):
+       * the makeup integrator knows what it metered and the charging flow says how much has been
+       * pushed through, exactly as it knows `boron_rate_delivered` above. The batch-dose books
+       * need it to compare against the analyzer, which only sees what has ARRIVED; the board's
+       * BORON STATUS reads MIXING while it is non-zero. */
+      boron_in_transit_ppm: e.cv.boron_in_transit_ppm || 0,
       /* REAL since the feed train (2026-08-21): the delivered main-feed fraction — the
        * "speed" gauge presentation the board's five reader tiles expect (measured) */
       feed_pump_speed_pct: Math.min(120, e.fw.feed_frac * 100),

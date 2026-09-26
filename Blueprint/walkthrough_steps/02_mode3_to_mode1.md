@@ -51,9 +51,11 @@ In Hot Standby (Mode 3), the plant is at operating temperature and at pressure w
 
 ()2c. Wait for boron concentration to read between 709 and 729 ppm.
 
+()2d. Wait for BORON STATUS to read HOLD. While it reads MIXING, the last of the dilution is still reaching the reactor.
+
 Suggested time warp: 600×.
 
-Note: Dilution takes about 1¾ plant-hours coming from the Mode 5 to Mode 3 walkthrough, which arrives near 918 ppm. The Hot Standby preset starts at 719 ppm, so the step ticks at once.
+Note: Dilution takes about 2 plant-hours coming from the Mode 5 to Mode 3 walkthrough, which arrives near 918 ppm: about 1¾ to reach 729 ppm, then about 20 plant-minutes of MIXING while the last of it arrives. The Hot Standby preset starts at 719 ppm, so the step ticks at once.
 
 
 
@@ -225,7 +227,7 @@ Note: At SLOW the rods move about one step every 8 plant-seconds, so a short hol
 
 Suggested time warp: 10× while you wait; 1× before every tap.
 
-Note: Each step out adds about +0.03 to where STARTUP RATE settles. Over 1.0, tap INSERT once. SOURCE RANGE switches itself off above 1.0e5; INTER RANGE carries the reading.
+Note: Expect about 5 to 7 taps from 3 short, so 25 to 35 plant-minutes. Each step out adds about +0.03 to where STARTUP RATE settles. Over 1.0, tap INSERT once. SOURCE RANGE switches itself off above 1.0e5; INTER RANGE carries the reading.
 
 
 
@@ -454,6 +456,7 @@ becoming steps. Until then the line is prose only.
 |6a|5×|my pick, same shape as 5a (63-step rung, 300 s settle)|
 |7a|5×|OWNER RULING, 2026-09-24 ("7a 5×, 8b 10×") — SUPERSEDES the earlier 10× "my pick" row below: a 25-step window at 10× measured \~3 s of wall time (layman pass 3, #653 S-2), too fast to release on|
 |8a|10×|OWNER, item 3|
+|5a, 6a, 7a|**10×**|**SUPERSEDES the 5a/6a/7a 5× rows above.** *OWNER, 2026-09-26 (#807 item 9): "steps 5, 6 7 should be at 10x."* One step-level "Suggested time warp: 10×" line each since 807b|
 |8b|10×|OWNER RULING, 2026-09-24 ("7a 5×, 8b 10×") — 8b now carries the "wait for +0.03 or less, then plot" rate-wait (rod-window-leads reword), a real 3.0-3.5 plant-minute wait; measured 8.0 steps/wall-second at 10× vs 4.0 at 5× for MED|
 |9a|1×|the old step 9 note ("come back to 1× before you move a rod again")|
 |9b, 10a|10×|OWNER, item 3; matches the pool's MEASURED `wait\\\_speed: 10` on old step 9 (`tools/glance\\\_rung.js`, #796)|
@@ -1111,6 +1114,18 @@ its tail. MEASURED (`run_walkthrough_routes` chain, seed 42): step 2 now 93.0 pl
 chained plant (the note's "about 1½ plant-hours" holds); step 5 clears at bank 80, SOURCE RANGE
 713 cps, 2.2 plant-min; step 7 stops at bank 182. Route gate 128/0/128. The 5a/5b dilution notes
 (records p, s) stay: a 10 ppm tail can still show.
+
+### #807 review fixes — 2026-09-26 (807int), develop lane
+
+Record: `Diagnostic/TUNING_LOG.md` 2026-09-26-develop-e.
+- **2d added: "Wait for BORON STATUS to read HOLD."** The board word reads MIXING while ≥ 1 ppm of a
+  finished dose is still in the VCT / charging line. Chained (seed 42): step 2 103.0 → 124.0
+  plant-min; the approach then starts on settled boron (step 9 prediction 213 → 211, criticality at
+  213 both). From the Hot Standby preset nothing is in transit and 2d reads HOLD on arrival. Note
+  re-stated: "about 2 plant-hours … about 1¾ to reach 729 ppm, then about 20 plant-minutes of MIXING".
+- **9b note: "Expect about 5 to 7 taps from 3 short, so 25 to 35 plant-minutes."** Measured,
+  `run_walkthrough_routes` typical routes: 206 → 213 (7 taps), 207 → 213 (6), chained 208 → 213 (5).
+- SPEED PROVENANCE: 5a/6a/7a row superseded by the owner's #807 item 9 (10×).
 
 ### #807 items 8-10 — 2026-09-26 (807b), develop lane
 

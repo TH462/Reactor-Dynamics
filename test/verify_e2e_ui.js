@@ -3429,6 +3429,12 @@ async function testSpeedRungGlowRendered(page) {
  * (the latch, not the gate). Starting a second instance for the OFF half sidesteps that ambiguity
  * entirely rather than asserting through it.
  *
+ * REVIEW (2026-09-26): the OFF gate now sits ABOVE the hand-back branch and clears the latch, and
+ * the change handler clears it on ON — so the two tail checks below (OFF/1x/ON on the same step
+ * re-applies the rung; OFF then the walkthrough's end leaves the clock alone) are injection-proven
+ * too: HEAD's app.js reds the first ("read 1x (a stale latch)"), the OFF gate moved back below the
+ * hand-back reds the second ("read 1x, it was 3600x").
+ *
  * Injection-proven 2026-09-26 (`inbox/807/inject_toggle.js`): commenting out the
  * `if (!cklAutoWarpOn) return;` guard in `syncCklAutoSpeed` (ui/app.js) reds the "OFF suppresses
  * the raise" assertion (accel climbs to the rung anyway, 1 -> N with the box unchecked); reverting
@@ -3557,8 +3563,8 @@ async function testWalkthroughWarpTogglePref(page) {
   }
   log.push('OFF: card still reads "' + advice.trim() + '"');
 
-  // ---- re-checking resumes the automation, on the SAME instance (the latch was never touched
-  // while OFF — see the comment above this function) ----
+  // ---- re-checking resumes the automation, on the SAME instance (the handler clears the
+  // latch on ON — see the comment above this function) ----
   await page.click('#cklWarpPrefBox');
   var onBox2 = await readRow();
   if (onBox2.checked !== true) throw new Error('#807: the second click did not re-check the box — ' + JSON.stringify(onBox2));
@@ -3574,8 +3580,42 @@ async function testWalkthroughWarpTogglePref(page) {
   if (persisted !== '1') throw new Error('#807: the ON state must persist to localStorage — read ' + JSON.stringify(persisted));
   log.push('persisted: rd_ckl_auto_warp="' + persisted + '"');
 
+  /* (#807 review, 2026-09-26) THE STALE LATCH: the step's rung has fired (clock at j2.speed, the
+   * driver's key latched on this step). OFF, the player puts the clock at 1x, ON again — the
+   * rung must re-apply on THIS step. Before the fix the OFF gate returned without touching the
+   * latch and ON matched it, so the clock sat at 1x until the next step. */
+  await page.click('#cklWarpPrefBox');
+  await setSpeed1();
+  await page.waitForTimeout(1000);
+  await page.click('#cklWarpPrefBox');
+  await page.waitForTimeout(3000);
+  var relatch = await accel();
+  if (relatch !== j2.speed) {
+    throw new Error('#807 review: OFF, 1x, ON again on the same step must re-apply the step rung, ' + j2.speed +
+      'x rung — read ' + relatch + 'x (a stale latch)');
+  }
+  log.push('OFF, 1x, ON on the same step: rung re-applied, ' + relatch + '×');
+
+  /* OFF MEANS NO AUTOMATIC DROP EITHER: the clock is at the rung auto set; the player switches
+   * the box OFF and the walkthrough ends. Before the fix the hand-back branch ran ahead of the
+   * OFF gate and dropped it to 1x. */
+  await page.click('#cklWarpPrefBox');
+  var offAgain = await readRow();
+  if (offAgain.checked !== false) throw new Error('#807 review: the click did not uncheck the box — ' + JSON.stringify(offAgain));
   await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(3000);
+  var noDrop = await accel();
+  if (noDrop !== j2.speed) {
+    throw new Error('#807 review: with the box OFF the end of the walkthrough must not touch the clock — read ' +
+      noDrop + 'x, it was ' + j2.speed + 'x');
+  }
+  log.push('OFF, walkthrough ended: clock left at ' + noDrop + '× (no automatic drop)');
+  // put the preference back ON and the clock at 1x for whatever runs next on this page
+  await page.evaluate(function () {
+    try { localStorage.setItem('rd_ckl_auto_warp', '1'); } catch (e) { /* private mode */ }
+    globalThis.RD.__dev.service().handleCommand({ action: 'set_speed', value: 1 });
+  });
+
   var stopped2 = await readRow();
   if (stopped2.hidden !== true) throw new Error('#807: the box must hide again once the walkthrough ends — ' + JSON.stringify(stopped2));
   log.push('instance 2 stopped: row hidden=' + stopped2.hidden);

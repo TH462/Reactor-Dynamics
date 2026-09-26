@@ -29,6 +29,47 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-develop-e (#807 review fixes: the makeup-path boron tail, re-anchor double dose, MIXING, warp toggle OFF)
+
+Quality review of the merged #807 work (exp/807int). All plant numbers full stack, pwr2, seed 7
+unless stated; route numbers `run_walkthrough_routes` seed 42.
+
+- **Retarget double-dose (HIGH).** `control_kernel._stepConc` re-anchored the dose books to the BARE
+  analyzer when a new target found them >15 ppm apart (`reAnchorPpm`); since #807 the analyzer
+  trails the books by what is still in the VCT / charging line (~19 ppm on a long dilution), so the
+  pipe was metered twice. Measured from hot shutdown (894 ppm): 820 retargeted to 815 at +20 min
+  landed **795.7** (19.3 past); 840 set 30 s after an 850 dose landed **821.1** (18.9 past). Fix: the
+  plant publishes `control_state.boron_in_transit_ppm` (actuator bookkeeping, like
+  `boron_rate_delivered` — HR1: the makeup integrator knows what it metered, not a plant measurement);
+  `pwr_control` `boron_conc.inTransit` reads it and the kernel compares/re-anchors to analyzer +
+  transit. After: **815.3** and **840.3**. Gate `run_checklist_pwr2` 2l2(a)/(b), injection (bare `pv`)
+  reads 800.0 / 821.9 at +45 min, red.
+- **Trap found on the way: the confirmatory lab sample re-typed the operator's target on ROUNDING.**
+  The result is whole ppm; a dose landing at 719.3-719.7 posts 720 and the kernel snapped the box
+  719 -> 720, which un-met Mode 3 to Mode 1 step 2's "BORON target reads 719" row (ordered) and
+  stranded the chain at step 2 for 181 plant-min once that step waited for the tail. `sampleDeadband: 1`
+  — a result within 1 ppm of the books confirms, it does not correct. Gate 2l row 3; injection reads 720.
+  A `lab + transit` re-baseline was tried and DROPPED: the lab turnaround is ~30 min, so at posting the
+  tail is 0.6-2 ppm and no fixture could red it (setpoint 842.0 vs 840.6) — an ungated line.
+- **BORON STATUS reads MIXING** while |transit| >= 1 ppm with the blender stopped (board word, and the
+  checklist's `boron_status_hold` derived param now requires it too — one threshold in two files,
+  `run_checklist_pwr2` 2l2(c)/(d) lifts the board's `boronMixing` and asserts they agree on every
+  broadcast; injection reds both). Tail measured: boration +56 ppm leaves 2.9 ppm in transit at stop,
+  under 1 ppm in 1.2 plant-min; an 850 dilution dose's 18.4 ppm takes **33.0** plant-min.
+- **Mode 3 to Mode 1 step 2 waits for HOLD (2d).** Chain A/B (seed 42): step 2 103.0 -> 124.0 plant-min;
+  steps 6/7 taps 2/4 -> 1/2; step 9 pred 213 goal 210 -> pred 211 goal 208, end bank 213 both, 9 took
+  21.8 -> 31.8 min (reads 210..213 -> 208..213). Before, the approach ran with ~10 ppm still arriving:
+  the 1/M prediction matched criticality exactly (213) because the boron tail was doing the last steps'
+  work; after, criticality is 2 steps past the prediction on settled boron.
+- **Heatup 16d**: unchanged on the typical route (1.6 plant-min, chain). Route gate 128/0.
+- **Warp toggle OFF** (`ui/app.js syncCklAutoSpeed`): the OFF gate sat below the no-walkthrough
+  hand-back, so OFF still dropped the clock to 1x at the walkthrough's end; re-checking ON on the same
+  step matched a stale latch. `verify_e2e_ui` testWalkthroughWarpTogglePref +2 checks; HEAD's app.js
+  reds the latch one, the gate moved back below the hand-back reds the no-drop one.
+- **2ak.5 re-aimed** to a 211 -> 212 tap 330 s after a 208 -> 211 pull (spike 0.188 over the 0.145
+  floor). `rodMoving` alone no longer reddens it — the rounded position flips before the lagged rate
+  crosses; the hidden row's 300 s -> 1 s does (the step completes on the pull's spike).
+
 ## Session log — 2026-09-26-develop-d (#807 items 8-11: the startup ladder's window and warp, and 9b's target rate)
 
 Owner playtest of 1.8.0-rc6, `pwr_startup` (Mode 3 → Mode 1). All numbers full stack, pwr2
