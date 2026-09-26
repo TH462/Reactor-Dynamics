@@ -29,6 +29,23 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-workbench-e (raise power ends at step 9: the xenon steps left)
+
+Record: `Blueprint/walkthrough_steps/03_raise_power.md` §"Xenon steps removed". Traps only:
+
+- **REMOVING A STEP SHORTENS THE CHAIN, AND THE NEXT LAP SAMPLES DIFFERENT NOISE.** The round-trip
+  chain's second heatup (step 16, SOURCE RANGE `steady`) flickered 2.0 s on gate seed 42 once the
+  raise leg lost its three steps, with no grading change anywhere. Measured 0 of 7 other seeds after,
+  0 of 5 at HEAD: seed-sensitive, not caused. Before calling a downstream chain red a regression, run
+  the chain job at several `WR_SEED`s on BOTH trees (a detached `git worktree add` at HEAD, 1 s).
+- **A prepared removal checklist misses the keyed pins.** The pre-ruling script named the route gate
+  and `manual_ui_map`; `run_checklist_pwr2` also pins `pwr_raise_power:<n>` in two maps and a pool-count
+  check. Grep `<leg>:<n>` across `test/` before trusting any list of what to edit.
+- **A heading that says `OWNER DIRECTIVE` is an HR11 site.** `run_hardrules` read the section title as
+  an undeclared ruling; name the ruling in the quoted line under it, not in the heading.
+
+---
+
 ## Session log — 2026-09-26-workbench-d (layman pass 8 verified: the non-startup findings)
 
 Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`. Startup findings (S-1..S-3) are develop's lane. Traps only:

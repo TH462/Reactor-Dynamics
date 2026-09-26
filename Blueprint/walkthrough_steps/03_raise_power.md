@@ -1,6 +1,6 @@
 # Raise power
 
-**Walkthrough id: `pwr_raise_power`  ·  12 steps**
+**Walkthrough id: `pwr_raise_power`  ·  9 steps**
 
 > This is the LIVE step file: the sim's `pwr_raise_power` walkthrough was brought down to it on
 > 2026-09-24 (the owner, after the Mode 3 to Mode 1 leg was ported: "Adopt the format for the
@@ -238,81 +238,15 @@ The last 10 MWe of LOAD, then a smaller pull to bring the temperature back up. R
 
 Suggested time warp: 1×.
 
-Note: CONTROL ROD POSITION should be part-way out, not on its stop. The last of the dilution is still arriving here: AVG COOLANT TEMPERATURE climbs while it does, so hold INSERT 3 steps at a time whenever it rises above its band. BORON is the one to read twice: leave the climb with more of it in the water than the plant wants and AVG COOLANT TEMPERATURE sinks over the following hours, taking PZR LEVEL with it.
+Note: CONTROL ROD POSITION should be part-way out, not on its stop. The last of the dilution is still arriving here: AVG COOLANT TEMPERATURE climbs while it does, so hold INSERT 3 steps at a time whenever it rises above its band. BORON is the one to read twice: leave the climb with more of it in the water than the plant wants and AVG COOLANT TEMPERATURE sinks over the following hours, taking PZR LEVEL with it. This walkthrough ends here. Over the next two plant-days xenon, a neutron absorber the fuel makes as it runs, builds and cools the plant at the same power; a separate xenon walkthrough, still to come, covers what an operator does about it.
 
 
 
 Background
 
-Full power, with almost no xenon in the fuel yet. Over the next hours xenon builds, and the plant settles into its long-term full-power state: less boron and the control bank high — 606 of 627 steps, which is where a full-power plant runs. The next step is how you get from here to there.
+Full power, with almost no xenon in the fuel yet. Over the next hours xenon builds, and the plant settles into its long-term full-power state: less boron and the control bank high — 606 of 627 steps, which is where a full-power plant runs.
 
 [HIGHLIGHTED: Reactor Power, Generator Output, Tavg, Boron Concentration (steady)]
-
-
-
-10. Start giving back the reactivity xenon takes, rods first.
-
-*Xenon takes reactivity away over about two days; rods give it back first, but only once it has taken some.*
-
-()10a. If AVG COOLANT TEMPERATURE reads below 575 °F, hold WITHDRAW at MED 3 to 6 steps, let it settle, and repeat until it reads 575 °F or more; otherwise leave the rods where they are.
-
-()10b. Check OUTPUT still reads 100 MW.
-
-Suggested time warp: 1×.
-
-Note: Right after the climb there is almost no xenon, and the temperature holds by itself. Pulling now only heats the plant, far enough that it cuts the turbine back on its own. As xenon builds over the next hours the temperature drifts down: pull 3 to 6 steps each time it reads below 575 °F, then wait for it to settle. The Control Rods — Insertion Limit alarm (ROD LIMIT LO-LO) is up and that is normal — the bank is low because there is no xenon yet, and it clears as you walk the bank up.
-
-
-
-Background
-
-Xenon is a neutron absorber that builds in the fuel over about two days, takes reactivity away, and the plant answers by making the same power at a lower temperature. Left alone this plant does not just settle cold: measured from here, PZR LEVEL is on its floor in 7 plant-hours and the reactor trips on STEAM GENERATOR LEVEL LO-LO in 17, with REACTOR POWER reading 100 % the whole way down. You give the reactivity back with two levers, rods leading because they are fast and reversible: the bank has about 300 steps to go, worth roughly 110 °F between them, and each ppm of boron about 0.6 °F.
-
-[HIGHLIGHTED: Control Bank (pulsing); Tavg, Control Rod Position (steady)]
-
-
-
-11. Give boron its first small dose as xenon builds.
-
-*Rods alone cannot carry all of the xenon still to come; boron takes the rest, a small dose at a time, once the rods fall behind.*
-
-()11a. If the rods alone no longer hold AVG COOLANT TEMPERATURE in its band, set the BORON target 10 ppm lower; otherwise leave it.
-
-()11b. Check OUTPUT still reads 100 MW.
-
-Suggested time warp: 10×. Give a dose ten plant-minutes to arrive before you judge it.
-
-Note: A dose is 10 ppm, never the whole 43 ppm still to come (660 down to 617). Each takes about ten plant-minutes to arrive and lifts AVG COOLANT TEMPERATURE about 5 °F. Right after the climb the rods have hours of travel to give, so the first dose is hours away.
-
-
-
-Background
-
-Rods are fast, but they run out: the bank has about 300 steps left and the xenon still to come costs more than they carry. Boron carries the rest, and it has to go in small doses — dial the whole way in one press and the plant heats far faster than xenon can absorb it, which trips the reactor on overtemperature.
-
-[HIGHLIGHTED: Boron Target (pulsing); Boron Concentration, Tavg (steady)]
-
-
-
-12. Hold full power on program while xenon builds.
-
-*Xenon keeps building for two plant-days, so full power is held by hand until it levels off.*
-
-()12a. Check OUTPUT still reads 100 MW.
-
-()12b. Check AVG COOLANT TEMPERATURE reads about 580 °F and CONTROL ROD POSITION is part-way out, below 600.
-
-Suggested time warp: 1×.
-
-Note: This walkthrough ends here, and nothing on this card waits for the xenon. Stay at full power instead and the trimming in steps 10 and 11 goes on for about two plant-days.
-
-
-
-Background
-
-Where this ends up, if you keep at it: CONTROL ROD POSITION about 606 of 627 and BORON about 617 ppm, which is where this plant runs at full power with xenon at equilibrium (the settled point measures 612.3 ppm; 617 is the target you dial toward). Rods carry the first 110 °F or so; once the bank is near the top it has only about 21 steps of travel left, worth 4.6 °F, and BORON carries the rest — about four doses of 10 ppm, one at a time, never in one press. Type 617 in one go and the plant heats far faster than xenon can absorb it: measured, that trips the reactor on overtemperature.
-
-[HIGHLIGHTED: Control Rod Position, Boron (steady)]
 
 
 
@@ -757,3 +691,20 @@ Pressurizer Pressure Low, 6b Insertion Limit. Suggested speed 5×. The wording i
   tick"): the reviewer ticked 6 at 559-560 °F against a green band near 570.
 - 12's Note no longer promises a wait the card does not make: on the chain, 10-12 tick in 0.1
   plant-min each at 580 °F, which is honest under the conditional-step ruling. Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`.
+
+### Xenon steps removed — 2026-09-26, workbench-e (owner directive and selection, quoted below)
+
+*(OWNER DIRECTIVE, 2026-09-26: "I don't think dealing with xenon should be a part of these
+walkthroughs. That's for a different walkthrough.")* Then the owner selected option **"C"** (option
+text, not his words — Hard Rule 11): replace steps 10-12 with ONE closing note, no action asked,
+pointing to a future xenon walkthrough; keep the explanation-only mentions (stage 5's and step 9's
+Background). **This supersedes the 2026-09-25 "Make them conditional" ruling on steps 10-11.**
+
+- Steps 10 (rod give-back), 11 (first boron dose) and 12 (hold full power while xenon builds) are
+  gone; the leg is 9 steps and ends on step 9.
+- Step 9's Note gains the closing sentence; its Background drops "The next step is how you get from
+  here to there." The end card (`outcome`) says xenon is a separate walkthrough.
+- Step 12's check-offs were already graded earlier, so none moved: OUTPUT 100 MW (9a), CONTROL ROD
+  POSITION below 600 (8d), the temperature (8b 573-583 °F, 9c 563-592 °F).
+- Route gate: `entry_met` '#10'/'#11', the chain's '#10' band-floor pull and injection
+  `chain_step10_bank` retired with their step; `raise_old_settle_band` keeps its step-8 half.

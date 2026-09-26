@@ -3810,8 +3810,11 @@ if (!only && RUN_B) {
       /* RE-PINNED 2026-09-25 (workbench-g, layman pass 5 S-1): cooldown 16d grades the SCRAM
        * button's reset (`scrammed < 1`, true_state, not an instrument), so predicate rows
        * 166 -> 167; steps, instrument-graded and sole unchanged. SUM on a merge. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (workbench-a): 86 / 168 / 102 / 25 -- cooldown 11a, the SPRAY OFF row, layman pass 6 S-5; was 86/167/101/26)',
-         gradedSteps === 86 && predRows === 168 && rows.length === 102 && soleInst === 25,
+      /* RE-PINNED 2026-09-26 (workbench-e): raise-power steps 10-12 LEFT (owner directive, xenon is a
+       * different walkthrough) -- -3 graded steps, -7 predicate rows (10: 2, 11: 2, 12: 3), -6
+       * instrument-graded (the bank row of 12 is not one), sole unchanged (none was a sole row). */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (workbench-e): 83 / 161 / 96 / 25 -- raise-power 10-12 removed; was 86/168/102/25)',
+         gradedSteps === 83 && predRows === 161 && rows.length === 96 && soleInst === 25,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -3937,12 +3940,6 @@ if (!only && RUN_B) {
       'pwr_raise_power:9:power_pct': 'power_range',          // > 96
       'pwr_raise_power:9:mwe_output': 'mwe_output',          // > 97   9a's OUTPUT row (phase 2, 2026-09-25)
       'pwr_raise_power:9:tavg_c': 'tavg',                    // ~ 303.2
-      'pwr_raise_power:10:mwe_output': 'mwe_output',         // > 97
-      'pwr_raise_power:10:tavg_c': 'tavg',                   // ~ 304.4
-      'pwr_raise_power:11:tavg_c': 'tavg',                   // ~ 304.4  conditional dose (2026-09-25 ruling)
-      'pwr_raise_power:11:mwe_output': 'mwe_output',         // ~ 100
-      'pwr_raise_power:12:mwe_output': 'mwe_output',         // > 97   no longer SOLE (phase 2: 12b's temperature row)
-      'pwr_raise_power:12:tavg_c': 'tavg',                   // ~ 304.4
       /* pwr_lower_power [hot_full_power] */
       'pwr_lower_power:2:mwe_output': 'mwe_output',          // ~ 75          dead 0.000 vs true 100.0 MWe
       'pwr_lower_power:3:mwe_output': 'mwe_output',          // ~ 75
@@ -4134,9 +4131,6 @@ if (!only && RUN_B) {
       'pwr_startup:12': 'power_pct',                          // the rate row became a `steady` power row (2026-09-23)
       'pwr_startup:17': 'power_pct,mwe_output',               // his two rows, replacing plant_mode
       'pwr_raise_power:9': 'power_pct,mwe_output,boron_ppm,tavg_c',
-      'pwr_raise_power:10': 'tavg_c,mwe_output',            // conditional since 2026-09-25 (owner ruling)
-      'pwr_raise_power:11': 'tavg_c,mwe_output',
-      'pwr_raise_power:12': 'mwe_output,tavg_c',                     // the #667 shape, one leg later
       'pwr_cooldown:8': 'pressure_mpa',
       'pwr_cooldown:13': 'tavg_c',              // 13a/13b replace plant_mode (2026-09-25); 13b is the OFF lamp since workbench-f
       'pwr_tmi2_incident:1': 'power_pct',
@@ -4208,7 +4202,7 @@ if (!only && RUN_B) {
     ck('2af.2 every observation step graded on a live quantity carries a `why` for when it does not verify (#667 item 1)',
        noWhy.length === 0,
        noWhy.length ? 'NO `why`: ' + noWhy.join(', ')
-         : 'all ' + Object.keys(live).length + ' carry one (e.g. pwr_raise_power step 12, the #667 shape)');
+         : 'all ' + Object.keys(live).length + ' carry one (e.g. pwr_raise_power step 9)');
 
     var dTS = cmpMap(ts, TRUE_STATE_EXPECTED);
     ck('2af.3 the true_state-graded observation rows — the grey band — are the pinned set (#667 item 1)',

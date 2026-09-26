@@ -31,6 +31,12 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Raise power walkthrough ends at step 9; the xenon steps are gone** (2026-09-26, owner directive:
+  "I don't think dealing with xenon should be a part of these walkthroughs. That's for a different
+  walkthrough."; then selected option C). Steps 10 (rod give-back), 11 (first boron dose) and 12
+  (hold full power while xenon builds) removed; step 9's Note and the end card close with one
+  no-action sentence pointing to a future xenon walkthrough. Step 12's check-offs were already
+  graded at 8 and 9, so nothing moved. Supersedes the 2026-09-25 "Make them conditional" ruling.
 - **Walkthroughs: layman pass 8, non-startup findings** (2026-09-26, AGENT-DRAFTED wording).
   Lower power's four "below X °F" Tavg rows grade X - 0.5 °F (no tick while the tile still reads X);
   heatup's Pressurizer Level Above Program forewarning moved to 9b; cooldown 11 prints one speed

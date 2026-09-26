@@ -175,9 +175,9 @@ var ROUTES = {
     // "Make sure the turbine is on line and taking steam": a CONFIRM step — the ask is "Check the
     // TURBINE-GENERATOR card is on line", LATCH only "if it reads TRIP" — and the low_power start
     // arrives latched at 10 MWe. Added to the provisional no-action default, not replacing it.
-    // 10 and 11 are CONDITIONAL since 2026-09-25 (owner ruling "Make them conditional"): on the
-    // plant the climb leaves they are met on arrival — the player's act is to leave rods and boron alone.
-    entry_met: ['cmd:latch_turbine', '#10', '#11'],
+    // (10 and 11 were CONDITIONAL entry-met steps until 2026-09-26, when the owner took the xenon
+    // steps 10-12 out of this leg: "That's for a different walkthrough.")
+    entry_met: ['cmd:latch_turbine'],
     /* LAYMAN PASS 6 (2026-09-26): on the CHAINED plant the literal player is the band-floor
      * reader of `band_floor` below -- pass 6's own route, which stalled step 10 at 570 degF. */
     chain_steps: {
@@ -185,8 +185,7 @@ var ROUTES = {
       'cmd:set_load_target:2': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
       'cmd:set_load_target:3': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
       'cmd:set_load_target:4': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
-      'cmd:set_load_target:5': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
-      '#10': { policy: 'cond_pull', pull: 5, dwell: 300 } },
+      'cmd:set_load_target:5': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 } },
     settle_check: true,   // pass 6 S-7: a step that says "settle(s) on N degF" completes within 5.4 degF of N
     mistakes: [
       { id: 'double_boron', kind: 'double press', at: 'cmd:set_auto_setpoint', set: { repeat: 2 } },
@@ -211,9 +210,9 @@ var ROUTES = {
       { id: 'hot_stage4', kind: 'overshoot', at: 'cmd:set_load_target:1', set: { policy: 'seq', cmds: [
         { action: 'set_load_target', mwe: 30 }, { action: 'rod_nudge', group_id: 'control', steps: 32, speed: 'normal' }] },
         override: { 'cmd:set_load_target:2': { policy: 'to_band', tref: 562, dead: 5, dead_hi: 5, pull: 5, dwell: 60 } } },
-      { id: 'band_floor', kind: 'literal reading', at: '#10', set: { policy: 'cond_pull', pull: 5, dwell: 300 },
+      /* 2026-09-26: step 10 (the `cond_pull` half) left with the xenon steps; the band-floor stages stay. */
+      { id: 'band_floor', kind: 'literal reading', at: 'cmd:set_load_target:1', set: { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
         override: {
-          'cmd:set_load_target:1': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
           'cmd:set_load_target:2': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
           'cmd:set_load_target:3': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
           'cmd:set_load_target:4': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
@@ -380,9 +379,8 @@ var MUTATIONS = [
       'cmd:set_load_target:4': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 90 }, { action: 'rod_nudge', group_id: 'control', steps: 25, speed: 'normal' }] },
       'cmd:set_load_target:5': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 100 }, { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' }] },
       '#9': { policy: 'default' } } },
-  { id: 'chain_step10_bank', chain: true, leg: 'pwr_raise_power', route: 'chain', expect: 'complete',
-    why: 'raise-power 10 graded on CONTROL ROD POSITION above 351 again (a bank number the chained plant reaches only as xenon builds, about 5 plant-hours)',
-    mutate: function (P) { P.steps[9].accs[0] = { p: 'control_bank_steps', op: '>', v: 351, ask: P.steps[9].accs[0].ask, label: 'CONTROL ROD POSITION above 351' }; } },
+  /* `chain_step10_bank` RETIRED 2026-09-26 with raise-power step 10 (owner directive: xenon is a
+   * different walkthrough). Its subject no longer exists. */
   /* LAYMAN PASS 5 (2026-09-25), S-1: the round trip. The mutation is on the COOLDOWN (step 16's
    * PRESS TO RESET row deleted) and the check is on the heatup that follows it (`check`): with no
    * reset the shutdown's scram is still latched, the rod drive refuses WITHDRAW, and heatup 3
@@ -417,13 +415,12 @@ var MUTATIONS = [
       st.accs = [{ p: 'tavg_c', op: '<', v: 92.5, ask: 'Raise HX SPLIT to 9 % and wait for AVG COOLANT TEMPERATURE to read below 199 °F.', label: 'AVG COOLANT TEMPERATURE below 199 °F' }];
     } },
   { id: 'raise_old_settle_band', chain: true, leg: 'pwr_raise_power', route: 'chain', expect: 'settle',
-    why: 'raise-power 8 graded 563-592 degF again and 10 saying "below its band" (pass 6: step 8 ticked at 567 degF, step 10 stalled at 570)',
+    why: 'raise-power 8 graded 563-592 degF again (pass 6: step 8 ticked at 567 degF)',
     mutate: function (P) {
       /* pass 7 moved the temperature row to 8b (accs[1]) */
       P.steps[7].accs[1].ask = 'Check AVG COOLANT TEMPERATURE is near 578 °F, between 563 and 592 °F.';
       P.steps[7].accs[1].label = 'AVG COOLANT TEMPERATURE between 563 and 592 °F';
       P.steps[7].accs[1].v = 303.2; P.steps[7].accs[1].tol = 8;
-      P.steps[9].accs[0].ask = 'If AVG COOLANT TEMPERATURE reads below its band, hold WITHDRAW at MED 3 to 6 steps; otherwise leave the rods where they are.';
     } },
   { id: 'cooldown_until_flat', leg: 'pwr_cooldown', route: 'typical', expect: 'stated',
     why: 'cooldown 4 as the OLD card read it: after each 50 psi, wait until the whole-degree tile reads the same twice, 5 plant-minutes apart',
@@ -1036,6 +1033,12 @@ if (!ROUTE_F && ARGV.indexOf('--no-mutations') < 0)
  * agents own the content). Key: 'leg:route:check'. Each carries its measured numbers in
  * BASELINES' note; this map only keeps the tally honest about which reds are expected. */
 var TRACKED = {
+  // 2026-09-26 (workbench-e): heatup 16's SOURCE RANGE `steady` row (1.2 % over 600 s) ticks and
+  // un-ticks 2.0 s later at 360.6 plant-min on the SECOND lap, gate seed 42 only. Exposed, not caused,
+  // by raise-power 10-12 leaving: the grading is untouched, the chain's history is shorter. MEASURED:
+  // 0 of 7 other seeds (1-8, bar 42) flash anywhere in heatup#2 after the change; 0 of 5 at HEAD
+  // (seeds 4-8). Same row and same noise-on-a-steady-window shape as the 2026-09-25 workbench-j trap.
+  'chain:pwr_heatup#2:flash': 'heatup 16 SOURCE RANGE steady row, seed-42 flicker on the 2nd lap (2026-09-26)',
   // RESOLVED 2026-09-24 (rp_start): 'pwr_startup:typical:complete' — step 9 passed on ONE read of
   // 0.069 DPM at bank 208 while the rate was still falling (to 0.024) and step 10 stranded at 90
   // min. Step 9 now carries a hidden STARTUP RATE `steady` row (5 % over 240 s): the typical route
