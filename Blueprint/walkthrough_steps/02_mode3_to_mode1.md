@@ -1115,7 +1115,7 @@ chained plant (the note's "about 1½ plant-hours" holds); step 5 clears at bank 
 ### #807 items 8-10 — 2026-09-26 (807b), develop lane
 
 Owner playtest of 1.8.0-rc6. Full record and every number: `Diagnostic/TUNING_LOG.md`
-2026-09-26-develop-b.
+2026-09-26-develop-d.
 - **5a window 80-100 → 90-110** (item 8, "It barely hit 7.0e2 cps at 100 steps"). SOURCE RANGE at
   719 ppm: 724 at 80, 772 at 90, 830 at 100, 899 at 110; at 729 ppm 712 at 100, 763 at 110. The 5a
   note's "reaches 100" became "reaches 110". Route gate `#5` to 90, top 110.

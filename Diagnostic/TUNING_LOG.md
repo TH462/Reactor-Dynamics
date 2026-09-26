@@ -29,7 +29,7 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
-## Session log — 2026-09-26-develop-b (#807 items 8-11: the startup ladder's window and warp, and 9b's target rate)
+## Session log — 2026-09-26-develop-d (#807 items 8-11: the startup ladder's window and warp, and 9b's target rate)
 
 Owner playtest of 1.8.0-rc6, `pwr_startup` (Mode 3 → Mode 1). All numbers full stack, pwr2
 `hot_zero_power`, `run_walkthrough_routes` typical route unless stated; seeds 42 / 7 / 1.
@@ -91,7 +91,7 @@ Owner playtest of 1.8.0-rc6, `pwr_startup` (Mode 3 → Mode 1). All numbers full
   secondary work (procedure steps 13-17: steam dump check, start a main feed pump "at 2% power").
   Awaiting the owner's ruling.
 - Gates: see the commit message.
-## Session log — 2026-09-26-develop-a (#807 items 3–6: Mode 5 to Mode 3 highlights, step 16 in 1.6 plant-minutes, wording pass)
+## Session log — 2026-09-26-develop-c (#807 items 3–6: Mode 5 to Mode 3 highlights, step 16 in 1.6 plant-minutes, wording pass)
 
 Scratch lane `exp/807a`. Traps only; the diff carries the rest.
 
@@ -119,7 +119,7 @@ Scratch lane `exp/807a`. Traps only; the diff carries the rest.
   `pwr_lower_power`/`pwr_shutdown` `Turbine Load` (11), `pwr_cooldown` 3/6/9/10/11/12, `pwr_tmi2_incident`
   11/14/15/19/20, `pwr_shutdown` 3, `pwr_raise_power` 10; and `pwr_cooldown` 7's ask still says
   "inside the pulsing ring".
-## Session log — 2026-09-26-develop-c (#807 item 1: boron reached the loop the instant it was asked for)
+## Session log — 2026-09-26-develop-b (#807 item 1: boron reached the loop the instant it was asked for)
 
 Owner, 1.8.0-rc6 playtest: "When setting boron the changes start immediately which makes it not seem
 realistic." Full stack, `measure_stack --plant=pwr2`, `boron_conc` setpoint:
@@ -149,7 +149,7 @@ realistic." Full stack, `measure_stack --plant=pwr2`, `boron_conc` setpoint:
 
 ---
 
-## Session log — 2026-09-26-develop-d (#807 item 7: "Walkthrough sets time warp" toggle)
+## Session log — 2026-09-26-develop-a (#807 item 7: "Walkthrough sets time warp" toggle)
 
 `ui/shell.html` (`#cklWarpPrefRow`/`#cklWarpPrefBox`, hidden by default), `ui/shell.css`
 (`.ckl-warp-pref`), `ui/app.js` (`cklAutoWarpOn` + `syncCklAutoSpeed`'s new gate + `syncWarpInfo`'s
