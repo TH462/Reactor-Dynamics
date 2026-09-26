@@ -29,6 +29,47 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-develop-d (#807 item 7: "Walkthrough sets time warp" toggle)
+
+`ui/shell.html` (`#cklWarpPrefRow`/`#cklWarpPrefBox`, hidden by default), `ui/shell.css`
+(`.ckl-warp-pref`), `ui/app.js` (`cklAutoWarpOn` + `syncCklAutoSpeed`'s new gate + `syncWarpInfo`'s
+visibility toggle), `test/verify_e2e_ui.js` (`testWalkthroughWarpTogglePref`), `test/run_all.js`
+(BASELINES note), `CHANGELOG.md`.
+
+A checkbox directly under the speed bar, visible iff `cklActiveStep(s)` is non-null (same truth
+`syncCklAutoSpeed` already uses). Default ON is #796's existing behaviour unchanged; OFF adds one
+early return in `syncCklAutoSpeed` (`if (!cklAutoWarpOn) return;`), placed AFTER the "no walkthrough"
+hand-back branch so leaving a walkthrough with the box off still returns the clock to whoever it
+belongs to. Persisted per viewer via `localStorage['rd_ckl_auto_warp']`, try/caught.
+
+**Kept, deliberately: `true_state.speed_hold`** (#619 item 13, the accumulator arming window,
+`engines/pwr2/pwr2_engine.js` `_accHold`). That is a genuine plant refusal the ENGINE raises with
+no walkthrough running at all — `simulation_service.js`'s own comment says it is "not reachable
+from the board… so a player can never disarm" it — not a pacing courtesy, so this toggle never
+touches it either way.
+
+**Trap found writing the browser gate**: jumping the checklist index the way #743's own fixture
+does can land on a step whose criterion the plant's default free-play IC (hot, at power — Tavg
+304.7 °C / 580 °F) ALREADY satisfies (an "AVG COOLANT TEMPERATURE 542 °F or higher" observation),
+so `cklStepSpeed`'s first line hands the clock straight back to 1× and both the ON and the OFF
+assertion read 1× for the same wrong reason — reused #743's `_instructorBlock` override
+(`acc_met`/`awaiting_ack` forced false) to keep the step "still waiting". Runs the OFF half on a
+SECOND checklist instance rather than toggling mid-step on the first: `cklAuto.key`'s "already
+acted" latch is untouched while the new gate returns early, so OFF-then-back-ON on the *same*
+step after ON had already fired would read as "no change" for a reason that is the latch, not the
+feature — measured directly (a same-instance replay stuck at 1× after re-checking the box, for
+that reason, before the two-instance form was written). Also measured: the WARP tier can sit on
+PLAY for ~2 s after a `set_speed(3600)` before the courant/quiet checks let it through (`achieved`
+read 10 then 410 across two otherwise-identical 2000 ms waits) — the test waits 3000 ms, matching
+`testSpeedRungGlowRendered`'s own margin.
+
+Injection-proven twice, each restored immediately: neutering `if (!cklAutoWarpOn) return;` reds
+the OFF assertion (clock rose to 3600× anyway); neutering `syncWarpInfo`'s `wpRow.hidden = !actv;`
+to an unconditional `true` reds the "visible while running" assertion first.
+
+Gate: `node test/run_all.js --only verify_e2e_ui.js` — PASS, 4screenshots (score unchanged, +1
+check function; baseline note updated).
+
 ## Session log — 2026-09-25-workbench-i (cooldown re-paced under the 100 °F/hr alarm; the raise-power rod worth re-measured)
 
 Record: `Blueprint/walkthrough_steps/06_cooldown.md`, re-pace record. Traps only:

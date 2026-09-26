@@ -932,6 +932,12 @@ html[data-channel="dev"] .logo-test {
   color: var(--text-2); background: var(--bg-elevated, var(--bg-right)); border: 1px solid var(--border);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .warp-info.dropped { color: var(--danger, #ef4444); }
+/* "Walkthrough sets time warp" (#807 item 7) — directly under .warp-info, same small-print
+   register as the strip above it. [hidden] is toggled by app.js's syncWarpInfo; there is no
+   [hidden] rule here on purpose, the attribute alone suffices. */
+.ckl-warp-pref { display: flex; align-items: center; gap: 5px; margin: 0 0 4px; padding: 1px 6px;
+  font-size: 10.5px; line-height: 1.3; color: var(--text-2); cursor: pointer; user-select: none; }
+.ckl-warp-pref input { margin: 0; }
 /* SELECTED SPEED: GREEN FILL, LIGHT-GREY RING *(OWNER, 2026-09-14, #755 item 14: "The time
    controls are confusing when they are cyan since the highlight is cyan as well. lets make the
    background of the selected time rate green and the boarder a light grey.")*.

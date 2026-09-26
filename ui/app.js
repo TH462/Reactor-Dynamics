@@ -3205,6 +3205,11 @@
      * formatter. WHAT QUALIFIES IS UNCHANGED (`hold >= 180`, `wait_hint !== false`), and
      * "nothing on other steps" is still the #686 ruling's own words. */
     if (actv && cklIsWaitStep(actv.st)) advice = cklWaitAdvice(s, actv, true);
+    // THE BOX ITSELF (#807 item 7): visible iff a walkthrough is loaded and not yet complete —
+    // the same `cklActiveStep` truth `syncCklAutoSpeed` gates on, so the two can never disagree
+    // about whether one is running. Hidden in free play, missions, and after the last step.
+    var wpRow = $('cklWarpPrefRow');
+    if (wpRow) wpRow.hidden = !actv;
     /* EVERY DROP STATES ITS OWN REASON, not just the held-at-real-time one (2026-09-15 layman
      * pass, #653). This branch read `warpNote.reason === 'hold'` and fell through for the other
      * reasons — alarm, scram and failure (and, until 2026-09-17, step) — printing the step's
@@ -4031,6 +4036,29 @@
    * latch deliberately does not. `set` — the rate auto last asked for, so the hand-back can
    * tell a speed it is holding from one the player chose afterwards. */
   var cklAuto = { key: null, over: null, set: 0 };
+  /* THE PLAYER'S OWN CHOICE, NOT THE WALKTHROUGH'S (#807 item 7, 2026-09-26, OWNER: "Add a
+   * setting that shows up under the time warp bar that toggles the walkthrough automatically
+   * setting time warp. this setting only shows up when playing a walkthrough otherwise its not
+   * visible."). Default ON is today's behaviour, unchanged for anyone who never finds the box.
+   * OFF stops `syncCklAutoSpeed` from EVER calling `set_speed` — the card's own "Suggested time
+   * warp" line (`cklWaitAdvice`) is untouched, since that is prose, not a command.
+   *
+   * DOES NOT TOUCH `true_state.speed_hold` (#619 item 13, the accumulator arming window). That
+   * hold is a GENUINE PLANT REFUSAL the engine raises regardless of any walkthrough — it is not
+   * reachable from the board at all (simulation_service.js: "No command sets this… so a player
+   * can never disarm the hold that stops them getting stuck") — never a pacing courtesy, so it
+   * stays exactly as it is whichever way this box is set.
+   *
+   * Read once at startup and cached (same shape as `ui.inspectExpanded` below): this is read
+   * every broadcast, and a synchronous localStorage hit on that cadence is unnecessary. */
+  var cklAutoWarpOn = true;
+  function loadCklAutoWarpPref() {
+    try { var v = localStorage.getItem('rd_ckl_auto_warp'); return v === null ? true : v === '1'; }
+    catch (e) { return true; }
+  }
+  function saveCklAutoWarpPref(on) {
+    try { localStorage.setItem('rd_ckl_auto_warp', on ? '1' : '0'); } catch (e) { /* private mode */ }
+  }
   /* The active walkthrough step, or null — the same lookup `syncWarpInfo` does, named once so the
    * clock and the words cannot read different steps. */
   function cklActiveStep(s) {
@@ -4217,6 +4245,7 @@
       }
       return;
     }
+    if (!cklAutoWarpOn) return;   // player switched the box off -- no raise, no drop, this step
     var key = cklAutoKeyStr(a, s, want);
     /* ---- A STOPPED CLOCK DROPS THE LATCH, AND THAT IS A FIX, NOT A STYLE (quality pass,
      * 2026-09-20) ---- This read `if (!running) return;` with the key ALREADY LATCHED, under a
@@ -9085,6 +9114,15 @@
       cklAuto.over = cklAutoKey(latest);
       cmd({ action: 'set_speed', value: +b.getAttribute('data-speed') });
     });
+    // "Walkthrough sets time warp" (#807 item 7) — a UI preference only, never routed through
+    // cmd()/handleCommand: it decides whether THIS BROWSER'S walkthrough pacing is allowed to
+    // touch the speed bar at all, which is not a plant act and has no SOE/telemetry business
+    // (same reasoning as `cklAuto.over` above, one comment block up).
+    var cwBox = $('cklWarpPrefBox');
+    if (cwBox) cwBox.addEventListener('change', function () {
+      cklAutoWarpOn = cwBox.checked;
+      saveCklAutoWarpPref(cklAutoWarpOn);
+    });
     // Settings: Units only under Display (#277 removed Values / Terminology /
     // Physics Overlay). RBMK/BWR All-view Instruments/True/Both still lives on
     // the plant display itself (#pdOverlaySeg). Register + physOverlay keep
@@ -9809,6 +9847,8 @@
       if (e.target.closest('#scannerToggle')) inspectExpand();
     });
     inspectExpand(loadInspectExpanded());        // restore the operator's last choice
+    cklAutoWarpOn = loadCklAutoWarpPref();        // restore the walkthrough-warp preference
+    if (cwBox) cwBox.checked = cklAutoWarpOn;
   }
 
   // ============================================ System Scanner / inspection (#96)
