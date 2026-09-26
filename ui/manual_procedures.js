@@ -1973,7 +1973,7 @@
           why: 'The accumulators are tanks of borated water pushed by nitrogen gas at 665 psi. They fire by themselves if loop pressure ever falls below that pressure, which is why they are kept isolated while the plant is cold. Above 1615 psi the plant removes power from the valve, so it has to be opened before that point.',
           aim: 'With the valve open, the accumulators stand ready to inject by themselves if loop pressure is ever lost.',
           wait_speed: 1, speed_text: true,
-          note: 'Above 1615 psi the valve locks, and the ACCUMULATORS caution is expected until pressure passes 1000 psi. If the window is missed: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO.',
+          note: 'Above 1615 psi the valve locks, and the ACCUMULATORS caution is expected until pressure passes 1000 psi. If the window is missed: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO. Pressurizer Level Above Program comes in about here: expected, and it clears by itself partway through the heat-up.',
           control: 'Accumulator valve', target: 'ACCUMULATORS tile no longer reads ISOLATED',
           cmd: { action: 'open_accumulator_valve' }, hold: 10,
           accs: [{ p: 'accumulator_valve_open', op: '>', v: 0,
@@ -4133,15 +4133,17 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 30 },
                    ask: 'Set LOAD to 30 MW.',
                    wait_speed: 1, label: 'LOAD set to 30 MW' },
-                 { cmd: { action: 'rod_nudge', group_id: 'control' },
-                   ask: 'Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 20 steps.',
-                   note: 'MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is the temperature the plant is meant to hold at the power it is making, near 556 °F here. It rises with load, from 547 °F at no load to 578 °F at 100 %. Temperature below the band: withdraw. Above: insert. The gauge keeps rising about 2 to 5 °F after you let go, so let go 2 to 5 °F short of the band. Read the gauge, not the count: while the boron dilution is still running it does part of the work, and the pull comes out shorter. The plant trips on temperature before it trips on power: keep AVG COOLANT TEMPERATURE under 590 °F on every stage.',
-                   wait_speed: 1, label: 'Rods withdrawn' },
+                 /* LAYMAN PASS 7 (2026-09-26, AGENT-DRAFTED) S-1/S-3: `b` is the TEMPERATURE row, graded on the plant,
+                  * not a press. The press-only "Rods withdrawn" never ticked when the gauge stayed in its band (pass 7
+                  * stage 5, 561-563 degF): conditional, as 10-11 are (ruling 2026-09-25 "Make them conditional"). */
+                 { p: 'tavg_c', op: '~', v: 294.75, tol: 7.25,
+                   ask: 'If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, about 20 steps. Otherwise leave the rods.',
+                   note: 'MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is the temperature the plant is meant to hold at the power it is making, near 556 °F here. It rises with load, from 547 °F at no load to 578 °F at 100 %. Temperature below the band: withdraw. Above: insert. The tile trails the rods: the gauge keeps rising about 2 °F for a minute after each pull, so read it again before the next one. Held straight through instead, it keeps rising 5 to 8 °F after you let go. Read the gauge, not the count: while the boron dilution is still running it does part of the work, and the pull comes out shorter. The plant trips on temperature before it trips on power: keep AVG COOLANT TEMPERATURE under 590 °F on every stage.',
+                   wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 550 and 576 °F (the band is near 556)' },
                  { p: 'mwe_output', op: '>', v: 28,
-                   ask: 'Check OUTPUT reads 30 MW, REACTOR POWER is near 30 % and AVG COOLANT TEMPERATURE is in its band, 550 to 576 °F.',
+                   ask: 'Check OUTPUT reads 30 MW and REACTOR POWER is near 30 %.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'OUTPUT 30 MW' },
-                 { cont: true, p: 'power_pct', op: '>', v: 28, label: 'REACTOR POWER near 30 %' },
-                 { cont: true, p: 'tavg_c', op: '~', v: 294.75, tol: 7.25, label: 'AVG COOLANT TEMPERATURE between 550 and 576 °F (the band is near 556)' }],
+                 { cont: true, p: 'power_pct', op: '>', v: 28, label: 'REACTOR POWER near 30 %' }],
           /* + `Rod Speed — Normal` (#735, develop's item 5 sweep): the text says "at MED" and this
            * is the leg's FIRST rod move. The player arrives from `pwr_startup`, whose last rod
            * step (13 since the 2026-09-23 reconcile) says "Press SLOW", so the selector IS at SLOW and nothing before this step changes it —
@@ -4158,15 +4160,14 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 50 },
                    ask: 'Set LOAD to 50 MW.',
                    wait_speed: 1, label: 'LOAD set to 50 MW' },
-                 { cmd: { action: 'rod_nudge', group_id: 'control' },
-                   ask: 'Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 15 steps.',
-                   note: 'The band is near 562 °F at this load. The Control Rods — Approaching Insertion Limit alarm may come in during this stage or the next: expected, the bank is low because boron is carrying the climb, and it clears as xenon builds and you walk the bank up.',
-                   wait_speed: 1, label: 'Rods withdrawn' },
+                 { p: 'tavg_c', op: '~', v: 297, tol: 9,
+                   ask: 'If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, about 20 steps. Otherwise leave the rods.',
+                   note: 'The band is near 562 °F at this load. The Control Rods — Approaching Insertion Limit alarm may come in during this stage or the next: expected, the bank is low because boron is carrying the climb, and it clears as xenon builds and you walk the bank up. PRIMARY PRESSURE can sag under 2150 psi during this stage, bringing in Pressurizer Pressure Low: the heaters bring it back within about three plant-minutes.',
+                   wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 550 and 583 °F (the band is near 562)' },
                  { p: 'mwe_output', op: '>', v: 48,
-                   ask: 'Check OUTPUT reads 50 MW, REACTOR POWER is near 50 % and AVG COOLANT TEMPERATURE is in its band, 550 to 583 °F.',
+                   ask: 'Check OUTPUT reads 50 MW and REACTOR POWER is near 50 %.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'OUTPUT 50 MW' },
-                 { cont: true, p: 'power_pct', op: '>', v: 47, label: 'REACTOR POWER near 50 %' },
-                 { cont: true, p: 'tavg_c', op: '~', v: 297, tol: 9, label: 'AVG COOLANT TEMPERATURE between 550 and 583 °F (the band is near 562)' }],
+                 { cont: true, p: 'power_pct', op: '>', v: 47, label: 'REACTOR POWER near 50 %' }],
           hl: ['Withdraw', 'Turbine Load'], hl_watch: ['Tavg'] },
         { text: 'Take the third stage to 75 MWe the same way.',
           aim: 'The band keeps climbing with the load, so each pull aims a little higher.',
@@ -4178,15 +4179,14 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 75 },
                    ask: 'Set LOAD to 75 MW.',
                    wait_speed: 1, label: 'LOAD set to 75 MW' },
-                 { cmd: { action: 'rod_nudge', group_id: 'control' },
-                   ask: 'Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 25 steps.',
-                   note: 'The band is near 570 °F at this load.',
-                   wait_speed: 1, label: 'Rods withdrawn' },
+                 { p: 'tavg_c', op: '~', v: 300, tol: 7.5,
+                   ask: 'If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, about 25 steps. Otherwise leave the rods.',
+                   note: 'The band is near 570 °F at this load. Control Rods — Insertion Limit may follow the Approaching alarm during this stage: expected for the same reason, and it clears as you walk the bank up.',
+                   wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 558 and 585 °F (the band is near 570)' },
                  { p: 'mwe_output', op: '>', v: 72,
-                   ask: 'Check OUTPUT reads 75 MW, REACTOR POWER is near 75 % and AVG COOLANT TEMPERATURE is in its band, 558 to 585 °F.',
+                   ask: 'Check OUTPUT reads 75 MW and REACTOR POWER is near 75 %.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'OUTPUT 75 MW' },
-                 { cont: true, p: 'power_pct', op: '>', v: 70, label: 'REACTOR POWER near 75 %' },
-                 { cont: true, p: 'tavg_c', op: '~', v: 300, tol: 7.5, label: 'AVG COOLANT TEMPERATURE between 558 and 585 °F (the band is near 570)' }],
+                 { cont: true, p: 'power_pct', op: '>', v: 70, label: 'REACTOR POWER near 75 %' }],
           hl: ['Withdraw', 'Turbine Load'], hl_watch: ['Tavg'] },
         { text: 'Take the fourth stage to 90 MWe with a smaller pull.',
           aim: 'Near full power the 103 % rod stop is close, so the pulls get smaller.',
@@ -4198,14 +4198,13 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 90 },
                    ask: 'Set LOAD to 90 MW.',
                    wait_speed: 1, label: 'LOAD set to 90 MW' },
-                 { cmd: { action: 'rod_nudge', group_id: 'control' },
-                   ask: 'Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 20 steps.',
+                 { p: 'tavg_c', op: '~', v: 301.5, tol: 6,
+                   ask: 'If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, about 15 steps. Otherwise leave the rods.',
                    note: 'The band is near 575 °F at this load, and the pulls get smaller from here: above 103 % power the plant stops the rods. If LOAD changes by itself, the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.',
-                   wait_speed: 1, label: 'Rods withdrawn' },
+                   wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 564 and 585 °F (the band is near 575)' },
                  { p: 'mwe_output', op: '>', v: 86,
-                   ask: 'Check OUTPUT reads 90 MW and AVG COOLANT TEMPERATURE is in its band, 564 to 585 °F.',
-                   wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'OUTPUT 90 MW' },
-                 { cont: true, p: 'tavg_c', op: '~', v: 301.5, tol: 6, label: 'AVG COOLANT TEMPERATURE between 564 and 585 °F (the band is near 575)' }],
+                   ask: 'Check OUTPUT reads 90 MW.',
+                   wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'OUTPUT 90 MW' }],
           /* + `Insert` (#735): this step's note carries a contingency — "If LOAD changes by itself,
            * the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG
            * COOLANT TEMPERATURE is back in its band" — and `hl` offered no INSERT target. */
@@ -4215,23 +4214,28 @@
           why: 'The last 10 MWe of LOAD, then a smaller pull to bring the temperature back up. REACTOR POWER settles near 101 %. The control bank ends part-way out, because boron carried most of the reactivity the climb cost.',
           control: 'Control Bank', target: 'OUTPUT 100 MWe; AVG COOLANT TEMPERATURE 578 °F',
           cmd: { action: 'set_load_target', mwe: 100 }, hold: 900, wait_hint: false,
-          replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 10, speed: 'normal' } },
+          /* 10 -> 5 STEPS SINCE LAYMAN PASS 7 (2026-09-26): the old cmd-kind 8b was satisfied by a bare
+           * press the replay issued on its own, and without it the 10-step pull ended the hold at 583.4 degF,
+           * over the 573-583 degF band. MEASURED: no pull 578.1 degF here but 574.4 degF at 11-12 (their band
+           * floor is 574.5); 5 steps lands between. */
+          replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 5, speed: 'normal' } },
           accs_ordered: true,
           accs: [{ cmd: { action: 'set_load_target', mwe: 100 },
                    ask: 'Set LOAD to 100 MW.',
                    wait_speed: 1, label: 'LOAD set to 100 MW' },
-                 { cmd: { action: 'rod_nudge', group_id: 'control' },
-                   ask: 'Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it settles on 578 °F, about 10 steps.',
-                   note: 'Above 103 % REACTOR POWER the plant stops rod withdrawal, and the step to 100 MW can carry power past it: if CONTROL ROD POSITION stops moving while you hold WITHDRAW, let go, wait for REACTOR POWER to settle back under 103 %, then pull again.',
-                   wait_speed: 1, label: 'Rods withdrawn' },
-                 { p: 'mwe_output', op: '>', v: 97,
-                   ask: 'Check OUTPUT reads 100 MW and AVG COOLANT TEMPERATURE is near 578 °F, between 573 and 583 °F.',
-                   wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'OUTPUT 100 MW' },
                  /* LAYMAN PASS 6 (2026-09-26, AGENT-DRAFTED) S-7: 563-592 degF let a player who stops at
                   * the first tick hand step 10 a plant at 567-570 degF, 11 degF under the 578 this step
                   * asks for, and step 10 then graded 574.5-585.3. 573-583 degF (578 +/- 5, the tile's
                   * own half-band at full load) makes "settle on 578" mean 578. */
-                 { cont: true, p: 'tavg_c', op: '~', v: 302.78, tol: 2.78, label: 'AVG COOLANT TEMPERATURE near 578 °F' },
+                 /* v 302.78 -> 303.33 (layman pass 7, 2026-09-26): 302.78 degC is 577.0 degF, so the band was
+                  * 572-582 degF, not the 573-583 its label and pass 6 named; a slow pull ticked at 572.4. */
+                 { p: 'tavg_c', op: '~', v: 303.33, tol: 2.78,
+                   ask: 'If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it settles on 578 °F, about 15 steps. Otherwise leave the rods.',
+                   note: 'Above 103 % REACTOR POWER the plant stops rod withdrawal, and the step to 100 MW can carry power past it: if CONTROL ROD POSITION stops moving during a pull, wait for REACTOR POWER to settle back under 103 %, then pull again.',
+                   wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 573 and 583 °F (near 578)' },
+                 { p: 'mwe_output', op: '>', v: 97,
+                   ask: 'Check OUTPUT reads 100 MW.',
+                   wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'OUTPUT 100 MW' },
                  { p: 'control_bank_steps', op: '<', v: 600,
                    ask: 'Check CONTROL ROD POSITION reads below 600, not on its top stop.',
                    label: 'CONTROL ROD POSITION below 600 (not on its top stop)' }],
@@ -4442,6 +4446,7 @@
            * and graded on its EFFECT: the temperature row, met on entry when the plant is on band.
            * The replay issues nothing and holds the hour. */
           hold: 3600,
+
           aim: 'Xenon takes reactivity away over about two days; rods give it back first, but only once it has taken some.',
           note: 'Right after the climb there is almost no xenon, and the temperature holds by itself. Pulling now only heats the plant, far enough that it cuts the turbine back on its own. As xenon builds over the next hours the temperature drifts down: pull 3 to 6 steps each time it reads below 575 °F, then wait for it to settle. The Control Rods — Insertion Limit alarm (ROD LIMIT LO-LO) is up and that is normal — the bank is low because there is no xenon yet, and it clears as you walk the bank up.',
           wait_speed: 1, speed_text: true,
@@ -4606,27 +4611,33 @@
          * against a 571.8 degF programme). It reaches no protection setpoint and does not scram.
          * Out of band, not dangerous — the dangerous part was the check-off. */
         { text: 'Take the first load off the turbine and let the reactor follow it down.',
-          aim: 'The reactor follows the turbine, so the load comes off first and the rods wait.',
+          aim: 'The reactor follows the turbine, so each cut of load comes first and the rods follow it.',
           why:'The reactor follows the turbine: less steam drawn means the heat has nowhere to go, the water warms, and warmer water walks power down by itself. Load first, rods second, every time — insert first and you take reactivity out of a reactor still being asked for full steam, which walks the steam generator down instead.',
           control: 'Turbine Load', target: 'OUTPUT 75 MWe',
           cmd: { action: 'set_load_target', mwe: 75 }, hold: 300, wait_hint: false,
+          /* LAYMAN PASS 7 (2026-09-26, AGENT-DRAFTED) S-5: a LOAD cut lands at once on PWR2 (raises
+           * only are rate-limited, pwr2_shell), so "about five plant-minutes" was the card's claim,
+           * not the plant's. MEASURED on the chain: 100 -> 75 MW at once peaked the tile at 595.3 degF
+           * with six alarms in steps 2-3; 5 MW a plant-minute with 3-step inserts above 577 degF
+           * peaked 581.8 degF, none (preset 583.9 degF, none). The replay walks the ramp. */
+          ramp: [{ action: 'set_load_target', arg: 'mwe', points: [100, 95, 90, 85, 80, 75] }],
           /* THE SHARED 10× AND THE NOTE SIT ON 2b, NOT THE STEP (2026-09-25 bring-down): same draw
            * (2a, 2b, warp, Note) and 2a falls back to the step's rung. Authored as the step `note`,
            * `run_style` W12 read "as soon as" as the vague quantifier "soon" and reddened — the
            * step-level scan reaches `note`, the per-entry one does not scan W12 at all. */
-          wait_speed: 10,
+          wait_speed: 5,
           /* MEASURED at the end of this hold: OUTPUT 75.00 MWe, REACTOR POWER 85.79 %. Both
            * entries are FALSE at the step's own entry (100.00 MWe, 98.91 %), so neither can be
            * had for free, and the OUTPUT band is two-sided so it cannot latch.
            * 2026-09-24 port, MEASURED on the live runtime (a player who sets LOAD the moment the
            * step opens, seed 42): entry 00, OUTPUT met +5 s, power met +14 s. */
-          accs: [{ p: 'mwe_output', op: '~', v: 75, tol: 5,
-                   ask: 'Set LOAD to 75 MW and wait for OUTPUT to settle near 75 MW.',
+          accs: [{ p: 'mwe_output', op: '~', v: 75, tol: 2,
+                   ask: 'Lower LOAD 5 MW at a time, one plant-minute apart, to 75 MW: 95, 90, 85, 80, 75.',
                    label: 'OUTPUT settled near 75 MW' },
                  { p: 'power_pct', op: '<', v: 95,
-                   ask: 'Leave the rods alone and watch REACTOR POWER follow the load down, below 95 %.',
-                   wait_speed: 10,
-                   note: 'Power walks down on its own over about five plant-minutes. AVG COOLANT TEMPERATURE rises out of the green band on its tile while it does — that is expected, and the next step is what brings it back. Go on to it the moment this step ticks: the temperature keeps climbing until the rods go in.',
+                   ask: 'After each cut, if AVG COOLANT TEMPERATURE reads above 577 °F, insert 3 steps at MED. Watch REACTOR POWER follow the load down, below 95 %.',
+                   wait_speed: 5,
+                   note: 'The load comes off over about five plant-minutes and power walks down behind it. AVG COOLANT TEMPERATURE rises toward the top of the green band on its tile while it does; the 3-step inserts hold it under about 585 °F. Taken in one cut, 100 to 75 MW at once, it climbs to about 595 °F and brings in the pressure and temperature alarms.',
                    label: 'REACTOR POWER below 95 %' }],
           hl: ['Turbine Load'], hl_watch: ['Tavg', 'Reactor Power'] },
         { text: 'Bring AVG COOLANT TEMPERATURE back into its band with the rods.',
@@ -4635,7 +4646,7 @@
           control: 'Rod Speed', target: 'AVG COOLANT TEMPERATURE back inside the band; OUTPUT still 75 MWe',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: -40, speed: 'normal' }, hold: 300, wait_hint: false,
           wait_speed: 5, speed_text: true,
-          note: 'About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it. PRIMARY PRESSURE sags as the rods cool the plant: to about 2200 psi from a fresh start, and to about 2140 psi after the raise-power walkthrough, with the heaters full on and the Pressurizer Pressure Low alarm in. Pull faster than this and it sags further; the low-pressure trip is at 1775 psi.',
+          note: 'About 5 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it. PRIMARY PRESSURE sags as the rods cool the plant: to about 2200 psi from a fresh start, and to about 2140 psi after the raise-power walkthrough, with the heaters full on and the Pressurizer Pressure Low alarm in. Pull faster than this and it sags further; the low-pressure trip is at 1775 psi.',
           /* MEASURED at the end of this hold (40 steps in, 300 s): Tavg 570.7 degF (299.28 degC)
            * against a 571.8 degF programme — 1.1 degF inside a band whose half width is
            * 5.0 degF (`tavg_c < 302.7` is the band's own top edge: pwr_board_wiring `tavgBand`
@@ -4959,6 +4970,7 @@
                    wait_speed: 1, label: 'STEAM DUMP AUTO lit, status PRESS' },
                  { p: 'power_pct', op: '<', v: 0.95,
                    ask: 'Check REACTOR POWER reads below 1 %.',
+                   note: 'Cooldown Rate High (>100 °F/hr) comes in about a minute after the trip: expected, it is the coolant settling to its no-load temperature.',
                    label: 'REACTOR POWER below 1 %' },
                  { p: 'steam_pressure_mpa', op: '~', v: 7.0327, tol: 0.0378,
                    ask: 'Check STEAM PRESS is holding near 1020 psi.',
@@ -5066,6 +5078,7 @@
           wait_speed: 1, speed_text: true,
           accs: [{ p: 'pressure_mpa', op: '<', v: 13.593,
                    ask: 'Lower SET PZR PRESSURE to 1900 psi and wait for PRIMARY PRESSURE to read below 1972 psi.',
+                   note: 'Pressure Relief Valve Open and Pressurizer Pressure Low come in as pressure falls: expected. The relief valve lifts for about ten plant-seconds and closes by itself, and the PORV label on the diagram then reads CLOSED again.',
                    label: 'PRIMARY PRESSURE below 1972 psi' }],
           hl: ['Pressure SP'], hl_watch: ['Primary Pressure'] },
         { text: 'Block the protection that would read the cooldown as a leak.',
@@ -5199,7 +5212,7 @@
                    wait_speed: 1, label: 'STEAM DUMP AUTO lit, status PRESS' },
                  { p: 'tavg_c', op: '<', v: 174.72,
                    ask: 'Lower DUMP SETPOINT in steps from 1020 to 120, until AVG COOLANT TEMPERATURE reads below 347 °F.',
-                   note: 'Steps of 50 psi down to 720, then 25 psi down to 270, then 15 psi: near the bottom the same 50 psi cools about four times as far, and one big jump sets off the Cooldown Rate High alarm and empties the pressurizer. Wait about 6 plant-minutes between steps, timed on the plant clock, not in seconds on your own: 4 plant-minutes apart sets off the Cooldown Rate High alarm. The temperature never quite stops falling, so do not wait for it to. Near the bottom the Shutdown Cooling Not In Service alarm comes in as the plant enters Mode 4: expected, RHR goes in service at step 9. About three and a half hours in all.',
+                   note: 'Steps of 50 psi down to 720, then 25 psi down to 270, then 15 psi: near the bottom the same 50 psi cools about four times as far, and one big jump sets off the Cooldown Rate High alarm and empties the pressurizer. Wait about 6 plant-minutes between steps, timed on the plant clock, not in seconds on your own: 4 plant-minutes apart sets off the Cooldown Rate High alarm. The temperature never quite stops falling, so do not wait for it to. Near the bottom the Shutdown Cooling Not In Service alarm comes in as the plant enters Mode 4: expected, RHR goes in service at step 9. About three and a half hours in all. Low Coolant Temperature comes in near 530 °F: expected on a cooldown, and it becomes an expected-status tile below 350 °F.',
                    wait_speed: 60, label: 'AVG COOLANT TEMPERATURE below 347 °F' }],
           hl: ['Steam Dump — Auto', 'Dump Setpoint'], hl_watch: ['Steam Dump Status', 'Tavg'] },
         { text: 'Take the pressure setpoint to the bottom of its range.',
@@ -5213,6 +5226,7 @@
           wait_speed: 1, speed_text: true,
           accs: [{ p: 'pressure_mpa', op: '<', v: 12.2,
                    ask: 'Lower SET PZR PRESSURE to 1700 psi, as low as the box goes, and wait for PRIMARY PRESSURE to read below 1770 psi.',
+                   note: 'Pressure Relief Valve Open comes in again for about five plant-seconds: expected, as in step 2.',
                    label: 'PRIMARY PRESSURE below 1770 psi' }],
           hl: ['Pressure SP'], hl_watch: ['Primary Pressure'] },
         /* 50 %, NOT 100 % (layman playtest pass 2, #653 S-3/S-8). The player's pressurizer went

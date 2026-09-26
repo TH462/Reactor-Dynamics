@@ -39,15 +39,15 @@ Coming down is the climb in reverse. Every percent of power shed hands reactivit
 
 2. Take the first load off the turbine and let the reactor follow it down.
 
-*The reactor follows the turbine, so the load comes off first and the rods wait.*
+*The reactor follows the turbine, so each cut of load comes first and the rods follow it.*
 
-()2a. Set LOAD to 75 MW and wait for OUTPUT to settle near 75 MW.
+()2a. Lower LOAD 5 MW at a time, one plant-minute apart, to 75 MW: 95, 90, 85, 80, 75.
 
-()2b. Leave the rods alone and watch REACTOR POWER follow the load down, below 95 %.
+()2b. After each cut, if AVG COOLANT TEMPERATURE reads above 577 °F, insert 3 steps at MED. Watch REACTOR POWER follow the load down, below 95 %.
 
-Suggested time warp: 10×.
+Suggested time warp: 5×.
 
-Note: Power walks down on its own over about five plant-minutes. AVG COOLANT TEMPERATURE rises out of the green band on its tile while it does — that is expected, and the next step is what brings it back. Go on to it the moment this step ticks: the temperature keeps climbing until the rods go in.
+Note: The load comes off over about five plant-minutes and power walks down behind it. AVG COOLANT TEMPERATURE rises toward the top of the green band on its tile while it does; the 3-step inserts hold it under about 585 °F. Taken in one cut, 100 to 75 MW at once, it climbs to about 595 °F and brings in the pressure and temperature alarms.
 
 
 
@@ -71,7 +71,7 @@ The reactor follows the turbine: less steam drawn means the heat has nowhere to 
 
 Suggested time warp: 5×.
 
-Note: About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it. PRIMARY PRESSURE sags as the rods cool the plant: to about 2200 psi from a fresh start, and to about 2140 psi after the raise-power walkthrough, with the heaters full on and the Pressurizer Pressure Low alarm in. Pull faster than this and it sags further; the low-pressure trip is at 1775 psi.
+Note: About 5 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it. PRIMARY PRESSURE sags as the rods cool the plant: to about 2200 psi from a fresh start, and to about 2140 psi after the raise-power walkthrough, with the heaters full on and the Pressurizer Pressure Low alarm in. Pull faster than this and it sags further; the low-pressure trip is at 1775 psi.
 
 
 
@@ -391,3 +391,13 @@ insurge water in the pressurizer (`Diagnostic/TUNING_LOG.md` 2026-09-25-workbenc
 tau 600 s): chain floors steps 3/4/5/6 **2145 / 2158 / 2147 / 2140 psia**, leg 23.5 plant-min; the
 pressure sentence now reads "about 2140 psi after the raise-power walkthrough". The table above is
 the plant without the term.
+
+
+### Layman pass 7 record — 2026-09-26, workbench-b (AGENT-DRAFTED: step 2's aim, 2a, 2b, its note; 3's range)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md` S-5. A LOAD cut lands at once on
+PWR2 (raises only are rate-limited), so "over about five plant-minutes" was the card's, not the
+plant's. On the chain the one 25 MWe cut peaked the tile at 595.3 °F with six alarms in steps 2-3;
+5 MWe a plant-minute with 3-step inserts above 577 °F peaked 581.8 °F with none (rods held still:
+590.8 °F). Load still leads every cut. 3's range "15 to 75" became "5 to 75" (6-15 measured).
+Steps 4-6 are the same shape and were not reworked (step 4, chain: 587.9 °F, two alarms).

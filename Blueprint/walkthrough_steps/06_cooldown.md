@@ -44,6 +44,8 @@ Hot, the plant is comfortably shut down on about 719 ppm of boron. Cold water ma
 
 Suggested time warp: 1×.
 
+Note: Pressure Relief Valve Open and Pressurizer Pressure Low come in as pressure falls: expected. The relief valve lifts for about ten plant-seconds and closes by itself, and the PORV label on the diagram then reads CLOSED again.
+
 Background
 
 Two automatic protections watch for falling pressure, because on a running plant falling pressure means a leak. They can only be blocked below 1972 psi, so the setpoint comes under that first. This is not the depressurization; it only unlocks the next step.
@@ -86,7 +88,7 @@ Note: In TAVG mode the setpoint does nothing.
 
 Suggested time warp: 60×.
 
-Note: Steps of 50 psi down to 720, then 25 psi down to 270, then 15 psi: near the bottom the same 50 psi cools about four times as far, and one big jump sets off the Cooldown Rate High alarm and empties the pressurizer. Wait about 6 plant-minutes between steps, timed on the plant clock, not in seconds on your own: 4 plant-minutes apart sets off the Cooldown Rate High alarm. The temperature never quite stops falling, so do not wait for it to. Near the bottom the Shutdown Cooling Not In Service alarm comes in as the plant enters Mode 4: expected, RHR goes in service at step 9. About three and a half hours in all.
+Note: Steps of 50 psi down to 720, then 25 psi down to 270, then 15 psi: near the bottom the same 50 psi cools about four times as far, and one big jump sets off the Cooldown Rate High alarm and empties the pressurizer. Wait about 6 plant-minutes between steps, timed on the plant clock, not in seconds on your own: 4 plant-minutes apart sets off the Cooldown Rate High alarm. The temperature never quite stops falling, so do not wait for it to. Near the bottom the Shutdown Cooling Not In Service alarm comes in as the plant enters Mode 4: expected, RHR goes in service at step 9. About three and a half hours in all. Low Coolant Temperature comes in near 530 °F: expected on a cooldown, and it becomes an expected-status tile below 350 °F.
 
 Background
 
@@ -103,6 +105,8 @@ Steam pressure and steam temperature go together: lower the pressure the dump ho
 ()5a. Lower SET PZR PRESSURE to 1700 psi, as low as the box goes, and wait for PRIMARY PRESSURE to read below 1770 psi.
 
 Suggested time warp: 1×.
+
+Note: Pressure Relief Valve Open comes in again for about five plant-seconds: expected, as in step 2.
 
 Background
 
@@ -716,3 +720,10 @@ leg should hand over a quieter plant is outside this ruling.
 ### Layman pass 6 — 2026-09-26, workbench-a (AGENT-DRAFTED, not owner-ruled)
 
 Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`. 3 Background: STOP keeps the pump idle and does not disarm safety injection (measured: SI started it with STOP pressed). 4 Note: time the waits on the plant clock (reviewer's spacing 4.1 min: −117 °F/hr); forewarns Shutdown Cooling Not In Service. 11 split: 11a spray OFF below 30 °F at 60× (graded on the spray), 11b the 600× wait (a note at 600× was missed: alarm, 17 psia seam). 16 reordered: reset first (the rod drive refuses any bank command while the trip is latched), the "already 0" line inside the INSERT substep.
+
+
+### Layman pass 7 record — 2026-09-26, workbench-b (AGENT-DRAFTED: notes on 2a, 4b, 5a)
+
+2a and 5a name Pressure Relief Valve Open (open 11 s and 5 s, same channel as the diagram's PORV
+label) and Pressurizer Pressure Low; 4b names Low Coolant Temperature (tile 530.5 °F at the alarm,
+setpoint 532.4 °F). Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`.

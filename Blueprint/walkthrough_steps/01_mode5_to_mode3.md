@@ -198,7 +198,7 @@ The heaters boil water in the pressurizer, and that steam sets the pressure of t
 
 Suggested time warp: 1×.
 
-Note: Above 1615 psi the valve locks, and the ACCUMULATORS caution is expected until pressure passes 1000 psi. If the window is missed: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO.
+Note: Above 1615 psi the valve locks, and the ACCUMULATORS caution is expected until pressure passes 1000 psi. If the window is missed: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO. Pressurizer Level Above Program comes in about here: expected, and it clears by itself partway through the heat-up.
 
 Background
 
@@ -705,3 +705,9 @@ never tick early.
 ### Layman pass 6 — 2026-09-26, workbench-a (AGENT-DRAFTED, not owner-ruled)
 
 Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`. 2a gains a Note for a plant handed over under 25 psi (measured: margin 25.1 °F, Tavg 203 °F by step 8 from a 19 psia seam). 9b's Note: from the cooldown the climb starts near 240 psi and takes about an hour (58 plant-min from 249 psia; 86 from 50; 104 from 19), and forewarns Shutdown Cooling Not In Service (~600 psi). 11's Note forewarns Turbine Trip / Low Steam Demand (raised at ~1313 psia).
+
+
+### Layman pass 7 record — 2026-09-26, workbench-b (AGENT-DRAFTED: one sentence in 10a's note)
+
+10a names Pressurizer Level Above Program: raised at 696 psia, 212 °F, cleared 108 plant-min later
+(preset). Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`.

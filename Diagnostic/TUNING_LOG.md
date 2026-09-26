@@ -29,6 +29,27 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-workbench-b (layman pass 7 verified: the gate pressed a button the player never would)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`. Traps only:
+
+- **A ROUTE THAT PRESSES EVERY LIVE ROW'S `cmd` CANNOT SEE A PRESS-ONLY SOFT LOCK.** Raise-power
+  5b ("Rods withdrawn", a `rod_nudge` row) stranded a player whose gauge never left its band. Every
+  route passed because `pressRows` sent a bare `rod_nudge` on a gauge-following step: a free tap.
+  Now `to_band` skips rod rows, and CMDWAIT flags a step waiting 120 plant-s on a rod row while
+  every graded row READS met (`obs`, not the latch; `accs_ordered` blocks the latches behind the
+  unpressed row). **Grade the effect; a route must not press what the text did not ask for.**
+- **"LET GO N SHORT" IS A HELD-PULL NUMBER, AND THE TILE'S LAG DECIDES IT.** Held at MED the tile
+  rose 5.0-7.5 °F after release (reviewer 13 °F); 5-step pulls a minute apart rose 2.1-2.6 °F in the
+  same stage time. Measure the rise after the LAST withdraw, not the step's peak.
+- **A LOAD REDUCTION LANDS AT ONCE ON PWR2 BY DESIGN** (raises only are rate-limited, `pwr2_shell`).
+  A card that says "about five plant-minutes" has to make the ramp itself. Walking it 5 MWe a minute with the rods held still still peaked 590.8 °F on the chain; only rods
+  following each cut (3 steps above 577 °F) held 581.8 °F. The chained plant is the hot one: the
+  preset peaked 584 °F even on the one-cut card.
+- **A RECLASSIFIED ALARM NEVER CLEARED, SO ITS STAMP NEVER MOVED.** Cold-plant alarms sit as
+  `status` for hours; at 350 °F they come back critical, stamped T+00:00:00. Re-stamp on a
+  priority change (`ui/app.js` `renderAlarms`).
+
 ## Session log — 2026-09-26-workbench-a (layman pass 6 verified: the seam is set by a spray valve, and a wall-clock pacing)
 
 Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`. Traps only:

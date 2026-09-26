@@ -55,8 +55,9 @@ var ENTRY_S = 5;        // hollow window: plant-seconds after step entry with no
  * band that ticks and lets go inside PASS_S — a transient pass through the band, or gauge noise
  * at its edge — so a `~` row's un-tick counts only when it had been met for less than PASS_S. */
 var PASS_S = 10;
-var ACK_S = 3;          // the player notices a lit Continue after this many plant-seconds
+var ACK_S = +(process.env.WR_ACK_S || 3);   // the player notices a lit Continue after this many plant-seconds (WR_ACK_S: a measurement knob, never the gate)
 var BOUND_FLOOR_S = 1800;
+var CMDWAIT_S = 120;    // a rod row waited on with every graded row met (pass 7 S-1: 3 plant-min dark)
 
 /* ================================ THE ROUTE TABLES ====================================== */
 /* Policies: default | final (a ramp step's end value, typed once) | pull_plot{to,speed,plot_rate,repeat} | approach{short,min_rate,max_rate,
@@ -157,12 +158,14 @@ var ROUTES = {
      * one step at a time while the tile reads more than 0.5 degF under the band value the card
      * names, one step in when it is 5 degF over. The OLD card's fixed counts are the injection
      * `chain_count_pulls` below (on the chained plant they trip the reactor at step 10). */
+    /* LAYMAN PASS 7 (2026-09-26): 4b-8b read "withdraw at MED in pulls of about 5 steps, one
+     * plant-minute apart" -- `pull: 5, dwell: 60` on every gauge-follower below. */
     steps: {
-      'cmd:set_load_target:1': { policy: 'to_band', tref: 556, dead: 0.5, dead_hi: 5 },
-      'cmd:set_load_target:2': { policy: 'to_band', tref: 562, dead: 0.5, dead_hi: 5 },
-      'cmd:set_load_target:3': { policy: 'to_band', tref: 570, dead: 0.5, dead_hi: 5 },
-      'cmd:set_load_target:4': { policy: 'to_band', tref: 575, dead: 0.5, dead_hi: 5 },
-      'cmd:set_load_target:5': { policy: 'to_band', tref: 578, dead: 0.5, dead_hi: 5 },
+      'cmd:set_load_target:1': { policy: 'to_band', tref: 556, dead: 0.5, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:2': { policy: 'to_band', tref: 562, dead: 0.5, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:3': { policy: 'to_band', tref: 570, dead: 0.5, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:4': { policy: 'to_band', tref: 575, dead: 0.5, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:5': { policy: 'to_band', tref: 578, dead: 0.5, dead_hi: 5, pull: 5, dwell: 60 },
       // 9a's note: "hold INSERT a few steps whenever it rises above its band" (the chained plant's dilution tail)
       '#9': { policy: 'to_band', tref: 578, dir: 'insert', dead: 3, pull: 3, dwell: 60 },
     },
@@ -175,11 +178,11 @@ var ROUTES = {
     /* LAYMAN PASS 6 (2026-09-26): on the CHAINED plant the literal player is the band-floor
      * reader of `band_floor` below -- pass 6's own route, which stalled step 10 at 570 degF. */
     chain_steps: {
-      'cmd:set_load_target:1': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5 },
-      'cmd:set_load_target:2': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5 },
-      'cmd:set_load_target:3': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5 },
-      'cmd:set_load_target:4': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5 },
-      'cmd:set_load_target:5': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5 },
+      'cmd:set_load_target:1': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:2': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:3': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:4': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:5': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
       '#10': { policy: 'cond_pull', pull: 5, dwell: 300 } },
     settle_check: true,   // pass 6 S-7: a step that says "settle(s) on N degF" completes within 5.4 degF of N
     mistakes: [
@@ -198,21 +201,32 @@ var ROUTES = {
        * only "below its band", under the band the previous step named. Pass 6 measured stages
        * ticking at 551/551/559/564/567 °F and step 10 unmet at 570 °F with the text saying leave
        * the rods. `settle_check` (below) is the other half: a step that says "settle on N °F". */
+      /* LAYMAN PASS 7 (2026-09-26) S-1/S-3: stage 4 ends HOT (the pass-7 pull, 32 steps held, peak
+       * 565 degF) and stage 5 is read literally against the tile's band, near 562 +/- 5 degF:
+       * withdraw only below it, insert only above it. Pass 7's plant sat at 561-563 degF and the
+       * OLD 5b ("Rods withdrawn", a press) never ticked -- injection `rods_row_5b` below. */
+      { id: 'hot_stage4', kind: 'overshoot', at: 'cmd:set_load_target:1', set: { policy: 'seq', cmds: [
+        { action: 'set_load_target', mwe: 30 }, { action: 'rod_nudge', group_id: 'control', steps: 32, speed: 'normal' }] },
+        override: { 'cmd:set_load_target:2': { policy: 'to_band', tref: 562, dead: 5, dead_hi: 5, pull: 5, dwell: 60 } } },
       { id: 'band_floor', kind: 'literal reading', at: '#10', set: { policy: 'cond_pull', pull: 5, dwell: 300 },
         override: {
-          'cmd:set_load_target:1': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5 },
-          'cmd:set_load_target:2': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5 },
-          'cmd:set_load_target:3': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5 },
-          'cmd:set_load_target:4': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5 },
-          'cmd:set_load_target:5': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5 } } },
+          'cmd:set_load_target:1': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+          'cmd:set_load_target:2': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+          'cmd:set_load_target:3': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+          'cmd:set_load_target:4': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+          'cmd:set_load_target:5': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 } } },
     ],
   },
   pwr_lower_power: {
+    forbid_raise: { '#2': ['pzr_pressure_high', 'high_tavg', 'heatup_rate_high'], '#3': ['pzr_pressure_high', 'high_tavg', 'heatup_rate_high'] },
     /* 2026-09-25 (layman pass 4; pace ruled "about 3 steps, one plant-minute apart" the same day,
      * workbench-h): "insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG
      * COOLANT TEMPERATURE is back in its band" — the player stops at the first
      * read inside the row's edge (1 degF under it), as the reviewer did. */
     steps: {
+      /* LAYMAN PASS 7 (2026-09-26) S-5: 2a/2b walk LOAD down 5 MW a plant-minute with 3-step inserts
+       * whenever the tile reads above 577 degF; the alarms that one 25 MW cut raised are forbidden */
+      '#2': { policy: 'load_stair', from: 100, to: 75, step: 5, wait_s: 60, ins_above: 577, pull: 3, dwell: 60 },
       '#3': { policy: 'to_band', tref: 576, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
       'cmd:set_load_target:2': { policy: 'to_band', tref: 567, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
       'cmd:set_load_target:3': { policy: 'to_band', tref: 561, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
@@ -397,13 +411,29 @@ var MUTATIONS = [
   { id: 'raise_old_settle_band', chain: true, leg: 'pwr_raise_power', route: 'chain', expect: 'settle',
     why: 'raise-power 8 graded 563-592 degF again and 10 saying "below its band" (pass 6: step 8 ticked at 567 degF, step 10 stalled at 570)',
     mutate: function (P) {
-      P.steps[7].accs[2].ask = 'Check OUTPUT reads 100 MW and AVG COOLANT TEMPERATURE is near 578 °F, between 563 and 592 °F.';
-      P.steps[7].accs[3].v = 303.2; P.steps[7].accs[3].tol = 8;
+      /* pass 7 moved the temperature row to 8b (accs[1]) */
+      P.steps[7].accs[1].ask = 'Check AVG COOLANT TEMPERATURE is near 578 °F, between 563 and 592 °F.';
+      P.steps[7].accs[1].label = 'AVG COOLANT TEMPERATURE between 563 and 592 °F';
+      P.steps[7].accs[1].v = 303.2; P.steps[7].accs[1].tol = 8;
       P.steps[9].accs[0].ask = 'If AVG COOLANT TEMPERATURE reads below its band, hold WITHDRAW at MED 3 to 6 steps; otherwise leave the rods where they are.';
     } },
   { id: 'cooldown_until_flat', leg: 'pwr_cooldown', route: 'typical', expect: 'stated',
     why: 'cooldown 4 as the OLD card read it: after each 50 psi, wait until the whole-degree tile reads the same twice, 5 plant-minutes apart',
     override: { 'cmd:set_steam_dump_setpoint': { policy: 'stair', from: 1020, to: 120, step: 50, read_s: 300, stated_max_min: 120 } } },
+  /* LAYMAN PASS 7 (2026-09-26) S-1: raise-power 5b back to the cmd-kind "Rods withdrawn" row, on
+   * the route whose stage 5 never leaves its band. Measured on the old card: 0 steps withdrawn,
+   * every graded row reading met, Continue dark until a rod press the text argued against. */
+  { id: 'rods_row_5b', leg: 'pwr_raise_power', route: 'hot_stage4', expect: 'flash',
+    why: 'raise-power 5b as a press-only "Rods withdrawn" row again (pass 7: stage 5 never sagged below its band, 3 plant-min dark)',
+    mutate: function (P) {
+      P.steps[4].accs.splice(1, 1, { cmd: { action: 'rod_nudge', group_id: 'control' }, ask: 'Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 15 steps.', wait_speed: 1, label: 'Rods withdrawn' });
+    } },
+  /* LAYMAN PASS 7 (2026-09-26) S-5: lower-power 2 as the old card read it, LOAD 100 -> 75 MW at once and
+   * the rods left alone. MEASURED on the chain: tile 595.3 degF, Pressurizer Pressure High, High
+   * Coolant Temperature and Heatup Rate High in steps 2-3. */
+  { id: 'lower_load_step', chain: true, leg: 'pwr_lower_power', route: 'chain', expect: 'forbid',
+    why: 'lower-power 2 as one 25 MW cut with the rods left alone (pass 7: 596 degF and four unwarned alarms)',
+    override: { '#2': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 75 }] } } },
   /* `band_transient_pass` RETIRED 2026-09-25 (exp/w6-raise, raise-power phase 2). It narrowed stage
    * 6's Tavg row to a 2 degF band and un-ordered the step, to prove a transient pass through the band
    * is flagged. On the xenon-free `low_power` the 35-step pull crosses that band faster than the
@@ -547,7 +577,7 @@ function runJob(legId, routeId, mutId, ctx) {
   /* a chained leg can START scrammed (the cooldown after the shutdown's scram): only a trip
    * that happens INSIDE the leg is one */
   var scrAtEntry = !!(ctx && ((s.rps_state && s.rps_state.scrammed) || (s.true_state && s.true_state.scrammed)));
-  var T0 = t(), out = [], flags = [], result = null, rewound = false, rateArmed = false;
+  var T0 = t(), out = [], flags = [], result = null, rewound = false, rateArmed = false, ALON = {};
   var cur = -1, S = null, guard = 0;
   function readings() {
     var r = { power_pct: pv('power_pct'), tavg_F: pv('tavg_c') * 9 / 5 + 32, pressure_psia: pv('pressure_mpa') * 145.0377, mwe: pv('mwe_output') };
@@ -595,8 +625,14 @@ function runJob(legId, routeId, mutId, ctx) {
     if (rTru != null && isFinite(rTru)) out[k].truelo = Math.min(out[k].truelo == null ? 0 : out[k].truelo, rTru * 9 / 5);
     (s.alarms || []).forEach(function (a) {
       if (a.state && a.state !== 'clear' && !S.alarm0[a.id] && a.priority !== 'status') {
-        S.alarm0[a.id] = 1; (out[k].raised = out[k].raised || []).push(a.id + '@' + f(pNow, 0) + 'psia');
+        S.alarm0[a.id] = 1; (out[k].raised = out[k].raised || []).push(a.id + '@' + f(pNow, 0) + 'psia/' + f(pv('tavg_c') * 9 / 5 + 32) + 'F');
+        ALON[a.id] = t();
       }
+    });
+    /* how long a raised alarm stood (layman pass 7: PORV OPEN beside a diagram reading CLOSED) */
+    Object.keys(ALON).forEach(function (id) {
+      var live = (s.alarms || []).some(function (a) { return a.id === id && a.state && a.state !== 'clear'; });
+      if (!live) { (out[k].cleared = out[k].cleared || []).push(id + ' after ' + f(t() - ALON[id], 0) + ' s'); delete ALON[id]; }
     });
     var el = t() - S.t0, rows = c.accs || [];
     /* --- flags: hollow / flash / row un-tick ---------------------------------------- */
@@ -617,6 +653,26 @@ function runJob(legId, routeId, mutId, ctx) {
         flags.push({ kind: 'untick', step: k + 1, row: i + 1, label: e.label, t_min: (t() - T0) / 60, held_s: heldS });
       S.rowsMet[i] = !!r.met;
     });
+    /* A ROD ROW NOTHING ON THE BOARD CALLS FOR (layman pass 7, S-1): every graded row met, and the
+     * step waits on a cmd-only rod row for CMDWAIT_S plant-seconds. The pass-7 player sat 3
+     * plant-minutes dark at raise-power 5b, "Rods withdrawn", with the gauge in its band. */
+    /* graded on the row's own reading (`obs`), not its latch: an ordered step blocks the later rows
+     * from LATCHING behind the unpressed rod row, which is the soft lock itself */
+    var predAll = rows.length && rows.every(function (r, i) {
+      var e = (st.accs || [])[i] || {}, o = r.obs;
+      if (!e.p || r.met) return true;
+      if (o == null || typeof o !== 'number') return false;
+      return e.op === '>' ? o > e.v : e.op === '<' ? o < e.v : e.op === '>=' ? o >= e.v : e.op === '<=' ? o <= e.v
+        : e.op === '~' ? Math.abs(o - e.v) <= e.tol : false;
+    });
+    var rodWait = -1;
+    rows.forEach(function (r, i) { var e = (st.accs || [])[i] || {}; if (rodWait < 0 && !r.met && !e.p && cmdAction(e.cmd) === 'rod_nudge') rodWait = i; });
+    if (predAll && rodWait >= 0) {
+      if (S.cw0 == null) S.cw0 = t();
+      if (!S.cwFlag && t() - S.cw0 >= CMDWAIT_S) {
+        S.cwFlag = true; flags.push({ kind: 'cmdwait', step: k + 1, row: rodWait + 1, label: (st.accs[rodWait] || {}).label, t_min: (t() - T0) / 60, held_s: t() - S.cw0 });
+      }
+    } else S.cw0 = null;
     S.lastReadings = readings();
     var tF = S.lastReadings.tavg_F, pw = S.lastReadings.power_pct;   // the step's Tavg / power span (stepTable prints it)
     out[k].tlo = Math.min(out[k].tlo == null ? 1e9 : out[k].tlo, tF); out[k].thi = Math.max(out[k].thi == null ? -1e9 : out[k].thi, tF);
@@ -666,12 +722,17 @@ function runJob(legId, routeId, mutId, ctx) {
   return ret;
 
   /* ------------------------------ the policy vocabulary ------------------------------ */
-  function pressRows(st2, c2, stopAt) {
+  /* `noRods` (layman pass 7, 2026-09-26, S-1): on a gauge-following step the rods are the
+   * route's OWN pulls. Pressing a rod row's `cmd` here sent a bare `rod_nudge` the literal player
+   * never makes -- a free tap -- and it latched raise-power 5b's cmd-kind "Rods withdrawn" on a
+   * plant whose temperature never left its band, which is how the gate stayed green through the
+   * soft lock pass 7 met. */
+  function pressRows(st2, c2, stopAt, noRods) {
     var accs = st2.accs || [];
     for (var i = 0; i < accs.length; i++) {
       if (c2.accs && c2.accs[i] && c2.accs[i].met) continue;
       var e = accs[i];
-      if (e.cmd && !S.memo['r' + i]) {
+      if (e.cmd && !S.memo['r' + i] && !(noRods && cmdAction(e.cmd) === 'rod_nudge')) {
         var reps = S.spec.repeat || 1, ok = true;
         for (var q = 0; q < reps && ok; q++) ok = press(e.cmd);
         if (ok) { S.memo['r' + i] = true; S.acts++; }
@@ -782,7 +843,7 @@ function runJob(legId, routeId, mutId, ctx) {
        * and, at bank ~250 (~0.6 degF/step), cooled the loop 18-19 degF/min: PRIMARY PRESSURE floors
        * 2067/1972/1915/1915 psia on the chain at the card's pace against 2001/1938/1936/1941 without it
        * (steps 3-6). A LOAD command (steps 4-6, raise power) is still the player's and is still sent. */
-      if (!(spec.no_cmd)) { if (!(st2.cmd && cmdAction(st2.cmd) === 'rod_nudge')) issueStepCmd(st2, el2); pressRows(st2, c2); }
+      if (!(spec.no_cmd)) { if (!(st2.cmd && cmdAction(st2.cmd) === 'rod_nudge')) issueStepCmd(st2, el2); pressRows(st2, c2, null, true); }
       if (spec.tref_from_text && S.memo.tref == null) {   // pass 6: the floor of the band the card names, +1 degF
         var btx = (st2.accs || []).map(function (e) { return (e.ask || '') + ' ' + (e.label || ''); }).join(' '), bm, blo = null, bre = /(\d{3}) (?:to|and) (\d{3}) °F/g;
         while ((bm = bre.exec(btx))) if (blo == null) blo = +bm[1];
@@ -790,10 +851,13 @@ function runJob(legId, routeId, mutId, ctx) {
       }
       if (S.memo.tref != null) spec = Object.assign({}, spec, { tref: S.memo.tref });
       var tf = pv('tavg_c') * 9 / 5 + 32, far = spec.near != null && Math.abs(tf - spec.tref) > spec.near;   // `near`: held straight through until within it
+      /* the RISE AFTER RELEASE (layman pass 7, S-3): the tile at the last withdraw and its peak since */
+      if (S.memo.relF != null && !moving()) { out[cur].rise_F = Math.max(out[cur].rise_F || 0, tf - S.memo.relF); out[cur].release_F = S.memo.relF; }
       if (el2 < (spec.after_s || 0) || moving() || (!far && t() - (S.memo.lastPull || -1e9) < (spec.dwell || 0))) return;
       var pull = far ? 1 : (spec.pull || 1);
       if (spec.dir !== 'insert' && tf < spec.tref - (spec.dead != null ? spec.dead : 1)) {
         nudge(pull, spec.speed || 'normal'); S.acts++; S.memo.lastPull = t(); out[cur].withdrawn = (out[cur].withdrawn || 0) + pull;
+        S.memo.relF = tf; out[cur].rise_F = 0;
       } else if (spec.dir !== 'withdraw' && tf > spec.tref + (spec.dead_hi != null ? spec.dead_hi : (spec.dead != null ? spec.dead : 1))) {
         nudge(-pull, spec.speed || 'normal'); S.acts++; S.memo.lastPull = t(); out[cur].inserted_n = (out[cur].inserted_n || 0) + pull;
       }
@@ -824,6 +888,22 @@ function runJob(legId, routeId, mutId, ctx) {
         S.memo.k++; S.memo.at = t(); S.memo.lr = t(); S.memo.lastRead = tfl; S.memo.sp = nextSp;
         S.memo.pk.push([nextSp, 0]); out[cur].stair_pk = S.memo.pk;
         out[cur].entries = S.memo.k;
+      }
+      return;
+    }
+    /* `load_stair{from,to,step,wait_s}` (layman pass 7, S-5): LOAD typed down in `step` MWe
+     * entries, `wait_s` plant-seconds apart, as a card that walks the load rather than steps it
+     * reads; the step's other rows are pressed as they go live. */
+    if (P === 'load_stair') {
+      if (S.memo.lk == null) { S.memo.lk = 0; S.memo.lsp = spec.from; S.memo.lat = -1e9; }
+      if (S.memo.lsp > spec.to && t() - S.memo.lat >= spec.wait_s) {
+        S.memo.lsp = Math.max(spec.to, S.memo.lsp - spec.step); S.memo.lat = t(); S.memo.lk++; S.acts++;
+        send({ action: 'set_load_target', mwe: S.memo.lsp }); out[cur].entries = S.memo.lk;
+      }
+      if (S.memo.lsp <= spec.to) pressRows(st2, c2, null, true);
+      /* `ins_above`: rods in, `pull` steps `dwell` s apart, whenever the tile reads above it */
+      if (spec.ins_above != null && !moving() && pv('tavg_c') * 9 / 5 + 32 > spec.ins_above && t() - (S.memo.lastPull || -1e9) >= (spec.dwell || 60)) {
+        nudge(-(spec.pull || 3), 'normal'); S.acts++; S.memo.lastPull = t(); out[cur].inserted_n = (out[cur].inserted_n || 0) + (spec.pull || 3);
       }
       return;
     }
@@ -1024,8 +1104,8 @@ function verdicts(r) {
   if (/#2$/.test(r.leg) && res.kind === 'complete' && res.blocks)
     v.blocks = { ok: !(res.blocks.lo_press > 0) && !(res.blocks.si_trip > 0), name: 'the round trip re-arms the SI blocks the cooldown set (PZR PRESS LO-LO, SI REACTOR TRIP)',
       note: 'lo_press_blocked ' + res.blocks.lo_press + ', si_trip_blocked ' + res.blocks.si_trip };
-  var fz = fl('flash').concat(fl('untick'));
-  v.flash = { ok: fz.length === 0, name: 'Continue never lights and goes out again (flash), no drawn row un-ticks',
+  var fz = fl('flash').concat(fl('untick')).concat(fl('cmdwait'));
+  v.flash = { ok: fz.length === 0, name: 'Continue never lights and goes out again (flash), no drawn row un-ticks, no step waits on a rod press the gauge does not call for',
     note: fz.map(function (x) { return x.kind + ' step ' + x.step + (x.row ? ' row ' + x.row + ' (' + x.label + ')' : '') + (x.lit_s != null ? ' lit ' + f(x.lit_s) + ' s' : '') + (x.held_s != null ? ' after ' + f(x.held_s) + ' s met' : '') + ' @ ' + f(x.t_min) + ' min'; }).join('; ') || 'none' };
   var rf = fl('rewind_refused');
   if (rf.length) v.rewind = { ok: false, name: 'the walkthrough Rewind lands', note: rf[0].why };

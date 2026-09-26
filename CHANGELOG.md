@@ -31,6 +31,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Walkthroughs: layman pass 7** (2026-09-26, AGENT-DRAFTED wording, record
+  `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`). Raise power 4b-8b grade the
+  temperature, not a rod press, and are conditional (5b soft-locked with the gauge in band); pulls
+  of about 5 steps a plant-minute apart (tile rise after release 2 °F against 5-8 °F held). Lower
+  power 2 walks LOAD down 5 MWe a plant-minute with 3-step inserts (chain peak 595.3 → 581.8 °F,
+  six alarms → none). Forewarns: Pressurizer Level Above Program (heatup 10), Pressure Low and
+  Insertion Limit (raise 5, 6), Cooldown Rate High (shutdown 3), PORV open and Low Coolant
+  Temperature (cooldown 2, 4, 5). Alarm list re-stamps an alarm whose priority changes.
+  `run_walkthrough_routes`: rod rows are no longer free-pressed on gauge-following steps; new
+  CMDWAIT and FORBID checks, route `hot_stage4`, injections `rods_row_5b`, `lower_load_step`.
 - **Walkthroughs: layman pass 6** (2026-09-26, AGENT-DRAFTED wording, record
   `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`). Cooldown 11: the spray-off is its own
   substep at 30 °F and 60× (seam 19 → 241 psia; second heatup margin 25 → 197 °F). Cooldown 4: time
