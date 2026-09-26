@@ -30,6 +30,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **A "Walkthrough sets time warp" checkbox under the speed bar** (#807 item 7). On (default,
+  today's behaviour) lets the running walkthrough raise and drop the clock for you; off leaves
+  the bar to you for the rest of the run, in either direction — the step card's own "Suggested
+  time warp" line keeps printing either way. Hidden outside a walkthrough. Per-viewer, in
+  localStorage.
+
 ### Changed
 - **Walkthroughs: the cooldown stays under the 100 °F/hr limit** (owner rulings 2026-09-25, "Re-pace
   to stay under", then "Middle ground"). Step 4 lowers DUMP SETPOINT 50 psi to 720, then 25 psi to

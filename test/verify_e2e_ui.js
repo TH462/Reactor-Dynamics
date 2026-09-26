@@ -3404,6 +3404,185 @@ async function testSpeedRungGlowRendered(page) {
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
 }
 
+/* #807 item 7 — "WALKTHROUGH SETS TIME WARP", A PLAYER-VISIBLE OFF SWITCH FOR #796's OWN
+ * AUTOMATION *(OWNER: "Add a setting that shows up under the time warp bar that toggles the
+ * walkthrough automatically setting time warp. this setting only shows up when playing a
+ * walkthrough otherwise its not visible.")*.
+ *
+ * FOUR CLAIMS: the box is HIDDEN with no walkthrough loaded, VISIBLE (and checked — ON is the
+ * default, today's unchanged behaviour) the moment one is running, ON still raises the clock to
+ * the step's own rung exactly as #796 already does, and OFF makes NO automatic change at all —
+ * the clock stays where the fixture set it even though the step's rung is well above it — while
+ * the card's own "Suggested time warp" line keeps printing (that is prose, not a command, and is
+ * untouched either way).
+ *
+ * REUSES #743's OWN STEP-FINDING FIXTURE (a step authoring `hold >= 180` and `wait_speed > 1`,
+ * with its action already taken via `cmdSeen`) rather than inventing a second one, and re-derives
+ * it fresh for each checklist instance rather than caching the index, for the same reason #743's
+ * own comment gives: a re-authored pwr_heatup must not rot a typed number.
+ *
+ * TWO SEPARATE CHECKLIST INSTANCES, ON PURPOSE. `cklAuto.key` (ui/app.js) is a "this driver has
+ * already acted on this (step, rung) pair" latch that only resets when the walkthrough ends (a
+ * `want == null` broadcast) — and the OFF gate added for this issue returns before that latch is
+ * ever touched, so toggling OFF **after** ON has already fired on a step, then back ON on the
+ * SAME step, could read as "no change" for a reason that has nothing to do with the feature
+ * (the latch, not the gate). Starting a second instance for the OFF half sidesteps that ambiguity
+ * entirely rather than asserting through it.
+ *
+ * Injection-proven 2026-09-26 (`inbox/807/inject_toggle.js`): commenting out the
+ * `if (!cklAutoWarpOn) return;` guard in `syncCklAutoSpeed` (ui/app.js) reds the "OFF suppresses
+ * the raise" assertion (accel climbs to the rung anyway, 1 -> N with the box unchecked); reverting
+ * `syncWarpInfo`'s `wpRow.hidden = !actv;` line to a no-op reds both visibility assertions (the
+ * row stays `hidden` from the markup forever, so "visible inside" fails first). Both restored. */
+async function testWalkthroughWarpTogglePref(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1',
+                  { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await page.evaluate(function () { globalThis.RD.__dev.service().attentionStops = false; });
+  /* #743's OWN OVERRIDE, reused verbatim: jumping the index the way this fixture does can land on
+   * a step whose criterion the plant ALREADY satisfies (pwr2's default free-play IC is hot and at
+   * power, so an "AVG COOLANT TEMPERATURE 542 °F or higher" observation reads true at once) — the
+   * card would read "Wait complete", `cklStepSpeed` hands the clock back to 1× on its very first
+   * line, and BOTH the ON and the OFF half would read 1× for the same wrong reason. Forced false
+   * for the life of this page, across both checklist instances. */
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    var orig = svc._instructorBlock.bind(svc);
+    svc._instructorBlock = function () {
+      var b = orig();
+      if (b && b.checklist) { b.checklist.acc_met = false; b.checklist.awaiting_ack = false; }
+      return b;
+    };
+  });
+
+  async function readRow() {
+    return await page.evaluate(function () {
+      var row = document.getElementById('cklWarpPrefRow');
+      var box = document.getElementById('cklWarpPrefBox');
+      return { hidden: row ? row.hidden : null, checked: box ? box.checked : null };
+    });
+  }
+  async function startLeg() {
+    var started = await page.evaluate(function () {
+      try {
+        var svc = globalThis.RD.__dev.service();
+        var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+        return { ok: !(r && r.type === 'error'), msg: r && r.message };
+      } catch (e) { return { ok: false, msg: String(e) }; }
+    });
+    if (!started.ok) throw new Error('#807 fixture: start_checklist failed — ' + started.msg);
+    await page.waitForFunction(function () {
+      var b = document.querySelector('#tabbar button.on');
+      return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step');
+    }, { timeout: 15000, polling: 200 });
+    await page.waitForTimeout(500);
+  }
+  async function jumpToRungStep() {
+    var jumped = await page.evaluate(function () {
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      var target = -1;
+      for (var i = 0; i < c.proc.steps.length; i++) {
+        var s = c.proc.steps[i];
+        if ((+s.hold || 0) >= 180 && +s.wait_speed > 1) { target = i; break; }
+      }
+      if (target < 0) return { ok: false };
+      c.idx = target; c.stepAt = null; c.awaitingAck = false; c.cmdSeen = true;
+      return { ok: true, idx: target, speed: +c.proc.steps[target].wait_speed };
+    });
+    if (!jumped.ok) throw new Error('#807 fixture: pwr_heatup authors no step with hold >= 180 and a rung');
+    return jumped;
+  }
+  async function setSpeed1() {
+    await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'set_speed', value: 1 }); });
+  }
+  async function accel() {
+    return await page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  }
+
+  // ---- free play: hidden ----
+  var free = await readRow();
+  if (free.hidden !== true) throw new Error('#807: the box must be hidden with no walkthrough loaded — ' + JSON.stringify(free));
+  log.push('free play: row hidden=' + free.hidden);
+
+  // ---- instance 1: default ON keeps #796's own automation ----
+  await startLeg();
+  var running = await readRow();
+  if (running.hidden !== false) throw new Error('#807: the box must show while a walkthrough is running — ' + JSON.stringify(running));
+  if (running.checked !== true) throw new Error('#807: default must be ON (today\'s behaviour) — ' + JSON.stringify(running));
+  log.push('walkthrough running: row hidden=' + running.hidden + ', checked=' + running.checked);
+
+  var j1 = await jumpToRungStep();
+  await setSpeed1();
+  await page.waitForTimeout(3000);   // #743's own margin: the WARP tier can take a few
+                                      // broadcasts to settle before a 600×/3600× rung lands
+  var onAccel = await accel();
+  if (onAccel !== j1.speed) {
+    throw new Error('#807: with the box ON the walkthrough must still raise the clock to ' + j1.speed + '× — read ' + onAccel + '×');
+  }
+  log.push('ON (default): clock raised to ' + onAccel + '× (step rung ' + j1.speed + '×)');
+
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  await page.waitForTimeout(500);
+  var stopped1 = await readRow();
+  if (stopped1.hidden !== true) throw new Error('#807: the box must hide again once the walkthrough ends — ' + JSON.stringify(stopped1));
+  log.push('instance 1 stopped: row hidden=' + stopped1.hidden);
+
+  // ---- instance 2: OFF makes no automatic change, and its own text still shows ----
+  await startLeg();
+  await page.click('#cklWarpPrefBox');                       // real click — the app's own handler, not a poke
+  var offBox = await readRow();
+  if (offBox.checked !== false) throw new Error('#807: the click did not uncheck the box — ' + JSON.stringify(offBox));
+
+  var j2 = await jumpToRungStep();
+  await setSpeed1();
+  await page.waitForTimeout(3000);
+  var offAccel = await accel();
+  if (offAccel !== 1) {
+    throw new Error('#807: with the box OFF the walkthrough must make NO automatic change — clock read ' +
+      offAccel + '× on a step whose rung is ' + j2.speed + '×');
+  }
+  log.push('OFF: clock stays ' + offAccel + '× on a step whose rung is ' + j2.speed + '× (suppressed)');
+
+  // THE CARD'S OWN "Suggested time warp" LINE (`.ckl-step-speed`, drawn from the step's authored
+  // `wait_speed`/`speed_text` by the checklist renderer) is untouched by this toggle — it is
+  // prose describing the step, not a command, and has nothing to do with `cklAutoWarpOn`.
+  var advice = await page.evaluate(function () {
+    var el = document.querySelector('.ckl-step .ckl-step-speed');
+    return el ? el.textContent : '';
+  });
+  if (!/Suggested time warp/.test(advice)) {
+    throw new Error('#807: the step\'s own "Suggested time warp" text must still print with the box OFF — read "' + advice + '"');
+  }
+  log.push('OFF: card still reads "' + advice.trim() + '"');
+
+  // ---- re-checking resumes the automation, on the SAME instance (the latch was never touched
+  // while OFF — see the comment above this function) ----
+  await page.click('#cklWarpPrefBox');
+  var onBox2 = await readRow();
+  if (onBox2.checked !== true) throw new Error('#807: the second click did not re-check the box — ' + JSON.stringify(onBox2));
+  await page.waitForTimeout(3000);
+  var backAccel = await accel();
+  if (backAccel !== j2.speed) {
+    throw new Error('#807: re-checking the box must resume the walkthrough\'s own pacing — read ' +
+      backAccel + '×, expected ' + j2.speed + '×');
+  }
+  log.push('back ON: clock resumes to ' + backAccel + '×');
+
+  var persisted = await page.evaluate(function () { return localStorage.getItem('rd_ckl_auto_warp'); });
+  if (persisted !== '1') throw new Error('#807: the ON state must persist to localStorage — read ' + JSON.stringify(persisted));
+  log.push('persisted: rd_ckl_auto_warp="' + persisted + '"');
+
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  await page.waitForTimeout(500);
+  var stopped2 = await readRow();
+  if (stopped2.hidden !== true) throw new Error('#807: the box must hide again once the walkthrough ends — ' + JSON.stringify(stopped2));
+  log.push('instance 2 stopped: row hidden=' + stopped2.hidden);
+
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
 /* #685 — THE "WATCH THIS" GLOW, PROVED TO REACH THE BOARD FROM A REAL STEP'S `hl_watch`.
  *
  * WHY A BROWSER GATE AND NOT A SOURCE SCAN. `run_manual_controls` checks that every `hl_watch`
@@ -5494,6 +5673,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'watch-glow-rendered.log'), wgLog);
     var srLog = await testSpeedRungGlowRendered(page);
     fs.writeFileSync(path.join(SCRATCH, 'speed-rung-glow.log'), srLog);
+    var wtLog = await testWalkthroughWarpTogglePref(page);
+    fs.writeFileSync(path.join(SCRATCH, 'walkthrough-warp-toggle-pref.log'), wtLog);
     var prLog = await testPauseResumeSpeed(page);
     fs.writeFileSync(path.join(SCRATCH, 'pause-resume-speed.log'), prLog);
     var hnLog = await testHeldNotePauseResume(page);
@@ -5559,6 +5740,7 @@ if (require.main !== module) {
                      testOneOverMGeometry: testOneOverMGeometry,
                      testWatchGlowRendered: testWatchGlowRendered,
                      testSpeedRungGlowRendered: testSpeedRungGlowRendered,
+                     testWalkthroughWarpTogglePref: testWalkthroughWarpTogglePref,
                      port: function () { return PORT; } };
 } else {
   main().catch(function (e) {
