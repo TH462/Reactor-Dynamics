@@ -853,7 +853,7 @@ if (!only && RUN_B) {
     function bchan(s) { return (s.automation && s.automation.channels || []).filter(function (c) { return c.id === 'boron_conc'; })[0]; }
     function run(svc, s, sec, each) { var end = s.metadata.sim_time + sec; while (s.metadata.sim_time < end) { s = svc.tick(); if (each) each(s); } return s; }
     var wiring = fs.readFileSync(path.join(ROOT, 'ui', 'diagram', 'board', 'pwr_board_wiring.js'), 'utf8');
-    var mixSrc = /function boronMixing\s*\([\s\S]*?\n  \}\n/.exec(wiring), boronMixing = null;
+    var mixSrc = /function boronMixing\s*\([\s\S]*?\r?\n  \}\r?\n/.exec(wiring), boronMixing = null;   /* \r?: a Windows autocrlf checkout is CRLF (measured red on the exp/807int merge tree) */
     try { if (mixSrc) boronMixing = new Function('CS', 'return (' + mixSrc[0].trim() + ');')(function (s) { return s.control_state || {}; }); }
     catch (e) { boronMixing = null; }
     var P = RD.InstructorLayer.paramValue;

@@ -1043,12 +1043,10 @@ if (!ROUTE_F && ARGV.indexOf('--no-mutations') < 0)
  * agents own the content). Key: 'leg:route:check'. Each carries its measured numbers in
  * BASELINES' note; this map only keeps the tally honest about which reds are expected. */
 var TRACKED = {
-  // 2026-09-26 (workbench-e): heatup 16's SOURCE RANGE `steady` row (1.2 % over 600 s) ticks and
-  // un-ticks 2.0 s later at 360.6 plant-min on the SECOND lap, gate seed 42 only. Exposed, not caused,
-  // by raise-power 10-12 leaving: the grading is untouched, the chain's history is shorter. MEASURED:
-  // 0 of 7 other seeds (1-8, bar 42) flash anywhere in heatup#2 after the change; 0 of 5 at HEAD
-  // (seeds 4-8). Same row and same noise-on-a-steady-window shape as the 2026-09-25 workbench-j trap.
-  'chain:pwr_heatup#2:flash': 'heatup 16 SOURCE RANGE steady row, seed-42 flicker on the 2nd lap (2026-09-26)',
+  // RESOLVED 2026-09-26 (exp/807int merge of workbench 38b8049a): 'chain:pwr_heatup#2:flash' --
+  // workbench-e's seed-42 flicker of heatup 16's SOURCE RANGE `steady` row (1.2 % over 600 s) on the
+  // SECOND lap. That row no longer exists: #807 item 5 re-graded 16 to 90 s at 8 % plus 16c rods 0 and
+  // 16d BORON STATUS HOLD. On the merged tree the chain carries no heatup#2 flash (gate seed 42, full run).
   // RESOLVED 2026-09-24 (rp_start): 'pwr_startup:typical:complete' — step 9 passed on ONE read of
   // 0.069 DPM at bank 208 while the rate was still falling (to 0.024) and step 10 stranded at 90
   // min. Step 9 now carries a hidden STARTUP RATE `steady` row (5 % over 240 s): the typical route
