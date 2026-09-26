@@ -2768,6 +2768,7 @@
           wait_hint: false,
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 695,
                    ask: 'Hold CONTROL WITHDRAW at MED until CONTROL ROD POSITION reads 80 to 100 and SOURCE RANGE reads 7.0e2 or more.',
+                   note: 'If CONTROL ROD POSITION reaches 100 and SOURCE RANGE is still under 7.0e2, stop and wait: the step 2 dilution is still finishing, and the counts climb to 7.0e2 on their own.',
                    wait_speed: 5, speed_text: '5×, set by itself once the rods start moving.',
                    label: 'SOURCE RANGE reads 7.0e2 (700 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Wait for STARTUP RATE to read +0.03 or less, then press Plot point.',
