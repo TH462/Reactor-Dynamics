@@ -184,14 +184,15 @@ var ROUTES = {
     ],
   },
   pwr_lower_power: {
-    /* 2026-09-25 (layman pass 4): "insert at MED in pulls of about 5 steps, half a plant-minute
-     * apart, until AVG COOLANT TEMPERATURE is back in its band" — the player stops at the first
+    /* 2026-09-25 (layman pass 4; pace ruled "about 3 steps, one plant-minute apart" the same day,
+     * workbench-h): "insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG
+     * COOLANT TEMPERATURE is back in its band" — the player stops at the first
      * read inside the row's edge (1 degF under it), as the reviewer did. */
     steps: {
-      '#3': { policy: 'to_band', tref: 576, dead: 0, dir: 'insert', pull: 5, dwell: 30 },
-      'cmd:set_load_target:2': { policy: 'to_band', tref: 567, dead: 0, dir: 'insert', pull: 5, dwell: 30 },
-      'cmd:set_load_target:3': { policy: 'to_band', tref: 561, dead: 0, dir: 'insert', pull: 5, dwell: 30 },
-      'cmd:set_load_target:4': { policy: 'to_band', tref: 556, dead: 0, dir: 'insert', pull: 5, dwell: 30 },
+      '#3': { policy: 'to_band', tref: 576, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
+      'cmd:set_load_target:2': { policy: 'to_band', tref: 567, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
+      'cmd:set_load_target:3': { policy: 'to_band', tref: 561, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
+      'cmd:set_load_target:4': { policy: 'to_band', tref: 556, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
     },
     mistakes: [
       { id: 'double_load75', kind: 'double press', at: 'cmd:set_load_target', set: { repeat: 2 } },
@@ -712,7 +713,13 @@ function runJob(legId, routeId, mutId, ctx) {
      * card names), in the directions `dir` allows, `pull` steps a press, `dwell` s between presses
      * (0 = held). It reads the INSTRUMENT channel, as the tile does, and so inherits its lag. */
     if (P === 'to_band') {
-      if (!(spec.no_cmd)) { issueStepCmd(st2, el2); pressRows(st2, c2); }
+      /* THE STEP'S OWN rod_nudge IS NOT THE PLAYER'S ACTION (2026-09-25, workbench-h). The live
+       * checklist never issues `cmd`; on a to_band step the player's rods are the card's pulls
+       * below. Sending the replay's `rod_nudge -40` too put 40 steps in at once on lower power 3
+       * and, at bank ~250 (~0.6 degF/step), cooled the loop 18-19 degF/min: PRIMARY PRESSURE floors
+       * 2067/1972/1915/1915 psia on the chain at the card's pace against 2001/1938/1936/1941 without it
+       * (steps 3-6). A LOAD command (steps 4-6, raise power) is still the player's and is still sent. */
+      if (!(spec.no_cmd)) { if (!(st2.cmd && cmdAction(st2.cmd) === 'rod_nudge')) issueStepCmd(st2, el2); pressRows(st2, c2); }
       var tf = pv('tavg_c') * 9 / 5 + 32, far = spec.near != null && Math.abs(tf - spec.tref) > spec.near;   // `near`: held straight through until within it
       if (el2 < (spec.after_s || 0) || moving() || (!far && t() - (S.memo.lastPull || -1e9) < (spec.dwell || 0))) return;
       var pull = far ? 1 : (spec.pull || 1);

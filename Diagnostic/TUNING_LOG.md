@@ -50,6 +50,58 @@ Record: `Blueprint/walkthrough_steps/06_cooldown.md`, re-pace record. Traps only
   Measured A/B on the xenon-free preset (typical route end, bank 306): a 20-step pull is +10.4 °F at
   +10 min against the unpulled twin, 0.52 °F/step at mid-bank; on the engine's own S-curve that is
   17.0 pcm/°F and 306 → 606 is ≈ 118 °F (318 → 606 ≈ 112). The text stands.
+## Session log — 2026-09-25-workbench-h (lower-power pressure sag: the heaters are the right size, and not what is short)
+
+OWNER RULING (2026-09-25), selected option "Evidence pass" — option text (a selection, not his
+words): "Check the pressurizer heater capacity against sourced plant data, and correct the physics
+if it is undersized." Record: layman pass 5, S-4. Probe: `inbox/ev/probe_routes.js` (a tracing
+copy of `run_walkthrough_routes --job=chain:chain`, env knobs `EV_MANUAL/EV_HTRX/EV_DWELL/EV_PULL/
+EV_NOCMD/EV_TAU`). **No physics moved.** Traps only:
+- **The heater bank is sourced and not undersized.** WTSM 3.2 (ML11223A213, p. 3.2-8): "78 heaters
+  installed for a total capacity of 1794 kW ... proportional ... 414 kW and the backup ... 1380 kW";
+  the same section gives "The volume of the pressurizer (1800 ft3)". This plant: 157.8 kW in
+  147.5 ft3 = 1.07 kW/ft3 against the reference's 1.00 — and, with the loop 4.82x the pressurizer
+  against Ginna's 6.86, about 1.5x the reference per cubic foot of loop the outsurge comes from.
+- **The sag's SIGN is the textbook one.** WTSM 10.3 (ML11223A290, pp. 10.3-4/-5): "An insurge into the
+  pressurizer is observed during a step load decrease ... over time the cooler water that has
+  entered the pressurizer would cause a pressure reduction. This insurge is followed by a larger
+  outsurge as the rod control system brings Tavg to program for the lower power level; this control
+  response also tends to reduce pressure." Design basis (Ginna UFSAR ch7, ML20339A027 §7.7.1.1.4): "a
+  generation step load increase of 10% and a ramp increase of 5% per minute ... without reactor
+  trip ... Similar step and ramp load reductions are possible". The card asks for 25 % steps.
+- **THE SAG IS NOT HEATER-LIMITED — a latent stratified layer takes the heat.** Chained, the
+  raise-power leg leaves **893 kg** (54 % of the liquid) of insurge water in the bottom layer at
+  1391 kJ/kg, **63.5 °F (35.3 °C) subcooled**, and it never relaxes: nothing in
+  `pwr2_pressurizer.js` mixes `m_sub` into the pool, and at steady 100 % the heaters sit at 0 kW
+  (pressure 2254 psia (15.54 MPa), above setpoint). In the outsurge the heaters heat that layer
+  (priority `m_sub`) and the surge line drains it first, handing up to 376 kW back to the hot leg.
+  MANUAL FIRST: heaters fixed 0 % vs 100 % move the step-6 floor **8 psi** (1907 vs 1915 psia).
+  Heaters x3 (473 kW) buy +109 psi. The standalone leg (fresh preset, `m_sub` 0) holds **2202 psia**.
+- **The card's pace is 4.5x the design ramp.** Card-literal (5 steps per 30 s, the step's 40-step
+  command not sent), floors per step 3/4/5/6: **2032 / 1949 / 1885 / 1848 psia** (Tavg falling
+  ~7 °F/min (3.9 °C/min); the program's 5 %/min is ~1.55 °F/min). 5 per 60 s: 2012 / 1922 / 1883 /
+  1882. 3 per 60 s: 2001 / 1938 / 1936 / 1941. The route gate's `to_band` also SENDS the step's
+  `rod_nudge -40` (the live player never does), which at bank ~250 (~0.6 °F/step vs ~0.18 at
+  bank ~510) drives 18–19 °F/min — that is why the gate's floors (2059/1992/1934/1889) sit where
+  they do; the layman's 1819 psi is the card-literal route plus reading lag.
+- **A mixing relaxation is what moves it, and it is UNSOURCED** — prototype only, not shipped:
+  `m_sub` into the pool at tau 600 s gives card-literal 2113 / 2088 / 2059 / 2040 psia, and
+  3 per 60 s 2145 / 2157 / 2148 / 2147. No corpus document gives a stratified-layer mixing time
+  (`find_source.js "thermocline|pressurizer.{0,40}mixing|mixing.{0,40}pressurizer"`: no pressurizer hit),
+  and the layer is load-bearing for the loss-of-load spike and TMI — owner ruling, not an agent's call.
+- **BUILT the same session** *(OWNER RULING (2026-09-25), selected "C: both, B first" — selection,
+  not verbatim)*: pace "about 3 steps, one plant-minute apart"; the route gate's `to_band` no longer
+  sends the step's `rod_nudge -40`; `STRATIFY.tau_mix_s` 600 s. Chain floors 2145/2158/2147/2140 psia.
+  `perturb_sweep` cannot reach a pwr2 constant (its suites are the retired engine's); the tau sweep
+  above is the substitute. Two reds, adjudicated one at a time:
+  - **`run_pwr2_engine_b` null self-test, group C** — a CLIFF, not the claim. The rods-IN plant on
+    the quiet ride's 30 s settle tripped OTdT +19.3 s after onset with the term; settles 20/25/35/40/
+    50/60/70/90 s do not trip in 240 s, and without the term no settle trips. Fixture moved to 60 s
+    on both rides; the check is unchanged and green (engine 80/80, _b 67/67, _c 16/16).
+  - **`run_checklist_pwr2` heatup 16, SR steady 1.2 %/600 s** — a SEED REALIZATION. True SR sits at
+    168.04 cps on both trees through the step-16 window; over 11 seeds the row fails 2/11 with the
+    term and 2/11 without (seeds 4, 6 on the old tree). Tracked in BASELINES (2 -> 3), not re-banded.
+    **A replay that grades a noisy `steady` row at one fixed hold pins one noise realization.**
 
 ## Session log — 2026-09-25-workbench-g (layman pass 5 verified: the round trip's seam, and a harness that crashed on the refusal it was looking for)
 

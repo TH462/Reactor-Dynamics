@@ -4505,7 +4505,7 @@
     {
       id: 'pwr_lower_power', category: 'power', manual_ref: 'PWR-N08', next: 'pwr_shutdown',
       title: 'Mode 1, At Power — load rampdown to about 15 %',
-      purpose: 'Bring the plant down from full power to low power in stages. Turbine leads, rods follow: lower LOAD, let the reactor follow it down, then insert rods so AVG COOLANT TEMPERATURE does not ride above its band. About 7 to 50 plant-minutes.',
+      purpose: 'Bring the plant down from full power to low power in stages. Turbine leads, rods follow: lower LOAD, let the reactor follow it down, then insert rods so AVG COOLANT TEMPERATURE does not ride above its band. About 25 to 50 plant-minutes.',
       from: 'hot_full_power',
       prereq: ['Reactor at power: REACTOR POWER above 10 % (auto-checked).', 'Turbine on line: OUTPUT above 5 MW (auto-checked).', 'SG FEED in AUTO.'],
       precond: [
@@ -4612,7 +4612,7 @@
           control: 'Rod Speed', target: 'AVG COOLANT TEMPERATURE back inside the band; OUTPUT still 75 MWe',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: -40, speed: 'normal' }, hold: 300, wait_hint: false,
           wait_speed: 5, speed_text: true,
-          note: 'About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it. PRIMARY PRESSURE sags as the rods cool the plant, to about 1820 to 1900 psi by the last stage, with the heaters full on and the Pressurizer Pressure Low alarm in. The pace of this walkthrough does that; the low-pressure trip is at 1775 psi.',
+          note: 'About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it. PRIMARY PRESSURE sags as the rods cool the plant: to about 2200 psi from a fresh start, and to about 2140 psi after the raise-power walkthrough, with the heaters full on and the Pressurizer Pressure Low alarm in. Pull faster than this and it sags further; the low-pressure trip is at 1775 psi.',
           /* MEASURED at the end of this hold (40 steps in, 300 s): Tavg 570.7 degF (299.28 degC)
            * against a 571.8 degF programme — 1.1 degF inside a band whose half width is
            * 5.0 degF (`tavg_c < 302.7` is the band's own top edge: pwr_board_wiring `tavgBand`
@@ -4631,7 +4631,7 @@
            * crossing went on to read 551.9 °F, 14.9 °F under the band floor. 5x is the rung that
            * leaves more than about 5 s. Same measurement for 4b/5b/6b: 38/37/50 steps. */
           accs: [{ p: 'tavg_c', op: '<', v: 302.7,
-                   ask: 'Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 577 °F, the top of the green band on its tile.',
+                   ask: 'Insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 577 °F, the top of the green band on its tile.',
                    label: 'AVG COOLANT TEMPERATURE below 577 °F' },
                  { p: 'power_pct', op: '<', v: 80,
                    ask: 'Check REACTOR POWER has followed down to about 73 %, below 80 %.',
@@ -4675,7 +4675,7 @@
                    label: 'OUTPUT settled near 50 MW' },
                  { p: 'power_pct', op: '<', v: 70, ask: 'Watch REACTOR POWER follow the load down through 70 %.',
                    wait_speed: 10, label: 'REACTOR POWER below 70 %' },
-                 { p: 'tavg_c', op: '<', v: 298.1, ask: 'Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.',
+                 { p: 'tavg_c', op: '<', v: 298.1, ask: 'Insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.',
                    note: 'About 20 to 65 steps at MED.',
                    wait_speed: 5,
                    label: 'AVG COOLANT TEMPERATURE below 569 °F' }],
@@ -4698,7 +4698,7 @@
                    label: 'OUTPUT settled near 30 MW' },
                  { p: 'power_pct', op: '<', v: 45, ask: 'Watch REACTOR POWER follow the load down through 45 %.',
                    wait_speed: 10, label: 'REACTOR POWER below 45 %' },
-                 { p: 'tavg_c', op: '<', v: 294.4, ask: 'Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.',
+                 { p: 'tavg_c', op: '<', v: 294.4, ask: 'Insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.',
                    note: 'About 10 to 45 steps at MED.',
                    wait_speed: 5,
                    label: 'AVG COOLANT TEMPERATURE below 562 °F' }],
@@ -4771,7 +4771,7 @@
                   * of the two is the one that matters, and a two-sided band would still red the
                   * shipping leg. Said as "below the band" in an earlier draft, which overstated the
                   * margin fourfold (#741 quality pass). */
-                 { p: 'tavg_c', op: '<', v: 291.6, ask: 'Insert at MED in pulls of about 5 steps, half a plant-minute apart, until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.',
+                 { p: 'tavg_c', op: '<', v: 291.6, ask: 'Insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.',
                    note: 'About 6 to 40 steps at MED. Stop here; the shutdown walkthrough takes over.',
                    wait_speed: 5,
                    label: 'AVG COOLANT TEMPERATURE below 557 °F' }],

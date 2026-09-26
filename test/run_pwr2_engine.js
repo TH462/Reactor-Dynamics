@@ -1063,7 +1063,13 @@ function runSuite(RD, rec, quiet, only) {
    * measurements at the last check in this block. */
   head('THE RUNBACK  [3 % from the OTdT trip: nibble the turbine, hold the rods, buy time]');
   var eng7 = EN.createEngine({});
-  run(eng7, quiet ? 30 : 60);
+  /* ⚠ 60 s ON BOTH RIDES (2026-09-25, workbench-h): the quiet ride's 30 s settle was a CLIFF.
+   * With the pressurizer's layer-mixing term (tau_mix_s 600 s), the rods-IN plant settled 30 s
+   * trips OTdT +19.3 s after onset (pressure 11 psi lower, power +1.6 % at +18 s) — and settled
+   * 20 / 25 / 35 / 40 / 50 / 60 / 70 / 90 s it does not trip in 240 s; without the term no
+   * settle trips. One isolated point on the replay ride, not the claim: the fixture moved off
+   * it, the check untouched. */
+  run(eng7, 60);
   var onset7 = false, ts7 = null;
   for (var d7 = 0; d7 < 120 && !onset7; d7++) {
     eng7.cv.boron_ppm -= 1;         /* quasi-static: -1 ppm per 2.5 s. The old -2 ppm block
@@ -1166,7 +1172,7 @@ function runSuite(RD, rec, quiet, only) {
    * literal — passes unchanged on all three builds. That is the whole argument for writing it
    * that way. Do not "fix" this check by widening it. */
   var eng7c = EN.createEngine({});
-  run(eng7c, quiet ? 30 : 60);
+  run(eng7c, 60);                               /* same settle as eng7 -- see there */
   var onset7c = false, ts7c = null, d7c;
   for (d7c = 0; d7c < 120 && !onset7c; d7c++) {
     eng7c.cv.boron_ppm -= 1;
