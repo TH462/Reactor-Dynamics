@@ -44,6 +44,8 @@ In Cold Shutdown (Mode 5) the water is far below boiling, pressure is low, the R
 
 Suggested time warp: 1×.
 
+Note: Coming from a cooldown with PRIMARY PRESSURE under about 25 psi, heat from the pumps carries AVG COOLANT TEMPERATURE to about 205 °F and can bring in the Low Subcooling Margin alarm. Both are expected: the heaters raise pressure at step 9 and the alarm clears.
+
 Background
 
 A shut-down reactor makes very little heat. The running pumps make heat of their own: the work that drives the water around the loop ends up in it as friction. That is enough to warm the whole plant. Real crews heat up exactly this way, with the reactor never critical.
@@ -176,7 +178,7 @@ Suggested time warp: 1×.
 
 Suggested time warp: 600×.
 
-Note: At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open. Coming from the cooldown the plant starts near 50 psi or lower, not 363, and the climb takes about an hour and a half of plant time.
+Note: At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open. Coming from the cooldown the plant starts near 240 psi, not 363, and the climb takes about an hour of plant time; from under 50 psi it takes an hour and a half or more. The Shutdown Cooling Not In Service alarm comes in on the way up, near 600 psi: expected on a heatup, not a fault. Pressurizer Level Above Program comes in near the top of the climb, about when the clock drops to 1×: expected, and it clears by itself partway through the heat-up.
 
 Background
 
@@ -216,7 +218,7 @@ The accumulators are tanks of borated water pushed by nitrogen gas at 665 psi. T
 
 Suggested time warp: 3600×.
 
-Note: Near the end the red Pressurizer Pressure Very Low alarm comes in, with Pressurizer Pressure Low. Both are expected: PRIMARY PRESSURE is held near 1700 psi on purpose, and step 14 raises it.
+Note: Near the end the red Pressurizer Pressure Very Low alarm comes in, with Pressurizer Pressure Low. Both are expected: PRIMARY PRESSURE is held near 1700 psi on purpose, and step 14 raises it. The Turbine Trip / Low Steam Demand alarm comes in too: expected, the turbine stays tripped until the startup puts it on line.
 
 Background
 
@@ -690,9 +692,43 @@ Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`.
 - **11a's note**: Pressurizer Pressure Very Low (1800 psi, critical in Mode 3, Hot Standby) and Pressurizer Pressure Low raised at 1726 psia in this step on both chain heatups; the step ends at 1715 psia.
 - Board words: 6b (the % beside the STEAM DUMP valve), 7a/7b (A+B 7 % lit), 14 (no "gate"), 15d (ATMOS DUMP reads 0 %).
 
+### 16's replay `hold` re-measured — 2026-09-25, workbench-j (tracked flake, BASELINES `run_checklist_pwr2.js`)
+
+The FIXED REPLAY (`test/procedures_harness.js`) samples the SOURCE RANGE `steady` bag ONCE, at
+`hold`'s end; the LIVE checklist runtime re-grades every ~5 s of sim time and never stops trying.
+At the old `hold` (720 s) the replay's single sample landed inside a noise excursion on 2 of 11
+tested seeds (1.51-2.00 % drift against the 1.2 % tolerance) — a fixture artifact, not a plant
+defect. MEASURED on the live runtime (`run_walkthrough_routes --job=pwr_heatup:typical`, 30 noise
+seeds): the row ticks on every single seed, no strand. 24 of 30 tick within 8 s of the 600 s window
+closing (10.13 plant-min); the rest land at 10.48-11.82 min; the worst, seed 8, at 12.82 min (769 s,
+169 s past the window). `hold` raised 720 -> 1200 s, clearing the worst seed measured by 431 s
+(56 % margin). No change to `v` (1.2 %) or `window` (600 s) — the tolerance itself was never the
+problem, and the approaching-critical cases in the record above (dilution, the slow rod pull) still
+never tick early.
+
+**SUPERSEDED by the #807 record below** (merged 2026-09-26, exp/807int + workbench 38b8049a): step 16
+no longer carries the 600 s / 1.2 % row — #807 item 5 re-graded it to 90 s / 8 % with 16c/16d reading
+the rods and boron, so the replay `hold` is 120 s (1.33x the 90 s window), not 1200.
+
 ### #807 record — 2026-09-26, `exp/807a` scratch lane (items 3–6 of the rc6 playtest)
 
 - **Highlights** (item 3): pulse on the button, steady ring on its card — 2 (`RCP — On` in `RCP ON/OFF`), 7 (`Letdown — A+B 7%` in the LETDOWN card), 8 (`Pressurizer Spray — Auto` in SPRAY), 9 (`Pressurizer Heater — Auto` in HEATER); cards added to 3 (SHUTDOWN), 5 (SG FEED), 10 (ACCUMULATORS), 15 (ATMOS DUMP, which 15c reads). Rendered in headless Chromium, every pulse inside its ring.
 - **No ring in step text** (item 4): 4 and 6 lose "The ring on … marks the lamp to read"; 10a reads "Open the accumulator valve while …".
 - **Step 16 in about a minute and a half** (item 5): SOURCE RANGE steady 90 s / 8 % (was 600 s / 1.2 %; 60 s / 2 % was tried and un-ticked 9-17 times in 30 held plant-minutes at 10x — gauge noise up to 4.5 % — a flashing Continue). A window that short cannot see the approach cases above (a dilution from here ticks it at 1.0–2.3 min at any tolerance down to 0.2 %), so 16c CONTROL ROD POSITION reads 0 (moved from 15) and 16d BORON STATUS reads HOLD carry that claim, both graded `~` so they re-grade. Measured, live route runtime: typical seeds 42/7/123, all four mistake routes and the round-trip heatup (3 seeds) 1.63 plant-min (was 10.1), no flash; held 30 min with nothing moving, zero un-ticks at 1x/10x/60x; a dilution or a 200-step pull started at step 16 never ticks in 30 min.
 - **Wording** (item 6): 4 and 6 drop "nothing to press" (both carry an inline press recovery); 7b folded into 7a (it restated it); 2's unmeasured "about half a percent of full power" removed; 3, 9, 14 Background rewritten plainer and in short paragraphs. Numbers NOT re-measured this pass (inherited from the records above): 600 psi RHR isolation, 1972 psi, 328 psi, 1000 psi accumulator caution, 11 gpm, 1300 psi.
+
+### Layman pass 6 — 2026-09-26, workbench-a (AGENT-DRAFTED, not owner-ruled)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`. 2a gains a Note for a plant handed over under 25 psi (measured: margin 25.1 °F, Tavg 203 °F by step 8 from a 19 psia seam). 9b's Note: from the cooldown the climb starts near 240 psi and takes about an hour (58 plant-min from 249 psia; 86 from 50; 104 from 19), and forewarns Shutdown Cooling Not In Service (~600 psi). 11's Note forewarns Turbine Trip / Low Steam Demand (raised at ~1313 psia).
+
+
+### Layman pass 7 record — 2026-09-26, workbench-b (AGENT-DRAFTED: one sentence in 10a's note)
+
+10a names Pressurizer Level Above Program: raised at 696 psia, 212 °F, cleared 108 plant-min later
+(preset). Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`.
+
+### Layman pass 8 record — 2026-09-26, workbench-d (AGENT-DRAFTED: one sentence moved)
+
+Pressurizer Level Above Program moved from 10a's Note to 9b's: both heatups raised it at the end of
+step 9, at 665 psi, as the clock dropped to 1× (the chain gate: step 9 done at 691 psia, the alarm
+at 696 psia 0.1 plant-min later). Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`.

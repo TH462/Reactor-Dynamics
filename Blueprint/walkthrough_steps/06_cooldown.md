@@ -44,6 +44,8 @@ Hot, the plant is comfortably shut down on about 719 ppm of boron. Cold water ma
 
 Suggested time warp: 1×.
 
+Note: Pressure Relief Valve Open and Pressurizer Pressure Low come in as pressure falls: expected. The relief valve lifts for about ten plant-seconds and closes by itself, and the PORV label on the diagram then reads CLOSED again.
+
 Background
 
 Two automatic protections watch for falling pressure, because on a running plant falling pressure means a leak. They can only be blocked below 1972 psi, so the setpoint comes under that first. This is not the depressurization; it only unlocks the next step.
@@ -60,13 +62,13 @@ Two automatic protections watch for falling pressure, because on a running plant
 
 ()3b. Press BLOCK on the SI REACTOR TRIP row. Check the row reads BLOCKED.
 
-()3c. Press STOP on the ECCS card.
+()3c. Press STOP on the ECCS card. It is usually lit already, because STOP is what the card shows while the pump is idle: press it anyway, so the walkthrough records it.
 
 Suggested time warp: 1×.
 
 Background
 
-To the automatic protection, a cooldown looks exactly like a leak: pressure falling on a hot plant. Left on, the first cooling stage would trip the reactor and start the emergency injection pumps, flooding the plant with cold water you did not ask for. STOP on the ECCS card takes the injection pump out of standby as well.
+To the automatic protection, a cooldown looks exactly like a leak: pressure falling on a hot plant. Left on, the first cooling stage would trip the reactor and start the emergency injection pumps, flooding the plant with cold water you did not ask for. STOP on the ECCS card keeps the injection pump idle, and it is what the card shows whenever the pump is idle; it does not disarm safety injection, which would still start the pump.
 
 [HIGHLIGHTED: Trip Blocks, ECCS (pulsing)]
 
@@ -86,7 +88,7 @@ Note: In TAVG mode the setpoint does nothing.
 
 Suggested time warp: 60×.
 
-Note: Steps of 50 psi down to 720, then 25 psi down to 270, then 15 psi: near the bottom the same 50 psi cools about four times as far, and one big jump sets off the Cooldown Rate High alarm and empties the pressurizer. Wait about 6 plant-minutes between steps, 6 seconds at 60×: the temperature never quite stops falling, so do not wait for it to. About three and a half hours in all.
+Note: Steps of 50 psi down to 720, then 25 psi down to 270, then 15 psi: near the bottom the same 50 psi cools about four times as far, and one big jump sets off the Cooldown Rate High alarm and empties the pressurizer. Wait about 6 plant-minutes between steps, timed on the plant clock, not in seconds on your own: 4 plant-minutes apart sets off the Cooldown Rate High alarm. The temperature never quite stops falling, so do not wait for it to. Near the bottom the Shutdown Cooling Not In Service alarm comes in as the plant enters Mode 4: expected, RHR goes in service at step 9. About three and a half hours in all. Low Coolant Temperature comes in near 530 °F: expected on a cooldown, and it becomes an expected-status tile below 350 °F. The clock moves to 60× by itself once your first new setpoint goes in.
 
 Background
 
@@ -103,6 +105,8 @@ Steam pressure and steam temperature go together: lower the pressure the dump ho
 ()5a. Lower SET PZR PRESSURE to 1700 psi, as low as the box goes, and wait for PRIMARY PRESSURE to read below 1770 psi.
 
 Suggested time warp: 1×.
+
+Note: Pressure Relief Valve Open comes in again for about five plant-seconds: expected, as in step 2.
 
 Background
 
@@ -216,11 +220,17 @@ With RHR circulating, the reactor coolant pumps are only adding heat, so they co
 
 *HX SPLIT is the cooldown throttle now, and COOLDOWN RATE beside it shows what that choice is doing.*
 
-()11a. Raise HX SPLIT to 9 % and wait for AVG COOLANT TEMPERATURE to read below 199 °F.
+()11a. Raise HX SPLIT to 9 %, then watch SUBCOOLING MARGIN: when it reads below 30 °F, press OFF under SPRAY on the PRESSURIZER (PZR) card.
+
+Suggested time warp: 60×: at 600× the margin can fall 10 °F between two glances.
+
+Note: The spray is still running and keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it much earlier and pressure climbs back over the RHR limit. The clock moves to 60× by itself once HX SPLIT is raised.
+
+()11b. Wait for AVG COOLANT TEMPERATURE to read below 199 °F.
 
 Suggested time warp: 600×.
 
-Note: Keep COOLDOWN RATE under 100 °F per hour: if the Cooldown Rate High alarm comes in, lower HX SPLIT. The spray is still running and keeps taking SUBCOOLING MARGIN down: if it falls below 20 °F, press OFF under SPRAY now.
+Note: Keep COOLDOWN RATE under 100 °F per hour: if the Cooldown Rate High alarm comes in, lower HX SPLIT.
 
 Background
 
@@ -304,17 +314,17 @@ RHR is the only thing removing heat now. If its suction valve shut, the decay he
 
 *The heatup starts from what this step leaves, and a steam dump left in AUTO at a low setpoint opens wide the moment the heatup asks for it.*
 
-()16a. Press FAST on the ROD CONTROL card, then click INSERT under SHUTDOWN once. Wait for SHUTDOWN ROD POSITION to read 0 of 627.
+()16a. If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once: no rod moves while the reactor trip is latched.
 
-()16b. Press CLOSE on the STEAM DUMP card.
+()16b. If SHUTDOWN ROD POSITION already reads 0 of 627, the bank is in. Otherwise press FAST on the ROD CONTROL card, then click INSERT under SHUTDOWN once, and wait for it to read 0 of 627.
 
-()16c. Set DUMP SETPOINT to 1020 psi.
+()16c. Press CLOSE on the STEAM DUMP card.
 
-()16d. If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once.
+()16d. Set DUMP SETPOINT to 1020 psi.
 
 Suggested time warp: 60×.
 
-Note: If SHUTDOWN ROD POSITION already reads 0, the bank is in: go on to 16b. The bank runs in by itself, about 9 plant-minutes. The round trip is complete.
+Note: The bank runs in by itself, about 9 plant-minutes. The round trip is complete.
 
 Background
 
@@ -706,3 +716,23 @@ the tile read −96.9 °F/hr during step 1 (boration only), the shutdown's scram
 with the leg; the alarm did not come in. The tile margin is therefore graded from step 4
 (`rate_from_step: 4`); a RAISED alarm still fails at any step. Not acted on: whether the shutdown
 leg should hand over a quieter plant is outside this ruling.
+
+### Layman pass 6 — 2026-09-26, workbench-a (AGENT-DRAFTED, not owner-ruled)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`. 3 Background: STOP keeps the pump idle and does not disarm safety injection (measured: SI started it with STOP pressed). 4 Note: time the waits on the plant clock (reviewer's spacing 4.1 min: −117 °F/hr); forewarns Shutdown Cooling Not In Service. 11 split: 11a spray OFF below 30 °F at 60× (graded on the spray), 11b the 600× wait (a note at 600× was missed: alarm, 17 psia seam). 16 reordered: reset first (the rod drive refuses any bank command while the trip is latched), the "already 0" line inside the INSERT substep.
+
+
+### Layman pass 7 record — 2026-09-26, workbench-b (AGENT-DRAFTED: notes on 2a, 4b, 5a)
+
+2a and 5a name Pressure Relief Valve Open (open 11 s and 5 s, same channel as the diagram's PORV
+label) and Pressurizer Pressure Low; 4b names Low Coolant Temperature (tile 530.5 °F at the alarm,
+setpoint 532.4 °F). Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`.
+
+### Layman pass 8 record — 2026-09-26, workbench-d (AGENT-DRAFTED)
+
+- 3c: STOP is usually lit already; the row is a press (no observable behind an idle pump), so the
+  text now says to press it anyway rather than "check it is lit", which would strand the row.
+- 4b and 11a: one sentence each saying the clock moves to 60× by itself after the first entry.
+  Measured in the browser: 1× on entry, 60× 2.5 s after a typed DUMP SETPOINT / HX SPLIT.
+- 11: one "Suggested time warp: 600×." line (the step-level `speed_text` duplicated 11b's).
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`.

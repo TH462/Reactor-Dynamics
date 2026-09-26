@@ -191,15 +191,8 @@ var STEP_UI = {
     { i: 6, view: 'board', control: 'Control Bank' },
     { i: 7, view: 'board', control: 'Control Bank' },
     { i: 8, view: 'board', control: 'Boron control' },    // the verify step, now boron-bounded (#683)
-    /* i:9 WAS 'Boron control' — the closing trim to 617 ppm. It is the ROD trim since #733
-     * (owner playtest #724 item 17): the boron route scrammed the plant 15 min after the step
-     * checked itself off, and measured at power the bank carries 56.3 degF against boron's 27.0.
-     * The step that follows it is an `obs` and owns no row. */
-    { i: 9, view: 'board', control: 'Control Bank' },
-    /* #752 (2026-09-14) APPENDED the first dilution dose at i:10, after the rod trim and before
-     * the closing `obs`. Nothing below it shifts — the `obs` owns no row — so this is the one
-     * case where this positional table grows without a re-derivation. */
-    { i: 10, view: 'board', control: 'Boron control' },
+    /* i:9 (the rod give-back) and i:10 (the first boron dose) LEFT 2026-09-26 with raise-power
+     * steps 10-12 (owner directive: xenon is a different walkthrough). Nothing above them shifts. */
   ],
   /* #736 — the 75 MWe stage is TWO steps now (lower load, then trim rods), so every later
    * index shifted by one. This table is `verify_manual_follow`'s COVERAGE LIST and it iterates

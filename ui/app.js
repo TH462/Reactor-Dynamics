@@ -3030,7 +3030,7 @@
   // trip?") needs the sequence — so the UI stamps first-seen sim time per alarm.
   // Re-annunciation re-stamps (the entry clears when the alarm does), and a rewind
   // that lands before a stamp discards it (a stamp from the abandoned future).
-  var alarmSeen = {};
+  var alarmSeen = {}, alarmPrio = {};
   // Last rendered tile set, as a key. The stack is a wholesale `innerHTML` rebuild, and
   // rebuilding it on an UNCHANGED alarm list is what produced the transient flicker the
   // owner reported (2026-08-06): `.alarm-tile.unack.crit` carries a 0.9 s
@@ -3057,9 +3057,15 @@
     var liveIds = {};
     active.forEach(function (a) {
       liveIds[a.id] = true;
-      if (alarmSeen[a.id] == null || alarmSeen[a.id] > now + 1e-9) alarmSeen[a.id] = now;
+      /* A RECLASSIFICATION RE-ANNUNCIATES (layman pass 7, 2026-09-26, S-6). An alarm reclassified
+       * to `status` on a cold plant stays active, so leaving Mode 4 brought Pressurizer Pressure Very
+       * Low back as a critical tile stamped T+00:00:00 -- the moment the cold plant booted -- and
+       * the second heatup's as the cooldown hour it went quiet. A change of priority is the moment
+       * the operator is told of it, so it re-stamps. */
+      if (alarmSeen[a.id] == null || alarmSeen[a.id] > now + 1e-9 || alarmPrio[a.id] !== a.priority) alarmSeen[a.id] = now;
+      alarmPrio[a.id] = a.priority;
     });
-    Object.keys(alarmSeen).forEach(function (id) { if (!liveIds[id]) delete alarmSeen[id]; });
+    Object.keys(alarmSeen).forEach(function (id) { if (!liveIds[id]) { delete alarmSeen[id]; delete alarmPrio[id]; } });
     // Severity keeps the triage order; WITHIN a severity, newest first — the
     // stamps carry the exact sequence either way.
     var prio = { critical: 0, warning: 1, caution: 2, status: 3 };

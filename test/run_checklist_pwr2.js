@@ -1874,6 +1874,22 @@ if (!only && RUN_B) {
        'trefProgram=' + typeof CTL.trefProgram + ' deadband=' + CTL.TAVG_DEADBAND_C + ' rated=' + RATED);
 
     var half = BAND_HALF_MULT * (CTL.TAVG_DEADBAND_C || 0);
+    /* THE RENDER FLOOR OF THE BAND TOP (layman pass 8 S-7, 2026-09-26, workbench-d). The row says
+     * "below X °F" with X the band top as the tile prints it (`toFixed(0)` in °F), and it must not
+     * tick while the tile still prints X — so the grade is X - 0.5 °F, not the band top itself.
+     * Graded at the top (the #739 form), 561.5-561.9 °F printed "562" with "below 562 °F" met; the
+     * reviewer saw Continue lit at "562". The tie to the programme is unchanged: a retune moves X.
+     * VALIDATED BOTH WAYS: the pre-change literals (302.7/298.1/294.4/291.6) fail this form, the
+     * render-floor ones pass it — this is the refit HR10 asks to be named, and it is. */
+    function lpWant(mwe) {
+      var topC = CTL.trefProgram(mwe.v / RATED) + half;
+      var x = Math.round(topC * 1.8 + 32);
+      return { x: x, c: (x - 0.5 - 32) / 1.8 };
+    }
+    function lpMatch(tav, w) {
+      return tav.v <= w.c + 1e-9 && w.c - tav.v < 0.02 &&
+             (tav.label || '').indexOf('below ' + w.x + ' °F') >= 0;
+    }
     var lp = POOL.filter(function (p) { return p.id === 'pwr_lower_power'; })[0];
     var bad = [], checked = 0;
     (lp ? lp.steps : []).forEach(function (st, i) {
@@ -1882,10 +1898,10 @@ if (!only && RUN_B) {
       var mwe = st.accs.filter(function (e) { return e.p === 'mwe_output'; })[0];
       if (!tav || !mwe) return;
       checked++;
-      var want = Math.round((CTL.trefProgram(mwe.v / RATED) + half) * 10) / 10;
-      if (Math.abs(tav.v - want) > 0.051) {
-        bad.push('step ' + (i + 1) + ' authored ' + tav.v + ' degC, programme top at ' +
-                 (mwe.v / RATED).toFixed(2) + ' load is ' + want + ' degC');
+      var w = lpWant(mwe);
+      if (!lpMatch(tav, w)) {
+        bad.push('step ' + (i + 1) + ' authored ' + tav.v + ' degC "' + tav.label + '", render floor of the programme top at ' +
+                 (mwe.v / RATED).toFixed(2) + ' load is ' + w.c.toFixed(3) + ' degC ("below ' + w.x + ' °F")');
       }
     });
     ck('pwr_lower_power: every tavg_c acceptance IS the Tavg programme band top at that step\'s own commanded load (#739)',
@@ -1903,8 +1919,7 @@ if (!only && RUN_B) {
         var tav = st.accs.filter(function (e) { return e.p === 'tavg_c'; })[0];
         var mwe = st.accs.filter(function (e) { return e.p === 'mwe_output'; })[0];
         if (!tav || !mwe) return;
-        var want = Math.round((CTL.trefProgram(mwe.v / RATED) + half) * 10) / 10;
-        if (Math.abs(tav.v - want) > 0.051) red.push(i + 1);
+        if (!lpMatch(tav, lpWant(mwe))) red.push(i + 1);
       });
       CTL.trefProgram = real;
       ck('...RED BY INJECTION: a 2 degC shift in the Tavg programme staleness-reds every one of them',
@@ -3903,9 +3918,13 @@ if (!only && RUN_B) {
        * CONTROL ROD POSITION row moved to 16c and 16d BORON STATUS HOLD is new; both are control-state
        * rows, so instrument-graded (101) and sole (26) are unchanged. SUM on a merge.
        * MERGED 2026-09-26 (#807 exp/807a + exp/807b): 168 -> 167 predicate rows and 101 -> 100
-       * instrument-graded -- exp/807b removed `pwr_startup` 9b's hidden STARTUP RATE `steady` row. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 review): 86 / 168 / 100 / 26 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added (control_state-graded, not instrument))',
-         gradedSteps === 86 && predRows === 168 && rows.length === 100 && soleInst === 26,
+       * instrument-graded -- exp/807b removed `pwr_startup` 9b's hidden STARTUP RATE `steady` row.
+       * RE-PINNED 2026-09-26 (workbench-e): raise-power steps 10-12 LEFT (owner directive, xenon is a
+       * different walkthrough) -- -3 graded steps, -7 predicate rows (10: 2, 11: 2, 12: 3), -6
+       * instrument-graded (the bank row of 12 is not one), sole unchanged (none was a sole row).
+       * MERGED 2026-09-26 (exp/807int + workbench 38b8049a): SUM of both, then MEASURED. */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 + workbench-e merge): 83 / 162 / 95 / 25 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added, raise-power 10-12 removed)',
+         gradedSteps === 83 && predRows === 162 && rows.length === 95 && soleInst === 25,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -4031,12 +4050,6 @@ if (!only && RUN_B) {
       'pwr_raise_power:9:power_pct': 'power_range',          // > 96
       'pwr_raise_power:9:mwe_output': 'mwe_output',          // > 97   9a's OUTPUT row (phase 2, 2026-09-25)
       'pwr_raise_power:9:tavg_c': 'tavg',                    // ~ 303.2
-      'pwr_raise_power:10:mwe_output': 'mwe_output',         // > 97
-      'pwr_raise_power:10:tavg_c': 'tavg',                   // ~ 304.4
-      'pwr_raise_power:11:tavg_c': 'tavg',                   // ~ 304.4  conditional dose (2026-09-25 ruling)
-      'pwr_raise_power:11:mwe_output': 'mwe_output',         // ~ 100
-      'pwr_raise_power:12:mwe_output': 'mwe_output',         // > 97   no longer SOLE (phase 2: 12b's temperature row)
-      'pwr_raise_power:12:tavg_c': 'tavg',                   // ~ 304.4
       /* pwr_lower_power [hot_full_power] */
       'pwr_lower_power:2:mwe_output': 'mwe_output',          // ~ 75          dead 0.000 vs true 100.0 MWe
       'pwr_lower_power:3:mwe_output': 'mwe_output',          // ~ 75
@@ -4082,6 +4095,7 @@ if (!only && RUN_B) {
       'pwr_cooldown:6:pressure_mpa': 1, 'pwr_cooldown:8:pressure_mpa': 1,
       'pwr_cooldown:10:pump_flow_pct': 1, 'pwr_cooldown:11:tavg_c': 1,
       'pwr_cooldown:12:spray_flow_pct': 1,
+      'pwr_cooldown:11:spray_flow_pct': 1,   // 11a SPRAY OFF (2026-09-26, layman pass 6 S-5): reads DOWNWARD like 12's
       'pwr_cooldown:13:tavg_c': 1,   // 13a (2026-09-25 bring-down), reads DOWNWARD; 13b grades the OFF lamp since workbench-f, not an instrument
       /* STEP 15 USED TO BE HERE, on `pzr_level_pct < 80` (#788's content pass, 2026-09-19). The
        * entry was the pressurizer level gauge doing a clock's job on the one leg two of the four
@@ -4227,9 +4241,6 @@ if (!only && RUN_B) {
       'pwr_startup:12': 'power_pct',                          // the rate row became a `steady` power row (2026-09-23)
       'pwr_startup:17': 'power_pct,mwe_output',               // his two rows, replacing plant_mode
       'pwr_raise_power:9': 'power_pct,mwe_output,boron_ppm,tavg_c',
-      'pwr_raise_power:10': 'tavg_c,mwe_output',            // conditional since 2026-09-25 (owner ruling)
-      'pwr_raise_power:11': 'tavg_c,mwe_output',
-      'pwr_raise_power:12': 'mwe_output,tavg_c',                     // the #667 shape, one leg later
       'pwr_cooldown:8': 'pressure_mpa',
       'pwr_cooldown:13': 'tavg_c',              // 13a/13b replace plant_mode (2026-09-25); 13b is the OFF lamp since workbench-f
       'pwr_tmi2_incident:1': 'power_pct',
@@ -4301,7 +4312,7 @@ if (!only && RUN_B) {
     ck('2af.2 every observation step graded on a live quantity carries a `why` for when it does not verify (#667 item 1)',
        noWhy.length === 0,
        noWhy.length ? 'NO `why`: ' + noWhy.join(', ')
-         : 'all ' + Object.keys(live).length + ' carry one (e.g. pwr_raise_power step 12, the #667 shape)');
+         : 'all ' + Object.keys(live).length + ' carry one (e.g. pwr_raise_power step 9)');
 
     var dTS = cmpMap(ts, TRUE_STATE_EXPECTED);
     ck('2af.3 the true_state-graded observation rows — the grey band — are the pinned set (#667 item 1)',
@@ -4626,7 +4637,9 @@ if (!only && RUN_B) {
       'pwr_heatup:11:saw:tavg_c': 1, 'pwr_heatup:11:tavg_c': 1,
       'pwr_raise_power:4:tavg_c': 1, 'pwr_raise_power:5:tavg_c': 1,
       'pwr_raise_power:6:tavg_c': 1, 'pwr_raise_power:7:tavg_c': 1,
-      'pwr_raise_power:8:tavg_c': 1, 'pwr_raise_power:9:tavg_c': 1,
+      /* 'pwr_raise_power:8:tavg_c' left 2026-09-26 (workbench-a, layman pass 6 S-7): its band narrowed
+       * 563-592 -> 573-583 degF; the drifting gauge no longer false-ticks it (measured: not seen). */
+      'pwr_raise_power:9:tavg_c': 1,
     };
     (function () {
       var legs = {};

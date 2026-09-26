@@ -55,8 +55,12 @@ var ENTRY_S = 5;        // hollow window: plant-seconds after step entry with no
  * band that ticks and lets go inside PASS_S — a transient pass through the band, or gauge noise
  * at its edge — so a `~` row's un-tick counts only when it had been met for less than PASS_S. */
 var PASS_S = 10;
-var ACK_S = 3;          // the player notices a lit Continue after this many plant-seconds
+var ACK_S = +(process.env.WR_ACK_S || 3);   // the player notices a lit Continue after this many plant-seconds (WR_ACK_S: a measurement knob, never the gate)
 var BOUND_FLOOR_S = 1800;
+var CMDWAIT_S = 120;    // a rod row waited on with every graded row met (pass 7 S-1: 3 plant-min dark)
+/* lower power: the alarms a load cut taken at once raised on the chain (layman pass 7; SG PRESS HIGH
+ * at step 4, 2026-09-26) */
+var LP_FORBID = ['pzr_pressure_high', 'high_tavg', 'heatup_rate_high', 'sg_press_high'];
 
 /* ================================ THE ROUTE TABLES ====================================== */
 /* Policies: default | final (a ramp step's end value, typed once) | pull_plot{to,speed,plot_rate,repeat} | approach{short,min_rate,max_rate,
@@ -157,21 +161,32 @@ var ROUTES = {
      * one step at a time while the tile reads more than 0.5 degF under the band value the card
      * names, one step in when it is 5 degF over. The OLD card's fixed counts are the injection
      * `chain_count_pulls` below (on the chained plant they trip the reactor at step 10). */
+    /* LAYMAN PASS 7 (2026-09-26): 4b-8b read "withdraw at MED in pulls of about 5 steps, one
+     * plant-minute apart" -- `pull: 5, dwell: 60` on every gauge-follower below. */
     steps: {
-      'cmd:set_load_target:1': { policy: 'to_band', tref: 556, dead: 0.5, dead_hi: 5 },
-      'cmd:set_load_target:2': { policy: 'to_band', tref: 562, dead: 0.5, dead_hi: 5 },
-      'cmd:set_load_target:3': { policy: 'to_band', tref: 570, dead: 0.5, dead_hi: 5 },
-      'cmd:set_load_target:4': { policy: 'to_band', tref: 575, dead: 0.5, dead_hi: 5 },
-      'cmd:set_load_target:5': { policy: 'to_band', tref: 578, dead: 0.5, dead_hi: 5 },
+      'cmd:set_load_target:1': { policy: 'to_band', tref: 556, dead: 0.5, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:2': { policy: 'to_band', tref: 562, dead: 0.5, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:3': { policy: 'to_band', tref: 570, dead: 0.5, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:4': { policy: 'to_band', tref: 575, dead: 0.5, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:5': { policy: 'to_band', tref: 578, dead: 0.5, dead_hi: 5, pull: 5, dwell: 60 },
       // 9a's note: "hold INSERT a few steps whenever it rises above its band" (the chained plant's dilution tail)
       '#9': { policy: 'to_band', tref: 578, dir: 'insert', dead: 3, pull: 3, dwell: 60 },
     },
     // "Make sure the turbine is on line and taking steam": a CONFIRM step — the ask is "Check the
     // TURBINE-GENERATOR card is on line", LATCH only "if it reads TRIP" — and the low_power start
     // arrives latched at 10 MWe. Added to the provisional no-action default, not replacing it.
-    // 10 and 11 are CONDITIONAL since 2026-09-25 (owner ruling "Make them conditional"): on the
-    // plant the climb leaves they are met on arrival — the player's act is to leave rods and boron alone.
-    entry_met: ['cmd:latch_turbine', '#10', '#11'],
+    // (10 and 11 were CONDITIONAL entry-met steps until 2026-09-26, when the owner took the xenon
+    // steps 10-12 out of this leg: "That's for a different walkthrough.")
+    entry_met: ['cmd:latch_turbine'],
+    /* LAYMAN PASS 6 (2026-09-26): on the CHAINED plant the literal player is the band-floor
+     * reader of `band_floor` below -- pass 6's own route, which stalled step 10 at 570 degF. */
+    chain_steps: {
+      'cmd:set_load_target:1': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:2': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:3': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:4': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+      'cmd:set_load_target:5': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 } },
+    settle_check: true,   // pass 6 S-7: a step that says "settle(s) on N degF" completes within 5.4 degF of N
     mistakes: [
       { id: 'double_boron', kind: 'double press', at: 'cmd:set_auto_setpoint', set: { repeat: 2 } },
       // the OLD order: the pull first, LOAD after it
@@ -181,17 +196,48 @@ var ROUTES = {
       { id: 'overpull_60', kind: 'overshoot', at: 'cmd:set_load_target:1', set: { policy: 'seq', cmds: [
         { action: 'set_load_target', mwe: 30 }, { action: 'rod_nudge', group_id: 'control', steps: 60, speed: 'normal' }] } },
       { id: 'rewind_mid_stage3', kind: 'rewind mid-step', at: 'cmd:set_load_target:3', set: { rewind_after: 120 } },
+      /* LAYMAN PASS 6 (2026-09-26) S-1/S-7: the player who stops pulling at the FIRST reading
+       * inside the band the card NAMES (its "between A and B" / "A to B °F", read from the pool
+       * text, so the route follows the card as it is now), then reads step 10 literally: pull
+       * 3 to 6 steps whenever the tile reads under the number the card gives — or, where it says
+       * only "below its band", under the band the previous step named. Pass 6 measured stages
+       * ticking at 551/551/559/564/567 °F and step 10 unmet at 570 °F with the text saying leave
+       * the rods. `settle_check` (below) is the other half: a step that says "settle on N °F". */
+      /* LAYMAN PASS 7 (2026-09-26) S-1/S-3: stage 4 ends HOT (the pass-7 pull, 32 steps held, peak
+       * 565 degF) and stage 5 is read literally against the tile's band, near 562 +/- 5 degF:
+       * withdraw only below it, insert only above it. Pass 7's plant sat at 561-563 degF and the
+       * OLD 5b ("Rods withdrawn", a press) never ticked -- injection `rods_row_5b` below. */
+      { id: 'hot_stage4', kind: 'overshoot', at: 'cmd:set_load_target:1', set: { policy: 'seq', cmds: [
+        { action: 'set_load_target', mwe: 30 }, { action: 'rod_nudge', group_id: 'control', steps: 32, speed: 'normal' }] },
+        override: { 'cmd:set_load_target:2': { policy: 'to_band', tref: 562, dead: 5, dead_hi: 5, pull: 5, dwell: 60 } } },
+      /* 2026-09-26: step 10 (the `cond_pull` half) left with the xenon steps; the band-floor stages stay. */
+      { id: 'band_floor', kind: 'literal reading', at: 'cmd:set_load_target:1', set: { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+        override: {
+          'cmd:set_load_target:2': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+          'cmd:set_load_target:3': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+          'cmd:set_load_target:4': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
+          'cmd:set_load_target:5': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 } } },
     ],
   },
   pwr_lower_power: {
-    /* 2026-09-25 (layman pass 4): "insert at MED in pulls of about 5 steps, half a plant-minute
-     * apart, until AVG COOLANT TEMPERATURE is back in its band" — the player stops at the first
+    forbid_raise: { '#2': LP_FORBID, '#3': LP_FORBID, '#4': LP_FORBID, '#5': LP_FORBID, '#6': LP_FORBID },
+    peak_check: true,   // 2026-09-26: "under about N °F" in a step's note is graded (verdict `peak`)
+    /* 2026-09-25 (layman pass 4; pace ruled "about 3 steps, one plant-minute apart" the same day,
+     * workbench-h): "insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG
+     * COOLANT TEMPERATURE is back in its band" — the player stops at the first
      * read inside the row's edge (1 degF under it), as the reviewer did. */
     steps: {
-      '#3': { policy: 'to_band', tref: 576, dead: 0, dir: 'insert', pull: 5, dwell: 30 },
-      'cmd:set_load_target:2': { policy: 'to_band', tref: 567, dead: 0, dir: 'insert', pull: 5, dwell: 30 },
-      'cmd:set_load_target:3': { policy: 'to_band', tref: 561, dead: 0, dir: 'insert', pull: 5, dwell: 30 },
-      'cmd:set_load_target:4': { policy: 'to_band', tref: 556, dead: 0, dir: 'insert', pull: 5, dwell: 30 },
+      /* LAYMAN PASS 7 (2026-09-26) S-5: 2a/2b walk LOAD down 5 MW a plant-minute with 3-step inserts
+       * whenever the tile reads above 577 degF; the alarms that one 25 MW cut raised are forbidden */
+      '#2': { policy: 'load_stair', from: 100, to: 75, step: 5, wait_s: 60, ins_above: 577, pull: 3, dwell: 60 },
+      '#3': { policy: 'to_band', tref: 576, dead: 0, dir: 'insert', pull: 3, dwell: 60 },
+      /* OWNER RULING 2026-09-26 ("Walk them too"): 4-6 walk LOAD the same way, 5 MW a plant-minute,
+       * 3-step inserts whenever the tile reads above the band top the step's c row names, and the
+       * inserts go on after the last cut until it reads under it (c). The OLD one-cut routes are
+       * the injections `lower_load_step4/5/6` below. */
+      '#4': { policy: 'load_stair', from: 75, to: 50, step: 5, wait_s: 60, ins_above: 569, pull: 3, dwell: 60 },
+      '#5': { policy: 'load_stair', from: 50, to: 30, step: 5, wait_s: 60, ins_above: 562, pull: 3, dwell: 60 },
+      '#6': { policy: 'load_stair', from: 30, to: 15, step: 5, wait_s: 60, ins_above: 557, pull: 3, dwell: 60 },
     },
     mistakes: [
       { id: 'double_load75', kind: 'double press', at: 'cmd:set_load_target', set: { repeat: 2 } },
@@ -226,6 +272,11 @@ var ROUTES = {
      * opens on the shutdown's scram transient, tile -96.9 degF/hr during step 1 (boration only,
      * measured 2026-09-25, alarm not raised). A RAISED rate alarm fails at any step. */
     rate_from_step: 4,
+    /* LAYMAN PASS 6 (2026-09-26) S-5: a player who reads the board every 4 s of WALL at the
+     * card's own speed (the `when` triggers below poll at 4 s x the rung) must catch step 11's
+     * spray-off before the alarm. At 600x that is one read every 40 plant-minutes, and pass 6
+     * pressed OFF at 19 °F, pressure 16 psi — which is also what handed the next heatup S-2. */
+    forbid_raise: { '#11': ['subcooling_low'] },
     // 12 ("Press OFF under SPRAY ..., if step 11 has not already"): the typical route shut the spray in
     // step 11 on its SUBCOOLING MARGIN line (layman pass 5), so 12 is met on arrival
     entry_met: ['#12'],
@@ -240,9 +291,11 @@ var ROUTES = {
               * (`final`); if COOLDOWN RATE runs past 100 degF/hr (-55.6 degC/hr, the alarm), lower HX
               * SPLIT (never fires on this route: tile peak -83 to -90); if SUBCOOLING MARGIN falls below 20
               * degF (11.1 degC, the alarm), SPRAY OFF. */
-             'cmd:set_rhr_hx:2': { policy: 'when', base: 'final', on: [
+             /* pass 6: the spray trigger's threshold is READ FROM THE CARD (`from_text`), and every
+              * trigger is polled at 4 s of wall x the speed the card has set (`poll_wall_s`) */
+             'cmd:set_rhr_hx:2': { policy: 'when', base_spec: { policy: 'final', no_rows: true }, poll_wall_s: 4, on: [
                { ins: true, p: 'tavg_rate', op: '<', v: -55.6, cmd: { action: 'set_rhr_hx', pct: 6 } },
-               { ins: true, p: 'subcooling_margin', op: '<', v: 11.1, cmd: { action: 'set_spray', open: false } }] },
+               { ins: true, p: 'subcooling_margin', op: '<', from_text: /SUBCOOLING MARGIN[^.]*?below (\d+) °F/, cmd: { action: 'set_spray', open: false } }] },
              /* step 6 (2026-09-25 bring-down): the spray is no longer a row `cmd` (a press-latched
               * `~` row flashed off while the flow ramped), so the player's two presses are named:
               * HEATER OFF, then SPRAY MANUAL at 50 %, one per tick. */
@@ -336,9 +389,8 @@ var MUTATIONS = [
       'cmd:set_load_target:4': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 90 }, { action: 'rod_nudge', group_id: 'control', steps: 25, speed: 'normal' }] },
       'cmd:set_load_target:5': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 100 }, { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' }] },
       '#9': { policy: 'default' } } },
-  { id: 'chain_step10_bank', chain: true, leg: 'pwr_raise_power', route: 'chain', expect: 'complete',
-    why: 'raise-power 10 graded on CONTROL ROD POSITION above 351 again (a bank number the chained plant reaches only as xenon builds, about 5 plant-hours)',
-    mutate: function (P) { P.steps[9].accs[0] = { p: 'control_bank_steps', op: '>', v: 351, ask: P.steps[9].accs[0].ask, label: 'CONTROL ROD POSITION above 351' }; } },
+  /* `chain_step10_bank` RETIRED 2026-09-26 with raise-power step 10 (owner directive: xenon is a
+   * different walkthrough). Its subject no longer exists. */
   /* LAYMAN PASS 5 (2026-09-25), S-1: the round trip. The mutation is on the COOLDOWN (step 16's
    * PRESS TO RESET row deleted) and the check is on the heatup that follows it (`check`): with no
    * reset the shutdown's scram is still latched, the rod drive refuses WITHDRAW, and heatup 3
@@ -355,9 +407,68 @@ var MUTATIONS = [
                 'cmd:set_rhr_hx:2': { policy: 'when', base_spec: { policy: 'seq', cmds: [{ action: 'set_rhr_hx', pct: 12 }] }, on: [
                   { ins: true, p: 'tavg_rate', op: '<', v: -55.6, cmd: { action: 'set_rhr_hx', pct: 10 } },
                   { ins: true, p: 'subcooling_margin', op: '<', v: 11.1, cmd: { action: 'set_spray', open: false } }] } } },
+  /* LAYMAN PASS 6 (2026-09-26) S-4: the spacing pass 6 actually achieved -- 34 entries in 139
+   * plant-minutes, 4.1 apart, where the card said 6 and gave "6 seconds at 60x" as the way to time
+   * it. The card now says to time it on the plant clock; this proves the rate check sees the
+   * reviewer's spacing (MEASURED on the stair alone: tile -117 degF/hr, Cooldown Rate High raised;
+   * a tile-reading hold at 60-85 degF/hr did NOT save it, the tile lags 600 s: -99 to -111). */
+  { id: 'cooldown_4min_waits', leg: 'pwr_cooldown', route: 'typical', expect: 'rate',
+    why: 'cooldown 4 at the spacing layman pass 6 achieved (4.1 plant-minutes, not 6)',
+    override: { 'cmd:set_steam_dump_setpoint': { policy: 'stair', from: 1020, to: 120, step: 15, wait_s: 246,
+      bands: [{ above: 720, step: 50, wait_s: 246 }, { above: 270, step: 25, wait_s: 246 }] } } },
+  /* LAYMAN PASS 6 (2026-09-26): the two cards pass 6 met, re-opened on the pool in the child. */
+  { id: 'cooldown11_old_watch', leg: 'pwr_cooldown', route: 'typical', expect: 'forbid',
+    why: 'cooldown 11 as pass 6 met it: one row at 600x, the spray-off a note ("if it falls below 20 degF, press OFF under SPRAY now")',
+    mutate: function (P) {
+      var st = P.steps[10];
+      st.note = 'Keep COOLDOWN RATE under 100 degF per hour: if the Cooldown Rate High alarm comes in, lower HX SPLIT. The spray is still running and keeps taking SUBCOOLING MARGIN down: if it falls below 20 °F, press OFF under SPRAY now.';
+      st.accs = [{ p: 'tavg_c', op: '<', v: 92.5, ask: 'Raise HX SPLIT to 9 % and wait for AVG COOLANT TEMPERATURE to read below 199 °F.', label: 'AVG COOLANT TEMPERATURE below 199 °F' }];
+    } },
+  { id: 'raise_old_settle_band', chain: true, leg: 'pwr_raise_power', route: 'chain', expect: 'settle',
+    why: 'raise-power 8 graded 563-592 degF again (pass 6: step 8 ticked at 567 degF)',
+    mutate: function (P) {
+      /* pass 7 moved the temperature row to 8b (accs[1]) */
+      P.steps[7].accs[1].ask = 'Check AVG COOLANT TEMPERATURE is near 578 °F, between 563 and 592 °F.';
+      P.steps[7].accs[1].label = 'AVG COOLANT TEMPERATURE between 563 and 592 °F';
+      P.steps[7].accs[1].v = 303.2; P.steps[7].accs[1].tol = 8;
+    } },
   { id: 'cooldown_until_flat', leg: 'pwr_cooldown', route: 'typical', expect: 'stated',
     why: 'cooldown 4 as the OLD card read it: after each 50 psi, wait until the whole-degree tile reads the same twice, 5 plant-minutes apart',
     override: { 'cmd:set_steam_dump_setpoint': { policy: 'stair', from: 1020, to: 120, step: 50, read_s: 300, stated_max_min: 120 } } },
+  /* LAYMAN PASS 7 (2026-09-26) S-1: raise-power 5b back to the cmd-kind "Rods withdrawn" row, on
+   * the route whose stage 5 never leaves its band. Measured on the old card: 0 steps withdrawn,
+   * every graded row reading met, Continue dark until a rod press the text argued against. */
+  { id: 'rods_row_5b', leg: 'pwr_raise_power', route: 'hot_stage4', expect: 'flash',
+    why: 'raise-power 5b as a press-only "Rods withdrawn" row again (pass 7: stage 5 never sagged below its band, 3 plant-min dark)',
+    mutate: function (P) {
+      P.steps[4].accs.splice(1, 1, { cmd: { action: 'rod_nudge', group_id: 'control' }, ask: 'Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 15 steps.', wait_speed: 1, label: 'Rods withdrawn' });
+    } },
+  /* LAYMAN PASS 7 (2026-09-26) S-5: lower-power 2 as the old card read it, LOAD 100 -> 75 MW at once and
+   * the rods left alone. MEASURED on the chain: tile 595.3 degF, Pressurizer Pressure High, High
+   * Coolant Temperature and Heatup Rate High in steps 2-3. */
+  /* OWNER RULING 2026-09-26 ("Walk them too"): lower-power 4/5/6 as the OLD card read them -- LOAD
+   * straight to 50/30/15 MW, then 3-step inserts a plant-minute apart to the band top. MEASURED on
+   * the chain (walked -> one cut): step 4 576.5 -> 585.4 degF with Pressurizer Pressure High and
+   * SG Pressure High; step 5 568.0 -> 574.6 degF (card: "under about 572") with SG Pressure High;
+   * step 6 561.5 -> 563.8 degF, no alarm -- the one cut does no measured harm at 15 MW and step 6
+   * has NO old-card injection (none goes red honestly). The OTHER half of the change is proven on
+   * step 4: its OUTPUT row back at +/-5, where the 55 MW tread (54.8 on the gauge) meets it and the
+   * next reading (55.07) un-ticks it, MEASURED 6.5 s met. The same mutation on step 6 stayed green
+   * (the 20 MW tread's noise did not cross 20.0 inside PASS_S), so it is not claimed there. */
+  { id: 'lower_load_step4', chain: true, leg: 'pwr_lower_power', route: 'chain', expect: 'forbid',
+    why: 'lower-power 4 as one 25 MW cut, then the trim (585 degF, two high-pressure alarms)',
+    mutate: function (P) { delete P.steps[3].ramp; },   // the old card: LOAD typed once, no walk
+    override: { '#4': { policy: 'to_band', tref: 567, dead: 0, dir: 'insert', pull: 3, dwell: 60 } } },
+  { id: 'lower_load_step5', chain: true, leg: 'pwr_lower_power', route: 'chain', expect: 'peak',
+    why: 'lower-power 5 as one 20 MW cut, then the trim (575 degF against the card, under about 572)',
+    mutate: function (P) { delete P.steps[4].ramp; },   // the old card: LOAD typed once, no walk
+    override: { '#5': { policy: 'to_band', tref: 561, dead: 0, dir: 'insert', pull: 3, dwell: 60 } } },
+  { id: 'lower_output_tol4', leg: 'pwr_lower_power', route: 'typical', expect: 'flash',
+    why: 'lower-power 4a OUTPUT row back at +/-5 MW (the 55 MW tread ticks it, the next reading un-ticks it)',
+    mutate: function (P) { P.steps[3].accs[0].tol = 5; } },
+  { id: 'lower_load_step', chain: true, leg: 'pwr_lower_power', route: 'chain', expect: 'forbid',
+    why: 'lower-power 2 as one 25 MW cut with the rods left alone (pass 7: 596 degF and four unwarned alarms)',
+    override: { '#2': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 75 }] } } },
   /* `band_transient_pass` RETIRED 2026-09-25 (exp/w6-raise, raise-power phase 2). It narrowed stage
    * 6's Tavg row to a 2 degF band and un-ordered the step, to prove a transient pass through the band
    * is flagged. On the xenon-free `low_power` the 35-step pull crosses that band faster than the
@@ -418,6 +529,8 @@ function runJob(legId, routeId, mutId, ctx) {
   });
   /* a ROUTE injection: the player the OLD card produced (a policy, not a pool edit) */
   if (MUT && MUT.override) Object.keys(MUT.override).forEach(function (k) { var i = resolveKey(proc, k); if (i >= 0) byIdx[i] = MUT.override[k]; });
+  var MIS0 = (table.mistakes || []).filter(function (m) { return m.id === routeId; })[0];   // a mistake may re-route several steps (pass 6)
+  if (MIS0 && MIS0.override) Object.keys(MIS0.override).forEach(function (k) { var i = resolveKey(proc, k); if (i >= 0) byIdx[i] = MIS0.override[k]; });
   /* WR_OVERRIDE='{"<leg>":{"<step key>":{spec}}}' on a --job run: a MEASUREMENT knob (the pacing
    * sweep behind the 2026-09-25 cooldown re-pace), never the gate. */
   if (process.env.WR_OVERRIDE) { var WO = JSON.parse(process.env.WR_OVERRIDE)[legId] || {};
@@ -499,7 +612,7 @@ function runJob(legId, routeId, mutId, ctx) {
   /* a chained leg can START scrammed (the cooldown after the shutdown's scram): only a trip
    * that happens INSIDE the leg is one */
   var scrAtEntry = !!(ctx && ((s.rps_state && s.rps_state.scrammed) || (s.true_state && s.true_state.scrammed)));
-  var T0 = t(), out = [], flags = [], result = null, rewound = false, rateArmed = false;
+  var T0 = t(), out = [], flags = [], result = null, rewound = false, rateArmed = false, ALON = {};
   var cur = -1, S = null, guard = 0;
   function readings() {
     var r = { power_pct: pv('power_pct'), tavg_F: pv('tavg_c') * 9 / 5 + 32, pressure_psia: pv('pressure_mpa') * 145.0377, mwe: pv('mwe_output') };
@@ -525,6 +638,14 @@ function runJob(legId, routeId, mutId, ctx) {
       S = { t0: t(), spec: spec, memo: {}, rowsMet: [], rowsMetAt: [], ack0: null, acts: 0, pressedAck: false,
             bound: spec.bound_s || Math.max(3 * (st.hold || 0), BOUND_FLOOR_S) };
       out[k] = { n: k + 1, policy: spec.policy || 'default', stated_max_min: spec.stated_max_min };
+      /* pass 6: "settle(s) on N degF" (settle_check) and the alarms a step must not raise (forbid_raise) */
+      var stx = [st.text].concat((st.accs || []).map(function (e) { return e.ask || ''; })).join(' '), sm = /settles? (?:the temperature )?on (\d{3}) °F/.exec(stx);
+      if (table.settle_check && sm) out[k].settle = +sm[1];
+      /* 2026-09-26 (lower-power 4-6 walked, owner ruling "Walk them too"): a note that says the tile
+       * stays "under about N °F" is a peak claim, graded on the player route (`peak_check`) */
+      var ntx = [st.note || ''].concat((st.accs || []).map(function (e) { return e.note || ''; })).join(' '), pk = /under about (\d{3}) °F/.exec(ntx);
+      if (table.peak_check && pk) out[k].peak_max = +pk[1];
+      Object.keys(table.forbid_raise || {}).forEach(function (fk) { if (resolveKey(proc, fk) === k) out[k].forbid = table.forbid_raise[fk]; });
       S.alarm0 = activeAlarms();
     }
     /* the step's pressure / subcooling floor and the alarms it RAISED (layman pass 5, S-4/S-5/S-6:
@@ -543,8 +664,14 @@ function runJob(legId, routeId, mutId, ctx) {
     if (rTru != null && isFinite(rTru)) out[k].truelo = Math.min(out[k].truelo == null ? 0 : out[k].truelo, rTru * 9 / 5);
     (s.alarms || []).forEach(function (a) {
       if (a.state && a.state !== 'clear' && !S.alarm0[a.id] && a.priority !== 'status') {
-        S.alarm0[a.id] = 1; (out[k].raised = out[k].raised || []).push(a.id + '@' + f(pNow, 0) + 'psia');
+        S.alarm0[a.id] = 1; (out[k].raised = out[k].raised || []).push(a.id + '@' + f(pNow, 0) + 'psia/' + f(pv('tavg_c') * 9 / 5 + 32) + 'F');
+        ALON[a.id] = t();
       }
+    });
+    /* how long a raised alarm stood (layman pass 7: PORV OPEN beside a diagram reading CLOSED) */
+    Object.keys(ALON).forEach(function (id) {
+      var live = (s.alarms || []).some(function (a) { return a.id === id && a.state && a.state !== 'clear'; });
+      if (!live) { (out[k].cleared = out[k].cleared || []).push(id + ' after ' + f(t() - ALON[id], 0) + ' s'); delete ALON[id]; }
     });
     var el = t() - S.t0, rows = c.accs || [];
     /* --- flags: hollow / flash / row un-tick ---------------------------------------- */
@@ -565,6 +692,26 @@ function runJob(legId, routeId, mutId, ctx) {
         flags.push({ kind: 'untick', step: k + 1, row: i + 1, label: e.label, t_min: (t() - T0) / 60, held_s: heldS });
       S.rowsMet[i] = !!r.met;
     });
+    /* A ROD ROW NOTHING ON THE BOARD CALLS FOR (layman pass 7, S-1): every graded row met, and the
+     * step waits on a cmd-only rod row for CMDWAIT_S plant-seconds. The pass-7 player sat 3
+     * plant-minutes dark at raise-power 5b, "Rods withdrawn", with the gauge in its band. */
+    /* graded on the row's own reading (`obs`), not its latch: an ordered step blocks the later rows
+     * from LATCHING behind the unpressed rod row, which is the soft lock itself */
+    var predAll = rows.length && rows.every(function (r, i) {
+      var e = (st.accs || [])[i] || {}, o = r.obs;
+      if (!e.p || r.met) return true;
+      if (o == null || typeof o !== 'number') return false;
+      return e.op === '>' ? o > e.v : e.op === '<' ? o < e.v : e.op === '>=' ? o >= e.v : e.op === '<=' ? o <= e.v
+        : e.op === '~' ? Math.abs(o - e.v) <= e.tol : false;
+    });
+    var rodWait = -1;
+    rows.forEach(function (r, i) { var e = (st.accs || [])[i] || {}; if (rodWait < 0 && !r.met && !e.p && cmdAction(e.cmd) === 'rod_nudge') rodWait = i; });
+    if (predAll && rodWait >= 0) {
+      if (S.cw0 == null) S.cw0 = t();
+      if (!S.cwFlag && t() - S.cw0 >= CMDWAIT_S) {
+        S.cwFlag = true; flags.push({ kind: 'cmdwait', step: k + 1, row: rodWait + 1, label: (st.accs[rodWait] || {}).label, t_min: (t() - T0) / 60, held_s: t() - S.cw0 });
+      }
+    } else S.cw0 = null;
     S.lastReadings = readings();
     var tF = S.lastReadings.tavg_F, pw = S.lastReadings.power_pct;   // the step's Tavg / power span (stepTable prints it)
     out[k].tlo = Math.min(out[k].tlo == null ? 1e9 : out[k].tlo, tF); out[k].thi = Math.max(out[k].thi == null ? -1e9 : out[k].thi, tF);
@@ -608,17 +755,23 @@ function runJob(legId, routeId, mutId, ctx) {
   }
   result.t_min = (t() - T0) / 60;
   result.end = readings();
+  result.blocks = { lo_press: pv('lo_press_blocked'), si_trip: pv('si_trip_blocked') };   // pass 6: what the next leg inherits
   var ret = { leg: legId, route: routeId, kind: mistake ? mistake.kind : 'typical', typical: typicalKind, result: result, steps: out.filter(Boolean), flags: flags };
   if (ctx) ret._ctx = { svc: svc, s: s, chain: true };
   return ret;
 
   /* ------------------------------ the policy vocabulary ------------------------------ */
-  function pressRows(st2, c2, stopAt) {
+  /* `noRods` (layman pass 7, 2026-09-26, S-1): on a gauge-following step the rods are the
+   * route's OWN pulls. Pressing a rod row's `cmd` here sent a bare `rod_nudge` the literal player
+   * never makes -- a free tap -- and it latched raise-power 5b's cmd-kind "Rods withdrawn" on a
+   * plant whose temperature never left its band, which is how the gate stayed green through the
+   * soft lock pass 7 met. */
+  function pressRows(st2, c2, stopAt, noRods) {
     var accs = st2.accs || [];
     for (var i = 0; i < accs.length; i++) {
       if (c2.accs && c2.accs[i] && c2.accs[i].met) continue;
       var e = accs[i];
-      if (e.cmd && !S.memo['r' + i]) {
+      if (e.cmd && !S.memo['r' + i] && !(noRods && cmdAction(e.cmd) === 'rod_nudge')) {
         var reps = S.spec.repeat || 1, ok = true;
         for (var q = 0; q < reps && ok; q++) ok = press(e.cmd);
         if (ok) { S.memo['r' + i] = true; S.acts++; }
@@ -651,7 +804,8 @@ function runJob(legId, routeId, mutId, ctx) {
         (st2.ramp || []).forEach(function (r) { var cc = { action: r.action }; cc[r.arg] = r.points[r.points.length - 1]; send(cc); });
         if (!st2.ramp && st2.cmd) press(st2.cmd);
       }
-      pressRows(st2, c2); return;
+      if (!spec.no_rows) pressRows(st2, c2);   // no_rows: the step's row presses are conditional (a `when` owns them)
+      return;
     }
     if (P === 'rows_then_cmd') {
       pressRows(st2, c2);
@@ -722,12 +876,27 @@ function runJob(legId, routeId, mutId, ctx) {
      * card names), in the directions `dir` allows, `pull` steps a press, `dwell` s between presses
      * (0 = held). It reads the INSTRUMENT channel, as the tile does, and so inherits its lag. */
     if (P === 'to_band') {
-      if (!(spec.no_cmd)) { issueStepCmd(st2, el2); pressRows(st2, c2); }
+      /* THE STEP'S OWN rod_nudge IS NOT THE PLAYER'S ACTION (2026-09-25, workbench-h). The live
+       * checklist never issues `cmd`; on a to_band step the player's rods are the card's pulls
+       * below. Sending the replay's `rod_nudge -40` too put 40 steps in at once on lower power 3
+       * and, at bank ~250 (~0.6 degF/step), cooled the loop 18-19 degF/min: PRIMARY PRESSURE floors
+       * 2067/1972/1915/1915 psia on the chain at the card's pace against 2001/1938/1936/1941 without it
+       * (steps 3-6). A LOAD command (steps 4-6, raise power) is still the player's and is still sent. */
+      if (!(spec.no_cmd)) { if (!(st2.cmd && cmdAction(st2.cmd) === 'rod_nudge')) issueStepCmd(st2, el2); pressRows(st2, c2, null, true); }
+      if (spec.tref_from_text && S.memo.tref == null) {   // pass 6: the floor of the band the card names, +1 degF
+        var btx = (st2.accs || []).map(function (e) { return (e.ask || '') + ' ' + (e.label || ''); }).join(' '), bm, blo = null, bre = /(\d{3}) (?:to|and) (\d{3}) °F/g;
+        while ((bm = bre.exec(btx))) if (blo == null) blo = +bm[1];
+        S.memo.tref = blo != null ? blo + 1 : 556; out[cur].tref = S.memo.tref;
+      }
+      if (S.memo.tref != null) spec = Object.assign({}, spec, { tref: S.memo.tref });
       var tf = pv('tavg_c') * 9 / 5 + 32, far = spec.near != null && Math.abs(tf - spec.tref) > spec.near;   // `near`: held straight through until within it
+      /* the RISE AFTER RELEASE (layman pass 7, S-3): the tile at the last withdraw and its peak since */
+      if (S.memo.relF != null && !moving()) { out[cur].rise_F = Math.max(out[cur].rise_F || 0, tf - S.memo.relF); out[cur].release_F = S.memo.relF; }
       if (el2 < (spec.after_s || 0) || moving() || (!far && t() - (S.memo.lastPull || -1e9) < (spec.dwell || 0))) return;
       var pull = far ? 1 : (spec.pull || 1);
       if (spec.dir !== 'insert' && tf < spec.tref - (spec.dead != null ? spec.dead : 1)) {
         nudge(pull, spec.speed || 'normal'); S.acts++; S.memo.lastPull = t(); out[cur].withdrawn = (out[cur].withdrawn || 0) + pull;
+        S.memo.relF = tf; out[cur].rise_F = 0;
       } else if (spec.dir !== 'withdraw' && tf > spec.tref + (spec.dead_hi != null ? spec.dead_hi : (spec.dead != null ? spec.dead : 1))) {
         nudge(-pull, spec.speed || 'normal'); S.acts++; S.memo.lastPull = t(); out[cur].inserted_n = (out[cur].inserted_n || 0) + pull;
       }
@@ -751,13 +920,49 @@ function runJob(legId, routeId, mutId, ctx) {
       if (S.memo.k > 0 && ri != null && isFinite(ri)) { var pk = S.memo.pk[S.memo.k - 1]; if (ri * 9 / 5 < pk[1]) pk[1] = Math.round(ri * 9 / 5); }
       var nextSp = Math.max(spec.to, S.memo.sp - bd.step);
       if (S.memo.k > 0 && S.memo.sp <= spec.to) return;   // at the bottom
-      var due = S.memo.k === 0 || (bd.wait_s != null ? t() - S.memo.at >= bd.wait_s
-        : (t() - S.memo.lr >= (spec.read_s || 300) && (S.memo.lastRead === tfl || (S.memo.lr0 = S.memo.lastRead, S.memo.lastRead = tfl, S.memo.lr = t(), false))));
+      var due = (S.memo.k === 0 || (bd.wait_s != null ? t() - S.memo.at >= bd.wait_s
+        : (t() - S.memo.lr >= (spec.read_s || 300) && (S.memo.lastRead === tfl || (S.memo.lr0 = S.memo.lastRead, S.memo.lastRead = tfl, S.memo.lr = t(), false)))));
       if (S.memo.k === 0 || due) {
         send({ action: 'set_steam_dump_setpoint', mpa: nextSp / 145.0377 }); S.acts++;
         S.memo.k++; S.memo.at = t(); S.memo.lr = t(); S.memo.lastRead = tfl; S.memo.sp = nextSp;
         S.memo.pk.push([nextSp, 0]); out[cur].stair_pk = S.memo.pk;
         out[cur].entries = S.memo.k;
+      }
+      return;
+    }
+    /* `load_stair{from,to,step,wait_s}` (layman pass 7, S-5): LOAD typed down in `step` MWe
+     * entries, `wait_s` plant-seconds apart, as a card that walks the load rather than steps it
+     * reads; the step's other rows are pressed as they go live. */
+    if (P === 'load_stair') {
+      if (S.memo.lk == null) { S.memo.lk = 0; S.memo.lsp = spec.from; S.memo.lat = -1e9; }
+      if (S.memo.lsp > spec.to && t() - S.memo.lat >= spec.wait_s) {
+        S.memo.lsp = Math.max(spec.to, S.memo.lsp - spec.step); S.memo.lat = t(); S.memo.lk++; S.acts++;
+        send({ action: 'set_load_target', mwe: S.memo.lsp }); out[cur].entries = S.memo.lk;
+      }
+      if (S.memo.lsp <= spec.to) pressRows(st2, c2, null, true);
+      /* `ins_above`: rods in, `pull` steps `dwell` s apart, whenever the tile reads above it */
+      if (spec.ins_above != null && !moving() && pv('tavg_c') * 9 / 5 + 32 > spec.ins_above && t() - (S.memo.lastPull || -1e9) >= (spec.dwell || 60)) {
+        nudge(-(spec.pull || 3), 'normal'); S.acts++; S.memo.lastPull = t(); out[cur].inserted_n = (out[cur].inserted_n || 0) + (spec.pull || 3);
+      }
+      return;
+    }
+    /* `cond_pull` (pass 6, raise-power 10 read literally): pull `pull` steps whenever the tile
+     * reads under the number the row's ask gives ("below N degF"), or -- when it says only "below
+     * its band" -- under the floor of the band the PREVIOUS step's text named; `dwell` s apart. */
+    if (P === 'cond_pull') {
+      if (S.memo.thr == null) {
+        var ask0 = ((st2.accs || [])[0] || {}).ask || '', m1 = /below (\d{3}) °F/.exec(ask0);
+        if (m1) S.memo.thr = +m1[1];
+        else {
+          var prev = proc.steps[cur - 1] || {}, ptx = (prev.accs || []).map(function (e) { return e.ask || ''; }).join(' '), mm, lo = null, re = /(\d{3}) (?:to|and) (\d{3}) °F/g;
+          while ((mm = re.exec(ptx))) lo = +mm[1];
+          S.memo.thr = lo != null ? lo : -1e9;
+        }
+        out[cur].thr_F = S.memo.thr;
+      }
+      var tf2 = pv('tavg_c') * 9 / 5 + 32;
+      if (!moving() && tf2 < S.memo.thr && t() - (S.memo.lastPull || -1e9) >= (spec.dwell || 300)) {
+        nudge(spec.pull || 5, 'normal'); S.acts++; S.memo.lastPull = t(); out[cur].withdrawn = (out[cur].withdrawn || 0) + (spec.pull || 5);
       }
       return;
     }
@@ -775,8 +980,17 @@ function runJob(legId, routeId, mutId, ctx) {
      * "if SUBCOOLING MARGIN falls below 20 degF, shut the spray". Each trigger fires once. */
     if (P === 'when') {
       policy(spec.base_spec || { policy: spec.base || 'default' }, st2, c2, rows2, el2);
+      if (spec.poll_wall_s) {   // pass 6: the player looks every poll_wall_s of WALL, i.e. x the speed the card has set
+        if (t() - (S.memo.lastPoll || -1e9) < spec.poll_wall_s * (speedNow || 1)) return;
+        S.memo.lastPoll = t();
+      }
       (spec.on || []).forEach(function (w, i) {
         if (S.memo['w' + i]) return;
+        if (w.from_text && S.memo['v' + i] === undefined) {
+          var wtx = [st2.text, st2.note || ''].concat((st2.accs || []).map(function (e) { return (e.ask || '') + ' ' + (e.note || ''); })).join(' '), wm = w.from_text.exec(wtx);
+          S.memo['v' + i] = wm ? (+wm[1]) * 5 / 9 : null; out[cur]['trig' + i + '_F'] = wm ? +wm[1] : null;
+        }
+        if (w.from_text) { if (S.memo['v' + i] == null) return; w = Object.assign({}, w, { v: S.memo['v' + i] }); }
         var v = w.ins ? (s.instruments || {})[w.p] : pv(w.p);   // `ins`: the TILE's instrument, what the player reads
         if (v != null && isFinite(v) && (w.op === '<' ? v < w.v : v > w.v)) {
           S.memo['w' + i] = true; S.acts++; press(w.cmd);
@@ -829,6 +1043,12 @@ if (!ROUTE_F && ARGV.indexOf('--no-mutations') < 0)
  * agents own the content). Key: 'leg:route:check'. Each carries its measured numbers in
  * BASELINES' note; this map only keeps the tally honest about which reds are expected. */
 var TRACKED = {
+  // 2026-09-26 (workbench-e): heatup 16's SOURCE RANGE `steady` row (1.2 % over 600 s) ticks and
+  // un-ticks 2.0 s later at 360.6 plant-min on the SECOND lap, gate seed 42 only. Exposed, not caused,
+  // by raise-power 10-12 leaving: the grading is untouched, the chain's history is shorter. MEASURED:
+  // 0 of 7 other seeds (1-8, bar 42) flash anywhere in heatup#2 after the change; 0 of 5 at HEAD
+  // (seeds 4-8). Same row and same noise-on-a-steady-window shape as the 2026-09-25 workbench-j trap.
+  'chain:pwr_heatup#2:flash': 'heatup 16 SOURCE RANGE steady row, seed-42 flicker on the 2nd lap (2026-09-26)',
   // RESOLVED 2026-09-24 (rp_start): 'pwr_startup:typical:complete' — step 9 passed on ONE read of
   // 0.069 DPM at bank 208 while the rate was still falling (to 0.024) and step 10 stranded at 90
   // min. Step 9 now carries a hidden STARTUP RATE `steady` row (5 % over 240 s): the typical route
@@ -891,16 +1111,7 @@ function verdicts(r) {
      * to stay under"): a leg with `rate_max_F_hr` fails if any step RAISES the rate alarm, or its
      * COOLDOWN RATE tile channel runs past the margin anywhere in the leg. */
     var lim = ROUTES[r.leg] && ROUTES[r.leg].rate_max_F_hr;
-    if (lim) {
-      var worst = null, rz = [];
-      (r.steps || []).forEach(function (st) {
-        if (st.ratelo != null && st.n >= (ROUTES[r.leg].rate_from_step || 1) && (worst == null || st.ratelo < worst.v)) worst = { v: st.ratelo, n: st.n };
-        (st.raised || []).forEach(function (a) { if (/^(cooldown|heatup)_rate_high@/.test(a)) rz.push('step ' + st.n + ' ' + a); });
-      });
-      v.rate = { ok: !rz.length && !!worst && worst.v >= -lim,
-        name: 'the card\'s own pacing never raises the rate alarm (COOLDOWN RATE tile within ' + lim + ' degF/hr)',
-        note: (rz.length ? 'RAISED ' + rz.join('; ') + ' | ' : '') + (worst ? 'tile peak ' + f(worst.v) + ' degF/hr at step ' + worst.n : 'no tile reading') };
-    }
+    if (lim) rateVerdict();
     var h = fl('hollow');
     v.hollow = { ok: h.length === 0, name: 'no step checks off on entry before the player acts (hollow)',
       note: h.length ? h.map(function (x) { return 'step ' + x.step + ' lit at +' + f(x.at_s) + ' s'; }).join('; ') : 'none' };
@@ -913,8 +1124,37 @@ function verdicts(r) {
     var ru = fl('rewind_unavailable');   // the button was dark: the mistake never happened, so say so
     if (ru.length) { v.invariant.ok = false; v.invariant.note = 'VACUOUS: Rewind dark on step ' + ru[0].step + ', move the mistake | ' + v.invariant.note; }
   }
-  var fz = fl('flash').concat(fl('untick'));
-  v.flash = { ok: fz.length === 0, name: 'Continue never lights and goes out again (flash), no drawn row un-ticks',
+  function rateVerdict() {
+      var worst = null, rz = [];
+      (r.steps || []).forEach(function (st) {
+        if (st.ratelo != null && st.n >= (ROUTES[r.leg].rate_from_step || 1) && (worst == null || st.ratelo < worst.v)) worst = { v: st.ratelo, n: st.n };
+        (st.raised || []).forEach(function (a) { if (/^(cooldown|heatup)_rate_high@/.test(a)) rz.push('step ' + st.n + ' ' + a); });
+      });
+      v.rate = { ok: !rz.length && !!worst && worst.v >= -lim,
+        name: 'the card\'s own pacing never raises the rate alarm (COOLDOWN RATE tile within ' + lim + ' degF/hr)',
+        note: (rz.length ? 'RAISED ' + rz.join('; ') + ' | ' : '') + (worst ? 'tile peak ' + f(worst.v) + ' degF/hr at step ' + worst.n : 'no tile reading') };
+  }
+  /* pass 6 (2026-09-26): "settle on N degF" means N, not the band floor (S-7); an alarm a step's card
+   * must not raise on the player's route (S-5); the SI blocks a cooldown sets are gone again when
+   * the round trip's heatup reaches normal pressure (the ECCS seam). */
+  var st8 = (r.steps || []).filter(function (st) { return st.settle != null && st.at_done && Math.abs(st.at_done.tavg_F - st.settle) > 5.4; });
+  if ((r.steps || []).some(function (st) { return st.settle != null; }))
+    v.settle = { ok: st8.length === 0, name: 'a step that says "settle on N degF" completes within 5.4 degF of N',
+      note: st8.length ? st8.map(function (st) { return 'step ' + st.n + ' done at ' + f(st.at_done.tavg_F) + ' degF against ' + st.settle; }).join('; ') : 'all inside' };
+  var pkx = (r.steps || []).filter(function (st) { return st.peak_max != null && st.thi != null && st.thi > st.peak_max; });
+  if ((r.steps || []).some(function (st) { return st.peak_max != null; }))
+    v.peak = { ok: pkx.length === 0, name: 'a step whose note says AVG COOLANT TEMPERATURE stays "under about N °F" stays under N on the player route',
+      note: pkx.length ? pkx.map(function (st) { return 'step ' + st.n + ' peaked ' + f(st.thi) + ' degF against ' + st.peak_max; }).join('; ') : 'all under' };
+  var fb = [];
+  (r.steps || []).forEach(function (st) { (st.forbid || []).forEach(function (id) { (st.raised || []).forEach(function (a) { if (a.indexOf(id + '@') === 0) fb.push('step ' + st.n + ' ' + a); }); }); });
+  if ((r.steps || []).some(function (st) { return st.forbid; }))
+    v.forbid = { ok: fb.length === 0, name: 'no step raises an alarm its card is written to prevent (read every 4 s of wall at the card\'s speed)',
+      note: fb.length ? 'RAISED ' + fb.join('; ') : 'none' };
+  if (/#2$/.test(r.leg) && res.kind === 'complete' && res.blocks)
+    v.blocks = { ok: !(res.blocks.lo_press > 0) && !(res.blocks.si_trip > 0), name: 'the round trip re-arms the SI blocks the cooldown set (PZR PRESS LO-LO, SI REACTOR TRIP)',
+      note: 'lo_press_blocked ' + res.blocks.lo_press + ', si_trip_blocked ' + res.blocks.si_trip };
+  var fz = fl('flash').concat(fl('untick')).concat(fl('cmdwait'));
+  v.flash = { ok: fz.length === 0, name: 'Continue never lights and goes out again (flash), no drawn row un-ticks, no step waits on a rod press the gauge does not call for',
     note: fz.map(function (x) { return x.kind + ' step ' + x.step + (x.row ? ' row ' + x.row + ' (' + x.label + ')' : '') + (x.lit_s != null ? ' lit ' + f(x.lit_s) + ' s' : '') + (x.held_s != null ? ' after ' + f(x.held_s) + ' s met' : '') + ' @ ' + f(x.t_min) + ' min'; }).join('; ') || 'none' };
   var rf = fl('rewind_refused');
   if (rf.length) v.rewind = { ok: false, name: 'the walkthrough Rewind lands', note: rf[0].why };

@@ -80,6 +80,47 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   (the loop still ends at the target); the batch totalizer still counts at the blender. The VCT
   liquid volume and the charging-line volume are unsourced `[tune]` estimates. `run_pwr2_cvcs`
   +5 checks, +3 mutations.
+- **Raise power walkthrough ends at step 9; the xenon steps are gone** (2026-09-26, owner directive:
+  "I don't think dealing with xenon should be a part of these walkthroughs. That's for a different
+  walkthrough."; then selected option C). Steps 10 (rod give-back), 11 (first boron dose) and 12
+  (hold full power while xenon builds) removed; step 9's Note and the end card close with one
+  no-action sentence pointing to a future xenon walkthrough. Step 12's check-offs were already
+  graded at 8 and 9, so nothing moved. Supersedes the 2026-09-25 "Make them conditional" ruling.
+- **Walkthroughs: layman pass 8, non-startup findings** (2026-09-26, AGENT-DRAFTED wording).
+  Lower power's four "below X °F" Tavg rows grade X - 0.5 °F (no tick while the tile still reads X);
+  heatup's Pressurizer Level Above Program forewarning moved to 9b; cooldown 11 prints one speed
+  line; cooldown 4b/11a say the clock moves to 60× after the first entry; raise-power 12 no longer
+  promises a two-day wait; raise 4b-7b say the check-off is wider than the green band; rod
+  estimates widened to measured; shutdown 3b's Cooldown Rate High "may" come in; cooldown 3c says
+  STOP is usually lit already. Record `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`.
+- **Walkthroughs: lower power 4-6 walked** (2026-09-26, owner ruling "Walk them too"; AGENT-DRAFTED
+  wording). LOAD comes down 5 MWe a plant-minute with 3-step inserts above the band top, as step 2;
+  OUTPUT rows +/-2 MWe; replay ramps at the card's pace. Chain peaks: step 4 585.4 -> 576.5 °F
+  (Pressurizer Pressure High and SG Pressure High -> none), step 5 574.6 -> 568.0 °F (SG Pressure
+  High -> none), step 6 563.8 -> 561.5 °F. `run_walkthrough_routes`: `peak` verdict (a note's
+  "under about N °F"), injections `lower_load_step4`, `lower_load_step5`, `lower_output_tol4` (step 6's one cut does no
+  measured harm, so it has none).
+- **TRIP BLOCKS: a "released by the plant" reason clears once its permissive allows blocking again**
+  (2026-09-26, owner ruling "Clear it"), and the card's count with it. Gated in `run_pwr2_board`
+  and, on a real depressurization under P-11, `verify_board_cues`.
+- **Walkthroughs: layman pass 7** (2026-09-26, AGENT-DRAFTED wording, record
+  `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`). Raise power 4b-8b grade the
+  temperature, not a rod press, and are conditional (5b soft-locked with the gauge in band); pulls
+  of about 5 steps a plant-minute apart (tile rise after release 2 °F against 5-8 °F held). Lower
+  power 2 walks LOAD down 5 MWe a plant-minute with 3-step inserts (chain peak 595.3 → 581.8 °F,
+  six alarms → none). Forewarns: Pressurizer Level Above Program (heatup 10), Pressure Low and
+  Insertion Limit (raise 5, 6), Cooldown Rate High (shutdown 3), PORV open and Low Coolant
+  Temperature (cooldown 2, 4, 5). Alarm list re-stamps an alarm whose priority changes.
+  `run_walkthrough_routes`: rod rows are no longer free-pressed on gauge-following steps; new
+  CMDWAIT and FORBID checks, route `hot_stage4`, injections `rods_row_5b`, `lower_load_step`.
+- **Walkthroughs: layman pass 6** (2026-09-26, AGENT-DRAFTED wording, record
+  `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`). Cooldown 11: the spray-off is its own
+  substep at 30 °F and 60× (seam 19 → 241 psia; second heatup margin 25 → 197 °F). Cooldown 4: time
+  the 6-minute waits on the plant clock (4.1-minute spacing: −117 °F/hr). Cooldown 16: SCRAM reset
+  first. Cooldown 3: STOP on the ECCS card does not disarm safety injection. Raise power 8 grades
+  573–583 °F ("settle on 578"); 10 says "below 575 °F" (it graded 575–585 against "its band").
+  Forewarnings for five alarms; end card bank "about 300". `run_walkthrough_routes`: `band_floor`
+  route, polled `when` triggers, `settle`/`forbid`/`blocks` checks, three injections.
 - **Walkthroughs: the cooldown stays under the 100 °F/hr limit** (owner rulings 2026-09-25, "Re-pace
   to stay under", then "Middle ground"). Step 4 lowers DUMP SETPOINT 50 psi to 720, then 25 psi to
   270, then 15 psi, about 6 plant-minutes apart, 34 entries (was 50 psi every 5 minutes; COOLDOWN
@@ -87,6 +128,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   its goal line reads "inside the 100 °F per hour limit". Stated times: step 4 about three and a
   half hours, step 11 about two and a quarter, the leg about 7 plant-hours. `run_walkthrough_routes`
   fails a cooldown route that raises the rate alarm or passes −95 (`cooldown_old_pacing` injection).
+- **Pressurizer: water that surges in now mixes into the rest over 600 s (workbench-h).** A declared,
+  unsourced `[tune]` time constant (`STRATIFY.tau_mix_s`, `DESIGN_COMPANION.md` §8.37, `Manuals/12` §7.1,
+  Rev 22 (l)). Before it, raise power left 893 kg of 63.5 °F-subcooled water in the pressurizer
+  indefinitely and the heaters could not hold pressure through the next outsurge. Lower-power
+  walkthrough after raise power: PRIMARY PRESSURE floor 1936 -> 2140 psia. Lower power inserts
+  "about 3 steps, one plant-minute apart"; the route gate no longer sends the replay's 40-step
+  insert. Heater capacity checked against WTSM 3.2 and left alone (it is sized correctly).
 - **Walkthroughs: layman pass 5 (workbench-g).** The round trip no longer strands: cooldown step
   16 gains 16d, "If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once." (the
   shutdown's scram was still latched and the next heatup's WITHDRAW was refused), and heatup 3a's

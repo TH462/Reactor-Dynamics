@@ -230,6 +230,116 @@ to an unconditional `true` reds the "visible while running" assertion first.
 
 Gate: `node test/run_all.js --only verify_e2e_ui.js` — PASS, 4screenshots (score unchanged, +1
 check function; baseline note updated).
+## Session log — 2026-09-26-workbench-e (raise power ends at step 9: the xenon steps left)
+
+Record: `Blueprint/walkthrough_steps/03_raise_power.md` §"Xenon steps removed". Traps only:
+
+- **REMOVING A STEP SHORTENS THE CHAIN, AND THE NEXT LAP SAMPLES DIFFERENT NOISE.** The round-trip
+  chain's second heatup (step 16, SOURCE RANGE `steady`) flickered 2.0 s on gate seed 42 once the
+  raise leg lost its three steps, with no grading change anywhere. Measured 0 of 7 other seeds after,
+  0 of 5 at HEAD: seed-sensitive, not caused. Before calling a downstream chain red a regression, run
+  the chain job at several `WR_SEED`s on BOTH trees (a detached `git worktree add` at HEAD, 1 s).
+- **A prepared removal checklist misses the keyed pins.** The pre-ruling script named the route gate
+  and `manual_ui_map`; `run_checklist_pwr2` also pins `pwr_raise_power:<n>` in two maps and a pool-count
+  check. Grep `<leg>:<n>` across `test/` before trusting any list of what to edit.
+- **A heading that says `OWNER DIRECTIVE` is an HR11 site.** `run_hardrules` read the section title as
+  an undeclared ruling; name the ruling in the quoted line under it, not in the heading.
+
+---
+
+## Session log — 2026-09-26-workbench-d (layman pass 8 verified: the non-startup findings)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`. Startup findings (S-1..S-3) are develop's lane. Traps only:
+
+- **"THE SPEED WAS NOT SET FOR ME" CAN BE THE DESIGN WORKING, UNANNOUNCED.** Cooldown 4 and 11 hold
+  1× until the step's own command lands, then go to 60× (measured in the browser, 2.5 s after one
+  typed entry). The reviewer pressed 60× first because `wait_hint: false` hides the line that says
+  so. Measure the driver before touching the matcher; the fix was one sentence per Note.
+- **"BELOW X" MUST GRADE THE RENDER FLOOR, NOT X.** A `< X` threshold on a `toFixed(0)` tile ticks
+  while the tile still prints X (561.9 °F reads "562" against "below 562"). Grade X - 0.5. The mirror
+  of #749's floor rule: there the box was dark at the target, here it was lit at the limit.
+  `run_checklist_pwr2`'s #739 tie asserted threshold == band top and so PINNED the defect; it now
+  derives the render floor of the band top and ties the label too.
+- **A FIXTURE THAT JUMPS TO A STEP MUST REPRODUCE THE ROUTE'S LINEUP.** The standalone
+  `pwr_cooldown` boots with the dump in TAVG and the turbine latched, so 4a never met and the probe
+  read 1× after the entry — a false "defect" until the turbine was tripped, as the chain has it.
+- **A PRESS-ONLY ROW CANNOT BE REWORDED TO "CHECK IT IS LIT".** Cooldown 3c has no predicate (#741);
+  "check STOP is lit; if not, press it" would strand every player who only checks.
+
+## Session log — 2026-09-26-workbench-c (lower power 4-6 walked; the trip-block reason clears with its cause)
+
+Owner rulings 2026-09-26 (selected options): lower power 4-6 "Walk them too"; TRIP BLOCKS "Clear it". Traps only:
+
+- **A WALKED CARD IS NOT COOLER ON EVERY ENTRY.** Chained (the leg's intended entry) the walk took
+  step 4 from 585.4 to 576.5 °F and two alarms to none, step 5 from 574.6 to 568.0 °F. On the
+  `hot_full_power` preset it runs HOTTER: 576.6 -> 578.2, 567.8 -> 570.0, 561.1 -> 563.2 °F, because
+  the one cut drops power at once and the inserts wait for the tile to pass the band top. A peak
+  claim ("under about N °F") has to hold on both; `peak_check` now grades it on every route.
+- **AT 15 MWe THE ONE CUT DOES NO MEASURED HARM** (chain 563.8 against 561.5 °F, no alarm), so step
+  6 has no old-card injection. Do not tune a claim until an injection goes red. The +/-5 OUTPUT
+  mutation stayed GREEN on step 6 too (its tread noise never crossed 20.0 in time): a flash
+  injection that rides on gauge noise is proven only where it was measured red (step 4).
+- **A `~` ROW'S TOLERANCE MUST BE SMALLER THAN THE STAIR TREAD.** At +/-5 around 50 MWe the 55 MWe
+  tread met the row (54.8 on the gauge) and the next reading (55.07) un-ticked it, a flash at
+  12.7 plant-min. +/-2, as step 2.
+- **A MESSAGE THAT NAMES A CONDITION MUST GO WHEN THE CONDITION DOES.** "Pressure rose above P-11"
+  stood at 1930 psi on a cooldown. It now clears when the row's `permissive` returns. The browser
+  gate's fabricated revoke drew EVERY row `permissive: true`, a revoke the engine cannot make
+  (it revokes only on a lost permissive) and one the new rule retires on the same render: a fixture
+  must model the event, not just the flag.
+
+## Session log — 2026-09-26-workbench-b (layman pass 7 verified: the gate pressed a button the player never would)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`. Traps only:
+
+- **A ROUTE THAT PRESSES EVERY LIVE ROW'S `cmd` CANNOT SEE A PRESS-ONLY SOFT LOCK.** Raise-power
+  5b ("Rods withdrawn", a `rod_nudge` row) stranded a player whose gauge never left its band. Every
+  route passed because `pressRows` sent a bare `rod_nudge` on a gauge-following step: a free tap.
+  Now `to_band` skips rod rows, and CMDWAIT flags a step waiting 120 plant-s on a rod row while
+  every graded row READS met (`obs`, not the latch; `accs_ordered` blocks the latches behind the
+  unpressed row). **Grade the effect; a route must not press what the text did not ask for.**
+- **"LET GO N SHORT" IS A HELD-PULL NUMBER, AND THE TILE'S LAG DECIDES IT.** Held at MED the tile
+  rose 5.0-7.5 °F after release (reviewer 13 °F); 5-step pulls a minute apart rose 2.1-2.6 °F in the
+  same stage time. Measure the rise after the LAST withdraw, not the step's peak.
+- **A LOAD REDUCTION LANDS AT ONCE ON PWR2 BY DESIGN** (raises only are rate-limited, `pwr2_shell`).
+  A card that says "about five plant-minutes" has to make the ramp itself. Walking it 5 MWe a minute with the rods held still still peaked 590.8 °F on the chain; only rods
+  following each cut (3 steps above 577 °F) held 581.8 °F. The chained plant is the hot one: the
+  preset peaked 584 °F even on the one-cut card.
+- **A RECLASSIFIED ALARM NEVER CLEARED, SO ITS STAMP NEVER MOVED.** Cold-plant alarms sit as
+  `status` for hours; at 350 °F they come back critical, stamped T+00:00:00. Re-stamp on a
+  priority change (`ui/app.js` `renderAlarms`).
+
+## Session log — 2026-09-26-workbench-a (layman pass 6 verified: the seam is set by a spray valve, and a wall-clock pacing)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`. Traps only:
+
+- **THE ROUND TRIP'S SEAM PRESSURE IS DECIDED BY ONE PRESS AT A SPEED THE PLAYER CANNOT FOLLOW.**
+  The second heatup ran its pumps at 17 psi (margin 25 °F) because cooldown 11's spray-off sat in a
+  note at 600×: one read per 40 plant-min. The seam moved 19 → 50 → 241 psia with the spray-off
+  alone. A route that presses on the exact tick hides this; `when` triggers now poll at 4 s of wall
+  x the card's speed. **Grade the press you need, at a speed a reader catches it.**
+- **"6 seconds at 60×" IS A WALL FIGURE, AND THE REVIEWER'S PLANT GOT 4.1 MINUTES.** 34 entries in
+  139 plant-min; the stair at 246 s reproduces 139.0 min and -117 °F/hr. Holding on the COOLDOWN
+  RATE tile does not rescue it (60-85 °F/hr holds: -99 to -111) — the tile lags 600 s. Pace on the
+  plant clock.
+- **"ITS BAND" MEANT TWO BANDS.** Steps 8-9 name 563-592 °F; step 10 grades the tile's 575-585. A
+  literal reader stops at the floor the card names; the route policies now parse the number from
+  the text (`tref_from_text`, `cond_pull`), so the route follows the card as it is.
+- **ECCS STOP IS THE IDLE LAMP ON PWR2, NOT A DISARM.** No ESF arm is published; SI started the pump
+  with STOP pressed (148 s / 17.5 s, flow identical). The card text claimed otherwise.
+
+## Session log — 2026-09-25-workbench-j (pwr_heatup step 16 tracked flake: the fixed replay's single sample, not a plant defect)
+
+Record: `Blueprint/walkthrough_steps/01_mode5_to_mode3.md` §"16's replay `hold` re-measured". Trap only:
+- **A `hold`-bounded replay samples a re-grading predicate ONCE, at the end; a live player keeps
+  trying.** `pwr_heatup` step 16's SOURCE RANGE `steady` row (1.2 % / 600 s) failed 2 of 11 REPLAY
+  seeds at `hold`=720 s with 1.51-2.00 % drift — a single noisy instant sampled at exactly `hold`'s
+  end. MEASURED on the LIVE checklist runtime (`run_walkthrough_routes --job=pwr_heatup:typical`,
+  30 seeds, re-grading every ~5 s): the row ticked on every seed, no strand — 24 of 30 within 8 s of
+  the window closing, worst (seed 8) 769 s, 169 s past it. `hold` raised 720 -> 1200 s (56 % margin
+  over the worst seed measured); `v` and `window` untouched — the tolerance was never the problem,
+  the fixed sample point was. `run_checklist_pwr2.js` BASELINES note removed as a tracked flake,
+  2 failed (the pre-existing TMI-2 pair) restored.
 
 ## Session log — 2026-09-25-workbench-i (cooldown re-paced under the 100 °F/hr alarm; the raise-power rod worth re-measured)
 
@@ -252,6 +362,58 @@ Record: `Blueprint/walkthrough_steps/06_cooldown.md`, re-pace record. Traps only
   Measured A/B on the xenon-free preset (typical route end, bank 306): a 20-step pull is +10.4 °F at
   +10 min against the unpulled twin, 0.52 °F/step at mid-bank; on the engine's own S-curve that is
   17.0 pcm/°F and 306 → 606 is ≈ 118 °F (318 → 606 ≈ 112). The text stands.
+## Session log — 2026-09-25-workbench-h (lower-power pressure sag: the heaters are the right size, and not what is short)
+
+OWNER RULING (2026-09-25), selected option "Evidence pass" — option text (a selection, not his
+words): "Check the pressurizer heater capacity against sourced plant data, and correct the physics
+if it is undersized." Record: layman pass 5, S-4. Probe: `inbox/ev/probe_routes.js` (a tracing
+copy of `run_walkthrough_routes --job=chain:chain`, env knobs `EV_MANUAL/EV_HTRX/EV_DWELL/EV_PULL/
+EV_NOCMD/EV_TAU`). **No physics moved.** Traps only:
+- **The heater bank is sourced and not undersized.** WTSM 3.2 (ML11223A213, p. 3.2-8): "78 heaters
+  installed for a total capacity of 1794 kW ... proportional ... 414 kW and the backup ... 1380 kW";
+  the same section gives "The volume of the pressurizer (1800 ft3)". This plant: 157.8 kW in
+  147.5 ft3 = 1.07 kW/ft3 against the reference's 1.00 — and, with the loop 4.82x the pressurizer
+  against Ginna's 6.86, about 1.5x the reference per cubic foot of loop the outsurge comes from.
+- **The sag's SIGN is the textbook one.** WTSM 10.3 (ML11223A290, pp. 10.3-4/-5): "An insurge into the
+  pressurizer is observed during a step load decrease ... over time the cooler water that has
+  entered the pressurizer would cause a pressure reduction. This insurge is followed by a larger
+  outsurge as the rod control system brings Tavg to program for the lower power level; this control
+  response also tends to reduce pressure." Design basis (Ginna UFSAR ch7, ML20339A027 §7.7.1.1.4): "a
+  generation step load increase of 10% and a ramp increase of 5% per minute ... without reactor
+  trip ... Similar step and ramp load reductions are possible". The card asks for 25 % steps.
+- **THE SAG IS NOT HEATER-LIMITED — a latent stratified layer takes the heat.** Chained, the
+  raise-power leg leaves **893 kg** (54 % of the liquid) of insurge water in the bottom layer at
+  1391 kJ/kg, **63.5 °F (35.3 °C) subcooled**, and it never relaxes: nothing in
+  `pwr2_pressurizer.js` mixes `m_sub` into the pool, and at steady 100 % the heaters sit at 0 kW
+  (pressure 2254 psia (15.54 MPa), above setpoint). In the outsurge the heaters heat that layer
+  (priority `m_sub`) and the surge line drains it first, handing up to 376 kW back to the hot leg.
+  MANUAL FIRST: heaters fixed 0 % vs 100 % move the step-6 floor **8 psi** (1907 vs 1915 psia).
+  Heaters x3 (473 kW) buy +109 psi. The standalone leg (fresh preset, `m_sub` 0) holds **2202 psia**.
+- **The card's pace is 4.5x the design ramp.** Card-literal (5 steps per 30 s, the step's 40-step
+  command not sent), floors per step 3/4/5/6: **2032 / 1949 / 1885 / 1848 psia** (Tavg falling
+  ~7 °F/min (3.9 °C/min); the program's 5 %/min is ~1.55 °F/min). 5 per 60 s: 2012 / 1922 / 1883 /
+  1882. 3 per 60 s: 2001 / 1938 / 1936 / 1941. The route gate's `to_band` also SENDS the step's
+  `rod_nudge -40` (the live player never does), which at bank ~250 (~0.6 °F/step vs ~0.18 at
+  bank ~510) drives 18–19 °F/min — that is why the gate's floors (2059/1992/1934/1889) sit where
+  they do; the layman's 1819 psi is the card-literal route plus reading lag.
+- **A mixing relaxation is what moves it, and it is UNSOURCED** — prototype only, not shipped:
+  `m_sub` into the pool at tau 600 s gives card-literal 2113 / 2088 / 2059 / 2040 psia, and
+  3 per 60 s 2145 / 2157 / 2148 / 2147. No corpus document gives a stratified-layer mixing time
+  (`find_source.js "thermocline|pressurizer.{0,40}mixing|mixing.{0,40}pressurizer"`: no pressurizer hit),
+  and the layer is load-bearing for the loss-of-load spike and TMI — owner ruling, not an agent's call.
+- **BUILT the same session** *(OWNER RULING (2026-09-25), selected "C: both, B first" — selection,
+  not verbatim)*: pace "about 3 steps, one plant-minute apart"; the route gate's `to_band` no longer
+  sends the step's `rod_nudge -40`; `STRATIFY.tau_mix_s` 600 s. Chain floors 2145/2158/2147/2140 psia.
+  `perturb_sweep` cannot reach a pwr2 constant (its suites are the retired engine's); the tau sweep
+  above is the substitute. Two reds, adjudicated one at a time:
+  - **`run_pwr2_engine_b` null self-test, group C** — a CLIFF, not the claim. The rods-IN plant on
+    the quiet ride's 30 s settle tripped OTdT +19.3 s after onset with the term; settles 20/25/35/40/
+    50/60/70/90 s do not trip in 240 s, and without the term no settle trips. Fixture moved to 60 s
+    on both rides; the check is unchanged and green (engine 80/80, _b 67/67, _c 16/16).
+  - **`run_checklist_pwr2` heatup 16, SR steady 1.2 %/600 s** — a SEED REALIZATION. True SR sits at
+    168.04 cps on both trees through the step-16 window; over 11 seeds the row fails 2/11 with the
+    term and 2/11 without (seeds 4, 6 on the old tree). Tracked in BASELINES (2 -> 3), not re-banded.
+    **A replay that grades a noisy `steady` row at one fixed hold pins one noise realization.**
 
 ## Session log — 2026-09-25-workbench-g (layman pass 5 verified: the round trip's seam, and a harness that crashed on the refusal it was looking for)
 

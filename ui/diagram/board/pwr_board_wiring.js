@@ -3265,7 +3265,10 @@
    *     is what "persist for too long" was about: it used to stand for ever, across every future
    *     opening, until the row happened to be re-blocked.
    *
-   * WHAT CLEARING THE CUE MUST NOT CLEAR IS THE FACT. #738 exists because the plant silently
+   * WHAT CLEARING THE CUE MUST NOT CLEAR IS THE FACT — WHILE IT IS A FACT. Since 2026-09-26 (owner
+   * ruling "Clear it", see noteTripBlockEvents) the message itself goes when the permissive allows
+   * blocking again: the cause it names is then no longer true. Until then, this holds:
+   * #738 exists because the plant silently
    * revoked a block the player had placed. The row still says "RELEASED BY THE PLANT — <cause>",
    * the status line still says what the lineup is and which rows are waiting on a permissive, and
    * the player's own releases still carry their standing note. Only the amber goes. And a FRESH
@@ -3406,6 +3409,15 @@
         delete tbMsg[id]; delete tbNote[id];
         if (tbSelf[id] && tbSelf[id].want === true) delete tbSelf[id];
       }
+      /* THE REASON CLEARS WHEN IT STOPS BEING TRUE *(OWNER RULING, 2026-09-26, selected "Clear it":
+       * "The message disappears once the permissive allows blocking again, so the panel only shows
+       * reasons that are currently true.")*. "Pressure rose above P-11" is a claim about the plant
+       * NOW; back under P-11 the row can be blocked again and the line was a stale reason on a
+       * cooldown (layman pass 7: still drawn at 1930 psi). The revoke happens with the permissive
+       * LOST, so this cannot fire on the broadcast that raised the message, and it cannot chatter:
+       * nothing re-raises a message without the player re-blocking first. The header count reads
+       * `tbMsg` through `tbMessages`, so it follows. */
+      if (tbMsg[id] && now[id].blocked === false && now[id].permissive === true) delete tbMsg[id];
     });
     tbPrev = now;
     /* Expire anything the plant never delivered, so a refused or lost command cannot leave a

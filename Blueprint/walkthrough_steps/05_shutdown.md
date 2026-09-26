@@ -64,6 +64,8 @@ Suggested time warp: 1×.
 
 ()3b. Check REACTOR POWER reads below 1 %.
 
+Note: Cooldown Rate High (>100 °F/hr) may come in about a minute after the trip, or not at all from a cooler plant: expected either way, it is the coolant settling to its no-load temperature.
+
 ()3c. Check STEAM PRESS is holding near 1020 psi.
 
 ()3d. Check the STEAM DUMP is open a little.
@@ -242,3 +244,14 @@ psi ticks as the pressure arrives (1024-1025 psi) and never strands: the dump in
 and before this change the whole step was too (0.3 s, the route table's `chain_entry_met`). 3c now
 holds it 34 s, so `chain_entry_met: ['#3']` came out of `test/run_walkthrough_routes.js` and the
 hollow check binds there.
+
+
+### Layman pass 7 record — 2026-09-26, workbench-b (AGENT-DRAFTED: 3b's note)
+
+3b names Cooldown Rate High, raised about a minute after the scram on the preset and the chain.
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`.
+
+### Layman pass 8 record — 2026-09-26, workbench-d (AGENT-DRAFTED: "comes in" -> "may come in")
+
+3b's Cooldown Rate High is marginal: the chain gate raises it with the tile at -104 °F/hr against
+the -100 setpoint; the reviewer never saw it in two rounds. Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`.
