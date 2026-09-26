@@ -38,6 +38,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   localStorage.
 
 ### Changed
+- **Walkthroughs: Mode 5 to Mode 3 heatup revised** (#807 items 3–6, owner playtest of 1.8.0-rc6).
+  Highlights: the button a step presses pulses and its card takes the steady ring — RCP ON (2),
+  A+B 7% (7), SPRAY AUTO (8), HEATER AUTO (9), with the SHUTDOWN, SG FEED, ACCUMULATORS and ATMOS
+  DUMP cards ringed where their step reads them; four new board highlight keys. No step text names
+  the ring any more (4, 6, 10: "Open the accumulator valve"). Step 16 checks off in about a minute
+  and a half of plant time (1.63, was 10.1): SOURCE RANGE steady over 90 s at 8 % (was 600 s at 1.2 %), plus
+  CONTROL ROD POSITION reads 0 (moved from 15) and the new BORON STATUS reads HOLD, so a dilution
+  or rod pull during the step still never ticks it. Wording: "nothing to press" dropped from 4 and
+  6, 7b folded into 7a, plainer Background on 2, 3, 9 and 14, the unmeasured "half a percent" of
+  pump heat removed.
 - **PWR2: a boron change now takes time to reach the loop** (#807 item 1, owner playtest of
   1.8.0-rc6: "When setting boron the changes start immediately"). The makeup path carries a
   holdup: a boration enters the charging line (~1 plant-minute), a dilution goes through the

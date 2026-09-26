@@ -1471,7 +1471,7 @@
                    { cont: true, p: 'shutdown_bank_steps', op: '<', v: 1,
                      label: 'SHUTDOWN ROD POSITION 0 of 627' }] }),
         { text: 'Start the reactor coolant pumps.',
-          why: 'A shut-down reactor makes very little heat compared to a critical reactor, but the running pumps put about half a percent of full power into the water as friction. That is enough to warm the whole plant. Real crews heat up exactly this way, with the reactor never critical.',
+          why: 'A shut-down reactor makes very little heat. The running pumps make heat of their own: the work that drives the water around the loop ends up in it as friction. That is enough to warm the whole plant. Real crews heat up exactly this way, with the reactor never critical.',
           control: 'RCP ON/OFF', target: 'RCP FLOW above 90 %',
           aim: 'With the reactor kept shut down, the pumps are what heat the plant.',
           wait_speed: 1, speed_text: true,
@@ -1489,7 +1489,9 @@
            * card — so the `hl` ring already covers the card and its ON button, and a second
            * label on the same id would draw two rings on one element and redden
            * run_manual_controls' overlap check. */
-          hl: ['RCP Run/Stop'] },
+          /* #807 item 3: the ON button pulses and the card around it takes the steady ring, the
+           * split the owner asked for on steps 7 and 8. 'RCP — On' is the button's own key. */
+          hl: ['RCP — On'], hl_watch: ['RCP ON/OFF'] },
         /* ONE CLICK, NOT A HOLD *(OWNER, 2026-09-03, #619 item 9: "you dont need to hold
          * withdraw. its set to go automatically on a click")*. Verified at the control:
          * `toggleLatchRod` (pwr_board_wiring.js:3585) issues `rod_start` and latches, and
@@ -1499,7 +1501,7 @@
           /* "about 9 plant-minutes" is MEASURED, not scaled (#668): 627 steps at the sourced
            * fast drive of 72 steps/min is 522.5 s = 8.7 min, verified on the engine at 71.99
            * steps/min. It read "about 10" against the pre-#668 drive's 595.4 s. */
-          why: 'In a PWR, shutdown rod groups (shutdown banks) stay fully withdrawn during normal power operation. Their purpose is to supply a large, rapid insertion of negative reactivity on a reactor trip (SCRAM) so the core goes subcritical and stays that way. They are withdrawn first during startup and are not used for routine power or temperature (Tavg) control.',
+          why: 'The shutdown bank is a set of control rods that is never used to steer the reactor. It stays fully withdrawn whenever the plant is running, so that on a reactor trip (SCRAM) it drops into the core and shuts the reactor down hard.\n\nIt comes out first during a startup and stays out. Power and temperature are steered with the control bank and boron.',
           aim: 'Once out, the shutdown bank is the reserve that drops in on a trip, so it comes out first and stays out.',
           control: 'Shutdown Bank', target: 'SHUTDOWN ROD POSITION 627 of 627',
           cmd: { action: 'rod_nudge', group_id: 'shutdown_rods', steps: 627, speed: 'fast' }, hold: 660, wait_hint: false,
@@ -1558,7 +1560,7 @@
            * Position' is `imrpnzfsfcx`, a different element from both `hl` buttons — required,
            * because `applyCklWatchGlow` skips an element already carrying the pulsing glow. */
           hl: ['Rod Speed — Fast', 'Shutdown Bank — Withdraw'],
-          hl_watch: ['Shutdown Rod Position'] },
+          hl_watch: ['Shutdown Bank', 'Shutdown Rod Position'] },
         /* A VERIFICATION HOLDS FOR THE PLAYER (#660 item 4, owner playtest 2026-09-08: "skipped and
          * didn't have an acknowledge button"). With a `cmd` on it the step ticked itself on the
          * already-tripped turbine and advanced; without one it satisfies and waits, like the
@@ -1581,11 +1583,11 @@
          * so dropping `hl` swapped one pulsing control for another and reddened
          * `run_manual_controls`' distinct-element check. That fallback now asks
          * `stepAsksForPress` first; see the note on `stepHlLabels`. */
-        { text: 'Confirm the turbine is tripped, nothing to press.',
+        { text: 'Confirm the turbine is tripped.',
           why: 'The cold plant starts with the turbine tripped. It matters because a turbine taking any steam on pump heat would carry away the very heat you are trying to build up.',
           aim: 'A tripped turbine takes no steam, so the heat the pumps make stays in the plant.',
           wait_speed: 1, speed_text: true,
-          note: 'The ring on TRIP marks the lamp to read, not a button to push. UNLOAD is not TRIP: UNLOAD walks the load setting to zero, TRIP shuts the steam valves.',
+          note: 'TRIP is a lamp to read here, not a button to press. UNLOAD is not TRIP: UNLOAD walks the load setting to zero, TRIP shuts the steam valves.',
           control: 'Turbine Load', target: 'TRIP lit, OUTPUT 0 MWe',
           hold: 10,
           accs: [{ p: 'turbine_tripped', op: '>', v: 0,
@@ -1639,9 +1641,9 @@
           aim: 'Once the water in the steam generator starts to boil, its level starts to move, and AUTO has to be holding it by then.',
           wait_speed: 1, speed_text: true,
           accs: [{ p: 'feed_coupled', op: '>', v: 0,
-                   ask: 'Set SG FEED to AUTO and check AUTO is lit.',
+                   ask: 'Press AUTO on the SG FEED card and check AUTO is lit.',
                    label: 'SG FEED AUTO lit' }],
-          hl: ['SG Feed AUTO'], hl_watch: ['SG Level'] },
+          hl: ['SG Feed AUTO'], hl_watch: ['Feed Pumps', 'SG Level'] },
         /* A CONFIRMATION, NOT AN ACTION *(OWNER, 2026-09-02 playtest, #608 item 1: "doesnt make
          * sense, dump setpoint starts in mode 5 at the setpoint the step asks for. the step then
          * says to leave the dump shut. There is no 'dump shut' button so this is confusing. it
@@ -1673,11 +1675,10 @@
          * nothing to press. CLOSE keeps its ring — it is the owner's drawing (the #744 quote
          * below) — as the steady watch treatment. This step authors no `control` at all, so
          * unlike the turbine verify it needed nothing from `stepHlLabels`' fallback. */
-        { text: 'Confirm the STEAM DUMP is closed, nothing to press.',
+        { text: 'Confirm the steam dump is closed.',
           why: 'The steam dump sends steam straight to the condenser instead of the turbine. Kept shut, the steam side bottles up and the pump heat stays in the plant. The DUMP SETPOINT box already reads 1020 psi, but that number does nothing until AUTO is pressed, which a later step does once the steam side is hot.',
           aim: 'Any steam the dump lets out is pump heat leaving the plant.',
           wait_speed: 1, speed_text: true,
-          note: 'The ring on CLOSE marks the lamp to read, not a button to push.',
           /* 6a (2026-09-25, phase 2) is NOT 6b written twice. The card's MANUAL word and its CLOSE
            * lamp read the operator's SELECTION — CLOSE is `!steam_dump_auto && steam_dump_pct <= 50`
            * (pwr_board_wiring `imrppqxggbj`) — while 6b reads the VALVE. They part on a plant whose
@@ -1724,14 +1725,16 @@
           accs: [
             { p: 'letdown_orifice_a', op: '>', v: 0,
               ask: 'Press A+B 7 % on the LETDOWN card and check A+B 7 % is lit.',
-              label: 'Orifice A open' },
+              label: 'A+B 7 % lit: both orifices open' },
             { p: 'letdown_orifice_b', op: '>', v: 0,
-              ask: 'Check it is A+B 7 % that is lit, not A 3 % alone.',
+              cont: true,   /* #807: 7b ("check it is A+B 7 % that is lit, not A 3 % alone") restated 7a; B rides 7a's line */
               label: 'Orifice B open: A+B 7 % lit' },
           ],
           /* The `target` says "LETDOWN reads above 0 gpm" and there was no ring on that number
            * — the vocabulary had no key for it until #744. The orifice card is the press. */
-          hl: ['Letdown Orifices (CVCS)'], hl_watch: ['Letdown Flow'] },
+          /* #807 item 3 (OWNER: "the A+B 7% button should have the dashed line around it not the
+           * whole card. the glowing line should be around the card"). */
+          hl: ['Letdown — A+B 7%'], hl_watch: ['Letdown Orifices (CVCS)', 'Letdown Flow'] },
         /* PRESSURE CONTROL IN SERVICE (#624 / #619 item 14, 2026-09-04) *(OWNER, 2026-09-04:
          * "next", to the recommendation "measure the heaters-OFF drift from cold_shutdown and
          * land item 14's remaining halves")*. Mode 5 now boots with the heaters OFF and the
@@ -1790,7 +1793,9 @@
           /* No `hl_watch` on Primary Pressure here, deliberately: this step moves it 0.05 psi in
            * 10 plant-minutes, so pointing the player at the gauge would promise a change the
            * plant does not make. The NEXT step watches it, where it climbs 8 psi a minute. */
-          hl: ['Pressurizer Spray (PZR)'] },
+          /* #807 item 3 (OWNER: "step 8 should have the PZR SPRAY AUTO button lit with the dashed
+           * line and the card glowing"). */
+          hl: ['Pressurizer Spray — Auto'], hl_watch: ['Pressurizer Spray (PZR)'] },
         /* ⚠ THE FOUR PARAGRAPHS THAT FOLLOW ARE THE RETIRED DIAL STEP'S RECORD, KEPT BECAUSE THE
          * RULINGS IN THEM STILL BIND THE STEP THAT REPLACED IT (#755 item 11, 2026-09-15). The
          * step below is no longer "Raise SET PZR PRESSURE to 1700 psi" — it is the HEATER press,
@@ -1873,7 +1878,7 @@
          * is held is still the one that says open the valve. Neither number is re-litigated
          * here — read the #608 and #627 paragraphs above before moving either. */
         { text: 'Raise PRIMARY PRESSURE to the 665 psi accumulator window on the heaters.',
-          why: 'The heaters boil water in the pressurizer, and that steam sets the pressure of the whole reactor loop; the SET PZR PRESSURE box is already sitting at 1700 psi, the lowest it goes, so they go to full power and stay there until the plant gets near it. Pressure stops at 1700 rather than going straight to normal because of an automatic gate at 1972 psi: above that gate the emergency injection pumps re-arm, and with the steam side still cold they would fire on a healthy plant. On the way up the plant passes 665 psi, the accumulator window the next step needs.',
+          why: 'The heaters boil water in the pressurizer, and that steam sets the pressure of the whole reactor loop. The SET PZR PRESSURE box already reads 1700 psi, the lowest it goes, so the heaters run at full power until pressure nears it.\n\nPressure stops at 1700 psi rather than going straight to normal because of an automatic gate at 1972 psi. Above it the emergency injection pumps re-arm, and with the steam side still cold they would fire on a healthy plant.\n\nOn the way up the plant passes 665 psi, the accumulator window the next step needs.',
           aim: 'The accumulator valve can only be opened between 665 and 1615 psi, so pressure has to come up into that window first.',
           control: 'Pressurizer Heaters (PZR)', target: 'AUTO lit under HEATER; PRIMARY PRESSURE climbing to 665 psi',
           cmd: { action: 'set_heater', auto: true }, hold: 2700, wait_hint: false,
@@ -1918,7 +1923,7 @@
            * ALARM_DROP_PRIORITIES, so declaring `pzr_level_dev_high` would buy nothing and would
            * still be a claim about what this step causes. */
           expect_alarms: ['rhr_not_aligned'],
-          hl: ['Pressurizer Heaters (PZR)'], hl_watch: ['Primary Pressure'] },
+          hl: ['Pressurizer Heater — Auto'], hl_watch: ['Pressurizer Heaters (PZR)', 'Primary Pressure'] },
         /* THE WINDOW IS A TRANSIT, AND THE NUMBERS WERE STALE *(OWNER, 2026-09-02 playtest, #608
          * item 3, filed as a BLOCKER: "I couldnt open the valve, something was blocking it and the
          * step wasnt clear as to what i need to do")*.
@@ -1972,9 +1977,9 @@
           control: 'Accumulator valve', target: 'ACCUMULATORS tile no longer reads ISOLATED',
           cmd: { action: 'open_accumulator_valve' }, hold: 10,
           accs: [{ p: 'accumulator_valve_open', op: '>', v: 0,
-                   ask: 'Click the valve symbol inside the pulsing ring while PRIMARY PRESSURE reads 665 to 1615 psi, and check the ACCUMULATORS tile no longer reads ISOLATED.',
+                   ask: 'Open the accumulator valve while PRIMARY PRESSURE reads 665 to 1615 psi, and check the ACCUMULATORS tile no longer reads ISOLATED.',
                    label: 'ACCUMULATORS tile no longer reads ISOLATED' }],
-          hl: ['Accumulator valve'], hl_watch: ['Primary Pressure'] },
+          hl: ['Accumulator valve'], hl_watch: ['Accumulators', 'Primary Pressure'] },
         /* THE TEMPERATURE IS IN THE LINE ITSELF *(OWNER, 2026-09-03, #619 item 15: "step 9 is
          * looking for a temperature that it does not specify")*. It was in `target` and in the
          * acceptance line, both of which render — but the numbered instruction, which is what a
@@ -2150,7 +2155,7 @@
           hl: ['Steam Dump — Auto'],
           hl_watch: ['Steam Dump', 'Steam Dump Status', 'SG Pressure', 'Dump Setpoint'] },
         { text: 'Bring PRIMARY PRESSURE up to normal operating pressure.',
-          why: 'The second stage of the pressurization. Crossing 1972 psi re-arms the emergency injection, and that is safe now because the steam side is hot: STEAM PRESS sits near 1020 psi, far above the 328 psi that would trigger it. That is why this setting waited for the heatup to finish.',
+          why: 'This is the second half of the pressure climb. Crossing 1972 psi re-arms the emergency injection, and that is safe now because the steam side is hot: STEAM PRESS sits near 1020 psi, far above the 328 psi that would trigger it. That is why this step waited for the heatup to finish.',
           aim: 'With the steam side hot, PRIMARY PRESSURE can pass 1972 psi without firing the emergency injection.',
           wait_speed: 600, speed_text: true,
           control: 'Pressure SP', target: 'PRIMARY PRESSURE above 2175 psi',
@@ -2196,7 +2201,7 @@
          * full heatup. The mode it selects is the shell's to prove. */
         { text: 'Confirm Hot Standby.',
           aim: 'Confirming the end state catches a pressure that never came up or a steam side venting to the sky.',
-          why: 'Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. The control bank never moved: the pumps did all the heating. STEAM PRESS holding near 1020 psi with the ATMOS DUMP shut says the steam dump is carrying the heat, not the sky.',
+          why: 'Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. STEAM PRESS holding near 1020 psi with the ATMOS DUMP shut says the steam dump is carrying the heat, not the sky.',
           /* THE MODE CONFIRMATION WAS A DEAD FIELD (#739, 2026-09-13). This step carried BOTH an
            * `acc` and an `accs`, and `instructor_layer.js` `_gradeStep` is
            * `if (st.accs && st.accs.length) {...} else if (st.acc) {...}` — the `accs` branch wins,
@@ -2228,9 +2233,6 @@
             { p: 'pressure_mpa', op: '~', v: 15.41, tol: 0.244,
               ask: 'Check PRIMARY PRESSURE reads 2200 to 2270 psi. If it does not, set SET PZR PRESSURE to 2235 psi.',
               label: 'PRIMARY PRESSURE 2200 to 2270 psi' },
-            { p: 'control_bank_steps', op: '<', v: 1,
-              ask: 'Check CONTROL ROD POSITION still reads 0.',
-              label: 'CONTROL ROD POSITION 0' },
             { p: 'adv_valve_pct', op: '<', v: 1,
               ask: 'Check ATMOS DUMP reads 0 %.',
               label: 'ATMOS DUMP 0 %' },
@@ -2241,7 +2243,8 @@
           /* The step line names CONTROL ROD POSITION as the third thing to read — "still 0", the
            * leg's whole claim that the pumps did the heating — and it was the one named tile with
            * no ring on it (#744 template pass). */
-          hl_watch: ['Tavg', 'Primary Pressure', 'SG Pressure', 'Control Rod Position'] },
+          /* #807: CONTROL ROD POSITION moved to step 16 with its row; 15d reads the ATMOS DUMP card. */
+          hl_watch: ['Tavg', 'Primary Pressure', 'SG Pressure', 'ADV'] },
         /* HISTORY — SUPERSEDED 2026-09-24 by the board-graded rows below (the step no longer grades
          * `reactivity_pcm`; it grades SOURCE RANGE and STARTUP RATE). Kept for the #718 sweep.
          * #718 — THE DONE-WHEN NAMED A TAB, NOT A TILE. `acc` graded `reactivity_pcm`, and
@@ -2266,7 +2269,7 @@
            * the note moved onto the row with the step's action. Grading was regraded the same day, below.) */
           null, null,
           'There is no gauge for "how shut down" a reactor is. The signs are SOURCE RANGE counts holding at a steady background instead of climbing, and STARTUP RATE sitting at zero. With the control bank in and boron at the cold concentration, the core is a long way from critical.',
-          null, ['Source Range', 'Startup Rate'],
+          null, ['Source Range', 'Startup Rate', 'Control Rod Position', 'Boron Status'],
           /* REGRADED ON THE BOARD (OWNER RULING, 2026-09-24, selected "Grade board readings": "Grade
            * SOURCE RANGE and STARTUP RATE after a measurement pass, so the check-off matches what the
            * step tells them to read."). NET REACTIVITY < −300 pcm was true_state and ticked on ANY
@@ -2285,16 +2288,34 @@
            *   600 ppm (ρ −678 pcm at 60 min, SR 837 cps); a SLOW 200-step pull ticks only 5.9 min
            *   after the rods stop. INJECTION: the SR row removed, or the old −300 pcm row, and the
            *   dilution case completes in 0.1 min. */
-          { hold: 720, wait_hint: false,   /* the replay must see the 600 s window full: 1.2x */
+          { hold: 120, wait_hint: false,   /* the replay must see the 90 s window full: 1.33x */
             aim: 'The startup that follows assumes a core a long way from critical, so that is confirmed before handing over.',
             wait_speed: 10, speed_text: true,
-            note: 'SOURCE RANGE wanders by about a tenth either way with nothing moving; steady means it is not climbing, and the check-off watches it for ten plant-minutes before it ticks. STARTUP RATE on a shut-down core flickers between about −0.01 and +0.01. Either one climbing with the rods still means something is adding reactivity: stop and find out what moved.',
-            accs: [{ p: 'sr_counts_cps', op: 'steady', v: 0.012, window: 600,
+            note: 'SOURCE RANGE wanders a little with nothing moving; steady means it is not climbing, and the check-off watches it for a minute and a half of plant time. STARTUP RATE on a shut-down core flickers between about −0.01 and +0.01. A rod out or BORON STATUS reading DILUTING means something is adding reactivity: stop and find out what moved.',
+            /* #807 item 5 (OWNER: "make the read source range counts steady checkoff looser so it
+             * checks off quickly instead of waiting 10 plant minutes"). 600 s / 1.2 % -> 90 s / 8 %.
+             * MEASURED from this step's own arrival (states saved off the typical route, seeds 42/7/123):
+             * met at 1.50 / 1.52 / 1.60-1.70 plant-min at 1x / 10x / 60x, and NO un-tick in 30 plant-min
+             * held at any of the three speeds. 60 s / 2 % met at 1.0 min but un-ticked 9-17 times in 30 min
+             * at 10x (drift noise up to 4.5 % on this 168 cps count) — a Continue that flashes for a player
+             * who waits; 60 s / 8 % still un-ticked once at 60x. THE SHORT WINDOW CANNOT SEE A SLOW APPROACH, and no
+             * tolerance fixes that: a 918 -> 719 ppm dilution started here moves SOURCE RANGE only
+             * 168 -> 174 cps in 4 min, and a 60 s window ticks it at 1.0-2.3 min even at 0.2 %; a
+             * one-step-per-6-s pull ticks at 1.0-1.7 min. So the two things that CAN add reactivity
+             * to this plant are read directly instead, 16c and 16d, which is what the Background
+             * already names ("With the control bank in and boron at the cold concentration"). */
+            accs: [{ p: 'sr_counts_cps', op: 'steady', v: 0.08, window: 90,
                      ask: 'Check SOURCE RANGE counts read steady.',
                      label: 'SOURCE RANGE steady' },
                    { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025,   /* −0.025 to +0.025: every value the tile's toFixed(2) draws as −0.02 to +0.02 */
                      ask: 'Check STARTUP RATE reads −0.02 to +0.02.',
-                     label: 'STARTUP RATE −0.02 to +0.02' }] }),
+                     label: 'STARTUP RATE −0.02 to +0.02' },
+                   { p: 'control_bank_steps', op: '~', v: 0, tol: 0.5,   /* moved from 15c (#807); `~` RE-GRADES, a `<` row latches on entry and cannot see a pull made during the step (measured: a 200-step pull completed the step at 5.1 min) */
+                     ask: 'Check CONTROL ROD POSITION reads 0.',
+                     label: 'CONTROL ROD POSITION 0' },
+                   { p: 'boron_status_hold', op: '~', v: 1, tol: 0.5,   /* the tile's own HOLD test (instructor_layer); `~` so a dilution started during the step un-ticks it (a `>` row latched on entry and the step completed at 1.1-1.8 min mid-dilution) */
+                     ask: 'Check BORON STATUS reads HOLD.',
+                     label: 'BORON STATUS HOLD' }] }),
         /* #685 — THIS STEP GLOWED NOTHING. No `control` and no `hl`, on a "verify the
          * indication" step whose whole content is one gauge: one of four such steps measured in
          * the shipped pool. The two rod/boron labels are in the WATCH list, not the press list —

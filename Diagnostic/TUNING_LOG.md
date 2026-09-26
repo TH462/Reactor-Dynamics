@@ -29,6 +29,34 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-develop-a (#807 items 3–6: Mode 5 to Mode 3 highlights, step 16 in 1.6 plant-minutes, wording pass)
+
+Scratch lane `exp/807a`. Traps only; the diff carries the rest.
+
+- **A STEADINESS ROW SHORT ENOUGH TO TICK IN A MINUTE CANNOT SEE A SLOW APPROACH — no tolerance
+  fixes it.** Measured from step 16's own arrival (states saved off the typical route, seeds
+  42/7/123, IL.gradeSteady swept over window 30–600 s × drift 0.2–2 %): a 918 → 719 ppm dilution
+  started there moves SOURCE RANGE 168 → 174 cps in 4 min, and every 60 s window ticks it at
+  1.0–2.3 min even at 0.2 %; a one-step-per-6-s pull ticks at 1.0–1.7 min. So the step now reads the
+  two things that can add reactivity directly: CONTROL ROD POSITION (moved from 15c) and BORON
+  STATUS HOLD (new derived param `boron_status_hold`, the tile's own `boron_adjust === 0` test).
+  Result on the live route runtime: typical (seeds 42/7/123), all four mistake routes and the
+  round-trip heatup (chain, 3 seeds) tick step 16 at 1.63 plant-min (was 10.1), no flash or row
+  un-tick; a dilution or a 200-step pull started at step 16 never ticks (30 min bound).
+- **A STEADY ROW'S TOLERANCE IS SET BY HOLDING IT, NOT BY TICKING IT.** 60 s / 2 % met at 1.0 min
+  and then un-ticked 9–17 times in 30 held plant-minutes at 10x (half-mean drift noise up to 4.5 %
+  on a 168 cps count; 10 % at 60x) — invisible to the route gate, whose player presses Continue
+  3 s after it lights. 90 s / 8 %: zero un-ticks in 30 min at 1x, 10x and 60x, three seeds.
+- **A `<` / `>` ROW LATCHES ON ENTRY; `~` RE-GRADES.** The first cut graded the two new rows with
+  `<`/`>`: both were met on arrival, latched, and the step completed mid-dilution at 1.1–1.8 min and
+  with the bank at 200 at 5.1 min. A row whose job is "nothing moves during this step" must be `~`.
+- **Highlights: pulse the button, ring the card.** Four press targets had no board key, so their
+  steps pulsed the whole card. Rendered in headless Chromium: each pulse now sits inside its steady
+  card ring (step 7: button 81×25 at 1074,702 inside card 92×178 at 1069,580). Same class OUTSIDE
+  heatup, not fixed (another lane): 28 `hl` entries resolve to a card — `pwr_raise_power`/
+  `pwr_lower_power`/`pwr_shutdown` `Turbine Load` (11), `pwr_cooldown` 3/6/9/10/11/12, `pwr_tmi2_incident`
+  11/14/15/19/20, `pwr_shutdown` 3, `pwr_raise_power` 10; and `pwr_cooldown` 7's ask still says
+  "inside the pulsing ring".
 ## Session log — 2026-09-26-develop-c (#807 item 1: boron reached the loop the instant it was asked for)
 
 Owner, 1.8.0-rc6 playtest: "When setting boron the changes start immediately which makes it not seem

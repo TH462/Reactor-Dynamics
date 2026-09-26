@@ -1596,6 +1596,17 @@
     steam_dump_press_mode: function (cs) {
       var m = cs ? cs.steam_dump_mode : undefined;
       return typeof m === 'string' ? (m === 'pressure' ? 1 : 0) : undefined;
+    },
+    /* BORON STATUS READS HOLD (#807 item 5, `pwr_heatup` 16d) — the card's status word is
+     * `boron_adjust > 0 ? BORATING : < 0 ? DILUTING : HOLD` (pwr_board_wiring `ims3wy5oym4`), so
+     * this is exactly the tile's own test, 1 when it reads HOLD. It exists because a SOURCE RANGE
+     * steadiness row short enough to tick in a plant-minute cannot see a dilution: MEASURED from
+     * the heatup's own step-16 arrival (seeds 42/7/123), a 918 -> 719 ppm dilution climbs the
+     * count 168 -> 174 cps in 4 min and a 60 s steady window ticks it inside 1.0-2.3 min, while
+     * `boron_adjust` reads -0.05 from the first broadcast. */
+    boron_status_hold: function (cs) {
+      var r = cs ? cs.boron_adjust : undefined;
+      return typeof r === 'number' ? (r === 0 ? 1 : 0) : undefined;
     }
   };
   /* A STATUS WORD THE BOARD LIGHTS A LAMP FROM (2026-09-25, `pwr_heatup` 1c "Check OFF is lit on the
