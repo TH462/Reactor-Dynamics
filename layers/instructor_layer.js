@@ -305,7 +305,10 @@
       if (!g) return { ok: false, why: 'no_group' };
       return { ok: true, x: (g.position_pct || 0) / 100, counts: counts };
     }
-    function newTable() { return { points: [], c0: null, t: null, plant: null }; }
+    /* `gen` counts the clears a WALKTHROUGH made (a procedure authoring `clear_1m`, layman pass 8
+     * S-1): the panel cannot see `loadChecklist`, so it watches this number in the snapshot and
+     * clears its own copy when it moves. The panel's own Clear does not bump it (it cleared itself). */
+    function newTable() { return { points: [], c0: null, t: null, plant: null, gen: 0 }; }
     function clear(tbl) { tbl.points = []; tbl.c0 = null; tbl.t = null; }
     /* First point is the baseline C0 (1/M = 1.0); later ones are C0/C, kept sorted by rod
      * position. `t` is the sim time of the capture, which the rewind rule compares against. */
@@ -446,6 +449,11 @@
   InstructorLayer.prototype.loadChecklist = function (proc, meta) {
     if (!proc || !proc.steps || !proc.steps.length) return;
     this._checkpointRequested = true;   // checkpoint 0 for the walkthrough's step rewind (#660 item 17)
+    /* A NEW STARTUP STARTS A NEW 1/M PLOT (layman pass 8 S-1, 2026-09-26). The table only cleared on
+     * plant change, clock back or Clear, so a SECOND `pwr_startup` in one session inherited the first
+     * one's baseline and points: predictions 208 -> 203 -> 205 -> 226 against the day's own counts,
+     * and 9a's "3 short" graded off them. A procedure whose step 4 is a baseline authors `clear_1m`. */
+    if (proc.clear_1m && this.oneOverM) { OneOverMCore.clear(this.oneOverM); this.oneOverM.gen = (this.oneOverM.gen || 0) + 1; }
     this.checklist = {
       proc: proc,
       procedure_id: (meta && meta.procedure_id) || proc.id,
@@ -1732,6 +1740,33 @@
     return { value: v, graded_by: by };
   }
 
+  /* `mean_s` — A LATCHING ROW GRADED ON THE TRAILING MEAN, NOT ON FIVE NOISY SAMPLES (2026-09-26,
+   * `pwr_startup` 5a-8a, the owner's "Guide, count is the target" selection). MEASURED (full stack,
+   * `hot_zero_power`, seeds 42/7, 900 s at 10x, one grading a plant-second): the SOURCE RANGE tile
+   * carries sigma 31-33 cps at 7.0e2 (4.5 %) and 400 cps at 6.6e3, so the ACC_STABLE_N debounce —
+   * five consecutive readings at or over the row — latches with the SETTLED count well under it:
+   * bank 67 (mean 672 cps) latched after 354 s, bank 71 (688) after 183-593 s, where the count
+   * really reaches 695 at bank 73. A 30 s mean has sigma under 1 %, so the row ticks within about a
+   * bank of where the count truly is. The row still LATCHES (it is not a hold), the op is unchanged,
+   * and the ring restarts when the clock goes back, as `gradeSteady`'s does. Live runtime only:
+   * the replay harness grades the raw reading, which only ever ticks it SOONER. */
+  InstructorLayer.gradeMean = function (bag, snapshot, pred, predMet) {
+    var r = readParam(snapshot, pred.p);
+    var t = snapshot && snapshot.metadata ? snapshot.metadata.sim_time : null;
+    var out = { met: false, value: r.value, graded_by: r.graded_by };
+    if (!bag.s) bag.s = [];
+    var s = bag.s;
+    if (t == null || !isFinite(t) || typeof r.value !== 'number' || !isFinite(r.value)) return out;
+    if (s.length && t < s[s.length - 1].t) s.length = 0;
+    s.push({ t: t, v: r.value });
+    while (s.length > 1 && t - s[1].t >= pred.mean_s) s.shift();
+    if (t - s[0].t < pred.mean_s) return out;               // the window is not full yet
+    var sum = 0; for (var i = 0; i < s.length; i++) sum += s[i].v;
+    out.value = sum / s.length;
+    out.met = predMet(out.value, pred);
+    return out;
+  };
+
   InstructorLayer.prototype._grade = function (snapshot, pred) {
     var r = readParam(snapshot, pred.p);
     // `value` rides along for consumers that display the reading (#395's
@@ -2141,6 +2176,10 @@
         if (BAG_OPS[en.op]) {
           if (!ax.bag) ax.bag = { s: [] };
           g = InstructorLayer.gradeBagged(ax.bag, snapshot, en);
+        } else if (en.mean_s > 0) {
+          if (!ax.bag) ax.bag = { s: [] };
+          var selfM = this;
+          g = InstructorLayer.gradeMean(ax.bag, snapshot, en, function (v, pr) { return selfM._predMet(v, pr); });
         } else g = this._grade(snapshot, en);
         if (en.below_1m != null) {         /* 9a's "3 short of the 1/M prediction" */
           InstructorLayer.applyBelow1m(g, this._oneOverMPredSteps(snapshot), en);
@@ -2418,7 +2457,7 @@
       /* The 1/M table the grader holds (RD.OneOverMCore): how many points, and the prediction
        * the panel prints off them, in steps (null = none printed). Read by the replay harness,
        * which grades `below_1m` off the same number the live row does. */
-      one_over_m: this.oneOverM ? { points: this.oneOverM.points.length,
+      one_over_m: this.oneOverM ? { points: this.oneOverM.points.length, gen: this.oneOverM.gen || 0,
                                     pred_steps: this._oneOverMPredSteps(this._lastSnapshot) } : null,
       ui_policy: this.uiPolicy,
       highlight: this.mode === 'follow'

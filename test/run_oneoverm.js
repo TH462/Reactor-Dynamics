@@ -84,6 +84,7 @@ require(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_instruments.js'));
 ].forEach(function (f) { require(path.join(SRC, f + '.js')); });
 require(path.join(__dirname, '..', 'layers', 'instructor_layer.js'));
 require(path.join(__dirname, '..', 'layers', 'simulation_service.js'));
+require(path.join(__dirname, '..', 'ui', 'manual_procedures.js'));   // section 2c starts the startup walkthrough
 
 /* the panel itself — loaded from SOURCE so --inject can hand it a reverted copy */
 var panelSrc = fs.readFileSync(PANEL, 'utf8');
@@ -217,6 +218,34 @@ ck('...and the panel\'s Clear clears the grader\'s table too',
    !!oomG && oomG.points === 0 && oomG.pred_steps == null,
    'grader ' + (oomG ? oomG.points + ' points, step ' + oomG.pred_steps : 'none'));
 press(win, 'plot');   /* section 3 asserts that a plant change clears a NON-empty plot */
+
+/* ---- 2c. A NEW STARTUP STARTS A NEW PLOT (layman pass 8 S-1, 2026-09-26). The table cleared only
+ * on plant change, clock back or Clear, so a SECOND Mode 3 -> Mode 1 walkthrough kept the first
+ * one's baseline and points (the reviewer's predictions 208 -> 203 -> 205 -> 226, "3 short" at 223
+ * already critical). `pwr_startup` authors `clear_1m`: loading it clears the grader's table and
+ * bumps `one_over_m.gen`, which the panel watches. A walkthrough WITHOUT the flag leaves the plot.
+ * INJECTIONS, proven in place 2026-09-26: the `loadChecklist` clear line removed -> all three
+ * walkthrough checks red (grader keeps its point; the panel, never told, keeps its own); the panel's gen check removed -> .2 red
+ * alone (grader 0 points, panel message unchanged). */
+head('2c. starting the Mode 3 -> Mode 1 walkthrough clears the 1/M plot (layman pass 8 S-1)');
+w.tick(1);
+var oomB = w.snap().instructor.one_over_m;
+ck('precondition: the plot holds a point from before the walkthrough', oomB.points >= 1, oomB.points + ' point(s)');
+w.cmd({ action: 'start_checklist', procedure_id: 'pwr_startup' });
+w.tick(1); RD.OneOverM.tick(w.snap());
+var oomS = w.snap().instructor.one_over_m;
+ck('starting pwr_startup clears the grader\'s table', oomS.points === 0 && oomS.pred_steps == null,
+   'grader ' + oomS.points + ' points, step ' + oomS.pred_steps + ', gen ' + oomB.gen + ' -> ' + oomS.gen);
+ck('...and the panel\'s own copy, with a message that says why', /new startup walkthrough/.test(msgOf(win)),
+   'msg="' + msgOf(win) + '"');
+w.cmd({ action: 'stop_checklist' }); w.tick(1);
+press(win, 'plot'); w.tick(1);
+w.cmd({ action: 'start_checklist', procedure_id: 'pwr_raise_power' });
+w.tick(1); RD.OneOverM.tick(w.snap());
+var oomR = w.snap().instructor.one_over_m;
+ck('...a walkthrough WITHOUT clear_1m leaves the plot alone (it is the flag, not any start)',
+   oomR.points === 1 && !/new startup walkthrough/.test(msgOf(win)), 'grader ' + oomR.points + ' point(s), msg="' + msgOf(win) + '"');
+w.cmd({ action: 'stop_checklist' }); w.tick(1);
 
 /* ============================================================ 3. another supported plant */
 head('3. the guard was NARROWED, not deleted — another supported plant still works');

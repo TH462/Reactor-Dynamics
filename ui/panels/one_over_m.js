@@ -60,6 +60,7 @@
    * from the samples this panel sends, and the two must be the same table (2026-09-24). */
   var tbl = { points: [], c0: null, t: null };   // points: [{ x: fraction withdrawn, counts, y: C0/counts }]
   var lastPlant = null;
+  var lastGen = null;        // the grader's walkthrough-clear counter (s.instructor.one_over_m.gen)
   function core() { return RD.OneOverMCore; }
 
   /* THE STEPS AXIS READS THE BANK LIVE, AND THE NUMBER IS NEVER TYPED HERE (#746, the #707
@@ -490,6 +491,13 @@
     // plant change, reset, or a rewind to before the last captured point.
     tick: function (s) {
       if (!s || !s.metadata) return;
+      /* a walkthrough that starts a new startup (`clear_1m`) cleared the grader's table; clear this
+       * copy with it, or the panel and 9a's "3 short" read two different plots (layman pass 8 S-1) */
+      var oi = s.instructor && s.instructor.one_over_m, gen = oi && typeof oi.gen === 'number' ? oi.gen : null;
+      if (gen != null) {
+        if (lastGen != null && gen !== lastGen && tbl.points.length) clearAll('new startup walkthrough — plot cleared');
+        lastGen = gen;
+      }
       var plant = s.metadata.plant_id;
       if (plant !== lastPlant) {
         lastPlant = plant;

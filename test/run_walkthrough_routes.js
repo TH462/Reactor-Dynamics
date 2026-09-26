@@ -80,10 +80,15 @@ var ROUTES = {
        * that range not that hitting the lower part of the range will put you over the target. So
        * let's leave then")*. The player pulls to the window's bottom, lets the counts settle, and
        * keeps withdrawing inside the window until SOURCE RANGE meets the row — the top at most. */
-      '#5': { policy: 'pull_plot', to: 90, top: 110 },     // "90 to 110" (#807 item 8, 2026-09-26)
-      '#6': { policy: 'pull_plot', to: 150, top: 175 },    // "150 to 175"
-      '#7': { policy: 'pull_plot', to: 180, top: 194 },    // "180 to 194" (owner "A", 2026-09-25)
-      '#8': { policy: 'pull_plot', to: 195, top: 205 },    // "195 to 205"
+      /* SUPERSEDED FOR THE TYPICAL ROUTE 2026-09-26 (807f) — the COUNT is the target *(OWNER RULING
+       * relayed via the workbench session, selected "Guide, count is the target"; supersedes his
+       * 2026-09-24 "Rod window leads")*: the player holds WITHDRAW until the tile reads the count,
+       * the window is only "about where this lands"; short at its top -> single taps. The window-led
+       * route above survives as `mistake_base` (the reviewer's stops at 195 / 203). */
+      '#5': { policy: 'pull_count', top: 110 },     // window 90 to 110 (#807 item 8)
+      '#6': { policy: 'pull_count', top: 175 },     // 150 to 175
+      '#7': { policy: 'pull_count', top: 194 },     // 180 to 194 (owner "A", 2026-09-25)
+      '#8': { policy: 'pull_count', top: 205 },     // 195 to 205
       // 9 and 10 are slow by the card's own design (a tap, a read once the rate has stopped falling —
       // about 10 minutes — repeat; then 30 to 60 minutes of climb after a 0.06 to 0.10 read), so their
       // bound is the card's, not 3 x hold. Measured 2026-09-24: step 9 21.6 / 26.7 min, step 10
@@ -91,8 +96,8 @@ var ROUTES = {
       '#9': { policy: 'approach', short: 3, min_rate: 0.15, max_rate: 1.0, dwell: 300, tap: 1, bound_s: 5400 },   // "five plant-minutes ... until +0.15" (#807 item 10)
       '#10': { policy: 'observe', bound_s: 5400, stated_max_min: 10 },   // card: "about 2 to 6 plant-minutes" after the +0.15 (#807; measured 1.8 / 5.5 / 2.6)
       '#11': { policy: 'wait_tap', rate_below: 0.005, power_below: 0.5, dwell: 300 },
-      '#12': { policy: 'hold_below', p: 5 },
-      '#13': { policy: 'nudge', steps: 13, speed: 'slow' },
+      '#12': { policy: 'observe', stated_max_min: 5 },                            // "leave the rods alone until ... 1.0 % ... STARTUP RATE +0.10 or less" (#807 item 11)
+      '#13': { policy: 'pulses', k: 2, rate_le: 0.105, until_p: 5.05, stated_max_min: 8 },   // "withdraw 2 steps, wait for +0.10 or less, repeat until above 5 %"
       '#14': { policy: 'rows_then_cmd' },
       '#15': { policy: 'block_when', p: 9.5, trip_id: 'ir_high', param: 'ir_high_blocked' },
     },
@@ -109,7 +114,10 @@ var ROUTES = {
     mistakes: [
       { id: 'overshoot_235', kind: 'overshoot', at: '#9', set: { policy: 'approach', to: 235, speed: 'normal' } },
       { id: 'undershoot_10', kind: 'undershoot', at: '#9', set: { short: 10 } },
-      { id: 'window_overshoot', kind: 'overshoot', at: '#5', set: { to: 120 } },
+      // lets go of WITHDRAW at bank 69 on a noisy 7.0e2 flicker, at 1x (0.1 s gradings), and waits ten
+      // plant-minutes before holding again: the settled count there is ~680, so 5a must NOT tick (807f)
+      { id: 'flicker_release_5', kind: 'undershoot', at: '#5', set: { rel_at: 69, wait_s: 600, at_speed: 1 } },
+      { id: 'window_overshoot', kind: 'overshoot', at: '#5', set: { policy: 'pull_plot', to: 120 } },   // the old window-led pull, held 10 past its top
       { id: 'plot_early', kind: 'press early', at: '#8', set: { plot_rate: 99 } },
       { id: 'double_plot', kind: 'double press', at: '#6', set: { repeat: 2 } },
       { id: 'fast_tap', kind: 'tap at speed', at: '#9', set: { tap: 8 } },
@@ -120,6 +128,8 @@ var ROUTES = {
       // plant settles at LOAD 10 MWe with REACTOR POWER under 10 % — the route that made the old
       // 10.05 % step-17 floor unfinishable.
       { id: 'hold_to_5pct', kind: 'overshoot', at: '#13', set: { policy: 'hold_until', p: 5.05, speed: 'slow' } },
+      // (hold_to_5pct is ALSO 13a's pulls taken back to back with no rate wait: measured identical,
+      // bank 229, peak STARTUP RATE 0.46 DPM, completes — so no separate route, #807 item 11)
       // the second block pressed 20 plant-minutes late: step 17 is then graded on a plant that
       // has SETTLED at LOAD 10 MWe (layman pass 1's route to the 10.05 % strand, §2al)
       { id: 'late_second_block', kind: 'press late', at: '#16', set: { delay_s: 1200 } },
@@ -358,7 +368,10 @@ var MUTATIONS = [
     /* RE-AIMED 2026-09-26 (#807): 9b now hands step 12 a plant at STARTUP RATE 0.12-0.14 (the +0.15
      * approach), so the reconstructed `< 0.1` no longer ticks on entry and this went BLIND. `< 0.2`
      * is the same defect (a rate-only row the entering plant already satisfies) on today's plant. */
-    mutate: function (P) { P.steps[11].accs[1] = { cont: true, p: 'startup_rate_dpm', op: '<', v: 0.2, label: 'rate row' }; } },
+    /* RE-AIMED 2026-09-26 (807f): step 12 is now "power 1 %, then STARTUP RATE +0.10 or less", ORDERED,
+     * so a mutated rate row behind the power row is blind. The defect restated on the new step: the
+     * power row and the order gone, a rate-only `< 0.2` row the entering plant (0.13) satisfies. */
+    mutate: function (P) { delete P.steps[11].accs_ordered; P.steps[11].accs = [{ p: 'startup_rate_dpm', op: '<', v: 0.2, label: 'rate row' }]; } },
   /* #807 item 10 (2026-09-26): the settle row is gone and 9b latches on a TARGET (>= 0.145, first met
    * at 212-213). Put the old 0.055 floor back on that latching row and it ticks on the first
    * falling five-minute read low in the approach, and step 10 takes the slow climb the old card had. */
@@ -369,6 +382,11 @@ var MUTATIONS = [
      * mutation was BLIND at dwell 300 — the typical route finished identically, 85.8 plant-min) */
     override: { '#9': { policy: 'approach', short: 3, min_rate: 0.15, max_rate: 1.0, dwell: 330, tap: 1, bound_s: 5400 } },
     mutate: function (P) { P.steps[8].accs.forEach(function (e) { if (e.p === 'startup_rate_dpm' && e.op === '>=') e.v = 0.055; }); } },
+  /* 807f: the count rows graded on five raw readings again (no `mean_s`) — the tile's noise (sigma 4.5 %)
+   * ticks 5a at bank 69, where the count settles near 680 */
+  { id: 'no_mean_counts', route: 'flicker_release_5', expect: 'early',
+    why: "5a-8a's count rows without `mean_s` (a noisy flicker latches 5a with the settled count under 7.0e2)",
+    mutate: function (P) { [4, 5, 6, 7].forEach(function (i) { delete P.steps[i].accs[0].mean_s; }); } },
   { id: 'no_latch_9a', route: 'typical_pass3', expect: 'flash',
     why: "9a without `latch` (a WITHDRAW tap un-ticked it, layman pass 2)",
     mutate: function (P) { delete P.steps[8].accs[0].latch; } },
@@ -716,6 +734,14 @@ function runJob(legId, routeId, mutId, ctx) {
     var tF = S.lastReadings.tavg_F, pw = S.lastReadings.power_pct;   // the step's Tavg / power span (stepTable prints it)
     out[k].tlo = Math.min(out[k].tlo == null ? 1e9 : out[k].tlo, tF); out[k].thi = Math.max(out[k].thi == null ? -1e9 : out[k].thi, tF);
     out[k].plo = Math.min(out[k].plo == null ? 1e9 : out[k].plo, pw);
+    out[k].phi = Math.max(out[k].phi == null ? -1e9 : out[k].phi, pw);   // peak power / startup rate (#807 item 11)
+    if (S.lastReadings.sur_dpm != null) out[k].surhi = Math.max(out[k].surhi == null ? -1e9 : out[k].surhi, S.lastReadings.sur_dpm);
+    /* WR_TRACE=<step,step>: a measurement knob, never the gate — [min into step, bank, power %,
+     * startup rate, source range] every 15 plant-seconds on the named steps */
+    if (process.env.WR_TRACE && (',' + process.env.WR_TRACE + ',').indexOf(',' + (k + 1) + ',') >= 0 && t() - (S.trT == null ? -1e9 : S.trT) >= 15) {
+      S.trT = t(); (out[k].trace = out[k].trace || []).push([+(el / 60).toFixed(2), S.lastReadings.bank, +pw.toFixed(3),
+        S.lastReadings.sur_dpm != null ? +S.lastReadings.sur_dpm.toFixed(3) : null, S.lastReadings.sr_cps != null ? Math.round(S.lastReadings.sr_cps) : null]);
+    }
     /* --- invariant: trip / bound ------------------------------------------------------- */
     var scr = !!((s.rps_state && s.rps_state.scrammed) || (s.true_state && s.true_state.scrammed));
     if (scr && !scriptsScram && !scrAtEntry) {
@@ -733,7 +759,7 @@ function runJob(legId, routeId, mutId, ctx) {
     for (var ri = 0; ri < rows.length; ri++) { var ee = (st.accs || [])[ri] || {}; if (!rows[ri].met && !ee.hidden && ee.wait_speed) { rung = ee.wait_speed; break; } }
     /* no authored rung (an unported leg): a step whose settle is 30+ plant-minutes is one the
      * player rides at WARP, as the ported legs' rungs say; everything else at 10x. */
-    setSpeed(rung || st.wait_speed || (st.acc && st.acc.wait_speed) || ((st.hold || 0) >= 1800 ? 600 : 10));
+    setSpeed(S.spec.at_speed || rung || st.wait_speed || (st.acc && st.acc.wait_speed) || ((st.hold || 0) >= 1800 ? 600 : 10));
     if (el < Math.max(ENTRY_S, S.spec.delay_s || 0)) continue;   // the player reads (or dawdles) before acting
     /* --- Rewind mid-step (once per run) ---------------------------------------------- */
     if (S.spec.rewind_after != null && !rewound && el >= S.spec.rewind_after) {
@@ -840,6 +866,64 @@ function runJob(legId, routeId, mutId, ctx) {
           for (var q = 0; q < reps && ok; q++) ok = plot();
           if (ok) { S.memo.plotted = true; S.acts++; }
         }
+      }
+      return;
+    }
+    /* "Hold CONTROL WITHDRAW until SOURCE RANGE reads <target>" — THE COUNT LEADS (owner ruling
+     * relayed 2026-09-26, "Guide, count is the target"). The player holds WITHDRAW while the TILE
+     * reads under the row's target and lets go the broadcast it first reads the target. If the
+     * row has not ticked once the rods have been still 60 s with STARTUP RATE at +0.03 or less,
+     * they go back to WITHDRAW — one step at a time (`tap_top`) once the window top is reached,
+     * the card's "keep tapping one step at a time and let the rate settle". Plots as pull_plot. */
+    if (P === 'pull_count') {
+      var row0 = (st2.accs || [])[0] || {}, rd = pv(row0.p), m0 = rows2[0] && rows2[0].met;
+      if (S.memo.tickBank == null && m0) {
+        S.memo.tickBank = bank(); out[cur].tick_bank = bank(); out[cur].tick_sr = Math.round(rd);
+        /* THE EARLY TICK (807f): the tile's own mean over the 30 s before the tick, against the row */
+        var w30 = (S.memo.sr || []).filter(function (x) { return x[0] >= t() - 30; });
+        var m30 = w30.length ? w30.reduce(function (a, x) { return a + x[1]; }, 0) / w30.length : rd;
+        out[cur].tick_sr30 = Math.round(m30);
+        /* 1 % slack: the row's own 30 s ring and this one differ by a sample at each end (measured: 693
+         * against 695, 1349 against 1350 on routes whose row IS mean-graded); the defect is 674 at bank 69 */
+        if (m30 < row0.v * 0.99) flags.push({ kind: 'early_tick', step: cur + 1, bank: bank(), mean30: Math.round(m30), v: row0.v, t_min: (t() - T0) / 60 });
+      }
+      if (S.memo.lb2 !== bank() || moving()) { S.memo.lb2 = bank(); S.memo.still = t(); }
+      if (!m0 && !moving()) {
+        var holding = !S.memo.rel, settled = S.memo.rel && t() - S.memo.still >= (spec.wait_s || 60) && pv('startup_rate_dpm') <= 0.03;
+        if (holding && (rd >= row0.v || (spec.rel_at != null && !S.memo.relAt && bank() >= spec.rel_at))) {
+          if (spec.rel_at != null) S.memo.relAt = true; S.memo.rel = true; S.memo.still = t(); out[cur].rel_bank = bank(); out[cur].rel_sr = Math.round(rd); }
+        else if (holding && spec.top != null && bank() >= spec.top) { S.memo.rel = true; S.memo.tapOnly = true; S.memo.still = t(); out[cur].at_top = true; }   // "short at the window top": stop, then single taps
+        else if (holding || settled) {
+          if (settled) { out[cur].resumes = (out[cur].resumes || 0) + 1; if (spec.top != null && bank() >= spec.top) S.memo.tapOnly = true; }
+          S.memo.rel = S.memo.tapOnly ? true : false; S.acts++;
+          if (spec.cap == null || bank() < spec.cap) nudge(1, S.memo.tapOnly ? 'slow' : (spec.speed || 'normal'));
+          S.memo.still = t();
+        }
+      }
+      if (m0 && !S.memo.rel) { S.memo.rel = true; if (out[cur].rel_bank == null) { out[cur].rel_bank = bank(); out[cur].rel_sr = Math.round(rd); } }
+      /* the settled count the point is taken on: the tile's mean over the 60 s before the press */
+      (S.memo.sr = S.memo.sr || []).push([t(), rd]);
+      while (S.memo.sr.length && S.memo.sr[0][0] < t() - 60) S.memo.sr.shift();
+      var pRow = -1;
+      (st2.accs || []).forEach(function (e, i) { if (cmdAction(e.cmd) === 'plot_1m_point') pRow = i; });
+      if (m0 && !moving() && pRow >= 0 && !S.memo.plotted && !(rows2[pRow] && rows2[pRow].met) &&
+          pv('startup_rate_dpm') <= (spec.plot_rate != null ? spec.plot_rate : 0.03)) {
+        var okP = true; for (var qq = 0; qq < (spec.repeat || 1) && okP; qq++) okP = plot();
+        if (okP) {
+          S.memo.plotted = true; S.acts++; out[cur].plot_bank = bank(); out[cur].plot_sr = Math.round(rd);
+          out[cur].plot_sr60 = Math.round(S.memo.sr.reduce(function (a, x) { return a + x[1]; }, 0) / S.memo.sr.length);
+        }
+      }
+      return;
+    }
+    /* "Withdraw `k` steps at SLOW, wait for STARTUP RATE to fall to `rate_le` or less, repeat until
+     * REACTOR POWER reads above `until_p`" (#807 item 11, the climb to 5 % from the startup rate). */
+    if (P === 'pulses') {
+      if (process.env.WR_PULSE) { var wp = process.env.WR_PULSE.split(','); spec = { k: +wp[0], rate_le: +wp[1], until_p: spec.until_p, speed: spec.speed }; }   // measurement knob
+      if (!moving() && pv('power_pct') < spec.until_p && pv('startup_rate_dpm') <= spec.rate_le &&
+          (S.memo.from == null || bank() >= S.memo.from + spec.k) &&
+          t() - (S.memo.lastPull == null ? -1e9 : S.memo.lastPull) >= (spec.dwell || 0)) {
+        S.memo.lastPull = t(); S.memo.from = bank(); nudge(spec.k, spec.speed || 'slow'); S.acts++; out[cur].pulls = (out[cur].pulls || 0) + 1;
       }
       return;
     }
@@ -1154,6 +1238,9 @@ function verdicts(r) {
   var fz = fl('flash').concat(fl('untick')).concat(fl('cmdwait'));
   v.flash = { ok: fz.length === 0, name: 'Continue never lights and goes out again (flash), no drawn row un-ticks, no step waits on a rod press the gauge does not call for',
     note: fz.map(function (x) { return x.kind + ' step ' + x.step + (x.row ? ' row ' + x.row + ' (' + x.label + ')' : '') + (x.lit_s != null ? ' lit ' + f(x.lit_s) + ' s' : '') + (x.held_s != null ? ' after ' + f(x.held_s) + ' s met' : '') + ' @ ' + f(x.t_min) + ' min'; }).join('; ') || 'none' };
+  var et = fl('early_tick');
+  v.early = { ok: et.length === 0, name: 'no count row ticks while the tile AVERAGES under its target (count is the target, 807f)',
+    note: et.map(function (x) { return 'step ' + x.step + ' at bank ' + x.bank + ', 30 s mean ' + x.mean30 + ' against ' + x.v; }).join('; ') || 'none' };
   var rf = fl('rewind_refused');
   if (rf.length) v.rewind = { ok: false, name: 'the walkthrough Rewind lands', note: rf[0].why };
   return v;

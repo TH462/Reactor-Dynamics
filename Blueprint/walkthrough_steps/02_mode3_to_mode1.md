@@ -121,9 +121,9 @@ The panel fits the last three points, so each new point sharpens the prediction.
 
 *One point cannot make a line. The second gives the plot its first prediction of where the reactor goes critical.*
 
-()5a. Hold CONTROL WITHDRAW at MED until CONTROL ROD POSITION reads 90 to 110 and SOURCE RANGE reads 7.0e2 or more.
+()5a. Hold CONTROL WITHDRAW at MED until SOURCE RANGE reads 7.0e2 or more.
 
-Note: If CONTROL ROD POSITION reaches 110 and SOURCE RANGE is still under 7.0e2, stop and wait: the step 2 dilution is still finishing, and the counts climb to 7.0e2 on their own.
+Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 75 to 80; the position shifts with boron and recent power, the count does not. If SOURCE RANGE is still under 7.0e2 at 110, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.
 
 ()5b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point.
 
@@ -147,11 +147,13 @@ While the reactor is shut down, SOURCE RANGE counts are the only thing that show
 
 *Each point taken closer to critical pulls the prediction in toward the real critical position.*
 
-()6a. Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 150 to 175 and SOURCE RANGE reads 1.4e3 or more.
+()6a. Hold CONTROL WITHDRAW until SOURCE RANGE reads 1.4e3 or more.
+
+Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 150 to 155. If SOURCE RANGE is still under 1.4e3 at 175, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.
 
 ()6b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the predicted rod position the panel prints.
 
-Note: STARTUP RATE reaches +0.03 or less about a minute and a half after the rods stop.
+Note: STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop.
 
 Suggested time warp: 10×, set by itself once the rods start moving.
 
@@ -171,9 +173,9 @@ That number still reads high. It improves with every point.
 
 *Near critical each rod step is worth more, so the pulls get smaller from here.*
 
-()7a. Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 180 to 194 and SOURCE RANGE reads 3.0e3 or more.
+()7a. Hold CONTROL WITHDRAW until SOURCE RANGE reads 3.0e3 or more.
 
-Note: This window is only 14 steps wide, under 2 seconds of holding at 10×, so watch the position, not the clock.
+Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 190. If SOURCE RANGE is still under 3.0e3 at 194, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.
 
 ()7b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the prediction again.
 
@@ -193,13 +195,15 @@ The prediction is starting to be useful, which makes the wait matter more. While
 
 *This point decides where the rods stop, so it gets the longest wait.*
 
-()8a. Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 195 to 205 and SOURCE RANGE reads 7.0e3 or more.
+()8a. Hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.
+
+Note: On a fresh core at 719 ppm the count reaches 7.0e3 about when CONTROL ROD POSITION reaches 205. Do not hold past 205: if SOURCE RANGE is still under 7.0e3 there, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps. Stay at least 3 steps below the position the 1/M panel predicts.
 
 ()8b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point and note the critical rod position the 1/M panel predicts.
 
 Suggested time warp: 10×.
 
-Note: STARTUP RATE takes about three to three and a half plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 9 asks for shows 3 to 4 steps past the predicted position (measured).
+Note: STARTUP RATE takes about 5½ to 6½ plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 9 asks for shows 3 to 5 steps past the predicted position (measured).
 
 
 
@@ -227,7 +231,7 @@ Note: At SLOW the rods move about one step every 8 plant-seconds, so a short hol
 
 Suggested time warp: 10× while you wait; 1× before every tap.
 
-Note: Expect about 5 to 7 taps from 3 short, so 25 to 35 plant-minutes. Each step out adds about +0.03 to where STARTUP RATE settles. Over 1.0, tap INSERT once. SOURCE RANGE switches itself off above 1.0e5; INTER RANGE carries the reading.
+Note: Expect about 6 to 8 taps from 3 short, so 35 to 45 plant-minutes. Each step out adds about +0.03 to where STARTUP RATE settles. Over 1.0, tap INSERT once. SOURCE RANGE switches itself off above 1.0e5; INTER RANGE carries the reading.
 
 
 
@@ -287,27 +291,27 @@ The SOURCE RANGE detectors would wear out if they stayed on at power, so the pla
 
 
 
-12. Let power level itself off below 5 %.
+12. Let power climb to the point of adding heat, about 1 %.
 
-*This is the first time the plant's own feedback, not the rods, holds power steady.*
+*From about 1 % the core starts warming the water, and the warmer water starts holding the climb back.*
 
-()12a. Check REACTOR POWER is below 5 %.
+()12a. Leave the rods alone until REACTOR POWER reads 1.0 % or more.
 
-()12b. Leave the rods alone and wait for REACTOR POWER to stop rising, near 1 to 3 %.
+()12b. Wait for STARTUP RATE to fall to +0.10 or less.
 
-Suggested time warp: 10×; 1× if you have to insert.
+Suggested time warp: 10×.
 
-Note: The climb stops by itself about twenty plant-minutes after this step opens, and STARTUP RATE comes back to 0.00 on the way. The step checks off once REACTOR POWER has held still for five plant-minutes. If power instead runs past 5 %: come back to 1×, press MED and hold INSERT until REACTOR POWER reads under 5 %, then release and let the plant settle before you read it. While the rods are driving in, STARTUP RATE is well below zero and power has not finished falling.
+Note: This takes about 3 plant-minutes. If STARTUP RATE reaches 0.00 with REACTOR POWER still under 1 %, press SLOW, tap WITHDRAW once, and wait again.
 
 
 
 Background
 
-Warmer water slows this reactor down, so the heat the climb makes is what stops the climb. Power finds a level for the rod position it was left at, and no further rod motion is needed to hold it.
+Warmer water slows this reactor down, so once power is high enough to warm the water, the climb starts slowing itself. Below about 1 % that feedback is too weak to feel.
 
-Below about 1 % that feedback was too weak to feel. From here it is what makes the plant steady.
+This point is called the point of adding heat. On the board it shows as STARTUP RATE falling while the rods are still.
 
-\[HIGHLIGHTED: Rod Speed — Normal, Insert (pulsing); Startup Rate, Intermediate Range, Control Rod Position (steady)]
+\[HIGHLIGHTED: Startup Rate, Intermediate Range, Control Rod Position (steady)]
 
 
 
@@ -315,11 +319,11 @@ Below about 1 % that feedback was too weak to feel. From here it is what makes t
 
 *Mode 1 begins at 5 %, and the steps after this one need power higher still.*
 
-()13a. Press SLOW, hold CONTROL WITHDRAW for about 13 steps, then release and wait for REACTOR POWER to read above 5 %.
+()13a. Press SLOW. Withdraw CONTROL 2 steps, then wait for STARTUP RATE to fall back to +0.10 or less. Repeat until REACTOR POWER reads above 5 %.
 
 Suggested time warp: 5×.
 
-Note: Power passes 5 % about a plant-minute after you release WITHDRAW and climbs toward 8 to 10 %. It passes 9½ % once the turbine takes load in the next step. It needs to: the two startup trips cannot be blocked until REACTOR POWER is above 9½ %.
+Note: Each pull lifts STARTUP RATE and the warming water brings it back down; waiting for it keeps the climb gentle. Expect about 5 pulls and 5 plant-minutes. Power keeps climbing for a while after the last pull. It passes 9½ % once the turbine takes load in the next step. It needs to: the two startup trips cannot be blocked until REACTOR POWER is above 9½ %.
 
 
 
@@ -851,7 +855,7 @@ the actual gate).
 |5a|"Hold CONTROL WITHDRAW at MED until SOURCE RANGE passes 7.0e2. Let STARTUP RATE fall to about +0.01 to +0.03." / note: "Stop when CONTROL ROD POSITION reads about 80 to 100. STARTUP RATE is back to 0.00 about half a plant-minute after the rods stop."|"Hold CONTROL WITHDRAW at MED until CONTROL ROD POSITION is 80 to 100. SOURCE RANGE should read about 7.0e2 or more." / no note|
 |5b|"Press Plot point to plot the second point."|"Wait for STARTUP RATE +0.03 or less, then press Plot point to plot the second point." / note: "STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop."|
 |6a|"Hold CONTROL WITHDRAW until SOURCE RANGE passes 1.4e3. Let STARTUP RATE fall to about +0.01 to +0.03." / note: "Stop when CONTROL ROD POSITION reads about 150 to 175 steps. Wait for the rate before you plot: about a minute and a half after the rods stop."|"Hold CONTROL WITHDRAW until CONTROL ROD POSITION is 150 to 175. SOURCE RANGE should read about 1.4e3 or more." / no note|
-|6b|"Press Plot point, then read the predicted rod position the panel prints."|"Wait for STARTUP RATE +0.03 or less, then press Plot point and read the predicted rod position the panel prints." / note: "STARTUP RATE reaches +0.03 or less about a minute and a half after the rods stop."|
+|6b|"Press Plot point, then read the predicted rod position the panel prints."|"Wait for STARTUP RATE +0.03 or less, then press Plot point and read the predicted rod position the panel prints." / note: "STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop."|
 |7a|"Hold CONTROL WITHDRAW until SOURCE RANGE passes 3.0e3. Let STARTUP RATE fall to about +0.01 to +0.03." / note: "Stop when CONTROL ROD POSITION reads about 180 to 205 steps. This pull is only 25 steps wide, so watch the position, not the clock."|"Hold CONTROL WITHDRAW until CONTROL ROD POSITION is 180 to 205. SOURCE RANGE should read about 3.0e3 or more." / note: "This pull is only 25 steps wide, so watch the position, not the clock."|
 |7b|"Press Plot point, then read the prediction again."|"Wait for STARTUP RATE +0.03 or less, then press Plot point and read the prediction again."|
 |8a|"Hold CONTROL WITHDRAW until SOURCE RANGE passes 7.0e3. Let STARTUP RATE fall to about +0.01 to +0.03." / note: "Stop when CONTROL ROD POSITION reads about 195 to 205 steps. This is the point the prediction is built on, so give it the time: STARTUP RATE takes about six plant-minutes to come back to zero here, and a point plotted before it does throws the predicted position further out than it is."|"Hold CONTROL WITHDRAW until CONTROL ROD POSITION is 195 to 205. SOURCE RANGE should read about 7.0e3 or more." / note: "This is the point the prediction is built on, so give it the time: STARTUP RATE takes about three to three and a half plant-minutes to reach +0.03 here, and a point plotted before it does throws the predicted position further out than it is."|
@@ -1123,7 +1127,7 @@ Record: `Diagnostic/TUNING_LOG.md` 2026-09-26-develop-e.
   plant-min; the approach then starts on settled boron (step 9 prediction 213 → 211, criticality at
   213 both). From the Hot Standby preset nothing is in transit and 2d reads HOLD on arrival. Note
   re-stated: "about 2 plant-hours … about 1¾ to reach 729 ppm, then about 20 plant-minutes of MIXING".
-- **9b note: "Expect about 5 to 7 taps from 3 short, so 25 to 35 plant-minutes."** Measured,
+- **9b note: "Expect about 6 to 8 taps from 3 short, so 35 to 45 plant-minutes."** Measured,
   `run_walkthrough_routes` typical routes: 206 → 213 (7 taps), 207 → 213 (6), chained 208 → 213 (5).
 - SPEED PROVENANCE: 5a/6a/7a row superseded by the owner's #807 item 9 (10×).
 
@@ -1146,3 +1150,32 @@ Owner playtest of 1.8.0-rc6. Full record and every number: `Diagnostic/TUNING_LO
   plant-minutes".
 - **Not changed, awaiting the owner:** an IR hand-over step (item 10's question) and starting the
   climb to 5 % from the startup rate (item 11) — measurements in the TUNING_LOG entry.
+
+### #807 item 11, count is the target, 1/M clear — 2026-09-26 (807f), develop lane
+
+Record and every number: `Diagnostic/TUNING_LOG.md` 2026-09-26-develop-f.
+- **Steps 5-8: the SOURCE RANGE count is the target.** OWNER, 2026-09-26, workbench session, verbatim:
+  "What will be off in the current walkthrough is the rod position windows. These windows would be off
+  if the user has the wrong boron concentration too so we may want to think giving explicit windows or
+  clarify what those windows are for." Then he SELECTED "Guide, count is the target (Recommended)"
+  (option text: "The SOURCE RANGE count is the target. The window becomes 'about where this lands on a
+  fresh core at 719 ppm'. One line explains it shifts with boron and recent power. If the count is
+  short at the window top, keep tapping one step at a time and let the rate settle. The safety limit
+  stays the 1/M prediction minus 3, which tracks the real core."). A selection, relayed via the
+  workbench session; he confirmed the relay in the develop session. **Supersedes the 2026-09-24 (f)
+  "Rod window leads" selection.** The window numbers in the notes are re-measured on the count-led
+  route (four seeds + chain): 77-79 / 153-154 / 191-192 / 205, so 5a's "90 to 110" became "75 to 80";
+  the tops (110 / 175 / 194 / 205) stay as the point to switch to single taps. The count rows grade a
+  30 s trailing mean (`mean_s: 30`) — the tile's noise is 4.5 %, and five raw readings latched 5a with
+  the count settled at 672 cps.
+- **Steps 12-13: from the point of adding heat to 5 % in 2-step pulls** (#807 item 11; the owner asked,
+  the coordinator recommended yes). DECLARED DEPARTURE, sourced: NRC HRTD Westinghouse Technology
+  manual ch. 19, ML11223A342 p. 19-8: "the control rods are positioned to increase power to the point
+  of adding heat, approximately one percent power as indicated on the power range instruments, and then
+  to stabilize power at about two percent", because "the motor-driven (nonsafety-grade) auxiliary
+  feedwater pump can supply only about two percent of rated feed flow" while the main feed pump is
+  started. This walkthrough has no feed-pump work at that point (SG FEED is in AUTO from step 3), so the
+  2 % hold is dropped; the point of adding heat (~1 %) stays as the cue. Source copy: RD_backshop
+  `inbox/sources/ML11223A342.txt`.
+- **The 1/M plot clears when this walkthrough starts** (layman pass 8 S-1): procedure flag `clear_1m`.
+  No text change — the panel prints "new startup walkthrough — plot cleared".

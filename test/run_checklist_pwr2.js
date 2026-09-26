@@ -3561,6 +3561,11 @@ if (!only && RUN_B) {
         svc.running = true; svc.timeAcceleration = 10; svc.attentionStops = false;
         s = null;
         tick();
+        /* THE WALKTHROUGH STARTS FIRST, AS THE PLAYER'S DOES (2026-09-26, 807f): `pwr_startup` now
+         * clears the 1/M table when it starts (`clear_1m`, layman pass 8 S-1), so this fixture's old
+         * order — plot, THEN start — handed step 9 an empty plot (measured: pred 211 -> null) */
+        svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
+        tick();
         for (var k = 1; k < 4; k++) {
           var st = proc.steps[k];
           if (st.cmd) svc.handleCommand(JSON.parse(JSON.stringify(st.cmd)));
@@ -3576,7 +3581,6 @@ if (!only && RUN_B) {
           plot();
         });
         P = oom().pred_steps; b9 = bank();
-        svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
         for (i = 0; i < 5; i++) tick();
         var guard = 0;
         while (ckl() && ckl().step_index < S9 && guard++ < 100) { svc.handleCommand({ action: 'checklist_check', index: ckl().step_index }); tick(); }
@@ -4083,7 +4087,9 @@ if (!only && RUN_B) {
        * dead floor satisfies them -- the same shape as 15's ATMOS DUMP and 17's REACTOR POWER. They sit
        * on verify steps whose true values already meet them at the leg's own IC (122 degF, 363 psi, 0 MW). */
       'pwr_heatup:1:tavg_c': 1, 'pwr_heatup:1:pressure_mpa': 1, 'pwr_heatup:4:mwe_output': 1,
-      'pwr_startup:12:power_pct': 1,
+      /* 807f: step 12 is "power 1 %, then STARTUP RATE +0.10 or less" — the `<` rate row is the one a dead
+       * (zero) rate tile ticks; the old `power < 5` row is gone and the new power row is `>=`, which strands */
+      'pwr_startup:12:startup_rate_dpm': 1,
       'pwr_raise_power:9:boron_ppm': 1,   /* 11's boron row left 2026-09-25: the dose is conditional */
       'pwr_lower_power:2:power_pct': 1, 'pwr_lower_power:3:tavg_c': 1,
       'pwr_lower_power:3:power_pct': 1, 'pwr_lower_power:4:power_pct': 1,
@@ -4238,7 +4244,7 @@ if (!only && RUN_B) {
       'pwr_heatup:17': 'power_pct',
       'pwr_startup:1': 'tavg_c,pressure_mpa,pump_flow_pct,startup_rate_dpm',   // 1a-1d (2026-09-25)
       'pwr_startup:10': 'ir_amps,power_pct',                  // the climb, split out of old 9 (had a cmd)
-      'pwr_startup:12': 'power_pct',                          // the rate row became a `steady` power row (2026-09-23)
+      'pwr_startup:12': 'power_pct,startup_rate_dpm',         // point of adding heat: power >= 0.95, then rate < 0.105 (807f, #807 item 11)
       'pwr_startup:17': 'power_pct,mwe_output',               // his two rows, replacing plant_mode
       'pwr_raise_power:9': 'power_pct,mwe_output,boron_ppm,tavg_c',
       'pwr_cooldown:8': 'pressure_mpa',
