@@ -2816,7 +2816,7 @@
            * here, because it would be false of rungs 5 and 6. */
           /* THIS ONE KEEPS ITS `wait_hint`, AND IT SAYS THE OPPOSITE OF WHAT IT USED TO. `hold` is
            * 420 s here, so the generated line offers 60× — right for the settle, WRONG for the
-           * pull this step opens with: the rung is only 25 steps wide (180 to 205) and MED is
+           * pull this step opens with: the rung is only 14 steps wide (180 to 194 since 2026-09-25, owner "A": it no longer contains step 8's 195 to 205) and MED is
            * 48 steps a MINUTE at 1×, i.e. 48 a SECOND at 60× (#653 S-5; the 48/min figure is the
            * pool's own, authored on step 5). The old string just said "10×" beside the app's
            * "60×" and left the player to pick. Same trap as step 9's note, two steps down. */
@@ -2830,8 +2830,8 @@
           accs_ordered: true,
           /* One step per plot point since #796 item 3 — the reasoning is on step 5. */
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 2950,   // the 3.0e3 band's lower edge — see step 5's RENDER BAND block
-                   ask: 'Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 180 to 205 and SOURCE RANGE reads 3.0e3 or more.',
-                   note: 'This pull is only 25 steps wide, so watch the position, not the clock.',
+                   ask: 'Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 180 to 194 and SOURCE RANGE reads 3.0e3 or more.',
+                   note: 'This pull is only 14 steps wide, so watch the position, not the clock.',
                    wait_speed: 5, speed_text: '5×, set by itself once the rods start moving.',
                    label: 'SOURCE RANGE reads 3.0e3 (3,000 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the prediction again.', wait_speed: 1,

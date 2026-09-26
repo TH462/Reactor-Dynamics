@@ -78,7 +78,7 @@ var ROUTES = {
        * keeps withdrawing inside the window until SOURCE RANGE meets the row — the top at most. */
       '#5': { policy: 'pull_plot', to: 80, top: 100 },     // "80 to 100"
       '#6': { policy: 'pull_plot', to: 150, top: 175 },    // "150 to 175"
-      '#7': { policy: 'pull_plot', to: 180, top: 205 },    // "180 to 205"
+      '#7': { policy: 'pull_plot', to: 180, top: 194 },    // "180 to 194" (owner "A", 2026-09-25)
       '#8': { policy: 'pull_plot', to: 195, top: 205 },    // "195 to 205"
       // 9 and 10 are slow by the card's own design (a tap, a read once the rate has stopped falling —
       // about 10 minutes — repeat; then 30 to 60 minutes of climb after a 0.06 to 0.10 read), so their

@@ -171,11 +171,11 @@ That number still reads high. It improves with every point.
 
 *Near critical each rod step is worth more, so the pulls get smaller from here.*
 
-()7a. Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 180 to 205 and SOURCE RANGE reads 3.0e3 or more.
+()7a. Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 180 to 194 and SOURCE RANGE reads 3.0e3 or more.
 
 Suggested time warp: 5×, set by itself once the rods start moving.
 
-Note: This pull is only 25 steps wide, so watch the position, not the clock.
+Note: This pull is only 14 steps wide, so watch the position, not the clock.
 
 ()7b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the prediction again.
 
@@ -1091,3 +1091,11 @@ step 9's why line and 8b's note now say "within about three steps" (measured -2 
 dilution tail (BORON 749 ppm, still diluting): 5b's note says so. (4) 5a/6a/7a held at 1x until the
 pull, as designed (the step's `cmd` is `rod_nudge`); the warp line now says 5x arrives by itself once
 the rods move. (3), step 7's window 180-205 containing step 8's 195-205, is put to the owner.
+
+### Step 7 window — 2026-09-25 (q), develop lane
+
+*OWNER RULING, 2026-09-25: "A"* — step 7's window 180 to 205 becomes **180 to 194**, so it no longer
+contains step 8's 195 to 205 (workbench pass 5, finding 3). MEASURED (`measure_stack`, pwr2
+`hot_zero_power`, one pull, 12 plant-min settle): SOURCE RANGE 2,864 cps at bank 180 (under the
+3.0e3 check-off) and 5,747 at 194, so the check-off is met from about 182 up. Grading unchanged;
+`run_walkthrough_routes` step 7 `top` 205 -> 194.
