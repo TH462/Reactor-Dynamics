@@ -171,11 +171,11 @@ That number still reads high. It improves with every point.
 
 *Near critical each rod step is worth more, so the pulls get smaller from here.*
 
-()7a. Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 180 to 205 and SOURCE RANGE reads 3.0e3 or more.
+()7a. Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 180 to 194 and SOURCE RANGE reads 3.0e3 or more.
 
 Suggested time warp: 5×, set by itself once the rods start moving.
 
-Note: This pull is only 25 steps wide, so watch the position, not the clock.
+Note: This pull is only 14 steps wide, so watch the position, not the clock.
 
 ()7b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the prediction again.
 
@@ -225,7 +225,7 @@ Suggested time warp: 1×.
 
 Note: At SLOW the rods move about one step every 8 plant-seconds, so a short hold at 1× moves nothing. This check-off ticks after the rods have been still for a plant-minute.
 
-()9b. Tap WITHDRAW one step, wait about five plant-minutes, and read STARTUP RATE. Repeat until STARTUP RATE reads +0.06 to +1.00 and steady, with the rods stopped.
+()9b. Tap WITHDRAW one step, wait about ten plant-minutes, and read STARTUP RATE. Repeat until STARTUP RATE reads +0.06 to +1.00 and steady, with the rods stopped.
 
 Suggested time warp: 10× while you wait; 1× before every tap.
 
@@ -1091,3 +1091,20 @@ step 9's why line and 8b's note now say "within about three steps" (measured -2 
 dilution tail (BORON 749 ppm, still diluting): 5b's note says so. (4) 5a/6a/7a held at 1x until the
 pull, as designed (the step's `cmd` is `rod_nudge`); the warp line now says 5x arrives by itself once
 the rods move. (3), step 7's window 180-205 containing step 8's 195-205, is put to the owner.
+
+### Step 7 window — 2026-09-25 (q), develop lane
+
+*OWNER RULING, 2026-09-25: "A"* — step 7's window 180 to 205 becomes **180 to 194**, so it no longer
+contains step 8's 195 to 205 (workbench pass 5, finding 3). MEASURED (`measure_stack`, pwr2
+`hot_zero_power`, one pull, 12 plant-min settle): SOURCE RANGE 2,864 cps at bank 180 (under the
+3.0e3 check-off) and 5,747 at 194, so the check-off is met from about 182 up. Grading unchanged;
+`run_walkthrough_routes` step 7 `top` 205 -> 194.
+
+### 9b's wait — 2026-09-26 (r), develop lane
+
+Workbench layman pass 6 S-3 (route gate, seed 42; #653 comment 5843888039): 9b said "wait about
+five plant-minutes" while its own note says about ten, and the check-off needs the rods still
+300 s plus a STARTUP RATE steady over 240 s (settles 7 to 12 min after the last rod motion,
+record (g)). A player reading every 5 minutes went 206 -> 210 in 5 reads, 26.5 plant-min; the
+layman took 68 min and 6 taps, ending 3 past the prediction. The action line now says ten, as the
+note does. Grading unchanged.
