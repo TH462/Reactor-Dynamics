@@ -29,6 +29,19 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-25-workbench-j (pwr_heatup step 16 tracked flake: the fixed replay's single sample, not a plant defect)
+
+Record: `Blueprint/walkthrough_steps/01_mode5_to_mode3.md` §"16's replay `hold` re-measured". Trap only:
+- **A `hold`-bounded replay samples a re-grading predicate ONCE, at the end; a live player keeps
+  trying.** `pwr_heatup` step 16's SOURCE RANGE `steady` row (1.2 % / 600 s) failed 2 of 11 REPLAY
+  seeds at `hold`=720 s with 1.51-2.00 % drift — a single noisy instant sampled at exactly `hold`'s
+  end. MEASURED on the LIVE checklist runtime (`run_walkthrough_routes --job=pwr_heatup:typical`,
+  30 seeds, re-grading every ~5 s): the row ticked on every seed, no strand — 24 of 30 within 8 s of
+  the window closing, worst (seed 8) 769 s, 169 s past it. `hold` raised 720 -> 1200 s (56 % margin
+  over the worst seed measured); `v` and `window` untouched — the tolerance was never the problem,
+  the fixed sample point was. `run_checklist_pwr2.js` BASELINES note removed as a tracked flake,
+  2 failed (the pre-existing TMI-2 pair) restored.
+
 ## Session log — 2026-09-25-workbench-i (cooldown re-paced under the 100 °F/hr alarm; the raise-power rod worth re-measured)
 
 Record: `Blueprint/walkthrough_steps/06_cooldown.md`, re-pace record. Traps only:

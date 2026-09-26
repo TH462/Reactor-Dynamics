@@ -685,3 +685,17 @@ Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`.
 - **9b's note**: the round trip starts near 50 psi or lower (52 psia measured after the cooldown's new step 11), step 9 86.1 plant-min against 49.6 on the fresh plant. **8's note**: "more than 1300 psi below" (1337 fresh, 1687 from a 13 psi start).
 - **11a's note**: Pressurizer Pressure Very Low (1800 psi, critical in Mode 3, Hot Standby) and Pressurizer Pressure Low raised at 1726 psia in this step on both chain heatups; the step ends at 1715 psia.
 - Board words: 6b (the % beside the STEAM DUMP valve), 7a/7b (A+B 7 % lit), 14 (no "gate"), 15d (ATMOS DUMP reads 0 %).
+
+### 16's replay `hold` re-measured — 2026-09-25, workbench-j (tracked flake, BASELINES `run_checklist_pwr2.js`)
+
+The FIXED REPLAY (`test/procedures_harness.js`) samples the SOURCE RANGE `steady` bag ONCE, at
+`hold`'s end; the LIVE checklist runtime re-grades every ~5 s of sim time and never stops trying.
+At the old `hold` (720 s) the replay's single sample landed inside a noise excursion on 2 of 11
+tested seeds (1.51-2.00 % drift against the 1.2 % tolerance) — a fixture artifact, not a plant
+defect. MEASURED on the live runtime (`run_walkthrough_routes --job=pwr_heatup:typical`, 30 noise
+seeds): the row ticks on every single seed, no strand. 24 of 30 tick within 8 s of the 600 s window
+closing (10.13 plant-min); the rest land at 10.48-11.82 min; the worst, seed 8, at 12.82 min (769 s,
+169 s past the window). `hold` raised 720 -> 1200 s, clearing the worst seed measured by 431 s
+(56 % margin). No change to `v` (1.2 %) or `window` (600 s) — the tolerance itself was never the
+problem, and the approaching-critical cases in the record above (dilution, the slow rod pull) still
+never tick early.

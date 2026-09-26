@@ -2284,8 +2284,18 @@
            *   (seeds 42/7/123, SR 168 -> 310 cps, ρ −3400 -> −1840 pcm); rods out 210 + dilution to
            *   600 ppm (ρ −678 pcm at 60 min, SR 837 cps); a SLOW 200-step pull ticks only 5.9 min
            *   after the rods stop. INJECTION: the SR row removed, or the old −300 pcm row, and the
-           *   dilution case completes in 0.1 min. */
-          { hold: 720, wait_hint: false,   /* the replay must see the 600 s window full: 1.2x */
+           *   dilution case completes in 0.1 min.
+           * `hold` 720 -> 1200 (2026-09-25, workbench-j): the FIXED REPLAY samples the bag ONCE, at
+           * `hold`'s end, and the LIVE runtime re-grades every ~5 s — a discrepancy this step's own
+           * design note above already flags for the rate row but did not check for this one. MEASURED
+           * on the live checklist runtime (`run_walkthrough_routes --job=pwr_heatup:typical`,
+           * WR_SEED 1-30): the row never once failed to tick — 24 of 30 seeds tick within 8 s of the
+           * 600 s window closing (10.13 plant-min), the rest at 10.48-11.82 min, one outlier (seed 8)
+           * at 12.82 min (769 s, 169 s past the window). A PLAYER is never stuck; the tracked flake
+           * (BASELINES, 2 of 11 REPLAY seeds failing at exactly `hold`=720 s with 1.51-2.00 % drift)
+           * was the fixed replay sampling a single noisy instant, not a plant defect. 1200 s clears
+           * the worst seed measured by 431 s (56 %) with the window's own margin unchanged. */
+          { hold: 1200, wait_hint: false,   /* the replay must see the 600 s window full: 1.2x, plus margin for the tail (see above) */
             aim: 'The startup that follows assumes a core a long way from critical, so that is confirmed before handing over.',
             wait_speed: 10, speed_text: true,
             note: 'SOURCE RANGE wanders by about a tenth either way with nothing moving; steady means it is not climbing, and the check-off watches it for ten plant-minutes before it ticks. STARTUP RATE on a shut-down core flickers between about −0.01 and +0.01. Either one climbing with the rods still means something is adding reactivity: stop and find out what moved.',
