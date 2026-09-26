@@ -2539,9 +2539,9 @@
                  { p: 'boron_target_ppm', op: '~', v: 719, tol: 0.5,   /* 718.5-719.5: the box draws whole ppm */
                    ask: 'Set the boron target to 719 ppm.',
                    label: 'BORON target reads 719 ppm' },
-                 { p: 'boron_ppm', op: '~', v: 719, tol: 40,
-                   ask: 'Wait for boron concentration to read between 679 and 759 ppm.',
-                   label: 'BORON CHEM 679 to 759 ppm' }],
+                 { p: 'boron_ppm', op: '~', v: 719, tol: 10.49,   /* 709 to 729 as the whole-ppm tile draws it (owner "B", 2026-09-26: tightened from 679-759 so step 5 starts after the dilution, #653 pass 7 S-2) */
+                   ask: 'Wait for boron concentration to read between 709 and 729 ppm.',
+                   label: 'BORON CHEM 709 to 729 ppm' }],
           hl: ['Boron ON', 'Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
         /* CONFIRM, NOT ACT *(OWNER, 2026-09-03, #619 item 16: "mode 3 CL has me put SG feed in
          * AUTO but its already in AUTO when I get there")*. Both routes into this leg arrive
@@ -2783,6 +2783,7 @@
           wait_hint: false,
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 695,
                    ask: 'Hold CONTROL WITHDRAW at MED until CONTROL ROD POSITION reads 80 to 100 and SOURCE RANGE reads 7.0e2 or more.',
+                   note: 'If CONTROL ROD POSITION reaches 100 and SOURCE RANGE is still under 7.0e2, stop and wait: the step 2 dilution is still finishing, and the counts climb to 7.0e2 on their own.',
                    wait_speed: 5, speed_text: '5×, set by itself once the rods start moving.',
                    label: 'SOURCE RANGE reads 7.0e2 (700 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Wait for STARTUP RATE to read +0.03 or less, then press Plot point.',
