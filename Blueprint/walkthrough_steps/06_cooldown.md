@@ -230,13 +230,17 @@ With RHR circulating, the reactor coolant pumps are only adding heat, so they co
 
 Suggested time warp: 1×.
 
-()11b. Watch SUBCOOLING MARGIN, and when it reads below 30 °F, press OFF under SPRAY on the PRESSURIZER (PZR) card.
+()11b. Leave SPRAY running and watch SUBCOOLING MARGIN fall to 32 °F.
 
 Suggested time warp: 60×: at 600× the margin can fall 10 °F between two glances.
 
-Note: The spray is still running and keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it much earlier and pressure climbs back over the RHR limit. The clock moves to 60× by itself once HX SPLIT is raised.
+Note: The spray keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it any earlier and pressure climbs back over the RHR limit. If OFF is already lit under SPRAY, press MANUAL under SPRAY with its box at 50 % and keep watching. The clock moves to 60× by itself once HX SPLIT is raised.
 
-()11c. Wait for AVG COOLANT TEMPERATURE to read below 199 °F.
+()11c. When SUBCOOLING MARGIN reads below 30 °F, press OFF under SPRAY on the PRESSURIZER (PZR) card.
+
+Suggested time warp: 60×.
+
+()11d. Wait for AVG COOLANT TEMPERATURE to read below 199 °F.
 
 Suggested time warp: 600×.
 
@@ -773,3 +777,22 @@ walkthroughs."* AGENT-DRAFTED for owner review.
 - **1's note: "about 54" -> "about 55 plant-minutes to 880 ppm"** — re-measured with the #807
   makeup-path holdup live: target set on the first broadcast, BORATING at +1 s, the 880 row met at
   +55.5 plant-min (seeds 42 and 7, live checklist, `hot_zero_power`). Rate 2.9-3.0 ppm a minute.
+
+### Review fix — 2026-09-26 (807g, #807 read-only review item 4)
+
+11 had one spray row graded on the spray alone, and 'Pressurizer Spray — Off' pulsed from step entry, so
+a press at entry met it. Now `accs_ordered`: 11a HX SPLIT, **11b "Leave SPRAY running and watch
+SUBCOOLING MARGIN fall to 32 °F"** (graded 17.78 °C), **11c "When SUBCOOLING MARGIN reads below 30 °F,
+press OFF under SPRAY"** (the OFF button pulses only while 11c is active — new `accs[].hl_active`; steady
+ring before), 11d the wait. 11b's note: "If OFF is already lit under SPRAY, press MANUAL under SPRAY with
+its box at 50 % and keep watching."
+
+MEASURED (route runner, seeds 42 / 7):
+- A first cut graded 11b AT 30 °F. It STRANDED on route `spray_off_at_entry` (465 plant-min): the player
+  shuts the spray on the first tile reading under 30 °F, the margin turns back up before five graded
+  readings agree, and 11b never latches. At 32 °F: 11b ticks 34.9-37.8 plant-min into the step, the spray
+  is shut at 36.1-40.6, the step takes 136.6-137.6 plant-min, as before.
+- Spray OFF at entry, recovered by 11b's note (reopened at 50 % two plant-minutes in): completes, ends at
+  176-178 psia. The OLD one-row form on the same press, never reopened: the leg still COMPLETES, but ends at
+  453.7 psia, over the RHR suction interlock (2.76 MPa, 400 psia). The step's own "step 15 strands" record
+  did NOT reproduce on this route. New route check: the leg ends under 400 psia (typical 174-193).

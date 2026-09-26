@@ -3932,8 +3932,8 @@ if (!only && RUN_B) {
        * RE-PINNED 2026-09-26 (exp/807e2, #807 item 2): 162 -> 165 predicate rows -- cooldown 4b/4c
        * (DUMP SETPOINT 720 / 270 psi) and 11a (HX SPLIT raised to 9 %), all control-state rows, so
        * instrument-graded and sole unchanged. SUM on a merge. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 item 2 merge): 84 / 172 / 100 / 25 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added, raise-power 10-12 removed, cooldown 4b/4c/11a added)',
-         gradedSteps === 84 && predRows === 172 && rows.length === 100 && soleInst === 25,   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 item 2 merge): 84 / 172 / 100 / 25 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added, raise-power 10-12 removed, cooldown 4b/4c/11a added; 807g: 84 / 173 / 101 / 25, cooldown 11b SUBCOOLING MARGIN row)',
+         gradedSteps === 84 && predRows === 173 && rows.length === 101 && soleInst === 25,   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -4126,6 +4126,9 @@ if (!only && RUN_B) {
        * strands instead (STRAND_EXPECTED above). */
       'pwr_tmi2_incident:13:subcooling_c': 1, 'pwr_tmi2_incident:15:subcooling_c': 1,
       'pwr_tmi2_incident:17:subcooling_c': 1,
+      /* cooldown 11b (2026-09-26, #807 review item 4): "watch SUBCOOLING MARGIN fall to 32 degF", a `<`
+       * row on the same derived channel -- a dead margin pins at -28 degC and false-ticks it, as the TMI rows */
+      'pwr_cooldown:11:subcooling_c': 1,
     };
     /* ⚰ THE FOUR `startup_rate_dpm` ROWS LEFT THIS SET WITH THE ROWS THEMSELVES (#796 item 3,
      * 2026-09-20): the 1/M rungs collapsed to one step per plot point by directive, so there is
@@ -4954,7 +4957,8 @@ if (!only && RUN_B) {
      * whole set, which is why the control below asserts the un-injected rig stays quiet. */
     (function () {
       var SUB_TICK = { 'pwr_tmi2_incident:13:subcooling_c': 1, 'pwr_tmi2_incident:15:subcooling_c': 1,
-                       'pwr_tmi2_incident:17:subcooling_c': 1 };
+                       'pwr_tmi2_incident:17:subcooling_c': 1,
+                       'pwr_cooldown:11:subcooling_c': 1 };   // 11b, `< 17.78` (#807 review item 4, 2026-09-26)
       var SUB_STRAND = { 'pwr_tmi2_incident:19:subcooling_c': 1 };
       var mine = rows.filter(function (r) { return r.chan === 'subcooling_margin'; });
       function sweep(fid) {
@@ -4987,7 +4991,7 @@ if (!only && RUN_B) {
       var dS = diffSet(dr.strand, SUB_STRAND), dT = diffSet(dr.tick, SUB_TICK);
       var control = base.strand.length === 0 && base.tick.length === 0;
       ck('2ag.9 a DRIFTING T-avg breaks every SUBCOOLING MARGIN row, which 2ag.3’s channel filter cannot see (#788)',
-         mine.length === 4 && dS.ok && dT.ok && control,
+         mine.length === 5 && dS.ok && dT.ok && control,   // 4 -> 5: cooldown 11b (#807 review item 4, 2026-09-26)
          dS.note + dT.note + mine.length + ' pool row(s) grade the derived channel, ' +
          dr.tick.length + ' false-tick and ' + dr.strand.length + ' strand under the drift; ' +
          (control ? 'control: the un-injected rig does neither on any of them. '
@@ -5416,6 +5420,24 @@ if (!only && RUN_B) {
  *       -> checks 2 and 5 red, 1/3/4 green;
  *   - `_stepExpectsAlarm` returning true unconditionally
  *       -> checks 1, 3, 4 and 5 red, 2 green. */
+/* 2mn — `mean_s` GRADES ONE SAMPLE PER PLANT INSTANT (2026-09-26, #807 review item 6). The
+ * instructor steps on every broadcast, and a COMMAND's broadcast while paused repeats the sim time,
+ * so the unweighted ring counted a paused instant once per press. Pure grader: 700 at t = 0..29,
+ * then ten presses while paused at t = 30 reading 600. One sample per instant: mean
+ * (30 x 700 + 600) / 31 = 696.8 >= 695, MET. Every press counted: (30 x 700 + 10 x 600) / 40 = 675,
+ * not met. INJECTION-PROVEN: `s.push` unconditionally in `gradeMean` -> 2mn.1 red (675). */
+if (RUN_B) {
+  (function () {
+    var bag = { s: [] }, pred = { p: 'sr_counts_cps', op: '>=', v: 695, mean_s: 30 }, g;
+    function snap(t, v) { return { metadata: { sim_time: t }, instruments: {}, true_state: { sr_counts_cps: v } }; }
+    function met(v, pr) { return v >= pr.v; }
+    for (var t = 0; t < 30; t++) RD.InstructorLayer.gradeMean(bag, snap(t, 700), pred, met);
+    for (var k = 0; k < 10; k++) g = RD.InstructorLayer.gradeMean(bag, snap(30, 600), pred, met);
+    ck('2mn.1 a paused instant graded ten times (command broadcasts) counts ONCE in the `mean_s` ring',
+       g.met === true && bag.s.length === 31 && Math.abs(g.value - (30 * 700 + 600) / 31) < 1e-9,
+       'mean ' + (g.value != null ? g.value.toFixed(1) : g.value) + ', ' + bag.s.length + ' samples');
+  })();
+}
 if (RUN_B) {   /* gated 2026-09-22 (the split above) — this section carried NO gate at all
                 * before the split (it ran even under a single `only` proc filter), so RUN_B
                 * alone preserves that and stops it from ALSO running, a second time, in part A */

@@ -714,3 +714,10 @@ Background). **This supersedes the 2026-09-25 "Make them conditional" ruling on 
 Re-measured on the holdup plant (seeds 42/7/123 and the chain) and re-authored to it; highlights moved
 to the pressed button (`Load Setpoint`, `Boron ON`, `Turbine — Latch`, `Insert`) with the card on the
 steady ring. Every number and why: `Diagnostic/TUNING_LOG.md`, session `2026-09-26-develop-h`.
+
+### Review fix — 2026-09-26 (807g, #807 read-only review item 5)
+
+Step 3's goal line "BORON reads 660 ppm" -> "BORON target reads 660 ppm" (step 3 sets the box; the
+concentration arrives about 45 plant-minutes later), and step 9's "BORON at or below 660 ppm" -> "BORON
+663 ppm or below", the number 9b grades. MEASURED, typical route: 9b ticks on 662.8 / 661.9 ppm (seeds
+42 / 7), which the whole-ppm tile draws as 663 / 662. Grading unchanged.

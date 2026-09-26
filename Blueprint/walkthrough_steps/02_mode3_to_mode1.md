@@ -123,7 +123,7 @@ The panel fits the last three points, so each new point sharpens the prediction.
 
 ()5a. Hold CONTROL WITHDRAW at MED until SOURCE RANGE reads 7.0e2 or more.
 
-Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 75 to 80; the position shifts with boron and recent power, the count does not. If SOURCE RANGE is still under 7.0e2 at 110, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.
+Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 75 to 80; the position shifts with boron and recent power, the count does not. The check-off waits for SOURCE RANGE to stay at 7.0e2 or more, not just touch it. If it only touches 7.0e2 now and then, or is still short at 80, tap WITHDRAW one step and wait half a plant-minute. Repeat until it stays there.
 
 ()5b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point.
 
@@ -149,7 +149,7 @@ While the reactor is shut down, SOURCE RANGE counts are the only thing that show
 
 ()6a. Hold CONTROL WITHDRAW until SOURCE RANGE reads 1.4e3 or more.
 
-Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 150 to 155. If SOURCE RANGE is still under 1.4e3 at 175, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.
+Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 150 to 155. The check-off waits for SOURCE RANGE to stay at 1.4e3 or more. If it only touches 1.4e3 now and then, or is still short at 155, tap WITHDRAW one step and wait half a plant-minute. Repeat until it stays there.
 
 ()6b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the predicted rod position the panel prints.
 
@@ -175,7 +175,7 @@ That number still reads high. It improves with every point.
 
 ()7a. Hold CONTROL WITHDRAW until SOURCE RANGE reads 3.0e3 or more.
 
-Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 190. If SOURCE RANGE is still under 3.0e3 at 194, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.
+Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 190 to 192. The check-off waits for SOURCE RANGE to stay at 3.0e3 or more. If it only touches 3.0e3 now and then, or is still short at 192, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.
 
 ()7b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the prediction again.
 
@@ -197,7 +197,7 @@ The prediction is starting to be useful, which makes the wait matter more. While
 
 ()8a. Hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.
 
-Note: On a fresh core at 719 ppm the count reaches 7.0e3 about when CONTROL ROD POSITION reaches 205. Do not hold past 205: if SOURCE RANGE is still under 7.0e3 there, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps. Stay at least 3 steps below the position the 1/M panel predicts.
+Note: On a fresh core at 719 ppm the count reaches 7.0e3 about when CONTROL ROD POSITION reaches 205. Do not hold past 205. The check-off waits for SOURCE RANGE to stay at 7.0e3 or more: if it only touches 7.0e3 now and then, or is still short at 205, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps. Stay at least 3 steps below the position the 1/M panel predicts.
 
 ()8b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point and note the critical rod position the 1/M panel predicts.
 
@@ -319,7 +319,7 @@ This point is called the point of adding heat. On the board it shows as STARTUP 
 
 *Mode 1 begins at 5 %, and the steps after this one need power higher still.*
 
-()13a. Press SLOW. Withdraw CONTROL 2 steps, then wait for STARTUP RATE to fall back to +0.10 or less. Repeat until REACTOR POWER reads above 5 %.
+()13a. Press SLOW. Tap WITHDRAW twice (2 steps). STARTUP RATE rises for a while after the taps: wait for it to peak and fall back to +0.10 or less. Repeat until REACTOR POWER reads above 5 %.
 
 Suggested time warp: 5×.
 
@@ -1179,3 +1179,19 @@ Record and every number: `Diagnostic/TUNING_LOG.md` 2026-09-26-develop-f.
   `inbox/sources/ML11223A342.txt`.
 - **The 1/M plot clears when this walkthrough starts** (layman pass 8 S-1): procedure flag `clear_1m`.
   No text change — the panel prints "new startup walkthrough — plot cleared".
+
+### Review fixes — 2026-09-26 (807g, #807 read-only review items 1-3)
+
+- **5a-8a notes: the check-off waits for the count to STAY at the target.** The rows grade a 30 s mean,
+  and a player who lets go at the first flicker saw the tile touch 7.0e2 while the step stayed dark. Each
+  note now says so and gives the way on: tap one step and wait half a plant-minute (5, 6), or tap and let
+  STARTUP RATE settle (7, 8). MEASURED, route `flicker_release_5` (let go at bank 69, 660 cps): 5 taps,
+  ticks at bank 74 on a 695 cps mean, 4.8 plant-min in the step (was 12.1 on the old unguided hold-again).
+- **Window tops are now the landing range** (the owner's "about where this lands ... short at the window
+  top, keep tapping" selection): the fallback reads "short at 80 / 155 / 192 / 205", not 110 / 175 / 194.
+  Typical route unchanged by it (lands 77 / 153 / 191 / 205 at seed 42, same as before).
+- **13a: "Tap WITHDRAW twice (2 steps)", and the rate wait names its lag**: "STARTUP RATE rises for a
+  while after the taps: wait for it to peak and fall back to +0.10 or less." Grading unchanged (`power_pct
+  >= 5.05`); the route now pulls only after the rate has come off its post-tap peak. MEASURED, seed 42:
+  identical to the old reader (5 pulls, 4.7 plant-min, peak STARTUP RATE 0.25 DPM), because at SLOW the
+  rate is already over +0.10 by the time the rods stop — so the wording fixes the reading, not the route.

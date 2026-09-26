@@ -85,10 +85,12 @@ var ROUTES = {
        * 2026-09-24 "Rod window leads")*: the player holds WITHDRAW until the tile reads the count,
        * the window is only "about where this lands"; short at its top -> single taps. The window-led
        * route above survives as `mistake_base` (the reviewer's stops at 195 / 203). */
-      '#5': { policy: 'pull_count', top: 110 },     // window 90 to 110 (#807 item 8)
-      '#6': { policy: 'pull_count', top: 175 },     // 150 to 175
-      '#7': { policy: 'pull_count', top: 194 },     // 180 to 194 (owner "A", 2026-09-25)
-      '#8': { policy: 'pull_count', top: 205 },     // 195 to 205
+      /* #807 review item 2 (2026-09-26): `top` is the NOTE's window top, which is now the measured
+       * landing range on this count-led route (the old window tops 110 / 175 were 30 and 20 past it) */
+      '#5': { policy: 'pull_count', top: 80, tap_wait_s: 30 },    // note: lands 75 to 80; short at 80 -> taps, half a plant-minute apart
+      '#6': { policy: 'pull_count', top: 155, tap_wait_s: 30 },   // lands 150 to 155
+      '#7': { policy: 'pull_count', top: 192 },                   // lands 190 to 192; taps let STARTUP RATE settle
+      '#8': { policy: 'pull_count', top: 205 },                   // about 205
       // 9 and 10 are slow by the card's own design (a tap, a read once the rate has stopped falling —
       // about 10 minutes — repeat; then 30 to 60 minutes of climb after a 0.06 to 0.10 read), so their
       // bound is the card's, not 3 x hold. Measured 2026-09-24: step 9 21.6 / 26.7 min, step 10
@@ -97,7 +99,7 @@ var ROUTES = {
       '#10': { policy: 'observe', bound_s: 5400, stated_max_min: 10 },   // card: "about 2 to 6 plant-minutes" after the +0.15 (#807; measured 1.8 / 5.5 / 2.6)
       '#11': { policy: 'wait_tap', rate_below: 0.005, power_below: 0.5, dwell: 300 },
       '#12': { policy: 'observe', stated_max_min: 5 },                            // "leave the rods alone until ... 1.0 % ... STARTUP RATE +0.10 or less" (#807 item 11)
-      '#13': { policy: 'pulses', k: 2, rate_le: 0.105, until_p: 5.05, stated_max_min: 8 },   // "withdraw 2 steps, wait for +0.10 or less, repeat until above 5 %"
+      '#13': { policy: 'pulses', k: 2, rate_le: 0.105, until_p: 5.05, peak: true, stated_max_min: 8 },   // "tap WITHDRAW twice, wait for it to peak and fall back to +0.10 or less, repeat until above 5 %"
       '#14': { policy: 'rows_then_cmd' },
       '#15': { policy: 'block_when', p: 9.5, trip_id: 'ir_high', param: 'ir_high_blocked' },
     },
@@ -114,9 +116,10 @@ var ROUTES = {
     mistakes: [
       { id: 'overshoot_235', kind: 'overshoot', at: '#9', set: { policy: 'approach', to: 235, speed: 'normal' } },
       { id: 'undershoot_10', kind: 'undershoot', at: '#9', set: { short: 10 } },
-      // lets go of WITHDRAW at bank 69 on a noisy 7.0e2 flicker, at 1x (0.1 s gradings), and waits ten
-      // plant-minutes before holding again: the settled count there is ~680, so 5a must NOT tick (807f)
-      { id: 'flicker_release_5', kind: 'undershoot', at: '#5', set: { rel_at: 69, wait_s: 600, at_speed: 1 } },
+      // lets go of WITHDRAW at bank 69 on a noisy 7.0e2 flicker, at 1x (0.1 s gradings): the settled count
+      // there is ~680, so 5a must NOT tick (807f). RECOVERY = 5a's note since #807 review item 1: "if it
+      // only touches 7.0e2 now and then ... tap WITHDRAW one step and wait half a plant-minute"
+      { id: 'flicker_release_5', kind: 'undershoot', at: '#5', set: { rel_at: 69, at_speed: 1 } },
       { id: 'window_overshoot', kind: 'overshoot', at: '#5', set: { policy: 'pull_plot', to: 120 } },   // the old window-led pull, held 10 past its top
       { id: 'plot_early', kind: 'press early', at: '#8', set: { plot_rate: 99 } },
       { id: 'double_plot', kind: 'double press', at: '#6', set: { repeat: 2 } },
@@ -282,6 +285,10 @@ var ROUTES = {
      * opens on the shutdown's scram transient, tile -96.9 degF/hr during step 1 (boration only,
      * measured 2026-09-25, alarm not raised). A RAISED rate alarm fails at any step. */
     rate_from_step: 4,
+    /* #807 review item 4 (2026-09-26): the leg ends under the RHR suction interlock, 2.76 MPa (400 psia).
+     * MEASURED: typical 182-196 psia; the spray shut at step 11's entry and never reopened, 453.7 psia --
+     * the leg still COMPLETES (the "step 15 strands" in the step's own record did not reproduce here) */
+    end_psia_max: 400,
     /* LAYMAN PASS 6 (2026-09-26) S-5: a player who reads the board every 4 s of WALL at the
      * card's own speed (the `when` triggers below poll at 4 s x the rung) must catch step 11's
      * spray-off before the alarm. At 600x that is one read every 40 plant-minutes, and pass 6
@@ -321,6 +328,15 @@ var ROUTES = {
       { id: 'hpi_before_blocks', kind: 'wrong order', at: 'cmd:set_trip_block', set: { policy: 'seq', order: [2, 0, 1] } },
       { id: 'double_rhr', kind: 'double press', at: 'cmd:set_rhr', set: { repeat: 2 } },
       { id: 'rewind_mid_dump_sp', kind: 'rewind mid-step', at: 'cmd:set_steam_dump_setpoint', set: { rewind_after: 1800 } },
+      /* #807 review item 4 (2026-09-26): spray OFF pressed at step 11's ENTRY (what the old card's
+       * pulsing OFF invited), then 11b's own note two plant-minutes later -- "If OFF is already lit
+       * under SPRAY, press MANUAL under SPRAY with its box at 50 %" -- then the typical 30 degF shut.
+       * Injection `spray_row_old_11` is the old one-row form on this same route. */
+      { id: 'spray_off_at_entry', kind: 'press early', at: 'cmd:set_rhr_hx:2', set: {
+        base_spec: { policy: 'seq', cmds: [{ action: 'set_spray', open: false }, { action: 'set_rhr_hx', pct: 9 }] },
+        on: [{ ins: true, p: 'tavg_rate', op: '<', v: -55.6, cmd: { action: 'set_rhr_hx', pct: 6 } },
+             { ins: true, p: 'subcooling_margin', op: '<', from_text: /SUBCOOLING MARGIN[^.]*?below (\d+) °F/, cmd: { action: 'set_spray', open: false } },
+             { p: 'spray_flow_pct', op: '<', v: 1, after_s: 120, if_text: /If OFF is already lit under SPRAY/, cmd: { action: 'set_spray', open: true, pct: 50 } }] } },
     ],
   },
 };
@@ -441,6 +457,15 @@ var MUTATIONS = [
       var st = P.steps[10];
       st.note = 'Keep COOLDOWN RATE under 100 degF per hour: if the Cooldown Rate High alarm comes in, lower HX SPLIT. The spray is still running and keeps taking SUBCOOLING MARGIN down: if it falls below 20 °F, press OFF under SPRAY now.';
       st.accs = [{ p: 'tavg_c', op: '<', v: 92.5, ask: 'Raise HX SPLIT to 9 % and wait for AVG COOLANT TEMPERATURE to read below 199 °F.', label: 'AVG COOLANT TEMPERATURE below 199 °F' }];
+    } },
+  /* #807 review item 4 (2026-09-26): cooldown 11 back to its one-row spray form (ungated, met by a press
+   * at entry, no way-back line) on the route that presses OFF at entry */
+  { id: 'spray_row_old_11', leg: 'pwr_cooldown', route: 'spray_off_at_entry', expect: 'end_press',
+    why: 'cooldown 11 as it shipped before the review: 11b "when it reads below 30 degF, press OFF", graded on the spray alone',
+    mutate: function (P) {
+      var st = P.steps[10]; delete st.accs_ordered;
+      st.accs = [st.accs[0], { p: 'spray_flow_pct', op: '<', v: 1, ask: 'Watch SUBCOOLING MARGIN, and when it reads below 30 °F, press OFF under SPRAY on the PRESSURIZER (PZR) card.',
+        note: 'The spray is still running and keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it much earlier and pressure climbs back over the RHR limit.', wait_speed: 60, label: 'OFF lit under SPRAY' }, st.accs[3]];
     } },
   { id: 'raise_old_settle_band', chain: true, leg: 'pwr_raise_power', route: 'chain', expect: 'settle',
     why: 'raise-power 8 graded 563-592 degF again (pass 6: step 8 ticked at 567 degF)',
@@ -718,7 +743,11 @@ function runJob(legId, routeId, mutId, ctx) {
     }
     rows.forEach(function (r, i) {
       var e = (st.accs || [])[i] || {};
-      if (!S.rowsMet[i] && r.met) S.rowsMetAt[i] = t();
+      if (!S.rowsMet[i] && r.met) {
+        S.rowsMetAt[i] = t();
+        /* the reading the row ticked on, once per row (#807 review item 5: what the tile shows at the tick) */
+        if (r.obs != null && isFinite(r.obs)) { out[k].ticks = out[k].ticks || {}; if (out[k].ticks[i] == null) out[k].ticks[i] = [+((t() - S.t0) / 60).toFixed(2), +(+r.obs).toFixed(3)]; }
+      }
       var band = e.op === '~' && !e.latch, heldS = t() - (S.rowsMetAt[i] == null ? t() : S.rowsMetAt[i]);
       if (S.rowsMet[i] && !r.met && !e.cont && !e.hidden && !(band && heldS >= PASS_S))
         flags.push({ kind: 'untick', step: k + 1, row: i + 1, label: e.label, t_min: (t() - T0) / 60, held_s: heldS });
@@ -903,9 +932,15 @@ function runJob(legId, routeId, mutId, ctx) {
       }
       if (S.memo.lb2 !== bank() || moving()) { S.memo.lb2 = bank(); S.memo.still = t(); }
       if (!m0 && !moving()) {
-        var holding = !S.memo.rel, settled = S.memo.rel && t() - S.memo.still >= (spec.wait_s || 60) && pv('startup_rate_dpm') <= 0.03;
+        /* #807 review item 1 (2026-09-26): once the player has let go, EVERY way back is a single tap
+         * -- the note's "if it only touches it now and then, or is still short at <top>, tap WITHDRAW
+         * one step and wait half a plant-minute" (`tap_wait_s`, steps 5 and 6), or "let STARTUP RATE
+         * settle between taps" (7 and 8: 60 s still and +0.03 or less). Before, a count release
+         * resumed the HOLD after the settle, which no card line asks for. */
+        var holding = !S.memo.rel, settled = S.memo.rel && (spec.tap_wait_s != null ? t() - S.memo.still >= spec.tap_wait_s
+          : t() - S.memo.still >= (spec.wait_s || 60) && pv('startup_rate_dpm') <= 0.03);
         if (holding && (rd >= row0.v || (spec.rel_at != null && !S.memo.relAt && bank() >= spec.rel_at))) {
-          if (spec.rel_at != null) S.memo.relAt = true; S.memo.rel = true; S.memo.still = t(); out[cur].rel_bank = bank(); out[cur].rel_sr = Math.round(rd); }
+          if (spec.rel_at != null) S.memo.relAt = true; S.memo.rel = true; S.memo.tapOnly = !spec.resume_hold; S.memo.still = t(); out[cur].rel_bank = bank(); out[cur].rel_sr = Math.round(rd); }
         else if (holding && spec.top != null && bank() >= spec.top) { S.memo.rel = true; S.memo.tapOnly = true; S.memo.still = t(); out[cur].at_top = true; }   // "short at the window top": stop, then single taps
         else if (holding || settled) {
           if (settled) { out[cur].resumes = (out[cur].resumes || 0) + 1; if (spec.top != null && bank() >= spec.top) S.memo.tapOnly = true; }
@@ -934,10 +969,17 @@ function runJob(legId, routeId, mutId, ctx) {
      * REACTOR POWER reads above `until_p`" (#807 item 11, the climb to 5 % from the startup rate). */
     if (P === 'pulses') {
       if (process.env.WR_PULSE) { var wp = process.env.WR_PULSE.split(','); spec = { k: +wp[0], rate_le: +wp[1], until_p: spec.until_p, speed: spec.speed }; }   // measurement knob
-      if (!moving() && pv('power_pct') < spec.until_p && pv('startup_rate_dpm') <= spec.rate_le &&
+      /* `peak` (#807 review item 3, 2026-09-26): the card now reads "wait for it to PEAK and fall back
+       * to +0.10 or less" -- the rate lags the taps, so a reader who pulls on the first +0.10 after a
+       * tap is pulling on the rate BEFORE it rose. Next pull only once the rate has come off its
+       * post-tap maximum by 0.005 DPM. */
+      var surN = pv('startup_rate_dpm');
+      if (S.memo.lastPull != null) S.memo.pk = Math.max(S.memo.pk == null ? -1e9 : S.memo.pk, surN);
+      var fell = !spec.peak || S.memo.lastPull == null || (S.memo.pk != null && surN <= S.memo.pk - 0.005);
+      if (!moving() && pv('power_pct') < spec.until_p && surN <= spec.rate_le && fell &&
           (S.memo.from == null || bank() >= S.memo.from + spec.k) &&
           t() - (S.memo.lastPull == null ? -1e9 : S.memo.lastPull) >= (spec.dwell || 0)) {
-        S.memo.lastPull = t(); S.memo.from = bank(); nudge(spec.k, spec.speed || 'slow'); S.acts++; out[cur].pulls = (out[cur].pulls || 0) + 1;
+        S.memo.lastPull = t(); S.memo.pk = null; S.memo.from = bank(); nudge(spec.k, spec.speed || 'slow'); S.acts++; out[cur].pulls = (out[cur].pulls || 0) + 1;
       }
       return;
     }
@@ -1084,6 +1126,10 @@ function runJob(legId, routeId, mutId, ctx) {
       }
       (spec.on || []).forEach(function (w, i) {
         if (S.memo['w' + i]) return;
+        /* `if_text`: the trigger exists only if the CARD says it (a recovery line the old card did not
+         * carry); `after_s`: the player notices no sooner than this far into the step (#807 review item 4) */
+        if (w.after_s != null && t() - S.t0 < w.after_s) return;
+        if (w.if_text && !w.if_text.test([st2.text, st2.note || ''].concat((st2.accs || []).map(function (e) { return (e.ask || '') + ' ' + (e.note || ''); })).join(' '))) return;
         if (w.from_text && S.memo['v' + i] === undefined) {
           var wtx = [st2.text, st2.note || ''].concat((st2.accs || []).map(function (e) { return (e.ask || '') + ' ' + (e.note || ''); })).join(' '), wm = w.from_text.exec(wtx);
           S.memo['v' + i] = wm ? (+wm[1]) * 5 / 9 : null; out[cur]['trig' + i + '_F'] = wm ? +wm[1] : null;
@@ -1241,6 +1287,10 @@ function verdicts(r) {
   if ((r.steps || []).some(function (st) { return st.peak_max != null; }))
     v.peak = { ok: pkx.length === 0, name: 'a step whose note says AVG COOLANT TEMPERATURE stays "under about N °F" stays under N on the player route',
       note: pkx.length ? pkx.map(function (st) { return 'step ' + st.n + ' peaked ' + f(st.thi) + ' degF against ' + st.peak_max; }).join('; ') : 'all under' };
+  var epm = ROUTES[r.leg] && ROUTES[r.leg].end_psia_max;
+  if (epm && res.kind === 'complete' && res.end)
+    v.end_press = { ok: res.end.pressure_psia <= epm, name: 'the leg ends with PRIMARY PRESSURE under the RHR suction interlock (' + epm + ' psia)',
+      note: f(res.end.pressure_psia) + ' psia at the end' };
   var fb = [];
   (r.steps || []).forEach(function (st) { (st.forbid || []).forEach(function (id) { (st.raised || []).forEach(function (a) { if (a.indexOf(id + '@') === 0) fb.push('step ' + st.n + ' ' + a); }); }); });
   if ((r.steps || []).some(function (st) { return st.forbid; }))

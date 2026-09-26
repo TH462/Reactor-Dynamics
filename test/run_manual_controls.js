@@ -236,6 +236,21 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
          * can only wear one ring — so the author has asked for a pulse and a steady dash on the
          * same thing and will get whichever the renderer applies last. It is an authoring
          * defect, not a rendering one, and nothing else can see it. */
+        /* `accs[].hl_active` (#807 review item 4, 2026-09-26): a substep-gated pulse. Its labels must
+         * already be in the step's `hl` (the vocabulary and distinct-element checks read `hl`), sit on a
+         * HEAD entry (a `cont` row is never the active substep), on an `accs_ordered` step (where
+         * "active" is the sequence). One check per step that carries it. INJECTION-PROVEN: cooldown
+         * 11's 'Pressurizer Spray — Off' taken out of `hl` -> red. */
+        var hla = (st.accs || []).filter(function (e) { return e && e.hl_active; });
+        if (hla.length) {
+          var bad = [];
+          hla.forEach(function (e) {
+            if (e.cont) bad.push('on a cont row');
+            e.hl_active.forEach(function (l) { if (!(st.hl || []).some(function (h) { return h === l; })) bad.push('"' + l + '" not in hl'); });
+          });
+          if (!st.accs_ordered) bad.push('step is not accs_ordered');
+          ck(where + ' hl_active labels are in hl, on head rows, on an ordered step', bad.length === 0, bad.join('; '));
+        }
         if (st.hl && st.hl.length && st.hl_watch && st.hl_watch.length) {
           var both = st.hl.filter(function (l) { return st.hl_watch.indexOf(l) >= 0; });
           ck(where + ' hl/hl_watch are disjoint', both.length === 0,

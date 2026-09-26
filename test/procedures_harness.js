@@ -383,6 +383,13 @@
         st.accs.forEach(function (en, k) {
           if (!en || !en.p) return;
           var ev = accVerdict(en, 'accs' + k);
+          /* A LATCHING ROW ON AN ORDERED STEP IS A MILESTONE, AS THE LIVE RUNTIME GRADES IT (2026-09-26,
+           * #807 review item 4): a `>`/`<` row latches once met (instructor `_gradeAccs`), and the
+           * ordered tracker above already holds that verdict in `ordMet`. `pwr_cooldown` 11b ("watch
+           * SUBCOOLING MARGIN fall to 32 degF") is met mid-hold and is 106 degC by the step's end,
+           * because the spray it gates is then shut. `~` bands and bag ops still grade at the end. */
+          if (!ev.pass && ordMet && ordMet[k] && !RD.InstructorLayer.isBagOp(en.op) && /^(<|>|<=|>=)$/.test(en.op))
+            ev = { pass: true, obs: ev.obs + ' (latched in order)' };
           checks.push({
             d: 'step ' + curStep + ' accs[' + k + '] ' + en.p + ' ' + en.op + ' ' + en.v,
             pass: ev.pass, obs: ev.obs });

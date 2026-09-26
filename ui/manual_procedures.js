@@ -196,6 +196,10 @@
  *           reading over that many plant-seconds, not five raw samples (`InstructorLayer.gradeMean`).
  *           For a noisy tile whose reading IS the target (`pwr_startup` 5a-8a, SOURCE RANGE sigma 4.5 %,
  *           owner selection "Guide, count is the target", 2026-09-26). Live runtime only.
+ *   accs[].hl_active  OPTIONAL array, on a HEAD entry of an `accs_ordered` step — labels from the
+ *           step's own `hl` that PULSE only while this substep is the active one, and wear the steady
+ *           watch ring before and after (ui/app.js `cklHlActiveSplit`). For a press the card must not
+ *           invite early: `pwr_cooldown` 11c, spray OFF, #807 review item 4. `run_manual_controls` gates it.
  *   accs[].cont  OPTIONAL boolean — ANOTHER CHECK-OFF OF THE PRECEDING (HEAD) ENTRY, not a
  *           substep of its own (the walkthrough-step-format project, `Blueprint/walkthrough_
  *           steps/02_mode3_to_mode1.md`: one lettered substep, more than one `()` row —
@@ -2839,7 +2843,7 @@
           wait_hint: false,
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 695, mean_s: 30,
                    ask: 'Hold CONTROL WITHDRAW at MED until SOURCE RANGE reads 7.0e2 or more.',
-                   note: 'On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 75 to 80; the position shifts with boron and recent power, the count does not. If SOURCE RANGE is still under 7.0e2 at 110, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.',
+                   note: 'On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 75 to 80; the position shifts with boron and recent power, the count does not. The check-off waits for SOURCE RANGE to stay at 7.0e2 or more, not just touch it. If it only touches 7.0e2 now and then, or is still short at 80, tap WITHDRAW one step and wait half a plant-minute. Repeat until it stays there.',
                    label: 'SOURCE RANGE reads 7.0e2 (700 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Wait for STARTUP RATE to read +0.03 or less, then press Plot point.',
                    note: 'STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop. If BORON still reads above 719 ppm, the step 2 dilution is still adding reactivity and STARTUP RATE takes longer to fall.',
@@ -2867,7 +2871,7 @@
           wait_hint: false,
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 1350, mean_s: 30,   // the 1.4e3 band's lower edge — see step 5's RENDER BAND block
                    ask: 'Hold CONTROL WITHDRAW until SOURCE RANGE reads 1.4e3 or more.',
-                   note: 'On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 150 to 155. If SOURCE RANGE is still under 1.4e3 at 175, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.',
+                   note: 'On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 150 to 155. The check-off waits for SOURCE RANGE to stay at 1.4e3 or more. If it only touches 1.4e3 now and then, or is still short at 155, tap WITHDRAW one step and wait half a plant-minute. Repeat until it stays there.',
                    label: 'SOURCE RANGE reads 1.4e3 (1,400 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the predicted rod position the panel prints.',
                    note: 'STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop.',
@@ -2904,7 +2908,7 @@
           /* One step per plot point since #796 item 3 — the reasoning is on step 5. */
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 2950, mean_s: 30,   // the 3.0e3 band's lower edge — see step 5's RENDER BAND block
                    ask: 'Hold CONTROL WITHDRAW until SOURCE RANGE reads 3.0e3 or more.',
-                   note: 'On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 190. If SOURCE RANGE is still under 3.0e3 at 194, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.',
+                   note: 'On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 190 to 192. The check-off waits for SOURCE RANGE to stay at 3.0e3 or more. If it only touches 3.0e3 now and then, or is still short at 192, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.',
                    label: 'SOURCE RANGE reads 3.0e3 (3,000 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the prediction again.',
                    label: 'Point plotted' }],
@@ -3036,7 +3040,7 @@
           /* One step per plot point since #796 item 3 — the reasoning is on step 5. */
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 6950, mean_s: 30,   // the 7.0e3 band's lower edge — see step 5's RENDER BAND block
                    ask: 'Hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.',
-                   note: 'On a fresh core at 719 ppm the count reaches 7.0e3 about when CONTROL ROD POSITION reaches 205. Do not hold past 205: if SOURCE RANGE is still under 7.0e3 there, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps. Stay at least 3 steps below the position the 1/M panel predicts.',
+                   note: 'On a fresh core at 719 ppm the count reaches 7.0e3 about when CONTROL ROD POSITION reaches 205. Do not hold past 205. The check-off waits for SOURCE RANGE to stay at 7.0e3 or more: if it only touches 7.0e3 now and then, or is still short at 205, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps. Stay at least 3 steps below the position the 1/M panel predicts.',
                    label: 'SOURCE RANGE reads 7.0e3 (7,000 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Wait for STARTUP RATE to read +0.03 or less, then press Plot point and note the critical rod position the 1/M panel predicts.',
                    label: 'Point plotted' }],
@@ -3838,7 +3842,7 @@
            * "5.1", from 5.05 — the render-band floor. MEASURED, authored route, seed 42: `> 5` at
            * +45 s, `>= 5.05` at +47 s; the step ends at 10.57 %. Two plant-seconds. */
           accs: [{ p: 'power_pct', op: '>=', v: 5.05,
-                   ask: 'Press SLOW. Withdraw CONTROL 2 steps, then wait for STARTUP RATE to fall back to +0.10 or less. Repeat until REACTOR POWER reads above 5 %.',
+                   ask: 'Press SLOW. Tap WITHDRAW twice (2 steps). STARTUP RATE rises for a while after the taps: wait for it to peak and fall back to +0.10 or less. Repeat until REACTOR POWER reads above 5 %.',
                    note: 'Each pull lifts STARTUP RATE and the warming water brings it back down; waiting for it keeps the climb gentle. Expect about 5 pulls and 5 plant-minutes. Power keeps climbing for a while after the last pull. It passes 9½ % once the turbine takes load in the next step. It needs to: the two startup trips cannot be blocked until REACTOR POWER is above 9½ %.',
                    wait_speed: 5, label: 'REACTOR POWER above 5 %' }],
           hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
@@ -4081,7 +4085,7 @@
            * handover (owner ruling "Rebuild the preset"): the move is 59 ppm, 663 ppm at 24.1
            * plant-min and 660.5 at 25.2 after the press (MEASURED, seed 42, 10x). */
           why: 'Every percent of power costs reactivity: the fuel heats up and the water thins out. Rods could pay for all of it but would end up deep in the core, so real plants dilute boron for the bulk and use rods for the fine trim. Dilution is not instant and it slows as it closes on the number you typed: this 59 ppm move takes about 45 plant-minutes, and a 10 ppm trim later takes about fifteen.',
-          control: 'Boron control', target: 'BORON reads 660 ppm, ON lit',
+          control: 'Boron control', target: 'BORON target reads 660 ppm, ON lit',
           /* `wait_hint` ("The dilution keeps working between stages. Start it now.") dropped
            * 2026-09-24: 3a's note already says it in his words, and a string hint would print a
            * second speed line under 3a's own "Suggested time warp: 1×". */
@@ -4321,7 +4325,7 @@
         { text: 'Confirm full power, with the boron dilution done.',
           aim: 'The climb is not finished until the boron dilution has fully arrived.',
           why: 'Full power, with almost no xenon in the fuel yet. Over the next hours xenon builds, and the plant settles into its long-term full-power state: less boron and the control bank high — 606 of 627 steps, which is where a full-power plant runs.',
-          control: 'Boron control', target: 'BORON at or below 660 ppm',
+          control: 'Boron control', target: 'BORON 663 ppm or below',
           note: 'CONTROL ROD POSITION should be part-way out, not on its stop. The last of the dilution is still arriving here: AVG COOLANT TEMPERATURE climbs while it does, so hold INSERT 3 steps at a time whenever it rises above its band. BORON is the one to read twice: leave the climb with more of it in the water than the plant wants and AVG COOLANT TEMPERATURE sinks over the following hours, taking PZR LEVEL with it. This walkthrough ends here. Over the next two plant-days xenon, a neutron absorber the fuel makes as it runs, builds and cools the plant at the same power; a separate xenon walkthrough, still to come, covers what an operator does about it.',
           wait_speed: 5, speed_text: true,   // 1 -> 5 (#807 item 2, 2026-09-26): 9b waits 21-27 plant-min for BORON on the holdup plant (route seeds 42/7/123)
           accs: [{ p: 'power_pct', op: '>', v: 96,
@@ -5374,13 +5378,29 @@
           note: 'Keep COOLDOWN RATE under 100 °F per hour: if the Cooldown Rate High alarm comes in, lower HX SPLIT.',
           /* 11a split (#807 item 2, 2026-09-26): the raise was one clause of the spray substep and had no
            * check-off. Graded at the floor of the box's whole-% render of 9 (0.085); at entry it reads 7 (step 9). */
+          accs_ordered: true,   // #807 review item 4: the spray press (11c) is not live before the margin (11b)
           accs: [{ p: 'rhr_hx_fraction', op: '>=', v: 0.085,
                    ask: 'Raise HX SPLIT to 9 %.',
                    wait_speed: 1, label: 'HX SPLIT raised to 9 %' },
+                 /* #807 REVIEW ITEM 4 (2026-09-26): THE WATCH AND THE PRESS ARE TWO ROWS, IN ORDER. One row
+                  * graded on the spray alone was MET by a press at step entry, and 'Pressurizer Spray — Off'
+                  * pulsed from entry: the early press the record above says takes pressure past the RHR limit.
+                  * Now 11b is the wait (graded on the margin, 16.7 degC = 30 degF), 11c the press, and the OFF
+                  * button pulses only while 11c is active (`hl_active`). A spray already shut does not satisfy
+                  * 11b -- the margin climbs instead -- so 11b's note carries the way back.
+                  * 11b TICKS AT 32 degF (17.8 degC), NOT 30: MEASURED, a row at the press threshold itself
+                  * STRANDED the step -- the player shuts the spray on the first tile reading under 30 degF,
+                  * the margin turns back up before five graded readings have agreed, and 11b never latches
+                  * (route `spray_off_at_entry`, 465 plant-min). The margin falls ~0.2 degF a plant-minute
+                  * here, so 11c is live about 10 plant-minutes before its press is due. */
+                 { p: 'subcooling_c', op: '<', v: 17.78,
+                   ask: 'Leave SPRAY running and watch SUBCOOLING MARGIN fall to 32 °F.',
+                   note: 'The spray keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it any earlier and pressure climbs back over the RHR limit. If OFF is already lit under SPRAY, press MANUAL under SPRAY with its box at 50 % and keep watching. The clock moves to 60× by itself once HX SPLIT is raised.',
+                   wait_speed: 60, speed_text: '60×: at 600× the margin can fall 10 °F between two glances.', label: 'SUBCOOLING MARGIN down to 32 °F' },
                  { p: 'spray_flow_pct', op: '<', v: 1,
-                   ask: 'Watch SUBCOOLING MARGIN, and when it reads below 30 °F, press OFF under SPRAY on the PRESSURIZER (PZR) card.',
-                   note: 'The spray is still running and keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it much earlier and pressure climbs back over the RHR limit. The clock moves to 60× by itself once HX SPLIT is raised.',
-                   wait_speed: 60, speed_text: '60×: at 600× the margin can fall 10 °F between two glances.', label: 'OFF lit under SPRAY' },
+                   ask: 'When SUBCOOLING MARGIN reads below 30 °F, press OFF under SPRAY on the PRESSURIZER (PZR) card.',
+                   hl_active: ['Pressurizer Spray — Off'],
+                   wait_speed: 60, label: 'OFF lit under SPRAY' },
                  { p: 'tavg_c', op: '<', v: 92.5,
                    ask: 'Wait for AVG COOLANT TEMPERATURE to read below 199 °F.',
                    wait_speed: 600, label: 'AVG COOLANT TEMPERATURE below 199 °F' }],

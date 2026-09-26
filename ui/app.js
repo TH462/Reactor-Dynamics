@@ -5455,9 +5455,9 @@
     /* THE STEP KEY IS WHAT SCOPES THE "already pressed" SET (#755 item 19) — procedure plus step
      * index, so advancing a step, rewinding, or starting another leg all drop it and the next
      * step's controls pulse again from scratch. */
-    applyCklStepGlow(actSt ? stepHlLabels(actSt) : null,
+    applyCklStepGlow(actSt ? stepHlLabels(actSt, ck) : null,
                      actSt ? (pr.id + '#' + ck.step_index) : null);
-    applyCklWatchGlow(actSt ? stepWatchLabels(actSt) : null);   /* #685 */
+    applyCklWatchGlow(actSt ? stepWatchLabels(actSt, ck) : null);   /* #685; `hl_active` (#807) */
     applyCklSpeedGlow(s, ck, actSt);                            /* #735 — #724 item 2; #796 */
     // Step hover → glow the controls/indications the step names (its `hl` list) on
     // the plant display, reusing the Instructor highlight vocabulary (revealControl).
@@ -5644,8 +5644,23 @@
    * 4, `pwr_sgtr` 5, `pwr_seal_leak` 3-5) and exactly one in the live pool — `pwr_raise_power` 9,
    * which is the step the ruling is about. The ten retired-pool steps do not go dark: they have no
    * `hl_watch`, so `stepWatchLabels` below picks their `control` up as a steady ring. */
-  function stepHlLabels(st) {
-    if (st.hl && st.hl.length) return st.hl;
+  /* `accs[].hl_active` (#807 review item 4, 2026-09-26): labels from the step's `hl` that PULSE only
+   * while that substep is the active one; until then (and after) they wear the steady watch ring.
+   * `pwr_cooldown` 11's spray OFF pulsed from step entry on a step whose own record says an early
+   * press takes pressure past the RHR limit. `ck` absent (the hover preview) = the whole `hl`. */
+  function cklHlActiveSplit(st, ck) {
+    var gated = [], now = [];
+    (st.accs || []).forEach(function (e) { (e && e.hl_active || []).forEach(function (l) { if (gated.indexOf(l) < 0) gated.push(l); }); });
+    if (!gated.length || !ck) return null;
+    var head = cklActiveAccsHead(st, ck);
+    if (head >= 0) now = st.accs[head].hl_active || [];
+    return { off: gated.filter(function (l) { return now.indexOf(l) < 0; }) };
+  }
+  function stepHlLabels(st, ck) {
+    if (st.hl && st.hl.length) {
+      var sp = cklHlActiveSplit(st, ck);
+      return sp ? st.hl.filter(function (l) { return sp.off.indexOf(l) < 0; }) : st.hl;
+    }
     var c = stepControlLabel(st);
     if (c && stepAsksForPress(st)) return [c];
     return null;
@@ -5661,7 +5676,9 @@
    * and a step that authored `hl` has already said what it is about, so its `control` stays a
    * pill. Without this the ten retired-pool verify steps above would lose their ring AND their
    * hover affordance (`hoverable` is `stepHlLabels || stepWatchLabels`) — a regression, not a fix. */
-  function stepWatchLabels(st) {
+  function stepWatchLabels(st, ck) {
+    var sp = st.hl && st.hl.length ? cklHlActiveSplit(st, ck) : null;
+    if (sp && sp.off.length) return (st.hl_watch || []).concat(sp.off);
     if (st.hl_watch && st.hl_watch.length) return st.hl_watch;
     if (st.hl && st.hl.length) return null;
     var c = stepControlLabel(st);

@@ -29,6 +29,46 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-develop-i (#807 review fixes: count-row flicker, windows, 13a, cooldown 11 spray, boron line, mean dedupe)
+
+Scratch worktree exp/807g (from exp/807int 850a92e1). Route runner `--job` runs, full stack, seed 42
+(and 7 where stated). Six findings from a read-only review of the #807 walkthrough work.
+
+- **Startup 5a-8a flicker (item 1).** The count rows grade a 30 s mean; the notes now say the check-off
+  waits for the count to STAY at the target, and "tap WITHDRAW one step and wait half a plant-minute".
+  Route `flicker_release_5` (let go at bank 69, 660 cps) re-based on that line: 5 taps, ticks at bank 74
+  on a 695 cps mean, 4.8 plant-min in step 5 (the old unguided route held again after 10 min: 12.1).
+- **Windows (item 2).** Fallback tops now the measured landing range: 80 / 155 / 192 / 205 (were 110 /
+  175 / 194 / 205). Typical route unchanged (lands 77 / 153 / 191 / 205). After a release, every way back
+  is a tap now (the route used to resume the hold, which no card line asks for).
+- **13a (item 3).** "Tap WITHDRAW twice (2 steps). STARTUP RATE rises for a while after the taps: wait
+  for it to peak and fall back to +0.10 or less." Route pulls only after the rate comes off its post-tap
+  peak: MEASURED identical (5 pulls, 4.7 plant-min, peak 0.25 DPM) — at SLOW the rate is already over
+  +0.10 when the rods stop, so the wording fixes the reading, not the route.
+- **Cooldown 11 (item 4).** Ordered 11a HX / 11b watch to 32 °F / 11c press OFF below 30 °F / 11d wait;
+  OFF pulses only while 11c is active (`accs[].hl_active`, ui/app.js `cklHlActiveSplit`). **A 30 °F 11b
+  stranded** (465 plant-min: the press on the first tile reading under 30 °F turns the margin up before
+  five readings agree); 32 °F does not. New mistake route `spray_off_at_entry` (spray OFF at entry, 11b's
+  "If OFF is already lit ... MANUAL at 50 %" two minutes later): completes, ends 176-178 psia (seeds 42/7).
+  **The inherited "an early shut strands step 15" did NOT reproduce**: the old one-row form on the same
+  press completes too, but ends at 453.7 psia, over the RHR suction interlock (400 psia). New route check
+  `end_press` (leg ends under 400 psia; typical 174-193) is what injection `spray_row_old_11` reddens.
+- **Raise power boron line (item 5).** 9b ticks on 662.8 / 661.9 ppm (seeds 42/7), drawn 663 / 662 on
+  the whole-ppm tile. Step 9's goal "at or below 660" -> "663 ppm or below"; step 3's "BORON reads 660"
+  -> "BORON target reads 660" (step 3 sets the box). Grading unchanged.
+- **gradeMean (item 6).** A sample at the sim time of the last one replaces it, so a paused instant
+  counts once however many command broadcasts grade it. Check `run_checklist_pwr2` 2mn.1: 30 s at 700,
+  ten paused grades at 600 -> mean 696.8, met; injection (always push) -> 675, not met. The comment's
+  "the replay only ever ticks it SOONER" was not strictly true and now says "usually".
+- **Replay latches an ordered milestone row.** `procedures_harness` graded 11b at the step's END (margin
+  106.55 degC then, red); a `>`/`<` row on an `accs_ordered` step now passes if it was met IN ORDER
+  (`ordMet`), as the live runtime latches it. `~` bands and bag ops still grade at the end.
+- **verify_flags_ui 65/67 -> 67/67 (coordinator add).** Both reds were stale checks, not code: step 5
+  read 1× / 10× / 10×, which IS #807 item 9 ("steps 5, 6 7 should be at 10x") — re-stated, and the
+  pre-807 rungs (5a 5×, 5b 1×) red it "5×, then 5b 1×". 9b read 1× on entry and 10× after the tap,
+  correct; the check hard-coded cmd_head 3, but #807 item 10 removed 9's settle row so 9b's head is 2 —
+  now read off the pool's `act_first` row.
+
 ## Session log — 2026-09-26-develop-h (#807 item 2: raise and lower power re-walked on the boron-holdup plant)
 
 Scratch worktree exp/807e1 (from exp/807int 061f37d9). Route runner `--job` runs, full stack, seeds

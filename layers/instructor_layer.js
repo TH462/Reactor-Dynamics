@@ -1749,7 +1749,14 @@
    * really reaches 695 at bank 73. A 30 s mean has sigma under 1 %, so the row ticks within about a
    * bank of where the count truly is. The row still LATCHES (it is not a hold), the op is unchanged,
    * and the ring restarts when the clock goes back, as `gradeSteady`'s does. Live runtime only:
-   * the replay harness grades the raw reading, which only ever ticks it SOONER. */
+   * the replay harness grades the raw reading. That USUALLY ticks sooner (five noisy readings in a
+   * row cross the line below the true count) but not always: with the mean just over the line, five
+   * consecutive raw readings can take longer than the mean does. The replay does not rely on it.
+   *
+   * ONE SAMPLE PER PLANT INSTANT (2026-09-26, #807 review item 6): `instructor.step` also runs on the
+   * broadcast a COMMAND produces, and while paused that repeats the same sim time, so an unweighted
+   * ring counted a paused instant once per press. A sample at the sim time of the last one REPLACES
+   * it (the newest reading of that instant wins); `run_checklist_pwr2` 2am gates it. */
   InstructorLayer.gradeMean = function (bag, snapshot, pred, predMet) {
     var r = readParam(snapshot, pred.p);
     var t = snapshot && snapshot.metadata ? snapshot.metadata.sim_time : null;
@@ -1758,7 +1765,8 @@
     var s = bag.s;
     if (t == null || !isFinite(t) || typeof r.value !== 'number' || !isFinite(r.value)) return out;
     if (s.length && t < s[s.length - 1].t) s.length = 0;
-    s.push({ t: t, v: r.value });
+    if (s.length && t === s[s.length - 1].t) s[s.length - 1].v = r.value;
+    else s.push({ t: t, v: r.value });
     while (s.length > 1 && t - s[1].t >= pred.mean_s) s.shift();
     if (t - s[0].t < pred.mean_s) return out;               // the window is not full yet
     var sum = 0; for (var i = 0; i < s.length; i++) sum += s[i].v;

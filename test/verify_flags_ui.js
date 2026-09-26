@@ -868,9 +868,14 @@ function pinChannel(ch) {
                met0: !!(c.accsState && c.accsState[0] && c.accsState[0].met) };
     });
   }
-  ck('dev (pwr2): pwr_startup step 5 — the clock re-acts mid-step, 5a 1× until WITHDRAW, then 5×, then 5b 1×',
+  /* RE-STATED 2026-09-26 (807g) for the owner's #807 item 9 *(OWNER, 1.8.0-rc6 playtest: "steps 5, 6 7
+   * should be at 10x")*: one warp for both substeps, so 5a is 1× until WITHDRAW, then 10×, and 5b STAYS
+   * 10× — the plot substep's old 1× was the "jump out of warp" he reported. The observed 1× / 10× / 10×
+   * is that ruling, not a defect. INJECTION-PROVEN 2026-09-26: the pre-#807 rungs put back (5a 5×, 5b
+   * 1×, no step `wait_speed`) red it "1×, after 5×, then on 5b 1×". */
+  ck('dev (pwr2): pwr_startup step 5 — one warp for both substeps (#807 item 9): 5a 1× until WITHDRAW, then 10×, and 5b stays 10×',
     sub.z === 1 && !!sub.a && !!sub.b && sub.a.idx === 4 && sub.b.idx === 4 && !sub.a.met0 && sub.b.met0 &&
-    sub.a.accel === 5 && sub.b.accel === 1,
+    sub.a.accel === 10 && sub.b.accel === 10,
     sub.a ? ('on 5a before the press ' + sub.z + '×, after ' + sub.a.accel + '× (5a met ' + sub.a.met0 + '), then on 5b ' +
              (sub.b ? sub.b.accel + '× (5a met ' + sub.b.met0 + ', step index ' + sub.b.idx + ')' : '?'))
           : 'pwr_startup start button not found');
@@ -909,15 +914,19 @@ function pinChannel(ch) {
     await b.page.waitForTimeout(2000);
     s9.c = await b.page.evaluate(function () {
       var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
-      return { accel: svc.timeAcceleration, idx: c.idx, head: c.cmdSeenHead };
+      /* 9b's HEAD INDEX, read off the pool: it was 3 until #807 item 10 took the settle row out of 9
+       * (2026-09-26) and the hard-coded 3 went red on a correct cmd_head of 2 */
+      var pr = c.proc || {}, st9 = (pr.steps || [])[8] || {}, hd = -1;
+      (st9.accs || []).forEach(function (e, i) { if (hd < 0 && e && e.act_first) hd = i; });
+      return { accel: svc.timeAcceleration, idx: c.idx, head: c.cmdSeenHead, want: hd };
     });
   }
   ck('dev (pwr2): pwr_startup 9b holds 1× on entry until its first tap lands, then takes its 10× (act_first)',
     !!s9.a && !!s9.b && !!s9.c && s9.a.idx === 8 && s9.b.idx === 8 && s9.c.idx === 8 && s9.a.head === 0 &&
-    s9.b.met0 && s9.b.accel === 1 && s9.c.head === 3 && s9.c.accel === 10,
+    s9.b.met0 && s9.b.accel === 1 && s9.c.want > 0 && s9.c.head === s9.c.want && s9.c.accel === 10,
     s9.a ? ('9a after its press ' + s9.a.accel + '× (cmd_head ' + s9.a.head + '); 9b on entry ' +
             (s9.b ? s9.b.accel + '× (9a met ' + s9.b.met0 + ')' : '?') + '; after the tap ' +
-            (s9.c ? s9.c.accel + '× (cmd_head ' + s9.c.head + ', step index ' + s9.c.idx + ')' : '?'))
+            (s9.c ? s9.c.accel + '× (cmd_head ' + s9.c.head + ' of 9b head ' + s9.c.want + ', step index ' + s9.c.idx + ')' : '?'))
           : 'pwr_startup start button not found');
   await b.ctx.close();
 

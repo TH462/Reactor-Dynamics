@@ -38,6 +38,12 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   localStorage.
 
 ### Changed
+- **Walkthrough review fixes (#807).** Mode 3 → Mode 1: steps 5-8 say the check-off waits for SOURCE
+  RANGE to STAY at the target and give the tap-and-wait way on; the "short at" positions are the landing
+  range (80 / 155 / 192 / 205); 13a reads "Tap WITHDRAW twice" and waits for the rate to peak and fall
+  back. Cooldown 11: watch SUBCOOLING MARGIN to 32 °F, then OFF below 30 °F, with the OFF button pulsing
+  only then and a way back if it was shut early. Raise power: boron goal lines match the graded 663 ppm.
+  A `mean_s` row counts a paused instant once.
 - **Raise power and lower power: re-walked on the boron-holdup plant, highlights on the button**
   (#807 item 2). The pulse moves off the TURBINE-GENERATOR card onto the LOAD box (and LATCH, BORON
   ON, INSERT where the step presses them); the card keeps a steady ring. Raise power: the dilution is
