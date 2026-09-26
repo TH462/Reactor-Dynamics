@@ -124,7 +124,7 @@ Suggested time warp: 1×.
 
 Suggested time warp: 1×.
 
-Note: The band is near 562 °F at this load.
+Note: The band is near 562 °F at this load. The Control Rods — Approaching Insertion Limit alarm may come in during this stage or the next: expected, the bank is low because boron is carrying the climb, and it clears as xenon builds and you walk the bank up.
 
 ()5c. Check OUTPUT reads 50 MW, REACTOR POWER is near 50 % and AVG COOLANT TEMPERATURE is in its band, 550 to 583 °F.
 
@@ -210,7 +210,7 @@ Suggested time warp: 1×.
 
 Note: Above 103 % REACTOR POWER the plant stops rod withdrawal, and the step to 100 MW can carry power past it: if CONTROL ROD POSITION stops moving while you hold WITHDRAW, let go, wait for REACTOR POWER to settle back under 103 %, then pull again.
 
-()8c. Check OUTPUT reads 100 MW and AVG COOLANT TEMPERATURE is near 578 °F, between 563 and 592 °F.
+()8c. Check OUTPUT reads 100 MW and AVG COOLANT TEMPERATURE is near 578 °F, between 573 and 583 °F.
 
 ()8d. Check CONTROL ROD POSITION reads below 600, not on its top stop.
 
@@ -254,19 +254,19 @@ Full power, with almost no xenon in the fuel yet. Over the next hours xenon buil
 
 *Xenon takes reactivity away over about two days; rods give it back first, but only once it has taken some.*
 
-()10a. If AVG COOLANT TEMPERATURE reads below its band, hold WITHDRAW at MED 3 to 6 steps; otherwise leave the rods where they are.
+()10a. If AVG COOLANT TEMPERATURE reads below 575 °F, hold WITHDRAW at MED 3 to 6 steps, let it settle, and repeat until it reads 575 °F or more; otherwise leave the rods where they are.
 
 ()10b. Check OUTPUT still reads 100 MW.
 
 Suggested time warp: 1×.
 
-Note: Right after the climb there is almost no xenon, and the temperature holds by itself. Pulling now only heats the plant, far enough that it cuts the turbine back on its own. As xenon builds over the next hours the temperature drifts down: pull 3 to 6 steps each time it leaves its band, then wait for it to settle. The Control Rods — Insertion Limit alarm (ROD LIMIT LO-LO) is up and that is normal — the bank is low because there is no xenon yet, and it clears as you walk the bank up.
+Note: Right after the climb there is almost no xenon, and the temperature holds by itself. Pulling now only heats the plant, far enough that it cuts the turbine back on its own. As xenon builds over the next hours the temperature drifts down: pull 3 to 6 steps each time it reads below 575 °F, then wait for it to settle. The Control Rods — Insertion Limit alarm (ROD LIMIT LO-LO) is up and that is normal — the bank is low because there is no xenon yet, and it clears as you walk the bank up.
 
 
 
 Background
 
-Xenon is a neutron absorber that builds in the fuel over about two days, takes reactivity away, and the plant answers by making the same power at a lower temperature. Left alone this plant does not just settle cold: measured from here, PZR LEVEL is on its floor in 7 plant-hours and the reactor trips on STEAM GENERATOR LEVEL LO-LO in 17, with REACTOR POWER reading 100 % the whole way down. You give the reactivity back with two levers, rods leading because they are fast and reversible: the bank has about 290 steps to go, worth roughly 110 °F between them, and each ppm of boron about 0.6 °F.
+Xenon is a neutron absorber that builds in the fuel over about two days, takes reactivity away, and the plant answers by making the same power at a lower temperature. Left alone this plant does not just settle cold: measured from here, PZR LEVEL is on its floor in 7 plant-hours and the reactor trips on STEAM GENERATOR LEVEL LO-LO in 17, with REACTOR POWER reading 100 % the whole way down. You give the reactivity back with two levers, rods leading because they are fast and reversible: the bank has about 300 steps to go, worth roughly 110 °F between them, and each ppm of boron about 0.6 °F.
 
 [HIGHLIGHTED: Control Bank (pulsing); Tavg, Control Rod Position (steady)]
 
@@ -288,7 +288,7 @@ Note: A dose is 10 ppm, never the whole 43 ppm still to come (660 down to 617). 
 
 Background
 
-Rods are fast, but they run out: the bank has about 290 steps left and the xenon still to come costs more than they carry. Boron carries the rest, and it has to go in small doses — dial the whole way in one press and the plant heats far faster than xenon can absorb it, which trips the reactor on overtemperature.
+Rods are fast, but they run out: the bank has about 300 steps left and the xenon still to come costs more than they carry. Boron carries the rest, and it has to go in small doses — dial the whole way in one press and the plant heats far faster than xenon can absorb it, which trips the reactor on overtemperature.
 
 [HIGHLIGHTED: Boron Target (pulsing); Boron Concentration, Tavg (steady)]
 
@@ -733,3 +733,7 @@ target is set, so the clause went to the cooldown's target substep. Grading unch
 ### Layman pass 5 record — 2026-09-25, workbench-g
 
 Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`. 4b's note: "The gauge keeps rising about 2 to 5 °F after you let go" — chain route overshoot after release, stages 1-5: 5.3 / 5.0 / 3.2 / 2.6 / 1.8 °F; the reviewer's stage 1 went to 563 °F. The tile's green band is real at power (17 of 178 px, `#74dc9c`, headless capture at 580 °F). 9b now reads "663 ppm or below", its grading threshold (`< 663`, pass 4's settling margin); it had said 660 and ticked with the tile on 663.
+
+### Layman pass 6 — 2026-09-26, workbench-a (AGENT-DRAFTED, not owner-ruled)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`. 8c grades 573–583 °F (was 563–592): "settle on 578" was ticking at 564–567. 10a names 575 °F and says repeat until it reads 575 or more (it graded 574.5–585.3 against "its band", which steps 8–9 had defined as 563–592). The conditional ruling (2026-09-25, "Make them conditional") stands: an on-band plant is met on arrival. The OWNER may prefer different wording — this is the agent's. 5b forewarns Approaching Insertion Limit. Bank arithmetic: "about 300 steps" (routes end 297–308; reviewer 296).

@@ -31,6 +31,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Walkthroughs: layman pass 6** (2026-09-26, AGENT-DRAFTED wording, record
+  `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`). Cooldown 11: the spray-off is its own
+  substep at 30 °F and 60× (seam 19 → 241 psia; second heatup margin 25 → 197 °F). Cooldown 4: time
+  the 6-minute waits on the plant clock (4.1-minute spacing: −117 °F/hr). Cooldown 16: SCRAM reset
+  first. Cooldown 3: STOP on the ECCS card does not disarm safety injection. Raise power 8 grades
+  573–583 °F ("settle on 578"); 10 says "below 575 °F" (it graded 575–585 against "its band").
+  Forewarnings for five alarms; end card bank "about 300". `run_walkthrough_routes`: `band_floor`
+  route, polled `when` triggers, `settle`/`forbid`/`blocks` checks, three injections.
 - **Walkthroughs: the cooldown stays under the 100 °F/hr limit** (owner rulings 2026-09-25, "Re-pace
   to stay under", then "Middle ground"). Step 4 lowers DUMP SETPOINT 50 psi to 720, then 25 psi to
   270, then 15 psi, about 6 plant-minutes apart, 34 entries (was 50 psi every 5 minutes; COOLDOWN

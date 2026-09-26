@@ -44,6 +44,8 @@ In Cold Shutdown (Mode 5) the water is far below boiling, pressure is low, the R
 
 Suggested time warp: 1×.
 
+Note: Coming from a cooldown with PRIMARY PRESSURE under about 25 psi, heat from the pumps carries AVG COOLANT TEMPERATURE to about 205 °F and can bring in the Low Subcooling Margin alarm. Both are expected: the heaters raise pressure at step 9 and the alarm clears.
+
 Background
 
 A shut-down reactor makes very little heat compared to a critical reactor, but the running pumps put about half a percent of full power into the water as friction. That is enough to warm the whole plant. Real crews heat up exactly this way, with the reactor never critical.
@@ -178,7 +180,7 @@ Suggested time warp: 1×.
 
 Suggested time warp: 600×.
 
-Note: At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open. Coming from the cooldown the plant starts near 50 psi or lower, not 363, and the climb takes about an hour and a half of plant time.
+Note: At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open. Coming from the cooldown the plant starts near 240 psi, not 363, and the climb takes about an hour of plant time; from under 50 psi it takes an hour and a half or more. The Shutdown Cooling Not In Service alarm comes in on the way up, near 600 psi: expected on a heatup, not a fault.
 
 Background
 
@@ -214,7 +216,7 @@ The accumulators are tanks of borated water pushed by nitrogen gas at 665 psi. T
 
 Suggested time warp: 3600×.
 
-Note: Near the end the red Pressurizer Pressure Very Low alarm comes in, with Pressurizer Pressure Low. Both are expected: PRIMARY PRESSURE is held near 1700 psi on purpose, and step 14 raises it.
+Note: Near the end the red Pressurizer Pressure Very Low alarm comes in, with Pressurizer Pressure Low. Both are expected: PRIMARY PRESSURE is held near 1700 psi on purpose, and step 14 raises it. The Turbine Trip / Low Steam Demand alarm comes in too: expected, the turbine stays tripped until the startup puts it on line.
 
 Background
 
@@ -699,3 +701,7 @@ closing (10.13 plant-min); the rest land at 10.48-11.82 min; the worst, seed 8, 
 (56 % margin). No change to `v` (1.2 %) or `window` (600 s) — the tolerance itself was never the
 problem, and the approaching-critical cases in the record above (dilution, the slow rod pull) still
 never tick early.
+
+### Layman pass 6 — 2026-09-26, workbench-a (AGENT-DRAFTED, not owner-ruled)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`. 2a gains a Note for a plant handed over under 25 psi (measured: margin 25.1 °F, Tavg 203 °F by step 8 from a 19 psia seam). 9b's Note: from the cooldown the climb starts near 240 psi and takes about an hour (58 plant-min from 249 psia; 86 from 50; 104 from 19), and forewarns Shutdown Cooling Not In Service (~600 psi). 11's Note forewarns Turbine Trip / Low Steam Demand (raised at ~1313 psia).

@@ -3795,8 +3795,8 @@ if (!only && RUN_B) {
       /* RE-PINNED 2026-09-25 (workbench-g, layman pass 5 S-1): cooldown 16d grades the SCRAM
        * button's reset (`scrammed < 1`, true_state, not an instrument), so predicate rows
        * 166 -> 167; steps, instrument-graded and sole unchanged. SUM on a merge. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25 (workbench-g): 86 / 167 / 101 / 26 -- cooldown 16d, the SCRAM reset row)',
-         gradedSteps === 86 && predRows === 167 && rows.length === 101 && soleInst === 26,
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (workbench-a): 86 / 168 / 102 / 25 -- cooldown 11a, the SPRAY OFF row, layman pass 6 S-5; was 86/167/101/26)',
+         gradedSteps === 86 && predRows === 168 && rows.length === 102 && soleInst === 25,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -3973,6 +3973,7 @@ if (!only && RUN_B) {
       'pwr_cooldown:6:pressure_mpa': 1, 'pwr_cooldown:8:pressure_mpa': 1,
       'pwr_cooldown:10:pump_flow_pct': 1, 'pwr_cooldown:11:tavg_c': 1,
       'pwr_cooldown:12:spray_flow_pct': 1,
+      'pwr_cooldown:11:spray_flow_pct': 1,   // 11a SPRAY OFF (2026-09-26, layman pass 6 S-5): reads DOWNWARD like 12's
       'pwr_cooldown:13:tavg_c': 1,   // 13a (2026-09-25 bring-down), reads DOWNWARD; 13b grades the OFF lamp since workbench-f, not an instrument
       /* STEP 15 USED TO BE HERE, on `pzr_level_pct < 80` (#788's content pass, 2026-09-19). The
        * entry was the pressurizer level gauge doing a clock's job on the one leg two of the four
@@ -4517,7 +4518,9 @@ if (!only && RUN_B) {
       'pwr_heatup:11:saw:tavg_c': 1, 'pwr_heatup:11:tavg_c': 1,
       'pwr_raise_power:4:tavg_c': 1, 'pwr_raise_power:5:tavg_c': 1,
       'pwr_raise_power:6:tavg_c': 1, 'pwr_raise_power:7:tavg_c': 1,
-      'pwr_raise_power:8:tavg_c': 1, 'pwr_raise_power:9:tavg_c': 1,
+      /* 'pwr_raise_power:8:tavg_c' left 2026-09-26 (workbench-a, layman pass 6 S-7): its band narrowed
+       * 563-592 -> 573-583 degF; the drifting gauge no longer false-ticks it (measured: not seen). */
+      'pwr_raise_power:9:tavg_c': 1,
     };
     (function () {
       var legs = {};

@@ -29,6 +29,25 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-workbench-a (layman pass 6 verified: the seam is set by a spray valve, and a wall-clock pacing)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`. Traps only:
+
+- **THE ROUND TRIP'S SEAM PRESSURE IS DECIDED BY ONE PRESS AT A SPEED THE PLAYER CANNOT FOLLOW.**
+  The second heatup ran its pumps at 17 psi (margin 25 °F) because cooldown 11's spray-off sat in a
+  note at 600×: one read per 40 plant-min. The seam moved 19 → 50 → 241 psia with the spray-off
+  alone. A route that presses on the exact tick hides this; `when` triggers now poll at 4 s of wall
+  x the card's speed. **Grade the press you need, at a speed a reader catches it.**
+- **"6 seconds at 60×" IS A WALL FIGURE, AND THE REVIEWER'S PLANT GOT 4.1 MINUTES.** 34 entries in
+  139 plant-min; the stair at 246 s reproduces 139.0 min and -117 °F/hr. Holding on the COOLDOWN
+  RATE tile does not rescue it (60-85 °F/hr holds: -99 to -111) — the tile lags 600 s. Pace on the
+  plant clock.
+- **"ITS BAND" MEANT TWO BANDS.** Steps 8-9 name 563-592 °F; step 10 grades the tile's 575-585. A
+  literal reader stops at the floor the card names; the route policies now parse the number from
+  the text (`tref_from_text`, `cond_pull`), so the route follows the card as it is.
+- **ECCS STOP IS THE IDLE LAMP ON PWR2, NOT A DISARM.** No ESF arm is published; SI started the pump
+  with STOP pressed (148 s / 17.5 s, flow identical). The card text claimed otherwise.
+
 ## Session log — 2026-09-25-workbench-j (pwr_heatup step 16 tracked flake: the fixed replay's single sample, not a plant defect)
 
 Record: `Blueprint/walkthrough_steps/01_mode5_to_mode3.md` §"16's replay `hold` re-measured". Trap only:
