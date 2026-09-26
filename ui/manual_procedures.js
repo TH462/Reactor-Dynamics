@@ -3337,7 +3337,7 @@
                  { p: 'startup_rate_dpm', op: 'steady', v: 0.05, window: 240, hidden: true,   /* 2026-09-24: the SETTLE — see "9b READS A SETTLED RATE" above */
                    label: 'STARTUP RATE no longer falling (graded, not drawn — the settle in 9b)' },
                  { p: 'startup_rate_dpm', op: '~', v: 0.53, tol: 0.475,   /* 0.055-1.005: both edges on the tile's toFixed(2) render band (S-2, 2026-09-23) */
-                   ask: 'Tap WITHDRAW one step, wait about five plant-minutes, and read STARTUP RATE. Repeat until STARTUP RATE reads +0.06 to +1.00 and steady, with the rods stopped.',
+                   ask: 'Tap WITHDRAW one step, wait about ten plant-minutes, and read STARTUP RATE. Repeat until STARTUP RATE reads +0.06 to +1.00 and steady, with the rods stopped.',
                    /* ONE READING PER LINE (2026-09-25): his note is a list. The card keeps an
                     * authored line break (`.ckl-crit-note` is `white-space: pre-line`), and each
                     * item opens with "•" because the renderer draws text, not markdown. */
