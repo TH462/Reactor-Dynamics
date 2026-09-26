@@ -21,11 +21,13 @@
 
 *Every percent of power shed hands reactivity back, and boron is too slow to catch it unless it is already working.*
 
-()1a. Set 719 ppm on the BORON card and press Enter.
+()1a. Check ON is lit on the BORON card. If ON is not lit, press ON.
+
+()1b. Set the BORON target to 719 ppm and press Enter.
 
 Suggested time warp: 1×.
 
-Note: Check ON is lit on the BORON card first. If ON is not lit, press ON, then set the target: pressing ON resets the target to the current reading. The boration then runs in the background while you take the plant down.
+Note: Press ON before you set the target, not after: pressing ON resets the target to the current reading. The boration then runs in the background while you take the plant down.
 
 
 
@@ -33,7 +35,7 @@ Background
 
 Coming down is the climb in reverse. Every percent of power shed hands reactivity back (the fuel cools, the water thickens), and it has to go somewhere. Adding boron carries most of it out; rods trim the rest over the next few minutes.
 
-[HIGHLIGHTED: Boron Target (pulsing); Boron Status, Boron Concentration (steady)]
+[HIGHLIGHTED: Boron ON, Boron Target (pulsing); Boron Status, Boron Concentration (steady)]
 
 
 
@@ -47,7 +49,7 @@ Coming down is the climb in reverse. Every percent of power shed hands reactivit
 
 Suggested time warp: 5×.
 
-Note: The load comes off over about five plant-minutes and power walks down behind it. AVG COOLANT TEMPERATURE rises toward the top of the green band on its tile while it does; the 3-step inserts hold it under about 585 °F. Taken in one cut, 100 to 75 MW at once, it climbs to about 595 °F and brings in the pressure and temperature alarms.
+Note: The load comes off over about five plant-minutes and power walks down behind it. AVG COOLANT TEMPERATURE rises toward the top of the green band on its tile while it does; the 3-step inserts hold it under about 587 °F. Taken in one cut, 100 to 75 MW at once, it climbs to about 595 °F and brings in the pressure and temperature alarms.
 
 
 
@@ -55,7 +57,7 @@ Background
 
 The reactor follows the turbine: less steam drawn means the heat has nowhere to go, the water warms, and warmer water walks power down by itself. Load first, rods second, every time — insert first and you take reactivity out of a reactor still being asked for full steam, which walks the steam generator down instead.
 
-[HIGHLIGHTED: Turbine Load (pulsing); Tavg, Reactor Power (steady)]
+[HIGHLIGHTED: Load Setpoint, Insert (pulsing); Turbine Load, Tavg, Reactor Power (steady)]
 
 
 
@@ -71,7 +73,7 @@ The reactor follows the turbine: less steam drawn means the heat has nowhere to 
 
 Suggested time warp: 5×.
 
-Note: About 5 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it. PRIMARY PRESSURE sags as the rods cool the plant: to about 2200 psi from a fresh start, and to about 2140 psi after the raise-power walkthrough, with the heaters full on and the Pressurizer Pressure Low alarm in. Pull faster than this and it sags further; the low-pressure trip is at 1775 psi.
+Note: About 10 to 20 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it. PRIMARY PRESSURE sags as the rods cool the plant, to about 2200 psi, and the heaters bring it back. Pull faster than this and it sags further; the low-pressure trip is at 1775 psi.
 
 
 
@@ -79,7 +81,7 @@ Background
 
 The load drop left the reactor hot: it settles above its program until rods take the extra reactivity out. This is the half of the evolution the plant cannot do for you, and it is why the order matters — the turbine leads, the rods follow.
 
-[HIGHLIGHTED: Rod Speed — Normal, Insert (pulsing); Tavg, Turbine Load (steady)]
+[HIGHLIGHTED: Rod Speed — Normal, Insert (pulsing); Tavg, Reactor Power, Generator Output (steady)]
 
 
 
@@ -99,7 +101,7 @@ Note: The load comes off over about five plant-minutes and power walks down behi
 
 Suggested time warp: 5×.
 
-Note: About 15 to 25 steps at MED in all, the inserts after each cut included.
+Note: About 20 to 30 steps at MED in all, the inserts after each cut included.
 
 
 
@@ -107,7 +109,7 @@ Background
 
 Same order: LOAD first, then rods, so the temperature does not sit hot above its band. STEAM GENERATOR LEVEL dips before it recovers on each drop; that is normal, and SG FEED in AUTO handles it.
 
-[HIGHLIGHTED: Turbine Load, Insert (pulsing); Tavg (steady)]
+[HIGHLIGHTED: Load Setpoint, Insert (pulsing); Turbine Load, Tavg, Reactor Power (steady)]
 
 
 
@@ -127,7 +129,7 @@ Note: The load comes off over about four plant-minutes; the 3-step inserts hold 
 
 Suggested time warp: 5×.
 
-Note: About 10 to 20 steps at MED in all, the inserts after each cut included.
+Note: About 20 steps at MED in all, the inserts after each cut included.
 
 
 
@@ -135,13 +137,13 @@ Background
 
 Lower power needs smaller rod moves. The band is walking back down toward 547 °F. A plant left hot at low load sends the difference to the condenser through the steam dump.
 
-[HIGHLIGHTED: Turbine Load, Insert (pulsing); Tavg (steady)]
+[HIGHLIGHTED: Load Setpoint, Insert (pulsing); Turbine Load, Tavg, Reactor Power (steady)]
 
 
 
 6. Take the load down to 15 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
 
-*About 15 % is where the shutdown walkthrough trips the reactor, so this leg ends there.*
+*15 MWe, about 12 % power, is where the shutdown walkthrough trips the reactor, so this leg ends there.*
 
 ()6a. Lower LOAD 5 MW at a time, one plant-minute apart, to 15 MW: 25, 20, 15.
 
@@ -149,21 +151,21 @@ Lower power needs smaller rod moves. The band is walking back down toward 547 °
 
 Suggested time warp: 5×.
 
-Note: The load comes off over about three plant-minutes; the 3-step inserts hold AVG COOLANT TEMPERATURE under about 565 °F. Power keeps falling as the boration finishes; the rod trims take it to about 15 %.
+Note: The load comes off over about three plant-minutes; the 3-step inserts hold AVG COOLANT TEMPERATURE under about 565 °F. Power keeps falling as the boration finishes; the rod trims take it to about 12 %.
 
 ()6c. Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.
 
 Suggested time warp: 5×.
 
-Note: About 10 to 20 steps at MED in all, the inserts after each cut included. Stop here; the shutdown walkthrough takes over.
+Note: About 10 to 15 steps at MED in all, the inserts after each cut included. Stop here; the shutdown walkthrough takes over.
 
 
 
 Background
 
-Scramming from full power is a thermal shock to the plant. About 15 % is low enough that the trip is gentle and high enough that the steam generator still has steam to dump afterwards.
+Scramming from full power is a thermal shock to the plant. About 12 % power is low enough that the trip is gentle and high enough that the steam generator still has steam to dump afterwards.
 
-[HIGHLIGHTED: Turbine Load, Insert (pulsing); Tavg (steady)]
+[HIGHLIGHTED: Load Setpoint, Insert (pulsing); Turbine Load, Tavg, Reactor Power (steady)]
 
 
 
@@ -434,3 +436,9 @@ The notes' "under about 580 / 572 / 565 °F" cover the hotter preset. Leg: 22.6 
   "562" against "below 562". This reverses the record above's "'569' may tick". Labels unchanged.
 - Rod totals widened to what was measured: 4 15 to 25 (18/18/21), 5 10 to 20 (12/18/18), 6 10 to
   20 (18/9/12). Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`.
+
+### Re-walk record — 2026-09-26, `exp/807e1` (#807 item 2, the boron makeup-path holdup)
+
+Re-measured on the holdup plant (seeds 42/7/123 and the chain) and re-authored to it; highlights moved
+to the pressed button (`Load Setpoint`, `Boron ON`, `Turbine — Latch`, `Insert`) with the card on the
+steady ring. Every number and why: `Diagnostic/TUNING_LOG.md`, session `2026-09-26-develop-g`.

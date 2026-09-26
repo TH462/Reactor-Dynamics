@@ -1100,7 +1100,9 @@ if (!only && RUN_B) {
      * chemistry. NOT MEASURED HERE: whether re-entering an unchanged 719 re-sends the command. */
     /* `pwr_raise_power:3` LEFT THIS SET BY BEING FIXED (2026-09-25, raise-power phase 2): 3b now
      * grades `boron_target_ppm ~ 660` beside its cmd (the #697 cmd + `p` shape). */
-    var NO_STATE_EXPECTED = { 'pwr_lower_power:1': 1 };
+    /* `pwr_lower_power:1` LEFT THIS SET BY BEING FIXED (#807 item 2, 2026-09-26): 1b grades `boron_target_ppm ~ 719`
+     * beside its cmd, as `pwr_raise_power` 3b does, and 1a grades the ON lamp. The set is now empty. */
+    var NO_STATE_EXPECTED = {};
     var noStateTally = {};
     NO_STATE.forEach(function (r) { var k = r.proc + ':' + r.step; noStateTally[k] = (noStateTally[k] || 0) + 1; });
     var noStateKeys = Object.keys(noStateTally), expectedKeys = Object.keys(NO_STATE_EXPECTED);
@@ -3927,8 +3929,8 @@ if (!only && RUN_B) {
        * different walkthrough) -- -3 graded steps, -7 predicate rows (10: 2, 11: 2, 12: 3), -6
        * instrument-graded (the bank row of 12 is not one), sole unchanged (none was a sole row).
        * MERGED 2026-09-26 (exp/807int + workbench 38b8049a): SUM of both, then MEASURED. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 + workbench-e merge): 83 / 162 / 95 / 25 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added, raise-power 10-12 removed)',
-         gradedSteps === 83 && predRows === 162 && rows.length === 95 && soleInst === 25,
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 item 2, exp/807e1): 84 / 169 / 100 / 25 -- was 83 / 162 / 95 / 25 (#807 + workbench-e merge); +1 graded step and +2 rows, lower-power 1 (1a ON lamp, 1b boron target); +5 rows, all instrument-graded, raise-power 4c-8c re-assert the latched Tavg band)',
+         gradedSteps === 84 && predRows === 169 && rows.length === 100 && soleInst === 25,
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();

@@ -58,13 +58,13 @@ Background
 
 A tripped turbine takes no steam, so LOAD does nothing and the heat you make goes to the steam dumps instead. The plant trips the reactor on a tripped turbine the moment REACTOR POWER passes 50 %, and at 8 % if the condenser is gone as well.
 
-[HIGHLIGHTED: Turbine Load (pulsing); Generator Output (steady)]
+[HIGHLIGHTED: Turbine — Latch, Load Setpoint (pulsing); Turbine Load, Generator Output (steady)]
 
 
 
 3. Start the boron dilution that carries most of the climb.
 
-*Boron pays for most of the reactivity the climb costs, and it takes about 25 plant-minutes to arrive, so it starts first.*
+*Boron pays for most of the reactivity the climb costs, and it takes about 45 plant-minutes to arrive, so it starts first.*
 
 ()3a. Check ON is lit on the BORON card. If ON is not lit, press ON.
 
@@ -72,15 +72,15 @@ A tripped turbine takes no steam, so LOAD does nothing and the heat you make goe
 
 Suggested time warp: 1×.
 
-Note: The dilution then runs in the background while you take the first stages. BORON starts near 719, so the move is 59 ppm, and the last of it is still arriving at full power, about 25 plant-minutes after you set it.
+Note: The dilution then runs in the background while you take the first stages. BORON starts near 719, so the move is 59 ppm, and the last of it is still arriving at full power, about 45 plant-minutes after you set it.
 
 
 
 Background
 
-Every percent of power costs reactivity: the fuel heats up and the water thins out. Rods could pay for all of it but would end up deep in the core, so real plants dilute boron for the bulk and use rods for the fine trim. Dilution is not instant and it slows as it closes on the number you typed: this 59 ppm move takes about 25 plant-minutes, and a 10 ppm trim later takes about ten.
+Every percent of power costs reactivity: the fuel heats up and the water thins out. Rods could pay for all of it but would end up deep in the core, so real plants dilute boron for the bulk and use rods for the fine trim. Dilution is not instant and it slows as it closes on the number you typed: this 59 ppm move takes about 45 plant-minutes, and a 10 ppm trim later takes about fifteen.
 
-[HIGHLIGHTED: Boron Target (pulsing); Boron Status, Boron Concentration (steady)]
+[HIGHLIGHTED: Boron ON, Boron Target (pulsing); Boron Status, Boron Concentration (steady)]
 
 
 
@@ -96,9 +96,9 @@ Suggested time warp: 1×.
 
 Suggested time warp: 5×.
 
-Note: MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is the temperature the plant is meant to hold at the power it is making, near 556 °F here. The check-off accepts 550 to 576 °F, wider than the green band: aim for the green, not the tick. It rises with load, from 547 °F at no load to 578 °F at 100 %. Temperature below the band: withdraw. Above: insert. The tile trails the rods: the gauge keeps rising about 2 °F for a minute after each pull, so read it again before the next one. Held straight through instead, it keeps rising 5 to 8 °F after you let go. Read the gauge, not the count: while the boron dilution is still running it does part of the work, and the pull comes out shorter. The plant trips on temperature before it trips on power: keep AVG COOLANT TEMPERATURE under 590 °F on every stage.
+Note: MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is where the plant should sit at the power it is making: near 556 °F here, rising with load to 578 °F at 100 %. The check-off accepts 550 to 576 °F; aim for the green, not the tick. The tile keeps rising for about a minute after each pull, so read it again before the next one. Keep AVG COOLANT TEMPERATURE under 590 °F on every stage: the plant trips on temperature before it trips on power.
 
-()4c. Check OUTPUT reads 30 MW and REACTOR POWER is near 30 %.
+()4c. Check OUTPUT reads 30 MW, REACTOR POWER is near 30 % and AVG COOLANT TEMPERATURE is still between 550 and 576 °F.
 
 Suggested time warp: 10×, while OUTPUT and the temperature settle.
 
@@ -108,7 +108,7 @@ Background
 
 Raising LOAD draws more steam and cools the water; colder water adds reactivity, so REACTOR POWER follows the turbine up by itself, but the temperature sags on the way. Pulling rods then warms the water back up into its band. Doing it in that order, the rods answer what the temperature gauge shows instead of guessing ahead of the turbine.
 
-[HIGHLIGHTED: Withdraw, Rod Speed — Normal, Turbine Load (pulsing); Tavg (steady)]
+[HIGHLIGHTED: Load Setpoint, Rod Speed — Normal, Withdraw (pulsing); Turbine Load, Tavg, Generator Output, Reactor Power (steady)]
 
 
 
@@ -120,13 +120,13 @@ Raising LOAD draws more steam and cools the water; colder water adds reactivity,
 
 Suggested time warp: 1×.
 
-()5b. If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, about 10 steps. Otherwise leave the rods.
+()5b. If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 15 to 20 steps. Otherwise leave the rods.
 
 Suggested time warp: 5×.
 
-Note: The green band is near 562 °F at this load; the check-off accepts 550 to 583 °F, so aim for the green, not the tick. The Control Rods — Approaching Insertion Limit alarm may come in during this stage or the next: expected, the bank is low because boron is carrying the climb, and it clears as xenon builds and you walk the bank up. PRIMARY PRESSURE can sag under 2150 psi during this stage, bringing in Pressurizer Pressure Low: the heaters bring it back within about three plant-minutes.
+Note: The green band is near 562 °F at this load; the check-off accepts 550 to 583 °F, so aim for the green, not the tick.
 
-()5c. Check OUTPUT reads 50 MW and REACTOR POWER is near 50 %.
+()5c. Check OUTPUT reads 50 MW, REACTOR POWER is near 50 % and AVG COOLANT TEMPERATURE is still between 550 and 583 °F.
 
 Suggested time warp: 10×, while OUTPUT and the temperature settle.
 
@@ -136,7 +136,7 @@ Background
 
 Same order as the last stage: LOAD, then rods. Halfway up, xenon is starting to build in the fuel. Boron takes care of that over the coming hours; rods take care of the next few minutes.
 
-[HIGHLIGHTED: Withdraw, Turbine Load (pulsing); Tavg (steady)]
+[HIGHLIGHTED: Load Setpoint, Withdraw (pulsing); Turbine Load, Tavg, Generator Output, Reactor Power (steady)]
 
 
 
@@ -148,13 +148,13 @@ Same order as the last stage: LOAD, then rods. Halfway up, xenon is starting to 
 
 Suggested time warp: 1×.
 
-()6b. If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 20 to 25 steps. Otherwise leave the rods.
+()6b. If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 25 to 35 steps. Otherwise leave the rods.
 
 Suggested time warp: 5×.
 
-Note: The green band is near 570 °F at this load; the check-off accepts 558 to 585 °F, so aim for the green, not the tick. Control Rods — Insertion Limit may follow the Approaching alarm during this stage: expected for the same reason, and it clears as you walk the bank up.
+Note: The green band is near 570 °F at this load; the check-off accepts 558 to 585 °F, so aim for the green, not the tick. Control Rods — Approaching Insertion Limit, then Control Rods — Insertion Limit, come in during this stage: expected, the bank is low because boron is carrying the climb, and they clear as xenon builds and you walk the bank up.
 
-()6c. Check OUTPUT reads 75 MW and REACTOR POWER is near 75 %.
+()6c. Check OUTPUT reads 75 MW, REACTOR POWER is near 75 % and AVG COOLANT TEMPERATURE is still between 558 and 585 °F.
 
 Suggested time warp: 10×, while OUTPUT and the temperature settle.
 
@@ -164,7 +164,7 @@ Background
 
 Three-quarter power. The band has climbed with the load, toward 578 °F at 100 %. If the temperature is still below the band once the pull is done, the pull was short: withdraw a few more steps before you add more megawatts.
 
-[HIGHLIGHTED: Withdraw, Turbine Load (pulsing); Tavg (steady)]
+[HIGHLIGHTED: Load Setpoint, Withdraw (pulsing); Turbine Load, Tavg, Generator Output, Reactor Power (steady)]
 
 
 
@@ -182,7 +182,7 @@ Suggested time warp: 5×.
 
 Note: The green band is near 575 °F at this load and the check-off accepts 564 to 585 °F, so aim for the green, not the tick. The pulls get smaller from here: above 103 % power the plant stops the rods. If LOAD changes by itself, the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.
 
-()7c. Check OUTPUT reads 90 MW.
+()7c. Check OUTPUT reads 90 MW and AVG COOLANT TEMPERATURE is still between 564 and 585 °F.
 
 Suggested time warp: 10×, while OUTPUT and the temperature settle.
 
@@ -192,7 +192,7 @@ Background
 
 Above 103 % power the plant refuses to move the rods, and at 118 % it trips the reactor. Overshoot is real on this plant: 100 MWe of LOAD lands REACTOR POWER near 101 %. Small pulls keep you clear of the stop.
 
-[HIGHLIGHTED: Withdraw, Insert, Turbine Load (pulsing); Tavg (steady)]
+[HIGHLIGHTED: Load Setpoint, Withdraw, Insert (pulsing); Turbine Load, Tavg, Generator Output (steady)]
 
 
 
@@ -204,13 +204,13 @@ Above 103 % power the plant refuses to move the rods, and at 118 % it trips the 
 
 Suggested time warp: 1×.
 
-()8b. If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it settles on 578 °F, 15 to 25 steps. Otherwise leave the rods.
+()8b. If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it settles on 578 °F, about 20 steps. Otherwise leave the rods.
 
 Suggested time warp: 5×.
 
 Note: Above 103 % REACTOR POWER the plant stops rod withdrawal, and the step to 100 MW can carry power past it: if CONTROL ROD POSITION stops moving during a pull, wait for REACTOR POWER to settle back under 103 %, then pull again.
 
-()8c. Check OUTPUT reads 100 MW.
+()8c. Check OUTPUT reads 100 MW and AVG COOLANT TEMPERATURE is still between 573 and 583 °F.
 
 ()8d. Check CONTROL ROD POSITION reads below 600, not on its top stop.
 
@@ -222,7 +222,7 @@ Background
 
 The last 10 MWe of LOAD, then a smaller pull to bring the temperature back up. REACTOR POWER settles near 101 %. The control bank ends part-way out, because boron carried most of the reactivity the climb cost.
 
-[HIGHLIGHTED: Withdraw, Turbine Load (pulsing); Tavg (steady)]
+[HIGHLIGHTED: Load Setpoint, Withdraw (pulsing); Turbine Load, Tavg, Generator Output, Control Rod Position (steady)]
 
 
 
@@ -236,7 +236,7 @@ The last 10 MWe of LOAD, then a smaller pull to bring the temperature back up. R
 
 ()9c. Hold INSERT 3 steps at a time whenever AVG COOLANT TEMPERATURE rises above its band, until it holds between 563 and 592 °F.
 
-Suggested time warp: 1×.
+Suggested time warp: 5×.
 
 Note: CONTROL ROD POSITION should be part-way out, not on its stop. The last of the dilution is still arriving here: AVG COOLANT TEMPERATURE climbs while it does, so hold INSERT 3 steps at a time whenever it rises above its band. BORON is the one to read twice: leave the climb with more of it in the water than the plant wants and AVG COOLANT TEMPERATURE sinks over the following hours, taking PZR LEVEL with it. This walkthrough ends here. Over the next two plant-days xenon, a neutron absorber the fuel makes as it runs, builds and cools the plant at the same power; a separate xenon walkthrough, still to come, covers what an operator does about it.
 
@@ -246,7 +246,7 @@ Background
 
 Full power, with almost no xenon in the fuel yet. Over the next hours xenon builds, and the plant settles into its long-term full-power state: less boron and the control bank high — 606 of 627 steps, which is where a full-power plant runs.
 
-[HIGHLIGHTED: Reactor Power, Generator Output, Tavg, Boron Concentration (steady)]
+[HIGHLIGHTED: Insert (pulsing); Reactor Power, Generator Output, Tavg, Boron Concentration (steady)]
 
 
 
@@ -708,3 +708,9 @@ Background). **This supersedes the 2026-09-25 "Make them conditional" ruling on 
   POSITION below 600 (8d), the temperature (8b 573-583 °F, 9c 563-592 °F).
 - Route gate: `entry_met` '#10'/'#11', the chain's '#10' band-floor pull and injection
   `chain_step10_bank` retired with their step; `raise_old_settle_band` keeps its step-8 half.
+
+### Re-walk record — 2026-09-26, `exp/807e1` (#807 item 2, the boron makeup-path holdup)
+
+Re-measured on the holdup plant (seeds 42/7/123 and the chain) and re-authored to it; highlights moved
+to the pressed button (`Load Setpoint`, `Boron ON`, `Turbine — Latch`, `Insert`) with the card on the
+steady ring. Every number and why: `Diagnostic/TUNING_LOG.md`, session `2026-09-26-develop-g`.
