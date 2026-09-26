@@ -18,7 +18,7 @@
 
 1. Confirm the plant the startup handed over is ready to climb.
 
-*The climb starts from the plant the startup left: critical, on the grid, with its startup trips switched off.*
+*The climb starts from the plant the startup left: critical, on the grid, with its startup trips blocked.*
 
 ()1a. Check REACTOR POWER reads about 10 % and the plant is in Mode 1, At Power.
 
@@ -34,7 +34,7 @@ Note: Both rows were blocked by the startup walkthrough.
 
 Background
 
-This is the plant the startup hands over: critical, on the grid, feed holding level. Both startup shutdowns have to be switched off. With them on, the climb trips at 25 %, then 35 %.
+This is the plant the startup hands over: critical, on the grid, feed holding level. Both startup trips have to be blocked. Left live, the climb trips at 25 %, then 35 %.
 
 [HIGHLIGHTED: Reactor Power, SG Feed AUTO, Trip Blocks (steady)]
 
@@ -66,7 +66,7 @@ A tripped turbine takes no steam, so LOAD does nothing and the heat you make goe
 
 *Boron pays for most of the reactivity the climb costs, and it takes about 25 plant-minutes to arrive, so it starts first.*
 
-()3a. Check BORON ON is lit. If it is not, press ON.
+()3a. Check ON is lit on the BORON card. If ON is not lit, press ON.
 
 ()3b. Set the BORON target to 660 ppm and press Enter.
 
@@ -96,7 +96,7 @@ Suggested time warp: 1×.
 
 Suggested time warp: 1×.
 
-Note: MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is the temperature the plant is meant to hold at the power it is making, near 556 °F here. It rises with load, from 547 °F at no load to 578 °F at 100 %. Temperature below the band: withdraw. Above: insert. Read the gauge, not the count: while the boron dilution is still running it does part of the work, and the pull comes out shorter. The plant trips on temperature before it trips on power: keep AVG COOLANT TEMPERATURE under 590 °F on every stage.
+Note: MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is the temperature the plant is meant to hold at the power it is making, near 556 °F here. It rises with load, from 547 °F at no load to 578 °F at 100 %. Temperature below the band: withdraw. Above: insert. The gauge keeps rising about 2 to 5 °F after you let go, so let go 2 to 5 °F short of the band. Read the gauge, not the count: while the boron dilution is still running it does part of the work, and the pull comes out shorter. The plant trips on temperature before it trips on power: keep AVG COOLANT TEMPERATURE under 590 °F on every stage.
 
 ()4c. Check OUTPUT reads 30 MW, REACTOR POWER is near 30 % and AVG COOLANT TEMPERATURE is in its band, 550 to 576 °F.
 
@@ -232,7 +232,7 @@ The last 10 MWe of LOAD, then a smaller pull to bring the temperature back up. R
 
 ()9a. Check REACTOR POWER reads about 100 % and OUTPUT 100 MW.
 
-()9b. Check BORON reads 660 ppm or below.
+()9b. Check BORON reads 663 ppm or below.
 
 ()9c. Hold INSERT 3 steps at a time whenever AVG COOLANT TEMPERATURE rises above its band, until it holds between 563 and 592 °F.
 
@@ -294,7 +294,7 @@ Rods are fast, but they run out: the bank has about 290 steps left and the xenon
 
 
 
-12. Hold full power on programme while xenon builds.
+12. Hold full power on program while xenon builds.
 
 *Xenon keeps building for two plant-days, so full power is held by hand until it levels off.*
 
@@ -341,7 +341,7 @@ each step's `a` action, word for word):
 9. Confirm full power, with the boron dilution done.
 10. Start giving back the reactivity xenon takes, rods first.
 11. Give boron its first small dose as xenon builds.
-12. Hold full power on programme while xenon builds.
+12. Hold full power on program while xenon builds.
 
 **How his words were restructured.**
 - **Steps 4-8 split his step line at "then trim"**: `a` = "Hold WITHDRAW at MED about N steps,
@@ -708,3 +708,28 @@ Script-compared, file vs pool: text, aim, every substep `ask`, notes, speed line
 **Not verified.** Seed 42 only. No layman or browser playthrough of the reworded text
 (`verify_e2e_ui` and `verify_manual_follow` pass). The stage counts were not re-rounded to the new
 nets (stage 5 measures 9 / 12 against "about 15").
+
+### Cross-leg quality pass — 2026-09-25, workbench-f
+
+- **Step 1: trips are "blocked"** *(OWNER RULING, 2026-09-25: "A", on the pass-5 text: the
+  startup trips are "blocked", matching the panel's BLOCKED)*. The italic line now ends "with its
+  startup trips blocked"; the Background says "Both startup trips have to be blocked. Left live,
+  the climb trips at 25 %, then 35 %." ("Left live" is `pwr_startup` 15/16's wording.)
+- **Step 12: "programme" → "program"** (US spelling, as everywhere else on the card).
+- **Pool-only labels name the tile**: `Generator at N MW` → `OUTPUT N MW`, `Generator above 8 MW` →
+  `OUTPUT above 8 MW`, `Load target set to N MW` → `LOAD set to N MW`, `Reactor following, near
+  N %` → `REACTOR POWER near N %`, `Still at full load, 100 MW` → `OUTPUT still 100 MW`, `BORON set
+  to 660 ppm` → `BORON target reads 660 ppm` (the cooldown's and startup's form). Grading unchanged.
+- **`act_first` not authored.** 4c-8c (10×) are checks, not presses; 4b-8b are presses at 1×.
+
+### One boron ON check — 2026-09-25, workbench-f
+
+*OWNER RULING, 2026-09-25, selected "Take all defaults" (option selection, not verbatim; relayed by the coordinator)*, item 3: the boron ON check reads the same in every leg. 3a is now "Check ON is lit on the
+BORON card. If ON is not lit, press ON." (was "Check BORON ON is lit. If it is not, press ON.").
+The cooldown's 1a wording minus its "BORON STATUS reads BORATING" clause: this leg dilutes (the
+status reads DILUTING), and since the cooldown's ON-first swap the status only moves after the
+target is set, so the clause went to the cooldown's target substep. Grading unchanged.
+
+### Layman pass 5 record — 2026-09-25, workbench-g
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`. 4b's note: "The gauge keeps rising about 2 to 5 °F after you let go" — chain route overshoot after release, stages 1-5: 5.3 / 5.0 / 3.2 / 2.6 / 1.8 °F; the reviewer's stage 1 went to 563 °F. The tile's green band is real at power (17 of 178 px, `#74dc9c`, headless capture at 580 °F). 9b now reads "663 ppm or below", its grading threshold (`< 663`, pass 4's settling margin); it had said 660 and ticked with the tile on 663.

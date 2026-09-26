@@ -3596,7 +3596,13 @@
     var runningCkl = !!(s.instructor && s.instructor.checklist);
     if (!runningCkl && cklState.view === 'run') cklState.view = 'list';
     if (cklRow) {
-      var showList = flagOn('checklists') && (!runningCkl || cklState.view === 'list');
+      /* THE LIST SHOWS WHILE A WALKTHROUGH RUNS (layman pass 5, S-2, 2026-09-25). The
+       * `!runningCkl || view === 'list'` clause dates from #607, when the list and the running
+       * card shared ONE pane. Since #660 the card lives in the Instructor pane, so hiding the
+       * list here left the Walkthroughs tab EMPTY for as long as a walkthrough — finished or
+       * not — was loaded: measured, "← All walkthroughs" on a finished card switched to a blank
+       * tab and the list came back only after Close. Nothing sets `view` to 'list' any more. */
+      var showList = flagOn('checklists');
       cklRow.hidden = !showList;
       if (showList) toggleCklMenu();
     }
@@ -4375,6 +4381,7 @@
     sg_level_pct:           { label: 'STEAM GENERATOR LEVEL', u: '%' },
     pzr_level_pct:          { label: 'PRESSURIZER LEVEL', u: '%' },
     pump_flow_pct:          { label: 'RCP FLOW', u: '%' },
+    rcp_running:            { bool: 'ON is lit on the RCP FLOW card' },   // pwr_heatup 1c grades its OFF lamp (2026-09-25)
     /* ROD POSITION (#605). Resolved out of `control_state.rod_groups` by the instructor layer,
      * not out of `true_state` — see ROD_PARAMS there. The `_pct` forms are what a step should
      * normally check: "fully withdrawn" is 100 % on any bank scale, where a step count is only

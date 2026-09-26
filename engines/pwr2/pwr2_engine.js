@@ -868,7 +868,7 @@
       if (!moving) return;
       throw new Error('ROD DRIVE BLOCKED: the reactor trip is LATCHED — the reactor trip ' +
         'breakers are open and power to the control rod drive mechanisms is interrupted ' +
-        '[sourced, Ginna TS Bases B 3.3.1 ML20339A221]. Reset the RPS to restore rod drive ' +
+        '[sourced, Ginna TS Bases B 3.3.1 ML20339A221]. Reset the RPS (press SCRAM on the ROD CONTROL card while it reads PRESS TO RESET) to restore rod drive ' +
         'power; the rods stay where they are until you deliberately withdraw them.');
     }
     /* THE ROD STOPS REFUSE OUTWARD MOTION ONLY, which is the source's own scope: *"These

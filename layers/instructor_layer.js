@@ -935,19 +935,25 @@
    * through the same runtime and get the same treatment with no per-pool list to maintain. */
   var SCRAM_CMD_RE = /scram/i;
   function stepCmdAction(c) { return !c ? null : (typeof c === 'string' ? c : c.action) || null; }
+  /* A PREDICATE THAT ASSERTS THE TRIP, not one that merely names `scrammed` (layman pass 5,
+   * 2026-09-25). Cooldown 16d grades `scrammed < 1` -- "the SCRAM button is reset" -- and the old
+   * name-only test read that as the leg scripting its own scram: the cooldown lost its trip notice
+   * (a real trip in it would have drawn no banner) and the route gate stopped seeing a trip on it
+   * (`pwr_cooldown:pressure_sp_ramped` stranded instead of ending on its named trip). */
+  function assertsTrip(pr) { return !!pr && pr.p === 'scrammed' && pr.op !== '<' && pr.op !== '<='; }
   InstructorLayer.legScriptsScram = function (proc) {
     var steps = (proc && proc.steps) || [];
     for (var i = 0; i < steps.length; i++) {
       var st = steps[i] || {};
       if (SCRAM_CMD_RE.test(stepCmdAction(st.cmd) || '')) return true;
-      if (st.acc && st.acc.p === 'scrammed') return true;
-      if (st.saw && st.saw.p === 'scrammed') return true;
-      if (st.overtaken && st.overtaken.p === 'scrammed') return true;
+      if (assertsTrip(st.acc)) return true;
+      if (assertsTrip(st.saw)) return true;
+      if (assertsTrip(st.overtaken)) return true;
       var accs = st.accs || [];
       for (var j = 0; j < accs.length; j++) {
         var en = accs[j] || {};
         if (SCRAM_CMD_RE.test(stepCmdAction(en.cmd) || '')) return true;
-        if (en.p === 'scrammed') return true;
+        if (assertsTrip(en)) return true;
       }
     }
     return false;
@@ -1592,6 +1598,20 @@
       return typeof m === 'string' ? (m === 'pressure' ? 1 : 0) : undefined;
     }
   };
+  /* A STATUS WORD THE BOARD LIGHTS A LAMP FROM (2026-09-25, `pwr_heatup` 1c "Check OFF is lit on the
+   * RCP FLOW card"). The card lights OFF from `!IN(s).rcp_running` (pwr_board_wiring `imrsjy59pnu`):
+   * a STATUS passthrough in `snapshot.instruments` (pwr2_shell `_instrExtras`, the breaker), not a
+   * transmitter channel — it has no lag, no noise and no failure mode, so it is NOT in
+   * PARAM_INSTRUMENT (whose channels `run_checklist_pwr2` 2ae fails one by one; mapping it there
+   * threw "no channel rcp_running"). true_state carries no such field. The RCP FLOW number beside
+   * the lamp reads natural circulation, 3.9 % with the pumps stopped, so it cannot say OFF.
+   * Boolean on the wire, normalised to 1/0. */
+  var STATUS_PARAMS = { rcp_running: 1 };
+  function statusParam(snapshot, p) {
+    var v = snapshot && snapshot.instruments ? snapshot.instruments[p] : undefined;
+    if (typeof v === 'boolean') return v ? 1 : 0;
+    return v == null ? undefined : v;
+  }
   function derivedCtlParam(snapshot, p) {
     return DERIVED_CTL_PARAMS[p](snapshot && snapshot.control_state);
   }
@@ -1654,6 +1674,7 @@
       if (cv == null || (typeof cv === 'number' && isNaN(cv))) return undefined;
       return (typeof cv === 'boolean') ? (cv ? 1 : 0) : cv;
     }
+    if (STATUS_PARAMS[p]) return statusParam(snapshot, p);
     return snapshot && snapshot.true_state ? snapshot.true_state[p] : undefined;
   };
 
@@ -1665,6 +1686,7 @@
     if (RPS_BLOCK_PARAMS[p]) return { value: rpsBlockParam(snapshot, p), graded_by: 'rps_state' };
     if (ROD_PARAMS[p]) return { value: rodParam(snapshot, p), graded_by: 'control_state' };
     if (DERIVED_CTL_PARAMS[p]) return { value: derivedCtlParam(snapshot, p), graded_by: 'control_state' };
+    if (STATUS_PARAMS[p]) return { value: statusParam(snapshot, p), graded_by: 'status' };
     if (AUTO_CHAN_PARAMS[p]) return { value: AUTO_CHAN_PARAMS[p](snapshot), graded_by: 'control_state' };
     if (CTL_PARAMS[p]) {
       var cv = snapshot && snapshot.control_state ? snapshot.control_state[p] : undefined;

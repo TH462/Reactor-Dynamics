@@ -29,6 +29,71 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-25-workbench-i (cooldown re-paced under the 100 °F/hr alarm; the raise-power rod worth re-measured)
+
+Record: `Blueprint/walkthrough_steps/06_cooldown.md`, re-pace record. Traps only:
+- **A longer wait cannot fix a step that is too big.** The rate alarm reads a 600 s lagged
+  derivative, so one fast drop of ΔT °F lifts the tile by about 6·ΔT °F/hr whatever follows it. Near
+  the bottom of the saturation curve 50 psi is ~22 °F: 5, 8, 10 and 15 minute waits ALL raised
+  Cooldown Rate High (tile −240 → −141 °F/hr). Only a smaller step at low pressure got under.
+- **A card's pacing was never graded against the alarm it teaches.** Step 11's note told the player
+  what to do when Cooldown Rate High came in, on a route the card's own numbers drove into it. The
+  route gate now fails a leg with `rate_max_F_hr` if any step raises the rate alarm or its tile
+  channel passes the margin; a chained leg counts the tile only after it has read inside the limit,
+  so the shutdown's scram seam is not charged to the cooldown.
+- **The margin is a ruling, not a measurement.** 9 % peaked −83 to −87 standalone and −90 chained;
+  a 10 °F/hr margin forced 8 % and a 42-entry stair (leg about 8 h). The owner took a 5 °F/hr margin
+  ("Middle ground"): 9 %, 34 entries, leg about 7 h. The fastest stair measured (15 psi from 320,
+  5 min) peaked −97 — under the alarm, outside the margin; one seed would not have shown which.
+- **A per-step worth quoted at the top of the bank is not the bank's worth.** Raise-power 10's
+  "about 290 steps, roughly 110 °F" was challenged with the top-of-bank 0.22 °F/step (≈ 64 °F).
+  Measured A/B on the xenon-free preset (typical route end, bank 306): a 20-step pull is +10.4 °F at
+  +10 min against the unpulled twin, 0.52 °F/step at mid-bank; on the engine's own S-curve that is
+  17.0 pcm/°F and 306 → 606 is ≈ 118 °F (318 → 606 ≈ 112). The text stands.
+
+## Session log — 2026-09-25-workbench-g (layman pass 5 verified: the round trip's seam, and a harness that crashed on the refusal it was looking for)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`. Traps only:
+- **A chain that stops at the last leg's end card cannot see the seam back to the first.** The route
+  gate drove heatup → cooldown as one plant and was green while the round trip stranded: the
+  shutdown's scram was still latched at the cooldown's end, and the next heatup's WITHDRAW was
+  refused at step 3. The chain now runs the heatup a second time (`pwr_heatup#2`), and
+  `round_trip_no_reset` proves the seam reddens without cooldown 16d.
+- **A refusal the engine THROWS crashes a harness that expects an error object.** `rodDriveDoor`
+  throws on a latched trip; the first chain run died as `error` with no step table, which reads as
+  a harness bug, not the strand the player met. `send()` now records a refused command on the step
+  (`REFUSED`) and the run goes on to the bound.
+- **A list hidden "while a walkthrough runs" outlived the pane it shared.** Since #660 the running
+  card lives in the Instructor tab, but the Walkthroughs list still hid itself whenever a checklist
+  was in the snapshot — so "← All walkthroughs" on EVERY running card opened an empty tab, not just
+  the finished one the layman reported. `verify_ckl_relevance` 5b reads the painted list.
+- **A scanner keyed on a param's NAME reads a reset as a scram.** Cooldown 16d grades `scrammed < 1`;
+  `legScriptsScram` exempted any leg naming `scrammed`, so the cooldown silently lost its trip
+  notice and the route gate's `pressure_sp_ramped` stranded at step 8 instead of ending on its SI
+  trip at step 4. It now counts only a predicate that ASSERTS the trip (`run_checklist_pwr2` 2ai.1
+  went red on the scanner/replay mismatch — that check is the witness).
+- **An instrument the tile draws is not a `paramValue`.** `tavg_rate` and `subcooling_margin` are
+  `instruments.*`; `IL.paramValue` resolves only true_state and control params, so a trigger on
+  them returned undefined and never fired. The route's `when` policy takes `ins: true`.
+
+## Session log — 2026-09-25-workbench-f (cross-leg quality pass on the six walkthroughs; W12 reads the substeps)
+
+Records: each step file's Notes, "Cross-leg quality pass — 2026-09-25, workbench-f". Traps only:
+- **A style scan that reads named fields misses a new nested field.** W12 read the step `note` and
+  never `accs[].note`; three substep notes shipped "a few" / "as soon as" under a green run. The
+  same blind spot `checklist_no_si` closed at #741. Each harvested field now carries its own
+  injection; dropping any one of the four from the harvest turns the check INERT.
+- **A contingency inside a substep can undo the substep before it.** Cooldown 1 put the 920 ppm
+  target first and "If ON is not lit, press ON" second, and pressing ON re-captures the target.
+  Order substeps so a recovery press never lands after the value it resets.
+- **`act_first` only waits for the STEP's `cmd` family.** Lower power 4c/5c/6c open on their first
+  rod press at 5×, but the step's cmd is the LOAD set that 4a already sent; `act_first` there
+  would hold 1× until a second LOAD press that never comes. Not authored; reported.
+- **`wait_hint` omitted on a long step prints two speed lines** once the substep format adds its
+  own. The heatup was the one leg left doing it (5 steps). Removing it reddened `verify_e2e_ui`
+  (#743): the fixture's jumped heatup step 3 had been drawing its speed-bar rung FROM the hint
+  (0 rungs without it). The fixture now picks a step with its own `wait_speed` (step 11, 3600×).
+
 ## Session log — 2026-09-25-workbench-e (cooldown brought down to the what / why / how shape; a closing lineup step; two grading traps)
 
 Record and every number: `Blueprint/walkthrough_steps/06_cooldown.md` Notes, bring-down record
@@ -70,6 +135,26 @@ Record: `Blueprint/walkthrough_steps/04_lower_power.md` Notes, bring-down record
 - **A step-level rung is also the rung once every row is met.** Adding `wait_speed` to the step
   so substep a can fall back to it changes the clock for the done-but-not-continued window too:
   steps 4-6 went from the 30 s rule's 60× to 10× there. Harmless here; say it when you do it.
+## Session log — 2026-09-25-workbench-b (Mode 5 to Mode 3 brought down to the what / why / how step file: the verify rows a route cannot reach)
+
+Traps only; the per-row numbers are in `Blueprint/walkthrough_steps/01_mode5_to_mode3.md` Notes.
+
+- **A mistake scripted AT a verify step is hollow.** The first `dump_auto_early` pressed AUTO at
+  step 6; step 6 is met on entry, Continue goes at 3 s and the route's first press waits for the
+  5 s read, so nothing was ever pressed and the route passed. Script the mistake on the step
+  BEFORE, so the verify step opens with its row unmet.
+- **A band on a verify step turns a harmless overshoot into a strand.** `plant_mode ~ 3` passed a
+  plant at 2306 psi; "2200 to 2270 psi" did not, and with no instruction the route sat 30 plant-min
+  on step 15. A new band on a check-off owes an inline recovery for every route that lands outside it.
+- **The cooldown hands the heatup a plant its step 1 does not describe.** Measured at the seam:
+  197.0 °F, 14.3 psi, pumps off, but the shutdown bank at 627 and the steam dump in AUTO. Step 1's
+  `past` (shutdown bank at 98 % or more) skips the whole cold-state check, step 3 ticks on entry,
+  and 6a needs CLOSE. The chain route gate starts at the heatup's preset, so it cannot see it.
+- **"RCP FLOW reads OFF" is a lamp, not the number.** With the pumps stopped the RCP FLOW tile
+  reads natural circulation, 3.9 %; OFF is the card's lamp (`!rcp_running`). Grade the lamp's source
+  — and it is a STATUS word, not a transmitter: put in `PARAM_INSTRUMENT` it crashed
+  `run_checklist_pwr2_b` 2ae ("no channel rcp_running"), which fails every mapped channel in turn.
+  It now resolves through `STATUS_PARAMS` in the instructor layer.
 ## Session log — 2026-09-25-workbench-a (raise power on a xenon-free preset: the seam was not the preset)
 
 Traps only; the numbers are in `Blueprint/walkthrough_steps/03_raise_power.md` Notes (2026-09-25).

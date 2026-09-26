@@ -3135,12 +3135,18 @@ async function testSpeedRungGlowRendered(page) {
     var target = -1;
     for (var i = 0; i < c.proc.steps.length; i++) {
       var s = c.proc.steps[i];
-      if ((+s.hold || 0) >= 180 && s.wait_hint !== false) { target = i; break; }
+      /* A STEP-LEVEL `wait_speed` SINCE 2026-09-25 (workbench-f): every pwr_heatup long step now
+       * authors `wait_hint: false` (its substep-format warp line is the one speed line), and the
+       * old `wait_hint !== false` filter had been landing on step 3, whose rung in this jumped
+       * state came only from the hint (its substep rungs need a graded active head; measured:
+       * 0 rungs once the hint went). The claim is the RUNG the step authors; this lands on
+       * step 11 (3600x). */
+      if ((+s.hold || 0) >= 180 && +s.wait_speed > 1) { target = i; break; }
     }
     if (target < 0) return { ok: false };
     /* …with the step's own ACTION already taken (layman pass 4, S-1): since 2026-09-24 auto holds
      * 1× on a `cmd` step until that command has been seen (speed the wait, not the action), and
-     * this step is pwr_heatup 3, a rod press. The latch is set the way the instructor sets it on
+     * this was pwr_heatup 3, a rod press (step 11 since workbench-f; harmless there). The latch is set the way the instructor sets it on
      * the press; the claim under test — the WAIT gets its rung — is unchanged, and passes on the
      * pre-fix build too. The gate itself is verify_flags_ui's zz_pace_action probe. */
     c.idx = target; c.stepAt = null; c.awaitingAck = false; c.cmdSeen = true;

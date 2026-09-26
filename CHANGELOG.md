@@ -30,6 +30,44 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Walkthroughs: the cooldown stays under the 100 °F/hr limit** (owner rulings 2026-09-25, "Re-pace
+  to stay under", then "Middle ground"). Step 4 lowers DUMP SETPOINT 50 psi to 720, then 25 psi to
+  270, then 15 psi, about 6 plant-minutes apart, 34 entries (was 50 psi every 5 minutes; COOLDOWN
+  RATE tile −240 °F/hr → −87 to −90); step 11 sets HX SPLIT 9 % (was 12 %; −110 → −83 to −90) and
+  its goal line reads "inside the 100 °F per hour limit". Stated times: step 4 about three and a
+  half hours, step 11 about two and a quarter, the leg about 7 plant-hours. `run_walkthrough_routes`
+  fails a cooldown route that raises the rate alarm or passes −95 (`cooldown_old_pacing` injection).
+- **Walkthroughs: layman pass 5 (workbench-g).** The round trip no longer strands: cooldown step
+  16 gains 16d, "If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once." (the
+  shutdown's scram was still latched and the next heatup's WITHDRAW was refused), and heatup 3a's
+  note says the same for any other way in. The cooldown's finished card offers **Next: Mode 5 →
+  Mode 3** (`next: 'pwr_heatup'`). "← All walkthroughs" now lands on the list while a walkthrough
+  is loaded (the Walkthroughs tab was empty until Close). Cooldown 11 gives numbers to act at
+  (Cooldown Rate High → HX SPLIT 10 %; SUBCOOLING MARGIN under 20 °F → SPRAY OFF), 12a is
+  conditional. Notes added: heatup 11 (the red Pressurizer Pressure Very Low alarm is expected at
+  1700 psi), heatup 9b (the climb from the cooldown's end), raise 4b (the gauge keeps rising 2 to
+  5 °F after release), lower 3 (pressure sags to about 1820 to 1900 psi; the trip is 1775 psi).
+  Board words: heatup 6b, 7a/7b, 8, 14, 15d; raise 9b reads "663 ppm or below", its grading
+  threshold. The rod-block message names the SCRAM button. `run_walkthrough_routes`' chain runs
+  the heatup a second time and records per-step pressure/subcooling floors, raised alarms and
+  refused commands. The trip-notice scanner no longer reads a reset check (`scrammed < 1`) as
+  a leg that scripts its own scram.
+- **Walkthroughs: cross-leg quality pass (workbench-f).** Cooldown step 1 asks for the ON check
+  before the 920 ppm target, so its own "If ON is not lit, press ON" can no longer wipe the typed
+  target (ON re-captures it from the analyzer). Cooldown 13b reads "Check OFF is lit on the RCP
+  FLOW card." and grades the pumps' OFF lamp, as heatup 1c does. Trip blocks are "blocked", never
+  "switched off" (raise power step 1, cooldown steps 2 and 3). The Mode 5 to Mode 3 heatup no
+  longer prints two speed lines on its five long steps (`wait_hint: false`, as the other legs).
+  Check-off labels name the tile (OUTPUT, LOAD, REACTOR POWER, BORON target … ppm); lower power
+  1 says "719 ppm"; "programme" → "program". Owner selection "Take all defaults" (2026-09-25): one
+  boron ON check ("Check ON is lit on the BORON card. If ON is not lit, press ON.") in raise 3a,
+  cooldown 1a and lower power 1a's Note (which now says to press ON before setting the target);
+  the heatup's check steps open "Confirm", not "Verify"; startup 13a's note says the minute runs
+  from releasing WITHDRAW.
+- **`run_style` W12 reads the substep strings** (`accs[].ask/label/note/speed_text`), with one
+  injection per field. Three substep notes it then caught were reworded.
+
 ## [Alpha 1.8.0-rc6] — 2026-09-25
 
 ### Changed
@@ -67,6 +105,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   2026-09-25, option B): insert the shutdown bank, CLOSE the steam dump, DUMP SETPOINT back to
   1020 psi, so the next heatup's AUTO press no longer opens the dump against a 197 psi setpoint
   and trips the plant. Step 6's spray row no longer ticks on the AUTO spray passing 50 %.
+- **Walkthrough Mode 5 to Mode 3 in the what / why / how shape (phase 2).** The `pwr_heatup` pool
+  now carries `Blueprint/walkthrough_steps/01_mode5_to_mode3.md` word for word: an `aim` line on all
+  17 steps, one time warp per step (3 and 9 per substep), 31 check-offs. New graded rows: 1a–1d
+  (AVG COOLANT TEMPERATURE below 200 °F, PRIMARY PRESSURE below 725 psi, the RCP card's OFF lamp,
+  both rod banks at 0), 4b OUTPUT 0 MW, 6a STEAM DUMP in MANUAL, 15a–c (544 to 549 °F, 2200 to
+  2270 psi, CONTROL ROD POSITION 0); the `plant_mode` rows on steps 1 and 15 are retired. 6a and 15b
+  gained inline recoveries ("If AUTO is lit, press CLOSE"; "If it does not, set SET PZR PRESSURE to
+  2235 psi"). Step 13 gained 13a, DUMP SETPOINT 1020 psi before AUTO (owner ruling "Both A and B":
+  a plant cooled down by the walkthrough otherwise trips on low steam pressure at step 14); 1c reads
+  "Check OFF is lit on the RCP FLOW card" (ruling "Reword"). Instructor: `rcp_running` read off the
+  instrument the OFF lamp draws. Route gate: heatup step 6/13/15 policies, a `dump_auto_early` mistake.
 - **Walkthroughs, layman pass 4 (the six legs as one plant).** Raise power: each stage now says
   "hold WITHDRAW until AVG COOLANT TEMPERATURE is back in its band, about N steps" (the gauge
   leads); step 8 drops its "CONTROL ROD POSITION above 300" check-off and says what the 103 % rod

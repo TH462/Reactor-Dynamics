@@ -14,15 +14,15 @@
 
 ---
 
-1. Verify the plant is cold and shut down.
+1. Confirm the plant is cold and shut down.
 
 *The heatup begins from a known state: cold, depressurized, pumps stopped, every rod in.*
 
 ()1a. Check AVG COOLANT TEMPERATURE reads below 200 °F.
 
-()1b. Check PRIMARY PRESSURE reads low.
+()1b. Check PRIMARY PRESSURE reads below 725 psi.
 
-()1c. Check RCP FLOW reads OFF.
+()1c. Check OFF is lit on the RCP FLOW card.
 
 ()1d. Check CONTROL ROD POSITION and SHUTDOWN ROD POSITION both read 0 of 627.
 
@@ -60,7 +60,7 @@ A shut-down reactor makes very little heat compared to a critical reactor, but t
 
 Suggested time warp: 1×.
 
-Note: One click starts the shutdown bank and it runs to 627 of 627 by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early.
+Note: If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once first: no rod moves while the reactor trip is latched. One click starts the shutdown bank and it runs to 627 of 627 by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early.
 
 ()3b. Watch SHUTDOWN ROD POSITION count up to near 627 of 627.
 
@@ -74,7 +74,7 @@ In a PWR, shutdown rod groups (shutdown banks) stay fully withdrawn during norma
 
 
 
-4. Verify the turbine is tripped, nothing to press.
+4. Confirm the turbine is tripped, nothing to press.
 
 *A tripped turbine takes no steam, so the heat the pumps make stays in the plant.*
 
@@ -110,13 +110,13 @@ The steam generator is the boiler: reactor water heats it on one side and steam 
 
 
 
-6. Verify the STEAM DUMP is closed, nothing to press.
+6. Confirm the STEAM DUMP is closed, nothing to press.
 
 *Any steam the dump lets out is pump heat leaving the plant.*
 
-()6a. Check the STEAM DUMP card reads MANUAL with CLOSE lit.
+()6a. Check the STEAM DUMP card reads MANUAL with CLOSE lit. If AUTO is lit, press CLOSE.
 
-()6b. Check the STEAM DUMP opening reads under 1 %.
+()6b. Check the % beside the STEAM DUMP valve on the diagram reads 0 %.
 
 Suggested time warp: 1×.
 
@@ -134,9 +134,9 @@ The steam dump sends steam straight to the condenser instead of the turbine. Kep
 
 *Once pressure passes 600 psi, the orifices are the only way water leaves the loop.*
 
-()7a. Press A+B 7 % on the LETDOWN card and check orifice A is in service.
+()7a. Press A+B 7 % on the LETDOWN card and check A+B 7 % is lit.
 
-()7b. Check orifice B is in service.
+()7b. Check it is A+B 7 % that is lit, not A 3 % alone.
 
 Suggested time warp: 1×.
 
@@ -156,7 +156,7 @@ Water is always being pumped into the reactor loop (charging), so it always need
 
 Suggested time warp: 1×.
 
-Note: Nothing moves yet. The spray only opens when pressure runs above the SET PZR PRESSURE box, and the cold plant is about 1340 psi below it.
+Note: Nothing moves yet. The spray only opens when pressure runs above the SET PZR PRESSURE box, and the cold plant starts more than 1300 psi below it.
 
 Background
 
@@ -178,7 +178,7 @@ Suggested time warp: 1×.
 
 Suggested time warp: 600×.
 
-Note: At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open.
+Note: At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open. Coming from the cooldown the plant starts near 50 psi or lower, not 363, and the climb takes about an hour and a half of plant time.
 
 Background
 
@@ -214,6 +214,8 @@ The accumulators are tanks of borated water pushed by nitrogen gas at 665 psi. T
 
 Suggested time warp: 3600×.
 
+Note: Near the end the red Pressurizer Pressure Very Low alarm comes in, with Pressurizer Pressure Low. Both are expected: PRIMARY PRESSURE is held near 1700 psi on purpose, and step 14 raises it.
+
 Background
 
 The pumps are doing the work now. Watch AVG COOLANT TEMPERATURE, PRESSURIZER LEVEL rising as the water expands, and REACTOR POWER staying at zero. On the steam side, STEAM PRESS climbs toward 1020 psi as the water in the steam generator heats up; the next step hands that pressure to the steam dump to hold.
@@ -224,7 +226,7 @@ The pumps are doing the work now. Watch AVG COOLANT TEMPERATURE, PRESSURIZER LEV
 
 12. Confirm letdown now leaves only through the orifices.
 
-*Charging keeps pumping water in, so a letdown path that is not flowing slowly fills the plant solid.*
+*Charging keeps pumping water in, so a letdown path that is not flowing fills the plant solid.*
 
 ()12a. Check ISOLATE is lit on the RHR card.
 
@@ -244,7 +246,9 @@ The Residual Heat Removal (RHR) suction valve shut itself when PRIMARY PRESSURE 
 
 *Pump heat has brought STEAM PRESS up toward 1020 psi, and from here something has to hold it there.*
 
-()13a. Press AUTO on the STEAM DUMP card and check AUTO is lit.
+()13a. Check DUMP SETPOINT reads 1020 psi. If it does not, set it to 1020 psi.
+
+()13b. Press AUTO on the STEAM DUMP card and check AUTO is lit.
 
 Suggested time warp: 1×.
 
@@ -254,13 +258,13 @@ Background
 
 From here the plant makes more heat than it needs, and the steam dump sends the excess to the condenser. Without it the steam side keeps climbing until the ATMOS DUMP valve opens and vents steam to the sky for the rest of the heatup. Real plants run the dump in this pressure-holding mode whenever the turbine is off.
 
-[HIGHLIGHTED: Steam Dump — Auto (pulsing); Steam Dump, Steam Dump Status, SG Pressure (steady)]
+[HIGHLIGHTED: Steam Dump — Auto (pulsing); Steam Dump, Steam Dump Status, SG Pressure, Dump Setpoint (steady)]
 
 
 
 14. Bring PRIMARY PRESSURE up to normal operating pressure.
 
-*With the steam side hot, the 1972 psi gate can be crossed without firing the emergency injection.*
+*With the steam side hot, PRIMARY PRESSURE can pass 1972 psi without firing the emergency injection.*
 
 ()14a. Raise SET PZR PRESSURE to 2235 psi and wait for PRIMARY PRESSURE to read above 2175 psi.
 
@@ -268,23 +272,23 @@ Suggested time warp: 600×.
 
 Background
 
-The second stage of the pressurization. Crossing the 1972 psi gate re-arms the emergency injection, and that is safe now because the steam side is hot: STEAM PRESS sits near 1020 psi, far above the 328 psi that would trigger it. That is why this setting waited for the heatup to finish.
+The second stage of the pressurization. Crossing 1972 psi re-arms the emergency injection, and that is safe now because the steam side is hot: STEAM PRESS sits near 1020 psi, far above the 328 psi that would trigger it. That is why this setting waited for the heatup to finish.
 
 [HIGHLIGHTED: Pressure SP (pulsing); Primary Pressure (steady)]
 
 
 
-15. Verify Hot Standby.
+15. Confirm Hot Standby.
 
 *Confirming the end state catches a pressure that never came up or a steam side venting to the sky.*
 
-()15a. Check AVG COOLANT TEMPERATURE reads 547 °F.
+()15a. Check AVG COOLANT TEMPERATURE reads 544 to 549 °F.
 
-()15b. Check PRIMARY PRESSURE reads 2235 psi.
+()15b. Check PRIMARY PRESSURE reads 2200 to 2270 psi. If it does not, set SET PZR PRESSURE to 2235 psi.
 
 ()15c. Check CONTROL ROD POSITION still reads 0.
 
-()15d. Check ATMOS DUMP is shut.
+()15d. Check ATMOS DUMP reads 0 %.
 
 ()15e. Check STEAM PRESS reads near 1020 psi.
 
@@ -298,7 +302,7 @@ Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. Th
 
 
 
-16. Verify the reactor stayed shut down.
+16. Confirm the reactor stayed shut down.
 
 *The startup that follows assumes a core a long way from critical, so that is confirmed before handing over.*
 
@@ -330,7 +334,7 @@ Note: If it is not, stop and find out what moved: the control bank or BORON.
 
 Background
 
-Power at zero is the whole point of a pump-heat heatup: the friction of the running pumps warmed the plant, not a chain reaction. Power above 0% means something pulled the control bank or diluted the boron.
+Power at zero is the whole point of a pump-heat heatup: the friction of the running pumps warmed the plant, not a chain reaction. Power above 0 % means something pulled the control bank or diluted the boron.
 
 [HIGHLIGHTED: Reactor Power, Control Bank, Boron (steady)]
 
@@ -582,3 +586,102 @@ ten-minute window needs it.
 **NOT verified:** nothing was run against the plant — this is text. The WHY lines make no new
 number; 7's "600 psi" and 9's "665 and 1615 psi" are this file's own Background/Note figures, and
 14's "without firing the emergency injection" restates 14's Background. No layman pass yet.
+
+---
+
+### Bring-down record — 2026-09-25, `exp/p2-heatup` scratch lane: phase 2, the pool carries this file
+
+*Phase 2 of the reword record above (same OWNER RULING, 2026-09-24, "Yes, all five"). The
+`pwr_heatup` block of the PWR2 pool in `ui/manual_procedures.js` now carries this file WORD FOR WORD
+— compared by script, paragraph by paragraph, 144 of 144: step line, the italic line (`aim`), every
+lettered substep (`accs[].ask`), every time-warp line, every Note, Background (`why`) and the
+highlight line. One time warp per step (`wait_speed` + `speed_text: true` on the step); 3 and 9 keep
+theirs per substep.*
+
+**Text changed in this file, for your review** (each is ALSO in the pool):
+- **1b** "reads low" → "reads below 725 psi". 725 psi is the leg's own entry condition, and it
+  ticks at both arrivals (363 psi preset, 14.3 psi after the cooldown).
+- **6a** gained "If AUTO is lit, press CLOSE." A plant cooled down by the cooldown walkthrough
+  arrives with the dump in AUTO (measured), and with no instruction 6a sat unmet: strand, 30
+  plant-min. Same inline-recovery shape as 4b's UNLOAD.
+- **15a / 15b** "547 °F" → "544 to 549 °F" and "2235 psi" → "2200 to 2270 psi" — the bands the
+  Mode 3 to Mode 1 walkthrough's step 1 checks, the same plant state. Measured at step 15's entry:
+  547.3 °F and 2229-2231 psi, riding 2229-2242 psi over the next 10 minutes; "reads 2235" is never
+  true for long and "reads 547" (546.5-547.5 on a whole-degree tile) sits 0.2 °F inside its edge.
+- **15b** gained "If it does not, set SET PZR PRESSURE to 2235 psi." The route gate's overshoot
+  (SET PZR PRESSURE typed as 2306 psi at step 14) stranded here 30 plant-min without it.
+- **12's italic line** lost "slowly" (`run_style` W12, vague quantifier, scans the `aim`).
+- **17's Background** "0%" → "0 %" (house style; the pool already had the space).
+
+**Grading.** New rows, each on the channel its tile draws, at the floor of the tile's render band:
+
+| row | predicate | preset (live runtime, seed 42) | after the cooldown walkthrough (seed 42) |
+|---|---|---|---|
+| 1a | `tavg_c < 93.05` (199.5 °F: the whole-degree tile draws 199 or less) | met on entry, 122.0 °F | step 1 skipped, see below |
+| 1b | `pressure_mpa < 4.995` (724.5 psi) | met on entry, 362.6 psi | skipped |
+| 1c | `rcp_running < 1` — the card's OFF lamp. The RCP FLOW number reads natural circulation, 3.9 %, so it cannot say OFF. New instrument read in `instructor_layer.js` | met on entry | skipped |
+| 1d | `control_bank_steps < 1` + `shutdown_bank_steps < 1` (one substep, two check-offs) | met on entry, 0 and 0 | skipped |
+| 4b | `mwe_output < 0.5` (the OUTPUT tile draws whole MW) | met on entry, 0 MW | met on entry |
+| 6a | `steam_dump_auto < 1` (MANUAL; CLOSE lit is `!auto && demand <= 50`). Not 6b again: in AUTO below setpoint the valve reads 0 % with CLOSE dark | met on entry | unmet on entry; met 0.5 s after CLOSE |
+| 15a | `tavg_c ~ 285.83 ± 1.66` (544-549 °F) | met on entry, 547.3 °F | not reached, see below |
+| 15b | `pressure_mpa ~ 15.41 ± 0.244` (2200-2270 psi) | met on entry, 2231 psi | not reached |
+| 15c | `control_bank_steps < 1` | met on entry | not reached |
+
+Retired: step 1's `plant_mode ~ 5` and step 15's `plant_mode ~ 3`, as `02` step 17 retired its
+`plant_mode ~ 1`. Every other row is unchanged; 7b and 12b are now their own lettered substeps
+(were `cont` rows). Every new row is on a verify step, so met on entry is correct; the route gate's
+provisional rule already treats steps with no command that way.
+
+Injection-proven (each row broken alone, on a mutated pool, the typical route strands instead of completing): 1a, 1b, 1c, 1d (both
+rows), 4b, 6a, 15a, 15b, 15c. Recovery policies: removing 6a's CLOSE press from the route re-opens
+the strand (`dump_auto_early`, 30 plant-min); before 15b's recovery `pressure_sp_high` stranded.
+
+**THE COOLDOWN-TO-HEATUP SEAM — MEASURED, NOT FIXED HERE.** Run as one plant (cooldown walkthrough,
+then this one, seed 42): the cooldown hands over 197.0 °F, 14.3 psi, pumps off — and the shutdown
+bank at 627, the steam dump in AUTO, and the DUMP SETPOINT box walked down to the cooldown's last
+value. So (1) step 1 is skipped whole by its catch-up (`past`: shutdown bank 98 % or more); (2) step
+3 ticks on entry (bank already out), as do 5 and 7 (feed AUTO, orifices in); (3) BEFORE this change
+the leg stranded at step 11 for 2000 plant-min at 341.6 °F — the dump in AUTO carried the pump heat
+away; 6a's CLOSE now stops that; (4) WITH it, step 13's AUTO press opens the dump to 100 % against
+the low DUMP SETPOINT, STEAM PRESS falls from 1022 psi, and safety injection trips the reactor on
+low steam pressure during step 14. The route gate's chain starts at this leg's preset, so it sees
+none of it. Ruled the same day: see below (13a here; the cooldown's end state is the cooldown leg's).
+
+**Two rulings folded in the same day** (selections from options — option text, not his words,
+Hard Rule 11):
+- **The seam** — *OWNER RULING (2026-09-25), selected "Both A and B".* A, this leg: step 13 gained **13a "Check DUMP SETPOINT
+  reads 1020 psi. If it does not, set it to 1020 psi."**, graded `steam_dump_setpoint ~ 7.0327 ±
+  0.0034` MPa (every value the whole-psi box draws as 1020, `pwr_startup` 3b's band); the AUTO press
+  is now 13b, and DUMP SETPOINT is ringed steady. B (the cooldown leg ends with the shutdown bank in,
+  the dump closed and the box reset) belongs to the cooldown walkthrough.
+- **1c** — *OWNER RULING (2026-09-25), selected "Reword":* "Check RCP FLOW reads OFF." → "Check OFF is lit on the RCP FLOW card."
+
+**13a measured** (live runtime, seed 42): preset — met on entry (+0.3 s, box 7.03 MPa, 1019.6 psi),
+no action; 13b +5.7 s; the leg completes, 394.3 plant-min. After the cooldown walkthrough — the box
+arrives at 0.827 MPa (120 psi); set to 1020 psi, 13a ticks +5.6 s, AUTO +5.7 s, the dump stays shut
+(0 %) with STEAM PRESS 1023 psi, step 14 reaches 2217 psi with no trip, step 15 is met on entry, and
+the leg completes, 398.9 plant-min. Still on that route until the cooldown's half lands: step 1
+skipped and steps 3, 5 and 7 met on entry.
+
+### Cross-leg quality pass — 2026-09-25, workbench-f (pool only; no step text changed)
+
+Steps 3, 9, 11, 14 and 16 now author `wait_hint: false` in the pool (11 had `true`). With a hold of
+180 s or more and no `wait_hint: false`, the card printed the app's generated fast-forward line AND
+this file's "Suggested time warp" line on the same step, the only leg still doing so; the other
+five set it for that reason. The rung is unchanged (it comes from `wait_speed`). `verify_e2e_ui`'s
+long-step fixture had been landing on step 3 and drawing its speed-bar rung from the hint (0 rungs
+once it went, in that jumped state only; live play grades an active head first). It now picks the
+first long step with its own `wait_speed`, step 11 (3600×), and passes.
+
+### "Confirm", not "Verify" — 2026-09-25, workbench-f
+
+*OWNER RULING, 2026-09-25, selected "Take all defaults" (option selection, not verbatim; relayed by the coordinator)*, item 4: end-state goal lines use "Confirm". Steps 1, 4, 6, 15 and 16 now open "Confirm…" (the
+other four legs already did). Grading unchanged.
+
+### Layman pass 5 record — 2026-09-25, workbench-g (AGENT-DRAFTED notes; board words)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`.
+- **3a's note** opens "If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once first": a heatup entered with the trip latched cannot move a rod (the cooldown's 16d now resets it; this is for any other way in).
+- **9b's note**: the round trip starts near 50 psi or lower (52 psia measured after the cooldown's new step 11), step 9 86.1 plant-min against 49.6 on the fresh plant. **8's note**: "more than 1300 psi below" (1337 fresh, 1687 from a 13 psi start).
+- **11a's note**: Pressurizer Pressure Very Low (1800 psi, critical in Mode 3, Hot Standby) and Pressurizer Pressure Low raised at 1726 psia in this step on both chain heatups; the step ends at 1715 psia.
+- Board words: 6b (the % beside the STEAM DUMP valve), 7a/7b (A+B 7 % lit), 14 (no "gate"), 15d (ATMOS DUMP reads 0 %).

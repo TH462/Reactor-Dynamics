@@ -322,6 +322,9 @@
           var thI = st.replay_then.after_acc, thEn = (st.accs || [])[thI];
           var th = predBags['accs' + thI];
           if (!th && thEn) th = { ever: thEn.cmd ? (ordMet ? !!ordMet[thI] : true) : !!(thEn.p && pred(s, thEn)) };
+          /* `when` (2026-09-25, `pwr_cooldown` 11): a predicate of its own in place of `after_acc`
+           * -- the card's conditional press ("if SUBCOOLING MARGIN falls below 20 degF, SPRAY OFF") */
+          if (st.replay_then.when) th = { ever: !!pred(s, st.replay_then.when) };
           if (th && th.ever) {
             var tc = JSON.parse(JSON.stringify(st.replay_then.cmd));
             if (tc.group_id === 'control' || tc.group_id === 'shutdown') tc.group_id = groupId(svc, tc.group_id);
@@ -390,7 +393,7 @@
          * route the player is forced onto is one the plant actually completes. This is what
          * reddens if a settle predicate is tightened past what its hold delivers. */
         if (st.replay_then) checks.push({ d: 'step ' + curStep + ' replay_then issued inside the hold',
-          pass: thenIssued, obs: thenIssued ? 'issued' : 'accs[' + st.replay_then.after_acc + '] never met' });
+          pass: thenIssued, obs: thenIssued ? 'issued' : (st.replay_then.when ? JSON.stringify(st.replay_then.when) : 'accs[' + st.replay_then.after_acc + ']') + ' never met' });
         if (st.accs_ordered) {
           for (var oi = 0; oi < st.accs.length; oi++) {
             if (!st.accs[oi] || !st.accs[oi].cmd) continue;
