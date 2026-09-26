@@ -71,7 +71,7 @@ The reactor follows the turbine: less steam drawn means the heat has nowhere to 
 
 Suggested time warp: 5×.
 
-Note: About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it. PRIMARY PRESSURE sags as the rods cool the plant: to about 2200 psi from a fresh start, and to about 1940 psi after the raise-power walkthrough, with the heaters full on and the Pressurizer Pressure Low alarm in. Pull faster than this and it sags further; the low-pressure trip is at 1775 psi.
+Note: About 15 to 75 steps at MED, the middle rod speed on the ROD CONTROL card. The green band is the temperature the plant is meant to hold at the power it is making; it falls with load, from 578 °F at 100 % to 547 °F at no load. Temperature above the band: insert. Below: withdraw. Stop when it is back in the band — the boration from step 1 is still working and will keep walking it down. The tile trails the rods: hold INSERT straight through and the plant is already past the band by the time the tile reaches it. PRIMARY PRESSURE sags as the rods cool the plant: to about 2200 psi from a fresh start, and to about 2140 psi after the raise-power walkthrough, with the heaters full on and the Pressurizer Pressure Low alarm in. Pull faster than this and it sags further; the low-pressure trip is at 1775 psi.
 
 
 
@@ -386,3 +386,8 @@ design ramp (5 %/min) is about 1.55 °F/min on this plant's program. The rod-cou
 Notes (15-75, 20-65, 10-45, 6-40) still hold every measured count. `purpose` now "About 25 to 50
 plant-minutes". Why the chained plant sags ~260 psi deeper than the preset: a stratified layer of
 insurge water in the pressurizer (`Diagnostic/TUNING_LOG.md` 2026-09-25-workbench-h).
+
+**Superseded the same session by the pressurizer layer-mixing term** (`DESIGN_COMPANION.md` §8.37,
+tau 600 s): chain floors steps 3/4/5/6 **2145 / 2158 / 2147 / 2140 psia**, leg 23.5 plant-min; the
+pressure sentence now reads "about 2140 psi after the raise-power walkthrough". The table above is
+the plant without the term.

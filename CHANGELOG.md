@@ -31,6 +31,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Pressurizer: water that surges in now mixes into the rest over 600 s (workbench-h).** A declared,
+  unsourced `[tune]` time constant (`STRATIFY.tau_mix_s`, `DESIGN_COMPANION.md` §8.37, `Manuals/12` §7.1,
+  Rev 22 (j)). Before it, raise power left 893 kg of 63.5 °F-subcooled water in the pressurizer
+  indefinitely and the heaters could not hold pressure through the next outsurge. Lower-power
+  walkthrough after raise power: PRIMARY PRESSURE floor 1936 -> 2140 psia. Lower power inserts
+  "about 3 steps, one plant-minute apart"; the route gate no longer sends the replay's 40-step
+  insert. Heater capacity checked against WTSM 3.2 and left alone (it is sized correctly).
 - **Walkthroughs: layman pass 5 (workbench-g).** The round trip no longer strands: cooldown step
   16 gains 16d, "If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once." (the
   shutdown's scram was still latched and the next heatup's WITHDRAW was refused), and heatup 3a's

@@ -68,6 +68,19 @@ EV_NOCMD/EV_TAU`). **No physics moved.** Traps only:
   3 per 60 s 2145 / 2157 / 2148 / 2147. No corpus document gives a stratified-layer mixing time
   (`find_source.js "thermocline|pressurizer.{0,40}mixing|mixing.{0,40}pressurizer"`: no pressurizer hit),
   and the layer is load-bearing for the loss-of-load spike and TMI — owner ruling, not an agent's call.
+- **BUILT the same session** *(OWNER RULING (2026-09-25), selected "C: both, B first" — selection,
+  not verbatim)*: pace "about 3 steps, one plant-minute apart"; the route gate's `to_band` no longer
+  sends the step's `rod_nudge -40`; `STRATIFY.tau_mix_s` 600 s. Chain floors 2145/2158/2147/2140 psia.
+  `perturb_sweep` cannot reach a pwr2 constant (its suites are the retired engine's); the tau sweep
+  above is the substitute. Two reds, adjudicated one at a time:
+  - **`run_pwr2_engine_b` null self-test, group C** — a CLIFF, not the claim. The rods-IN plant on
+    the quiet ride's 30 s settle tripped OTdT +19.3 s after onset with the term; settles 20/25/35/40/
+    50/60/70/90 s do not trip in 240 s, and without the term no settle trips. Fixture moved to 60 s
+    on both rides; the check is unchanged and green (engine 80/80, _b 67/67, _c 16/16).
+  - **`run_checklist_pwr2` heatup 16, SR steady 1.2 %/600 s** — a SEED REALIZATION. True SR sits at
+    168.04 cps on both trees through the step-16 window; over 11 seeds the row fails 2/11 with the
+    term and 2/11 without (seeds 4, 6 on the old tree). Tracked in BASELINES (2 -> 3), not re-banded.
+    **A replay that grades a noisy `steady` row at one fixed hold pins one noise realization.**
 
 ## Session log — 2026-09-25-workbench-g (layman pass 5 verified: the round trip's seam, and a harness that crashed on the refusal it was looking for)
 

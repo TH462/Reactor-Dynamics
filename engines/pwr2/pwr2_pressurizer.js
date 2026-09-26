@@ -531,6 +531,24 @@
   var STRATIFY = {
     kind: '[open — one calibrated constant, declared as such]',
     tau_int_s: 30,
+    /* [tune] tau_mix_s — THE STRATIFIED LAYER MIXES INTO THE POOL over this time (2026-09-25,
+     * workbench-h; OWNER RULING (2026-09-25), selected "C: both, B first" — option text, not
+     * verbatim: "add a declared mixing time constant for the pressurizer's bottom water").
+     * UNSOURCED, DECLARED: `find_source.js "thermocline|pressurizer.{0,40}mixing|mixing.{0,40}
+     * pressurizer"` finds no rate in any lane's corpus. What IS sourced is that the layer does
+     * not stay isolated — WTSM 10.3 (ML11223A290, pp. 10.3-4/-5): "over time the cooler water
+     * that has entered the pressurizer would cause a pressure reduction", which is why the
+     * backup heaters anticipate an insurge — and that the heaters "maintain the steam and water
+     * contents at equilibrium conditions" (WTSM 3.2, ML11223A213). Without this term the layer
+     * never relaxed: raise power left 893 kg (54 % of the liquid) 63.5 degF (35.3 degC)
+     * subcooled at steady 100 %, heaters at 0 kW, and the next outsurge drained the heaters'
+     * output back to the hot leg (heaters 0 % vs 100 % moved a lower-power floor 8 psi).
+     * THE NUMBER IS A TABLE, NOT A FIT (chain, raise power -> lower power at the card's pace,
+     * measured 2026-09-25): tau 300 / 600 / 1200 s all leave 0 kg at the end of raise power and
+     * give lower-power floors within 14 psi of each other (2146-2160 psia); 3600 s leaves 575 kg
+     * and 2031-2045. 600 s sits in the flat band. Seconds-scale insurge stiffness (Ginna Case 2,
+     * 5.4 s, the tau_int calibration above) is untouched: 5 s is 0.8 % of tau_mix. */
+    tau_mix_s: 600,
     m_stm_floor_kg: 0.5,
     m_liq_floor_kg: 1.0
   };
@@ -1232,6 +1250,17 @@
         else if (pz.m_stm > 0) pz.h_stm += dHwB / pz.m_stm;
       }
     }
+    /* ---- 1d. THE LAYER MIXES (STRATIFY.tau_mix_s, declared). Mass moves from the bottom layer
+     * into the pool at its own enthalpy — energy conserved exactly; the pool, now subcooled,
+     * re-saturates by condensing steam through 1c's interface term (the sourced "pressure
+     * reduction"), and the heater ladder answers it. Only with a steam space present: a
+     * water-solid vessel has nothing to condense, and its regions are left as they were. ---- */
+    var mix_kgs = 0, tauMix = STRATIFY.tau_mix_s;
+    if (isFinite(tauMix) && tauMix > 0 && pz.m_sub > 0 && pz.m_sat > 0 &&
+        pz.m_stm > STRATIFY.m_stm_floor_kg) {
+      var dmx = pz.m_sub * Math.min(1, dt / tauMix);
+      addPool(pz, dmx, pz.h_sub); pz.m_sub -= dmx; mix_kgs = dmx / dt;
+    }
     if (pz.m_sub > 0 && pz.h_sub >= hf) {
       addPool(pz, pz.m_sub, pz.h_sub); pz.m_sub = 0;
     }
@@ -1291,6 +1320,7 @@
       m_pzr: pz.m_pzr,
       surge_kgs: surge_kgs,
       surge_heat_kW: surge_heat_kW,
+      sub_mix_kgs: mix_kgs,             /* the stratified layer mixing into the pool (1d) */
       /* DELIVERED into the water (energized x wetted) — the number the energy balance uses and
        * the one `run_pwr2_engine`'s closed audit sums. NOT the gauge; see the split above. */
       heater_kW: Q_heat_kW,
