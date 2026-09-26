@@ -31,6 +31,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Walkthroughs: Mode 3 → Mode 1 startup, owner playtest #807 items 8-10.** Step 5's rod window is
+  90 to 110 (was 80 to 100; SOURCE RANGE reads 772 cps at 90 and 899 at 110 on a 719 ppm plant, and
+  the old window's top only just reached 7.0e2 at 729 ppm). Steps 5, 6 and 7 run both substeps at
+  10× (the plot substep used to drop to 1× the moment the count target ticked); step 7's note warns
+  its 14-step window passes in under 2 seconds of holding at 10×. Step 9b has one target: tap, wait
+  five plant-minutes, repeat until STARTUP RATE reads +0.15 or more; the check-off latches on it
+  (the old +0.06 to +1.00 "and steady" check could light and go dark while the rate was still
+  falling). Typical route: 9b ends at bank 213, steps 9-11 take 45-51 plant-min (was 67), the leg
+  86-94 (was 115). Steps 8, 10 and 11 notes re-stated to match.
 - **Walkthroughs: the cooldown stays under the 100 °F/hr limit** (owner rulings 2026-09-25, "Re-pace
   to stay under", then "Middle ground"). Step 4 lowers DUMP SETPOINT 50 psi to 720, then 25 psi to
   270, then 15 psi, about 6 plant-minutes apart, 34 entries (was 50 psi every 5 minutes; COOLDOWN

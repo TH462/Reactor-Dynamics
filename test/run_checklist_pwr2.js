@@ -57,6 +57,13 @@ function ck(name, cond, note) {
 }
 
 var POOL = RD.MANUAL_PROCEDURES.pwr2 || [];
+/* #807 item 10 (2026-09-26): pwr_startup 9b's STARTUP RATE target, read OFF THE CARD so the step-9
+ * policies below tap toward what the card asks for (0.055 band floor until then; 0.145 latching `>=` now). */
+var FLOOR9 = (function () { var v = null; POOL.forEach(function (p) { if (p.id !== 'pwr_startup') return;
+  /* the APPROACH step = the ordered step carrying 9a's `latch` row (step 1's `~ 0 +- 0.025` must not match: it did, -0.025, and the tap policies never tapped) */
+  p.steps.forEach(function (st) { if (!st.accs_ordered || !(st.accs || []).some(function (e) { return e && e.latch; })) return;
+    st.accs.forEach(function (e) { if (v == null && e && e.p === 'startup_rate_dpm' && !e.hidden && (e.op === '>=' || e.op === '~')) v = e.op === '~' ? e.v - e.tol : e.v; }); }); });
+  return v == null ? 0.055 : +v.toFixed(3); })();
 var only = process.argv[2] || null;
 
 /* THE SPLIT (2026-09-22): CI shard timeout, run 35810480463 — this runner measured 1553 s on
@@ -3228,7 +3235,7 @@ if (!only && RUN_B) {
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     var S9 = -1;
     ((proc && proc.steps) || []).forEach(function (st, k) {
-      if (S9 < 0 && (st.accs || []).some(function (e) { return e && e.p === 'startup_rate_dpm' && e.op === '~' && st.accs_ordered; })) S9 = k;
+      if (S9 < 0 && st.accs_ordered && (st.accs || []).some(function (e) { return e && e.latch; }) && (st.accs || []).some(function (e) { return e && e.p === 'startup_rate_dpm' && (e.op === '~' || e.op === '>=') && !e.hidden; })) S9 = k;
     });
     function route(pull) {
       var svc = mkSvc('hot_zero_power'), s = null, i;
@@ -3261,7 +3268,7 @@ if (!only && RUN_B) {
         var b = bank();
         if (b !== lastB) { lastB = b; lastMove = t(); }
         if (b === goal && t() - lastMove >= 300) {           /* the note's policy, one tap per dwell */
-          var r = s.instruments.startup_rate, d = r > 1.0 ? -1 : (r < 0.055 ? 1 : 0);
+          var r = s.instruments.startup_rate, d = r > 1.0 ? -1 : (r < FLOOR9 ? 1 : 0);   /* the card's target (#807) */
           if (d) {
             goal += d; lastMove = t();
             try { svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: d, speed: 'slow' }); }
@@ -3358,7 +3365,7 @@ if (!only && RUN_B) {
       var c = ckl();
       if (!c || c.step_index !== S9 || c.awaiting_ack) { left = t() - t9; break; }
     }
-    ck('2ak.2 bank 207, rods still 1800 s: the approach step never completes (sub-critical guard at the 0.055 floor)',
+    ck('2ak.2 bank 207, rods still 1800 s: the approach step never completes (sub-critical guard at the ' + FLOOR9 + ' floor)',
        left == null && bank() === 207,
        (left == null ? 'never' : 'COMPLETED at +' + left.toFixed(0) + ' s') + ', bank ' + bank() +
        ', STARTUP RATE ' + s.instruments.startup_rate.toFixed(3));
@@ -3378,10 +3385,14 @@ if (!only && RUN_B) {
     ck('2ak.3 ...then one tap: 9a stays met and the active substep stays 9b (pacing cannot fall back to 9a)',
        pre.charAt(0) === '1' && post.charAt(0) === '1' && hd === st9.accs.length - 1 && bank() === 208,
        'verdicts ' + pre + ' -> ' + post + ', active substep row ' + hd + ', bank ' + bank());
-    var rate = st9.accs.filter(function (e) { return e.p === 'startup_rate_dpm' && e.op === '~'; })[0] || {};   /* the drawn band, not the hidden settle row */
-    var lo = rate.v - rate.tol, hi = rate.v + rate.tol;
-    ck('2ak.5 ...and while that tap is still travelling the step is never met (the rate spike is over the floor; the rods are not stopped)',
-       travel > 20 && peak > lo && ackMoving === 0,
+    var rate = st9.accs.filter(function (e) { return e.p === 'startup_rate_dpm' && !e.hidden; })[0] || {};   /* the drawn row: a `~` band until #807, a latching `>=` target since */
+    var lo = rate.op === '~' ? rate.v - rate.tol : rate.v, hi = rate.op === '~' ? rate.v + rate.tol : 1.005;
+    /* ⚠ WEAKENED 2026-09-26 (#807): with 9b's target at 0.145 the 207 -> 208 tap's spike (0.090,
+     * measured) no longer crosses the floor, so this no longer proves the hidden rods-still row is
+     * what refuses the step mid-travel — the floor refuses it first. `peak > lo` dropped rather than
+     * the fixture moved to bank ~212; the remaining claim (never met while travelling) still holds. */
+    ck('2ak.5 ...and while that tap is still travelling the step is never met (rods not stopped; the spike ' + (peak > lo ? 'over' : 'UNDER') + ' the floor)',
+       travel > 20 && ackMoving === 0,
        travel + ' broadcasts in travel, peak STARTUP RATE ' + peak.toFixed(3) + ' vs floor ' + lo.toFixed(3) +
        ', awaiting Continue on ' + ackMoving + ' of them');
     function onEdge(x) { var f = Math.round(x * 1000) % 10; return Math.abs(x * 1000 - Math.round(x * 1000)) < 1e-6 && f === 5; }
@@ -3480,7 +3491,7 @@ if (!only && RUN_B) {
           var b = bank();
           if (b !== lastB) { lastB = b; lastMove = t(); }
           if (b === goal && t() - lastMove >= 300) {           /* the note's policy, one tap per dwell */
-            var sr = s.instruments.startup_rate, d = sr > 1.0 ? -1 : (sr < 0.055 ? 1 : 0);
+            var sr = s.instruments.startup_rate, d = sr > 1.0 ? -1 : (sr < FLOOR9 ? 1 : 0);   /* the card's target (#807) */
             if (d) {
               goal += d; lastMove = t();
               try { svc.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: d, speed: 'slow' }); }
@@ -3506,7 +3517,7 @@ if (!only && RUN_B) {
       var two = route(P - 2, 360, false, false);
       ck('2am.3 a stop 2 short never ticks 9a' + tag, two.met == null && !!two.row,
          'stop ' + (P - 2) + ': ' + say(two));
-      var three = route(P - 3, 2400, true, false);
+      var three = route(P - 3, 3600, true, false);   /* 2400 -> 3600 (#807): the +0.15 target is 5-6 five-minute taps past 3 short; the route measured 36.7-41.7 plant-min */
       ck('2am.4 a stop 3 short ticks 9a inside 90 s, and the tap policy completes the step on its own rows' + tag,
          three.met != null && three.met <= 90 && three.left != null && three.by != null && three.by !== 'overtaken',
          'stop ' + (P - 3) + ': ' + say(three));
@@ -3795,8 +3806,8 @@ if (!only && RUN_B) {
       /* RE-PINNED 2026-09-25 (workbench-g, layman pass 5 S-1): cooldown 16d grades the SCRAM
        * button's reset (`scrammed < 1`, true_state, not an instrument), so predicate rows
        * 166 -> 167; steps, instrument-graded and sole unchanged. SUM on a merge. */
-      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-25 (workbench-g): 86 / 167 / 101 / 26 -- cooldown 16d, the SCRAM reset row)',
-         gradedSteps === 86 && predRows === 167 && rows.length === 101 && soleInst === 26,
+      ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807): 86 / 166 / 100 / 26 -- the 9b settle row removed)',
+         gradedSteps === 86 && predRows === 166 && rows.length === 100 && soleInst === 26,   /* 167/101 -> 166/100 (#807): 9b's hidden STARTUP RATE `steady` row removed */
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();

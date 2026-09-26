@@ -119,17 +119,15 @@ The panel fits the last three points, so each new point sharpens the prediction.
 
 *One point cannot make a line. The second gives the plot its first prediction of where the reactor goes critical.*
 
-()5a. Hold CONTROL WITHDRAW at MED until CONTROL ROD POSITION reads 80 to 100 and SOURCE RANGE reads 7.0e2 or more.
+()5a. Hold CONTROL WITHDRAW at MED until CONTROL ROD POSITION reads 90 to 110 and SOURCE RANGE reads 7.0e2 or more.
 
-Suggested time warp: 5×, set by itself once the rods start moving.
-
-Note: If CONTROL ROD POSITION reaches 100 and SOURCE RANGE is still under 7.0e2, stop and wait: the step 2 dilution is still finishing, and the counts climb to 7.0e2 on their own.
+Note: If CONTROL ROD POSITION reaches 110 and SOURCE RANGE is still under 7.0e2, stop and wait: the step 2 dilution is still finishing, and the counts climb to 7.0e2 on their own.
 
 ()5b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point.
 
-Suggested time warp: 1×.
-
 Note: STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop. If BORON still reads above 719 ppm, the step 2 dilution is still adding reactivity and STARTUP RATE takes longer to fall.
+
+Suggested time warp: 10×, set by itself once the rods start moving.
 
 
 
@@ -149,13 +147,11 @@ While the reactor is shut down, SOURCE RANGE counts are the only thing that show
 
 ()6a. Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 150 to 175 and SOURCE RANGE reads 1.4e3 or more.
 
-Suggested time warp: 5×, set by itself once the rods start moving.
-
 ()6b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the predicted rod position the panel prints.
 
-Suggested time warp: 1×.
-
 Note: STARTUP RATE reaches +0.03 or less about a minute and a half after the rods stop.
+
+Suggested time warp: 10×, set by itself once the rods start moving.
 
 
 
@@ -175,13 +171,11 @@ That number still reads high. It improves with every point.
 
 ()7a. Hold CONTROL WITHDRAW until CONTROL ROD POSITION reads 180 to 194 and SOURCE RANGE reads 3.0e3 or more.
 
-Suggested time warp: 5×, set by itself once the rods start moving.
-
-Note: This pull is only 14 steps wide, so watch the position, not the clock.
+Note: This window is only 14 steps wide, under 2 seconds of holding at 10×, so watch the position, not the clock.
 
 ()7b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the prediction again.
 
-Suggested time warp: 1×.
+Suggested time warp: 10×, set by itself once the rods start moving.
 
 
 
@@ -203,7 +197,7 @@ The prediction is starting to be useful, which makes the wait matter more. While
 
 Suggested time warp: 10×.
 
-Note: STARTUP RATE takes about three to three and a half plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 9 asks for shows anywhere from 2 steps short of the prediction to 3 past it (measured).
+Note: STARTUP RATE takes about three to three and a half plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 9 asks for shows 3 to 4 steps past the predicted position (measured).
 
 
 
@@ -227,20 +221,11 @@ Suggested time warp: 1×.
 
 Note: At SLOW the rods move about one step every 8 plant-seconds, so a short hold at 1× moves nothing. This check-off ticks after the rods have been still for a plant-minute.
 
-()9b. Tap WITHDRAW one step, wait about ten plant-minutes, and read STARTUP RATE. Repeat until STARTUP RATE reads +0.06 to +1.00 and steady, with the rods stopped.
+()9b. Tap WITHDRAW one step, wait five plant-minutes, and read STARTUP RATE. Repeat until it reads +0.15 or more.
 
 Suggested time warp: 10× while you wait; 1× before every tap.
 
-Note: Read the rate only once it has stopped falling, about ten plant-minutes after the last tap; the check-off waits for that too. What the reading means:
-
-* Near 0.01, with PERIOD in the thousands of seconds and nothing moving: still short of critical. Tap one more step out and wait.
-* 0.02 to 0.05: tap one more step out.
-* 0.06 to 0.10: fine. Power arrives later and levels off lower, about 1 to 1½ %.
-* Around 0.15, with PERIOD 150 to 200 seconds: the approach going as written.
-* Around 0.5, or PERIOD under 60 seconds: about eight steps further out than you meant. Power arrives about three times sooner and levels off higher.
-* Over 1.0: tap INSERT once and wait.
-
-SOURCE RANGE switches itself off above 1.0e5 and its tile goes blank; INTER RANGE carries the reading. PERIOD is the seconds for power to grow by about 2.7 times; a smaller number is a faster rise.
+Note: Each step out adds about +0.03 to where STARTUP RATE settles. Over 1.0, tap INSERT once. SOURCE RANGE switches itself off above 1.0e5; INTER RANGE carries the reading.
 
 
 
@@ -264,7 +249,7 @@ Below about 1 % power, where the reactor starts warming the water, nothing in th
 
 Suggested time warp: 10×.
 
-Note: Never 60×, where a 2½-second glance away is two and a half plant-minutes of reactor. REACTOR POWER reads 0.0 % for about 30 to 60 plant-minutes after a STARTUP RATE of 0.06 to 0.10, and under 15 plant-minutes after about 0.15, while INTER RANGE climbs three decades, a thousandfold. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
+Note: Never 60×, where a 2½-second glance away is two and a half plant-minutes of reactor. REACTOR POWER reads 0.0 % while INTER RANGE climbs three decades, a thousandfold; after the +0.15 of step 9 that takes about 2 to 6 plant-minutes. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
 
 
 
@@ -286,7 +271,7 @@ That is why STARTUP RATE, PERIOD and INTER RANGE are the instruments to steer on
 
 Suggested time warp: 5×; 1× before a tap. The plant behaves the same at any speed, but at 10× a tap has landed before you have read the rate.
 
-Note: This takes about 15 to 25 plant-minutes, or about 5 to 7 after a 0.15 approach. SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE carries the reading from here; there is no button for it. Once it has gone, close the 1/M PLOT window with the ✕ in its corner. Its work is done.
+Note: This takes about 6 to 7 plant-minutes. SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE carries the reading from here; there is no button for it. Once it has gone, close the 1/M PLOT window with the ✕ in its corner. Its work is done.
 
 
 
@@ -1126,3 +1111,23 @@ its tail. MEASURED (`run_walkthrough_routes` chain, seed 42): step 2 now 93.0 pl
 chained plant (the note's "about 1½ plant-hours" holds); step 5 clears at bank 80, SOURCE RANGE
 713 cps, 2.2 plant-min; step 7 stops at bank 182. Route gate 128/0/128. The 5a/5b dilution notes
 (records p, s) stay: a 10 ppm tail can still show.
+
+### #807 items 8-10 — 2026-09-26 (807b), develop lane
+
+Owner playtest of 1.8.0-rc6. Full record and every number: `Diagnostic/TUNING_LOG.md`
+2026-09-26-develop-b.
+- **5a window 80-100 → 90-110** (item 8, "It barely hit 7.0e2 cps at 100 steps"). SOURCE RANGE at
+  719 ppm: 724 at 80, 772 at 90, 830 at 100, 899 at 110; at 729 ppm 712 at 100, 763 at 110. The 5a
+  note's "reaches 100" became "reaches 110". Route gate `#5` to 90, top 110.
+- **Steps 5-7 at 10× for both substeps** (item 9, "steps 5, 6 7 should be at 10x"): one step-level
+  "Suggested time warp" line each, replacing the 5× / 1× substep lines and the 2026-09-24 (f) 7a
+  5× selection. 7a's note adds "under 2 seconds of holding at 10×" (14 steps at 48 a plant-minute).
+- **9b: one target** (item 10). Action "Tap WITHDRAW one step, wait five plant-minutes, and read
+  STARTUP RATE. Repeat until it reads +0.15 or more."; the seven-bullet note cut to three
+  sentences; graded `>=` 0.145 (latches) behind the hidden 300 s rods-still row; the hidden
+  `steady` row removed. Why the old check went dark: record in the TUNING_LOG entry.
+- Notes re-stated on the new route (three seeds): 8 "3 to 4 steps past the predicted position";
+  10 "after the +0.15 of step 9 that takes about 2 to 6 plant-minutes"; 11 "about 6 to 7
+  plant-minutes".
+- **Not changed, awaiting the owner:** an IR hand-over step (item 10's question) and starting the
+  climb to 5 % from the startup rate (item 11) — measurements in the TUNING_LOG entry.
