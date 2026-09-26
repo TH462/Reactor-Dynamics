@@ -29,6 +29,54 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-develop-g (#807 item 2: raise and lower power re-walked on the boron-holdup plant)
+
+Scratch worktree exp/807e1 (from exp/807int 061f37d9). Route runner `--job` runs, full stack, seeds
+42/7/123 plus the chain (seeds 42 and 7) unless stated. The merge agent's severed A/B had already
+attributed the reds to the boron makeup-path holdup; each was re-adjudicated here, one at a time.
+
+- **Dilution is slower, and the card said 25 plant-minutes.** `measure_stack --plant=pwr2 --ic=low_power`,
+  target 660 at t=0: 718.5 → 716.7 (5 min, the holdup) → 675.0 (30) → 663.0 (45) → 660.8 (60) ppm. A
+  10 ppm trim: 718.5 → 709.7 in 30 min, within 1 ppm at ~20. Raise 3 now says "about 45", Background
+  "about fifteen" for the trim. Step 9 (BORON ≤ 663) waits 21.4-27.5 plant-min on every route → its
+  suggested warp 1× → 5×.
+- **The stage temperature tick flickered during the load ramp (raise `rods_before_load` s42 step 5,
+  `band_floor` s7 step 7, chain s42 step 4, the 5b injection route s123 steps 6-7).** A transient, not
+  noise: the tick lands while LOAD is still coming on and the tile sags back out (held 3-6 s, past the
+  band debounce). Fix: 4b-8b `latch: true`, and 4c-8c carry a `cont` re-assert of the same band, so the
+  step still cannot complete off-band. Re-measured: 0 flags on typical, rods_before_load, hot_stage4,
+  band_floor, overpull_60 × 3 seeds, and on both chains. The `raise_old_settle_band` injection now
+  widens the re-assert row too (it would have gone blind).
+- **Raise rod counts, measured** (typical / chain / mistake routes): stage 4 20 / 20 / 20; stage 5 20 /
+  15-20 / 15; stage 6 25 / 30-35 / 25-30; stage 7 15 / 15 / 15-25; stage 8 20 / 20 / 20. Card: "15 to
+  20", "25 to 35", "about 20" (was "about 10", "20 to 25", "15 to 25"). The insertion-limit alarms
+  (approach, then limit) come in at STAGE 6 on every route, not 5; stage 5's PRIMARY PRESSURE low is
+  2228-2229 psia, no Pressurizer Pressure Low — that sentence came out, the alarm sentence (with its
+  xenon clause, unchanged) moved to 6.
+- **Lower 2 peak: 585.9 °F standalone (all routes, all seeds), 585.4-585.5 chain** vs "under about 585"
+  → "under about 587". Steps 4/5/6 peaks 578.4/568.5/562.6 standalone, 576.5/568.0/560.5 chain: inside
+  580/572/565, unchanged. Rod counts: 3: 18 / 12 (card "5 to 75" → "10 to 20"); 4: 27 / 21-24 ("15 to
+  25" → "20 to 30"); 5: 18-21 / 18 ("about 20"); 6: 12-15 / 12 ("10 to 15"). Step 3 PRIMARY PRESSURE low
+  2211 standalone, 2199 chain, no alarm: the "2140 psi after raise power, Pressurizer Pressure Low"
+  claim came out. End of leg REACTOR POWER 10.7 % standalone, 11.6-12.0 % chain at 15 MWe: "about 15 %"
+  → "about 12 %" (title, target, outcome, 6 aim/Background/note).
+- **Replay (run_checklist_pwr2) lower 4/5 ended hot** (569.0 °F vs < 568.5, 563.0 vs < 561.5): the load
+  stair alone, no insert, on a slower boration — same cause as above. `replay_then` now inserts 10 steps
+  once OUTPUT reaches each step's last tread: 566.1 / 554.2 °F, 27/27.
+- **Injections.** `rods_row_5b` was blind: the hot_stage4 route's stage 5 now dips to 556.8-556.9 °F,
+  under the 557 band edge, so its reader pulls and satisfies the press row; a 40-step stage 4 still dips
+  (556.9). Re-armed on typical with overrides — LOAD then a 60-step pull, stage 5 read 562 ± 5/7: stage
+  5 sits 562-568 °F, no rod press, `cmdwait` on seeds 42/7/123. `lower_output_tol4` RETIRED: a noise
+  bifurcation on this plant (±5: red 2 of 6 seeds, blind on 42; ±4.9 on 4a-6a: 4 of 6, then blind on
+  42 in the gate after an unrelated step-1 grading change; ±4.8: 0 of 6). The ±2 rows stand.
+- **Highlights.** Pulse on what the step presses, steady ring on the card: `Load Setpoint` replaces
+  `Turbine Load` in every `hl` (raise 2, 4-8; lower 2, 4-6), `Turbine Load` moves to `hl_watch`; raise 2
+  adds `Turbine — Latch`, raise 3 / lower 1 `Boron ON`, raise 9 `Insert` (press_expected: 9c's
+  conditional insert). No new board keys were needed.
+- **Not verified:** the "about 595 °F" / "about 585 °F" one-cut figures (the gate's injections still go
+  red on them, not re-read here); "clears as xenon builds and you walk the bank up"; the tile "keeps
+  rising for about a minute" after a pull; any browser paint of the new highlight lists beyond
+  verify_board_cues / verify_e2e_ui.
 ## Session log — 2026-09-26-develop-h (#807 item 2: shutdown and cooldown to the Mode 3 → Mode 1 template; button pulses on shutdown, cooldown and TMI-2)
 
 *Owner, #807 item 2: "using the mode 3-1 walkthrough as a template, adjust the steps of the other

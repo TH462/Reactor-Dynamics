@@ -1100,7 +1100,9 @@ if (!only && RUN_B) {
      * chemistry. NOT MEASURED HERE: whether re-entering an unchanged 719 re-sends the command. */
     /* `pwr_raise_power:3` LEFT THIS SET BY BEING FIXED (2026-09-25, raise-power phase 2): 3b now
      * grades `boron_target_ppm ~ 660` beside its cmd (the #697 cmd + `p` shape). */
-    var NO_STATE_EXPECTED = { 'pwr_lower_power:1': 1 };
+    /* `pwr_lower_power:1` LEFT THIS SET BY BEING FIXED (#807 item 2, 2026-09-26): 1b grades `boron_target_ppm ~ 719`
+     * beside its cmd, as `pwr_raise_power` 3b does, and 1a grades the ON lamp. The set is now empty. */
+    var NO_STATE_EXPECTED = {};
     var noStateTally = {};
     NO_STATE.forEach(function (r) { var k = r.proc + ':' + r.step; noStateTally[k] = (noStateTally[k] || 0) + 1; });
     var noStateKeys = Object.keys(noStateTally), expectedKeys = Object.keys(NO_STATE_EXPECTED);

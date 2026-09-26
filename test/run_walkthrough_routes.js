@@ -449,6 +449,8 @@ var MUTATIONS = [
       P.steps[7].accs[1].ask = 'Check AVG COOLANT TEMPERATURE is near 578 °F, between 563 and 592 °F.';
       P.steps[7].accs[1].label = 'AVG COOLANT TEMPERATURE between 563 and 592 °F';
       P.steps[7].accs[1].v = 303.2; P.steps[7].accs[1].tol = 8;
+      /* #807 item 2: 8b latches and a cont under 8c re-asserts the band -- widen that one too, or this goes blind */
+      P.steps[7].accs.forEach(function (e) { if (e.cont && e.p === 'tavg_c') { e.v = 303.2; e.tol = 8; } });
     } },
   { id: 'cooldown_until_flat', leg: 'pwr_cooldown', route: 'typical', expect: 'stated',
     why: 'cooldown 4 as the OLD card read it: after each 50 psi, wait until the whole-degree tile reads the same twice, 5 plant-minutes apart',
@@ -456,7 +458,15 @@ var MUTATIONS = [
   /* LAYMAN PASS 7 (2026-09-26) S-1: raise-power 5b back to the cmd-kind "Rods withdrawn" row, on
    * the route whose stage 5 never leaves its band. Measured on the old card: 0 steps withdrawn,
    * every graded row reading met, Continue dark until a rod press the text argued against. */
-  { id: 'rods_row_5b', leg: 'pwr_raise_power', route: 'hot_stage4', expect: 'flash',
+  /* RE-ARMED 2026-09-26 (#807 item 2, the boron makeup-path holdup): on route hot_stage4 stage 5 now dips to
+   * 556.8-556.9 degF, 0.1-0.2 under the band's 557 edge, so that route's reader pulls 5 and the press-only row is
+   * satisfied -- BLIND on seeds 42/7/123. A hotter stage 4 does not help (40 steps: stage 4 ends 562.5, stage 5
+   * still dips to 556.9 as LOAD comes on). The pass-7 premise is a player whose stage 5 never READS below its band:
+   * here the whole-degree reader (withdraws only when the tile, rounded, reads under 557 -- dead 5.5) on the same
+   * 32-step hot stage 4, as a route override on typical (a mistake's own `set` would win over it). */
+  { id: 'rods_row_5b', leg: 'pwr_raise_power', route: 'typical', expect: 'flash',
+    override: { 'cmd:set_load_target:1': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 30 }, { action: 'rod_nudge', group_id: 'control', steps: 60, speed: 'normal' }] },
+                'cmd:set_load_target:2': { policy: 'to_band', tref: 562, dead: 5, dead_hi: 7, pull: 5, dwell: 60 } },
     why: 'raise-power 5b as a press-only "Rods withdrawn" row again (pass 7: stage 5 never sagged below its band, 3 plant-min dark)',
     mutate: function (P) {
       P.steps[4].accs.splice(1, 1, { cmd: { action: 'rod_nudge', group_id: 'control' }, ask: 'Hold WITHDRAW at MED as AVG COOLANT TEMPERATURE sags, until it is back in its band, about 15 steps.', wait_speed: 1, label: 'Rods withdrawn' });
@@ -481,9 +491,13 @@ var MUTATIONS = [
     why: 'lower-power 5 as one 20 MW cut, then the trim (575 degF against the card, under about 572)',
     mutate: function (P) { delete P.steps[4].ramp; },   // the old card: LOAD typed once, no walk
     override: { '#5': { policy: 'to_band', tref: 561, dead: 0, dir: 'insert', pull: 3, dwell: 60 } } },
-  { id: 'lower_output_tol4', leg: 'pwr_lower_power', route: 'typical', expect: 'flash',
-    why: 'lower-power 4a OUTPUT row back at +/-5 MW (the 55 MW tread ticks it, the next reading un-ticks it)',
-    mutate: function (P) { P.steps[3].accs[0].tol = 5; } },
+  /* lower_output_tol4 RETIRED 2026-09-26 (#807 item 2, exp/807e1): it pinned a NOISE BIFURCATION on the boron
+   * makeup-path holdup plant. 4a at +/-5 MW: red on 2 of 6 seeds (7 and 2), BLIND on gate seed 42 -- the 55 MW tread
+   * settles ON the edge and the band debounce holds the tick. 4a/5a/6a at +/-4.9: red on 4 of 6 (42, 2, 7, 1), then
+   * BLIND on seed 42 again in the gate run after an unrelated grading change on step 1 moved the noise phase. At
+   * +/-4.8: red on 0 of 6; slower 3-minute treads: 2 of 6. MEASURED, seeds 42/7/123/1/2/3, route runner --job. No
+   * tolerance mutation makes the tread tick-then-release deterministic, so it cannot stand as a gate injection. The
+   * +/-2 MW rows it defended are unchanged; the un-tick detector itself is still proven by no_latch_9a (expect flash). */
   { id: 'lower_load_step', chain: true, leg: 'pwr_lower_power', route: 'chain', expect: 'forbid',
     why: 'lower-power 2 as one 25 MW cut with the rods left alone (pass 7: 596 degF and four unwarned alarms)',
     override: { '#2': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 75 }] } } },

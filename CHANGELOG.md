@@ -38,6 +38,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   localStorage.
 
 ### Changed
+- **Raise power and lower power: re-walked on the boron-holdup plant, highlights on the button**
+  (#807 item 2). The pulse moves off the TURBINE-GENERATOR card onto the LOAD box (and LATCH, BORON
+  ON, INSERT where the step presses them); the card keeps a steady ring. Raise power: the dilution is
+  now "about 45 plant-minutes" (718.5 → 663 ppm, measured), step 9 suggests 5× (21-27 plant-min
+  wait), rod counts re-measured, the stage temperature tick latches and 4c-8c re-check it after
+  OUTPUT arrives (no more tick-then-untick during the load ramp). Lower power: step 1 checks ON
+  before the target (1a/1b); step 2's note is "under about 587 °F" (585.9 measured); rod counts,
+  pressure (about 2200 psi, no Pressurizer Pressure Low) and the end power (about 12 % at 15 MWe)
+  re-measured.
 - **Shutdown, cooldown and TMI-2 walkthroughs: the pulse is on the button, the card rings steady**
   (#807 item 2). Fourteen steps that pulsed a whole card (LOAD, STEAM DUMP, ECCS, HEATER, SPRAY,
   RHR, RCP, AUX FEED) now pulse the button or box pressed. Cooldown to the Mode 3 → Mode 1 template:
