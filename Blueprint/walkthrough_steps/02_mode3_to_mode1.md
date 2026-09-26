@@ -49,7 +49,7 @@ In Hot Standby (Mode 3), the plant is at operating temperature and at pressure w
 
 ()2b. Set the boron target to 719 ppm.
 
-()2c. Wait for boron concentration to read between 679 and 759 ppm.
+()2c. Wait for boron concentration to read between 709 and 729 ppm.
 
 Suggested time warp: 600×.
 
@@ -1117,3 +1117,12 @@ Workbench layman pass 7 S-2 (#653 comment 5845240644): step 2 ticks at 759 ppm w
 still running, so a player can reach bank 100 with SOURCE RANGE at 6.1e2 to 7.0e2 and sit there
 (the layman: about 5 plant-min). 5a's note now says to stop at 100 and let the dilution finish.
 Step 2's 679-759 ppm band is the owner's number and is unchanged.
+
+### Step 2's band — 2026-09-26 (t), develop lane
+
+*OWNER RULING, 2026-09-26: "B"* — 2c's band 679-759 ppm becomes **709-729 ppm** (graded 719 ±
+10.49, the whole-ppm tile's edges), so step 5 starts after the dilution rather than 40 ppm into
+its tail. MEASURED (`run_walkthrough_routes` chain, seed 42): step 2 now 93.0 plant-min on the
+chained plant (the note's "about 1½ plant-hours" holds); step 5 clears at bank 80, SOURCE RANGE
+713 cps, 2.2 plant-min; step 7 stops at bank 182. Route gate 128/0/128. The 5a/5b dilution notes
+(records p, s) stay: a 10 ppm tail can still show.

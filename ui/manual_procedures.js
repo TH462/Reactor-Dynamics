@@ -2524,9 +2524,9 @@
                  { p: 'boron_target_ppm', op: '~', v: 719, tol: 0.5,   /* 718.5-719.5: the box draws whole ppm */
                    ask: 'Set the boron target to 719 ppm.',
                    label: 'BORON target reads 719 ppm' },
-                 { p: 'boron_ppm', op: '~', v: 719, tol: 40,
-                   ask: 'Wait for boron concentration to read between 679 and 759 ppm.',
-                   label: 'BORON CHEM 679 to 759 ppm' }],
+                 { p: 'boron_ppm', op: '~', v: 719, tol: 10.49,   /* 709 to 729 as the whole-ppm tile draws it (owner "B", 2026-09-26: tightened from 679-759 so step 5 starts after the dilution, #653 pass 7 S-2) */
+                   ask: 'Wait for boron concentration to read between 709 and 729 ppm.',
+                   label: 'BORON CHEM 709 to 729 ppm' }],
           hl: ['Boron ON', 'Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
         /* CONFIRM, NOT ACT *(OWNER, 2026-09-03, #619 item 16: "mode 3 CL has me put SG feed in
          * AUTO but its already in AUTO when I get there")*. Both routes into this leg arrive
