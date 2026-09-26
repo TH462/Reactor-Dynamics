@@ -29,6 +29,25 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-develop-h (#807 item 2: shutdown and cooldown to the Mode 3 → Mode 1 template; button pulses on shutdown, cooldown and TMI-2)
+
+*Owner, #807 item 2: "using the mode 3-1 walkthrough as a template, adjust the steps of the other
+walkthroughs."* Scratch lane `exp/807e2`. Records: `05_shutdown.md`, `06_cooldown.md` (Template pass).
+
+- **Whole-card pulses gone** on shutdown 1 and 3, cooldown 3, 6, 9, 10, 11, 12 and TMI-2 11, 14, 15,
+  19, 20: each now pulses the button or box the step presses and rings its card steady. Nine new
+  board keys, `<Card> — <Button>`: ECCS — Stop/Start, RCP — Off, Pressurizer Heater — Off, Pressurizer
+  Spray — Manual/Off, RHR — Align, RHR — HX Split, AFW — Block Valve (each card checked with
+  `PwrBoardInspect.parentOf`). TMI-2 text untouched.
+- **No step text names the ring** (cooldown 7a was the only one; grep over all three legs' strings).
+- **Cooldown 4's stair is three substeps** (4b to 720 psi, 4c to 270, 4d to 120 and 347 °F), graded on
+  DUMP SETPOINT's render floor; **11a split** into the HX SPLIT raise (graded `>= 0.085`) and the
+  spray watch; 3c one line. Shutdown's text already met the template: highlights only.
+- **Boron re-measured with the makeup-path holdup** (cooldown 1): Enter -> BORATING +1 s -> 880 ppm row
+  +55.5 plant-min, seeds 42 and 7 (was "about 54" on the card; now "about 55"). The route gate's
+  typical step 1 reads 63.0 plant-min end to end.
+- **Gates**: run_manual_controls 1073 -> 1105 (+32, the new keys and rings); run_checklist_pwr2 232/4/236 -> 235/4/239 (+3 green replay rows; the four reds are on HEAD too: TMI-2 18/19 tracked, lower-power 4/5 the raise/lower lane's); run_checklist_pwr2_b 205/0 (2ae.1b re-pinned 162 -> 165 predicate rows); verify_board_cues 49/49, verify_ckl_relevance 51/51, verify_e2e_ui PASS; style, units, hardrules 683, session labels, doc budget green. run_walkthrough_routes 204/9/213: all 9 reds are raise/lower (lower-power 585 °F note, raise-power 4/5 un-tick, two injections); shutdown 17/17 and cooldown 26/26 incl. chain, cooldown typical 421.9 plant-min (was 424.3), step 4 200.0 min, tile peak -89.0 °F/hr. Grading injection-checked on the live checklist: 4b unmet at 725 psi, met at 720; 4c unmet at 275, met at 270; 11a unmet at 7 and 8 %, met at 9. **Not verified**: no headless render of the new rings (verify_e2e_ui's paint sweep covers the heatup only), no layman pass.
+
 ## Session log — 2026-09-26-develop-f (#807 item 11, the count leads steps 5-8, the 1/M plot clears on a new startup)
 
 Scratch worktree exp/807f. Full stack, `run_walkthrough_routes` live-checklist routes, seed 42 unless

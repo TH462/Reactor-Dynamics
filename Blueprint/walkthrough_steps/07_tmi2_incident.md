@@ -219,7 +219,7 @@ Background
 
 The level was rising because the water was boiling: steam under the pressurizer pushes water up into it, so level goes up while the plant empties. Every operator of that era was trained that a solid pressurizer was the thing to avoid at all costs.
 
-[HIGHLIGHTED: ECCS, HPI/LPI (pulsing)]
+[HIGHLIGHTED: ECCS — Stop (pulsing); HPI/LPI (steady)]
 
 
 ## Step 12
@@ -279,7 +279,7 @@ Background
 
 The auxiliary pumps have been running eight minutes into shut valves, delivering nothing. Opening them puts the heat sink back: flow is rated within 30 seconds, and the dry generators take about 9 plant-minutes to show level.
 
-[HIGHLIGHTED: AFW (pulsing); SG Level (steady)]
+[HIGHLIGHTED: AFW — Block Valve (pulsing); AFW, SG Level (steady)]
 
 
 ## Step 15  ·  **AS TAKEN — recorded history, not a recommendation**
@@ -303,7 +303,7 @@ Background
 
 The pumps have been shaking for over an hour because they are pumping steam as much as water. Securing them is the right answer to a cavitating pump, and it also removes the only thing stirring the core.
 
-[HIGHLIGHTED: RCP Run/Stop (pulsing); Subcooling Margin (steady)]
+[HIGHLIGHTED: RCP — Off (pulsing); RCP ON/OFF, Subcooling Margin (steady)]
 
 
 ## Step 16
@@ -382,7 +382,7 @@ Background
 
 Injection is the only thing that puts water back, and SUBCOOLING MARGIN says whether it is working. The crew did not sustain it: their borated water tank alarmed low, so they stopped the pump again 17 minutes later. Here it stays in.
 
-[HIGHLIGHTED: ECCS, HPI/LPI (pulsing); Subcooling Margin (steady)]
+[HIGHLIGHTED: ECCS — Start (pulsing); HPI/LPI, Subcooling Margin (steady)]
 
 
 ## Step 20
@@ -403,4 +403,4 @@ Background
 
 Forced flow returns within 40 seconds, but the margin and the inventory follow slowly — expect to hand the plant back with alarms still standing. Fuel damage, the containment radiation alarms and the hydrogen burn are outside this model and are told here rather than run. That gap is the fuel temperature: uncovering 94 % of this core never gets the fuel above 1130 °F, where the real one went far past 2500 °F.
 
-[HIGHLIGHTED: RCP Run/Stop (pulsing); Subcooling Margin (steady)]
+[HIGHLIGHTED: RCP — On (pulsing); RCP ON/OFF, Subcooling Margin (steady)]
