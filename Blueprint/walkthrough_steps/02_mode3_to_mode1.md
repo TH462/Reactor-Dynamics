@@ -439,7 +439,7 @@ Note: Any click outside the panel closes it, Continue included, so it is shut wh
 
 Background
 
-Above 10 % power, the trip at 118 % takes over the job of catching a runaway, so the 35 % trip is no longer needed.
+Above 10 % power, the trip at 115 % takes over the job of catching a runaway, so the 35 % trip is no longer needed.
 
 The two blocks are separate presses on purpose: on a real board, blocking one trip never quietly blocks the other.
 

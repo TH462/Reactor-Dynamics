@@ -1005,7 +1005,7 @@ Not a plant control — **trainer control**.
 Every board instrument, with its indicating range, typical lag, and the annunciators it
 drives (see `06_ALARM_RESPONSE.md` for each alarm's response). A reading pegged at a range
 end may be **over-range, not truth** — the power range reads to 200 % precisely so a pegged
-meter can still cross the 118 % trip.
+meter can still cross the 115 % trip.
 
 | Instrument | Unit | Range | Typical lag | Primary use | Drives alarms |
 |------------|------|-------|-------------|-------------|---------------|

@@ -190,7 +190,7 @@ Note: The green segment is about 570 to 580 °F at this load; this line ticks wh
 
 Background
 
-Above 103 % power the plant refuses to move the rods, and at 118 % it trips the reactor. Overshoot is real on this plant: 100 MWe of LOAD lands REACTOR POWER near 101 %. Small pulls keep you clear of the stop.
+Above 103 % power the plant refuses to move the rods, and at 115 % it trips the reactor. Overshoot is real on this plant: 100 MWe of LOAD lands REACTOR POWER near 101 %. Small pulls keep you clear of the stop.
 
 [HIGHLIGHTED: Load Setpoint, Withdraw, Insert (pulsing); Turbine Load, Tavg, Generator Output (steady)]
 

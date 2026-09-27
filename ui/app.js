@@ -559,7 +559,7 @@
       // generated manual reference (RD.MANUAL indications) that the inspection
       // block quotes range, lag and driven alarms from (#96).
       gauges: [
-        { id: 'power',   label: 'Reactor Power', lead: true, instr: 'power_range', raw: function (s) { return s.instruments.power_range; }, units: '%', min: 0, max: 120, caution: 108, danger: 118, dp: 1 },
+        { id: 'power',   label: 'Reactor Power', lead: true, instr: 'power_range', raw: function (s) { return s.instruments.power_range; }, units: '%', min: 0, max: 120, caution: 108, danger: 115, dp: 1 },
         { id: 'press',   label: 'Primary Pressure', instr: 'primary_pressure', raw: function (s) { return s.instruments.primary_pressure; }, dim: 'pressure', min: 0, max: 20.7, caution: 16.2, danger: 16.44, dp: 0 },
         /* caution_lo 278 (°C, the LO TAVG / P-12 annunciator's own absolute setpoint) is the
          * FALLBACK, not the edge — see tavgGaugeCautionLo (#703): on a plant publishing a
@@ -613,7 +613,7 @@
       // feed → turbine and output → and finally the controls that drive all of it.
       series: [
         // ---------------------------------------------------------------- reactor core
-        { id: 'power',    instr: 'power_range', grp: 'Reactor core', label: 'Power %',  c: '#6a90b0', get: function (i) { return i.power_range; }, tru: function (t) { return t.power_pct; }, range: [0, 120], dHi: 118, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'power',    instr: 'power_range', grp: 'Reactor core', label: 'Power %',  c: '#6a90b0', get: function (i) { return i.power_range; }, tru: function (t) { return t.power_pct; }, range: [0, 120], dHi: 115, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'sur',      instr: 'startup_rate', grp: 'Reactor core', label: 'Startup Rate', c: '#c0913e', get: function (i) { return i.startup_rate; }, tru: function (t) { return t.startup_rate_dpm; }, range: [-2, 3], fmt: function (v) { return v.toFixed(1) + ' DPM'; } },
         // Net reactivity has no instrument — the board shows it as a true-state teaching
         // quantity beside the period, and this is the same number over time.

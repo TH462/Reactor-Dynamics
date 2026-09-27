@@ -41,7 +41,12 @@ function loadFrom(src) {
  *   "High-Pressurizer Pressure Reactor Trip           2425 psia   2.0"
  *   "Low-Pressurizer Pressure Reactor Trip            1775 psia   2.0"   (Table 15.0-7)
  *   "Power-Range High Neutron Flux Reactor Trip (Low Setting)   35%   0.5"
- *   "Power-Range High Neutron Flux Reactor Trip (High Setting)  118% (high setting)   0.5"
+ *   "15.4.2 ... Power-Range High Neutron Flux Reactor Trip (High Setting)  115%   0.5"
+ *   (the 15.4.5 rod-ejection row's "118% (high setting)" is a deliberately conservative bound
+ *    for that one analysis -- §15.4.5 H: "118% is used which is conservative compared to the
+ *    115% setpoint required by the rod withdrawal at power analysis"; TS Bases B 3.4.4,
+ *    ML20339A221: "The value for the accident analysis setpoint of the nuclear overpower (high
+ *    flux) trip is 115%". #808, 2026-09-27.)
  *   "Low RCL Flow Reactor Trip                        87%    1.0"
  *   "Low-Pressurizer Pressure Safety Injection        1715.0 psia"
  *   "Low Steam Pressure Safety Injection (SI) Setpoint   327.7 psia (lead/lag=12/2)   2.0"
@@ -66,7 +71,7 @@ function loadFrom(src) {
  */
 var DOC = {
   hi_pzr_psia: 2425, lo_pzr_psia: 1775,
-  flux_lo: 0.35, flux_hi: 1.18,
+  flux_lo: 0.35, flux_hi: 1.15,
   lo_flow: 0.87,
   si_pzr_psia: 1715.0, si_steam_psia: 327.7,
   steam_flow: 1.55,
@@ -252,7 +257,7 @@ function runSuite(P, rec, quiet) {
   var rLF = ride(prLF, withReading('power_frac', 0.40), 5);
   ckT('the low flux setting asserts at 40 % power, where the high setting does not',
       fn(rLF, 'hi_flux_lo').asserted === true && fn(rLF, 'hi_flux_hi').asserted === false,
-      'this is a STARTUP trip: 0.35 low against 1.18 high');
+      'this is a STARTUP trip: 0.35 low against 1.15 high');
   var prB = P.createProtection({ blockLowFlux: true, blockIrHigh: true });
   var rB = ride(prB, withReading('power_frac', 0.40), 5);
   ckT('...and the block suppresses it WITHOUT touching the high setting',
@@ -263,6 +268,13 @@ function runSuite(P, rec, quiet) {
   ckT('...and with the block IN, the high setting still trips',
       rB2.reactor_trip === true && rB2.trip_cause === 'hi_flux_hi',
       'blocking the startup trip must not blind the plant at power');
+  /* #808 (2026-09-27): the setting moved 118 -> 115 %. The CASES row above rides 1.20, which
+   * trips under BOTH values, so it cannot tell them apart. 116 % is the band the move opened:
+   * the RCCA-withdrawal-at-power analysis setpoint (TS Bases B 3.4.4) must catch it. */
+  var r116 = ride(atPower(), withReading('power_frac', 1.16), 5);
+  ckT('at 116 % the high setting TRIPS (115 % is the analysis setpoint, not the 118 % ejection bound)',
+      r116.reactor_trip === true && r116.trip_cause === 'hi_flux_hi',
+      'trip_cause=' + r116.trip_cause);
 
   /* ---- THE INTERMEDIATE-RANGE TRIP (#601) — the startup net's FIRST rung ------------------
    * It was missing entirely: this table carried one startup trip where every source has two.
@@ -280,7 +292,7 @@ function runSuite(P, rec, quiet) {
       fn(rIRq, 'ir_high_flux').asserted === false && rIRq.reactor_trip === false &&
       rIRq.rod_stop_causes.ir_high_flux === true,
       'the 20 % stop acts first and the 25 % trip is what happens if it does not hold — the ' +
-      'same relationship the 103 % stop has with the 118 % trip. Conflating the two numbers ' +
+      'same relationship the 103 % stop has with the 115 % trip. Conflating the two numbers ' +
       'is what the retired plant did.');
   var rIRb = ride(P.createProtection({ blockIrHigh: true }), withReading('power_frac', 0.27), 5);
   ckT('...blocking IT alone rides past 27 % with the power-range low setting STILL ARMED',
@@ -625,14 +637,14 @@ function runSuite(P, rec, quiet) {
       P.ROD_STOP.kind === '[sourced]',
       'pr ' + P.ROD_STOP.pr_frac + ', ir ' + P.ROD_STOP.ir_frac);
   /* THE POWER RANGE STOP is not blockable — it is the overpower stop and there is no permissive
-   * for it in any source. It sits BELOW the 118 % high-flux trip, which is the point: the stop
+   * for it in any source. It sits BELOW the 115 % high-flux trip, which is the point: the stop
    * acts first and the trip is what happens if it does not hold. */
   var prS = atPower();
   var r103 = ride(prS, withReading('power_frac', 1.02), 1);
   ckT('at 102 % neither flux stop is standing', r103.rod_stop_causes.pr_high_flux === false &&
       r103.rod_stop === false, '');
   r103 = ride(prS, withReading('power_frac', 1.04), 1);
-  ckT('at 104 % the POWER RANGE stop asserts, and the plant has NOT tripped (118 % is the trip)',
+  ckT('at 104 % the POWER RANGE stop asserts, and the plant has NOT tripped (115 % is the trip)',
       r103.rod_stop_causes.pr_high_flux === true && r103.rod_stop === true &&
       r103.reactor_trip === false,
       'the stop acts first; the trip is what happens if it does not hold');
@@ -1225,8 +1237,8 @@ var MUTATIONS = [
   ['the low-pressure setpoint moved off its sourced value',
    '    lo_pzr_press_psia:  1775,', '    lo_pzr_press_psia:  1500,'],
   ['the flux settings are swapped (the startup trip becomes the at-power one)',
-   '    hi_flux_lo_frac:    0.35,\n    hi_flux_hi_frac:    1.18,',
-   '    hi_flux_lo_frac:    1.18,\n    hi_flux_hi_frac:    0.35,'],
+   '    hi_flux_lo_frac:    0.35,\n    hi_flux_hi_frac:    1.15,',
+   '    hi_flux_lo_frac:    1.15,\n    hi_flux_hi_frac:    0.35,'],
   ['the low-flow setpoint moved off its sourced value',
    '    lo_flow_frac:       0.87,', '    lo_flow_frac:       0.50,'],
   ['the safety-injection steam setpoint moved off its sourced value',

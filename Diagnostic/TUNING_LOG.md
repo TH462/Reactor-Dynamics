@@ -29,6 +29,35 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-27-develop-g (#808: power-range high-flux trip, high setting, 118 → 115 %)
+
+**The trap: the engine header called the UFSAR's 115/118 split an OCR column shift. It is not.**
+Ginna UFSAR ch15 (ML20339A101) §15.4.5 item H: *"A high neutron flux setpoint of 118% is used which
+is conservative compared to the 115% setpoint required by the rod withdrawal at power analysis."*
+118 % is the rod-ejection analysis's deliberately conservative bound; the general accident-analysis
+value is 115 % — Ginna TS Bases B 3.4.4 (ML20339A221): *"The value for the accident analysis
+setpoint of the nuclear overpower (high flux) trip is 115%"*, and UFSAR Table 15.0-8 gives 115 % as
+the maximum overpower trip point over a **108 % nominal** setpoint. The engine uses analysis values
+throughout (2425 / 1775 psia are "safety analysis value" too), so 115 %, not 108 %. Low setting
+stays 35 % (Table 15.0-6 rows 15.4.1 and 15.4.5).
+
+**Reds: none.** 19 runners via `run_all --only` (protection, manual setpoints/units/rev/commands,
+hardrules, style, engine A/B/C, shell, roundtrip, core-damage stack, checklist pwr2 A/B, campaign
+A/B/C, scenarios) all at baseline except protection, +1 by design: a new check at 116 %, the band
+the move opened (the CASES row rides 120 %, which trips under both values). **Injected**: engine
+back at 1.18 reddens it (trip_cause null) and the constant check.
+
+**HR12, full stack, `measure_stack --plant=pwr2`, both trees (1.15 and 1.18) identical:**
+continuous rod withdrawal at `hot_full_power` peaks at **103.1 %** (rods reach 627 / 627 and stop);
+at `50_percent` **54.4 %**; SG overfeed peaks **102.6 %** then trips at 120 s on something else;
+load target 115 MWe peaks **100.2 %**. No normal evolution or casualty measured rides between 115
+and 118 %. The overpower ΔT trip (flat K4 = 1.15) already sat at the same point.
+
+Also moved: the PWR REACTOR POWER gauge's danger band and trend line 118 → 115 (`ui/app.js`), two
+walkthrough Background lines (`pwr_startup` step 17, `pwr_raise_power` step 7), Manuals 03 §16.0,
+06 PWR-A02, 09 §2.0 ×2 and §9.0 (Rev 22 item p).
+
+---
 ## Session log — 2026-09-27-develop-f (run_walkthrough_routes split into three parts, CI shard timeout)
 
 **Problem (MEASURED):** CI run 36319512542 (rc7/rc8) timed out in shard 1 at the 30-min step

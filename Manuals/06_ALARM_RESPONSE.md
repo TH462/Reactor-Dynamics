@@ -133,7 +133,7 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | Power range ≥ **108 %** (alarm); trip at **118 %** |
+| **Setpoint** | Power range ≥ **108 %** (alarm); trip at **115 %** |
 | **Means** | Neutron power high. |
 | **Actions** | 1) Stop withdrawal. 2) Insert rods. 3) Reduce turbine load if overcooling/power mismatch. 4) If rising through trip, expect/verify SCRAM. |
 | **Related** | Continuous rod withdrawal failure **PWR-E17** |

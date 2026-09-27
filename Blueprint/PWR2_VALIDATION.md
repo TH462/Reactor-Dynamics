@@ -2115,7 +2115,7 @@ a setpoint *and* an analysis delay per function. Eight are built:
 | High pressurizer pressure reactor trip | 2425 psia | 2.0 s |
 | Low pressurizer pressure reactor trip | 1775 psia | 2.0 s |
 | Power-range high flux, low setting | 35 % | 0.5 s |
-| Power-range high flux, high setting | 118 % | 0.5 s |
+| Power-range high flux, high setting | 115 % | 0.5 s |
 | Low reactor coolant loop flow | 87 % | 1.0 s |
 | Safety injection, low pressurizer pressure | 1715 psia | — |
 | Safety injection, low steam pressure | 327.7 psia, **lead/lag 12/2** | 2.0 s |

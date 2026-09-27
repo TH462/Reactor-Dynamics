@@ -31,6 +31,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Power-range high-flux trip, high setting, 118 → 115 % of rated** (#808). 115 % is the general accident-analysis setpoint (Ginna TS Bases B 3.4.4, ML20339A221); the UFSAR's 118 % is a deliberately conservative bound for rod ejection only (§15.4.5 H), not an OCR shift as the engine header claimed. Gauge danger band, two walkthrough Background lines and Manuals 03/06/09 follow. No gate reddened; no measured evolution rides between 115 and 118 %.
 - **Auxiliary feed no longer auto-starts on "both main feed pumps off" below 5 % power** (Mode 1 only, Ginna TS Bases B 3.3.2 Function 6.f). The turbine trip and latch refusal on the same loss are unchanged. #808 item A.
 - **Mode 3 runs on auxiliary feed** (main feed pumps secured, SG level held near 33-37 %); the heatup starts it with AUX FEED WATER **AUTO**, which now starts the motor-driven pump. **New startup step 13** at the point of adding heat (~1 %): main feed in MAN at 50 gpm to 60 % level, SG FEED AUTO, then aux feed STOP. Startup steps 13-17 renumbered 14-18 (#808).
 

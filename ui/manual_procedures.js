@@ -3847,7 +3847,7 @@
           hl: ['Trip Blocks'] },
         { text: 'Block the second startup trip, PR HIGH (LOW SETPT).',
           aim: 'Left live, this trip shuts the reactor down at 35 %.',
-          why: 'Above 10 % power, the trip at 118 % takes over the job of catching a runaway, so the 35 % trip is no longer needed.\n\nThe two blocks are separate presses on purpose: on a real board, blocking one trip never quietly blocks the other.',
+          why: 'Above 10 % power, the trip at 115 % takes over the job of catching a runaway, so the 35 % trip is no longer needed.\n\nThe two blocks are separate presses on purpose: on a real board, blocking one trip never quietly blocks the other.',
           control: 'Trip Blocks', target: 'PR HIGH (LOW SETPT) reads BLOCKED on the TRIP BLOCKS panel',
           cmd: { action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: true }, hold: 10,
           accs: [{ p: 'pr_low_setpoint_blocked', op: '>', v: 0,   /* see step 15 — #731 */
@@ -4215,7 +4215,7 @@
           hl: ['Load Setpoint', 'Withdraw'], hl_watch: ['Turbine Load', 'Tavg', 'Generator Output', 'Reactor Power'] },
         { text: 'Take the fourth stage to 90 MWe with a smaller pull.',
           aim: 'Near full power the 103 % rod stop is close, so the pulls get smaller.',
-          why: 'Above 103 % power the plant refuses to move the rods, and at 118 % it trips the reactor. Overshoot is real on this plant: 100 MWe of LOAD lands REACTOR POWER near 101 %. Small pulls keep you clear of the stop.',
+          why: 'Above 103 % power the plant refuses to move the rods, and at 115 % it trips the reactor. Overshoot is real on this plant: 100 MWe of LOAD lands REACTOR POWER near 101 %. Small pulls keep you clear of the stop.',
           control: 'Control Bank', target: 'OUTPUT 90 MWe; AVG COOLANT TEMPERATURE inside its band, near 575 °F',
           cmd: { action: 'set_load_target', mwe: 90 }, hold: 480, wait_hint: false,
           replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' } },

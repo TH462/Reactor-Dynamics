@@ -33,16 +33,24 @@
  *     High-Pressurizer Pressure Reactor Trip .................. 2425 psia      2.0 s
  *     Low-Pressurizer Pressure Reactor Trip .................. 1775 psia      2.0 s
  *     Power-Range High Neutron Flux Reactor Trip (Low) ....... 35 %           0.5 s
- *     Power-Range High Neutron Flux Reactor Trip (High) ...... 118 %          0.5 s
+ *     Power-Range High Neutron Flux Reactor Trip (High) ...... 115 %          0.5 s
  *     Low RCL Flow Reactor Trip .............................. 87 %           1.0 s
  *     Low-Pressurizer Pressure Safety Injection .............. 1715.0 psia
  *     Low Steam Pressure Safety Injection .................... 327.7 psia (lead/lag=12/2)  2.0 s
  *     High-High Steam Flow Setpoint .......................... 155 % of nominal            2.0 s
  *
- * The high-flux HIGH setting appears twice in the table — "115%" in the 15.4.2 row and "118%
- * (high setting)" in the 15.4.5 rod-ejection row. **118 % is used and the disagreement is
- * declared**, because 15.4.5 states the setting explicitly as "(high setting)" while the 15.4.2
- * row's number sits in a column the OCR has already shifted once on this page.
+ * The high-flux HIGH setting appears twice in the table: "115%" in the 15.4.2 row (RCCA
+ * withdrawal at power) and "118% (high setting)" in the 15.4.5 row (RCCA ejection). **115 % is
+ * used (2026-09-27, #808), and the split is NOT an OCR artifact** -- an earlier version of this
+ * header said it was, and ran 118 %. The UFSAR states the split on purpose, §15.4.5 item H
+ * (lines 6315-6316 of the on-disk copy): "A high neutron flux setpoint of 118% is used which is
+ * conservative compared to the 115% setpoint required by the rod withdrawal at power analysis."
+ * So 118 % is a deliberately conservative bound for the ejection analysis alone. The general
+ * value is 115 %: Ginna TS Bases B 3.4.4 (ML20339A221), "The value for the accident analysis
+ * setpoint of the nuclear overpower (high flux) trip is 115%", and UFSAR Table 15.0-8 gives
+ * 115 % of rated as the "Maximum overpower trip point per uncertainty analysis" over a NOMINAL
+ * setpoint of 108 %. This engine uses ANALYSIS values throughout (the 2425 / 1775 psia rows are
+ * also "safety analysis value"), so 115 % is the consistent choice, not 108 %.
  *
  * ---------------------------------------------------------------------------------------
  * ⚠ WHAT IS DELIBERATELY NOT BUILT, AND WHY. Each of these is a REAL protection function that a
@@ -103,7 +111,7 @@
     hi_pzr_press_psia:  2425,
     lo_pzr_press_psia:  1775,
     hi_flux_lo_frac:    0.35,
-    hi_flux_hi_frac:    1.18,
+    hi_flux_hi_frac:    1.15,
     lo_flow_frac:       0.87,
     /* stage 2b (2026-08-19): the HIGH PRESSURIZER LEVEL trip. Ginna TS Bases B 3.4.9
      * (ML20339A221): "the upper limit is the same as the Pressurizer High Level Trip" -- the

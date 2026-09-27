@@ -6,7 +6,7 @@
  * a single figure in it against the running plant. Measured when this was written, against
  * `engines/pwr2/pwr2_protection.js`:
  *
- *     power range high        120 %      the plant trips at 118 %
+ *     power range high        120 %      the plant trips at 115 %
  *     power range low          25 %      the plant trips at  35 %
  *     primary pressure high  2384 psi    the plant trips at 2425 psia
  *     primary pressure low   1800 psi    the plant trips at 1775 psia

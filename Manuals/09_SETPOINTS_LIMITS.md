@@ -45,7 +45,7 @@
 
 | Instrument / condition | Direction | Setpoint | Notes |
 |------------------------|-----------|----------|-------|
-| Power range (high) | high | **118 %** | Full-power high flux. The 103 % rod stop (§2.0) sits below it, so the stop acts first |
+| Power range (high) | high | **115 %** | Full-power high flux. The accident-analysis setpoint (Ginna TS Bases B 3.4.4; the UFSAR's 118 % is a conservative bound for rod ejection only). The 103 % rod stop (§2.0) sits below it, so the stop acts first |
 | Power range (low setpoint) | high | **35 %** | Startup; blockable above P-10 |
 | Tavg | high | **NOT MODELLED** | A real plant trips on high average coolant temperature. This one does not — the overtemperature ΔT trip below covers the same ground here, on the sourced Table 15.0-7 equation. Kept so the contrast is visible, not because the plant will act on it |
 | Primary pressure | high | **2425 psi (16.72 MPa)** | |
@@ -78,7 +78,7 @@
 
 | Rod stop | Blocks withdrawal when | Notes |
 |---|---|---|
-| **Power range high flux** | power range power > **103 %** | Not blockable. Sits below the 118 % high-setting trip: the stop acts first, the trip is what happens if it does not hold |
+| **Power range high flux** | power range power > **103 %** | Not blockable. Sits below the 115 % high-setting trip: the stop acts first, the trip is what happens if it does not hold |
 | **Intermediate range high flux** | intermediate range > **20 % current equivalent** | **Blockable at P-10, on the INTERMEDIATE RANGE trip’s own control** — one press takes the 25 % trip and this stop together. It rode the 35 % low-setting flux trip’s control until #601, which was the wrong lever: WTSM 12.2 lists P-10’s functions as two separate operator actions, *“1. Allows the operator to manually block the intermediate range high flux trip and the C-1 rod stop, 2. Allows the operator to manually block the low setpoint power range high flux trip”*. That block is the power-ascension step, and it is why this stop is a startup interlock rather than an at-power one |
 | **Overtemperature ΔT** | OTΔT margin ≤ **3 % of rated ΔT** (clears above 6 %) | Also drives the turbine runback — see below |
 | **Overpower ΔT** | OPΔT margin ≤ **3 % of rated ΔT** (clears above 6 %) | Also drives the turbine runback |
@@ -492,7 +492,7 @@ Commercial practice keeps boron sufficient for at least **1 % Δk/k** (WTSM 19.2
 |----------|--------------|
 | Source range | ~**500 cps** class at HZP source equilibrium; high scale ~1e6 cps near low power. Reads zero once **blocked at P-6** (the block switches the detector off); unblocked, it **trips the reactor at 1e5 cps**. The P-6 point (IR 1e-10 A) sits at ≈ **3,100 cps** on this scale |
 | Intermediate range | Full scale ~**1e-3 A** near ~12 % power (“maxes out ~10 %”) |
-| Power range | 0–120 % calibrated scale; **instrument reads to 200 %** so a pegged meter can still cross the 118 % high-flux trip (strict `crossed()`) |
+| Power range | 0–120 % calibrated scale; **instrument reads to 200 %** so a pegged meter can still cross the 115 % high-flux trip (strict `crossed()`) |
 
 ---
 
