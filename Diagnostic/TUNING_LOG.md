@@ -64,6 +64,22 @@ hold). The row sits LAST. And an unblocked ride from HZP now never reaches the I
 certified the IR trip (engine startup-accident, engine controlled startup, shell group O) had to state the
 P-6 block to keep testing the rung they claim.
 
+**Closing the three reds (2026-09-27, same lane).** (1) `run_pwr2_engine_c` group I: the IR rod-stop fixtures
+(the stop's own regime, held press at slow, held press at normal) take the P-6 block the moment it is
+permitted, assertions unchanged. HR10 check against develop dab17d5c (no SR trip): **identical** — stop at
+19.48 % / 254.0 steps, own regime settles 22.09 % at 254.8, slow press frozen 254.0 settles 22.3 %, normal
+frozen 270.0 trips `ir_high_flux`; 16/16 both trees. (2) `verify_board_cues` S-9 was the GATE's fabrication,
+not the board: `__c.tb()` rebuilt each trip-block row from five fields and dropped `setpoint`, so SI REACTOR
+TRIP re-captioned "1715 psi" -> "LOW PRESSURE", wrapped, and grew 25.04 -> 33.12 px. Harmless while SI was
+the last row; the SR row below it read it as an 8 px shift. Fix: the fabricated row copies the live row's
+fields. 0.08 px after; injection (`holdTripPopHeights` returns early) -> 18.62 px, red. (3)
+`run_checklist_pwr2_b`: one real defect — `TRIP_CAUSE` in ui/app.js had no `sr_high_flux` ("MISSING" red ->
+green with 'Source Range Hi Flux'; the only trip-cause name map in ui/layers). The other 11 reds + a crash
+(`rod_nudge` into a latched trip, run_checklist_pwr2.js:3498) are the startup walkthrough and its fixtures
+riding unblocked into the SR trip or waiting for the retired auto-off ("source range never secured"): with
+the SR setpoint moved to 1e30 the trip-reds become "never secured" reds. Left for the walkthrough rewrite.
+BASELINES: run_pwr2_protection 137 -> 150, run_hardrules 683 -> 685, run_manual_notmodelled 12 -> 11 checks.
+
 ---
 
 ## Session log — 2026-09-26-develop-i (#807 review fixes: count-row flicker, windows, 13a, cooldown 11 spray, boron line, mean dedupe)

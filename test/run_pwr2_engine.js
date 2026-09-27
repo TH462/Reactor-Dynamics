@@ -1900,6 +1900,9 @@ function runSuite(RD, rec, quiet, only) {
   var onsetW = null, tsW = null;
   for (var kW = 0; kW < walk(2400) / DT; kW++) {
     tsW = EN.step(engW, DT);
+    /* the P-6 source-range block, taken the moment the permissive allows (OWNER RULING
+     * 2026-09-26, "B") — unblocked, the 1e5 cps SR trip ends this ride before the IR rung */
+    if (!engW.pt.blockSR && engW.rpsReport && engW.rpsReport.p6_met) EN.command(engW, 'sr_block', true);
     if (!onsetW && engW.rpsReport.rod_stop_causes.ir_high_flux) {
       onsetW = { pwr: engW.ins.reading.power_range, steps: engW.rodSteps };
     }
@@ -1946,6 +1949,7 @@ function runSuite(RD, rec, quiet, only) {
     var atStop = null, tgt = null, t = null;
     for (var q = 0; q < secs / DT; q++) {
       t = EN.step(e2, DT);
+      if (!e2.pt.blockSR && e2.rpsReport && e2.rpsReport.p6_met) EN.command(e2, 'sr_block', true);  /* P-6, as above */
       if (atStop === null && e2.rpsReport.rod_stop_causes.ir_high_flux) {
         atStop = e2.rodSteps; tgt = e2.rodTarget;   /* the demand AT the stop: a scram zeroes
                                                      * rodTarget, so reading it afterwards reads
