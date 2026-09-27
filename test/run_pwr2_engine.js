@@ -1498,16 +1498,26 @@ function runSuite(RD, rec, quiet, only) {
   var tsC5 = run(engC5, 60);
   ckT('a cold plant on RHR with its main feed pumps secured does NOT fire the ch10 chain',
       engC5.rh.running === true && engC5.fw.pumpA === false && engC5.fw.pumpB === false &&
-      engC5.pt.afas_mdafw === false && engC5.aw.mdafwRunning !== true,
+      engC5.pt.afas_mdafw === false && engC5.aw.mdafwRunning !== true &&
+      /* #808: with the AFW start now a Mode 1 function, the RHR arming's remaining effect is the
+       * TURBINE half — so the latch must not be held off by a loss that is the normal lineup */
+      EN.turbineTripCauses(engC5).every(function (c) { return c.id !== 'main_feed'; }),
       'RHR running ' + engC5.rh.running + ', pumps ' + engC5.fw.pumpA + '/' + engC5.fw.pumpB +
       ', AFAS ' + engC5.pt.afas_mdafw + ', Tavg ' + tsC5.tavg_c.toFixed(1) + ' degC');
-  /* And securing RHR re-arms it: the arming is the HEAT SINK, not the mode label. */
+  /* And securing RHR re-arms the TURBINE half (the latch refuses on the standing loss) — but NOT
+   * the AFW start, which is a MODE 1 function (#808). This half used to assert AFAS fired here,
+   * on the #605 declared simplification "the arming is the heat sink, not the mode label"; the
+   * source it lacked says otherwise — Ginna TS Bases B 3.3.2 Function 6.f (ML20339A221): "This
+   * Function must be OPERABLE in MODE 1 ... In MODES 2, 3, 4, 5, and 6 the MFW pumps may not be
+   * in operation, and thus pump trip is not indicative of a condition requiring automatic AFW
+   * initiation." Adjudicated per-probe: the old form pinned the simplification, not the plant. */
   EN.command(engC5, 'rhr_align', false);
   run(engC5, 5);
-  ckT('...and taking RHR out of service re-arms it on the same standing loss',
-      engC5.rh.running === false && engC5.pt.afas_mdafw === true &&
-      engC5.pt.afas_mdafw_cause === 'loss_of_main_feed',
-      'AFAS ' + engC5.pt.afas_mdafw + ' cause ' + engC5.pt.afas_mdafw_cause);
+  var causesC5 = EN.turbineTripCauses(engC5).map(function (c) { return c.id; });
+  ckT('...taking RHR out of service re-arms the turbine half on the standing loss, not the AFW start',
+      engC5.rh.running === false && causesC5.indexOf('main_feed') >= 0 &&
+      engC5.pt.afas_mdafw === false && engC5.aw.mdafwRunning !== true,
+      'latch causes [' + causesC5.join(',') + '], AFAS ' + engC5.pt.afas_mdafw);
   /* HI-HI: an overfeed walks the level to the P-14 class function — main feed isolated AND
    * the turbine tripped (moisture carryover), while the AFW path stays open. */
   var engD = EN.createEngine({});
@@ -3354,6 +3364,10 @@ var MUTATIONS = [
   ['the loss-of-main-feed chain is never armed (securing both pumps at power does nothing)',
    '    var mfLost = fwr.main_feed_lost === true && !eng.rh.running;',
    '    var mfLost = false;', { grp: 'F' }],
+  /* #808: the AFW start off the feed pumps is a Mode 1 function (Ginna TS B 3.3.2 6.f). */
+  ['the AFW start off both feed pumps fires below Mode 1 (a cold plant off RHR latches AFAS)',
+   '      main_feed_lost: mfLost && (rd.power_range !== undefined ? rd.power_range : rrx.power_pct) > 5,',
+   '      main_feed_lost: mfLost,', { grp: 'F' }],
   ['the fwi latch is never consumed (hi-hi reports into a void)',
    '    if (ptr.fwi) { eng.fw.isolated = true; eng.tb.tripped = true; }',
    '', { grp: 'F' }],

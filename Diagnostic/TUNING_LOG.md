@@ -29,6 +29,30 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-27-develop-d (#808 item A, part 1: the AFW start off the feed pumps is a Mode 1 function; the feed-transfer walkthrough is NOT built)
+
+- **Landed: `pwr2_engine` arms the loss-of-both-feed-pumps AFW start only above 5 % power (Mode 1).** Sourced: Ginna TS
+  Bases B 3.3.2 Function 6.f (ML20339A221) — "must be OPERABLE in MODE 1 ... In MODES 2, 3, 4, 5, and 6 the MFW pumps
+  may not be in operation, and thus pump trip is not indicative of a condition requiring automatic AFW initiation."
+  The turbine half (trip + latch refusal) keeps its #605 off-RHR arming. MEASURED, full stack, `hot_zero_power` with
+  both main feed pumps secured and the motor-driven AFW pump started: AFAS latched `loss_of_main_feed` inside 10
+  plant-minutes before the gate, stays clear for 65 plant-minutes after. `run_pwr2_engine` probe rewritten (the
+  "taking RHR out re-arms AFAS" half pinned the #605 simplification — adjudicated, not refitted) and one mutation
+  added; the #605 "armed in every mode" mutation went BLIND under the gate until the cold probe also asserted the
+  turbine latch is not held on RHR. Group F 7/7 caught.
+- **Why the rest is not built — two findings the proposal did not carry:**
+  1. **The board has no way to START aux feed.** #591 item 2 left the card STOP and AUTO only (owner 2026-08-30), and
+     AUTO only re-arms. The Hot Standby preset can boot on the MDAFW, but the heatup cannot put the plant there.
+  2. **Main feed AUTO at the transfer is a big transient.** MEASURED (`inbox/measure808/run4_*`, full stack, lineup by
+     command, AFW-held level 33.7 %, power 0.89 %, rods still): pressing SG FEED AUTO drives feed to 53 % of rated
+     against a 31-point level error; Tavg 547.7 -> 538.0 °F in 1 plant-minute, power 0.9 -> 3.9 % (STARTUP RATE peak
+     +0.59), level overshoots to 72 %, settles 65 % / 0.9 % in ~25 plant-minutes. No trip. MAN at 1 % instead: no
+     transient, but level then drains 36 -> 28 % in 25 min (a manual lever the player has to trim).
+- **AFW capacity, re-measured:** MDAFW alone holds SG level at ~0.9 % power (throttle ~27-30 %, level 33.5-33.8 %);
+  a climb past ~3.8 % on AFW alone ran level to 20 % and lo-lo tripped the reactor at ~4.9 % (twice). Level on AFW at
+  0 % power settles 36.5-37 %, reached from the 65 % boot after ~65 plant-minutes of boil-off (0.45 %/min).
+- Not verified: the Mode 3 IC change, any walkthrough, the routes gate — none were made.
+
 ## Session log — 2026-09-27-develop-c (layman pass 10 verification: raise-power green floors, insertion-limit alarms expected, TRIP BLOCKS header)
 
 Scratch worktree exp/rc8f on 262ea30b. Report: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-27_LAYMAN_PASS10.md`

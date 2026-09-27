@@ -30,6 +30,9 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Auxiliary feed no longer auto-starts on "both main feed pumps off" below 5 % power** (Mode 1 only, Ginna TS Bases B 3.3.2 Function 6.f). The turbine trip and latch refusal on the same loss are unchanged. First half of #808 item A; the Mode 3 aux-feed lineup and the feed-transfer step are not built yet.
+
 ## [Alpha 1.8.0-rc8] — 2026-09-27
 
 ### Changed

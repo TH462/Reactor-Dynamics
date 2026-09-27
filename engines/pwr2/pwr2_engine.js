@@ -1782,7 +1782,21 @@
         ? rd.containment_pressure : eng._ctP,
       /* [sourced ch10] the loss-of-both-feed-pumps MDAFW start's input — a STATE signal
        * (breaker positions), the turbine_tripped convention, not an analog channel */
-      main_feed_lost: mfLost,        /* armed only off RHR — see the block above `var mfLost` */
+      /* THE AFW START OFF IT IS A MODE 1 FUNCTION (#808, 2026-09-27). The turbine-trip half
+       * above stays armed off RHR; the MDAFW start is armed only AT POWER — the plant_mode
+       * ladder's own Mode 1 line (power range above 5 %), read off the instrument (HR1).
+       *   [sourced] Ginna TS Bases B 3.3.2, Function 6.f "Auxiliary Feedwater-Trip Of Both
+       *   Main Feedwater Pumps" (ML20339A221): "This Function must be OPERABLE in MODE 1 ...
+       *   In MODES 2, 3, 4, 5, and 6 the MFW pumps may not be in operation, and thus pump
+       *   trip is not indicative of a condition requiring automatic AFW initiation."
+       * MEASURED (#808): Hot Standby with both main feed pumps secured and the MDAFW started —
+       * the startup lineup, GIN-10 §10.5.3.1.2 — latched AFAS `loss_of_main_feed` inside its
+       * first 10 plant-minutes without this gate, and stays clear with it.
+       * DECLARED: the source gives the applicability, not the hardware that takes the
+       * function out below Mode 1; the power line is that applicability, stated as a gate.
+       * A loss of main feed AT power still starts the MDAFW the same step (the reading is
+       * one step old, and still reads rated). */
+      main_feed_lost: mfLost && (rd.power_range !== undefined ? rd.power_range : rrx.power_pct) > 5,
       /* [sourced ch10] the loss-of-offsite-power AFW start's input — the same state-signal
        * class (#507 wave 4; the deferred start pwr2_protection.js recorded is now built) */
       loss_of_offsite: !offsiteOk,
