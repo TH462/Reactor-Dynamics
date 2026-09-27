@@ -225,13 +225,13 @@ STARTUP RATE is the speedometer. 1.0 means power multiplies by ten every minute,
 
 Suggested time warp: 1×.
 
-Note: At SLOW the rods move about one step every 8 plant-seconds, so a short hold at 1× moves nothing. This check-off ticks after the rods have been still for a plant-minute.
+Note: At SLOW the rods move about one step every 8 plant-seconds. This check-off ticks the moment CONTROL ROD POSITION reads 3 steps short of the prediction; let go of WITHDRAW there.
 
 ()9b. Tap WITHDRAW one step, wait five plant-minutes, and read STARTUP RATE. Repeat until it reads +0.15 or more.
 
-Suggested time warp: 10× while you wait; 1× before every tap.
+Suggested time warp: 60× while you wait; 1× before every tap.
 
-Note: Expect about 6 to 8 taps from 3 short, so 35 to 45 plant-minutes. Each step out adds about +0.03 to where STARTUP RATE settles. Over 1.0, tap INSERT once. SOURCE RANGE switches itself off above 1.0e5; INTER RANGE carries the reading.
+Note: Expect about 6 to 8 taps from 3 short, 35 to 50 plant-minutes; at 60× each five-minute wait is five real seconds. This check-off comes five plant-minutes after your last tap, once STARTUP RATE reads +0.15 or more. Each step out adds about +0.03 to where STARTUP RATE settles. Over 1.0, tap INSERT once. SOURCE RANGE switches itself off above 1.0e5; INTER RANGE carries the reading.
 
 
 
@@ -463,6 +463,7 @@ becoming steps. Until then the line is prose only.
 |5a, 6a, 7a|**10×**|**SUPERSEDES the 5a/6a/7a 5× rows above.** *OWNER, 2026-09-26 (#807 item 9): "steps 5, 6 7 should be at 10x."* One step-level "Suggested time warp: 10×" line each since 807b|
 |8b|10×|OWNER RULING, 2026-09-24 ("7a 5×, 8b 10×") — 8b now carries the "wait for +0.03 or less, then plot" rate-wait (rod-window-leads reword), a real 3.0-3.5 plant-minute wait; measured 8.0 steps/wall-second at 10× vs 4.0 at 5× for MED|
 |9a|1×|the old step 9 note ("come back to 1× before you move a rod again")|
+|9b|**60×**|**SUPERSEDES the 10× below for 9b.** *OWNER, 2026-09-26 (release blocker): "waiting 5 plant minutes at 10x can take too long. suggest 60x speed for step 9b."* A tap is still exactly one step at 60× (MEASURED, develop-k); a press held 0.5 s is 2 steps, 1 s is 7, hence "1× before every tap"|
 |9b, 10a|10×|OWNER, item 3; matches the pool's MEASURED `wait\\\_speed: 10` on old step 9 (`tools/glance\\\_rung.js`, #796)|
 |11a|5×|the pool's MEASURED `wait\\\_speed: 5` on old step 10|
 |12a|10×|the 30 s rule on the pool's `hold: 240` (#796 restored the rung)|

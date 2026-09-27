@@ -262,6 +262,9 @@
         if (st.acc && RD.InstructorLayer.isBagOp(st.acc.op)) ks.push({ p: st.acc, k: 'acc' });
         (st.accs || []).forEach(function (en, k) {
           if (en && RD.InstructorLayer.isBagOp(en.op)) ks.push({ p: en, k: 'accs' + k });
+          /* `still_s` (pwr_startup 9b, 2026-09-26-develop-k): the rods-still conjunct is a trailing
+           * window too, sampled every tick through the same `gradeStopped` the live row calls */
+          if (en && en.still_s > 0) ks.push({ p: { p: 'control_bank_steps', op: 'stopped', v: en.still_s }, k: 'still' + k });
         });
         return ks;
       }
@@ -283,7 +286,8 @@
             var h = predBags['accs' + i];
             ordMet[i] = !!(h && h.last && h.last.met);
           } else if (en && en.p) {
-            ordMet[i] = pred(s, en);
+            var hs = predBags['still' + i];
+            ordMet[i] = pred(s, en) && (!(en.still_s > 0) || !!(hs && hs.last && hs.last.met));
           } else ordMet[i] = true;
           if (!ordMet[i]) break;
         }
@@ -305,6 +309,10 @@
           if (e.p.below_1m != null) {
             var oom = s.instructor && s.instructor.one_over_m;
             RD.InstructorLayer.applyBelow1m(h.last, oom ? oom.pred_steps : null, e.p);
+          }
+          if (e.p.reach_1m != null) {      /* 9a since develop-k: the SAME applyReach1m */
+            var oomR = s.instructor && s.instructor.one_over_m;
+            RD.InstructorLayer.applyReach1m(h.last, oomR ? oomR.pred_steps : null, e.p);
           }
           /* a `latch` row is a "you got here" claim live, so the replay asserts that it WAS met
            * inside the hold, not that it still is at the end (the live row never un-ticks). */
@@ -356,7 +364,13 @@
         checks.push({ d: 'step ' + curStep + ' saw ' + sw.p + ' ' + sw.op + ' ' + sw.v, pass: !!sawHits[k], obs: !!sawHits[k] });
       });
       function accVerdict(c, key) {
-        if (!RD.InstructorLayer.isBagOp(c.op)) return { pass: pred(lastSnap, c), obs: pv(lastSnap, c.p) };
+        if (!RD.InstructorLayer.isBagOp(c.op)) {
+          if (c.still_s > 0) {             /* develop-k: the row's own rods-still conjunct */
+            var hS = predBags[key.replace('accs', 'still')], lS = hS && hS.last;
+            return { pass: pred(lastSnap, c) && !!(lS && lS.met), obs: pv(lastSnap, c.p) + ', rods still ' + (lS && lS.still != null ? lS.still.toFixed(0) : '?') + ' s' };
+          }
+          return { pass: pred(lastSnap, c), obs: pv(lastSnap, c.p) };
+        }
         var h = predBags[key];
         var last = h && h.last;
         if (!last) return { pass: false, obs: 'never sampled (hold is 0)' };
@@ -365,7 +379,7 @@
           return { pass: c.latch ? !!h.ever : !!last.met,
                    obs: (last.still == null ? 'nothing to read' : last.still.toFixed(0) + ' s unchanged') +
                         ' @ ' + reading + (c.latch ? (h.ever ? ', latched' : ', never met') : '') +
-                        (c.below_1m != null ? (last.no_1m ? ', no 1/M prediction' : ', 1/M prediction ' + last.pred_1m) : '') };
+                        ((c.below_1m != null || c.reach_1m != null) ? (last.no_1m ? ', no 1/M prediction' : ', 1/M prediction ' + last.pred_1m) : '') };
         }
         return { pass: !!last.met,
                  obs: (last.drift == null ? 'window not covered' : (last.drift * 100).toFixed(2) + '% drift')

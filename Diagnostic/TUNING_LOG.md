@@ -29,6 +29,44 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-develop-k (release blocker: Mode 3 → Mode 1 step 9, 9a late, 9b dark and re-locked)
+
+Scratch worktree exp/807i (from develop dab17d5c, 1.8.0-rc7). Owner, verbatim: "9a doesnt reliably check
+off when i put the rods to 3 steps away from the prediction ... i think it should check right away when i
+hit 3.9 steps away ... 9b just doesnt unlock"; then "suggest 60x speed for step 9b ... the step doesnt
+unlock until 5 minuts pass and then lockes again when i hit withdaraw".
+
+- **Root cause, measured** (run_walkthrough_routes typical route, live runtime, seeds 42 / 7 / 123).
+  (1) 9a was a `stopped` 60 s row + `below_1m: 3`: it ticked 59.5 / 64.1 / 64.1 plant-s (595-641
+  broadcasts at 1×) after CONTROL ROD POSITION reached prediction minus 3 — a real minute at 1×, with
+  nothing on the card moving. (2) 9b sat behind a HIDDEN ordered `stopped` 300 s row; ui/app.js mutes
+  every row after the first unmet row (`ordWait`), so 9b drew dark for 2066-2682 plant-s of the step
+  (244 s after 9a on seed 42) and every tap re-locked it (the hidden row re-grades).
+- **Fix.** `accs[].reach_1m: 3.9` (instructor `applyReach1m`): with a prediction printed, 9a is met the
+  broadcast the bank reads prediction minus 3 or more — moving or not, past the prediction too — with no
+  debounce (the step counter is exact). No prediction keeps the 60 s stop and the "no prediction" line.
+  `accs[].still_s: 300` (`applyStill`): 9b's own grading needs the bank unmoved 300 s, so the wait delays
+  the TICK only; the hidden row is gone. 9b rung 10× → 60× (owner). Replay harness mirrors both.
+- **After** (same routes): 9a 0 broadcasts after the mark on every seed at 1×, 10× and 60×; 9b unlock
+  lag 0 s, 0 re-locks, 0 s hidden-locked; 9b ticks 300.5 s (1×) / 304 s (10×) / 324 s (60×) after the
+  last rod motion, on reads 0.166-0.182 (before: 0.161-0.174); step 9 36.4-46.4 plant-min (before
+  35.9-45.8). Mistakes, all complete, 9a +0 bc: past the prediction by 2 (new `past_pred_9`), overshoot
+  to 235 (overtaken), undershoot 10 (9a at +35.7-36.0 min when the taps reach the mark), fast tap,
+  Rewind mid-step (new `rewind_mid_9`: the rewind empties the 1/M table, 9a ticks on the 60 s fallback).
+- **60× tap, measured** (hot zero power, SLOW): a tap is exactly one step at 1× / 10× / 60×; a press held
+  0.5 s of wall is 2 steps at 60× (0 at 1×), 1.0 s is 7 — so "1× before every tap" and `act_first` stay.
+- **Trap:** a hidden ordered row is not invisible to the player — it mutes every drawn row behind it.
+  A wait that should only delay a tick belongs in that row's own grading (`still_s`).
+- **Checks.** Routes gate: new `unlock` verdict (9a within 1 broadcast; no hidden lock, no re-lock) with
+  injections `still_minute_9a` (old 9a → 595 bc, red) and `hidden_still_9` (old hidden row → 2775 s
+  hidden-locked, red); `no_latch_9a` went BLIND on typical_pass3 (a tap moves the bank further past the
+  mark) and was re-aimed to `rewind_mid_9`, the no-prediction fallback (red, 10 un-ticks).
+  run_checklist_pwr2 §2am rewritten (4 short never ticks; a slow pull through the mark ticks within one
+  broadcast, bank moving; 3 short ticked by the stop); §2ak.1 accepts `still_s` as the re-assertion.
+- **Not verified:** a browser session at 1× with the real WITHDRAW button (the card's live/muted draw
+  is inferred from the snapshot the card reads, not screenshotted); seed 7 step 10's pre-existing hollow
+  tick at +3 s (present before this change too, measurement seed only).
+
 ## Session log — 2026-09-26-develop-i (#807 review fixes: count-row flicker, windows, 13a, cooldown 11 spray, boron line, mean dedupe)
 
 Scratch worktree exp/807g (from exp/807int 850a92e1). Route runner `--job` runs, full stack, seed 42

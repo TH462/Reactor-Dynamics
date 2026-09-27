@@ -538,6 +538,37 @@
     if (!g.no_1m && !(typeof g.value === 'number' && g.value <= g.pred_1m - en.below_1m)) g.met = false;
     return g;
   };
+  /* `reach_1m: N` (2026-09-26-develop-k, `pwr_startup` 9a; OWNER, release blocker that day: "i think
+   * it should check right away when i hit 3.9 steps away from the critical prediction"). The
+   * OPPOSITE claim to `below_1m`: "CONTROL ROD POSITION has come within N steps of the printed
+   * prediction" — a you-got-here milestone, so WITH a prediction it REPLACES the row's own op (the
+   * rods need not be still; the row ticks on the broadcast the counter gets there, moving or not)
+   * and holds at or past the prediction too (a pull past the mark is 9b's reading to correct, not a
+   * strand). NO PREDICTION keeps the row's own op (`stopped` 60 s on 9a) and flags `no_1m`, the
+   * same no-soft-lock fallback and the same card line as `below_1m`. The value is the rounded step
+   * counter and the prediction is `Math.round`ed, so N = 3.9 ticks at prediction minus 3. */
+  InstructorLayer.applyReach1m = function (g, predSteps, en) {
+    if (!g || !en || en.reach_1m == null) return g;
+    g.pred_1m = (typeof predSteps === 'number' && isFinite(predSteps)) ? predSteps : null;
+    g.no_1m = g.pred_1m == null;
+    if (!g.no_1m) g.met = typeof g.value === 'number' && g.value >= g.pred_1m - en.reach_1m;
+    return g;
+  };
+  /* `still_s: S` on any accs row (2026-09-26-develop-k, `pwr_startup` 9b): the row additionally
+   * needs the CONTROL BANK unmoved for S plant-seconds (`gradeStopped` on `control_bank_steps`,
+   * motion flag included). It folds into the row's OWN grading what a hidden ordered `stopped` row
+   * used to carry in front of it — that row locked the drawn row behind it (muted, dark) until the
+   * rods had been still S seconds, and every tap re-locked it (owner, same day: "the step doesnt
+   * unlock until 5 minuts pass and then lockes again when i hit withdaraw"). Folded in, the rods-still
+   * wait only DELAYS THE TICK; the row is live the moment its predecessor latches. ONE
+   * implementation for the live runtimes and the replay harness; `bag` is the caller's, per step. */
+  InstructorLayer.applyStill = function (g, bag, snapshot, en) {
+    if (!g || !en || !(en.still_s > 0)) return g;
+    var sg = InstructorLayer.gradeStopped(bag, snapshot, { p: 'control_bank_steps', op: 'stopped', v: en.still_s });
+    g.still = sg.still;
+    if (!sg.met) g.met = false;
+    return g;
+  };
 
   InstructorLayer.prototype.unload = function () {
     var reg = this.register;
@@ -2193,8 +2224,20 @@
           InstructorLayer.applyBelow1m(g, this._oneOverMPredSteps(snapshot), en);
           ax.no_1m = g.no_1m; ax.pred_1m = g.pred_1m;
         }
+        if (en.reach_1m != null) {         /* 9a's "within 3.9 steps of the 1/M prediction" (develop-k) */
+          InstructorLayer.applyReach1m(g, this._oneOverMPredSteps(snapshot), en);
+          ax.no_1m = g.no_1m; ax.pred_1m = g.pred_1m;
+        }
+        if (en.still_s > 0) {              /* 9b's rods-still wait, folded into the row (develop-k) */
+          if (!ax.stillBag) ax.stillBag = { s: [] };
+          InstructorLayer.applyStill(g, ax.stillBag, snapshot, en);
+        }
         ax.obs = g.value; ax.graded_by = g.graded_by;
         ax.streak = g.met ? ax.streak + 1 : 0;
+        /* A `reach_1m` verdict reads the operator's own step counter against a printed number — exact,
+         * no instrument noise to debounce — so it ticks on the FIRST broadcast it holds, which is the
+         * owner's "right away" (develop-k). The fallback (no prediction) keeps the debounce. */
+        if (en.reach_1m != null && !g.no_1m && g.met) ax.streak = Math.max(ax.streak, ACC_STABLE_N);
         /* ORDERED STEPS (#756): a blocked entry still GRADES — `obs` keeps updating and a
          * `steady` ring keeps filling from the moment the step became active — it just may not
          * LATCH. Grading it is not cosmetic: measured on the 1/M ladder, the settle window has
