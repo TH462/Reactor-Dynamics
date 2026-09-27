@@ -4093,7 +4093,11 @@
     ];
     var outstanding = tbMessages().filter(function (r) { return r.msg; });
     if (outstanding.length) {
-      lines.push(outstanding.length + ' TRIP' + (outstanding.length === 1 ? '' : 'S')
+      /* A SUBSET, SAID AS ONE (rc8f layman pass 10 S-4, 2026-09-27). This read "3 of 5 BLOCKED · 2
+       * WAITING ON ITS PERMISSIVE · 2 TRIPS RELEASED BY THE PLANT" -- 7 of 5 to a reader who adds, when
+       * the released rows are among the not-blocked ones (blocking a row clears its message). */
+      lines.push('OF THE ' + (live.length - blockedN) + ' NOT BLOCKED, ' + outstanding.length
+        + (outstanding.length === 1 ? ' WAS' : ' WERE')
         + ' RELEASED BY THE PLANT — see the row' + (outstanding.length === 1 ? '' : 's') + ' below');
     }
     host.textContent = lines.join('  ·  ');

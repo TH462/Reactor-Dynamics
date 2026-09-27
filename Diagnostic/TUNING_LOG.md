@@ -29,6 +29,30 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-27-develop-c (layman pass 10 verification: raise-power green floors, insertion-limit alarms expected, TRIP BLOCKS header)
+
+Scratch worktree exp/rc8f on 262ea30b. Report: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-27_LAYMAN_PASS10.md`
+(Measured/Verdict under every S-n); #653 comment drafted in `inbox/653_comment_rc8.md`.
+
+- **The trap: "aim for the green, not the tick" does not survive a player who presses Continue when it lights.**
+  The raise-power stages graded 550 / 550 / 558 / 564 °F while the tile's green segment (Tavg program ± 5.04 °F,
+  19 px of a 186 px strip, 3 px tall) starts at 551 / 558 / 565 / 570 °F; pass 10 ticked at 551 / 554 / 560 / 564.
+  Floors moved to the green floor as rendered (551.5 / 557.5 / 565.5 / 569.5 °F, the latch row only; the `cont` rows keep
+  the old floors as hysteresis). Measured after: routes typical seeds 42/7 withdrew 25 / 25 / 30 / 20 / 10 on stages
+  4-8, floor-reader 25 / 20 / 30 / 15-20 / 10-15; browser probe lit Continue at 552.1 / 558.3 / 566.1 °F. The replay's
+  stage-5 pull 15 -> 20 (15 ended at 557.2 °F) and step 9 got `hold: 600` (9b graded 663.22 ppm when stages 6-8 met
+  sooner).
+- **7b at 89.5 MW, the open item from develop-b, no longer flashes** once the floors moved: band_floor seeds 42/7 and the
+  chain clean (31/31 raise-power routes, 48/48 chain).
+- **Insertion-limit alarms are the stages' own evolution:** raised in step 6 on every route (559-565 °F), at the end of
+  step 5 on the reviewer's (bank 238-253 vs the 224-step limit at 50 % + 10). `expect_alarms` on 5 and 6. A drop is
+  NOT permanent: the browser probe saw the next check line re-apply the rung (5b drop 587 s, 5× back 689 s).
+- **S-6 refuted for raise power** (auto 10× then 5× on every stage, no press); startup 11-13 NOT re-measured.
+- **TRIP BLOCKS header:** released rows are a subset of the not-blocked (blocking clears the message); reworded, and
+  `verify_board_cues`' released-count regex follows it.
+- **Not done:** row heights between legs (differ because the text differs; held within an opening). A Pressurizer
+  Pressure Low warning dropped the clock in 5b on the probe's route; not declared (not seen on the gate routes).
+
 ## Session log — 2026-09-27-develop-b (rc8 review fixes: the SR row's release warning, a failed IR channel, old saves, the preview startup scenarios)
 
 Scratch worktree exp/rc8f (from exp/rc8 b6aedc70). A read-only reviewer measured seven defects in the rc8 candidate

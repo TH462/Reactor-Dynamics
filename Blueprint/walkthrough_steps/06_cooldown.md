@@ -26,7 +26,7 @@
 
 Suggested time warp: 600×.
 
-Note: The boration runs at a steady 3 ppm a minute and does not slow down as it closes: about 55 plant-minutes to 880 ppm. Do not start cooling until BORON STATUS reads BORATING.
+Note: The boration runs at a steady 3 ppm a minute and does not slow down as it closes: about 55 plant-minutes to 880 ppm from a preset, about 65 on a plant brought down from full power. Do not start cooling until BORON STATUS reads BORATING.
 
 Background
 
@@ -280,7 +280,7 @@ The plant is cold now and the pressurizer shell has given up most of its stored 
 
 Suggested time warp: 1×.
 
-Note: PRIMARY PRESSURE will be low — the spray took it there. ALIGN on the RHR card is checked in step 15.
+Note: PRIMARY PRESSURE reads about 250 psi, far below the 2235 psi of a running plant; it crept back up after the spray shut, which is expected. ALIGN on the RHR card is checked in step 15.
 
 Background
 
@@ -338,7 +338,7 @@ RHR is the only thing removing heat now. If its suction valve shut, the decay he
 
 Suggested time warp: 60×.
 
-Note: The bank runs in by itself, about 9 plant-minutes. The round trip is complete.
+Note: After the scram in the shutdown walkthrough the bank already reads 0 of 627. If it does not, one INSERT click runs it in by itself, about 9 plant-minutes. The round trip is complete.
 
 Background
 

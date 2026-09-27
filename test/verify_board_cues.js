@@ -775,7 +775,7 @@ var TOOLKIT = [
      * counted message is a CURRENT reason — here only the SR row's P-6 loss — so the count must
      * equal the P-6 messages and there must be no other. INJECTION: without the clear in
      * `noteTripBlockEvents` this reads 3 counted, 1 P-6. */
-    !!low && (function () { var m = /(\d+) TRIPS? RELEASED BY THE PLANT/.exec(clr.status.text);
+    !!low && (function () { var m = /(\d+) (?:WAS|WERE) RELEASED BY THE PLANT/.exec(clr.status.text);
       var n = m ? +m[1] : 0;
       var p6 = clr.msgs.filter(function (x) { return x.id === 'sr_high' && /P-6/.test(x.msg || ''); }).length;
       return n === clr.msgs.length && n === p6; })() && clr.worst < 1,

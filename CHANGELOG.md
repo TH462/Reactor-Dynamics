@@ -31,6 +31,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Raise power stages 4-7: the temperature check-off ticks when AVG COOLANT TEMPERATURE enters the tile's green
+  segment** (552 / 558 / 566 / 570 °F; it ticked 1-7 °F under it) and the text names the segment in numbers; step
+  counts re-measured. Stage 7's OUTPUT line grades 89.5 MW (the tile's "90"). Stages 5-6 declare the rod insertion-limit
+  alarms expected (no clock drop) and explain them. 9b reads BORON CHEM. (Layman pass 10, #653.)
+- **TRIP BLOCKS header** says the released trips are some of the not-blocked ones ("OF THE 2 NOT BLOCKED, 2 WERE
+  RELEASED BY THE PLANT"); it read as 7 of 5.
+- **Walkthrough text:** lower power 2 (early Continue is expected), cooldown 1 (about 65 plant-minutes on a plant brought
+  down from full power), 13 (pressure about 250 psi), 16 (the bank is already in), startup 11's target, a PERIOD line.
 - **TRIP BLOCKS: the SR HIGH FLUX row now warns RELEASE? at power** — releasing it trips the reactor, and the row read an
   ordinary BLOCKED (its would-trip is now read off the intermediate range). A failed intermediate-range channel no
   longer takes the source-range block away and trips the plant (declared stand-in for two-channel coincidence). An old
