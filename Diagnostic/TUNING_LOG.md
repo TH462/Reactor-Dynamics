@@ -29,6 +29,38 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-27-develop-f (run_walkthrough_routes split into three parts, CI shard timeout)
+
+**Problem (MEASURED):** CI run 36319512542 (rc7/rc8) timed out in shard 1 at the 30-min step
+budget with only 4 of 42 runners done. `run_walkthrough_routes.js` was still running -- its
+BASELINES `secs` hint (1100) was 1.8x low against a measured 1950 s solo at the old JOBS=4
+default / 1413 s at JOBS=8; a single runner is longer than the shard budget at either
+concurrency, so no shard rebalance fixes it.
+
+- **Split in three**, on the `run_pwr2_engine_b.js` precedent (#637): `run_walkthrough_routes.js`
+  (part A, the default) + `_b.js` + `_c.js`. A global part selector (`globalThis.__WR_PART`) and
+  an `--all` flag (unsplit, for local debugging) mirror the precedent exactly. `--leg=`/`--route=`
+  bypass the partition entirely (same reasoning as the `--grp=` override) so hand-filtered dev
+  runs are unaffected; `--leg=chain` stays whole, owned by part C.
+- **Groups derived from `Object.keys(ROUTES)` + `chain`**, with ONE exception: `pwr_cooldown` is
+  the single leg too big to fit either bin whole (4081 s of job-seconds), so its ROUTES and its
+  own MUTATIONS are split into separate groups at that seam. PART_B/PART_C are checked against
+  the derived list at load, so a stale or double-claimed group name throws rather than silently
+  dropping a job. **Default concurrency raised 4 -> 8** (matches the coordinator's own measured
+  data point).
+- **MEASURED standalone** (this file's own default, now 8-way, uncontended): part A (pwr_startup
+  alone, 30 jobs) 246 s / 114 checks; part B (pwr_cooldown's routes + pwr_raise_power/
+  pwr_lower_power/pwr_heatup/pwr_shutdown whole, 28 jobs) 300 s / 118 checks; part C
+  (pwr_cooldown's mutations + the chain, 10 jobs, the tail) 417 s / 53 checks. All three under
+  the ~450 s target. Sum 114+118+53 = 285 = the unsplit file's 285 passed / 0 failed / 285 checks,
+  unchanged.
+- **Self-check proven by injection**, then restored: a bogus `PART_C` group name throws ("not in
+  GROUPS"); the same real group named in both `PART_B` and `PART_C` throws ("claimed by BOTH").
+- **Updated:** `test/run_all.js` BASELINES (3 entries + a note on the split), `run_ci_shards.js`
+  and `run_all --shard=i/3 --list` re-verified green (est. 2835/2834/2834 s per shard),
+  `CLAUDE.md`'s Definition-of-done walkthrough line, `.claude/skills/layman-playthrough/SKILL.md`
+  (now points at `--all` for the full gate).
+
 ## Session log — 2026-09-27-develop-e (#808 item A, part 2: Mode 3 on aux feed, the feed transfer at ~1 %)
 
 Coordinator's calls (2026-09-27, NOT owner rulings): AUX FEED WATER AUTO starts the motor-driven pump (within the

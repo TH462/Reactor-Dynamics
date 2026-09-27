@@ -34,6 +34,9 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 - **Auxiliary feed no longer auto-starts on "both main feed pumps off" below 5 % power** (Mode 1 only, Ginna TS Bases B 3.3.2 Function 6.f). The turbine trip and latch refusal on the same loss are unchanged. #808 item A.
 - **Mode 3 runs on auxiliary feed** (main feed pumps secured, SG level held near 33-37 %); the heatup starts it with AUX FEED WATER **AUTO**, which now starts the motor-driven pump. **New startup step 13** at the point of adding heat (~1 %): main feed in MAN at 50 gpm to 60 % level, SG FEED AUTO, then aux feed STOP. Startup steps 13-17 renumbered 14-18 (#808).
 
+### Tests
+- `run_walkthrough_routes.js` split into three parts (CI shard timeout, CI run 36319512542): part A = pwr_startup alone, part B = pwr_cooldown's routes + the four small legs, part C = pwr_cooldown's mutations + the chain. `--all` still runs it unsplit; default concurrency 4 -> 8. 285/0/285 checks unchanged (114 + 118 + 53); each part measured standalone under the 450 s target (246 / 300 / 417 s).
+
 ## [Alpha 1.8.0-rc8] — 2026-09-27
 
 ### Changed

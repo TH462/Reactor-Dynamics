@@ -29,7 +29,8 @@ player typed, and a step whose lamp said done while its check-off said not done.
   tiles a step names, or the speed bar.
 - Before shipping walkthrough work: a pass is not finished until **6 of 6 legs complete**.
 - One leg is a legitimate run — pass a single id and skip the chain.
-- **Run `node test/run_walkthrough_routes.js` FIRST** (owner directive 2026-09-24). It drives every
+- **Run `node test/run_walkthrough_routes.js --all` FIRST** (owner directive 2026-09-24; the gate is
+  split into parts for CI since 2026-09-27 — `--all` runs it unsplit, in one process). It drives every
   leg's live checklist on a typical-player route and on scripted mistakes (overshoot, press early,
   Rewind mid-step, …), and fails on a silent strand, a step that ticks on entry, or a Continue
   that lights and goes out. Clear what it finds before you spend a pass: the layman pass then

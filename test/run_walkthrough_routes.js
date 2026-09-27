@@ -33,7 +33,10 @@
  * ports to the owner step format landed 2026-09-24; a leg with no `steps` entry runs the default
  * policy on every step.
  *
- *   node test/run_walkthrough_routes.js                 all legs, all routes (the gate)
+ *   node test/run_walkthrough_routes.js                 part A -- pwr_startup (see THE PARTITION)
+ *   node test/run_walkthrough_routes_b.js               part B
+ *   node test/run_walkthrough_routes_c.js               part C
+ *   node test/run_walkthrough_routes.js --all           the unsplit whole, for local debugging
  *   node test/run_walkthrough_routes.js --leg=pwr_startup --route=typical   FILTERED: forced non-zero
  *   node test/run_walkthrough_routes.js --leg=chain     the six legs as ONE plant (layman pass 4, 2026-09-25)
  *   node test/run_walkthrough_routes.js --jobs=1        sequential
@@ -1323,7 +1326,51 @@ if (flag('job')) {
 /* ================================ THE PARENT: THE GATE ================================== */
 var LEG_F = flag('leg'), ROUTE_F = flag('route');
 var FILTERED = !!(LEG_F || ROUTE_F);
-var JOBS = Math.max(1, +(flag('jobs') || 4));
+/* ---- THE PARTITION (CI shard timeout, 2026-09-27, CI run 36319512542) --------------------
+ * SPLIT IN THREE: shard 1's 30-min STEP budget timed out with only 4 of 42 runners done, this
+ * file still running. Its BASELINES `secs` hint (1100) was 1.8x low against a measured 1950 s
+ * solo at the old default (JOBS=4) / 1198 s at JOBS=8 -- a single runner is longer than the
+ * shard budget at either concurrency, so no shard rebalance fixes it. On the
+ * run_pwr2_engine_b.js precedent (#637): every leg/route/mutation JOB still runs, in exactly
+ * one part, and PART_B/PART_C are checked against the derived GROUPS list so a typo or a stale
+ * name throws rather than silently dropping a job from every part's count.
+ *
+ * MEASURED 2026-09-27, --jobs=8, solo job wall-seconds (this file's own --job=<key> children):
+ * pwr_startup 30 jobs (21 routes + 9 mutations) 3309 s; pwr_cooldown 6 routes 2131 s; its own
+ * 5 mutations ~1230 s; chain 5 jobs (base + 4 mutations) ~1500-1700 s; pwr_raise_power 8 jobs
+ * (7 routes + 1 mutation) 493 s; pwr_lower_power 4 routes 221 s; pwr_heatup 5 routes 213 s;
+ * pwr_shutdown 5 routes 36 s. pwr_cooldown alone (4081 s biggest single leg) does not fit any
+ * one ~3600 s (450 s @ 8-way) bin, so it is the one leg SPLIT across two parts, at the
+ * routes/mutations seam (each half keeps its own fixture together): PART A (default, unlisted)
+ * = pwr_startup alone; PART B = pwr_cooldown's ROUTES + the four small legs; PART C =
+ * pwr_cooldown's MUTATIONS + chain. A new leg lands in GROUPS automatically
+ * (Object.keys(ROUTES)); a new mistake or mutation on an EXISTING leg lands in that leg's part
+ * by default -- only pwr_cooldown's own mutations are pulled into their own group below.
+ * MEASURED STANDALONE (this file's own default, now 8-way, uncontended): A 246 s (114 checks),
+ * B 300 s (118 checks), C 417 s (53 checks) -- all under the ~450 s target; sum 114+118+53 =
+ * 285, matching the unsplit file's 285 passed / 0 failed / 285 checks exactly. */
+var GROUPS = Object.keys(ROUTES).concat(['pwr_cooldown_muts', 'chain']);
+var PART_B = ['pwr_cooldown', 'pwr_raise_power', 'pwr_lower_power', 'pwr_heatup', 'pwr_shutdown'];
+var PART_C = ['pwr_cooldown_muts', 'chain'];
+PART_B.concat(PART_C).forEach(function (g) {
+  if (GROUPS.indexOf(g) < 0)
+    throw new Error('run_walkthrough_routes: PART_B/PART_C names group ' + g +
+      ', which is not in GROUPS (' + GROUPS.join(' ') + ')');
+  if (PART_B.indexOf(g) >= 0 && PART_C.indexOf(g) >= 0)
+    throw new Error('run_walkthrough_routes: group ' + g + ' is claimed by BOTH part B and part C');
+});
+function partOf(g) { return PART_B.indexOf(g) >= 0 ? 1 : PART_C.indexOf(g) >= 0 ? 2 : 0; }
+/* a job KEY is 'leg:route' or 'leg:route:mutId' ('chain:chain[:mutId]' for the chained plant).
+ * Only pwr_cooldown splits routes from mutations; every other leg's mutations stay with its
+ * routes (its own group), which is why the length check below is scoped to that one leg. */
+function groupOf(j) {
+  if (j.indexOf('chain:') === 0) return 'chain';
+  var leg = j.split(':')[0];
+  return (leg === 'pwr_cooldown' && j.split(':').length > 2) ? 'pwr_cooldown_muts' : leg;
+}
+var PART = globalThis.__WR_PART || 0;
+var ALL = ARGV.indexOf('--all') >= 0;
+var JOBS = Math.max(1, +(flag('jobs') || 8));   // 4 -> 8 (2026-09-27): measured at the new default, see THE PARTITION above
 var B = '\x1b[1m', G = '\x1b[32m', R = '\x1b[31m', Y = '\x1b[33m', D = '\x1b[2m', X = '\x1b[0m';
 var jobs = [];
 Object.keys(ROUTES).forEach(function (leg) {
@@ -1337,6 +1384,10 @@ if ((!LEG_F || LEG_F === 'chain') && (!ROUTE_F || ROUTE_F === 'chain')) jobs.pus
 if (!ROUTE_F && ARGV.indexOf('--no-mutations') < 0)
   MUTATIONS.filter(function (m) { return !LEG_F || LEG_F === (m.chain ? 'chain' : (m.leg || 'pwr_startup')); })
     .forEach(function (m) { jobs.push(m.chain ? 'chain:chain:' + m.id : (m.leg || 'pwr_startup') + ':' + m.route + ':' + m.id); });
+/* --leg=/--route= and --all both mean "run what I named, ignore the split" (the --grp=
+ * override's own reasoning in run_pwr2_engine.js): a hand-filtered dev run scoped further by
+ * which part happens to own it would silently run fewer jobs than the filter promised. */
+if (!ALL && !FILTERED) jobs = jobs.filter(function (j) { return partOf(groupOf(j)) === PART; });
 /* TRACKED REDS — a known red on an unported leg, recorded rather than fixed here (the port
  * agents own the content). Key: 'leg:route:check'. Each carries its measured numbers in
  * BASELINES' note; this map only keeps the tally honest about which reds are expected. */
@@ -1389,8 +1440,10 @@ function launch() {
     })(jobs[next++]);
   }
 }
+var PART_LABEL = ALL ? 'the UNSPLIT whole (--all)' : FILTERED ? 'a FILTERED subset (--leg/--route, ignores the split)'
+  : 'part ' + ['A', 'B', 'C'][PART];
 console.log(B + '\nWALKTHROUGH ROUTES — each leg on a typical-player route and on scripted mistakes (live runtime)' + X);
-console.log(D + '  ' + jobs.length + ' runs, ' + JOBS + ' at a time' + X);
+console.log(D + '  ' + PART_LABEL + ' — ' + jobs.length + ' runs, ' + JOBS + ' at a time' + X);
 if (!jobs.length) { console.log('no jobs match'); process.exit(1); }
 launch();
 
