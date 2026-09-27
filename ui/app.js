@@ -4437,6 +4437,7 @@
      * (RPS_BLOCK_PARAMS there) — an operator lineup the board draws as a lit row, not an
      * instrument. The labels are the panel's own row captions, so the done-when line names what
      * the player is looking at. */
+    sr_high_blocked:         { bool: 'SR HIGH FLUX is blocked on the TRIP BLOCKS panel' },
     ir_high_blocked:         { bool: 'IR HIGH FLUX is blocked on the TRIP BLOCKS panel' },
     pr_low_setpoint_blocked: { bool: 'PR HIGH (LOW SETPT) is blocked on the TRIP BLOCKS panel' },
     lo_press_blocked:        { bool: 'PZR PRESS LO-LO is blocked on the TRIP BLOCKS panel' },

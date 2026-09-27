@@ -534,14 +534,14 @@ var TOOLKIT = [
     window.__c.tb(JSON.parse('{"' + a.A + '":true}'));
     window.__c.tb(JSON.parse('{"' + a.A + '":true}'));
     var y1 = ys(), worst = 0, had = /RELEASED BY THE PLANT/.test((window.__c.row(a.A) || {}).text || '');
-    Object.keys(y0).forEach(function (k) { if (y1[k] != null) worst = Math.max(worst, Math.abs(y1[k] - y0[k])); });
+    var who = ''; Object.keys(y0).forEach(function (k) { if (y1[k] != null && Math.abs(y1[k] - y0[k]) > Math.max(worst, 0.5)) who = k; if (y1[k] != null) worst = Math.max(worst, Math.abs(y1[k] - y0[k])); });
     window.__c.tb(JSON.parse('{"' + a.A + '":false}'));   // put the revoke back for the checks below
     window.__c.tb(JSON.parse('{"' + a.A + '":false}'));
-    return { worst: +worst.toFixed(2), msgGone: !had, n: Object.keys(y0).length };
+    return { worst: +worst.toFixed(2), msgGone: !had, n: Object.keys(y0).length, who: who, a: a.A };
   }, { A: ROW_A });
   ck('re-blocking a released row with the card open moves no row under the cursor (S-9)',
     shift.msgGone && shift.n >= 2 && shift.worst < 1,
-    'largest row move ' + shift.worst + ' px over ' + shift.n + ' rows; message cleared: ' + shift.msgGone);
+    'largest row move ' + shift.worst + ' px (' + (shift.who || 'none') + ', re-blocking ' + shift.a + ') over ' + shift.n + ' rows; message cleared: ' + shift.msgGone);
   /* THE ROW IS NOT SCROLLED OUT OF SIGHT. "Viewed" is defined as "the open card rendered this row",
    * which would be a lie if the card could clip a row away. The panel is content-sized with four
    * rows; assert it, because a fifth blockable trip would silently break the definition. */
@@ -758,7 +758,13 @@ var TOOLKIT = [
       (low ? ', read at ' + (low.mpa * 145.038).toFixed(0) + ' psia (' + low.mpa.toFixed(2) + ' MPa)' : '') +
       ' · P-11 messages ' + clr.msgs.filter(function (m) { return /P-11/.test(m.msg || ''); }).length);
   ck('  …and the card\'s status count carries only current reasons, with no row moved under the cursor',
-    !!low && !/RELEASED BY THE PLANT/.test(clr.status.text) && clr.worst < 1,
+    /* 2026-09-26 (OWNER RULING "B", the P-6 source-range block): this ride now ALSO loses the SR
+     * block for a true reason — post-trip, the intermediate range falls through the 5E-11 A P-6
+     * reset inside the window, and "reactor power fell below ... (P-6)" is a current reason, not a
+     * stale one. So the count is held to the messages that stand, not to zero; the P-11 half is
+     * the check above. The SR row sits LAST on the card, so its line moves no row under the cursor. */
+    !!low && (function () { var m = /(\d+) TRIPS? RELEASED BY THE PLANT/.exec(clr.status.text);
+      return (m ? +m[1] : 0) === clr.msgs.length; })() && clr.worst < 1,
     clr.status.text + ' · largest row move ' + clr.worst + ' px');
   await page.evaluate(function () { window.__c.click('imrsk4xz2dm'); });
 

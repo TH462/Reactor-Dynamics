@@ -167,10 +167,12 @@
       'REACTOR TRIP tile names the first-out cause.', CI, '3.5'),
     imrsk4xz2dm: e('TRIP BLOCKS',
       'Opens the startup trip-block panel — deliberately blocking a protection trip during startup.',
-      'Above P-10 (10 % power) the intermediate-range high-flux trip and the 25 % power-range trip ' +
-      'stand in the way of a normal ascent, so they are blocked on purpose and the badge counts how ' +
+      'On the way up three trips stand in the way of a normal ascent and are blocked on purpose: the ' +
+      'source-range high-flux trip (1e5 cps) above P-6, 1e-10 A on the intermediate range — taking ' +
+      'that block also switches the source-range detector off — then the intermediate-range ' +
+      'high-flux trip and the 35 % power-range trip above P-10, 8 % power. The badge counts how ' +
       'many are blocked. A block is an ENABLE, not a switch: it is accepted only while the plant is ' +
-      'inside that trip\'s permissive — above P-10 for these two, below P-11 for the pressure trips ' +
+      'inside that trip\'s permissive — above P-6 or P-10 for the startup trips, below P-11 for the pressure trips ' +
       'on a cooldown — and refused anywhere else, whoever you are. That is why the reactor trips ' +
       'cannot be switched off at power. Clearing is never refused, so clearing a block that is ' +
       'holding a trip off scrams the plant on the spot. Every block reinstates itself the moment its ' +
@@ -196,24 +198,24 @@
     ims176nions: e('Source Range',
       'The lowest flux range — counts per second, the only instrument that reads a shutdown core.',
       'A proportional counter reading 1 to 1e6 cps. It is the instrument for approach to criticality ' +
-      'and the input to the 1/M plot. It hands over on the way up: it turns amber at 5e4 cps to tell ' +
-      'you the handoff to the intermediate range is due, trips the reactor at 1e5 cps, and the channel ' +
-      'de-energizes itself at that point — there is no detector switch on this plant.', CI, '4.3'),
+      'and the input to the 1/M plot. It hands over on the way up: once the intermediate range reads ' +
+      '1e-10 A (P-6) you BLOCK it on the TRIP BLOCKS panel, which also switches the detector off. ' +
+      'It turns amber at 5e4 cps to say the block is due; miss it and it trips the reactor at 1e5 ' +
+      'cps. Below 5e-11 A on the way down the block clears itself and the detector comes back on.', CI, '4.3'),
     imro6qutiht: e('Source Range indication',
       'Neutron counts per second — the shutdown-core flux instrument. Amber at the source-range to intermediate-range handoff.',
       'Logarithmic, 1 to 1e6 cps. Watch it double as rods come out: the doubling rate IS the ' +
       'approach to criticality, which is what the 1/M plot formalises. The number itself carries ' +
       'the limits: amber at 5e4 cps is the cue to complete the handoff, RED at 1e5 cps is the ' +
-      'high-flux trip that ends the ascent, and once the channel de-energizes it goes grey — that ' +
-      'trip is conditional on the detector being energized, so there is no live limit here ' +
-      'afterwards. GREEN ON THIS CARD MEANS "read this one": the source range is the instrument ' +
+      'high-flux trip that ends the ascent if the block has not been taken, and once the block ' +
+      'switches the detector off it goes grey — a blocked trip is no live limit. GREEN ON THIS CARD MEANS "read this one": the source range is the instrument ' +
       'you are on from a shutdown core up to the handoff, and grey means another range has it.',
       CI, '4.3'),
     ims176t4e8s: e('Intermediate Range',
       'The middle flux range — a compensated ion chamber reading in amps.',
       'Overlaps the source range at the bottom and the power range at the top, covering the gap ' +
       'between counting individual neutrons and measuring a current. It is the range you read ' +
-      'between those two: it comes on scale at the P-6 permissive, 5e-11 A, and the power range ' +
+      'between those two: it comes on scale at the P-6 permissive, 1e-10 A, and the power range ' +
       'takes over at P-10, 8 % rated. The indication is green over exactly that span and grey ' +
       'outside it.', CI, '4.3'),
     imro6rctcgm: e('Intermediate Range indication',
@@ -221,7 +223,7 @@
       'Reads amps, not percent: the scale is logarithmic because flux is. Its high-flux trip is one ' +
       'of the two blocked deliberately during a startup, since a normal ascent walks straight ' +
       'through the setpoint below P-10. GREEN means this is the range to be reading — from P-6 ' +
-      '(5e-11 A) up to P-10 (8 % rated) — and grey means it is not: below P-6 the channel is not ' +
+      '(1e-10 A) up to P-10 (8 % rated) — and grey means it is not: below P-6 the channel is not ' +
       'yet on scale, and above P-10 the power range has it. Red still wins over both: an armed ' +
       'trip you are standing on is the reason to look. This is the middle rung of the startup ' +
       'net: P-10 at 8 %, this trip at 25 % current equivalent, the power-range low setpoint at ' +

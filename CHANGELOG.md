@@ -31,6 +31,21 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **The source range no longer switches itself off — P-6 now permits a manual block, and the
+  source-range reactor trip exists** *(OWNER RULING, 2026-09-26: "B" — "A, plus a manual
+  source-range block at P-6"; supersedes the 2026-09-01 directive, #598 item 7)*. New TRIP BLOCKS
+  row **SR HIGH FLUX**: allowed once the intermediate range reads 1e-10 A (P-6), it blocks the
+  1e5 cps source-range trip AND switches the detector off (one control; real plants use two
+  pushbuttons — declared). Unblocked, the source range trips the reactor at 1e5 cps (WTSM 9.1,
+  ML11223A263). The block clears itself below 5e-11 A (Ginna TS Bases B 3.3.1). The RPS reads two
+  new noiseless engine channels, `source_range` and `intermediate_range` (HR1). At-power ICs boot
+  with the block taken. Saves: a pre-change save seeds the block from its SR reading (taken at or
+  above 1e5 cps), so an at-power restore does not scram; a restored row with no hold timer no
+  longer reads NaN. Measured (full stack, hot zero power): P-6 met subcritical at rod 198 of 627
+  (~3,100 cps); ~2.3e4 cps at criticality; a normal-speed runaway now trips on the source range at
+  304 s (was the intermediate-range trip at 339 s). Manuals 03/04/05/06/09/10/12, the inspect
+  text and the instructor param `sr_high_blocked` follow. The walkthrough still teaches the
+  auto-off and is stale until its rewrite.
 - **Raise power, stages 4 to 8: the "if the temperature sags, withdraw" line now comes after
   "Wait for OUTPUT to reach N MW"** (layman pass 9). It used to tick straight after LOAD, before the
   sag, and stayed ticked while AVG COOLANT TEMPERATURE fell 13 °F below its band.

@@ -29,6 +29,42 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-develop-l (the P-6 manual source-range block and the SR high flux trip)
+
+Scratch worktree exp/807j (from develop dab17d5c). OWNER RULING, 2026-09-26, "B": *"A, plus a manual
+source-range block at P-6"* — reverses the 2026-09-01 #598 item 7 auto-off. Evidence: inbox/startup/EVIDENCE.md
+rows 16-20 (WTSM 9.1 ML11223A263 p.9.1-6/-7; Ginna TS Bases B 3.3.1; McGuire/Robinson procedures; Turkey Point 2020).
+
+**Built.** `pwr2_protection`: `sr_high_flux` row (1e5 cps, delay 0.5 s derived, blockable `'sr'`), `blockSR`
+request, P-6 permit (1e-10 A) and reset revoke (5e-11 A, hysteresis between), report `p6_met`/`sr_blocked`,
+save migration (blockSR seeded from the SR reading; `held_s || 0`). `pwr2_instruments`: `source_range`,
+`intermediate_range` channels (sigma 0, pwr_config ranges/lags) — the RPS reads them (HR1). `pwr2_true_state`:
+`sr_energized = !sr_blocked`. Engine `sr_block` command refused below P-6; at-power ICs boot blocked. Shell:
+`set_trip_block sr_high`, `trip_block_status.sr_high`. Board: SR HIGH FLUX row, LAST on the card (see trap).
+
+**Measured (full stack, `hot_zero_power`, seed 42, harness inbox/807j/m2.js).** Criticality at control rod
+~207.3 of 627 (7.5 pcm/step there); count rate at criticality **~22,600 cps**, IR **7.2e-10 A**. **P-6 is met
+SUBCRITICAL at rod 197.6** (~3,100 cps) — every source orders crit then P-6; this plant's source strength
+puts P-6 first. Stable startup rate vs steps pulled from 207: +2 -> 0.10 DPM, +3 -> 0.12, +5 -> 0.17,
++8 -> 0.27, +10 -> 0.35, +14 -> 0.56, +20 -> ~1.0, +26 -> ~1.8. Unblocked, time from the pull to the SR trip:
+**91 s at 0.35 DPM, 59 s at 0.56, 39 s at 1.0, 33 s at ~1.8** (trip cause `sr_high_flux` every time). IR 1e-8 A
+is **3.1e5 cps equivalent — half a decade ABOVE the SR trip**: overlap P-6 (1e-10 A / 3,121 cps) to SR trip
+(1e5 cps / 3.2e-9 A) is 1.5 decades. Blocked at crit, +14 steps reaches IR 1e-8 A in **113 s** (0.53 DPM).
+Level-off: all 14 steps back in -> rate **-0.01 then 0.00 DPM**, IR 7.6e-9 -> 7.8e-9 A over 9 min (+4 %,
+source-driven); 12 back in (rod 209, +13.5 pcm) -> **0.05 DPM**, IR doubles in ~13 min. So "level at 1e-8"
+means reinserting essentially everything pulled for the rate. Reset: rods to 0 -> block revoked at IR
+**4.9e-11 A** (SR 1,540 cps), detector back on. Stopping at rod 169 left IR at 6.65e-11 A — above the
+reset, block holds (correct hysteresis). Runaway at normal speed from HZP: SUR HI 267 s, SR HI FLUX 298 s,
+**SR trip 304 s** at rod 243 (was IR trip 339 s). All six ICs: no trip in 120 s; migration (block + hold
+timer + channels stripped) seeds correctly on all six.
+
+**Trap.** A row that the PLANT releases on its own (the SR block, after every trip) gains a message line;
+at the top of the card that pushed every row below it by 8.08 px mid-read (verify_board_cues, pass-5 height
+hold). The row sits LAST. And an unblocked ride from HZP now never reaches the IR rung — three fixtures that
+certified the IR trip (engine startup-accident, engine controlled startup, shell group O) had to state the
+P-6 block to keep testing the rung they claim.
+
+---
 ## Session log — 2026-09-26-develop-k (release blocker: Mode 3 → Mode 1 step 9, 9a late, 9b dark and re-locked)
 
 Scratch worktree exp/807i (from develop dab17d5c, 1.8.0-rc7). Owner, verbatim: "9a doesnt reliably check

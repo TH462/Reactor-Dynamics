@@ -988,6 +988,60 @@ function runSuite(P, rec, quiet) {
   ckT('...while the primary functions still work on the readings that ARE there',
       fn(rN, 'hi_pzr_press').available === true && rN.reactor_trip === false, '');
 
+  /* ---- P-6 AND THE SOURCE-RANGE TRIP (OWNER RULING 2026-09-26, "B") ------------------------
+   * The source range no longer switches itself off: it trips the reactor at 1e5 cps unless the
+   * operator has taken the P-6 block, and the block is revoked below the 5E-11 A reset. Every
+   * claim is driven at the house dt and checked in both directions. `sr_cps`/`ir_amps` ride a
+   * subcritical fixture so no other row fires for its own reason. */
+  head('P-6 + SOURCE RANGE HIGH FLUX  [manual block at P-6; trip at 1e5 cps when not blocked]');
+  function lowFlux(cps, amps) {
+    return { pressure_mpa: 15.41, power_frac: 0.0, flow_frac: 1.0, steam_pressure_mpa: 7.03,
+             steam_flow_frac: 0.0, pzr_level_frac: 0.25, sg_level_frac: 0.50,
+             sr_cps: cps, ir_amps: amps };
+  }
+  var SRT = P.SR_TRIP.cps, P6A = P.P6.amps, P6R = P.P6.reset_amps;
+  ck('SR high flux setpoint is the sourced 1e5 cps', SRT, 1e5, 0, 'cps');
+  ck('P-6 is 1E-10 A and its reset 5E-11 A (Ginna TS Bases)', P6A + P6R, 1.5e-10, 1e-15, 'A');
+  var prS = P.createProtection({});
+  var rS0 = ride(prS, lowFlux(9.9e4, 3.0e-9), 2);
+  ckT('just UNDER 1e5 cps, unblocked: the SR trip holds its fire',
+      rS0.reactor_trip === false && fn(rS0, 'sr_high_flux').armed === true, '');
+  var rS1 = ride(prS, lowFlux(1.2e5, 3.8e-9), 0.3);
+  ckT('over 1e5 cps it asserts but waits out its 0.5 s delay',
+      fn(rS1, 'sr_high_flux').asserted === true && rS1.reactor_trip === false, '');
+  var rS2 = ride(prS, lowFlux(1.2e5, 3.8e-9), 0.4);
+  ckT('...and past the delay, UNBLOCKED, the source range TRIPS THE REACTOR',
+      rS2.reactor_trip === true && rS2.trip_cause === 'sr_high_flux', 'cause ' + rS2.trip_cause);
+  var prB = P.createProtection({ blockSR: true });
+  var rB = ride(prB, lowFlux(5e5, 1.6e-8), 2);
+  ckT('BLOCKED (above P-6), the same count rate does not trip',
+      rB.reactor_trip === false && rB.sr_blocked === true && rB.p6_met === true &&
+      fn(rB, 'sr_high_flux').armed === false && fn(rB, 'sr_high_flux').would_assert === true, '');
+  var rH = ride(prB, lowFlux(2000, 7e-11), 2);
+  ckT('between the reset and P-6 a standing block HOLDS (the sourced hysteresis)',
+      rH.sr_blocked === true && rH.p6_met === false, '');
+  var rR = ride(prB, lowFlux(1500, 4.9e-11), 0.04);
+  ckT('below 5E-11 A the block is REVOKED, request and all',
+      rR.sr_blocked === false && prB.blockSR === false, '');
+  ckT('...and it stays revoked when power comes back over P-6 (no silent re-arm)',
+      ride(prB, lowFlux(5000, 2e-10), 1).sr_blocked === false, '');
+  var prM = P.createProtection({}); delete prM.blockSR; delete prM.held_s.sr_high_flux;
+  var rM = ride(prM, lowFlux(5e5, 1.6e-8), 2);
+  ckT('MIGRATION: a pre-change save above 1e5 cps seeds the block TAKEN and does not trip',
+      prM.blockSR === true && rM.reactor_trip === false, '');
+  var prM2 = P.createProtection({}); delete prM2.blockSR;
+  ride(prM2, lowFlux(500, 1.6e-11), 1);
+  var rM2 = ride(prM2, lowFlux(2e5, 6e-9), 1);
+  ckT('MIGRATION: ...one below it seeds NOT taken, so the restored plant still trips',
+      prM2.blockSR === false && rM2.reactor_trip === true, '');
+  var prM3 = P.createProtection({}); delete prM3.held_s.sr_high_flux;
+  var rM3 = ride(prM3, lowFlux(2e5, 6e-9), 1);
+  ckT('MIGRATION: a restored row with NO hold timer still completes its delay (no NaN)',
+      rM3.reactor_trip === true && rM3.trip_cause === 'sr_high_flux', '');
+  var rU = ride(P.createProtection({}), lowFlux(undefined, undefined), 1);
+  ckT('with no SR reading the row is UNAVAILABLE and P-6 unmet, never a silent zero',
+      fn(rU, 'sr_high_flux').available === false && rU.p6_met === false, '');
+
   /* ---- REFUSALS ---------------------------------------------------------------------------- */
   head('REFUSALS  [this layer will not report a plant un-tripped on a reading it never had]');
   ['pressure_mpa', 'power_frac', 'flow_frac'].forEach(function (k) {
@@ -1006,6 +1060,22 @@ runSuite(P, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  /* P-6 and the source-range trip (OWNER RULING 2026-09-26, "B") */
+  ['the SR high flux row is gone (the source range can never trip)',
+   "{ id: 'sr_high_flux', name: 'Source range high flux', kind: 'rps', dir: +1,",
+   "{ id: 'sr_high_flux_DEAD', name: 'Source range high flux', kind: 'x', dir: +1,"],
+  ['the P-6 block no longer holds the SR trip off',
+   'sr: pr.blockSR === true };', 'sr: false };'],
+  ['the P-6 reset never revokes the SR block (a defeatable trip)',
+   'if (irOk && irA < P6.reset_amps && pr.blockSR) pr.blockSR = false;', ''],
+  ['the SR block revokes at P-6 itself instead of its reset (no hysteresis)',
+   'irA < P6.reset_amps && pr.blockSR', 'irA < P6.amps && pr.blockSR'],
+  ['the pre-change save migration is dropped (an at-power restore scrams)',
+   '      pr.blockSR = drivers.sr_cps >= SR_TRIP.cps;', ''],
+  ['a restored row missing its hold timer never completes its delay (NaN)',
+   '(pr.held_s[f.id] || 0) + (dt > 0 ? dt : 0)', 'pr.held_s[f.id] + (dt > 0 ? dt : 0)'],
+  ['P-6 reports met below 1E-10 A',
+   'var p6Met = irOk && irA >= P6.amps;', 'var p6Met = irOk;'],
   /* #572, the two flux rod stops. Anchored separately because they fail separately, and the
    * third one is the load-bearing pair: dropping the IR stop's `!blockEffective` is the
    * mutation that would have shipped a stop standing for ever at power (ir_amps saturates its
@@ -1087,8 +1157,8 @@ var MUTATIONS = [
    '      var tripping = asserted && pr.held_s[f.id] >= f.delay;',
    '      var tripping = asserted;'],
   ['the hold ACCUMULATES instead of restarting (the #433 degenerate latch)',
-   '      pr.held_s[f.id] = asserted ? pr.held_s[f.id] + (dt > 0 ? dt : 0) : 0;',
-   '      pr.held_s[f.id] = pr.held_s[f.id] + (dt > 0 ? dt : 0);'],
+   '      pr.held_s[f.id] = asserted ? (pr.held_s[f.id] || 0) + (dt > 0 ? dt : 0) : 0;',
+   '      pr.held_s[f.id] = (pr.held_s[f.id] || 0) + (dt > 0 ? dt : 0);'],
   ['the delay never elapses, so nothing ever trips',
    '      var tripping = asserted && pr.held_s[f.id] >= f.delay;',
    '      var tripping = false;'],
@@ -1118,8 +1188,8 @@ var MUTATIONS = [
    * blockable row reads the power-range request, so blocking either clears both, and the
    * ascension has no backstop. */
   ['the two P-10 blocks collapse back into one lever',
-   '    var BLOCK_REQUEST = { low_flux: pr.blockLowFlux, ir_high: pr.blockIrHigh };',
-   '    var BLOCK_REQUEST = { low_flux: pr.blockLowFlux, ir_high: pr.blockLowFlux };'],
+   'var BLOCK_REQUEST = { low_flux: pr.blockLowFlux, ir_high: pr.blockIrHigh,',
+   'var BLOCK_REQUEST = { low_flux: pr.blockLowFlux, ir_high: pr.blockLowFlux,'],
   ['the INTERMEDIATE RANGE trip is deleted from the function table',
    "        sp: IR_TRIP.frac, unit: 'frac', read: 'power_frac', delay: DELAY.ir_high_flux,",
    "        sp: 9e9, unit: 'frac', read: 'power_frac', delay: DELAY.ir_high_flux,"],

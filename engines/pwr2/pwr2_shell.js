@@ -946,7 +946,10 @@
      * set_trip_block here when ITS trips list is empty (PWR2's RPS lives in the engine);
      * the board's button uses the pwr1 id for the class. One blockable function. */
     set_trip_block: function (e, c) {
-      if (c.trip_id === 'pr_low_setpoint' || c.trip_id === 'hi_flux_lo') {
+      if (c.trip_id === 'sr_high' || c.trip_id === 'sr_high_flux') {
+        /* the P-6 row (OWNER RULING 2026-09-26, "B"): SR trip + detector high voltage, one lever */
+        EN.command(e, 'sr_block', c.blocked !== false);
+      } else if (c.trip_id === 'pr_low_setpoint' || c.trip_id === 'hi_flux_lo') {
         EN.command(e, 'low_flux_block', c.blocked !== false);
       } else if (c.trip_id === 'ir_high' || c.trip_id === 'ir_high_flux') {
         /* the other half of the startup net (#601) — the pwr1 board's id and this engine's own */
@@ -1241,7 +1244,7 @@
      * plant's own (WTSM 11.3: "if the turbine is LATCHED (not tripped)"). */
     connect_grid:     'reconnection is three real commands, not one synthetic verb: reset_rps, latch_turbine, set_load_target',
     set_adv_setpoint: 'the ADV auto setpoint is a sourced constant (1040 psig, §48); only demand is an operator lever',
-    set_sr_detector:  'the SR channel auto-energizes below the P-6 class point; no operator lever',
+    set_sr_detector:  'the SR detector high voltage goes with the SR trip block at P-6 — use the TRIP BLOCKS panel (set_trip_block sr_high)',
     set_condensate_pump: 'no discrete condensate pump lever — the feed train (pwr2_feedwater) models the pumps as the feed module\'s own A/B pair',
     set_containment_spray: 'containment sprays are unmodeled (matches the shim\'s registered statics)',
     set_ctmt_fans:    'containment fan coolers are unmodeled (registered static)',
@@ -1697,7 +1700,13 @@
     var asserted = false, sp = 35;
     /* the SECOND P-10 request (#601) — the 25 % intermediate-range trip, its own lever */
     var irB = !!e.pt.blockIrHigh, irAsserted = false, spIr = 25;
+    /* the P-6 request (2026-09-26) — the source-range trip and detector high voltage. Its
+     * setpoint is in CPS, the channel's own unit; `would_assert` for the same reason as the
+     * P-11 rows below: releasing a block above 1e5 cps trips the reactor on the spot. */
+    var srB = e.pt.blockSR === true, srAsserted = false,
+        spSr = root.RD.pwr2.protection.SR_TRIP.cps;
     (rp.functions || []).forEach(function (f) {
+      if (f.id === 'sr_high_flux' && f.would_assert === true) srAsserted = true;
       if (f.id === 'hi_flux_lo') {
         asserted = f.asserted === true;
         if (typeof f.setpoint === 'number') sp = f.setpoint * 100;   /* frac -> % */
@@ -1757,7 +1766,8 @@
     });
 
     return {
-      trip_blocks: { pr_low_setpoint: blocked, ir_high: irB, lo_press: loB, si_trip: siB },
+      trip_blocks: { sr_high: srB, pr_low_setpoint: blocked, ir_high: irB, lo_press: loB,
+                     si_trip: siB },
       trip_setpoints: tripSetpoints,
       trip_setpoint_instruments: ['pzr_level'],   /* what the list above SPEAKS FOR — see comment */
       /* `permissive` IS PUBLISHED SEPARATELY FROM `can_block`, AND THE REASON IS THAT
@@ -1811,7 +1821,19 @@
         lo_press: { blocked: loB, asserted: loAsserted, permissive: p11,
                     can_block: !loB && p11, can_clear: loB, setpoint: spLo },
         si_trip:  { blocked: siB, asserted: siAsserted, permissive: p11,
-                    can_block: !siB && p11, can_clear: siB, setpoint: spSi }
+                    can_block: !siB && p11, can_clear: siB, setpoint: spSi },
+        /* THE P-6 ROW (OWNER RULING 2026-09-26, "B"). The pwr1 board's id `sr_high`, like every
+         * row here. `permissive` is the protection module's own p6_met, never re-derived. LAST,
+         * like its board row: consumers that pick "the first free row" keep picking the rows they
+         * always did (verify_board_cues' ROW_A). */
+        sr_high: {
+          blocked: srB, asserted: srAsserted,
+          permissive: rp.p6_met === true,
+          can_block: !srB && rp.p6_met === true,
+          can_clear: srB,
+          setpoint: spSr,
+          permissive_amps: root.RD.pwr2.protection.P6.amps
+        }
       }
     };
   };
@@ -2127,7 +2149,7 @@
        * throw, which is the dead-button class wearing an error message. The refusal texts stay
        * (they are correct and they teach); what changes is that the player is no longer invited
        * to press. */
-      sr_detector_fixed: true,         /* the SR channel auto-energizes below the P-6 class point */
+      sr_detector_fixed: true,         /* no separate detector switch: the P-6 SR block row carries the high voltage (2026-09-26) */
       /* `condenser_cw_temp_fixed` RETIRED at #591 item 1 — the flag was true because the action
        * was refused, and the action was refused for a reason that belonged to the retired
        * plant. The box is live and the sink moves; the board keeps its numberDisabled law for

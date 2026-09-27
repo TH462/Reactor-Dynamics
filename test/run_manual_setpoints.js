@@ -108,7 +108,10 @@ var ROWS = [
    * PERMISSIVE, and that permissive's number is checked on the **P-9** row below. Narrative
    * here means "the figure lives one table down", not "nothing to check against". */
   { m: /^\*\*Turbine trip \(P-9\)\*\*/,      narrative: true },
-  /* THE PLANT HAS NO SOURCE-RANGE REACTOR TRIP, and the row documented one at 1e5 cps (#642).
+  /* THE SOURCE-RANGE REACTOR TRIP EXISTS SINCE 2026-09-26 (OWNER RULING, "B": a manual SR block
+   * at P-6, superseding #598 item 7's auto-off) — pwr2_protection SR_TRIP, 1e5 cps, checked like
+   * every other row. The history below is why the row was `absent` until then.
+   * WAS: THE PLANT HAS NO SOURCE-RANGE REACTOR TRIP, and the row documented one at 1e5 cps (#642).
    * Nothing could catch it: 1e5 cps IS a real constant here — `pwr2_true_state`'s SR_SECURE_CPS,
    * where the channel DE-ENERGIZES — so the figure was right and the function was absent. The
    * de-energization is also what hid it, because a count rate that stops at 1e5 can never reach
@@ -116,7 +119,7 @@ var ROWS = [
    * channel stays live and publishes 1.285e11 cps at 50 % power, and the plant does not scram.
    * `pwr2_protection` has fourteen functions and none of them is source range; the RETIRED plant's
    * `sr_high` trip at 1.0e5 is in `pwr_control.js` and reaches PWR2 through a `trips: []`. */
-  { m: /^Source range/,   absent: true, what: 'a source-range high-flux reactor trip' },
+  { m: /^Source range/,                      want: P.SR_TRIP.cps,                  unit: 'cps', tol: 1 },
   /* NO LONGER NARRATIVE (#601). It was listed here as "no single plant constant to check
    * against", which was true only while the plant had no intermediate-range trip — and that is
    * precisely how the row came to carry 1.67e-3 A, the ROD STOP's setpoint, for the trip. The
@@ -136,8 +139,10 @@ var ROWS = [
   /* Ginna's numeric P-12 is in its TS proper, which is not in the corpus — the 532.4 °F here is
    * the plant's LO TAVG annunciator, and that alarm IS checked, by the §4.0 tables below. */
   { m: /^\*\*P-12\*\*/,                      narrative: true },
-  /* ABSENT, same finding as the source-range trip row (#642): the block protects the counter
-   * against being switched back on at high flux, and this plant has no switch — `set_sr_detector`
+  /* ABSENT (#642; restated 2026-09-26): the interlock refuses switching the counter back on at
+   * high flux. The SR block that arrived 2026-09-26 is never refused on release — above 1e5 cps
+   * releasing it trips the reactor instead — so there is still no interlock here. Was: the block
+   * protects the counter against being switched back on at high flux, and this plant has no switch — `set_sr_detector`
    * is REFUSED by the shell by name and the board button was deleted at #598 item 7. The 1e-6 A
    * is the retired plant's interlock, live there and dead here (measured: PWR2's kernel gets
    * `interlocks: []`, so ZERO rows block that command). */

@@ -197,22 +197,23 @@ the heat sink is restored. **Recovery is procedural, not a button.**
 
 | Control | Purpose |
 |---------|---------|
-| *(none)* | **There is no source-range On/Off switch on this plant.** The channel energizes and de-energizes itself on flux alone — see §5 and the handoff below |
+| *(none)* | **There is no separate source-range On/Off switch.** The detector's high voltage goes off with the **SR HIGH FLUX** block at P-6 on the TRIP BLOCKS panel (§4.4), and comes back on by itself below 5e-11 A — see the handoff below |
 
 **Handoff rules (P-6) — what the plant does, and what it does not:**
 
-1. **The source range secures itself at 1e5 cps.** That is the de-energization point, not a trip: the counter switches off and reads zero above it. Nothing for the operator to press, and nothing to press it too early.  
-2. **P-6 — Intermediate Range ≥ 1e-10 A — is the point the INTER RANGE display comes into use**, and the NIS card marks it. Below it, read the source range. On a real plant P-6 is also the permissive that lets the operator block the source-range trip and secure the detector; **this plant has neither the trip nor the switch**, so P-6 here is an indication cue.  
-3. The handoff the plant actually performs is therefore at **1e5 cps**, which is IR ≈ **3.2e-9 A** — about **32×** above P-6. Expect the intermediate range to be well on scale before the source range goes dark.  
+1. **P-6 — Intermediate Range ≥ 1e-10 A — permits the source-range block.** Take **SR HIGH FLUX** on the TRIP BLOCKS panel: it blocks the source-range reactor trip **and** switches the detector off, so SOURCE RANGE reads zero and INTER RANGE carries the indication. One control does both here; a real plant uses two pushbuttons, one per channel. Real procedures want about one decade of overlap between the two ranges before blocking.
+2. **Unblocked, the source range trips the reactor at 1e5 cps** (IR ≈ **3.2e-9 A**). On this plant P-6 is met **before criticality**, at about **3,100 cps**, and the count rate at criticality is already about **2e4 cps** — at a startup rate of 0.5 DPM (decades per minute) that leaves about a minute. Block at P-6.
+3. **On the way down the block clears itself below 5e-11 A** (the P-6 reset) and the detector comes back on. Between 5e-11 and 1e-10 A a block already taken holds.  
 
 ### 4.4 Startup trip blocks
 
 | Block | When allowed |
 |-------|----------------|
+| SR high-flux trip (1e5 cps) block — also switches the source-range detector off | Intermediate range above **P-6** (1e-10 A) |
 | IR high-flux trip (25 %) block — also clears the 20 % rod stop | Power above **P-10** (8 %) |
 | PR low-setpoint (35 %) block | Power above **P-10** |
 
-Blocks **auto-reinstate** when power falls below P-10.
+Blocks **auto-reinstate** when power falls below their permissive — the SR block below the P-6 reset (5e-11 A), the other two below P-10.
 
 ---
 
@@ -1055,7 +1056,7 @@ These topics appear as dedicated **campaign** missions; manuals cover them here 
 ### 17.1 1/M and NIS handoff (Mode 3 → Mode 2)
 
 - Source Range counts show subcritical multiplication as rods withdraw (1/M idea: counts rise as you approach criticality).  
-- When Intermediate Range ≥ **1e-10 A** (P-6) the intermediate range is on scale and is the instrument to read. **You do not secure the SR detector — there is no switch**; it de-energizes itself at 1e5 cps, further up. See **PWR-T13** / **PWR-N03**.  
+- When Intermediate Range ≥ **1e-10 A** (P-6), **block SR HIGH FLUX** on the TRIP BLOCKS panel — that also switches the source-range detector off, and the intermediate range becomes the instrument to read. **Unblocked, the source range trips the reactor at 1e5 cps.** See **PWR-T13** / **PWR-N03**.  
 - Campaign mission `pwr_startup` / `pwr_startup_challenge` grade this path; manuals do not auto-grade.
 
 ### 17.2 Holding Tavg by hand (Mode 1)
@@ -1181,7 +1182,7 @@ Listed for cross-reference — normal operation never requires typing a command.
 | HPI/LPI (§11.0) | `set_hpi` | `{active}` |
 | RHR suction valve (§11.2) | `set_rhr` | `{active}` |
 | RHR cooldown rate / HX split (§11.2) | `set_rhr_hx` | `{fraction | pct}` |
-| SR detector on/off (§4.3) | *(no operator lever — the source-range channel energizes itself below the P-6 class point; the button reads dark)* | — |
+| SR detector on/off (§4.3) | *(no separate lever — the detector's high voltage goes with the SR HIGH FLUX block on TRIP BLOCKS, §4.4)* | — |
 | Startup trip blocks (§4.4) | `set_trip_block` | `{trip_id, blocked}` |
 | MSIV open / close (§9.2) | `open_msiv` / `close_msiv` | — |
 | Automation AUTO/MAN (§14) | `set_auto_channel` / `set_auto_setpoint` | `{channel_id, engaged}` / `{channel_id, value}` |

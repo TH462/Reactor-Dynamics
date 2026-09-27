@@ -161,7 +161,17 @@
                                                                   the three-element controller's element 3 (WTSM 11.1: flow error = steam − feed) */
     { id: 'mwe_output',       src: 'mwe_output',               tau_s: 0.5,  sigma: 0.2,  range: [0, 120] },      /* [open] wattmeter */
     /* containment */
-    { id: 'containment_pressure', src: 'containment_pressure_mpa', tau_s: 1.0, sigma: 0.001, range: [0, 2] }     /* [open] */
+    { id: 'containment_pressure', src: 'containment_pressure_mpa', tau_s: 1.0, sigma: 0.001, range: [0, 2] },    /* [open] */
+    /* THE TWO LOW NUCLEAR RANGES (2026-09-26), added because the RPS now reads them: the
+     * source-range high flux trip and the P-6 permissive (pwr2_protection). HR1 — protection
+     * reads a channel, not the plant. Ids, lags and ranges are the board layer's own
+     * (pwr_config's nis block), so an injected failure lands on both layers together, the #507
+     * convention. sigma 0 on purpose: both are LOG-domain signals, a linear sigma is meaningless
+     * across twelve decades, and counting noise stays the board layer's; a noiseless IR is also
+     * why P-6 needs no confirmation timer. Appended — each channel seeds its own PRNG (header),
+     * and a save without them restores the rest and primes these on the first step. */
+    { id: 'source_range',     src: 'sr_counts_cps',            tau_s: 0.5,  sigma: 0,    range: [1, 1e6] },          /* [adopted] pwr_config nis */
+    { id: 'intermediate_range', src: 'ir_amps',                tau_s: 0.5,  sigma: 0,    range: [1e-11, 2e-3] }      /* [adopted] pwr_config nis */
   ];
 
   function createInstruments(opts) {
