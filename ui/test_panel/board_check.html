@@ -1065,8 +1065,9 @@
           renderWithChecklist({ procedure_id: 'bcprobe', profile_key: '__bcprobe', step_index: i, complete: false });
         }
 
-        ck('glow: the popover is open with all four blockable rows drawn (the checks below have something to look at)',
-          !!pop0 && pop0.querySelectorAll('button[data-trip]').length === 4,
+        /* Five since 2026-09-27: owner ruling "B" (2026-09-26) added the SR HIGH FLUX row (P-6). */
+        ck('glow: the popover is open with all five blockable rows drawn (the checks below have something to look at)',
+          !!pop0 && pop0.querySelectorAll('button[data-trip]').length === 5,
           pop0 ? pop0.querySelectorAll('button[data-trip]').length + ' rows' : 'no popover');
 
         probeStep(0);
