@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.8.0-rc9] — 2026-09-27
+
 ### Changed
 - **Startup walkthrough step 13 and the aux feed card tell the true story** (#808 review). The gpm branch moved into the step: type 100 from 1.5 % (measured: 50 gpm stalls from 2 %); a stall way out; stated times 9–10 and 20–26 plant-minutes, SG level 33–38 %. Aux feed STOP scanner/manual: STOP leaves the auto-start armed (STANDBY), no longer "disarms". Cooldown prereq names both feed lineups.
 - **Power-range high-flux trip, high setting, 118 → 115 % of rated** (#808). 115 % is the general accident-analysis setpoint (Ginna TS Bases B 3.4.4, ML20339A221); the UFSAR's 118 % is a deliberately conservative bound for rod ejection only (§15.4.5 H), not an OCR shift as the engine header claimed. Gauge danger band, two walkthrough Background lines and Manuals 03/06/09 follow. No gate reddened; no measured evolution rides between 115 and 118 %.
@@ -38,8 +40,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ### Tests
 - `run_walkthrough_routes.js` split into three parts (CI shard timeout, CI run 36319512542): part A = pwr_startup alone, part B = pwr_cooldown's routes + the four small legs, part C = pwr_cooldown's mutations + the chain. `--all` still runs it unsplit; default concurrency 4 -> 8. 285/0/285 checks unchanged (114 + 118 + 53); each part measured standalone under the 450 s target (246 / 300 / 417 s).
-
-## [Alpha 1.8.0-rc8] — 2026-09-27
 
 ### Changed
 - **Raise power stages 4-7: the temperature check-off ticks when AVG COOLANT TEMPERATURE enters the tile's green
