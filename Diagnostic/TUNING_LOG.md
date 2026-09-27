@@ -29,6 +29,47 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-27-develop-a (Mode 3 → Mode 1 rebuilt on the P-6 source-range block: block, approach to +0.3..+1.0, level at 1.0e-8 A)
+
+Scratch worktree exp/rc8w (rc7 + layman 9 + step 9 unlock fix + exp/807j plant side). OWNER RULING, 2026-09-26: he replied
+"B" to "B: A, plus a manual source-range block at P-6"; A = "9b becomes 'tap until STARTUP RATE is steady between +0.3
+and +1.0' (sourced: 0.5 typical, 1.0 limit); a new step levels power at 1×10⁻⁸ A in the intermediate range and records
+the critical rod position and boron." Sources: inbox/sources/startup/EVIDENCE.md rows 12-21; startup_rest/COMPARISON.md.
+
+- **Why the card had to change, MEASURED.** The rc7 card on the 807j plant: typical route tripped on SR HIGH FLUX at
+  bank 208 (0.044 DPM), 19.5 plant-min into the approach. P-6 (1.0e-10 A) is met at control rod ~198, before criticality
+  (~207): step 8 ends at bank 205 with ~21,000 counts a second and INTER RANGE 6.5e-10 A.
+- **New 9-12.** 9 = block SR HIGH FLUX at P-6 (9a INTER RANGE ≥ 1.0e-10 A, 9b the block). 10 = approach: 10a unchanged,
+  10b SLOW hold to +0.5 then trim a plant-minute apart into +0.3..+1.0 (`~` 0.65 ± 0.355, `still_s` 60). 11 = level:
+  11a INTER RANGE 1.0e-8 A, 11b insert about 12 at MED then trim on two-minute reads to −0.02..+0.02 (`still_s` 120), 11c
+  BORON CHEM 709-729 ppm read with CONTROL ROD POSITION. 12 = point of adding heat: 12a taps to +0.15, 12b power 1 %, 12c
+  rate +0.10 or less. Old 10 and 11 gone (their `implied_by` row with them). 13-17 keep their numbers.
+- **10b is "hold, then tap", not the ruling's literal "tap" (declared).** inbox/rc8w/m.js, seed 42: taps a plant-minute
+  apart from bank 205 first read +0.3 at bank 217 after 13.6 plant-min, INTER RANGE already 1.2e-7 A (a decade past the
+  level point). SLOW hold released at +0.4 settles 0.29; at +0.5, bank 219, 0.43 at 7.3e-9 A; at +0.6, 0.53 but past
+  1.0e-8 A inside the minute.
+- **Level cue.** Holding INSERT until the tile first reads negative lets go 7 steps in (bank 212, +36 pcm); taps on
+  two-minute reads then end at 208 (+6 pcm, ~0.04 DPM true) after 12.9 min with INTER RANGE 6.6e-8 A. 12 in from 219
+  lands 207: −0.004 DPM, 9.6e-9 to 1.03e-8 A, level in 4.3 min. So the card names the count.
+- **Routes (run_walkthrough_routes, live runtime, seed 42).** Typical: 9 0.1 min; 10 2.8 min (let go at 218 on a +0.52
+  read, ticks at 0.397); 11 3.0 min (insert at 1.04e-8 A, bank 206, −0.014); 12 28.8 min (7 taps 206→213, ticks at 1.00 %,
+  0.096); 13 4.8; 14 1.8 (14c TAVG ticks with 14b); leg 10.0 % / 10.0 MWe. typical_pass3 within 0.3 min per step.
+  no_sr_block: SR HIGH FLUX trip, named, **2.52 plant-min** after the first rod motion (note: "about 2"; the check reads
+  the note's number ×1.5). overpull (+1.5 release, bank 232): "tap INSERT once" a minute apart cannot beat ~1.3 DPM;
+  10 and 11 are overtaken at 0.5 % and the leg completes. level_short (10 of 12): completes. rewind in the hold: completes.
+- **Checks + injections.** New `sr_trip` (note-read timing) ← `sr_note_too_soon` red; `rate10` (step 10 never ticks
+  above +1.0) ← `overpull_band_10` red on `overpull_notrim` (ticks at 1.44); `no_overtaken_10` now removes 10's and 11's.
+  Retired: `low_floor_9` (its row is gone), `never_tap_11` (the tap is 12a's action now). `tripCause` reads the PWR2
+  RPS's `pt.trip_cause` (was "unreported").
+- **Also.** 1e SHUTDOWN ROD POSITION 627 (WTSM App. 19-1 C.7). Step 2 Background: the one-method rule and the
+  doubling stop (Robinson GP-003 via SOER 07-1); the count "roughly triples" is INHERITED (807j: doubles at 796 ppm,
+  60 min in), not re-measured. 14c STEAM DUMP AUTO again → TAVG (new derived `steam_dump_tavg_mode`); measured on the
+  route: 14c ticks on the press (the word reads TAVG); any dump transient from the switch NOT separately measured. Raise power 4 Background: rods stay
+  manual (OWNER 2026-08-30). The 1/M `overtaken` no longer says the SR "switched itself off".
+- **Trap.** A route policy that acts on the first broadcast a tile reads the target races a debounced row: 11a
+  (≥ 1.0e-8 A) never latched when the insert went in on that broadcast, and 12a's tap landed on the broadcast its
+  rods-still clock completed. Read the tile, then act only if it is still short.
+
 ## Session log — 2026-09-26-develop-l (the P-6 manual source-range block and the SR high flux trip)
 
 Scratch worktree exp/807j (from develop dab17d5c). OWNER RULING, 2026-09-26, "B": *"A, plus a manual

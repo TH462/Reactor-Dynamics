@@ -781,7 +781,13 @@ if (!only && RUN_B) {
       }
       if (!burst && cs.step_index === firstPlot) {
         burst = true;   // the player pulls straight through the approach and never plots
-        svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 300, speed: 'normal' });
+        /* 2026-09-27-develop-a: the source range no longer secures itself (OWNER RULING 2026-09-26 "B"); it goes off
+         * when the player BLOCKS SR HIGH FLUX, allowed from P-6 (control rod ~198, subcritical). The player here
+         * pulls to 200 and blocks at once -- early, before any point is plotted -- which is the route to this skip. */
+        svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 200, speed: 'normal' });
+      }
+      if (burst && s.true_state.sr_energized !== false) {
+        try { svc.handleCommand({ action: 'set_trip_block', trip_id: 'sr_high', blocked: true }); } catch (e) { /* refused below P-6 */ }
       }
       if (burst && srOffT === null && s.true_state.sr_energized === false) srOffT = s.metadata.sim_time;
       if (srOffT !== null && doneT === null && cs.step_index > lastPlot) {
@@ -791,7 +797,7 @@ if (!only && RUN_B) {
       if (doneT !== null || (srOffT !== null && s.metadata.sim_time - srOffT > 120)) break;
     }
     var by = plotIdx.map(function (k) { return cs && cs.done_by ? cs.done_by[k] : null; });
-    ck('every 1/M plot step checks off as OVERTAKEN once the source range secures (#641 — was a soft lock on the plot box)',
+    ck('every 1/M plot step checks off as OVERTAKEN once the source range is switched off by an early SR block (#641 — was a soft lock on the plot box)',
        plotIdx.length === 5 && srOffT !== null && doneT !== null &&
        by.every(function (b) { return b === 'overtaken'; }) && (doneT - srOffT) <= 60,
        srOffT === null ? 'source range never secured in ' + n + ' ticks'
@@ -2812,8 +2818,8 @@ if (!only && RUN_B) {
       var okFloor = v != null && digits != null &&
                     v.toFixed(digits) !== (v * (1 - 1e-9)).toFixed(digits) &&
                     v.toFixed(digits) === (v * (1 + 1e-9)).toFixed(digits);
-      ck('2ab.4 the criticality step waits for the FIRST power the tile prints as 0.1 %, not the middle of that digit (#749 item 2)',
-         okFloor && v.toFixed(digits) === '0.1',
+      ck('2ab.4 the first REACTOR POWER row after the approach waits for the FIRST value the tile prints as its target, 1.0 %, not the middle of that digit (#749 item 2)',
+         okFloor && v.toFixed(digits) === '1.0',   /* 2026-09-27-develop-a: the first power row after the approach is 12b, "1.0 %" */
          v == null ? 'no power_pct acceptance found at or after step 9'
                    : digits == null ? 'could not read the REACTOR POWER tile\'s `digits` out of pwr_board_data.js'
                    : 'step ' + (si + 1) + ' acc power_pct > ' + v + '; the tile (' + digits +
@@ -2932,6 +2938,9 @@ if (!only && RUN_B) {
         (s2.accs || []).forEach(function (en) { if (si === -1 && en && en.p === 'ir_amps') { st = s2; si = i; } });
       });
       if (!st) { ck('2ab.7 the criticality step carries an ir_amps row', false, 'none found'); return; }
+      /* RETIRED 2026-09-27-develop-a: the INTER RANGE progress row and the REACTOR POWER row no longer share a step
+       * (OWNER RULING 2026-09-26 "B": 11a waits for 1.0e-8 A and the level-off; 12b's power row is a separate climb). */
+      if (!st.accs.some(function (e) { return e.p === 'power_pct'; })) { console.log('  (2ab.7 not run: no step carries both an INTER RANGE and a REACTOR POWER row)'); return; }
       var irEn = null, pwEn = null;
       st.accs.forEach(function (e) { if (e.p === 'ir_amps') irEn = e; if (e.p === 'power_pct') pwEn = e; });
       var svc = mkSvc('hot_zero_power');
@@ -3075,9 +3084,12 @@ if (!only && RUN_B) {
         });
       });
       ck('2ad.1 every authored `implied_by` names a real sibling, on an unordered step, and never covers the whole step (#749)',
-         bad.length === 0 && carriers.length >= 1,
-         bad.length ? bad.join('; ') : (carriers.length ? carriers.join(' · ') : 'NO step authors implied_by — has the row been reverted?'));
+         bad.length === 0,   /* carriers >= 1 dropped 2026-09-27-develop-a: the one shipped carrier (old startup 10) was removed by OWNER RULING 2026-09-26 "B" */
+         bad.length ? bad.join('; ') : (carriers.length ? carriers.join(' · ') : 'no step authors implied_by (the old startup step 10 carrier went with the 2026-09-26 "B" rebuild)'));
     })();
+    /* 2ad.2-5 drove the ONE shipped carrier. None ships since 2026-09-27-develop-a, so they do not run: the
+     * mechanism (InstructorLayer._gradeAccs implication pass) has NO pool-level gate until a step authors one. */
+    if (IMPL_IDX < 0) { console.log('  (2ad.2-5 not run: no shipped `implied_by` carrier)'); return; }
 
     /* --- 2. THE IMPLICATION IS ARITHMETIC ON THIS PLANT, and the constant is LIFTED out of the
      * engine rather than quoted here: `pwr2_true_state` computes `ir_amps = K_IR x power_frac`,
@@ -3355,7 +3367,7 @@ if (!only && RUN_B) {
         if (c.awaiting_ack) { svc.handleCommand({ action: 'checklist_check', index: S9 }); continue; }
         var b = bank();
         if (b !== lastB) { lastB = b; lastMove = t(); }
-        if (b === goal && t() - lastMove >= 300) {           /* the note's policy, one tap per dwell */
+        if (b === goal && t() - lastMove >= 60) {            /* one tap a plant-minute (10b, 2026-09-27-develop-a; was 300) */
           var r = s.instruments.startup_rate, d = r > 1.0 ? -1 : (r < FLOOR9 ? 1 : 0);   /* the card's target (#807) */
           if (d) {
             goal += d; lastMove = t();
@@ -3367,7 +3379,7 @@ if (!only && RUN_B) {
       return { entered: entered, left: left, by: by, bank: bank(), pw: s.instruments.power_range };
     }
     if (S9 < 0) { ck('2aj. pwr_startup carries the ordered STARTUP RATE approach step', false, 'not found'); return; }
-    var far = route(33), crept = route(11);
+    var far = route(33), crept = route(17);   /* 2026-09-27-develop-a: the card's SLOW hold to +0.5 lands 12 past critical; from 202 that is +17 */
     ck('2aj.1 a pull into the heating range does not strand the approach step — it is overtaken (quality pass 2026-09-23)',
        far.entered === S9 && far.left != null && far.by === 'overtaken',
        'entered ' + (far.entered + 1) + ', left ' + (far.left == null ? 'NEVER in 2400 s' : '+' + far.left.toFixed(0) + ' s by ' + far.by) +

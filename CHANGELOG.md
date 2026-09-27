@@ -31,6 +31,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **Mode 3 → Mode 1 walkthrough rebuilt on the P-6 source-range block** *(OWNER RULING, 2026-09-26, "B")*. New
+  step 9 blocks SR HIGH FLUX at P-6 after the last 1/M point; step 10 sets STARTUP RATE +0.3 to +1.0 (SLOW hold to +0.5,
+  then trim); new step 11 levels power at INTER RANGE 1.0e-8 A and records the critical rod position and boron; step 12
+  climbs from there to the point of adding heat. Old steps 10-11 merged away; still 17 steps. Nothing says the source
+  range switches itself off any more.
+- **Startup 1e checks SHUTDOWN ROD POSITION 627 of 627; step 2 states the one-reactivity-method rule; 14c puts the steam
+  dump in TAVG mode once the turbine is on line** (the chained route used to reach 100 % in pressure mode). Raise power
+  step 4 notes that real plants go to automatic rods near 15 % and this plant keeps them manual.
 - **The source range no longer switches itself off — P-6 now permits a manual block, and the
   source-range reactor trip exists** *(OWNER RULING, 2026-09-26: "B" — "A, plus a manual
   source-range block at P-6"; supersedes the 2026-09-01 directive, #598 item 7)*. New TRIP BLOCKS

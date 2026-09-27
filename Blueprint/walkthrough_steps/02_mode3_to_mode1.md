@@ -27,6 +27,8 @@
 
 ()1d. Check STARTUP RATE reads 0.00 DPM.
 
+()1e. Check SHUTDOWN ROD POSITION reads 627 of 627.
+
 Suggested time warp: 1×.
 
 Note: STARTUP RATE is in decades per minute (DPM): 1.0 means power grows tenfold every minute. The Turbine Trip / Low Steam Demand alarm is expected while the turbine is off line.
@@ -66,6 +68,8 @@ Boron dissolved in the reactor water absorbs neutrons. At this point it is one o
 719 ppm is set so that the reactor goes critical with the control rods about a third of the way out (around step 208 of 627). That leaves most of the rod travel free to control power.
 
 Boron and rods do different jobs. Boron changes slowly, over plant-hours, so it sets the starting point. Rods change reactivity within seconds, so they do the fine work of approaching critical.
+
+Real crews never add reactivity two ways at once: the rods stay still while boron is diluted, and a dilution that doubles the SOURCE RANGE count is stopped and checked. Coming from the Mode 5 to Mode 3 walkthrough, the count roughly triples during this dilution by design, because the core is being brought near critical on purpose.
 
 \[HIGHLIGHTED: ON, Boron Target (pulsing); Boron Status, Boron Concentration (steady)]
 
@@ -217,101 +221,107 @@ STARTUP RATE is the speedometer. 1.0 means power multiplies by ten every minute,
 
 
 
-9. Take the reactor just critical.
+9. Block the source range trip at P-6.
 
-*The prediction is only good to within about three steps either way, so the rods stop short of it and single steps find the real critical position.*
+*Once the reactor is critical the count climbs past the source range trip within minutes, so the trip is blocked before the last pulls.*
 
-()9a. Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position.
+()9a. Check INTER RANGE reads 1.0e-10 A or more while SOURCE RANGE still shows its count: both ranges see the core.
+
+()9b. Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the SR HIGH FLUX row. Check the row reads BLOCKED and SOURCE RANGE reads a dash, then press TRIP BLOCKS again to close the panel.
 
 Suggested time warp: 1×.
 
-Note: At SLOW the rods move about one step every 8 plant-seconds. This check-off ticks the moment CONTROL ROD POSITION reads 3 steps short of the prediction; let go of WITHDRAW there.
-
-()9b. Tap WITHDRAW one step, wait five plant-minutes, and read STARTUP RATE. Repeat until it reads +0.15 or more.
-
-Suggested time warp: 60× while you wait; 1× before every tap.
-
-Note: Expect about 6 to 8 taps from 3 short, 35 to 50 plant-minutes; at 60× each five-minute wait is five real seconds. This check-off comes five plant-minutes after your last tap, once STARTUP RATE reads +0.15 or more. Each step out adds about +0.03 to where STARTUP RATE settles. Over 1.0, tap INSERT once. SOURCE RANGE switches itself off above 1.0e5; INTER RANGE carries the reading.
+Note: Skip this and the reactor trips on SR HIGH FLUX about 2 plant-minutes after the rods start moving in the next step. The block also switches the SOURCE RANGE detector off; INTER RANGE and STARTUP RATE carry the reading from here. If power ever falls back below the permission, the plant releases the block by itself.
 
 
 
 Background
 
-Critical means the chain reaction keeps itself going: power rises with the rods still, and a positive STARTUP RATE is the sign.
+The source range counts single neutrons and is built for a shut-down core; above 1.0e5 counts a second its trip shuts the reactor down. When INTER RANGE reads 1.0e-10 A the two ranges overlap, and the plant allows the block, which the panel calls P-6 PERMISSIVE. On a real plant P-6 usually comes after criticality, but this core's strong neutron source lights it first, near CONTROL ROD POSITION 198.
 
-Below about 1 % power, where the reactor starts warming the water, nothing in the plant takes extra reactivity back out. So how far past critical the rods stop is what sets how fast power climbs.
+\[HIGHLIGHTED: Trip Blocks (pulsing); Intermediate Range, Source Range (steady)]
+
+
+
+10. Take the reactor critical and set STARTUP RATE between +0.3 and +1.0.
+
+*The prediction is only good to within about three steps, so the rods stop short of it; a steady positive STARTUP RATE with the rods still is what shows critical.*
+
+()10a. Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position.
+
+Note: At SLOW the rods move about one step every 8 plant-seconds. This check-off ticks the moment CONTROL ROD POSITION reads 3 steps short of the prediction; let go of WITHDRAW there.
+
+()10b. Hold WITHDRAW at SLOW until STARTUP RATE reads +0.5, then let go. A plant-minute later it should read +0.3 to +1.0: if lower, tap WITHDRAW once; if higher, tap INSERT once.
+
+Note: The rods stop about 12 steps past the prediction mark, about 2 plant-minutes of rod motion. STARTUP RATE reads high while the rods move and settles lower once they stop. This check-off comes a plant-minute after your last rod motion. Real crews never go above 1.0.
+
+Suggested time warp: 1×.
+
+
+
+Background
+
+Critical means the chain reaction keeps itself going: with the rods still, a steady positive STARTUP RATE is the sign, and it is how a crew declares the reactor critical.
+
+Below about 1 % power nothing in the plant takes reactivity back out, so how far past critical the rods stop sets how fast power climbs. Real crews keep it under 1.0 and usually near 0.5.
 
 \[HIGHLIGHTED: Withdraw, Rod Speed — Slow (pulsing); Startup Rate, Reactor Period, Source Range, Control Rod Position (steady)]
 
 
 
-10. Let power rise from critical with the rods still.
+11. Level power at 1.0e-8 A and record the critical rod position and boron.
 
-*For a long while the climb is too small for REACTOR POWER to show, so INTER RANGE and STARTUP RATE are the instruments to watch.*
+*With power held level the core is exactly critical, so the rods and boron at that moment are its measured critical point.*
 
-()10a. Leave the rods still and wait for INTER RANGE to read 1.0e-7 A or more.
+()11a. Wait for INTER RANGE to read 1.0e-8 A.
 
-()10b. Wait for REACTOR POWER to read 0.1 % or more.
+Note: It gets there about 2 plant-minutes after the rods stopped in step 10.
 
-Suggested time warp: 10×.
+()11b. Hold INSERT at MED about 12 steps. Two plant-minutes later read STARTUP RATE: above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once. Repeat until it reads 0.00.
 
-Note: Never 60×, where a 2½-second glance away is two and a half plant-minutes of reactor. REACTOR POWER reads 0.0 % while INTER RANGE climbs three decades, a thousandfold; after the +0.15 of step 9 that takes about 2 to 6 plant-minutes. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.
+Suggested time warp: 1× while the rods move; 10× while you wait for a read.
 
+Note: Level takes putting back every step pulled past critical: two short and STARTUP RATE settles near +0.05, and power doubles every 6 plant-minutes. STARTUP RATE dips negative while the rods go in; that is not level yet. This check-off comes two plant-minutes after your last rod motion.
 
-
-Background
-
-INTER RANGE measures a current, not a percentage. It shows a climb three decades below the point where REACTOR POWER shows its first tenth of a percent.
-
-That is why STARTUP RATE, PERIOD and INTER RANGE are the instruments to steer on from criticality up. The power meter only joins at the end.
-
-\[HIGHLIGHTED: Startup Rate, Reactor Period, Intermediate Range, Reactor Power (steady)]
-
-
-
-11. Let power climb to 0.5 %.
-
-*The rods are already far enough out. Extra steps now only speed up a climb that is already under way.*
-
-()11a. Leave the rods alone while STARTUP RATE is positive, until REACTOR POWER reads 0.5 % or more. If STARTUP RATE falls back to 0.00 with REACTOR POWER below 0.5 %, press SLOW, tap WITHDRAW once, and wait again.
-
-Suggested time warp: 5×; 1× before a tap. The plant behaves the same at any speed, but at 10× a tap has landed before you have read the rate.
-
-Note: This takes about 6 to 7 plant-minutes. SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE carries the reading from here; there is no button for it. Once it has gone, close the 1/M PLOT window with the ✕ in its corner. Its work is done.
+()11c. Write down CONTROL ROD POSITION and BORON CHEM: the critical rod position and boron.
 
 
 
 Background
 
-With the reactor just critical, power climbs by itself, and every extra rod step adds to a rise that is already under way. Below about 1 % the water is not yet warm enough to hold that climb back, which is why a high STARTUP RATE is a signal to wait, not to pull.
+At 1.0e-8 A power is still far too low to warm the water, so nothing but the rods and boron sets the reactivity. Power stays level only when the core is exactly critical.
 
-The SOURCE RANGE detectors would wear out if they stayed on at power, so the plant switches them off by itself once INTER RANGE is reading.
+The rod position and boron written down here are the core's measured critical point. A crew compares them with the 1/M prediction and with the 719 ppm estimate the startup began from.
 
-\[HIGHLIGHTED: Rod Speed — Slow, Withdraw (pulsing); Startup Rate, Intermediate Range, Source Range, Control Rod Position, 1/M Plot Tool (steady)]
+\[HIGHLIGHTED: Insert, Rod Speed — Normal (pulsing); Intermediate Range, Startup Rate, Control Rod Position, Boron Concentration (steady)]
 
 
 
-12. Let power climb to the point of adding heat, about 1 %.
+12. Raise power to the point of adding heat, about 1 %.
 
 *From about 1 % the core starts warming the water, and the warmer water starts holding the climb back.*
 
-()12a. Leave the rods alone until REACTOR POWER reads 1.0 % or more.
+()12a. Press SLOW. Tap WITHDRAW one step at a time, a plant-minute apart, until STARTUP RATE reads +0.15 or more a plant-minute after a tap.
 
-()12b. Wait for STARTUP RATE to fall to +0.10 or less.
+Note: Expect about 7 taps. Real crews climb gently here, between +0.1 and +0.2. The 1/M PLOT window has done its work: close it with the ✕ in its corner.
+
+()12b. Leave the rods alone until REACTOR POWER reads 1.0 % or more.
+
+Note: About 20 plant-minutes. REACTOR POWER reads 0.0 % for most of it while INTER RANGE climbs four decades. Not 60×: there a 2½-second glance is two and a half plant-minutes of reactor.
+
+()12c. Wait for STARTUP RATE to fall to +0.10 or less.
 
 Suggested time warp: 10×.
-
-Note: This takes about 3 plant-minutes. If STARTUP RATE reaches 0.00 with REACTOR POWER still under 1 %, press SLOW, tap WITHDRAW once, and wait again.
 
 
 
 Background
 
-Warmer water slows this reactor down, so once power is high enough to warm the water, the climb starts slowing itself. Below about 1 % that feedback is too weak to feel.
+Warmer water slows this reactor down, so once power is high enough to warm the water, the climb slows itself. This point is called the point of adding heat; on the board it shows as STARTUP RATE falling while the rods are still.
 
-This point is called the point of adding heat. On the board it shows as STARTUP RATE falling while the rods are still.
+INTER RANGE measures a current, not a percentage, and it shows this climb four decades before REACTOR POWER shows its first tenth of a percent.
 
-\[HIGHLIGHTED: Startup Rate, Intermediate Range, Control Rod Position (steady)]
+\[HIGHLIGHTED: Rod Speed — Slow, Withdraw (pulsing); Startup Rate, Intermediate Range, Reactor Power, Control Rod Position (steady)]
 
 
 
@@ -347,6 +357,12 @@ Suggested time warp: 1×.
 
 Suggested time warp: 10×.
 
+()14c. Press AUTO on the STEAM DUMP card again and check its status reads TAVG.
+
+Suggested time warp: 1×.
+
+Note: With the turbine on line, AUTO selects average-temperature mode: the dump then opens only if the reactor water runs hot, as after a turbine trip. Real crews switch once the turbine carries the steam and the dump valves have shut.
+
 
 
 Background
@@ -355,7 +371,7 @@ LATCH resets the turbine so it can take steam. LOAD is how much electricity the 
 
 As the generator picks up load, more steam is drawn, the water cools, and cooler water raises power. The reactor follows the turbine up to about 10 % by itself. That coupling is the central idea of this plant.
 
-\[HIGHLIGHTED: Turbine — Latch, Load Setpoint (pulsing); Turbine Load, Generator Output (steady)]
+\[HIGHLIGHTED: Turbine — Latch, Load Setpoint, Steam Dump AUTO (pulsing); Turbine Load, Generator Output, Steam Dump Status (steady)]
 
 
 
@@ -426,6 +442,29 @@ The reactor is critical, the generator is carrying load, and both startup trips 
 
 
 ## Notes — agent record, NOT step text
+
+**2026-09-27-develop-a — the source-range block, the level-off at 1.0e-8 A, and four sourced additions.**
+*(OWNER RULING, 2026-09-26: he replied "B" to "B: A, plus a manual source-range block at P-6", where A = "9b
+becomes 'tap until STARTUP RATE is steady between +0.3 and +1.0' (sourced: 0.5 typical, 1.0 limit); a new step
+levels power at 1×10⁻⁸ A in the intermediate range and records the critical rod position and boron.")* Sources:
+`inbox/sources/startup/EVIDENCE.md` rows 12-21, `inbox/sources/startup_rest/COMPARISON.md` A6, A8, B8, B9.
+
+* **Steps 9-12 rebuilt.** 9 blocks the SR trip at P-6 (new); 10 is the approach with 10b's band; 11 levels at
+  1.0e-8 A and records rods and boron (new); 12 raises power to the point of adding heat from the level-off (old
+  10, 11 and 12 merged). 13-17 keep their numbers.
+* **Declared ordering difference.** Every source orders critical, then P-6, then the block. This core's source
+  lights P-6 subcritical (control rod ~198, ~3,100 counts a second; critical ~207), so the block comes after the
+  last 1/M point and before the final pulls.
+* **10b departs from the ruling's literal "tap".** MEASURED: taps a plant-minute apart from the 3-short mark first
+  read +0.3 at bank 217 after 13.6 plant-minutes, with INTER RANGE already 1.2e-7 A, a decade past the level
+  point. A SLOW hold to +0.5 then taps to trim reaches the band in ~3 plant-minutes at 7e-9 A.
+* **SOURCE RANGE no longer "switches itself off".** Every sentence saying so is gone; the block does it.
+* **1e** (shutdown rods 627 of 627, WTSM App. 19-1 C.7), **step 2's reactivity rule** (text only, Robinson
+  GP-003 5.4.4/5.4.5 via SOER 07-1), **14c** (steam dump to TAVG once the turbine is on line, WTSM §19.4), and a
+  raise-power step 4 Background line on rods staying manual (OWNER DIRECTIVE 2026-08-30: "I want to keep rod
+  control manual").
+* Measured numbers for every step: `Diagnostic/TUNING_LOG.md` 2026-09-27-develop-a.
+
 
 *Drafted 2026-09-22 on the workbench lane from the develop working copy of `02\\\_mode3\\\_to\\\_mode1.md`
 (the newest text, carrying the owner's step 5 example). Nothing here is instruction to a player.*

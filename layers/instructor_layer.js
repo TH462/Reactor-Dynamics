@@ -1637,6 +1637,13 @@
       var m = cs ? cs.steam_dump_mode : undefined;
       return typeof m === 'string' ? (m === 'pressure' ? 1 : 0) : undefined;
     },
+    /* ...AND IN AVERAGE-TEMPERATURE MODE, the word TAVG (2026-09-27-develop-a, `pwr_startup` 14c): the
+     * chained route used to reach 100 % still in pressure mode while the standalone raise-power IC
+     * boots in TAVG. Same tile test (`m === 'tavg'` -> "TAVG"). */
+    steam_dump_tavg_mode: function (cs) {
+      var m = cs ? cs.steam_dump_mode : undefined;
+      return typeof m === 'string' ? (m === 'tavg' ? 1 : 0) : undefined;
+    },
     /* BORON STATUS READS HOLD (#807 item 5, `pwr_heatup` 16d) — the card's status word is
      * `boron_adjust > 0 ? BORATING : < 0 ? DILUTING : HOLD` (pwr_board_wiring `ims3wy5oym4`), so
      * this is exactly the tile's own test, 1 when it reads HOLD. It exists because a SOURCE RANGE

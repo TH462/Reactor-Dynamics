@@ -156,7 +156,9 @@ var STEP_UI = {
     { i: 5, view: 'board', control: 'Control Bank' },
     { i: 6, view: 'board', control: 'Control Bank' },
     { i: 7, view: 'board', control: 'Control Bank' },
-    { i: 8, view: 'board', control: 'Control Bank' },
+    /* 2026-09-27-develop-a: i:8 is the new SR block at P-6 (owner ruling 2026-09-26 "B"); old 10 and 11 merged
+     * into 12 and the level-off became 11, so the count and every other row stay. */
+    { i: 8, view: 'board', control: 'Trip Blocks' },
     { i: 9, view: 'board', control: 'Control Bank' },
     /* 2026-09-23: old step 9 split into 9 + 10 and old step 11 (no `control`) folded away, so
      * i:10 is now a real Control Bank step (the old i:9, power 0.5 %) and i:11 onward keep

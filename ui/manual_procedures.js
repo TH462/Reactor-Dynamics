@@ -354,9 +354,12 @@
    * on the wire and `false < 1` is the same test the leg's own confirmation step uses. */
   var SR_OVERTAKEN = {
     p: 'sr_energized', op: '<', v: 1,
-    label: 'too late to plot: SOURCE RANGE switched itself off above 1.0e5 counts a second',
-    text: 'This point is overtaken: SOURCE RANGE switched itself off above 1.0e5 (100,000) counts a second, so the reactor is critical or about to be. Stop withdrawing and go to the criticality step.',
-    industry: 'SOURCE RANGE DE-ENERGIZED ABOVE 1E5 CPS — 1/M APPROACH OVERTAKEN. Remaining plot steps skipped. Hold rods; STARTUP RATE under 1 DPM.',
+    /* 2026-09-27-develop-a: the channel no longer secures itself (OWNER RULING 2026-09-26 "B", the manual
+     * P-6 block); it goes off only when the player blocks SR HIGH FLUX, which step 9 asks for after the last
+     * point. Reached here only by a block taken early (P-6 is met near control rod 198, during step 8). */
+    label: 'too late to plot: SOURCE RANGE is off, its trip was blocked',
+    text: 'This point is overtaken: SOURCE RANGE is switched off because SR HIGH FLUX was blocked, so no more 1/M points can be taken. Stop withdrawing and go on.',
+    industry: 'SOURCE RANGE DE-ENERGIZED (SR HIGH FLUX BLOCKED) — 1/M APPROACH OVERTAKEN. Remaining plot steps skipped. Hold rods.',
   };
 
   function obs(text, acc, note, hl, why, past, hlWatch, extra) {
@@ -2461,7 +2464,13 @@
                    label: 'RCP FLOW 90 % or more: the pumps are running' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025,   /* −0.025 to +0.025: every value toFixed(2) draws as −0.02 to +0.02 */
                    ask: 'Check STARTUP RATE reads 0.00 DPM.',
-                   label: 'STARTUP RATE −0.02 to +0.02' }],
+                   label: 'STARTUP RATE −0.02 to +0.02' },
+                 /* 1e (2026-09-27-develop-a): shutdown banks verified out before the control bank moves —
+                  * NRC HRTD Westinghouse Technology Manual §19 App. 19-1 C.7 (ML11223A342), "Verify all
+                  * shutdown banks are fully withdrawn within 15 minutes of withdrawing control banks." */
+                 { p: 'shutdown_bank_steps', op: '>=', v: 626.5,
+                   ask: 'Check SHUTDOWN ROD POSITION reads 627 of 627.',
+                   label: 'SHUTDOWN ROD POSITION 627 of 627' }],
           note: 'STARTUP RATE is in decades per minute (DPM): 1.0 means power grows tenfold every minute. The Turbine Trip / Low Steam Demand alarm is expected while the turbine is off line.',   /* OWNER RULING 2026-09-25 "A" (#653 layman pass 5 S-2) */
           hl_watch: ['Startup Rate', 'Tavg', 'Primary Pressure', 'Reactor Coolant Pumps (RCP)', 'Boron Concentration'] },
         /* THE NUMBER CAME OUT *(OWNER RULING, 2026-09-14/15: selected "Drop the number entirely")*.
@@ -2561,7 +2570,7 @@
          * and the step ticks at once. */
         { text: 'Dilute boron to the estimated critical concentration, 719 ppm.',
           aim: 'Less boron in the water lets the reactor go critical with the control rods low in their travel.',
-          why: 'Boron dissolved in the reactor water absorbs neutrons. At this point it is one of the things keeping the reactor shut down. Dilution replaces some borated water with clean water, so the boron\'s hold gets weaker and the control rods can finish the job taking the plant critical.\n\n719 ppm is set so that the reactor goes critical with the control rods about a third of the way out (around step 208 of 627). That leaves most of the rod travel free to control power.\n\nBoron and rods do different jobs. Boron changes slowly, over plant-hours, so it sets the starting point. Rods change reactivity within seconds, so they do the fine work of approaching critical.',
+          why: 'Boron dissolved in the reactor water absorbs neutrons. At this point it is one of the things keeping the reactor shut down. Dilution replaces some borated water with clean water, so the boron\'s hold gets weaker and the control rods can finish the job taking the plant critical.\n\n719 ppm is set so that the reactor goes critical with the control rods about a third of the way out (around step 208 of 627). That leaves most of the rod travel free to control power.\n\nBoron and rods do different jobs. Boron changes slowly, over plant-hours, so it sets the starting point. Rods change reactivity within seconds, so they do the fine work of approaching critical.\n\nReal crews never add reactivity two ways at once: the rods stay still while boron is diluted, and a dilution that doubles the SOURCE RANGE count is stopped and checked. Coming from the Mode 5 to Mode 3 walkthrough, the count roughly triples during this dilution by design, because the core is being brought near critical on purpose.',
           note: 'Dilution takes about 2 plant-hours coming from the Mode 5 to Mode 3 walkthrough, which arrives near 918 ppm: about 1¾ to reach 729 ppm, then about 20 plant-minutes of MIXING while the last of it arrives. The Hot Standby preset starts at 719 ppm, so the step ticks at once.',
           control: 'Boron control', target: 'BORON box 719; BORON STATUS counting down, then MIXING, then HOLD; BORON CHEM tracking live',
           /* 90, not 65 (#749). MEASURED end to end on the full stack: 917.6 → 718.7 ppm takes
@@ -3056,6 +3065,35 @@
           overtaken: SR_OVERTAKEN,
           hl: ['Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
+        /* STEP 9 — BLOCK THE SOURCE RANGE TRIP AT P-6 *(OWNER RULING, 2026-09-26, he replied "B" to "B: A,
+         * plus a manual source-range block at P-6")*. Sourced: NRC HRTD Westinghouse Technology Manual §9.1
+         * (ML11223A263) p.9.1-6, "When the intermediate range indication is on scale, P-6 ... is energized
+         * and the source range reactor trip may be manually blocked by the operator. Once the channels are
+         * blocked, the high voltage is removed from the source range detectors"; §19 App. 19-1 step 12,
+         * "Block the source range high flux trip at P-6 (10-10 amps on the intermediate range)."
+         *
+         * ⚠ DECLARED ORDERING DIFFERENCE: every source orders criticality, then P-6, then the block. On
+         * this plant P-6 is met SUBCRITICAL (MEASURED: INTER RANGE 1.0e-10 A at control rod ~197.6,
+         * ~3,100 counts a second; critical ~207 at ~22,600), and step 8 ends at bank ~205 with the count
+         * near 21,000 and INTER RANGE 6.5e-10 A. Unblocked, a just-critical core reaches the 1.0e5 trip
+         * in minutes (MEASURED, the pre-change typical route: SR trip at bank 208, 0.044 DPM, 19.5
+         * plant-minutes into the approach). So the block comes here, after the last 1/M point (the plot
+         * needs the count) and before the final pulls. */
+        { text: 'Block the source range trip at P-6.',
+          aim: 'Once the reactor is critical the count climbs past the source range trip within minutes, so the trip is blocked before the last pulls.',
+          why: 'The source range counts single neutrons and is built for a shut-down core; above 1.0e5 counts a second its trip shuts the reactor down. When INTER RANGE reads 1.0e-10 A the two ranges overlap, and the plant allows the block, which the panel calls P-6 PERMISSIVE. On a real plant P-6 usually comes after criticality, but this core\'s strong neutron source lights it first, near CONTROL ROD POSITION 198.',
+          control: 'Trip Blocks', target: 'SR HIGH FLUX reads BLOCKED; SOURCE RANGE off',
+          cmd: { action: 'set_trip_block', trip_id: 'sr_high', blocked: true }, hold: 10,
+          wait_hint: false, wait_speed: 1,
+          accs_ordered: true,
+          accs: [{ p: 'ir_amps', op: '>=', v: 9.95e-11,   /* the "1.0e-10" render floor (fmtExp), the P-6 setpoint */
+                   ask: 'Check INTER RANGE reads 1.0e-10 A or more while SOURCE RANGE still shows its count: both ranges see the core.',
+                   label: 'INTER RANGE reads 1.0e-10 A or more (P-6)' },
+                 { p: 'sr_high_blocked', op: '>', v: 0,
+                   ask: 'Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the SR HIGH FLUX row. Check the row reads BLOCKED and SOURCE RANGE reads a dash, then press TRIP BLOCKS again to close the panel.',
+                   note: 'Skip this and the reactor trips on SR HIGH FLUX about 2 plant-minutes after the rods start moving in the next step. The block also switches the SOURCE RANGE detector off; INTER RANGE and STARTUP RATE carry the reading from here. If power ever falls back below the permission, the plant releases the block by itself.',
+                   label: 'SR HIGH FLUX reads BLOCKED on the TRIP BLOCKS panel' }],
+          hl: ['Trip Blocks'], hl_watch: ['Intermediate Range', 'Source Range'] },
         /* SPELL IT OUT *(OWNER, 2026-09-03, #619 item 21: "uses acronym (SUR) without spelling
          * it out, ie. STARTUP RATE (SUR)")*. The pool now expands it at its first appearance in
          * a visible line (the 7,000-count step) and says "startup rate" in full everywhere else;
@@ -3129,8 +3167,8 @@
          * THE EXCESS: the replay asserts `acc` at the END of `hold`, so 400 s would now assert on
          * a plant reading 1e-4 %. Measured across seeds 1/7/42/123 the crossing is at 1444, 1506,
          * 1650 and 1506 s; 1800 leaves 9 % over the worst. Move the creep and this hold moves. */
-        { text: 'Take the reactor just critical.',
-          aim: 'The prediction is only good to within about three steps either way, so the rods stop short of it and single steps find the real critical position.',
+        { text: 'Take the reactor critical and set STARTUP RATE between +0.3 and +1.0.',
+          aim: 'The prediction is only good to within about three steps, so the rods stop short of it; a steady positive STARTUP RATE with the rods still is what shows critical.',
           /* ⚠ THE NOTE WAS 2,103 CHARACTERS AND THE PLAYER LOST THE ACTION IN IT (#653 S-12,
            * 2026-09-15 layman playtest). MEASURED on the built pool before this edit: note 2103
            * chars, `why` 502, `text` 107 — eleven numeric thresholds and three conditional
@@ -3192,8 +3230,8 @@
            * of what ships. What the tail carried is not lost from the LEG: step 10's note still says
            * the plant behaves the same at any speed and that SOURCE RANGE hands over above 1.0e5,
            * step 11 still teaches the hand-over, and step 8's Background still defines the rate. */
-          why: 'Critical means the chain reaction keeps itself going: power rises with the rods still, and a positive STARTUP RATE is the sign.\n\nBelow about 1 % power, where the reactor starts warming the water, nothing in the plant takes extra reactivity back out. So how far past critical the rods stop is what sets how fast power climbs.',
-          control: 'Control Bank', target: 'STARTUP RATE +0.15 or more with the rods still',
+          why: 'Critical means the chain reaction keeps itself going: with the rods still, a steady positive STARTUP RATE is the sign, and it is how a crew declares the reactor critical.\n\nBelow about 1 % power nothing in the plant takes reactivity back out, so how far past critical the rods stop sets how fast power climbs. Real crews keep it under 1.0 and usually near 0.5.',
+          control: 'Control Bank', target: 'STARTUP RATE +0.3 to +1.0 with the rods still',
           /* THE DWELL GETS A SPEED, AND IT IS MEASURED *(OWNER, 2026-09-14: "We could mention that
            * dwell in the walkthrough and have the user put it at 5 or 10x speed. We should test this
            * region.")*. This step carried `wait_hint: false` and a note saying "stay at 1×", both from
@@ -3277,8 +3315,10 @@
           /* +8/+3 -> +10/+1 (2026-09-26-develop-k): the replay's plots now print 215, not 213, and 9a is
            * `reach_1m` — MEASURED, the +8 stop at 210 (5 short) never ticked 9a (replay red). 212 is 3
            * short of 215 (and past the mark of any prediction up to 215); the +1 lands on 213 as before. */
-          cmd: { action: 'rod_nudge', group_id: 'control', steps: 10, speed: 'slow' }, hold: 720,
-          replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 1, speed: 'slow' } },
+          /* 2026-09-27-develop-a: +1 -> +7. The replay's 212 is the mark; +7 lands 219, 12 past critical
+           * (207), where 10b's hold to +0.5 releases on the card's own route (MEASURED, seeds 42 / 7). */
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 10, speed: 'slow' }, hold: 300,
+          replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 7, speed: 'slow' } },
           /* ---- STEP 9 GRADES THE APPROACH, WHICH NOTHING DID BEFORE (2026-09-23 split) ----
            * His 9a is "Rods stopped 3 steps short of the 1/M prediction" and his 9b "STARTUP RATE
            * positive and steady with the rods stopped". Old step 9 graded neither — its rows were
@@ -3475,319 +3515,123 @@
                   * the rate is read five plant-minutes after the last rod motion, so a tap's spike cannot
                   * tick it (run_checklist_pwr2 §2ak.5) — inside this row's grading, where it delays the
                   * TICK and never the unlock. It is also 9a's latch's re-assertion (§2ak.1). */
-                 { p: 'startup_rate_dpm', op: '>=', v: 0.145, still_s: 300,
-                   ask: 'Tap WITHDRAW one step, wait five plant-minutes, and read STARTUP RATE. Repeat until it reads +0.15 or more.',
-                   note: 'Expect about 6 to 8 taps from 3 short, 35 to 50 plant-minutes; at 60× each five-minute wait is five real seconds. This check-off comes five plant-minutes after your last tap, once STARTUP RATE reads +0.15 or more. Each step out adds about +0.03 to where STARTUP RATE settles. Over 1.0, tap INSERT once. SOURCE RANGE switches itself off above 1.0e5; INTER RANGE carries the reading.',
-                   wait_speed: 60,   /* 10 -> 60 (develop-k, owner: "waiting 5 plant minutes at 10x can take too long. suggest 60x speed for step 9b") */
-                   act_first: true,   /* 1× until the first tap lands on THIS substep — 9a's hold already spent the step's cmd_seen (layman pass 5 S-1) */
-                   speed_text: '60× while you wait; 1× before every tap.',
-                   label: 'STARTUP RATE +0.15 or more, rods still for five plant-minutes' }],
+                 /* 10b: A STEADY RATE IN +0.3 TO +1.0 *(OWNER RULING, 2026-09-26, "B"; A = "9b becomes 'tap until
+                  * STARTUP RATE is steady between +0.3 and +1.0' (sourced: 0.5 typical, 1.0 limit)")*. Sources:
+                  * Turkey Point 2020 special inspection (ML20344A126) p.11, "withdrawing rods in steps and
+                  * establishing a lower SUR of 0.5 dpm"; H.B. Robinson GP-003 step 8 (ML120480088), "The MAXIMUM
+                  * Startup Rate allowable is 1.0 dpm." (EVIDENCE.md rows 13-14.)
+                  *
+                  * ⚠ "HOLD, THEN TAP", NOT "TAP" ALONE — MEASURED, and the reason is the 1.0e-8 A level point.
+                  * One-step taps a plant-minute apart from the 3-short mark (bank 205) first read +0.3 at bank
+                  * 217 after 13.6 plant-minutes, with INTER RANGE already 1.2e-7 A — a decade past the level
+                  * point step 11 asks for. Holding WITHDRAW at SLOW until the tile reads +0.5 releases at bank
+                  * 219 in 1.9 plant-minutes with INTER RANGE 2.3e-9 A; a minute later it reads 0.43 (in band)
+                  * at 7.3e-9 A. Released at +0.4 the settled rate is 0.29 (one tap short); at +0.6, 0.53 but
+                  * INTER RANGE is past 1.0e-8 before the minute is up. The taps stay as the trim.
+                  * `~` 0.65 ± 0.355 = 0.295 to 1.005, the tile's "+0.30" to "+1.00"; `still_s: 60` reads it a
+                  * plant-minute after the last rod motion, so the moving-rod reading (runs high) cannot tick it. */
+                 { p: 'startup_rate_dpm', op: '~', v: 0.65, tol: 0.355, still_s: 60,
+                   ask: 'Hold WITHDRAW at SLOW until STARTUP RATE reads +0.5, then let go. A plant-minute later it should read +0.3 to +1.0: if lower, tap WITHDRAW once; if higher, tap INSERT once.',
+                   note: 'The rods stop about 12 steps past the prediction mark, about 2 plant-minutes of rod motion. STARTUP RATE reads high while the rods move and settles lower once they stop. This check-off comes a plant-minute after your last rod motion. Real crews never go above 1.0.',
+                   wait_speed: 1,
+                   label: 'STARTUP RATE +0.3 to +1.0, rods still a plant-minute' }],
           hl: ['Withdraw', 'Rod Speed — Slow'],
           hl_watch: ['Startup Rate', 'Reactor Period', 'Source Range', 'Control Rod Position'] },
-        /* STEP 10 — THE CLIMB FROM CRITICAL (2026-09-23, split out of old step 9). Its two rows,
-         * their render-band floors, the `implied_by` relief and every measurement in the comments
-         * below came across UNCHANGED; only the hold (1800 -> 1320, see step 9) and the text moved.
-         * `control` stays 'Control Bank' — the step's action is to leave that bank still, and
-         * `verify_manual_follow`'s map keys on it. No `hl`: nothing is pressed here. */
-        { text: 'Let power rise from critical with the rods still.',
-          aim: 'For a long while the climb is too small for REACTOR POWER to show, so INTER RANGE and STARTUP RATE are the instruments to watch.',
-          why: 'INTER RANGE measures a current, not a percentage. It shows a climb three decades below the point where REACTOR POWER shows its first tenth of a percent.\n\nThat is why STARTUP RATE, PERIOD and INTER RANGE are the instruments to steer on from criticality up. The power meter only joins at the end.',
-          control: 'Control Bank', target: 'INTER RANGE 1.0e-7 A, then REACTOR POWER 0.1 %, rods still',
-          wait_hint: false, wait_speed: 10, speed_text: true, hold: 1320,
-          note: 'Never 60×, where a 2½-second glance away is two and a half plant-minutes of reactor. REACTOR POWER reads 0.0 % while INTER RANGE climbs three decades, a thousandfold; after the +0.15 of step 9 that takes about 2 to 6 plant-minutes. If the reactor trips, the SCRAM button reads SCRAMMED / PRESS TO RESET; press it before the rods will move again.',
-          /* 0.1, not 0.02: the done-when renders at the tile's resolution, and 0.02 drew "When
-           * Reactor power ≥ 0 %" beside a tile reading 0.0 — true of every plant, unmet for four
-           * minutes (layman playtest pass 2, #653 S-5). 0.1 is the first digit the tile shows.
-           *
-           * ⚠ AND 0.1 WAS THE MIDDLE OF THAT DIGIT, NOT THE START OF IT (#749 item 2, measured
-           * 2026-09-18). REACTOR POWER is a `digits: 1` tile rendered `toFixed(1)`, so it prints
-           * "0.1" for anything in [0.05, 0.15) — the same render-band trap as the source-range
-           * count targets on steps 5-8 (the RENDER BAND block on step 5 states the rule). The
-           * literal is therefore the band's LOWER EDGE, and the card's line does not change:
-           * `fmtPredValue` rounds a power to one decimal, so 0.05 still draws "REACTOR POWER
-           * > 0.1 %". The player-facing string is byte-identical; what moves is when it becomes
-           * true of the board.
-           *
-           * MEASURED, full stack, `hot_zero_power`, seed 42, the authored route driven end to end
-           * (this step becomes active at t = 1689.4 s):
-           *   the tile first prints "0.1"                       +1307.5 s
-           *   OLD  `power_range > 0.10` latched                 +1414.9 s   (107.4 s of dark
-           *                                                                  Continue beside a
-           *                                                                  tile reading 0.1)
-           *   THIS `power_range > 0.05` latches                 +1306.4 s   (1.1 s BEFORE the
-           *                                                                  first print — the
-           *                                                                  board's own 2 s
-           *                                                                  display damping,
-           *                                                                  which #670 rules the
-           *                                                                  acceptance does not
-           *                                                                  read)
-           *
-           * WHAT THIS DOES NOT FIX, and the two things that were measured and NOT done. The stare
-           * itself is 21.8 plant-minutes of "0.0" and it is the tile's one-decimal resolution, not
-           * the threshold: only INTER RANGE moves during it (three decades), which is exactly what
-           * this step's `note` and `why` already tell the player to watch, and they already state
-           * the wait ("about twenty-five plant-minutes"; measured 21.8 to the first print, so the
-           * copy is conservative, which is the right side). (1) GRADING THE STEP ON ITS OWN WORDS
-           * — "STARTUP RATE positive with the rods stopped" — was measured and DECLINED: it is
-           * satisfied at +0.4 s on this route, so it would tick the step the instant the creep
-           * ends and relocate the identical stare onto the next step's `power_pct > 0.5`; worse,
-           * `>` LATCHES, so the transient positive rate of a rod still moving would tick it for a
-           * player who is not critical at all. (2) GRADING ON INTER RANGE, which is the honest
-           * candidate, needs a `PRED_DISPLAY.ir_amps` entry in ui/app.js — there is none, and
-           * §2d reddens on a predicate param the natural-language map does not cover.
-           *
-           * ⚠ (2) IS NOW DONE, AND IT SHIPPED ONLY BECAUSE IT WAS MEASURED FIRST. `accs` is a
-           * CONJUNCTION, so an INTER RANGE row cannot shorten the wait by a second — the Continue
-           * stays dark exactly as long. What it buys is that something on the card MOVES through
-           * the stare, and that the card names a number the player can watch approach, which
-           * "REACTOR POWER > 0.1 %" is not for 21.8 plant-minutes. MEASURED before authoring it,
-           * authored route, seconds from this step becoming active:
-           *
-           *   seed        INTER RANGE row (1.0e-7 A)        REACTOR POWER row      through
-           *     42            +742 s (12.4 min)               +1306 s (21.8)         57 %
-           *      7            +851 s (14.2 min)               +1499 s (25.0)         57 %
-           *
-           * So the first row ticks 9.4 and 10.8 plant-minutes before the second, at 57 % of the
-           * wait on BOTH seeds. Had it landed near the power row it would have been one more line
-           * to read for nothing and DESIGN_CRITERIA Q4 would have vetoed it.
-           *
-           * THE THRESHOLD IS A DECLARED PROGRESS MILESTONE, NOT A PLANT SETPOINT, and saying so
-           * is the point: there is no sourced setpoint in this window. P-6 is 1.0e-10 A (Ginna TS
-           * Bases, via `pwr2_protection`) and this step OPENS at 4.7e-10, so the permissive is
-           * already met and cannot serve. 1.0e-7 A is the round decade that lands mid-wait on
-           * every route measured. It follows the same render-band rule as everything else here:
-           * the tile draws `fmtExp(intermediate_range)`, and 1.0e-7 is the FIRST value drawn as
-           * `1.0e-7` — one ulp below printed `10.0e-8`, the formatter's quirk at a mantissa of 10.
-           * FIXED 2026-09-25 (#653 layman pass 5, the tile read "10.0e-5"): fmtExp now carries it,
-           * so "1.0e-7" is drawn from 9.950000000000001e-8 and the row grades that floor.
-           *
-           * ON A HEALTHY BOARD IT CANNOT GATE: `ir_amps` and `power_pct` are both `K × pFrac` of
-           * the SAME flux (pwr2_true_state), so on TRUE STATE the rows are strictly ordered by
-           * construction — 1.0e-7 A is about 0.001 % power, a factor of 47 below where the power
-           * row sits, far outside the channels' 0.02-decade noise. Any route that reaches the
-           * power row passed this one long before, and a route that reaches neither was
-           * subcritical under the single `acc` too.
-           *
-           * ⚠ BUT BOTH ROWS ARE GRADED ON INSTRUMENTS, AND AN INSTRUMENT CAN BE FAILED — so
-           * "it can never gate" is TRUE OF THE PLANT and FALSE OF THE BOARD, and the earlier
-           * wording here claimed the second (quality pass, 2026-09-18). MEASURED: with
-           * `set_instrument_failure {instrument_id:'intermediate_range', mode:'dead'}` — which
-           * the Failures tab offers for this channel, `intermediate_range` being in the manual
-           * profile's indications — the channel publishes its range floor, 1.0e-11 A, against a
-           * true 8.3e-3 A, and this row reads `met:false` for ever while REACTOR POWER reads
-           * 99.7 % and meets. The step then has no `overtaken`, so Continue stays dark.
-           * The four 1/M count rungs acquired the same exposure in the same change (a `dead`
-           * `source_range` publishes 1 cps against a true 501). That is the ordinary price of
-           * Hard Rule 1 grading — every instrument-graded row in the pool carries it — and it is
-           * NOT a reason to grade truth; it is a reason not to write "cannot" here. Tracked on
-           * #772 with the rest of the #749 residuals. */
-          accs: [{ p: 'ir_amps', op: '>=', v: 9.950000000000001e-8,   /* 2026-09-25: the band floor of "1.0e-7" now fmtExp carries a 10.0 mantissa -- 9.95e-8 itself still draws 9.9e-8 (binary), measured by bisection (#749) */
-                   ask: 'Leave the rods still and wait for INTER RANGE to read 1.0e-7 A or more.',
-                   label: 'INTER RANGE reads 1.0e-7 A or more',
-                   /* AND THE SOFT-LOCK THE PARAGRAPH ABOVE MEASURED IS CLOSED HERE *(OWNER
-                    * RULING, 2026-09-18: option B of four — keep the row, close the soft-lock;
-                    * reverting the row and building a separate non-grading "what to watch"
-                    * affordance were both declined)*. `implied_by` says this row's question is
-                    * already answered by the REACTOR POWER row's own threshold, so a player
-                    * whose INTER RANGE channel is dead is not stranded on a step the board says
-                    * is finished. It is an IMPLICATION, not a fail-open on a broken gauge: the
-                    * relief needs a named sibling that still asserts the step, and that sibling
-                    * is graded on an instrument too, so Hard Rule 1 is untouched.
-                    *
-                    * THE IMPLICATION IS ARITHMETIC ON THIS PLANT, not a fit. `pwr2_true_state`
-                    * computes `ir_amps = 8.333e-3 x power_frac`, so REACTOR POWER above 0.05 %
-                    * puts INTER RANGE at 4.17e-6 A — 41.7x this row's 1.0e-7 A. It can never
-                    * fire on a healthy board (MEASURED, authored route: this row ticks at
-                    * +742 s / +851 s, the power row at +1306 s / +1499 s, so this one is met
-                    * long before the sibling that could imply it), which is exactly why it is
-                    * safe. `run_checklist_pwr2` §2ad re-derives the ratio out of the engine and
-                    * reddens if a retune closes it. */
-                   implied_by: 'power_pct' },
-                 { p: 'power_pct', op: '>', v: 0.05,   /* 10b, its own substep since the 2026-09-24 reword (was a `cont` row) */
-                   ask: 'Wait for REACTOR POWER to read 0.1 % or more.',
-                   /* "or more", to match the row above it and the four count rungs — and because
-                    * the bare form was a claim the row outlives: it stays ticked at 0.3 %, where
-                    * the tile reads 0.3 and "REACTOR POWER reads 0.1 %" is simply false. */
-                   label: 'REACTOR POWER reads 0.1 % or more' }],
-          /* THE HAND-OFF IS INSIDE THIS STEP, AND THE STEP DID NOT SAY SO (#735, owner playtest
-           * #724 item 10: "In this step the SOURCE RANGE will shut off and the step doesnt address
-           * it. We need a better handoff from SOURCE RANGE to INTER RANGE. users will be confuesd
-           * in this step when their SOURCE RANGE indication shuts off and not know what they
-           * should watch.").
-           *
-           * MEASURED on the authored route (full stack, `hot_zero_power`, every step driven as
-           * written; re-measured after #750 shortened the ladder, seed 42): the channel secures
-           * at t = 931 s with the control bank at 213 of 627 and REACTOR POWER still reading
-           * 0.00004 % — this step is up from t = 665 s and the next does not start until
-           * t = 2465 s. So the death of the instrument happens 266 s INSIDE this step (it was
-           * 276 s before #750), and the only text that mentioned it was the next step's note,
-           * one step too late.
-           * RE-MEASURED after step 8's settle went to 600 s (2026-09-15, seed 42, authored route
-           * driven end to end): it now secures **165 s** after the creep stops, earlier because
-           * the counts enter this step already settled. Still inside the step, which is the claim
-           * this paragraph exists to make.
-           * INTER RANGE joins `hl_watch` here so the instrument that takes over is glowing while
-           * the one being lost goes dark. CONTROL ROD POSITION joins it because that is the
-           * number the 1/M panel's prediction is expressed in, which is the other half of the
-           * same report. */
-          /* REACTOR PERIOD JOINS THE WATCH LIST BECAUSE THE STEP NOW NAMES IT (2026-09-15). It
-           * has been drawn under the NIS card in whole seconds the whole time and no step in the
-           * pool mentioned it; `ui/highlight_bus.js` already carries the `period`
-           * label, so this costs no new plumbing. (2026-09-23: step 10's list is his — the
-           * climb's four readings; the rod and SOURCE RANGE rings stay on step 9.) */
-          hl_watch: ['Startup Rate', 'Reactor Period', 'Intermediate Range', 'Reactor Power'] },
-        /* INSTRUMENTS, NOT TAPS *(OWNER, 2026-09-08, #660 item 11: "Tapping withdraw 2 more times is
-         * not always the best approach. The user will usually overshoot at this point. These steps
-         * should take an instruments based approach. Usually waiting is best here if startup rate
-         * is high.")*. The replay's +2 slow steps stay as its command; the text tells the player to
-         * read STARTUP RATE and add a step only when it has come back to zero. */
-        { text: 'Let power climb to 0.5 %.',
-          aim: 'The rods are already far enough out. Extra steps now only speed up a climb that is already under way.',
-          why: 'With the reactor just critical, power climbs by itself, and every extra rod step adds to a rise that is already under way. Below about 1 % the water is not yet warm enough to hold that climb back, which is why a high STARTUP RATE is a signal to wait, not to pull.\n\nThe SOURCE RANGE detectors would wear out if they stayed on at power, so the plant switches them off by itself once INTER RANGE is reading.',
-          control: 'Control Bank', target: 'REACTOR POWER rising past 1 %',
-          /* THE NOTE'S OWN RUNG, NOW AUTHORED (#796, 2026-09-20). 5x is the note's number and its
-           * reason is not fidelity — #753 measured the plant indistinguishable at every rung
-           * through here — it is that this is the step that may want a TAP, and at 10x the tap
-           * lands before the rate has been read. The 30 s rule would have returned 60x for a 900 s
-           * dwell. Line still suppressed: the note says it better and in the step's own voice.
-           * `wait_first`: the WAIT is this step's action and the tap is conditional, so the
-           * app's speed-the-wait-not-the-action gate (layman pass 4, S-1) must not hold 1x
-           * waiting for a WITHDRAW the player is told not to press. */
-          wait_hint: false, wait_speed: 5, wait_first: true,
-          cmd: { action: 'rod_nudge', group_id: 'control', steps: 2, speed: 'slow' }, hold: 900,
-          saw: { p: 'startup_rate_dpm', op: '>', v: 0 },
-          /* 0.45, NOT 0.5 (2026-09-23): his check-off reads "REACTOR POWER reads 0.5 % or more", and a
-           * `digits: 1` tile prints "0.5" from 0.45 — the render-band floor, same rule as step 10's
-           * 0.05 (#749). MEASURED, authored route, seed 42: the row is met 1 s into the step (power
-           * 0.83 % on arrival, the replay's 1320 s step 10 having already carried it there) and the
-           * step ends at 3.98 %. On the player's route the step opens lower and the wait is real.
-           *
-           * OLD STEP 11's GRADING (`sr_energized < 1`, the hand-off confirm) IS FOLDED AWAY WITH ITS
-           * TEXT, and nothing of it needs to survive here: the channel secures on flux alone at
-           * 1.0e5 counts a second, which on this plant is far below 0.45 % power — INHERITED,
-           * 2026-09-15, authored route: SOURCE RANGE secured 165 s after the creep stopped, i.e.
-           * inside step 9/10, some 1,300 s before REACTOR POWER reads 0.1 %. So this step's own row
-           * cannot be met with the channel still on; a second row would be one more line to read
-           * for nothing. The operator ACTION it carried (close the 1/M PLOT window) is now prose in
-           * this note, and it was never gradeable (a UI window is not a plant command). */
-          accs: [{ p: 'power_pct', op: '>=', v: 0.45,
-                   ask: 'Leave the rods alone while STARTUP RATE is positive, until REACTOR POWER reads 0.5 % or more. If STARTUP RATE falls back to 0.00 with REACTOR POWER below 0.5 %, press SLOW, tap WITHDRAW once, and wait again.',
-                   note: 'This takes about 6 to 7 plant-minutes. SOURCE RANGE switches itself off above 1.0e5 and INTER RANGE carries the reading from here; there is no button for it. Once it has gone, close the 1/M PLOT window with the ✕ in its corner. Its work is done.',
-                   wait_speed: 5,
-                   speed_text: '5×; 1× before a tap. The plant behaves the same at any speed, but at 10× a tap has landed before you have read the rate.',
-                   label: 'REACTOR POWER reads 0.5 % or more' }],
-          hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Source Range', 'Control Rod Position', '1/M Plot Tool'] },
-        /* ⚰ OLD STEP 11 — "Verify SOURCE RANGE has switched itself off … Close the 1/M PLOT window" —
-         * FOLDED INTO STEP 11's NOTE (2026-09-23, the owner's new-format file). Why its grading
-         * does not survive is on step 11's `accs`. */
-        /* THE ACCEPTANCE TESTED HALF OF WHAT THE STEP SAID (#748 wave 2). The line asks for two
-         * things — "stops rising AND is below 5 %" — and `acc` graded only the second, so the
-         * step ticked the instant power crossed 5 % on its way DOWN, with the bank still driving
-         * in. MEASURED on this tree, full stack, `hot_zero_power`, the authored route (seed 42,
-         * each step's cmd issued then held for its `hold`):
+        /* ⚰ OLD STEPS 10 ("Let power rise from critical with the rods still", INTER RANGE 1.0e-7 A then
+         * REACTOR POWER 0.1 %) AND 11 ("Let power climb to 0.5 %") ARE GONE (2026-09-27-develop-a, OWNER
+         * RULING 2026-09-26 "B"). They rode a reactor left supercritical from the approach all the way to
+         * 1 %; the ruled sequence LEVELS it at 1.0e-8 A (step 11 below) and then starts the climb to the
+         * point of adding heat from a critical core (step 12). Their `implied_by` INTER RANGE row and its
+         * measurements are the record in git (`git show f5e08376:ui/manual_procedures.js`). */
+        /* STEP 11 — LEVEL AT 1.0e-8 A AND RECORD THE CRITICAL DATA *(OWNER RULING, 2026-09-26, "B": "A,
+         * plus a manual source-range block at P-6"; A = "a new step levels power at 1×10⁻⁸ A in the
+         * intermediate range and records the critical rod position and boron")*. Sourced: NRC HRTD
+         * Westinghouse Technology Manual §19 (ML11223A342) p.19-8, "Power is stabilized at 10-8 amps to
+         * record actual critical conditions. The data recorded consists of the control rod positions,
+         * boron concentration, and RCS loop average temperatures."
          *
-         *   step 12 END   rod 228   power 10.68 %   STARTUP RATE -0.00
-         *   step 13 +20s  rod 214   power  7.85 %   STARTUP RATE -0.308   (the -14 bank move done)
-         *   step 13 +189s rod 214   power  4.98 %   STARTUP RATE -0.042   <- `power_pct < 5` first met
-         *   step 13 END   rod 214   power  4.74 %   STARTUP RATE -0.039
-         *   step 14 END   rod 227   power  9.95 %                          (the +13 WITHDRAW)
+         * MEASURED (inbox/rc8w/m.js, full stack, `hot_zero_power`, seeds 42 and 7, identical to the
+         * step): 10b's hold to +0.5 releases at bank 219 (critical is 207); INTER RANGE reaches 1.0e-8 A
+         * 100 s after the release. 12 steps in at MED lands bank 207, rate -0.31 on the release, +0.003
+         * at the first two-minute read, -0.004 at the second: level, INTER RANGE 9.6e-9 to 1.03e-8 A,
+         * 4.3 plant-minutes. The rate alone is NOT a usable insert cue: holding INSERT until the tile
+         * first reads negative lets go 7 steps in (bank 212, rho +36 pcm), and one-step taps on
+         * two-minute reads then end at 208 (rho +6, true rate ~0.04) after 12.9 plant-minutes with
+         * INTER RANGE drifted to 6.6e-8 A. So the ask names the count (about 12, the steps 10b's +0.5
+         * puts past critical) and the reads trim it.
          *
-         * On the REPLAY the bank stopped 189 s before the tick, so the defect is invisible there.
-         * Played the PLAYER's way — release INSERT the moment the acceptance ticks — the release
-         * lands about 18 steps deeper with the rate still steeply negative, and step 14's "about
-         * 13 steps" then takes power DOWN instead of through 5 %. The fix is the acceptance, not
-         * the 13: a rate term the player can read off the tile. -0.10 DPM sits clear of both
-         * measured regimes (-0.308 while the bank drives, -0.031 to -0.045 once it is settled)
-         * and is a number the STARTUP RATE tile prints. The replay meets both entries at +189 s,
-         * 51 s inside its own 240 s hold.
-         *
-         * ⚠ THE OVERSHOOT THIS STEP CLEANED UP NO LONGER HAPPENS (#750, 2026-09-14). Every number
-         * above belongs to the pre-#750 route, where the creep left +148 pcm and the climb blew
-         * through Mode 1 to 10.68 %. With the ladder's last point moved down and the creep cut to
-         * +46 pcm, the climb ARRESTS ON ITS OWN below 5 %. Measured, full stack, seed 42, rods
-         * still at bank 215 from the end of step 10:
-         *
-         *   t = 3364   power 3.966 %   STARTUP RATE  0.002   rho  +0.7
-         *   t = 3604   power 4.010 %   STARTUP RATE -0.001   rho  +0.2
-         *   t = 4204   power 4.013 %   STARTUP RATE -0.000   rho  -0.3
-         *   t = 4804   power 3.995 %   STARTUP RATE -0.002   rho  -0.3      T-avg 287.5 °C flat
-         *
-         * — 4.0 % and level for 24 plant-minutes with nothing touched. So the authored -14 INSERT
-         * now drives a settled plant DOWN to 0.75 %, and the step after it can no longer reach
-         * 5 %: measured on the re-authored leg before this edit, step 12 ended 0.751 % with
-         * STARTUP RATE -0.130 (its own `> -0.1` entry unmet) and step 13 ended 2.614 %, short of
-         * its `power_pct > 5`.
-         *
-         * THE STEP KEEPS ITS PLACE AND CHANGES ITS JOB, which is the honest read of what the
-         * plant does here: the climb stops because the water warms and this core loses reactivity
-         * as it warms — the moderator coupling, which this leg otherwise never demonstrates. The
-         * INSERT stays in the text as the contingency it now is, and the `cmd` goes, because
-         * driving 14 steps in is not what the line asks for on a plant that has already levelled.
-         *
-         * AND THE RATE ENTRY BECOMES TWO-SIDED, which is what "stops rising" actually claims.
-         * `> -0.1` LATCHES (instructor_layer `_gradeAccs`: only `~` re-grades), so on the player's
-         * route it is satisfied the moment the step opens with the rate still positive — it could
-         * only ever have bitten the insert case. `~ 0.00 ± 0.10` re-grades every tick and is unmet
-         * in BOTH the regimes this step exists to exclude. Injection-proven through the real
-         * harness, three ways: as authored -0.0012 PASS · with the pre-#750 `cmd: -14` restored
-         * -0.1298 FAIL · graded mid-climb +0.1828 FAIL.
-         *
-         * ⚠ THE TOLERANCE IS 0.10 BECAUSE THE PANEL ROUNDS TO ONE DECIMAL, not because 0.10 is the
-         * tightest honest band. `fmtPredicate` prints a `~` entry as its two ENDS through
-         * `fmtPredValue`, which rounds to 0.1 below 100 — and `Math.round(-0.5)` is `-0`, which
-         * stringifies as "0". So a ±0.05 band draws as "STARTUP RATE 0 to 0.1 DPM": a player-facing
-         * line that is not the acceptance. ±0.10 draws "-0.1 to 0.1 DPM", which is what it is. Any
-         * future band on this tile must be a multiple of 0.1 for the same reason.
-         *
-         * AND THE BAND'S WIDTH IS WHY THE `target` SAYS "under 0.10" RATHER THAN "steady at 4 %".
-         * MEASURED on the PLAYER's route — every step advanced the tick its acceptance is met,
-         * which is NOT the replay's fixed holds (seed 42): step 9 ticks at t = 2110 (power 0.1 %,
-         * bank 213), step 10 at t = 2293 (0.5 %, bank 215), and this step's pair first holds at
-         * t = 2524 — power 1.94 % and STARTUP RATE 0.0974, still climbing. Power does not reach
-         * its 4.0 % level until ~900 s later. So the check-off is "the rate has fallen to a tenth
-         * of its climbing value", not "power has finished". A tighter band cannot be drawn (see
-         * above) and a POWER band would soft-lock: step 10 tells the player to tap only if the
-         * rate falls to 0.00, so a player who does not tap sits at bank 213 and levels near 3 %,
-         * outside any band centred on the replay's 4 %. The `note` states the gap in the player's
-         * own words rather than leaving the tick unexplained. */
-        /* ⚰ STEP 12 NO LONGER WAITS FOR THE LEVEL-OFF *(#807 item 11, owner, 1.8.0-rc6 playtest:
-         * "instead of waiting for the power to raise to above 1% in step 12, would it make sense to
-         * have the player watch the startup rate and start the asension to 5%? they would just have
-         * to wait a bit for the startup rate to drop before pulling the rods more. this might give a
-         * smoother transition into pulling the rods." — the coordinator's call, recommended yes,
-         * reversible)*. The 2026-09-23 "Grade real level-off" selection above graded a step that
-         * asked the player to WAIT for the level-off; this step no longer asks for it, so that
-         * grading goes with the ask. The level-off still happens — on the rods step 13 leaves.
-         *
-         * ⚠ A DECLARED DEPARTURE (DESIGN_COMPANION §8 sense). NRC HRTD Westinghouse Technology
-         * manual ch. 19, ML11223A342 p. 19-8: "the control rods are positioned to increase power to
-         * the point of adding heat, approximately one percent power as indicated on the power range
-         * instruments, and then to stabilize power at about two percent", and "care is exercised
-         * to ensure that the power level does not exceed two percent" — because the motor-driven
-         * auxiliary feedwater pump "can supply only about two percent of rated feed flow" while the
-         * main feed pump is started. This walkthrough has no feed-pump change at that point (SG FEED
-         * is in AUTO from step 3), so the 2 % hold buys the player nothing to do; the climb to 5 %
-         * starts from the point of adding heat instead. Kept: the point of adding heat itself (~1 %)
-         * as the cue, which is the sourced half. The corpus copy is in RD_backshop's inbox/sources.
-         *
-         * 12b's rate row is `<` 0.105: the tile draws two decimals, so "+0.10 or less" is every
-         * value under 0.105 (#749 render-band floor). MEASURED numbers: the step file's Notes,
-         * "#807 item 11 — 2026-09-26 (807f)". */
-        { text: 'Let power climb to the point of adding heat, about 1 %.',
-          aim: 'From about 1 % the core starts warming the water, and the warmer water starts holding the climb back.',
-          why: 'Warmer water slows this reactor down, so once power is high enough to warm the water, the climb starts slowing itself. Below about 1 % that feedback is too weak to feel.\n\nThis point is called the point of adding heat. On the board it shows as STARTUP RATE falling while the rods are still.',
-          wait_speed: 10, speed_text: true,
-          note: 'This takes about 3 plant-minutes. If STARTUP RATE reaches 0.00 with REACTOR POWER still under 1 %, press SLOW, tap WITHDRAW once, and wait again.',
-          control: 'Control Bank', target: 'REACTOR POWER 1 % or more; STARTUP RATE +0.10 or less',
-          hold: 420, wait_hint: false,
+         * 11c IS A READING CHECK: "record" has no board action. The rod position is whatever this core
+         * went critical at, so the row grades the other half the player writes down, BORON CHEM, on
+         * step 2's own 709-729 ppm band; ordered, it cannot tick before the level-off. */
+        { text: 'Level power at 1.0e-8 A and record the critical rod position and boron.',
+          aim: 'With power held level the core is exactly critical, so the rods and boron at that moment are its measured critical point.',
+          why: 'At 1.0e-8 A power is still far too low to warm the water, so nothing but the rods and boron sets the reactivity. Power stays level only when the core is exactly critical.\n\nThe rod position and boron written down here are the core\'s measured critical point. A crew compares them with the 1/M prediction and with the 719 ppm estimate the startup began from.',
+          control: 'Control Bank', target: 'INTER RANGE 1.0e-8 A, STARTUP RATE 0.00 with the rods still',
+          wait_hint: false,
+          /* the replay levels when INTER RANGE gets there, not at step entry (an insert at entry levels
+           * near 3e-9 A and 11a never meets). Its bank 219 -> 207, the same count the card asks for. */
+          replay_then: { when: { p: 'ir_amps', op: '>=', v: 9.950000000000001e-9 }, cmd: { action: 'rod_nudge', group_id: 'control', steps: -12, speed: 'normal' } },
+          hold: 600,
+          overtaken: { p: 'power_pct', op: '>=', v: 0.45,
+            text: 'This step is overtaken: REACTOR POWER already reads 0.5 %, far past the 1.0e-8 A level point. Go on to the point of adding heat.',
+            industry: 'REACTOR POWER 0.5 % — 1E-8 A HOLD OVERTAKEN. Proceed to POAH.' },
           accs_ordered: true,
-          accs: [{ p: 'power_pct', op: '>=', v: 0.95,
+          accs: [{ p: 'ir_amps', op: '>=', v: 9.950000000000001e-9,   /* the "1.0e-8" render floor (fmtExp; 9.95e-9 itself draws 9.9e-9) */
+                   ask: 'Wait for INTER RANGE to read 1.0e-8 A.',
+                   note: 'It gets there about 2 plant-minutes after the rods stopped in step 10.',
+                   wait_speed: 1,
+                   label: 'INTER RANGE reads 1.0e-8 A or more' },
+                 { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025, still_s: 120,   /* -0.025 to +0.025: every value toFixed(2) draws as -0.02 to +0.02 (as 1d) */
+                   ask: 'Hold INSERT at MED about 12 steps. Two plant-minutes later read STARTUP RATE: above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once. Repeat until it reads 0.00.',
+                   note: 'Level takes putting back every step pulled past critical: two short and STARTUP RATE settles near +0.05, and power doubles every 6 plant-minutes. STARTUP RATE dips negative while the rods go in; that is not level yet. This check-off comes two plant-minutes after your last rod motion.',
+                   wait_speed: 1,
+                   speed_text: '1× while the rods move; 10× while you wait for a read.',
+                   label: 'STARTUP RATE −0.02 to +0.02, rods still two plant-minutes' },
+                 { p: 'boron_ppm', op: '~', v: 719, tol: 10.49,
+                   ask: 'Write down CONTROL ROD POSITION and BORON CHEM: the critical rod position and boron.',
+                   label: 'BORON CHEM 709 to 729 ppm, recorded with CONTROL ROD POSITION' }],
+          press_expected: true,   /* 11b's INSERT is graded on the rate it leaves, not on the press */
+          hl: ['Insert', 'Rod Speed — Normal'],
+          hl_watch: ['Intermediate Range', 'Startup Rate', 'Control Rod Position', 'Boron Concentration'] },
+        /* STEP 12 — FROM THE LEVEL-OFF TO THE POINT OF ADDING HEAT (2026-09-27-develop-a). Old step 12's
+         * two rows (power 1 %, then the rate +0.10 or less, #807 item 11) stay as 12b and 12c; 12a is new
+         * because the plant now arrives CRITICAL AND LEVEL, not climbing.
+         *
+         * ⚠ A DECLARED DEPARTURE (DESIGN_COMPANION §8 sense), carried from old step 12: NRC HRTD
+         * Westinghouse Technology manual ch. 19, ML11223A342 p. 19-8: "the control rods are positioned to
+         * increase power to the point of adding heat, approximately one percent power as indicated on the
+         * power range instruments, and then to stabilize power at about two percent" — the 2 % hold is for
+         * starting a main feed pump, which this walkthrough does not do, so the climb to 5 % starts from
+         * the point of adding heat.
+         *
+         * 12a's +0.15: North Anna 1-OP-1.5 (ML042330022) NOTE before §5.57, "Startup rate should be low
+         * during approach to POAH ... ideally 0.1 to 0.2 dpm" (one plant, inbox/sources/startup/EVIDENCE.md
+         * row 15). MEASURED (inbox/rc8w/m.js, seeds 42 and 7): +6 steps from the level-off (bank 207 ->
+         * 213) settles 0.155-0.173 DPM; REACTOR POWER 1 % and the rate under 0.10 at 25.1-25.3
+         * plant-minutes; power then levels by itself at 2.85 % (bank 213, rods still), below step 13's 5 %.
+         * 12c is `<` 0.105: the tile's "+0.10" render floor. */
+        { text: 'Raise power to the point of adding heat, about 1 %.',
+          aim: 'From about 1 % the core starts warming the water, and the warmer water starts holding the climb back.',
+          why: 'Warmer water slows this reactor down, so once power is high enough to warm the water, the climb slows itself. This point is called the point of adding heat; on the board it shows as STARTUP RATE falling while the rods are still.\n\nINTER RANGE measures a current, not a percentage, and it shows this climb four decades before REACTOR POWER shows its first tenth of a percent.',
+          control: 'Control Bank', target: 'REACTOR POWER 1 % or more; STARTUP RATE +0.10 or less',
+          wait_hint: false, wait_speed: 10, wait_est_s: false,
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 6, speed: 'slow' }, hold: 1800,
+          accs_ordered: true,
+          accs: [{ p: 'startup_rate_dpm', op: '>=', v: 0.145, still_s: 60,
+                   ask: 'Press SLOW. Tap WITHDRAW one step at a time, a plant-minute apart, until STARTUP RATE reads +0.15 or more a plant-minute after a tap.',
+                   note: 'Expect about 7 taps. Real crews climb gently here, between +0.1 and +0.2. The 1/M PLOT window has done its work: close it with the ✕ in its corner.',
+                   wait_speed: 10,
+                   label: 'STARTUP RATE +0.15 or more, rods still a plant-minute' },
+                 { p: 'power_pct', op: '>=', v: 0.9500000000000001,   /* the "1.0" render floor: 0.95 itself draws "0.9" (binary; run_checklist_pwr2 2ab.4) */
                    ask: 'Leave the rods alone until REACTOR POWER reads 1.0 % or more.',
+                   note: 'About 20 plant-minutes. REACTOR POWER reads 0.0 % for most of it while INTER RANGE climbs four decades. Not 60×: there a 2½-second glance is two and a half plant-minutes of reactor.',
+                   wait_speed: 10,
                    label: 'REACTOR POWER reads 1.0 % or more' },
                  { p: 'startup_rate_dpm', op: '<', v: 0.105,
                    ask: 'Wait for STARTUP RATE to fall to +0.10 or less.',
                    label: 'STARTUP RATE reads +0.10 or less' }],
-          hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
+          hl: ['Rod Speed — Slow', 'Withdraw'],
+          hl_watch: ['Startup Rate', 'Intermediate Range', 'Reactor Power', 'Control Rod Position'] },
         /* ⚠ STILL THIRTEEN, AND #750 TRIED EIGHT FIRST — THE STEP AFTER NEXT IS WHAT DECIDES IT.
          * The 13 was measured from bank 214, where the -14 INSERT used to leave the plant; the leg
          * now arrives at bank 215 already making 4.0 %, and +8 SLOW from there lands bank 223 at
@@ -3875,7 +3719,9 @@
            * The pull is the SAME rods in one go, and the #731 trio above is sized on its arrival, so
            * it stays; the card's own route is `run_walkthrough_routes`' `pulses` policy (bank 213 ->
            * 223 in 5 pulls, 4.7-4.8 plant-min, peak STARTUP RATE 0.24-0.25 DPM, four seeds + chain). */
-          cmd: { action: 'rod_nudge', group_id: 'control', steps: 13, speed: 'slow' }, hold: 400,
+          /* +13 -> +15 (2026-09-27-develop-a): the replay now arrives at bank 213 (the +6 of step 12 from the
+           * 207 level-off), not 215; +15 keeps the 228 the #731 trio below was sized on. */
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 15, speed: 'slow' }, hold: 400,
           /* 5.05, NOT 5 (2026-09-23): "above 5 %" on a one-decimal tile is first TRUE of the board at
            * "5.1", from 5.05 — the render-band floor. MEASURED, authored route, seed 42: `> 5` at
            * +45 s, `>= 5.05` at +47 s; the step ends at 10.57 %. Two plant-seconds. */
@@ -3901,8 +3747,20 @@
           accs: [{ cmd: 'latch_turbine', ask: 'Press LATCH on the TURBINE-GENERATOR card.', wait_speed: 1,
                    label: 'Turbine latched' },
                  { p: 'mwe_output', op: '>', v: 8, ask: 'Set LOAD to 10 MW and wait for the generator to read above 8 MW.', wait_speed: 10,
-                   label: 'OUTPUT above 8 MW' }],
-          hl: ['Turbine — Latch', 'Load Setpoint'], hl_watch: ['Turbine Load', 'Generator Output'] },
+                   label: 'OUTPUT above 8 MW' },
+                 /* 14c (2026-09-27-develop-a): the dump to average-temperature mode once the turbine carries
+                  * the steam. NRC HRTD Westinghouse Technology Manual §19.4 (ML11223A342): "When the steam dump
+                  * valves are fully closed, they are placed in the Tavg mode of operation." The board has one
+                  * AUTO: pressed with the turbine latched it selects TAVG (pwr2_shell `set_steam_dump` auto).
+                  * Without this the chained route reached 100 % in pressure mode while the standalone raise-power
+                  * IC boots in TAVG, and a full-power turbine trip in pressure mode vented to atmosphere
+                  * (startup_rest/COMPARISON.md B9). Graded on the card's word (instructor `steam_dump_tavg_mode`). */
+                 { cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_tavg_mode', op: '>', v: 0,
+                   ask: 'Press AUTO on the STEAM DUMP card again and check its status reads TAVG.',
+                   note: 'With the turbine on line, AUTO selects average-temperature mode: the dump then opens only if the reactor water runs hot, as after a turbine trip. Real crews switch once the turbine carries the steam and the dump valves have shut.',
+                   wait_speed: 1,
+                   label: 'STEAM DUMP status reads TAVG' }],
+          hl: ['Turbine — Latch', 'Load Setpoint', 'Steam Dump — Auto'], hl_watch: ['Turbine Load', 'Generator Output', 'Steam Dump Status'] },
         /* "ABOVE 9 ½ %", NOT "ABOVE 10 %" (2026-09-23, an agent change for owner review, made under
          * the ruling on step 17 above). At LOAD 10 MWe the player's own route (bank 213, +13) settles
          * at 9.69-9.84 % and never reads "10" again after the load overshoot, so "the moment REACTOR
@@ -4219,7 +4077,7 @@
          * at the same second as unordered (MEASURED, both seeds). Bands unchanged. */
         { text: 'Take the first stage to 30 MWe, load leading and rods following.',
           aim: 'The turbine asks for the power first; the rods then bring the temperature back to where it belongs at that load.',
-          why: 'Raising LOAD draws more steam and cools the water; colder water adds reactivity, so REACTOR POWER follows the turbine up by itself, but the temperature sags on the way. Pulling rods then warms the water back up into its band. Doing it in that order, the rods answer what the temperature gauge shows instead of guessing ahead of the turbine.',
+          why: 'Raising LOAD draws more steam and cools the water; colder water adds reactivity, so REACTOR POWER follows the turbine up by itself, but the temperature sags on the way. Pulling rods then warms the water back up into its band. Doing it in that order, the rods answer what the temperature gauge shows instead of guessing ahead of the turbine.\n\nReal plants switch rod control to automatic near 15 %; this simulator keeps rods manual by design.',   /* OWNER DIRECTIVE 2026-08-30: "I want to keep rod control manual" (2026-09-27-develop-a) */
           control: 'Control Bank', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE inside its band, near 556 °F',
           cmd: { action: 'set_load_target', mwe: 30 }, hold: 480, wait_hint: false,
           replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' } },

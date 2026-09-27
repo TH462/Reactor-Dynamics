@@ -95,12 +95,15 @@ var ROUTES = {
       // about 10 minutes — repeat; then 30 to 60 minutes of climb after a 0.06 to 0.10 read), so their
       // bound is the card's, not 3 x hold. Measured 2026-09-24: step 9 21.6 / 26.7 min, step 10
       // 31.1 / 45.5 min (seeds 42 / 7). The policy still reads every 300 s and taps under 0.06.
-      '#9': { policy: 'approach', short: 3, min_rate: 0.15, max_rate: 1.0, dwell: 300, tap: 1, bound_s: 5400 },   // "five plant-minutes ... until +0.15" (#807 item 10)
-      '#10': { policy: 'observe', bound_s: 5400, stated_max_min: 10 },   // card: "about 2 to 6 plant-minutes" after the +0.15 (#807; measured 1.8 / 5.5 / 2.6)
-      '#11': { policy: 'wait_tap', rate_below: 0.005, power_below: 0.5, dwell: 300 },
-      '#12': { policy: 'observe', stated_max_min: 5 },                            // "leave the rods alone until ... 1.0 % ... STARTUP RATE +0.10 or less" (#807 item 11)
+      /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B"): 9 blocks the SR trip at P-6 (the step's own
+       * press), 10 holds WITHDRAW at SLOW to +0.5 then trims a plant-minute apart into +0.3..+1.0, 11 waits for
+       * INTER RANGE 1.0e-8 A and puts 12 steps back, trimming on two-minute reads, 12 taps a plant-minute
+       * apart to +0.15 then leaves the rods alone to the point of adding heat. */
+      '#10': { policy: 'approach', short: 3, hold_to: 0.5, min_rate: 0.3, max_rate: 1.0, dwell: 60, tap: 1, stated_max_min: 6 },   // note: "about 2 plant-minutes of rod motion" + the minute's read
+      '#11': { policy: 'level', back: 12, read_s: 120, dead: 0.02 },
+      '#12': { policy: 'tap_until', dwell: 60, stated_max_min: 35 },   // 12b note: "About 25 plant-minutes"
       '#13': { policy: 'pulses', k: 2, rate_le: 0.105, until_p: 5.05, peak: true, stated_max_min: 8 },   // "tap WITHDRAW twice, wait for it to peak and fall back to +0.10 or less, repeat until above 5 %"
-      '#14': { policy: 'rows_then_cmd' },
+      '#14': { policy: 'seq', cmds: [{ action: 'latch_turbine' }, { action: 'set_load_target', mwe: 10 }] },   // 14a, 14b; 14c's AUTO pressed when its row is live
       '#15': { policy: 'block_when', p: 9.5, trip_id: 'ir_high', param: 'ir_high_blocked' },
     },
     /* THE MISTAKES RIDE A BASE THAT COMPLETES. The literal first-stop route strands at step 8
@@ -114,8 +117,15 @@ var ROUTES = {
     chain_steps: { '#2': { policy: 'default', bound_s: 10800 } },
     base_route: 'typical_pass3',   // the base itself, unperturbed: a second typical-kind route
     mistakes: [
-      { id: 'overshoot_235', kind: 'overshoot', at: '#9', set: { policy: 'approach', to: 235, speed: 'normal' } },
-      { id: 'undershoot_10', kind: 'undershoot', at: '#9', set: { short: 10 } },
+      { id: 'overshoot_235', kind: 'overshoot', at: '#10', set: { policy: 'approach', to: 235, speed: 'normal' } },
+      { id: 'undershoot_10', kind: 'undershoot', at: '#10', set: { short: 10 } },
+      /* 2026-09-27-develop-a: the SR block skipped -- the player goes straight to step 10's pulls with step 9
+       * up. The card's warning: "trips on SR HIGH FLUX about 2 plant-minutes after the rods start moving"
+       * (`sr_trip_max_min` is that number's gate). */
+      { id: 'no_sr_block', kind: 'skip', at: '#9', set: { policy: 'approach', short: 3, hold_to: 0.5, min_rate: 0.3, max_rate: 1.0, dwell: 60, tap: 1, sr_trip_max_min: true } },
+      { id: 'overpull_10', kind: 'overshoot', at: '#10', set: { hold_to: 1.5 } },     // released past 1.0: the card's "if higher, tap INSERT once" (MEASURED: too slow at ~1.3 DPM; step 10 and 11 are overtaken at 0.5 %)
+      { id: 'overpull_notrim', kind: 'overshoot', at: '#10', set: { hold_to: 1.5, max_rate: 99 } },   // ...and the INSERT never tapped: nothing may tick step 10 on its band
+      { id: 'level_short_11', kind: 'undershoot', at: '#11', set: { back: 10 } },    // 10 of 12 back in: the reads and taps finish it
       // lets go of WITHDRAW at bank 69 on a noisy 7.0e2 flicker, at 1x (0.1 s gradings): the settled count
       // there is ~680, so 5a must NOT tick (807f). RECOVERY = 5a's note since #807 review item 1: "if it
       // only touches 7.0e2 now and then ... tap WITHDRAW one step and wait half a plant-minute"
@@ -123,12 +133,17 @@ var ROUTES = {
       { id: 'window_overshoot', kind: 'overshoot', at: '#5', set: { policy: 'pull_plot', to: 120 } },   // the old window-led pull, held 10 past its top
       { id: 'plot_early', kind: 'press early', at: '#8', set: { plot_rate: 99 } },
       { id: 'double_plot', kind: 'double press', at: '#6', set: { repeat: 2 } },
-      { id: 'fast_tap', kind: 'tap at speed', at: '#9', set: { tap: 8 } },
+      { id: 'fast_tap', kind: 'tap at speed', at: '#10', set: { tap: 8 } },
       /* 2026-09-26-develop-k (owner release blocker on 9a/9b): PAST the prediction (a slow hold let go
        * 2 steps beyond it — 9a must still tick, on arrival, and 9b's note corrects the rate), and a
        * Rewind two checkpoints back in the middle of the tap-and-wait */
-      { id: 'past_pred_9', kind: 'overshoot', at: '#9', set: { short: -2 } },
-      { id: 'rewind_mid_9', kind: 'rewind mid-step', at: '#9', set: { rewind_after: 600 } },
+      { id: 'past_pred_10', kind: 'overshoot', at: '#10', set: { short: -2 } },
+      /* rewind inside the hold (the 1/M table empties, 10a falls back to its 60 s stop) and let go early at +0.35:
+       * the minute's read is under +0.3 (MEASURED ~0.2 settled; at +0.35 it settled ON the 0.295 edge and flashed), so the card's tap lands after 10a has ticked */
+      /* Clear pressed on the 1/M panel at step 10's entry: no prediction, 10a grades its 60 s stop (latched), and the
+       * release at +0.3 settles under the band, so the card's trim tap re-moves the rods after 10a ticked */
+      { id: 'clear_1m_10', kind: 'press early', at: '#10', set: { clear_first: true, hold_to: 0.3, dwell: 75 } },   // reads at 75 s: 10a's 60 s stop has latched first
+      { id: 'rewind_mid_10', kind: 'rewind mid-step', at: '#10', set: { rewind_after: 60, hold_to: 0.3 } },
       { id: 'load_before_latch', kind: 'wrong order', at: '#14', set: { policy: 'seq', cmds: [
         { action: 'set_load_target', mwe: 10 }, { action: 'latch_turbine' }, { action: 'set_load_target', mwe: 10 }] } },
       // "hold CONTROL WITHDRAW for about 13 steps" read as "hold until REACTOR POWER passes 5 %":
@@ -141,8 +156,9 @@ var ROUTES = {
       // the second block pressed 20 plant-minutes late: step 17 is then graded on a plant that
       // has SETTLED at LOAD 10 MWe (layman pass 1's route to the 10.05 % strand, §2al)
       { id: 'late_second_block', kind: 'press late', at: '#16', set: { delay_s: 1200 } },
-      { id: 'rewind_mid_11', kind: 'rewind mid-step', at: '#11', set: { rewind_after: 300 } },
-      { id: 'never_tap_11', kind: 'skip optional', at: '#11', set: { skip: true } },
+      { id: 'rewind_mid_12', kind: 'rewind mid-step', at: '#12', set: { rewind_after: 300 } },
+      // never_tap_11 RETIRED 2026-09-27-develop-a: its tap was optional on a climbing core; 12a's tap is the
+      // step's action on a LEVEL core, so skipping it is not a mistake the card can recover from
     ],
   },
   /* ---- the other legs: typical = default policy on every step unless `steps` names one ---- */
@@ -378,9 +394,15 @@ function runChain(mutId) {
  * RED on that run. Without these, a harness that could never fail would read the same as one
  * that found nothing. `route` is the route the defect showed on. */
 var MUTATIONS = [
-  { id: 'no_overtaken_9', route: 'overshoot_235', expect: 'invariant',
-    why: 'step 9 without its `overtaken` (the pull to bank 235 stranded the 2026-09-23 layman)',
-    mutate: function (P) { delete P.steps[8].overtaken; } },
+  { id: 'no_overtaken_10', route: 'overshoot_235', expect: 'invariant',
+    why: 'step 10 (the approach) and 11 (the level-off) without their `overtaken` (the pull to bank 235 stranded the 2026-09-23 layman)',
+    mutate: function (P) { delete P.steps[9].overtaken; delete P.steps[10].overtaken; } },
+  /* 2026-09-27-develop-a: the SR-trip warning's timing. The approach as the OLD card walked it (a tap, five
+   * plant-minutes, read) reaches the trip long after the rods start moving, past the note's "about 2" --
+   * so the `sr_trip` check must go red on it. */
+  { id: 'sr_note_too_soon', route: 'no_sr_block', expect: 'sr_trip',
+    why: 'step 9 note claiming the trip "about 1 plant-minute" after the rods move (the check reads the card; measured 2.5)',
+    mutate: function (P) { P.steps[8].accs[1].note = P.steps[8].accs[1].note.replace(/about \d+ plant-minutes/, 'about 1 plant-minute'); } },
   { id: 'step17_1005', route: 'late_second_block', expect: 'invariant',
     why: 'step 17 floor back to 10.05 % (unfinishable at LOAD 10 MWe, owner ruling 2026-09-23)',
     mutate: function (P) { P.steps[16].accs[0].v = 10.05; } },
@@ -392,17 +414,17 @@ var MUTATIONS = [
     /* RE-AIMED 2026-09-26 (807f): step 12 is now "power 1 %, then STARTUP RATE +0.10 or less", ORDERED,
      * so a mutated rate row behind the power row is blind. The defect restated on the new step: the
      * power row and the order gone, a rate-only `< 0.2` row the entering plant (0.13) satisfies. */
-    mutate: function (P) { delete P.steps[11].accs_ordered; P.steps[11].accs = [{ p: 'startup_rate_dpm', op: '<', v: 0.2, label: 'rate row' }]; } },
+    /* RE-AIMED 2026-09-27-develop-a: step 12 now opens on a LEVEL core (rate 0.00), so the reconstructed
+     * rate-only row is `< 0.1` again, replacing all three of 12's rows. */
+    mutate: function (P) { delete P.steps[11].accs_ordered; P.steps[11].accs = [{ p: 'startup_rate_dpm', op: '<', v: 0.1, label: 'rate row' }]; } },
   /* #807 item 10 (2026-09-26): the settle row is gone and 9b latches on a TARGET (>= 0.145, first met
    * at 212-213). Put the old 0.055 floor back on that latching row and it ticks on the first
    * falling five-minute read low in the approach, and step 10 takes the slow climb the old card had. */
-  { id: 'low_floor_9', route: 'typical', expect: 'stated',
-    why: "9b's target back to the old 0.055 floor (latches on a falling five-minute read; step 10 runs far past its stated minutes — measured: the leg 147.0 plant-min against 85.8)",
-    /* the route reads at 330 s, not 300: at exactly 300 the policy's tap and the hidden rods-still
-     * row land on the same broadcast and the row never gets a still plant to grade (measured: the
-     * mutation was BLIND at dwell 300 — the typical route finished identically, 85.8 plant-min) */
-    override: { '#9': { policy: 'approach', short: 3, min_rate: 0.15, max_rate: 1.0, dwell: 330, tap: 1, bound_s: 5400 } },
-    mutate: function (P) { P.steps[8].accs.forEach(function (e) { if (e.p === 'startup_rate_dpm' && e.op === '>=') e.v = 0.055; }); } },
+  /* low_floor_9 RETIRED 2026-09-27-develop-a: the 0.145 five-minute target row it lowered is gone (10b is a
+   * +0.3..+1.0 band read a plant-minute after the rods stop). `overpull_band_10` guards the new row's top. */
+  { id: 'overpull_band_10', route: 'overpull_notrim', expect: 'rate10',
+    why: "10b's band without its +1.0 top (a rate the card says to tap INSERT on would tick)",
+    mutate: function (P) { var b = P.steps[9].accs[1]; b.op = '>='; b.v = 0.295; delete b.tol; } },
   /* 807f: the count rows graded on five raw readings again (no `mean_s`) — the tile's noise (sigma 4.5 %)
    * ticks 5a at bank 69, where the count settles near 680 */
   { id: 'no_mean_counts', route: 'flicker_release_5', expect: 'early',
@@ -411,18 +433,18 @@ var MUTATIONS = [
   /* 2026-09-26-develop-k — the two shapes the owner's release blocker was filed against */
   { id: 'still_minute_9a', route: 'typical', expect: 'unlock',
     why: "9a back to `below_1m: 3` + the 60 s stop (ticked 595-641 broadcasts after the bank reached the mark, seeds 42/7/123)",
-    mutate: function (P) { var a = P.steps[8].accs[0]; delete a.reach_1m; a.below_1m = 3; } },
+    mutate: function (P) { var a = P.steps[9].accs[0]; delete a.reach_1m; a.below_1m = 3; } },
   { id: 'hidden_still_9', route: 'typical', expect: 'unlock',
     why: "9b's rods-still wait back in a hidden ordered 300 s row in front of it (9b dark 2066-2682 plant-s of the step, re-locked by every tap)",
-    mutate: function (P) { var b = P.steps[8].accs[1]; delete b.still_s;
-      P.steps[8].accs.splice(1, 0, { p: 'control_bank_steps', op: 'stopped', v: 300, hidden: true, label: 'hold' }); } },
+    mutate: function (P) { var b = P.steps[9].accs[1]; delete b.still_s;
+      P.steps[9].accs.splice(1, 0, { p: 'control_bank_steps', op: 'stopped', v: 300, hidden: true, label: 'hold' }); } },
   /* RE-AIMED 2026-09-26-develop-k: with a prediction 9a is `reach_1m` — a tap moves the bank FURTHER past
    * the mark, so dropping `latch` un-ticks nothing on typical_pass3 (measured: BLIND, 'none'). `latch`
    * still carries the NO-PREDICTION fallback (60 s still), which a tap re-grades — `rewind_mid_9` lands
    * there (the rewind empties the 1/M table). */
-  { id: 'no_latch_9a', route: 'rewind_mid_9', expect: 'flash',
-    why: "9a without `latch` (a WITHDRAW tap un-ticked it, layman pass 2)",
-    mutate: function (P) { delete P.steps[8].accs[0].latch; } },
+  { id: 'no_latch_10a', route: 'clear_1m_10', expect: 'flash',
+    why: "10a without `latch` (a WITHDRAW tap un-ticked it, layman pass 2)",
+    mutate: function (P) { delete P.steps[9].accs[0].latch; } },
   /* the PASS_S exemption must not swallow a band that ticks on a TRANSIENT PASS: step 6's Tavg
    * band narrowed to 581.5-583.5 degF, which the 35-step pull crosses at ~0.3 degF/s */
   /* RE-AIMED 2026-09-24 (b), load first: the stage steps are `accs_ordered` now, so the Tavg row
@@ -653,8 +675,8 @@ function runJob(legId, routeId, mutId, ctx) {
   function moving() { return !!grp().moving; }
   function tripCause() {
     var ts = s.true_state || {};
-    var why = (s.rps_state && s.rps_state.last_trip_reason) || ts.trip_cause || 'unreported';
-    var pt = svc.engine && svc.engine.eng && svc.engine.eng.pt;   // the SI signal's own cause, if any
+    var pt = svc.engine && svc.engine.eng && svc.engine.eng.pt;
+    var why = (s.rps_state && s.rps_state.last_trip_reason) || ts.trip_cause || (pt && pt.trip_cause) || 'unreported';   /* pt.trip_cause: the PWR2 RPS's own (2026-09-27-develop-a) */   // the SI signal's own cause, if any
     return why + (pt && pt.si_cause ? ' (SI on ' + pt.si_cause + ')' : '');
   }
   /* A REFUSED COMMAND IS THE PLAYER'S "Command error" LINE, NOT A HARNESS CRASH (layman pass 5
@@ -1048,9 +1070,22 @@ function runJob(legId, routeId, mutId, ctx) {
       return;
     }
     if (P === 'approach') {
+      if (S.memo.move0 == null && moving()) { S.memo.move0 = t(); out[cur].move0_min = +((t() - T0) / 60).toFixed(2); }
+      if (spec.sr_trip_max_min != null && out[cur].sr_trip_max_min == null) {   /* the step 9 note's own number, 1.5x */
+        var n9 = ((st2.accs || []).map(function (e) { return e.note || ''; }).join(' ').match(/about (\d+(?:\.\d+)?) plant-minutes? after the rods start moving/) || [])[1];
+        out[cur].sr_trip_max_min = n9 != null ? 1.5 * +n9 : 0;
+      }
+      /* `hold_to` (2026-09-27-develop-a, 10b): after the mark, WITHDRAW held at SLOW -- one step after another
+       * -- until the TILE reads `hold_to`, then let go and read a plant-minute (`dwell`) later */
+      if (spec.hold_to != null && spec.to == null && S.memo.go && !S.memo.rel && !moving() && bank() === S.memo.goal) {
+        if (pv('startup_rate_dpm') >= spec.hold_to) { S.memo.rel = true; S.memo.lm = t(); out[cur].rel_bank = bank(); out[cur].rel_sur = +pv('startup_rate_dpm').toFixed(3); }
+        else { S.memo.goal += 1; nudge(1, 'slow'); S.acts++; }
+        return;
+      }
       if (!S.memo.go) {
         S.memo.go = true; S.acts++;
         var pred = s.instructor.one_over_m && s.instructor.one_over_m.pred_steps;
+        if (spec.clear_first) send({ action: 'plot_1m_clear' });   // the 1/M panel's Clear: 10a falls back to its 60 s stop
         S.memo.goal = spec.to != null ? spec.to : (pred != null ? pred - (spec.short || 0) : bank());
         nudge(S.memo.goal - bank(), spec.speed || 'slow'); S.memo.lm = t(); S.memo.lb = bank();
         out[cur].pred = pred; out[cur].goal = S.memo.goal;
@@ -1063,6 +1098,36 @@ function runJob(legId, routeId, mutId, ctx) {
         if (r < spec.min_rate) { S.memo.goal += tap; nudge(tap, 'slow'); S.acts++; }
         else if (r > spec.max_rate) { S.memo.goal -= 1; nudge(-1, 'slow'); S.acts++; }
         S.memo.lm = t();
+      }
+      return;
+    }
+    /* `level` (2026-09-27-develop-a, 11b): once INTER RANGE reads 1.0e-8 A, INSERT `back` steps at MED, then
+     * every `read_s` plant-seconds with the rods still: above +dead tap INSERT, below -dead tap WITHDRAW */
+    if (P === 'level') {
+      if (!S.memo.go) {
+        if (rows2[0] && rows2[0].met) { S.memo.go = true;   /* the card: wait for 11a's check-off, then INSERT */ S.acts++; nudge(-spec.back, 'normal'); S.memo.lm = t(); out[cur].ins_at_ir = pv('ir_amps'); }
+        return;
+      }
+      if (bank() !== S.memo.lb) { S.memo.lb = bank(); S.memo.lm = t(); }
+      if (!moving() && t() - S.memo.lm >= (spec.read_s || 120)) {
+        var rl = pv('startup_rate_dpm');
+        out[cur].reads = (out[cur].reads || []).concat([[bank(), +rl.toFixed(3)]]);
+        if (rl > spec.dead) { nudge(-1, 'slow'); S.acts++; } else if (rl < -spec.dead) { nudge(1, 'slow'); S.acts++; }
+        S.memo.lm = t();
+      }
+      return;
+    }
+    /* `tap_until` (12a): one step at SLOW, then read a plant-minute (`dwell`) after it lands; again until the
+     * first row ticks */
+    if (P === 'tap_until') {
+      if (rows2[0] && rows2[0].met) return;
+      /* the player READS the tile a plant-minute after the tap has landed and taps again only if it reads under
+       * the row's target (a tap on the broadcast the rods-still clock completes would race the check-off) */
+      if (!moving() && t() - (S.memo.lastTap == null ? -1e9 : S.memo.lastTap) >= (spec.dwell || 60) + 8.5) {
+        var rt0 = pv('startup_rate_dpm');
+        if (S.memo.lastTap != null) out[cur].reads = (out[cur].reads || []).concat([[bank(), +rt0.toFixed(3)]]);
+        S.memo.lastTap = t();
+        if (S.memo.taps0 == null || rt0 < ((st2.accs || [])[0] || {}).v) { S.memo.taps0 = true; nudge(1, 'slow'); S.acts++; out[cur].taps = (out[cur].taps || 0) + 1; }
       }
       return;
     }
@@ -1383,6 +1448,19 @@ function verdicts(r) {
     v.unlock = { ok: ub.length === 0, name: 'a 1/M row ticks on the broadcast the bank reaches its mark, and no drawn substep is held dark by a hidden row or re-locked by a tap',
       note: ub.join('; ') || m1s.map(function (st) { return 'step ' + st.n + (st.a_tick ? ' 1/M row +' + st.a_tick.lag_bc + ' bc' + (st.a_tick.no_1m ? ' (no prediction)' : '') : ' 1/M row not ticked') + (st.unlock ? ', unlock lag ' + JSON.stringify(st.unlock) + ' s' : ''); }).join('; ') };
   }
+  /* 2026-09-27-develop-a: a route that skips the SR block trips on SR HIGH FLUX, NAMED, inside the minutes the
+   * step 9 note gives from the first rod motion */
+  var srs = (r.steps || []).filter(function (st) { return st.sr_trip_max_min != null; });
+  if (srs.length) {
+    var s0 = srs[0], dtm = s0.move0_min != null && res.t_min != null ? res.t_min - s0.move0_min : null;
+    v.sr_trip = { ok: res.kind === 'trip_named' && /sr_high/.test(res.why || '') && dtm != null && dtm <= s0.sr_trip_max_min,
+      name: 'skipping the SR block trips the reactor on SR HIGH FLUX, named, within the minutes the step 9 note states',
+      note: res.kind + ' ' + (res.why || '') + ' | ' + f(dtm, 2) + ' plant-min after the first rod motion (stated at most ' + s0.sr_trip_max_min + ')' };
+  }
+  /* 10b's band on the route that pulls past +1.0: the step must not complete while STARTUP RATE reads above 1.0 */
+  var r10 = (r.steps || []).filter(function (st) { return st.n === 10 && st.at_done && st.by !== 'overtaken' && r.leg === 'pwr_startup'; });
+  if (r10.length) v.rate10 = { ok: r10[0].at_done.sur_dpm <= 1.005, name: 'step 10 checks off with STARTUP RATE inside +0.3..+1.0',
+    note: 'SUR ' + f(r10[0].at_done.sur_dpm, 3) + ' at the tick, bank ' + r10[0].at_done.bank };
   var et = fl('early_tick');
   v.early = { ok: et.length === 0, name: 'no count row ticks while the tile AVERAGES under its target (count is the target, 807f)',
     note: et.map(function (x) { return 'step ' + x.step + ' at bank ' + x.bank + ', 30 s mean ' + x.mean30 + ' against ' + x.v; }).join('; ') || 'none' };
