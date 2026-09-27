@@ -3087,9 +3087,15 @@ if (!only && RUN_B) {
          bad.length === 0,   /* carriers >= 1 dropped 2026-09-27-develop-a: the one shipped carrier (old startup 10) was removed by OWNER RULING 2026-09-26 "B" */
          bad.length ? bad.join('; ') : (carriers.length ? carriers.join(' · ') : 'no step authors implied_by (the old startup step 10 carrier went with the 2026-09-26 "B" rebuild)'));
     })();
-    /* 2ad.2-5 drove the ONE shipped carrier. None ships since 2026-09-27-develop-a, so they do not run: the
-     * mechanism (InstructorLayer._gradeAccs implication pass) has NO pool-level gate until a step authors one. */
-    if (IMPL_IDX < 0) { console.log('  (2ad.2-5 not run: no shipped `implied_by` carrier)'); return; }
+    /* 2ad.2-5 drove the ONE shipped carrier, which OWNER RULING 2026-09-26 "B" removed (old startup 10). The
+     * mechanism still ships in InstructorLayer._gradeAccs, so 2ad.2-5 are RE-AIMED (2026-09-27-develop-a, second
+     * pass) at a FIXTURE step carrying the retired carrier's two rows verbatim (IR >= 9.95e-8 A implied_by power
+     * > 0.05 %). A pool carrier, if one is ever authored again, takes precedence. INJECTIONS re-proven on the
+     * fixture: `implied_by` dropped from the fixture -> 2ad.3 red; `state[ni].met` test dropped -> 2ad.4 red. */
+    var IMPL_STEP = IMPL_IDX >= 0 ? proc.steps[IMPL_IDX] : {
+      accs: [{ p: 'ir_amps', op: '>=', v: 9.950000000000001e-8, implied_by: 'power_pct', label: 'INTER RANGE reads 1.0e-7 A or more' },
+             { p: 'power_pct', op: '>', v: 0.05, label: 'REACTOR POWER reads 0.1 % or more' }] };
+    var IMPL_TAG = IMPL_IDX >= 0 ? '' : ' [fixture: the retired startup-10 carrier]';
 
     /* --- 2. THE IMPLICATION IS ARITHMETIC ON THIS PLANT, and the constant is LIFTED out of the
      * engine rather than quoted here: `pwr2_true_state` computes `ir_amps = K_IR x power_frac`,
@@ -3100,12 +3106,12 @@ if (!only && RUN_B) {
       var tsSrc = fs.readFileSync(path.join(ROOT, 'engines', 'pwr2', 'pwr2_true_state.js'), 'utf8');
       var kM = /K_IR\s*=\s*([0-9.eE+-]+)/.exec(tsSrc);
       var K_IR = kM ? parseFloat(kM[1]) : NaN;
-      var st2 = proc ? proc.steps[IMPL_IDX] : null;
+      var st2 = IMPL_STEP;
       var irEn = null, pwEn = null;
       ((st2 && st2.accs) || []).forEach(function (e) { if (e.p === 'ir_amps') irEn = e; if (e.p === 'power_pct') pwEn = e; });
       var atPower = (irEn && pwEn && isFinite(K_IR)) ? K_IR * (pwEn.v / 100) : NaN;
       var ratio = atPower / (irEn ? irEn.v : NaN);
-      ck('2ad.2 the covering row threshold puts INTER RANGE far above the covered row (#749)',
+      ck('2ad.2 the covering row threshold puts INTER RANGE far above the covered row (#749)' + IMPL_TAG,
          isFinite(ratio) && ratio >= 10,
          !kM ? 'could not lift K_IR out of pwr2_true_state.js — has it been renamed?'
              : 'K_IR ' + K_IR + '; REACTOR POWER ' + (pwEn ? pwEn.v : '?') + ' % puts ir_amps at ' +
@@ -3125,14 +3131,14 @@ if (!only && RUN_B) {
       if (dead) svc.handleCommand({ action: 'set_instrument_failure', instrument_id: dead, mode: 'dead' });
       var il = Object.create(RD.InstructorLayer.prototype);
       var holder = {}, all = false;
-      for (i = 0; i < (ticks || 40); i++) { s = svc.tick(); all = il._gradeAccs(holder, proc.steps[IMPL_IDX], s); }
+      for (i = 0; i < (ticks || 40); i++) { s = svc.tick(); all = il._gradeAccs(holder, IMPL_STEP, s); }
       return { all: all, rows: holder.accsState, s: s };
     }
 
     (function () {
       var r = gradeStep('hot_full_power', 'intermediate_range');
       var ir = r.rows ? r.rows[0] : null, pw = r.rows ? r.rows[1] : null;
-      ck('2ad.3 a dead INTER RANGE no longer strands the criticality step — the step completes (#749)',
+      ck('2ad.3 a dead INTER RANGE no longer strands the criticality step — the step completes (#749)' + IMPL_TAG,
          r.all === true && !!ir && ir.met === true && ir.implied === true &&
          ir.obs === r.s.instruments.intermediate_range && ir.obs < 1e-7,
          'step graded ' + r.all + '; INTER RANGE met ' + (ir && ir.met) + ' implied ' + (ir && ir.implied) +
@@ -3149,7 +3155,7 @@ if (!only && RUN_B) {
        * because the same injection is standing and the step does not tick. */
       var r = gradeStep('hot_zero_power', 'intermediate_range');
       var ir = r.rows ? r.rows[0] : null, pw = r.rows ? r.rows[1] : null;
-      ck('2ad.4 ...and it is NOT a fail-open: with the covering row unmet the same dead channel still holds the step (#749)',
+      ck('2ad.4 ...and it is NOT a fail-open: with the covering row unmet the same dead channel still holds the step (#749)' + IMPL_TAG,
          r.all === false && !!ir && ir.met === false && !!pw && pw.met === false &&
          (r.s.active_failures || []).length === 0,
          'step graded ' + r.all + '; INTER RANGE met ' + (ir && ir.met) + ', REACTOR POWER met ' +
@@ -3164,7 +3170,7 @@ if (!only && RUN_B) {
        * row kind the owner declined. */
       var r = gradeStep('hot_full_power', null, 20);
       var ir = r.rows ? r.rows[0] : null;
-      ck('2ad.5 on a healthy board the covered row still ticks on its own reading, unimplied (#749)',
+      ck('2ad.5 on a healthy board the covered row still ticks on its own reading, unimplied (#749)' + IMPL_TAG,
          r.all === true && !!ir && ir.met === true && ir.implied === false &&
          ir.obs >= 1e-7 && ir.graded_by === 'instrument',
          'INTER RANGE met ' + (ir && ir.met) + ' implied ' + (ir && ir.implied) + ' reading ' +
@@ -3218,11 +3224,17 @@ if (!only && RUN_B) {
     }
     var startedAt = ckl() ? ckl().step_index : -1;
 
-    /* the overshoot: drive the bank out until the plant secures the source range on its own */
-    svc.handleCommand({ action: 'rod_start', group_id: 'control', direction: 1, speed: 'normal' });
+    /* the overshoot. RE-AIMED 2026-09-27-develop-a (second pass): the plant no longer secures the source range
+     * itself (OWNER RULING 2026-09-26 "B"); it goes off when the player BLOCKS SR HIGH FLUX, allowed from P-6
+     * (INTER RANGE 1.0e-10 A, control rod ~198, subcritical). So: pull to 200 at MED and block the moment P-6
+     * takes the press -- the early block that overtakes the 1/M rungs, the same route as the #641 check. The claim
+     * (the note is delivered where the skip lands, and cleared after) does not depend on WHY the SR went off. */
+    svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 200, speed: 'normal' });
     guard = 0;
-    while (guard++ < 300000 && s.true_state.sr_energized) s = svc.tick();
-    svc.handleCommand({ action: 'rod_stop', group_id: 'control' });
+    while (guard++ < 300000 && s.true_state.sr_energized !== false) {
+      s = svc.tick();
+      try { svc.handleCommand({ action: 'set_trip_block', trip_id: 'sr_high', blocked: true }); } catch (e) { /* refused below P-6 */ }
+    }
     var securedBank = s.true_state.rod_steps;
     for (i = 0; i < 20; i++) s = svc.tick();          // let the overtaken debounce land and skip
 
@@ -3230,7 +3242,7 @@ if (!only && RUN_B) {
     var landedMsg = msg();
     ck('2ac.1 the overtaken note is DELIVERED on the step the skip lands on (#749 item 4 — the ordering half)',
        landedAt > startedAt && !!landedMsg && /overtaken/i.test(String(landedMsg)),
-       'entered the overshoot on step ' + (startedAt + 1) + ', the plant secured the source range at bank ' +
+       'entered the overshoot on step ' + (startedAt + 1) + ', SR HIGH FLUX blocked (source range off) at bank ' +
        (securedBank == null ? '?' : securedBank.toFixed(0)) + ' and the walkthrough skipped to step ' +
        (landedAt + 1) + '; message ' + (landedMsg ? JSON.stringify(String(landedMsg).slice(0, 48) + '…') : 'NONE'));
 
@@ -3509,20 +3521,32 @@ if (!only && RUN_B) {
     while (t() - tPull < 600 && (bank() !== 211 || s.control_state.rod_groups.filter(function (x) { return x.id === 'control_rods'; })[0].moving)) tick();
     holdS(330);
     var c3 = ckl(), preAck = !!(c3 && c3.awaiting_ack), preIdx = c3 ? c3.step_index : -1;
+    /* RE-AIMED 2026-09-27-develop-a (second pass). 10b's floor is now +0.295 (the +0.3..+1.0 band, OWNER RULING
+     * 2026-09-26 "B") and its rods-still wait 60 s: no single SLOW tap spikes that high below the band (MEASURED,
+     * seed 7, 211..215 one tap each: peaks 0.187/0.214/0.252/0.278/0.249, and 215 is overtaken at 0.99 %). The
+     * card's own move now is a HELD pull, so the claim is tested on one: 211 -> 217 at SLOW (the card's "hold
+     * WITHDRAW at SLOW" size, 45 s of travel), whose rate crosses the floor mid-travel (0.403 peak) and settles
+     * 0.309 in the band. The step must not await Continue while the bank moves, NOR inside 60 s of the stop.
+     * INJECTIONS (2026-09-27): `still_s` deleted from 10b -> red (awaits mid-travel); `still_s` 60 -> 1 -> red
+     * (awaits 1 s after the stop). */
     svc.timeAcceleration = 1;
-    svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 1, speed: 'slow' });
-    var tTap2 = t(), ackMoving2 = 0, travel2 = 0, peak2 = -1;
-    while (t() - tTap2 < 20) {
+    svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 6, speed: 'slow' });
+    var tTap2 = t(), ackMoving2 = 0, travel2 = 0, peak2 = -1, tStop2 = null, tAck2 = null;
+    while (t() - tTap2 < 150) {
       tick();
       var g2 = s.control_state.rod_groups.filter(function (x) { return x.id === 'control_rods'; })[0];
       if (g2.moving) { travel2 += 1; peak2 = Math.max(peak2, s.instruments.startup_rate); if (ckl() && ckl().awaiting_ack) ackMoving2++; }
+      else if (tStop2 === null) tStop2 = t() - tTap2;
+      if (tAck2 === null && ckl() && (ckl().awaiting_ack || ckl().step_index !== S9)) tAck2 = t() - tTap2;
     }
     svc.timeAcceleration = 10;
-    ck('2ak.5 ...a tap whose spike CROSSES the floor, still travelling: the step is never met (the rods-still wait inside 9b refuses it)',
-       !preAck && preIdx === S9 && travel2 > 20 && peak2 > lo && ackMoving2 === 0 && bank() === 212,
-       '211 -> 212: ' + travel2 + ' broadcasts in travel, peak STARTUP RATE ' + peak2.toFixed(3) + ' vs floor ' + lo.toFixed(3) +
-       ', awaiting Continue on ' + ackMoving2 + ' of them' + (preAck ? ' (ALREADY awaiting before the tap)' : '') +
-       ' (the 207 -> 208 tap above peaked ' + peak.toFixed(3) + ', ' + ackMoving + ' awaiting)');
+    var stillOk = tAck2 === null || (tStop2 !== null && tAck2 - tStop2 >= 59);
+    ck('2ak.5 ...a held SLOW pull whose rate CROSSES the floor in travel: the step never awaits Continue while the bank moves, nor inside the 60 s rods-still wait',
+       !preAck && preIdx === S9 && travel2 > 20 && peak2 > lo && ackMoving2 === 0 && stillOk && bank() === 217,
+       '211 -> 217: ' + travel2 + ' broadcasts in travel, peak STARTUP RATE ' + peak2.toFixed(3) + ' vs floor ' + lo.toFixed(3) +
+       ', awaiting Continue on ' + ackMoving2 + ' of them' + (preAck ? ' (ALREADY awaiting before the pull)' : '') +
+       '; stopped +' + (tStop2 === null ? '?' : tStop2.toFixed(0)) + ' s, Continue lit ' + (tAck2 === null ? 'not within 150 s' : '+' + tAck2.toFixed(0) + ' s') +
+       ', bank ' + bank() + ' (the 207 -> 208 tap above peaked ' + peak.toFixed(3) + ', ' + ackMoving + ' awaiting)');
   })();
 
   /* 2am. (REWRITTEN 2026-09-26-develop-k: `reach_1m: 3.9`. .2 is now "4 short never ticks", .3 a
@@ -3615,7 +3639,7 @@ if (!only && RUN_B) {
         var r = { pAfter: oom().pred_steps, met: null, left: null, by: null, row: null };
         if (clear) { svc.handleCommand({ action: 'plot_1m_clear' }); tick(); }
         var t9 = t(); pullTo(target, 'slow');
-        var tStop = t(), lastB = bank(), lastMove = t(), goal = target;
+        var tStop = t(), lastB = bank(), lastMove = t(), goal = target, held = taps ? 0 : 2;
         while (t() - t9 < cap) {
           tick();
           var c = ckl();
@@ -3624,9 +3648,18 @@ if (!only && RUN_B) {
           if (r.row && r.row.met && r.met == null) r.met = t() - tStop;
           if (c.awaiting_ack) { svc.handleCommand({ action: 'checklist_check', index: S9 }); continue; }
           if (!taps) continue;
+          /* RE-AIMED 2026-09-27-develop-a (second pass): the card's 10b since OWNER RULING 2026-09-26 "B" -- once
+           * 10a has ticked, hold WITHDRAW at SLOW until STARTUP RATE reads +0.5, let go, then one tap a plant-minute
+           * toward +0.3..+1.0. The old five-minute single taps from 3 short never reach +0.295 before power passes
+           * 0.45 % and the step is overtaken (MEASURED seed 7: 211..215, settled 0.089..0.187, overtaken at 215). */
+          if (held === 0 && r.met != null) { svc.handleCommand({ action: 'rod_start', group_id: 'control', direction: 1, speed: 'slow' }); held = 1; continue; }
+          if (held === 1) {
+            if (s.instruments.startup_rate >= 0.5) { svc.handleCommand({ action: 'rod_stop', group_id: 'control' }); held = 2; }
+            continue;
+          }
           var b = bank();
-          if (b !== lastB) { lastB = b; lastMove = t(); }
-          if (b === goal && t() - lastMove >= 300) {           /* the note's policy, one tap per dwell */
+          if (b !== lastB) { lastB = b; lastMove = t(); goal = b; }
+          if (b === goal && !grp().moving && t() - lastMove >= 60) {           /* the card's policy, one tap a plant-minute */
             var sr = s.instruments.startup_rate, d = sr > 1.0 ? -1 : (sr < FLOOR9 ? 1 : 0);   /* the card's target (#807) */
             if (d) {
               goal += d; lastMove = t();
@@ -3707,6 +3740,7 @@ if (!only && RUN_B) {
     function t() { return s.metadata.sim_time; }
     function holdS(sec) { var t0 = t(); while (t() - t0 < sec) tick(); }
     function bank() { return s.control_state.rod_groups.filter(function (g) { return g.id === 'control_rods' || g.function === 'control'; })[0].steps; }
+    function grpMoving() { return s.control_state.rod_groups.filter(function (g) { return g.id === 'control_rods' || g.function === 'control'; })[0].moving; }
     function ckl() { return s.instructor && s.instructor.checklist; }
     function blk(p) { return RD.InstructorLayer.paramValue(s, p) ? 1 : 0; }
     // advance the live checklist, acking each completed step, until step index `k` opens (or `lim` s)
@@ -3729,23 +3763,60 @@ if (!only && RUN_B) {
     svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_startup' });
     for (i = 0; i < 5; i++) tick();
     toStep(S9, 60);
-    svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 210 - bank(), speed: 'slow' });
-    var at12 = toStep(S12, 9000), t12 = t(), early = null, done12 = null;
-    while (at12 && t() - t12 < 2400) {
+    /* RE-AIMED 2026-09-27-develop-a (second pass), OWNER RULING 2026-09-26 "B". S9 is now the P-6 SR block step,
+     * and the old fixture's pull to 210 without it tripped on SR HIGH FLUX before step 12 opened (MEASURED: "step 12
+     * never reached", then the rod_nudge into the latched trip threw and ended the runner). Blocked, the old shallow
+     * 210 no longer reaches step 12 either: 10 and 11 hold until they are overtaken at 0.45 %, and 12a (+0.15, rods
+     * still a minute) is then never met (MEASURED: never in 2400 s at 1.13 %). So the fixture follows the new card:
+     * block at P-6, rods to 207 (critical on this core), Continue pressed through 10 and 11, and at step 12 the
+     * card's 12a policy -- tap WITHDRAW one step a plant-minute until STARTUP RATE reads +0.15 -- then hands off.
+     * The claim is unchanged: step 12 is not checked off while power still climbs (600 s after 12a ticks) and is
+     * once it levels. MEASURED seed 7: 6 taps 207 -> 213, 12a +466 s, step +2250 s at 0.96 %, rate 0.087.
+     * INJECTION (2026-09-27, probe on the same fixture): 12b and 12c removed -> step checked off with 12a. */
+    svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 200 - bank(), speed: 'normal' });
+    var tB = t();
+    while (t() - tB < 1200 && !blk('sr_high_blocked')) {
+      tick();
+      try { svc.handleCommand({ action: 'set_trip_block', trip_id: 'sr_high', blocked: true }); } catch (e) { /* refused below P-6 */ }
+    }
+    toStep(S9 + 1, 120);
+    svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 207 - bank(), speed: 'slow' });
+    var tp7 = t();
+    while (t() - tp7 < 600 && (bank() !== 207 || grpMoving())) tick();
+    var gF = 0;
+    while (ckl() && ckl().step_index < S12 && gF++ < 50) { svc.handleCommand({ action: 'checklist_check', index: ckl().step_index }); tick(); }
+    var at12 = !!ckl() && ckl().step_index === S12, t12 = t(), tA = null, done12 = null, lastMv = t(), taps = 0;
+    while (at12 && t() - t12 < 3600) {
       tick();
       var c = ckl();
-      if (c && c.step_index === S12 && c.awaiting_ack) { done12 = t() - t12; break; }
+      if (!c || c.step_index !== S12 || c.awaiting_ack) { done12 = t() - t12; break; }
+      var a0 = c.accs && c.accs[0];
+      if (tA === null && a0 && a0.met) tA = t() - t12;
+      if (grpMoving()) lastMv = t();
+      else if (tA === null && t() - lastMv >= 60 && s.instruments.startup_rate < 0.15) {
+        svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 1, speed: 'slow' }); taps++; lastMv = t();
+      }
     }
-    ck('2al.1 bank 210: step 12 is not checked off while power climbs (first 600 s), and is once it levels',
-       at12 && done12 != null && done12 >= 600,
-       (at12 ? 'step 12 checked off at ' + (done12 == null ? 'NEVER in 2400 s' : '+' + done12.toFixed(0) + ' s') +
-        ', REACTOR POWER ' + s.instruments.power_range.toFixed(2) + ' %' : 'step 12 never reached'));
+    ck('2al.1 step 12 on the card route: not checked off while power climbs (600 s after 12a ticks), and is once it levels',
+       at12 && tA !== null && done12 != null && done12 - tA >= 600,
+       'SR blocked ' + (blk('sr_high_blocked') ? 'yes' : 'NO') + '; ' + (at12 ? taps + ' taps to bank ' + bank() + ', 12a ' +
+        (tA === null ? 'NEVER' : '+' + tA.toFixed(0) + ' s') + ', step 12 checked off ' + (done12 == null ? 'NEVER in 3600 s' : '+' + done12.toFixed(0) + ' s') +
+        ', REACTOR POWER ' + s.instruments.power_range.toFixed(2) + ' %, STARTUP RATE ' + s.instruments.startup_rate.toFixed(3)
+        : 'step 12 never reached (' + (s.true_state.scrammed ? 'TRIPPED ' + ((svc.engine && svc.engine.eng && svc.engine.eng.pt && svc.engine.eng.pt.trip_cause) || '') : 'no trip') + ')'));
+    /* a tripped fixture must fail 2al.2 by name, not throw on the latched rod drive and end the runner
+     * (2026-09-27: the pre-block fixture tripped on SR HIGH FLUX and the throw hid every check after it) */
+    if (!at12 || s.true_state.scrammed) { ck('2al.2 ...LOAD 10 MWe, blocks pressed 20 plant-minutes later: the leg completes (step 17 at 9 %) and both blocks hold', false, 'not run: the fixture never reached step 12 or tripped'); return; }
     toStep(S12 + 1, 30);
-    svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 13, speed: 'slow' });
+    /* to bank 223, where the old +13 from 210 landed (the fixture now leaves 12 at ~213) */
+    svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 223 - bank(), speed: 'slow' });
     toStep(S12 + 2, 1200);
     svc.handleCommand({ action: 'latch_turbine' }); holdS(5);
     svc.handleCommand({ action: 'set_load_target', mwe: 10 });
     var tL = t();
+    /* 14c (2026-09-27-develop-a): STEAM DUMP AUTO again once OUTPUT reads above 8 MW -> TAVG mode; without the press
+     * step 14 never completes and the blocks below land on the wrong step */
+    while (t() - tL < 600 && !(RD.InstructorLayer.paramValue(s, 'mwe_output') > 8)) tick();
+    svc.handleCommand({ action: 'set_steam_dump', mode: 'auto' });
     toStep(S12 + 3, 900);
     holdS(1200 - (t() - tL));
     var pAt = s.instruments.power_range;
@@ -3972,7 +4043,7 @@ if (!only && RUN_B) {
        * (DUMP SETPOINT 720 / 270 psi) and 11a (HX SPLIT raised to 9 %), all control-state rows, so
        * instrument-graded and sole unchanged. SUM on a merge. */
       ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 item 2 merge): 84 / 172 / 100 / 25 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added, raise-power 10-12 removed, cooldown 4b/4c/11a added; 807g: 84 / 173 / 101 / 25, cooldown 11b SUBCOOLING MARGIN row)',
-         gradedSteps === 84 && predRows === 172 && rows.length === 101 && soleInst === 25,   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
+         gradedSteps === 84 && predRows === 177 && rows.length === 103 && soleInst === 23,   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -4069,8 +4140,13 @@ if (!only && RUN_B) {
       'pwr_startup:2:boron_ppm': 'boron_analyzer',           // ~ 719        dead 0.000 vs true 718.9 ppm (2c; not SOLE since 2026-09-25)
       /* 'pwr_startup:9:startup_rate_dpm' moved to RELIEVED_EXPECTED (quality pass 2026-09-23): step 9's
        * `overtaken` on REACTOR POWER 0.5 % stands it down off-channel once power arrives (§2aj). */
-      'pwr_startup:10:power_pct': 'power_range',             // > 0.05        the row #749's relief leans ON
-      'pwr_startup:11:power_pct': 'power_range',             // >= 0.45 [SOLE]
+      /* RE-PINNED 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt): old 10 {IR, power}
+       * and old 11's SOLE power row are gone. NEW, adjudicated: 9a INTER RANGE (a dead IR strands the P-6 step --
+       * the plant's own P-6 reads the same channel, so the block itself cannot be taken either: the card follows
+       * the plant) and 12a STARTUP RATE >= 0.145 (a dead channel reads the -5.000 DPM floor; the same exposure
+       * old step 9's rate band carried). */
+      'pwr_startup:9:ir_amps': 'intermediate_range',         // >= 9.95e-11 (P-6)
+      'pwr_startup:12:startup_rate_dpm': 'startup_rate',     // >= 0.145, still 60 s (12a)
       /* RE-PINNED 2026-09-23 (owner ruling "Grade real level-off"): step 12's rate row was REPLACED by a
        * `steady` row on REACTOR POWER. The key is now the power row; the sweep grades ONE snapshot,
        * which never covers a `steady` window, so it reads met:false by construction — whether a dead
@@ -4120,7 +4196,7 @@ if (!only && RUN_B) {
       'pwr_tmi2_incident:19:subcooling_c': 'subcooling_margin', // > 5.56 [SOLE] dead -28.000 vs true 23.404 degC (#789)
       /* the three `saw` rows — no `implied_by` can reach a `saw`, so these have no relief at all */
       'pwr_heatup:11:saw:tavg_c': 'tavg',                    // > 150         same channel as the step's acc
-      'pwr_startup:11:saw:startup_rate_dpm': 'startup_rate', // > 0           a channel the step's acc does NOT use
+      /* 'pwr_startup:11:saw:startup_rate_dpm' LEFT with old step 11 (2026-09-27-develop-a, OWNER RULING 2026-09-26 "B") */
       'pwr_tmi2_incident:3:saw:pressure_mpa': 'primary_pressure', // > 16 [SOLE]  the step's only grading
     };
     /* THE OTHER HALF: a row that reads DOWNWARD is not stranded by a dead gauge, it is TICKED by
@@ -4178,8 +4254,13 @@ if (!only && RUN_B) {
       'pwr_startup:6:sr_counts_cps': 1,
       'pwr_startup:7:sr_counts_cps': 1,
       'pwr_startup:8:sr_counts_cps': 1,
-      'pwr_startup:10:ir_amps': 1,   // step 9 until the 2026-09-23 split
-      'pwr_startup:9:startup_rate_dpm': 1,   // relieved by step 9's `overtaken` (power_range), §2aj
+      /* RE-PINNED 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B"): old 10's implied IR row and old 9's rate row
+       * LEFT with their steps; the approach (10) and the level-off (11) each author `overtaken` on REACTOR POWER
+       * 0.45 %, which relieves their instrument rows off-channel. */
+      'pwr_startup:10:startup_rate_dpm': 1,   // 10b, relieved by step 10's `overtaken` (power_range), §2aj
+      'pwr_startup:11:ir_amps': 1,            // 11a, step 11's `overtaken`
+      'pwr_startup:11:startup_rate_dpm': 1,   // 11b
+      'pwr_startup:11:boron_ppm': 1,          // 11c
     };
 
     function diffSet(got, want) {
@@ -4290,8 +4371,9 @@ if (!only && RUN_B) {
       'pwr_heatup:16': 'sr_counts_cps,startup_rate_dpm',      // SOURCE RANGE steady + STARTUP RATE near 0 (owner ruling 2026-09-24; was reactivity_pcm)
       'pwr_heatup:17': 'power_pct',
       'pwr_startup:1': 'tavg_c,pressure_mpa,pump_flow_pct,startup_rate_dpm',   // 1a-1d (2026-09-25)
-      'pwr_startup:10': 'ir_amps,power_pct',                  // the climb, split out of old 9 (had a cmd)
-      'pwr_startup:12': 'power_pct,startup_rate_dpm',         // point of adding heat: power >= 0.95, then rate < 0.105 (807f, #807 item 11)
+      /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B"): 10 and 12 now carry a rod `cmd` (not observation-kind);
+       * the new 11, the level-off at 1.0e-8 A, has none */
+      'pwr_startup:11': 'ir_amps,startup_rate_dpm,boron_ppm',
       'pwr_startup:17': 'power_pct,mwe_output',               // his two rows, replacing plant_mode
       'pwr_raise_power:9': 'power_pct,mwe_output,boron_ppm,tavg_c',
       'pwr_cooldown:8': 'pressure_mpa',

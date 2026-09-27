@@ -70,6 +70,46 @@ the critical rod position and boron." Sources: inbox/sources/startup/EVIDENCE.md
   (≥ 1.0e-8 A) never latched when the insert went in on that broadcast, and 12a's tap landed on the broadcast its
   rods-still clock completed. Read the tile, then act only if it is still short.
 
+- **Second pass (same lane, the open items).** `run_checklist_pwr2_b`, each red adjudicated alone, each re-aimed check
+  injection-proven:
+  - **2ac.1/2** (the overtaken note delivered, then cleared): the overshoot drove rods until the SR "secured itself",
+    which no longer happens, so it tripped instead. It now blocks SR HIGH FLUX at P-6 (bank 198), the #641 route; the
+    skip lands on step 9 and the note clears on 10-17. Injection: the clear in `_checklistCheckOff` dropped -> 2ac.2 red.
+    (2ac.1's own set-then-check-off injection was not re-run: its code did not change.)
+  - **2ak.5** (a moving rate spike cannot tick the approach): no single SLOW tap crosses the new +0.295 floor below the
+    band (seed 7, 211..215: peaks 0.187-0.278, 215 overtaken at 0.99 %). Re-aimed at the card's held pull, 211 -> 217
+    SLOW: peak 0.401 in travel, 0 of 449 travelling broadcasts awaiting, Continue +60 s after the stop. Injections:
+    10b `still_s` deleted -> red (181 awaiting mid-travel); `still_s` 1 -> red (lit 1 s after the stop).
+  - **2am.4** (3 short, then the card's policy completes 10 on its rows): the five-minute single taps never reach
+    +0.295 before power passes 0.45 % (overtaken). The policy is now the card's: hold SLOW to +0.5, then a tap a
+    plant-minute. Step left +217 s / +221 s (seeds 42 / 7). Injection: 10b `still_s` 1e6 -> red on both.
+  - **2al.1/2** (step 12 grades the real level-off; the leg then completes with both blocks): the fixture tripped on
+    SR HIGH FLUX, and the follow-on `rod_nudge` into the latched trip THREW and ended the runner, so 2ae/2af never ran
+    (the plant agent's "crash at ~3498"). Now: block at P-6, rods to 207, Continue through 10-11, the card's 12a taps;
+    6 taps 207 -> 213, 12a +466 s, step 12 +2250 s at 0.96 %. 2al.2 presses 14c. A tripped fixture now fails 2al.2
+    by name instead of throwing. Injection (probe, same fixture): 12b and 12c removed -> step 12 ticks with 12a.
+  - **2ad.2-5** reinstated on a fixture step carrying the retired carrier's rows (the mechanism still ships in
+    `_gradeAccs`). Injections: fixture `implied_by` dropped -> 2ad.3 red; the `state[ni].met` test dropped -> 2ad.4 red.
+    **2ab.7** stays retired: no step pairs an INTER RANGE row with a REACTOR POWER row any more.
+  - **2ae.1b / 2ae.2 / 2ae.5 / 2af.1** re-pinned (84 / 177 / 103 / 23). Two stranding rows are new: 9a INTER RANGE (a
+    dead IR also stops the plant's own P-6, so the block cannot be taken; the card follows the plant) and 12a STARTUP RATE.
+- **Lower power on the TAVG chain, MEASURED (seed 42).** One cut: step 2 peaks 584.8 °F (walked: 584.7), step 4 576.3
+  (577.3), step 5 567.9 (567.9), **no alarm on any**. A step over 10 % arms C-7 and the loss-of-load dump carries it;
+  the 5 MW-a-minute walk does not arm it. **The notes' "taken in one cut ... climbs to about 595/585/575 °F and brings
+  in the alarms" sentences (2b/4b/5b) were false on this plant and are cut** (pool and `04_lower_power.md`).
+  Injections: `lower_load_step` re-aimed as `lower_no_inserts_2`, the walk with its 3-step inserts left out, which
+  peaks at 589.3 / 589.1 / 589.1 °F on seeds 42/7/123 against "under about 587" (peak red). `lower_load_step4/5`
+  retired: without inserts, step 4 peaks at 580.5 vs 580 (0.5 °F on one seed, an edge rather than a gate) and step 5
+  at 570.8 vs 572 (blind). The `forbid` verdict keeps its proof in `cooldown11_old_watch`.
+- **Chained raise/lower under TAVG vs the card text.** Raise: withdrew 20/20/30/15/25 at stages 4-8, leg 44.9 min,
+  within the cards' ranges except stage 8, where 25 steps is on the edge of "about 20". The standalone route also
+  measures 25, so this predates TAVG; left as is. Lower: inserted 15/9/24/18/12, peaks 584.7/580.5/577.3/567.9/560.8 °F
+  against 587/-/580/572/565, 74.4 % after step 3, 11.8 % at the end, pressure low 2208 psia; step 3's 9 is one under
+  "about 10 to 20" (the standalone route: 18). No other text moved.
+- **Gates** (`run_all --only`): run_walkthrough_routes 280/0, run_checklist_pwr2 254/2 (the tracked TMI-2 pair),
+  run_checklist_pwr2_b 204/1 (TRIP_CAUSE `sr_high_flux`, fixed on exp/807j), run_manual_controls 1152, run_hardrules
+  689, run_style, run_session_labels, run_doc_budget and verify_flags_ui green; BASELINES set to those numbers.
+
 ## Session log — 2026-09-26-develop-l (the P-6 manual source-range block and the SR high flux trip)
 
 Scratch worktree exp/807j (from develop dab17d5c). OWNER RULING, 2026-09-26, "B": *"A, plus a manual

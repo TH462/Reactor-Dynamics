@@ -49,7 +49,7 @@ Coming down is the climb in reverse. Every percent of power shed hands reactivit
 
 Suggested time warp: 5×.
 
-Note: The load comes off over about five plant-minutes and power walks down behind it. AVG COOLANT TEMPERATURE rises toward the top of the green band on its tile while it does; the 3-step inserts hold it under about 587 °F. Taken in one cut, 100 to 75 MW at once, it climbs to about 595 °F and brings in the pressure and temperature alarms.
+Note: The load comes off over about five plant-minutes and power walks down behind it. AVG COOLANT TEMPERATURE rises toward the top of the green band on its tile while it does; the 3-step inserts hold it under about 587 °F.
 
 
 
@@ -95,7 +95,7 @@ The load drop left the reactor hot: it settles above its program until rods take
 
 Suggested time warp: 5×.
 
-Note: The load comes off over about five plant-minutes and power walks down behind it; the 3-step inserts hold AVG COOLANT TEMPERATURE under about 580 °F. Taken in one cut after the raise-power walkthrough, 75 to 50 MW at once, it climbs to about 585 °F and brings in the Pressurizer Pressure High and Steam Generator Pressure High alarms.
+Note: The load comes off over about five plant-minutes and power walks down behind it; the 3-step inserts hold AVG COOLANT TEMPERATURE under about 580 °F.
 
 ()4c. Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.
 
@@ -123,7 +123,7 @@ Same order: LOAD first, then rods, so the temperature does not sit hot above its
 
 Suggested time warp: 5×.
 
-Note: The load comes off over about four plant-minutes; the 3-step inserts hold AVG COOLANT TEMPERATURE under about 572 °F. Taken in one cut after the raise-power walkthrough, 50 to 30 MW at once, it climbs to about 575 °F and brings in the Steam Generator Pressure High alarm.
+Note: The load comes off over about four plant-minutes; the 3-step inserts hold AVG COOLANT TEMPERATURE under about 572 °F.
 
 ()5c. Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.
 
@@ -442,3 +442,12 @@ The notes' "under about 580 / 572 / 565 °F" cover the hotter preset. Leg: 22.6 
 Re-measured on the holdup plant (seeds 42/7/123 and the chain) and re-authored to it; highlights moved
 to the pressed button (`Load Setpoint`, `Boron ON`, `Turbine — Latch`, `Insert`) with the card on the
 steady ring. Every number and why: `Diagnostic/TUNING_LOG.md`, session `2026-09-26-develop-h`.
+
+### One-cut sentences cut — 2026-09-27, `exp/rc8w` (the chain now hands this leg a TAVG-mode dump)
+
+Mode 3 to Mode 1 step 14c now leaves STEAM DUMP AUTO in TAVG, as the standalone ICs already boot. On that
+chain (seed 42) one cut peaks 584.8 °F at step 2 (walked: 584.7), 576.3 at step 4 (walked 577.3) and 567.9
+at step 5 (walked 567.9), **no alarm on any**: a step over 10 % arms C-7 and the loss-of-load dump carries
+it, while the 5 MW walk does not arm it. The 2b/4b/5b sentences "taken in one cut ... climbs to about
+595/585/575 °F and brings in the alarms" were false on this plant and are cut. What the notes still claim
+holds: the walk with its 3-step inserts off peaks 589.3 °F at step 2 against "under about 587".

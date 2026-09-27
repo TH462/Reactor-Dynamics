@@ -268,7 +268,7 @@ var ROUTES = {
       /* OWNER RULING 2026-09-26 ("Walk them too"): 4-6 walk LOAD the same way, 5 MW a plant-minute,
        * 3-step inserts whenever the tile reads above the band top the step's c row names, and the
        * inserts go on after the last cut until it reads under it (c). The OLD one-cut routes are
-       * the injections `lower_load_step4/5/6` below. */
+       * the injections `lower_load_step4/5/6` below (retired 2026-09-27: one cut is harmless on the TAVG-mode chain). */
       '#4': { policy: 'load_stair', from: 75, to: 50, step: 5, wait_s: 60, ins_above: 569, pull: 3, dwell: 60 },
       '#5': { policy: 'load_stair', from: 50, to: 30, step: 5, wait_s: 60, ins_above: 562, pull: 3, dwell: 60 },
       '#6': { policy: 'load_stair', from: 30, to: 15, step: 5, wait_s: 60, ins_above: 557, pull: 3, dwell: 60 },
@@ -549,14 +549,13 @@ var MUTATIONS = [
    * step 4: its OUTPUT row back at +/-5, where the 55 MW tread (54.8 on the gauge) meets it and the
    * next reading (55.07) un-ticks it, MEASURED 6.5 s met. The same mutation on step 6 stayed green
    * (the 20 MW tread's noise did not cross 20.0 inside PASS_S), so it is not claimed there. */
-  { id: 'lower_load_step4', chain: true, leg: 'pwr_lower_power', route: 'chain', expect: 'forbid',
-    why: 'lower-power 4 as one 25 MW cut, then the trim (585 degF, two high-pressure alarms)',
-    mutate: function (P) { delete P.steps[3].ramp; },   // the old card: LOAD typed once, no walk
-    override: { '#4': { policy: 'to_band', tref: 567, dead: 0, dir: 'insert', pull: 3, dwell: 60 } } },
-  { id: 'lower_load_step5', chain: true, leg: 'pwr_lower_power', route: 'chain', expect: 'peak',
-    why: 'lower-power 5 as one 20 MW cut, then the trim (575 degF against the card, under about 572)',
-    mutate: function (P) { delete P.steps[4].ramp; },   // the old card: LOAD typed once, no walk
-    override: { '#5': { policy: 'to_band', tref: 561, dead: 0, dir: 'insert', pull: 3, dwell: 60 } } },
+  /* lower_load_step4 / lower_load_step5 RETIRED 2026-09-27-develop-a (second pass): mode 3 to mode 1 step 14c now
+   * hands this leg a steam dump in TAVG (the plant the standalone ICs already boot), and on it the OLD card's one cut
+   * does no measured harm -- a step over 10 % arms C-7 and the loss-of-load dump carries it. MEASURED on the chain,
+   * seed 42: step 4 one cut 576.3 degF (walked 577.3), step 5 567.9 (walked 567.9), no alarm on either, so both
+   * went BLIND and the notes' one-cut sentences were cut. Re-aim tried: the walk with its 3-step inserts off --
+   * step 4 580.5 degF against "under about 580" (0.5 degF, one seed: the lower_output_tol4 kind of edge, not a
+   * gate), step 5 570.8 against 572 (blind). The inserts' claim is proven on step 2 (lower_no_inserts_2 below). */
   /* lower_output_tol4 RETIRED 2026-09-26 (#807 item 2, exp/807e1): it pinned a NOISE BIFURCATION on the boron
    * makeup-path holdup plant. 4a at +/-5 MW: red on 2 of 6 seeds (7 and 2), BLIND on gate seed 42 -- the 55 MW tread
    * settles ON the edge and the band debounce holds the tick. 4a/5a/6a at +/-4.9: red on 4 of 6 (42, 2, 7, 1), then
@@ -564,9 +563,15 @@ var MUTATIONS = [
    * +/-4.8: red on 0 of 6; slower 3-minute treads: 2 of 6. MEASURED, seeds 42/7/123/1/2/3, route runner --job. No
    * tolerance mutation makes the tread tick-then-release deterministic, so it cannot stand as a gate injection. The
    * +/-2 MW rows it defended are unchanged; the un-tick detector itself is still proven by no_latch_9a (expect flash). */
-  { id: 'lower_load_step', chain: true, leg: 'pwr_lower_power', route: 'chain', expect: 'forbid',
-    why: 'lower-power 2 as one 25 MW cut with the rods left alone (pass 7: 596 degF and four unwarned alarms)',
-    override: { '#2': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 75 }] } } },
+  /* lower_load_step (one 25 MW cut, rods left alone) RE-AIMED 2026-09-27-develop-a (second pass): on the TAVG-mode
+   * chain the one cut peaks 584.8 degF with no alarm (C-7 arms the loss-of-load dump), so its "forbid" went BLIND.
+   * What 2b still claims on this plant is that the 3-step inserts hold AVG COOLANT TEMPERATURE "under about 587 degF"
+   * while the load walks down (the walk does not arm C-7). So the defect is the card WITHOUT its inserts: the same
+   * 5 MW walk, rods left alone. MEASURED on the chain: 589.3 / 589.1 / 589.1 degF, seeds 42 / 7 / 123 (walked with
+   * the inserts: 584.7), no alarm -> "peak" red. The "forbid" verdict keeps its proof in cooldown11_old_watch. */
+  { id: 'lower_no_inserts_2', chain: true, leg: 'pwr_lower_power', route: 'chain', expect: 'peak',
+    why: 'lower-power 2 walked 5 MW a plant-minute with the 3-step inserts left out (589 degF against "under about 587")',
+    override: { '#2': { policy: 'load_stair', from: 100, to: 75, step: 5, wait_s: 60, ins_above: 999, pull: 3, dwell: 60 } } },
   /* `band_transient_pass` RETIRED 2026-09-25 (exp/w6-raise, raise-power phase 2). It narrowed stage
    * 6's Tavg row to a 2 degF band and un-ordered the step, to prove a transient pass through the band
    * is flagged. On the xenon-free `low_power` the 35-step pull crosses that band faster than the

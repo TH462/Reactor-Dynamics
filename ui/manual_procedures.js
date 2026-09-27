@@ -4363,7 +4363,11 @@
            * only are rate-limited, pwr2_shell), so "about five plant-minutes" was the card's claim,
            * not the plant's. MEASURED on the chain: 100 -> 75 MW at once peaked the tile at 595.3 degF
            * with six alarms in steps 2-3; 5 MW a plant-minute with 3-step inserts above 577 degF
-           * peaked 581.8 degF, none (preset 583.9 degF, none). The replay walks the ramp. */
+           * peaked 581.8 degF, none (preset 583.9 degF, none). The replay walks the ramp.
+           * RE-MEASURED 2026-09-27-develop-a (second pass), dump in TAVG since startup 14c: the one cut now
+           * peaks 584.8 degF with NO alarm (C-7 arms the loss-of-load dump on a >10 % step; the 5 MW walk
+           * does not arm it), so the notes' "taken in one cut ... alarms" sentences on 2b/4b/5b were cut.
+           * The walk WITHOUT its 3-step inserts peaks 589.3 degF: the inserts are what hold "under 587". */
           ramp: [{ action: 'set_load_target', arg: 'mwe', points: [100, 95, 90, 85, 80, 75] }],
           /* THE SHARED 10× AND THE NOTE SIT ON 2b, NOT THE STEP (2026-09-25 bring-down): same draw
            * (2a, 2b, warp, Note) and 2a falls back to the step's rung. Authored as the step `note`,
@@ -4381,7 +4385,7 @@
                  { p: 'power_pct', op: '<', v: 95,
                    ask: 'After each cut, if AVG COOLANT TEMPERATURE reads above 577 °F, insert 3 steps at MED. Watch REACTOR POWER follow the load down, below 95 %.',
                    wait_speed: 5,
-                   note: 'The load comes off over about five plant-minutes and power walks down behind it. AVG COOLANT TEMPERATURE rises toward the top of the green band on its tile while it does; the 3-step inserts hold it under about 587 °F. Taken in one cut, 100 to 75 MW at once, it climbs to about 595 °F and brings in the pressure and temperature alarms.',
+                   note: 'The load comes off over about five plant-minutes and power walks down behind it. AVG COOLANT TEMPERATURE rises toward the top of the green band on its tile while it does; the 3-step inserts hold it under about 587 °F.',
                    label: 'REACTOR POWER below 95 %' }],
           hl: ['Load Setpoint', 'Insert'], hl_watch: ['Turbine Load', 'Tavg', 'Reactor Power'] },
         { text: 'Bring AVG COOLANT TEMPERATURE back into its band with the rods.',
@@ -4468,7 +4472,7 @@
                    label: 'OUTPUT settled near 50 MW' },
                  { p: 'power_pct', op: '<', v: 70, ask: 'After each cut, if AVG COOLANT TEMPERATURE reads above 569 °F, insert 3 steps at MED. Watch REACTOR POWER follow the load down through 70 %.',
                    wait_speed: 5,
-                   note: 'The load comes off over about five plant-minutes and power walks down behind it; the 3-step inserts hold AVG COOLANT TEMPERATURE under about 580 °F. Taken in one cut after the raise-power walkthrough, 75 to 50 MW at once, it climbs to about 585 °F and brings in the Pressurizer Pressure High and Steam Generator Pressure High alarms.',
+                   note: 'The load comes off over about five plant-minutes and power walks down behind it; the 3-step inserts hold AVG COOLANT TEMPERATURE under about 580 °F.',
                    label: 'REACTOR POWER below 70 %' },
                  { p: 'tavg_c', op: '<', v: 298.05, ask: 'Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.',
                    note: 'About 20 to 30 steps at MED in all, the inserts after each cut included.',
@@ -4498,7 +4502,7 @@
                    label: 'OUTPUT settled near 30 MW' },
                  { p: 'power_pct', op: '<', v: 45, ask: 'After each cut, if AVG COOLANT TEMPERATURE reads above 562 °F, insert 3 steps at MED. Watch REACTOR POWER follow the load down through 45 %.',
                    wait_speed: 5,
-                   note: 'The load comes off over about four plant-minutes; the 3-step inserts hold AVG COOLANT TEMPERATURE under about 572 °F. Taken in one cut after the raise-power walkthrough, 50 to 30 MW at once, it climbs to about 575 °F and brings in the Steam Generator Pressure High alarm.',
+                   note: 'The load comes off over about four plant-minutes; the 3-step inserts hold AVG COOLANT TEMPERATURE under about 572 °F.',
                    label: 'REACTOR POWER below 45 %' },
                  { p: 'tavg_c', op: '<', v: 294.16, ask: 'Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.',
                    note: 'About 20 steps at MED in all, the inserts after each cut included.',

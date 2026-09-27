@@ -39,6 +39,9 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 - **Startup 1e checks SHUTDOWN ROD POSITION 627 of 627; step 2 states the one-reactivity-method rule; 14c puts the steam
   dump in TAVG mode once the turbine is on line** (the chained route used to reach 100 % in pressure mode). Raise power
   step 4 notes that real plants go to automatic rods near 15 % and this plant keeps them manual.
+- **Lower power steps 2, 4 and 5 no longer claim that one big load cut raises alarms.** With the steam dump in TAVG mode
+  (the chain's plant since startup 14c), one cut trips C-7 and the dump carries it: 584.8 °F, no alarm. The walk-with-inserts
+  instruction is unchanged; without the inserts step 2 peaks at 589 °F.
 - **The source range no longer switches itself off — P-6 now permits a manual block, and the
   source-range reactor trip exists** *(OWNER RULING, 2026-09-26: "B" — "A, plus a manual
   source-range block at P-6"; supersedes the 2026-09-01 directive, #598 item 7)*. New TRIP BLOCKS
