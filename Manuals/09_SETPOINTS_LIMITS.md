@@ -55,7 +55,7 @@
 | SG level (P-14) | high | **90 %** | High-high; reactor trip via P-9, condition **≥50 % power** |
 | **Turbine trip (P-9)** | turbine tripped | — | **Reactor trip on turbine trip**, condition **≥50 % power** (P-9). Above P-9 a turbine trip scrams the reactor *immediately* — it is not a ride-out. Below P-9 there is no reactor trip and the steam dump carries the transient. A **planned offline** (generator OFF / `disconnect_grid`) is **not** a turbine trip and never arms this — see `03` §12.1 |
 | RCS loop flow | low | **87 % of rated** | Low-flow trip; reads the `loop_flow` elbow-tap channel. Blockable below **P-7 (8 % power)**, auto-reinstates above. Real Westinghouse setpoint. **One channel, not 2-of-3** — see `12` §10.7 for that departure and what it costs |
-| Source range | high | **NOT MODELLED** | A real plant trips the reactor on source-range high flux — Ginna's is the trip the P-6 permissive lets the operator block on the way up. This one does not. **1e5 cps is real on this plant, but it is the DE-ENERGIZATION point, not a trip**: the source-range channel switches itself off there (see §9.0 below and the P-6 row in this section), so the count rate can never reach a setpoint above it. That is what hid the gap — measured by forcing the channel to stay energized, the plant publishes **1.3e11 cps** at 50 % power and does not trip. Kept so the contrast is visible, not because the plant will act on it |
+| Source range | high | **1e5 cps** | Reactor trip, **blockable at P-6** (IR ≥ 1e-10 A) on the Trip Blocks panel's SR HIGH FLUX row; the block also switches the detector off, and clears itself below **5e-11 A**. Sourced — WTSM 9.1 (ML11223A263): the source range *"HIGH FLUX LEVEL REACTOR TRIP setpoint (10^5 cps)"*. Until 2026-09-26 this plant had no such trip — the channel switched itself off at 1e5 cps (owner directive 2026-09-01, superseded by the owner's ruling of 2026-09-26) |
 | Intermediate range | high | **25 % (2.08e-3 A)** | Startup; blockable above P-10, and the SAME press clears the 20 % rod stop below. **This row read 1.67e-3 A / “~20 %” until #601** — the retired plant’s number, and it was the ROD STOP’s setpoint written into the TRIP’s row. Same channel, two setpoints: the stop at 20 % acts first, this trip at 25 % is what happens if it does not hold. Sourced: WTSM 12.2 §12.2.3.3 (ML11223A301) — *“the current output from at least one of the two intermediate range channels indicates greater than the equivalent of 25% power”*. Ginna publishes no number for this Function (UFSAR ch15 §B: *“a pre-selected, manually adjustable setpoint”*), so the generic Westinghouse figure is the sourced one |
 | Primary pressure (SI trip, PI-3) | low | **1715 psi (11.824 MPa)** | Reactor trip on safety injection; blockable below P-11 (1973 psi (13.6 MPa)), auto-reinstates. **Every safety injection trips the reactor, whichever signal actuated it** (WTSM 12.3.2.2: *"Reactor trip: A trip shuts down the reactor if one has not already occurred"*) — including the unblockable containment backup in §3.0, which is the one path that reaches injection with the reactor still at power. A latched SI holds the trip in: reset SI before the RPS |
 | PZR level (PI-8) | high | **87 %** | Going-solid backstop, and it is the anchor plant's figure rather than the four-loop 92 %. Armed above P-7; the 70 % alarm warns first |
@@ -66,13 +66,13 @@
 
 | Name | Value | Effect |
 |------|-------|--------|
-| **P-6** | IR ≥ **1e-10 A** | **Intermediate range on scale.** On a real plant this is the permissive that lets the operator block the source-range trip and secure the detector; **this plant has no such lever** — the source range de-energizes itself on flux alone at 1e5 cps, which is IR ≈ 3.2e-9 A, some **32×** above P-6. So what P-6 does here is mark the bottom of the **INTER RANGE in-use band** on the NIS card: below it, read the source range. Sourced — Ginna Technical Specification Bases B 3.3.1 (ML20339A221): *"actuated when any NIS intermediate range channel goes approximately one decade (1 E-10 amps) above the minimum channel reading"*. **The 5E-11 A in the same passage is a different point** — the source-range re-energize on the way down — and the engine carried it as P-6 until #642 |
+| **P-6** | IR ≥ **1e-10 A** | **Permits the manual source-range block** — the SR HIGH FLUX row on the Trip Blocks panel, which blocks the source-range trip and switches the detector off (one control here; a real plant uses two pushbuttons). **Resets below 5E-11 A**: on the way down the block clears itself and the detector re-energizes. Also the bottom of the **INTER RANGE in-use band** on the NIS card. Sourced — Ginna Technical Specification Bases B 3.3.1 (ML20339A221): *"actuated when any NIS intermediate range channel goes approximately one decade (1 E-10 amps) above the minimum channel reading"*. **The 5E-11 A in the same passage is a different point** — the reset, *"on decreasing power, the P-6 interlock automatically energizes the NIS source range detectors and enables the Source Range Neutron Flux reactor trip at 5E-11 amps"* — and the engine carried it as P-6 until #642 |
 | **P-9** | Power ≥ **50 %** | Arms the **reactor trip on turbine trip** and the P-14 reactor trip; also gates the loss-of-MFW AFW start |
 | **P-7** | Power ≥ **8 %** | Arms the **low-flow reactor trip** and the high pressurizer level trip; below it neither is active (RCPs are secured in Mode 5, where RHR provides circulation) and both re-arm above. **8 %, not 10 %, since #753** — the anchor plant puts P-7 and P-10 at the same crossing: Ginna Technical Specification Bases B 3.3.1 (ML20339A221), *“generate a reactor trip above approximately 8% RTP (P-7 setpoint)”*. The engine carried the generic Westinghouse 10 % (WTSM 10.3 §10.3.4.3) until then, and at 10 % this permissive CHATTERED: the power-range channel at the 9.6 % initial condition spans 8.7 to 10.5 %, so `p7_met` took 92 transitions in 600 s and both trips armed and disarmed with it |
 | **P-10** | Power ≥ **8 %** | Allows IR/PR low-setpoint trip blocks, and revokes a standing block below. **The same crossing as P-7 since #753** (they were 8 % and 10 %). The block is graded against the INDICATED power-range channel, which carries about ±0.3 % of noise with no 2-of-4 coincidence behind it, so a block pressed just over 8 % is revoked within seconds: measured survival of one press is 1 s at 8.19 % power, 4 s at 8.72 %, 105 s at 9.10 % and indefinite from 9.36 % — which is why `04` PWR-T03 asks for a comfortable 10 % before you press |
 | **P-11** | Pressure ≥ **1973 psi (13.6 MPa)** | Below it the SI trip may be blocked; auto-reinstates above |
 | **P-12** | Tavg low **532.4 °F (278 °C)** | LO TAVG annunciator (`PWR-A29`) — ~14.4 °F (8 °C) below the 546.8 °F (286 °C) no-load anchor (#419 wave 3; Ginna's numeric P-12 is in its TS proper, fetch owed) |
-| SR re-energize block | IR ≥ **1e-6 A** | **NOT MODELLED on this plant.** It protects the counter on a plant where the operator can switch it back on; here there is no switch, and the channel re-energizes on flux alone below 1e5 cps. Kept for the contrast — the real interlock exists and the retired engine enforces it |
+| SR re-energize block | IR ≥ **1e-6 A** | **NOT MODELLED on this plant.** It stops the counter being switched back on at high flux. Here clearing the SR block is never refused — above 1e5 cps it trips the reactor instead. Kept for the contrast — the real interlock exists and the retired engine enforces it |
 
 ### Rod withdrawal interlocks — the four rod stops
 
@@ -379,18 +379,21 @@ an S: least effective at either end, most effective mid-travel.
 > Calculations* (ML11216A051), Attachment 2.2-1, note on line O: *"Since T avg is required to
 > be >541°F, the reactivity change from moderator temperature is considered negligible."* A
 > real ECC is only ever computed **hot**, which is why a real operator never faces this
-> question. Our plant will let you drive it cold and dilute anyway, **and there is no
-> source-range trip to catch you.** §2.0 marks it NOT MODELLED, and the reason is arithmetic on
-> this plant's own flux scale: **1e5 cps is 1.5 decades ABOVE the P-6 permissive** that a real
-> operator blocks that trip at, so the sourced shape could never fire here. What stands below
+> question. Our plant will let you drive it cold and dilute anyway, **and the source-range
+> trip is what catches you** — §2.0, **1e5 cps**, not blocked on a shutdown plant (since
+> 2026-09-26; before that this plant had none). Measured, a runaway withdrawal from hot zero power
+> at normal drive speed (full stack, 2026-09-26, times from `rod_start`): **SUR HI at 267 s**,
+> **SR HI FLUX at 298 s**, the **source-range trip at 304 s**, rod 243 of 627. Once the source
+> range has been blocked at P-6, what stands below
 > **P-10 (8 % power)** is one caution and then two flux functions, in this order: **SUR HI at
 > 1 DPM** — an annunciator, not an interlock — then the **intermediate-range high-flux rod stop
 > at 20 % current equivalent**, then the **intermediate-range high-flux trip at 25 %**. Measured
 > on a runaway withdrawal from hot zero power (2026-09-18, #665; full stack, normal drive speed
 > **0.800 steps/s** — `ROD_SPEEDS.normal`, since #668 — times given **relative to the start of
 > withdrawal**, i.e. the `rod_start` command, not engine boot): SUR HI at **267 s**, the rod stop
-> at **338 s**, the trip at **339 s**. **The annunciator is the whole of your early warning** —
-> nothing acts for you before the rod stop. *(A 2026-09-08 pass, #661, filed 367 / 442 / 444 s
+> at **338 s**, the trip at **339 s**. With the source range blocked, **the annunciator is the whole of your early warning** —
+> nothing acts for you before the rod stop. *(Those three times were measured before the
+> source-range trip existed; unblocked, the same runaway now trips at 304 s.)* *(A 2026-09-08 pass, #661, filed 367 / 442 / 444 s
 > against engine simTime including a 60 s settle, at the drive speed then in force, 0.702 steps/s
 > — both changed since; see `Diagnostic/PWR2_HARNESS_RECONCILIATION_2026-09-18.md`.)*
 
@@ -487,7 +490,7 @@ Commercial practice keeps boron sufficient for at least **1 % Δk/k** (WTSM 19.2
 
 | Detector | Scaling note |
 |----------|--------------|
-| Source range | ~**500 cps** class at HZP source equilibrium; high scale ~1e6 cps near low power. **De-energizes itself at 1e5 cps** and reads zero above it — no operator switch, and no source-range reactor trip on this plant. The P-6 point (IR 1e-10 A) sits at ≈ **3,100 cps** on this scale |
+| Source range | ~**500 cps** class at HZP source equilibrium; high scale ~1e6 cps near low power. Reads zero once **blocked at P-6** (the block switches the detector off); unblocked, it **trips the reactor at 1e5 cps**. The P-6 point (IR 1e-10 A) sits at ≈ **3,100 cps** on this scale |
 | Intermediate range | Full scale ~**1e-3 A** near ~12 % power (“maxes out ~10 %”) |
 | Power range | 0–120 % calibrated scale; **instrument reads to 200 %** so a pegged meter can still cross the 118 % high-flux trip (strict `crossed()`) |
 

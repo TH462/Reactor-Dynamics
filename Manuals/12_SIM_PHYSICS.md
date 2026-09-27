@@ -203,12 +203,9 @@ back, a third of it charged below 274 °F — and it collapsed critical boron fr
 263 ppm hot. The practical consequence, and how it was found: **600 ppm, a value that looks safe
 next to the hot end, was critical at 274 °F (134.4 °C)**, and diluting toward it in a Mode 5 →
 Mode 1 run took the reactor critical cold. **On the retired engine that ended in a source-range
-high-flux trip; this plant has no such trip** (**09** §2.0, NOT MODELLED — 1e5 cps is this
-plant's source-range *de-energization* point, and it sits 1.5 decades above the P-6 permissive
-that would block the trip anyway). The same defect today would announce itself on the
-annunciators — **SUR HI** at 1 DPM, then **SR HI FLUX** at 5e4 cps — and be arrested by the
-intermediate-range high-flux **rod stop at 20 % current equivalent**, with nothing scramming
-until the intermediate-range **trip at 25 %**.
+high-flux trip, and on this plant it would again** (**09** §2.0: 1e5 cps, not blocked on a
+shutdown plant — since 2026-09-26). The annunciators come first: **SUR HI** at 1 DPM, then
+**SR HI FLUX** at 5e4 cps.
 
 **Rod worth follows an S-curve** — least effective near fully in or fully out, most effective mid-core — with the peak deliberately flattened to about 90 % of the textbook curve. The reason is a teaching one: the single lumped bank carries the **full control worth that a real plant spreads over four banks**, so an unflattened curve made one step near the critical band worth far more than a real bank-D step.
 

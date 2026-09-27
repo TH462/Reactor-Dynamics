@@ -179,10 +179,9 @@ var BRIDGE = {
            /\b12\s?%\b.{0,20}(SCRAM|reactor trip)/i,
            /(SCRAM|reactor trip).{0,20}\b12\s?%\b/i]
   },
-  'source range': {
-    id: 'Source range high flux -- reactor trip',
-    live: [/source range.{0,50}(reactor )?(trip|scram)/i, /(reactor )?(trip|scram).{0,50}source range/i]
-  },
+  /* 'source range' RETIRED 2026-09-26 (OWNER RULING, "B": a manual source-range block at P-6) —
+   * the source-range high flux trip was BUILT (pwr2_protection SR_TRIP, 1e5 cps), chapter 09 no
+   * longer marks it NOT MODELLED, and 03/04/05/06 teach it live. The #784 precedent. */
   'sr re-energize block': {
     id: 'SR (source range) re-energize block interlock',
     live: [/re-?energi\w*.{0,60}(block|interlock)/i, /(block|interlock).{0,60}re-?energi\w*/i]

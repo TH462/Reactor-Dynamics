@@ -2785,8 +2785,20 @@ function runSuite(SH, rec, quiet, only) {
        travO.toFixed(2) + ' steps in 20 s, expected ' + (RS.fast * 20).toFixed(2));
     /* ...continued to the trip. The claim is the TRIP CAUSE and the peak, not a timestamp:
      * this is the difference between a withdrawal accident and a step insertion. */
+    /* THE OPERATOR TAKES THE P-6 BLOCK (OWNER RULING 2026-09-26, "B"). This ride tests the
+     * INTERMEDIATE/POWER-RANGE net, and since the source-range trip exists an UNBLOCKED ride
+     * never reaches it: measured on this fixture, it trips on `sr_high_flux` at 267.1 s with
+     * peak power 0.0 % and no rod stop — the plant catching it one rung lower, which is the new
+     * trip working (run_pwr2_protection holds that half). So the fixture states the lineup a
+     * startup operator has, blocking at P-6 the moment the permissive allows. HR10: this is a
+     * FIXTURE change, not a refit of the claim — the assertions below are untouched. */
+    var srBlockedAtO = null;
     var peakPO = 0, peakSO = 0, stopO = null, tripO = null, causeO = null;
     while (tO < 900 && tripO === null) {
+      if (srBlockedAtO === null && eO.eng.rpsReport && eO.eng.rpsReport.p6_met === true) {
+        eO.applyCommand({ action: 'set_trip_block', trip_id: 'sr_high', blocked: true });
+        srBlockedAtO = tO;
+      }
       var tsO = eO.step(DT); tO += DT;
       if (tsO.power_pct > peakPO) peakPO = tsO.power_pct;
       if ((tsO.startup_rate_dpm || 0) > peakSO) peakSO = tsO.startup_rate_dpm;
@@ -2802,6 +2814,7 @@ function runSuite(SH, rec, quiet, only) {
        'trips asserted but their 0.5 s analysis delays had not elapsed',
        stopO !== null && tripO !== null && causeO === 'ir_high_flux' &&
        stopO < tripO && peakPO < 50,
+       'SR blocked at ' + (srBlockedAtO === null ? 'NEVER' : srBlockedAtO.toFixed(1) + ' s') + ', ' +
        'rod stop ' + (stopO === null ? 'NEVER' : stopO.toFixed(1) + ' s') + ', trip ' +
        (tripO === null ? 'NEVER in 900 s' : tripO.toFixed(1) + ' s on ' + causeO) +
        ', peak ' + peakPO.toFixed(1) + ' %, peak startup rate ' + peakSO.toFixed(1) + ' DPM');

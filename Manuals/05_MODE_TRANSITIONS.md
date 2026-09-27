@@ -365,7 +365,7 @@ Press AUTO on Emergency card after manual intervention. Standing start condition
 
 ### PWR-T13 — SR → IR handoff (Mode 3, Hot Standby / Mode 2, Startup startup)
 
-IR ≥ 1e-10 A (P-6) → the intermediate range is on scale and is the instrument to read. **Nothing to press**: the source range switches itself off at 1e5 cps, and this plant has no source-range trip to beat. Confirm INTER RANGE is reading before the source range goes dark.
+IR ≥ 1e-10 A (P-6) → confirm INTER RANGE is reading, then **block SR HIGH FLUX** on the Trip Blocks panel: it blocks the source-range trip and switches the detector off, and the intermediate range becomes the instrument to read. **Miss it and the source range trips the reactor at 1e5 cps.** On the way down the block clears itself below 5e-11 A and the detector comes back on.
 
 ### PWR-T14 — Startup trip blocks (entering Mode 1, At Power)
 

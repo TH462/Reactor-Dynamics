@@ -204,9 +204,9 @@ The board therefore **reclassifies** these alarms rather than removing them. The
 
 | Field | Content |
 |-------|---------|
-| **Setpoint** | Alarm **5e4 cps**. The channel **de-energizes itself at 1e5 cps** — that is not a trip, and this plant has no source-range reactor trip |
-| **Means** | SR counts high — the handoff is about to happen by itself. |
-| **Actions** | 1) Check **INTER RANGE is on scale** (P-6, IR ≥ 1e-10 A). If it is, nothing to do: the source range will go dark on its own just above this alarm. 2) If it is **not** on scale, stop the power rise and diagnose — you are about to lose the only indication you have. |
+| **Setpoint** | Alarm **5e4 cps**. The source-range **reactor trip is at 1e5 cps** unless it has been blocked at P-6 |
+| **Means** | SR counts high — the P-6 block is due, and the trip is half a decade away. |
+| **Actions** | 1) Check **INTER RANGE is on scale** (P-6, IR ≥ 1e-10 A). If it is, **block SR HIGH FLUX** on the Trip Blocks panel now. 2) If it is **not** on scale, stop the power rise — insert rods — and diagnose: the block is refused below P-6 and the trip is close. |
 
 ---
 

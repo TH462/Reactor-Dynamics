@@ -112,7 +112,9 @@ function runSuite(TS, rec, quiet) {
      * block requested, which P-10 permits at 100 %. A healthy plant, so `scrammed` reads false
      * because it EARNED false. */
     var prt = RD.protection.stepProtection(
-      RD.protection.createProtection({ blockLowFlux: true }), 0.02,
+      /* ...and the SOURCE-RANGE block (OWNER RULING 2026-09-26, "B"): a plant at power took it
+       * at P-6 on the way up, and the block is what de-energizes the detector now */
+      RD.protection.createProtection({ blockLowFlux: true, blockSR: true }), 0.02,
       { pressure_mpa: sys.P, power_frac: r.power_pct / 100,
         flow_frac: sys.mdot_loop / 1630, steam_pressure_mpa: sr.P_sec, steam_flow_frac: 1.0 });
     /* The pressurizer, stepped at the plant's own state like every other system — a healthy
@@ -833,8 +835,10 @@ function runSuite(TS, rec, quiet) {
   var HZP_FRAC = 1.9325e-9;      /* hot standby, -1137.2 pcm  */
   var TRIP_FRAC = 3.4068e-10;    /* settled post-trip, -6450 pcm */
   function atFlux(frac) {
+    /* a SHUTDOWN plant's lineup: the SR block is not taken (it is refused below P-6) */
     return TS.buildTrueState(Object.assign({}, B.ctx, {
-      reactor: Object.assign({}, B.r, { power_pct: frac * 100 }) }));
+      reactor: Object.assign({}, B.r, { power_pct: frac * 100 }),
+      protection: Object.assign({}, B.prt, { sr_blocked: false }) }));
   }
   var tsHZP = atFlux(HZP_FRAC), tsTripped = atFlux(TRIP_FRAC);
   ck('the shutdown plant indicates in the hundreds of counts per second, as the manual says',
@@ -883,10 +887,19 @@ function runSuite(TS, rec, quiet) {
    * power rise BEFORE SR high-flux trip (1e5 cps)". Written against 1e5 the rule survives a
    * scale change; written as `pFrac < 1e-3` — what it was — it silently became four decades
    * past the gauge's own 1e6 range top the moment k_sr moved. */
-  ck('the SR de-energizes at its own 1e5 cps cue, so the rule cannot drift from the scale again',
-     atFlux(3.8e-7).sr_energized === true && atFlux(3.9e-7).sr_energized === false,
-     'live at ' + atFlux(3.8e-7).sr_counts_cps.toExponential(2) + ' cps, secured just ' +
-     'past 1e5 — a `pFrac < 1e-3` rule would have kept indicating to 2.6e8 cps');
+  /* SUPERSEDED 2026-09-26 (OWNER RULING, "B"): the detector no longer secures itself at 1e5 cps.
+   * Its high voltage IS the operator's P-6 block (the protection report's `sr_blocked`), and past
+   * 1e5 cps unblocked it stays live — stopping the plant there is the SR trip's job
+   * (run_pwr2_protection). Both directions, on the same flux. */
+  var tsSrB = TS.buildTrueState(Object.assign({}, B.ctx, {
+    reactor: Object.assign({}, B.r, { power_pct: 1e-5 * 100 }),
+    protection: Object.assign({}, B.prt, { sr_blocked: true }) }));
+  ck('the SR detector follows the P-6 BLOCK, not the flux: blocked it reads nothing; ' +
+     'unblocked past 1e5 cps it is still live (the SR trip stops the plant, not the detector)',
+     tsSrB.sr_energized === false && tsSrB.sr_counts_cps === 0 &&
+     atFlux(1e-5).sr_energized === true && atFlux(1e-5).sr_counts_cps > 1e5,
+     'blocked at 1e-5 rated: ' + tsSrB.sr_counts_cps + ' cps; unblocked: ' +
+     atFlux(1e-5).sr_counts_cps.toExponential(2) + ' cps');
   ck('the governor IS the steam demand and the stop valve is the trip',
      ts.governor_valve_pct > 90 && ts.stop_valve_pct === 100,
      'governor ' + ts.governor_valve_pct.toFixed(1) + ' %, stop 100 -- and a tripped turbine ' +
@@ -953,8 +966,10 @@ var MUTATIONS = [
    "    put('sr_counts_cps', srOn ? K_SR * pFrac : 0);\n    put('ir_amps',       K_IR * pFrac);",
    "    put('sr_counts_cps', srOn ? K_SR * Math.max(pFrac, 1e-9) : 0);\n" +
    "    put('ir_amps',       K_IR * Math.max(pFrac, 1e-9));"],
-  ['the SR securing cue goes back to a power literal instead of its own setpoint',
-   '    var srOn = pFrac * K_SR < SR_SECURE_CPS;', '    var srOn = pFrac < 1e-3;'],
+  ['the SR detector secures itself on flux alone at 1e5 again (the superseded #598 item 7 law)',
+   '    var srOn = pt.sr_blocked !== undefined ? pt.sr_blocked !== true', '    var srOn = pt.sr_blocked !== undefined ? pFrac * K_SR < SR_TRIP_CPS'],
+  ['the SR detector ignores the P-6 block (the retired flux-alone cue comes back)',
+   '    var srOn = pt.sr_blocked !== undefined ? pt.sr_blocked !== true', '    var srOn = pt.sr_blocked !== undefined ? true'],
   ['k_ir drifts, moving the SOURCED intermediate-range rod stop with it',
    '    var K_IR = 8.333e-3;', '    var K_IR = 4.0e-3;'],
   ['the CVCS currency conversion is dropped (kg/s published as the #408 fraction again)',

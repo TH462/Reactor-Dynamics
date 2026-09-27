@@ -436,23 +436,49 @@
    * strength survives the correction with margin, which is the thing that had to be re-checked.
    * At the old 5e-11 A it was bank 157/627 and ρ = −355 pcm.
    *
-   * ⚠ A DECLARED DEPARTURE, and it is why this permissive PERMITS NOTHING on this plant. The
-   * Bases' P-6 function is *"allows the manual block of the NIS Source Range, Neutron Flux
-   * reactor trip by use of two defeat push buttons"* — a real plant has that lever. This one
-   * does not *(OWNER DIRECTIVE, 2026-09-01, #598 item 7: "The SR DET button is greyed out. I
-   * think we should remove this button and have the SOURCE RANGE disable itself
-   * automatically.")*: the source range de-energizes on flux alone at
-   * SR_SECURE_CPS, `set_sr_detector` is REFUSED by the shell by name, and the board button was
-   * deleted. That cue sits at IR 3.21e-9 A, 32x above P-6, so the handoff this plant performs is
-   * NOT at P-6 and the manual must not say it is. What P-6 does do here is real and visible:
-   * it is the bottom of the intermediate range's in-use band on the NIS card
-   * (`pwr2_true_state`'s nis_ir_inuse_a), the point below which the operator should be reading
-   * the source range instead. Expressed in AMPS because that is the channel's own currency and
-   * the source's; the amps<->power mapping stays in `pwr2_true_state` (K_IR), one copy. */
+   * P-6 PERMITS THE MANUAL SOURCE-RANGE BLOCK (2026-09-26). The Bases' P-6 function is
+   * *"allows the manual block of the NIS Source Range, Neutron Flux reactor trip"*, and
+   * NUREG-1431 B 3.3.1: *"When the source range trip is blocked, the high voltage to the
+   * detectors is also removed"*. OWNER RULING, 2026-09-26, replying "B" to *"B: A, plus a manual
+   * source-range block at P-6"*. It SUPERSEDES the 2026-09-01 directive (#598 item 7: *"The SR
+   * DET button is greyed out. I think we should remove this button and have the SOURCE RANGE
+   * disable itself automatically."*), under which the channel de-energized on flux alone at
+   * 1e5 cps and P-6 permitted nothing. The source range now stays energized until the operator
+   * blocks it, and the source-range high flux trip (SR_TRIP below) fires if nobody does.
+   *
+   * THE LAW IS P-10's, one permissive down (the #295 F1/F2 lesson carries verbatim): the block
+   * is an operator REQUEST that P-6 PERMITS, and the permissive's RESET revokes it. The reset is
+   * a separate sourced point in the same Bases passage — *"on decreasing power, the P-6
+   * interlock automatically energizes the NIS source range detectors and enables the Source
+   * Range Neutron Flux reactor trip at 5E-11 amps"* — so between 5E-11 and 1E-10 A a standing
+   * block holds (the relay's own hysteresis, not an invented deadband). No confirmation timer,
+   * unlike P-10's: the IR channel the RPS reads carries no noise (pwr2_instruments
+   * `intermediate_range`, sigma 0), so the stray-sample case P-10's timer exists for cannot
+   * occur here.
+   *
+   * ONE LEVER, NOT TWO PUSHBUTTONS — a DECLARED simplification. WTSM 9.1 and the McGuire and
+   * Robinson procedures describe two momentary switches, one per train; this plant has one
+   * lumped SR channel, so the TRIP BLOCKS panel's single row takes the trip block and the high
+   * voltage together (the P-10 rows' idiom; DESIGN_CRITERIA Q4 — a second button that must
+   * always be pressed with the first teaches nothing the first does not). The sources'
+   * one-decade overlap before blocking is PROCEDURE, not interlock, and is left to the
+   * procedure. AMPS because that is the channel's own currency and the source's; the
+   * amps<->power mapping stays in `pwr2_true_state` (K_IR), one copy. */
   var P6 = {
     kind: '[sourced]',
     amps: 1.0e-10,
+    reset_amps: 5.0e-11,
     src: 'Ginna TS Bases B 3.3.1 (ML20339A221), Intermediate Range Neutron Flux, P-6 Permissive'
+  };
+  /* ---- SOURCED: the SOURCE RANGE high flux reactor trip (2026-09-26) ------------------------
+   * WTSM 9.1 p.9.1-7 (ML11223A263): the source range *"HIGH FLUX LEVEL REACTOR TRIP setpoint
+   * (10^5 cps)"*. Worked case, Turkey Point 2020 (ML20344A126): a startup stopped only by
+   * *"a valid SR Hi Flux RPS trip signal"*. Blockable at P-6 (above); the block also removes the
+   * detector high voltage, so a blocked channel reads nothing (pwr2_true_state). */
+  var SR_TRIP = {
+    kind: '[sourced]',
+    cps: 1.0e5,
+    src: 'WTSM 9.1 p.9.1-7 (ML11223A263); blockable per Ginna TS Bases B 3.3.1 (ML20339A221), P-6'
   };
 
   /* ---- SOURCED: the two FLUX rod stops (#572) ------------------------------------------------
@@ -493,6 +519,8 @@
     kind: '[sourced]',
     hi_pzr_press: 2.0, lo_pzr_press: 2.0,
     hi_flux_lo:   0.5, hi_flux_hi:   0.5,
+    sr_high_flux: 0.5,         /* [derived] -- no analysis delay exists for it (Ginna TS Bases
+                                * Fn 4); the IR row's carried 0.5 s below, same NIS family */
     ir_high_flux: 0.5,         /* [derived] -- 15.0-6 has no intermediate-range row (the Function
                                 * "is not specifically modeled in the accident analysis", Ginna TS
                                 * Bases B 3.3.1 Fn 3, so it has no analysis delay to quote). The
@@ -575,6 +603,11 @@
        * the C-1 rod stop, 2. Allows the operator to manually block the low setpoint power
        * range high flux trip"*. `blockable` NAMES its request rather than being a bare `true`,
        * so a row cannot inherit the wrong lever the way the C-1 rod stop did. */
+      /* the bottom rung (2026-09-26): the SOURCE range trip, P-6's block. Reads the SR
+       * INSTRUMENT (HR1); an absent reading is an unavailable row, the sg_level precedent. */
+      { id: 'sr_high_flux', name: 'Source range high flux', kind: 'rps', dir: +1,
+        sp: SR_TRIP.cps, unit: 'cps', read: 'sr_cps', delay: DELAY.sr_high_flux,
+        blockable: 'sr' },
       { id: 'ir_high_flux', name: 'Intermediate range high flux', kind: 'rps', dir: +1,
         sp: IR_TRIP.frac, unit: 'frac', read: 'power_frac', delay: DELAY.ir_high_flux,
         blockable: 'ir_high' },
@@ -664,6 +697,9 @@
        * actions. It also carries the C-1 rod stop (that list's item 1), which is why
        * `irHiFluxStop` below reads THIS and not `blockLowFlux`. */
       blockIrHigh: !!opts.blockIrHigh,
+      /* THE SOURCE-RANGE BLOCK (2026-09-26) — P-6's request: the SR trip AND the detector high
+       * voltage. Same asymmetric law as the P-10 pair; revoked below P6.reset_amps. */
+      blockSR: !!opts.blockSR,
       /* the P-11 pair (#507 wave 10) — a shutdown IC boots with the cooldown's blocks taken */
       blockLoPress: !!opts.blockLoPress,
       blockSI: !!opts.blockSI,
@@ -782,6 +818,20 @@
     var p10Revoke = pr.p10_below_s >= P10.confirm_s;
     if (p10Revoke && pr.blockLowFlux) pr.blockLowFlux = false;
     if (p10Revoke && pr.blockIrHigh) pr.blockIrHigh = false;   /* the second request, same law (#601) */
+    /* ---- P-6 (2026-09-26): the source-range block's permissive and its reset. `ir_amps` is
+     * the IR INSTRUMENT (HR1). MIGRATION: a save written before this field existed carries no
+     * `blockSR`, and its plant had the SR switched off by flux alone at the trip setpoint — so
+     * the request is seeded to exactly that (SR reading at or above SR_TRIP.cps), which
+     * reproduces the old board and cannot scram a restored at-power plant. Left undefined until
+     * an SR reading exists; the SR row is unavailable on that step anyway. */
+    var irA = drivers.ir_amps;
+    var irOk = irA !== undefined && irA !== null && isFinite(irA);
+    var p6Met = irOk && irA >= P6.amps;
+    if (pr.blockSR === undefined && drivers.sr_cps !== undefined && drivers.sr_cps !== null &&
+        isFinite(drivers.sr_cps)) {
+      pr.blockSR = drivers.sr_cps >= SR_TRIP.cps;
+    }
+    if (irOk && irA < P6.reset_amps && pr.blockSR) pr.blockSR = false;
     /* ---- P-11, THE SHUTDOWN PERMISSIVE (#507 wave 10) — the mirror of P-10's law in the
      * other direction: the low-pressure trip block and the SI block are OPERATOR REQUESTS
      * permitted only BELOW P-11, and climbing back above it REVOKES both requests
@@ -809,7 +859,8 @@
      * how the C-1 rod stop came to ride the power-range lever instead of its own. A row now
      * names its request and an unrecognised name blocks NOTHING, which is the conservative
      * end: a typo cannot silently disarm a trip. */
-    var BLOCK_REQUEST = { low_flux: pr.blockLowFlux, ir_high: pr.blockIrHigh };
+    var BLOCK_REQUEST = { low_flux: pr.blockLowFlux, ir_high: pr.blockIrHigh,
+                          sr: pr.blockSR === true };
     var blockEffective = pr.blockLowFlux;
 
     var out = [], fns = functions(), anyRps = null, anyEsfas = null, sgLolo = false, anyFwi = null,
@@ -866,7 +917,9 @@
       /* THE DELAY IS A CONTINUOUS HOLD, not an elapsed-time-since-first-seen. A function that
        * crosses, clears, and crosses again starts its delay over — which is what a real channel
        * does and is the difference between a trip and a transient. */
-      pr.held_s[f.id] = asserted ? pr.held_s[f.id] + (dt > 0 ? dt : 0) : 0;
+      /* `|| 0`: a save written before a row existed restores `held_s` without it, and
+       * undefined + dt is NaN — a delay that never completes (the p10_below_s shape, #752) */
+      pr.held_s[f.id] = asserted ? (pr.held_s[f.id] || 0) + (dt > 0 ? dt : 0) : 0;
       var tripping = asserted && pr.held_s[f.id] >= f.delay;
 
       if (tripping) {
@@ -1159,6 +1212,10 @@
       /* the OTHER P-10 request (#601) — reported separately because the operator takes them
        * separately and a surface must be able to say which one is standing */
       ir_high_blocked: pr.blockIrHigh,
+      /* P-6 and its request (2026-09-26). `sr_blocked` is also the detector HIGH VOLTAGE —
+       * pwr2_true_state de-energizes the channel off it */
+      p6_met: p6Met,
+      sr_blocked: pr.blockSR === true,
       trip_cause: pr.trip_cause,
       si_cause: pr.si_cause,
       /* ASSERTED-NOW is distinct from LATCHED, and both are reported. A consumer that only ever
@@ -1187,7 +1244,7 @@
      * of them. P-6 has one consumer beyond the gate (`pwr2_true_state`'s in-use band), P-9 has
      * none yet; a constant that only a gate reads is still worth exporting, because the
      * alternative is a manual row nothing can contradict. */
-    P6: P6, P9: P9,
+    P6: P6, P9: P9, SR_TRIP: SR_TRIP,
     /* the board reads ROD_STOP.pr_frac / ir_frac so its rod-stop marks come from the PLANT and
      * not from a literal — the #572 defect was exactly a board band drawn from a fallback */
     ROD_STOP: ROD_STOP, IR_TRIP: IR_TRIP,

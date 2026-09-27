@@ -626,7 +626,10 @@
        * IDENTICAL ON ALL SIX ICs UNDER BOTH SETS OF `pf` VALUES (checked, HR10): the only one it
        * moves is `low_power`, and only back to what it always meant. A seed can be re-derived;
        * the dispatch is what the turbine enforces. */
+      /* ...and the SOURCE-RANGE block (2026-09-26): an at-power plant took it at P-6 on the
+       * way up, three decades below P-10, so the same on-the-grid test states it */
       pt: PT.createProtection({ blockLowFlux: ic.load_mwe > 0, blockIrHigh: ic.load_mwe > 0,
+                                blockSR: ic.load_mwe > 0,
                                 blockLoPress: !!ic.cold, blockSI: !!ic.cold }),
       brk: null,
       ctm: CT.createContainment({}),
@@ -949,6 +952,20 @@
          * source lists two operator actions and the ladder is taken in order — the IR trip at
          * 25 % arrives before the power-range low setting at 35 %. */
         eng.pt.blockIrHigh = !!value; break;
+      case 'sr_block':
+        /* THE P-6 REQUEST (OWNER RULING 2026-09-26, "B") — the source-range high flux trip AND
+         * the detector high voltage, one lever (pwr2_protection P6 for the law and the declared
+         * one-lever simplification). Blocking is REFUSED below P-6 on the IR INSTRUMENT (HR1),
+         * the si_block precedent; clearing is always honoured — it re-energizes the detector,
+         * and above 1e5 cps that trips the reactor, which is the real plant's consequence. */
+        if (value) {
+          var irInd = eng.ins.reading.intermediate_range;
+          if (!(irInd >= PT.P6.amps)) {
+            throw new Error('pwr2_engine: source-range block REFUSED — below P-6 (intermediate ' +
+              'range under 1e-10 A); the source range is the only instrument on scale');
+          }
+        }
+        eng.pt.blockSR = !!value; break;
       case 'scram':
         /* The pushbutton is an RPS INPUT, not a rod command — the trip latches in
          * pwr2_protection ('manual') and the trip edge below inserts the rods, so a manual
@@ -1776,6 +1793,11 @@
        * it (#650). Protection converts to the source's units itself. */
       delta_t_frac: rd.thot !== undefined ? (rd.thot - rd.tcold) / DT0_C
                     : (tLeg(sys, 'hot_leg') - tLeg(sys, 'cold_leg')) / DT0_C,
+      /* THE TWO LOW NUCLEAR RANGES (2026-09-26) — the SR trip and P-6. OPTIONAL drivers with no
+       * truth fill (the sg_level_frac precedent): on the pre-reading first step the SR row is
+       * unavailable and P-6 unmet for 0.02 s rather than borrowing truth */
+      sr_cps: rd.source_range,
+      ir_amps: rd.intermediate_range,
       tavg_c: rd.tavg !== undefined ? rd.tavg : tavg   /* stepInner's own — #514, was a
                                                         * third primaryTavg leg-inverse pair */
     });

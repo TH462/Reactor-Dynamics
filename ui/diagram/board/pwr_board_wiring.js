@@ -3139,6 +3139,18 @@
         var sp = st.si_trip && typeof st.si_trip.setpoint === 'number' ? st.si_trip.setpoint : null;
         return 'REACTOR TRIP · ' + (sp == null ? 'LOW PRESSURE' : dP(sp) + ' ' + uStr('press', 'psi')) +
                ' (P-11 PERMISSIVE) · ALSO BLOCKS SI ACTUATION';
+      } },
+    // THE P-6 ROW (OWNER RULING 2026-09-26, "B"): the source-range high flux trip, and taking the
+    // block also removes the detector high voltage (NUREG-1431 B 3.3.1), so the SR tile goes dark.
+    // The setpoint is the plant's (`trip_block_status.sr_high.setpoint`, cps); no fallback figure.
+    // LAST ON THE CARD, deliberately: the plant releases this block on its own after every trip
+    // (the 5E-11 A reset), and a row that gains a message line pushes every row below it — at the
+    // bottom it moves nothing under the cursor (verify_board_cues, the pass-5 height hold).
+    { id: 'sr_high', label: 'SR HIGH FLUX',
+      sub: function (s) {
+        var v = blockSp(s, 'sr_high');
+        return 'STARTUP TRIP · ' + (v == null ? '' : v.toExponential(0).replace('e+', 'E') + ' cps · ') +
+               '(P-6 PERMISSIVE) · ALSO SWITCHES OFF THE DETECTOR';
       } }
   ];
 
@@ -3300,7 +3312,7 @@
    * What the CARD says is derived from STATE instead (blocked / permissive, read fresh every
    * broadcast), so the lineup and the permissive status are correct immediately after a load. The
    * split is deliberate: the flash is a live annunciator, the card is the record. */
-  var TB_IDS = ['lo_press', 'ir_high', 'pr_low_setpoint', 'si_trip'];
+  var TB_IDS = ['sr_high', 'lo_press', 'ir_high', 'pr_low_setpoint', 'si_trip'];
   var tbSeq = 0, tbAck = 0;
   var tbPrev = null;      // last broadcast's per-row {blocked, permissive}, null before the first
   var tbMsg = {};         // id -> { seq, text } — an outstanding "you did not do this" message
@@ -3371,6 +3383,7 @@
    * setpoint would teach a number their own gauge contradicts — they would watch it pass with the
    * block still on and lose it seven psi later. Name the condition and the interlock instead. */
   function tbCause(id) {
+    if (id === 'sr_high') return 'reactor power fell below the source-range permissive reset (P-6)';
     return (id === 'ir_high' || id === 'pr_low_setpoint')
       ? 'reactor power fell below the startup permissive (P-10)'
       : 'pressure rose above the shutdown permissive (P-11)';
@@ -4193,6 +4206,10 @@
      * READOUT, not this button, so the highlight and run_manual_controls are unaffected; what a
      * preview-channel player loses is the ability to perform it by hand. Not worth an
      * engine-conditional DOC_REMOVE for an engine #523 strips from every public build. */
+    /* SUPERSEDED IN PART, 2026-09-26 (OWNER RULING, "B": a manual source-range block at P-6). The
+     * detector no longer disables itself — its high voltage goes with the SR HIGH FLUX row on the
+     * TRIP BLOCKS panel. The button STAYS deleted: that row is the one lever (Q4), and a second,
+     * separate detector switch would be a duplicate authority. */
     bdSrDetector: 1,
     /* THE ROD AUTO BUTTON *(OWNER DIRECTIVE, 2026-09-01, #598 items 9/10: "Remove the ROD AUTO button. Move
      * the 1/m button to where the ROD AUTO button used to be." / "Adjust the NIS card and

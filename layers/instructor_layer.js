@@ -1563,6 +1563,7 @@
    * quality pass: both come from the SAME source — `pwr2_shell.js` builds `trip_blocks` out of
    * the very flags those fields report — so there is no second copy of the truth here. */
   var RPS_BLOCK_PARAMS = {
+    sr_high_blocked:         'sr_high',     /* the P-6 row (OWNER RULING 2026-09-26, "B") */
     ir_high_blocked:         'ir_high',
     pr_low_setpoint_blocked: 'pr_low_setpoint',
     lo_press_blocked:        'lo_press',

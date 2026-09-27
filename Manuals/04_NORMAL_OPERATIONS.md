@@ -313,7 +313,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 | **CAUTION** | Plot **enough 1/M points**. Early predictions always read high (flat toe of the worth curve), and the first two land far past the true critical position; five points close on it. A sixth is one too many — it is taken past criticality, which is the one thing the approach exists to avoid (#750). **Never** withdraw straight to the first prediction. |
 | **CAUTION** | One fine step near the band is **7.76 pcm — 1.19 ¢** (re-measured 2026-09-14, #749: 7.764 pcm/step over the fifteen steps above critical; 7.67 averaged over 205–215, min 7.32, max 8.29). The **8.1 — 1.24 ¢** printed here until 2026-09-14 is the same window computed at a benchmark anchor 10 °F above this plant’s no-load point — see PWR-N02 §Step 15. **This is not the bank average**, which is 6.49 pcm/step, and it is not the cent, which is 6.50 pcm on this plant (β_eff 650.2 pcm). All three are near 6.5–8 and only the first applies here. Final approach: **Slow**, single steps. |
 | **CAUTION** | **Criticality is declared on the instruments, not on the bank position.** Stop the rods; if the count rate keeps rising and SUR stays positive with nothing moving, the core is critical. WTSM 19.3 (ML11223A342): *"Supercriticality is indicated by a constant positive startup rate and steadily increasing source range count rate with no control rod withdrawal."* Record the rod position, boron and Tavg **after**. |
-| **NOTE** | **Source Range secures itself at 1e5 cps** — no switch, and no source-range trip on this plant. **P-6** (IR ≥ **1e-10 A**) is where the intermediate range comes into use, roughly 32× lower; watch it come on scale well before the source range goes dark. If it has not, stop the rise and diagnose. |
+| **NOTE** | **Block the source range at P-6.** When INTER RANGE reads ≥ **1e-10 A**, take **SR HIGH FLUX** on the Trip Blocks panel: it blocks the source-range trip and switches the detector off. **Unblocked, the source range trips the reactor at 1e5 cps.** P-6 comes in before criticality on this plant (about 3,100 cps), and the count rate at criticality is already about 2e4 cps. |
 | **NOTE** | Below the point of adding heat there is almost no temperature feedback — excess reactivity keeps driving power until you take it out. |
 
 ### Procedure
@@ -325,7 +325,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 | 3 | Engage Feed AUTO at ~65 % if not already | Feed Pumps | AUTO engaged |
 | 4 | Capture 1/M baseline (plot point 1) **before** any rod motion | 1/M Plot | Baseline logged |
 | 5 | Withdraw Control Bank in **decreasing** bursts; settle; plot after each (points 2–5) | Control Bank + 1/M | Count rate rising; prediction walks down |
-| 6 | When IR on scale and below SR high caution: **SR detector OFF** | SR detector | SR de-energized; IR carries indication |
+| 6 | When IR ≥ 1e-10 A (P-6): **block SR HIGH FLUX** | Trip Blocks | SR blocked; SOURCE RANGE reads zero; IR carries indication |
 | 7 | Creep to critical at **Slow** (single steps); watch SUR and period | Control Bank | Critical; SUR ≤ 1 DPM; period long |
 | 8 | Hold low power (Mode 2 band ≤ 5 %); let Doppler settle; trim | Rods | Stable Mode 2, Startup |
 

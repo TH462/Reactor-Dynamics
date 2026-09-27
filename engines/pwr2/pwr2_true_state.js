@@ -606,16 +606,19 @@
      * test rather than threatening it. (At the old value: -355 pcm, bank 157/627.) --- */
     var K_SR = 2.6e11;      /* cps per unit rated fraction  [adopted] — anchor above */
     var K_IR = 8.333e-3;    /* amps per unit rated fraction [adopted] — pwr_config nis block */
-    var SR_SECURE_CPS = 1.0e5;
+    /* the SR trip setpoint, read from pwr2_protection (one copy) — the in-use band's top edge */
+    var SR_TRIP_CPS = (RD.protection && RD.protection.SR_TRIP && RD.protection.SR_TRIP.cps !== undefined)
+                        ? RD.protection.SR_TRIP.cps : 1.0e5;
     var pFrac = (ts.power_pct !== undefined ? ts.power_pct : 0) / 100;
-    /* The SR proportional counter is DE-ENERGIZED on the way up (protected — the P-6 class
-     * fact); this model has no operator lever, so energization derives from flux alone
-     * [derived]. THE CUE IS THE ONE THE MANUAL ALREADY GIVES — `Manuals/03` §4.3 and
-     * `Manuals/04`: "Secure SR during power rise BEFORE SR high-flux trip (1e5 cps)" — rather
-     * than the bare `pFrac < 1e-3` literal this carried, which was the same cue expressed on the
-     * OLD scale and at the new one would let the gauge indicate 2.6e8 cps, four decades past its
-     * own 1e6 range top. Written against the setpoint, so it cannot drift from k_sr again. */
-    var srOn = pFrac * K_SR < SR_SECURE_CPS;
+    /* THE DETECTOR'S HIGH VOLTAGE IS THE OPERATOR'S P-6 BLOCK (OWNER RULING, 2026-09-26, "B" —
+     * superseding the 2026-09-01 #598 item 7 directive that the channel switch itself off on
+     * flux alone at 1e5 cps). NUREG-1431 B 3.3.1: *"When the source range trip is blocked, the
+     * high voltage to the detectors is also removed"*. `sr_blocked` is the protection report's;
+     * above 1e5 cps with it NOT taken the channel stays live and the SR high flux trip fires
+     * (pwr2_protection SR_TRIP). A caller that passes no protection report (a standalone
+     * translation) falls back to the retired flux-alone cue so it cannot publish 2.6e11 cps. */
+    var srOn = pt.sr_blocked !== undefined ? pt.sr_blocked !== true
+                                           : pFrac * K_SR < SR_TRIP_CPS;
     put('sr_energized', srOn);
     /* NO FLOOR. Both channels carried `Math.max(pFrac, 1e-9)`, which existed ONLY because a
      * sourceless core decayed to zero and the gauges had to be stopped from reading it. With a
@@ -639,9 +642,9 @@
      * #579, #591). Both edges are DERIVED here from constants that already exist and are
      * already sourced — nothing new is invented and nothing is retyped:
      *
-     *   SOURCE RANGE  [1 cps .. SR_SECURE_CPS]. Its top edge is the de-energization point the
-     *     model already uses for `sr_energized` two lines above, so the band and the channel
-     *     cannot disagree. The bottom is the instrument's own range floor.
+     *   SOURCE RANGE  [1 cps .. SR_TRIP_CPS]. Its top edge is the source-range high flux trip
+     *     (pwr2_protection SR_TRIP, 2026-09-26; was the auto-off point SR_SECURE_CPS, the same
+     *     1e5 cps). The bottom is the instrument's own range floor.
      *   INTERMEDIATE  [P-6 .. P-10]. Below P-6 the channel is not yet on scale and the source
      *     range is the instrument; above P-10 the power range is. BOTH edges are now read from
      *     `pwr2_protection`, which is where this plant's permissives live — P-6 in its own
@@ -656,17 +659,15 @@
      * could not point at it, so the manual row was `narrative` and the disagreement was
      * unpinnable in both directions. One copy now, in pwr2_protection, and the gate reads it.
      *
-     * ⚠ A DECLARED DEPARTURE, recorded so nobody "fixes" it back. The Bases' P-6 function is
-     * *"allows the manual block of the NIS Source Range, Neutron Flux reactor trip"* — a real
-     * plant HAS that lever. This plant does not, by owner directive (#598 item 7), and the
-     * channel de-energizes on flux alone at SR_SECURE_CPS — measured at IR 3.21e-9 A, 32x above
-     * P-6, so the handoff this plant performs is NOT at P-6. The band above is the ONLY thing
-     * P-6 does here, and it is unaffected by the departure. */
+     * P-6 IS NOW ALSO THE SOURCE-RANGE BLOCK'S PERMISSIVE (OWNER RULING 2026-09-26, "B",
+     * superseding #598 item 7's auto-off — pwr2_protection P6). The band is unchanged: the two
+     * ranges overlap from P-6 (1e-10 A, ~3,100 cps) to the SR trip (1e5 cps, ~3.2e-9 A), which
+     * is the window the operator blocks in. */
     var P6_A = (RD.protection && RD.protection.P6 && RD.protection.P6.amps !== undefined)
                   ? RD.protection.P6.amps : 1.0e-10;
     var p10Frac = (RD.protection && RD.protection.P10 && RD.protection.P10.frac !== undefined)
                   ? RD.protection.P10.frac : 0.08;
-    put('nis_sr_inuse_cps', [1, SR_SECURE_CPS]);
+    put('nis_sr_inuse_cps', [1, SR_TRIP_CPS]);
     put('nis_ir_inuse_a',   [P6_A, p10Frac * K_IR]);
 
     /* --- core uncovery: a DECLARED HEM PROXY (D4 sec 8 upheld). The homogeneous model has

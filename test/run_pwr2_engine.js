@@ -2217,9 +2217,15 @@ function runSuite(RD, rec, quiet, only) {
   EN.command(engA2, 'rod_target', bank());
   var tsA2 = null;
   for (kk = 0; kk < walk(200) / DT && !(tsA2 && tsA2.scrammed); kk++) tsA2 = EN.step(engA2, DT);
+  /* THE FIRST RUNG MOVED DOWN ONE (OWNER RULING 2026-09-26, "B"): the source range no longer
+   * switches itself off, so from hot zero power with nobody taking the P-6 block its 1e5 cps trip
+   * is the first rung, and it catches the pull before any power at all (measured: peak 0.0 %;
+   * the full-stack normal-speed runaway trips at 304 s). The IR rung is still exercised, with
+   * the block taken, by run_pwr2_shell's group O ride. HR10: the CLAIM ("the startup net's first
+   * rung answers it") is unchanged; which rung is first is what the plant changed. */
   ckT('a continuous fast pull from subcritical IS the startup accident, and the startup ' +
       'net FIRST rung answers it',
-      tsA2.scrammed === true && engA2.pt.trip_cause === 'ir_high_flux',
+      tsA2.scrammed === true && engA2.pt.trip_cause === 'sr_high_flux' && tsA2.power_pct < 0.1,
       'cause ' + engA2.pt.trip_cause + ' at ' + tsA2.power_pct.toFixed(1) + ' % (the ' +
       'overshoot is the sourced 0.5 s delay at a fast period)');
 
@@ -2236,7 +2242,14 @@ function runSuite(RD, rec, quiet, only) {
   var engS2 = EN.createEngine({ initial_state: 'hot_zero_power' });
   EN.command(engS2, 'rod_speed', 'normal');
   EN.command(engS2, 'rod_target', 224);
-  var tsS2 = run(engS2, walk(180) + 400);   /* + SETTLING: on the flatter curve power lags
+  /* THE OPERATOR TAKES THE P-6 SOURCE-RANGE BLOCK on the way (OWNER RULING 2026-09-26, "B"),
+   * the moment the permissive allows — unblocked, this ride trips on the 1e5 cps SR trip and
+   * the profile below never runs. Same total ride time as before. */
+  var tS2 = 0, tsS2 = null;
+  while (tS2 < walk(180) + 400) {
+    tsS2 = EN.step(engS2, DT); tS2 += DT;
+    if (!engS2.pt.blockSR && engS2.rpsReport && engS2.rpsReport.p6_met) EN.command(engS2, 'sr_block', true);
+  }   /* + SETTLING: on the flatter curve power lags
                                              * the bank by minutes, and the old holds were sized
                                              * for a bank 3x shorter. Measured: 224 steps settles
                                              * at 0.36 %, and it takes ~400 s to get there. */
@@ -3513,8 +3526,8 @@ var MUTATIONS = [
    '    if (ic.cold) rodBank[1].steps = 0;\n    var boron0 = RD.kinetics.criticalBoron(rx.kin, tavg0, icP, rodBank,',
    { grp: 'N' }],
   ['the cold boot forgets the P-11 blocks (the shutdown plant injects at construction)',
-   '      pt: PT.createProtection({ blockLowFlux: ic.load_mwe > 0, blockIrHigh: ic.load_mwe > 0,\n                                blockLoPress: !!ic.cold, blockSI: !!ic.cold }),',
-   '      pt: PT.createProtection({ blockLowFlux: ic.load_mwe > 0, blockIrHigh: ic.load_mwe > 0 }),',
+   '                                blockSR: ic.load_mwe > 0,\n                                blockLoPress: !!ic.cold, blockSI: !!ic.cold }),',
+   '                                blockSR: ic.load_mwe > 0 }),',
    { grp: 'N' }],
   /* #601: the at-power ICs must take the INTERMEDIATE RANGE block too, or a 50 %/100 %
    * plant boots with the 25 % trip armed and scrams on arrival. The mutation drops that
@@ -3523,6 +3536,11 @@ var MUTATIONS = [
    '      pt: PT.createProtection({ blockLowFlux: ic.load_mwe > 0, blockIrHigh: ic.load_mwe > 0,',
    '      pt: PT.createProtection({ blockLowFlux: ic.load_mwe > 0, blockIrHigh: false,',
    { grp: 'K' }],
+  /* 2026-09-26 (OWNER RULING, "B"): an at-power IC must also boot with the SOURCE-RANGE block
+   * taken, or its first SR reading (2.6e11 cps at rated) trips it on arrival */
+  ['an at-power IC boots WITHOUT the source-range block (it scrams on the SR trip on arrival)',
+   '                                blockSR: ic.load_mwe > 0,',
+   '                                blockSR: false,', { grp: 'K' }],
   ['the RHR hold throttle is dropped (the "held" plant cools at 560 degF/hr and drains)',
    '      eng.rh.hx_fraction = 0;',
    '      eng.rh.hx_fraction = 0.5;', { grp: 'N' }],
