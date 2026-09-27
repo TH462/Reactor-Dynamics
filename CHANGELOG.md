@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.8.0-rc8] — 2026-09-27
+
 ### Changed
 - **Raise power stages 4-7: the temperature check-off ticks when AVG COOLANT TEMPERATURE enters the tile's green
   segment** (552 / 558 / 566 / 570 °F; it ticked 1-7 °F under it) and the text names the segment in numbers; step
@@ -84,8 +86,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   cooldown 11 separates the 32 °F tick from the 30 °F press and explains the minus sign on COOLDOWN
   RATE; cooldown 6 gives the spray box before MANUAL; cooldown 4 defines TAVG; raise power 1 says
   Mode 1 is anything above 5 %; heatup 3 and 7 clarified.
-
-## [Alpha 1.8.0-rc7] — 2026-09-26
 
 ### Added
 - **A "Walkthrough sets time warp" checkbox under the speed bar** (#807 item 7). On (default,
