@@ -29,6 +29,29 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-26-develop-j (layman pass 9 verification: raise-power conditional before the sag, valve and boron-box locations, 1/M wording)
+
+Scratch worktree exp/807h (from develop dab17d5c, Alpha 1.8.0-rc7). Record:
+`Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS9.md`. Text and row order only; no physics.
+
+- **Raise power 4b ticked before the sag it is conditional on (S-2).** MEASURED, live checklist,
+  `low_power`, seed 42, LOAD 30 and no pull: the latching `~` row ticked 25 s after LOAD at 549.6 °F
+  (floor 549.5), held through 536.6 °F, Continue dark 1100 s. The trap: pass 7 moved the temperature
+  row to `b`, straight after LOAD, and the source comment "met at entry on no stage" (written when it
+  sat after OUTPUT) was never re-measured. Stages 4 to 8 now read OUTPUT first, then the conditional;
+  the same run keeps it unmet from OUTPUT > 28 MW (225 s, 537 °F); one 5-step pull lights Continue at 1005 s.
+- **Source range jitter (S-3).** Still bank 0 / 65 / 75: σ 5.5 / 4.7 / 4.9 %, single readings −12 / +15 %.
+  The reviewer's ±20 % included the count climbing while the rods moved. At bank 190 the mean climbs
+  2937 → 3754 cps over 2.5 min after the stop. 5a now says "jumps about 15 % either way".
+- **1/M "always too high" is false (S-4).** Fresh IC, reviewer's stops, seeds 42 / 7 / 11: second-point
+  predictions 245 / 372 / 265 (high), fifth 213. But the lowest measured bank-0 reading (434 cps) as
+  the baseline puts the two-point crossing at 195, the reviewer's 194. Now "usually".
+- Wording confirmed and fixed: heatup 10 valve location (cooldown 7's sentence), boron target box
+  ("captioned 0-2500 ppm", four steps), cooldown 11 32/30 °F roles, cooldown 6 order, cooldown 4 TAVG,
+  cooldown 11 rate sign, raise power 1 Mode 1 (> 5 %), heatup 3 PRESS TO ARM, heatup 7 labels.
+- Not changed: heatup 11's 552 °F (route runner finishes at 545.7 °F; the check is "542 or higher"),
+  suggested warp before the first LOAD / WITHDRAW (by design, code read only), heatup 2's conditional note.
+
 ## Session log — 2026-09-26-develop-i (#807 review fixes: count-row flicker, windows, 13a, cooldown 11 spray, boron line, mean dedupe)
 
 Scratch worktree exp/807g (from exp/807int 850a92e1). Route runner `--job` runs, full stack, seed 42

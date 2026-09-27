@@ -470,10 +470,12 @@ var MUTATIONS = [
   { id: 'raise_old_settle_band', chain: true, leg: 'pwr_raise_power', route: 'chain', expect: 'settle',
     why: 'raise-power 8 graded 563-592 degF again (pass 6: step 8 ticked at 567 degF)',
     mutate: function (P) {
-      /* pass 7 moved the temperature row to 8b (accs[1]) */
-      P.steps[7].accs[1].ask = 'Check AVG COOLANT TEMPERATURE is near 578 °F, between 563 and 592 °F.';
-      P.steps[7].accs[1].label = 'AVG COOLANT TEMPERATURE between 563 and 592 °F';
-      P.steps[7].accs[1].v = 303.2; P.steps[7].accs[1].tol = 8;
+      /* the LATCHING temperature row, found by predicate: pass 7 put it at 8b (accs[1]), layman pass 9
+       * (2026-09-26) moved it after the OUTPUT row (accs[2]) -- an index anchor went blind there */
+      var tr = P.steps[7].accs.filter(function (e) { return e.p === 'tavg_c' && e.latch; })[0];
+      tr.ask = 'Check AVG COOLANT TEMPERATURE is near 578 °F, between 563 and 592 °F.';
+      tr.label = 'AVG COOLANT TEMPERATURE between 563 and 592 °F';
+      tr.v = 303.2; tr.tol = 8;
       /* #807 item 2: 8b latches and a cont under 8c re-asserts the band -- widen that one too, or this goes blind */
       P.steps[7].accs.forEach(function (e) { if (e.cont && e.p === 'tavg_c') { e.v = 303.2; e.tol = 8; } });
     } },

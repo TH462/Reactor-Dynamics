@@ -20,7 +20,7 @@
 
 ()1a. Check ON is lit on the BORON card. If ON is not lit, press ON.
 
-()1b. Set the boron target to 920 ppm on the BORON card, press Enter, and check BORON STATUS reads BORATING.
+()1b. Set the boron target to 920 ppm: type it into the number box on the BORON card captioned 0-2500 ppm, press Enter, and check BORON STATUS reads BORATING.
 
 ()1c. Wait for BORON CHEM to read 880 ppm or more.
 
@@ -82,7 +82,7 @@ To the automatic protection, a cooldown looks exactly like a leak: pressure fall
 
 Suggested time warp: 1×.
 
-Note: In TAVG mode the setpoint does nothing.
+Note: If the status reads TAVG, the dump is holding temperature instead and ignores DUMP SETPOINT.
 
 ()4b. Lower DUMP SETPOINT 50 psi at a time to 720 psi, about 6 plant-minutes apart.
 
@@ -132,7 +132,7 @@ Suggested time warp: 1×.
 
 Note: Heaters first: with them still in AUTO the spray will not hold and pressure climbs back instead of falling.
 
-()6b. Press MANUAL under SPRAY with its box at 50 %, not more.
+()6b. Type 50 in the box under SPRAY and press Enter, then press MANUAL under SPRAY. Not more than 50 %.
 
 ()6c. Wait for PRIMARY PRESSURE to read below 1615 psi.
 
@@ -230,11 +230,11 @@ With RHR circulating, the reactor coolant pumps are only adding heat, so they co
 
 Suggested time warp: 1×.
 
-()11b. Leave SPRAY running and watch SUBCOOLING MARGIN fall to 32 °F.
+()11b. Leave SPRAY running and watch SUBCOOLING MARGIN fall. This line ticks at 32 °F; the press comes at 30 °F, in the next line.
 
 Suggested time warp: 60×: at 600× the margin can fall 10 °F between two glances.
 
-Note: The spray keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it any earlier and pressure climbs back over the RHR limit. If OFF is already lit under SPRAY, press MANUAL under SPRAY with its box at 50 % and keep watching. The clock moves to 60× by itself once HX SPLIT is raised.
+Note: The spray keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it any earlier and pressure climbs back over the RHR limit. If OFF is already lit under SPRAY, type 50 in the box under SPRAY, press Enter, then press MANUAL under SPRAY and keep watching. The clock moves to 60× by itself once HX SPLIT is raised.
 
 ()11c. When SUBCOOLING MARGIN reads below 30 °F, press OFF under SPRAY on the PRESSURIZER (PZR) card.
 
@@ -244,7 +244,7 @@ Suggested time warp: 60×.
 
 Suggested time warp: 600×.
 
-Note: Keep COOLDOWN RATE under 100 °F per hour: if the Cooldown Rate High alarm comes in, lower HX SPLIT.
+Note: Keep COOLDOWN RATE under 100 °F per hour. The tile shows cooling as a minus number, so a reading of -83 is 83 °F per hour. If the Cooldown Rate High alarm comes in, lower HX SPLIT.
 
 Background
 

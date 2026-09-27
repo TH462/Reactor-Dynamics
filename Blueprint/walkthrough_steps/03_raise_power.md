@@ -20,7 +20,7 @@
 
 *The climb starts from the plant the startup left: critical, on the grid, with its startup trips blocked.*
 
-()1a. Check REACTOR POWER reads about 10 % and the plant is in Mode 1, At Power.
+()1a. Check REACTOR POWER reads about 10 %. Anything above 5 % is Mode 1, At Power; the board has no separate mode readout.
 
 ()1b. Check SG FEED AUTO is lit.
 
@@ -68,7 +68,7 @@ A tripped turbine takes no steam, so LOAD does nothing and the heat you make goe
 
 ()3a. Check ON is lit on the BORON card. If ON is not lit, press ON.
 
-()3b. Set the BORON target to 660 ppm and press Enter.
+()3b. Set the boron target to 660 ppm: type it into the number box on the BORON card captioned 0-2500 ppm and press Enter.
 
 Suggested time warp: 1×.
 
@@ -92,15 +92,15 @@ Every percent of power costs reactivity: the fuel heats up and the water thins o
 
 Suggested time warp: 1×.
 
-()4b. If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 5 to 20 steps. Otherwise leave the rods.
+()4b. Wait for OUTPUT to reach 30 MW. AVG COOLANT TEMPERATURE sags while it climbs; that sag is what the next line answers.
+
+Suggested time warp: 10×, while OUTPUT climbs.
+
+()4c. If AVG COOLANT TEMPERATURE is below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 5 to 20 steps. Otherwise leave the rods.
 
 Suggested time warp: 5×.
 
 Note: MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is where the plant should sit at the power it is making: near 556 °F here, rising with load to 578 °F at 100 %. The check-off accepts 550 to 576 °F; aim for the green, not the tick. The tile keeps rising for about a minute after each pull, so read it again before the next one. Keep AVG COOLANT TEMPERATURE under 590 °F on every stage: the plant trips on temperature before it trips on power.
-
-()4c. Check OUTPUT reads 30 MW, REACTOR POWER is near 30 % and AVG COOLANT TEMPERATURE is still between 550 and 576 °F.
-
-Suggested time warp: 10×, while OUTPUT and the temperature settle.
 
 
 
@@ -120,15 +120,15 @@ Raising LOAD draws more steam and cools the water; colder water adds reactivity,
 
 Suggested time warp: 1×.
 
-()5b. If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 15 to 20 steps. Otherwise leave the rods.
+()5b. Wait for OUTPUT to reach 50 MW. AVG COOLANT TEMPERATURE sags while it climbs; that sag is what the next line answers.
+
+Suggested time warp: 10×, while OUTPUT climbs.
+
+()5c. If AVG COOLANT TEMPERATURE is below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 15 to 20 steps. Otherwise leave the rods.
 
 Suggested time warp: 5×.
 
 Note: The green band is near 562 °F at this load; the check-off accepts 550 to 583 °F, so aim for the green, not the tick.
-
-()5c. Check OUTPUT reads 50 MW, REACTOR POWER is near 50 % and AVG COOLANT TEMPERATURE is still between 550 and 583 °F.
-
-Suggested time warp: 10×, while OUTPUT and the temperature settle.
 
 
 
@@ -148,15 +148,15 @@ Same order as the last stage: LOAD, then rods. Halfway up, xenon is starting to 
 
 Suggested time warp: 1×.
 
-()6b. If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 25 to 35 steps. Otherwise leave the rods.
+()6b. Wait for OUTPUT to reach 75 MW. AVG COOLANT TEMPERATURE sags while it climbs; that sag is what the next line answers.
+
+Suggested time warp: 10×, while OUTPUT climbs.
+
+()6c. If AVG COOLANT TEMPERATURE is below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 25 to 35 steps. Otherwise leave the rods.
 
 Suggested time warp: 5×.
 
 Note: The green band is near 570 °F at this load; the check-off accepts 558 to 585 °F, so aim for the green, not the tick. Control Rods — Approaching Insertion Limit, then Control Rods — Insertion Limit, come in during this stage: expected, the bank is low because boron is carrying the climb, and they clear as xenon builds and you walk the bank up.
-
-()6c. Check OUTPUT reads 75 MW, REACTOR POWER is near 75 % and AVG COOLANT TEMPERATURE is still between 558 and 585 °F.
-
-Suggested time warp: 10×, while OUTPUT and the temperature settle.
 
 
 
@@ -176,15 +176,15 @@ Three-quarter power. The band has climbed with the load, toward 578 °F at 100 %
 
 Suggested time warp: 1×.
 
-()7b. If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, about 15 steps. Otherwise leave the rods.
+()7b. Wait for OUTPUT to reach 90 MW. AVG COOLANT TEMPERATURE sags while it climbs; that sag is what the next line answers.
+
+Suggested time warp: 10×, while OUTPUT climbs.
+
+()7c. If AVG COOLANT TEMPERATURE is below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, about 15 steps. Otherwise leave the rods.
 
 Suggested time warp: 5×.
 
 Note: The green band is near 575 °F at this load and the check-off accepts 564 to 585 °F, so aim for the green, not the tick. The pulls get smaller from here: above 103 % power the plant stops the rods. If LOAD changes by itself, the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.
-
-()7c. Check OUTPUT reads 90 MW and AVG COOLANT TEMPERATURE is still between 564 and 585 °F.
-
-Suggested time warp: 10×, while OUTPUT and the temperature settle.
 
 
 
@@ -204,17 +204,17 @@ Above 103 % power the plant refuses to move the rods, and at 118 % it trips the 
 
 Suggested time warp: 1×.
 
-()8b. If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it settles on 578 °F, about 20 steps. Otherwise leave the rods.
+()8b. Wait for OUTPUT to reach 100 MW. AVG COOLANT TEMPERATURE sags while it climbs; that sag is what the next line answers.
+
+Suggested time warp: 10×, while OUTPUT climbs.
+
+()8c. If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it settles on 578 °F, about 20 steps. Otherwise leave the rods.
 
 Suggested time warp: 5×.
 
 Note: Above 103 % REACTOR POWER the plant stops rod withdrawal, and the step to 100 MW can carry power past it: if CONTROL ROD POSITION stops moving during a pull, wait for REACTOR POWER to settle back under 103 %, then pull again.
 
-()8c. Check OUTPUT reads 100 MW and AVG COOLANT TEMPERATURE is still between 573 and 583 °F.
-
 ()8d. Check CONTROL ROD POSITION reads below 600, not on its top stop.
-
-Suggested time warp: 10×, while OUTPUT and the temperature settle.
 
 
 

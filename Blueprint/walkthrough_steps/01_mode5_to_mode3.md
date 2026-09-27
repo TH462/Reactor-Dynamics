@@ -62,7 +62,7 @@ A shut-down reactor makes very little heat. The running pumps make heat of their
 
 Suggested time warp: 1×.
 
-Note: If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once first: no rod moves while the reactor trip is latched. One click starts the shutdown bank and it runs to 627 of 627 by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early.
+Note: If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once first: no rod moves while the reactor trip is latched. PRESS TO ARM means no trip is latched; leave it. One click starts the shutdown bank and it runs to 627 of 627 by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early.
 
 ()3b. Watch SHUTDOWN ROD POSITION count up to near 627 of 627.
 
@@ -200,7 +200,7 @@ On the way up the plant passes 665 psi, the accumulator window the next step nee
 
 Suggested time warp: 1×.
 
-Note: Above 1615 psi the valve locks, and the ACCUMULATORS caution is expected until pressure passes 1000 psi. If the window is missed: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO.
+Note: The valve symbol sits just above the ACCUMULATORS tile, to the left of ECCS INJ FLOW; it pulses while this step is up. Above 1615 psi the valve locks, and the ACCUMULATORS caution is expected until pressure passes 1000 psi. If the window is missed: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO.
 
 Background
 

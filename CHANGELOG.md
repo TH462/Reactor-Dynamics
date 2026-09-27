@@ -30,6 +30,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Raise power, stages 4 to 8: the "if the temperature sags, withdraw" line now comes after
+  "Wait for OUTPUT to reach N MW"** (layman pass 9). It used to tick straight after LOAD, before the
+  sag, and stayed ticked while AVG COOLANT TEMPERATURE fell 13 °F below its band.
+- **Walkthrough wording from layman pass 9**: heatup 10 says where the accumulator valve is; the
+  boron target steps name the box ("the number box on the BORON card captioned 0-2500 ppm");
+  startup 5a says the SOURCE RANGE count jumps about 15 %, and the 1/M prediction "usually" moves in;
+  cooldown 11 separates the 32 °F tick from the 30 °F press and explains the minus sign on COOLDOWN
+  RATE; cooldown 6 gives the spray box before MANUAL; cooldown 4 defines TAVG; raise power 1 says
+  Mode 1 is anything above 5 %; heatup 3 and 7 clarified.
+
 ## [Alpha 1.8.0-rc7] — 2026-09-26
 
 ### Added
