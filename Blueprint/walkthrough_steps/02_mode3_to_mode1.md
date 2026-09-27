@@ -47,7 +47,7 @@ In Hot Standby (Mode 3), the plant is at operating temperature and at pressure w
 
 ()2a. Check ON is lit on the BORON card. If ON is not lit, press ON.
 
-()2b. Set the boron target to 719 ppm.
+()2b. Set the boron target to 719 ppm: type it into the number box on the BORON card captioned 0-2500 ppm and press Enter.
 
 ()2c. Wait for boron concentration to read between 709 and 729 ppm.
 
@@ -121,7 +121,7 @@ The panel fits the last three points, so each new point sharpens the prediction.
 
 *One point cannot make a line. The second gives the plot its first prediction of where the reactor goes critical.*
 
-()5a. Hold CONTROL WITHDRAW at MED until SOURCE RANGE reads 7.0e2 or more.
+()5a. Hold CONTROL WITHDRAW at MED until SOURCE RANGE reads 7.0e2 or more, then watch it for 5 seconds: the count jumps about 15 % either way.
 
 Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 75 to 80; the position shifts with boron and recent power, the count does not. The check-off waits for SOURCE RANGE to stay at 7.0e2 or more, not just touch it. If it only touches 7.0e2 now and then, or is still short at 80, tap WITHDRAW one step and wait half a plant-minute. Repeat until it stays there.
 
@@ -135,7 +135,7 @@ Suggested time warp: 10×, set by itself once the rods start moving.
 
 Background
 
-The first two points always predict the critical position too high. Near the bottom of the core the rods are worth little per step, so the line they draw crosses zero far past the real critical position. That is expected.
+The first two points usually predict the critical position too high. Near the bottom of the core the rods are worth little per step, so the line they draw crosses zero far past the real critical position. That is expected.
 
 While the reactor is shut down, SOURCE RANGE counts are the only thing that shows how close the core is to critical. Rod position does not.
 
@@ -161,7 +161,7 @@ Suggested time warp: 10×, set by itself once the rods start moving.
 
 Background
 
-Closer to critical, a rod step is worth more, so the line steepens and the predicted crossing moves in. The panel prints the crossing as a rod step, with a marker on the plot.
+Closer to critical, a rod step is worth more, so the line steepens and the predicted crossing usually moves in. A baseline or second point taken on a low or high moment of the jumping count can put the early prediction on the wrong side, so it can also move out before it settles. The panel prints the crossing as a rod step, with a marker on the plot.
 
 That number still reads high. It improves with every point.
 

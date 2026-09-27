@@ -1557,7 +1557,7 @@
                     * WITHDRAW did nothing -- the rod drive refuses every move while the reactor trip
                     * is latched (pwr2_engine.js rodDriveDoor). The cooldown's 16d now resets it; this
                     * line is for a player who arrives any other way. */
-                   note: 'If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once first: no rod moves while the reactor trip is latched. One click starts the shutdown bank and it runs to 627 of 627 by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early.',
+                   note: 'If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once first: no rod moves while the reactor trip is latched. PRESS TO ARM means no trip is latched; leave it. One click starts the shutdown bank and it runs to 627 of 627 by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early.',
                    wait_speed: 1, label: 'SHUTDOWN ROD POSITION counting up' },
                  { p: 'shutdown_bank_steps', op: '>=', v: 615,
                    ask: 'Watch SHUTDOWN ROD POSITION count up to near 627 of 627.',
@@ -1741,10 +1741,10 @@
           accs: [
             { p: 'letdown_orifice_a', op: '>', v: 0,
               ask: 'Press A+B 7 % on the LETDOWN card and check A+B 7 % is lit.',
-              label: 'A+B 7 % lit: both orifices open' },
+              label: 'A+B 7 % lit: orifice A open' },
             { p: 'letdown_orifice_b', op: '>', v: 0,
               cont: true,   /* #807: 7b ("check it is A+B 7 % that is lit, not A 3 % alone") restated 7a; B rides 7a's line */
-              label: 'Orifice B open: A+B 7 % lit' },
+              label: 'Orifice B open' },
           ],
           /* The `target` says "LETDOWN reads above 0 gpm" and there was no ring on that number
            * — the vocabulary had no key for it until #744. The orifice card is the press. */
@@ -1989,7 +1989,7 @@
           why: 'The accumulators are tanks of borated water pushed by nitrogen gas at 665 psi. They fire by themselves if loop pressure ever falls below that pressure, which is why they are kept isolated while the plant is cold. Above 1615 psi the plant removes power from the valve, so it has to be opened before that point.',
           aim: 'With the valve open, the accumulators stand ready to inject by themselves if loop pressure is ever lost.',
           wait_speed: 1, speed_text: true,
-          note: 'Above 1615 psi the valve locks, and the ACCUMULATORS caution is expected until pressure passes 1000 psi. If the window is missed: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO.',
+          note: 'The valve symbol sits just above the ACCUMULATORS tile, to the left of ECCS INJ FLOW; it pulses while this step is up. Above 1615 psi the valve locks, and the ACCUMULATORS caution is expected until pressure passes 1000 psi. If the window is missed: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO.',
           control: 'Accumulator valve', target: 'ACCUMULATORS tile no longer reads ISOLATED',
           cmd: { action: 'open_accumulator_valve' }, hold: 10,
           accs: [{ p: 'accumulator_valve_open', op: '>', v: 0,
@@ -2573,7 +2573,7 @@
                    ask: 'Check ON is lit on the BORON card. If ON is not lit, press ON.',
                    label: 'ON is lit on the BORON card' },
                  { p: 'boron_target_ppm', op: '~', v: 719, tol: 0.5,   /* 718.5-719.5: the box draws whole ppm */
-                   ask: 'Set the boron target to 719 ppm.',
+                   ask: 'Set the boron target to 719 ppm: type it into the number box on the BORON card captioned 0-2500 ppm and press Enter.',
                    label: 'BORON target reads 719 ppm' },
                  { p: 'boron_ppm', op: '~', v: 719, tol: 10.49,   /* 709 to 729 as the whole-ppm tile draws it (owner "B", 2026-09-26: tightened from 679-759 so step 5 starts after the dilution, #653 pass 7 S-2) */
                    ask: 'Wait for boron concentration to read between 709 and 729 ppm.',
@@ -2697,7 +2697,7 @@
            * selected "Fix the text AND say why (Recommended)")* — this is the text half; the
            * card's one-line reason on an out-of-turn press is ui/app.js. */
           /* the step-level `note` moved into 5a's own `note` (2026-09-23 reconcile) — his 5a note is the one sentence below; the rod-speed and early-plot sentences it used to carry are NOT in his file and went with it (recorded in the step file's Notes). */
-          why: 'The first two points always predict the critical position too high. Near the bottom of the core the rods are worth little per step, so the line they draw crosses zero far past the real critical position. That is expected.\n\nWhile the reactor is shut down, SOURCE RANGE counts are the only thing that shows how close the core is to critical. Rod position does not.',
+          why: 'The first two points usually predict the critical position too high. Near the bottom of the core the rods are worth little per step, so the line they draw crosses zero far past the real critical position. That is expected.\n\nWhile the reactor is shut down, SOURCE RANGE counts are the only thing that shows how close the core is to critical. Rod position does not.',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e2 (700 counts a second); point 2 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 94, speed: 'normal' }, hold: 300,
           /* THE COUNT IS WRITTEN THE WAY THE METER WRITES IT *(OWNER, #724 item 6: "Whenever the
@@ -2842,7 +2842,7 @@
           accs_ordered: true,
           wait_hint: false,
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 695, mean_s: 30,
-                   ask: 'Hold CONTROL WITHDRAW at MED until SOURCE RANGE reads 7.0e2 or more.',
+                   ask: 'Hold CONTROL WITHDRAW at MED until SOURCE RANGE reads 7.0e2 or more, then watch it for 5 seconds: the count jumps about 15 % either way.',
                    note: 'On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 75 to 80; the position shifts with boron and recent power, the count does not. The check-off waits for SOURCE RANGE to stay at 7.0e2 or more, not just touch it. If it only touches 7.0e2 now and then, or is still short at 80, tap WITHDRAW one step and wait half a plant-minute. Repeat until it stays there.',
                    label: 'SOURCE RANGE reads 7.0e2 (700 counts per second) or more' },
                  { cmd: 'plot_1m_point', ask: 'Wait for STARTUP RATE to read +0.03 or less, then press Plot point.',
@@ -2861,7 +2861,7 @@
            * the authored string said 10× a SECOND time in the same line. Same defect on step 5.
            * An authored hint earns its place only by carrying a fact the generated line cannot —
            * step 7's rod-speed caution, step 8's "come back to 10× for the next step". */
-          why: 'Closer to critical, a rod step is worth more, so the line steepens and the predicted crossing moves in. The panel prints the crossing as a rod step, with a marker on the plot.\n\nThat number still reads high. It improves with every point.',
+          why: 'Closer to critical, a rod step is worth more, so the line steepens and the predicted crossing usually moves in. A baseline or second point taken on a low or high moment of the jumping count can put the early prediction on the wrong side, so it can also move out before it settles. The panel prints the crossing as a rod step, with a marker on the plot.\n\nThat number still reads high. It improves with every point.',
           control: 'Control Bank', target: 'SOURCE RANGE above 1.4e3 (1,400 counts a second); point 3 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 63, speed: 'normal' }, hold: 300,
           /* One step per plot point since #796 item 3 — the reasoning is on step 5. */
@@ -4001,7 +4001,7 @@
            * the two block flags, as pwr_startup 15/16). All three are true on the plant the
            * startup hands over, so this confirm step ticks on entry — as it did before. */
           accs: [{ p: 'plant_mode', op: '~', v: 1, tol: 0.1,
-                   ask: 'Check REACTOR POWER reads about 10 % and the plant is in Mode 1, At Power.',
+                   ask: 'Check REACTOR POWER reads about 10 %. Anything above 5 % is Mode 1, At Power; the board has no separate mode readout.',
                    label: 'Plant in Mode 1, At Power' },
                  { p: 'feed_coupled', op: '>', v: 0,
                    ask: 'Check SG FEED AUTO is lit.',
@@ -4118,7 +4118,7 @@
                   * (the box draws whole ppm, as pwr_startup 2b), so 3a's lamp sibling — met at boot —
                   * is not read as the press's own state by the #697 sweep. */
                  { cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 660 }, p: 'boron_target_ppm', op: '~', v: 660, tol: 0.5,
-                   ask: 'Set the BORON target to 660 ppm and press Enter.',
+                   ask: 'Set the boron target to 660 ppm: type it into the number box on the BORON card captioned 0-2500 ppm and press Enter.',
                    label: 'BORON target reads 660 ppm' }],
           hl: ['Boron ON', 'Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
         /* THE "DRAW A SAMPLE" STEP WAS DELETED HERE, 2026-09-11 *(OWNER RULING, 2026-09-10,
@@ -4185,6 +4185,14 @@
           control: 'Control Bank', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE inside its band, near 556 °F',
           cmd: { action: 'set_load_target', mwe: 30 }, hold: 480, wait_hint: false,
           replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' } },
+          /* LAYMAN PASS 9 (2026-09-26, #653 S-2): THE OUTPUT ROW NOW COMES BEFORE THE CONDITIONAL, on all
+           * five stages. The paragraph above ("met at entry on no stage") went stale when pass 7 moved the
+           * temperature row to `b`, straight after LOAD: MEASURED, `low_power`, seed 42, no pull — the
+           * latching temperature row ticked 25 s after LOAD at 549.6 degF (floor 549.5), stayed ticked
+           * while the tile fell to 536.6 degF, and Continue stayed dark 1100 s with every drawn line but
+           * the `cont` one green. Ordered after OUTPUT > 28 MW (reached at ~225 s, tile 537 degF), the
+           * same run shows the conditional UNMET through the sag, so the line that says "withdraw" is the
+           * live one when it applies. The latch stays (the `cont` row re-asserts the band). */
           accs_ordered: true,
           accs: [{ cmd: { action: 'set_load_target', mwe: 30 },
                    ask: 'Set LOAD to 30 MW.',
@@ -4192,13 +4200,13 @@
                  /* LAYMAN PASS 7 (2026-09-26, AGENT-DRAFTED) S-1/S-3: `b` is the TEMPERATURE row, graded on the plant,
                   * not a press. The press-only "Rods withdrawn" never ticked when the gauge stayed in its band (pass 7
                   * stage 5, 561-563 degF): conditional, as 10-11 are (ruling 2026-09-25 "Make them conditional"). */
+                 { p: 'mwe_output', op: '>', v: 28,
+                   ask: 'Wait for OUTPUT to reach 30 MW. AVG COOLANT TEMPERATURE sags while it climbs; that sag is what the next line answers.',
+                   wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 30 MW' },
                  { p: 'tavg_c', op: '~', v: 294.75, tol: 7.25, latch: true,
-                   ask: 'If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 5 to 20 steps. Otherwise leave the rods.',
+                   ask: 'If AVG COOLANT TEMPERATURE is below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 5 to 20 steps. Otherwise leave the rods.',
                    note: 'MED is the middle rod speed on the ROD CONTROL card, 48 steps a minute. The green band on the tile is where the plant should sit at the power it is making: near 556 °F here, rising with load to 578 °F at 100 %. The check-off accepts 550 to 576 °F; aim for the green, not the tick. The tile keeps rising for about a minute after each pull, so read it again before the next one. Keep AVG COOLANT TEMPERATURE under 590 °F on every stage: the plant trips on temperature before it trips on power.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 550 and 576 °F (the band is near 556)' },
-                 { p: 'mwe_output', op: '>', v: 28,
-                   ask: 'Check OUTPUT reads 30 MW, REACTOR POWER is near 30 % and AVG COOLANT TEMPERATURE is still between 550 and 576 °F.',
-                   wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'OUTPUT 30 MW' },
                  { cont: true, p: 'power_pct', op: '>', v: 28, label: 'REACTOR POWER near 30 %' },
                  { cont: true, p: 'tavg_c', op: '~', v: 294.75, tol: 7.25, label: 'AVG COOLANT TEMPERATURE still between 550 and 576 °F' }],
           /* + `Rod Speed — Normal` (#735, develop's item 5 sweep): the text says "at MED" and this
@@ -4217,13 +4225,13 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 50 },
                    ask: 'Set LOAD to 50 MW.',
                    wait_speed: 1, label: 'LOAD set to 50 MW' },
+                 { p: 'mwe_output', op: '>', v: 48,
+                   ask: 'Wait for OUTPUT to reach 50 MW. AVG COOLANT TEMPERATURE sags while it climbs; that sag is what the next line answers.',
+                   wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 50 MW' },
                  { p: 'tavg_c', op: '~', v: 297, tol: 9, latch: true,
-                   ask: 'If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 15 to 20 steps. Otherwise leave the rods.',
+                   ask: 'If AVG COOLANT TEMPERATURE is below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 15 to 20 steps. Otherwise leave the rods.',
                    note: 'The green band is near 562 °F at this load; the check-off accepts 550 to 583 °F, so aim for the green, not the tick.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 550 and 583 °F (the band is near 562)' },
-                 { p: 'mwe_output', op: '>', v: 48,
-                   ask: 'Check OUTPUT reads 50 MW, REACTOR POWER is near 50 % and AVG COOLANT TEMPERATURE is still between 550 and 583 °F.',
-                   wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'OUTPUT 50 MW' },
                  { cont: true, p: 'power_pct', op: '>', v: 47, label: 'REACTOR POWER near 50 %' },
                  { cont: true, p: 'tavg_c', op: '~', v: 297, tol: 9, label: 'AVG COOLANT TEMPERATURE still between 550 and 583 °F' }],
           hl: ['Load Setpoint', 'Withdraw'], hl_watch: ['Turbine Load', 'Tavg', 'Generator Output', 'Reactor Power'] },
@@ -4237,13 +4245,13 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 75 },
                    ask: 'Set LOAD to 75 MW.',
                    wait_speed: 1, label: 'LOAD set to 75 MW' },
+                 { p: 'mwe_output', op: '>', v: 72,
+                   ask: 'Wait for OUTPUT to reach 75 MW. AVG COOLANT TEMPERATURE sags while it climbs; that sag is what the next line answers.',
+                   wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 75 MW' },
                  { p: 'tavg_c', op: '~', v: 300, tol: 7.5, latch: true,
-                   ask: 'If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 25 to 35 steps. Otherwise leave the rods.',
+                   ask: 'If AVG COOLANT TEMPERATURE is below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, 25 to 35 steps. Otherwise leave the rods.',
                    note: 'The green band is near 570 °F at this load; the check-off accepts 558 to 585 °F, so aim for the green, not the tick. Control Rods — Approaching Insertion Limit, then Control Rods — Insertion Limit, come in during this stage: expected, the bank is low because boron is carrying the climb, and they clear as xenon builds and you walk the bank up.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 558 and 585 °F (the band is near 570)' },
-                 { p: 'mwe_output', op: '>', v: 72,
-                   ask: 'Check OUTPUT reads 75 MW, REACTOR POWER is near 75 % and AVG COOLANT TEMPERATURE is still between 558 and 585 °F.',
-                   wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'OUTPUT 75 MW' },
                  { cont: true, p: 'power_pct', op: '>', v: 70, label: 'REACTOR POWER near 75 %' },
                  { cont: true, p: 'tavg_c', op: '~', v: 300, tol: 7.5, label: 'AVG COOLANT TEMPERATURE still between 558 and 585 °F' }],
           hl: ['Load Setpoint', 'Withdraw'], hl_watch: ['Turbine Load', 'Tavg', 'Generator Output', 'Reactor Power'] },
@@ -4257,13 +4265,13 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 90 },
                    ask: 'Set LOAD to 90 MW.',
                    wait_speed: 1, label: 'LOAD set to 90 MW' },
+                 { p: 'mwe_output', op: '>', v: 86,
+                   ask: 'Wait for OUTPUT to reach 90 MW. AVG COOLANT TEMPERATURE sags while it climbs; that sag is what the next line answers.',
+                   wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 90 MW' },
                  { p: 'tavg_c', op: '~', v: 301.5, tol: 6, latch: true,
-                   ask: 'If AVG COOLANT TEMPERATURE sags below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, about 15 steps. Otherwise leave the rods.',
+                   ask: 'If AVG COOLANT TEMPERATURE is below its band, withdraw at MED in 5-step pulls a plant-minute apart until it is back in it, about 15 steps. Otherwise leave the rods.',
                    note: 'The green band is near 575 °F at this load and the check-off accepts 564 to 585 °F, so aim for the green, not the tick. The pulls get smaller from here: above 103 % power the plant stops the rods. If LOAD changes by itself, the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 564 and 585 °F (the band is near 575)' },
-                 { p: 'mwe_output', op: '>', v: 86,
-                   ask: 'Check OUTPUT reads 90 MW and AVG COOLANT TEMPERATURE is still between 564 and 585 °F.',
-                   wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'OUTPUT 90 MW' },
                  { cont: true, p: 'tavg_c', op: '~', v: 301.5, tol: 6, label: 'AVG COOLANT TEMPERATURE still between 564 and 585 °F' }],
           /* + `Insert` (#735): this step's note carries a contingency — "If LOAD changes by itself,
            * the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG
@@ -4289,13 +4297,13 @@
                   * own half-band at full load) makes "settle on 578" mean 578. */
                  /* v 302.78 -> 303.33 (layman pass 7, 2026-09-26): 302.78 degC is 577.0 degF, so the band was
                   * 572-582 degF, not the 573-583 its label and pass 6 named; a slow pull ticked at 572.4. */
+                 { p: 'mwe_output', op: '>', v: 97,
+                   ask: 'Wait for OUTPUT to reach 100 MW. AVG COOLANT TEMPERATURE sags while it climbs; that sag is what the next line answers.',
+                   wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 100 MW' },
                  { p: 'tavg_c', op: '~', v: 303.33, tol: 2.78, latch: true,
                    ask: 'If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it settles on 578 °F, about 20 steps. Otherwise leave the rods.',
                    note: 'Above 103 % REACTOR POWER the plant stops rod withdrawal, and the step to 100 MW can carry power past it: if CONTROL ROD POSITION stops moving during a pull, wait for REACTOR POWER to settle back under 103 %, then pull again.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 573 and 583 °F (near 578)' },
-                 { p: 'mwe_output', op: '>', v: 97,
-                   ask: 'Check OUTPUT reads 100 MW and AVG COOLANT TEMPERATURE is still between 573 and 583 °F.',
-                   wait_speed: 10, speed_text: '10×, while OUTPUT and the temperature settle.', label: 'OUTPUT 100 MW' },
                  { cont: true, p: 'tavg_c', op: '~', v: 303.33, tol: 2.78, label: 'AVG COOLANT TEMPERATURE still between 573 and 583 °F' },
                  { p: 'control_bank_steps', op: '<', v: 600,
                    ask: 'Check CONTROL ROD POSITION reads below 600, not on its top stop.',
@@ -4416,7 +4424,7 @@
                    ask: 'Check ON is lit on the BORON card. If ON is not lit, press ON.',
                    label: 'ON is lit on the BORON card' },
                  { cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 }, p: 'boron_target_ppm', op: '~', v: 719, tol: 0.5,
-                   ask: 'Set the BORON target to 719 ppm and press Enter.',
+                   ask: 'Set the boron target to 719 ppm: type it into the number box on the BORON card captioned 0-2500 ppm and press Enter.',
                    label: 'BORON target reads 719 ppm' }],
           note: 'Press ON before you set the target, not after: pressing ON resets the target to the current reading. The boration then runs in the background while you take the plant down.',
           hl: ['Boron ON', 'Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
@@ -4926,7 +4934,7 @@
                    ask: 'Check ON is lit on the BORON card. If ON is not lit, press ON.',
                    label: 'ON is lit on the BORON card' },
                  { p: 'boron_target_ppm', op: '~', v: 1710, tol: 790.5,   /* 919.5-2500.5 ppm: the "920" floor to the box's ceiling */
-                   ask: 'Set the boron target to 920 ppm on the BORON card, press Enter, and check BORON STATUS reads BORATING.',
+                   ask: 'Set the boron target to 920 ppm: type it into the number box on the BORON card captioned 0-2500 ppm, press Enter, and check BORON STATUS reads BORATING.',
                    label: 'BORON target reads 920 ppm' },
                  { p: 'boron_ppm', op: '>=', v: 879.5,
                    ask: 'Wait for BORON CHEM to read 880 ppm or more.',
@@ -5075,7 +5083,7 @@
            * into this leg. */
           accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_press_mode', op: '>', v: 0,
                    ask: 'Check STEAM DUMP AUTO is lit and its status reads PRESS. If it does not, press AUTO until the status reads PRESS.',
-                   note: 'In TAVG mode the setpoint does nothing.',
+                   note: 'If the status reads TAVG, the dump is holding temperature instead and ignores DUMP SETPOINT.',
                    wait_speed: 1, label: 'STEAM DUMP AUTO lit, status PRESS' },
                  /* 4b-4d (#807 item 2, 2026-09-26): the stair the old 4b note carried in prose is now three
                   * substeps, one per step size (the route gate's `stair` bands). 4b/4c grade DUMP SETPOINT at the
@@ -5201,7 +5209,7 @@
                    note: 'Heaters first: with them still in AUTO the spray will not hold and pressure climbs back instead of falling.',
                    wait_speed: 1, label: 'OFF lit under HEATER' },
                  { p: 'spray_flow_pct', op: '~', v: 50, tol: 5,
-                   ask: 'Press MANUAL under SPRAY with its box at 50 %, not more.',
+                   ask: 'Type 50 in the box under SPRAY and press Enter, then press MANUAL under SPRAY. Not more than 50 %.',
                    label: 'PZR SPRAY at 50 %' },
                  { p: 'pressure_mpa', op: '<', v: 11.131,
                    ask: 'Wait for PRIMARY PRESSURE to read below 1615 psi.',
@@ -5375,7 +5383,7 @@
           /* LAYMAN PASS 8 (2026-09-26) S-11: `speed_text: true` dropped — 11a and 11b each print their own
            * line, and the step-level one printed "600×." a second time under 11b. */
           wait_speed: 600,
-          note: 'Keep COOLDOWN RATE under 100 °F per hour: if the Cooldown Rate High alarm comes in, lower HX SPLIT.',
+          note: 'Keep COOLDOWN RATE under 100 °F per hour. The tile shows cooling as a minus number, so a reading of -83 is 83 °F per hour. If the Cooldown Rate High alarm comes in, lower HX SPLIT.',
           /* 11a split (#807 item 2, 2026-09-26): the raise was one clause of the spray substep and had no
            * check-off. Graded at the floor of the box's whole-% render of 9 (0.085); at entry it reads 7 (step 9). */
           accs_ordered: true,   // #807 review item 4: the spray press (11c) is not live before the margin (11b)
@@ -5394,8 +5402,8 @@
                   * (route `spray_off_at_entry`, 465 plant-min). The margin falls ~0.2 degF a plant-minute
                   * here, so 11c is live about 10 plant-minutes before its press is due. */
                  { p: 'subcooling_c', op: '<', v: 17.78,
-                   ask: 'Leave SPRAY running and watch SUBCOOLING MARGIN fall to 32 °F.',
-                   note: 'The spray keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it any earlier and pressure climbs back over the RHR limit. If OFF is already lit under SPRAY, press MANUAL under SPRAY with its box at 50 % and keep watching. The clock moves to 60× by itself once HX SPLIT is raised.',
+                   ask: 'Leave SPRAY running and watch SUBCOOLING MARGIN fall. This line ticks at 32 °F; the press comes at 30 °F, in the next line.',
+                   note: 'The spray keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it any earlier and pressure climbs back over the RHR limit. If OFF is already lit under SPRAY, type 50 in the box under SPRAY, press Enter, then press MANUAL under SPRAY and keep watching. The clock moves to 60× by itself once HX SPLIT is raised.',
                    wait_speed: 60, speed_text: '60×: at 600× the margin can fall 10 °F between two glances.', label: 'SUBCOOLING MARGIN down to 32 °F' },
                  { p: 'spray_flow_pct', op: '<', v: 1,
                    ask: 'When SUBCOOLING MARGIN reads below 30 °F, press OFF under SPRAY on the PRESSURIZER (PZR) card.',

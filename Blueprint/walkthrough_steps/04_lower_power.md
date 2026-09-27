@@ -23,7 +23,7 @@
 
 ()1a. Check ON is lit on the BORON card. If ON is not lit, press ON.
 
-()1b. Set the BORON target to 719 ppm and press Enter.
+()1b. Set the boron target to 719 ppm: type it into the number box on the BORON card captioned 0-2500 ppm and press Enter.
 
 Suggested time warp: 1×.
 
