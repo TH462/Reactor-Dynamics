@@ -394,7 +394,7 @@ at the desired rate while maintaining Tavg with manual rod control."
 - 8 Background: "A small pull, then the last 10 MWe of LOAD, then the trim." → "The last 10 MWe
   of LOAD, then a smaller pull to bring the temperature back up."
 - 10's first check-off: "CONTROL ROD POSITION above 355" → "above 351" (see Grading).
-- Outside this file, word for word in both places: `02_mode3_to_mode1.md` step 17's Background
+- Outside this file, word for word in both places: `02_mode3_to_mode1.md` step 18's Background
   and the pool's `pwr_startup` last step, "From here the climb to full power is rods leading and
   the turbine following." → "…is the turbine leading and the rods following."
 

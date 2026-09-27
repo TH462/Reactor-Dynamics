@@ -93,7 +93,7 @@ The steam generator is where the reactor's heat leaves the primary loop. Reactor
 
 In AUTO, the steam dump holds steam pressure at 1020 psi. At that pressure water boils at 547 °F, so holding the pressure also holds the reactor water at 547 °F. That is why AVG COOLANT TEMPERATURE sits still in Hot Standby with nobody touching it. Right now there is almost no heat to remove, and the dump barely cracks open.
 
-Auxiliary feed puts back the water that leaves as steam, which holds SG level near 33 %. The main feed pumps stay stopped for now: they need more steam flow than a reactor this close to zero power makes. Auxiliary feed carries the steam generator up to about 1 % power, and main feed takes over there.
+Auxiliary feed puts back the water that leaves as steam, which holds SG level between about 33 and 38 %; it reads about 37 % here. The main feed pumps stay stopped for now: they need more steam flow than a reactor this close to zero power makes. Auxiliary feed carries the steam generator up to about 1 % power, and main feed takes over there.
 
 \[HIGHLIGHTED: AFW — Auto, Steam Dump AUTO (pulsing); SG Level, SG Pressure, Dump Setpoint (steady)]
 
@@ -207,7 +207,7 @@ Note: On a fresh core at 719 ppm the count reaches 7.0e3 about when CONTROL ROD 
 
 Suggested time warp: 10×.
 
-Note: STARTUP RATE takes about 5½ to 6½ plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 9 asks for shows 3 to 5 steps past the predicted position (measured).
+Note: STARTUP RATE takes about 5½ to 6½ plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 10 asks for shows 3 to 5 steps past the predicted position (measured).
 
 
 
@@ -307,7 +307,7 @@ Note: Expect 6 or 7 taps. Real crews climb gently here, between +0.1 and +0.2. T
 
 ()12b. Leave the rods alone until REACTOR POWER reads 1.0 % or more.
 
-Note: About 20 plant-minutes. REACTOR POWER reads 0.0 % for most of it while INTER RANGE climbs four decades. Not 60×: there a 2½-second glance is two and a half plant-minutes of reactor.
+Note: About 20 to 26 plant-minutes. REACTOR POWER reads 0.0 % for most of it while INTER RANGE climbs four decades. Not 60×: there a 2½-second glance is two and a half plant-minutes of reactor.
 
 ()12c. Wait for STARTUP RATE to fall to +0.10 or less.
 
@@ -329,15 +329,15 @@ INTER RANGE measures a current, not a percentage, and it shows this climb four d
 
 *Auxiliary feed carries the steam generator only to about 1 % power, so main feed has to take over before power climbs any further.*
 
-()13a. Type 50 in the SG FEED gpm box. Leave the rods alone until STEAM GENERATOR LEVEL reads 60 % or more.
+()13a. Type 50 in the gpm box beside RESTORE on the SG FEED card; type 100 instead if REACTOR POWER already reads 1.5 % or more. Leave the rods alone until STEAM GENERATOR LEVEL reads 60 % or more.
 
-Note: Typing 50 starts the main feed pumps in MAN at 50 gpm; about 7 plant-minutes. Type it rather than pressing MAN, which starts them at full speed. If REACTOR POWER reads above 2 %, type 100 instead: 50 gpm cannot keep up.
+Note: Typing a number starts the main feed pumps in MAN at that flow. Type it rather than pressing MAN, which starts them at full speed. At 50 gpm level reaches 60 % in about 9 to 10 plant-minutes while REACTOR POWER drifts up to about 2½ % by itself; that is expected, keep 50. If STEAM GENERATOR LEVEL stops rising for 3 plant-minutes, type 100: it then reaches 60 % within about 10 plant-minutes.
 
 ()13b. Press AUTO on the SG FEED card and check AUTO is lit.
 
 ()13c. Press STOP on the AUX FEED WATER card and check the card reads STANDBY.
 
-Note: STANDBY means the pump is stopped but still starts by itself if steam generator level falls too low.
+Note: STANDBY means both aux feed pumps are stopped but still armed. If STEAM GENERATOR LEVEL falls to 17 % they start by themselves, and the same signal trips the reactor.
 
 Suggested time warp: 10×.
 

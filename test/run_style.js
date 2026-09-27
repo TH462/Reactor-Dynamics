@@ -214,7 +214,7 @@ var CHECKS = [
      * The PWR2 board's own OUTPUT tile has no unit suffix in its formatter at all —
      * `ui/diagram/board/pwr_board_wiring.js:1469` (`imrppeh5hkb`) is `r0(IN(s).mwe_output)`, a
      * bare number; "MW" is a static label printed beside it, never "MWe" appended to the
-     * reading (confirmed against the tile, not assumed). `pwr_startup` step 14's `target` quotes
+     * reading (confirmed against the tile, not assumed). `pwr_startup` step 15's `target` quotes
      * that reading verbatim rather than the general electrical/thermal register N6 exists to
      * disambiguate — LOAD/OUTPUT on a turbine card is unambiguously electrical. The step's
      * nested `accs[].ask`/`.label` strings carry the same board-literal "MW" under the same

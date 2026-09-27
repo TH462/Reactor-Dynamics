@@ -849,8 +849,8 @@
 
     imrmssto6d: e('Auxiliary Feedwater',
       'The emergency feed path — starts, stops or arms AFW to the steam generator.',
-      'AFW is the heat sink of last resort after main feed is lost. AUTO arms it to start on low-low SG ' +
-      'level (17 % of narrow range); manual action takes it out of AUTO. It delivers far less than main ' +
+      'AFW is the heat sink of last resort after main feed is lost. The pumps start by themselves on low-low SG ' +
+      'level (17 % of narrow range); STOP stops them and leaves that start armed. It delivers far less than main ' +
       'feed — enough to remove decay heat, not enough to run the plant. How much of that flow reaches ' +
       'the generator is the flow control valves\' business, and on this board they are the automation ' +
       'channel\'s, not yours: it holds narrow-range level in a band. Your levers are STOP and AUTO.',
@@ -860,16 +860,20 @@
      * on the board, which is what caught these: a Scanner description for a control nobody can
      * point at is copy that can never be read. */
     imrmssoa137: e('STOP (Auxiliary Feedwater (AFW))',
-      'Secures BOTH auxiliary feed pumps and disarms the auto-start.',
-      'This is why the status readout distinguishes SECURED from STANDBY: a stopped AFW that is still ' +
-      'armed will come back on its own, and one that is secured will not. It reaches the turbine-driven ' +
+      'Stops BOTH auxiliary feed pumps. The auto-start stays armed, so the card reads STANDBY.',
+      'STANDBY means stopped but still armed: if steam generator level falls to the low-low setpoint ' +
+      '(17 % of narrow range) both pumps start by themselves, and the same signal trips the reactor. ' +
+      'Nothing on this card disarms that start. It reaches the turbine-driven ' +
       'pump as well as the motor-driven one — those are two separate machines with a switch each, and ' +
       'this button works both. If a safety injection is standing, it will refuse and say so: an SI ' +
       'signal is itself an aux feed start, so secure the injection first.', CI, '10.0'),
     imrmssr9ihq: e('AUTO (Auxiliary Feedwater (AFW))',
-      'Arms AFW to auto-start on low steam generator level.',
-      'The standing lineup at power — armed and idle. It is what makes a loss of main feed survivable ' +
-      'without operator action for the first minutes.', CI, '10.0'),
+      'Starts the motor-driven aux feed pump on its level hold.',
+      'The Hot Standby lineup: the pump runs, and its level hold lets water in only while steam ' +
+      'generator level is below 38 %. At power the level sits above that, so a press there changes no ' +
+      'flow. The lamp shows the auto-start is armed, which on this plant is always: low-low steam ' +
+      'generator level, a safety injection, loss of main feed above 5 % power or loss of offsite power ' +
+      'start the pumps whether AUTO was pressed or not.', CI, '10.0'),
     ims2k81zwi8: e('Auxiliary Feedwater (AFW) Indications',
       'Auxiliary feed flow and pump discharge pressure.',
       'Read them together. Discharge at shutoff head with flow at zero is a pump running against a ' +

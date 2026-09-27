@@ -2646,7 +2646,7 @@
          * which is the claim. */
         { text: 'Line up the steam generator (SG) before taking the reactor critical.',
           aim: 'Once the reactor makes power, its heat has to leave through the steam generator, or the reactor water heats up.',
-          why: 'The steam generator is where the reactor\'s heat leaves the primary loop. Reactor water flows through its tubes and boils the water around them. The steam goes to the turbine, or, while the turbine is off line, through the steam dump to the condenser.\n\nIn AUTO, the steam dump holds steam pressure at 1020 psi. At that pressure water boils at 547 °F, so holding the pressure also holds the reactor water at 547 °F. That is why AVG COOLANT TEMPERATURE sits still in Hot Standby with nobody touching it. Right now there is almost no heat to remove, and the dump barely cracks open.\n\nAuxiliary feed puts back the water that leaves as steam, which holds SG level near 33 %. The main feed pumps stay stopped for now: they need more steam flow than a reactor this close to zero power makes. Auxiliary feed carries the steam generator up to about 1 % power, and main feed takes over there.',
+          why: 'The steam generator is where the reactor\'s heat leaves the primary loop. Reactor water flows through its tubes and boils the water around them. The steam goes to the turbine, or, while the turbine is off line, through the steam dump to the condenser.\n\nIn AUTO, the steam dump holds steam pressure at 1020 psi. At that pressure water boils at 547 °F, so holding the pressure also holds the reactor water at 547 °F. That is why AVG COOLANT TEMPERATURE sits still in Hot Standby with nobody touching it. Right now there is almost no heat to remove, and the dump barely cracks open.\n\nAuxiliary feed puts back the water that leaves as steam, which holds SG level between about 33 and 38 %; it reads about 37 % here. The main feed pumps stay stopped for now: they need more steam flow than a reactor this close to zero power makes. Auxiliary feed carries the steam generator up to about 1 % power, and main feed takes over there.',
           control: 'AFW', target: 'AUX FEED WATER reads RUNNING; STEAM DUMP AUTO lit, DUMP SETPOINT 1020 psi',
           hold: 5,
           wait_speed: 1, speed_text: true,
@@ -2984,7 +2984,7 @@
           /* ONE WARP FOR BOTH SUBSTEPS (2026-09-25): his 8a and 8b share 10×, so it is the step's
            * rung, drawn once, with the Note after it; neither head carries a speed or a note. */
           wait_speed: 10, speed_text: true,
-          note: 'STARTUP RATE takes about 5½ to 6½ plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 9 asks for shows 3 to 5 steps past the predicted position (measured).',
+          note: 'STARTUP RATE takes about 5½ to 6½ plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 10 asks for shows 3 to 5 steps past the predicted position (measured).',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e3 (7,000 counts a second); point 5 plotted; STARTUP RATE under 1.0',
           /* THE SETTLE IS 600 s, NOT 150 *(OWNER RULING, 2026-09-14/15, on options put as
            * "rewrite step 8's settle / rewrite step 9 / both": selected "Rewrite both")*.
@@ -3620,7 +3620,9 @@
          * during approach to POAH ... ideally 0.1 to 0.2 dpm" (one plant, inbox/sources/startup/EVIDENCE.md
          * row 15). MEASURED (inbox/rc8w/m.js, seeds 42 and 7): +6 steps from the level-off (bank 207 ->
          * 213) settles 0.155-0.173 DPM; REACTOR POWER 1 % and the rate under 0.10 at 25.1-25.3
-         * plant-minutes; power then levels by itself at 2.85 % (bank 213, rods still), below step 13's 5 %.
+         * plant-minutes; power then levels by itself at 2.85 % (bank 213, rods still), below step 14's 5 %.
+         * 12b's "20 to 26" (2026-09-27-develop-h): 12a tick to 12b tick, 20.3 min typical route and base
+         * route (seed 42, bank 213, 7 taps), 26 min on the layman's 6-tap route (bank 212).
          * 12c is `<` 0.105: the tile's "+0.10" render floor. */
         { text: 'Raise power to the point of adding heat, about 1 %.',
           aim: 'From about 1 % the core starts warming the water, and the warmer water starts holding the climb back.',
@@ -3636,7 +3638,7 @@
                    label: 'STARTUP RATE +0.15 or more, rods still a plant-minute' },
                  { p: 'power_pct', op: '>=', v: 0.9500000000000001,   /* the "1.0" render floor: 0.95 itself draws "0.9" (binary; run_checklist_pwr2 2ab.4) */
                    ask: 'Leave the rods alone until REACTOR POWER reads 1.0 % or more.',
-                   note: 'About 20 plant-minutes. REACTOR POWER reads 0.0 % for most of it while INTER RANGE climbs four decades. Not 60×: there a 2½-second glance is two and a half plant-minutes of reactor.',
+                   note: 'About 20 to 26 plant-minutes. REACTOR POWER reads 0.0 % for most of it while INTER RANGE climbs four decades. Not 60×: there a 2½-second glance is two and a half plant-minutes of reactor.',
                    wait_speed: 10,
                    label: 'REACTOR POWER reads 1.0 % or more' },
                  { p: 'startup_rate_dpm', op: '<', v: 0.105,
@@ -3712,7 +3714,22 @@
          * The 60 % floor is the tile's own render band floor (digits 0: "60" draws from 59.5).
          * ABOVE 2 %: a player who overshot arrives here past aux feed's reach (route overshoot_235: 7 %,
          * SG lo-lo trip at this step after 27 plant-min on 50 gpm). MEASURED at 6.5 %: level already 22.9 %,
-         * 100 gpm filled to 60 % in 16.4 plant-min, Tavg never below 551.2 degF, AUTO then held 59.8-66.4 %. */
+         * 100 gpm filled to 60 % in 16.4 plant-min, Tavg never below 551.2 degF, AUTO then held 59.8-66.4 %.
+         * THE CUTOFF IS 1.5 %, NOT 2 % (2026-09-27-develop-h, full stack, seed 42, typical route to 13's
+         * entry, then extra single SLOW taps a plant-minute apart until the tile reads the arrival power,
+         * then the gpm typed; time from the typing to the 60 % row):
+         *   arrive  bank   50 gpm                               100 gpm
+         *   1.0 %   213    9.4 min, power -> 2.70 %             3.1 min, 1.86 %
+         *   1.5 %   215    25.5 min, 4.07 %                     3.5 min, 2.99 %
+         *   2 %     216    stalls at 44-48 %, 54+ min           4.0 min, 3.78 %
+         *   3 %     217    stalls at 36.6 %                     5.0 min, 4.69 %
+         *   4 %     219    stalls at 33 %                       6.9 min, 5.99 %
+         *   5 %     220    falls, SG lo-lo trip ~40 min         9.3 min, 6.62 %
+         * Tavg never below 547.4 degF in any of them. The drift at 1.0 % (the layman's 1.0 -> 2.3 %) is
+         * the plant settling on bank 213 (12's own note: levels at 2.85 %) and 50 gpm carries it; re-typing
+         * 100 when power passes 2 % only shortens 9.4 to 5.8 min. The "level stops rising 3 plant-min ->
+         * 100" way out, from 50 typed at 2/3/4/5 %: 60 % reached 3.2/4.8/7.2/10.0 min after the re-type,
+         * no trip. The branch is in the ASK because it is a choice made at the moment of typing. */
         { text: 'Put main feed in service and secure auxiliary feed.',
           aim: 'Auxiliary feed carries the steam generator only to about 1 % power, so main feed has to take over before power climbs any further.',
           why: 'The auxiliary feed pump supplies only a few percent of full feed flow, and on this plant it holds steam generator level only to about 1 % power. So real crews pause the climb here, start a main feed pump, hand level control to it, and then secure auxiliary feed.\n\nMain feed goes in by hand first. Its AUTO controller aims for 65 %, and switched on 30 points below that it rushes cold water in: the reactor water cools about 10 °F in a minute and power jumps from 1 % to about 4 % with the rods still. A small manual flow brings level up to 60 % gently, and AUTO then has only 5 points left to close.',
@@ -3721,8 +3738,8 @@
           wait_hint: false, wait_speed: 10, wait_est_s: false,
           accs_ordered: true,
           accs: [{ p: 'sg_level_pct', op: '>=', v: 59.5,
-                   ask: 'Type 50 in the SG FEED gpm box. Leave the rods alone until STEAM GENERATOR LEVEL reads 60 % or more.',
-                   note: 'Typing 50 starts the main feed pumps in MAN at 50 gpm; about 7 plant-minutes. Type it rather than pressing MAN, which starts them at full speed. If REACTOR POWER reads above 2 %, type 100 instead: 50 gpm cannot keep up.',
+                   ask: 'Type 50 in the gpm box beside RESTORE on the SG FEED card; type 100 instead if REACTOR POWER already reads 1.5 % or more. Leave the rods alone until STEAM GENERATOR LEVEL reads 60 % or more.',
+                   note: 'Typing a number starts the main feed pumps in MAN at that flow. Type it rather than pressing MAN, which starts them at full speed. At 50 gpm level reaches 60 % in about 9 to 10 plant-minutes while REACTOR POWER drifts up to about 2½ % by itself; that is expected, keep 50. If STEAM GENERATOR LEVEL stops rising for 3 plant-minutes, type 100: it then reaches 60 % within about 10 plant-minutes.',
                    wait_speed: 10,
                    label: 'STEAM GENERATOR LEVEL 60 % or more, main feed in MAN' },
                  { cmd: { action: 'set_feed_coupled', active: true }, p: 'feed_coupled', op: '>', v: 0,
@@ -3731,7 +3748,7 @@
                    label: 'SG FEED AUTO lit' },
                  { cmd: { action: 'set_afw', active: false }, p: 'afw_pump_running', op: '<', v: 0.5,
                    ask: 'Press STOP on the AUX FEED WATER card and check the card reads STANDBY.',
-                   note: 'STANDBY means the pump is stopped but still starts by itself if steam generator level falls too low.',
+                   note: 'STANDBY means both aux feed pumps are stopped but still armed. If STEAM GENERATOR LEVEL falls to 17 % they start by themselves, and the same signal trips the reactor.',
                    wait_speed: 1,
                    label: 'AUX FEED WATER reads STANDBY' }],
           press_expected: true,
@@ -3952,7 +3969,7 @@
           wait_speed: 1, speed_text: true,
           /* PHASE 2 (2026-09-25): 1b and 1c were read-only in the old single `ask`; each is now its
            * own graded check-off, on the lamp the board draws (`feed_coupled`, as pwr_startup 3a;
-           * the two block flags, as pwr_startup 15/16). All three are true on the plant the
+           * the two block flags, as pwr_startup 16/17). All three are true on the plant the
            * startup hands over, so this confirm step ticks on entry — as it did before. */
           accs: [{ p: 'plant_mode', op: '~', v: 1, tol: 0.1,
                    ask: 'Check REACTOR POWER reads about 10 %. Anything above 5 % is Mode 1, At Power; the board has no separate mode readout.',
@@ -4831,7 +4848,7 @@
       from: 'hot_zero_power',
       prereq: [
         'Plant at Mode 3, Hot Standby: AVG COOLANT TEMPERATURE near 547 °F, PRIMARY PRESSURE 2235 psi, reactor shut down (auto-checked).',
-        'RCP FLOW on; SG FEED in AUTO.',
+        'RCP FLOW on. Feed: SG FEED in AUTO if you came from the shutdown walkthrough; AUX FEED WATER RUNNING if you start here.',
         'STEAM DUMP in AUTO: it is the heat sink until RHR takes over.',
       ],
       precond: [

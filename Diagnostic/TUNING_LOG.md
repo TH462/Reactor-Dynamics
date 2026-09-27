@@ -29,6 +29,18 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-27-develop-h (#808 review + layman pass on pwr_startup: aux feed STOP, the step 13 gpm cutoff, stated times)
+
+All numbers full stack, seed 42, `hot_zero_power` unless named. Scratch harnesses (a copy of `run_walkthrough_routes` with an env-driven step 13 policy; a service + board-driver script) were deleted after use.
+
+- **Aux feed STOP does NOT disarm the auto-start.** After `set_afw {active:false}`: `automation.esf.afw` stays `auto`, card STANDBY, the driver's AUTO lamp `active()` true (also true in a fresh headless browser, class `bd-active`). With no feed, SG level 36.5 → 16.5 % in 47 plant-min, then the low-low start fired BOTH pumps (`sg_lolo_level`) and tripped the reactor; the level hold then held 37–38 %. Main feed secured at hot zero power (after the step 13 lineup): no aux feed start in 40 plant-min — the loss-of-main-feed start is gated above 5 % power (`pwr2_engine.js` `main_feed_lost`). **Fixed:** STOP/AUTO/card scanner text (the STOP line said "disarms the auto-start", the AUTO line "armed and idle"), step 13c note, `Manuals/03` §10.0. **NOT reproduced:** the layman's shot 43 shows AUTO unlit after STOP; node and browser both draw it lit. Open.
+- **Step 13 gpm cutoff is 1.5 %, not 2 %.** Typing time to the 60 % row, arriving by extra SLOW taps: 50 gpm — 1.0 % 9.4 min (power drifts to 2.70 %), 1.5 % 25.5 min, 2 % stalls 44–48 % for 54+ min, 3 % stalls 36.6 %, 4 % stalls 33 %, 5 % falls to an SG low-low trip at ~40 min. 100 gpm — 3.1/3.5/4.0/5.0/6.9/9.3 min at 1/1.5/2/3/4/5 %, no trip. Tavg never below 547.4 °F. Re-typing 100 when power passes 2 % (the layman's case): 9.4 → 5.8 min, not needed. "Level stalled 3 plant-min → type 100" from 50 at 2/3/4/5 %: 60 % in 3.2/4.8/7.2/10.0 min, no trip. The branch moved into the ASK; the note carries the stall way out. Route policy `feed_fill` follows (≥ 1.45).
+- **Stated times:** 13a 9.5 / 9.7 / 8.7 min (typical s42, base route, typical s7), layman 8.7 → "about 9 to 10". 12b (12a tick → 12b) 20.3 min at bank 213, layman 26 at bank 212 → "20 to 26". Step 3 SG level 36.7–37.0 % at boot, 35.2 % at step 13 → "between about 33 and 38 %; about 37 % here".
+- **Measured, not fixed:** SR HIGH FLUX row reads `RELEASE?` with "…Press again to confirm." from step 11 onward with no press — `willTrip = blocked && asserted` (blocked at 9, asserted once the count passes the setpoint at criticality); the caption reads like a pending confirm. Step 5a grades `sr_counts_cps` (instrument `source_range`) as a 30 s trailing MEAN ≥ 695; the tile draws the instantaneous sample, so it ticks while the tile shows 6.7e2 — "stay at 7.0e2 or more" overstates it.
+- Also: step 8 note "step 9" → 10; cooldown prereq names both feed lineups (chain arrival on SG FEED AUTO INHERITED, not re-measured); stale step-number comments (manual_procedures, run_style, 03_raise_power.md).
+
+---
+
 ## Session log — 2026-09-27-develop-g (#808: power-range high-flux trip, high setting, 118 → 115 %)
 
 **The trap: the engine header called the UFSAR's 115/118 split an OCR column shift. It is not.**

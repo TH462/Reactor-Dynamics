@@ -992,8 +992,8 @@ function runJob(legId, routeId, mutId, ctx) {
       if (cmdRows.every(function (i) { return rows2[i] && rows2[i].met; })) issueStepCmd(st2, el2);
       return;
     }
-    if (P === 'feed_fill') {                             // #808 startup 13a as the card reads: 50 gpm, 100 above 2 %
-      if (!S.memo.ff) { S.memo.ff = true; S.acts++; press({ action: 'set_feed_pump_speed', pct: pv('power_pct') > 2 ? 10 : 5 }); }
+    if (P === 'feed_fill') {                             // #808 startup 13a as the card reads: 50 gpm, 100 from 1.5 %
+      if (!S.memo.ff) { S.memo.ff = true; S.acts++; press({ action: 'set_feed_pump_speed', pct: pv('power_pct') >= 1.45 ? 10 : 5 }); }   // the ask's cutoff, "reads 1.5 % or more" (tile floor 1.45; develop-h)
       pressRows(st2, c2); return;
     }
     if (P === 'seq') {                                   // an explicit sequence, one per tick
