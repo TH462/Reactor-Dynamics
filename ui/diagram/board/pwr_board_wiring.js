@@ -671,7 +671,7 @@
      * press there runs a pump into a shut valve and changes no flow. DECLARED DEPARTURE: a real
      * AFW control switch starts the pump from START, not AUTO. The turbine-driven pump is not
      * started here — it stays the casualty backup its own AFAS starts. */
-    imrmssr9ihq: { press: function () { cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); cmd({ action: 'set_afw', active: true, pump: 'mdafw' }); }, active: function (s) { return esfAuto(s, 'afw'); } },
+    imrmssr9ihq: { press: function () { cmd({ action: 'set_afw', active: true, pump: 'mdafw' }); cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); }, active: function (s) { return esfAuto(s, 'afw'); } },
     // --- Charging panel: AUTO / MAN / OFF (this panel is the charging pump's control;
     //     OFF stops the charging pump, AUTO/MAN run it in auto make-up / manual charging) ---
     imrmtg3r8ez: { press: function () { cmd({ action: 'set_charging_pump', running: true }); cmd({ action: 'set_cvcs_auto', active: true }); }, active: function (s) { return CS(s).charging_pump_running && CS(s).cvcs_auto; } },

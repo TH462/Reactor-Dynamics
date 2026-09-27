@@ -3462,8 +3462,11 @@ var MUTATIONS = [
    * hoisting `sgDesign` out of it orphaned the mutation — a green 94/94 with a blind spot.
    * It now quotes the ONE line that carries the claim (the non-full-power branch). */
   ['the 50 % secondary lands at the full-power literal (an IC whose SG fights its plant)',
-   "           : G.createSG({ P: W.P_sat(tavg0 - ic.pf * (TREF - W.T_sat(sgDesign.P))) });",
-   '           : sgDesign;', { grp: 'K' }],
+   /* Re-anchored 2026-09-27 (#808): the line gained a `mass:` seed for the Mode 3 aux-feed
+    * lineup, so the anchor is the pressure clause alone and the revert pins P to the design
+    * point — the same claim (a part-power IC's SG at the full-power pressure). */
+   "           : G.createSG({ P: W.P_sat(tavg0 - ic.pf * (TREF - W.T_sat(sgDesign.P))),",
+   '           : G.createSG({ P: sgDesign.P,', { grp: 'K' }],
   /* THE RATED SCALE (#539) — one revert per axis steamDemand reads, because the shipped
    * defect got BOTH wrong and either alone is enough to break the invariant. */
   ['the rated scale reads the PRESET\'s own SG pressure again (the 0.57 / 0.88 % drift)',
