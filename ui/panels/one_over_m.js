@@ -290,12 +290,13 @@
     var s = getSnap && getSnap();
     if (!s) return;
     if (!supported(s)) { setMsg('no source-range channel on this plant', true); return; }
-    /* The refusal says what it MEANS, not only what it is (#641): the source range secures
-     * itself above 1e5 cps on this plant, so a de-energized channel here is the player past
-     * the approach, not a switch to find. The live checklist marks its plot steps overtaken on
+    /* The refusal says what it MEANS, not only what it is (#641): on this plant the source range
+     * goes off only when its trip is BLOCKED at P-6 (OWNER RULING 2026-09-26 "B" — the block removes
+     * the detector high voltage; the old self-switch-off at 1e5 cps is gone), so an off channel
+     * here is the player past the approach. The live checklist marks its plot steps overtaken on
      * the same condition. */
     var smp = core().sample(s);
-    if (smp.why === 'sr_off') { setMsg('Source range de-energized — the approach is past 1/M territory; nothing to plot. Watch the startup rate and the intermediate range.', true); return; }
+    if (smp.why === 'sr_off') { setMsg('SOURCE RANGE blocked at P-6 — no more points. Watch the startup rate and the intermediate range.', true); return; }
     if (smp.why === 'no_reading') { setMsg('no source-range reading', true); return; }
     if (smp.why === 'pegged') { setMsg('SR pegged near full scale — past 1/M territory', true); return; }
     if (!smp.ok) return;

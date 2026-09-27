@@ -29,6 +29,53 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-27-develop-b (rc8 review fixes: the SR row's release warning, a failed IR channel, old saves, the preview startup scenarios)
+
+Scratch worktree exp/rc8f (from exp/rc8 b6aedc70). A read-only reviewer measured seven defects in the rc8 candidate
+(OWNER RULING, 2026-09-26, "B": the P-6 manual source-range block). Each re-measured before the fix
+(scratchpad probe_sr.js, then the gate checks named below).
+
+- **The SR HIGH FLUX row never warned.** Blocked at Hot Full Power it read `{blocked: true, asserted: false}`; one
+  release tripped the reactor on sr_high_flux **0.52 s** later. Blocking removes the detector high voltage, so the
+  source range sits at its 1 cps floor and its own `would_assert` can never be true. **Fix:** the row's would-trip is
+  read off the INTERMEDIATE-RANGE instrument at the SR setpoint's equivalent, 1e5 cps × K_IR / K_SR = **3.205e-9 A**
+  (`pwr2_protection.srTripIrAmps`, K's exported from `pwr2_true_state.NIS`, one copy). After: `asserted: true`, the row
+  reads RELEASE? with the confirm click. `run_pwr2_board`'s "NOTHING warns at power" check was PINNING THE DEFECT —
+  rewritten to "only the SR row warns"; it fails on the old build (HR10).
+- **One failed IR channel tripped the plant.** `intermediate_range` fail low or dead at Hot Full Power: the reading
+  under 5e-11 A revoked the block, the SR re-energized (true 2.59e11 cps) and tripped at **0.54 s**. **Fix (declared
+  simplification):** P-6's reset ignores a FAILED IR channel — the stand-in for the real plant's two-channel
+  coincidence (one failed channel cannot reset P-6). Protection still reads the instrument (HR1). Cost, stated in the
+  code: while the IR is failed the block cannot auto-revoke on a genuine power fall. After: no trip in 30 s, true
+  SR 0. `sr_counts_cps` in true_state was NOT clipped: it is truth, and the fix removes the only route that published
+  it unblocked at power short of a deliberate release (which trips).
+- **Old saves tripped the plant — worse than filed.** Filed as a one-broadcast SR flash; measured, an old-shape save
+  (no `blockSR`) loaded at Hot Full Power, Low Power and 50 % published the SR energized on **50/50** steps and
+  **TRIPPED**. The seed read the SR reading, which a pre-rc8 at-power save carries at its 1 cps floor (the retired
+  plant switched the detector off). **Fix:** the seed reads the IR (≥ 3.205e-9 A → taken), SR fallback only when no IR
+  reading exists. After: 0/50, no trip, block taken, all three ICs.
+- **Preview scenarios.** Premise corrected: in the browser `start_scenario` with plant `pwr` constructs the RETIRED
+  engine (`simulation_service.js` engineCtor; `ui/shell.html` loads `pwr_engine.js`), so these two ran there, not on
+  pwr2. Fixed to work on both anyway: chain reaction drops `set_sr_detector` setup and gains a P-6 beat keyed on the
+  EFFECT (`sr_energized` false) plus a source-range-trip ending; startup challenge's header/briefing no longer claims P-6
+  is met at hot zero power (pwr2: IR **1.64e-11 A**, SR ~530 cps; a held Normal pull meets P-6 at **247 s**, 1.06e-10 A,
+  ~3,100 cps; unblocked it trips at **306 s**), drops the 1.5 DPM interlock and "twenty percent" IR-trip claims (pwr2 has
+  neither; IR trip is 25 %). New gate `run_preview_scenarios_pwr2` (13 checks) runs both on pwr2 through the full
+  stack: setup accepted, block → critical → Mastered, no block → Source Range ending. Injection: the old chain reaction
+  throws on its setup (set_sr_detector REFUSED); the old briefing text matches the claim regex 5 times.
+- **verify_board_cues released-count check** restored to its claim: every counted message is the SR row's P-6 loss.
+- **Text.** Manuals 03 §4.3, 04 PWR-N03 step 6, 12 §10.6: SOURCE RANGE reads a dash once blocked (Rev 22 row (n)).
+  Startup 11b "reads between −0.02 and +0.02"; outcome names three blocks; 12a "Expect 6 or 7 taps" (MEASURED, typical
+  route seed 42: bank 206 → +0.145 at the 6th tap, a 7th after a +0.141 re-read). Raise power 4b, 5b, 6b, 8b and 9a's
+  OUTPUT 100 MW row graded at the OUTPUT tile's render floor (r0: N − 0.5 MW, was N − 2 to N − 3); not latched
+  (run_checklist_pwr2_b 2ak.1 requires a later re-asserting row). **7b (90 MW) NOT moved:** at 89.5, run_walkthrough_routes band_floor lit
+  Continue 3.0 s at 22.7 min then dropped it — the later OUTPUT tick lands inside the AVG COOLANT TEMPERATURE sag.
+  Open; its row still ticks at 87-89 MW on the tile. 1/M refusal: "SOURCE RANGE blocked at P-6 — no more
+  points"; stale self-switch-off comments rewritten; CONTEXT §6.3 `sr_energized`.
+- **Anchors that moved with the K constants.** run_pwr2_true_state's two K mutations and run_checklist_pwr2 2ad.2's
+  K_IR lift (a regex over the source) re-pointed at the exported `NIS` object; both measured red first (anchor not
+  found / "could not lift K_IR").
+
 ## Session log — 2026-09-27-develop-a (Mode 3 → Mode 1 rebuilt on the P-6 source-range block: block, approach to +0.3..+1.0, level at 1.0e-8 A)
 
 Scratch worktree exp/rc8w (rc7 + layman 9 + step 9 unlock fix + exp/807j plant side). OWNER RULING, 2026-09-26: he replied

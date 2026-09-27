@@ -3104,7 +3104,7 @@ if (!only && RUN_B) {
      * implication a guess. Bound at 10x, measured at 41.7x. */
     (function () {
       var tsSrc = fs.readFileSync(path.join(ROOT, 'engines', 'pwr2', 'pwr2_true_state.js'), 'utf8');
-      var kM = /K_IR\s*=\s*([0-9.eE+-]+)/.exec(tsSrc);
+      var kM = /K_IR\s*[:=]\s*([0-9.eE+-]+)/.exec(tsSrc);   /* ':' since rc8f: the scales live in the exported NIS object */
       var K_IR = kM ? parseFloat(kM[1]) : NaN;
       var st2 = IMPL_STEP;
       var irEn = null, pwEn = null;

@@ -1038,6 +1038,25 @@ function runSuite(P, rec, quiet) {
   var rM3 = ride(prM3, lowFlux(2e5, 6e-9), 1);
   ckT('MIGRATION: a restored row with NO hold timer still completes its delay (no NaN)',
       rM3.reactor_trip === true && rM3.trip_cause === 'sr_high_flux', '');
+  /* rc8f (2026-09-27): the seed reads the INTERMEDIATE range. A real pre-rc8 at-power save
+   * carries the SR channel at its 1 cps floor (the retired plant switched the detector off at
+   * 1e5 cps), so an SR-keyed seed said "not taken" and the restored plant TRIPPED (measured: Hot
+   * Full Power, 50 % and Low Power, all within 50 steps of the load). */
+  var prM4 = P.createProtection({}); delete prM4.blockSR; delete prM4.held_s.sr_high_flux;
+  var rM4 = ride(prM4, lowFlux(1, 8.3e-3), 1);
+  ckT('MIGRATION: an at-power save whose SR reads its 1 cps FLOOR seeds the block TAKEN (off the IR)',
+      prM4.blockSR === true && rM4.reactor_trip === false && rM4.sr_blocked === true,
+      'blockSR ' + prM4.blockSR + ', IR-equivalent of 1e5 cps ' + P.srTripIrAmps().toExponential(3) + ' A');
+  ck('...and that IR equivalent is 1e5 cps x K_IR / K_SR = 3.205e-9 A', P.srTripIrAmps(), 3.205e-9, 0.001e-9, 'A');
+  /* rc8f: a FAILED intermediate-range channel does not revoke the block — the declared stand-in
+   * for the real plant's two-channel coincidence (one failed channel cannot reset P-6). MEASURED
+   * before the fix: one fail-low or dead IR at Hot Full Power revoked it and tripped the reactor
+   * on sr_high_flux 0.54 s later. The healthy half is rR above. */
+  var prF = P.createProtection({ blockSR: true });
+  var dF = lowFlux(1, 1e-11); dF.ir_failed = true;
+  var rF = ride(prF, dF, 1);
+  ckT('a FAILED IR reading under the 5E-11 A reset does NOT revoke the SR block (2-of-2 stand-in)',
+      prF.blockSR === true && rF.sr_blocked === true, '');
   var rU = ride(P.createProtection({}), lowFlux(undefined, undefined), 1);
   ckT('with no SR reading the row is UNAVAILABLE and P-6 unmet, never a silent zero',
       fn(rU, 'sr_high_flux').available === false && rU.p6_met === false, '');
@@ -1067,11 +1086,15 @@ var MUTATIONS = [
   ['the P-6 block no longer holds the SR trip off',
    'sr: pr.blockSR === true };', 'sr: false };'],
   ['the P-6 reset never revokes the SR block (a defeatable trip)',
-   'if (irOk && irA < P6.reset_amps && pr.blockSR) pr.blockSR = false;', ''],
+   'if (irOk && irA < P6.reset_amps && pr.blockSR && drivers.ir_failed !== true) pr.blockSR = false;', ''],
   ['the SR block revokes at P-6 itself instead of its reset (no hysteresis)',
    'irA < P6.reset_amps && pr.blockSR', 'irA < P6.amps && pr.blockSR'],
   ['the pre-change save migration is dropped (an at-power restore scrams)',
-   '      pr.blockSR = drivers.sr_cps >= SR_TRIP.cps;', ''],
+   '    if (pr.blockSR === undefined) {', '    if (false) {'],
+  ['the migration seeds off the SOURCE range (an old at-power save reads its 1 cps floor and scrams)',
+   'if (irOk) pr.blockSR = irA >= srTripIrAmps();', 'if (false) pr.blockSR = irA >= srTripIrAmps();'],
+  ['a FAILED intermediate-range channel revokes the SR block (one failed channel trips the plant)',
+   '&& drivers.ir_failed !== true) pr.blockSR = false;', ') pr.blockSR = false;'],
   ['a restored row missing its hold timer never completes its delay (NaN)',
    '(pr.held_s[f.id] || 0) + (dt > 0 ? dt : 0)', 'pr.held_s[f.id] + (dt > 0 ? dt : 0)'],
   ['P-6 reports met below 1E-10 A',

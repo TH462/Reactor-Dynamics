@@ -2821,6 +2821,64 @@ function runSuite(SH, rec, quiet, only) {
   })();
   }
 
+  if (grp('P6')) {
+  /* ---- THE P-6 SOURCE-RANGE BLOCK AT POWER (rc8f, 2026-09-27; OWNER RULING 2026-09-26 "B") ------
+   * Three defects a reviewer MEASURED on the rc8 candidate, each re-measured here before the fix:
+   *   1. the SR row never warned: blocked at power it read {asserted:false}, and one release
+   *      tripped the reactor on sr_high_flux 0.52 s later — the de-energized SR cannot report its
+   *      own would-trip, so the shell now derives it off the INTERMEDIATE range;
+   *   2. one failed IR channel (fail low / dead) at Hot Full Power revoked the block and tripped
+   *      the reactor 0.54 s later;
+   *   3. an old-shape save (no `blockSR`) loaded at power seeded the block NOT taken off the SR's
+   *      1 cps floor, energized the SR on every one of 50 steps and TRIPPED the reactor. */
+  head('THE P-6 SOURCE-RANGE BLOCK AT POWER  [the warning, a failed IR, an old save]');
+  function engCmd(e, a, v) { globalThis.RD.pwr2.engine.command(e.eng, a, v); }
+  var eW = new SH.PWR2Engine({ initial_state: 'hot_full_power' }); run(eW, 2);
+  var rowW = eW.getTripBlocks().trip_block_status.sr_high;
+  ck('at Hot Full Power the SR row is BLOCKED and says releasing it WOULD TRIP (asserted)',
+     rowW.blocked === true && rowW.asserted === true && rowW.can_clear === true,
+     JSON.stringify({ blocked: rowW.blocked, asserted: rowW.asserted, can_clear: rowW.can_clear }));
+  eW.applyCommand({ action: 'set_trip_block', trip_id: 'sr_high', blocked: false });
+  var tRel = 0; while (tRel < 5 && !eW.eng.pt.reactor_trip) { eW.step(DT); tRel += DT; }
+  ck('...and the warning is TRUE: one release trips the reactor on sr_high_flux',
+     eW.eng.pt.reactor_trip === true && eW.eng.pt.trip_cause === 'sr_high_flux',
+     eW.eng.pt.reactor_trip ? 'tripped ' + tRel.toFixed(2) + ' s after the release' : 'no trip in 5 s');
+  var eZ = new SH.PWR2Engine({ initial_state: 'hot_zero_power' }); run(eZ, 2);
+  var rowZ = eZ.getTripBlocks().trip_block_status.sr_high;
+  ck('...while at hot zero power (unblocked, SR ~500 cps) the row does NOT warn',
+     rowZ.blocked === false && rowZ.asserted === false, JSON.stringify({ blocked: rowZ.blocked, asserted: rowZ.asserted }));
+  ['low', 'dead'].forEach(function (mode) {
+    var eF = new SH.PWR2Engine({ initial_state: 'hot_full_power' }); run(eF, 2);
+    engCmd(eF, 'instrument_fail', { id: 'intermediate_range', mode: mode });
+    var maxSr = 0, tF = 0;
+    while (tF < 30 && !eF.eng.pt.reactor_trip) {
+      var tsF = eF.step(DT); tF += DT; if (tsF.sr_counts_cps > maxSr) maxSr = tsF.sr_counts_cps;
+    }
+    ck('one FAILED (' + mode + ') intermediate-range channel at Hot Full Power does not revoke the SR ' +
+       'block: no trip in 30 s, the source range stays off',
+       !eF.eng.pt.reactor_trip && eF.eng.pt.blockSR === true && maxSr === 0,
+       (eF.eng.pt.reactor_trip ? 'TRIPPED on ' + eF.eng.pt.trip_cause + ' at ' + tF.toFixed(2) + ' s' : 'no trip') +
+       ', blockSR ' + eF.eng.pt.blockSR + ', peak true SR ' + maxSr.toExponential(2) + ' cps, IR reads ' +
+       eF.getInstruments().intermediate_range.toExponential(2) + ' A');
+  });
+  ['hot_full_power', 'low_power', '50_percent'].forEach(function (ic) {
+    var eA = new SH.PWR2Engine({ initial_state: ic }); run(eA, 2);
+    var blob = eA.saveState(); delete blob.state.pt.blockSR;          /* the pre-rc8 save shape */
+    var eB = new SH.PWR2Engine({ initial_state: 'hot_full_power' }); eB.loadState(blob);
+    var lit = 0, hi = 0;
+    for (var k = 0; k < 50; k++) {
+      var tsB = eB.step(DT);
+      if (tsB.sr_energized === true || tsB.sr_counts_cps > 0) lit++;
+      if (eB.getInstruments().source_range > 1e4) hi++;
+    }
+    ck('an OLD save (no blockSR) loaded at ' + ic + ': no step publishes the SR energized, the SR ' +
+       'reading never nears its alarm, no trip, the block seeds TAKEN',
+       lit === 0 && hi === 0 && !eB.eng.pt.reactor_trip && eB.eng.pt.blockSR === true,
+       lit + '/50 steps SR energized, ' + hi + '/50 SR reading over 1e4 cps, trip ' + !!eB.eng.pt.reactor_trip +
+       ', blockSR ' + eB.eng.pt.blockSR);
+  });
+  }
+
   if (grp('T')) {
   /* ---- 5. THE AFW THROTTLE ON A REAL POST-TRIP DRAIN (#582 item 2) ---------------------------
    * #562 landed the flow control valves and the afw_level channel SHIPS ENGAGED; #391's question
@@ -3316,6 +3374,11 @@ var MUTATIONS = [
    '    this.instruments.reset(this._ts, this._instrExtras());\n' +
    '    this.instruments.update(this._ts, 0.02, this._instrExtras());\n' +
    '  };', { grp: 'U' }],
+  /* rc8f: the SR row's would-trip off the intermediate range (group P6) */
+  ['the SR row stops deriving its would-trip from the INTERMEDIATE range (a blocked row at power ' +
+   'reads BLOCKED and one click trips the reactor)',
+   "    if (srB && typeof irRd === 'number' && irRd >= root.RD.pwr2.protection.srTripIrAmps())\n" +
+   '      srAsserted = true;\n', '', { grp: 'P6' }],
   ['engine.seed is left STALE across loadState() (the restored instruments\' seed is never ' +
    'read back)',
    '    this.instruments.load(st.shellIns);\n' +

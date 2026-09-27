@@ -480,6 +480,15 @@
     cps: 1.0e5,
     src: 'WTSM 9.1 p.9.1-7 (ML11223A263); blockable per Ginna TS Bases B 3.3.1 (ML20339A221), P-6'
   };
+  /* the SR trip setpoint in the INTERMEDIATE range's currency, amps [derived]: 1e5 cps
+   * x K_IR / K_SR = 3.205e-9 A. Read at call time from pwr2_true_state's NIS scales (one copy);
+   * the literal fallback is for a caller that loads this module alone (run_pwr2_protection) and
+   * is the same arithmetic on the same two constants. Consumers: the migration seed below and
+   * the TRIP BLOCKS panel's "would trip if released" on the SR row (pwr2_shell). */
+  function srTripIrAmps() {
+    var N = root.RD && root.RD.pwr2 && root.RD.pwr2.trueState && root.RD.pwr2.trueState.NIS;
+    return SR_TRIP.cps * (N ? N.K_IR / N.K_SR : 8.333e-3 / 2.6e11);
+  }
 
   /* ---- SOURCED: the two FLUX rod stops (#572) ------------------------------------------------
    * WTSM 8.1 §8.1.7.3 (ML11223A252), Manual Rod Withdrawal Stops, items 1 and 2 verbatim:
@@ -827,11 +836,26 @@
     var irA = drivers.ir_amps;
     var irOk = irA !== undefined && irA !== null && isFinite(irA);
     var p6Met = irOk && irA >= P6.amps;
-    if (pr.blockSR === undefined && drivers.sr_cps !== undefined && drivers.sr_cps !== null &&
-        isFinite(drivers.sr_cps)) {
-      pr.blockSR = drivers.sr_cps >= SR_TRIP.cps;
+    /* ⚠ THE SEED READS THE INTERMEDIATE RANGE, NOT THE SOURCE RANGE (rc8f, 2026-09-27). The
+     * retired plant's SR switched itself OFF at 1e5 cps, so an old at-power save carries a
+     * source-range reading of 1 cps (the channel floor), and seeding off it said "not taken" —
+     * MEASURED before this fix: an old-shape save loaded at Hot Full Power, 50 % and Low Power
+     * TRIPPED THE REACTOR on sr_high_flux within 50 steps. The IR is on scale across the whole
+     * band, and its equivalent of 1e5 cps (srTripIrAmps, ~3.2e-9 A) is the same threshold. */
+    if (pr.blockSR === undefined) {
+      if (irOk) pr.blockSR = irA >= srTripIrAmps();
+      else if (drivers.sr_cps !== undefined && drivers.sr_cps !== null && isFinite(drivers.sr_cps))
+        pr.blockSR = drivers.sr_cps >= SR_TRIP.cps;
     }
-    if (irOk && irA < P6.reset_amps && pr.blockSR) pr.blockSR = false;
+    /* ⚠ A FAILED intermediate-range channel does NOT revoke the block (rc8f, 2026-09-27) —
+     * DECLARED SIMPLIFICATION. A real plant resets P-6 only when BOTH IR channels read below it
+     * (coincidence), so one failed channel cannot take the block away; this plant has one
+     * lumped IR channel, and without this guard a single fail-low or dead IR at power revoked the
+     * block, re-energized the source range and TRIPPED THE REACTOR (measured: 0.54 s at Hot Full
+     * Power). Protection still reads the instrument (HR1); `ir_failed` is the injected-failure
+     * state standing in for the healthy second channel. The cost, stated: while the IR is failed
+     * the block cannot auto-revoke on a genuine power fall either. */
+    if (irOk && irA < P6.reset_amps && pr.blockSR && drivers.ir_failed !== true) pr.blockSR = false;
     /* ---- P-11, THE SHUTDOWN PERMISSIVE (#507 wave 10) — the mirror of P-10's law in the
      * other direction: the low-pressure trip block and the SI block are OPERATOR REQUESTS
      * permitted only BELOW P-11, and climbing back above it REVOKES both requests
@@ -1244,7 +1268,7 @@
      * of them. P-6 has one consumer beyond the gate (`pwr2_true_state`'s in-use band), P-9 has
      * none yet; a constant that only a gate reads is still worth exporting, because the
      * alternative is a manual row nothing can contradict. */
-    P6: P6, P9: P9, SR_TRIP: SR_TRIP,
+    P6: P6, P9: P9, SR_TRIP: SR_TRIP, srTripIrAmps: srTripIrAmps,
     /* the board reads ROD_STOP.pr_frac / ir_frac so its rod-stop marks come from the PLANT and
      * not from a literal — the #572 defect was exactly a board band drawn from a fallback */
     ROD_STOP: ROD_STOP, IR_TRIP: IR_TRIP,

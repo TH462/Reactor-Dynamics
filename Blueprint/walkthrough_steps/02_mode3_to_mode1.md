@@ -277,7 +277,7 @@ Below about 1 % power nothing in the plant takes reactivity back out, so how far
 
 Note: It gets there about 2 plant-minutes after the rods stopped in step 10.
 
-()11b. Hold INSERT at MED about 12 steps. Two plant-minutes later read STARTUP RATE: above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once. Repeat until it reads 0.00.
+()11b. Hold INSERT at MED about 12 steps. Two plant-minutes later read STARTUP RATE: above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once. Repeat until it reads between −0.02 and +0.02.
 
 Suggested time warp: 1× while the rods move; 10× while you wait for a read.
 
@@ -303,7 +303,7 @@ The rod position and boron written down here are the core's measured critical po
 
 ()12a. Press SLOW. Tap WITHDRAW one step at a time, a plant-minute apart, until STARTUP RATE reads +0.15 or more a plant-minute after a tap.
 
-Note: Expect about 7 taps. Real crews climb gently here, between +0.1 and +0.2. The 1/M PLOT window has done its work: close it with the ✕ in its corner.
+Note: Expect 6 or 7 taps. Real crews climb gently here, between +0.1 and +0.2. The 1/M PLOT window has done its work: close it with the ✕ in its corner.
 
 ()12b. Leave the rods alone until REACTOR POWER reads 1.0 % or more.
 

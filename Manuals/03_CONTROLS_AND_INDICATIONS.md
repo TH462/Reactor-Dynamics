@@ -201,7 +201,7 @@ the heat sink is restored. **Recovery is procedural, not a button.**
 
 **Handoff rules (P-6) — what the plant does, and what it does not:**
 
-1. **P-6 — Intermediate Range ≥ 1e-10 A — permits the source-range block.** Take **SR HIGH FLUX** on the TRIP BLOCKS panel: it blocks the source-range reactor trip **and** switches the detector off, so SOURCE RANGE reads zero and INTER RANGE carries the indication. One control does both here; a real plant uses two pushbuttons, one per channel. Real procedures want about one decade of overlap between the two ranges before blocking.
+1. **P-6 — Intermediate Range ≥ 1e-10 A — permits the source-range block.** Take **SR HIGH FLUX** on the TRIP BLOCKS panel: it blocks the source-range reactor trip **and** switches the detector off, so SOURCE RANGE reads a dash (no reading) and INTER RANGE carries the indication. One control does both here; a real plant uses two pushbuttons, one per channel. Real procedures want about one decade of overlap between the two ranges before blocking.
 2. **Unblocked, the source range trips the reactor at 1e5 cps** (IR ≈ **3.2e-9 A**). On this plant P-6 is met **before criticality**, at about **3,100 cps**, and the count rate at criticality is already about **2e4 cps** — at a startup rate of 0.5 DPM (decades per minute) that leaves about a minute. Block at P-6.
 3. **On the way down the block clears itself below 5e-11 A** (the P-6 reset) and the detector comes back on. Between 5e-11 and 1e-10 A a block already taken holds.  
 

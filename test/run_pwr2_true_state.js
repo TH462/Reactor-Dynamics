@@ -961,7 +961,7 @@ var MUTATIONS = [
    '    var P6_A = 5e-11;'],
   /* ---- THE NIS GAUGE SCALES (#536) ---- */
   ['k_sr reverts to the RETIRED plant\'s scale (the shutdown board reads half a count)',
-   '    var K_SR = 2.6e11;', '    var K_SR = 5.0e8;'],
+   '  var NIS = { K_SR: 2.6e11, K_IR: 8.333e-3 };', '  var NIS = { K_SR: 5.0e8, K_IR: 8.333e-3 };'],
   ['the display floors come back (every deeply subcritical state reads the same number)',
    "    put('sr_counts_cps', srOn ? K_SR * pFrac : 0);\n    put('ir_amps',       K_IR * pFrac);",
    "    put('sr_counts_cps', srOn ? K_SR * Math.max(pFrac, 1e-9) : 0);\n" +
@@ -971,7 +971,7 @@ var MUTATIONS = [
   ['the SR detector ignores the P-6 block (the retired flux-alone cue comes back)',
    '    var srOn = pt.sr_blocked !== undefined ? pt.sr_blocked !== true', '    var srOn = pt.sr_blocked !== undefined ? true'],
   ['k_ir drifts, moving the SOURCED intermediate-range rod stop with it',
-   '    var K_IR = 8.333e-3;', '    var K_IR = 4.0e-3;'],
+   '  var NIS = { K_SR: 2.6e11, K_IR: 8.333e-3 };', '  var NIS = { K_SR: 2.6e11, K_IR: 4.0e-3 };'],
   ['the CVCS currency conversion is dropped (kg/s published as the #408 fraction again)',
    "    put('charging_flow_actual', cv.charging_kgs * FRAC_PER_KGS);",
    "    put('charging_flow_actual', cv.charging_kgs);"],

@@ -344,12 +344,12 @@
   // glows when the step is hovered in the live checklist (ui/app.js glowLabels).
   // `why` is the expandable details paragraph (#607 item 5); `past` is the catch-up
   // predicate (#607 item 7) — skip this confirm when the plant has already left it.
-  /* THE 1/M STEPS ARE OVERTAKEN BY THE SOURCE RANGE SECURING (#641, owner playtest 2026-09-05).
-   * PWR2 de-energizes the channel on flux alone at 1e5 cps (pwr2_true_state.js SR_SECURE_CPS,
-   * no operator lever by #598 item 7); the plot tool refuses the press from that moment and
-   * sends nothing, so a `plot_1m_point` entry can never latch again. Measured: a 49-step burst
-   * at the last plot step crosses 20,000 cps and secures the channel 20 s later at 3 DPM, and
-   * even the authored route peaks at 9.91e4 cps on the criticality step. One object, shared by
+  /* THE 1/M STEPS ARE OVERTAKEN WHEN THE SOURCE RANGE GOES OFF (#641, owner playtest 2026-09-05).
+   * Since OWNER RULING 2026-09-26 "B" the channel goes off ONLY when the player blocks SR HIGH FLUX
+   * at P-6 (the block removes the detector high voltage — pwr2_true_state `sr_energized`); the
+   * #598-item-7 self-switch-off at 1e5 cps this comment used to describe is gone, and an unblocked
+   * SR at 1e5 cps now TRIPS the reactor. The plot tool refuses the press once the channel is off
+   * and sends nothing, so a `plot_1m_point` entry can never latch again. One object, shared by
    * all six plot steps, so the wording cannot drift between them. `sr_energized` is a boolean
    * on the wire and `false < 1` is the same test the leg's own confirmation step uses. */
   var SR_OVERTAKEN = {
@@ -3582,7 +3582,7 @@
                    wait_speed: 1,
                    label: 'INTER RANGE reads 1.0e-8 A or more' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025, still_s: 120,   /* -0.025 to +0.025: every value toFixed(2) draws as -0.02 to +0.02 (as 1d) */
-                   ask: 'Hold INSERT at MED about 12 steps. Two plant-minutes later read STARTUP RATE: above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once. Repeat until it reads 0.00.',
+                   ask: 'Hold INSERT at MED about 12 steps. Two plant-minutes later read STARTUP RATE: above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once. Repeat until it reads between −0.02 and +0.02.',
                    note: 'Level takes putting back every step pulled past critical: two short and STARTUP RATE settles near +0.05, and power doubles every 6 plant-minutes. STARTUP RATE dips negative while the rods go in; that is not level yet. This check-off comes two plant-minutes after your last rod motion.',
                    wait_speed: 1,
                    speed_text: '1× while the rods move; 10× while you wait for a read.',
@@ -3619,7 +3619,7 @@
           accs_ordered: true,
           accs: [{ p: 'startup_rate_dpm', op: '>=', v: 0.145, still_s: 60,
                    ask: 'Press SLOW. Tap WITHDRAW one step at a time, a plant-minute apart, until STARTUP RATE reads +0.15 or more a plant-minute after a tap.',
-                   note: 'Expect about 7 taps. Real crews climb gently here, between +0.1 and +0.2. The 1/M PLOT window has done its work: close it with the ✕ in its corner.',
+                   note: 'Expect 6 or 7 taps. Real crews climb gently here, between +0.1 and +0.2. The 1/M PLOT window has done its work: close it with the ✕ in its corner.',
                    wait_speed: 10,
                    label: 'STARTUP RATE +0.15 or more, rods still a plant-minute' },
                  { p: 'power_pct', op: '>=', v: 0.9500000000000001,   /* the "1.0" render floor: 0.95 itself draws "0.9" (binary; run_checklist_pwr2 2ab.4) */
@@ -3826,7 +3826,7 @@
           hl_watch: ['Reactor Power', 'Turbine Load', 'SG Level'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
-      outcome: 'Reactor critical in Mode 1, At Power, OUTPUT 10 MWe, IR HIGH FLUX and PR HIGH (LOW SETPT) both blocked. Ready for the power ascension.',
+      outcome: 'Reactor critical in Mode 1, At Power, OUTPUT 10 MWe, SR HIGH FLUX, IR HIGH FLUX and PR HIGH (LOW SETPT) all blocked. Ready for the power ascension.',
     },
     {
       id: 'pwr_raise_power', category: 'power', manual_ref: 'PWR-N07', next: 'pwr_lower_power',
@@ -4096,7 +4096,7 @@
                  /* LAYMAN PASS 7 (2026-09-26, AGENT-DRAFTED) S-1/S-3: `b` is the TEMPERATURE row, graded on the plant,
                   * not a press. The press-only "Rods withdrawn" never ticked when the gauge stayed in its band (pass 7
                   * stage 5, 561-563 degF): conditional, as 10-11 are (ruling 2026-09-25 "Make them conditional"). */
-                 { p: 'mwe_output', op: '>', v: 28,
+                 { p: 'mwe_output', op: '>=', v: 29.5,   /* rc8f (2026-09-27): the tile draws OUTPUT with r0 (whole MW), so 'reach N MW' is met at its render floor N-0.5 -- the old '> N-2' ticked while the tile read N-2 or N-1 (the #749 trap). 7b (90 MW) is the exception, see there */
                    ask: 'Wait for OUTPUT to reach 30 MW. AVG COOLANT TEMPERATURE sags while it climbs; that sag is what the next line answers.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 30 MW' },
                  { p: 'tavg_c', op: '~', v: 294.75, tol: 7.25, latch: true,
@@ -4121,7 +4121,7 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 50 },
                    ask: 'Set LOAD to 50 MW.',
                    wait_speed: 1, label: 'LOAD set to 50 MW' },
-                 { p: 'mwe_output', op: '>', v: 48,
+                 { p: 'mwe_output', op: '>=', v: 49.5,
                    ask: 'Wait for OUTPUT to reach 50 MW. AVG COOLANT TEMPERATURE sags while it climbs; that sag is what the next line answers.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 50 MW' },
                  { p: 'tavg_c', op: '~', v: 297, tol: 9, latch: true,
@@ -4141,7 +4141,7 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 75 },
                    ask: 'Set LOAD to 75 MW.',
                    wait_speed: 1, label: 'LOAD set to 75 MW' },
-                 { p: 'mwe_output', op: '>', v: 72,
+                 { p: 'mwe_output', op: '>=', v: 74.5,
                    ask: 'Wait for OUTPUT to reach 75 MW. AVG COOLANT TEMPERATURE sags while it climbs; that sag is what the next line answers.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 75 MW' },
                  { p: 'tavg_c', op: '~', v: 300, tol: 7.5, latch: true,
@@ -4161,7 +4161,7 @@
           accs: [{ cmd: { action: 'set_load_target', mwe: 90 },
                    ask: 'Set LOAD to 90 MW.',
                    wait_speed: 1, label: 'LOAD set to 90 MW' },
-                 { p: 'mwe_output', op: '>', v: 86,
+                 { p: 'mwe_output', op: '>', v: 86,   /* NOT moved to the 89.5 render floor (rc8f, 2026-09-27): MEASURED at 89.5, latched or not, run_walkthrough_routes band_floor lit Continue 3.0 s at 22.7 min then dropped it (the later OUTPUT tick lands inside the AVG COOLANT TEMPERATURE sag). Open -- TUNING_LOG 2026-09-27-develop-b */
                    ask: 'Wait for OUTPUT to reach 90 MW. AVG COOLANT TEMPERATURE sags while it climbs; that sag is what the next line answers.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 90 MW' },
                  { p: 'tavg_c', op: '~', v: 301.5, tol: 6, latch: true,
@@ -4193,7 +4193,7 @@
                   * own half-band at full load) makes "settle on 578" mean 578. */
                  /* v 302.78 -> 303.33 (layman pass 7, 2026-09-26): 302.78 degC is 577.0 degF, so the band was
                   * 572-582 degF, not the 573-583 its label and pass 6 named; a slow pull ticked at 572.4. */
-                 { p: 'mwe_output', op: '>', v: 97,
+                 { p: 'mwe_output', op: '>=', v: 99.5,
                    ask: 'Wait for OUTPUT to reach 100 MW. AVG COOLANT TEMPERATURE sags while it climbs; that sag is what the next line answers.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 100 MW' },
                  { p: 'tavg_c', op: '~', v: 303.33, tol: 2.78, latch: true,
@@ -4235,7 +4235,7 @@
           accs: [{ p: 'power_pct', op: '>', v: 96,
                    ask: 'Check REACTOR POWER reads about 100 % and OUTPUT 100 MW.',
                    label: 'REACTOR POWER near 100 %' },
-                 { cont: true, p: 'mwe_output', op: '>', v: 97, label: 'OUTPUT 100 MW' },
+                 { cont: true, p: 'mwe_output', op: '>=', v: 99.5, label: 'OUTPUT 100 MW' },
                  { p: 'boron_ppm', op: '<', v: 663,
                    ask: 'Check BORON reads 663 ppm or below.',
                    label: 'BORON 663 ppm or below' },

@@ -488,10 +488,16 @@ test('pwr_tour — energy journey completes', function (ck) {
 
 test('pwr_chain_reaction — pull to critical, then back below', function (ck) {
   var s = startScenario('pwr_chain_reaction');
-  // critical pending ⇒ pull_rods prompt fired: withdraw and hold.
-  var snap = waitBeat(s, 'critical', 120);
-  ck('rod-pull prompt fires', !!snap, !!snap, 'critical pending');
+  // p6_block pending ⇒ pull_rods prompt fired: withdraw and hold.
+  var snap = waitBeat(s, 'p6_block', 120);
+  ck('rod-pull prompt fires', !!snap, !!snap, 'p6_block pending');
   if (!snap) return;
+  // rc8f (2026-09-27): the mission no longer secures the SR in setup (the shipped engine refuses
+  // set_sr_detector — ruling "B", P-6 block). THIS engine is the retired one, where P-6 is met at
+  // hot zero power and the handoff is the detector switch; the p6_block beat keys on the EFFECT
+  // (sr_energized false), which this produces here and set_trip_block sr_high produces on pwr2
+  // (run_preview_scenarios_pwr2 drives that route).
+  s.handleCommand({ action: 'set_sr_detector', on: false });
   s.handleCommand({ action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'normal' });
   snap = waitBeat(s, 'reinsert', 1200);
   ck('criticality recognized (SUR positive)', !!snap, !!snap, 'reinsert pending');

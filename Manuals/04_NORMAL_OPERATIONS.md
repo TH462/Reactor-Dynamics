@@ -325,7 +325,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 | 3 | Engage Feed AUTO at ~65 % if not already | Feed Pumps | AUTO engaged |
 | 4 | Capture 1/M baseline (plot point 1) **before** any rod motion | 1/M Plot | Baseline logged |
 | 5 | Withdraw Control Bank in **decreasing** bursts; settle; plot after each (points 2–5) | Control Bank + 1/M | Count rate rising; prediction walks down |
-| 6 | When IR ≥ 1e-10 A (P-6): **block SR HIGH FLUX** | Trip Blocks | SR blocked; SOURCE RANGE reads zero; IR carries indication |
+| 6 | When IR ≥ 1e-10 A (P-6): **block SR HIGH FLUX** | Trip Blocks | SR blocked; SOURCE RANGE reads a dash (no reading); IR carries indication |
 | 7 | Creep to critical at **Slow** (single steps); watch SUR and period | Control Bank | Critical; SUR ≤ 1 DPM; period long |
 | 8 | Hold low power (Mode 2 band ≤ 5 %); let Doppler settle; trim | Rods | Stable Mode 2, Startup |
 

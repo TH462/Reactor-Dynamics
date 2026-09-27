@@ -752,7 +752,7 @@ physical-quantity vocabulary.
     "hpi_active": bool, "rhr_active": bool,   // operator-actuated ECCS / cooldown (set_hpi — the merged HPI/LPI — / set_rhr)
     "rhr_valve_open": bool, "rhr_hx_fraction": float, "eccs_mode": string,   // RHR hot-leg valve state; HX flow split 0–1; ECCS card mode — retired engine "HPI"|"LPI"|"RHR"|"off", PWR2 "standby"|"armed"|"hhsi"|"lhsi"|"both"|"rhr" (see the true_state block above for "armed")
     "afw_throttle_pct": float,                // AFW throttle position (set_afw_flow)
-    "sr_energized": bool, "msiv_open": bool,  // SR detector switch; main steam isolation valve
+    "sr_energized": bool, "msiv_open": bool,  // SR detector high voltage (PWR2: OFF exactly while the P-6 SR HIGH FLUX block is taken — OWNER RULING 2026-09-26 "B"); main steam isolation valve
     "governor_valve_pct": float,     // turbine admission valve % (engine-driven; read-only readout)
     "steam_dump_pct": float, "steam_dump_auto": bool,   // steam dump / turbine bypass (B2)
     "steam_dump_mode": string,       // PWR2 only: "tavg" | "pressure" | "off" — WHICH controller is in service (#629). steam_dump_auto is `!== "off"`; the two modes it collapses read the DUMP SETPOINT box differently (pressure holds it, tavg ignores it). Absent on the retired engine.

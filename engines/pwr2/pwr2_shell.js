@@ -1705,6 +1705,14 @@
      * P-11 rows below: releasing a block above 1e5 cps trips the reactor on the spot. */
     var srB = e.pt.blockSR === true, srAsserted = false,
         spSr = root.RD.pwr2.protection.SR_TRIP.cps;
+    /* ⚠ WHILE BLOCKED THE SOURCE RANGE IS DE-ENERGIZED and reads its 1 cps floor, so its own
+     * `would_assert` can never be true and the row's two-click RELEASE? warning (#598 item 15)
+     * never appeared — MEASURED at Hot Full Power before rc8f: {blocked:true, asserted:false},
+     * and one release tripped the reactor on sr_high_flux 0.52 s later. The would-trip is read
+     * off the INTERMEDIATE-RANGE instrument (HR1) at the SR setpoint's IR equivalent. */
+    var irRd = e.ins && e.ins.reading ? e.ins.reading.intermediate_range : undefined;
+    if (srB && typeof irRd === 'number' && irRd >= root.RD.pwr2.protection.srTripIrAmps())
+      srAsserted = true;
     (rp.functions || []).forEach(function (f) {
       if (f.id === 'sr_high_flux' && f.would_assert === true) srAsserted = true;
       if (f.id === 'hi_flux_lo') {

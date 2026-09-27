@@ -1798,6 +1798,9 @@
        * unavailable and P-6 unmet for 0.02 s rather than borrowing truth */
       sr_cps: rd.source_range,
       ir_amps: rd.intermediate_range,
+      /* the IR channel's injected-failure state — P-6's reset ignores a FAILED channel, the
+       * declared stand-in for the real plant's two-channel coincidence (pwr2_protection) */
+      ir_failed: !!(eng.ins.failure && eng.ins.failure.intermediate_range),
       tavg_c: rd.tavg !== undefined ? rd.tavg : tavg   /* stepInner's own — #514, was a
                                                         * third primaryTavg leg-inverse pair */
     });

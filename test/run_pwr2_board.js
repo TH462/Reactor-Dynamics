@@ -665,9 +665,19 @@ function runSuite(quietRec) {
    * release — otherwise "warn" degenerates into "warn always", which trains the operator to
    * click through it and is worse than no warning at all. At power the two flux rows are the
    * unblocked case and the P-11 pair is revoked, so nothing on a healthy plant warns. */
-  q('...and NOTHING warns on a healthy at-power plant (a warning on every row is no warning)',
-    tbRows.every(function (r) { return r.will_trip !== true; }) &&
-    tbRows.every(function (r) { return !/WILL TRIP THE REACTOR NOW/.test(r.sub || ''); }),
+  /* rc8f (2026-09-27) — THIS CHECK USED TO SAY "NOTHING warns at power", and it was pinning the
+   * defect. Since OWNER RULING 2026-09-26 "B" every at-power IC boots with SR HIGH FLUX BLOCKED,
+   * and releasing it TRIPS THE REACTOR (measured before the fix: 0.52 s after one
+   * set_trip_block sr_high blocked:false at Hot Full Power) — yet the row read an ordinary
+   * one-click BLOCKED, because the de-energized source range can never report its own would-trip.
+   * The plant now derives it off the intermediate range (pwr2_shell getTripBlocks). HR10: on the
+   * OLD build this form reads the SR row as BLOCKED and FAILS; the discriminator half (no OTHER row
+   * warns) still holds on both. */
+  var srRow = tbById.sr_high || {};
+  q('...and at power ONLY the SR HIGH FLUX row warns — releasing it trips the reactor (rc8f)',
+    srRow.will_trip === true && srRow.text === 'RELEASE?' &&
+    /WILL TRIP THE REACTOR NOW/.test(srRow.sub || '') &&
+    tbRows.every(function (r) { return r.id === 'sr_high' || r.will_trip !== true; }),
     'at power: ' + tbRows.map(function (r) { return r.id + ':' + r.text; }).join(' '));
 
   /* A LEGACY snapshot — no trip_block_status at all — must say NOTHING about capability, or

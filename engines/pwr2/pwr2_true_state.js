@@ -56,6 +56,11 @@
    * Every entry is a documented §6.3 field this engine cannot honestly supply. The reason is not
    * decoration: it is what tells the next reader whether the field is waiting on a design, on
    * another lane, or on a decision. */
+  /* THE NIS GAUGE SCALES, module scope and EXPORTED (2026-09-27, rc8f) so the SR row's
+   * "would trip if released" can be read off the INTERMEDIATE range while the source range is
+   * blocked and de-energized (pwr2_protection srTripIrAmps). One copy; the anchors are at the
+   * point of use in buildTrueState. */
+  var NIS = { K_SR: 2.6e11, K_IR: 8.333e-3 };
   var MISSING = {};
   function declareMissing(system, reason, fields) {
     fields.forEach(function (f) { MISSING[f] = { system: system, reason: reason }; });
@@ -604,8 +609,8 @@
      * is the test that picked the source strength, and it was RE-MEASURED when P-6 moved: the
      * margin at hot standby is 6.2x rather than the 3.1x it was, so the correction widens the
      * test rather than threatening it. (At the old value: -355 pcm, bank 157/627.) --- */
-    var K_SR = 2.6e11;      /* cps per unit rated fraction  [adopted] — anchor above */
-    var K_IR = 8.333e-3;    /* amps per unit rated fraction [adopted] — pwr_config nis block */
+    var K_SR = NIS.K_SR;    /* cps per unit rated fraction  [adopted] — anchor above */
+    var K_IR = NIS.K_IR;    /* amps per unit rated fraction [adopted] — pwr_config nis block */
     /* the SR trip setpoint, read from pwr2_protection (one copy) — the in-use band's top edge */
     var SR_TRIP_CPS = (RD.protection && RD.protection.SR_TRIP && RD.protection.SR_TRIP.cps !== undefined)
                         ? RD.protection.SR_TRIP.cps : 1.0e5;
@@ -868,6 +873,6 @@
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.trueState = {
-    MISSING: MISSING, STATIC: STATIC, buildTrueState: buildTrueState, coverage: coverage
+    NIS: NIS, MISSING: MISSING, STATIC: STATIC, buildTrueState: buildTrueState, coverage: coverage
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

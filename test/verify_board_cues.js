@@ -770,9 +770,17 @@ var TOOLKIT = [
      * reset inside the window, and "reactor power fell below ... (P-6)" is a current reason, not a
      * stale one. So the count is held to the messages that stand, not to zero; the P-11 half is
      * the check above. The SR row sits LAST on the card, so its line moves no row under the cursor. */
+    /* rc8f (2026-09-27): "count === standing messages" alone could not fail on a stale P-11
+     * message, because that message would be counted AND standing. The claim is restored: every
+     * counted message is a CURRENT reason — here only the SR row's P-6 loss — so the count must
+     * equal the P-6 messages and there must be no other. INJECTION: without the clear in
+     * `noteTripBlockEvents` this reads 3 counted, 1 P-6. */
     !!low && (function () { var m = /(\d+) TRIPS? RELEASED BY THE PLANT/.exec(clr.status.text);
-      return (m ? +m[1] : 0) === clr.msgs.length; })() && clr.worst < 1,
-    clr.status.text + ' · largest row move ' + clr.worst + ' px');
+      var n = m ? +m[1] : 0;
+      var p6 = clr.msgs.filter(function (x) { return x.id === 'sr_high' && /P-6/.test(x.msg || ''); }).length;
+      return n === clr.msgs.length && n === p6; })() && clr.worst < 1,
+    clr.status.text + ' · msgs ' + clr.msgs.map(function (x) { return x.id; }).join(',') +
+      ' · largest row move ' + clr.worst + ' px');
   await page.evaluate(function () { window.__c.click('imrsk4xz2dm'); });
 
   // ============================================================ 5. the two walkthrough highlights

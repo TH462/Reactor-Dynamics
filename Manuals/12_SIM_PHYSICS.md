@@ -872,7 +872,7 @@ it is kept because the controller's *structure* is the sourced one.
 
 ### 10.6 Log-scale nuclear instruments
 
-Source range (counts/s) and intermediate range (chamber amps) carry their lag and noise **in the log domain**, so a decade of lag is a decade at any level and noise sigma is in decades. Source range reads zero when its high voltage is de-energised.
+Source range (counts/s) and intermediate range (chamber amps) carry their lag and noise **in the log domain**, so a decade of lag is a decade at any level and noise sigma is in decades. With its high voltage de-energised (the P-6 block taken) the source range has no reading, and the SOURCE RANGE tile shows a dash.
 
 ### 10.7 RCS loop flow — and why the trip that reads it changed
 

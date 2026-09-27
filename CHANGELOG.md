@@ -31,6 +31,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
+- **TRIP BLOCKS: the SR HIGH FLUX row now warns RELEASE? at power** — releasing it trips the reactor, and the row read an
+  ordinary BLOCKED (its would-trip is now read off the intermediate range). A failed intermediate-range channel no
+  longer takes the source-range block away and trips the plant (declared stand-in for two-channel coincidence). An old
+  save loaded at power no longer trips on the source range (the block seeds off the intermediate range).
+- **Preview scenarios The Chain Reaction and Criticality, Solo** take the P-6 source-range block (a new coached beat and
+  a source-range-trip ending in The Chain Reaction); stale claims that P-6 is met at hot zero power removed. New gate
+  `run_preview_scenarios_pwr2` runs both on the shipped engine.
+- **Text:** SOURCE RANGE reads a dash (not zero) once blocked in manuals 03/04/12; startup 11b tolerance, 12a tap count
+  and the outcome's three blocks; raise-power OUTPUT rows graded where the tile shows the stated MW (not 90 MW, see
+  TUNING_LOG); 1/M refusal "SOURCE RANGE blocked at P-6 — no more points".
 - **Mode 3 → Mode 1 walkthrough rebuilt on the P-6 source-range block** *(OWNER RULING, 2026-09-26, "B")*. New
   step 9 blocks SR HIGH FLUX at P-6 after the last 1/M point; step 10 sets STARTUP RATE +0.3 to +1.0 (SLOW hold to +0.5,
   then trim); new step 11 levels power at INTER RANGE 1.0e-8 A and records the critical rod position and boron; step 12
