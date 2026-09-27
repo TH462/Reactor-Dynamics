@@ -108,7 +108,9 @@ var STEP_UI = {
     { i: 1, view: 'board', control: 'RCP ON/OFF' },
     { i: 2, view: 'board', control: 'Shutdown Bank' },
     { i: 3, view: 'board', control: 'Turbine Load' },
-    { i: 4, view: 'board', control: 'Feed Pumps' },
+    /* i:4 RENAMED IN PLACE (#808, 2026-09-27): Mode 3 now runs on aux feed, so the step presses
+     * AUX FEED WATER AUTO and its pill reads AFW. Nothing shifts. */
+    { i: 4, view: 'board', control: 'AFW' },
     /* i:5 (Dump SP) DELETED, not renumbered (#608 item 1, 2026-09-02): that step became an
      * observation — it commanded the setpoint the Mode 5 initial condition already boots at, and
      * the setpoint is inert in this mode anyway. An obs step carries no `control`, so it owns no
@@ -150,7 +152,7 @@ var STEP_UI = {
    * #698 note below). Moved one at a time, not re-derived, for the reason those notes give. */
   'pwr2:pwr_startup': [
     { i: 1, view: 'board', control: 'Boron control' },
-    { i: 2, view: 'board', control: 'Feed Pumps' },
+    { i: 2, view: 'board', control: 'AFW' },   // renamed in place (#808): the aux feed check
     { i: 3, view: 'board', control: '1/M Plot' },
     { i: 4, view: 'board', control: 'Control Bank' },
     { i: 5, view: 'board', control: 'Control Bank' },
@@ -165,13 +167,16 @@ var STEP_UI = {
      * their indices. Added one row, moved none. */
     { i: 10, view: 'board', control: 'Control Bank' },
     { i: 11, view: 'board', control: 'Control Bank' },
-    { i: 12, view: 'board', control: 'Control Bank' },
-    { i: 13, view: 'board', control: 'Turbine Load' },
+    /* #808 (2026-09-27) INSERTED the feed transfer at i:12, so the four rows below it MOVED by one
+     * (12->13, 13->14, 14->15, 15->16) -- moved, not re-derived, per the notes above. */
+    { i: 12, view: 'board', control: 'Feed Pumps' },
+    { i: 13, view: 'board', control: 'Control Bank' },
+    { i: 14, view: 'board', control: 'Turbine Load' },
     /* TWO block steps since #601, taken in P-10's own order: the intermediate-range trip (which
      * also clears the C-1 rod stop) then the power-range low setting. Both land on the same
      * panel; they are separate rows because they are separate operator actions. */
-    { i: 14, view: 'board', control: 'Trip Blocks' },
     { i: 15, view: 'board', control: 'Trip Blocks' },
+    { i: 16, view: 'board', control: 'Trip Blocks' },
   ],
   /* #619 item 27 (2026-09-04) inserted the boron SAMPLE step at i:2, so every row below it
    * shifted by one. Written out rather than re-derived: the indices are positional and this map
