@@ -150,7 +150,14 @@ var TOOLKIT = [
    * whose permissive reads true clears its message on the same render — the old `permissive: true`
    * for every row would fabricate a revoke the rule instantly retires */
   '      var pm = Object.prototype.hasOwnProperty.call(over, id) ? b : live[id].permissive === true;',
-  '      st[id] = { blocked: b, permissive: pm, asserted: false, can_block: !b && pm, can_clear: true };',
+  /* THE LIVE ROW'S OTHER FIELDS RIDE ALONG (2026-09-27). This used to build the row from five
+   * fields and DROP `setpoint`, so every fabricated render re-captioned the rows that print one —
+   * SI REACTOR TRIP went "1715 psi" -> "LOW PRESSURE", wrapped, and grew 25.04 -> 33.12 px. While
+   * SI was the last row that growth moved nothing; the SR HIGH FLUX row below it made S-9 read it
+   * as an 8 px shift. The plant never drops a setpoint, so neither may the fabrication. */
+  '      var base = {}; Object.keys(live[id] || {}).forEach(function (f) { base[f] = live[id][f]; });',
+  '      base.blocked = b; base.permissive = pm; base.asserted = false; base.can_block = !b && pm; base.can_clear = true;',
+  '      st[id] = base;',
   '      if (b) blocks[id] = true;',
   '    });',
   '    s.rps_state.trip_block_status = st;',
