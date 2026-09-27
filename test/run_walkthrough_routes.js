@@ -124,6 +124,11 @@ var ROUTES = {
       { id: 'plot_early', kind: 'press early', at: '#8', set: { plot_rate: 99 } },
       { id: 'double_plot', kind: 'double press', at: '#6', set: { repeat: 2 } },
       { id: 'fast_tap', kind: 'tap at speed', at: '#9', set: { tap: 8 } },
+      /* 2026-09-26-develop-k (owner release blocker on 9a/9b): PAST the prediction (a slow hold let go
+       * 2 steps beyond it — 9a must still tick, on arrival, and 9b's note corrects the rate), and a
+       * Rewind two checkpoints back in the middle of the tap-and-wait */
+      { id: 'past_pred_9', kind: 'overshoot', at: '#9', set: { short: -2 } },
+      { id: 'rewind_mid_9', kind: 'rewind mid-step', at: '#9', set: { rewind_after: 600 } },
       { id: 'load_before_latch', kind: 'wrong order', at: '#14', set: { policy: 'seq', cmds: [
         { action: 'set_load_target', mwe: 10 }, { action: 'latch_turbine' }, { action: 'set_load_target', mwe: 10 }] } },
       // "hold CONTROL WITHDRAW for about 13 steps" read as "hold until REACTOR POWER passes 5 %":
@@ -403,7 +408,19 @@ var MUTATIONS = [
   { id: 'no_mean_counts', route: 'flicker_release_5', expect: 'early',
     why: "5a-8a's count rows without `mean_s` (a noisy flicker latches 5a with the settled count under 7.0e2)",
     mutate: function (P) { [4, 5, 6, 7].forEach(function (i) { delete P.steps[i].accs[0].mean_s; }); } },
-  { id: 'no_latch_9a', route: 'typical_pass3', expect: 'flash',
+  /* 2026-09-26-develop-k — the two shapes the owner's release blocker was filed against */
+  { id: 'still_minute_9a', route: 'typical', expect: 'unlock',
+    why: "9a back to `below_1m: 3` + the 60 s stop (ticked 595-641 broadcasts after the bank reached the mark, seeds 42/7/123)",
+    mutate: function (P) { var a = P.steps[8].accs[0]; delete a.reach_1m; a.below_1m = 3; } },
+  { id: 'hidden_still_9', route: 'typical', expect: 'unlock',
+    why: "9b's rods-still wait back in a hidden ordered 300 s row in front of it (9b dark 2066-2682 plant-s of the step, re-locked by every tap)",
+    mutate: function (P) { var b = P.steps[8].accs[1]; delete b.still_s;
+      P.steps[8].accs.splice(1, 0, { p: 'control_bank_steps', op: 'stopped', v: 300, hidden: true, label: 'hold' }); } },
+  /* RE-AIMED 2026-09-26-develop-k: with a prediction 9a is `reach_1m` — a tap moves the bank FURTHER past
+   * the mark, so dropping `latch` un-ticks nothing on typical_pass3 (measured: BLIND, 'none'). `latch`
+   * still carries the NO-PREDICTION fallback (60 s still), which a tap re-grades — `rewind_mid_9` lands
+   * there (the rewind empties the 1/M table). */
+  { id: 'no_latch_9a', route: 'rewind_mid_9', expect: 'flash',
     why: "9a without `latch` (a WITHDRAW tap un-ticked it, layman pass 2)",
     mutate: function (P) { delete P.steps[8].accs[0].latch; } },
   /* the PASS_S exemption must not swallow a band that ticks on a TRANSIENT PASS: step 6's Tavg
@@ -754,6 +771,51 @@ function runJob(legId, routeId, mutId, ctx) {
       if (S.rowsMet[i] && !r.met && !e.cont && !e.hidden && !(band && heldS >= PASS_S))
         flags.push({ kind: 'untick', step: k + 1, row: i + 1, label: e.label, t_min: (t() - T0) / 60, held_s: heldS });
       S.rowsMet[i] = !!r.met;
+    });
+    /* --- THE SUBSTEP SEQUENCER AS THE PLAYER SEES IT (2026-09-26-develop-k, owner release blocker on
+     * pwr_startup 9: "9a doesnt reliably check off when i put the rods to 3 steps away from the
+     * prediction ... 9b just doesnt unlock ... then lockes again when i hit withdaraw").
+     * (1) REACH: on a row graded against the 1/M prediction (`reach_1m` / `below_1m`), the plant-s and
+     *     broadcasts from CONTROL ROD POSITION first reading within 3.9 steps of the printed prediction
+     *     to the row's tick (`a_tick`). (2) LOCK: on an ordered step, a DRAWN row whose drawn
+     *     predecessors are all met but which sits behind an unmet HIDDEN row is locked by something the
+     *     card never shows — ui/app.js draws it muted (`ordWait`). Flagged `hidden_lock`, with the
+     *     unlock lag and the re-locks (unlocked, then locked again) recorded on the step. */
+    var dtT = S.prevT == null ? 0 : t() - S.prevT; S.prevT = t();
+    if (grp() && (moving() || bank() !== S.lastBank)) { S.lastBank = bank(); S.lastMove = t(); }
+    S.nTick = (S.nTick || 0) + 1;
+    (st.accs || []).forEach(function (e, i) {
+      var r = rows[i] || {};
+      if ((e.reach_1m != null || e.below_1m != null) && grp()) {
+        out[k].m1 = true;
+        if (S.reachAt == null && r.pred_1m != null && bank() >= r.pred_1m - 3.9) { S.reachAt = t(); S.reachTick = S.nTick; out[k].reach_bank = bank(); out[k].reach_pred = r.pred_1m; }
+        if (r.met && S.reachMet == null) {
+          S.reachMet = t();
+          out[k].a_tick = { at_min: +((t() - S.t0) / 60).toFixed(2), bank: bank(), moving: moving(), no_1m: !!r.no_1m,
+            lag_s: S.reachAt == null ? null : +(t() - S.reachAt).toFixed(2), lag_bc: S.reachAt == null ? null : S.nTick - S.reachTick };
+        }
+      }
+      if (!st.accs_ordered || e.hidden || e.cont || i === 0 || r.met) return;
+      var eligible = true, blocker = -1;
+      for (var q = 0; q < i; q++) {
+        if (!st.accs[q].hidden && !(rows[q] || {}).met) eligible = false;
+        if (blocker < 0 && !(rows[q] || {}).met) blocker = q;
+      }
+      if (!eligible) return;
+      S.lk = S.lk || {};
+      var L = S.lk[i] = S.lk[i] || { elig: t(), was: null, relocks: 0 };
+      var locked = blocker >= 0;
+      if (!locked && L.was !== false && L.unl == null) { L.unl = t(); (out[k].unlock = out[k].unlock || {})[i] = +(t() - L.elig).toFixed(2); }
+      if (L.was === false && locked) { L.relocks++; out[k].relocks = L.relocks; }
+      L.was = locked;
+      if (locked && st.accs[blocker].hidden) {
+        out[k].hidden_lock_s = +((out[k].hidden_lock_s || 0) + dtT).toFixed(1);
+        if (!S.lkFlag) { S.lkFlag = true; flags.push({ kind: 'hidden_lock', step: k + 1, row: i + 1, label: e.label, t_min: (t() - T0) / 60 }); }
+      }
+    });
+    /* the rods-still clock at a drawn rate row's tick (9b: five plant-minutes after the last tap) */
+    (st.accs || []).forEach(function (e, i) {
+      if (e.p === 'startup_rate_dpm' && !e.hidden && (rows[i] || {}).met && out[k].b_still_s == null && S.lastMove != null) out[k].b_still_s = +(t() - S.lastMove).toFixed(1);
     });
     /* A ROD ROW NOTHING ON THE BOARD CALLS FOR (layman pass 7, S-1): every graded row met, and the
      * step waits on a cmd-only rod row for CMDWAIT_S plant-seconds. The pass-7 player sat 3
@@ -1304,6 +1366,23 @@ function verdicts(r) {
   var fz = fl('flash').concat(fl('untick')).concat(fl('cmdwait'));
   v.flash = { ok: fz.length === 0, name: 'Continue never lights and goes out again (flash), no drawn row un-ticks, no step waits on a rod press the gauge does not call for',
     note: fz.map(function (x) { return x.kind + ' step ' + x.step + (x.row ? ' row ' + x.row + ' (' + x.label + ')' : '') + (x.lit_s != null ? ' lit ' + f(x.lit_s) + ' s' : '') + (x.held_s != null ? ' after ' + f(x.held_s) + ' s met' : '') + ' @ ' + f(x.t_min) + ' min'; }).join('; ') || 'none' };
+  /* 2026-09-26-develop-k: pwr_startup 9 as the owner played it — 9a ticks within ONE broadcast of
+   * CONTROL ROD POSITION reaching prediction minus 3 (and ticks at all once it has), and no drawn
+   * substep is ever held dark behind a hidden row or re-locked by a tap. */
+  var m1s = (r.steps || []).filter(function (st) { return st.m1; });
+  if (m1s.length || fl('hidden_lock').length) {
+    var ub = [];
+    m1s.forEach(function (st) {
+      if (st.reach_bank != null && !st.a_tick) ub.push('step ' + st.n + ' reached bank ' + st.reach_bank + ' (prediction ' + st.reach_pred + ') and its 1/M row never ticked');
+      else if (st.a_tick && !st.a_tick.no_1m && st.a_tick.lag_bc != null && st.a_tick.lag_bc > 1) ub.push('step ' + st.n + ' 1/M row ticked ' + st.a_tick.lag_bc + ' broadcasts (' + f(st.a_tick.lag_s) + ' plant-s) after the bank reached the mark');
+    });
+    (r.steps || []).forEach(function (st) {
+      if (st.relocks) ub.push('step ' + st.n + ' re-locked ' + st.relocks + 'x');
+      if (st.hidden_lock_s) ub.push('step ' + st.n + ' a drawn substep sat behind a hidden row ' + f(st.hidden_lock_s, 0) + ' plant-s');
+    });
+    v.unlock = { ok: ub.length === 0, name: 'a 1/M row ticks on the broadcast the bank reaches its mark, and no drawn substep is held dark by a hidden row or re-locked by a tap',
+      note: ub.join('; ') || m1s.map(function (st) { return 'step ' + st.n + (st.a_tick ? ' 1/M row +' + st.a_tick.lag_bc + ' bc' + (st.a_tick.no_1m ? ' (no prediction)' : '') : ' 1/M row not ticked') + (st.unlock ? ', unlock lag ' + JSON.stringify(st.unlock) + ' s' : ''); }).join('; ') };
+  }
   var et = fl('early_tick');
   v.early = { ok: et.length === 0, name: 'no count row ticks while the tile AVERAGES under its target (count is the target, 807f)',
     note: et.map(function (x) { return 'step ' + x.step + ' at bank ' + x.bank + ', 30 s mean ' + x.mean30 + ' against ' + x.v; }).join('; ') || 'none' };
@@ -1317,6 +1396,7 @@ function stepTable(r, head) {
     console.log(D + '      ' + ('  ' + st.n).slice(-2) + ' ' + ('       ' + st.policy).slice(-13) + '  ' +
       (st.dur_min != null ? f(st.dur_min) + ' min, done_by ' + st.by + ' @ ' + f(st.t_done_min) + ' | ' + rd(st.at_done) : 'NOT DONE | ' + rd(st.at_end)) +
       (st.pred != null ? ' | pred ' + st.pred + ' goal ' + st.goal : '') + (st.reads ? ' | reads ' + JSON.stringify(st.reads) : '') +
+      (st.a_tick ? ' | 1/M row ticked ' + JSON.stringify(st.a_tick) + ' (reach bank ' + st.reach_bank + ', pred ' + st.reach_pred + ')' : '') + (st.unlock ? ' | unlock lag ' + JSON.stringify(st.unlock) + ' s' : '') + (st.relocks ? ' | RE-LOCKS ' + st.relocks : '') + (st.hidden_lock_s ? ' | hidden-locked ' + st.hidden_lock_s + ' s' : '') + (st.b_still_s != null ? ' | rate row ticked ' + st.b_still_s + ' s after the last rod motion' : '') + (st.ticks ? ' | ticks ' + JSON.stringify(st.ticks) : '') +
       (st.taps ? ' | taps ' + st.taps : '') + (st.inserted ? ' | inserted' : '') + (st.withdrawn ? ' | withdrew ' + st.withdrawn : '') + (st.inserted_n ? ' | inserted ' + st.inserted_n : '') + (st.tlo != null ? ' | Tavg ' + f(st.tlo) + '-' + f(st.thi) + ' °F, power low ' + f(st.plo) + ' %' : '') + (st.entries ? ' | entries ' + st.entries + ', peak rate ' + st.peak_cool_F_hr + ' degF/hr' : '') +
       (st.prlo != null ? ' | P low ' + f(st.prlo, 0) + ' psia, subcool low ' + f(st.sclo) + ' degF' : '') + (st.ratelo != null && st.ratelo < -20 ? ' | rate tile ' + f(st.ratelo, 0) + ' (true ' + f(st.truelo, 0) + ') degF/hr' : '') + (st.raised ? ' | RAISED ' + st.raised.join(', ') : '') + (st.fired ? ' | fired ' + st.fired.join(', ') : '') + (st.errs ? ' | REFUSED ' + st.errs.length + 'x ' + st.errs[0] : '') + X);
   });

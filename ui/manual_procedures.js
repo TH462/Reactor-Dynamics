@@ -291,6 +291,15 @@
  *           PRINTS, minus N (`InstructorLayer.applyBelow1m`, the table is RD.OneOverMCore's). No
  *           prediction printed ⇒ the row grades on its own op and flags `no_1m`, and the card
  *           says so; a reading already past the mark draws a "Past the mark" line (ui/app.js).
+ *           No shipped row uses it since 2026-09-26-develop-k (9a moved to `reach_1m`).
+ *   accs[].reach_1m OPTIONAL number N (`pwr_startup` 9a, 2026-09-26-develop-k) — the opposite
+ *           claim: with a prediction printed the row is met the broadcast the reading is at or
+ *           above the prediction minus N, REPLACING its own op (no stillness, no debounce —
+ *           `InstructorLayer.applyReach1m`). No prediction ⇒ its own op and `no_1m`, as above.
+ *   accs[].still_s OPTIONAL seconds (`pwr_startup` 9b, develop-k) — the row ALSO needs the
+ *           control bank unmoved that long (`InstructorLayer.applyStill`). Use it instead of a
+ *           hidden ordered `stopped` row in front: that row locks (mutes) the drawn row behind it
+ *           and every tap re-locks it; `still_s` delays only the tick.
  *   NOTHING ELSE IS A STEP FIELD. `target` and `control` are the two-column lines above;
  *           `next`, `guard`, `precond`, `outcome`, `outcome_guard`, `prereq`, `cautions`,
  *           `from`, `category`, `manual_ref` and `narrative` are PROCEDURE-level, not per step.
@@ -3265,14 +3274,19 @@
            * one was measured and recommended against, and the owner has not ruled for one. The
            * note's "over 1.0 with the rods already still, tap INSERT once and wait" is an
            * operator action, not a protection. */
-          cmd: { action: 'rod_nudge', group_id: 'control', steps: 8, speed: 'slow' }, hold: 720,
-          replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 3, speed: 'slow' } },
+          /* +8/+3 -> +10/+1 (2026-09-26-develop-k): the replay's plots now print 215, not 213, and 9a is
+           * `reach_1m` — MEASURED, the +8 stop at 210 (5 short) never ticked 9a (replay red). 212 is 3
+           * short of 215 (and past the mark of any prediction up to 215); the +1 lands on 213 as before. */
+          cmd: { action: 'rod_nudge', group_id: 'control', steps: 10, speed: 'slow' }, hold: 720,
+          replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 1, speed: 'slow' } },
           /* ---- STEP 9 GRADES THE APPROACH, WHICH NOTHING DID BEFORE (2026-09-23 split) ----
            * His 9a is "Rods stopped 3 steps short of the 1/M prediction" and his 9b "STARTUP RATE
            * positive and steady with the rods stopped". Old step 9 graded neither — its rows were
            * the climb's (INTER RANGE / REACTOR POWER), which moved to step 10 below.
            *
-           * 9a's "3 SHORT" HALF IS GRADED (2026-09-24; owner option selected that day: "Build a way
+           * (2026-09-26-develop-k: `below_1m` + the stop became `reach_1m: 3.9` — see the 9a row. The
+          * table below is the OLD rule: 2 short and AT the prediction now tick too, on arrival.)
+          * 9a's "3 SHORT" HALF IS GRADED (2026-09-24; owner option selected that day: "Build a way
            * for the sim to read the 1/M prediction so '3 short' can be checked (new work); keep the
            * cap."). `below_1m: 3` adds to the 60 s `stopped` row: CONTROL ROD POSITION at or below
            * the prediction the 1/M panel PRINTS, minus 3 — the instrument, not true critical (Hard
@@ -3296,7 +3310,11 @@
            * was measured and REJECTED: power arrives too late for step 10's 1320 s hold (REACTOR
            * POWER 0.003 % seed 42, 0.001 % seed 7 at its end).
            *
-           * 9b IS TWO GRADED ROWS AND ONE DRAWN LINE. His "wait about five plant-minutes, then
+           * ⚠ SUPERSEDED 2026-09-26-develop-k: the hidden row below is gone — its 300 s is 9b's own
+          * `still_s`, and 9a ticks on ARRIVAL at prediction minus 3 (`reach_1m`), not after a stop.
+          * The paragraphs down to THE FLOOR are the record of the old shape.
+          *
+          * 9b IS TWO GRADED ROWS AND ONE DRAWN LINE. His "wait about five plant-minutes, then
            * read" is a DWELL, and a rate band on its own cannot carry one: straight after a tap the
            * rate overshoots and falls for minutes, so a band alone ticks on the transient. So a
            * HIDDEN `stopped` row (300 s, his five minutes) sits between 9a and the drawn rate row;
@@ -3403,14 +3421,24 @@
             text: 'This step is overtaken: REACTOR POWER already reads 0.5 %, so the reactor went critical and is carrying power. Leave the rods where they are and go on to the climb.',
             industry: 'REACTOR POWER 0.5 % — CRITICALITY APPROACH OVERTAKEN. Rods stopped; STARTUP RATE under 1 DPM.' },
           accs_ordered: true,
-          accs: [{ p: 'control_bank_steps', op: 'stopped', v: 60, latch: true,   /* S-1, 2026-09-23: the hidden 300 s row carries the hold */
-                   below_1m: 3,   /* 2026-09-24: AND at or below the panel's printed prediction minus 3 (see the 9a note above) */
+          accs: [{ p: 'control_bank_steps', op: 'stopped', v: 60, latch: true,   /* S-1, 2026-09-23; the op is the NO-PREDICTION fallback only since develop-k */
+                   /* 9a TICKS ON ARRIVAL (2026-09-26-develop-k; OWNER, release blocker: "9a doesnt reliably
+                    * check off when i put the rods to 3 steps away from the prediction, sometimes i have to
+                    * time warp and wait several plant minutes ... i think it should check right away when i
+                    * hit 3.9 steps away from the critical prediction"). `reach_1m: 3.9` replaces the old
+                    * `below_1m: 3` + 60 s `stopped` pair: with a prediction printed, the row is met the
+                    * broadcast CONTROL ROD POSITION reads prediction minus 3 or more — moving or not, and
+                    * past the prediction too (9b's reading and "over 1.0, INSERT" correct an overshoot; a
+                    * row that refused it would strand him). MEASURED, run_walkthrough_routes typical route,
+                    * seeds 42 / 7 / 123, before: 9a ticked 59.5 / 64.1 / 64.1 plant-s (595-641 broadcasts at
+                    * 1×) after the bank reached the mark. After: see TUNING_LOG 2026-09-26-develop-k. No
+                    * prediction (never plotted, Clear, a rewind past the last point) keeps the 60 s stop and
+                    * the card's "no prediction" line. */
+                   reach_1m: 3.9,
                    ask: 'Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position.',
-                   note: 'At SLOW the rods move about one step every 8 plant-seconds, so a short hold at 1× moves nothing. This check-off ticks after the rods have been still for a plant-minute.',
+                   note: 'At SLOW the rods move about one step every 8 plant-seconds. This check-off ticks the moment CONTROL ROD POSITION reads 3 steps short of the prediction; let go of WITHDRAW there.',
                    wait_speed: 1,
-                   label: 'Rods stopped 3 steps short of the 1/M prediction' },
-                 { p: 'control_bank_steps', op: 'stopped', v: 300, hidden: true,
-                   label: 'Rods still for five plant-minutes (graded, not drawn — the dwell in 9b)' },
+                   label: 'CONTROL ROD POSITION 3 steps short of the 1/M prediction' },
                  /* 9b: ONE TARGET RATE, READ FIVE MINUTES AFTER A TAP *(OWNER, #807 item 10, 1.8.0-rc6
                   * playtest: "step 9a checked off but 9b remained dark and never lit up or checked off. It
                   * did appear once for a short time then went dark again. 9b also has way too many lines
@@ -3434,15 +3462,25 @@
                   * lower edge of the tile's "0.15", toFixed(2)) is first met at 212-213, whose SETTLED rate
                   * is 0.13-0.165 — so a `>=` row (latches) cannot tick on a rate that later sags into a
                   * slow climb, and nothing re-grades to flash. The steady row goes: at this floor a
-                  * five-minute read is at most ~15 % above where the rate settles. The hidden 300 s
-                  * `stopped` row stays — it is 9a's latch's re-assertion (run_checklist_pwr2 §2ak.1) and
-                  * it is the "five plant-minutes" the action line names. */
-                 { p: 'startup_rate_dpm', op: '>=', v: 0.145,
+                  * five-minute read is at most ~15 % above where the rate settles.
+                  *
+                  * THE FIVE PLANT-MINUTES ARE THE ROW'S OWN `still_s`, NOT A HIDDEN ROW IN FRONT OF IT
+                  * (2026-09-26-develop-k; OWNER, release blocker: "9b just doesnt unlock ... it should unlock
+                  * right away", then "the step doesnt unlock until 5 minuts pass and then lockes again when
+                  * i hit withdaraw ... its not intuitive"). A hidden ordered `stopped` 300 s row sat between
+                  * 9a and this one: the card mutes every row behind the first unmet row (ui/app.js
+                  * `ordWait`), so 9b drew dark until the rods had been still five minutes and went dark
+                  * again on every tap. MEASURED before, typical route: 9b locked 2066-2682 plant-s of the
+                  * step (seeds 123 / 42), 244 s after 9a on seed 42. `still_s: 300` keeps the same claim —
+                  * the rate is read five plant-minutes after the last rod motion, so a tap's spike cannot
+                  * tick it (run_checklist_pwr2 §2ak.5) — inside this row's grading, where it delays the
+                  * TICK and never the unlock. It is also 9a's latch's re-assertion (§2ak.1). */
+                 { p: 'startup_rate_dpm', op: '>=', v: 0.145, still_s: 300,
                    ask: 'Tap WITHDRAW one step, wait five plant-minutes, and read STARTUP RATE. Repeat until it reads +0.15 or more.',
-                   note: 'Expect about 6 to 8 taps from 3 short, so 35 to 45 plant-minutes. Each step out adds about +0.03 to where STARTUP RATE settles. Over 1.0, tap INSERT once. SOURCE RANGE switches itself off above 1.0e5; INTER RANGE carries the reading.',
-                   wait_speed: 10,
+                   note: 'Expect about 6 to 8 taps from 3 short, 35 to 50 plant-minutes; at 60× each five-minute wait is five real seconds. This check-off comes five plant-minutes after your last tap, once STARTUP RATE reads +0.15 or more. Each step out adds about +0.03 to where STARTUP RATE settles. Over 1.0, tap INSERT once. SOURCE RANGE switches itself off above 1.0e5; INTER RANGE carries the reading.',
+                   wait_speed: 60,   /* 10 -> 60 (develop-k, owner: "waiting 5 plant minutes at 10x can take too long. suggest 60x speed for step 9b") */
                    act_first: true,   /* 1× until the first tap lands on THIS substep — 9a's hold already spent the step's cmd_seen (layman pass 5 S-1) */
-                   speed_text: '10× while you wait; 1× before every tap.',
+                   speed_text: '60× while you wait; 1× before every tap.',
                    label: 'STARTUP RATE +0.15 or more, rods still for five plant-minutes' }],
           hl: ['Withdraw', 'Rod Speed — Slow'],
           hl_watch: ['Startup Rate', 'Reactor Period', 'Source Range', 'Control Rod Position'] },

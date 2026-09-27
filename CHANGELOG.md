@@ -321,6 +321,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
   notes became measured ranges (e.g. 6 → 6 to 40 steps); the leg reads 7 to 50 plant-minutes.
 
 ### Fixed
+- **Mode 3 → Mode 1 step 9: 9a ticks on arrival, 9b unlocks with it and stays unlocked** (2026-09-26,
+  owner release blocker). 9a now ticks the broadcast CONTROL ROD POSITION reads 3 steps short of the 1/M
+  prediction (within 3.9 steps; past it too), not after a plant-minute still — was 59.5-64.1 plant-s after
+  arriving, now 0 broadcasts (typical route, seeds 42 / 7 / 123, 1×, 10× and 60×). 9b's five-plant-minute
+  rods-still wait moved from a hidden ordered row in front of it into 9b's own grading (`accs[].still_s`),
+  so the line is live the moment 9a ticks and a WITHDRAW tap never darkens it (was dark 34-45 plant-min of
+  the step and re-locked by every tap); the wait still delays the check-off, which still lands on a settled
+  +0.15 (reads 0.166-0.182 at the tick). 9b's suggested warp 10× → 60×. New grading fields `reach_1m`, `still_s`.
 - **Walkthrough check-offs no longer flicker at their edge** (2026-09-24, `run_walkthrough_routes`).
   Mode 3 to Mode 1 step 12's "REACTOR POWER steady" row, once met, now lets go only when the
   drift passes 1.25 times its limit (0.0375, was 0.03): its Continue had lit for 1-2 s and gone

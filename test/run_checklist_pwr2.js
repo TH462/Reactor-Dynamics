@@ -3405,8 +3405,11 @@ if (!only && RUN_B) {
           if (!e || !e.latch) return;
           nLatch++;
           var hold = e.op === '~' || RD.InstructorLayer.isBagOp(e.op);
+          /* ...or a later row's own `still_s` (2026-09-26-develop-k: 9b carries the rods-still wait
+           * itself, so the hidden row that used to lock it is gone) */
           var later = st.accs.slice(i + 1).some(function (f) {
-            return f && !f.latch && f.p === e.p && f.op === e.op && (e.op === '~' || +f.v >= +e.v);
+            return f && !f.latch && ((f.p === e.p && f.op === e.op && (e.op === '~' || +f.v >= +e.v)) ||
+              (e.op === 'stopped' && e.p === 'control_bank_steps' && +f.still_s >= +e.v));
           });
           if (!st.accs_ordered || !hold || !later) bad.push(p.id + ':' + (k + 1) + ':' + i);
         });
@@ -3503,14 +3506,21 @@ if (!only && RUN_B) {
       if (g2.moving) { travel2 += 1; peak2 = Math.max(peak2, s.instruments.startup_rate); if (ckl() && ckl().awaiting_ack) ackMoving2++; }
     }
     svc.timeAcceleration = 10;
-    ck('2ak.5 ...a tap whose spike CROSSES the floor, still travelling: the step is never met (the hidden rods-still row refuses it)',
+    ck('2ak.5 ...a tap whose spike CROSSES the floor, still travelling: the step is never met (the rods-still wait inside 9b refuses it)',
        !preAck && preIdx === S9 && travel2 > 20 && peak2 > lo && ackMoving2 === 0 && bank() === 212,
        '211 -> 212: ' + travel2 + ' broadcasts in travel, peak STARTUP RATE ' + peak2.toFixed(3) + ' vs floor ' + lo.toFixed(3) +
        ', awaiting Continue on ' + ackMoving2 + ' of them' + (preAck ? ' (ALREADY awaiting before the tap)' : '') +
        ' (the 207 -> 208 tap above peaked ' + peak.toFixed(3) + ', ' + ackMoving + ' awaiting)');
   })();
 
-  /* 2am. 9a GRADES "3 SHORT OF THE 1/M PREDICTION" (2026-09-24; owner option selected that day:
+  /* 2am. (REWRITTEN 2026-09-26-develop-k: `reach_1m: 3.9`. .2 is now "4 short never ticks", .3 a
+   * slow pull THROUGH the mark ticks 9a within one broadcast of the counter reading prediction minus
+   * 3 with the bank still moving, .4 a stop 3 short is ticked by the stop. The rest of this header is
+   * the 2026-09-24 record. INJECTIONS, develop-k, MEASURED on both seeds: 9a back to `below_1m: 3` ->
+   * .2, .3 and .4 red (+63 s, never, +63 s); 3.9 -> 4.9 -> .2 red (4 short ticks +1 s). 9b's
+   * `still_s` cut to 1 -> 2ak.1, 2ak.5 and 2aj.1 red.)
+   *
+ 2am. 9a GRADES "3 SHORT OF THE 1/M PREDICTION" (2026-09-24; owner option selected that day:
    * "Build a way for the sim to read the 1/M prediction so '3 short' can be checked (new work);
    * keep the cap."). The route is the 2026-09-24 layman's: plots at banks 0/84/156/185/197 with a
    * 120 s settle each, pressed the way the panel presses (RD.OneOverMCore.sample, the sample
@@ -3626,14 +3636,31 @@ if (!only && RUN_B) {
       ck('2am.1 the layman\'s plots print a 1/M prediction, and a same-time restore keeps it' + tag,
          typeof P === 'number' && P > b9 && at.pAfter === P,
          'prediction ' + P + ', after restore ' + at.pAfter + ', bank at step 9 ' + b9);
-      ck('2am.2 a stop AT the prediction never ticks 9a' + tag, at.met == null && !!at.row && at.row.pred_1m === P,
-         'stop ' + P + ': ' + say(at));
-      var two = route(P - 2, 360, false, false);
-      ck('2am.3 a stop 2 short never ticks 9a' + tag, two.met == null && !!two.row,
-         'stop ' + (P - 2) + ': ' + say(two));
+      /* develop-k (2026-09-26, owner release blocker): 9a ticks ON ARRIVAL within 3.9 steps of the
+       * prediction (`reach_1m`), so the boundary moved from "AT or 1-2 short never ticks" to "4 short
+       * never ticks", and the wait went from 60 s still to the broadcast the counter gets there. */
+      function pullWatch(target) {
+        svc.loadState(JSON.parse(fork)); tick();
+        svc.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: target - bank(), speed: 'slow' });
+        var n = 0, nMark = null, nMet = null, mv = null, g = 0;
+        do {
+          tick(); n++;
+          var c = ckl(), a0 = c && c.accs && c.accs[0];
+          if (nMark == null && bank() >= P - 3) nMark = n;
+          if (nMet == null && a0 && a0.met) { nMet = n; mv = grp().moving; }
+        } while ((bank() !== target || grp().moving) && g++ < 200000);
+        return { lag: (nMark == null || nMet == null) ? null : nMet - nMark, moving: mv, met: nMet != null };
+      }
+      var four = route(P - 4, 360, false, false);
+      ck('2am.2 a stop 4 short never ticks 9a (the 3.9-step mark)' + tag, four.met == null && !!four.row && four.row.pred_1m === P,
+         'stop ' + (P - 4) + ': ' + say(four));
+      var thru = pullWatch(P);
+      ck('2am.3 a SLOW pull through the mark to the prediction ticks 9a on the broadcast CONTROL ROD POSITION reads prediction minus 3, rods still moving' + tag,
+         thru.met && thru.lag != null && thru.lag <= 1 && thru.moving === true,
+         'pull ' + b9 + ' -> ' + P + ': 9a ' + (thru.met ? thru.lag + ' broadcast(s) after the counter read ' + (P - 3) + ', bank moving ' + thru.moving : 'never'));
       var three = route(P - 3, 3600, true, false);   /* 2400 -> 3600 (#807): the +0.15 target is 5-6 five-minute taps past 3 short; the route measured 36.7-41.7 plant-min */
-      ck('2am.4 a stop 3 short ticks 9a inside 90 s, and the tap policy completes the step on its own rows' + tag,
-         three.met != null && three.met <= 90 && three.left != null && three.by != null && three.by !== 'overtaken',
+      ck('2am.4 a stop 3 short has 9a ticked by the stop (no still wait), and the tap policy completes the step on its own rows' + tag,
+         three.met != null && three.met <= 1 && three.left != null && three.by != null && three.by !== 'overtaken',
          'stop ' + (P - 3) + ': ' + say(three));
       /* .6 AFTER the clear-free cases: it empties the table, and nothing restores it */
       svc.loadState(JSON.parse(JSON.stringify(preLast))); tick();
@@ -3933,7 +3960,7 @@ if (!only && RUN_B) {
        * (DUMP SETPOINT 720 / 270 psi) and 11a (HX SPLIT raised to 9 %), all control-state rows, so
        * instrument-graded and sole unchanged. SUM on a merge. */
       ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 item 2 merge): 84 / 172 / 100 / 25 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added, raise-power 10-12 removed, cooldown 4b/4c/11a added; 807g: 84 / 173 / 101 / 25, cooldown 11b SUBCOOLING MARGIN row)',
-         gradedSteps === 84 && predRows === 173 && rows.length === 101 && soleInst === 25,   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
+         gradedSteps === 84 && predRows === 172 && rows.length === 101 && soleInst === 25,   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();

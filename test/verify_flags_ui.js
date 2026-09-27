@@ -918,12 +918,14 @@ function pinChannel(ch) {
        * (2026-09-26) and the hard-coded 3 went red on a correct cmd_head of 2 */
       var pr = c.proc || {}, st9 = (pr.steps || [])[8] || {}, hd = -1;
       (st9.accs || []).forEach(function (e, i) { if (hd < 0 && e && e.act_first) hd = i; });
-      return { accel: svc.timeAcceleration, idx: c.idx, head: c.cmdSeenHead, want: hd };
+      /* ...and its rung, read off the pool too: 10× until develop-k (2026-09-26, owner: "suggest 60x
+       * speed for step 9b") */
+      return { accel: svc.timeAcceleration, idx: c.idx, head: c.cmdSeenHead, want: hd, rung: hd >= 0 ? +st9.accs[hd].wait_speed : null };
     });
   }
-  ck('dev (pwr2): pwr_startup 9b holds 1× on entry until its first tap lands, then takes its 10× (act_first)',
+  ck('dev (pwr2): pwr_startup 9b holds 1× on entry until its first tap lands, then takes its own rung, 60× (act_first)',
     !!s9.a && !!s9.b && !!s9.c && s9.a.idx === 8 && s9.b.idx === 8 && s9.c.idx === 8 && s9.a.head === 0 &&
-    s9.b.met0 && s9.b.accel === 1 && s9.c.want > 0 && s9.c.head === s9.c.want && s9.c.accel === 10,
+    s9.b.met0 && s9.b.accel === 1 && s9.c.want > 0 && s9.c.head === s9.c.want && s9.c.rung === 60 && s9.c.accel === s9.c.rung,
     s9.a ? ('9a after its press ' + s9.a.accel + '× (cmd_head ' + s9.a.head + '); 9b on entry ' +
             (s9.b ? s9.b.accel + '× (9a met ' + s9.b.met0 + ')' : '?') + '; after the tap ' +
             (s9.c ? s9.c.accel + '× (cmd_head ' + s9.c.head + ' of 9b head ' + s9.c.want + ', step index ' + s9.c.idx + ')' : '?'))
