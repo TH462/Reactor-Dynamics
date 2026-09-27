@@ -97,7 +97,7 @@ Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot
 | 2 | 5 → 4 | **Start RCPs** (RCP → Run). Forced flow is the heat source and couples the SG | RCP Run/Stop | Pump flow ~100 % |
 | 2a | 5 / 4 | **WITHDRAW THE SHUTDOWN BANK to fully out.** Drive it in manual bank control; full travel is 627 steps and takes about **9 plant-minutes** at Fast (8.7, measured). It stays out for every mode above this one and only ever moves again on a trip | Shutdown Bank | Bank at **627 / 627** |
 | 3 | 5 / 4 | **Confirm the turbine is TRIPPED and the generator is off the grid — nothing to press.** The cold plant boots with TRIP lit and OUTPUT 0 MWe, and that is what the live walkthrough checks (`turbine_tripped`). If LOAD reads anything but 0, press **UNLOAD** — which is not TRIP: UNLOAD walks the load setting to zero, TRIP shuts the steam valves. Do not reconnect | Turbine Load (observe) | **TRIP** lit; OUTPUT 0 MWe |
-| 4 | 5 / 4 | Engage **Feed AUTO** — three-element regulates to the programmed 65 % level (it walks there from wherever level stands) | Feed Pumps | Feed AUTO engaged |
+| 4 | 5 / 4 | Put **AUX FEED WATER** in **AUTO** — it starts the motor-driven aux feed pump on its **33 % narrow-range** level hold (valve shut above 38 %). The main feed pumps stay **secured** through the heatup and Mode 3: they need a certain steam load before they can run (Ginna UFSAR §10.5.3.1.2), and main feed takes over at about 1 % power in **PWR-N03** step 9 | AUX FEED WATER | Card reads RUNNING |
 | 5 | 5 / 4 | **Confirm the steam dump is SHUT and its setpoint already reads the no-load anchor — there is nothing to type here.** Measured on the shipped `cold_shutdown` boot (2026-09-18, #626): `steam_dump_setpoint` is **1020 psi (7.03 MPa)** out of the box — Ginna's sourced 1005 psig no-load point (#419) — with CLOSE lit and status **MANUAL**. The live walkthrough VERIFIES this step rather than commanding it; a "Set Dump SP" action stood here until 2026-09-18 and typed a number the plant was already on. The setpoint is where the dumps will hold the secondary, but **nothing reaches the valves until AUTO is pressed at step 8b** — the controller reads the box in steam-pressure mode only (**03** §12.3) | Steam Dump (observe) | **CLOSE** lit, status **MANUAL**, DUMP SETPOINT 1020 psi (7.03 MPa) |
 | 5a | 5 / 4 | **Place BOTH letdown orifices in service — A+B 7 % on the LETDOWN card.** The cold plant arrives with them **out** and letdown running on the RHR cross-connect (**03** §7.3); the next step's climb autocloses that suction at **585 psig (4.03 MPa)** and from there the orifices are the only way out, while charging and seal injection keep coming in. Both, not one: measured on this engine, orifice A alone parks step 6 at **628 psi (4.33 MPa)** — *below* the **665 psia (4.58 MPa)** accumulator cover gas step 7 needs — where A+B reaches **709 psi (4.89 MPa)**. Basis: WTSM ch. 19 App. 19-1, *"Prior to reaching 350 °F (176.7 °C) in the RCS … Terminate residual heat removal letdown to the CVCS"*, and *"At this time, all reactor coolant letdown is through the normal letdown orifices of the chemical and volume control system"* | Letdown Orifices (CVCS) | A **and** B in service (A+B 7 % lit) |
 | 5b | 5 / 4 | **Place pressurizer pressure control in service — AUTO on PZR SPRAY first, then AUTO on PZR HEATERS.** (Spray first is the live walkthrough's order and it is the safer one: the spray is armed before anything is making pressure.) The cold plant arrives with the heaters **off** and the spray **in hand and shut**, which is where PWR-N12 leaves them (**03** §7.1/§7.2). Nothing at all happens until this is done: measured on this engine, dialling the Pressure SP with the heaters off moves the plant **0.05 psi in 10 plant-minutes** at **0 kW**, against **+133 psi (0.92 MPa)** at **157.8 kW** once AUTO is pressed. The spray is the only way pressure comes back **down** if the heaters overshoot, and the RCPs are running from step 2 so it has head behind it. Basis: WTSM ch. 19, *"All groups of pressurizer heaters are energized to raise the pressurizer water temperature to saturation."* | Pressurizer Spray, then Heaters (PZR) | AUTO lit on **both** PZR SPRAY and PZR HEATERS |
@@ -288,7 +288,7 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 ### Prerequisites
 1. **PWR-N02** complete — **including step 15**, the boron adjustment to the ECC. If you came from a **PWR-N01** heatup and skipped it you are ~138 ppm high and every number below is wrong.
 2. Estimated Critical Condition (ECC) worked for **this** Tavg and **this** boron — see **09 §7.5**. Acceptance band for a good ECC is roughly ±750 pcm.
-3. RCPs running; SR energized; Feed AUTO recommended before POAH.
+3. RCPs running; SR energized; SG level held on **aux feed** (the Mode 3 lineup: motor-driven aux feed pump RUNNING on its 33 % hold, main feed pumps secured).
 
 > **The worked example below is for the reference startup: 719 ppm, bank fully inserted, Tavg at
 > the no-load band.** There the core first goes critical at **about 208 of 627 steps (33 %
@@ -322,12 +322,13 @@ Take the reactor from **Mode 3, Hot Standby** to **Mode 2, Startup** (critical, 
 |------|--------|---------|------------|
 | 1 | Confirm Mode 3: subcritical, Tavg ≈ 546.8 °F (286 °C), P ≈ 2235 psi (15.41 MPa), RCPs on | (observe) | ρ < 0; Mode 3 |
 | 2 | Confirm SR counting; IR ready | NIS | SR > ~1.0e2 (100 counts per second) |
-| 3 | Engage Feed AUTO at ~65 % if not already | Feed Pumps | AUTO engaged |
+| 3 | Confirm aux feed is holding SG level — AUX FEED WATER reads RUNNING (press AUTO if not); main feed stays secured | AUX FEED WATER | Card reads RUNNING; SG level near 33–38 % |
 | 4 | Capture 1/M baseline (plot point 1) **before** any rod motion | 1/M Plot | Baseline logged |
 | 5 | Withdraw Control Bank in **decreasing** bursts; settle; plot after each (points 2–5) | Control Bank + 1/M | Count rate rising; prediction walks down |
 | 6 | When IR ≥ 1e-10 A (P-6): **block SR HIGH FLUX** | Trip Blocks | SR blocked; SOURCE RANGE reads a dash (no reading); IR carries indication |
 | 7 | Creep to critical at **Slow** (single steps); watch SUR and period | Control Bank | Critical; SUR ≤ 1 DPM; period long |
 | 8 | Hold low power (Mode 2 band ≤ 5 %); let Doppler settle; trim | Rods | Stable Mode 2, Startup |
+| 9 | **Feed transfer at the point of adding heat (~1 %), before any climb.** The motor-driven aux feed pump holds SG level only to about **1 %** (measured: 0.9 % held at 33.7 %; a climb past ~3.8 % on aux feed alone lo-lo tripped the reactor near 4.9 %). Type **50 gpm** in SG FEED RATE (main feed pumps start in MAN), wait for SG level **≥ 60 %** (about 7 plant-minutes), press SG FEED **AUTO**, then **STOP** aux feed. **Not AUTO straight from 33 %:** measured, the 31-point error drives feed to 53 % of rated, Tavg falls 547.7 → 538.0 °F (286.5 → 281.1 °C) in a minute and power goes 0.9 → 3.9 % with the rods still. Sourced: WTSM 19 p.19-9, *"The power level is maintained at two percent while a main feedwater pump is started and aligned"* | SG FEED RATE / SG FEED / AUX FEED WATER | SG FEED AUTO; level ~65 %; AUX FEED WATER reads STANDBY |
 
 ### Typical 1/M burst sizes — **the 719 ppm reference startup**, bank starting fully inserted
 
@@ -387,7 +388,7 @@ After **PWR-N03**; before or during early turbine roll.
 |------|--------|------------|
 | 1 | Hold power in Mode 2 band (≤ 5 %) with small rod trims | SUR near 0; power stable ≤ 5 % |
 | 2 | Confirm Tavg and pressure near NOP | P ≈ 2235 psi (15.41 MPa); Tavg near no-load |
-| 3 | Confirm SG level held (Feed AUTO or careful manual) | Level not LO |
+| 3 | Confirm SG level held on main feed AUTO (transferred from aux feed at ~1 %, **PWR-N03** step 9) | Level not LO |
 | 4 | Observe POAH: Tavg begins to rise with power; secondary steam demand increases | Heat addition visible |
 | 5 | When ready for load: proceed to **PWR-N05**; declare Mode 1 when power > 5 % | Ready for turbine / Mode 1 |
 

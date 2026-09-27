@@ -330,7 +330,14 @@
      * seeded at the 10 % equilibrium (0.60 %); the handover carries 0.29 % — left, unmeasured
      * in effect beyond that convergence. */
     low_power:      { pf: 0.09604, load_mwe: 10, ctrl_steps: 222, xenon_free: true },
-    hot_zero_power: { pf: 0,   load_mwe: 0, subcritical: true },
+    /* afw_lineup + sg_mass_frac (#808): Mode 3 runs on the motor-driven aux feed pump, main feed
+     * secured (the block after the turbine latch in createEngine). The SG boots at the aux feed
+     * hold's own level, not main feed's 65 % program: mass fraction 0.7338 reads 36.7 % narrow
+     * range, where the `afw_level` channel (33 +/- 5 %, WTSM 19 step 15) settles at zero power —
+     * MEASURED, the 65 % boot boiled off to 36.5-37.0 % and held there (0.45 %/plant-minute on
+     * the way down, 65 plant-minutes) — settled construction, not a first hour of drift. */
+    hot_zero_power: { pf: 0,   load_mwe: 0, subcritical: true, afw_lineup: true,
+                      sg_mass_frac: 0.7338 },
     /* THE SHUTDOWN IC (#507 wave 10) is MODE 4, HOT SHUTDOWN — 250 degF / 350 psig,
      * RHR-held, RCPs secured, both banks in, the P-11 blocks taken (the cooldown's own
      * lineup). It is deliberately NOT Mode 5: Layer 0's property floor is 0.1 MPa, whose
@@ -565,7 +572,9 @@
      * (byte-identical construction, the save-replay bar). */
     var sgDesign = G.createSG({});            /* the DESIGN point: 825 psia, Ginna outlet class */
     var sg = ic.pf === 1 ? sgDesign
-           : G.createSG({ P: W.P_sat(tavg0 - ic.pf * (TREF - W.T_sat(sgDesign.P))) });
+           : G.createSG({ P: W.P_sat(tavg0 - ic.pf * (TREF - W.T_sat(sgDesign.P))),
+                          mass: ic.sg_mass_frac === undefined ? undefined
+                              : ic.sg_mass_frac * G.SG.mass_nominal });
     /* rated_steam is the RATED scale — every secondary normalization's denominator (main feed
      * is feed_frac × it, the dumps are 0.28 × it, the code safeties 0.84 × it, and the AFW
      * fraction divides by it). It is FROZEN ON BOTH AXES steamDemand reads: the RATED dispatch
@@ -824,6 +833,35 @@
      * by neither measure but IS on the grid at 10 MWe, and a tripped turbine there would be a
      * plant that cannot exist. */
     if (!(ic.load_mwe > 0)) eng.tb.tripped = true;
+    /* MODE 3 RUNS ON AUXILIARY FEED, MAIN FEED PUMPS SECURED *(OWNER, 2026-09-27, #808 item A:
+     * "Yes", on the proposal "Mode 3 runs on auxiliary feed, main feed pumps off; a new startup
+     * step at about 2 % starts main feed and secures auxiliary feed")*. It extends the 2026-09-02
+     * Mode 5 ruling ("Feed pumps secured", the cold branch above) up to Hot Standby.
+     *   [sourced] Ginna UFSAR §10.5.3.1.2 (GIN-10 p.35): "The system is used to maintain steam
+     *   generator level during startup because a certain loading is required prior to starting
+     *   a main feedwater pump." / "After reactor power is at about 2% to 4% and a main
+     *   feedwater pump has been started, the system is shut down and set up for automatic
+     *   start operations."
+     *   [sourced] WTSM 19 p.19-8: the motor-driven AFW pump "can supply only about two percent
+     *   of rated feed flow"; p.19-9: "The power level is maintained at two percent while a main
+     *   feedwater pump is started and aligned".
+     * The MOTOR-DRIVEN pump only (the startup's pump; the turbine-driven one is the casualty
+     * backup), on the `afw_level` channel's sourced 33 % narrow-range hold, which is defaultOn.
+     * The AFW start off the feed pumps cannot fire here: it is a Mode 1 function (the
+     * `main_feed_lost` driver in stepInner). */
+    if (ic.afw_lineup) {
+      eng.fw.auto = false;
+      eng.fw.manual_frac = 0;
+      eng.fw.pumpA = false;
+      eng.fw.pumpB = false;
+      eng.aw.mdafwRunning = true;
+      /* THE THROTTLE AT ITS SETTLED POSITION, not the constructor's wide-open 1.0: the `afw_level`
+       * channel lives in the kernel, so an ENGINE-DIRECT harness has no level hold at all, and a
+       * wide-open pump overcooled the booted plant 32 degF/hr (MEASURED, run_pwr2_endurance's
+       * settled check). 0.26 is where the channel settles at zero power (afw_flow_normalized
+       * 0.080-0.099 of the 0.333 one pump delivers, measure808 full stack). */
+      eng.aw.throttle = 0.26;
+    }
     /* the feed train at the IC's own operating point (the module's constructor knows only
      * at-power/no-load; a mid-load IC sets the delivered point so the boot does not spend
      * its first pump-tau finding it — the same settled-construction rule as the hmap) */

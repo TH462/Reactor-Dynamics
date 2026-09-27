@@ -661,7 +661,17 @@
      * because it had been sitting here emitting into nothing. `set_afw {active:true}` is
      * still a live command for scenarios and the instructor. */
     imrmssoa137: { press: function () { cmd({ action: 'set_afw', active: false }); }, active: function (s) { return !esfAuto(s, 'afw') && !(IN(s).afw_active || IN(s).afw_pump_running); } },
-    imrmssr9ihq: { press: function () { cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); }, active: function (s) { return esfAuto(s, 'afw'); } },
+    /* AUTO PUTS AUX FEED IN SERVICE (#808 item A, 2026-09-27). Mode 3 now runs on the motor-
+     * driven pump (GIN-10 §10.5.3.1.2, the startup lineup) and the heatup has to start it — but
+     * #591 item 2 left this card only STOP and AUTO *(OWNER, 2026-08-30: "leave just STOP and
+     * AUTO controls")*, and the work order is "NO NEW CONTROLS". So AUTO is read in the owner's
+     * own #591 words (coordinator's call, 2026-09-27, within that wording), "automatic mode and off": it starts the MOTOR-DRIVEN pump on the
+     * `afw_level` channel's 33 % hold (which throttles it; nothing here opens the valve) and
+     * re-arms, as before. STOP secures. At power the hold keeps the valve shut above 38 %, so a
+     * press there runs a pump into a shut valve and changes no flow. DECLARED DEPARTURE: a real
+     * AFW control switch starts the pump from START, not AUTO. The turbine-driven pump is not
+     * started here — it stays the casualty backup its own AFAS starts. */
+    imrmssr9ihq: { press: function () { cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); cmd({ action: 'set_afw', active: true, pump: 'mdafw' }); }, active: function (s) { return esfAuto(s, 'afw'); } },
     // --- Charging panel: AUTO / MAN / OFF (this panel is the charging pump's control;
     //     OFF stops the charging pump, AUTO/MAN run it in auto make-up / manual charging) ---
     imrmtg3r8ez: { press: function () { cmd({ action: 'set_charging_pump', running: true }); cmd({ action: 'set_cvcs_auto', active: true }); }, active: function (s) { return CS(s).charging_pump_running && CS(s).cvcs_auto; } },
@@ -3812,6 +3822,8 @@
     'Rod Speed — Fast': 'imrpk8kjsjs',
     'Shutdown Bank — Withdraw': 'imrpnyaxsb3', 'Shutdown Bank — Insert': 'imrpnyf37ju',
     'SG Feed AUTO': 'imrsgjmrjfg', 'SG Feed MAN': 'imrsgjuh7l0',
+    /* #808: the feed transfer at the point of adding heat presses these three */
+    'SG Feed Rate': 'imro8xhy2me', 'AFW — Auto': 'imrmssr9ihq', 'AFW — Stop': 'imrmssoa137',
     /* THE BUTTON INSIDE THE CARD (#807 item 3, owner playtest of 1.8.0-rc6: "the A+B 7% button
      * should have the dashed line around it not the whole card. the glowing line should be around
      * the card ... step 8 should have the PZR SPRAY AUTO button lit with the dashed line and the

@@ -655,8 +655,8 @@ heat that is a very small number.
 
 | Control | Effect |
 |---------|--------|
-| **STOP** | Secures the aux feed pumps. **STOP secures BOTH** — the motor-driven and the turbine-driven pump are separate machines with a switch each, and this button works both. There is **no manual START:** the card is STOP and AUTO |
-| **AUTO** | A **lamp, not a defeat**. The actuation starts the pumps on **low-low SG level, 17 % of narrow range** — the same signal that trips the reactor — and also on a standing safety injection, loss of main feed, or loss of offsite power. **Nothing you can press disarms it**, so the lamp is lit whenever the pumps are not in your hands, and pressing AUTO cannot make it lit any harder. |
+| **STOP** | Secures the aux feed pumps. **STOP secures BOTH** — the motor-driven and the turbine-driven pump are separate machines with a switch each, and this button works both. There is **no separate START button:** the card is STOP and AUTO, and AUTO is what starts the motor-driven pump (below) |
+| **AUTO** | **Puts aux feed in service: starts the motor-driven pump on the 33 % level hold** (#808) — the normal startup lineup, pressed in the heatup (**PWR-N01** step 4) and still running in Hot Standby until main feed takes over near 1 % power. At power the hold keeps the valve shut above 38 %, so a press there runs the pump into a shut valve and changes no flow (measured at 100 %: aux feed flow 0.000 over 10 plant-minutes, SG level and Tavg unchanged). **Simplification, declared:** on a real board the pump starts from its own START switch and AUTO only arms it; this card's two buttons are the owner's "automatic mode and off" (#591). AUTO is also a **lamp, not a defeat**. The actuation starts the pumps on **low-low SG level, 17 % of narrow range** — the same signal that trips the reactor — and also on a standing safety injection, loss of main feed, or loss of offsite power. **Nothing you can press disarms it**, so the lamp is lit whenever the pumps are not in your hands, and pressing AUTO cannot make it lit any harder. |
 | **Manual action** | Securing the pumps is the one manual action on this card. While an actuation is latched the pumps are held running and a stop is refused — see the securing note below |
 | **Delivery** | Capacity × throttle, and **the throttle is not yours.** Level control lives in the **`afw_level` automation channel**, which holds narrow-range level at **33 ± 5 %** — full flow below 28 %, tapering shut by 38 % |
 
@@ -672,7 +672,8 @@ heat that is a very small number.
 >
 > **What you watch, since you no longer hold the valve:** the steam dumps and the level trend.
 > If the dumps are shut and temperature keeps falling, the channel is overfeeding — secure the
-> pumps with **STOP** and let level recover, then re-arm **AUTO**. That is the whole of the
+> pumps with **STOP** and let level recover, then press **AUTO**, which restarts the motor-driven
+> pump on the level hold and delivers nothing until level falls below 38 %. That is the whole of the
 > operator's authority over aux feed on this plant.
 
 **Procedure — establish AFW (loss of main feed)**
@@ -681,7 +682,7 @@ heat that is a very small number.
 2. SCRAM if not already tripped.  
 3. **Verify the auto-start.** The pumps start themselves on low-low SG level, a standing safety injection, loss of main feed, or loss of offsite power — there is no manual start to press.  
 4. Verify the level recovers toward **33 % narrow range** and that the steam dumps are not all shut — the channel throttles, and shut dumps with falling temperature mean it is overfeeding.  
-5. When stable, secure the pumps with **STOP** if the procedure calls for it — the AUTO lamp needs no action from you, and the actuation is standing whether or not you touched the pumps.  
+5. When stable, secure the pumps with **STOP** if the procedure calls for it — the actuation is standing whether or not you touched the pumps. Pressing **AUTO** afterwards restarts the motor-driven pump on the level hold.  
 
 **Securing note:** an aux feed stop is refused while a **safety injection** is standing, because
 the SI signal is itself an aux feed start — secure the injection at its own panel first. Inside

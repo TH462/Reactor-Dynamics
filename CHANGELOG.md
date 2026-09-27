@@ -31,7 +31,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 ### Changed
-- **Auxiliary feed no longer auto-starts on "both main feed pumps off" below 5 % power** (Mode 1 only, Ginna TS Bases B 3.3.2 Function 6.f). The turbine trip and latch refusal on the same loss are unchanged. First half of #808 item A; the Mode 3 aux-feed lineup and the feed-transfer step are not built yet.
+- **Auxiliary feed no longer auto-starts on "both main feed pumps off" below 5 % power** (Mode 1 only, Ginna TS Bases B 3.3.2 Function 6.f). The turbine trip and latch refusal on the same loss are unchanged. #808 item A.
+- **Mode 3 runs on auxiliary feed** (main feed pumps secured, SG level held near 33-37 %); the heatup starts it with AUX FEED WATER **AUTO**, which now starts the motor-driven pump. **New startup step 13** at the point of adding heat (~1 %): main feed in MAN at 50 gpm to 60 % level, SG FEED AUTO, then aux feed STOP. Startup steps 13-17 renumbered 14-18 (#808).
 
 ## [Alpha 1.8.0-rc8] — 2026-09-27
 

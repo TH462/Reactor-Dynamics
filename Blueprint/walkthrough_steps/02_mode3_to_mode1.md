@@ -79,7 +79,7 @@ Real crews never add reactivity two ways at once: the rods stay still while boro
 
 *Once the reactor makes power, its heat has to leave through the steam generator, or the reactor water heats up.*
 
-()3a. Check SG FEED AUTO is lit and the card reads HOLDING. If AUTO is not lit, press AUTO.
+()3a. Check the AUX FEED WATER card reads RUNNING. If it does not, press AUTO on that card.
 
 ()3b. Check STEAM DUMP AUTO is lit and DUMP SETPOINT reads 1020 psi. If AUTO is not lit, press AUTO.
 
@@ -93,9 +93,9 @@ The steam generator is where the reactor's heat leaves the primary loop. Reactor
 
 In AUTO, the steam dump holds steam pressure at 1020 psi. At that pressure water boils at 547 °F, so holding the pressure also holds the reactor water at 547 °F. That is why AVG COOLANT TEMPERATURE sits still in Hot Standby with nobody touching it. Right now there is almost no heat to remove, and the dump barely cracks open.
 
-Feed AUTO puts back the water that leaves as steam, which holds SG level. Once the reactor goes critical and power rises, the dump opens further and feed follows it. Both need to be in AUTO before that happens.
+Auxiliary feed puts back the water that leaves as steam, which holds SG level near 33 %. The main feed pumps stay stopped for now: they need more steam flow than a reactor this close to zero power makes. Auxiliary feed carries the steam generator up to about 1 % power, and main feed takes over there.
 
-\[HIGHLIGHTED: SG Feed AUTO, Steam Dump AUTO (pulsing); SG Level, SG Pressure, Dump Setpoint (steady)]
+\[HIGHLIGHTED: AFW — Auto, Steam Dump AUTO (pulsing); SG Level, SG Pressure, Dump Setpoint (steady)]
 
 
 
@@ -325,11 +325,39 @@ INTER RANGE measures a current, not a percentage, and it shows this climb four d
 
 
 
-13. Raise power past 5 %, into Mode 1, At Power.
+13. Put main feed in service and secure auxiliary feed.
+
+*Auxiliary feed carries the steam generator only to about 1 % power, so main feed has to take over before power climbs any further.*
+
+()13a. Type 50 in the SG FEED gpm box. Leave the rods alone until STEAM GENERATOR LEVEL reads 60 % or more.
+
+Note: Typing 50 starts the main feed pumps in MAN at 50 gpm; about 7 plant-minutes. Type it rather than pressing MAN, which starts them at full speed. If REACTOR POWER reads above 2 %, type 100 instead: 50 gpm cannot keep up.
+
+()13b. Press AUTO on the SG FEED card and check AUTO is lit.
+
+()13c. Press STOP on the AUX FEED WATER card and check the card reads STANDBY.
+
+Note: STANDBY means the pump is stopped but still starts by itself if steam generator level falls too low.
+
+Suggested time warp: 10×.
+
+
+
+Background
+
+The auxiliary feed pump supplies only a few percent of full feed flow, and on this plant it holds steam generator level only to about 1 % power. So real crews pause the climb here, start a main feed pump, hand level control to it, and then secure auxiliary feed.
+
+Main feed goes in by hand first. Its AUTO controller aims for 65 %, and switched on 30 points below that it rushes cold water in: the reactor water cools about 10 °F in a minute and power jumps from 1 % to about 4 % with the rods still. A small manual flow brings level up to 60 % gently, and AUTO then has only 5 points left to close.
+
+\[HIGHLIGHTED: SG Feed Rate, SG Feed AUTO, AFW — Stop (pulsing); SG Level, Feed Pumps, AFW, Reactor Power (steady)]
+
+
+
+14. Raise power past 5 %, into Mode 1, At Power.
 
 *Mode 1 begins at 5 %, and the steps after this one need power higher still.*
 
-()13a. Press SLOW. Tap WITHDRAW twice (2 steps). STARTUP RATE rises for a while after the taps: wait for it to peak and fall back to +0.10 or less. Repeat until REACTOR POWER reads above 5 %.
+()14a. Press SLOW. Tap WITHDRAW twice (2 steps). STARTUP RATE rises for a while after the taps: wait for it to peak and fall back to +0.10 or less. Repeat until REACTOR POWER reads above 5 %.
 
 Suggested time warp: 5×.
 
@@ -345,19 +373,19 @@ Mode 1, At Power, begins at 5 % power. The warming water now holds power back, s
 
 
 
-14. Put the turbine on line and let the reactor follow it up.
+15. Put the turbine on line and let the reactor follow it up.
 
 *From here the turbine leads and the reactor follows, with no rod motion.*
 
-()14a. Press LATCH on the TURBINE-GENERATOR card.
+()15a. Press LATCH on the TURBINE-GENERATOR card.
 
 Suggested time warp: 1×.
 
-()14b. Set LOAD to 10 MW and wait for the generator to read above 8 MW.
+()15b. Set LOAD to 10 MW and wait for the generator to read above 8 MW.
 
 Suggested time warp: 10×.
 
-()14c. Press AUTO on the STEAM DUMP card again and check its status reads TAVG.
+()15c. Press AUTO on the STEAM DUMP card again and check its status reads TAVG.
 
 Suggested time warp: 1×.
 
@@ -375,11 +403,11 @@ As the generator picks up load, more steam is drawn, the water cools, and cooler
 
 
 
-15. Block the first startup trip, IR HIGH FLUX.
+16. Block the first startup trip, IR HIGH FLUX.
 
 *Left live, this trip shuts the reactor down at 25 % on the way up.*
 
-()15a. Wait for REACTOR POWER to read above 9½ %, then press TRIP BLOCKS on the ROD CONTROL card and BLOCK on the IR HIGH FLUX row (IR is INTER RANGE). Check the row reads BLOCKED.
+()16a. Wait for REACTOR POWER to read above 9½ %, then press TRIP BLOCKS on the ROD CONTROL card and BLOCK on the IR HIGH FLUX row (IR is INTER RANGE). Check the row reads BLOCKED.
 
 Suggested time warp: 1×.
 
@@ -397,11 +425,11 @@ The plant keeps checking that power is still up there, and unblocks them by itse
 
 
 
-16. Block the second startup trip, PR HIGH (LOW SETPT).
+17. Block the second startup trip, PR HIGH (LOW SETPT).
 
 *Left live, this trip shuts the reactor down at 35 %.*
 
-()16a. Press TRIP BLOCKS to open the panel, then press BLOCK on the PR HIGH (LOW SETPT) row. Check both rows, IR HIGH FLUX and PR HIGH (LOW SETPT), read BLOCKED, then press TRIP BLOCKS again to close the panel.
+()17a. Press TRIP BLOCKS to open the panel, then press BLOCK on the PR HIGH (LOW SETPT) row. Check both rows, IR HIGH FLUX and PR HIGH (LOW SETPT), read BLOCKED, then press TRIP BLOCKS again to close the panel.
 
 Suggested time warp: 1×.
 
@@ -419,13 +447,13 @@ The two blocks are separate presses on purpose: on a real board, blocking one tr
 
 
 
-17. Verify the plant is in Mode 1, At Power.
+18. Verify the plant is in Mode 1, At Power.
 
 *Confirming the end state catches a trip block that dropped out or a generator that never picked up load.*
 
-()17a. Check REACTOR POWER reads above 9 %.
+()18a. Check REACTOR POWER reads above 9 %.
 
-()17b. Check OUTPUT reads near 10 MW.
+()18b. Check OUTPUT reads near 10 MW.
 
 Suggested time warp: 1×.
 
@@ -442,6 +470,8 @@ The reactor is critical, the generator is carrying load, and both startup trips 
 
 
 ## Notes — agent record, NOT step text
+
+**2026-09-27-develop-d — #808 item A: the feed transfer.** New step 13 (old 13-17 renumbered 14-18; older records below use the old numbers). Step 3a grades AUX FEED RUNNING. Owner "Yes" to the proposal; MAN-then-AUTO and the ~1 % placement are the coordinator's call, 2026-09-27. Sources and the measured transfer numbers: `ui/manual_procedures.js` at the step.
 
 **2026-09-27-develop-a — the source-range block, the level-off at 1.0e-8 A, and four sourced additions.**
 *(OWNER RULING, 2026-09-26: he replied "B" to "B: A, plus a manual source-range block at P-6", where A = "9b

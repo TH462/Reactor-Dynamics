@@ -98,19 +98,21 @@ The cold plant starts with the turbine tripped. It matters because a turbine tak
 
 
 
-5. Put steam generator level control in AUTO while the plant is quiet.
+5. Put auxiliary feed in AUTO to hold steam generator level.
 
-*Once the water in the steam generator starts to boil, its level starts to move, and AUTO has to be holding it by then.*
+*Once the water in the steam generator starts to boil, its level starts to fall, and auxiliary feed has to be holding it by then.*
 
-()5a. Press AUTO on the SG FEED card and check AUTO is lit.
+()5a. Press AUTO on the AUX FEED WATER card and check the card reads RUNNING.
 
 Suggested time warp: 1×.
 
 Background
 
-The steam generator is the boiler: reactor water heats it on one side and steam comes off the other. Nothing is boiling yet, so the feed pumps start out stopped. Putting level control in AUTO now, while the plant is quiet, means it is already holding level when the water starts to boil later in the heatup.
+The steam generator is the boiler: reactor water heats it on one side and steam comes off the other. The big main feed pumps need a certain steam load before they can run steadily, so they stay stopped through the heatup and Hot Standby. The small auxiliary feed pump carries the steam generator until then.
 
-[HIGHLIGHTED: SG Feed AUTO (pulsing); Feed Pumps, SG Level (steady)]
+In AUTO it holds STEAM GENERATOR LEVEL near 33 %. It lets water in only once level falls below 38 %, so while nothing is boiling it runs with its valve shut. Main feed takes over during the reactor startup, at about 1 % power.
+
+[HIGHLIGHTED: AFW — Auto (pulsing); AFW, SG Level (steady)]
 
 
 
@@ -732,3 +734,7 @@ Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`. 2a gains a N
 Pressurizer Level Above Program moved from 10a's Note to 9b's: both heatups raised it at the end of
 step 9, at 665 psi, as the clock dropped to 1× (the chain gate: step 9 done at 691 psia, the alarm
 at 696 psia 0.1 plant-min later). Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`.
+
+### #808 item A — 2026-09-27 (develop-d): step 5 is AUX FEED, not main feed
+
+Mode 3 runs on the motor-driven aux feed pump, main feed secured (OWNER: "Yes", 2026-09-27, on the #808 proposal). AUX FEED WATER AUTO now starts that pump on the 33 % level hold (coordinator's call, 2026-09-27, within the owner's #591 item 2 wording "automatic mode and off"). Source and numbers: `ui/manual_procedures.js` at this step.

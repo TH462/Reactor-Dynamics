@@ -197,6 +197,17 @@ function loadAll(engSource, coreSource) {
  * before the `only` scoping existed: 17 mutations x the whole suite = 1074 s of contention in
  * the aggregate gate — the replay cost scales with every fixture ever added, and a mutation
  * only needs the checks built to see it. The same arithmetic is what the parts divide. */
+/* #808: hot_zero_power now boots on AUX feed (main feed secured, SG at the 33 % hold). The probes
+ * that CLIMB from it (the IR rod stop rides to ~21 %, the dilution ride to 38 %) test rods and flux,
+ * not feed, and on the aux pump (~1 % capacity) they end on SG lo-lo instead. This puts back the
+ * pre-#808 boot exactly -- nominal SG mass, main feed AUTO on both pumps, aux feed off, valve open --
+ * so the numbers those probes pin stay the ones they were measured on. */
+function mainFeedLineup(e, EN, G) {
+  e.sg.mass = G.SG.mass_nominal;
+  EN.command(e, 'feed_pump_a', true); EN.command(e, 'feed_pump_b', true); EN.command(e, 'feed_auto', true);
+  e.aw.mdafwRunning = false; e.aw.throttle = 1;
+  return e;
+}
 function runSuite(RD, rec, quiet, only) {
   /* THE BANK'S OWN CURRENCY (#602 phase 2). Every step count below used to be a literal that
    * happened to equal a fraction of a 200-step bank; when the scale moved to the sourced 627
@@ -1903,7 +1914,7 @@ function runSuite(RD, rec, quiet, only) {
    *
    * Both halves are pinned below: the stop's OWN regime (it holds, and the plant survives), and
    * the held press (it holds the bank, and the trip ends it anyway). */
-  var engW = EN.createEngine({ initial_state: 'hot_zero_power' });
+  var engW = mainFeedLineup(EN.createEngine({ initial_state: 'hot_zero_power' }), EN, G);
   run(engW, 120);
   EN.command(engW, 'rod_speed', 'slow');
   EN.command(engW, 'rod_target', frac(0.43));     /* the stop's own regime — an operator step */
@@ -1952,7 +1963,7 @@ function runSuite(RD, rec, quiet, only) {
    * would be decoration. The bank freeze is asserted in both, so a stop that REPORTS and does not
    * HOLD — the wiring gap this section exists for — still reds either way. */
   function heldPress(speed, secs) {
-    var e2 = EN.createEngine({ initial_state: 'hot_zero_power' });
+    var e2 = mainFeedLineup(EN.createEngine({ initial_state: 'hot_zero_power' }), EN, G);
     run(e2, 120);
     EN.command(e2, 'rod_speed', speed);
     EN.command(e2, 'rod_target', bank());       /* one press, held — the board's own idiom */
@@ -2253,7 +2264,7 @@ function runSuite(RD, rec, quiet, only) {
    *   224 -> 0.36 %  (critical, below P-10) · 232 -> 10.75 % (P-10 MET) · 235 -> 12.97 %
    *   250 -> 20.80 % (IR rod stop asserts) · 258 -> 24.13 % · 261 -> SCRAM on ir_high_flux
    *   and with both blocks taken, 295 -> 38.0 % untripped, past the 35 % power-range setting. */
-  var engS2 = EN.createEngine({ initial_state: 'hot_zero_power' });
+  var engS2 = mainFeedLineup(EN.createEngine({ initial_state: 'hot_zero_power' }), EN, G);
   EN.command(engS2, 'rod_speed', 'normal');
   EN.command(engS2, 'rod_target', 224);
   /* THE OPERATOR TAKES THE P-6 SOURCE-RANGE BLOCK on the way (OWNER RULING 2026-09-26, "B"),

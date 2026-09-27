@@ -29,6 +29,26 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-27-develop-e (#808 item A, part 2: Mode 3 on aux feed, the feed transfer at ~1 %)
+
+Coordinator's calls (2026-09-27, NOT owner rulings): AUX FEED WATER AUTO starts the motor-driven pump (within the
+owner's #591 item 2 wording "automatic mode and off"); the transfer is MAN-then-AUTO at the point of adding heat.
+
+- **Built:** `hot_zero_power` boots main feed secured, MDAFW running, throttle 0.26, SG at mass fraction 0.7338
+  (36.7 % narrow range, the aux hold's own zero-power level; 36.2-36.8 % over 30 plant-min, full stack). Heatup
+  step 5 = AUX FEED WATER AUTO; startup 3a grades RUNNING; new startup step 13 (50 gpm MAN to 60 %, SG FEED AUTO,
+  aux STOP); 13-17 -> 14-18. Manuals 03 §10.0, 04 N01/N03/N04, 09 IC table (SG 65 -> 37 %); Rev 22 row item (o).
+- **Measured side effects of the new AUTO:** at 100 % power AUTO starts the MDAFW and delivers 0.000 over 10
+  plant-min (level 65 % holds the valve shut), SG level 64.7-65.3 %, Tavg 580.4 °F unchanged. Post-trip STOP then
+  AUTO: old AUTO left the pump off, new AUTO runs it; flow 0.000 at level 65 %. No checklist presses AFW AUTO.
+- **Transfer, measured:** MAN 50 gpm from 33 % level at 0.9 %: 60 % in 7.2 plant-min, Tavg >= 547.5 °F, power <= 0.9 %;
+  AUTO then 60.3-66.4 %. 30 gpm: 15.1 min. At 6.5 % (overshot player): 100 gpm, 16.4 min, no trip. 150 gpm at 8 %:
+  power ran to 14.5 % and stranded -- so the card stops at 100.
+- **Trap:** an ENGINE-DIRECT harness has no `afw_level` channel, so a pump booted at the constructor's throttle 1.0
+  overcooled Hot Standby 32 °F/hr; the throttle is seeded at the channel's settled 0.26. Climbing engine probes
+  (IR rod stop, dilution ride) now take `mainFeedLineup()` — the pre-#808 boot — because rods, not feed, are
+  their claim. Overshooting startup routes (bank 235, overpull) now end in a NAMED SG lo-lo trip at step 13.
+
 ## Session log — 2026-09-27-develop-d (#808 item A, part 1: the AFW start off the feed pumps is a Mode 1 function; the feed-transfer walkthrough is NOT built)
 
 - **Landed: `pwr2_engine` arms the loss-of-both-feed-pumps AFW start only above 5 % power (Mode 1).** Sourced: Ginna TS

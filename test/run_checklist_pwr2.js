@@ -3805,11 +3805,20 @@ if (!only && RUN_B) {
         : 'step 12 never reached (' + (s.true_state.scrammed ? 'TRIPPED ' + ((svc.engine && svc.engine.eng && svc.engine.eng.pt && svc.engine.eng.pt.trip_cause) || '') : 'no trip') + ')'));
     /* a tripped fixture must fail 2al.2 by name, not throw on the latched rod drive and end the runner
      * (2026-09-27: the pre-block fixture tripped on SR HIGH FLUX and the throw hid every check after it) */
-    if (!at12 || s.true_state.scrammed) { ck('2al.2 ...LOAD 10 MWe, blocks pressed 20 plant-minutes later: the leg completes (step 17 at 9 %) and both blocks hold', false, 'not run: the fixture never reached step 12 or tripped'); return; }
+    if (!at12 || s.true_state.scrammed) { ck('2al.2 ...LOAD 10 MWe, blocks pressed 20 plant-minutes later: the leg completes (step 18 at 9 %) and both blocks hold', false, 'not run: the fixture never reached step 12 or tripped'); return; }
     toStep(S12 + 1, 30);
+    /* #808: step 13 is the feed transfer -- the card's route: 50 gpm in MAN, AUTO at 60 %, aux feed STOP.
+     * Without it the turbine LATCH below refuses on "both main feedwater pumps are lost". The step
+     * offsets after it moved by one (S12 + 2 is the climb to 5 %, + 3 the turbine, + 4/+ 5 the blocks). */
+    svc.handleCommand({ action: 'set_feed_pump_speed', pct: 5 });
+    var tF = t();
+    while (t() - tF < 1800 && !(s.instruments.sg_level >= 59.5)) tick();
+    svc.handleCommand({ action: 'set_feed_coupled', active: true }); holdS(5);
+    svc.handleCommand({ action: 'set_afw', active: false });
+    toStep(S12 + 2, 120);
     /* to bank 223, where the old +13 from 210 landed (the fixture now leaves 12 at ~213) */
     svc.handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 223 - bank(), speed: 'slow' });
-    toStep(S12 + 2, 1200);
+    toStep(S12 + 3, 1200);
     svc.handleCommand({ action: 'latch_turbine' }); holdS(5);
     svc.handleCommand({ action: 'set_load_target', mwe: 10 });
     var tL = t();
@@ -3817,11 +3826,11 @@ if (!only && RUN_B) {
      * step 14 never completes and the blocks below land on the wrong step */
     while (t() - tL < 600 && !(RD.InstructorLayer.paramValue(s, 'mwe_output') > 8)) tick();
     svc.handleCommand({ action: 'set_steam_dump', mode: 'auto' });
-    toStep(S12 + 3, 900);
+    toStep(S12 + 4, 900);
     holdS(1200 - (t() - tL));
     var pAt = s.instruments.power_range;
     svc.handleCommand({ action: 'set_trip_block', trip_id: 'ir_high', blocked: true });
-    toStep(S12 + 4, 120);
+    toStep(S12 + 5, 120);
     svc.handleCommand({ action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: true });
     var t16 = t(), fin = null;
     while (t() - t16 < 600) {
@@ -3831,7 +3840,7 @@ if (!only && RUN_B) {
       if (!c2 || c2.complete || c2.step_index >= proc.steps.length) { fin = t() - t16; break; }
     }
     holdS(600);
-    ck('2al.2 ...LOAD 10 MWe, blocks pressed 20 plant-minutes later: the leg completes (step 17 at 9 %) and both blocks hold',
+    ck('2al.2 ...LOAD 10 MWe, blocks pressed 20 plant-minutes later: the leg completes (step 18 at 9 %) and both blocks hold',
        fin != null && blk('ir_high_blocked') && blk('pr_low_setpoint_blocked'),
        'pressed at REACTOR POWER ' + pAt.toFixed(2) + ' %; ' + (fin == null ? 'leg NOT complete' : 'complete ' + fin.toFixed(0) + ' s after the second block') +
        '; blocks ' + blk('ir_high_blocked') + blk('pr_low_setpoint_blocked') + ' 600 s later at ' + s.instruments.power_range.toFixed(2) + ' %');
@@ -4043,7 +4052,7 @@ if (!only && RUN_B) {
        * (DUMP SETPOINT 720 / 270 psi) and 11a (HX SPLIT raised to 9 %), all control-state rows, so
        * instrument-graded and sole unchanged. SUM on a merge. */
       ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 item 2 merge): 84 / 172 / 100 / 25 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added, raise-power 10-12 removed, cooldown 4b/4c/11a added; 807g: 84 / 173 / 101 / 25, cooldown 11b SUBCOOLING MARGIN row)',
-         gradedSteps === 84 && predRows === 177 && rows.length === 103 && soleInst === 23,   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
+         gradedSteps === 85 && predRows === 180 && rows.length === 104 && soleInst === 23,   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -4152,10 +4161,13 @@ if (!only && RUN_B) {
        * which never covers a `steady` window, so it reads met:false by construction — whether a dead
        * (constant) power-range reading would satisfy it live was NOT measured. */
       'pwr_startup:12:power_pct': 'power_range',             // steady 0.03 / 300 s
-      'pwr_startup:13:power_pct': 'power_range',             // >= 5.05 [SOLE]
-      'pwr_startup:14:mwe_output': 'mwe_output',             // > 8 [SOLE]
-      'pwr_startup:17:power_pct': 'power_range',             // >= 9.05 (owner ruling 2026-09-23, was 10.05)
-      'pwr_startup:17:mwe_output': 'mwe_output',             // ~ 10
+      /* #808 (2026-09-27-develop-d): the feed transfer is new step 13, so 13/14/17 moved to 14/15/18;
+       * 13:sg_level_pct is NEW and real -- a dead SG LEVEL gauge strands the transfer's 60 % fill row */
+      'pwr_startup:13:sg_level_pct': 'sg_level',             // >= 59.5 (the fill, before SG FEED AUTO)
+      'pwr_startup:14:power_pct': 'power_range',             // >= 5.05 [SOLE]
+      'pwr_startup:15:mwe_output': 'mwe_output',             // > 8 [SOLE]
+      'pwr_startup:18:power_pct': 'power_range',             // >= 9.05 (owner ruling 2026-09-23, was 10.05)
+      'pwr_startup:18:mwe_output': 'mwe_output',             // ~ 10
       /* pwr_raise_power [low_power] */
       'pwr_raise_power:2:mwe_output': 'mwe_output',          // > 8           dead 0.000 vs true 10.00 MWe
       'pwr_raise_power:4:mwe_output': 'mwe_output',          // > 28
@@ -4374,7 +4386,7 @@ if (!only && RUN_B) {
       /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B"): 10 and 12 now carry a rod `cmd` (not observation-kind);
        * the new 11, the level-off at 1.0e-8 A, has none */
       'pwr_startup:11': 'ir_amps,startup_rate_dpm,boron_ppm',
-      'pwr_startup:17': 'power_pct,mwe_output',               // his two rows, replacing plant_mode
+      'pwr_startup:18': 'power_pct,mwe_output',               // his two rows, replacing plant_mode (step 17 before #808)
       'pwr_raise_power:9': 'power_pct,mwe_output,boron_ppm,tavg_c',
       'pwr_cooldown:8': 'pressure_mpa',
       'pwr_cooldown:13': 'tavg_c',              // 13a/13b replace plant_mode (2026-09-25); 13b is the OFF lamp since workbench-f

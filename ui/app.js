@@ -4434,6 +4434,7 @@
     shutdown_bank_pct:      { label: 'SHUTDOWN ROD POSITION', u: '%' },
     shutdown_bank_steps:    { label: 'SHUTDOWN ROD POSITION', u: 'steps' },
     feed_coupled:           { bool: 'SG FEED is in AUTO' },
+    afw_pump_running:       { bool: 'AUX FEED WATER reads RUNNING' },   // #808: heatup 5, startup 3a/13c (13c grades it off)
     /* THE TRIP BLOCKS (#731). Resolved out of `rps_state.trip_blocks` by the instructor layer
      * (RPS_BLOCK_PARAMS there) — an operator lineup the board draws as a lit row, not an
      * instrument. The labels are the panel's own row captions, so the done-when line names what

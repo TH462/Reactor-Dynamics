@@ -1662,16 +1662,26 @@
          * for the player who arrives with it already lit the acceptance grades the LAMP, not the
          * press, so the step self-ticks with nothing to do. The hedge was covering a case the
          * grading already covered — which is what made it cuttable without changing behaviour. */
-        { text: 'Put steam generator level control in AUTO while the plant is quiet.',
-          why: 'The steam generator is the boiler: reactor water heats it on one side and steam comes off the other. Nothing is boiling yet, so the feed pumps start out stopped. Putting level control in AUTO now, while the plant is quiet, means it is already holding level when the water starts to boil later in the heatup.',
-          control: 'Feed Pumps', target: 'SG FEED reads AUTO, STEAM GENERATOR LEVEL near 65 %',
-          cmd: { action: 'set_feed_coupled', active: true }, hold: 5,
-          aim: 'Once the water in the steam generator starts to boil, its level starts to move, and AUTO has to be holding it by then.',
+        /* ⚠ AUX FEED, NOT MAIN FEED (#808 item A, 2026-09-27 — OWNER: "Yes" to the proposal "Mode 3
+         * runs on auxiliary feed, main feed pumps off; a new startup step at about 2 % starts main
+         * feed and secures auxiliary feed"). This step used to press SG FEED AUTO, starting both main
+         * feed pumps for a heatup whose steaming they cannot carry steadily. [sourced] Ginna UFSAR
+         * §10.5.3.1.2 (GIN-10 p.35): aux feed "is used to maintain steam generator level during
+         * startup because a certain loading is required prior to starting a main feedwater pump."
+         * AUX FEED WATER AUTO starts the motor-driven pump on the `afw_level` 33 % hold (the board
+         * press, coordinator's call 2026-09-27 within the owner's #591 item 2 wording "automatic
+         * mode and off" — pwr_board_wiring `imrmssr9ihq`). Graded on the card's RUNNING word
+         * (`afw_pump_running`, the instrument the word reads), not on the press. */
+        { text: 'Put auxiliary feed in AUTO to hold steam generator level.',
+          why: 'The steam generator is the boiler: reactor water heats it on one side and steam comes off the other. The big main feed pumps need a certain steam load before they can run steadily, so they stay stopped through the heatup and Hot Standby. The small auxiliary feed pump carries the steam generator until then.\n\nIn AUTO it holds STEAM GENERATOR LEVEL near 33 %. It lets water in only once level falls below 38 %, so while nothing is boiling it runs with its valve shut. Main feed takes over during the reactor startup, at about 1 % power.',
+          control: 'AFW', target: 'AUX FEED WATER reads RUNNING',
+          cmd: { action: 'set_afw', active: true, pump: 'mdafw' }, hold: 5,
+          aim: 'Once the water in the steam generator starts to boil, its level starts to fall, and auxiliary feed has to be holding it by then.',
           wait_speed: 1, speed_text: true,
-          accs: [{ p: 'feed_coupled', op: '>', v: 0,
-                   ask: 'Press AUTO on the SG FEED card and check AUTO is lit.',
-                   label: 'SG FEED AUTO lit' }],
-          hl: ['SG Feed AUTO'], hl_watch: ['Feed Pumps', 'SG Level'] },
+          accs: [{ p: 'afw_pump_running', op: '>', v: 0,
+                   ask: 'Press AUTO on the AUX FEED WATER card and check the card reads RUNNING.',
+                   label: 'AUX FEED WATER reads RUNNING' }],
+          hl: ['AFW — Auto'], hl_watch: ['AFW', 'SG Level'] },
         /* A CONFIRMATION, NOT AN ACTION *(OWNER, 2026-09-02 playtest, #608 item 1: "doesnt make
          * sense, dump setpoint starts in mode 5 at the setpoint the step asks for. the step then
          * says to leave the dump shut. There is no 'dump shut' button so this is confusing. it
@@ -2636,13 +2646,15 @@
          * which is the claim. */
         { text: 'Line up the steam generator (SG) before taking the reactor critical.',
           aim: 'Once the reactor makes power, its heat has to leave through the steam generator, or the reactor water heats up.',
-          why: 'The steam generator is where the reactor\'s heat leaves the primary loop. Reactor water flows through its tubes and boils the water around them. The steam goes to the turbine, or, while the turbine is off line, through the steam dump to the condenser.\n\nIn AUTO, the steam dump holds steam pressure at 1020 psi. At that pressure water boils at 547 °F, so holding the pressure also holds the reactor water at 547 °F. That is why AVG COOLANT TEMPERATURE sits still in Hot Standby with nobody touching it. Right now there is almost no heat to remove, and the dump barely cracks open.\n\nFeed AUTO puts back the water that leaves as steam, which holds SG level. Once the reactor goes critical and power rises, the dump opens further and feed follows it. Both need to be in AUTO before that happens.',
-          control: 'Feed Pumps', target: 'SG FEED AUTO lit (card reads HOLDING); STEAM DUMP AUTO lit, DUMP SETPOINT 1020 psi',
+          why: 'The steam generator is where the reactor\'s heat leaves the primary loop. Reactor water flows through its tubes and boils the water around them. The steam goes to the turbine, or, while the turbine is off line, through the steam dump to the condenser.\n\nIn AUTO, the steam dump holds steam pressure at 1020 psi. At that pressure water boils at 547 °F, so holding the pressure also holds the reactor water at 547 °F. That is why AVG COOLANT TEMPERATURE sits still in Hot Standby with nobody touching it. Right now there is almost no heat to remove, and the dump barely cracks open.\n\nAuxiliary feed puts back the water that leaves as steam, which holds SG level near 33 %. The main feed pumps stay stopped for now: they need more steam flow than a reactor this close to zero power makes. Auxiliary feed carries the steam generator up to about 1 % power, and main feed takes over there.',
+          control: 'AFW', target: 'AUX FEED WATER reads RUNNING; STEAM DUMP AUTO lit, DUMP SETPOINT 1020 psi',
           hold: 5,
           wait_speed: 1, speed_text: true,
-          accs: [{ p: 'feed_coupled', op: '>', v: 0,
-                   ask: 'Check SG FEED AUTO is lit and the card reads HOLDING. If AUTO is not lit, press AUTO.',
-                   label: 'SG FEED AUTO lit (card reads HOLDING)' },
+          /* #808: 3a grades AUX FEED, not main feed — Mode 3 runs on the motor-driven aux feed pump,
+           * main feed secured (the Hot Standby preset boots so; the heatup's step 5 starts it). */
+          accs: [{ p: 'afw_pump_running', op: '>', v: 0,
+                   ask: 'Check the AUX FEED WATER card reads RUNNING. If it does not, press AUTO on that card.',
+                   label: 'AUX FEED WATER reads RUNNING' },
                  { p: 'steam_dump_auto', op: '>', v: 0,
                    ask: 'Check STEAM DUMP AUTO is lit and DUMP SETPOINT reads 1020 psi. If AUTO is not lit, press AUTO.',
                    label: 'STEAM DUMP AUTO lit' },
@@ -2654,7 +2666,7 @@
            * and since the 2026-09-15 ring ruling `ui/app.js` will not pulse a step that does not.
            * This one genuinely asks ("If it does not, press AUTO"), so it declares it. */
           press_expected: true,
-          hl: ['SG Feed AUTO', 'Steam Dump — Auto'], hl_watch: ['SG Level', 'SG Pressure', 'Dump Setpoint'] },
+          hl: ['AFW — Auto', 'Steam Dump — Auto'], hl_watch: ['SG Level', 'SG Pressure', 'Dump Setpoint'] },
         /* THE INDICATION IS NAMED, AND SO IS ITS NOTATION *(OWNER, 2026-09-03, #619 item 19:
          * "It never says to look at the SOURCE RANGE indication for counts… SOURCE RANGE says
          * 7.0e2 but step says 700. a layman wont know this is equivalent")*. The counts are the
@@ -3679,6 +3691,52 @@
          * pre-#750 arrival almost exactly and re-creates the same envelope wall; 13 puts half a
          * point of margin over P-10 and lands the bank at 228, which is where the pre-#750 leg's
          * own climb step already put it. Do not shorten this without re-running the #731 trio. */
+        /* THE FEED TRANSFER AT THE POINT OF ADDING HEAT (#808 item A, 2026-09-27 — OWNER: "Yes" to
+         * "a new startup-walkthrough step at about 2 % starts main feed and secures auxiliary feed";
+         * the MAN-then-AUTO order and the ~1 % placement are the coordinator's call the same day).
+         *   [sourced] WTSM 19 p.19-8: the motor-driven AFW pump "can supply only about two percent of
+         *   rated feed flow"; p.19-9: "The power level is maintained at two percent while a main
+         *   feedwater pump is started and aligned". Ginna UFSAR §10.5.3.1.2 (GIN-10 p.35): "After
+         *   reactor power is at about 2% to 4% and a main feedwater pump has been started, the
+         *   system is shut down".
+         * WHY HERE, AT ~1 %, NOT 2 %: MEASURED (inbox/measure808, full stack), the motor-driven pump
+         * alone holds SG level at 0.9 % (throttle 27-30 %, level 33.5-33.8 %); a climb past ~3.8 %
+         * on it ran level to 20 % and tripped the reactor on SG lo-lo at ~4.9 %, twice. This step
+         * sits between the point of adding heat (~1 %) and the climb to 5 %, so no step asks for
+         * power the aux pump cannot carry before main feed is in.
+         * WHY MAN FIRST: SG FEED AUTO pressed straight onto the aux-feed level (33.7 %) drove feed to
+         * 53 % of rated against a 31-point error — Tavg 547.7 -> 538.0 degF in one plant-minute,
+         * power 0.9 -> 3.9 % with the rods still, level over-shooting to 72 %. MAN at 50 gpm (5 %)
+         * filled 33 -> 60 % in 7.2 plant-minutes with Tavg never below 547.5 degF and power <= 0.9 %;
+         * AUTO at 60 % then held 60.3-66.4 % with no transient (30 gpm: 15.1 min, same shape).
+         * The 60 % floor is the tile's own render band floor (digits 0: "60" draws from 59.5).
+         * ABOVE 2 %: a player who overshot arrives here past aux feed's reach (route overshoot_235: 7 %,
+         * SG lo-lo trip at this step after 27 plant-min on 50 gpm). MEASURED at 6.5 %: level already 22.9 %,
+         * 100 gpm filled to 60 % in 16.4 plant-min, Tavg never below 551.2 degF, AUTO then held 59.8-66.4 %. */
+        { text: 'Put main feed in service and secure auxiliary feed.',
+          aim: 'Auxiliary feed carries the steam generator only to about 1 % power, so main feed has to take over before power climbs any further.',
+          why: 'The auxiliary feed pump supplies only a few percent of full feed flow, and on this plant it holds steam generator level only to about 1 % power. So real crews pause the climb here, start a main feed pump, hand level control to it, and then secure auxiliary feed.\n\nMain feed goes in by hand first. Its AUTO controller aims for 65 %, and switched on 30 points below that it rushes cold water in: the reactor water cools about 10 °F in a minute and power jumps from 1 % to about 4 % with the rods still. A small manual flow brings level up to 60 % gently, and AUTO then has only 5 points left to close.',
+          control: 'Feed Pumps', target: 'SG FEED AUTO lit, STEAM GENERATOR LEVEL near 65 %; AUX FEED WATER reads STANDBY',
+          cmd: { action: 'set_feed_pump_speed', pct: 5 }, hold: 1200,
+          wait_hint: false, wait_speed: 10, wait_est_s: false,
+          accs_ordered: true,
+          accs: [{ p: 'sg_level_pct', op: '>=', v: 59.5,
+                   ask: 'Type 50 in the SG FEED gpm box. Leave the rods alone until STEAM GENERATOR LEVEL reads 60 % or more.',
+                   note: 'Typing 50 starts the main feed pumps in MAN at 50 gpm; about 7 plant-minutes. Type it rather than pressing MAN, which starts them at full speed. If REACTOR POWER reads above 2 %, type 100 instead: 50 gpm cannot keep up.',
+                   wait_speed: 10,
+                   label: 'STEAM GENERATOR LEVEL 60 % or more, main feed in MAN' },
+                 { cmd: { action: 'set_feed_coupled', active: true }, p: 'feed_coupled', op: '>', v: 0,
+                   ask: 'Press AUTO on the SG FEED card and check AUTO is lit.',
+                   wait_speed: 1,
+                   label: 'SG FEED AUTO lit' },
+                 { cmd: { action: 'set_afw', active: false }, p: 'afw_pump_running', op: '<', v: 0.5,
+                   ask: 'Press STOP on the AUX FEED WATER card and check the card reads STANDBY.',
+                   note: 'STANDBY means the pump is stopped but still starts by itself if steam generator level falls too low.',
+                   wait_speed: 1,
+                   label: 'AUX FEED WATER reads STANDBY' }],
+          press_expected: true,
+          hl: ['SG Feed Rate', 'SG Feed AUTO', 'AFW — Stop'],
+          hl_watch: ['SG Level', 'Feed Pumps', 'AFW', 'Reactor Power'] },
         { text: 'Raise power past 5 %, into Mode 1, At Power.',
           aim: 'Mode 1 begins at 5 %, and the steps after this one need power higher still.',
           why: 'Mode 1, At Power, begins at 5 % power. The warming water now holds power back, so each rod step buys a new steady level rather than a runaway, about half a percent of power per step.',

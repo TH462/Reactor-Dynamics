@@ -1671,7 +1671,7 @@
    * threw "no channel rcp_running"). true_state carries no such field. The RCP FLOW number beside
    * the lamp reads natural circulation, 3.9 % with the pumps stopped, so it cannot say OFF.
    * Boolean on the wire, normalised to 1/0. */
-  var STATUS_PARAMS = { rcp_running: 1 };
+  var STATUS_PARAMS = { rcp_running: 1, afw_pump_running: 1 };   /* afw: the AUX FEED card's RUNNING word (#808) */
   function statusParam(snapshot, p) {
     var v = snapshot && snapshot.instruments ? snapshot.instruments[p] : undefined;
     if (typeof v === 'boolean') return v ? 1 : 0;

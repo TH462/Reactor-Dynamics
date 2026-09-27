@@ -73,7 +73,7 @@ var LP_FORBID = ['pzr_pressure_high', 'high_tavg', 'heatup_rate_high', 'sg_press
 var ROUTES = {
   pwr_startup: {
     final: true,
-    entry_met: ['#1', '#2', '#3', '#17'],   // the card says these read true on arrival (final: the whole list)
+    entry_met: ['#1', '#2', '#3', '#18'],   // #808: the feed transfer is new step 13, so 13-17 moved to 14-18   // the card says these read true on arrival (final: the whole list)
     steps: {
       /* THE WINDOW IS WHERE THE COUNT TARGET LIES, NOT A STOP THAT GUARANTEES IT *(OWNER RULING,
        * 2026-09-24: "The way I see it the range means that the source range target will be within
@@ -102,9 +102,12 @@ var ROUTES = {
       '#10': { policy: 'approach', short: 3, hold_to: 0.5, min_rate: 0.3, max_rate: 1.0, dwell: 60, tap: 1, stated_max_min: 6 },   // note: "about 2 plant-minutes of rod motion" + the minute's read
       '#11': { policy: 'level', back: 12, read_s: 120, dead: 0.02 },
       '#12': { policy: 'tap_until', dwell: 60, stated_max_min: 35 },   // 12b note: "About 25 plant-minutes"
-      '#13': { policy: 'pulses', k: 2, rate_le: 0.105, until_p: 5.05, peak: true, stated_max_min: 8 },   // "tap WITHDRAW twice, wait for it to peak and fall back to +0.10 or less, repeat until above 5 %"
-      '#14': { policy: 'seq', cmds: [{ action: 'latch_turbine' }, { action: 'set_load_target', mwe: 10 }] },   // 14a, 14b; 14c's AUTO pressed when its row is live
-      '#15': { policy: 'block_when', p: 9.5, trip_id: 'ir_high', param: 'ir_high_blocked' },
+      /* #13 (#808) the feed transfer runs the DEFAULT policy: the step's own entry press (50 gpm in SG
+       * FEED RATE), then each row's press as it goes live — AUTO once level reads 60 %, then aux feed STOP */
+      '#13': { policy: 'feed_fill' },
+      '#14': { policy: 'pulses', k: 2, rate_le: 0.105, until_p: 5.05, peak: true, stated_max_min: 8 },   // "tap WITHDRAW twice, wait for it to peak and fall back to +0.10 or less, repeat until above 5 %"
+      '#15': { policy: 'seq', cmds: [{ action: 'latch_turbine' }, { action: 'set_load_target', mwe: 10 }] },   // 15a, 15b; 15c's AUTO pressed when its row is live
+      '#16': { policy: 'block_when', p: 9.5, trip_id: 'ir_high', param: 'ir_high_blocked' },
     },
     /* THE MISTAKES RIDE A BASE THAT COMPLETES. The literal first-stop route strands at step 8
      * (measured 2026-09-24: bank 195 settles at ~6,375 counts a second against the 6,950 row, SUR
@@ -144,19 +147,25 @@ var ROUTES = {
        * release at +0.3 settles under the band, so the card's trim tap re-moves the rods after 10a ticked */
       { id: 'clear_1m_10', kind: 'press early', at: '#10', set: { clear_first: true, hold_to: 0.3, dwell: 75 } },   // reads at 75 s: 10a's 60 s stop has latched first
       { id: 'rewind_mid_10', kind: 'rewind mid-step', at: '#10', set: { rewind_after: 60, hold_to: 0.3 } },
-      { id: 'load_before_latch', kind: 'wrong order', at: '#14', set: { policy: 'seq', cmds: [
+      { id: 'load_before_latch', kind: 'wrong order', at: '#15', set: { policy: 'seq', cmds: [
         { action: 'set_load_target', mwe: 10 }, { action: 'latch_turbine' }, { action: 'set_load_target', mwe: 10 }] } },
       // "hold CONTROL WITHDRAW for about 13 steps" read as "hold until REACTOR POWER passes 5 %":
       // power trails the rods, so the bank ends further out (pass 3: 19 steps from 209) and the
       // plant settles at LOAD 10 MWe with REACTOR POWER under 10 % — the route that made the old
       // 10.05 % step-17 floor unfinishable.
-      { id: 'hold_to_5pct', kind: 'overshoot', at: '#13', set: { policy: 'hold_until', p: 5.05, speed: 'slow' } },
+      { id: 'hold_to_5pct', kind: 'overshoot', at: '#14', set: { policy: 'hold_until', p: 5.05, speed: 'slow' } },
       // (hold_to_5pct is ALSO 13a's pulls taken back to back with no rate wait: measured identical,
       // bank 229, peak STARTUP RATE 0.46 DPM, completes — so no separate route, #807 item 11)
       // the second block pressed 20 plant-minutes late: step 17 is then graded on a plant that
       // has SETTLED at LOAD 10 MWe (layman pass 1's route to the 10.05 % strand, §2al)
-      { id: 'late_second_block', kind: 'press late', at: '#16', set: { delay_s: 1200 } },
+      { id: 'late_second_block', kind: 'press late', at: '#17', set: { delay_s: 1200 } },
       { id: 'rewind_mid_12', kind: 'rewind mid-step', at: '#12', set: { rewind_after: 300 } },
+      /* #808: SG FEED AUTO pressed straight from the aux-feed level, skipping 13a's manual fill -- the
+       * card's own warning ("switched on 30 points below that it rushes cold water in"). MEASURED on the
+       * harness: Tavg -9.8 degF in a minute, power 0.9 -> 3.9 % with rods still, no trip; the step must
+       * still end (13a ticks on the overshoot, 13c's STOP is the remaining press). */
+      { id: 'feed_auto_early', kind: 'press early', at: '#13', set: { policy: 'seq', cmds: [
+        { action: 'set_feed_coupled', active: true }, { action: 'set_afw', active: false }] } },
       // never_tap_11 RETIRED 2026-09-27-develop-a: its tap was optional on a climbing core; 12a's tap is the
       // step's action on a LEVEL core, so skipping it is not a mistake the card can recover from
     ],
@@ -184,8 +193,8 @@ var ROUTES = {
        * also how a plant cooled down by `pwr_cooldown` arrives (dump in AUTO, measured). The
        * `steps['#6']` policy above is the card's recovery. A first draft put this mistake AT step 6
        * and was hollow: 6a is met on entry there, Continue goes at 3 s, and the presses never ran. */
-      { id: 'dump_auto_early', kind: 'press early', at: 'cmd:set_feed_coupled', set: { policy: 'seq', cmds: [
-        { action: 'set_feed_coupled', active: true }, { action: 'set_steam_dump', mode: 'auto' }] } },
+      { id: 'dump_auto_early', kind: 'press early', at: 'cmd:set_afw', set: { policy: 'seq', cmds: [   // #808: step 5 is AUX FEED AUTO now
+        { action: 'set_afw', active: true, pump: 'mdafw' }, { action: 'set_steam_dump', mode: 'auto' }] } },
     ],
   },
   pwr_raise_power: {
@@ -396,7 +405,14 @@ function runChain(mutId) {
 var MUTATIONS = [
   { id: 'no_overtaken_10', route: 'overshoot_235', expect: 'invariant',
     why: 'step 10 (the approach) and 11 (the level-off) without their `overtaken` (the pull to bank 235 stranded the 2026-09-23 layman)',
-    mutate: function (P) { delete P.steps[9].overtaken; delete P.steps[10].overtaken; } },
+    /* #808: on the aux-feed Mode 3 lineup a plant stranded at 7 % TRIPS on SG lo-lo at ~28 plant-min
+     * (the aux pump carries ~1 %), and a named trip passes "invariant", so the strand went unseen.
+     * (The unmutated route also ends in a named SG lo-lo trip, at step 13, 27-30 plant-min: 8 % on the
+     * aux pump is past what 50 or 100 gpm refills; 150 gpm drove power to 14.5 % and stranded -- MEASURED.)
+     * The claim is about `overtaken`, not feed, so the mutant also puts main feed in AUTO from step 9 (an
+     * extra press row, pressed when live) and the plant can sit stranded where the gate sees it. */
+    mutate: function (P) { delete P.steps[9].overtaken; delete P.steps[10].overtaken;
+      P.steps[8].accs.push({ cmd: { action: 'set_feed_coupled', active: true }, label: 'mutant: main feed AUTO' }); } },
   /* 2026-09-27-develop-a: the SR-trip warning's timing. The approach as the OLD card walked it (a tap, five
    * plant-minutes, read) reaches the trip long after the rods start moving, past the note's "about 2" --
    * so the `sr_trip` check must go red on it. */
@@ -404,8 +420,8 @@ var MUTATIONS = [
     why: 'step 9 note claiming the trip "about 1 plant-minute" after the rods move (the check reads the card; measured 2.5)',
     mutate: function (P) { P.steps[8].accs[1].note = P.steps[8].accs[1].note.replace(/about \d+ plant-minutes/, 'about 1 plant-minute'); } },
   { id: 'step17_1005', route: 'late_second_block', expect: 'invariant',
-    why: 'step 17 floor back to 10.05 % (unfinishable at LOAD 10 MWe, owner ruling 2026-09-23)',
-    mutate: function (P) { P.steps[16].accs[0].v = 10.05; } },
+    why: 'step 18 (was 17 before #808) floor back to 10.05 % (unfinishable at LOAD 10 MWe, owner ruling 2026-09-23)',
+    mutate: function (P) { P.steps[17].accs[0].v = 10.05; } },
   { id: 'step12_rate_row', route: 'typical_pass3', expect: 'hollow',
     why: "step 12's steady row replaced by a rate-only row (RECONSTRUCTED: SUR < 0.1 — the old row ticked on entry)",
     /* RE-AIMED 2026-09-26 (#807): 9b now hands step 12 a plant at STARTUP RATE 0.12-0.14 (the +0.15
@@ -972,6 +988,10 @@ function runJob(legId, routeId, mutId, ctx) {
       var cmdRows = (st2.accs || []).map(function (e, i) { return e.cmd ? i : -1; }).filter(function (i) { return i >= 0; });
       if (cmdRows.every(function (i) { return rows2[i] && rows2[i].met; })) issueStepCmd(st2, el2);
       return;
+    }
+    if (P === 'feed_fill') {                             // #808 startup 13a as the card reads: 50 gpm, 100 above 2 %
+      if (!S.memo.ff) { S.memo.ff = true; S.acts++; press({ action: 'set_feed_pump_speed', pct: pv('power_pct') > 2 ? 10 : 5 }); }
+      pressRows(st2, c2); return;
     }
     if (P === 'seq') {                                   // an explicit sequence, one per tick
       var list = spec.cmds || (spec.order || []).map(function (i) { return (st2.accs[i] || {}).cmd; });
