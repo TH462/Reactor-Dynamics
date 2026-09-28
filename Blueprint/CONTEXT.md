@@ -417,6 +417,7 @@ snapshot = {
         "wall_time":         string,   // ISO 8601 UTC
         "plant_id":          string,   // "pwr" | "rbmk" | "bwr"
         "design_version":    string,   // "pre_chernobyl" | "post_chernobyl" | null
+        "timeline_epoch":    number,   // bumps on a reset / new initial condition / save-FILE load, never on Rewind (a new history vs the same one rewound; the 1/M plot clears on it)
     },
     "true_state":      { ... },        // plant-specific, §6.3 — TRUE physics (never the operator's primary reading)
     "instruments":     { ... },        // keyed by instrument_id — lagged, noisy, possibly-failed readings (what the UI shows, what trips/alarms read)
@@ -756,6 +757,7 @@ physical-quantity vocabulary.
     "governor_valve_pct": float,     // turbine admission valve % (engine-driven; read-only readout)
     "steam_dump_pct": float, "steam_dump_auto": bool,   // steam dump / turbine bypass (B2)
     "steam_dump_mode": string,       // PWR2 only: "tavg" | "pressure" | "off" — WHICH controller is in service (#629). steam_dump_auto is `!== "off"`; the two modes it collapses read the DUMP SETPOINT box differently (pressure holds it, tavg ignores it). Absent on the retired engine.
+    "steam_dump_ramping": bool,      // PWR2 only: true while pressure mode is still walking its working setpoint down to a lower typed DUMP SETPOINT (the 2026-09-28 automatic ramp, 60 °F/hr); the card's status word reads RAMPING, then PRESS on arrival. Absent on the retired engine.
     "pumps": [ { "id": string, "running": bool, "flow_pct": float } ],
     // RBMK-specific:
     "channel_flow_setpoint_pct": number, "eps_bypassed": bool,

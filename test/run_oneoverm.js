@@ -31,6 +31,12 @@
  *   node test/run_oneoverm.js
  *   node test/run_oneoverm.js --inject
  *   node test/run_oneoverm.js --inject-rewind
+ *
+ * Section 7 (2026-09-28 review): a save FILE load, a reset or a new initial condition is a
+ * DIFFERENT history, and the plot clears on it however the clock moved. --inject-history
+ * disables RD.OneOverMCore.newHistory (both copies) and section 7 must go red.
+ *
+ *   node test/run_oneoverm.js --inject-history
  */
 'use strict';
 var fs = require('fs');
@@ -39,6 +45,7 @@ var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 var PANEL = path.join(__dirname, '..', 'ui', 'panels', 'one_over_m.js');
 var INJECT = process.argv.indexOf('--inject') >= 0;
 var INJECT_RW = process.argv.indexOf('--inject-rewind') >= 0;
+var INJECT_HIST = process.argv.indexOf('--inject-history') >= 0;
 
 /* ---- the DOM stub -------------------------------------------------------------------
  * one_over_m.js touches: createElement + body.appendChild (build), innerHTML on the
@@ -117,6 +124,10 @@ if (INJECT_RW) {
     if (tbl.t == null || !(now < tbl.t - 1e-6)) return null;
     RD.OneOverMCore.clear(tbl); return 'cleared';
   };
+}
+if (INJECT_HIST) {
+  /* the pre-fix plant: nothing told a file load from a rewind — only the clock rule ran */
+  RD.OneOverMCore.newHistory = function () { return false; };
 }
 var BOLD = '\x1b[1m', RED = '\x1b[31m', GREEN = '\x1b[32m', RST = '\x1b[0m';
 var nPass = 0, nFail = 0;
@@ -406,14 +417,89 @@ head('6. a rewind drops only the points taken AFTER the checkpoint it lands on')
      nPts(w) + ' drawn, msg="' + msgOf(w) + '"');
 })();
 
+/* ============================================================ 7. a different history clears */
+/* 2026-09-28 review: the rewind rule above keeps points when the clock goes back, and nothing
+ * but the clock was read — so a save FILE taken later than every capture (a different plant
+ * entirely) kept the plot, and so would a reset whose baseline sat at t = 0. The service now
+ * publishes metadata.timeline_epoch, bumped by selectPlant and loadState and never by Rewind. */
+head('7. a save-file load or a reset is a new history: the plot clears (both copies)');
+(function () {
+  var r = mkWorld('hot_zero_power');
+  function gPts() { r.tick(1); var o = r.snap().instructor && r.snap().instructor.one_over_m; return o ? o.points : -1; }
+  function nPts(w) {
+    var svg = w.querySelector('svg');
+    return ((svg && svg.innerHTML) || '').split('class="oom-pt"').length - 1;
+  }
+  function withdraw(frac) {
+    r.cmd({ action: 'rod_nudge', group_id: 'control_rods',
+            steps: Math.round(frac * RD.pwr2.kinetics.RODS.max_steps), speed: 'fast' });
+    r.tick(90);
+  }
+  RD.OneOverM.init({ getSnap: function () { return r.snap(); }, cmd: r.cmd });
+  var w = winOf();
+  RD.OneOverM.tick(r.snap());
+  RD.OneOverM.open();
+  press(w, 'clear');
+  press(w, 'plot');
+  withdraw(0.15);
+  press(w, 'plot');
+  RD.OneOverM.tick(r.snap());
+  var tLast = r.snap().metadata.sim_time;
+  ck('precondition: two points on the plot, in both copies', nPts(w) === 2 && gPts() === 2,
+     nPts(w) + ' drawn, grader ' + gPts());
+
+  /* a save taken on ANOTHER plant, later in its own clock than every capture here */
+  var other = mkWorld('hot_zero_power');
+  other.tick(600);
+  var saved = JSON.parse(JSON.stringify(other.svc.saveState()));
+  var e0 = r.snap().metadata.timeline_epoch;
+  r.svc.loadState(saved);
+  r.tick(1);
+  RD.OneOverM.tick(r.snap());
+  ck('precondition: the loaded file is LATER than the last capture (the clock rule alone keeps the plot)',
+     r.snap().metadata.sim_time > tLast && r.snap().metadata.timeline_epoch !== e0,
+     'file t=' + r.snap().metadata.sim_time.toFixed(1) + ' s vs last capture ' + tLast.toFixed(1) +
+     ' s; epoch ' + e0 + ' -> ' + r.snap().metadata.timeline_epoch);
+  ck('a save-FILE load clears the plot (panel)', nPts(w) === 0, nPts(w) + ' drawn, msg="' + msgOf(w) + '"');
+  ck('...and the grader\'s copy (9a cannot grade against a plot of a plant that is gone)', gPts() === 0,
+     'grader ' + gPts());
+
+  /* a reset: same plant, same IC, a new history */
+  r.tick(5);
+  press(w, 'plot');
+  withdraw(0.10);
+  press(w, 'plot');
+  RD.OneOverM.tick(r.snap());
+  var pre = nPts(w), preG = gPts();
+  r.cmd({ action: 'reset', plant_id: 'pwr2', initial_state: 'hot_zero_power' });
+  r.tick(1);
+  RD.OneOverM.tick(r.snap());
+  ck('a reset clears the plot (both copies)', pre === 2 && preG === 2 && nPts(w) === 0 && gPts() === 0,
+     'before ' + pre + '/' + preG + ', after ' + nPts(w) + '/' + gPts());
+
+  /* and Rewind is NOT a new history: the epoch holds across one */
+  var e1 = r.snap().metadata.timeline_epoch;
+  var clock = 1e6;
+  r.svc._now = function () { return clock; };
+  r.svc._lastSandboxCpMs = null;
+  r.tick(1); clock += 20001; r.tick(1); r.tick(5);
+  var tPre = r.snap().metadata.sim_time;
+  var rw = r.cmd({ action: 'rewind', steps: 1, exact: true });
+  var rsn = rw && rw.metadata ? rw : r.svc.assembleSnapshot();
+  var e2 = rsn.metadata.timeline_epoch;
+  ck('a Rewind leaves timeline_epoch where it was (only the clock rule applies to it)',
+     e1 === e2 && rsn.metadata.sim_time < tPre - 1,
+     'epoch ' + e1 + ' -> ' + e2 + ', clock ' + tPre.toFixed(1) + ' -> ' + rsn.metadata.sim_time.toFixed(1) + ' s');
+})();
+
 /* ============================================================ summary */
-var expectRed = INJECT || INJECT_RW;
+var expectRed = INJECT || INJECT_RW || INJECT_HIST;
 console.log('\n' + BOLD + (nFail === 0 ? GREEN + 'PASS' : RED + 'FAIL') + RST +
   '  ' + nPass + ' passed, ' + nFail + ' failed, ' + (nPass + nFail) + ' checks');
-if (INJECT || INJECT_RW) {
+if (INJECT || INJECT_RW || INJECT_HIST) {
   var caught = nFail > 0;
   console.log((caught ? GREEN + 'INJECTION CAUGHT' : RED + 'INJECTION MISSED') + RST +
-    ' — the ' + (INJECT_RW ? 'reverted clear-on-rewind' : 'reverted plant-id guards') + ' ' + (caught ? 'reddened ' + nFail + ' check(s).' : 'changed NOTHING. The gate is hollow.'));
+    ' — the ' + (INJECT_HIST ? 'disabled new-history clear' : INJECT_RW ? 'reverted clear-on-rewind' : 'reverted plant-id guards') + ' ' + (caught ? 'reddened ' + nFail + ' check(s).' : 'changed NOTHING. The gate is hollow.'));
   process.exit(caught ? 0 : 1);
 }
 process.exit(nFail === 0 ? 0 : 1);

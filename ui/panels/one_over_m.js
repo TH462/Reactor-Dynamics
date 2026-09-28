@@ -16,8 +16,9 @@
  *      side, overstating your margin to criticality).
  *
  * Session tool by design: the table is the operator's scratchpad, not plant
- * state — it is NOT in save files, and it clears itself on plant change,
- * reset, or a rewind — which drops ONLY the points captured after the moment
+ * state — it is NOT in save files, and it clears itself on plant change, a
+ * reset, a new initial condition or a save-file load (RD.OneOverMCore.newHistory),
+ * and on a rewind — which drops ONLY the points captured after the moment
  * it lands on (RD.OneOverMCore.rewindTo). Works while paused (reads the latest
  * snapshot).
  *
@@ -504,7 +505,14 @@
       if (plant !== lastPlant) {
         lastPlant = plant;
         if (tbl.points.length) clearAll('plant changed — plot cleared');
+        tbl.epoch = s.metadata.timeline_epoch;
         if (win && !supported(s)) win.hidden = true;
+        return;
+      }
+      /* a save FILE loaded, a reset or a new initial condition is a different history, not the
+       * same one rewound: clear it all (RD.OneOverMCore.newHistory) */
+      if (core().newHistory(tbl, s.metadata)) {
+        if (tbl.points.length) clearAll('new plant history — plot cleared');
         return;
       }
       /* a rewind drops only the points captured AFTER the moment it lands on (the rule and the

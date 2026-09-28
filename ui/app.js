@@ -4469,7 +4469,7 @@
     steam_dump_auto:        { bool: 'AUTO is lit on the STEAM DUMP card' },
     /* the dump's MODE, as the card's status word reads it (OWNER RULING 2026-09-24, "Grade the
      * mode") — derived by the instructor layer from `control_state.steam_dump_mode` */
-    steam_dump_press_mode:  { bool: 'STEAM DUMP status reads PRESS' },
+    steam_dump_press_mode:  { bool: 'STEAM DUMP status reads STM PRESS or RAMPING' },
     steam_dump_tavg_mode:   { bool: 'STEAM DUMP status reads TAVG' },
     /* the BORON card's status word (#807 item 5, pwr_heatup 16d) — derived by the instructor layer
      * from `control_state.boron_adjust` with the tile's own test */

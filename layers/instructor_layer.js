@@ -263,8 +263,9 @@
    *
    * THE TABLE IS SESSION SCRATCH, NOT PLANT STATE, and is deliberately NOT in save files — the
    * panel's own design (its header). The grader's copy therefore follows the panel's three
-   * clearing rules exactly, so the two cannot drift: plant change, the clock going back (Rewind,
-   * a restored save, a reset — `rewindTo` below), and the Clear button (`plot_1m_clear`).
+   * clearing rules exactly, so the two cannot drift: plant change, a NEW HISTORY (a save-file
+   * load, a reset, a new initial condition — `newHistory` below), the clock going back on a
+   * Rewind (`rewindTo` below), and the Clear button (`plot_1m_clear`).
    *
    * The fit window (3, the trailing points) is an OWNER RULING recorded beside FIT_WINDOW in
    * ui/panels/one_over_m.js, with the measurement that settled it. Do not re-open it here. */
@@ -343,6 +344,18 @@
       tbl.t = kept.reduce(function (m, p) { return Math.max(m, p.t); }, -Infinity);
       return dropped;
     }
+    /* A DIFFERENT HISTORY, not the same one rewound (2026-09-28 review): a save FILE loaded, a
+     * reset, a new initial condition — `metadata.timeline_epoch` moves on those and never on
+     * Rewind. `rewindTo` alone cannot see it: a file saved LATER than every capture reads as
+     * "the clock went forward" and kept a plot of a plant that is gone. Records the epoch; true
+     * when it moved since the last look (never on the first look, which has nothing to clear). */
+    function newHistory(tbl, meta) {
+      var ep = meta ? meta.timeline_epoch : undefined;
+      if (ep === undefined) return false;
+      var moved = tbl.epoch !== undefined && tbl.epoch !== null && ep !== tbl.epoch;
+      tbl.epoch = ep;
+      return moved;
+    }
     /* Least squares over the TRAILING window -> { a, b, x0 } for y = a + b·x. */
     function fit(points) {
       if (!points || points.length < 2) return null;
@@ -370,6 +383,7 @@
     }
     return { FIT_WINDOW: FIT_WINDOW, controlGroup: controlGroup, supported: supported,
              fullScale: fullScale, sample: sample, newTable: newTable, clear: clear, add: add, rewindTo: rewindTo,
+             newHistory: newHistory,
              fit: fit, predict: predict, predictSteps: predictSteps };
   })();
   RD.OneOverMCore = OneOverMCore;
@@ -383,7 +397,7 @@
     this._clear();
     /* The 1/M table the player plotted (RD.OneOverMCore). Outside `_clear` ON PURPOSE: a
      * loadState (Rewind, a file load) must not wipe it any more than it wipes the panel's — the
-     * clock rule in `step` does, exactly when the panel's does. */
+     * clock rule and the new-history rule (`_oneOverMTick`) do, exactly when the panel's do. */
     this.oneOverM = OneOverMCore.newTable();
   }
 
@@ -534,7 +548,8 @@
   InstructorLayer.prototype._oneOverMTick = function (snapshot) {
     var tb = this.oneOverM, m = snapshot && snapshot.metadata;
     if (!tb || !m) return;
-    if (m.plant_id !== tb.plant) { tb.plant = m.plant_id; OneOverMCore.clear(tb); return; }
+    if (m.plant_id !== tb.plant) { tb.plant = m.plant_id; tb.epoch = m.timeline_epoch; OneOverMCore.clear(tb); return; }
+    if (OneOverMCore.newHistory(tb, m)) { OneOverMCore.clear(tb); return; }
     OneOverMCore.rewindTo(tb, m.sim_time);
   };
   /* The prediction the panel prints right now, in steps, or null when it prints none. */

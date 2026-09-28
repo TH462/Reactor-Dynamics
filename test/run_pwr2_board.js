@@ -857,6 +857,29 @@ function runSuite(quietRec) {
   q('steam dump CLOSED/AUTO round-trips through the dump_mode door (was refused)',
     dumpOff && w.snap().control_state.steam_dump_auto === true,
     'closed ' + dumpOff + ' -> auto ' + w.snap().control_state.steam_dump_auto);
+  /* RAMPING (OWNER RULING 2026-09-28: "Does the steam dump have a status indication on it? If
+   * so, we could just have that say ramping."). The card's word says the controller is still
+   * walking a lowered DUMP SETPOINT down (pwr2_dumpctl RAMP), and STM PRESS once it has arrived —
+   * read off the board driver over a full stack, so a dark wire in either half reddens. The
+   * arrival leg types a target 0.002 MPa (0.3 psi) under the working setpoint: about 2 plant-s
+   * of walk at 60 degF/hr, arrived well inside the 30 s ridden. */
+  (function () {
+    var DS = { id: 'imrppq5r7kw' };
+    function word(sn) { var r = D.valueFor(DS, sn); return r && r.text !== undefined ? String(r.text) : String(r); }
+    var wR = mkWorld('hot_zero_power');
+    var w0 = word(wR.snap());
+    wR.cmd({ action: 'set_steam_dump_setpoint', mpa: 0.8274 }); wR.tick(30);
+    var wMid = word(wR.snap()), flagMid = wR.snap().control_state.steam_dump_ramping;
+    var work = wR.svc.engine.eng.dc.pressure_setpoint_mpa;
+    wR.cmd({ action: 'set_steam_dump_setpoint', mpa: work - 0.002 }); wR.tick(30);
+    var wEnd = word(wR.snap()), flagEnd = wR.snap().control_state.steam_dump_ramping;
+    bindWorld(w);
+    q('the steam dump status word reads RAMPING while a lowered DUMP SETPOINT is being walked ' +
+      'down, and STM PRESS once the walk arrives (2026-09-28 rulings)',
+      w0 === 'STM PRESS' && wMid === 'RAMPING' && flagMid === true && wEnd === 'STM PRESS' && flagEnd === false,
+      'hold "' + w0 + '" -> 120 psi typed, +30 s "' + wMid + '" (working ' +
+      (work * 145.038).toFixed(0) + ' psia) -> arrived "' + wEnd + '"');
+  })();
   w.cmd({ action: 'set_charging_pump', running: false }); w.tick(1);
   q('charging OFF lands and the lamp field follows (was refused; field was a constant)',
     w.snap().control_state.charging_pump_running === false,
@@ -1641,6 +1664,16 @@ var MUTS = [
   /* the WORD, mutated separately from the LAMPS, for the reason every paired mutation in this
    * file is separate: the lamps can go dark correctly and leave the player with no way to know
    * WHY, which is the state the PZR LTDN ISOL annunciator alone already produced. */
+  ['the plant stops publishing steam_dump_ramping (the word reads STM PRESS through a whole walk)',
+   SHPATH, SHSRC,
+   "      steam_dump_ramping: dumpMode(e) === 'pressure' && !!e.dc &&",
+   "      steam_dump_ramping: false && !!e.dc &&"],
+  ['the dump status word ignores the walk (RAMPING never drawn)', WIRING_PATH, WSRC,
+   "return CS(s).steam_dump_ramping ? 'RAMPING' : 'STM PRESS';",
+   "return 'STM PRESS';"],
+  ['the ramping flag never clears (RAMPING stays up after the walk arrives)', SHPATH, SHSRC,
+   "          ? e.dcDrivers.pressure_setpoint_mpa : e.dc.pressure_target_mpa) > 1e-6,",
+   "          ? e.dcDrivers.pressure_setpoint_mpa : e.dc.pressure_target_mpa) > -1,"],
   ['the status word stops reading the isolate (dark lamps with nothing saying why)',
    WIRING_PATH, WSRC,
    "    if (ltdnIsolated(s)) return { text: 'ISOLATED', color: BD_WARN };",

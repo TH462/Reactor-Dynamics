@@ -30,6 +30,12 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Steam dump status word: STM PRESS (was PRESS) and a new RAMPING** while steam-pressure mode walks a lowered DUMP SETPOINT down (OWNER RULINGS 2026-09-28, "...we could just have that say ramping." / "Let's use STM PRESS"). New `control_state.steam_dump_ramping` (PWR2); the word drops to 13 px / right edge 1647 so STM PRESS clears the card title (was a 4.3 px overprint, 8.6 px under DejaVu). Walkthrough, inspect-card and manual text follow.
+- **The automatic cooldown ramp walks ANY target below the 1020 psia (7.03 MPa) no-load anchor from the steam header** on selecting pressure mode; the 15 °F (8.3 °C) gap exemption let a 908.6 psia target pressed into AUTO at 1027 psia land in one step (Tavg 548.0 → 534.5 °F in 33 s, about −1470 °F/hr). Post-trip AUTO (target = anchor) still lands at once.
+- **1/M plot clears on a save-FILE load, a reset or a new initial condition** (new `metadata.timeline_epoch`); Rewind keeps the points before the moment it lands on, as before.
+- **Cooldown walkthrough text:** step 4's stale "small, spaced steps" line cut; step 16's reason rewritten (a low setpoint left in the box makes the next heatup's AUTO press walk the plant back down at ~60 °F/hr — measured — not trip it); 11b ticks when SUBCOOLING MARGIN first reads 32 (graded `< 32.5 °F`).
+
 ## [Alpha 1.8.0-rc10] — 2026-09-28
 
 ### Changed

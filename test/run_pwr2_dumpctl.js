@@ -242,9 +242,24 @@ function runSuite(RD, rec, quiet) {
   var dcG = DC.createDumpCtl({ mode: 'tavg' });
   var selG = DC.stepDumpCtl(dcG, DT, { mode: 'pressure', steam_pressure_mpa: 7.58, load_frac: 0,
     turbine_tripped: true, condenser_available: true });
-  ckT('...but UNDER the ' + DC.RAMP.entry_gap_f + ' degF entry gap the target lands at once (the post-trip ' +
-      'AUTO press: a header as high as the 7.58 MPa safety lift, anchor 7.03 - measured 7.50 on pwr_shutdown)',
+  ckT('...but a target AT the ' + DC.RAMP.anchor_mpa + ' MPa no-load anchor lands at once (the post-trip ' +
+      'AUTO press: a header as high as the 7.58 MPa safety lift - measured 7.50 on pwr_shutdown)',
       selG.pressure_setpoint_mpa === 7.03, 'working ' + selG.pressure_setpoint_mpa + ' MPa');
+  /* A SMALL LOWERED TARGET IS STILL A LOWERED TARGET (2026-09-28 review). The rule before this
+   * exempted any gap under 15 degF of Tsat; 908.6 psia (6.2646 MPa) typed under a 1027 psia
+   * (7.08 MPa) header is 14 degF, and MEASURED full stack it landed in one step: Tavg -13.5 degF
+   * in 33 s. Below the anchor the walk starts from the header whatever the gap. */
+  var dcS = DC.createDumpCtl({ mode: 'off' });
+  DC.stepDumpCtl(dcS, DT, { pressure_setpoint_mpa: 6.2646, steam_pressure_mpa: 7.08, load_frac: 0,
+    turbine_tripped: true, condenser_available: true });
+  var gapF = (W.T_sat(7.08) - W.T_sat(6.2646)) * 1.8;
+  var selS = DC.stepDumpCtl(dcS, DT, { mode: 'pressure', steam_pressure_mpa: 7.08, load_frac: 0,
+    turbine_tripped: true, condenser_available: true });
+  ckT('...and a target BELOW the anchor is walked from the header even under a ' + gapF.toFixed(1) +
+      ' degF gap (908.6 psia typed, AUTO at 1027 psia)',
+      Math.abs(selS.pressure_setpoint_mpa - 7.08) < 0.01 && selS.dump_demand < 0.05 && gapF < 15,
+      'working ' + selS.pressure_setpoint_mpa.toFixed(3) + ' MPa, demand ' + selS.dump_demand.toFixed(3) +
+      ' (landing at once would read ~1)');
 
   head('C-9 AND THE INDICATION  [a demand with no path must stay visible]');
   var dcD = DC.createDumpCtl({});
@@ -315,11 +330,15 @@ var MUTATIONS = [
    '!(tgt < dc.pressure_setpoint_mpa)) {\n      dc.pressure_setpoint_mpa = tgt;',
    '!(tgt < dc.pressure_setpoint_mpa)) {\n      dc.pressure_setpoint_mpa = Math.min(tgt, dc.pressure_setpoint_mpa + 0.001);'],
   ['the pressure-mode selection edge is deleted (select under a low target = the whole step)',
-   '> RAMP.entry_gap_f) {',
-   '&& false) {'],
-  ['the entry gap is deleted (the post-trip AUTO press walks a few psi for minutes)',
-   '> RAMP.entry_gap_f) {',
-   '> 0) {'],
+   'tgt < RAMP.anchor_mpa && drivers.steam_pressure_mpa > tgt) {',
+   'false) {'],
+  ['the anchor exemption is deleted (the post-trip AUTO press walks a few psi for minutes)',
+   'tgt < RAMP.anchor_mpa && drivers.steam_pressure_mpa > tgt) {',
+   'drivers.steam_pressure_mpa > tgt) {'],
+  /* the 2026-09-28 review: the rule this replaced, put back — a 14 degF lowered target lands */
+  ['the 15 degF entry gap is back (a small lowered target lands in one step)',
+   'tgt < RAMP.anchor_mpa && drivers.steam_pressure_mpa > tgt) {',
+   '(RD.water.T_sat(drivers.steam_pressure_mpa) - RD.water.T_sat(tgt)) * 1.8 > 15) {'],
   ['arming is ignored (controller output goes straight to the valves)',
    'dump_demand: armed && c9 ? demand : 0,',
    'dump_demand: c9 ? demand : 0,']

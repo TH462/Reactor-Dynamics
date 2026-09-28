@@ -981,18 +981,20 @@
       'to atmosphere.', CI, '12.3'),
     imrop5ouw7h: e('Steam Dump',
       'Dumps steam straight to the condenser, bypassing the turbine — the secondary heat sink.',
-      'AUTO holds SG pressure at the dump setpoint; OPEN and CLOSE take it manual. The dump is what ' +
+      'AUTO holds SG pressure at the dump setpoint; CLOSE shuts it. The dump is what ' +
       'carries the plant after a turbine trip, and lowering its setpoint is how you cool the primary ' +
       'through the steam generator on a controlled cooldown.', CI, '12.3'),
     imrppqg6mcc: e('AUTO (steam dump)',
       'Dump follows Steam Generator (SG) pressure toward the dump setpoint.',
       'At power the generator sits about 825 psi (5.69 MPa) against a setpoint near 1020 psi (7.03 MPa), which is why the ' +
       'dump is shut: there is nothing to relieve. Drop the setpoint below actual pressure and it ' +
-      'opens.', CI, '12.3'),
+      'opens. A lowered setpoint is a target: the dump walks the pressure it holds down to it at ' +
+      'about 60 °F/hr (33.3 °C/hr) of cooling, never in one jump; the status reads RAMPING until it ' +
+      'arrives.', CI, '12.3'),
     imrppquqg16: e('OPEN (steam dump)',
-      'Opens the dump manually.',
-      'Fast secondary heat removal, at the cost of dumping steam that is not making electricity. It ' +
-      'cools the primary — watch Tavg and the cooldown rate.', CI, '12.3'),
+      'Manual full-open. This plant has no manual lever: the button stays dark.',
+      'The dump runs in AUTO or CLOSE. To cool the primary through the dump, lower the dump ' +
+      'setpoint with the dump in AUTO — watch Tavg and the cooldown rate.', CI, '12.3'),
     imrppqxggbj: e('CLOSE (steam dump)',
       'Shuts the dump manually.',
       'Stops secondary heat removal through the bypass path. On a plant with the turbine offline, ' +
@@ -1000,12 +1002,16 @@
     ims31tq7mgc: e('Dump Setpoint',
       'The Steam Generator (SG) pressure the AUTO dump holds.',
       'The cooldown handle: lower it and the dump vents the generator, pulling primary temperature ' +
-      'down through the tubes; raise it back toward the no-load point on a heatup. The engine clamps ' +
-      'the entry into the SG safety band.', MT, 'PWR-T21'),
+      'down through the tubes; raise it back toward the no-load point on a heatup. A lowered value ' +
+      'is a target the dump approaches at about 60 °F/hr (33.3 °C/hr) of cooling; a raised one takes ' +
+      'effect at once. The engine clamps the entry into the SG safety band.', MT, 'PWR-T21'),
     imrppq5r7kw: e('Dump Status',
-      'NORMAL, DUMPING or MANUAL.',
-      'NORMAL means the dump is in automatic and has nothing to do. DUMPING means it is passing steam. ' +
-      'MANUAL means you own it, whatever pressure does.', CI, '12.3'),
+      'STM PRESS, RAMPING, TAVG or MANUAL.',
+      'STM PRESS means AUTO is holding steam pressure at the dump setpoint (turbine off). RAMPING means ' +
+      'AUTO is still walking steam pressure down to a lowered setpoint, about 60 °F/hr (33.3 °C/hr) ' +
+      'of cooling, and reads STM PRESS once it arrives. TAVG means AUTO ' +
+      'is following coolant temperature (turbine on line). MANUAL means CLOSE is pressed and the dump ' +
+      'stays shut, whatever pressure does.', CI, '12.3'),
     imrprmm4u5q: e('Steam Dump Valve',
       'The bypass valve itself — steam from the main line to the condenser.',
       'Position follows the dump command. Its schematic fills and animates only when it is actually ' +

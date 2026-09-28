@@ -1140,7 +1140,7 @@
          * synthetic stand-in (same discipline as the pwr_startup check above). */
         var proc2 = (RD.MANUAL_PROCEDURES.pwr2 || []).filter(function (p) { return p.id === 'pwr_cooldown'; })[0];
         var step2 = proc2 && proc2.steps && proc2.steps[2];
-        ck('glow: pwr_cooldown step 2 still carries lo_press on accs[0] and si_trip on accs[1] (the fixture below is real)',
+        ck('glow: pwr_cooldown step 3 (index 2) still carries lo_press on accs[0] and si_trip on accs[1] (the fixture below is real)',
           !!(step2 && step2.accs && step2.accs[0] && step2.accs[0].cmd && step2.accs[0].cmd.trip_id === 'lo_press' &&
              step2.accs[1] && step2.accs[1].cmd && step2.accs[1].cmd.trip_id === 'si_trip'),
           step2 ? JSON.stringify((step2.accs || []).map(function (a) { return a.cmd && a.cmd.trip_id; })) : 'no step');
@@ -1167,7 +1167,7 @@
         }
 
         /* Case 1: accs[0] (lo_press) unmet, neither row blocked yet. The loop returns on the
-         * first unmet trip-block row, so si_trit must not glow — this is the exact miss the
+         * first unmet trip-block row, so si_trip must not glow — this is the exact miss the
          * owner reported ("only lo_press ever lit"). */
         renderCooldownStep([{ met: false }], false, false);
         ck('glow: cooldown step 3, accs[0] unmet — lo_press glows and si_trip does not',
@@ -1180,6 +1180,13 @@
         renderCooldownStep([{ met: true }, { met: false }], true, false);
         ck('glow: cooldown step 3, accs[0] met / accs[1] unmet — si_trip glows (pulsing) and lo_press keeps its ring',
           rowsGlowing() === 'lo_press,si_trip' && rowsSettled() === 'lo_press',
+          'glowing: [' + rowsGlowing() + '] settled: [' + rowsSettled() + ']');
+
+        /* Case 3: both rows met (both blocked and verified). Neither pulses; both keep the
+         * steady ring (glow + done) until the step advances — the ALL-MET end of the walk. */
+        renderCooldownStep([{ met: true }, { met: true }], true, true);
+        ck('glow: cooldown step 3, both rows met — lo_press and si_trip both keep a steady ring',
+          rowsGlowing() === 'lo_press,si_trip' && rowsSettled() === 'lo_press,si_trip',
           'glowing: [' + rowsGlowing() + '] settled: [' + rowsSettled() + ']');
 
         RD.PwrBoard.render(svc.assembleSnapshot());
@@ -1908,6 +1915,65 @@
           val.b <= card.b - 1 && val.l >= card.l - 1 && val.r <= card.r + 1,
           'card ' + box(card) + '  word ' + box(val));
         if (vEl && vEl.firstChild && save != null) vEl.firstChild.nodeValue = save;
+      })();
+      /* THE STEAM DUMP STATUS WORD, AT ITS WIDEST (2026-09-28 rulings: RAMPING while the dump
+       * walks a lowered setpoint down, "Let's use STM PRESS" for the old PRESS). #630's lesson:
+       * this harness drives the RETIRED engine, which never draws RAMPING or STM PRESS, so the
+       * check plants every word the card can show and asserts the invariant at each one — the
+       * word (right-anchored in the card's top-right corner) must not reach the STEAM DUMP card
+       * title and must stay inside the card. TEXT extents via a Range, not the tiles' boxes: the
+       * title div spans the card, its glyphs do not.
+       *
+       * MEASURED UNDER TWO FONT STACKS, because the geometry is a claim about CI too (the #713
+       * trap: a local bound dates the font stack — 179 px on Windows was 206 on CI). CI renders
+       * with DejaVu (ubuntu + install-deps chromium), so the second pass forces the DejaVu face
+       * of each element's own family onto the title and the word. Where DejaVu is not
+       * installed the browser falls back, and the pass repeats the first — never a false red. */
+      (function () {
+        var st = document.querySelector('.pwr-board-stage');
+        var sr = st.getBoundingClientRect(), sc = sr.width / (st.offsetWidth || 1);
+        function stage(r) {
+          return { l: (r.left - sr.left) / sc, t: (r.top - sr.top) / sc,
+                   r: (r.right - sr.left) / sc, b: (r.bottom - sr.top) / sc };
+        }
+        function textRect(el) {
+          if (!el) return null;
+          var rg = document.createRange(); rg.selectNodeContents(el);
+          return stage(rg.getBoundingClientRect());
+        }
+        var cardEl = document.querySelector('[data-item="imrop5ouw7h"]');
+        var titleEl = cardEl && cardEl.querySelector('.bd-box-title');
+        var wEl = document.querySelector('[data-item="imrppq5r7kw"]');
+        var saveW = wEl && wEl.firstChild ? wEl.firstChild.nodeValue : null;
+        var card = cardEl ? stage(cardEl.getBoundingClientRect()) : null;
+        var worst = null, bad = [], title = null;
+        function dejavu(el) {
+          var f = getComputedStyle(el).fontFamily;
+          return /mono|consolas|courier/i.test(f) ? '"DejaVu Sans Mono", monospace' : '"DejaVu Sans", sans-serif';
+        }
+        [false, true].forEach(function (ci) {
+          var fT = titleEl ? titleEl.style.fontFamily : '', fW = wEl ? wEl.style.fontFamily : '';
+          if (ci && titleEl && wEl) { titleEl.style.fontFamily = dejavu(titleEl); wEl.style.fontFamily = dejavu(wEl); }
+          title = textRect(titleEl);
+          ['STM PRESS', 'RAMPING', 'TAVG', 'MANUAL', 'NORMAL', 'DUMPING'].forEach(function (wd) {
+            if (!wEl || !wEl.firstChild) { bad.push(wd + ' (no tile)'); return; }
+            wEl.firstChild.nodeValue = wd;
+            var r = textRect(wEl);
+            var gap = r && title ? r.l - title.r : -1e9;
+            var inCard = !!r && !!card && r.l >= card.l - 1 && r.r <= card.r + 1 &&
+                         r.t >= card.t - 1 && r.b <= card.b + 1;
+            var tag = wd + (ci ? ' [DejaVu]' : '');
+            if (worst === null || gap < worst.gap) worst = { wd: tag, gap: gap };
+            if (!(gap > 2) || !inCard) bad.push(tag + ' gap ' + gap.toFixed(1) + ' px' + (inCard ? '' : ' OUTSIDE CARD'));
+          });
+          if (titleEl) titleEl.style.fontFamily = fT;
+          if (wEl) wEl.style.fontFamily = fW;
+        });
+        if (wEl && wEl.firstChild && saveW != null) wEl.firstChild.nodeValue = saveW;
+        ck('geom: steam dump status word clears the STEAM DUMP title and stays in its card at every word it can show',
+          !!title && !!card && bad.length === 0,
+          'narrowest gap ' + (worst ? worst.wd + ' ' + worst.gap.toFixed(1) + ' px' : 'n/a') +
+          (bad.length ? '  FAIL: ' + bad.join(', ') : ''));
       })();
       var rpmTxt = (tileText('imrppee04aj').match(/-?\d+/) || ['NaN'])[0];
       ck('readout: Mode 5 turbine rpm reads ~0 (was pinned 1800, #235)',

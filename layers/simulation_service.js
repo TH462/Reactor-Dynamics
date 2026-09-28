@@ -271,6 +271,11 @@
     this.simTime = 0;
     this._sinceEval = 0;  // the protection accumulator rides the timeline (#588)
     this._fineBuf = [];   // timeline moved — stale sub-samples must not splice in
+    /* A NEW HISTORY, as opposed to the same history rewound (2026-09-28 review of the 1/M rewind
+     * rule). Bumped by selectPlant (a reset, a new initial condition) and by a save-FILE load —
+     * never by Rewind. Published as metadata.timeline_epoch so session scratch that outlives a
+     * rewind (the 1/M plot) can still tell "the clock went back" from "a different plant". */
+    this.timelineEpoch = 0;
     this.timeAcceleration = 1.0;
     // True while the CURRENT acceleration was requested by a scenario beat (an
     // authored fast-forward), false once the user touches the speed control. A
@@ -355,6 +360,7 @@
     this.simTime = 0;
     this._sinceEval = 0;  // the protection accumulator rides the timeline (#588)
     this._fineBuf = [];   // timeline moved — stale sub-samples must not splice in
+    this.timelineEpoch = (this.timelineEpoch || 0) + 1;   // a new history (constructor note)
     this._prevTrueState = null;
     this._prevAlarms = null;
     this._prevScrammed = false;
@@ -940,6 +946,7 @@
         wall_time: new Date().toISOString(),     // display-only; never in physics (§9)
         plant_id: this.activePlantId,
         design_version: this.activeDesignVersion,
+        timeline_epoch: this.timelineEpoch,      // bumps on reset / IC / file load, never on Rewind
       },
       true_state: this.engine.getTrueState(),
       instruments: this.engine.getInstruments(),
@@ -1437,6 +1444,7 @@
     this.checkpoints = [];             // a user file-load invalidates the rewind ring
     this._rewindCursor = null;
     this._lastSandboxCpMs = null;
+    this.timelineEpoch = (this.timelineEpoch || 0) + 1;   // a new history, not a rewind
     return this._restore(state, false);
   };
 

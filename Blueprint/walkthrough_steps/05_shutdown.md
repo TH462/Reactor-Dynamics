@@ -58,7 +58,7 @@ A planned scram from low power. Both rod banks drop into the core and the chain 
 
 *The fuel keeps making heat after the scram, and with the turbine off line the steam dump is where that heat leaves.*
 
-()3a. Press AUTO on the STEAM DUMP card until its status reads PRESS.
+()3a. Press AUTO on the STEAM DUMP card until its status reads STM PRESS.
 
 Suggested time warp: 1×.
 

@@ -3643,8 +3643,18 @@ if (!only && RUN_B) {
         while (ckl() && ckl().step_index < S9 && guard++ < 100) { svc.handleCommand({ action: 'checklist_check', index: ckl().step_index }); tick(); }
         fork = JSON.stringify(svc.saveState());
       }
+      /* THE FORK IS A SAME-HISTORY RESTORE, NOT A FILE LOAD (2026-09-28 review). These cases used
+       * svc.loadState as the fork, which is the player's save-FILE load — and a file load is now a
+       * NEW history (metadata.timeline_epoch), so it clears the 1/M plot, as it must for a file of
+       * a different plant. What 2am asserts is the Rewind semantics (the plot survives a restore of
+       * its own timeline), so the fork goes through the same restore core Rewind uses
+       * (`_restore`), with loadState's other effects (the rewind ring dropped) kept. */
+      function restoreFork(st) {
+        svc.checkpoints = []; svc._rewindCursor = null; svc._lastSandboxCpMs = null;
+        svc._restore(st, false);
+      }
       function route(target, cap, taps, clear) {
-        svc.loadState(JSON.parse(fork)); tick();
+        restoreFork(JSON.parse(fork)); tick();
         var r = { pAfter: oom().pred_steps, met: null, left: null, by: null, row: null };
         if (clear) { svc.handleCommand({ action: 'plot_1m_clear' }); tick(); }
         var t9 = t(); pullTo(target, 'slow');
@@ -3694,7 +3704,7 @@ if (!only && RUN_B) {
        * prediction (`reach_1m`), so the boundary moved from "AT or 1-2 short never ticks" to "4 short
        * never ticks", and the wait went from 60 s still to the broadcast the counter gets there. */
       function pullWatch(target) {
-        svc.loadState(JSON.parse(fork)); tick();
+        restoreFork(JSON.parse(fork)); tick();
         svc.handleCommand({ action: 'rod_nudge', group_id: 'control_rods', steps: target - bank(), speed: 'slow' });
         var n = 0, nMark = null, nMet = null, mv = null, g = 0;
         do {
@@ -3717,7 +3727,7 @@ if (!only && RUN_B) {
          three.met != null && three.met <= 1 && three.left != null && three.by != null && three.by !== 'overtaken',
          'stop ' + (P - 3) + ': ' + say(three));
       /* .6 AFTER the clear-free cases: it drops the last point, and nothing restores it */
-      svc.loadState(JSON.parse(JSON.stringify(preLast))); tick();
+      restoreFork(JSON.parse(JSON.stringify(preLast))); tick();
       ck('2am.6 a restore to before the last plot drops that point and KEEPS the earlier ones, as the panel does (seed ' + seed + ')',
          !!oom() && !!pre4 && pre4.points === 4 && oom().points === pre4.points && oom().pred_steps === pre4.pred,
          'points ' + (oom() && oom().points) + ' (4-point table ' + (pre4 && pre4.points) + '), prediction ' +

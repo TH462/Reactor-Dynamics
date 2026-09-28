@@ -164,7 +164,8 @@
   var RAMP = {
     kind: '[declared departure — the rate is this plant\'s, measured]',
     cooldown_f_per_hr: 60,
-    entry_gap_f: 15                       /* selecting pressure mode: walk only past this gap */
+    anchor_mpa: 7.03                      /* the no-load anchor (1020 psia): selecting pressure
+                                           * mode walks from the header only to a target BELOW it */
   };
   var C7DET = {
     kind: "[derived from the thresholds' mutual consistency]",
@@ -225,16 +226,17 @@
     /* SELECTING pressure mode with a target already below the steam header starts the walk from
      * where the plant IS — otherwise "type 120 psi, then notice the status reads TAVG and press
      * AUTO" would open the dumps on the whole step at once, the jump the limit exists to stop.
-     * ONLY PAST `entry_gap_f` of saturation temperature. The post-trip AUTO press lands on a
-     * header ABOVE the 1020 psi anchor — MEASURED, pwr_shutdown's own route (hot_full_power,
-     * unload, scram, AUTO 9 s later): 7.50 MPa (1088 psia), 8.0 degF of Tsat over the anchor —
-     * and walking that at the limit held the header within ~10 psi of the 1099 psi (7.58 MPa)
-     * safety-valve lift for minutes (7.28 MPa still at +270 s). The highest header this plant
-     * can hold is that lift, 9.3 degF of Tsat over the anchor, so a gap past 15 degF cannot be a
-     * post-trip header over its anchor: it is a lowered target, and only then is it walked.
-     * Under the gap the target lands at once, exactly as before the ruling. */
+     * ONLY FOR A TARGET BELOW THE NO-LOAD ANCHOR. The post-trip AUTO press lands on a header
+     * ABOVE the 1020 psi anchor with the anchor as its target — MEASURED, pwr_shutdown's own route
+     * (hot_full_power, unload, scram, AUTO 9 s later): 7.50 MPa (1088 psia), and walking that at
+     * the limit held the header within ~10 psi of the 1099 psi (7.58 MPa) safety-valve lift for
+     * minutes (7.28 MPa still at +270 s) — so a target AT or ABOVE the anchor lands at once, as
+     * before the ruling. A target BELOW the anchor is a lowered target whatever the gap: the rule
+     * this replaced exempted any gap under 15 degF of Tsat, and MEASURED 2026-09-28 (full stack,
+     * hot_zero_power, dump CLOSED, 908.6 psia typed, AUTO at 1027 psia — a 14 degF gap) that
+     * landed in one step: Tavg 548.0 -> 534.5 degF in 33 s, about -1470 degF/hr. */
     if (dc.mode === 'pressure' && !wasPressure && drivers.steam_pressure_mpa !== undefined &&
-        (RD.water.T_sat(drivers.steam_pressure_mpa) - RD.water.T_sat(tgt)) * 1.8 > RAMP.entry_gap_f) {
+        tgt < RAMP.anchor_mpa && drivers.steam_pressure_mpa > tgt) {
       dc.pressure_setpoint_mpa = drivers.steam_pressure_mpa;
     }
     if (dc.mode !== 'pressure' || !(tgt < dc.pressure_setpoint_mpa)) {

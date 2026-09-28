@@ -76,9 +76,9 @@ To the automatic protection, a cooldown looks exactly like a leak: pressure fall
 
 4. Cool the plant on the steam dump to where RHR can take over.
 
-*The steam pressure the dump holds sets the temperature the steam generator boils at, and the reactor water follows it down. Small, spaced steps keep the cooldown under the 100 °F per hour limit.*
+*The steam pressure the dump holds sets the temperature the steam generator boils at, and the reactor water follows it down.*
 
-()4a. Check STEAM DUMP AUTO is lit and its status reads PRESS. If it does not, press AUTO until the status reads PRESS.
+()4a. Check STEAM DUMP AUTO is lit and its status reads STM PRESS. If it does not, press AUTO until the status reads STM PRESS.
 
 Suggested time warp: 1×.
 
@@ -88,7 +88,7 @@ Note: If the status reads TAVG, the dump is holding temperature instead and igno
 
 Suggested time warp: 1×.
 
-Note: The box keeps the 120 you typed. The dump does not go there at once: it lowers the pressure it holds a little at a time, so the plant cools at about 60 °F per hour without you pacing it. The clock moves to 60× by itself once 120 is in.
+Note: The box keeps the 120 you typed. The dump does not go there at once: it lowers the pressure it holds a little at a time, so the plant cools at about 60 °F per hour without you pacing it. While it does, the STEAM DUMP status reads RAMPING; it reads STM PRESS again when STEAM PRESS gets to 120. The clock moves to 60× by itself once 120 is in.
 
 ()4c. Wait for AVG COOLANT TEMPERATURE to read below 347 °F.
 
@@ -322,7 +322,7 @@ RHR is the only thing removing heat now. If its suction valve shut, the decay he
 
 16. Leave the plant lined up for the next heatup.
 
-*The heatup starts from what this step leaves, and a steam dump left in AUTO at a low setpoint opens wide the moment the heatup asks for it.*
+*The heatup starts from what this step leaves, and a steam dump left at a low setpoint cools the plant back down the moment the heatup hands it STEAM PRESS.*
 
 ()16a. If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once: no rod moves while the reactor trip is latched.
 
@@ -338,7 +338,7 @@ Note: After the scram in the shutdown walkthrough the bank already reads 0 of 62
 
 Background
 
-The cooldown walked DUMP SETPOINT down to 120 psi. Left there with the dump in AUTO, the next heatup's first AUTO press opens the dump wide against a setpoint far below its steam pressure, and the plant trips on low steam pressure. Closing the dump and putting the setpoint back to 1020 psi hands the next heatup the lineup it expects; inserting the shutdown bank leaves both banks in, the way the heatup starts. The scram from the shutdown is still latched, and while it is no rod can move: resetting it moves nothing, it gives the rod drive its power back so the heatup can withdraw the shutdown bank.
+The cooldown walked DUMP SETPOINT down to 120 psi. Left there, the next heatup's AUTO press would not hold STEAM PRESS at 1020 psi: the dump would walk it back down toward 120 psi, cooling the plant about 60 °F per hour just when the heatup needs it held. Closing the dump and putting the setpoint back to 1020 psi hands the next heatup the lineup it expects; inserting the shutdown bank leaves both banks in, the way the heatup starts. The scram from the shutdown is still latched, and while it is no rod can move: resetting it moves nothing, it gives the rod drive its power back so the heatup can withdraw the shutdown bank.
 
 [HIGHLIGHTED: Rod Speed — Fast, Shutdown Bank — Insert, Steam Dump — Close, Dump Setpoint, SCRAM (pulsing); Shutdown Rod Position, Steam Dump, Steam Dump Status (steady)]
 

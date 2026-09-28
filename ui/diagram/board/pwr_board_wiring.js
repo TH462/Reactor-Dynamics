@@ -1501,7 +1501,7 @@
     // The retired engine publishes no `steam_dump_mode`, so it keeps the old word.
     imrppq5r7kw: function (s) {
       var m = CS(s).steam_dump_mode;
-      if (m === 'pressure') return 'PRESS';
+      if (m === 'pressure') return CS(s).steam_dump_ramping ? 'RAMPING' : 'STM PRESS';   // 2026-09-28 ruling
       if (m === 'tavg') return 'TAVG';
       if (CS(s).steam_dump_auto) return 'NORMAL';
       return (CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL';
@@ -4383,6 +4383,12 @@
        * names for `bdOneOverM`; it bit this fix on the first attempt). */
       imrqrnzbm6h: { props: { fontSize: 13 } },   // CONDENSATE
       imsgtedbunb: { props: { fontSize: 13 } },   // RCP FLOW
+      /* THE STEAM DUMP STATUS WORD FITS BESIDE ITS TITLE AT EVERY WORD (2026-09-28 rulings: STM
+       * PRESS replaces PRESS, RAMPING is new). MEASURED in board_check under the native stack and
+       * CI's DejaVu: at the authored 15 px, right edge 1642, STM PRESS overprinted the STEAM DUMP
+       * title by 4.3 px (8.6 px in DejaVu). Smaller, and right-anchored 5 px nearer the card
+       * edge (1652), it clears in both — the gap is board_check's "status word clears" line. */
+      imrppq5r7kw: { props: { fontSize: 13, left: 1647 } },
       /* PORV TAILPIPE TEMPERATURE GETS ITS ENGRAVING (#673). The tile rendered a bare number
        * and unit under the PORV status light with nothing saying which pipe it was, and a TMI-2
        * walkthrough step grades on the player reading it — the tailpipe temperature is the only

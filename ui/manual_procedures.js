@@ -2212,7 +2212,7 @@
          * confirmation below, which reads the atmospheric dump valve and the header pressure. */
         { text: 'Hand STEAM PRESS to the steam dump to hold.',
           why: 'From here the plant makes more heat than it needs, and the steam dump sends the excess to the condenser. Without it the steam side keeps climbing until the ATMOS DUMP valve opens and vents steam to the sky for the rest of the heatup. Real plants run the dump in this pressure-holding mode whenever the turbine is off.',
-          control: 'Steam Dump', target: 'AUTO lit on the STEAM DUMP card, status reading PRESS',
+          control: 'Steam Dump', target: 'AUTO lit on the STEAM DUMP card, status reading STM PRESS',
           cmd: { action: 'set_steam_dump', mode: 'auto' }, hold: 10,
           aim: 'Pump heat has brought STEAM PRESS up to about 1020 psi, or past it with the ATMOS DUMP venting the extra, and from here something has to hold it there.',
           wait_speed: 1, speed_text: true,
@@ -5032,8 +5032,8 @@
           wait_speed: 10, speed_text: true,
           accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_press_mode', op: '>', v: 0,
                    hl: ['Steam Dump — Auto'], hl_watch: ['Steam Dump Status'],
-                   ask: 'Press AUTO on the STEAM DUMP card until its status reads PRESS.',
-                   wait_speed: 1, label: 'STEAM DUMP AUTO lit, status PRESS' },
+                   ask: 'Press AUTO on the STEAM DUMP card until its status reads STM PRESS.',
+                   wait_speed: 1, label: 'STEAM DUMP AUTO lit, status STM PRESS' },
                  { p: 'power_pct', op: '<', v: 0.95,
                    hl_watch: ['Reactor Power'],
                    ask: 'Check REACTOR POWER reads below 1 %.',
@@ -5268,7 +5268,7 @@
         { text: 'Cool the plant on the steam dump to where RHR can take over.',
           aim: 'The steam pressure the dump holds sets the temperature the steam generator boils at, and the reactor water follows it down.',
           why: 'Steam pressure and steam temperature go together: lower the pressure the dump holds and the steam generator boils at a lower temperature, which pulls the reactor water down after it. It cannot pull the water below its own boiling point, so the target is 120 psi, about 341 °F, low enough for RHR to take over. You type the target once, and the dump controller walks the pressure it holds down to it on its own, only as fast as keeps the cooldown near 60 °F per hour, under the 100 °F per hour limit. Near the bottom the same 50 psi cools about four times as far, so STEAM PRESS falls quickly at first and slowly at the end. On a real plant the operator paces this by hand; here the controller does it so you can watch.',
-          control: 'Dump SP', target: 'STEAM DUMP status PRESS; DUMP SETPOINT 120 psi; AVG COOLANT TEMPERATURE below 347 °F',
+          control: 'Dump SP', target: 'STEAM DUMP status STM PRESS; DUMP SETPOINT 120 psi; AVG COOLANT TEMPERATURE below 347 °F',
           wait_hint: false,
           /* ONE ENTRY SINCE 2026-09-28 (OWNER RULING, quoted on pwr2_dumpctl.js RAMP: the automatic ramp).
            * The typed DUMP SETPOINT is a TARGET; the controller walks its working setpoint down at a fixed
@@ -5286,14 +5286,14 @@
            * into this leg. */
           accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_press_mode', op: '>', v: 0,
                    hl: ['Steam Dump — Auto'], hl_watch: ['Steam Dump Status'],
-                   ask: 'Check STEAM DUMP AUTO is lit and its status reads PRESS. If it does not, press AUTO until the status reads PRESS.',
+                   ask: 'Check STEAM DUMP AUTO is lit and its status reads STM PRESS. If it does not, press AUTO until the status reads STM PRESS.',
                    note: 'If the status reads TAVG, the dump is holding temperature instead and ignores DUMP SETPOINT.',
-                   wait_speed: 1, label: 'STEAM DUMP AUTO lit, status PRESS' },
+                   wait_speed: 1, label: 'STEAM DUMP AUTO lit, status STM PRESS' },
                  /* 4b: the box renders whole psi, so "120" is [119.5, 120.5) psi = 0.8274 +/- 0.0035 MPa. */
                  { p: 'steam_dump_setpoint', op: '~', v: 0.8274, tol: 0.0035,
                    hl: ['Dump Setpoint'],
                    ask: 'Type 120 into DUMP SETPOINT.',
-                   note: 'The box keeps the 120 you typed. The dump does not go there at once: it lowers the pressure it holds a little at a time, so the plant cools at about 60 °F per hour without you pacing it. The clock moves to 60× by itself once 120 is in.',
+                   note: 'The box keeps the 120 you typed. The dump does not go there at once: it lowers the pressure it holds a little at a time, so the plant cools at about 60 °F per hour without you pacing it. While it does, the STEAM DUMP status reads RAMPING; it reads STM PRESS again when STEAM PRESS gets to 120. The clock moves to 60× by itself once 120 is in.',
                    wait_speed: 1, label: 'DUMP SETPOINT reads 120 psi' },
                  { p: 'tavg_c', op: '<', v: 174.72,
                    hl_watch: ['Tavg', 'SG Pressure'],
@@ -5606,8 +5606,13 @@
                   * STRANDED the step -- the player shuts the spray on the first tile reading under 30 degF,
                   * the margin turns back up before five graded readings have agreed, and 11b never latches
                   * (route `spray_off_at_entry`, 465 plant-min). The margin falls ~0.2 degF a plant-minute
-                  * here, so 11c is live about 10 plant-minutes before its press is due. */
-                 { p: 'subcooling_c', op: '<', v: 17.78,
+                  * here, so 11c is live about 10 plant-minutes before its press is due.
+                  * THE BAND, NOT ITS CENTRE (2026-09-28 review; the #749 rule): the tile draws whole °F
+                  * off `subcooling_margin` (the channel this row grades, PARAM_INSTRUMENT), so it first reads
+                  * "32" at 32.5 °F. `< 17.78` (32.0 °F) left the row dark for the upper half of the
+                  * band while the tile already read what the text asks for; `< 18.0555` (32.4999 °F)
+                  * ticks on the first "32". */
+                 { p: 'subcooling_c', op: '<', v: 18.0555,
                    hl_watch: ['Subcooling Margin', 'Pressurizer Spray (PZR)'],
                    ask: 'Wait for SUBCOOLING MARGIN to fall to 32 °F.',
                    note: 'The spray keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it any earlier and pressure climbs back over the RHR limit. If OFF is already lit under SPRAY, type 50 in the box under SPRAY, press Enter, then press MANUAL under SPRAY and keep watching. The clock moves to 60× by itself once HX SPLIT is raised.',
@@ -5710,8 +5715,8 @@
          * render band of "1020", 1019.5-1020.5 psi = 7.0327 ± 0.0034 MPa, `pwr_startup` 3b's band;
          * a `~` row, so a player who retypes it un-ticks it. */
         { text: 'Leave the plant lined up for the next heatup.',
-          aim: 'The heatup starts from what this step leaves, and a steam dump left in AUTO at a low setpoint opens wide the moment the heatup asks for it.',
-          why: 'The cooldown walked DUMP SETPOINT down to 120 psi. Left there with the dump in AUTO, the next heatup\'s first AUTO press opens the dump wide against a setpoint far below its steam pressure, and the plant trips on low steam pressure. Closing the dump and putting the setpoint back to 1020 psi hands the next heatup the lineup it expects; inserting the shutdown bank leaves both banks in, the way the heatup starts. The scram from the shutdown is still latched, and while it is no rod can move: resetting it moves nothing, it gives the rod drive its power back so the heatup can withdraw the shutdown bank.',
+          aim: 'The heatup starts from what this step leaves, and a steam dump left at a low setpoint cools the plant back down the moment the heatup hands it STEAM PRESS.',
+          why: 'The cooldown walked DUMP SETPOINT down to 120 psi. Left there, the next heatup\'s AUTO press would not hold STEAM PRESS at 1020 psi: the dump would walk it back down toward 120 psi, cooling the plant about 60 °F per hour just when the heatup needs it held. Closing the dump and putting the setpoint back to 1020 psi hands the next heatup the lineup it expects; inserting the shutdown bank leaves both banks in, the way the heatup starts. The scram from the shutdown is still latched, and while it is no rod can move: resetting it moves nothing, it gives the rod drive its power back so the heatup can withdraw the shutdown bank.',
           control: 'Shutdown Bank', target: 'SHUTDOWN ROD POSITION 0 of 627; STEAM DUMP CLOSE lit; DUMP SETPOINT 1020 psi; SCRAM reset',
           /* The INSERT is the STEP `cmd`, not a row `cmd`: a row carrying a `cmd` is latched met by
            * the press itself (`_accsCmdWatch`), so 16a ticked with the bank at 577 of 627 on the

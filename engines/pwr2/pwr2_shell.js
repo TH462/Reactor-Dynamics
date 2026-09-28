@@ -2143,6 +2143,15 @@
        * entirely. Published so the card's status word can say WHICH controller is in service;
        * the retired engine publishes no such field and the board falls back to its old word. */
       steam_dump_mode: dumpMode(e),
+      /* RAMPING (OWNER RULING 2026-09-28: "Does the steam dump have a status indication on it? If
+       * so, we could just have that say ramping."). True while pressure mode is still walking its
+       * WORKING setpoint down to a lower typed TARGET (pwr2_dumpctl.js RAMP); the walk clamps onto
+       * the target exactly, so any gap above 1e-6 MPa (0.00015 psi) is a walk still in progress.
+       * The target is the one the DUMP SETPOINT box shows (driver first, as below), so a fresh
+       * entry reads RAMPING on the same frame the box reads it. */
+      steam_dump_ramping: dumpMode(e) === 'pressure' && !!e.dc &&
+        e.dc.pressure_setpoint_mpa - (e.dcDrivers.pressure_setpoint_mpa !== undefined
+          ? e.dcDrivers.pressure_setpoint_mpa : e.dc.pressure_target_mpa) > 1e-6,
       adv_pct: ts.adv_valve_pct !== undefined ? ts.adv_valve_pct : 0,
       /* from the latched selection (AUTO vs SHUT command both zero demand); a manual %
        * demand clears the latch */
