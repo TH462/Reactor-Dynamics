@@ -269,31 +269,31 @@ Below about 1 % power nothing in the plant takes reactivity back out, so how far
 
 
 
-11. Level power at 1.0e-8 A and record the critical rod position and boron.
+11. Level power at 1.0e-8 A and record the critical rod position.
 
-*With power held level the core is exactly critical, so the rods and boron at that moment are its measured critical point.*
+*Step 10 left the core past critical so power could climb to 1.0e-8 A; putting those steps back holds it there, exactly critical.*
 
 ()11a. Wait for INTER RANGE to read 1.0e-8 A.
 
 Note: It gets there about 2 plant-minutes after the rods stopped in step 10.
 
-()11b. Hold INSERT at MED about 12 steps. Two plant-minutes later read STARTUP RATE: above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once. Repeat until it reads between −0.02 and +0.02.
+()11b. Insert until STARTUP RATE holds between −0.02 and +0.02: hold INSERT at MED about 12 steps, then read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.
 
 Suggested time warp: 1× while the rods move; 10× while you wait for a read.
 
-Note: Level takes putting back every step pulled past critical: two short and STARTUP RATE settles near +0.05, and power doubles every 6 plant-minutes. STARTUP RATE dips negative while the rods go in; that is not level yet. This check-off comes two plant-minutes after your last rod motion.
+Note: About 12 steps is what step 10 pulled past critical. STARTUP RATE reads negative while the rods go in and settles over two plant-minutes, so read it then. Two steps short, it settles near +0.05. This check-off comes two plant-minutes after your last rod motion.
 
-()11c. Write down CONTROL ROD POSITION and BORON CHEM: the critical rod position and boron.
+()11c. Write down CONTROL ROD POSITION, the critical rod position, and compare it with the 1/M prediction.
 
 
 
 Background
 
-At 1.0e-8 A power is still far too low to warm the water, so nothing but the rods and boron sets the reactivity. Power stays level only when the core is exactly critical.
+At 1.0e-8 A power is still far too low to warm the water, so only the rods set the reactivity, and STARTUP RATE holding at 0 with the rods still means exactly critical. Near the source level a core short of critical also settles at 0, which is why step 10 went past critical first.
 
-The rod position and boron written down here are the core's measured critical point. A crew compares them with the 1/M prediction and with the 719 ppm estimate the startup began from.
+The rod position here is the measured critical position. A crew compares it with the 1/M prediction and records it with the boron concentration; here boron has not moved since step 2.
 
-\[HIGHLIGHTED: Insert, Rod Speed — Normal (pulsing); Intermediate Range, Startup Rate, Control Rod Position, Boron Concentration (steady)]
+\[HIGHLIGHTED: Insert, Rod Speed — Normal (pulsing, 11b); Intermediate Range, Startup Rate, Control Rod Position (steady)]
 
 
 
@@ -307,7 +307,9 @@ Note: Expect 6 or 7 taps. Real crews climb gently here, between +0.1 and +0.2. T
 
 ()12b. Leave the rods alone until REACTOR POWER reads 1.0 % or more.
 
-Note: About 20 to 26 plant-minutes. REACTOR POWER reads 0.0 % for most of it while INTER RANGE climbs four decades. Not 60×: there a 2½-second glance is two and a half plant-minutes of reactor.
+Note: About 20 to 26 plant-minutes. REACTOR POWER reads 0.0 % for most of it while INTER RANGE climbs four decades.
+
+Suggested time warp: 60×.
 
 ()12c. Wait for STARTUP RATE to fall to +0.10 or less.
 
@@ -329,9 +331,9 @@ INTER RANGE measures a current, not a percentage, and it shows this climb four d
 
 *Auxiliary feed carries the steam generator only to about 1 % power, so main feed has to take over before power climbs any further.*
 
-()13a. Type 50 in the gpm box beside RESTORE on the SG FEED card; type 100 instead if REACTOR POWER already reads 1.5 % or more. Leave the rods alone until STEAM GENERATOR LEVEL reads 60 % or more.
+()13a. Type 50 in the gpm box beside RESTORE on the SG FEED card, or 100 if REACTOR POWER reads 1.5 % or more. Wait for STEAM GENERATOR LEVEL to reach 60 %.
 
-Note: Typing a number starts the main feed pumps in MAN at that flow. Type it rather than pressing MAN, which starts them at full speed. At 50 gpm level reaches 60 % in about 9 to 10 plant-minutes while REACTOR POWER drifts up to about 2½ % by itself; that is expected, keep 50. If STEAM GENERATOR LEVEL stops rising for 3 plant-minutes, type 100: it then reaches 60 % within about 10 plant-minutes.
+Note: Typing starts the main feed pumps in MAN at that flow; MAN alone starts them at full speed. At 50 gpm level reaches 60 % in about 10 plant-minutes while REACTOR POWER drifts up to about 2½ % by itself. If level stops rising for 3 plant-minutes, type 100.
 
 ()13b. Press AUTO on the SG FEED card and check AUTO is lit.
 
@@ -470,6 +472,8 @@ The reactor is critical, the generator is carrying load, and both startup trips 
 
 
 ## Notes — agent record, NOT step text
+
+**2026-09-27 — #809 items 10-12 (owner playtest of 1.8.0-rc9).** Step 11 leads with the goal (STARTUP RATE held at 0, rods still) and gives "about 12 steps" as what step 10 pulled past critical; the BORON CHEM write-down (11c) is replaced by the critical rod position against the 1/M prediction (boron held 719 ppm since step 2 — a declared departure; real crews record a boron sample, WTSM 19 p.19-8). 12b plays at 60× (owner's words). 13a is shorter, "leave the rods alone" is gone, and each of 13's three controls lights only in its own substep. Measurements and sources: `ui/manual_procedures.js` at steps 11-13.
 
 **2026-09-27-develop-d — #808 item A: the feed transfer.** New step 13 (old 13-17 renumbered 14-18; older records below use the old numbers). Step 3a grades AUX FEED RUNNING. Owner "Yes" to the proposal; MAN-then-AUTO and the ~1 % placement are the coordinator's call, 2026-09-27. Sources and the measured transfer numbers: `ui/manual_procedures.js` at the step.
 

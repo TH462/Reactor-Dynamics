@@ -741,6 +741,10 @@ function runJob(legId, routeId, mutId, ctx) {
     if (grp()) r.bank = bank();
     var rate = pv('startup_rate_dpm'); if (rate != null && isFinite(rate)) r.sur_dpm = rate;
     var sr = pv('sr_counts_cps'); if (sr != null && isFinite(sr) && pv('sr_energized') > 0) r.sr_cps = sr;
+    if (process.env.WR_TRACE) {   // measurement knob only (#809): true reactivity, INTER RANGE, SG level, feed
+      r.rho_pcm = (s.true_state || {}).reactivity_pcm; r.ir_amps = pv('ir_amps'); r.sg_level_pct = pv('sg_level_pct');
+      r.feed_coupled = pv('feed_coupled'); r.afw_running = pv('afw_pump_running'); r.boron_ppm = pv('boron_ppm');
+    }
     return r;
   }
   while (guard++ < 2e6) {
@@ -890,10 +894,11 @@ function runJob(legId, routeId, mutId, ctx) {
     out[k].phi = Math.max(out[k].phi == null ? -1e9 : out[k].phi, pw);   // peak power / startup rate (#807 item 11)
     if (S.lastReadings.sur_dpm != null) out[k].surhi = Math.max(out[k].surhi == null ? -1e9 : out[k].surhi, S.lastReadings.sur_dpm);
     /* WR_TRACE=<step,step>: a measurement knob, never the gate — [min into step, bank, power %,
-     * startup rate, source range] every 15 plant-seconds on the named steps */
+     * startup rate, source range, true rho pcm, INTER RANGE A, SG level %] every 15 plant-seconds on the named steps */
     if (process.env.WR_TRACE && (',' + process.env.WR_TRACE + ',').indexOf(',' + (k + 1) + ',') >= 0 && t() - (S.trT == null ? -1e9 : S.trT) >= 15) {
       S.trT = t(); (out[k].trace = out[k].trace || []).push([+(el / 60).toFixed(2), S.lastReadings.bank, +pw.toFixed(3),
-        S.lastReadings.sur_dpm != null ? +S.lastReadings.sur_dpm.toFixed(3) : null, S.lastReadings.sr_cps != null ? Math.round(S.lastReadings.sr_cps) : null]);
+        S.lastReadings.sur_dpm != null ? +S.lastReadings.sur_dpm.toFixed(3) : null, S.lastReadings.sr_cps != null ? Math.round(S.lastReadings.sr_cps) : null,
+        S.lastReadings.rho_pcm != null ? +S.lastReadings.rho_pcm.toFixed(1) : null, S.lastReadings.ir_amps, S.lastReadings.sg_level_pct != null ? +S.lastReadings.sg_level_pct.toFixed(1) : null]);
     }
     /* --- invariant: trip / bound ------------------------------------------------------- */
     var scr = !!((s.rps_state && s.rps_state.scrammed) || (s.true_state && s.true_state.scrammed));

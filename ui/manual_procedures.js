@@ -3572,12 +3572,37 @@
          * INTER RANGE drifted to 6.6e-8 A. So the ask names the count (about 12, the steps 10b's +0.5
          * puts past critical) and the reads trim it.
          *
-         * 11c IS A READING CHECK: "record" has no board action. The rod position is whatever this core
-         * went critical at, so the row grades the other half the player writes down, BORON CHEM, on
-         * step 2's own 709-729 ppm band; ordered, it cannot tick before the level-off. */
-        { text: 'Level power at 1.0e-8 A and record the critical rod position and boron.',
-          aim: 'With power held level the core is exactly critical, so the rods and boron at that moment are its measured critical point.',
-          why: 'At 1.0e-8 A power is still far too low to warm the water, so nothing but the rods and boron sets the reactivity. Power stays level only when the core is exactly critical.\n\nThe rod position and boron written down here are the core\'s measured critical point. A crew compares them with the 1/M prediction and with the 719 ppm estimate the startup began from.',
+         * #809 item 10 (2026-09-27, OWNER playtest of 1.8.0-rc9: "is this pull out until starup rate is
+         * .5 then go in 12 steps how real plants operate? ... we end up at about 0 pcm. whats the point?
+         * step 11c, why wright down boron level when we just set it ... why not just move rods to hit 0
+         * dpm?"). THE SEQUENCE STAYS — it is the sourced one: WTSM 19 p.19-8 (ML11223A342), "the
+         * control rods are positioned to increase nuclear power to 10-8 amps ... Power is stabilized at
+         * 10-8 amps to record actual critical conditions"; Turkey Point 3-GOP-301 step 5.21 (ML20344A126
+         * p.12), "establish a steady state SUR of 1.0 dpm or less while raising power to and stabilizing
+         * at 10-8 amps on IRNI". Ending at ~0 pcm IS the point: level = exactly critical. What changed
+         * is the TEXT, which now leads with the goal (STARTUP RATE held at 0, rods still) and gives the
+         * 12 as what it is (the steps 10b left past critical), not as the instruction.
+         * MEASURED (run_walkthrough_routes typical, seed 42, WR_TRACE): step 10 entry bank 205, rho
+         * −15 pcm, INTER RANGE 7.1e-10 A; 10b lets go at 218, rho +85 pcm, 0.39 DPM; INTER RANGE
+         * reaches 9.2e-9 A; 12 in lands 206, rho −7.5 pcm, −0.02 DPM, done at 6.8e-9 A. Base route
+         * (typical_pass3): 218 / +84 pcm -> 206 / −7.9 pcm. So the pull buys a decade of power
+         * (7e-10 -> 1e-8 A), and the insert gives back the reactivity, not the power.
+         * WHY NOT "JUST HIT 0 DPM" FROM BELOW: MEASURED, rods held at 205 (rho −15 pcm, subcritical)
+         * for 30 plant-min: STARTUP RATE 0.034 -> 0.00 (±0.007) by 20 min, INTER RANGE levels at
+         * 1.2e-9 A. Near source level a subcritical core also reads 0; only a steady POSITIVE rate with
+         * the rods still proves critical (WTSM 19 p.19-8; Robinson GP-003 step 8, ML120480088). At
+         * 1.0e-8 A, eight times that source-held level, 0 DPM does mean critical — which is why 11b is
+         * graded on it. The rate alone is still a poor INSERT cue while the rods move (see above).
+         * THE BORON ROW IS GONE: BORON CHEM has held 719 ppm since step 2 (measured 718.8 ppm at 11's
+         * end on both routes), so writing it down has no board consequence (DESIGN_CRITERIA Q3).
+         * DECLARED DEPARTURE: real crews also take a boron sample as critical data (WTSM 19 p.19-8,
+         * McGuire §4.2.14 ML20077E732, North Anna §5.49 ML042330022); `why` says so. Owner's 2026-09-26
+         * "B" named "records the critical rod position and boron" — flagged back to him in #809.
+         * 11c is a READING CHECK: "record" has no board action, so it grades the rods still (the same
+         * 120 s as 11b) and asks for the comparison with the 1/M prediction. */
+        { text: 'Level power at 1.0e-8 A and record the critical rod position.',
+          aim: 'Step 10 left the core past critical so power could climb to 1.0e-8 A; putting those steps back holds it there, exactly critical.',
+          why: 'At 1.0e-8 A power is still far too low to warm the water, so only the rods set the reactivity, and STARTUP RATE holding at 0 with the rods still means exactly critical. Near the source level a core short of critical also settles at 0, which is why step 10 went past critical first.\n\nThe rod position here is the measured critical position. A crew compares it with the 1/M prediction and records it with the boron concentration; here boron has not moved since step 2.',
           control: 'Control Bank', target: 'INTER RANGE 1.0e-8 A, STARTUP RATE −0.02 to +0.02 with the rods still',
           wait_hint: false,
           /* the replay levels when INTER RANGE gets there, not at step entry (an insert at entry levels
@@ -3592,19 +3617,22 @@
                    ask: 'Wait for INTER RANGE to read 1.0e-8 A.',
                    note: 'It gets there about 2 plant-minutes after the rods stopped in step 10.',
                    wait_speed: 1,
+                   hl_watch: ['Intermediate Range'],
                    label: 'INTER RANGE reads 1.0e-8 A or more' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025, still_s: 120,   /* -0.025 to +0.025: every value toFixed(2) draws as -0.02 to +0.02 (as 1d) */
-                   ask: 'Hold INSERT at MED about 12 steps. Two plant-minutes later read STARTUP RATE: above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once. Repeat until it reads between −0.02 and +0.02.',
-                   note: 'Level takes putting back every step pulled past critical: two short and STARTUP RATE settles near +0.05, and power doubles every 6 plant-minutes. STARTUP RATE dips negative while the rods go in; that is not level yet. This check-off comes two plant-minutes after your last rod motion.',
+                   ask: 'Insert until STARTUP RATE holds between −0.02 and +0.02: hold INSERT at MED about 12 steps, then read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.',
+                   note: 'About 12 steps is what step 10 pulled past critical. STARTUP RATE reads negative while the rods go in and settles over two plant-minutes, so read it then. Two steps short, it settles near +0.05. This check-off comes two plant-minutes after your last rod motion.',
                    wait_speed: 1,
                    speed_text: '1× while the rods move; 10× while you wait for a read.',
+                   hl: ['Insert', 'Rod Speed — Normal'], hl_watch: ['Startup Rate', 'Control Rod Position'],
                    label: 'STARTUP RATE −0.02 to +0.02, rods still two plant-minutes' },
-                 { p: 'boron_ppm', op: '~', v: 719, tol: 10.49,
-                   ask: 'Write down CONTROL ROD POSITION and BORON CHEM: the critical rod position and boron.',
-                   label: 'BORON CHEM 709 to 729 ppm, recorded with CONTROL ROD POSITION' }],
+                 { p: 'control_bank_steps', op: 'stopped', v: 120,
+                   ask: 'Write down CONTROL ROD POSITION, the critical rod position, and compare it with the 1/M prediction.',
+                   hl_watch: ['Control Rod Position'],
+                   label: 'Critical rod position recorded' }],
           press_expected: true,   /* 11b's INSERT is graded on the rate it leaves, not on the press */
           hl: ['Insert', 'Rod Speed — Normal'],
-          hl_watch: ['Intermediate Range', 'Startup Rate', 'Control Rod Position', 'Boron Concentration'] },
+          hl_watch: ['Intermediate Range', 'Startup Rate', 'Control Rod Position'] },
         /* STEP 12 — FROM THE LEVEL-OFF TO THE POINT OF ADDING HEAT (2026-09-27-develop-a). Old step 12's
          * two rows (power 1 %, then the rate +0.10 or less, #807 item 11) stay as 12b and 12c; 12a is new
          * because the plant now arrives CRITICAL AND LEVEL, not climbing.
@@ -3635,14 +3663,24 @@
                    ask: 'Press SLOW. Tap WITHDRAW one step at a time, a plant-minute apart, until STARTUP RATE reads +0.15 or more a plant-minute after a tap.',
                    note: 'Expect 6 or 7 taps. Real crews climb gently here, between +0.1 and +0.2. The 1/M PLOT window has done its work: close it with the ✕ in its corner.',
                    wait_speed: 10,
+                   hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Control Rod Position'],
                    label: 'STARTUP RATE +0.15 or more, rods still a plant-minute' },
                  { p: 'power_pct', op: '>=', v: 0.9500000000000001,   /* the "1.0" render floor: 0.95 itself draws "0.9" (binary; run_checklist_pwr2 2ab.4) */
                    ask: 'Leave the rods alone until REACTOR POWER reads 1.0 % or more.',
-                   note: 'About 20 to 26 plant-minutes. REACTOR POWER reads 0.0 % for most of it while INTER RANGE climbs four decades. Not 60×: there a 2½-second glance is two and a half plant-minutes of reactor.',
-                   wait_speed: 10,
+                   note: 'About 20 to 26 plant-minutes. REACTOR POWER reads 0.0 % for most of it while INTER RANGE climbs four decades.',
+                   /* 60x *(OWNER, #809 item 11, 2026-09-27: "walkthrough mode 3-1 step 12b should be at 60x
+                    * warp.")*. MEASURED (tools/glance_rung.js pwr_startup 12, seed 42, the whole step): worst
+                    * REACTOR POWER change inside one 2.5 s glance — 10x 0.106 % true / 0.172 % indicated, 60x
+                    * 0.614 % true / 0.656 % indicated. The rods are still for all of 12b, and PLAY rungs run the
+                    * same 0.02 s physics, so the plant does the same thing at 60x: it levels by itself near
+                    * 2.85 % on bank 213 (12's own measurement); nothing trips. What 60x costs is the eye:
+                    * 12b -> 12c can pass inside a few glances. */
+                   wait_speed: 60,
+                   hl_watch: ['Intermediate Range', 'Reactor Power'],
                    label: 'REACTOR POWER reads 1.0 % or more' },
                  { p: 'startup_rate_dpm', op: '<', v: 0.105,
                    ask: 'Wait for STARTUP RATE to fall to +0.10 or less.',
+                   hl_watch: ['Startup Rate'],
                    label: 'STARTUP RATE reads +0.10 or less' }],
           hl: ['Rod Speed — Slow', 'Withdraw'],
           hl_watch: ['Startup Rate', 'Intermediate Range', 'Reactor Power', 'Control Rod Position'] },
@@ -3729,7 +3767,22 @@
          * the plant settling on bank 213 (12's own note: levels at 2.85 %) and 50 gpm carries it; re-typing
          * 100 when power passes 2 % only shortens 9.4 to 5.8 min. The "level stops rising 3 plant-min ->
          * 100" way out, from 50 typed at 2/3/4/5 %: 60 % reached 3.2/4.8/7.2/10.0 min after the re-type,
-         * no trip. The branch is in the ASK because it is a choice made at the moment of typing. */
+         * no trip. The branch is in the ASK because it is a choice made at the moment of typing.
+         * #809 item 12 (2026-09-27, OWNER: "step 13 highlights both the SG FEED AUTO and AUX FEED STOP
+         * buttons but gives me a warning when i try to hit AUX FEED STOP ... 13a is too long ... I also
+         * never had to type anything into the SG FEED manual box"). THE WARNING is the ordered-row
+         * out-of-turn note (#759), "Not yet — 13a comes first: <13a's ask>": the step-level `hl` pulsed
+         * all three controls from entry, so a press of AUTO or STOP before level reached 60 % was
+         * accepted by the plant and refused by the card. AUTO pressed first is also why no typing was
+         * needed: MEASURED (route feed_auto_early, seed 42) 13a-c all tick 0.92 plant-min in, level
+         * 35.2 -> 61.3 %, Tavg 547.9 -> 539.6 degF, STARTUP RATE 0.63 DPM, rho +115 pcm with the rods
+         * still — the transient the Background warns of. THE ORDER MATTERS AT ONE POINT ONLY: STOP with
+         * no main feed (typical route, STOP pressed at entry, nothing typed) ran level 35.2 -> 17.9 % in
+         * 8 plant-min and tripped the reactor on SG lo-lo; STOP at entry THEN 50 gpm completed exactly
+         * like the card's order (level 59.9 % at 10.0 min, power 2.74 %), because above the 33 % hold
+         * aux feed adds nothing. Card's order, typical / base route: 9.6 / 9.8 plant-min, power ends
+         * 2.71 / 2.74 %, Tavg never under 547.8 degF. So the order stays, each control now lights only
+         * in its own substep (`accs[].hl`), and "leave the rods alone" is gone (no rod action here). */
         { text: 'Put main feed in service and secure auxiliary feed.',
           aim: 'Auxiliary feed carries the steam generator only to about 1 % power, so main feed has to take over before power climbs any further.',
           why: 'The auxiliary feed pump supplies only a few percent of full feed flow, and on this plant it holds steam generator level only to about 1 % power. So real crews pause the climb here, start a main feed pump, hand level control to it, and then secure auxiliary feed.\n\nMain feed goes in by hand first. Its AUTO controller aims for 65 %, and switched on 30 points below that it rushes cold water in: the reactor water cools about 10 °F in a minute and power jumps from 1 % to about 4 % with the rods still. A small manual flow brings level up to 60 % gently, and AUTO then has only 5 points left to close.',
@@ -3738,18 +3791,21 @@
           wait_hint: false, wait_speed: 10, wait_est_s: false,
           accs_ordered: true,
           accs: [{ p: 'sg_level_pct', op: '>=', v: 59.5,
-                   ask: 'Type 50 in the gpm box beside RESTORE on the SG FEED card; type 100 instead if REACTOR POWER already reads 1.5 % or more. Leave the rods alone until STEAM GENERATOR LEVEL reads 60 % or more.',
-                   note: 'Typing a number starts the main feed pumps in MAN at that flow. Type it rather than pressing MAN, which starts them at full speed. At 50 gpm level reaches 60 % in about 9 to 10 plant-minutes while REACTOR POWER drifts up to about 2½ % by itself; that is expected, keep 50. If STEAM GENERATOR LEVEL stops rising for 3 plant-minutes, type 100: it then reaches 60 % within about 10 plant-minutes.',
+                   ask: 'Type 50 in the gpm box beside RESTORE on the SG FEED card, or 100 if REACTOR POWER reads 1.5 % or more. Wait for STEAM GENERATOR LEVEL to reach 60 %.',
+                   note: 'Typing starts the main feed pumps in MAN at that flow; MAN alone starts them at full speed. At 50 gpm level reaches 60 % in about 10 plant-minutes while REACTOR POWER drifts up to about 2½ % by itself. If level stops rising for 3 plant-minutes, type 100.',
                    wait_speed: 10,
+                   hl: ['SG Feed Rate'], hl_watch: ['SG Level', 'Feed Pumps', 'Reactor Power'],
                    label: 'STEAM GENERATOR LEVEL 60 % or more, main feed in MAN' },
                  { cmd: { action: 'set_feed_coupled', active: true }, p: 'feed_coupled', op: '>', v: 0,
                    ask: 'Press AUTO on the SG FEED card and check AUTO is lit.',
                    wait_speed: 1,
+                   hl: ['SG Feed AUTO'], hl_watch: ['SG Level'],
                    label: 'SG FEED AUTO lit' },
                  { cmd: { action: 'set_afw', active: false }, p: 'afw_pump_running', op: '<', v: 0.5,
                    ask: 'Press STOP on the AUX FEED WATER card and check the card reads STANDBY.',
                    note: 'STANDBY means both aux feed pumps are stopped but still armed. If STEAM GENERATOR LEVEL falls to 17 % they start by themselves, and the same signal trips the reactor.',
                    wait_speed: 1,
+                   hl: ['AFW — Stop'], hl_watch: ['AFW', 'SG Level'],
                    label: 'AUX FEED WATER reads STANDBY' }],
           press_expected: true,
           hl: ['SG Feed Rate', 'SG Feed AUTO', 'AFW — Stop'],
