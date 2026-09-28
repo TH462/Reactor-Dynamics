@@ -785,7 +785,7 @@
     // +5 the plant acts, +10 it tells you, 75 % absolute it tells you again, 97 % it trips. And
     // it is the mirror of `pzr_level_dev_low` above: one number, ten points, either way, which
     // is one thing for the player to learn rather than two (DESIGN_CRITERIA Q4).
-    { id: 'pzr_level_dev_high', instrument: 'pzr_level_dev',   direction: 'high',    setpoint: 10.0, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Above Program — letdown is not holding', label_industry: 'PZR LVL DEV HI' },
+    { id: 'pzr_level_dev_high', instrument: 'pzr_level_dev',   direction: 'high',    setpoint: 10.0, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Above Program', label_industry: 'PZR LVL DEV HI' },
     { id: 'charging_high',     instrument: 'charging_flow',    direction: 'high',    setpoint: 8.0e-5, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Charging Flow High — make-up is working hard',            label_industry: 'CHG FLOW HI' },   // #408 real currency: 36 gpm, nominal letdown 30 + a sev-0.2 seal leak — keeps the documented "from about severity 0.2 up" cue; was 0.036, unreachable once max charging became 1.333e-4
   ];
   var PWR_ALARMS_B = [

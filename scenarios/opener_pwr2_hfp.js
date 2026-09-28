@@ -90,8 +90,8 @@
         dialogue: [
           say('Fresh start at full power. I\'ll show you a few cause-and-effect moves, about five minutes. Press End anytime to stop.',
               'Plant reset to 100 % power for a five-minute familiarization. End terminates it at any time.'),
-          say('Right now: reactor 100 %, generator 100 MWe, pressure 2235 psi, Tavg 580 °F. Everything is steady.',
-              'Initial conditions: 100 % power, 100 MWe, RCS 2235 psi, Tavg 580 °F, steady state.'),
+          say('Right now: reactor 100 %, generator 100 MW, pressure 2235 psi, Avg Coolant Temperature (Tavg) 580 °F. Everything is steady.',
+              'Initial conditions: 100 % power, 100 MW, RCS 2235 psi, Tavg 580 °F, steady state.'),
         ],
         advance: 'wait_for_trigger' },
 
@@ -104,8 +104,8 @@
         scope: LOAD_SCOPE,
         trend: ['tavg', 'pressure', 'dump', 'power'],
         dialogue: [
-          sayAt('Turbine and Generator', 'First move: set Turbine Load to 80 MWe. That asks the turbine for less steam.',
-              'Reduce turbine load to 80 MWe.'),
+          sayAt('Turbine and Generator', 'First move: set Turbine Load to 80 MW. That asks the turbine for less steam.',
+              'Reduce turbine load to 80 MW.'),
           say('I put Tavg, Pressure, Steam Dump and Power on the strip chart so you can watch.',
               'Strip chart: Tavg, Pressure, Steam Dump, Power.'),
         ],
@@ -116,7 +116,7 @@
       { id: 'o1_help',
         trigger: delay(0),
         commands: [{ action: 'set_load_target', mwe: 80 }],
-        dialogue: [say('I\'ll set it to 80 MWe for you so we keep moving.', 'Instructor setting turbine load to 80 MWe.')],
+        dialogue: [say('I\'ll set it to 80 MW for you so we keep moving.', 'Instructor setting turbine load to 80 MW.')],
         advance: 'wait_for_trigger' },
       { id: 'o2_watch',
         trigger: delay(1),
@@ -146,8 +146,8 @@
         trigger: delay(0),
         highlight: { control_label: 'Steam Dump' },
         dialogue: [
-          sayAt('Steam Dump Valve', 'Warmer water swelled into the pressurizer and pushed pressure up. The steam dump opened to carry the extra heat to the condenser.',
-              'Tavg and pressure up; steam dumps open to the condenser.'),
+          sayAt('Steam Dump Opening', 'Warmer water swelled into the pressurizer and pushed pressure up. The steam dump opened; its % shows by the condenser valve.',
+              'Tavg and pressure up; steam dump % indicated at the condenser valve.'),
           say('Warmer water also trimmed reactor power a few percent by itself. That is moderator temperature feedback.',
               'Negative moderator temperature coefficient has reduced power several percent.'),
         ],
@@ -161,8 +161,8 @@
         scope: RODS_SCOPE,
         trend: ['power', 'rod_steps', 'tavg'],
         dialogue: [
-          sayAt('Reactor Vessel', 'Clock back to 1×. Your turn: set rod speed to FAST, then drive Control Bank in about 40 steps. Watch reactor power follow.',
-              'Clock 1×. Select FAST rod speed, then insert control rods about 40 steps to bring power down to the load.'),
+          sayAt('Reactor Vessel', 'Clock back to 1×. Your turn: press FAST, then hold INSERT under CONTROL about 35 seconds. Rods go in about 40 steps; watch power follow.',
+              'Clock 1×. Select FAST rod speed; hold INSERT under CONTROL approximately 35 seconds, approximately 40 steps in. Monitor reactor power.'),
           say('The strip chart now shows Power, Control Rod Steps and Tavg.',
               'Strip chart: Power, Control Rod Steps, Tavg.'),
         ],
@@ -216,8 +216,8 @@
         scope: SPRAY_SCOPE,
         trend: ['pressure', 'spray'],
         dialogue: [
-          sayAt('Pressurizer Spray (PZR)', 'Clock back to 1×. Now pressure. Put Pressurizer Spray in MANUAL and open it all the way.',
-              'Clock 1×. Place pressurizer spray in manual, 100 % open.'),
+          sayAt('Pressurizer Spray (PZR)', 'Clock back to 1×. Now pressure. Put Pressurizer Spray in MANUAL, type 100 in its % box and press Enter.',
+              'Clock 1×. Place pressurizer spray in manual; enter 100 % and confirm.'),
           say('The strip chart now shows Pressure and Spray.',
               'Strip chart: Pressure, PZR Spray.'),
         ],
@@ -234,8 +234,8 @@
         trigger: delay(1),
         highlight: { control_label: 'Plant Pressure' },
         dialogue: [
-          sayAt('Pressurizer', 'Spray showers cooler water into the pressurizer\'s steam bubble. Steam condenses and pressure falls. Watch Plant Pressure.',
-              'Spray condensing pressurizer steam; RCS pressure decreasing.'),
+          sayAt('Pressurizer', 'Spray showers cooler water into the pressurizer\'s steam bubble. Steam condenses and pressure falls. Watch Primary Pressure.',
+              'Spray condensing pressurizer steam; RCS (Primary) pressure decreasing.'),
         ],
         advance: 'wait_for_trigger' },
       { id: 'o8_auto',
@@ -256,8 +256,8 @@
         speed: 5,
         highlight: { control_label: 'Pressurizer Heaters (PZR)' },
         dialogue: [
-          say('Clock to 5×. Back in AUTO, the heaters run full to boil water and rebuild pressure. It is slow: minutes, not seconds.',
-              'Clock 5×. Pressurizer heaters full on; pressure recovery is slow.'),
+          say('Clock to 5×. Spray is back in AUTO. The heaters came on full when pressure fell, and slowly boil water to rebuild pressure.',
+              'Clock 5×. Spray returned to AUTO; pressurizer heaters full on since the pressure fall, rebuilding pressure.'),
         ],
         advance: 'wait_for_trigger' },
 
@@ -287,8 +287,10 @@
         dialogue: [
           say('All rods dropped. Neutron power fell to about 2 % in seconds, but the fuel still makes about 5 % of full heat from decay.',
               'Reactor tripped. Neutron power about 2 %; decay heat about 5 %.'),
-          say('See Decay Heat on the strip chart, next to Power and Tavg. Decay heat holds near 5 % while neutron power falls toward zero.',
-              'Strip chart: Power, Decay Heat, Tavg. Decay heat near 5 %; neutron power falling toward zero.'),
+          say('The strip chart now shows Power, Decay Heat and Tavg.',
+              'Strip chart: Power, Decay Heat, Tavg.'),
+          say('See Decay Heat on the strip chart. It starts near 5 % and falls slowly over minutes, while neutron power drops to zero in seconds.',
+              'Decay heat starts near 5 %, falling slowly over minutes; neutron power to zero in seconds.'),
         ],
         advance: 'wait_for_trigger' },
       { id: 'o12_settle',
@@ -298,6 +300,8 @@
         dialogue: [
           say('Clock to 5×. The turbine tripped, so the steam dump takes the decay heat. Tavg drops toward about 552 °F.',
               'Clock 5×. Turbine tripped; steam dumps removing decay heat; Tavg settling near 552 °F.'),
+          say('The alarms now in are expected after a trip. Cooldown Rate High is Tavg dropping to its no-load value.',
+              'Alarms now in are expected post-trip. RCS COOLDOWN RATE HI reflects Tavg falling to its no-load value.'),
         ],
         advance: 'wait_for_trigger' },
       { id: 'o13_end',
