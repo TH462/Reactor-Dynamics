@@ -1179,10 +1179,10 @@
   // once, lazily, from the generated doc: the DOM cannot answer this (tiles are
   // absolutely-positioned siblings), and hard-coding parents would rot on the
   // next re-export while the geometry stays true by construction.
-  var parent = null;
+  var parent = null, itemById = {};
   function build() {
     if (parent) return parent;
-    parent = {};
+    parent = {}; itemById = {};
     var G = (typeof window !== 'undefined' ? window : globalThis);
     var doc = G.RD_PWR_BOARD_DOC;
     if (!doc) return parent;                 // board data not loaded — no fallback
@@ -1190,6 +1190,7 @@
     var extra = (RD.PwrBoardDriver && RD.PwrBoardDriver.extraItems) ? RD.PwrBoardDriver.extraItems() : [];
     items = items.concat(extra || []);
     var boxes = items.filter(function (i) { return i.kind === 'box'; });
+    items.forEach(function (it) { itemById[it.id] = it; });
     items.forEach(function (it) {
       var cx = it.left + (it.width || 0) / 2, cy = it.top + (it.height || 0) / 2;
       var best = null;
@@ -1226,8 +1227,63 @@
     own: function (id) { return ITEMS[id] || null; },
     ids: function () { return Object.keys(ITEMS); },
     aliases: function () { return ALIASES; },
-    parentOf: function (id) { return build()[id] || null; }
+    parentOf: function (id) { return build()[id] || null; },
+    // What a walkthrough highlight label IS, for the glow it wears (#809) — see glowRole below.
+    glowRole: function (label) { return glowRole(label); },
+    panelOf: function (id) { return panelOf(id); }
   };
+
+  /* ============================================================ walkthrough glow roles (#809)
+   * *(OWNER, 2026-09-27, #809 items 3/4: "Lets make a dimmer glow thats for the panel that contains
+   * the control. keep the brighter solid glow for indications." / "in steps that have you check a
+   * button the button should have a dashed glow.")*. The DRAWN SHAPE follows what the element IS,
+   * so it is decided here, from the board's own item kinds, and never authored per step:
+   *   'control'    — kind button / scram / number (a setpoint box), or a component the board wires
+   *                  a player action to (the accumulator and AFW block valves, the PORV). Measured
+   *                  2026-09-27: every other `component` a walkthrough names is a readout tile
+   *                  (Tavg, PRIMARY PRESSURE, REACTOR POWER, SG LEVEL), so kind alone cannot tell.
+   *   'panel'      — kind box, a card.
+   *   'indication' — everything else (value, readout, text, a non-actionable component).
+   * `panel` is the card a CONTROL sits on: the OUTERMOST TITLED box containing it (a rod WITHDRAW
+   * button is in CONTROL inside REACTOR/ROD CONTROL, and the owner's "rod control panel" is the
+   * outer one — #809 item 1), else the nearest box when no enclosing box carries a title (the RCP
+   * ON/OFF card). Null for a label the board map does not carry (a shell target such as Plot point). */
+  var actionable = null;
+  function isActionable(id) {
+    if (!actionable) {
+      var d = RD.PwrBoardDriver;
+      var ids = d ? (d.actionableIds ? d.actionableIds() : (d.pressableIds ? d.pressableIds() : [])) : null;
+      if (!ids) return false;
+      actionable = {};
+      ids.forEach(function (x) { actionable[x] = true; });
+    }
+    return !!actionable[id];
+  }
+  var CONTROL_KINDS = { button: true, scram: true, number: true };
+  function roleOf(id) {
+    build();
+    var it = itemById[id];
+    if (!it) return 'indication';
+    if (it.kind === 'box') return 'panel';
+    if (CONTROL_KINDS[it.kind]) return 'control';
+    if (it.kind === 'component' && isActionable(id)) return 'control';
+    return 'indication';
+  }
+  function panelOf(id) {
+    var p = build(), cur = p[id], nearest = cur || null, titled = null, guard = 0;
+    while (cur && guard++ < 12) {
+      if (itemById[cur] && itemById[cur].title) titled = cur;
+      cur = p[cur];
+    }
+    return titled || nearest;
+  }
+  function glowRole(label) {
+    var d = RD.PwrBoardDriver;
+    var id = d && d.controlLabelItem ? d.controlLabelItem(label) : null;
+    if (!id) return null;
+    var role = roleOf(id);
+    return { id: id, role: role, panel: role === 'control' ? panelOf(id) : null };
+  }
 
   // Node (test/run_inspect.js) reaches the registry the same way the browser does,
   // through globalThis.RD — no module exports (CLAUDE.md, "Code conventions").

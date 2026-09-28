@@ -236,20 +236,54 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
          * can only wear one ring — so the author has asked for a pulse and a steady dash on the
          * same thing and will get whichever the renderer applies last. It is an authoring
          * defect, not a rendering one, and nothing else can see it. */
-        /* `accs[].hl_active` (#807 review item 4, 2026-09-26): a substep-gated pulse. Its labels must
-         * already be in the step's `hl` (the vocabulary and distinct-element checks read `hl`), sit on a
-         * HEAD entry (a `cont` row is never the active substep), on an `accs_ordered` step (where
-         * "active" is the sequence). One check per step that carries it. INJECTION-PROVEN: cooldown
-         * 11's 'Pressurizer Spray — Off' taken out of `hl` -> red. */
-        var hla = (st.accs || []).filter(function (e) { return e && e.hl_active; });
-        if (hla.length) {
-          var bad = [];
-          hla.forEach(function (e) {
-            if (e.cont) bad.push('on a cont row');
-            e.hl_active.forEach(function (l) { if (!(st.hl || []).some(function (h) { return h === l; })) bad.push('"' + l + '" not in hl'); });
+        /* ============ PER-SUBSTEP HIGHLIGHTS (#809 item 14, 2026-09-27) ======================
+         * `accs[].hl` / `accs[].hl_watch` on a HEAD entry replace the step's lists while that substep
+         * is active (ui/app.js `cklSubstepHl`). Four checks per step that authors any, so the tally
+         * is derived from the pool. Each was INJECTION-PROVEN when written (2026-09-27): (a) moving
+         * heatup 3a's lists onto a `cont` row, and an `hl_active` left on any row -> red; (b) a
+         * substep label the step's lists do not carry ('Tavg' on startup 5a), and one outside the
+         * vocabulary -> red; (c) 'Withdraw' in both lists of startup 6a, and 'Boron control' +
+         * 'Boron' (one card) in one substep -> red; (d) a substep `hl` on raise_power 1 (a step
+         * that asks for no press), and 'Tavg' pulsed on startup 5a -> red. */
+        var subs = [];
+        (st.accs || []).forEach(function (e, j) { if (e && (e.hl || e.hl_watch || e.hl_active)) subs.push({ e: e, j: j }); });
+        if (subs.length) {
+          var bad = [], stepAll = (st.hl || []).concat(st.hl_watch || []);
+          subs.forEach(function (x) {
+            if (x.e.cont) bad.push('row ' + x.j + ' is a cont row');
+            if (x.e.hl_active) bad.push('row ' + x.j + ' carries the retired hl_active (use the head\'s own hl)');
           });
-          if (!st.accs_ordered) bad.push('step is not accs_ordered');
-          ck(where + ' hl_active labels are in hl, on head rows, on an ordered step', bad.length === 0, bad.join('; '));
+          ck(where + ' substep hl/hl_watch sit on head rows only', bad.length === 0, bad.join('; '));
+          bad = [];
+          subs.forEach(function (x) {
+            (x.e.hl || []).concat(x.e.hl_watch || []).forEach(function (l) {
+              if (known[l] !== true) bad.push('row ' + x.j + ' "' + l + '" is not in the board vocabulary');
+              else if (stepAll.indexOf(l) < 0) bad.push('row ' + x.j + ' "' + l + '" is not in the step\'s hl/hl_watch (the hover preview reads those)');
+            });
+          });
+          ck(where + ' substep labels are known and carried by the step', bad.length === 0, bad.join('; '));
+          bad = [];
+          subs.forEach(function (x) {
+            var h = x.e.hl || [], w = x.e.hl_watch || [], ids = {};
+            h.forEach(function (l) { if (w.indexOf(l) >= 0) bad.push('row ' + x.j + ' "' + l + '" is in both lists'); });
+            h.concat(w).forEach(function (l) {
+              var id = resolveLabel(l); if (!id) return;
+              if (ids[id]) bad.push('row ' + x.j + ' "' + ids[id] + '" + "' + l + '" -> one element ' + id);
+              else ids[id] = l;
+            });
+          });
+          ck(where + ' substep hl/hl_watch are disjoint and resolve to distinct elements', bad.length === 0, bad.join('; '));
+          if (prof === 'pwr2') {
+            bad = [];
+            subs.forEach(function (x) {
+              if ((x.e.hl || []).length && !asksForPress(st)) bad.push('row ' + x.j + ' pulses on a step that asks for no press');
+              (x.e.hl || []).forEach(function (l) {
+                var id = resolveLabel(l);
+                if (id && !/^shell:/.test(id) && !workable(id)) bad.push('row ' + x.j + ' pulses "' + l + '", a ' + kindOf(id) + ' the player cannot work');
+              });
+            });
+            ck(where + ' substep hl pulses only a workable control on a press step', bad.length === 0, bad.join('; '));
+          }
         }
         if (st.hl && st.hl.length && st.hl_watch && st.hl_watch.length) {
           var both = st.hl.filter(function (l) { return st.hl_watch.indexOf(l) >= 0; });
@@ -311,6 +345,27 @@ Object.keys(RD.MANUAL_PROCEDURES).forEach(function (prof) {
       });
     });
   });
+  /* THE GLOW ROLE TABLE ON THE ELEMENTS THE OWNER NAMED (#809 items 1-4). `PwrBoardInspect.glowRole`
+   * decides the drawn shape (ui/app.js `applyCklWatchGlow`), so its answers on his examples are the
+   * claim: TRIP is a control (dashed when checked), the shutdown-bank WITHDRAW's card is the outer
+   * REACTOR/ROD CONTROL panel and not the SHUTDOWN card (item 1), a readout is an indication, a card
+   * is a panel, and a readout-kind `component` (Tavg) is not promoted to a control by its kind.
+   * INJECTION-PROVEN 2026-09-27, three ways: `panelOf` returning the nearest box -> red on the
+   * shutdown-bank WITHDRAW (item 1); every `component` classed a control by kind -> red on 'Tavg';
+   * no component ever a control -> red on the accumulator valve. */
+  (function roles() {
+    var R0 = INSP && INSP.glowRole;
+    var want = [['Turbine — Trip', 'control', 'imro8k5pzem'], ['Shutdown Bank — Withdraw', 'control', 'ims14ylw4az'],
+                ['Rod Speed — Fast', 'control', 'ims14ylw4az'], ['SG Feed AUTO', 'control', 'imrqxsodu5j'],
+                ['Shutdown Rod Position', 'indication', null], ['Tavg', 'indication', null],
+                ['Accumulator valve', 'control', null], ['Steam Dump', 'panel', null]];
+    var bad = [];
+    want.forEach(function (w) {
+      var r = R0 ? INSP.glowRole(w[0]) : null;
+      if (!r || r.role !== w[1] || (r.panel || null) !== w[2]) bad.push('"' + w[0] + '" -> ' + JSON.stringify(r) + ', want ' + w[1] + '/' + w[2]);
+    });
+    ck('glow roles: controls dashed, readouts solid, cards dim, card = outermost titled panel (#809)', bad.length === 0, bad.join('; '));
+  })();
   console.log('\n' + B + 'Pulse-vs-watch scan' + X + D + '  (#748 — hl rings a control, hl_watch rings an indication)' + X);
   console.log('  board items the player can work: ' + (DRV.actionableIds ? DRV.actionableIds().length : 0) +
     '   of which press/hold buttons: ' + DRV.pressableIds().length);

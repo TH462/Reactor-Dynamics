@@ -5459,9 +5459,12 @@
     /* THE STEP KEY IS WHAT SCOPES THE "already pressed" SET (#755 item 19) — procedure plus step
      * index, so advancing a step, rewinding, or starting another leg all drop it and the next
      * step's controls pulse again from scratch. */
-    applyCklStepGlow(actSt ? stepHlLabels(actSt, ck) : null,
-                     actSt ? (pr.id + '#' + ck.step_index) : null);
-    applyCklWatchGlow(actSt ? stepWatchLabels(actSt, ck) : null);   /* #685; `hl_active` (#807) */
+    var actPress = actSt ? stepHlLabels(actSt, ck) : null;
+    applyCklStepGlow(actPress, actSt ? (pr.id + '#' + ck.step_index) : null);
+    applyCklWatchGlow(actSt ? stepWatchLabels(actSt, ck) : null, actPress);   /* #685; per substep + roles (#809) */
+    /* Which substep's lists are lit (-1 = the step's own), for `verify_e2e_ui` to recompute them. */
+    var actEl = actSt ? cur.querySelector('.ckl-step[data-ckl-step]') : null;
+    if (actEl) { var subHl = cklSubstepHl(actSt, ck); actEl.setAttribute('data-ckl-hl-head', subHl ? subHl.head : -1); }
     applyCklSpeedGlow(s, ck, actSt);                            /* #735 — #724 item 2; #796 */
     // Step hover → glow the controls/indications the step names (its `hl` list) on
     // the plant display, reusing the Instructor highlight vocabulary (revealControl).
@@ -5648,23 +5651,25 @@
    * 4, `pwr_sgtr` 5, `pwr_seal_leak` 3-5) and exactly one in the live pool — `pwr_raise_power` 9,
    * which is the step the ruling is about. The ten retired-pool steps do not go dark: they have no
    * `hl_watch`, so `stepWatchLabels` below picks their `control` up as a steady ring. */
-  /* `accs[].hl_active` (#807 review item 4, 2026-09-26): labels from the step's `hl` that PULSE only
-   * while that substep is the active one; until then (and after) they wear the steady watch ring.
-   * `pwr_cooldown` 11's spray OFF pulsed from step entry on a step whose own record says an early
-   * press takes pressure past the RHR limit. `ck` absent (the hover preview) = the whole `hl`. */
-  function cklHlActiveSplit(st, ck) {
-    var gated = [], now = [];
-    (st.accs || []).forEach(function (e) { (e && e.hl_active || []).forEach(function (l) { if (gated.indexOf(l) < 0) gated.push(l); }); });
-    if (!gated.length || !ck) return null;
+  /* HIGHLIGHTS ARE PER SUBSTEP (#809 item 14, OWNER 2026-09-27: "some buttons are highlighted for
+   * the whole step when it should just be highlighted for one substep. highlighs should be per
+   * substep, not the whole step."). A HEAD entry of `accs` may author its own `hl` / `hl_watch`;
+   * while that substep is the active one (`cklActiveAccsHead` — the first unmet visible row, walked
+   * back to its head) and it authors EITHER list, the board lights only that substep's lists. A
+   * substep that authors neither, or no active substep (every row met), falls back to the step's
+   * own lists. `ck` absent (the hover preview) = the step's lists, which the gate keeps a superset.
+   * Replaces `accs[].hl_active` (#807 review item 4), which gated one pulse the same way. */
+  function cklSubstepHl(st, ck) {
+    if (!ck || !st || !st.accs) return null;
     var head = cklActiveAccsHead(st, ck);
-    if (head >= 0) now = st.accs[head].hl_active || [];
-    return { off: gated.filter(function (l) { return now.indexOf(l) < 0; }) };
+    var e = head >= 0 ? st.accs[head] : null;
+    if (!e || !(e.hl || e.hl_watch)) return null;
+    return { head: head, hl: e.hl || [], hl_watch: e.hl_watch || [] };
   }
   function stepHlLabels(st, ck) {
-    if (st.hl && st.hl.length) {
-      var sp = cklHlActiveSplit(st, ck);
-      return sp ? st.hl.filter(function (l) { return sp.off.indexOf(l) < 0; }) : st.hl;
-    }
+    var sub = cklSubstepHl(st, ck);
+    if (sub) return sub.hl.length ? sub.hl : null;
+    if (st.hl && st.hl.length) return st.hl;
     var c = stepControlLabel(st);
     if (c && stepAsksForPress(st)) return [c];
     return null;
@@ -5681,8 +5686,8 @@
    * pill. Without this the ten retired-pool verify steps above would lose their ring AND their
    * hover affordance (`hoverable` is `stepHlLabels || stepWatchLabels`) — a regression, not a fix. */
   function stepWatchLabels(st, ck) {
-    var sp = st.hl && st.hl.length ? cklHlActiveSplit(st, ck) : null;
-    if (sp && sp.off.length) return (st.hl_watch || []).concat(sp.off);
+    var sub = cklSubstepHl(st, ck);
+    if (sub) return sub.hl_watch.length ? sub.hl_watch : null;
     if (st.hl_watch && st.hl_watch.length) return st.hl_watch;
     if (st.hl && st.hl.length) return null;
     var c = stepControlLabel(st);
@@ -5808,16 +5813,48 @@
    * names the same label in both lists the pulse wins the element rather than being replaced
    * by a quieter ring — `run_manual_controls` reddens on that overlap, this is the behaviour
    * while the red is being fixed. */
-  function applyCklWatchGlow(labels) {
+  /* THE SHAPE FOLLOWS WHAT THE ELEMENT IS (#809 items 3/4, OWNER 2026-09-27: "Lets make a dimmer
+   * glow thats for the panel that contains the control. keep the brighter solid glow for
+   * indications." / "in steps that have you check a button the button should have a dashed glow.").
+   * A watch label that is an INDICATION keeps `.ckl-watch-glow` (bright, solid, steady); a CONTROL
+   * the step only asks the player to check wears `.ckl-check-glow` (dashed, still); a CARD wears
+   * `.ckl-panel-glow` (dim). And every lit control — pulsing or checked — lights the card that holds
+   * it with `.ckl-panel-glow`, derived from the board's containment (`PwrBoardInspect.glowRole`),
+   * never authored, so the player finds the card first. What the element IS comes from the board's
+   * item kinds; a label outside the board map (a shell target) keeps the indication ring. Authored
+   * watch labels carry `data-ckl-w` so a gate can count them apart from the derived cards. */
+  var CKL_WATCH_CLASSES = ['ckl-watch-glow', 'ckl-check-glow', 'ckl-panel-glow'];
+  function cklGlowRole(lab) {
+    if (ui.plant !== 'pwr' || !RD.PwrBoardInspect || !RD.PwrBoardInspect.glowRole) return null;
+    if (RD.Highlight && RD.Highlight.SHELL_TARGETS && RD.Highlight.SHELL_TARGETS[lab]) return null;
+    return RD.PwrBoardInspect.glowRole(lab);
+  }
+  function cklHasGlow(el) {
+    return el.classList.contains('ckl-step-glow') ||
+           CKL_WATCH_CLASSES.some(function (c) { return el.classList.contains(c); });
+  }
+  function applyCklWatchGlow(labels, pressLabels) {
     clearCklWatchGlow();
-    if (!labels || !labels.length) return;
-    labels.forEach(function (lab) {
+    (labels || []).forEach(function (lab) {
       var el = hlTarget(lab);
-      if (el && !el.classList.contains('ckl-step-glow')) el.classList.add('ckl-watch-glow');
+      if (!el || el.classList.contains('ckl-step-glow')) return;
+      var r = cklGlowRole(lab), role = r ? r.role : 'indication';
+      el.classList.add(role === 'control' ? 'ckl-check-glow' : role === 'panel' ? 'ckl-panel-glow' : 'ckl-watch-glow');
+      el.setAttribute('data-ckl-w', lab);
+    });
+    var board = RD.PwrBoard && RD.PwrBoard.haloElement ? RD.PwrBoard : null;
+    if (!board) return;
+    (pressLabels || []).concat(labels || []).forEach(function (lab) {
+      var r = cklGlowRole(lab);
+      if (!r || !r.panel) return;
+      var el = board.haloElement(r.panel);
+      if (el && !cklHasGlow(el)) el.classList.add('ckl-panel-glow');
     });
   }
   function clearCklWatchGlow() {
-    document.querySelectorAll('.ckl-watch-glow').forEach(function (el) { el.classList.remove('ckl-watch-glow'); });
+    CKL_WATCH_CLASSES.forEach(function (c) {
+      document.querySelectorAll('.' + c).forEach(function (el) { el.classList.remove(c); el.removeAttribute('data-ckl-w'); });
+    });
   }
   /* THE SPEED BAR GLOWS WHEN THE STEP RECOMMENDS A SPEED (#735, owner playtest #724 item 2:
    * "when a speed control is recommended the speed control button should glow").
