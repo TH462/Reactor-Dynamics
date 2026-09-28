@@ -133,7 +133,7 @@ const MAX_EVENTS_PER_BATCH = 250;   // Analytics Engine caps writes per invocati
  *   doubles[0]  seconds
  *   doubles[1]  sim_seconds
  *   doubles[2]  mode                plant_mode only
- *   doubles[3]  beat                mission_abandon only
+ *   doubles[3]  beat                mission_abandon, opener_beat
  *   doubles[4]  t_page              seconds since PAGE LOAD (envelope `e.t`)
  *   doubles[5]  t_session           seconds since the session id was minted (`e.st`)
  *   doubles[6]  blocked             1 the plant refused it, 0 it went through
@@ -249,6 +249,9 @@ const KEY_OF = {
   mission_start: 'id',
   mission_complete: 'id',
   mission_abandon: 'id',
+  /* The opener's beat rides in the key for the walkthrough_step reason: the funnel must
+   * survive the three-month edge, and doubles[3] does not (#811). */
+  opener_beat: ['id', 'beat'],
   plant_mode: null,
   milestone: 'name',
   walkthrough_start: 'id',

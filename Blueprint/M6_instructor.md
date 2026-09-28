@@ -163,6 +163,7 @@ for events the operator cannot see.
 { type: "instrument", instrument: "sg_level", direction: "below", value: 30.0 }   // reads an INSTRUMENT (HR1)
 { type: "true_state", field: "core_inventory_pct", direction: "below", value: 70.0 }   // author-keyed true_state field (CONTEXT §6.3); truth the operator can't see
 { type: "control_state", field: "spray_auto", direction: "is_true" }        // a control's own state — the lit AUTO/MANUAL light (board-visible; #811)
+{ type: "rod_travel", group_id: "control_rods", direction: "out", steps: 5 }  // a rod group moved N steps out|in SINCE THIS BEAT FIRED (board step counter; #811)
 { type: "operator_action", command: "set_hpi", params: { active: true } }         // the operator issues a particular command
 { type: "inaction", window: 60.0 }                                        // fires if no relevant action within the window
 { type: "alarm", alarm_id: "subcooling_lost", state: "active_unacknowledged" }     // an alarm reaches a state
@@ -171,6 +172,9 @@ for events the operator cannot see.
 { type: "all", triggers: [ /* ... */ ] }                                   // composite — all sub-triggers true
 { type: "any", triggers: [ /* ... */ ] }                                   // composite — any sub-trigger true
 ```
+
+Beat field `trend: ["power", "decay", "tavg"]` (#811, owner 2026-09-28): when the beat fires, the strip chart shows exactly these series (ids from the UI profile's `series`), its frame glows, and the snapshot carries `instructor.trend = { rev, series }`. The UI keeps the player's own selection and restores it when the content stops running (End, the finish card, Retry, any stop). The beat's own line must name what it put there (gated by `run_opener`).
+
 
 **Direction vocabulary.** Numeric triggers use `"below"` / `"above"` — the same meaning as the
 `"low"` / `"high"` used by trips and alarms (M4), just the trigger subsystem's wording. Boolean

@@ -3569,15 +3569,21 @@
   /* THE OPENER OFFER (#811). A short instructor chat for the starting condition the player is
    * sitting at, offered above the walkthroughs bar. One per starting condition: the opener whose
    * plant_id + initial_state match the running plant (RD.OPENERS, scenarios/opener_*.js). One
-   * click starts it, one click hides it for good (per opener, this browser) — ignoring it changes
-   * nothing about free play. Behind the 'openers' area flag (site/flags.js). */
+   * click starts it; "Not now" hides it for this browser SESSION (sessionStorage — OWNER RULING
+   * 2026-09-28: "Make it appear in every session instead of being hidden for good."). Ignoring it
+   * changes nothing about free play. Behind the 'openers' area flag (site/flags.js). */
   var openerHidden = {};
   function openerDismissed(id) {
     if (openerHidden[id]) return true;
-    try { return localStorage.getItem('rd_opener_hide_' + id) === '1'; } catch (e) { return false; }
+    try { return sessionStorage.getItem('rd_opener_hide_' + id) === '1'; } catch (e) { return false; }
   }
   function openerFor() {
     if (!flagOn('openers') || !service) return null;
+    /* ONLY ON A FRESH PLANT (#811 follow-up). One click resets the plant with no confirm, so the
+     * offer stands only while that costs nothing: a free-play load no plant command has touched,
+     * and no opener already run on it (SimulationService.isFreshPlant). QA found it standing
+     * hours into free play, after End, and after finishing. */
+    if (!(service.isFreshPlant && service.isFreshPlant())) return null;
     var all = RD.OPENERS || {};
     for (var k in all) {
       var o = all[k];
@@ -3626,6 +3632,7 @@
     syncSpeedUI(s);
     syncPacingUI(s);
     renderHighlight(s);
+    applyInstrTrend(s);   // after the highlight: it adds its own glow, which that pass would clear
     instrGateOpen(s);     // a step that blocks progress opens the card, once per beat (#439)
     // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
     // is just a synced mirror. This survives start_follow's internal plant reset,
@@ -6087,6 +6094,42 @@
     selectTab('instructor');   // the walkthrough runs in the Instructor tab (#660 item 15)
   }
 
+  /* ---- INSTRUCTOR TRENDS (#811, owner 2026-09-28: "It could change the lines to show what it's
+   * teaching."). A beat's `trend: [series ids]` arrives as instructor.trend {rev, series}; each
+   * new rev replaces the chart's traces and glows the strip chart, and the beat's own text names what
+   * it put there. The PLAYER'S selection is kept the first time and put back the moment the
+   * content is no longer running — End, the finish card, Retry, any stop — so the chart is only
+   * ever borrowed. */
+  var instrTrend = { saved: null, rev: null };
+  function instrTrendRedraw() {
+    chartRange = {};
+    syncIndCells();
+    syncChartSettings();
+    drawChart();
+  }
+  function restoreInstrTrend() {
+    if (!instrTrend.saved) { instrTrend.rev = null; return; }
+    ui.series = instrTrend.saved.series;
+    ui.seriesSide = instrTrend.saved.side;
+    instrTrend = { saved: null, rev: null };
+    var lg = document.querySelector('.strip-chart'); if (lg) lg.classList.remove('instr-glow');
+    instrTrendRedraw();
+  }
+  function applyInstrTrend(s) {
+    var ins = s && s.instructor, t = ins && ins.trend;
+    var live = !!(ins && ins.scenario_id && !ins.level_complete);
+    if (!live) { if (instrTrend.saved) restoreInstrTrend(); return; }
+    if (!t || t.rev === instrTrend.rev) return;
+    if (!instrTrend.saved) instrTrend.saved = { series: Object.assign({}, ui.series), side: Object.assign({}, ui.seriesSide) };
+    instrTrend.rev = t.rev;
+    var next = {};
+    (t.series || []).forEach(function (id) { if (seriesById(id)) next[id] = true; });
+    ui.series = next;
+    ui.seriesSide = {};
+    instrTrendRedraw();
+    var lg = document.querySelector('.strip-chart'); if (lg) lg.classList.add('instr-glow');   // cleared with the beat's highlight
+  }
+
   // ---- Instructor highlight (Gameplay §5) — glow the control the current beat /
   // follow step points at, auto-revealing the tab or view that hides it (F8 fix).
   var lastHighlightKey = null;
@@ -6816,6 +6859,8 @@
     var op = RD.OPENERS && RD.OPENERS[id];
     if (!op) return;
     ui.follow = null; ui.scenario = null; ui.opener = id;
+    inspectClear();              // the offer's Scanner hint described a button that is now gone
+    restoreInstrTrend();         // Retry: the player's own chart, before the opener borrows it again
     pauseSim('content');
     service.handleCommand({ action: 'start_opener', opener_id: id });
     afterPlantChange();
@@ -6834,6 +6879,7 @@
       TEL.missionAbandon(sid, Math.max(0, ids.indexOf(s.instructor.current_beat_id)));
     }
     ui.opener = null;
+    restoreInstrTrend();                      // the chart was borrowed; hand it back too
     cmd({ action: 'stop_scenario' });
     cmd({ action: 'set_speed', value: 1 });   // the opener owned the clock; hand it back at 1×
     if (latest) renderInstructor(latest);
@@ -8632,6 +8678,22 @@
         }
 
         this.walkthrough(s.instructor && s.instructor.checklist);
+        this.openerBeat(s.instructor);
+      },
+
+      /* THE OPENERS, BEAT BY BEAT (#811 follow-up). mission_start / _complete / _abandon say
+       * whether they finished; this says WHERE THEY STOPPED. One row each time the opener's
+       * current beat changes, `beat` its index in the authored list — the same meaning
+       * mission_abandon.beat already carries (the beat pending or being watched), so the two
+       * read on one axis. Ids and an index only. A beat entered and left inside one broadcast
+       * (a delay(0) hop) is not seen; the funnel is the pending asks, which is the question. */
+      openerBeat: function (ins) {
+        var sid = ins && ins.scenario_id, op = sid && RD.OPENERS && RD.OPENERS[sid];
+        if (!op || !mission || mission.id !== sid || !ins.current_beat_id) return;
+        if (mission.openerBeat === ins.current_beat_id) return;
+        mission.openerBeat = ins.current_beat_id;
+        var idx = op.beats.map(function (b) { return b.id; }).indexOf(ins.current_beat_id);
+        if (idx >= 0) ev('opener_beat', { id: sid, beat: idx });
       },
 
       /* THE WALKTHROUGHS (#674). Driven off the snapshot, from inside tick, because
@@ -9766,7 +9828,7 @@
         e.preventDefault();
         var oid = od.getAttribute('data-opener-dismiss');
         openerHidden[oid] = true;
-        try { localStorage.setItem('rd_opener_hide_' + oid, '1'); } catch (err) { /* hidden for this page only */ }
+        try { sessionStorage.setItem('rd_opener_hide_' + oid, '1'); } catch (err) { /* hidden for this page only */ }
         showIdleInstructor();
         return;
       }
@@ -10086,14 +10148,24 @@
    * hover clears it") — preserved rather than reinvented. A stamp rather than a boolean so a
    * flash raised by an EARLIER click cannot suppress a later, unrelated one. */
   var inspectClickSeq = 0;              /* bumped once per body-level click dispatch */
+  var inspectClearedAt = -1;            /* the dispatch that blanked the line (inspectClear) */
+  /* BLANK THE LINE (#811 follow-up): a press that REMOVES the thing it describes — the opener
+   * offer — left its hint standing until the next hover. Same dispatch rule as the flash: the
+   * body-level listener that runs after this press must not write the gone button back. */
+  function inspectClear() {
+    inspectCur = null;
+    inspectClearedAt = inspectClickSeq;
+    inspectRender();
+  }
   function inspectAt(e, fromClick) {
     if (fromClick) {
       /* A flash stamped with the CURRENT count was raised after the previous body click and
        * therefore by THIS one — the button's own handler runs first, then this listener. It
        * is the answer to the press, so it stands; a flash from an earlier click does not. */
       var fresh = !!(inspectCur && inspectCur.flashAt === inspectClickSeq);
+      var cleared = inspectClearedAt === inspectClickSeq;
       inspectClickSeq++;
-      if (fresh) return;
+      if (fresh || cleared) return;
     }
     var res = inspectResolve(e);
     // Persistence (§11): pointing at nothing keeps the last description on screen

@@ -35,6 +35,14 @@
   function did(command, params) { return { type: 'operator_action', command: command, params: params }; }
 
   var PSI = 1 / 145.038;   // instruments carry MPa internally; thresholds are written in psi
+  // Rods OUT this far past where they sat at the ask = the wrong way (see o4_wrong). Held at MED
+  // the bank moves ~23 steps per 30 s at 1x (QA pass, headless Edge), so this is ~6 s of holding OUT.
+  var WRONG_WAY_STEPS = 5;
+  // ...and the ask is met only once the bank is actually IN from where it stood when the line was
+  // said. Measured on the 90 MWe route: power is already 89.0 % at the ask, so "power < 90 and a
+  // release" alone accepted the release of an OUT hold and moved on to "Rods in means fewer
+  // neutrons" over a bank that had gone out.
+  var IN_SINCE_ASK = { type: 'rod_travel', group_id: 'control_rods', direction: 'in', steps: 3 };
 
   RD.OPENERS = RD.OPENERS || {};
   RD.OPENERS.opener_pwr2_hfp = {
@@ -65,9 +73,12 @@
         chat_button: { style: 'ack', label_learning: 'Ready', label_industry: 'Ready' },
         speed: 1,
         highlight: { control_label: 'Turbine Load' },
+        trend: ['tavg', 'pressure', 'dump', 'power'],
         dialogue: [
           say('First move: set Turbine Load to 80 MWe. That asks the turbine for less steam.',
               'Reduce turbine load to 80 MWe.'),
+          say('I put Tavg, Pressure, Steam Dump and Power on the trend chart so you can watch.',
+              'Trend chart: Tavg, Pressure, Steam Dump, Power.'),
         ],
         branches: [
           { trigger: inst('mwe_output', 'below', 96), goto: 'o2_watch' },
@@ -118,9 +129,12 @@
         trigger: delay(40),
         speed: 1,
         highlight: { control_label: 'Control Bank' },
+        trend: ['power', 'rod_steps', 'tavg'],
         dialogue: [
-          say('Clock back to 1×. Your turn: drive Control Bank in about 40 steps. Watch reactor power follow.',
-              'Clock 1×. Insert control rods about 40 steps to bring power down to the load.'),
+          say('Clock back to 1×. Your turn: set rod speed to FAST, then drive Control Bank in about 40 steps. Watch reactor power follow.',
+              'Clock 1×. Select FAST rod speed, then insert control rods about 40 steps to bring power down to the load.'),
+          say('The trend chart now shows Power, Control Rod Steps and Tavg.',
+              'Trend chart: Power, Control Rod Steps, Tavg.'),
         ],
         // A board HOLD sends rod_start on press and rod_stop on release; a tap sends rod_nudge on
         // release. Grading on the RELEASE, not the press: measured in headless Edge (QA pass),
@@ -128,7 +142,23 @@
         // crosses 90 % mid-hold — on `rod_start` the 5× watch and the spray ask both fired while
         // the player was still holding the button.
         branches: [
-          { trigger: { type: 'all', triggers: [inst('power_range', 'below', 90),
+          { trigger: { type: 'all', triggers: [inst('power_range', 'below', 90), IN_SINCE_ASK,
+              { type: 'any', triggers: [did('rod_nudge'), did('rod_stop')] }] }, goto: 'o5_rods_watch' },
+          { trigger: { type: 'rod_travel', group_id: 'control_rods', direction: 'out', steps: WRONG_WAY_STEPS }, goto: 'o4_wrong' },
+          { trigger: { type: 'inaction', window: 120 }, goto: 'o4_help' },
+        ] },
+      // WITHDRAWN, NOT INSERTED (#811 QA: power 93.7 -> 98.2 %, bank to 627/627 and 120 s of silence
+      // before the help beat). One line, then the same ask continues from here — its own inaction
+      // exit, and no second wrong-way branch, so the line is said once.
+      { id: 'o4_wrong',
+        trigger: delay(0),
+        highlight: { control_label: 'Control Bank' },
+        dialogue: [
+          say('Those rods went out, the wrong way, so power rose. Drive Control Bank in instead.',
+              'Rods withdrawn; power increasing. Insert control rods.'),
+        ],
+        branches: [
+          { trigger: { type: 'all', triggers: [inst('power_range', 'below', 90), IN_SINCE_ASK,
               { type: 'any', triggers: [did('rod_nudge'), did('rod_stop')] }] }, goto: 'o5_rods_watch' },
           { trigger: { type: 'inaction', window: 120 }, goto: 'o4_help' },
         ] },
@@ -153,9 +183,12 @@
           { type: 'all', triggers: [inst('steam_dump_valve', 'below', 30), delay(30)] }, delay(75)] },
         speed: 1,
         highlight: { control_label: 'Pressurizer Spray (PZR)' },
+        trend: ['pressure', 'spray'],
         dialogue: [
           say('Clock back to 1×. Now pressure. Put Pressurizer Spray in MANUAL and open it all the way.',
               'Clock 1×. Place pressurizer spray in manual, 100 % open.'),
+          say('The trend chart now shows Pressure and Spray.',
+              'Trend chart: Pressure, PZR Spray.'),
         ],
         branches: [
           { trigger: inst('pzr_spray_flow', 'above', 30), goto: 'o7_spray_watch' },
@@ -218,9 +251,12 @@
       { id: 'o11_trip',
         trigger: { type: 'all', triggers: [inst('power_range', 'below', 5), delay(12)] },
         highlight: { control_label: 'Tavg' },
+        trend: ['power', 'decay', 'tavg'],
         dialogue: [
           say('All rods dropped. Neutron power fell to about 2 % in seconds, but the fuel still makes about 5 % of full heat from decay.',
               'Reactor tripped. Neutron power about 2 %; decay heat about 5 %.'),
+          say('See Decay Heat on the trend chart, next to Power and Tavg. It stays well above neutron power.',
+              'Trend chart: Power, Decay Heat, Tavg. Decay heat remains above neutron power.'),
         ],
         advance: 'wait_for_trigger' },
       { id: 'o12_settle',

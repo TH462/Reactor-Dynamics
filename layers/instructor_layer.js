@@ -382,6 +382,8 @@
     this.highlight = null;
     this.levelComplete = null;
     this._actionsSinceBeat = [];      // forwarded operator commands since last beat fire
+    this._beatBaseline = {};          // rod_travel: each group's steps when the beat fired (#811)
+    this._trend = null;               // { rev, series } — the chart traces a beat asked for (#811)
     this._lastSimTime = 0;
     this._continueRequested = false;  // instructor_continue → `manual` trigger
     // Chat-mode state (scenarios with `chat: true` — dialogue log + interactions).
@@ -687,8 +689,16 @@
     }
 
     this.firedBeats.add(beat.id);
+    /* A BEAT CAN SET THE TREND CHART (#811, owner 2026-09-28): `trend: [series ids]` puts those
+     * traces on the chart when the beat fires. `rev` counts the requests so the UI applies each
+     * once; the UI keeps the player's own selection and restores it when the content ends. The
+     * beat's text must say what it put there — the chart changing unannounced is the defect. */
+    if (beat.trend && beat.trend.length) {
+      this._trend = { rev: (this._trend ? this._trend.rev : 0) + 1, series: beat.trend.slice() };
+    }
     this.lastBeatFireTime = simTime;
     this._actionsSinceBeat = [];
+    this._beatBaseline = {};
 
     // A rewind beat asks M5 to roll the WORLD back while the Instructor keeps its
     // progress (the "watch that again" device). It does not also checkpoint —
@@ -726,6 +736,7 @@
     this.currentBeatId = branch.goto;
     this.lastBeatFireTime = simTime;      // delay triggers on the target measure from the decision
     this._actionsSinceBeat = [];
+    this._beatBaseline = {};
   };
 
   // ------------------------------------------------------------ chat (TMI-2 M5)
@@ -824,6 +835,20 @@
       case 'control_state':
         v = snapshot.control_state ? snapshot.control_state[trigger.field] : undefined;
         return this._compare(v, trigger.direction, trigger.value);
+      /* A ROD GROUP'S TRAVEL SINCE THE BEAT FIRED (#811 follow-up): `direction` 'out' | 'in',
+       * `steps` how far. RELATIVE, because "the player drove the rods the wrong way" is a fact
+       * about where the bank was AT THE ASK, and that position depends on the route taken to it.
+       * The baseline is the first reading after the beat fired (one broadcast late at most), and
+       * rides in saveState so a restore mid-ask does not re-zero it. Board-visible (the bank's
+       * step counter), so not an HR1 leak. */
+      case 'rod_travel': {
+        var rgs = snapshot.control_state && snapshot.control_state.rod_groups, grp = null;
+        for (i = 0; rgs && i < rgs.length; i++) if (rgs[i].id === trigger.group_id) grp = rgs[i];
+        if (!grp || typeof grp.steps !== 'number') return false;
+        if (this._beatBaseline[trigger.group_id] == null) this._beatBaseline[trigger.group_id] = grp.steps;
+        var moved = grp.steps - this._beatBaseline[trigger.group_id];
+        return (trigger.direction === 'in' ? -moved : moved) >= trigger.steps;
+      }
       case 'operator_action': // a matching command descended since the last beat fired
         for (i = 0; i < this._actionsSinceBeat.length; i++) {
           if (this._commandMatches(this._actionsSinceBeat[i], trigger)) return true;
@@ -2513,6 +2538,7 @@
       message_register: base.message_register,
       scenario_id: this.scenario ? this.scenario.id : null,
       current_beat_id: this.currentBeatId,
+      trend: this._trend ? { rev: this._trend.rev, series: this._trend.series.slice() } : null,
       // Is a beat currently GATING progress? (#439, spec §4.) The UI tiers its
       // interrupt on this: a routine message cues the collapsed card's badge, a step
       // that blocks the player has to reach them even with another panel open, or the
@@ -2703,6 +2729,8 @@
       pending_message: this.pendingMessage ? JSON.parse(JSON.stringify(this.pendingMessage)) : null,
       chat_log: this.chatLog.length ? JSON.parse(JSON.stringify(this.chatLog)) : null,
       chat_rev: this._chatRev,
+      beat_baseline: JSON.parse(JSON.stringify(this._beatBaseline || {})),
+      trend: this._trend ? JSON.parse(JSON.stringify(this._trend)) : null,
       interact: JSON.parse(JSON.stringify(this._interact)),
       ui_policy: this.uiPolicy ? JSON.parse(JSON.stringify(this.uiPolicy)) : null,
       highlight: this.highlight ? JSON.parse(JSON.stringify(this.highlight)) : null,
@@ -2840,6 +2868,8 @@
       this.pendingMessage = state.pending_message || null;
       this.chatLog = state.chat_log || [];
       this._chatRev = state.chat_rev || 0;
+      this._beatBaseline = state.beat_baseline || {};
+      this._trend = state.trend || null;
       this._interact = state.interact || {};
       this.uiPolicy = state.ui_policy || null;
       this.highlight = state.highlight || null;

@@ -8,7 +8,8 @@
  * THREE ROUTES, because an opener that only works for the player who does exactly what it says
  * is a strand for everyone else (CLAUDE.md, walkthrough routes; #811 brief):
  *   typical    — does what is asked: 80 MWe, rods in 45, spray full until told, AUTO, SCRAM.
- *   mistake    — does it differently: 90 MWe, rods in 15 then 20 more, spray open 10 s then
+ *   mistake    — does it differently: 90 MWe, HOLDS the rods OUT first (the wrong way, QA's
+ *                reproduction), then in 40 and 20 more after being told, spray open 10 s then
  *                AUTO BEFORE being asked, never presses SCRAM (the instructor trips it).
  *   hands_off  — presses Ready and nothing else; every ask must be completed by the instructor.
  *
@@ -64,10 +65,12 @@ function rec(s) {
   var o = { instruments: {}, true_state: {}, control_state: { spray_auto: s.control_state.spray_auto },
             rps_state: { scrammed: !!(s.rps_state && s.rps_state.scrammed) },
             metadata: { time_acceleration: s.metadata.time_acceleration },
-            instructor: s.instructor };
+            instructor: s.instructor,
+            trend: s.instructor && s.instructor.trend ? JSON.parse(JSON.stringify(s.instructor.trend)) : null };
   INST.forEach(function (k) { o.instruments[k] = s.instruments[k]; });
   var rg = (s.control_state.rod_groups || []).filter(function (g) { return g.id === 'control_rods'; })[0];
   o.control_state.rods_moving = !!(rg && rg.moving);
+  o.control_state.bank_steps = rg ? rg.steps : null;   // the board's step counter (o4_wrong reads it)
   ['rod_steps', 'pzr_heater_kw', 'core_heat_pct', 'decay_heat_pct', 'turbine_tripped'].forEach(function (k) { o.true_state[k] = s.true_state[k]; });
   return o;
 }
@@ -117,10 +120,11 @@ var ROUTES = {
   typical: {
     o0_hello:  [{ at: 15, cmd: READY }],
     o1_load:   [{ at: 20, cmd: { action: 'set_load_target', mwe: 80 } }],
-    // The board's INSERT button HELD at its default speed, as a player drives it: rod_start on
-    // press, rod_stop on release. Measured in headless Edge at 1×: ~23 steps per 30 s held.
-    o4_rods:   [{ at: 15, cmd: { action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'normal' } },
-                { at: 45, cmd: { action: 'rod_stop', group_id: 'control_rods' } }],
+    // The board's INSERT button HELD at FAST, as the line now asks (OWNER, 2026-09-28: "use
+    // FAST"): rod_start on press, rod_stop on release. FAST is 72 steps/min, so ~40 steps is a
+    // ~33 s hold at 1× (measured below: 'o6: rods in about 40').
+    o4_rods:   [{ at: 15, cmd: { action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'fast' } },
+                { at: 48, cmd: { action: 'rod_stop', group_id: 'control_rods' } }],
     o6_spray:  [{ at: 20, cmd: { action: 'set_spray', pct: 100 } }],
     o8_auto:   [{ at: 8, cmd: { action: 'set_spray', auto: true } }],
     o10_scram: [{ at: 8, cmd: { action: 'scram' } }],
@@ -128,7 +132,11 @@ var ROUTES = {
   mistake: {
     o0_hello:  [{ at: 3, cmd: READY }],
     o1_load:   [{ at: 5, cmd: { action: 'set_load_target', mwe: 90 } }],
-    o4_rods:   [{ at: 5, cmd: { action: 'rod_nudge', group_id: 'control_rods', steps: -15 } },
+    // WITHDRAWN, as QA did on the board (#811 follow-up): OUT held at MED (the o4_wrong line fires
+    // mid-hold), let go 3 s after the line, then in, in two nudges.
+    o4_rods:   [{ at: 5, cmd: { action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'normal' } }],
+    o4_wrong:  [{ at: 3, cmd: { action: 'rod_stop', group_id: 'control_rods' } },
+                { at: 12, cmd: { action: 'rod_nudge', group_id: 'control_rods', steps: -30 } },
                 { at: 40, cmd: { action: 'rod_nudge', group_id: 'control_rods', steps: -20 } }],
     o6_spray:  [{ at: 5, cmd: { action: 'set_spray', pct: 100 } }],
     o7_spray_watch: [{ at: 9, cmd: { action: 'set_spray', auto: true } }],   // closed after ~10 s, BEFORE the ask
@@ -140,7 +148,7 @@ var ROUTES = {
 };
 var ROUTE_PATH = {
   typical:   ['o0_hello', 'o1_load', 'o2_watch', 'o3_dump', 'o4_rods', 'o5_rods_watch', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o11_trip', 'o12_settle', 'o13_end'],
-  mistake:   ['o0_hello', 'o1_load', 'o2_watch', 'o3_small', 'o4_rods', 'o5_rods_watch', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o10_help', 'o11_trip', 'o12_settle', 'o13_end'],
+  mistake:   ['o0_hello', 'o1_load', 'o2_watch', 'o3_small', 'o4_rods', 'o4_wrong', 'o5_rods_watch', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o10_help', 'o11_trip', 'o12_settle', 'o13_end'],
   hands_off: ['o0_hello', 'o1_load', 'o1_help', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help', 'o5_rods_watch', 'o6_spray', 'o6_help', 'o7_spray_watch', 'o8_auto', 'o8_help', 'o9_heaters', 'o10_scram', 'o10_help', 'o11_trip', 'o12_settle', 'o13_end'],
 };
 
@@ -181,6 +189,28 @@ test('opener copy — registers, units, length, speed stated, highlights, exits'
   ck('every speed change is stated in its own beat (N×)', spd.join(',') || 'all stated', !spd.length, 'text names the rung');
   ck('every branch point has a time-only exit (no silent strand)', exits.join(',') || 'all', !exits.length, 'an inaction or delay branch');
   ck('every goto lands on a beat', gotos.join(',') || 'all', !gotos.length, 'defined');
+  /* A BEAT THAT SETS THE TREND CHART SAYS SO (#811, owner 2026-09-28) — in both registers, naming
+   * every trace it put there by the name the chart legend draws. */
+  var NAME = { tavg: 'Tavg', pressure: 'Pressure', dump: 'Steam Dump', power: 'Power',
+               rod_steps: 'Rod Steps', spray: 'Spray', decay: 'Decay Heat' };
+  var trendBad = [], trendN = 0;
+  OP.beats.forEach(function (b) {
+    if (!b.trend) return;
+    trendN++;
+    ['learning', 'industry'].forEach(function (r) {
+      var line = (b.dialogue || []).map(function (l) { return l[r]; }).filter(function (t) { return /trend chart/i.test(t); })[0];
+      if (!line) { trendBad.push(b.id + '.' + r + ': no trend-chart line'); return; }
+      b.trend.forEach(function (id) {
+        if (!NAME[id]) trendBad.push(b.id + ': unknown series ' + id);
+        else if (line.indexOf(NAME[id]) === -1) trendBad.push(b.id + '.' + r + ' omits ' + NAME[id]);
+      });
+    });
+  });
+  ck('every trend-setting beat names its traces (both registers)', trendBad.join('; ') || trendN + ' beats', trendN >= 4 && !trendBad.length, 'a "trend chart" line naming each');
+  var ww = OP.beats.filter(function (b) { return b.id === 'o4_wrong'; })[0];
+  var wwl = ww && ww.dialogue && ww.dialogue.length === 1 ? ww.dialogue[0] : null;
+  ck('o4_wrong is ONE line of <= 20 words in both registers', wwl ? words(wwl.learning) + ' / ' + words(wwl.industry) + ' words' : 'missing',
+     !!wwl && words(wwl.learning) <= 20 && words(wwl.industry) <= 20, 'one line, <= 20 / <= 20');
   var last = OP.beats[OP.beats.length - 1];
   ck('ends with a level_complete and a SCRAM before it', last.id + ' / ' + !!last.level_complete,
      !!last.level_complete && ids.indexOf('o10_scram') !== -1 && ids.indexOf('o10_scram') < ids.indexOf(last.id), 'level_complete after the trip');
@@ -213,8 +243,32 @@ test('the opener runs on the FREE-PLAY plant and survives save/restore', functio
      !!(back.instructor.scenario && back.instructor.scenario.id === OP_ID), OP_ID);
   ck('...on the same beat', back.instructor.currentBeatId + ' vs ' + op.instructor.currentBeatId,
      back.instructor.currentBeatId === op.instructor.currentBeatId, 'equal');
+  var tr = op.assembleSnapshot().instructor.trend;
+  ck('trend: o1_load put its traces in the snapshot', tr ? tr.series.join(',') + ' rev ' + tr.rev : 'null',
+     !!tr && tr.series.join(',') === 'tavg,pressure,dump,power', 'tavg,pressure,dump,power');
   op.handleCommand({ action: 'stop_scenario' });
   ck('stop_scenario ends it (one click → free play)', String(op.instructor.mode), op.instructor.mode === null, 'null');
+  ck('trend: stopped content carries no trend (the UI restores the player chart on this)',
+     JSON.stringify(op.assembleSnapshot().instructor.trend), op.assembleSnapshot().instructor.trend === null, 'null');
+
+  /* THE OFFER'S GATE (#811 follow-up): the UI offers the opener only while isFreshPlant() — one
+   * click resets the plant, so it must never stand over a session. QA found it hours into free
+   * play, after End and after finishing. */
+  ck('fresh: a free-play load is fresh', String(free.isFreshPlant()), free.isFreshPlant() === true, 'true');
+  free.running = true;
+  for (i = 0; i < 20; i++) free.tick();
+  ck('fresh: time alone (no command) keeps it fresh', String(free.isFreshPlant()), free.isFreshPlant() === true, 'true');
+  free.handleCommand({ action: 'set_speed', value: 5 });
+  ck('fresh: a clock change is not a plant command', String(free.isFreshPlant()), free.isFreshPlant() === true, 'true');
+  free.handleCommand({ action: 'set_load_target', mwe: 95 });
+  ck('fresh: the first plant command ends it', String(free.isFreshPlant()), free.isFreshPlant() === false, 'false');
+  free.handleCommand({ action: 'reset', plant_id: 'pwr2', initial_state: 'hot_full_power' });
+  ck('fresh: a new load is fresh again', String(free.isFreshPlant()), free.isFreshPlant() === true, 'true');
+  ck('fresh: not after an opener ran and was stopped (End / Continue)', String(op.isFreshPlant()), op.isFreshPlant() === false, 'false');
+  ck('fresh: not on a restored save', String(back.isFreshPlant()), back.isFreshPlant() === false, 'false');
+  var sc = new RD.SimulationService({ seed: 42 });
+  sc.selectPlant('pwr2', 'hot_full_power', null, { noDefaults: true });
+  ck('fresh: not on instructed content (noDefaults)', String(sc.isFreshPlant()), sc.isFreshPlant() === false, 'false');
 });
 
 // ------------------------------------------------------------------ the routes
@@ -254,9 +308,24 @@ Object.keys(ROUTES).forEach(function (name) {
     // finishing a queued nudge — the mistake route's scripted -15, the instructor's own -40)
     if (name === 'typical') ck('o5: the 5× watch starts only after the player let go of the rods', 'rods moving at o5 = ' + S.o5_rods_watch.control_state.rods_moving,
        S.o5_rods_watch.control_state.rods_moving === false, 'false');
+    // WITHDRAWN instead of inserted (#811 follow-up): the wrong-way line fires once, is TRUE
+    // (bank out, power up from the ask), and the ask then completes in the normal path.
+    if (name === 'mistake') {
+      ck('o4_wrong: the wrong-way line fired', String(!!S.o4_wrong), !!S.o4_wrong, 'true');
+      if (S.o4_wrong) {
+        var b4 = S.o4_rods.control_state.bank_steps, bw = S.o4_wrong.control_state.bank_steps;
+        ck('o4_wrong: bank OUT from the ask', b4 + ' -> ' + bw + ' steps', bw >= b4 + 5, '>= +5 steps');
+        ck('o4_wrong: "power rose" — it did', I(S.o4_rods, 'power_range').toFixed(1) + ' -> ' + I(S.o4_wrong, 'power_range').toFixed(1) + ' %',
+           I(S.o4_wrong, 'power_range') > I(S.o4_rods, 'power_range'), 'up');
+        ck('o5 after o4_wrong: bank IN from where the line was said', bw + ' -> ' + S.o5_rods_watch.control_state.bank_steps + ' steps',
+           S.o5_rods_watch.control_state.bank_steps < bw, 'in');
+      }
+    }
     // power follows, Tavg comes back (read at the END of the watch, o6)
     ck('o6: power below 90 % after the rods went in', I(S.o6_spray, 'power_range').toFixed(1) + ' %', I(S.o6_spray, 'power_range') < 90, '< 90 %');
     ck('o6: rods actually moved in', S.o6_spray.true_state.rod_steps.toFixed(0) + ' steps', S.o6_spray.true_state.rod_steps < 600, '< 600');
+    if (name === 'typical') ck('o6: a FAST hold of ~33 s put the rods in about 40 steps', (606 - S.o6_spray.true_state.rod_steps).toFixed(0) + ' steps',
+       Math.abs(606 - S.o6_spray.true_state.rod_steps - 40) <= 8, '32..48 (text: about 40)');
     ck('o6: Tavg came back down from the rod ask', degF(I(S.o4_rods, 'tavg')).toFixed(1) + ' -> ' + degF(I(S.o6_spray, 'tavg')).toFixed(1) + ' °F',
        degF(I(S.o6_spray, 'tavg')) < degF(I(S.o4_rods, 'tavg')) - 1, 'down > 1 °F');
 
@@ -268,9 +337,10 @@ Object.keys(ROUTES).forEach(function (name) {
     ck('o9: spray back in AUTO (the lit button)', String(S.o9_heaters.control_state.spray_auto), S.o9_heaters.control_state.spray_auto === true, 'true');
     var p9 = psi(I(S.o9_heaters, 'primary_pressure')), p10 = psi(I(S.o10_scram, 'primary_pressure'));
     var dtm = (r.at.o10_scram - r.at.o9_heaters) / 60;
-    // The text claims "slow", not "rising": measured, the recovery is 0 to 20 psi/min by route
-    // (Tavg still falling behind the rods offsets the heaters on the 90 MWe route).
-    ck('o10: pressure no longer falling once back in AUTO (the text: slow)', (p10 - p9).toFixed(0) + ' psi in ' + (dtm * 60).toFixed(0) + ' s = ' + ((p10 - p9) / dtm).toFixed(0) + ' psi/min', p10 > p9 - 5 && (p10 - p9) / dtm < 60, '-5 psi .. +60 psi/min');
+    // o9 says the heaters REBUILD pressure, slowly. A RISE, not "no longer falling": the old form
+    // (p10 > p9 - 5) passed with the heaters neutered. Measured o9 -> o10 (40 s at 5x):
+    // +7 typical, +10 mistake, +10 hands-off psi (#811 follow-up) — the bound sits under all three.
+    ck('o10: pressure RISING once back in AUTO (the text: heaters rebuild it, slowly)', (p10 - p9).toFixed(1) + ' psi in ' + (dtm * 60).toFixed(0) + ' s = ' + ((p10 - p9) / dtm).toFixed(0) + ' psi/min', p10 - p9 > 3 && (p10 - p9) / dtm < 60, '> +3 psi, < +60 psi/min');
     ck('o10: heaters near full', S.o10_scram.true_state.pzr_heater_kw.toFixed(0) + ' kW', S.o10_scram.true_state.pzr_heater_kw > 100, '> 100 kW');
 
     // 4. trip
@@ -279,6 +349,17 @@ Object.keys(ROUTES).forEach(function (name) {
     // DECAY heat, the quantity the line names — core_heat_pct is decay + the ~2 % fission (it read
     // 7 % and certified "about 7 % from decay" while decay itself was 5.2 %; #811 QA pass).
     ck('o11: decay heat about 5 %', t11.true_state.decay_heat_pct.toFixed(2) + ' %', t11.true_state.decay_heat_pct >= 4 && t11.true_state.decay_heat_pct <= 6, '4..6 (text: about 5)');
+    ck('o12..o13: "Decay Heat stays well above neutron power" — it does',
+       S.o13_end.true_state.decay_heat_pct.toFixed(2) + ' % vs ' + I(S.o13_end, 'power_range').toFixed(2) + ' %',
+       S.o12_settle.true_state.decay_heat_pct > 2 * I(S.o12_settle, 'power_range') && S.o13_end.true_state.decay_heat_pct > 2 * I(S.o13_end, 'power_range'), 'decay > 2x power');
+    // Each trend-setting beat lands its own traces on the snapshot the UI reads.
+    var trBad = [];
+    OP.beats.forEach(function (b) {
+      if (!b.trend || !S[b.id]) return;
+      var t = S[b.id].trend;
+      if (!t || t.series.join(',') !== b.trend.join(',')) trBad.push(b.id + '=' + (t ? t.series.join(',') : 'null'));
+    });
+    ck('trend: each trend beat has its traces in the snapshot when it fires', trBad.join('; ') || 'all', !trBad.length, 'equal to the beat trend');
     ck('o12: turbine tripped', String(S.o12_settle.true_state.turbine_tripped), S.o12_settle.true_state.turbine_tripped === true, 'true');
     var tEnd = degF(I(S.o13_end, 'tavg'));
     ck('o13: Tavg settled near 552 °F', tEnd.toFixed(1) + ' °F', tEnd > 548 && tEnd < 558, '548..558 (text: about 552)');

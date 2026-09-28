@@ -683,6 +683,15 @@ async function usage() {
                     GROUP BY mission, event ORDER BY mission, event LIMIT 60`),
       (r) => ({ mission: r.mission, event: r.event, sessions: num(r.sessions) })));
 
+  // THE OPENER FUNNEL (#811): beats reached x sessions. blob8 is the `id` column and double4
+  // the beat (SQL is 1-indexed — see the Worker's column map). `beat` is the index of the beat
+  // pending or being watched, the same axis as mission_abandon.beat.
+  await sec('usage_openers', 'Openers  (beat reached — the funnel)', ['opener', 'beat', 'sessions'], async () =>
+    rows(await sql(`SELECT blob8 AS opener, double4 AS beat, count(DISTINCT blob4) AS sessions
+                    FROM ${DATASET} WHERE ${SINCE} AND blob1 = 'opener_beat'
+                    GROUP BY opener, beat ORDER BY opener, beat ASC LIMIT 100`),
+      (r) => ({ opener: r.opener, beat: num(r.beat), sessions: num(r.sessions) })));
+
   // A DISTRIBUTION, not a row per session — this is the section that would otherwise grow
   // without bound. quantileWeighted is the only quantile the endpoint accepts, and weighting
   // by _sample_interval is what the sampled rows require anyway.
