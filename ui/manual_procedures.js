@@ -2959,8 +2959,8 @@
           wait_hint: false,
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 695, mean_s: 30,
                    hl: ['Rod Speed — Normal', 'Withdraw'], hl_watch: ['Source Range', 'Control Rod Position'],
-                   ask: 'Hold CONTROL WITHDRAW at MED until SOURCE RANGE reads 7.0e2 or more, then watch it for 5 seconds: the count jumps about 15 % either way.',
-                   note: 'On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 70 to 80; the position shifts with boron and recent power, the count does not. The check-off waits for SOURCE RANGE to stay at 7.0e2 or more, not just touch it. If it only touches 7.0e2 now and then, or is still short at 80, tap WITHDRAW one step and wait half a plant-minute. Repeat until it stays there.',
+                   ask: 'Press MED, then hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e2 or more, then watch it for 5 seconds: the count jumps about 15 % either way.',
+                   note: 'The clock goes to 10× the moment the rods move, so the count gets there after about 10 seconds of holding: watch SOURCE RANGE the whole time. On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 70 to 80; the position shifts with boron and recent power, the count does not. The check-off waits for SOURCE RANGE to stay at 7.0e2 or more, not just touch it. If it only touches 7.0e2 now and then, or is still short at 80, tap WITHDRAW one step and wait half a plant-minute. Repeat until it stays there.',
                    label: 'SOURCE RANGE reads 7.0e2 (700 counts per second) or more' },
                  { cmd: 'plot_1m_point', hl: ['Plot point'], hl_when: { p: 'startup_rate_dpm', op: '<', v: 0.035 }, hl_watch: ['Startup Rate', 'Source Range'],
                                          ask: 'Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point.',
@@ -3697,10 +3697,10 @@
          * "B" named "records the critical rod position and boron" — flagged back to him in #809.
          * 11c is a READING CHECK: "record" has no board action, so it grades the rods still (the same
          * 120 s as 11b) and asks for the comparison with the 1/M prediction. */
-        { text: 'Level power at 1.0e-8 A and record the critical rod position.',
+        { text: 'Level power near 1.0e-8 A and record the critical rod position.',
           aim: 'Step 10 left the core past critical so power could climb to 1.0e-8 A; putting those steps back holds it there, exactly critical.',
           why: 'At 1.0e-8 A power is still far too low to warm the water, so only the rods set the reactivity, and STARTUP RATE holding at 0 with the rods still means exactly critical. Near the source level a core short of critical also settles at 0, which is why step 10 went past critical first.\n\nThe rod position here is the measured critical position. A crew compares it with the 1/M prediction and records it with the boron concentration; here boron has not moved since step 2.',
-          control: 'Control Bank', target: 'INTER RANGE 1.0e-8 A, STARTUP RATE −0.02 to +0.02 with the rods still',
+          control: 'Control Bank', target: 'INTER RANGE near 1.0e-8 A, STARTUP RATE −0.02 to +0.02 with the rods still',
           wait_hint: false,
           /* the replay levels when INTER RANGE gets there, not at step entry (an insert at entry levels
            * near 3e-9 A and 11a never meets). Its bank 219 -> 207, the same count the card asks for. */
@@ -3717,10 +3717,10 @@
                    hl_watch: ['Intermediate Range'],
                    label: 'INTER RANGE reads 1.0e-8 A or more' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025, still_s: 120,   /* -0.025 to +0.025: every value toFixed(2) draws as -0.02 to +0.02 (as 1d) */
-                   ask: 'Insert until STARTUP RATE holds between −0.02 and +0.02: hold INSERT at MED about 12 steps, then read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.',
-                   note: 'About 12 steps is what step 10 pulled past critical. STARTUP RATE reads negative while the rods go in and settles over two plant-minutes, so read it then. Two steps short, it settles near +0.05. This check-off comes two plant-minutes after your last rod motion.',
+                   ask: 'Insert until STARTUP RATE holds between −0.02 and +0.02: press MED, then hold INSERT about 12 steps, and read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.',
+                   note: 'About 12 steps is what step 10 pulled past critical. STARTUP RATE reads negative while the rods go in and settles over two plant-minutes, so read it then. Two steps short, it settles near +0.05. INTER RANGE comes down with the insert and levels a little under 1.0e-8 A, near 7e-9 A. This check-off comes two plant-minutes after your last rod motion.',
                    wait_speed: 1,
-                   speed_text: '1× while the rods move; 10× while you wait for a read.',
+                   speed_text: '1×. While you wait for a read you can press 10× yourself; a tap is still one step.',
                    hl: ['Insert', 'Rod Speed — Normal'], hl_watch: ['Startup Rate', 'Control Rod Position'],
                    label: 'STARTUP RATE −0.02 to +0.02, rods still two plant-minutes' },
                  { p: 'control_bank_steps', op: 'stopped', v: 120,
@@ -5650,11 +5650,15 @@
          * Both rows are true on arrival — step 10 stopped the pumps and step 11 took the plant
          * under 199 °F — which is what a confirm step is; the route gate treats a step with no
          * operator command as entry-met. */
+        /* THE NOTE'S "about 150 psi" (layman pass 2026-09-28 S-6; was "about 250", measured before the
+         * 3f559f9d dump ramp): MEASURED run_walkthrough_routes pwr_cooldown typical, seed 42, 154 psia at
+         * step 13, 163 at the leg's end, spray off at a 73 psia low; the reviewer read 153 and 162.
+         * It follows when 11b's spray comes off — re-measure if that step changes. */
         { text: 'Confirm the plant is in Mode 5, Cold Shutdown.',
           aim: 'Confirming the end state catches a plant still above 199 °F or a pump still running.',
           why: 'This is the cold-shutdown picture: water below 199 °F, pumps off, RHR carrying the heat, pressure low with the spray shut. The heatup walkthrough takes it back up.',
           wait_speed: 1, speed_text: true,
-          note: 'PRIMARY PRESSURE reads about 250 psi, far below the 2235 psi of a running plant; it crept back up after the spray shut, which is expected. ALIGN on the RHR card is checked in step 15.',
+          note: 'PRIMARY PRESSURE reads about 150 psi, far below the 2235 psi of a running plant; it crept back up after the spray shut, which is expected. ALIGN on the RHR card is checked in step 15.',
           accs: [{ p: 'tavg_c', op: '<', v: 92.5,
                    ask: 'Check AVG COOLANT TEMPERATURE reads below 199 °F.',
                    label: 'AVG COOLANT TEMPERATURE below 199 °F' },

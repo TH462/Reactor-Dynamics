@@ -109,7 +109,9 @@ Give it these facts and no more. They are the scaffolding, not the game.
   satisfy the step, class `ready` and lit when they do. **`⏪ Rewind step`** (`.wt-rewind`)
   takes the plant and the walkthrough back to the start of the previous step.
 - The **Plant & Mission** window opens from the **Main Menu** button (`#mainMenuBtn`, in the
-  tools row beside Settings) (it is NOT open on load); its
+  tools row beside Settings). It is ALREADY OPEN on every load (`openMissionSelect()` at the end
+  of `init()` in `ui/app.js`, owner directive 2026-08-11), so the first click on Main Menu can
+  land on the open overlay; its
   **Walkthroughs** tab (`[data-mmode="walkthroughs"]`) lists all six with **`▶ Start`**
   (`[data-wtstart="<leg id>"]`), which loads that leg's own starting condition and starts it.
 - Speed buttons are `[data-speed="1|5|10|60|600|3600"]`; 600× and 3600× are WARP. The status

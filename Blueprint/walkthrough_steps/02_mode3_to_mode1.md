@@ -125,9 +125,9 @@ The panel fits the last three points, so each new point sharpens the prediction.
 
 *One point cannot make a line. The second gives the plot its first prediction of where the reactor goes critical.*
 
-()5a. Hold CONTROL WITHDRAW at MED until SOURCE RANGE reads 7.0e2 or more, then watch it for 5 seconds: the count jumps about 15 % either way.
+()5a. Press MED, then hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e2 or more, then watch it for 5 seconds: the count jumps about 15 % either way.
 
-Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 70 to 80; the position shifts with boron and recent power, the count does not. The check-off waits for SOURCE RANGE to stay at 7.0e2 or more, not just touch it. If it only touches 7.0e2 now and then, or is still short at 80, tap WITHDRAW one step and wait half a plant-minute. Repeat until it stays there.
+Note: The clock goes to 10× the moment the rods move, so the count gets there after about 10 seconds of holding: watch SOURCE RANGE the whole time. On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 70 to 80; the position shifts with boron and recent power, the count does not. The check-off waits for SOURCE RANGE to stay at 7.0e2 or more, not just touch it. If it only touches 7.0e2 now and then, or is still short at 80, tap WITHDRAW one step and wait half a plant-minute. Repeat until it stays there.
 
 ()5b. Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point.
 
@@ -269,7 +269,7 @@ Below about 1 % power nothing in the plant takes reactivity back out, so how far
 
 
 
-11. Level power at 1.0e-8 A and record the critical rod position.
+11. Level power near 1.0e-8 A and record the critical rod position.
 
 *Step 10 left the core past critical so power could climb to 1.0e-8 A; putting those steps back holds it there, exactly critical.*
 
@@ -277,11 +277,11 @@ Below about 1 % power nothing in the plant takes reactivity back out, so how far
 
 Note: It gets there about 2 plant-minutes after the rods stopped in step 10.
 
-()11b. Insert until STARTUP RATE holds between −0.02 and +0.02: hold INSERT at MED about 12 steps, then read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.
+()11b. Insert until STARTUP RATE holds between −0.02 and +0.02: press MED, then hold INSERT about 12 steps, and read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.
 
-Suggested time warp: 1× while the rods move; 10× while you wait for a read.
+Suggested time warp: 1×. While you wait for a read you can press 10× yourself; a tap is still one step.
 
-Note: About 12 steps is what step 10 pulled past critical. STARTUP RATE reads negative while the rods go in and settles over two plant-minutes, so read it then. Two steps short, it settles near +0.05. This check-off comes two plant-minutes after your last rod motion.
+Note: About 12 steps is what step 10 pulled past critical. STARTUP RATE reads negative while the rods go in and settles over two plant-minutes, so read it then. Two steps short, it settles near +0.05. INTER RANGE comes down with the insert and levels a little under 1.0e-8 A, near 7e-9 A. This check-off comes two plant-minutes after your last rod motion.
 
 ()11c. Write down CONTROL ROD POSITION, the critical rod position, and compare it with the 1/M prediction.
 
