@@ -3937,8 +3937,12 @@
          * because the only way to read one was to render a popover — the same argument #564
          * made about the button state, applied to the line underneath it. It is recomputed on
          * every refresh, so it follows the display-unit toggle and a live setpoint change. */
+        /* "Press again" here was a standing caption, drawn on a row nobody had pressed: layman
+         * 2026-09-28 saw it on SR HIGH FLUX, blocked at startup step 9 and untouched, the moment
+         * IR HIGH FLUX was blocked at step 16, and read it as a half-finished release. The arm
+         * itself is the button: it reads CONFIRM only after a first press (refreshTripBlocks). */
         sub: willTrip
-          ? 'RELEASING THIS WILL TRIP THE REACTOR NOW — the setpoint is crossed. Press again to confirm.'
+          ? 'RELEASING THIS WILL TRIP THE REACTOR NOW — the setpoint is crossed. Releasing takes two presses.'
           : (typeof t.sub === 'function' ? t.sub(s) : t.sub)
       };
     });

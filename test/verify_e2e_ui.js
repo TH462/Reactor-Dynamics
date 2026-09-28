@@ -581,7 +581,7 @@ async function testRefusalReachesTheScanner(page) {
  *
  * The popover is shrink-to-fit and one of its captions is 90 characters: a blocked trip whose
  * setpoint is crossed prints "RELEASING THIS WILL TRIP THE REACTOR NOW - the setpoint is
- * crossed. Press again to confirm." (pwr_board_wiring.js `tripBlockRows`). MEASURED at
+ * crossed. Releasing takes two presses." (pwr_board_wiring.js `tripBlockRows`). MEASURED at
  * 1600x1000 before the fix: the panel went 393.9 -> 519.0 rendered px on that one caption and
  * covered the PORV block valve's hit circle, so `document.elementFromPoint` at the valve centre
  * returned the panel's row and the click was SWALLOWED - while the System Scanner still hovered
@@ -638,7 +638,7 @@ async function testTripBlockPopoverStaysOffTheBoard(page) {
     var sub = row.previousSibling && row.previousSibling.querySelector
             ? row.previousSibling.querySelector('.sub') : null;
     if (!sub) return { missing: 'the row caption element' };
-    sub.textContent = 'RELEASING THIS WILL TRIP THE REACTOR NOW — the setpoint is crossed. Press again to confirm.';
+    sub.textContent = 'RELEASING THIS WILL TRIP THE REACTOR NOW — the setpoint is crossed. Releasing takes two presses.';
     return { valve: { x: +v.x.toFixed(1), right: +v.right.toFixed(1) }, before: before, after: probe() };
   });
   if (r.missing) {

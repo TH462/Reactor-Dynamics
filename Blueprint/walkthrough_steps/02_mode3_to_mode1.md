@@ -207,7 +207,7 @@ Note: On a fresh core at 719 ppm the count reaches 7.0e3 about when CONTROL ROD 
 
 Suggested time warp: 10×.
 
-Note: STARTUP RATE takes about 5½ to 6½ plant-minutes to reach +0.03 here. A point plotted before then puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 10 asks for shows 3 to 5 steps past the predicted position (measured).
+Note: After a pull to about 205, STARTUP RATE takes about 5½ to 6½ plant-minutes to reach +0.03; after a shorter pull it gets there sooner. A point plotted before it reads +0.03 puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 10 asks for shows 3 to 5 steps past the predicted position (measured).
 
 
 
@@ -253,7 +253,7 @@ Note: At SLOW the rods move about one step every 8 plant-seconds. This check-off
 
 ()10b. Hold WITHDRAW at SLOW until STARTUP RATE reads +0.5, then let go. A plant-minute later it should read +0.3 to +1.0: if lower, tap WITHDRAW once; if higher, tap INSERT once.
 
-Note: The rods stop about 12 steps past the prediction mark, about 2 plant-minutes of rod motion. STARTUP RATE reads high while the rods move and settles lower once they stop. This check-off comes a plant-minute after your last rod motion. Real crews never go above 1.0.
+Note: The rods stop about 12 steps past where 10a let go, 8 to 10 past the prediction mark, after about 2 plant-minutes of rod motion. STARTUP RATE reads high while the rods move and settles lower once they stop. This check-off comes a plant-minute after your last rod motion. Real crews never go above 1.0.
 
 Suggested time warp: 1×.
 
@@ -301,9 +301,9 @@ The rod position here is the measured critical position. A crew compares it with
 
 *From about 1 % the core starts warming the water, and the warmer water starts holding the climb back.*
 
-()12a. Press SLOW. Tap WITHDRAW one step at a time, a plant-minute apart, until STARTUP RATE reads +0.15 or more a plant-minute after a tap.
+()12a. Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, once the rods have been still a plant-minute, and stop when it reads +0.15 or more.
 
-Note: Expect 6 or 7 taps. Real crews climb gently here, between +0.1 and +0.2. The 1/M PLOT window has done its work: close it with the ✕ in its corner.
+Note: Expect 6 or 7 taps. Real crews climb gently here, between +0.1 and +0.2. This check-off ticks on that same read; do not tap again while you wait for it, because every tap starts the plant-minute over. The 1/M PLOT window has done its work: close it with the ✕ in its corner.
 
 ()12b. Leave the rods alone until REACTOR POWER reads 1.0 % or more.
 

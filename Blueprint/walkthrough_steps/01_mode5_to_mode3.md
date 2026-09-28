@@ -220,7 +220,7 @@ The accumulators are tanks of borated water pushed by nitrogen gas at 665 psi. T
 
 Suggested time warp: 3600×.
 
-Note: Near the end the red Pressurizer Pressure Very Low alarm comes in, with Pressurizer Pressure Low. Both are expected: PRIMARY PRESSURE is held near 1700 psi on purpose, and step 14 raises it. The Turbine Trip / Low Steam Demand alarm comes in too: expected, the turbine stays tripped until the startup puts it on line.
+Note: Near the end the red Pressurizer Pressure Very Low alarm comes in, with Pressurizer Pressure Low. Both are expected: PRIMARY PRESSURE is held near 1700 psi on purpose, and step 14 raises it. The Turbine Trip / Low Steam Demand alarm comes in too: expected, the turbine stays tripped until the startup puts it on line. At 3600× the tile can read up to about 10 °F past 542 °F by the time the clock slows: expected.
 
 Background
 
@@ -250,7 +250,7 @@ The Residual Heat Removal (RHR) suction valve shut itself when PRIMARY PRESSURE 
 
 13. Hand STEAM PRESS to the steam dump to hold.
 
-*Pump heat has brought STEAM PRESS up toward 1020 psi, and from here something has to hold it there.*
+*Pump heat has brought STEAM PRESS up to about 1020 psi, or past it with the ATMOS DUMP venting the extra, and from here something has to hold it there.*
 
 ()13a. Check DUMP SETPOINT reads 1020 psi. If it does not, set it to 1020 psi.
 

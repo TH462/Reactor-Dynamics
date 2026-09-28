@@ -650,7 +650,8 @@ function runSuite(quietRec) {
     coldRows.lo_press && coldRows.lo_press.will_trip === true &&
     coldRows.lo_press.text === 'RELEASE?' && /WILL TRIP THE REACTOR NOW/.test(coldRows.lo_press.sub) &&
     coldRows.si_trip && coldRows.si_trip.will_trip === true &&
-    coldRows.si_trip.text === 'RELEASE?' && /Press again to confirm/.test(coldRows.si_trip.sub),
+    coldRows.si_trip.text === 'RELEASE?' && /Releasing takes two presses/.test(coldRows.si_trip.sub) &&
+    !/Press again/.test(coldRows.si_trip.sub),   /* a standing caption must not claim a first press (layman 2026-09-28, S-3) */
     coldRows.lo_press ? ('lo_press "' + coldRows.lo_press.text + '" — ' + coldRows.lo_press.sub)
                       : 'NO ROW');
   q('...and the release is still PERMITTED — the warning replaced the surprise, not the action',

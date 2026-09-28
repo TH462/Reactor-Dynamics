@@ -26,7 +26,7 @@
 
 Suggested time warp: 600×.
 
-Note: The boration runs at a steady 3 ppm a minute and does not slow down as it closes: about 55 plant-minutes to 880 ppm from a preset, about 65 on a plant brought down from full power. Do not start cooling until BORON STATUS reads BORATING.
+Note: The boration runs at a steady 3 ppm a minute and does not slow down as it closes: about 55 plant-minutes to 880 ppm from a preset, about 65 on a plant brought down from full power. Do not start cooling until BORON CHEM reads 880 ppm; BORATING only shows the boration has started.
 
 Background
 
@@ -138,7 +138,7 @@ Note: Heaters first: with them still in AUTO the spray will not hold and pressur
 
 Suggested time warp: 5×.
 
-Note: Spray water goes into the pressurizer and PRESSURIZER LEVEL climbs as pressure falls. At 100 % a pressurizer that starts high fills completely, after which the spray shuts itself off. At 50 % pressure falls about 3 psi a second with room to spare.
+Note: Spray water goes into the pressurizer, but at 50 % PRESSURIZER LEVEL barely moves. At 100 % a pressurizer that starts high fills completely, after which the spray shuts itself off. At 50 % pressure falls about 3 psi a second with room to spare.
 
 Background
 

@@ -170,7 +170,7 @@ Three-quarter power. The band has climbed with the load, toward 578 °F at 100 %
 
 7. Take the fourth stage to 90 MWe with a smaller pull.
 
-*Near full power the 103 % rod stop is close, so the pulls get smaller.*
+*Near full power the 103 % rod stop is close, so each stage pulls fewer steps.*
 
 ()7a. Set LOAD to 90 MW.
 
@@ -184,7 +184,7 @@ Suggested time warp: 10×, while OUTPUT climbs.
 
 Suggested time warp: 5×.
 
-Note: The green segment is about 570 to 580 °F at this load; this line ticks when the reading enters it. The pulls get smaller from here: above 103 % power the plant stops the rods. If LOAD changes by itself, the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.
+Note: The green segment is about 570 to 580 °F at this load; this line ticks when the reading enters it. Each stage pulls fewer steps from here: above 103 % power the plant stops the rods. If LOAD changes by itself, the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.
 
 
 
