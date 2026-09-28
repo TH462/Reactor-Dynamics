@@ -3751,8 +3751,18 @@ async function testWatchGlowRendered(page) {
       var watch = (st.hl_watch && st.hl_watch.length) ? st.hl_watch.slice()
                 : (st.hl && st.hl.length) ? []
                 : (ctl && !asks) ? [ctl] : [];
-      return { idx: c.idx, watchLabels: watch, pressLabels: press,
-               watch: document.querySelectorAll('.ckl-watch-glow').length,
+      /* PER-SUBSTEP LISTS (#809 item 14). WHICH substep is active is the app's call (it reads the
+       * grading flags of the render it painted — re-deriving it here from a later tick would race),
+       * so it is read off `data-ckl-hl-head`; WHAT that substep lights is recomputed from the step. */
+      var el0 = document.querySelector('.ckl-step[data-ckl-step]');
+      var head = el0 ? +el0.getAttribute('data-ckl-hl-head') : -1;
+      var sub = head >= 0 && st.accs && st.accs[head];
+      if (sub && (sub.hl || sub.hl_watch)) { press = (sub.hl || []).slice(); watch = (sub.hl_watch || []).slice(); }
+      /* The watch count reads `data-ckl-w`, the AUTHORED watch labels: since #809 a watch label wears
+       * one of three classes by what its element is (solid indication / dashed checked control / dim
+       * card), and the cards derived from a lit control carry the dim class with no attribute. */
+      return { idx: c.idx, watchLabels: watch, pressLabels: press, head: head,
+               watch: document.querySelectorAll('[data-ckl-w]').length,
                painted: document.querySelectorAll('.ckl-step-glow').length };
     });
   }
@@ -3815,6 +3825,7 @@ async function testWatchGlowRendered(page) {
       for (var b = 0; b < (procs[a].steps || []).length; b++) {
         var st = procs[a].steps[b];
         if (st.hl_watch && st.hl_watch.length) continue;
+        if ((st.accs || []).some(function (e) { return e && (e.hl || e.hl_watch); })) continue;   /* #809 */
         /* …and the watch fallback too (#653 S-3b): a step with no `hl_watch`, no `hl` and a
          * press-free `control` now paints a STEADY ring off that `control`, so it is no
          * longer a "0 watch rings" negative. Same mirror as `landOn` above. */

@@ -76,6 +76,8 @@
 .pwr-board-stage .bd-tile.ckl-glow,
 .pwr-board-stage .bd-tile.ckl-step-glow,
 .pwr-board-stage .bd-tile.ckl-watch-glow,
+.pwr-board-stage .bd-tile.ckl-check-glow,
+.pwr-board-stage .bd-tile.ckl-panel-glow,
 .pwr-board-stage .bd-tile.instr-glow,
 .pwr-board-stage .bd-tile.hl-glow,
 .pwr-board-stage .bd-tile.hl-pin { z-index: auto; }
@@ -102,6 +104,8 @@
 .pwr-board-stage .bd-halo.ckl-glow,
 .pwr-board-stage .bd-halo.ckl-step-glow,
 .pwr-board-stage .bd-halo.ckl-watch-glow,
+.pwr-board-stage .bd-halo.ckl-check-glow,
+.pwr-board-stage .bd-halo.ckl-panel-glow,
 .pwr-board-stage .bd-halo.instr-glow,
 .pwr-board-stage .bd-halo.hl-glow,
 .pwr-board-stage .bd-halo.hl-pin { z-index: auto; }

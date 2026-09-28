@@ -2232,6 +2232,30 @@ select.num-input { width: auto; }
   animation: none;
   box-shadow: 0 0 0 1px rgba(90, 240, 255, 0.62), 0 0 10px 2px rgba(90, 240, 255, 0.30);
 }
+/* A BUTTON THE STEP ONLY ASKS YOU TO CHECK *(OWNER, 2026-09-27, #809 item 4: "in steps that have you
+   check a button the button should have a dashed glow.")*. Dashed and still: the dash says "this is
+   a control", the stillness says "you are not being asked to press it" — `pwr_heatup` 4's TRIP lamp,
+   which a layman nearly pressed when it pulsed (#653 S-3b). The dash lives in the OUTLINE so the
+   bloom can stay a glow; 1.5 px, half the reduced-motion pulse's 3 px dashed fallback, so the two
+   stay a width apart when the motion is gone (the same two-widths vocabulary as that block).
+   Which elements get it is decided by what the element IS (`PwrBoardInspect.glowRole`), not
+   authored per step — see `applyCklWatchGlow` in ui/app.js. */
+.ckl-check-glow {
+  outline: 1.5px dashed rgba(90, 240, 255, 0.95);
+  outline-offset: 2px;
+  box-shadow: 0 0 12px 3px rgba(90, 240, 255, 0.30);
+  border-radius: 6px; position: relative; z-index: 4;
+}
+/* THE CARD THAT HOLDS A LIT CONTROL *(OWNER, 2026-09-27, #809 item 3: "Lets make a dimmer glow thats
+   for the panel that contains the control. keep the brighter solid glow for indications.")*. So the
+   player finds the card first, then the button on it. DIMMER than the watch ring on every channel
+   (ring 1 px / 0.40 against 2 px / 0.90; bloom 12px 2px / 0.16 against 16px 4px / 0.42), and steady.
+   Derived from the board's containment, never authored — a card named in a step's `hl_watch` wears
+   it too, since a card is where you look, not the reading. */
+.ckl-panel-glow {
+  box-shadow: 0 0 0 1px rgba(90, 240, 255, 0.40), 0 0 12px 2px rgba(90, 240, 255, 0.16);
+  border-radius: 8px; position: relative; z-index: 3;
+}
 /* ============================================ the highlight bus (#444, spec §7)
    A soft CYAN halo — an outer GLOW, never a fill, tint or recolor. Cyan is the only
    board colour that is not a plant state: green, amber and red all carry condition
