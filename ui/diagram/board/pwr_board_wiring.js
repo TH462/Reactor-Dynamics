@@ -1223,14 +1223,25 @@
      * fast the plant may move. Falls back to the reference before any load is set. */
     imro8rmka2y: { set: function (v) { cmd({ action: 'set_load_target', mwe: v }); },
       get: function (s) { var c = CS(s); return c.load_cmd_mwe != null ? c.load_cmd_mwe : c.load_target_mwe; } },   // Generator Load MW
-    /* A SETPOINT BOX READS BACK THE SETPOINT, NOT THE DELIVERY (#516 item 1, 2026-08-29).
-     * `feed_pump_speed_pct` is the DELIVERED feed fraction, behind the feed pump lag — the
-     * retired engine published this channel as the COMMANDED value until 2026-07-25 and this
-     * box was authored against that convention. Reading the delivery makes every arrow click
-     * re-anchor the demand onto a lagging number: measured, eight +1 gpm clicks moved the box
-     * +0.5 gpm. `feed_demand_pct` is the plant's own demand; the delivered channel stays where
-     * it is for the five reader tiles, and is the fallback for anything not publishing it. */
-    imro8xhy2me: { set: function (v) { cmd({ action: 'set_feed_pump_speed', pct: v / GPM_FEED_PER_PCT }); }, get: function (s) { var c = CS(s); var d = c.feed_demand_pct; return ((d != null && isFinite(d)) ? d : (c.feed_pump_speed_pct || 0)) * GPM_FEED_PER_PCT; } }, // SG Feed rate gpm
+    /* A SETPOINT BOX READS BACK THE SETPOINT, NOT THE DELIVERY (#516 item 1, 2026-08-29) — but
+     * only in MANUAL. `feed_pump_speed_pct` is the DELIVERED feed fraction, behind the feed
+     * pump lag — the retired engine published this channel as the COMMANDED value until
+     * 2026-07-25 and this box was authored against that convention. Reading the delivery makes
+     * every arrow click re-anchor the demand onto a lagging number: measured, eight +1 gpm
+     * clicks moved the box +0.5 gpm. `feed_demand_pct` is the plant's own demand in MANUAL; the
+     * delivered channel stays where it is for the five reader tiles, and is the fallback for
+     * anything not publishing it.
+     * IN AUTO, `feed_demand_pct` is the three-element channel's raw output, recomputed every
+     * evaluation — "dances around a lot" (owner playtest, #809 item 13). The box now reads the
+     * MEASURED feed flow instead, same instrument and scale as the FEED FLOW tile above it
+     * (`imrsgkz4lq0`, `IN(s).fw_flow * GPM_FEED`) — HR1: the board reads the instrument, and
+     * `IN()` already damps `fw_flow` (tau 2 s, DISPLAY_DAMP), which is why this box settles
+     * while the raw setpoint keeps moving. `feedAutoOn()` covers both the kernel channel and
+     * PWR2's `feed_coupled` fallback, same as every other AUTO/MAN read on this card. */
+    imro8xhy2me: { set: function (v) { cmd({ action: 'set_feed_pump_speed', pct: v / GPM_FEED_PER_PCT }); }, get: function (s) {
+      if (feedAutoOn(s)) return (IN(s).fw_flow || 0) * GPM_FEED;   // AUTO: measured FEED FLOW, not the jittery demand
+      var c = CS(s); var d = c.feed_demand_pct; return ((d != null && isFinite(d)) ? d : (c.feed_pump_speed_pct || 0)) * GPM_FEED_PER_PCT;
+    } }, // SG Feed rate gpm
     /* PZR SPRAY: the box reads the operator's DEMAND, never the delivered flow (#564 item 1).
      * It read `spray_valve_pct` — which on PWR2 is DELIVERY, after the stuck-valve override and
      * the water-solid gate — so the player's own setting vanished from the box they typed it
