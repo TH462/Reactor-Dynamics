@@ -3984,8 +3984,24 @@
     var proc = null;
     for (var i = 0; i < pool.length; i++) if (pool[i].id === cs.procedure_id) proc = pool[i];
     var st = proc && proc.steps && proc.steps[cs.step_index];
+    /* THE ACTIVE SUBSTEP'S ROW, NOT ONLY THE STEP'S (OWNER playtest 2026-09-28: "mode 3-5 step 3b
+     * doesnt highlight the si reactor trip row"). A step that blocks two rows carries the second
+     * on an `accs[].cmd`, and `st.cmd` names only the first, so 3b's row never lit. The first
+     * UNMET row that carries a trip-block command pulses — the same "next thing to do" the
+     * per-substep glow follows — and the rows already met before it keep the steady ring the
+     * 2026-09-14 ruling gives a satisfied ask ("after press: steady glow, no pulse"); later rows
+     * wait dark. The step-level `cmd` is the fallback for steps with none on their rows. */
+    var accs = (st && st.accs) || [], verdicts = cs.accs || [];
+    for (var k = 0; k < accs.length; k++) {
+      var ac = accs[k] && accs[k].cmd;
+      if (!ac || ac.action !== 'set_trip_block' || !ac.trip_id) continue;
+      want[ac.trip_id] = ac.blocked !== false;
+      if (!(verdicts[k] && verdicts[k].met)) return want;
+    }
     var c = st && st.cmd;
-    if (c && c.action === 'set_trip_block' && c.trip_id) want[c.trip_id] = c.blocked !== false;
+    if (c && c.action === 'set_trip_block' && c.trip_id && !accs.some(function (a) {
+      return a && a.cmd && a.cmd.action === 'set_trip_block';
+    })) want[c.trip_id] = c.blocked !== false;
     return want;
   }
 

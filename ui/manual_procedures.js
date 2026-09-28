@@ -3711,7 +3711,7 @@
             industry: 'REACTOR POWER 0.5 % — 1E-8 A HOLD OVERTAKEN. Proceed to POAH.' },
           accs_ordered: true,
           accs: [{ p: 'ir_amps', op: '>=', v: 9.950000000000001e-9,   /* the "1.0e-8" render floor (fmtExp; 9.95e-9 itself draws 9.9e-9) */
-                   ask: 'Wait for INTER RANGE to read 1.0e-8 A.',
+                   ask: 'Wait for INTER RANGE to read 1.0e-8 A. Once it does, you insert the rods to hold power there.',
                    note: 'It gets there about 2 plant-minutes after the rods stopped in step 10.',
                    wait_speed: 1,
                    hl_watch: ['Intermediate Range'],
@@ -5266,7 +5266,7 @@
          * the step's Continue waits on 4b. Injection: the dump put in TAVG before this step and
          * AUTO never pressed leaves the row unmet (see 06_cooldown.md Notes). */
         { text: 'Cool the plant on the steam dump to where RHR can take over.',
-          aim: 'The steam pressure the dump holds sets the temperature the steam generator boils at, and the reactor water follows it down.',
+          aim: 'The steam pressure the dump holds sets the temperature the steam generator boils at, and the reactor water follows it down. Small, spaced steps keep the cooldown under the 100 °F per hour limit.',
           why: 'Steam pressure and steam temperature go together: lower the pressure the dump holds and the steam generator boils at a lower temperature, which pulls the reactor water down after it. It cannot pull the water below its own boiling point, so the walk goes all the way to 120 psi, about 341 °F, low enough for RHR to take over. Near the bottom the same 50 psi cools about four times as far, which is why the steps get smaller.',
           control: 'Dump SP', target: 'STEAM DUMP status PRESS; AVG COOLANT TEMPERATURE below 347 °F',
           wait_hint: false,
@@ -5293,7 +5293,7 @@
                   * 4d carry no rung of their own and fall back to the step's 60x. */
                  { p: 'steam_dump_setpoint', op: '<', v: 4.9677,
                    hl: ['Dump Setpoint'],
-                   ask: 'Lower DUMP SETPOINT 50 psi at a time to 720 psi, about 6 plant-minutes apart.',
+                   ask: 'Lower DUMP SETPOINT 50 psi at a time to 720 psi, about 6 plant-minutes apart. Each step cools the plant a little; spacing them keeps COOLDOWN RATE under 100 °F per hour.',
                    note: 'Time the waits on the plant clock: 4 plant-minutes apart sets off the Cooldown Rate High alarm, and one big jump sets it off and empties the pressurizer. The temperature never quite stops falling, so do not wait for it to. Low Coolant Temperature comes in near 530 °F: expected on a cooldown, and it becomes an expected-status tile below 350 °F. The clock moves to 60× by itself once your first new setpoint goes in.',
                    wait_speed: 60, label: 'DUMP SETPOINT 720 psi or lower' },
                  { p: 'steam_dump_setpoint', op: '<', v: 1.8650,
@@ -5439,13 +5439,13 @@
         { text: 'Bring pressure under the RHR limit on the spray.',
           aim: 'RHR cannot be aligned above 440 psi, and the spray is what takes pressure that low.',
           why: 'ALIGN on the RHR card refuses to open the suction valve above 440 psi. Switch the spray off now and pressure bounces back over that number before you get there. SUBCOOLING MARGIN stays well above 100 °F on this spray.',
-          control: '(observe)', target: 'PRIMARY PRESSURE below 413 psi with SPRAY still at 50 %; PRESSURIZER LEVEL below 80 %',
+          control: '(observe)', target: 'PRIMARY PRESSURE below 413 psi; PRESSURIZER LEVEL below 80 %',
           /* `< 2.85` (413.4 psi, printed "413") -> `< 2.844` (412.5 psi, the floor of "412"). */
           hold: 1200, wait_hint: false,
           wait_speed: 60, speed_text: true,
           note: 'About 10 to 13 plant-minutes. If PRESSURIZER LEVEL climbs past 80 %, lower SPRAY.',
           accs: [{ p: 'pressure_mpa', op: '<', v: 2.844,
-                   ask: 'Leave SPRAY at 50 % and wait for PRIMARY PRESSURE to read below 413 psi. Do not switch the spray off.',
+                   ask: 'Wait for PRIMARY PRESSURE to read below 413 psi.',
                    label: 'PRIMARY PRESSURE below 413 psi' }],
           /* NO PULSE ON A STEP WHOSE OWN TEXT SAYS "DO NOT SWITCH THE SPRAY OFF" (#653 S-3b,
            * 2026-09-15). This carried `hl: ['Pressurizer Spray (PZR)']` — the ACT-ON-THIS cue on
@@ -5474,7 +5474,7 @@
           wait_speed: 1, speed_text: true,
           accs: [{ p: 'rhr_valve_open', op: '>', v: 0,
                    hl: ['RHR — Align'], hl_watch: ['Primary Pressure'],
-                   ask: 'Press ALIGN on the RHR card, with the spray still on.',
+                   ask: 'Press ALIGN on the RHR card.',
                    label: 'ALIGN lit on the RHR card' },
                  { cmd: { action: 'set_rhr_hx', pct: 7 },
                    p: 'rhr_hx_fraction', op: '~', v: 0.07, tol: 0.02,
@@ -5510,18 +5510,16 @@
         { text: 'Take the reactor coolant pumps off now that RHR is circulating.',
           aim: 'With RHR circulating, the reactor coolant pumps are only adding heat.',
           why: 'With RHR circulating, the reactor coolant pumps are only adding heat, so they come off. The spray stays: the pressurizer shell is still hot metal and it keeps boiling water off the top of the pressurizer, which puts pressure back up. It is the only thing taking that heat away now — the heaters are already off and the SET PZR PRESSURE box stopped reaching at 1700 psi.',
-          control: 'RCP ON/OFF', target: 'RCP FLOW falling; SPRAY still MANUAL at 50 %',
+          control: 'RCP ON/OFF', target: 'RCP FLOW falling',
           cmd: { action: 'set_rcp', running: false }, hold: 60,
           wait_speed: 1, speed_text: true,
-          note: 'Do not switch the spray off yet — a later step does that, once the plant is cold.',
+          /* NO "LEAVE THE SPRAY ON" ROW OR NOTE (OWNER playtest 2026-09-28: "we dont need to keep saying
+           * to leave spray on. the player wont turn it off just because we didnt say to leave it on.").
+           * The `why` still says why it stays; step 11's 11c is where it comes off. */
           accs: [{ p: 'pump_flow_pct', op: '<', v: 50,
                    hl: ['RCP — Off'],
                    ask: 'Press OFF on the RCP FLOW card and check the pumps coast down.',
-                   label: 'Pumps coasting down' },
-                 { p: 'spray_flow_pct', op: '~', v: 50, tol: 20,
-                   hl_watch: ['Pressurizer Spray (PZR)'],
-                   ask: 'Leave SPRAY at 50 %.',
-                   label: 'SPRAY still on' }],
+                   label: 'Pumps coasting down' }],
           /* THE CARD, NOT ALSO THE PUMP *(OWNER, 2026-09-09 playtest, #684 §D: "When the RCP is
            * highlighted it should highlight the RCP card not the pump. Currently both get
            * highlighted.")* — his SECOND report of it, after #607 item 1. One label lights one
@@ -5530,7 +5528,7 @@
            * (imrobpq4a70), and their rects overlap. Every other pwr2 RCP step already names
            * the card alone; this was the last one that did not. The pump label STAYS in the
            * vocabulary — the wiring reserves it for watch-the-flow steps. */
-          hl: ['RCP — Off'], hl_watch: ['RCP ON/OFF', 'Pressurizer Spray (PZR)'] },
+          hl: ['RCP — Off'], hl_watch: ['RCP ON/OFF'] },
         /* 25 % WAS OVER THE 100 degF/hr LIMIT THIS STEP'S OWN NOTE CITES (#729, 2026-09-12,
          * owner playtest #724 item 19: "average coolant temperature isnt dropping and if it is
          * it iwll take hours at real time" — he had it backwards, and so did this step).
@@ -5616,7 +5614,7 @@
                   * here, so 11c is live about 10 plant-minutes before its press is due. */
                  { p: 'subcooling_c', op: '<', v: 17.78,
                    hl_watch: ['Subcooling Margin', 'Pressurizer Spray (PZR)'],
-                   ask: 'Leave SPRAY running and watch SUBCOOLING MARGIN fall. This line ticks at 32 °F; the press comes at 30 °F, in the next line.',
+                   ask: 'Wait for SUBCOOLING MARGIN to fall to 32 °F.',
                    note: 'The spray keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it any earlier and pressure climbs back over the RHR limit. If OFF is already lit under SPRAY, type 50 in the box under SPRAY, press Enter, then press MANUAL under SPRAY and keep watching. The clock moves to 60× by itself once HX SPLIT is raised.',
                    wait_speed: 60, speed_text: '60×: at 600× the margin can fall 10 °F between two glances.', label: 'SUBCOOLING MARGIN down to 32 °F' },
                  { p: 'spray_flow_pct', op: '<', v: 1,

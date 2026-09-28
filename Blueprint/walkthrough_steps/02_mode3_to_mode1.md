@@ -273,7 +273,7 @@ Below about 1 % power nothing in the plant takes reactivity back out, so how far
 
 *Step 10 left the core past critical so power could climb to 1.0e-8 A; putting those steps back holds it there, exactly critical.*
 
-()11a. Wait for INTER RANGE to read 1.0e-8 A.
+()11a. Wait for INTER RANGE to read 1.0e-8 A. Once it does, you insert the rods to hold power there.
 
 Note: It gets there about 2 plant-minutes after the rods stopped in step 10.
 

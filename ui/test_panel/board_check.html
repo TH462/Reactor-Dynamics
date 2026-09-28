@@ -1108,6 +1108,83 @@
         RD.PwrBoard.render(svc.assembleSnapshot());
       })();
 
+      /* --- THE ROW GLOW ON A MULTI-ROW SUBSTEP (owner playtest 2026-09-28: "mode 3-5 step 3b
+       * doesnt highlight the si reactor trip row"). Every probe in the #727 block above drives a
+       * step whose trip-block ask lives on `st.cmd` alone — one row. `pwr_cooldown` step index 2
+       * ("Block the protection that would read the cooldown as a leak") is the real step that
+       * missed: its `st.cmd` names `lo_press` only, and `si_trip` lives on `accs[1].cmd` — so
+       * only the lo_press row ever glowed. `stepTripWants` now walks `st.accs`, wanting every
+       * trip-block row up to and including the first UNMET one.
+       *
+       * THE PLANT AT THIS HARNESS'S IC (hot_full_power) HAS lo_press/si_trip DISABLED — pressure
+       * sits at NOP, above the ~1915 psig P-11 permissive the real step 2 depressurizes to reach,
+       * so `can_block` is false and the rows would never light however `want` is computed. Rather
+       * than drive the plant down (this harness never leaves hot_full_power), CRAFT the
+       * `trip_block_status` the same way the #738/#716 block below crafts `feed()` — real
+       * snapshot, only the two permissive-gated fields overridden. */
+      (function () {
+        var pop2 = document.querySelector('.bd-pop');
+        function rowsGlowing() {
+          if (!pop2) return null;
+          return Array.prototype.map.call(pop2.querySelectorAll('button[data-trip]'), function (b) {
+            return b.parentNode.classList.contains('ckl-step-glow') ? b.getAttribute('data-trip') : null;
+          }).filter(Boolean).sort().join(',');
+        }
+        function rowsSettled() {
+          if (!pop2) return null;
+          return Array.prototype.map.call(pop2.querySelectorAll('button[data-trip]'), function (b) {
+            return b.parentNode.classList.contains('ckl-step-done') ? b.getAttribute('data-trip') : null;
+          }).filter(Boolean).sort().join(',');
+        }
+        /* the real leg, the real step — proves the fixture below tracks shipped content, not a
+         * synthetic stand-in (same discipline as the pwr_startup check above). */
+        var proc2 = (RD.MANUAL_PROCEDURES.pwr2 || []).filter(function (p) { return p.id === 'pwr_cooldown'; })[0];
+        var step2 = proc2 && proc2.steps && proc2.steps[2];
+        ck('glow: pwr_cooldown step 2 still carries lo_press on accs[0] and si_trip on accs[1] (the fixture below is real)',
+          !!(step2 && step2.accs && step2.accs[0] && step2.accs[0].cmd && step2.accs[0].cmd.trip_id === 'lo_press' &&
+             step2.accs[1] && step2.accs[1].cmd && step2.accs[1].cmd.trip_id === 'si_trip'),
+          step2 ? JSON.stringify((step2.accs || []).map(function (a) { return a.cmd && a.cmd.trip_id; })) : 'no step');
+
+        var baseSnap2 = svc.assembleSnapshot();
+        function tripSnap(loBlocked, siBlocked) {
+          var c = JSON.parse(JSON.stringify(baseSnap2));
+          var loSp = c.rps_state.trip_block_status.lo_press && c.rps_state.trip_block_status.lo_press.setpoint;
+          var siSp = c.rps_state.trip_block_status.si_trip && c.rps_state.trip_block_status.si_trip.setpoint;
+          c.rps_state.trip_block_status.lo_press = { blocked: loBlocked, asserted: false, permissive: true,
+            can_block: !loBlocked, can_clear: loBlocked, setpoint: loSp };
+          c.rps_state.trip_block_status.si_trip = { blocked: siBlocked, asserted: false, permissive: true,
+            can_block: !siBlocked, can_clear: siBlocked, setpoint: siSp };
+          return c;
+        }
+        function renderCooldownStep(accsVerdict, loBlocked, siBlocked) {
+          var s = tripSnap(loBlocked, siBlocked);
+          var instr = {};
+          for (var k in (s.instructor || {})) instr[k] = s.instructor[k];
+          instr.checklist = { procedure_id: 'pwr_cooldown', profile_key: 'pwr2', step_index: 2, complete: false,
+            accs: accsVerdict };
+          s.instructor = instr;
+          RD.PwrBoard.render(s);
+        }
+
+        /* Case 1: accs[0] (lo_press) unmet, neither row blocked yet. The loop returns on the
+         * first unmet trip-block row, so si_trit must not glow — this is the exact miss the
+         * owner reported ("only lo_press ever lit"). */
+        renderCooldownStep([{ met: false }], false, false);
+        ck('glow: cooldown step 3, accs[0] unmet — lo_press glows and si_trip does not',
+          rowsGlowing() === 'lo_press' && rowsSettled() === '',
+          'glowing: [' + rowsGlowing() + '] settled: [' + rowsSettled() + ']');
+
+        /* Case 2: accs[0] met (lo_press blocked and verified against the live plant) and
+         * accs[1] unmet. si_trip must now glow — PULSING, not settled — and lo_press keeps its
+         * steady ring (glow + done) rather than going dark. */
+        renderCooldownStep([{ met: true }, { met: false }], true, false);
+        ck('glow: cooldown step 3, accs[0] met / accs[1] unmet — si_trip glows (pulsing) and lo_press keeps its ring',
+          rowsGlowing() === 'lo_press,si_trip' && rowsSettled() === 'lo_press',
+          'glowing: [' + rowsGlowing() + '] settled: [' + rowsSettled() + ']');
+
+        RD.PwrBoard.render(svc.assembleSnapshot());
+      })();
+
       /* --- THE TRIP-BLOCK MESSAGE, AS THE PLAYER SEES IT (#738/#716) ---
        * `run_pwr2_board` asserts the RULE — when a message exists, whether it is acknowledged,
        * what it says. It runs against a DOM shim with no layout and no cascade, and it cannot see

@@ -76,7 +76,7 @@ To the automatic protection, a cooldown looks exactly like a leak: pressure fall
 
 4. Cool the plant on the steam dump to where RHR can take over.
 
-*The steam pressure the dump holds sets the temperature the steam generator boils at, and the reactor water follows it down.*
+*The steam pressure the dump holds sets the temperature the steam generator boils at, and the reactor water follows it down. Small, spaced steps keep the cooldown under the 100 °F per hour limit.*
 
 ()4a. Check STEAM DUMP AUTO is lit and its status reads PRESS. If it does not, press AUTO until the status reads PRESS.
 
@@ -84,7 +84,7 @@ Suggested time warp: 1×.
 
 Note: If the status reads TAVG, the dump is holding temperature instead and ignores DUMP SETPOINT.
 
-()4b. Lower DUMP SETPOINT 50 psi at a time to 720 psi, about 6 plant-minutes apart.
+()4b. Lower DUMP SETPOINT 50 psi at a time to 720 psi, about 6 plant-minutes apart. Each step cools the plant a little; spacing them keeps COOLDOWN RATE under 100 °F per hour.
 
 Suggested time warp: 60×.
 
@@ -170,7 +170,7 @@ The same window as the heatup, in reverse. Above 1615 psi the valve has no power
 
 *RHR cannot be aligned above 440 psi, and the spray is what takes pressure that low.*
 
-()8a. Leave SPRAY at 50 % and wait for PRIMARY PRESSURE to read below 413 psi. Do not switch the spray off.
+()8a. Wait for PRIMARY PRESSURE to read below 413 psi.
 
 Suggested time warp: 60×.
 
@@ -188,7 +188,7 @@ ALIGN on the RHR card refuses to open the suction valve above 440 psi. Switch th
 
 *From here to cold, RHR is the loop that carries the heat out of the plant.*
 
-()9a. Press ALIGN on the RHR card, with the spray still on.
+()9a. Press ALIGN on the RHR card.
 
 ()9b. Set HX SPLIT to 7 %.
 
@@ -208,17 +208,13 @@ RHR is the low-pressure cooling loop that carries heat out of a shut-down plant.
 
 ()10a. Press OFF on the RCP FLOW card and check the pumps coast down.
 
-()10b. Leave SPRAY at 50 %.
-
 Suggested time warp: 1×.
-
-Note: Do not switch the spray off yet — a later step does that, once the plant is cold.
 
 Background
 
 With RHR circulating, the reactor coolant pumps are only adding heat, so they come off. The spray stays: the pressurizer shell is still hot metal and it keeps boiling water off the top of the pressurizer, which puts pressure back up. It is the only thing taking that heat away now — the heaters are already off and the SET PZR PRESSURE box stopped reaching at 1700 psi.
 
-[HIGHLIGHTED: RCP — Off (pulsing); RCP ON/OFF, Pressurizer Spray (PZR) (steady)]
+[HIGHLIGHTED: RCP — Off (pulsing); RCP ON/OFF (steady)]
 
 
 
@@ -230,7 +226,7 @@ With RHR circulating, the reactor coolant pumps are only adding heat, so they co
 
 Suggested time warp: 1×.
 
-()11b. Leave SPRAY running and watch SUBCOOLING MARGIN fall. This line ticks at 32 °F; the press comes at 30 °F, in the next line.
+()11b. Wait for SUBCOOLING MARGIN to fall to 32 °F.
 
 Suggested time warp: 60×: at 600× the margin can fall 10 °F between two glances.
 
