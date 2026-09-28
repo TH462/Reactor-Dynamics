@@ -318,8 +318,8 @@
         scope: null,
         highlight: { control_label: 'Tavg' },
         dialogue: [
-          say("The reactor tripped unexpectedly. I've brought the full board back so you can see everything.",
-              'Unexpected reactor trip. Full board display restored.'),
+          say("The reactor tripped unexpectedly. Clock back to 1×. I've brought the full board back so you can see everything.",
+              'Unexpected reactor trip. Clock 1×. Full board display restored.'),
         ],
         branches: [{ trigger: delay(0), goto: 'o11_trip' }] },
     ],
