@@ -30,13 +30,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.8.0-rc11] — 2026-09-28
+
 ### Changed
+- **Automatic cooldown ramp** (OWNER RULING 2026-09-28: "I ask for the automatic ramp because manually ramping down is tedious and people get bored with it."). In steam-pressure mode a lowered DUMP SETPOINT is a TARGET: the dump walks its working setpoint down so AVG COOLANT TEMPERATURE falls at 60 °F/hr (33.3 °C/hr); raising it, TAVG and CLOSED are unchanged. Declared departure, `DESIGN_COMPANION` §8.38 (WTSM 11.2 §11.2.2.1, ML11223A294: the operator lowers it by hand). Cooldown step 4 is one entry (type 120 psi) instead of a 34-entry stair; measured 546.9 → 345.3 °F in 202.7 plant-minutes, tile peak −67 °F/hr.
+- **1/M plot keeps the points taken before a Rewind** (#809 playtest: "1/m plot points are lost when rewinding steps"). Both the panel and the step-9a grader cleared the whole table when time went backwards; `RD.OneOverMCore.rewindTo` drops only later points.
+- **Trip-block row glow follows the substep** (#809: cooldown 3b never lit SI REACTOR TRIP). `stepTripWants` reads `accs[].cmd`: met rows keep the steady ring, the first unmet pulses.
+- **Walkthrough text, #809 playtest 2026-09-28.** Cooldown: the repeated "leave the spray on" instructions and the 10b check-off are gone; 11b is "Wait for SUBCOOLING MARGIN to fall to 32 °F" (graded at the tile's 32.5 °F floor); step 13 pressure reads about 150 psi. Startup: 5a says press MED and that the count arrives in about 10 seconds at 10×; 11 levels power *near* 1.0e-8 A and 11a says the rods go in next; 11b's speed line matches the clock. Main Menu's Reset line names the preset instead of its id.
 - **Steam dump status word: STM PRESS (was PRESS) and a new RAMPING** while steam-pressure mode walks a lowered DUMP SETPOINT down (OWNER RULINGS 2026-09-28, "...we could just have that say ramping." / "Let's use STM PRESS"). New `control_state.steam_dump_ramping` (PWR2); the word drops to 13 px / right edge 1647 so STM PRESS clears the card title (was a 4.3 px overprint, 8.6 px under DejaVu). Walkthrough, inspect-card and manual text follow.
 - **The automatic cooldown ramp walks ANY target below the 1020 psia (7.03 MPa) no-load anchor from the steam header** on selecting pressure mode; the 15 °F (8.3 °C) gap exemption let a 908.6 psia target pressed into AUTO at 1027 psia land in one step (Tavg 548.0 → 534.5 °F in 33 s, about −1470 °F/hr). Post-trip AUTO (target = anchor) still lands at once.
 - **1/M plot clears on a save-FILE load, a reset or a new initial condition** (new `metadata.timeline_epoch`); Rewind keeps the points before the moment it lands on, as before.
 - **Cooldown walkthrough text:** step 4's stale "small, spaced steps" line cut; step 16's reason rewritten (a low setpoint left in the box makes the next heatup's AUTO press walk the plant back down at ~60 °F/hr — measured — not trip it); 11b ticks when SUBCOOLING MARGIN first reads 32 (graded `< 32.5 °F`).
-
-## [Alpha 1.8.0-rc10] — 2026-09-28
 
 ### Changed
 - **Reactor diagram: casing-colored flow-channel blocks under every rod** (#809 item 5, owner playtest). One small block per rod — 5 fuel, 4 control — running from the bottom of the rods to the bottom of the core's animated water column, simulating the water channels at the core's lower support structure.
