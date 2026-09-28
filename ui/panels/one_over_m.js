@@ -17,8 +17,9 @@
  *
  * Session tool by design: the table is the operator's scratchpad, not plant
  * state — it is NOT in save files, and it clears itself on plant change,
- * reset, or rewind past the last captured point. Works while paused (reads
- * the latest snapshot).
+ * reset, or a rewind — which drops ONLY the points captured after the moment
+ * it lands on (RD.OneOverMCore.rewindTo). Works while paused (reads the latest
+ * snapshot).
  *
  * Attaches RD.OneOverM ({ init, open, close, tick }) and RD.makeDraggable.
  */
@@ -277,8 +278,8 @@
       }
     }
     // points (baseline square, later captures circles)
-    points.forEach(function (p, i) {
-      h += i === 0
+    points.forEach(function (p) {
+      h += p.base
         ? '<rect x="' + (px(p.x) - 3) + '" y="' + (py(p.y) - 3) + '" width="6" height="6" class="oom-pt"/>'
         : '<circle cx="' + px(p.x) + '" cy="' + py(p.y) + '" r="3.2" class="oom-pt"/>';
     });
@@ -489,7 +490,7 @@
     },
     close: function () { if (win) win.hidden = true; },
     // Per-broadcast: self-clear when the world the points describe is gone —
-    // plant change, reset, or a rewind to before the last captured point.
+    // plant change, reset, or a rewind (which drops only the later points).
     tick: function (s) {
       if (!s || !s.metadata) return;
       /* a walkthrough that starts a new startup (`clear_1m`) cleared the grader's table; clear this
@@ -506,8 +507,14 @@
         if (win && !supported(s)) win.hidden = true;
         return;
       }
-      if (tbl.t != null && s.metadata.sim_time < tbl.t - 1e-6) {
-        clearAll('time rewound — plot cleared');
+      /* a rewind drops only the points captured AFTER the moment it lands on (the rule and the
+       * playtest behind it: RD.OneOverMCore.rewindTo) */
+      var rw = core().rewindTo(tbl, s.metadata.sim_time);
+      if (rw === 'cleared') { setMsg('time rewound — plot cleared'); render(); }
+      else if (rw) {
+        setMsg('time rewound — ' + rw + ' later point' + (rw === 1 ? '' : 's') + ' removed, ' +
+          tbl.points.length + ' kept');
+        render();
       }
     },
   };

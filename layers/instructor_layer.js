@@ -263,8 +263,8 @@
    *
    * THE TABLE IS SESSION SCRATCH, NOT PLANT STATE, and is deliberately NOT in save files — the
    * panel's own design (its header). The grader's copy therefore follows the panel's three
-   * clearing rules exactly, so the two cannot drift: plant change, the clock going back past the
-   * last capture (Rewind, a restored save, a reset), and the Clear button (`plot_1m_clear`).
+   * clearing rules exactly, so the two cannot drift: plant change, the clock going back (Rewind,
+   * a restored save, a reset — `rewindTo` below), and the Clear button (`plot_1m_clear`).
    *
    * The fit window (3, the trailing points) is an OWNER RULING recorded beside FIT_WINDOW in
    * ui/panels/one_over_m.js, with the measurement that settled it. Do not re-open it here. */
@@ -314,14 +314,34 @@
      * position. `t` is the sim time of the capture, which the rewind rule compares against. */
     function add(tbl, x, counts, t) {
       var p;
-      if (!tbl.points.length) { tbl.c0 = counts; p = { x: x, counts: counts, y: 1.0 }; tbl.points.push(p); }
+      if (!tbl.points.length) { tbl.c0 = counts; p = { x: x, counts: counts, y: 1.0, t: t, base: true }; tbl.points.push(p); }
       else {
-        p = { x: x, counts: counts, y: tbl.c0 / counts };
+        p = { x: x, counts: counts, y: tbl.c0 / counts, t: t };
         tbl.points.push(p);
         tbl.points.sort(function (a, b) { return a.x - b.x; });
       }
-      tbl.t = t;
+      tbl.t = (tbl.t == null || !(t <= tbl.t)) ? t : tbl.t;   // the LATEST capture
       return p;
+    }
+    /* THE CLOCK WENT BACK TO `now` (Rewind, a restored save, a reset). Owner playtest 2026-09-28,
+     * preview, the startup walkthrough: "1/m plot points are lost when rewinding steps". This
+     * used to CLEAR the table whenever the clock went behind the LAST capture, so rewinding one
+     * step past a plot press threw away the baseline and every earlier point — and the next press
+     * took a fresh baseline at a withdrawn rod position, a different and wrong curve. The plant up
+     * to `now` is exactly the plant those earlier points were read from, so they still stand; only
+     * captures stamped AFTER `now` describe a history that no longer happened. Drop those; clear
+     * the whole table (C0 with it) only when the BASELINE is among them. A capture AT `now` stays:
+     * a walkthrough step's checkpoint is laid at the same sim time as the plot press that ticks
+     * the step, so rewinding to the next step keeps that step's point.
+     * Returns null (nothing to do), 'cleared', or the number of points dropped. */
+    function rewindTo(tbl, now) {
+      if (tbl.t == null || !(now < tbl.t - 1e-6)) return null;
+      var kept = tbl.points.filter(function (p) { return !(p.t > now + 1e-6); });
+      if (!kept.some(function (p) { return p.base; })) { clear(tbl); return 'cleared'; }
+      var dropped = tbl.points.length - kept.length;
+      tbl.points = kept;
+      tbl.t = kept.reduce(function (m, p) { return Math.max(m, p.t); }, -Infinity);
+      return dropped;
     }
     /* Least squares over the TRAILING window -> { a, b, x0 } for y = a + b·x. */
     function fit(points) {
@@ -349,7 +369,7 @@
       return p == null ? null : Math.round(p * maxSteps);
     }
     return { FIT_WINDOW: FIT_WINDOW, controlGroup: controlGroup, supported: supported,
-             fullScale: fullScale, sample: sample, newTable: newTable, clear: clear, add: add,
+             fullScale: fullScale, sample: sample, newTable: newTable, clear: clear, add: add, rewindTo: rewindTo,
              fit: fit, predict: predict, predictSteps: predictSteps };
   })();
   RD.OneOverMCore = OneOverMCore;
@@ -515,7 +535,7 @@
     var tb = this.oneOverM, m = snapshot && snapshot.metadata;
     if (!tb || !m) return;
     if (m.plant_id !== tb.plant) { tb.plant = m.plant_id; OneOverMCore.clear(tb); return; }
-    if (tb.t != null && m.sim_time < tb.t - 1e-6) OneOverMCore.clear(tb);
+    OneOverMCore.rewindTo(tb, m.sim_time);
   };
   /* The prediction the panel prints right now, in steps, or null when it prints none. */
   InstructorLayer.prototype._oneOverMPredSteps = function (snapshot) {

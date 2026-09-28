@@ -24,8 +24,13 @@
  * from source and the pwr2 checks must go red. A check born beside its fix is not
  * green until it has been made to fail (house rule).
  *
+ * Section 6 (owner playtest 2026-09-28: "1/m plot points are lost when rewinding steps")
+ * has its own injection, --inject-rewind: RD.OneOverMCore.rewindTo is put back to the old
+ * clear-the-whole-table rule (for BOTH copies, panel and grader) and section 6 must go red.
+ *
  *   node test/run_oneoverm.js
  *   node test/run_oneoverm.js --inject
+ *   node test/run_oneoverm.js --inject-rewind
  */
 'use strict';
 var fs = require('fs');
@@ -33,6 +38,7 @@ var path = require('path');
 var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 var PANEL = path.join(__dirname, '..', 'ui', 'panels', 'one_over_m.js');
 var INJECT = process.argv.indexOf('--inject') >= 0;
+var INJECT_RW = process.argv.indexOf('--inject-rewind') >= 0;
 
 /* ---- the DOM stub -------------------------------------------------------------------
  * one_over_m.js touches: createElement + body.appendChild (build), innerHTML on the
@@ -103,6 +109,15 @@ if (INJECT) {
 (new Function('globalThis', panelSrc))(globalThis);
 
 var RD = globalThis.RD;
+if (INJECT_RW) {
+  /* the pre-fix rule: the clock behind the LAST capture cleared the whole table. Patched on the
+   * shared object, so the panel (core().rewindTo) and the grader (OneOverMCore.rewindTo) both
+   * get it — the same single implementation the fix lives in. */
+  RD.OneOverMCore.rewindTo = function (tbl, now) {
+    if (tbl.t == null || !(now < tbl.t - 1e-6)) return null;
+    RD.OneOverMCore.clear(tbl); return 'cleared';
+  };
+}
 var BOLD = '\x1b[1m', RED = '\x1b[31m', GREEN = '\x1b[32m', RST = '\x1b[0m';
 var nPass = 0, nFail = 0;
 function ck(name, cond, note) {
@@ -314,14 +329,91 @@ ck('and on a plant with a source range but no control GROUP to plot it against',
   ck('...and pressing it again closes it', panel.hidden === true, 'hidden ' + panel.hidden);
 })();
 
+/* ============================================================ 6. a rewind keeps earlier points */
+/* OWNER PLAYTEST 2026-09-28 (preview, pwr2:pwr_startup): "1/m plot points are lost when
+ * rewinding steps". tick() cleared the WHOLE table whenever sim time went behind the LAST
+ * capture, so a step rewind past one plot press dropped the baseline and every earlier point.
+ * Driven through a real service REWIND (free-play ring, fake wall clock so the 20 s sandbox
+ * cadence fires on demand): points taken before the checkpoint the rewind lands on must
+ * survive, points after it must go, and a rewind to before the BASELINE still clears all.
+ * BOTH COPIES: the panel's, and the grader's (`instructor.one_over_m`, which `pwr_startup` 9a
+ * grades "3 short of the 1/M prediction" against) — one rule, RD.OneOverMCore.rewindTo. */
+head('6. a rewind drops only the points taken AFTER the checkpoint it lands on');
+(function () {
+  var r = mkWorld('hot_zero_power');
+  var clock = 1e6;
+  r.svc._now = function () { return clock; };
+  r.svc._lastSandboxCpMs = null;
+  function layCheckpoint() {           // one tick to settle, then a tick that lays a mark
+    r.tick(1); clock += 20001; r.tick(1);
+    var cps = r.svc.checkpoints;
+    return cps[cps.length - 1].metadata.sim_time;
+  }
+  function withdraw(frac) {
+    r.cmd({ action: 'rod_nudge', group_id: 'control_rods',
+            steps: Math.round(frac * RD.pwr2.kinetics.RODS.max_steps), speed: 'fast' });
+    r.tick(90);
+  }
+  function rewindTo(t) {
+    var cps = r.svc.checkpoints, idx = -1;
+    for (var i = 0; i < cps.length; i++) if (Math.abs(cps[i].metadata.sim_time - t) < 1e-9) idx = i;
+    var res = r.cmd({ action: 'rewind', steps: cps.length - idx, exact: true });
+    return res && res.metadata ? res : r.svc.assembleSnapshot();
+  }
+  function gPts() { r.tick(1); var o = r.snap().instructor && r.snap().instructor.one_over_m; return o ? o.points : -1; }
+  function nPts(w) {
+    var svg = w.querySelector('svg');
+    return ((svg && svg.innerHTML) || '').split('class="oom-pt"').length - 1;
+  }
+
+  RD.OneOverM.init({ getSnap: function () { return r.snap(); }, cmd: r.cmd });
+  var w = winOf();
+  RD.OneOverM.tick(r.snap());          // a plant change from section 4's relabelled snapshot
+  RD.OneOverM.open();
+  press(w, 'clear');
+
+  var tA = layCheckpoint();            // A: before the baseline
+  r.tick(5);
+  press(w, 'plot');                    // P1 baseline
+  withdraw(0.15);
+  press(w, 'plot');                    // P2
+  var tB = layCheckpoint();            // B: after P1, P2
+  withdraw(0.10);
+  press(w, 'plot');                    // P3
+  withdraw(0.05);
+  press(w, 'plot');                    // P4
+  RD.OneOverM.tick(r.snap());
+  ck('precondition: four points on the plot before the rewind, in both copies', nPts(w) === 4 && gPts() === 4,
+     nPts(w) + ' drawn, grader ' + gPts());
+
+  var rs = rewindTo(tB);
+  ck('precondition: the rewind landed on checkpoint B', Math.abs(rs.metadata.sim_time - tB) < 1e-9,
+     't=' + rs.metadata.sim_time.toFixed(2) + ' s, B=' + tB.toFixed(2) + ' s');
+  RD.OneOverM.tick(rs);
+  ck('rewinding to B KEEPS the two points taken before B (the playtest defect)', nPts(w) === 2,
+     nPts(w) + ' drawn, msg="' + msgOf(w) + '"');
+  ck('...and so does the GRADER\'s copy (what 9a grades)', gPts() === 2, 'grader ' + gPts());
+
+  r.tick(5);
+  press(w, 'plot');
+  var m = msgOf(w);
+  ck('...and the next press extends the SAME curve, not a fresh baseline',
+     /1\/M =/.test(m) && !/baseline/.test(m) && nPts(w) === 3, 'msg="' + m + '", ' + nPts(w) + ' drawn');
+
+  var ra = rewindTo(tA);
+  RD.OneOverM.tick(ra);
+  ck('rewinding to A, before the BASELINE, still clears the whole plot (both copies)', nPts(w) === 0 && gPts() === 0,
+     nPts(w) + ' drawn, msg="' + msgOf(w) + '"');
+})();
+
 /* ============================================================ summary */
-var expectRed = INJECT;
+var expectRed = INJECT || INJECT_RW;
 console.log('\n' + BOLD + (nFail === 0 ? GREEN + 'PASS' : RED + 'FAIL') + RST +
   '  ' + nPass + ' passed, ' + nFail + ' failed, ' + (nPass + nFail) + ' checks');
-if (INJECT) {
+if (INJECT || INJECT_RW) {
   var caught = nFail > 0;
   console.log((caught ? GREEN + 'INJECTION CAUGHT' : RED + 'INJECTION MISSED') + RST +
-    ' — the reverted plant-id guards ' + (caught ? 'reddened ' + nFail + ' check(s).' : 'changed NOTHING. The gate is hollow.'));
+    ' — the ' + (INJECT_RW ? 'reverted clear-on-rewind' : 'reverted plant-id guards') + ' ' + (caught ? 'reddened ' + nFail + ' check(s).' : 'changed NOTHING. The gate is hollow.'));
   process.exit(caught ? 0 : 1);
 }
 process.exit(nFail === 0 ? 0 : 1);

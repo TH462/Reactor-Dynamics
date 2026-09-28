@@ -3572,12 +3572,16 @@ if (!only && RUN_B) {
    *      step on its own rows (not `overtaken`)
    *   .5 Clear (`plot_1m_clear`): no prediction -> a stop AT the old prediction ticks 9a on the
    *      stop alone, flagged `no_1m` for the card's line (the no-soft-lock fallback)
-   *   .6 a restore to BEFORE the last plot clears the table — the panel's own rewind rule
+   *   .6 a restore to BEFORE the last plot drops THAT point and keeps the four before it — the
+   *      panel's own rewind rule (owner playtest 2026-09-28, "1/m plot points are lost when
+   *      rewinding steps": it used to clear the whole table; RD.OneOverMCore.rewindTo)
    * MEASURED at build (seed 42 / 7): prediction 211 / 210; 3 short ticks +63 s; step completes
    * +387 s / +1296 s.
    * INJECTIONS, proven in place: `below_1m` deleted from 9a -> .2, .3 and .5 red; `<=` -> `<` in
    * applyBelow1m -> .4 red; the `plot_1m_clear` handler deleted -> .5 red; the clock rule in
-   * `_oneOverMTick` deleted -> .6 red; a null prediction graded as unmet -> .5 red. */
+   * `_oneOverMTick` deleted -> .6 red; a null prediction graded as unmet -> .5 red. RE-PROVEN
+   * 2026-09-28 for the new .6: the old clear-everything rewind rule put back -> .6 red (points 0,
+   * prediction null) on both seeds; on the fix, points 4 and the 4-point prediction. */
   (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
@@ -3587,7 +3591,7 @@ if (!only && RUN_B) {
     });
     if (S9 < 0) { ck('2am. pwr_startup carries the latched approach step', false, 'not found'); return; }
     [42, 7].forEach(function (seed) {
-      var svc = null, s = null, i, P = null, b9 = null, fork = null, preLast = null;
+      var svc = null, s = null, i, P = null, b9 = null, fork = null, preLast = null, pre4 = null;
       function tick() { var r = svc.tick(); if (r) s = r; return s; }
       function t() { return s.metadata.sim_time; }
       function holdS(sec) { var t0 = t(); while (t() - t0 < sec) tick(); }
@@ -3628,7 +3632,7 @@ if (!only && RUN_B) {
          * is not "before the last capture" to the panel either */
         stops.forEach(function (b, n) {
           pullTo(b, 'normal'); holdS(n === stops.length - 1 ? 110 : 120);
-          if (n === stops.length - 1) { preLast = svc.saveState(); holdS(10); }
+          if (n === stops.length - 1) { preLast = svc.saveState(); pre4 = { points: oom().points, pred: oom().pred_steps }; holdS(10); }
           plot();
         });
         P = oom().pred_steps; b9 = bank();
@@ -3710,11 +3714,12 @@ if (!only && RUN_B) {
       ck('2am.4 a stop 3 short has 9a ticked by the stop (no still wait), and the tap policy completes the step on its own rows' + tag,
          three.met != null && three.met <= 1 && three.left != null && three.by != null && three.by !== 'overtaken',
          'stop ' + (P - 3) + ': ' + say(three));
-      /* .6 AFTER the clear-free cases: it empties the table, and nothing restores it */
+      /* .6 AFTER the clear-free cases: it drops the last point, and nothing restores it */
       svc.loadState(JSON.parse(JSON.stringify(preLast))); tick();
-      ck('2am.6 a restore to before the last plot clears the grader\'s table, as it clears the panel (seed ' + seed + ')',
-         !!oom() && oom().points === 0 && oom().pred_steps == null,
-         'points ' + (oom() && oom().points) + ', prediction ' + (oom() && oom().pred_steps));
+      ck('2am.6 a restore to before the last plot drops that point and KEEPS the earlier ones, as the panel does (seed ' + seed + ')',
+         !!oom() && !!pre4 && pre4.points === 4 && oom().points === pre4.points && oom().pred_steps === pre4.pred,
+         'points ' + (oom() && oom().points) + ' (4-point table ' + (pre4 && pre4.points) + '), prediction ' +
+         (oom() && oom().pred_steps) + ' (4-point ' + (pre4 && pre4.pred) + ')');
       build();
       var clr = route(P, 360, false, true);
       ck('2am.5 after Clear there is no prediction: a stop AT the old one ticks 9a on the stop alone, flagged no_1m' + tag,
