@@ -90,7 +90,7 @@ var ROUTES = {
        * route above survives as `mistake_base` (the reviewer's stops at 195 / 203). */
       /* #807 review item 2 (2026-09-26): `top` is the NOTE's window top, which is now the measured
        * landing range on this count-led route (the old window tops 110 / 175 were 30 and 20 past it) */
-      '#5': { policy: 'pull_count', top: 80, tap_wait_s: 30 },    // note: lands 75 to 80; short at 80 -> taps, half a plant-minute apart
+      '#5': { policy: 'pull_count', top: 80, tap_wait_s: 30 },    // note: lands 70 to 80 (hold-to-count 77-78, flicker + taps 72-74, layman pass 13); short at 80 -> taps, half a plant-minute apart
       '#6': { policy: 'pull_count', top: 155, tap_wait_s: 30 },   // lands 150 to 155
       '#7': { policy: 'pull_count', top: 192 },                   // lands 190 to 192; taps let STARTUP RATE settle
       '#8': { policy: 'pull_count', top: 205 },                   // about 205

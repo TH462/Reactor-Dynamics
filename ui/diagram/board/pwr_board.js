@@ -356,6 +356,8 @@
       // Press-and-hold (momentary) button, e.g. the rod drive: pointerdown/keydown
       // begin the press; release is caught board-wide (see mount) so dragging off the
       // button still ends it. No click handler — that would double-fire on release.
+      // `data-momentary` lets the walkthrough's pulse tell a hold from a latch (ui/app.js cklHeld).
+      btn.setAttribute('data-momentary', '1');
       var down = function (e) {
         if (e) e.preventDefault();
         btn.classList.add('bd-pressed');

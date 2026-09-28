@@ -1535,7 +1535,10 @@ if (!only && RUN_B) {
      * per-substep format carries it as `accs[0]` (with its `ask`), and the claim is unchanged: a
      * PREDICATE on the lineup param, never a cmd-kind row. Validated against the old form too: the
      * helper reads the pre-reconcile `acc` and passes it. */
-    function grd(st) { return st && (st.acc || ((st.accs && st.accs.length === 1 && !st.accs[0].cmd) ? st.accs[0] : null)); }
+    /* …and since #809 layman pass 13 (2026-09-28) step 16 carries a 16a wait row (REACTOR POWER
+     * 9.5 %) IN FRONT of the block row, so the grading predicate is the LAST row of a cmd-free
+     * `accs`. Validated against the old form: a single-row `accs`'s last row is its only row. */
+    function grd(st) { return st && (st.acc || ((st.accs && st.accs.length && !st.accs.some(function (e) { return e && e.cmd; })) ? st.accs[st.accs.length - 1] : null)); }
     ck('pwr_startup carries both trip-block steps and BOTH grade on the lineup, not on the press (#731)',
        i16 >= 0 && i17 >= 0 && i16 < i17 &&
        !!(grd(proc.steps[i16]) && grd(proc.steps[i16]).p === 'ir_high_blocked') &&
@@ -4052,7 +4055,7 @@ if (!only && RUN_B) {
        * (DUMP SETPOINT 720 / 270 psi) and 11a (HX SPLIT raised to 9 %), all control-state rows, so
        * instrument-graded and sole unchanged. SUM on a merge. */
       ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 item 2 merge): 84 / 172 / 100 / 25 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added, raise-power 10-12 removed, cooldown 4b/4c/11a added; 807g: 84 / 173 / 101 / 25, cooldown 11b SUBCOOLING MARGIN row)',
-         gradedSteps === 85 && predRows === 180 && rows.length === 103 && soleInst === 22,   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
+         gradedSteps === 85 && predRows === 181 && rows.length === 104 && soleInst === 22,   /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -4166,6 +4169,7 @@ if (!only && RUN_B) {
       'pwr_startup:13:sg_level_pct': 'sg_level',             // >= 59.5 (the fill, before SG FEED AUTO)
       'pwr_startup:14:power_pct': 'power_range',             // >= 5.05 [SOLE]
       'pwr_startup:15:mwe_output': 'mwe_output',             // > 8 [SOLE]
+      'pwr_startup:16:power_pct': 'power_range',             // >= 9.45, 16a (#809 layman pass 13 S-6)
       'pwr_startup:18:power_pct': 'power_range',             // >= 9.05 (owner ruling 2026-09-23, was 10.05)
       'pwr_startup:18:mwe_output': 'mwe_output',             // ~ 10
       /* pwr_raise_power [low_power] */

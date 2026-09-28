@@ -5793,28 +5793,77 @@
   function cklNotePress(e) {
     var x = e.clientX, y = e.clientY;
     if (!isFinite(x) || !isFinite(y)) return;
+    var held = !!(e.target && e.target.closest && e.target.closest('[data-momentary]'));
     document.querySelectorAll('.ckl-step-glow').forEach(function (g) {
       var r = g.getBoundingClientRect();
       if (!r.width || !r.height) return;
       if (x < r.left || x > r.right || y < r.top || y > r.bottom) return;
       var lab = g.getAttribute('data-ckl-hl');
-      if (lab) cklPressed[lab] = true;
+      if (lab) { if (held) cklHeld[lab] = true; else cklPressed[lab] = true; }
       g.classList.add('ckl-step-done');
     });
   }
+  /* ⚠ A HELD (MOMENTARY) BUTTON IS STEADY ONLY WHILE IT IS HELD (#809 layman pass 13 S-3,
+   * 2026-09-28). The rod WITHDRAW/INSERT buttons are press-and-hold: one press is a burst or a
+   * one-step tap, not the action — 5a asks for "tap WITHDRAW one step and wait … repeat until it
+   * stays there", 10b for a second hold after 10a's. MEASURED before this: WITHDRAW went steady on
+   * the FIRST pointerdown of 5a and stayed steady with 5a unmet at bank 40 of the ~72 it needs,
+   * and through all of 10b. So a momentary press is remembered in `cklHeld`, which the release
+   * clears: steady while the finger is down (#755 item 19's "after press: steady glow, no pulse"),
+   * pulsing again after it while the row asking for it is unmet. Latching controls (SLOW, MED,
+   * AUTO, a typed box) keep the old rule. `data-momentary` is set by the board's own buildButton
+   * on exactly the buttons it wires as press-and-hold. */
+  var cklHeld = Object.create(null);
+  /* THE LAST APPLIED SET, re-applied on every pointer release (below). Two things change what the
+   * pulse should be without changing the checklist render key: a held button being let go, and
+   * the 1/M window being opened or closed (the Plot point fallback in applyCklStepGlow). */
+  var cklLastGlow = null;
+  function cklReapplyStepGlow() {
+    cklHeld = Object.create(null);
+    setTimeout(function () { if (cklLastGlow) applyCklStepGlow(cklLastGlow.labels, cklLastGlow.key); }, 0);
+  }
+  /* ⚠ A SHELL TARGET THAT IS NOT ON SCREEN PULSES ITS OPENER (#809 layman pass 13 S-2).
+   * `Plot point` lives in the 1/M window, which step 4's note tells the player to close between
+   * points (it covers STEAM GENERATOR LEVEL). MEASURED before this on 5b, 6b and 7b with the window
+   * shut: the pulse sat on the 0x0 hidden button and NOTHING on screen glowed. When the resolved
+   * element has no layout box, the board's own entry for the same label — `bdOneOverM`, the 1/M
+   * PLOT button that opens the window — takes the pulse instead. It is never recorded as pressed
+   * (no `data-ckl-hl`): it pulses for exactly as long as the window is shut, and the pointer
+   * release that opens the window re-applies, moving the pulse onto Plot point. `RD.Highlight.
+   * resolve` is unchanged, so hover and the watch glows, and the gates that model it, are too. */
+  function cklVisibleOrOpener(lab, el) {
+    if (!el || el.getClientRects().length) return null;
+    if (!(RD.Highlight && RD.Highlight.SHELL_TARGETS && RD.Highlight.SHELL_TARGETS[lab])) return null;
+    var board = (RD.PwrBoard && RD.PwrBoard.isMounted && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
+    var op = board && board.revealControl ? board.revealControl(lab) : null;
+    return (op && op !== el) ? op : null;
+  }
   function applyCklStepGlow(labels, stepKey) {
     var key = stepKey || null;
-    if (key !== cklPressStep) { cklPressStep = key; cklPressed = Object.create(null); }
-    if (!cklPressArmed) { document.addEventListener('pointerdown', cklNotePress, true); cklPressArmed = true; }
+    if (key !== cklPressStep) { cklPressStep = key; cklPressed = Object.create(null); cklHeld = Object.create(null); }
+    if (!cklPressArmed) {
+      document.addEventListener('pointerdown', cklNotePress, true);
+      document.addEventListener('pointerup', cklReapplyStepGlow, true);
+      document.addEventListener('pointercancel', cklReapplyStepGlow, true);
+      document.addEventListener('click', cklReapplyStepGlow, true);   // a keyboard or synthetic click opens/shuts the 1/M window too
+      cklPressArmed = true;
+    }
+    cklLastGlow = { labels: labels, key: key };
     clearCklStepGlow();
     if (!labels || !labels.length) return;
+    var openers = [];
     labels.forEach(function (lab) {
       var el = hlTarget(lab);
       if (!el) return;
+      var op = cklVisibleOrOpener(lab, el);
+      if (op) { openers.push(op); return; }
       el.classList.add('ckl-step-glow');
       el.setAttribute('data-ckl-hl', lab);
-      if (cklPressed[lab]) el.classList.add('ckl-step-done');
+      if (cklPressed[lab] || cklHeld[lab]) el.classList.add('ckl-step-done');
     });
+    /* last, so an opener the step also names (startup 4's `1/M Plot Tool`, pressed and then the
+     * window shut again) pulses rather than sitting steady on a window that is closed */
+    openers.forEach(function (op) { op.classList.add('ckl-step-glow'); op.classList.remove('ckl-step-done'); });
   }
   function clearCklStepGlow() {
     document.querySelectorAll('.ckl-step-glow').forEach(function (el) {

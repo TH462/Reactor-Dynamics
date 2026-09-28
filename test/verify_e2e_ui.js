@@ -3104,6 +3104,94 @@ async function testWalkthroughHoldReleasedOnExit(page) {
  * outer ring reds the inset assertion; re-adding `bar.classList.add('ckl-step-glow')` in app.js
  * reds the strip assertion and nothing else.
  */
+/* HELD BUTTONS AND HIDDEN TARGETS (#809 layman pass 13, S-3 and S-2, 2026-09-28). Two ways the
+ * press pulse pointed at nothing while the row still asked for the press, both MEASURED on
+ * `pwr_startup` before the fix: (S-3) WITHDRAW went steady on the first pointerdown of 5a and stayed
+ * steady with 5a unmet at bank 40 of the ~72 it needs, and through 10b's second hold; (S-2) with the
+ * 1/M window shut, 5b/6b/7b rang a 0x0 hidden Plot point and nothing on screen glowed. A synthetic
+ * two-step procedure, so the plant state the earlier tests leave behind cannot meet the rows: a
+ * never-met row lighting WITHDRAW, then a plot row with the window shut. REAL pointer presses at
+ * real coordinates, for the reason the #755 item 19 block gives. */
+async function testHeldAndOpenerGlow(page) {
+  var log = [];
+  await page.evaluate(function () {
+    var P = globalThis.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_glow_probe'; });
+    globalThis.RD.MANUAL_PROCEDURES.pwr2 = P;
+    P.push({ id: 'zz_glow_probe', category: 'control', manual_ref: 'ZZ-03', title: 'Glow probe', purpose: 'Fixture.',
+             from: 'hot_zero_power',
+             steps: [{ text: 'Hold WITHDRAW.', control: 'Control Bank', press_expected: true, hl: ['Withdraw'],
+                       accs: [{ p: 'power_pct', op: '<', v: -1, hl: ['Withdraw'], ask: 'Hold WITHDRAW.', label: 'Never met' }] },
+                     { text: 'Plot.', control: '1/M Plot', hl: ['Plot point'],
+                       accs: [{ cmd: 'plot_1m_point', hl: ['Plot point'], ask: 'Press 1/M PLOT, then Plot point.', label: 'Point plotted' }] }] });
+    var w = document.querySelector('#oomWin [data-oom="close"]');
+    if (w && w.getClientRects().length) w.click();
+  });
+  await startWalkthrough(page, 'zz_glow_probe');
+  await page.waitForFunction(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    var el = document.querySelector('.ckl-step[data-ckl-step]');
+    return !!c && c.proc && c.proc.id === 'zz_glow_probe' && !!el && +el.getAttribute('data-ckl-step') === c.idx &&
+           !!document.querySelector('.ckl-step-glow');
+  }, { timeout: 15000, polling: 100 });
+  function read() {
+    return page.evaluate(function () {
+      var H = globalThis.RD.Highlight, B = globalThis.RD.PwrBoard;
+      var st = function (el) { return !el ? 'null' : el.classList.contains('ckl-step-done') ? 'steady'
+                                        : el.classList.contains('ckl-step-glow') ? 'pulse' : 'none'; };
+      var h = H.resolve('Withdraw'), b = h && h.parentElement ? h.parentElement.querySelector('.bd-btn') : null;
+      var r = b ? b.getBoundingClientRect() : null;
+      var op = B.revealControl('1/M Plot Tool'), ob = op && op.parentElement ? op.parentElement.querySelector('.bd-btn, button') : null;
+      var orr = ob ? ob.getBoundingClientRect() : null;
+      var pp = document.querySelector('#oomWin [data-oom="plot"]');
+      return { w: st(h), wx: r ? r.left + r.width / 2 : null, wy: r ? r.top + r.height / 2 : null,
+               op: st(op), ox: orr ? orr.left + orr.width / 2 : null, oy: orr ? orr.top + orr.height / 2 : null,
+               pp: st(pp), ppShown: !!(pp && pp.getClientRects().length) };
+    });
+  }
+  var a = await read();
+  if (a.w !== 'pulse' || a.wx == null) throw new Error('#809 S-3 fixture: WITHDRAW is not pulsing on the probe step — ' + JSON.stringify(a));
+  await page.mouse.move(a.wx, a.wy);
+  await page.mouse.down();
+  await page.waitForTimeout(400);
+  var held = await read();
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  var rel = await read();
+  if (held.w !== 'steady') throw new Error('#809 S-3 / #755 item 19: WITHDRAW is not steady WHILE held — ' + held.w);
+  if (rel.w !== 'pulse') {
+    throw new Error('#809 S-3: WITHDRAW stayed ' + rel.w + ' after the hold was released with its row unmet — a held ' +
+      'button is one burst, not the action; the pulse must come back while the row still asks for it');
+  }
+  log.push('WITHDRAW: pulse -> steady while held -> pulse after release (row unmet)');
+  await page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist; c.idx = 1; c.stepAt = null; c.awaitingAck = false;
+  });
+  await page.waitForFunction(function () {
+    var el = document.querySelector('.ckl-step[data-ckl-step]');
+    return !!el && el.getAttribute('data-ckl-step') === '1';
+  }, { timeout: 15000, polling: 100 });
+  await page.waitForTimeout(300);
+  var shut = await read();
+  if (shut.ppShown) throw new Error('#809 S-2 fixture: the 1/M window is open, the closed case cannot be read');
+  if (shut.op !== 'pulse') {
+    throw new Error('#809 S-2: with the 1/M window shut, the Plot point row pulses nothing on screen — 1/M PLOT reads "' +
+      shut.op + '" (Plot point: ' + shut.pp + ' on a hidden button)');
+  }
+  await page.mouse.click(shut.ox, shut.oy);
+  await page.waitForTimeout(500);
+  var open = await read();
+  if (!open.ppShown || open.pp !== 'pulse' || open.op !== 'none') {
+    throw new Error('#809 S-2: after 1/M PLOT opened the window the pulse did not move onto Plot point — ' + JSON.stringify(open));
+  }
+  log.push('Plot point: window shut -> 1/M PLOT pulses; pressed -> window open, Plot point pulses, opener dark');
+  await page.evaluate(function () {
+    globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' });
+    var w = document.querySelector('#oomWin [data-oom="close"]'); if (w && w.getClientRects().length) w.click();
+    globalThis.RD.MANUAL_PROCEDURES.pwr2 = globalThis.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_glow_probe'; });
+  });
+  return log.join('\n') + '\n';
+}
+
 async function testSpeedRungGlowRendered(page) {
   var log = [];
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1',
@@ -3885,10 +3973,10 @@ async function testWatchGlowRendered(page) {
    * (measured; the DOM-relation forms of that handler both failed) — so a synthetic click with no
    * clientX/clientY would exercise nothing the player does. */
   var treat = await page.evaluate(function () {
-    var p = document.querySelector('.ckl-step-glow'); if (!p) return { press: null };
+    var p = document.querySelector('.ckl-step-glow[data-ckl-hl]'); if (!p) return { press: null };
     var cs = getComputedStyle(p), r = p.getBoundingClientRect();
     return { press: { anim: cs.animationName, shadow: cs.boxShadow, outlineStyle: cs.outlineStyle,
-                      done: p.classList.contains('ckl-step-done'),
+                      lab: p.getAttribute('data-ckl-hl'), done: p.classList.contains('ckl-step-done'),
                       w: +r.width.toFixed(1), h: +r.height.toFixed(1),
                       x: r.left + r.width / 2, y: r.top + r.height / 2 } };
   });
@@ -3913,11 +4001,15 @@ async function testWatchGlowRendered(page) {
   await page.mouse.down();
   await page.mouse.up();
   await page.waitForTimeout(300);
-  var pressed = await page.evaluate(function () {
-    var p = document.querySelector('.ckl-step-glow'); if (!p) return null;
+  /* READ THE RING THAT WAS PRESSED, BY ITS LABEL (#809 layman pass 13): the first `.ckl-step-glow`
+   * on the page is not always it — a press that opens a panel (TRIP BLOCKS) puts a ring on the
+   * panel's row, which pulses for its own press. Measured when this fixture moved from startup 16 to
+   * 17: the read landed on the popover row and reported the pressed button as still pulsing. */
+  var pressed = await page.evaluate(function (lab) {
+    var p = document.querySelector('.ckl-step-glow[data-ckl-hl="' + lab + '"]'); if (!p) return null;
     var cs = getComputedStyle(p);
     return { anim: cs.animationName, shadow: cs.boxShadow, done: p.classList.contains('ckl-step-done') };
-  });
+  }, treat.press.lab);
   if (!pressed) {
     throw new Error('#755 item 19: the ring went away entirely on the press — the ruling is ' +
       '"steady glow, no pulse", and a cue that vanishes says the player is on the wrong control ' +
@@ -3944,11 +4036,11 @@ async function testWatchGlowRendered(page) {
    * observations move most broadcasts on a live plant — and a naive fix is swept seconds later,
    * which a read taken 300 ms after the press cannot see. 2 s is ~20 broadcasts at 1x. */
   await page.waitForTimeout(2000);
-  var stillDone = await page.evaluate(function () {
-    var p = document.querySelector('.ckl-step-glow'); if (!p) return null;
+  var stillDone = await page.evaluate(function (lab) {
+    var p = document.querySelector('.ckl-step-glow[data-ckl-hl="' + lab + '"]'); if (!p) return null;
     var cs = getComputedStyle(p);
     return { anim: cs.animationName, shadow: cs.boxShadow, done: p.classList.contains('ckl-step-done') };
-  });
+  }, treat.press.lab);
   if (!stillDone || stillDone.anim !== 'none' || !stillDone.shadow || stillDone.shadow === 'none') {
     throw new Error('#755 item 19: the stood-down cue did not survive the panel re-render — ' +
       JSON.stringify(stillDone) + '. The "already pressed" memory must be keyed on the step and ' +
@@ -5725,6 +5817,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'walkthrough-hold-released-on-exit.log'), whLog);
     var wgLog = await testWatchGlowRendered(page);
     fs.writeFileSync(path.join(SCRATCH, 'watch-glow-rendered.log'), wgLog);
+    var hoLog = await testHeldAndOpenerGlow(page);   /* #809 layman pass 13 S-2 / S-3 */
+    fs.writeFileSync(path.join(SCRATCH, 'held-and-opener-glow.log'), hoLog);
     var srLog = await testSpeedRungGlowRendered(page);
     fs.writeFileSync(path.join(SCRATCH, 'speed-rung-glow.log'), srLog);
     var wtLog = await testWalkthroughWarpTogglePref(page);
@@ -5793,6 +5887,7 @@ if (require.main !== module) {
                       * and never noticed. Found adjudicating #743/#744 (2026-09-13). */
                      testOneOverMGeometry: testOneOverMGeometry,
                      testWatchGlowRendered: testWatchGlowRendered,
+                     testHeldAndOpenerGlow: testHeldAndOpenerGlow,
                      testSpeedRungGlowRendered: testSpeedRungGlowRendered,
                      testWalkthroughWarpTogglePref: testWalkthroughWarpTogglePref,
                      port: function () { return PORT; } };
