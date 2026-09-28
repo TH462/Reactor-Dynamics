@@ -107,6 +107,18 @@ var OFFER = '#instrCurrent [data-opener-start]';
   ck('trend: ...and the strip chart glows (it is pointed at)', await page.evaluate(function () {
     return document.querySelector('.strip-chart').classList.contains('instr-glow'); }));
 
+  /* SAVE / LOAD on the same beat, same page (#811 QA2): the load's afterPlantChange put the
+   * default traces back AFTER the trend was applied, and the unchanged rev never re-applied it —
+   * measured: the chart read Power / Tavg / Output MW under o1_load's line naming four others. */
+  var saveFile = path.join(require('os').tmpdir(), 'rd_opener_mid_' + process.pid + '.json');
+  require('fs').writeFileSync(saveFile, await page.evaluate(function () { return JSON.stringify(RD.__dev.service().saveState()); }));
+  await page.setInputFiles('#loadFile', saveFile);
+  await page.waitForTimeout(1500);
+  require('fs').unlinkSync(saveFile);
+  var legendL = (await page.textContent('#chartFloats')) || '';
+  ck('trend: loading a save made on the same beat keeps the beat\'s traces', /Steam Dump/.test(legendL) && /Pressure/.test(legendL),
+     legendL.replace(/\s+/g, ' ').slice(0, 60));
+
   // ---------------------------------------------------------------- End: no offer over it
   await page.waitForSelector('[data-opener-end]', { timeout: 8000 }).catch(function () {});
   await page.click('[data-opener-end]');

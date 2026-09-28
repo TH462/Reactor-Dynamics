@@ -11043,6 +11043,10 @@
     ui.engineKey = pid === 'rbmk' ? (dv === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre') : pid;
     ui.series = Object.assign({}, prof().defaultSeries);
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
+    /* The defaults above just replaced any trend a beat put on the chart; forget which one was
+     * applied so the next render puts it back. Measured (#811 QA2): loading a save made on the
+     * same beat in the same page left the chart on the defaults under a line naming its traces. */
+    if (instrTrend) instrTrend.rev = null;
     rebuildPlantUI();
   }
 

@@ -226,6 +226,7 @@ test('the opener runs on the FREE-PLAY plant and survives save/restore', functio
   var op = new RD.SimulationService({ seed: 42 });
   op.selectPlant('pwr2', 'cold_shutdown');
   var r = op.handleCommand({ action: 'start_opener', opener_id: OP_ID });
+  var openerFresh0 = op.isFreshPlant();
   ck('start_opener loads the opener', r && r.instructor && r.instructor.scenario_id, !!(r && r.instructor && r.instructor.scenario_id === OP_ID), OP_ID);
   ck('...and resets to its starting condition', op.activeInitialState, op.activeInitialState === 'hot_full_power', 'hot_full_power');
   ck('automation lineup = free play\'s', engaged(op) || '(none)', engaged(op) === engaged(free) && engaged(free).length > 0, engaged(free));
@@ -238,6 +239,10 @@ test('the opener runs on the FREE-PLAY plant and survives save/restore', functio
   for (i = 0; i < 20; i++) op.tick();
   var saved = op.saveState();
   var back = new RD.SimulationService({ seed: 42 });
+  // FRESH before the load, as the page's service is: a load into a never-loaded service reads
+  // false by construction (undefined), which made the "restored save" check below hollow.
+  back.selectPlant('pwr2', 'hot_full_power');
+  var backFresh0 = back.isFreshPlant();
   back.loadState(saved);
   ck('a save mid-opener restores the opener, not free play', back.instructor.scenario && back.instructor.scenario.id,
      !!(back.instructor.scenario && back.instructor.scenario.id === OP_ID), OP_ID);
@@ -264,8 +269,12 @@ test('the opener runs on the FREE-PLAY plant and survives save/restore', functio
   ck('fresh: the first plant command ends it', String(free.isFreshPlant()), free.isFreshPlant() === false, 'false');
   free.handleCommand({ action: 'reset', plant_id: 'pwr2', initial_state: 'hot_full_power' });
   ck('fresh: a new load is fresh again', String(free.isFreshPlant()), free.isFreshPlant() === true, 'true');
+  // Read straight after start_opener, BEFORE any instructor_continue: Ready goes through
+  // handleCommand's default branch and clears the flag itself, so a read after it cannot see
+  // start_opener's own clear (End pressed before Ready would re-offer over the opener's plant).
+  ck('fresh: not after an opener started (End before Ready)', String(openerFresh0), openerFresh0 === false, 'false');
   ck('fresh: not after an opener ran and was stopped (End / Continue)', String(op.isFreshPlant()), op.isFreshPlant() === false, 'false');
-  ck('fresh: not on a restored save', String(back.isFreshPlant()), back.isFreshPlant() === false, 'false');
+  ck('fresh: not on a restored save (loaded over a fresh plant)', backFresh0 + ' -> ' + back.isFreshPlant(), backFresh0 === true && back.isFreshPlant() === false, 'true -> false');
   var sc = new RD.SimulationService({ seed: 42 });
   sc.selectPlant('pwr2', 'hot_full_power', null, { noDefaults: true });
   ck('fresh: not on instructed content (noDefaults)', String(sc.isFreshPlant()), sc.isFreshPlant() === false, 'false');
