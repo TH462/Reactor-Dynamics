@@ -227,8 +227,11 @@ test('opener copy — registers, units, length, speed stated, highlights, exits'
   var DRV = RD.PwrBoardDriver || {};
   var fl = DRV.focusLabels ? DRV.focusLabels() : [];
   var regs = DRV.focusRegions ? DRV.focusRegions() : [];
-  var boardIds = {};
-  ((globalThis.RD_PWR_BOARD_DOC || {}).items || []).forEach(function (it) { boardIds[it.id] = true; });
+  // The RENDERED item set: the generated doc after the driver's patches (DOC_REMOVE drops items)
+  // plus its EXTRA_ITEMS — the raw doc still lists removed ids and lacks the appended ones (QA4).
+  var boardIds = {}, rdoc = JSON.parse(JSON.stringify(globalThis.RD_PWR_BOARD_DOC || { items: [] }));
+  if (DRV.docPatches) DRV.docPatches(rdoc);
+  (rdoc.items || []).concat(DRV.extraItems ? DRV.extraItems() : []).forEach(function (it) { boardIds[it.id] = true; });
   var rBad = [];
   regs.forEach(function (r) { DRV.focusRegion(r).forEach(function (id) { if (!boardIds[id]) rBad.push(r + ':' + id); }); });
   ck('every region member is a board item', rBad.join(',') || regs.length + ' regions (' + regs.join(', ') + ')',

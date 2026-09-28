@@ -3646,7 +3646,10 @@
   /* BOARD REGIONS (#811, OWNER RULING 2026-09-28: "we use dimming to isolate the part of the board
    * we are focusing on"). A beat's `scope` names regions (or single focus names); everything not in
    * them is dimmed. Membership is by board item id, read off the layout: a CARD (box) lights
-   * everything drawn inside it, so a panel is listed once. A pipe is lit when both its ends are.
+   * everything drawn inside it, so a panel is listed once — EXCEPT a readout whose tile overhangs
+   * its card (right-anchored values, EXTRA_ITEMS tags), which containment misses and must be
+   * listed by id (QA4: OUTPUT/GOVERNOR/TURBINE rpm stayed dim under `secondary`; verify_opener_ui
+   * fails on a tile no region lights). A pipe is lit when both its ends are.
    * An item may sit in several regions (the steam generator is both sides of the plant). The
    * breaker lives on the Turbine-Generator card, so there is no separate `electrical` region. */
   var FOCUS_REGIONS = {
@@ -3669,7 +3672,8 @@
       'ims2hvv0wgo', 'imrpnzfsfcx', 'ims15i60dd8', 'ims2hnyt0jk' /* shutdown rod position */,
     ],
     nis: [
-      'ims175lciah' /* NIS card */, 'imrshokxy4u', 'ims89mc0hl3', 'ims89mkaj2r', 'imro6rdwwdn' /* reactivity & period */,
+      'ims175lciah' /* NIS card */, 'bdReactivityCard', 'ims89mc0hl3', 'ims89mkaj2r' /* period card */,
+      'imro6qsncb9', 'imro6rctcgm' /* startup rate, IR readouts */, 'bdDtMargin' /* core ΔT margin */,
     ],
     secondary: [
       'steamGenerator', 'imsgu622dld', 'imsgu024ehh' /* steam tees */, 'imrpp99kx2y' /* MSIV */, 'imrr45syy4v' /* TCV */,
@@ -3677,7 +3681,8 @@
       'imsgu6qi776', 'imsgujvh6iw' /* atmospheric dump */, 'imsgt98wjjc', 'imsgus30fl2', 'imsgt8z606k', 'imrr1hecwq7' /* steam temp */,
       'imsgt8to27x', 'imrr1gttt2l', 'imsgupfprkp', 'ims31ngjkf8' /* steam flow */, 'imsgunuyvon', 'imsguptyg16', 'imrqzuhzre3',
       'imro8k5pzem' /* TURBINE-GENERATOR card */, 'imrop5ouw7h' /* STEAM DUMP card */, 'imsgt1ebv1d' /* ATMOS DUMP card */,
-      'ims3v3lpw5v' /* CONDENSER COOLING card */, 'imrr1gwi93j' /* SG pressure */, 'ims3wm0d0bu' /* steam flow */,
+      'ims3v3lpw5v' /* CONDENSER COOLING card */,
+      'imrppeh5hkb', 'imrppej8ulo', 'imrppee04aj' /* output, governor, turbine rpm */, 'imrppq5r7kw' /* dump status */, 'bdAdvPct' /* ADV % */, 'imrr1gwi93j' /* SG pressure */, 'ims3wm0d0bu' /* steam flow */,
       'ims2imn1nny' /* SG Level */,
     ],
     feed: [
@@ -3690,11 +3695,11 @@
     cvcs: [
       'imrqp87ueqb' /* charging pump */, 'ims3x01kvp4', 'ims2k1rhzh3', 'ims2k3q7ehq' /* charging / letdown tees */,
       'imrmsjta95r' /* CVCS flow readouts */, 'imsgti1p0rm', 'imsgti0gnpf', 'ims3wy5oym4',
-      'imrmslginf9' /* CHARGING card */, 'imrmslvu2c0' /* LETDOWN card */, 'imrmtlyf64y' /* BORON card */, 'ims2jva1ff5',
+      'imrmslginf9' /* CHARGING card */, 'imrmslvu2c0' /* LETDOWN card */, 'imrmtlyf64y' /* BORON card */, 'ims2jva1ff5', 'bdLetdownStatus',
       'ims2immon9z' /* Pressurizer Level */,
     ],
     eccs: [
-      'imrzpfd4qox' /* ECCS card */, 'ims3xf18pk8' /* RHR card */, 'ims3vqox0fc' /* ECCS indications */, 'ims3w1cb6jc', 'ims3w61jjbi', 'ims3w1lj7n6',
+      'imrzpfd4qox' /* ECCS card */, 'ims3xf18pk8' /* RHR card */, 'bdRhrCooldownRate', 'ims3vqox0fc' /* ECCS indications */, 'ims3w1cb6jc', 'ims3w61jjbi', 'ims3w1lj7n6',
       'imrobnzlha1' /* ECCS pump */, 'imrppx5n1ay' /* ACCUMULATORS */, 'imrppyp0wfo', 'imrppztrng1', 'imrpq0n2ujv', 'imrppzjvfpf',
       'imrppxt2aqd' /* accumulator valve */, 'ims3x2n4o2p', 'ims3yt5oyp8', 'ims3x01kvp4',
     ],

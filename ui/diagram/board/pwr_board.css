@@ -627,11 +627,14 @@
    :hover branch — a dimmed tile does not brighten under the pointer (owner, 2026-09-28). Pipes and
    flanges carry `bd-dim` per element (lit when both their ends are). Transitions only while
    dimming is on or being lifted, so no tile's other opacity changes start animating.
-   The OPACITY and the DESATURATION are separate rules on purpose — see the alarm-hue rule. */
+   The OPACITY and the DESATURATION are separate rules on purpose — see the alarm-hue rule.
+   PIPES GET THE OPACITY ONLY, NO GRAYSCALE (#811 QA4, measured tools/perf_trace.js --secs=25):
+   the pipes' flow dashes repaint every frame, so a filter on each dimmed pipe is re-run every
+   frame — raster 7.5-7.8 s per 25 s with it vs 5.9-6.1 s undimmed and 6.3 s without it. A dimmed
+   tile is static between readings, so its grayscale is nearly free. */
 .pwr-board-stage.bd-dimming > .bd-tile:not(.bd-lit),
 .pwr-board-stage.bd-dimming > svg:first-child > .bd-dim { opacity: 0.38; }
-.pwr-board-stage.bd-dimming > .bd-tile:not(.bd-lit),
-.pwr-board-stage.bd-dimming > svg:first-child > .bd-dim { filter: grayscale(0.75); }
+.pwr-board-stage.bd-dimming > .bd-tile:not(.bd-lit) { filter: grayscale(0.75); }
 /* ALARM HUE (OWNER RULING 2026-09-28, option (b): "keep dimming, but let a tile in alarm keep its
    hue (drop the grayscale for alarm/actuated states only; no brightening)"). Same opacity as every
    dimmed tile; only the desaturation goes. `bd-alarm-hue` is set by the renderer (pwr_board.js,

@@ -423,6 +423,53 @@ var OFFER = '#instrCurrent [data-opener-start]';
   await boot();
   ck('Not now: a new session offers it again (not hidden for good)', await offerShown());
 
+  // ---------------------------------------------------------------- 8. regions + gauge alarm hue (QA4)
+  /* EVERY TILE IS IN SOME REGION. A readout whose tile overhangs its card is missed by the card's
+   * containment, and it stayed dim under the scope that is about it (OUTPUT / GOVERNOR / TURBINE
+   * rpm under `secondary` during the load cut — found 2026-09-28). The one exemption is the outer
+   * CVCS + safety-injection panel frame, which only contains cards that have their own regions. */
+  var cov = await page.evaluate(function () {
+    var B = RD.PwrBoard, seen = {};
+    RD.PwrBoardDriver.focusRegions().forEach(function (r) {
+      B.setScope({ names: [r], lit: [] });
+      B.scopeState().lit.forEach(function (id) { seen[id] = 1; });
+    });
+    B.setScope(null);
+    var EXEMPT = { ims3l6k3mb0: 1 };
+    return [].map.call(document.querySelectorAll('.pwr-board-stage > .bd-tile[data-item]'), function (t) { return t.getAttribute('data-item'); })
+      .filter(function (id) { return !seen[id] && !EXEMPT[id]; });
+  });
+  ck('regions: every board tile is lit by at least one region', !cov.length, cov.length ? 'never lit: ' + cov.join(', ') : 'all');
+  /* A GAUGE IN ITS ALARM BAND keeps its hue under the dimming (OWNER RULING 2026-09-28, option
+   * (b)). Section 6 proves it for SCRAMMED only. Scope the rods (PRIMARY PRESSURE dimmed), pin
+   * the scope against free play's per-broadcast clear, open the PORV at 10x and read the gauge
+   * once it is in its band: no grayscale, same dim opacity, colour in the pixels. Measured
+   * 2026-09-28: chroma 54 in alarm vs 12 with the grayscale forced back on (injection). */
+  var PP = '.pwr-board-stage > [data-item="ims2immsvn6"]';
+  await page.evaluate(function () {
+    var B = RD.PwrBoard, s = RD.__dev.service();
+    B.setScope({ names: ['rods'], lit: [] }); B.setScope = function () {};
+    s.attentionStops = false; s.handleCommand({ action: 'open_porv_manual' }); s.handleCommand({ action: 'set_speed', value: 10 });
+  });
+  var ppAlarm = await page.waitForFunction(function (sel) { var t = document.querySelector(sel); return !!(t && t.querySelector('.bd-alarm-hue')); }, PP, { timeout: 60000 })
+    .then(function () { return true; }).catch(function () { return false; });
+  await page.evaluate(function () { RD.__dev.service().handleCommand({ action: 'pause' }); });
+  await page.waitForTimeout(700);
+  var ppSt = await page.evaluate(function (sel) { var t = document.querySelector(sel), cs = getComputedStyle(t), r = t.getBoundingClientRect();
+    return { op: +cs.opacity, filter: cs.filter, lit: t.classList.contains('bd-lit'), box: { x: r.left, y: r.top, width: r.width, height: r.height } }; }, PP);
+  var ppB64 = (await page.screenshot({ clip: ppSt.box })).toString('base64');
+  var ppChroma = await page.evaluate(async function (b64) {
+    var img = await new Promise(function (res) { var i = new Image(); i.onload = function () { res(i); }; i.src = 'data:image/png;base64,' + b64; });
+    var c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    var g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    var P = g.getImageData(0, 0, img.width, img.height).data, best = 0;
+    for (var k = 0; k < P.length; k += 4) best = Math.max(best, Math.max(P[k], P[k + 1], P[k + 2]) - Math.min(P[k], P[k + 1], P[k + 2]));
+    return best;
+  }, ppB64);
+  ck('alarm hue: a dimmed gauge in its alarm band (PRIMARY PRESSURE, PORV open) keeps its colour',
+     ppAlarm && !ppSt.lit && ppSt.op > 0.3 && ppSt.op < 0.45 && ppSt.filter === 'none' && ppChroma > 35,
+     (ppAlarm ? 'in band' : 'NEVER IN BAND') + ', opacity ' + ppSt.op.toFixed(2) + ', filter ' + ppSt.filter + ', max chroma ' + ppChroma + ' (grayscaled: ~12)');
+
   await browser.close();
   console.log('\n' + (fail ? '\x1b[31mOPENER UI: FAIL' : '\x1b[32mOPENER UI: PASS') + '\x1b[0m   ' + pass + '/' + (pass + fail) + ' checks');
   process.exit(fail ? 1 : 0);
