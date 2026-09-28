@@ -2182,7 +2182,8 @@
        * dc.pressure_setpoint_mpa holds the 7.03 MPa (1019 psi) Ginna no-load anchor */
       steam_dump_setpoint: e.dcDrivers.pressure_setpoint_mpa !== undefined
         ? e.dcDrivers.pressure_setpoint_mpa
-        : (e.dc && e.dc.pressure_setpoint_mpa !== undefined ? e.dc.pressure_setpoint_mpa : 7.03),
+        : (e.dc && e.dc.pressure_target_mpa !== undefined ? e.dc.pressure_target_mpa   /* typed */
+          : (e.dc && e.dc.pressure_setpoint_mpa !== undefined ? e.dc.pressure_setpoint_mpa : 7.03)),
       governor_valve_pct: ts.governor_valve_pct !== undefined ? ts.governor_valve_pct : 0,
       hpi_active: ts.hpi_active === true,
       eccs_mode: ts.eccs_mode,

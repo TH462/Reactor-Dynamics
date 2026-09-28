@@ -5267,14 +5267,16 @@
          * AUTO never pressed leaves the row unmet (see 06_cooldown.md Notes). */
         { text: 'Cool the plant on the steam dump to where RHR can take over.',
           aim: 'The steam pressure the dump holds sets the temperature the steam generator boils at, and the reactor water follows it down.',
-          why: 'Steam pressure and steam temperature go together: lower the pressure the dump holds and the steam generator boils at a lower temperature, which pulls the reactor water down after it. It cannot pull the water below its own boiling point, so the walk goes all the way to 120 psi, about 341 °F, low enough for RHR to take over. Near the bottom the same 50 psi cools about four times as far, which is why the steps get smaller.',
-          control: 'Dump SP', target: 'STEAM DUMP status PRESS; AVG COOLANT TEMPERATURE below 347 °F',
+          why: 'Steam pressure and steam temperature go together: lower the pressure the dump holds and the steam generator boils at a lower temperature, which pulls the reactor water down after it. It cannot pull the water below its own boiling point, so the target is 120 psi, about 341 °F, low enough for RHR to take over. You type the target once, and the dump controller walks the pressure it holds down to it on its own, only as fast as keeps the cooldown near 60 °F per hour, under the 100 °F per hour limit. Near the bottom the same 50 psi cools about four times as far, so STEAM PRESS falls quickly at first and slowly at the end. On a real plant the operator paces this by hand; here the controller does it so you can watch.',
+          control: 'Dump SP', target: 'STEAM DUMP status PRESS; DUMP SETPOINT 120 psi; AVG COOLANT TEMPERATURE below 347 °F',
           wait_hint: false,
-          cmd: { action: 'set_steam_dump_setpoint', mpa: 0.83 }, hold: 9600,
-          ramp: [{ action: 'set_steam_dump_setpoint', arg: 'mpa', points: [7.03, 4.42, 2.76, 1.66, 0.83] }],
+          /* ONE ENTRY SINCE 2026-09-28 (OWNER RULING, quoted on pwr2_dumpctl.js RAMP: the automatic ramp).
+           * The typed DUMP SETPOINT is a TARGET; the controller walks its working setpoint down at a fixed
+           * cooldown rate, so the replay types it once, exactly as the player does. 120 psi = 0.8274 MPa. */
+          cmd: { action: 'set_steam_dump_setpoint', mpa: 0.8274 }, hold: 14400,
           saw: { p: 'tavg_c', op: '<', v: 250 },
           wait_speed: 60,
-          /* 4b: `< 175` (347.0 °F, printed "347") -> `< 174.72` (346.5 °F, the floor of "346"). */
+          /* 4c: `< 175` (347.0 °F, printed "347") -> `< 174.72` (346.5 °F, the floor of "346"). */
           /* 4a IS A CHECK SINCE THE 2026-09-25 bring-down ("Check ... If it does not, press AUTO").
            * The `cmd` stays so the replay still exercises the press. MEASURED, `hot_zero_power`,
            * seed 42: AUTO pressed once and then twice more on a dump already in PRESS -> mode
@@ -5287,23 +5289,16 @@
                    ask: 'Check STEAM DUMP AUTO is lit and its status reads PRESS. If it does not, press AUTO until the status reads PRESS.',
                    note: 'If the status reads TAVG, the dump is holding temperature instead and ignores DUMP SETPOINT.',
                    wait_speed: 1, label: 'STEAM DUMP AUTO lit, status PRESS' },
-                 /* 4b-4d (#807 item 2, 2026-09-26): the stair the old 4b note carried in prose is now three
-                  * substeps, one per step size (the route gate's `stair` bands). 4b/4c grade DUMP SETPOINT at the
-                  * floor of the box's whole-psi render band: 720.5 psi = 4.9677 MPa, 270.5 psi = 1.8650 MPa. 4c and
-                  * 4d carry no rung of their own and fall back to the step's 60x. */
-                 { p: 'steam_dump_setpoint', op: '<', v: 4.9677,
+                 /* 4b: the box renders whole psi, so "120" is [119.5, 120.5) psi = 0.8274 +/- 0.0035 MPa. */
+                 { p: 'steam_dump_setpoint', op: '~', v: 0.8274, tol: 0.0035,
                    hl: ['Dump Setpoint'],
-                   ask: 'Lower DUMP SETPOINT 50 psi at a time to 720 psi, about 6 plant-minutes apart.',
-                   note: 'Time the waits on the plant clock: 4 plant-minutes apart sets off the Cooldown Rate High alarm, and one big jump sets it off and empties the pressurizer. The temperature never quite stops falling, so do not wait for it to. Low Coolant Temperature comes in near 530 °F: expected on a cooldown, and it becomes an expected-status tile below 350 °F. The clock moves to 60× by itself once your first new setpoint goes in.',
-                   wait_speed: 60, label: 'DUMP SETPOINT 720 psi or lower' },
-                 { p: 'steam_dump_setpoint', op: '<', v: 1.8650,
-                   hl: ['Dump Setpoint'],
-                   ask: 'Lower DUMP SETPOINT 25 psi at a time to 270 psi, about 6 plant-minutes apart.',
-                   label: 'DUMP SETPOINT 270 psi or lower' },
+                   ask: 'Type 120 into DUMP SETPOINT.',
+                   note: 'The box keeps the 120 you typed. The dump does not go there at once: it lowers the pressure it holds a little at a time, so the plant cools at about 60 °F per hour without you pacing it. The clock moves to 60× by itself once 120 is in.',
+                   wait_speed: 1, label: 'DUMP SETPOINT reads 120 psi' },
                  { p: 'tavg_c', op: '<', v: 174.72,
-                   hl: ['Dump Setpoint'], hl_watch: ['Tavg'],
-                   ask: 'Lower DUMP SETPOINT 15 psi at a time to 120 psi, about 6 plant-minutes apart, until AVG COOLANT TEMPERATURE reads below 347 °F.',
-                   note: 'Shutdown Cooling Not In Service comes in near the bottom as the plant enters Mode 4: expected, RHR goes in service at step 9. About three and a half hours from 1020 psi.',
+                   hl_watch: ['Tavg', 'SG Pressure'],
+                   ask: 'Wait for AVG COOLANT TEMPERATURE to read below 347 °F.',
+                   note: 'Watch STEAM PRESS fall toward 120 psi and COOLDOWN RATE hold near -60, which is 60 °F per hour of cooling. Low Coolant Temperature comes in near 530 °F: expected on a cooldown, and it becomes an expected-status tile below 350 °F. Shutdown Cooling Not In Service comes in near the bottom as the plant enters Mode 4: expected, RHR goes in service at step 9. About three and a half hours from 1020 psi.',
                    label: 'AVG COOLANT TEMPERATURE below 347 °F' }],
           hl: ['Steam Dump — Auto', 'Dump Setpoint'], hl_watch: ['Steam Dump Status', 'Tavg'] },
         { text: 'Take the pressure setpoint to the bottom of its range.',

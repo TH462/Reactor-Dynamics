@@ -84,21 +84,21 @@ Suggested time warp: 1×.
 
 Note: If the status reads TAVG, the dump is holding temperature instead and ignores DUMP SETPOINT.
 
-()4b. Lower DUMP SETPOINT 50 psi at a time to 720 psi, about 6 plant-minutes apart.
+()4b. Type 120 into DUMP SETPOINT.
+
+Suggested time warp: 1×.
+
+Note: The box keeps the 120 you typed. The dump does not go there at once: it lowers the pressure it holds a little at a time, so the plant cools at about 60 °F per hour without you pacing it. The clock moves to 60× by itself once 120 is in.
+
+()4c. Wait for AVG COOLANT TEMPERATURE to read below 347 °F.
 
 Suggested time warp: 60×.
 
-Note: Time the waits on the plant clock: 4 plant-minutes apart sets off the Cooldown Rate High alarm, and one big jump sets it off and empties the pressurizer. The temperature never quite stops falling, so do not wait for it to. Low Coolant Temperature comes in near 530 °F: expected on a cooldown, and it becomes an expected-status tile below 350 °F. The clock moves to 60× by itself once your first new setpoint goes in.
-
-()4c. Lower DUMP SETPOINT 25 psi at a time to 270 psi, about 6 plant-minutes apart.
-
-()4d. Lower DUMP SETPOINT 15 psi at a time to 120 psi, about 6 plant-minutes apart, until AVG COOLANT TEMPERATURE reads below 347 °F.
-
-Note: Shutdown Cooling Not In Service comes in near the bottom as the plant enters Mode 4: expected, RHR goes in service at step 9. About three and a half hours from 1020 psi.
+Note: Watch STEAM PRESS fall toward 120 psi and COOLDOWN RATE hold near -60, which is 60 °F per hour of cooling. Low Coolant Temperature comes in near 530 °F: expected on a cooldown, and it becomes an expected-status tile below 350 °F. Shutdown Cooling Not In Service comes in near the bottom as the plant enters Mode 4: expected, RHR goes in service at step 9. About three and a half hours from 1020 psi.
 
 Background
 
-Steam pressure and steam temperature go together: lower the pressure the dump holds and the steam generator boils at a lower temperature, which pulls the reactor water down after it. It cannot pull the water below its own boiling point, so the walk goes all the way to 120 psi, about 341 °F, low enough for RHR to take over. Near the bottom the same 50 psi cools about four times as far, which is why the steps get smaller.
+Steam pressure and steam temperature go together: lower the pressure the dump holds and the steam generator boils at a lower temperature, which pulls the reactor water down after it. It cannot pull the water below its own boiling point, so the target is 120 psi, about 341 °F, low enough for RHR to take over. You type the target once, and the dump controller walks the pressure it holds down to it on its own, only as fast as keeps the cooldown near 60 °F per hour, under the 100 °F per hour limit. Near the bottom the same 50 psi cools about four times as far, so STEAM PRESS falls quickly at first and slowly at the end. On a real plant the operator paces this by hand; here the controller does it so you can watch.
 
 [HIGHLIGHTED: Steam Dump — Auto, Dump Setpoint (pulsing); Steam Dump Status, Tavg (steady)]
 

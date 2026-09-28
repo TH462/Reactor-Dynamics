@@ -715,7 +715,7 @@ Reverse heat transfer — a secondary hotter than the primary, e.g. starting pum
 
 | Mode | Behaviour |
 |---|---|
-| **Steam-pressure mode** | Modulates to hold the steam header on the **Dump SP** — this plant's no-load anchor, **1020 psi (7.03 MPa)** (**09** §3.0). This is the heatup / cooldown / hot-standby mode, and the only mode in which the setpoint box is read |
+| **Steam-pressure mode** | Modulates to hold the steam header on the **Dump SP** — this plant's no-load anchor, **1020 psi (7.03 MPa)** (**09** §3.0). This is the heatup / cooldown / hot-standby mode, and the only mode in which the setpoint box is read. **A LOWERED setpoint is walked, not stepped** (declared departure, 2026-09-28, **DESIGN_COMPANION §8.38**): the PI controls to a working setpoint whose saturation temperature falls at **60 °F/hr (33.3 °C/hr)** toward the typed target, limited in temperature because the saturation curve is ~4× steeper in °F per psi near 120 psi than near 1000. Measured, Hot Standby, one 1020 → 814 psi (7.03 → 5.61 MPa) entry: Tavg falls **58–68 °F/hr (32.2–37.8 °C/hr)** and parks on the target; the pacing deleted, the same entry's worst minute is **−1686 °F/hr (−937 °C/hr)** |
 | **Tavg mode** | The at-power program: the dumps are shut on programme and open on the Tavg error above the no-load reference, which is what catches a load rejection or a turbine trip (**armed**, below) |
 | **Fast Tavg-error mode** (**armed**, inside Tavg mode) | On a turbine trip, or a load rejection past the arm, drives open on Tavg error immediately |
 
