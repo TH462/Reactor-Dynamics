@@ -2368,6 +2368,9 @@ select.num-input { width: auto; }
   max-height: 48vh; overflow-y: auto; padding-right: 4px; margin-bottom: 8px;
 }
 .chat-line { display: flex; flex-direction: column; gap: 2px; max-width: 94%; }
+/* A line that points at the board (#811): clicking it shows the outline again. */
+.chat-has-point .chat-txt { cursor: pointer; }
+.chat-has-point .chat-txt::after { content: ' \25CE'; color: #8cc4ff; opacity: 0.8; }
 .chat-meta { font-size: 10px; letter-spacing: .05em; color: var(--muted); text-transform: uppercase; }
 .chat-txt {
   font-size: 13px; line-height: 1.45; color: var(--text);

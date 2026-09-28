@@ -35,6 +35,7 @@
   var BD_NUM_AUTO_COLOR = '#6b7d8a';   // greyed number = auto-driven (not operator-editable); cyan = editable
 
   var host = null, wrap = null, stage = null, underSvg = null, pausedEl = null;
+  var pipeParts = [];   // [{ a, b, els }] — each drawn pipe/flange and the item ids it joins (#811 scope dimming)
   var doc = null, ctx = null;
   var comps = {};        // itemId -> { item, inst, bodyEl }
   var tiles = {};        // itemId -> root tile element
@@ -453,6 +454,7 @@
     rec.btn.style.background = fired ? '#3a0e0e' : (armed ? '#5a1408' : '#0a2417');
     rec.btn.style.border = '3px solid ' + (fired ? '#ff5a4d' : (armed ? '#ffb400' : '#3d7a58'));
     rec.btn.style.color = fired ? '#ff7a6a' : (armed ? '#ffd166' : '#5a9575');
+    rec.btn.classList.toggle('bd-alarm-hue', fired);   // SCRAMMED keeps its red under scope dimming (#811)
     /* THE ARMED PULSE HONOURS prefers-reduced-motion, AND IT HAS TO BE DONE HERE (#740).
      * This is an INLINE style, so it beats every stylesheet rule — the `@media
      * (prefers-reduced-motion: reduce)` blocks that stop the board's other animations cannot touch
@@ -891,11 +893,15 @@
     RD.BoardH.clear(underSvg);
     pipeFlow = [];
     pipeTempEls = [];
+    pipeParts = [];
+    function endItem(e) { return typeof e === 'string' ? e.split('/')[0] : null; }
     var K = window.StdPipe.createKit(RD.BoardH.h);
     Object.keys(ports).forEach(function (key) {
       var p = ports[key];
       var fAng = (p.dir === 'up' || p.dir === 'down') ? 90 : 0;
-      underSvg.appendChild(K.flange({ x: p.x, y: p.y, angle: fAng, d: STD_SIZES[p.size] || 8 }));
+      var fl = K.flange({ x: p.x, y: p.y, angle: fAng, d: STD_SIZES[p.size] || 8 });
+      underSvg.appendChild(fl);
+      pipeParts.push({ a: endItem(key), b: null, els: [fl] });
     });
     (doc.pipes || []).forEach(function (p) {
       var a = endPt(p.from), b = endPt(p.to);
@@ -916,8 +922,10 @@
       // they need no phaseX/phaseY — StdPipe anchors their dash grid directly.
       var el = K.pipe({ points: pts, d: d, fluid: fluidArg, dir: flowDir, speed: p.speed });
       underSvg.appendChild(el);
-      if (a.junction) underSvg.appendChild(K.junction({ x: a.x, y: a.y, d: d, fluid: fluidArg }));
-      if (b.junction) underSvg.appendChild(K.junction({ x: b.x, y: b.y, d: d, fluid: fluidArg }));
+      var part = { a: endItem(p.from), b: endItem(p.to), els: [el] };
+      if (a.junction) { var ja = K.junction({ x: a.x, y: a.y, d: d, fluid: fluidArg }); underSvg.appendChild(ja); part.els.push(ja); }
+      if (b.junction) { var jb = K.junction({ x: b.x, y: b.y, d: d, fluid: fluidArg }); underSvg.appendChild(jb); part.els.push(jb); }
+      pipeParts.push(part);
       var flowEl = el.lastChild && el.lastChild.getAttribute && el.lastChild.getAttribute('stroke-dasharray') ? el.lastChild : null;
       pipeFlow.push({
         id: p.id || null,
@@ -935,6 +943,7 @@
     });
     updatePipeFlowStates(lastSnap);
     if (lastSnap) updatePipeTemps(lastSnap);
+    if (focus && focus.dim) focusApplyPipes();   // a rescan rebuilds the pipes under a standing scope
   }
 
   // Repaint live-temperature pipes: driver.pipeTemp(id, s) → °C → StdPipe color ramp.
@@ -1201,34 +1210,51 @@
   }
 
   // ----------------------------------------------------------- focus (#811) --
-  /* THE INSTRUCTOR'S FOCUS — an outline on the art's own SILHOUETTE, an optional name tag, and
-   * (style c) the rest of the board dimmed. OWNER, 2026-09-28: "It shouldn't just be a box around
-   * the components box but an outline that follows the detailed silhouette of the object … This
-   * has to look good and appear intentional." and "dim objects we are not needing to show to draw
-   * the users eyes to the things we want them to see … I don't want it to brighten when moused
-   * over."
+  /* THE INSTRUCTOR'S FOCUS — two tools, one per job (OWNER RULING 2026-09-28: "I'm thinking we use
+   * dimming to isolate the part of the board we are focusing on and only use the outline as a
+   * pointer to briefly show what the instructor is describing."):
    *
-   * HOW THE SILHOUETTE IS MADE. The component's art is CLONED once into an overlay that sits
-   * exactly on the tile, and the clone carries one SVG filter (#rdFocusSil): its alpha is
-   * thresholded to a hard silhouette, dilated twice, the smaller dilation subtracted from the
-   * larger (a band that stands a few px OFF the art and follows every notch of it), flooded in
-   * the instructor blue, and merged over a soft blur of itself. The clone is stripped of
-   * everything that moves or is not ink — running CSS animations (plumes, drops, flow particles,
-   * bubbles), SMIL, hidden and zero-opacity nodes, text — so the band does not jitter and does not
-   * outline a letter. The clone is never updated: it is rastered ONCE, and the only thing that
-   * animates afterwards is the overlay's OPACITY (compositor-only, will-change'd).
+   *   SCOPE   setScope({ names, lit }) — everything outside the named REGIONS (the driver's
+   *           focusRegion) and items is dimmed. It STANDS until the content changes it.
+   *   POINTER pointAt(names) — an outline on a component's own SILHOUETTE that fades in, pulses
+   *           about three times and fades out (~4 s), then is gone. A chat line carries it.
+   *
+   * Earlier owner words that still bind the look: "an outline that follows the detailed
+   * silhouette of the object … This has to look good and appear intentional", and "I don't want
+   * it to brighten when moused over".
+   *
+   * HOW THE SILHOUETTE IS MADE. The component's art is CLONED into an overlay that sits exactly on
+   * the tile, and the clone carries one SVG filter (#rdFocusSil): its alpha is thresholded to a
+   * hard silhouette, dilated twice, the smaller dilation subtracted from the larger (a band that
+   * stands a few px OFF the art and follows every notch of it), flooded in the instructor blue,
+   * and merged over a soft blur of itself. The clone is stripped of everything that moves or is not
+   * ink — running CSS animations (plumes, drops, flow particles, bubbles), SMIL, hidden and
+   * zero-opacity nodes, text — so the band does not jitter and does not outline a letter. The clone
+   * is never updated: it is rastered ONCE, and the only thing that animates afterwards is the
+   * overlay's OPACITY (compositor-only, will-change'd).
    *
    * Radii are written in SCREEN px and converted by the stage scale, so the band is the same
    * width at every window size (re-tuned from layout()).
    *
    * EXCLUSIVE TO THE INSTRUCTOR (OWNER RULING 2026-09-28: "we should give the instructor exclusive
    * control"). Nothing here reacts to the plant: an alarm does not break through the dimming and a
-   * trip does not lift it. Content lifts it with `focus: null` in a beat. */
-  var FOCUS_PX = { gap: 2.5, band: 2.2, blur: 3.5, tag: 10.5 };   // SCREEN px
+   * trip does not lift it. Content lifts it with `scope: null` in a beat. */
+  var FOCUS_PX = { gap: 2.5, band: 2.2, blur: 3.5 };   // SCREEN px
+  // The pointer's life: the CSS animation (bdPointer) runs POINT_MS; the element is removed a
+  // little after by a TIMER — not on animationend — so it expires under reduced motion too, where
+  // there is no animation to end.
+  var POINT_MS = 4200, POINT_REMOVE_MS = 4350;
+  /* ALARM HUE UNDER DIMMING (OWNER RULING 2026-09-28, option (b): "keep dimming, but let a tile in
+   * alarm keep its hue (drop the grayscale for alarm/actuated states only; no brightening)"). The
+   * renderer marks what is in an alarm/actuated state with `bd-alarm-hue` — SCRAMMED, a gauge in
+   * its alarm/trip band (comp_indicator_panel), a reading or entry drawn in a caution/trip colour
+   * (these, the wiring's BD_WARN and trip red) — alongside the buttons' own bd-warn / bd-actuated /
+   * bd-msg; pwr_board.css drops the grayscale for such a tile and nothing else. */
+  var ALARM_HUES = { '#d8a657': 1, '#ffd166': 1, '#ff6a4d': 1, '#ff5a4d': 1, '#ff7a6a': 1 };
   var focus = null;
   function focusReset() {
-    focus = { key: null, style: null, layer: null, lines: null, defs: null, ols: {}, tags: {},
-              lit: [], outline: [], dim: false, scale: 0, undimTimer: null };
+    focus = { key: null, layer: null, defs: null, ptrs: {}, names: [], lit: [], dim: false, scale: 0,
+              undimTimer: null };
   }
   focusReset();
 
@@ -1236,6 +1262,7 @@
     if (focus.layer && focus.layer.parentNode === stage) return focus.layer;
     var NS = RD.BoardH.svgNS;
     var layer = h('div', { className: 'bd-focus-layer' });
+    layer.setAttribute('aria-hidden', 'true');   // decoration: the chat line already says what it points at
     var defs = document.createElementNS(NS, 'svg');
     defs.setAttribute('width', '0'); defs.setAttribute('height', '0'); defs.setAttribute('aria-hidden', 'true');
     defs.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
@@ -1251,12 +1278,8 @@
         '<feMerge><feMergeNode in="glow"/><feMergeNode in="glow"/><feMergeNode in="line"/></feMerge>' +
       '</filter>';
     layer.appendChild(defs);
-    var lines = document.createElementNS(NS, 'svg');
-    lines.setAttribute('class', 'bd-focus-lines');
-    lines.setAttribute('width', CANVAS_W); lines.setAttribute('height', CANVAS_H);
-    layer.appendChild(lines);
     stage.appendChild(layer);
-    focus.layer = layer; focus.lines = lines; focus.defs = defs;
+    focus.layer = layer; focus.defs = defs;
     return layer;
   }
 
@@ -1357,70 +1380,6 @@
     return ol;
   }
 
-  // The name tag: the component's board name (its inspect title) on a short leader line, placed
-  // at whichever of eight spots around the art covers the least of the rest of the board.
-  function focusMakeTag(id) {
-    var d = driver();
-    var info = d && d.inspectItem ? d.inspectItem(id) : null;
-    var name = info && info.title;
-    var box = focusArtBox(id);
-    if (!name || !box) return null;
-    var k = 1 / (focus.scale || 1);
-    var tag = h('div', { className: 'bd-focus-tag', 'data-focus-tag': id }, name);
-    tag.style.fontSize = (FOCUS_PX.tag * k).toFixed(2) + 'px';
-    tag.style.padding = (2 * k).toFixed(2) + 'px ' + (7 * k).toFixed(2) + 'px';
-    tag.style.borderWidth = (1 * k).toFixed(2) + 'px';
-    tag.style.borderRadius = (4 * k).toFixed(2) + 'px';
-    focus.layer.appendChild(tag);
-    var tw = tag.offsetWidth, th = tag.offsetHeight, g = (FOCUS_PX.gap + FOCUS_PX.band) * k;
-    /* CANDIDATES: the tag off each side of the art box, slid to three positions along that side,
-     * at two leader lengths. COST: the board it would cover — a control, readout or other art at
-     * full weight, a card's empty face lightly (covering a card still hides part of a panel), off
-     * the drawn board prohibitively — plus a little for a longer leader. The board is dense, so
-     * this is a least-bad choice, not a guaranteed clear spot. */
-    var C = [];
-    [16, 40].forEach(function (lead) {
-      var L = lead * k;
-      [0, 0.5, 1].forEach(function (u) {
-        var x = box.l + u * (box.r - box.l), y = box.t + u * (box.b - box.t);
-        // above / below: tag's near edge centred on the leader end
-        C.push([x, box.t - g, x - tw / 2, box.t - g - L - th, x, box.t - g - L, lead]);
-        C.push([x, box.b + g, x - tw / 2, box.b + g + L, x, box.b + g + L, lead]);
-        // right / left
-        C.push([box.r + g, y, box.r + g + L, y - th / 2, box.r + g + L, y, lead]);
-        C.push([box.l - g, y, box.l - g - L - tw, y - th / 2, box.l - g - L, y, lead]);
-      });
-    });
-    var cb = contentBounds(), best = null;
-    var others = Object.keys(tiles).filter(function (oid) { return oid !== id; }).map(function (oid) {
-      var t = tiles[oid], it = itemById(oid);
-      return { l: t.offsetLeft, t: t.offsetTop, r: t.offsetLeft + t.offsetWidth, b: t.offsetTop + t.offsetHeight,
-               w: it && it.kind === 'box' ? 0.12 : 1 };
-    });
-    C.forEach(function (c) {
-      var r = { l: c[2], t: c[3], r: c[2] + tw, b: c[3] + th }, cost = c[6] * tw * 0.05;
-      if (r.l < cb.x || r.t < cb.y || r.r > cb.x + cb.w || r.b > cb.y + cb.h) cost += 1e7;
-      for (var oi = 0; oi < others.length; oi++) {
-        var o = others[oi];
-        var ix = Math.min(r.r, o.r) - Math.max(r.l, o.l), iy = Math.min(r.b, o.b) - Math.max(r.t, o.t);
-        if (ix > 0 && iy > 0) cost += ix * iy * o.w;
-      }
-      if (!best || cost < best.cost) best = { c: c, cost: cost };
-    });
-    var c = best.c;
-    tag.style.left = c[2].toFixed(1) + 'px'; tag.style.top = c[3].toFixed(1) + 'px';
-    var NS = RD.BoardH.svgNS, grp = document.createElementNS(NS, 'g');
-    grp.setAttribute('data-focus-lead', id);
-    var ln = document.createElementNS(NS, 'line');
-    ln.setAttribute('x1', c[0]); ln.setAttribute('y1', c[1]); ln.setAttribute('x2', c[4]); ln.setAttribute('y2', c[5]);
-    ln.setAttribute('stroke-width', (1.3 * k).toFixed(2));
-    var dot = document.createElementNS(NS, 'circle');
-    dot.setAttribute('cx', c[0]); dot.setAttribute('cy', c[1]); dot.setAttribute('r', (2.4 * k).toFixed(2));
-    grp.appendChild(ln); grp.appendChild(dot);
-    focus.lines.appendChild(grp);
-    return { tag: tag, lead: grp };
-  }
-
   // Everything a lit item's art box CONTAINS is lit with it (a card's buttons and readouts, the
   // label engraved beside a vessel), so a lit panel never shows dim buttons on a bright card.
   function focusExpand(ids) {
@@ -1451,61 +1410,45 @@
     setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 480);
   }
 
-  // spec: null (clear) | { outline: [names], lit: [names], style: 'a'|'b'|'c' }
-  function setFocus(spec) {
+  // Names → board item ids: a REGION (the driver's focusRegion) expands to its members; any other
+  // name is a single focus name (component or highlight label). Unknown names are skipped.
+  function focusResolve(names, regions) {
+    var d = driver(), out = [];
+    function add(id) { if (id && tiles[id] && out.indexOf(id) === -1) out.push(id); }
+    (names || []).forEach(function (n) {
+      var reg = regions && d && d.focusRegion ? d.focusRegion(n) : null;
+      if (reg) reg.forEach(add);
+      else add(d && d.focusItem ? d.focusItem(n) : null);
+    });
+    return out;
+  }
+
+  /* PIPES dim with their ends: a pipe is lit only when BOTH items it joins are lit (the hot leg
+   * with the primary, the steam line with the secondary), a flange with its item. Pipes are
+   * rebuilt on a port rescan, so buildPipes() calls this again. */
+  function focusApplyPipes() {
+    var litSet = {};
+    focus.lit.forEach(function (id) { litSet[id] = true; });
+    var on = focus.dim;
+    pipeParts.forEach(function (p) {
+      var lit = !on || (p.a != null && p.b != null ? (litSet[p.a] && litSet[p.b]) : litSet[p.a || p.b]);
+      p.els.forEach(function (el) { el.classList.toggle('bd-dim', !lit); });
+    });
+  }
+
+  /* SCOPE. spec: null (the whole board) | { names: [regions or focus names], lit: [extra names] }.
+   * Deduped by content, so the UI calls it every broadcast for free. */
+  function setScope(spec) {
     if (!stage) return;
-    var key = spec ? JSON.stringify([spec.outline || [], spec.lit || [], spec.style || 'c']) : null;
+    var key = spec ? JSON.stringify([spec.names || [], spec.lit || []]) : null;
     if (key === focus.key) return;
     focus.key = key;
-    var d = driver();
-    function res(names) {
-      var out = [];
-      (names || []).forEach(function (n) {
-        var id = d && d.focusItem ? d.focusItem(n) : null;
-        if (id && tiles[id] && out.indexOf(id) === -1) out.push(id);
-      });
-      return out;
-    }
     if (!halosMeasured) measureHalos();     // BEFORE any dimming: the art-box measure reads ink
-    var style = spec ? (spec.style || 'c') : null;
-    var outline = spec ? res(spec.outline) : [];
-    focusLayer();
-    if (!focus.scale) focusTune();
-    // outlines: keep the ones that stay (no re-entry flash), fade the rest, add the new
-    Object.keys(focus.ols).forEach(function (id) {
-      if (outline.indexOf(id) === -1) { focusDrop(focus.ols[id]); delete focus.ols[id]; }
-    });
-    outline.forEach(function (id) {
-      if (focus.ols[id]) return;
-      var ol = focusMakeOutline(id);
-      if (!ol) return;
-      focus.layer.appendChild(ol);
-      focus.ols[id] = ol;
-      void ol.offsetWidth;                  // commit opacity 0 so the enter animation runs
-      ol.classList.add('on');
-    });
-    // name tags (style b only)
-    Object.keys(focus.tags).forEach(function (id) {
-      if (style === 'b' && outline.indexOf(id) !== -1) return;
-      focusDrop(focus.tags[id].tag);
-      if (focus.tags[id].lead.parentNode) focus.tags[id].lead.parentNode.removeChild(focus.tags[id].lead);
-      delete focus.tags[id];
-    });
-    if (style === 'b') outline.forEach(function (id) {
-      if (focus.tags[id]) return;
-      var t = focusMakeTag(id);
-      if (!t) return;
-      focus.tags[id] = t;
-      void t.tag.offsetWidth;
-      t.tag.classList.add('on');
-    });
-    if (focus.lines) focus.lines.classList.toggle('on', Object.keys(focus.tags).length > 0);
-    // dimming (style c only)
     focus.lit.forEach(function (id) { if (tiles[id]) tiles[id].classList.remove('bd-lit'); });
     focus.lit = [];
-    var dim = style === 'c';
+    var dim = !!spec;
     if (dim) {
-      focus.lit = focusExpand(outline.concat(res(spec.lit)));
+      focus.lit = focusExpand(focusResolve(spec.names, true).concat(focusResolve(spec.lit, true)));
       focus.lit.forEach(function (id) { tiles[id].classList.add('bd-lit'); });
     }
     if (dim !== focus.dim) {
@@ -1517,23 +1460,51 @@
       }
       focus.dim = dim;
     }
-    focus.style = style;
-    focus.outline = outline;
+    focusApplyPipes();
+    focus.names = spec ? (spec.names || []).slice() : [];
   }
 
-  // Stage scale changed (window resize, splitter drag): keep the band and the tag in screen px.
+  /* POINTER. Outline each named item for one short, self-expiring cue. Pointing again at an item
+   * already pointed at restarts its cue (the player clicked the line again). Pointing into the
+   * dimmed part of the board is allowed; the outline draws over the dimming at full strength. */
+  function pointAt(names) {
+    if (!stage) return [];
+    if (!halosMeasured) measureHalos();
+    focusLayer();
+    if (!focus.scale) focusTune();
+    var ids = focusResolve([].concat(names || []), false);
+    ids.forEach(function (id) {
+      var old = focus.ptrs[id];
+      if (old) { clearTimeout(old.timer); if (old.el.parentNode) old.el.parentNode.removeChild(old.el); }
+      var ol = focusMakeOutline(id);
+      if (!ol) { delete focus.ptrs[id]; return; }
+      focus.layer.appendChild(ol);
+      void ol.offsetWidth;                  // commit opacity 0 so the animation starts from it
+      ol.classList.add('on');
+      var rec = { el: ol, timer: null };
+      rec.timer = setTimeout(function () {
+        if (ol.parentNode) ol.parentNode.removeChild(ol);
+        if (focus.ptrs[id] === rec) delete focus.ptrs[id];
+      }, POINT_REMOVE_MS);
+      focus.ptrs[id] = rec;
+    });
+    return ids;
+  }
+  function clearPointers() {
+    Object.keys(focus.ptrs).forEach(function (id) {
+      var r = focus.ptrs[id];
+      clearTimeout(r.timer);
+      focusDrop(r.el);
+    });
+    focus.ptrs = {};
+  }
+
+  // Stage scale changed (window resize, splitter drag): keep the band in screen px.
   function focusRescale() {
-    if (!focus.key || !focus.defs) return;
+    if (!focus.defs) return;
     var ss = stageScale();
     if (!ss || Math.abs(ss.scale - focus.scale) / ss.scale < 0.04) return;
     focusTune();
-    Object.keys(focus.tags).forEach(function (id) {
-      var t = focus.tags[id];
-      if (t.tag.parentNode) t.tag.parentNode.removeChild(t.tag);
-      if (t.lead.parentNode) t.lead.parentNode.removeChild(t.lead);
-      var n = focusMakeTag(id);
-      if (n) { n.tag.classList.add('on'); focus.tags[id] = n; } else delete focus.tags[id];
-    });
   }
 
   // ------------------------------------------------------------ mount/api --
@@ -1686,7 +1657,9 @@
     ports = {}; nudge = {}; pipeFlow = []; pipeTempEls = []; lastSnap = null;
     haloBox = {}; haloEls = {}; halosMeasured = false;
     if (focus.undimTimer) clearTimeout(focus.undimTimer);
+    Object.keys(focus.ptrs).forEach(function (id) { clearTimeout(focus.ptrs[id].timer); });
     focusReset();
+    pipeParts = [];
   }
 
   /* Freeze/unfreeze the board. Split out of render() 2026-08-11 because the thing that
@@ -1739,6 +1712,9 @@
           if (out.unit != null && rec.unitEl.textContent !== out.unit) rec.unitEl.textContent = out.unit;
           if (out.color && rec.el.style.color !== out.color) rec.el.style.color = out.color;
         }
+        // A reading drawn in an ALARM colour keeps its hue under scope dimming (#811).
+        var hueOn = !!(out && typeof out === 'object' && out.color && ALARM_HUES[String(out.color).toLowerCase()]);
+        if (rec._hue !== hueOn) { rec.el.classList.toggle('bd-alarm-hue', hueOn); rec._hue = hueOn; }
       });
       // numbers reflect sim state unless being edited
       Object.keys(numberEls).forEach(function (id) {
@@ -1750,7 +1726,7 @@
         var auto = d.numberAuto ? d.numberAuto(rec.item, s) : false;
         var warn = d.numberWarn ? d.numberWarn(rec.item, s) : null;
         var col = warn || (auto ? BD_NUM_AUTO_COLOR : (rec.item.color || '#4fe3ff'));
-        if (rec._appliedCol !== col) { rec.input.style.color = col; rec._appliedCol = col; }
+        if (rec._appliedCol !== col) { rec.input.style.color = col; rec._appliedCol = col; rec.input.classList.toggle('bd-alarm-hue', !!warn); }
         // Disabled outranks everything: the running engine has no machinery behind this box
         // (#506 — the mirror of buttonDisabled below; same honest-absent rule).
         var ndis = d.numberDisabled ? !!d.numberDisabled(rec.item, s) : false;
@@ -1901,13 +1877,16 @@
     // Same category as ports()/lastSnapshot()/componentInstance(): a read accessor for the
     // test harness, not a control path.
     haloElement: function (id) { return haloFor(id); },
-    // The instructor's board focus (#811): outline + optional name tag + (style c) dimming.
-    // `spec` null clears. Deduped by content, so calling it every broadcast is free.
-    setFocus: function (spec) { setFocus(spec); },
-    // Read accessor for harnesses: what is outlined, lit and dimmed right now.
-    focusState: function () {
-      return { key: focus.key, style: focus.style, outline: focus.outline.slice(), lit: focus.lit.slice(),
-               dimming: !!(stage && stage.classList.contains('bd-dimming')), tags: Object.keys(focus.tags) };
+    // The instructor's board focus (#811): SCOPE dims everything outside the named regions/items
+    // (`spec` null = the whole board; deduped by content, so calling it every broadcast is free);
+    // POINTER outlines components for one ~4 s cue and removes itself.
+    setScope: function (spec) { setScope(spec); },
+    pointAt: function (names) { return pointAt(names); },
+    clearPointers: function () { clearPointers(); },
+    // Read accessor for harnesses: what is scoped, lit, dimmed and pointed at right now.
+    scopeState: function () {
+      return { key: focus.key, names: focus.names.slice(), lit: focus.lit.slice(),
+               dimming: !!(stage && stage.classList.contains('bd-dimming')), pointers: Object.keys(focus.ptrs) };
     },
     // Instructor-highlight hooks. The driver owns the control-label vocabulary;
     // the renderer resolves it to a board tile to glow.

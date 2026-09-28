@@ -3632,7 +3632,7 @@
     syncSpeedUI(s);
     syncPacingUI(s);
     renderHighlight(s);
-    renderFocus(s);
+    renderScope(s);
     applyInstrTrend(s);   // after the highlight: it adds its own glow, which that pass would clear
     instrGateOpen(s);     // a step that blocks progress opens the card, once per beat (#439)
     // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
@@ -3805,7 +3805,8 @@
     }
     var def = chatDef(chatState.sid);
     var stamp = (def && def.chat_clock === 'elapsed') ? chatElapsed(e.t) : chatClock(story);
-    h += '<div class="chat-line chat-' + mesc(e.speaker) + '">' +
+    var pt = e.point && e.point.length ? ' data-point="' + mesc(e.point.join('|')) + '" data-scanner-hint="Click to show it on the board again."' : '';
+    h += '<div class="chat-line chat-' + mesc(e.speaker) + (pt ? ' chat-has-point' : '') + '"' + pt + '>' +
       '<span class="chat-meta">' + stamp + ' · ' + mesc(CHAT_SPEAKERS[e.speaker] || e.speaker) + '</span>' +
       '<span class="chat-txt">' + mesc(txt) + '</span></div>';
     return h;
@@ -3865,6 +3866,7 @@
       if (!instant && now < chatState.nextAt) break;
       logEl.insertAdjacentHTML('beforeend', chatLineHtml(e));
       chatState.shown++;
+      if (!instant && e.point) chatPoint(e.point);   // the line appears -> its pointer (#811); backlog does not flash
       chatState.nextAt = now + (instant ? 0.8 : chatDwellS(e));
       revealed = true;
     }
@@ -6159,27 +6161,31 @@
     if (!el && hl.instrument_id) el = $('gauge-' + hl.instrument_id);
     if (el) el.classList.add('instr-glow');
   }
-  /* ---- Instructor FOCUS (#811) — a beat's `focus: { outline, lit }` drawn on the PWR board as a
-   * silhouette outline (+ name tag, + dimming of the rest, by style). PROTOTYPE: three styles for
-   * the owner to compare, picked by a dev URL param `?focus=a|b|c` —
-   *   a  outline only · b  outline + name tag on a leader line · c  outline + dim the rest (default).
-   * Live instructed content only: free play never focuses, and the finish card, End, Retry and any
-   * stop clear it (the snapshot's focus is null outside a running scenario). The beat's own
-   * highlighted control is always lit, so dimming never swallows the control the line asks for. */
-  var FOCUS_STYLE = (function () {
-    var m = /[?&]focus=([abc])(?:&|$)/.exec(location.search || '');
-    return m ? m[1] : 'c';
-  })();
-  function renderFocus(s) {
-    var B = (ui.plant === 'pwr' && RD.PwrBoard && RD.PwrBoard.isMounted && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
-    if (!B || !B.setFocus) return;
+  /* ---- Instructor SCOPE + POINTER (#811, OWNER RULING 2026-09-28: "we use dimming to isolate the
+   * part of the board we are focusing on and only use the outline as a pointer to briefly show what
+   * the instructor is describing"). A beat's `scope` (snapshot `instructor.scope.names`) dims the
+   * PWR board outside those regions; the beat's own highlighted control is always lit, so dimming
+   * never swallows the control the line asks for. A chat line's `point` outlines components for one
+   * brief cue when the line appears (renderChat) and again when the player clicks the line.
+   * Live instructed content only: free play never scopes, and the finish card, End, Retry and any
+   * stop clear both (the snapshot's scope is null outside a running scenario). */
+  function scopeBoard() {
+    return (ui.plant === 'pwr' && RD.PwrBoard && RD.PwrBoard.isMounted && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
+  }
+  function renderScope(s) {
+    var B = scopeBoard();
+    if (!B || !B.setScope) return;
     var ins = s && s.instructor;
-    var f = ins && ins.scenario_id && !ins.level_complete ? ins.focus : null;
-    if (!f) { B.setFocus(null); return; }
-    var lit = (f.lit || []).slice();
+    var live = !!(ins && ins.scenario_id && !ins.level_complete);
+    if (!live) B.clearPointers();
+    var f = live ? ins.scope : null;
+    if (!f) { B.setScope(null); return; }
     var hl = ins.highlight && ins.highlight.control_label;
-    if (hl && lit.indexOf(hl) === -1) lit.push(hl);
-    B.setFocus({ outline: f.outline || [], lit: lit, style: FOCUS_STYLE });
+    B.setScope({ names: f.names || [], lit: hl ? [hl] : [] });
+  }
+  function chatPoint(names) {
+    var B = scopeBoard();
+    if (B && B.pointAt && names && names.length) B.pointAt(names);
   }
   // Locate a control group on the RBMK/BWR plant display by its .cg-l label,
   // switching to the owning view tab when it is not on the active one.
@@ -9586,6 +9592,8 @@
     $('instructorCard').addEventListener('click', function (e) {
       var cb = e.target.closest('[data-chatbtn]');
       if (cb) { chatButtonAction(cb.getAttribute('data-chatbtn'), +cb.getAttribute('data-chatspeed') || 60); return; }
+      var pl = e.target.closest('.chat-line[data-point]');
+      if (pl) { chatPoint(pl.getAttribute('data-point').split('|')); return; }   // re-show the line's pointer (#811)
       var ra = e.target.closest('[data-chatrevealall]');
       if (ra) {
         chatState.instantThrough = Number.MAX_SAFE_INTEGER;   // everything pending reveals as backlog

@@ -67,7 +67,7 @@ function rec(s) {
             metadata: { time_acceleration: s.metadata.time_acceleration },
             instructor: s.instructor,
             trend: s.instructor && s.instructor.trend ? JSON.parse(JSON.stringify(s.instructor.trend)) : null,
-            focus: s.instructor && s.instructor.focus ? JSON.parse(JSON.stringify(s.instructor.focus)) : null };
+            scope: s.instructor && s.instructor.scope ? JSON.parse(JSON.stringify(s.instructor.scope)) : null };
   INST.forEach(function (k) { o.instruments[k] = s.instruments[k]; });
   var rg = (s.control_state.rod_groups || []).filter(function (g) { return g.id === 'control_rods'; })[0];
   o.control_state.rods_moving = !!(rg && rg.moving);
@@ -81,10 +81,10 @@ function words(t) { return String(t).trim().split(/\s+/).length; }
 // Boots like the UI (free play at hot_full_power), then starts the opener. `route` maps a beat id
 // to [{ at: sim seconds after that beat fired, cmd }]. Records the snapshot at every beat fire and
 // the wall clock the player would spend (broadcast period per tick, 0.1 s — 0.05 s in a transient).
-function play(route, budgetS) {
+function play(route, budgetS, noDropouts) {
   var svc = new RD.SimulationService({ seed: 42 });
   svc.selectPlant('pwr2', 'hot_full_power');
-  svc.attentionStops = true;
+  svc.attentionStops = !noDropouts;   // Settings: a player may switch the event dropouts off
   svc.handleCommand({ action: 'start_opener', opener_id: OP_ID });
   var start = rec(svc.assembleSnapshot());
   var fired = [], at = {}, snaps = {}, pending = [], wall = 0, lc = null, trace = [];
@@ -220,16 +220,35 @@ test('opener copy — registers, units, length, speed stated, highlights, exits'
   var tail = OP.beats.slice(ids.indexOf(last.id) + 1).filter(function (b) { return !b.branches; }).map(function (b) { return b.id; });
   ck('beats after the finish branch (none falls through)', tail.join(',') || 'none', !tail.length, 'every one has branches');
 
-  /* BOARD FOCUS (#811, owner 2026-09-28). Every name resolves on the board, and only a BEAT moves
-   * it: the scenario watch is the one place content reacts to the unexpected. */
-  var fl = RD.PwrBoardDriver && RD.PwrBoardDriver.focusLabels ? RD.PwrBoardDriver.focusLabels() : [];
-  var fBad = [], fN = 0;
+  /* BOARD SCOPE + POINTERS (#811, OWNER RULING 2026-09-28: dimming isolates, the outline is a
+   * brief pointer). Every scope name is a board REGION or a focus name, every region member is a
+   * real board item, every line's `point` is a single focus name (never a region), and no beat
+   * carries the retired sticky `focus`. */
+  var DRV = RD.PwrBoardDriver || {};
+  var fl = DRV.focusLabels ? DRV.focusLabels() : [];
+  var regs = DRV.focusRegions ? DRV.focusRegions() : [];
+  var boardIds = {};
+  ((globalThis.RD_PWR_BOARD_DOC || {}).items || []).forEach(function (it) { boardIds[it.id] = true; });
+  var rBad = [];
+  regs.forEach(function (r) { DRV.focusRegion(r).forEach(function (id) { if (!boardIds[id]) rBad.push(r + ':' + id); }); });
+  ck('every region member is a board item', rBad.join(',') || regs.length + ' regions (' + regs.join(', ') + ')',
+     regs.length >= 6 && !rBad.length && Object.keys(boardIds).length > 100, 'all resolve');
+  var fBad = [], fN = 0, pN = 0, pBad = [], stale = [];
   OP.beats.forEach(function (b) {
-    if (!b.focus) return;
-    fN++;
-    (b.focus.outline || []).concat(b.focus.lit || []).forEach(function (n) { if (fl.indexOf(n) === -1) fBad.push(b.id + ':' + n); });
+    if (Object.prototype.hasOwnProperty.call(b, 'focus')) stale.push(b.id);
+    if (b.scope) {
+      fN++;
+      b.scope.forEach(function (n) { if (regs.indexOf(n) === -1 && fl.indexOf(n) === -1) fBad.push(b.id + ':' + n); });
+    }
+    (b.dialogue || []).forEach(function (l) {
+      if (!l.point) return;
+      pN++;
+      [].concat(l.point).forEach(function (n) { if (fl.indexOf(n) === -1) pBad.push(b.id + ':' + n); });
+    });
   });
-  ck('board resolves every focus name', fBad.join(',') || (fN + ' focus beats, all resolve'), fN >= 4 && !fBad.length, 'every name in focusLabels()');
+  ck('board resolves every scope name (a region or a focus name)', fBad.join(',') || (fN + ' scope beats, all resolve'), fN >= 3 && !fBad.length, 'every name in focusRegions() or focusLabels()');
+  ck('every line pointer is a single board item', pBad.join(',') || (pN + ' pointer lines, all resolve'), pN >= 4 && !pBad.length, 'every name in focusLabels()');
+  ck('no beat carries the retired sticky `focus`', stale.join(',') || 'none', !stale.length, 'none');
   var wBad = [];
   (OP.watch || []).forEach(function (w) {
     if (ids.indexOf(w.goto) === -1) wBad.push(w.id + '→' + w.goto);
@@ -238,9 +257,9 @@ test('opener copy — registers, units, length, speed stated, highlights, exits'
   ck('every watch lands on a beat and is disarmed by a real one', wBad.join(',') || (OP.watch || []).length + ' watch', (OP.watch || []).length > 0 && !wBad.length, 'defined');
   var ox = OP.beats.filter(function (b) { return b.id === 'ox_trip_early'; })[0];
   var oxl = ox && ox.dialogue && ox.dialogue.length === 1 ? ox.dialogue[0] : null;
-  ck('ox_trip_early lifts the focus in ONE line of <= 20 words (both registers)',
-     oxl ? words(oxl.learning) + ' / ' + words(oxl.industry) + ' words, focus ' + JSON.stringify(ox.focus) : 'missing',
-     !!oxl && ox.focus === null && words(oxl.learning) <= 20 && words(oxl.industry) <= 20, 'focus null, <= 20 / <= 20');
+  ck('ox_trip_early lifts the scope and sets 1×, in ONE line of <= 20 words (both registers)',
+     oxl ? words(oxl.learning) + ' / ' + words(oxl.industry) + ' words, scope ' + JSON.stringify(ox.scope) + ', speed ' + ox.speed : 'missing',
+     !!oxl && ox.scope === null && ox.speed === 1 && words(oxl.learning) <= 20 && words(oxl.industry) <= 20, 'scope null, speed 1, <= 20 / <= 20');
 });
 
 // ------------------------------------------------------------------ lineup + restore
@@ -278,8 +297,13 @@ test('the opener runs on the FREE-PLAY plant and survives save/restore', functio
   var tr = op.assembleSnapshot().instructor.trend;
   ck('trend: o1_load put its traces in the snapshot', tr ? tr.series.join(',') + ' rev ' + tr.rev : 'null',
      !!tr && tr.series.join(',') === 'tavg,pressure,dump,power', 'tavg,pressure,dump,power');
+  var scA = op.assembleSnapshot().instructor.scope, scB = back.assembleSnapshot().instructor.scope;
+  ck('scope: a save on o1_load restores its scope (names and rev)', JSON.stringify(scA) + ' -> ' + JSON.stringify(scB),
+     !!scA && scA.names.indexOf('secondary') !== -1 && JSON.stringify(scA) === JSON.stringify(scB), 'equal, secondary scoped');
   op.handleCommand({ action: 'stop_scenario' });
   ck('stop_scenario ends it (one click → free play)', String(op.instructor.mode), op.instructor.mode === null, 'null');
+  ck('scope: stopped content carries no scope', JSON.stringify(op.assembleSnapshot().instructor.scope),
+     op.assembleSnapshot().instructor.scope === null, 'null');
   ck('trend: stopped content carries no trend (the UI restores the player chart on this)',
      JSON.stringify(op.assembleSnapshot().instructor.trend), op.assembleSnapshot().instructor.trend === null, 'null');
 
@@ -412,32 +436,53 @@ Object.keys(ROUTES).forEach(function (name) {
   });
 });
 
-// ------------------------------------------------------------------ board focus (#811)
-/* The focus rides the snapshot beat by beat, and only a beat moves it. OWNER RULING 2026-09-28:
+// ------------------------------------------------------------------ board scope (#811)
+/* The scope rides the snapshot beat by beat, and only a beat moves it. OWNER RULING 2026-09-28:
  * "we should give the instructor exclusive control" — so the PLANNED trip (typical route) must
  * not fire the early-trip watch, and an EARLY trip must: the player presses SCRAM during the load
- * cut, the watch jumps to ox_trip_early, the focus lifts, and the opener still finishes. */
-test('board focus: set by beats, lifted by a beat, early trip handled', function (ck) {
+ * cut, the watch jumps to ox_trip_early, the scope lifts, and the opener still finishes. */
+test('board scope: set by beats, lifted by a beat, early trip handled', function (ck) {
   var t = RESULTS.typical;
   if (!t) { ck('typical route ran', 'no', false, 'yes'); return; }
-  var f1 = t.snaps.o1_load && t.snaps.o1_load.focus;
-  ck('o1_load: the turbine is outlined, the load panel lit', f1 ? f1.outline.join(',') + ' | ' + f1.lit.length + ' lit' : 'null',
-     !!f1 && f1.outline[0] === 'Turbine and Generator' && f1.lit.indexOf('Turbine Load') !== -1, 'Turbine and Generator');
-  var f4 = t.snaps.o4_rods && t.snaps.o4_rods.focus;
-  ck('o4_rods: the reactor vessel is outlined', f4 ? f4.outline.join(',') : 'null', !!f4 && f4.outline.join(',') === 'Reactor Vessel', 'Reactor Vessel');
-  var f5 = t.snaps.o5_rods_watch && t.snaps.o5_rods_watch.focus;
-  ck('sticky: o5 (no focus field) keeps o4\'s', f5 ? f5.outline.join(',') + ' rev ' + f5.rev : 'null', !!f5 && f4 && f5.rev === f4.rev, 'same rev');
-  ck('o10_scram lifts it (focus: null)', JSON.stringify(t.snaps.o10_scram && t.snaps.o10_scram.focus), t.snaps.o10_scram && t.snaps.o10_scram.focus === null, 'null');
+  function nm(sn) { return sn && sn.scope ? sn.scope.names.join(',') : 'null'; }
+  var f1 = t.snaps.o1_load && t.snaps.o1_load.scope;
+  ck('o1_load: scoped to the secondary + pressurizer', nm(t.snaps.o1_load),
+     !!f1 && f1.names.indexOf('secondary') !== -1 && f1.names.indexOf('pressurizer') !== -1, 'secondary, pressurizer, ...');
+  var f2 = t.snaps.o2_watch && t.snaps.o2_watch.scope;
+  ck('persists: o2_watch (no scope field) keeps the o1 scope', nm(t.snaps.o2_watch) + ' rev ' + (f2 && f2.rev), !!f2 && !!f1 && f2.rev === f1.rev, 'same rev');
+  var f4 = t.snaps.o4_rods && t.snaps.o4_rods.scope;
+  ck('o4_rods: the next scoped beat changes it (primary + rods)', nm(t.snaps.o4_rods), !!f4 && f4.names.join(',') === 'primary,rods' && f4.rev !== f1.rev, 'primary,rods');
+  var f5 = t.snaps.o5_rods_watch && t.snaps.o5_rods_watch.scope;
+  ck('persists: o5 (no scope field) keeps the o4 scope', nm(t.snaps.o5_rods_watch) + ' rev ' + (f5 && f5.rev), !!f5 && f4 && f5.rev === f4.rev, 'same rev');
+  var f6 = t.snaps.o6_spray && t.snaps.o6_spray.scope;
+  ck('o6_spray: scoped to the pressurizer', nm(t.snaps.o6_spray), !!f6 && f6.names.join(',') === 'pressurizer', 'pressurizer');
+  ck('o10_scram lifts it (scope: null)', JSON.stringify(t.snaps.o10_scram && t.snaps.o10_scram.scope), t.snaps.o10_scram && t.snaps.o10_scram.scope === null, 'null');
   ck('planned trip: the early-trip watch did NOT fire', t.fired.indexOf('ox_trip_early') === -1 ? 'not fired' : 'FIRED', t.fired.indexOf('ox_trip_early') === -1, 'not fired');
+  // the pointer rides the chat LOG: the load line carries it into what the UI renders
+  var logL = (t.svc.instructor.chatLog || []).filter(function (e) { return /Turbine Load to 80/.test(e.learning); })[0];
+  ck('the load line carries its pointer into the chat log', logL ? JSON.stringify(logL.point) : 'line missing',
+     !!logL && JSON.stringify(logL.point) === '["Turbine and Generator"]', '["Turbine and Generator"]');
 
   var early = play({ o0_hello: [{ at: 3, cmd: READY }], o1_load: [{ at: 6, cmd: { action: 'scram' } }] }, 900);
   var want = ['o0_hello', 'o1_load', 'ox_trip_early', 'o11_trip', 'o12_settle', 'o13_end'];
   ck('early SCRAM: beats', early.fired.join(' '), early.fired.join(' ') === want.join(' '), want.join(' '));
-  ck('early SCRAM: focus was up before the trip', early.snaps.o1_load && early.snaps.o1_load.focus ? early.snaps.o1_load.focus.outline.join(',') : 'null',
-     !!(early.snaps.o1_load && early.snaps.o1_load.focus), 'set');
+  ck('early SCRAM: scope was up before the trip', nm(early.snaps.o1_load), !!(early.snaps.o1_load && early.snaps.o1_load.scope), 'set');
   var fx = early.snaps.ox_trip_early;
-  ck('early SCRAM: ox_trip_early lifts the focus', fx ? JSON.stringify(fx.focus) : 'never fired', !!fx && fx.focus === null, 'null');
+  ck('early SCRAM: ox_trip_early lifts the scope', fx ? JSON.stringify(fx.scope) : 'never fired', !!fx && fx.scope === null, 'null');
   ck('early SCRAM: still reaches the finish card', early.lc ? 'yes' : 'no', !!early.lc, 'yes');
+
+  /* EARLY SCRAM DURING A 5x WATCH (QA 2026-09-28: the trip explanation ran on at 5x). Cut load,
+   * then trip in o2_watch, which runs at 5x: ox_trip_early's `speed: 1` must take the clock back.
+   * Run with the event DROPOUTS OFF (a Settings choice): with them on, the scram itself drops the
+   * clock to 1x and this check passes with `speed: 1` deleted (measured, injection 2026-09-28). */
+  var fast = play({ o0_hello: [{ at: 3, cmd: READY }], o1_load: [{ at: 6, cmd: { action: 'set_load_target', mwe: 80 } }],
+                    o2_watch: [{ at: 5, cmd: { action: 'scram' } }] }, 900, true);
+  var fo2 = fast.snaps.o2_watch, fox = fast.snaps.ox_trip_early, fo11 = fast.snaps.o11_trip;
+  ck('early SCRAM at 5x: the clock was 5x, ox_trip_early brings it back to 1x',
+     (fo2 ? fo2.metadata.time_acceleration : '?') + 'x at o2 -> ' + (fox ? fox.metadata.time_acceleration : 'never') + 'x at ox -> ' +
+       (fo11 ? fo11.metadata.time_acceleration : 'never') + 'x at o11',
+     !!fo2 && fo2.metadata.time_acceleration === 5 && !!fox && fox.metadata.time_acceleration === 1 && !!fo11 && fo11.metadata.time_acceleration === 1,
+     '5 -> 1 -> 1');
   var t11 = early.snaps.o11_trip;
   ck('early SCRAM: o11\'s "about 2 % / decay about 5 %" still true',
      t11 ? I(t11, 'power_range').toFixed(2) + ' % / ' + t11.true_state.decay_heat_pct.toFixed(2) + ' %' : 'never',

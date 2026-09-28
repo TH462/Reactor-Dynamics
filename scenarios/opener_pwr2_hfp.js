@@ -30,6 +30,8 @@
   'use strict';
 
   function say(learning, industry) { return { speaker: 'instr', learning: learning, industry: industry }; }
+  // A line that POINTS at board components: outlined briefly when the line appears (#811).
+  function sayAt(point, learning, industry) { var l = say(learning, industry); l.point = point; return l; }
   function inst(id, dir, v) { return { type: 'instrument', instrument: id, direction: dir, value: v }; }
   function delay(s) { return { type: 'delay', value: s }; }
   function did(command, params) { return { type: 'operator_action', command: command, params: params }; }
@@ -44,16 +46,17 @@
   // neutrons" over a bank that had gone out.
   var IN_SINCE_ASK = { type: 'rod_travel', group_id: 'control_rods', direction: 'in', steps: 3 };
 
-  /* BOARD FOCUS (#811, owner 2026-09-28): `outline` draws the named components' silhouettes;
-   * `lit` is what stays at full brightness when the rest of the board is dimmed (the beat's own
-   * highlight is always lit too). Sticky until a beat sets another; `focus: null` lifts it. Only a
-   * beat changes it — an alarm or a trip does not (OWNER RULING 2026-09-28: "we should give the
+  /* BOARD SCOPE AND POINTERS (#811, OWNER RULING 2026-09-28: "we use dimming to isolate the part
+   * of the board we are focusing on and only use the outline as a pointer to briefly show what the
+   * instructor is describing"). A beat's `scope` names board REGIONS (pwr_board_wiring.js
+   * FOCUS_REGIONS) plus any single items; everything else is dimmed, and the beat's highlighted
+   * control is always lit. Sticky until a beat sets another; `scope: null` is the whole board. Only
+   * a beat changes it — an alarm or a trip does not (OWNER RULING 2026-09-28: "we should give the
    * instructor exclusive control"); the early-trip `watch` below is the worked example of content
-   * lifting it on the unexpected. */
-  var LOAD_LIT = ['Turbine Load', 'Turbine and Generator', 'Steam Dump', 'Steam Dump Valve', 'Pressurizer',
-                  'Tavg', 'Plant Pressure', 'Reactor Power'];
-  var RODS_LIT = ['Control Bank', 'Rod Speed — Slow', 'Rod Speed — Normal', 'Rod Speed — Fast', 'Reactor Power', 'Control Rod Position', 'Tavg'];
-  var SPRAY_LIT = ['Pressurizer Spray (PZR)', 'Pressurizer Heaters (PZR)', 'Plant Pressure', 'Pressurizer Level'];
+   * lifting it on the unexpected. A line's `point` (sayAt) is the brief outline. */
+  var LOAD_SCOPE = ['secondary', 'pressurizer', 'Reactor Power', 'Tavg'];
+  var RODS_SCOPE = ['primary', 'rods'];
+  var SPRAY_SCOPE = ['pressurizer'];
 
   RD.OPENERS = RD.OPENERS || {};
   RD.OPENERS.opener_pwr2_hfp = {
@@ -66,7 +69,7 @@
     chat_clock: 'elapsed',
 
     /* THE UNEXPECTED TRIP (#811, OWNER RULING 2026-09-28). A trip before the SCRAM ask — the player
-     * pressing SCRAM early, or a protection trip — jumps to ox_trip_early, which lifts the focus
+     * pressing SCRAM early, or a protection trip — jumps to ox_trip_early, which lifts the scope
      * (the whole board back) and says so, then carries on into the trip explanation: o11's figures
      * are a property of any trip from power, not of the planned one. Disarmed once o10 fires. */
     watch: [
@@ -92,10 +95,10 @@
         chat_button: { style: 'ack', label_learning: 'Ready', label_industry: 'Ready' },
         speed: 1,
         highlight: { control_label: 'Turbine Load' },
-        focus: { outline: ['Turbine and Generator'], lit: LOAD_LIT },
+        scope: LOAD_SCOPE,
         trend: ['tavg', 'pressure', 'dump', 'power'],
         dialogue: [
-          say('First move: set Turbine Load to 80 MWe. That asks the turbine for less steam.',
+          sayAt('Turbine and Generator', 'First move: set Turbine Load to 80 MWe. That asks the turbine for less steam.',
               'Reduce turbine load to 80 MWe.'),
           say('I put Tavg, Pressure, Steam Dump and Power on the strip chart so you can watch.',
               'Strip chart: Tavg, Pressure, Steam Dump, Power.'),
@@ -126,9 +129,8 @@
       { id: 'o3_small',
         trigger: delay(0),
         highlight: { control_label: 'Tavg' },
-        focus: { outline: ['Pressurizer'], lit: LOAD_LIT },
         dialogue: [
-          say('Warmer water swelled into the pressurizer and pushed pressure up. This cut was small, so the steam dump stayed shut.',
+          sayAt('Pressurizer', 'Warmer water swelled into the pressurizer and pushed pressure up. This cut was small, so the steam dump stayed shut.',
               'Tavg and pressure up; load step within the plant capacity, steam dumps not required.'),
           say('Warmer water also trimmed reactor power a few percent by itself. That is moderator temperature feedback.',
               'Negative moderator temperature coefficient has reduced power several percent.'),
@@ -137,9 +139,8 @@
       { id: 'o3_dump',
         trigger: delay(0),
         highlight: { control_label: 'Steam Dump' },
-        focus: { outline: ['Pressurizer', 'Steam Dump Valve'], lit: LOAD_LIT },
         dialogue: [
-          say('Warmer water swelled into the pressurizer and pushed pressure up. The steam dump opened to carry the extra heat to the condenser.',
+          sayAt('Steam Dump Valve', 'Warmer water swelled into the pressurizer and pushed pressure up. The steam dump opened to carry the extra heat to the condenser.',
               'Tavg and pressure up; steam dumps open to the condenser.'),
           say('Warmer water also trimmed reactor power a few percent by itself. That is moderator temperature feedback.',
               'Negative moderator temperature coefficient has reduced power several percent.'),
@@ -151,10 +152,10 @@
         trigger: delay(40),
         speed: 1,
         highlight: { control_label: 'Control Bank' },
-        focus: { outline: ['Reactor Vessel'], lit: RODS_LIT },
+        scope: RODS_SCOPE,
         trend: ['power', 'rod_steps', 'tavg'],
         dialogue: [
-          say('Clock back to 1×. Your turn: set rod speed to FAST, then drive Control Bank in about 40 steps. Watch reactor power follow.',
+          sayAt('Reactor Vessel', 'Clock back to 1×. Your turn: set rod speed to FAST, then drive Control Bank in about 40 steps. Watch reactor power follow.',
               'Clock 1×. Select FAST rod speed, then insert control rods about 40 steps to bring power down to the load.'),
           say('The strip chart now shows Power, Control Rod Steps and Tavg.',
               'Strip chart: Power, Control Rod Steps, Tavg.'),
@@ -206,10 +207,10 @@
           { type: 'all', triggers: [inst('steam_dump_valve', 'below', 30), delay(30)] }, delay(75)] },
         speed: 1,
         highlight: { control_label: 'Pressurizer Spray (PZR)' },
-        focus: { outline: ['Pressurizer'], lit: SPRAY_LIT },
+        scope: SPRAY_SCOPE,
         trend: ['pressure', 'spray'],
         dialogue: [
-          say('Clock back to 1×. Now pressure. Put Pressurizer Spray in MANUAL and open it all the way.',
+          sayAt('Pressurizer Spray (PZR)', 'Clock back to 1×. Now pressure. Put Pressurizer Spray in MANUAL and open it all the way.',
               'Clock 1×. Place pressurizer spray in manual, 100 % open.'),
           say('The strip chart now shows Pressure and Spray.',
               'Strip chart: Pressure, PZR Spray.'),
@@ -227,7 +228,7 @@
         trigger: delay(1),
         highlight: { control_label: 'Plant Pressure' },
         dialogue: [
-          say('Spray showers cooler water into the pressurizer\'s steam bubble. Steam condenses and pressure falls. Watch Plant Pressure.',
+          sayAt('Pressurizer', 'Spray showers cooler water into the pressurizer\'s steam bubble. Steam condenses and pressure falls. Watch Plant Pressure.',
               'Spray condensing pressurizer steam; RCS pressure decreasing.'),
         ],
         advance: 'wait_for_trigger' },
@@ -259,7 +260,7 @@
         trigger: delay(40),
         speed: 1,
         highlight: { control_label: 'SCRAM' },
-        focus: null,                                   // the whole board for the trip
+        scope: null,                                   // the whole board for the trip
         dialogue: [say('Clock back to 1×. Last move: trip the reactor. Press SCRAM.', 'Clock 1×. Manually trip the reactor.')],
         branches: [
           { trigger: { type: 'scram' }, goto: 'o11_trip' },
@@ -308,10 +309,13 @@
         },
         advance: 'end' },
 
-      // Reached only through the scenario `watch` (a trip before o10). Lifts the focus and says so.
+      // Reached only through the scenario `watch` (a trip before o10). Lifts the scope and says so,
+      // and takes the clock back to 1× (QA: an early SCRAM during a 5× watch left the trip
+      // explanation running at 5×).
       { id: 'ox_trip_early',
         trigger: delay(0),
-        focus: null,
+        speed: 1,
+        scope: null,
         highlight: { control_label: 'Tavg' },
         dialogue: [
           say("The reactor tripped unexpectedly. I've brought the full board back so you can see everything.",

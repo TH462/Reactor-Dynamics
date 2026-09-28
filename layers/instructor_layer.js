@@ -384,7 +384,7 @@
     this._actionsSinceBeat = [];      // forwarded operator commands since last beat fire
     this._beatBaseline = {};          // rod_travel: each group's steps when the beat fired (#811)
     this._trend = null;               // { rev, series } — the chart traces a beat asked for (#811)
-    this._focus = null;               // { rev, outline, lit } — the board focus a beat asked for (#811)
+    this._scope = null;               // { rev, names } — the board scope (dimming) a beat asked for (#811)
     this._watchFired = [];            // scenario-level `watch` entries already taken (#811)
     this._lastSimTime = 0;
     this._continueRequested = false;  // instructor_continue → `manual` trigger
@@ -720,16 +720,17 @@
     if (beat.trend && beat.trend.length) {
       this._trend = { rev: (this._trend ? this._trend.rev : 0) + 1, series: beat.trend.slice() };
     }
-    /* A BEAT CAN FOCUS THE BOARD (#811, owner 2026-09-28): `focus: { outline: [names], lit: [labels] }`
-     * outlines components by their silhouette and (style c) dims everything else. STICKY like
-     * `highlight`: it stands until a later beat says otherwise. `focus: null` or `{ clear: true }`
-     * lifts it. Nothing else lifts it — not an alarm, not a trip (OWNER RULING 2026-09-28: "we
-     * should give the instructor exclusive control"); a beat that should react to one says so,
-     * usually via a scenario-level `watch`. */
-    if (Object.prototype.hasOwnProperty.call(beat, 'focus')) {
-      var fz = beat.focus, rev = this._focusRev = (this._focusRev || 0) + 1;
-      this._focus = (!fz || fz.clear) ? null
-        : { rev: rev, outline: (fz.outline || []).slice(), lit: (fz.lit || []).slice() };
+    /* A BEAT CAN SCOPE THE BOARD (#811, OWNER RULING 2026-09-28: "we use dimming to isolate the
+     * part of the board we are focusing on"): `scope: ['primary', 'rods', 'Tavg']` names board
+     * REGIONS (or single focus names) and the UI dims everything else. STICKY like `highlight`: it
+     * stands until a later beat carries `scope`; `scope: null` is the whole board. Nothing else
+     * changes it — not an alarm, not a trip (OWNER RULING 2026-09-28: "we should give the
+     * instructor exclusive control"); a beat that should react to one says so, usually via a
+     * scenario-level `watch`. The brief OUTLINE is a chat line's `point`, not a beat's. */
+    if (Object.prototype.hasOwnProperty.call(beat, 'scope')) {
+      var sc = beat.scope, rev = this._scopeRev = (this._scopeRev || 0) + 1;
+      this._scope = (sc == null || (Array.isArray(sc) && !sc.length)) ? null
+        : { rev: rev, names: [].concat(sc) };
     }
     this.lastBeatFireTime = simTime;
     this._actionsSinceBeat = [];
@@ -791,14 +792,18 @@
     for (var i = 0; i < lines.length; i++) {
       var l = lines[i];
       if (!l) continue;
-      this.chatLog.push({
+      var entry = {
         speaker: l.speaker || 'sup',
         learning: l.learning || l.industry || '',
         industry: l.industry || l.learning || '',
         t: simTime != null ? simTime : this._lastSimTime,
         story: (i === 0 && storyMin != null) ? storyMin : null,
         skip: (i === 0 && timeSkip) ? true : null,
-      });
+      };
+      // A line may POINT at board components (#811): the UI outlines them briefly when the line
+      // appears, and again when the player clicks it. Presentation only; absent on most lines.
+      if (l.point) entry.point = [].concat(l.point);
+      this.chatLog.push(entry);
     }
     while (this.chatLog.length > CHAT_LOG_CAP) this.chatLog.shift();
     this._chatRev++;
@@ -2574,8 +2579,7 @@
       scenario_id: this.scenario ? this.scenario.id : null,
       current_beat_id: this.currentBeatId,
       trend: this._trend ? { rev: this._trend.rev, series: this._trend.series.slice() } : null,
-      focus: this.mode === 'scenario' && this._focus
-        ? { rev: this._focus.rev, outline: this._focus.outline.slice(), lit: this._focus.lit.slice() } : null,
+      scope: this.mode === 'scenario' && this._scope ? { rev: this._scope.rev, names: this._scope.names.slice() } : null,
       // Is a beat currently GATING progress? (#439, spec §4.) The UI tiers its
       // interrupt on this: a routine message cues the collapsed card's badge, a step
       // that blocks the player has to reach them even with another panel open, or the
@@ -2768,7 +2772,7 @@
       chat_rev: this._chatRev,
       beat_baseline: JSON.parse(JSON.stringify(this._beatBaseline || {})),
       trend: this._trend ? JSON.parse(JSON.stringify(this._trend)) : null,
-      focus: this._focus ? JSON.parse(JSON.stringify(this._focus)) : null,
+      scope: this._scope ? JSON.parse(JSON.stringify(this._scope)) : null,
       watch_fired: this._watchFired.slice(),
       interact: JSON.parse(JSON.stringify(this._interact)),
       ui_policy: this.uiPolicy ? JSON.parse(JSON.stringify(this.uiPolicy)) : null,
@@ -2909,7 +2913,8 @@
       this._chatRev = state.chat_rev || 0;
       this._beatBaseline = state.beat_baseline || {};
       this._trend = state.trend || null;
-      this._focus = state.focus || null;
+      this._scope = state.scope || null;
+      this._scopeRev = this._scope ? this._scope.rev : 0;
       this._watchFired = (state.watch_fired || []).slice();
       this._interact = state.interact || {};
       this.uiPolicy = state.ui_policy || null;
