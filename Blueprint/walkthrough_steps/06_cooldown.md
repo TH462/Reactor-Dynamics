@@ -276,7 +276,7 @@ The plant is cold now and the pressurizer shell has given up most of its stored 
 
 Suggested time warp: 1×.
 
-Note: PRIMARY PRESSURE reads about 250 psi, far below the 2235 psi of a running plant; it crept back up after the spray shut, which is expected. ALIGN on the RHR card is checked in step 15.
+Note: PRIMARY PRESSURE reads about 150 psi, far below the 2235 psi of a running plant; it crept back up after the spray shut, which is expected. ALIGN on the RHR card is checked in step 15.
 
 Background
 

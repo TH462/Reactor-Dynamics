@@ -6624,8 +6624,13 @@
     // it on every tab switch, and tripped verify_flags_ui's "public: campaign offers
     // nothing to start", which counts buttons in #mpContent as things you can start. That
     // check was right and reads correctly again with the footer where it belongs.
+    /* The preset's DISPLAY name, never its id (layman pass 2026-09-28 S-7: "Reset returns the
+     * plant to hot_full_power" under "Hot Full Power (Mode 1)"). Same lookup as the walkthrough
+     * list's `ics`; the id is only the fallback for a preset with no label. */
+    var rsEng = ENGINES[ui.engineKey] || {}, rsName = ui.initState;
+    (rsEng.initStates || (PROFILES[rsEng.plant] || {}).initStates || []).forEach(function (r) { if (r[0] === ui.initState) rsName = r[1]; });
     setHTML($('mpSession'),
-      '<div class="m-note">Reset returns the plant to ' + mesc(ui.initState) +
+      '<div class="m-note">Reset returns the plant to ' + mesc(rsName) +
       ' and ends anything the Instructor is running.</div>' +
       '<button class="btn mp-reset" data-mreset="arm">↺ Reset the plant</button>');
   }
