@@ -10,7 +10,8 @@
  *      and stayed until the next hover).
  *   3. TELEMETRY files one opener_beat row per beat reached — ids and an index, nothing else.
  *   4. THE TREND CHART is borrowed, never taken: a beat's `trend` replaces the traces (and glows
- *      the strip chart), and the player's own selection comes back on End (owner, 2026-09-28).
+ *      the strip chart), stays up through the finish card, and the chart's DEFAULTS come back on
+ *      End/Continue/Retry (owner, 2026-09-28).
  *   5. "Not now" hides the offer for the SESSION, not for good (OWNER RULING 2026-09-28).
  *
  * SHOT=<path> saves a screenshot of the chart during the trip beat (reached by a dev jump of the
@@ -154,6 +155,20 @@ var OFFER = '#instrCurrent [data-opener-start]';
     await page.screenshot({ path: process.env.SHOT, clip: box });
     console.log('screenshot: ' + process.env.SHOT);
   }
+
+  // finish card (#811 follow-up): the trip beat's trend used to snap back to the defaults the
+  // instant level_complete arrived, hiding the Decay Heat trace the card's own dialogue points at.
+  // It now stays up while the card shows and only goes back to the plant's defaults on Continue.
+  await page.waitForFunction(function () { return !!RD.__dev.service().instructor.level_complete; }, null, { timeout: 25000 }).catch(function () {});
+  await page.waitForTimeout(300);
+  var legendLc = (await page.textContent('#chartFloats')) || '';
+  ck('finish card: the trip beat\'s Decay Heat trend is still on the chart', /Decay Heat/.test(legendLc),
+     legendLc.replace(/\s+/g, ' ').slice(0, 70));
+  await page.click('[data-lc="continue"]');
+  await page.waitForTimeout(800);
+  var legendAfterLc = (await page.textContent('#chartFloats')) || '';
+  ck('finish card: Continue puts the plant\'s default chart back', /Output MW/.test(legendAfterLc) && !/Decay Heat/.test(legendAfterLc),
+     legendAfterLc.replace(/\s+/g, ' ').slice(0, 70));
 
   // ---------------------------------------------------------------- 5. Not now = this session
   await boot();

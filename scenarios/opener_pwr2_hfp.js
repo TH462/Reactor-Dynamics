@@ -77,8 +77,8 @@
         dialogue: [
           say('First move: set Turbine Load to 80 MWe. That asks the turbine for less steam.',
               'Reduce turbine load to 80 MWe.'),
-          say('I put Tavg, Pressure, Steam Dump and Power on the trend chart so you can watch.',
-              'Trend chart: Tavg, Pressure, Steam Dump, Power.'),
+          say('I put Tavg, Pressure, Steam Dump and Power on the strip chart so you can watch.',
+              'Strip chart: Tavg, Pressure, Steam Dump, Power.'),
         ],
         branches: [
           { trigger: inst('mwe_output', 'below', 96), goto: 'o2_watch' },
@@ -133,8 +133,8 @@
         dialogue: [
           say('Clock back to 1×. Your turn: set rod speed to FAST, then drive Control Bank in about 40 steps. Watch reactor power follow.',
               'Clock 1×. Select FAST rod speed, then insert control rods about 40 steps to bring power down to the load.'),
-          say('The trend chart now shows Power, Control Rod Steps and Tavg.',
-              'Trend chart: Power, Control Rod Steps, Tavg.'),
+          say('The strip chart now shows Power, Control Rod Steps and Tavg.',
+              'Strip chart: Power, Control Rod Steps, Tavg.'),
         ],
         // A board HOLD sends rod_start on press and rod_stop on release; a tap sends rod_nudge on
         // release. Grading on the RELEASE, not the press: measured in headless Edge (QA pass),
@@ -187,8 +187,8 @@
         dialogue: [
           say('Clock back to 1×. Now pressure. Put Pressurizer Spray in MANUAL and open it all the way.',
               'Clock 1×. Place pressurizer spray in manual, 100 % open.'),
-          say('The trend chart now shows Pressure and Spray.',
-              'Trend chart: Pressure, PZR Spray.'),
+          say('The strip chart now shows Pressure and Spray.',
+              'Strip chart: Pressure, PZR Spray.'),
         ],
         branches: [
           { trigger: inst('pzr_spray_flow', 'above', 30), goto: 'o7_spray_watch' },
@@ -255,8 +255,8 @@
         dialogue: [
           say('All rods dropped. Neutron power fell to about 2 % in seconds, but the fuel still makes about 5 % of full heat from decay.',
               'Reactor tripped. Neutron power about 2 %; decay heat about 5 %.'),
-          say('See Decay Heat on the trend chart, next to Power and Tavg. It stays well above neutron power.',
-              'Trend chart: Power, Decay Heat, Tavg. Decay heat remains above neutron power.'),
+          say('See Decay Heat on the strip chart, next to Power and Tavg. Decay heat holds near 5 % while neutron power falls toward zero.',
+              'Strip chart: Power, Decay Heat, Tavg. Decay heat near 5 %; neutron power falling toward zero.'),
         ],
         advance: 'wait_for_trigger' },
       { id: 'o12_settle',

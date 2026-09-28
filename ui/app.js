@@ -6097,9 +6097,14 @@
   /* ---- INSTRUCTOR TRENDS (#811, owner 2026-09-28: "It could change the lines to show what it's
    * teaching."). A beat's `trend: [series ids]` arrives as instructor.trend {rev, series}; each
    * new rev replaces the chart's traces and glows the strip chart, and the beat's own text names what
-   * it put there. The PLAYER'S selection is kept the first time and put back the moment the
-   * content is no longer running — End, the finish card, Retry, any stop — so the chart is only
-   * ever borrowed. */
+   * it put there. Whatever the chart is showing the moment the FIRST trend lands is saved and put
+   * back the moment the content actually stops — End, Continue, Retry, any other stop — so the
+   * chart is only ever borrowed. It stays borrowed while the finish card is up (level_complete
+   * still carries a scenario_id): the last beat's trace is the point of the card, so restoring
+   * early would blank it under a dark chart. Note the saved baseline is usually the PLANT'S
+   * DEFAULTS, not the player's own layout — start_opener's afterPlantChange() resets ui.series to
+   * prof().defaultSeries before the first beat's trend ever lands, so there is nothing of the
+   * player's left to capture by the time this code runs. */
   var instrTrend = { saved: null, rev: null };
   function instrTrendRedraw() {
     chartRange = {};
@@ -6117,8 +6122,11 @@
   }
   function applyInstrTrend(s) {
     var ins = s && s.instructor, t = ins && ins.trend;
-    var live = !!(ins && ins.scenario_id && !ins.level_complete);
+    var live = !!(ins && ins.scenario_id);
     if (!live) { if (instrTrend.saved) restoreInstrTrend(); return; }
+    // Finish card: keep the last beat's chart up rather than snapping back to defaults under it;
+    // restored once Continue/Retry/End actually stops the content (scenario_id then goes away).
+    if (ins.level_complete) return;
     if (!t || t.rev === instrTrend.rev) return;
     if (!instrTrend.saved) instrTrend.saved = { series: Object.assign({}, ui.series), side: Object.assign({}, ui.seriesSide) };
     instrTrend.rev = t.rev;
@@ -6860,7 +6868,9 @@
     if (!op) return;
     ui.follow = null; ui.scenario = null; ui.opener = id;
     inspectClear();              // the offer's Scanner hint described a button that is now gone
-    restoreInstrTrend();         // Retry: the player's own chart, before the opener borrows it again
+    restoreInstrTrend();         // clear any trend still borrowed from a PRIOR opener/beat — the
+                                  // afterPlantChange() below is what actually restores the chart,
+                                  // and it restores the plant's DEFAULTS, not the player's own pick
     pauseSim('content');
     service.handleCommand({ action: 'start_opener', opener_id: id });
     afterPlantChange();

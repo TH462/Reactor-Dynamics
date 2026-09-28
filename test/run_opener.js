@@ -189,7 +189,7 @@ test('opener copy — registers, units, length, speed stated, highlights, exits'
   ck('every speed change is stated in its own beat (N×)', spd.join(',') || 'all stated', !spd.length, 'text names the rung');
   ck('every branch point has a time-only exit (no silent strand)', exits.join(',') || 'all', !exits.length, 'an inaction or delay branch');
   ck('every goto lands on a beat', gotos.join(',') || 'all', !gotos.length, 'defined');
-  /* A BEAT THAT SETS THE TREND CHART SAYS SO (#811, owner 2026-09-28) — in both registers, naming
+  /* A BEAT THAT SETS THE STRIP CHART SAYS SO (#811, owner 2026-09-28) — in both registers, naming
    * every trace it put there by the name the chart legend draws. */
   var NAME = { tavg: 'Tavg', pressure: 'Pressure', dump: 'Steam Dump', power: 'Power',
                rod_steps: 'Rod Steps', spray: 'Spray', decay: 'Decay Heat' };
@@ -198,15 +198,15 @@ test('opener copy — registers, units, length, speed stated, highlights, exits'
     if (!b.trend) return;
     trendN++;
     ['learning', 'industry'].forEach(function (r) {
-      var line = (b.dialogue || []).map(function (l) { return l[r]; }).filter(function (t) { return /trend chart/i.test(t); })[0];
-      if (!line) { trendBad.push(b.id + '.' + r + ': no trend-chart line'); return; }
+      var line = (b.dialogue || []).map(function (l) { return l[r]; }).filter(function (t) { return /strip chart/i.test(t); })[0];
+      if (!line) { trendBad.push(b.id + '.' + r + ': no strip-chart line'); return; }
       b.trend.forEach(function (id) {
         if (!NAME[id]) trendBad.push(b.id + ': unknown series ' + id);
         else if (line.indexOf(NAME[id]) === -1) trendBad.push(b.id + '.' + r + ' omits ' + NAME[id]);
       });
     });
   });
-  ck('every trend-setting beat names its traces (both registers)', trendBad.join('; ') || trendN + ' beats', trendN >= 4 && !trendBad.length, 'a "trend chart" line naming each');
+  ck('every trend-setting beat names its traces (both registers)', trendBad.join('; ') || trendN + ' beats', trendN >= 4 && !trendBad.length, 'a "strip chart" line naming each');
   var ww = OP.beats.filter(function (b) { return b.id === 'o4_wrong'; })[0];
   var wwl = ww && ww.dialogue && ww.dialogue.length === 1 ? ww.dialogue[0] : null;
   ck('o4_wrong is ONE line of <= 20 words in both registers', wwl ? words(wwl.learning) + ' / ' + words(wwl.industry) + ' words' : 'missing',
@@ -358,9 +358,10 @@ Object.keys(ROUTES).forEach(function (name) {
     // DECAY heat, the quantity the line names — core_heat_pct is decay + the ~2 % fission (it read
     // 7 % and certified "about 7 % from decay" while decay itself was 5.2 %; #811 QA pass).
     ck('o11: decay heat about 5 %', t11.true_state.decay_heat_pct.toFixed(2) + ' %', t11.true_state.decay_heat_pct >= 4 && t11.true_state.decay_heat_pct <= 6, '4..6 (text: about 5)');
-    ck('o12..o13: "Decay Heat stays well above neutron power" — it does',
+    ck('o12..o13: "decay heat holds near 5 % while neutron power falls toward zero" — it does',
        S.o13_end.true_state.decay_heat_pct.toFixed(2) + ' % vs ' + I(S.o13_end, 'power_range').toFixed(2) + ' %',
        S.o12_settle.true_state.decay_heat_pct > 2 * I(S.o12_settle, 'power_range') && S.o13_end.true_state.decay_heat_pct > 2 * I(S.o13_end, 'power_range'), 'decay > 2x power');
+    ck('o13: neutron power falling toward zero', I(S.o13_end, 'power_range').toFixed(2) + ' %', I(S.o13_end, 'power_range') < 1, '< 1 %');
     // Each trend-setting beat lands its own traces on the snapshot the UI reads.
     var trBad = [];
     OP.beats.forEach(function (b) {
