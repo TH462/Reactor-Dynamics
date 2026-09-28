@@ -446,9 +446,11 @@ test('board focus: set by beats, lifted by a beat, early trip handled', function
   ck('early SCRAM: o12\'s "Tavg toward about 552 °F" still true', tE.toFixed(1) + ' °F', tE > 548 && tE < 558, '548..558');
 
   // save/restore carries the watch's memory: a restored opener past the watch does not re-fire it
-  /* SAVE/RESTORE after the watch fired: the restored opener must not take it AGAIN. The plant is
-   * still tripped after the restore, so a forgotten watch re-fires on the first pass and repeats
-   * the "tripped unexpectedly" line (the #142 class: progress, not scratch). */
+  /* SAVE/RESTORE after the watch fired: the restored opener must not take it AGAIN (the plant is
+   * still tripped after the restore). TWO things stop that — the saved `watch_fired`, and the
+   * instructor's own guard that never jumps to an already-fired `goto` — so "the opener still
+   * finishes" alone cannot see `watch_fired` dropped from save/restore (QA3 2026-09-28: injected,
+   * stayed green). The check therefore also reads the restored memory itself. */
   var mid = play({ o0_hello: [{ at: 3, cmd: READY }], o1_load: [{ at: 6, cmd: { action: 'scram' } }] }, 30);
   var back = new RD.SimulationService({ seed: 42 });
   back.selectPlant('pwr2', 'hot_full_power');
@@ -459,8 +461,24 @@ test('board focus: set by beats, lifted by a beat, early trip handled', function
   var lcBack = false;
   for (var k = 0; k < 400 && !lcBack; k++) { var sb = back.tick(); lcBack = !!(sb.instructor && sb.instructor.level_complete); }
   ck('save/restore: the early-trip watch is not taken again (the opener still finishes)',
-     'saved at ' + mid.fired.slice(-1)[0] + ', now ' + back.instructor.currentBeatId + ', finish card ' + lcBack,
-     mid.fired.indexOf('ox_trip_early') !== -1 && lcBack, 'reaches level_complete');
+     'saved at ' + mid.fired.slice(-1)[0] + ', now ' + back.instructor.currentBeatId + ', finish card ' + lcBack +
+       ', watch memory ' + JSON.stringify(back.instructor._watchFired),
+     mid.fired.indexOf('ox_trip_early') !== -1 && lcBack && back.instructor._watchFired.indexOf('w_early_trip') !== -1,
+     'reaches level_complete, w_early_trip remembered');
+
+  /* A WATCH NEVER FIRES AFTER THE FLOW ENDS (QA3 2026-09-28). The opener cannot reach this (its one
+   * watch is taken or disarmed before the finish), so a minimal scenario does: a watch with no
+   * `until` whose trigger is already true once the only beat has ended the flow. */
+  var IL = new RD.InstructorLayer({ handleCommand: function () {} });
+  IL.load({ id: 'qa3_watch_after_end', beats: [
+    { id: 'a', trigger: { type: 'time', value: 0 }, advance: 'end' },
+    { id: 'x', trigger: { type: 'delay', value: 0 }, advance: 'end' } ],
+    watch: [{ id: 'w', trigger: { type: 'scram' }, goto: 'x' }] });
+  IL.step({}, 0);                                           // 'a' fires, the flow ends
+  IL.step({ rps_state: { scrammed: true } }, 1);            // the watch's trigger is now true
+  IL.step({ rps_state: { scrammed: true } }, 2);
+  ck('a watch never fires after the flow has ended', 'fired ' + Array.from(IL.firedBeats).join(','),
+     IL.firedBeats.has('a') && !IL.firedBeats.has('x'), "fired a only");
 });
 
 // ------------------------------------------------------------------ report

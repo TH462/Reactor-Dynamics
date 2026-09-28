@@ -602,7 +602,10 @@
      * from the first pass until the beat named `until` fires; the first to trigger jumps to its
      * `goto` exactly as a branch does, once. This is how content reacts to the unexpected (an early
      * trip) without every beat carrying the same branch. */
-    var ws = (this.scenario && this.scenario.watch) || [];
+    /* NEVER ONCE THE FLOW HAS ENDED (QA3 2026-09-28): a watch with no `until`, or one whose `until`
+     * the route skipped, would otherwise re-open a finished scenario under its finish card. */
+    var ws = (this.scenario && this.scenario.watch && !this.levelComplete && this.currentBeatId != null)
+      ? this.scenario.watch : [];
     for (var wi = 0; wi < ws.length; wi++) {
       var w = ws[wi];
       if (this._watchFired.indexOf(w.id) !== -1) continue;
