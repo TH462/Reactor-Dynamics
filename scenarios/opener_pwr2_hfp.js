@@ -122,9 +122,14 @@
           say('Clock back to 1×. Your turn: drive Control Bank in about 40 steps. Watch reactor power follow.',
               'Clock 1×. Insert control rods about 40 steps to bring power down to the load.'),
         ],
+        // A board HOLD sends rod_start on press and rod_stop on release; a tap sends rod_nudge on
+        // release. Grading on the RELEASE, not the press: measured in headless Edge (QA pass),
+        // holding INSERT at the default (MED) speed at 1× moves ~23 steps in 30 s, and power
+        // crosses 90 % mid-hold — on `rod_start` the 5× watch and the spray ask both fired while
+        // the player was still holding the button.
         branches: [
           { trigger: { type: 'all', triggers: [inst('power_range', 'below', 90),
-              { type: 'any', triggers: [did('rod_nudge'), did('rod_start')] }] }, goto: 'o5_rods_watch' },
+              { type: 'any', triggers: [did('rod_nudge'), did('rod_stop')] }] }, goto: 'o5_rods_watch' },
           { trigger: { type: 'inaction', window: 120 }, goto: 'o4_help' },
         ] },
       { id: 'o4_help',
@@ -207,14 +212,15 @@
         commands: [{ action: 'scram' }],
         dialogue: [say('I\'ll trip it for you.', 'Instructor tripping the reactor.')],
         advance: 'wait_for_trigger' },
-      // Held 12 s after the trip so the decay-heat figure is the settled one (measured: core heat
-      // reads ~10 % two seconds after the trip — stored heat — and ~7 % by twelve).
+      // Held 12 s after the trip so the figures are the settled ones. DECAY heat, not core heat
+      // (QA pass, measured on all three routes at this beat): decay_heat_pct 5.0-5.2 %, while
+      // core_heat_pct 7.0-7.3 % is decay PLUS the ~2 % fission the same line already names.
       { id: 'o11_trip',
         trigger: { type: 'all', triggers: [inst('power_range', 'below', 5), delay(12)] },
         highlight: { control_label: 'Tavg' },
         dialogue: [
-          say('All rods dropped. Neutron power fell to about 2 % in seconds, but the fuel still makes about 7 % of full heat from decay.',
-              'Reactor tripped. Neutron power about 2 %; decay heat about 7 %.'),
+          say('All rods dropped. Neutron power fell to about 2 % in seconds, but the fuel still makes about 5 % of full heat from decay.',
+              'Reactor tripped. Neutron power about 2 %; decay heat about 5 %.'),
         ],
         advance: 'wait_for_trigger' },
       { id: 'o12_settle',

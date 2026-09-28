@@ -2021,7 +2021,7 @@ var BASELINES = {
   // snapshot passes the log BY REFERENCE every broadcast.
   'run_m6.js':             { code: 0, score: '18/18 117passed' },
   'run_m6ph.js':           { code: 0, score: '8/8 18passed' },
-  'run_opener.js':          { code: 0, secs: 15, score: '5/5 88passed' },   // NEW (#811, 2026-09-28): the full-power opener played full stack on three routes (typical / mistake / hands-off), each beat's EFFECT asserted, plus the copy (registers, no SI, <=25 words, speed stated, highlights resolve, time-only exits) and the free-play lineup + save/restore. Injection-verified 7 ways (rod help emptied, noDefaults, control_state trigger removed, dump branch mis-aimed, SI in copy, decay line un-delayed, unstated speed) -- each reddens, restore greens.
+  'run_opener.js':          { code: 0, secs: 15, score: '5/5 89passed' },   // NEW (#811, 2026-09-28): the full-power opener played full stack on three routes (typical / mistake / hands-off), each beat's EFFECT asserted, plus the copy (registers, no SI, <=25 words, speed stated, highlights resolve, time-only exits) and the free-play lineup + save/restore. Injection-verified 7 ways (rod help emptied, noDefaults, control_state trigger removed, dump branch mis-aimed, SI in copy, decay line un-delayed, unstated speed) -- each reddens, restore greens. 88->89 (#811 QA pass): the rods ask grades on the RELEASE (rod_stop/rod_nudge), typical route now HOLDS the button; red on the old rod_start trigger.
   'run_m7.js':             { code: 0, score: null },   // prints "M7 OK", no tally
 
   // ---- control, campaign, procedures ----

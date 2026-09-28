@@ -7189,10 +7189,19 @@
     var first = (cur.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160);
     if (!first) return;
     if (first === instrLog.key) { instrLog.html = cur.innerHTML; return; }  // same message, live
-    if (instrLog.key) {
+    // Idle panel -> idle panel (the opener offer came or went, #811) is the same panel redrawn,
+    // not a new message: folding it drew the whole idle help twice.
+    var idleToIdle = cur.classList.contains('instr-standby') && instrLog.html.indexOf('instr-idle') !== -1;
+    if (instrLog.key && !idleToIdle) {
       var d = document.createElement('div');
       d.className = 'instr-msg';
       d.innerHTML = instrLog.html;
+      /* THE OPENER OFFER IS A LIVE CONTROL, NOT A MESSAGE (#811 QA pass). Measured in headless
+       * Edge: pressing "Not now" re-renders the idle panel, which folded the OLD panel — offer,
+       * Start and Not now buttons all still live — into the log, so the dismissed offer stayed
+       * on screen and still started the opener until the page was reloaded. */
+      var stale = d.querySelectorAll('.instr-opener');
+      for (var si = 0; si < stale.length; si++) stale[si].parentNode.removeChild(stale[si]);
       log.insertBefore(d, cur);
     }
     instrLog.key = first; instrLog.html = cur.innerHTML;

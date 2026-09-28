@@ -66,7 +66,9 @@ function rec(s) {
             metadata: { time_acceleration: s.metadata.time_acceleration },
             instructor: s.instructor };
   INST.forEach(function (k) { o.instruments[k] = s.instruments[k]; });
-  ['rod_steps', 'pzr_heater_kw', 'core_heat_pct', 'turbine_tripped'].forEach(function (k) { o.true_state[k] = s.true_state[k]; });
+  var rg = (s.control_state.rod_groups || []).filter(function (g) { return g.id === 'control_rods'; })[0];
+  o.control_state.rods_moving = !!(rg && rg.moving);
+  ['rod_steps', 'pzr_heater_kw', 'core_heat_pct', 'decay_heat_pct', 'turbine_tripped'].forEach(function (k) { o.true_state[k] = s.true_state[k]; });
   return o;
 }
 function words(t) { return String(t).trim().split(/\s+/).length; }
@@ -115,7 +117,10 @@ var ROUTES = {
   typical: {
     o0_hello:  [{ at: 15, cmd: READY }],
     o1_load:   [{ at: 20, cmd: { action: 'set_load_target', mwe: 80 } }],
-    o4_rods:   [{ at: 15, cmd: { action: 'rod_nudge', group_id: 'control_rods', steps: -45 } }],
+    // The board's INSERT button HELD at its default speed, as a player drives it: rod_start on
+    // press, rod_stop on release. Measured in headless Edge at 1×: ~23 steps per 30 s held.
+    o4_rods:   [{ at: 15, cmd: { action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'normal' } },
+                { at: 45, cmd: { action: 'rod_stop', group_id: 'control_rods' } }],
     o6_spray:  [{ at: 20, cmd: { action: 'set_spray', pct: 100 } }],
     o8_auto:   [{ at: 8, cmd: { action: 'set_spray', auto: true } }],
     o10_scram: [{ at: 8, cmd: { action: 'scram' } }],
@@ -244,7 +249,12 @@ Object.keys(ROUTES).forEach(function (name) {
     else ck('o3_small: "the steam dump stayed shut" — it did', 'max ' + dk.toFixed(1) + ' % through the watch', dk < 1, '< 1 %');
     ck(o3 + ': power trimmed by itself (moderator feedback)', I(S3, 'power_range').toFixed(1) + ' %', I(S3, 'power_range') < 98.5, '< 98.5 %');
 
-    // 2. rods — power follows, Tavg comes back (read at the END of the watch, o6)
+    // 2. rods — the watch (5×) must not start under a player still holding the button
+    // (typical route only: it is the one that HOLDS the button; the others' rods are still
+    // finishing a queued nudge — the mistake route's scripted -15, the instructor's own -40)
+    if (name === 'typical') ck('o5: the 5× watch starts only after the player let go of the rods', 'rods moving at o5 = ' + S.o5_rods_watch.control_state.rods_moving,
+       S.o5_rods_watch.control_state.rods_moving === false, 'false');
+    // power follows, Tavg comes back (read at the END of the watch, o6)
     ck('o6: power below 90 % after the rods went in', I(S.o6_spray, 'power_range').toFixed(1) + ' %', I(S.o6_spray, 'power_range') < 90, '< 90 %');
     ck('o6: rods actually moved in', S.o6_spray.true_state.rod_steps.toFixed(0) + ' steps', S.o6_spray.true_state.rod_steps < 600, '< 600');
     ck('o6: Tavg came back down from the rod ask', degF(I(S.o4_rods, 'tavg')).toFixed(1) + ' -> ' + degF(I(S.o6_spray, 'tavg')).toFixed(1) + ' °F',
@@ -266,7 +276,9 @@ Object.keys(ROUTES).forEach(function (name) {
     // 4. trip
     var t11 = S.o11_trip;
     ck('o11: tripped, neutron power about 2 %', I(t11, 'power_range').toFixed(2) + ' %', t11.rps_state.scrammed && I(t11, 'power_range') > 1 && I(t11, 'power_range') < 3, 'scrammed, 1..3 % (text: about 2)');
-    ck('o11: decay heat about 7 %', t11.true_state.core_heat_pct.toFixed(2) + ' %', t11.true_state.core_heat_pct >= 6 && t11.true_state.core_heat_pct <= 8, '6..8 (text: about 7)');
+    // DECAY heat, the quantity the line names — core_heat_pct is decay + the ~2 % fission (it read
+    // 7 % and certified "about 7 % from decay" while decay itself was 5.2 %; #811 QA pass).
+    ck('o11: decay heat about 5 %', t11.true_state.decay_heat_pct.toFixed(2) + ' %', t11.true_state.decay_heat_pct >= 4 && t11.true_state.decay_heat_pct <= 6, '4..6 (text: about 5)');
     ck('o12: turbine tripped', String(S.o12_settle.true_state.turbine_tripped), S.o12_settle.true_state.turbine_tripped === true, 'true');
     var tEnd = degF(I(S.o13_end, 'tavg'));
     ck('o13: Tavg settled near 552 °F', tEnd.toFixed(1) + ' °F', tEnd > 548 && tEnd < 558, '548..558 (text: about 552)');

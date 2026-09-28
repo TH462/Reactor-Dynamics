@@ -36,6 +36,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ### Fixed
 - **A chat transcript with short lines was folded into the instructor message log once per line** (#811): `instrLogTick` keys a message on its first 160 characters, which change whenever a line shorter than that is followed by the next — measured in headless Edge, the opener's whole conversation (End and "reveal all" included) appeared twice. Chat mode now skips the fold, like the checklist case, and the chat topic keys on the scenario id (the chat block carries none). TMI-2's long lines had hidden it.
+- **Opener QA pass** (#811): (1) the rods ask graded on the button PRESS (`rod_start`), so a player holding INSERT at MED — ~23 steps per 30 s at 1× — got the 5× watch and the spray ask mid-hold; it now grades on the release (`rod_stop`/`rod_nudge`), gated by a held-button typical route in `run_opener` (red on the old trigger). (2) The trip line said "about 7 % of full heat from decay"; decay heat measures 5.0–5.2 % (7 % was core heat, decay plus the ~2 % fission); now "about 5 %", and the check reads `decay_heat_pct`. (3) "Not now" left the dismissed offer on screen (the old idle panel folded into the message log, buttons live) until reload; the fold now skips idle-to-idle redraws and strips the offer.
 
 ## [Alpha 1.8.0-rc9] — 2026-09-27
 
