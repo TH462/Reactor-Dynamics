@@ -353,12 +353,11 @@ var ROUTES = {
               * `~` row flashed off while the flow ramped), so the player's two presses are named:
               * HEATER OFF, then SPRAY MANUAL at 50 %, one per tick. */
              'cmd:set_heater': { policy: 'seq', cmds: [{ action: 'set_heater', power_pct: 0 }, { action: 'set_spray', open: true, pct: 50 }] },
-             /* step 4 RE-PACED 2026-09-25 (the rate rulings above): "Steps of 50 psi down to 720, then
-              * 25 psi down to 270, then 15 psi ... Wait about 6 plant-minutes between steps ... About
-              * three and a half hours in all." Measured 201.7 plant-min, 34 entries, tile peak -87/-90
-              * degF/hr (seeds 42/7). */
-             'cmd:set_steam_dump_setpoint': { policy: 'stair', from: 1020, to: 120, step: 15, wait_s: 360, stated_max_min: 225,
-               bands: [{ above: 720, step: 50, wait_s: 360 }, { above: 270, step: 25, wait_s: 360 }] } },
+             /* step 4 ONE ENTRY since 2026-09-28 (OWNER RULING, the automatic ramp — quoted on
+              * pwr2_dumpctl.js RAMP): the player types 120 psi once and the controller walks the
+              * working setpoint down at its fixed cooldown rate. The 2026-09-25 stair (50/25/15 psi
+              * every 6 plant-minutes, 34 entries) is retired with the card that asked for it. */
+             'cmd:set_steam_dump_setpoint': { policy: 'final', stated_max_min: 240 } },
     mistakes: [
       { id: 'pressure_sp_ramped', kind: 'press early', at: 'cmd:set_pressure_setpoint', set: { policy: 'default' } },
       { id: 'hpi_before_blocks', kind: 'wrong order', at: 'cmd:set_trip_block', set: { policy: 'seq', order: [2, 0, 1] } },
@@ -497,20 +496,18 @@ var MUTATIONS = [
    * 5 plant-minutes, HX SPLIT 12 % typed once (with that card's "lower to 10 %" response) -- raised
    * Cooldown Rate High at both steps (tile -240 degF/hr at step 4, -110 at step 11, measured). */
   { id: 'cooldown_old_pacing', leg: 'pwr_cooldown', route: 'typical', expect: 'rate',
-    why: 'cooldown 4 and 11 at the pre-ruling pacing (50 psi every 5 plant-minutes; HX SPLIT 12 %)',
-    override: { 'cmd:set_steam_dump_setpoint': { policy: 'stair', from: 1020, to: 120, step: 50, wait_s: 300 },
-                'cmd:set_rhr_hx:2': { policy: 'when', base_spec: { policy: 'seq', cmds: [{ action: 'set_rhr_hx', pct: 12 }] }, on: [
+    /* STEP 4's HALF RETIRED 2026-09-28 (the automatic ramp, OWNER RULING quoted on pwr2_dumpctl.js
+     * RAMP): the controller now paces any typed DUMP SETPOINT, so a stair of any spacing cannot raise
+     * the alarm at step 4 and that half of this witness went blind by design. The limiter itself is
+     * gated where it lives, run_pwr2_dumpctl (injection-proved). Step 11's half stands. */
+    why: 'cooldown 11 at the pre-ruling pacing (HX SPLIT 12 %)',
+    override: { 'cmd:set_rhr_hx:2': { policy: 'when', base_spec: { policy: 'seq', cmds: [{ action: 'set_rhr_hx', pct: 12 }] }, on: [
                   { ins: true, p: 'tavg_rate', op: '<', v: -55.6, cmd: { action: 'set_rhr_hx', pct: 10 } },
                   { ins: true, p: 'subcooling_margin', op: '<', v: 11.1, cmd: { action: 'set_spray', open: false } }] } } },
-  /* LAYMAN PASS 6 (2026-09-26) S-4: the spacing pass 6 actually achieved -- 34 entries in 139
-   * plant-minutes, 4.1 apart, where the card said 6 and gave "6 seconds at 60x" as the way to time
-   * it. The card now says to time it on the plant clock; this proves the rate check sees the
-   * reviewer's spacing (MEASURED on the stair alone: tile -117 degF/hr, Cooldown Rate High raised;
-   * a tile-reading hold at 60-85 degF/hr did NOT save it, the tile lags 600 s: -99 to -111). */
-  { id: 'cooldown_4min_waits', leg: 'pwr_cooldown', route: 'typical', expect: 'rate',
-    why: 'cooldown 4 at the spacing layman pass 6 achieved (4.1 plant-minutes, not 6)',
-    override: { 'cmd:set_steam_dump_setpoint': { policy: 'stair', from: 1020, to: 120, step: 15, wait_s: 246,
-      bands: [{ above: 720, step: 50, wait_s: 246 }, { above: 270, step: 25, wait_s: 246 }] } } },
+  /* RETIRED 2026-09-28: `cooldown_4min_waits` (layman pass 6 S-4, the stair at 4.1 plant-minutes, tile
+   * -117 degF/hr). Its subject -- a player pacing DUMP SETPOINT too fast -- no longer exists: the
+   * controller paces the typed target (OWNER RULING, the automatic ramp, quoted on pwr2_dumpctl.js
+   * RAMP), so the mutation went blind by design. The limiter is gated in run_pwr2_dumpctl. */
   /* LAYMAN PASS 6 (2026-09-26): the two cards pass 6 met, re-opened on the pool in the child. */
   { id: 'cooldown11_old_watch', leg: 'pwr_cooldown', route: 'typical', expect: 'forbid',
     why: 'cooldown 11 as pass 6 met it: one row at 600x, the spray-off a note ("if it falls below 20 degF, press OFF under SPRAY now")',
@@ -540,9 +537,10 @@ var MUTATIONS = [
       /* #807 item 2: 8b latches and a cont under 8c re-asserts the band -- widen that one too, or this goes blind */
       P.steps[7].accs.forEach(function (e) { if (e.cont && e.p === 'tavg_c') { e.v = 303.2; e.tol = 8; } });
     } },
-  { id: 'cooldown_until_flat', leg: 'pwr_cooldown', route: 'typical', expect: 'stated',
-    why: 'cooldown 4 as the OLD card read it: after each 50 psi, wait until the whole-degree tile reads the same twice, 5 plant-minutes apart',
-    override: { 'cmd:set_steam_dump_setpoint': { policy: 'stair', from: 1020, to: 120, step: 50, read_s: 300, stated_max_min: 120 } } },
+  /* RETIRED 2026-09-28: `cooldown_until_flat` (cooldown 4 as a stair read "until flat"). The card has no
+   * stair to read any more -- one typed target (the automatic ramp) -- so there is no old wording to
+   * re-open; kept as a stair it would still red on `stated`, but only because the limiter makes any
+   * stair take ~3.4 plant-hours, which is not what it claimed to witness. */
   /* LAYMAN PASS 7 (2026-09-26) S-1: raise-power 5b back to the cmd-kind "Rods withdrawn" row, on
    * the route whose stage 5 never leaves its band. Measured on the old card: 0 steps withdrawn,
    * every graded row reading met, Continue dark until a rod press the text argued against. */

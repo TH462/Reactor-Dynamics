@@ -1165,7 +1165,6 @@ if (!only && RUN_B) {
       var svc = mkSvc('hot_zero_power');
       svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_cooldown' });
       var s = null, didBoron = false, didPressure1 = false, didTripBlocks = false, rampIdx = 0;
-      var rampPoints = [7.03, 4.42, 2.76, 1.66, 0.83];
       for (var i = 0; i < maxTicks; i++) {
         s = svc.tick();
         var c = s.instructor && s.instructor.checklist;
@@ -1187,10 +1186,11 @@ if (!only && RUN_B) {
           if (tavgAtStep3) svc.handleCommand({ action: 'set_steam_dump', mode: 'tavg' });   // the lamp stays lit
           didTripBlocks = true;
         }
-        // step 4 (index 3): drive the dump setpoint ramp; NEVER press set_steam_dump auto.
-        if (c.step_index === 3 && i % 20 === 0) {
-          rampIdx = Math.min(rampPoints.length - 1, rampIdx + 1);
-          svc.handleCommand({ action: 'set_steam_dump_setpoint', mpa: rampPoints[rampIdx] });
+        // step 4 (index 3): type the 120 psi target ONCE (2026-09-28, the automatic ramp - the
+        // controller paces it); NEVER press set_steam_dump auto.
+        if (c.step_index === 3 && rampIdx === 0) {
+          rampIdx = 1;
+          svc.handleCommand({ action: 'set_steam_dump_setpoint', mpa: 0.8274 });
         }
         if (c.awaiting_ack && !c.complete) svc.handleCommand({ action: 'checklist_check', index: c.step_index });
       }
@@ -1229,7 +1229,9 @@ if (!only && RUN_B) {
       return result;
     }
 
-    var cdFixed = driveCooldownStep4(6000);
+    /* 18000 ticks (1 s each at 10x), was 6000: since the automatic ramp (2026-09-28) step 4 is a
+     * paced 60 degF/hr walk, ~3.4 plant-hours after the ~1.1 h boration; 6000 reached 503.4 degF. */
+    var cdFixed = driveCooldownStep4(18000);
     ck('pwr_cooldown step 4 completes with the fix, AUTO never pressed (#697)',
        cdFixed.done === false && cdFixed.step >= 4,
        'tavg reached ' + (cdFixed.tavg_c != null ? (cdFixed.tavg_c * 9 / 5 + 32).toFixed(1) + ' degF (' + cdFixed.tavg_c.toFixed(1) + ' degC)' : '?') + ', advanced to step_index ' + cdFixed.step);
@@ -4060,7 +4062,7 @@ if (!only && RUN_B) {
        * (DUMP SETPOINT 720 / 270 psi) and 11a (HX SPLIT raised to 9 %), all control-state rows, so
        * instrument-graded and sole unchanged. SUM on a merge. */
       ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 item 2 merge): 84 / 172 / 100 / 25 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added, raise-power 10-12 removed, cooldown 4b/4c/11a added; 807g: 84 / 173 / 101 / 25, cooldown 11b SUBCOOLING MARGIN row)',
-         gradedSteps === 85 && predRows === 180 && rows.length === 103 && soleInst === 23,   /* #809 playtest 2026-09-28: cooldown 10b 'Leave SPRAY at 50 %' row removed by owner report -- -1 predicate, -1 instrument-graded (pzr_spray_flow), 10a RCP FLOW becomes the step's only row: MEASURED 85/180/103/23 */   /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
+         gradedSteps === 85 && predRows === 179 && rows.length === 103 && soleInst === 23,   /* MERGED 2026-09-28 (#809 spray-row cut + automatic ramp): SUM of both, -1 predicate each -- 85/179/103/23, measure on the post-merge run */   /* #809 playtest 2026-09-28: cooldown 10b 'Leave SPRAY at 50 %' row removed by owner report -- -1 predicate, -1 instrument-graded (pzr_spray_flow), 10a RCP FLOW becomes the step's only row: MEASURED 85/180/103/23 */   /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */   /* 2026-09-28 automatic ramp: cooldown 4b/4c/4d (DUMP SETPOINT 720, 270, Tavg) -> 4b/4c (DUMP SETPOINT 120, Tavg), -1 predicate row, a control-state row, so instrument-graded and sole unchanged -- MEASURED 85/180/104/22 */ /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();

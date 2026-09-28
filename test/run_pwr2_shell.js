@@ -2959,6 +2959,52 @@ function runSuite(SH, rec, quiet, only) {
        ' of rated (measured 0.41-0.46 at the 30-min settle of the AFAS variant)');
   })();
   }
+
+  /* ---- THE COOLDOWN RATE LIMIT ON THE PLANT (OWNER RULING 2026-09-28, the automatic ramp —
+   * quoted on pwr2_dumpctl.js RAMP; DESIGN_COMPANION §8.38) -----------------------------------
+   * run_pwr2_dumpctl pins the WORKING SETPOINT's walk against a stub; this is the claim the
+   * ruling is about — the PLANT's cooldown. Hot Standby, pressure mode, DUMP SETPOINT typed
+   * 1020 -> 814 psi (7.03 -> 5.61 MPa) in one entry: 27 degF (15 degC) of saturation drop, a
+   * ~27 plant-minute walk at 60 degF/hr. MEASURED (2026-09-28, engine-direct, this fixture):
+   * 1-minute Tavg rate -58 to -68 degF/hr through the walk (the PI modulates the valve 0-4 %),
+   * steam 813.6 psia at +30 min against 813.7. The band on the rate is the limit x 1.25 — the
+   * PI's own modulation, declared — and the lower band proves the walk is not a crawl.
+   * Pre-ruling plant (limiter deleted): the same entry cools at hundreds of degF/hr in the
+   * first minutes. The clean run only — shell-source mutations cannot move a dumpctl claim, and
+   * a 30-plant-minute ride per untagged replay is ~15 s x the untagged count. */
+  if (only === 'CR' || (only === undefined && !quiet)) {
+  head('THE COOLDOWN RATE LIMIT ON THE PLANT  [a typed DUMP SETPOINT is a target, walked at the limit]');
+  (function () {
+    var eR = new SH.PWR2Engine({ initial_state: 'hot_zero_power' });
+    run(eR, 60);
+    var limF = globalThis.RD.pwr2.dumpctl.RAMP.cooldown_f_per_hr;
+    var T0 = eR.getTrueState().tavg_c, Tp = T0, worst = 0, arriveMin = null;
+    eR.applyCommand({ action: 'set_steam_dump_setpoint', mpa: 5.61 });
+    for (var m = 1; m <= 35; m++) {
+      run(eR, 60);
+      var Tm = eR.getTrueState().tavg_c, rF = (Tm - Tp) * 60 * 1.8;
+      Tp = Tm;
+      if (rF < worst) worst = rF;
+      if (arriveMin === null && eR.eng.dc.pressure_setpoint_mpa <= 5.61 + 1e-9) arriveMin = m;
+    }
+    var cs = eR.getControlState(), P = eR.eng.sg.P;
+    ck('a 1020 -> 814 psi DUMP SETPOINT entry cools the plant no faster than the limit (worst ' +
+       '1-minute Tavg rate within ' + limF + ' degF/hr x 1.25)',
+       worst >= -1.25 * limF && worst < -0.8 * limF,
+       'worst ' + worst.toFixed(1) + ' degF/hr against a ' + limF + ' degF/hr limit');
+    ck('...and it still ARRIVES: the working setpoint reaches the target and the steam header ' +
+       'sits on it (within 3 psi)',
+       arriveMin !== null && Math.abs(P - 5.61) * 145.0377 < 3 &&
+       Math.abs(cs.steam_dump_setpoint - 5.61) < 1e-9,
+       'working setpoint at target by +' + arriveMin + ' min; steam ' + (P * 145.0377).toFixed(1) +
+       ' psia; the box reads ' + (cs.steam_dump_setpoint * 145.0377).toFixed(1) + ' psi throughout');
+    eR.applyCommand({ action: 'set_steam_dump_setpoint', mpa: 7.03 });
+    run(eR, DT);
+    ck('an UPWARD entry is not limited: the working setpoint is back on 1020 psi one step later',
+       eR.eng.dc.pressure_setpoint_mpa === 7.03,
+       (eR.eng.dc.pressure_setpoint_mpa * 145.0377).toFixed(1) + ' psia working setpoint');
+  })();
+  }
 }
 
 console.log('\nPWR2 -- THE SHELL CLASS (Option B stage B2): the surface the stack holds');
