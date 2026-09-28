@@ -441,26 +441,48 @@ async function traffic() {
 
   await trafficEastern();
 
-  await sec('traffic_paths', 'Top pages', ['path', ...COLS],
-    async () => rumRows(await gql(rumGroup('requestPath', 'count_DESC', 15)), (d) => ({ path: d.requestPath })));
+  /* THE BREAKDOWNS READ THE STORE FIRST (2026-09-28). Asked live, Cloudflare rounds every
+   * breakdown to the nearest 10 once a group reaches past its 7-day exact tier — the
+   * default --days=7 run came back `cf~10` on all four, which read "Germany ~40 %" off a
+   * rounded 80 when the store's exact figure was 78 of 334, behind the US. `traffic_daily`
+   * carries every one of these dimensions, exact, for every closed Eastern day. Today is
+   * not in it (no row until the nightly cron), so these tables cover CLOSED days only and
+   * say so; the Cloudflare path remains, labelled `cf~N`, only when the store is
+   * unreachable. `country` is the two-letter code here, the full name on the fallback. */
+  const { from: bFrom, to: bTo } = closedDayWindow(DAYS, new Date());
+  const breakdown = (col, label, limit, cfDim, cfMap) => async () => {
+    try {
+      const rows = await d1Query(
+        `SELECT ${col} AS k, SUM(pageloads) AS pageloads, SUM(visits) AS visits FROM traffic_daily` +
+        ` WHERE day >= '${bFrom}' AND day <= '${bTo}' AND bot = 0 GROUP BY ${col}` +
+        ` ORDER BY pageloads DESC LIMIT ${limit}`);
+      return rows.map((r) => ({ [label]: r.k === '' ? '(direct)' : r.k,
+        pageloads: num(r.pageloads), visits: num(r.visits), source: 'store' }));
+    } catch (e) {
+      return rumRows(await gql(rumGroup(cfDim, 'count_DESC', limit)), cfMap);
+    }
+  };
+  const SPAN = `closed days ${bFrom} → ${bTo} ET`;
 
-  await sec('traffic_referers', 'Where they came from', ['referer', ...COLS],
-    async () => rumRows(await gql(rumGroup('refererHost', 'count_DESC', 15)),
-      (d) => ({ referer: d.refererHost || '(direct)' })));
+  await sec('traffic_paths', `Top pages (${SPAN})`, ['path', ...COLS],
+    breakdown('path', 'path', 15, 'requestPath', (d) => ({ path: d.requestPath })));
 
-  await sec('traffic_countries', 'Countries', ['country', ...COLS],
-    async () => rumRows(await gql(rumGroup('countryName', 'count_DESC', 15)), (d) => ({ country: d.countryName })));
+  await sec('traffic_referers', `Where they came from (${SPAN})`, ['referer', ...COLS],
+    breakdown('referrer_host', 'referer', 15, 'refererHost', (d) => ({ referer: d.refererHost || '(direct)' })));
 
-  await sec('traffic_devices', 'Devices', ['device', ...COLS],
-    async () => rumRows(await gql(rumGroup('deviceType', 'count_DESC', 10)), (d) => ({ device: d.deviceType })));
+  await sec('traffic_countries', `Countries (${SPAN})`, ['country', ...COLS],
+    breakdown('country', 'country', 15, 'countryName', (d) => ({ country: d.countryName })));
+
+  await sec('traffic_devices', `Devices (${SPAN})`, ['device', ...COLS],
+    breakdown('device', 'device', 10, 'deviceType', (d) => ({ device: d.deviceType })));
 
   /* Report what came BACK, not what was asked for. This used to open "Window > 7 days:",
    * which is a claim about the window rather than about the answer — and the dashboard's
    * copy of that sentence spent three days telling the one person who could have caught
    * it that a 7-day window was the reason a 7-day window was rounding (#485). */
   if (rumCoarse > 1 && !JSON_OUT) {
-    console.log(`\n  ${C.y}Cloudflare answered from a coarser tier, so these counts are rounded to`);
-    console.log(`  the nearest ${rumCoarse}. Only the last 7 days are held at full resolution.${C.x}`);
+    console.log(`\n  ${C.y}Rows tagged cf~${rumCoarse} came from Cloudflare's coarser tier and are rounded to`);
+    console.log(`  the nearest ${rumCoarse}; \`store\` rows are exact. Cloudflare holds only 7 days at full resolution.${C.x}`);
   }
   OUT.traffic_granularity = rumCoarse;
 }
