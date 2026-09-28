@@ -287,10 +287,8 @@
         dialogue: [
           say('All rods dropped. Neutron power fell to about 2 % in seconds, but the fuel still makes about 5 % of full heat from decay.',
               'Reactor tripped. Neutron power about 2 %; decay heat about 5 %.'),
-          say('The strip chart now shows Power, Decay Heat and Tavg.',
-              'Strip chart: Power, Decay Heat, Tavg.'),
-          say('See Decay Heat on the strip chart. It starts near 5 % and falls slowly over minutes, while neutron power drops to zero in seconds.',
-              'Decay heat starts near 5 %, falling slowly over minutes; neutron power to zero in seconds.'),
+          say('The strip chart now shows Power, Decay Heat and Tavg. Decay Heat falls slowly, over minutes; Power keeps falling toward zero.',
+              'Strip chart: Power, Decay Heat, Tavg. Decay heat decreasing slowly over minutes; neutron power continuing toward zero.'),
         ],
         advance: 'wait_for_trigger' },
       { id: 'o12_settle',
