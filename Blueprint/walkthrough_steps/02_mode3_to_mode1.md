@@ -107,7 +107,7 @@ Auxiliary feed puts back the water that leaves as steam, which holds SG level be
 
 Suggested time warp: 1×.
 
-Note: Every count target on this walkthrough is the SOURCE RANGE reading, printed in shorthand: 7.0e2 is 700 counts a second, 1.4e3 is 1,400, 7.0e3 is 7,000. The 1/M PLOT window covers STEAM GENERATOR LEVEL: close it with the ✕ in its corner between points, and press 1/M PLOT to bring it back.
+Note: Every count target on this walkthrough is the SOURCE RANGE reading, printed in shorthand: 7.0e2 is 700 counts a second, 1.4e3 is 1,400, 7.0e3 is 7,000. The 1/M PLOT window covers the upper right of the board, STEAM GENERATOR LEVEL and the pause button included: close it with the ✕ in its corner between points, and press 1/M PLOT to bring it back.
 
 
 
@@ -127,9 +127,9 @@ The panel fits the last three points, so each new point sharpens the prediction.
 
 ()5a. Hold CONTROL WITHDRAW at MED until SOURCE RANGE reads 7.0e2 or more, then watch it for 5 seconds: the count jumps about 15 % either way.
 
-Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 75 to 80; the position shifts with boron and recent power, the count does not. The check-off waits for SOURCE RANGE to stay at 7.0e2 or more, not just touch it. If it only touches 7.0e2 now and then, or is still short at 80, tap WITHDRAW one step and wait half a plant-minute. Repeat until it stays there.
+Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 70 to 80; the position shifts with boron and recent power, the count does not. The check-off waits for SOURCE RANGE to stay at 7.0e2 or more, not just touch it. If it only touches 7.0e2 now and then, or is still short at 80, tap WITHDRAW one step and wait half a plant-minute. Repeat until it stays there.
 
-()5b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point.
+()5b. Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point.
 
 Note: STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop. If BORON still reads above 719 ppm, the step 2 dilution is still adding reactivity and STARTUP RATE takes longer to fall.
 
@@ -155,7 +155,7 @@ While the reactor is shut down, SOURCE RANGE counts are the only thing that show
 
 Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 150 to 155. The check-off waits for SOURCE RANGE to stay at 1.4e3 or more. If it only touches 1.4e3 now and then, or is still short at 155, tap WITHDRAW one step and wait half a plant-minute. Repeat until it stays there.
 
-()6b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the predicted rod position the panel prints.
+()6b. Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and read the predicted rod position the panel prints.
 
 Note: STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop.
 
@@ -181,7 +181,7 @@ That number still reads high. It improves with every point.
 
 Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 190 to 192. The check-off waits for SOURCE RANGE to stay at 3.0e3 or more. If it only touches 3.0e3 now and then, or is still short at 192, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.
 
-()7b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point and read the prediction again.
+()7b. Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and read the prediction again.
 
 Suggested time warp: 10×, set by itself once the rods start moving.
 
@@ -203,9 +203,9 @@ The prediction is starting to be useful, which makes the wait matter more. While
 
 Note: On a fresh core at 719 ppm the count reaches 7.0e3 about when CONTROL ROD POSITION reaches 205. Do not hold past 205. The check-off waits for SOURCE RANGE to stay at 7.0e3 or more: if it only touches 7.0e3 now and then, or is still short at 205, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps. Stay at least 3 steps below the position the 1/M panel predicts.
 
-()8b. Wait for STARTUP RATE to read +0.03 or less, then press Plot point and note the critical rod position the 1/M panel predicts.
+()8b. Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and note the critical rod position the 1/M panel predicts.
 
-Suggested time warp: 10×.
+Suggested time warp: 5× while the rods move, then 10×, set by itself.
 
 Note: After a pull to about 205, STARTUP RATE takes about 5½ to 6½ plant-minutes to reach +0.03; after a shorter pull it gets there sooner. A point plotted before it reads +0.03 puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 10 asks for shows 3 to 5 steps past the predicted position (measured).
 
@@ -337,6 +337,8 @@ Note: Typing starts the main feed pumps in MAN at that flow; MAN alone starts th
 
 ()13b. Press AUTO on the SG FEED card and check AUTO is lit.
 
+Note: The card then reads HOLDING: its automatic controller is holding STEAM GENERATOR LEVEL.
+
 ()13c. Press STOP on the AUX FEED WATER card and check the card reads STANDBY.
 
 Note: STANDBY means both aux feed pumps are stopped but still armed. If STEAM GENERATOR LEVEL falls to 17 % they start by themselves, and the same signal trips the reactor.
@@ -359,11 +361,11 @@ Main feed goes in by hand first. Its AUTO controller aims for 65 %, and switched
 
 *Mode 1 begins at 5 %, and the steps after this one need power higher still.*
 
-()14a. Press SLOW. Tap WITHDRAW twice (2 steps). STARTUP RATE rises for a while after the taps: wait for it to peak and fall back to +0.10 or less. Repeat until REACTOR POWER reads above 5 %.
+()14a. Press SLOW. Tap WITHDRAW twice (2 steps), then wait one plant-minute while STARTUP RATE rises and falls back. Repeat until REACTOR POWER reads above 5 %.
 
 Suggested time warp: 5×.
 
-Note: Each pull lifts STARTUP RATE and the warming water brings it back down; waiting for it keeps the climb gentle. Expect about 5 pulls and 5 plant-minutes. Power keeps climbing for a while after the last pull. It passes 9½ % once the turbine takes load in the next step. It needs to: the two startup trips cannot be blocked until REACTOR POWER is above 9½ %.
+Note: Each pull lifts STARTUP RATE and the warming water brings it back down; waiting the minute keeps the climb gentle. Expect about 4 pulls and 3 to 4 plant-minutes. Power keeps climbing for a while after the last pull. It passes 8½ % once the turbine takes load in the next step. It needs to: the two startup trips cannot be blocked until REACTOR POWER is above 8 %.
 
 
 
@@ -409,13 +411,15 @@ As the generator picks up load, more steam is drawn, the water cools, and cooler
 
 *Left live, this trip shuts the reactor down at 25 % on the way up.*
 
-()16a. Wait for REACTOR POWER to read above 9½ %, then press TRIP BLOCKS on the ROD CONTROL card and BLOCK on the IR HIGH FLUX row (IR is INTER RANGE). Check the row reads BLOCKED.
+()16a. Wait for REACTOR POWER to read 8.5 % or more.
 
 Suggested time warp: 1×.
 
-Note: Do this the moment REACTOR POWER is above 9½ %. Below 8 % the BLOCK button will not take the press at all. Between 8 % and about 9½ % it takes it, then the block goes out again by itself: its automatic permission, which the panel calls P-10 PERMISSIVE, is read off REACTOR POWER, and that reading wanders about ±0.3 % and dips back under. If that happens, let power come up and press it again. The reactor keeps climbing while the panel is open.
+Note: Below 8 % the BLOCK button will not take the press: its automatic permission, which the panel calls P-10 PERMISSIVE, is read off REACTOR POWER. 8.5 % leaves room for the reading to wander. If power ever stays under 8 % for two seconds, the block goes out by itself.
 
+()16b. Press TRIP BLOCKS on the ROD CONTROL card and BLOCK on the IR HIGH FLUX row (IR is INTER RANGE). Check the row reads BLOCKED.
 
+Note: If the block goes out again by itself, let power come up and press it again. The reactor keeps climbing while the panel is open. The SR HIGH FLUX row now warns that releasing it would trip the reactor: at this power that is true, so leave it blocked.
 
 Background
 
@@ -423,7 +427,7 @@ Two automatic shutdowns, or trips, exist only to protect a startup: one at 25 % 
 
 The plant keeps checking that power is still up there, and unblocks them by itself if it falls, whoever blocked them.
 
-\[HIGHLIGHTED: Trip Blocks (pulsing)]
+\[HIGHLIGHTED: Trip Blocks (pulsing); Reactor Power (steady)]
 
 
 
@@ -1269,3 +1273,25 @@ Record and every number: `Diagnostic/TUNING_LOG.md` 2026-09-26-develop-f.
   >= 5.05`); the route now pulls only after the rate has come off its post-tap peak. MEASURED, seed 42:
   identical to the old reader (5 pulls, 4.7 plant-min, peak STARTUP RATE 0.25 DPM), because at SLOW the
   rate is already over +0.10 by the time the rods stop — so the wording fixes the reading, not the route.
+
+### Layman pass 14 + pass-13 review — 2026-09-28 (develop), #809
+
+- **Brought down from the built pool** (this file had lagged pass 13): 5a "70 to 80"; 5b-8b "press 1/M
+  PLOT, then Plot point"; 13b's HOLDING note; 16 split into 16a (wait) and 16b (press).
+- **8: 5× while the rods move, then 10×** *(OWNER RULING, 2026-09-28, option D: "In step 8 5x while the
+  rods move.")*. Field `moving_speed: 5`. MED is 0.8 steps a plant-second, so a hold let go half a
+  wall-second after 205 lands at 209 at 10× and 207 at 5×. MEASURED, typical route seed 42, pull to:
+  205 completes (step 8 7.0 plant-min); 207 completes (rho +0.3 pcm, step 8 13.1 plant-min); 208 and 209
+  TRIP on SR HIGH FLUX inside step 8.
+- **14a: "then wait one plant-minute while STARTUP RATE rises and falls back"** (S-1). The old "+0.10 or
+  less" cue never fired for a player who waited out each pull (the tile peaked at +0.06 to +0.07; 3 pulls,
+  16 plant-min). MEASURED on the new route: 4 pulls, 3.42 / 3.44 plant-min (typical / pass-3 base, seed
+  42), 4.00 (seed 7); peak STARTUP RATE 0.17-0.18. Note now "about 4 pulls and 3 to 4 plant-minutes".
+- **16a at 8.5 %, not 9.5 %** (review item 3). The "goes out again by itself between 8 and 9½ %" note
+  predates the 2.0 s P-10 revoke confirmation (#752). MEASURED: blocked at 8.46-8.47 % on both routes
+  and seed 7, still BLOCKED at every sample through 17 and 18. 16b gains one line on the SR HIGH FLUX
+  row's release warning (S-5), which is standing and true at this power (run_pwr2_board pins it).
+- **4a note: the window covers the upper right of the board, pause button included** (S-6).
+- **5b-8b: the plot press waits for its cue** (S-3): `hl_when` STARTUP RATE under +0.035 keeps the 1/M PLOT
+  / Plot point pulse dark until the tile reads +0.03. MEASURED before: the pulse lit 1.5 (7b) and 6 (8b)
+  plant-minutes early, at +0.11 and +0.18. Display only, grading unchanged.

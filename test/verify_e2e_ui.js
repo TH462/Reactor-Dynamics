@@ -3112,8 +3112,21 @@ async function testWalkthroughHoldReleasedOnExit(page) {
  * two-step procedure, so the plant state the earlier tests leave behind cannot meet the rows: a
  * never-met row lighting WITHDRAW, then a plot row with the window shut. REAL pointer presses at
  * real coordinates, for the reason the #755 item 19 block gives. */
+/* STARTS FROM ITS OWN PAGE LOAD (#809 pass-13 review item 4): it used to inherit the previous
+ * test's page — TRIP BLOCKS popover and all — which is the likeliest cause of the pass-13 agent's
+ * full-run-red / solo-green split. Extended 2026-09-28 (layman pass 14 + review):
+ *   step 3 (S-2): every row met on a step whose `hl` is STEP-LEVEL pulses nothing;
+ *   step 4 (S-3): a plot row whose `hl_when` reads false pulses neither Plot point nor its opener;
+ *   the opener's card (ROD CONTROL) wears the panel glow while 1/M PLOT carries the pulse (item 6);
+ *   step 5 (OWNER RULING 2026-09-28, D): `moving_speed` 5 plays 5x while the bank moves, 10x after;
+ *   and after the run ends a click on empty board leaves NO `.ckl-step-glow` (review item 1).
+ * Injection-proven 2026-09-28 — see the report on #809 for each red. */
 async function testHeldAndOpenerGlow(page) {
   var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1',
+                  { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
   await page.evaluate(function () {
     var P = globalThis.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_glow_probe'; });
     globalThis.RD.MANUAL_PROCEDURES.pwr2 = P;
@@ -3122,7 +3135,15 @@ async function testHeldAndOpenerGlow(page) {
              steps: [{ text: 'Hold WITHDRAW.', control: 'Control Bank', press_expected: true, hl: ['Withdraw'],
                        accs: [{ p: 'power_pct', op: '<', v: -1, hl: ['Withdraw'], ask: 'Hold WITHDRAW.', label: 'Never met' }] },
                      { text: 'Plot.', control: '1/M Plot', hl: ['Plot point'],
-                       accs: [{ cmd: 'plot_1m_point', hl: ['Plot point'], ask: 'Press 1/M PLOT, then Plot point.', label: 'Point plotted' }] }] });
+                       accs: [{ cmd: 'plot_1m_point', hl: ['Plot point'], ask: 'Press 1/M PLOT, then Plot point.', label: 'Point plotted' }] },
+                     { text: 'Already done.', control: 'Control Bank', press_expected: true, hl: ['Withdraw'],
+                       accs: [{ p: 'power_pct', op: '>', v: -1, ask: 'Nothing left to do.', label: 'Always met' }] },
+                     { text: 'Wait, then plot.', control: '1/M Plot', hl: ['Plot point'],
+                       accs: [{ cmd: 'plot_1m_point', hl: ['Plot point'], hl_when: { p: 'power_pct', op: '<', v: -1 },
+                                ask: 'Wait for a cue that never comes, then plot.', label: 'Point plotted' }] },
+                     { text: 'Pull.', control: 'Control Bank', cmd: { action: 'rod_nudge', group_id: 'control', steps: 1, speed: 'normal' },
+                       hl: ['Withdraw'], hold: 600, wait_speed: 10, moving_speed: 5,
+                       accs: [{ p: 'power_pct', op: '<', v: -1, ask: 'Never met.', label: 'Never met' }] }] });
     var w = document.querySelector('#oomWin [data-oom="close"]');
     if (w && w.getClientRects().length) w.click();
   });
@@ -3184,11 +3205,95 @@ async function testHeldAndOpenerGlow(page) {
     throw new Error('#809 S-2: after 1/M PLOT opened the window the pulse did not move onto Plot point — ' + JSON.stringify(open));
   }
   log.push('Plot point: window shut -> 1/M PLOT pulses; pressed -> window open, Plot point pulses, opener dark');
+  function cardLit() {
+    return page.evaluate(function () {
+      var r = globalThis.RD.PwrBoardInspect.glowRole('Plot point');
+      var el = r && r.panel ? globalThis.RD.PwrBoard.haloElement(r.panel) : null;
+      return { panel: r && r.panel, lit: !!(el && el.classList.contains('ckl-panel-glow')) };
+    });
+  }
+  var cOpen = await cardLit();
+  /* the window closed PROGRAMMATICALLY (no pointer): the opener pulse and its card must come back */
+  await page.evaluate(function () { globalThis.RD.OneOverM.close(); });
+  await page.waitForTimeout(400);
+  var shut2 = await read(), cShut = await cardLit();
+  if (shut2.op !== 'pulse') throw new Error('#809 review item 6: the 1/M window shut by code, and 1/M PLOT did not re-pulse — ' + shut2.op);
+  if (!cShut.lit) throw new Error('#809 review item 6: 1/M PLOT pulses but its card (' + cShut.panel + ') is not lit — every lit control lights its card');
+  log.push('opener card: ' + cShut.panel + ' lit while 1/M PLOT pulses (window open: lit=' + cOpen.lit + '); programmatic close re-pulses the opener');
+  async function jump(i) {
+    await page.evaluate(function (i) {
+      /* `accsState = null`: the per-row latches are the PREVIOUS step's until cleared, and a stale
+       * "met" read here makes every-row-met true on a step whose row can never be met */
+      var c = globalThis.RD.__dev.service().instructor.checklist; c.idx = i; c.stepAt = null; c.awaitingAck = false; c.cmdSeen = true;
+      c.accsState = null; c.accStreak = 0; c.accMetNow = false;
+    }, i);
+    await page.waitForFunction(function (i) {
+      var el = document.querySelector('.ckl-step[data-ckl-step]');
+      return !!el && el.getAttribute('data-ckl-step') === String(i);
+    }, i, { timeout: 15000, polling: 100 });
+    await page.waitForTimeout(400);
+  }
+  await jump(2);
+  /* the row is graded on the broadcast AFTER the jump; read once the card says every row is met */
+  await page.waitForFunction(function () {
+    var b = globalThis.RD.__dev.service()._instructorBlock(), c = b && b.checklist;
+    return !!c && c.step_index === 2 && !!(c.accs && c.accs[0] && c.accs[0].met);
+  }, { timeout: 15000, polling: 100 });
+  await page.waitForTimeout(600);
+  var met = await read();
+  if (met.w !== 'none') {
+    throw new Error('#809 layman pass 14 S-2: every row met and Continue lit, and WITHDRAW (a STEP-level `hl`) still reads "' + met.w + '" — nothing may pulse');
+  }
+  log.push('every row met (step-level hl): WITHDRAW ' + met.w);
+  await jump(3);
+  /* not vacuous: the plot row must be the ACTIVE substep (head 0), not "every row met" */
+  await page.waitForFunction(function () {
+    var el = document.querySelector('.ckl-step[data-ckl-step]');
+    return !!el && el.getAttribute('data-ckl-hl-head') === '0';
+  }, { timeout: 15000, polling: 100 });
+  var cue = await read();
+  if (cue.op !== 'none' || cue.pp === 'pulse') {
+    throw new Error('#809 layman pass 14 S-3: `hl_when` reads false and the plot press still pulses — opener ' + cue.op + ', Plot point ' + cue.pp);
+  }
+  log.push('hl_when false: 1/M PLOT ' + cue.op + ', Plot point ' + cue.pp);
+  /* OWNER RULING 2026-09-28 (option D): "In step 8 5x while the rods move." */
+  await jump(4);
+  /* no set_speed here: a speed press is the PLAYER taking the clock (cklAuto.over), which would blind the injection */
+  await page.waitForTimeout(1500);
+  var still = await page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
   await page.evaluate(function () {
+    globalThis.RD.__dev.service().handleCommand({ action: 'rod_nudge', group_id: 'control', steps: -40, speed: 'normal' });
+  });
+  await page.waitForFunction(function (st) { return globalThis.RD.__dev.service().timeAcceleration !== st; }, still, { timeout: 4000, polling: 100 }).catch(function () {});
+  var mv = await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service(), e = svc.engine && svc.engine.eng;
+    return { acc: svc.timeAcceleration, rod: e ? e.rodSteps + '->' + e.rodTarget : '?', run: svc.running, t: svc.simTime };
+  });
+  await page.waitForFunction(function () {
+    var s = globalThis.RD.__dev.service();
+    return s.timeAcceleration === 10;
+  }, { timeout: 30000, polling: 200 }).catch(function () {});
+  var after = await page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  /* before the pull auto holds 1x by design (the action first, then the wait: cklActionPending, #653 S-1) */
+  if (mv.acc !== 5) throw new Error('OWNER RULING 2026-09-28 (D): with the bank moving the walkthrough must play 5x — read ' + mv.acc + 'x (rods ' + mv.rod + ', still ' + still + 'x, running ' + mv.run + ', t ' + mv.t + ')');
+  if (after !== 10) throw new Error('OWNER RULING 2026-09-28 (D): once the bank stops the step rung (10x) must return — read ' + after + 'x');
+  log.push('moving_speed: still ' + still + 'x, moving ' + mv.acc + 'x, stopped ' + after + 'x');
+  await page.evaluate(function () {
+    globalThis.RD.__dev.service().handleCommand({ action: 'set_speed', value: 1 });
     globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' });
     var w = document.querySelector('#oomWin [data-oom="close"]'); if (w && w.getClientRects().length) w.click();
     globalThis.RD.MANUAL_PROCEDURES.pwr2 = globalThis.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_glow_probe'; });
   });
+  /* #809 pass-13 review item 1: End walkthrough, then a click on empty board, and nothing pulses */
+  await page.waitForFunction(function () { return !document.querySelector('.ckl-step[data-ckl-step]'); }, { timeout: 10000, polling: 100 });
+  var bx = await page.evaluate(function () {
+    var r = document.querySelector('.pwr-board-stage').getBoundingClientRect(); return { x: r.left + 4, y: r.bottom - 4 };
+  });
+  await page.mouse.click(bx.x, bx.y);
+  await page.waitForTimeout(400);
+  var left = await page.evaluate(function () { return document.querySelectorAll('.ckl-step-glow').length; });
+  if (left !== 0) throw new Error('#809 pass-13 review item 1: the walkthrough is over and a click re-lit ' + left + ' .ckl-step-glow element(s)');
+  log.push('after the run: click on empty board, .ckl-step-glow count ' + left);
   return log.join('\n') + '\n';
 }
 
@@ -3936,6 +4041,24 @@ async function testWatchGlowRendered(page) {
       '"authors none paints none" cannot be asserted on real content — re-point this half.');
   }
   await startLeg(neg.pid, false);
+  /* THE NEGATIVE STEP'S ROW IS HELD UNMET (#809 layman pass 14 S-2, 2026-09-28). The step found is
+   * `pwr_startup` 17, whose one row (PR HIGH LOW SETPT blocked) the at-power free-play IC already
+   * meets; its "press labels" pulsed only because every-row-met fell back to the step's `hl` — the
+   * defect S-2 reported, which this fixture was standing on. A press step with its row unmet is the
+   * case the half below is about, so the snapshot says so; restored at the end of this test. */
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    if (svc.__origIB) return;
+    svc.__origIB = svc._instructorBlock;
+    svc._instructorBlock = function () {
+      var b = svc.__origIB.apply(svc, arguments);
+      if (b && b.checklist) {
+        b.checklist.acc_met = false; b.checklist.awaiting_ack = false;
+        (b.checklist.accs || []).forEach(function (a) { if (a) a.met = false; });
+      }
+      return b;
+    };
+  });
   var nr = await landOn(neg.idx);
   if (nr.idx !== neg.idx) {
     throw new Error('#685 fixture: ' + neg.pid + ' advanced off step ' + (neg.idx + 1) + ' to step ' +
@@ -4088,7 +4211,11 @@ async function testWatchGlowRendered(page) {
       treat.watch.anim + ', shadow ' + treat.watch.shadow.slice(0, 40) + '…');
   }
 
-  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    if (svc.__origIB) { svc._instructorBlock = svc.__origIB; delete svc.__origIB; }
+    svc.handleCommand({ action: 'stop_checklist' });
+  });
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
 }
 

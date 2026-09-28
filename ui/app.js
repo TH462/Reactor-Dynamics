@@ -4183,6 +4183,10 @@
     if (head >= 0 && a.st.accs[head].act_first) return a.ck.cmd_head !== head;
     return !a.st.wait_first && a.ck.cmd_seen === false;
   }
+  function cklRodsMoving(s) {
+    var gs = (s && s.control_state && s.control_state.rod_groups) || [];
+    return gs.some(function (g) { return g && g.function === 'control' && g.moving; });
+  }
   /* What speed should the plant be running at for the step on screen — null when no walkthrough
    * is running, in which case the clock is nobody's business but the player's. */
   function cklStepSpeed(s, a) {
@@ -4191,6 +4195,10 @@
     if (!rung) return 1;
     if (a.ck.acc_met || a.ck.awaiting_ack) return 1;      // the wait is over — hand it back
     if (rung.speed > 1 && cklActionPending(a)) return 1;  // the action first, then the wait (S-1)
+    /* `moving_speed` (startup 8 only) — the rung while the control bank is moving NOW, not merely
+     * once it has moved *(OWNER RULING, 2026-09-28, option D: "In step 8 5x while the rods move.")*.
+     * `moving` is the rod group's own live flag; the instant it drops, the step's rung returns. */
+    if (+a.st.moving_speed > 0 && rung.speed > +a.st.moving_speed && cklRodsMoving(s)) return +a.st.moving_speed;
     if (!rung.warp) return rung.speed;
     var p = s.metadata && s.metadata.pacing;
     if (!p || p.warp_available !== false) return rung.speed;
@@ -4376,6 +4384,12 @@
     var btns = $('cklBtns'); if (btns) { btns.hidden = true; btns.innerHTML = ''; }
     var row = $('instrCklRow'); if (row) row.hidden = !flagOn('checklists');
     clearCklStepGlow();
+    /* …AND THE PRESS MEMORY WITH IT (#809 pass-13 review, 2026-09-28). `cklLastGlow` is what every
+     * pointer release re-applies; left standing, the first click after End walkthrough / All
+     * walkthroughs / an engine swap re-lit the last step's pulse on a board with no walkthrough,
+     * and nothing ever cleared it again. */
+    cklLastGlow = null; cklPressStep = null; cklOpenerLabs = []; cklWhenLatch = Object.create(null);
+    cklPressed = Object.create(null); cklHeld = Object.create(null);
     clearCklWatchGlow();                      /* #685 — the watch ring has the same owner */
     clearCklSpeedGlow();                      /* #735 — and so does the speed rung */
     var card = $('instructorCard'); if (card) card.classList.remove('chat-mode');
@@ -4706,6 +4720,7 @@
   };
 
   function renderChecklist(s, ck) {
+    cklSnap = s;
     var cur = $('cklRun');
     if (!cur) return;
     var pr = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ck.procedure_id; })[0];
@@ -4763,6 +4778,12 @@
        * ring cleared reported rewind_ready false in the snapshot while the button on the board
        * stayed enabled, because nothing in the key had moved. */
       ck.awaiting_ack ? 1 : 0, ck.rewind_ready ? 1 : 0,
+      /* the active substep's `hl_when` (#809 layman pass 14 S-3): the pulse it gates moves while
+       * nothing else here does, so it joins the key (latched, so it moves once per substep) */
+      cklHlWhenKey(pr, ck),
+      /* …and, on the one step that authors `moving_speed`, whether the bank is moving (the speed
+       * rung it marks follows the rods, OWNER 2026-09-28) */
+      (pr && pr.steps[ck.step_index] && pr.steps[ck.step_index].moving_speed) ? (cklRodsMoving(s) ? 'm1' : 'm0') : '',
       /* the two fold-state components left the key with the fold itself (#737) */
       ui.units,
       /* the leg-caution block's open/shut state (#653 defect 1) — outside the key it would
@@ -5671,15 +5692,45 @@
    * among them `pwr_lower_power` 1, which then pulsed Boron ON beside a note saying pressing ON
    * resets the target. The step's WATCH list stays up (steady); `head: -2` tells `verify_e2e_ui`
    * which of the three cases it is looking at. */
+  /* …ON EVERY `accs` STEP, NOT ONLY THOSE THAT AUTHOR SUBSTEP LISTS (#809 layman pass 14 S-2,
+   * 2026-09-28). The rule above was scoped to steps with per-substep `hl`, so a step whose lists are
+   * step-level fell back to them once its rows were met: startup 10 and 14 (`hl` Withdraw) kept
+   * WITHDRAW pulsing beside a lit Continue, and in 10 that reads "tap once more" with STARTUP RATE
+   * already at +0.38 of a 1.0 limit. Every row met = nothing to press, whatever authored the list. */
   function cklSubstepHl(st, ck) {
-    if (!ck || !st || !st.accs) return null;
+    if (!ck || !st || !st.accs || !st.accs.length) return null;
     var head = cklActiveAccsHead(st, ck);
     var e = head >= 0 ? st.accs[head] : null;
-    if (!e && st.accs.some(function (x) { return x && (x.hl || x.hl_watch); })) {
-      return { head: -2, hl: [], hl_watch: st.hl_watch || [] };
-    }
-    if (!e || !(e.hl || e.hl_watch)) return null;
-    return { head: head, hl: e.hl || [], hl_watch: e.hl_watch || [] };
+    if (!e) return { head: -2, hl: [], hl_watch: st.hl_watch || [] };
+    if (!(e.hl || e.hl_watch)) return null;
+    /* `hl_when` (#809 layman pass 14 S-3): the substep's PRESS list stays dark until its own
+     * condition reads true on the board — startup 5b-8b's "Wait for STARTUP RATE to read +0.03 or
+     * less, then press 1/M PLOT" lit the opener the moment the pull row ticked, at +0.05 to +0.11
+     * (MEASURED, typical route: 7b 1.5 and 8b 6 plant-minutes early). The watch list stays up. */
+    var hl = e.hl || [];
+    if (e.hl_when && !cklHlWhenMet(st, ck, head)) hl = [];
+    return { head: head, hl: hl, hl_watch: e.hl_watch || [] };
+  }
+  /* Graded the way the ROW would be (`_grade`: the instrument first, HR1 — what the tile shows),
+   * and LATCHED per step + substep so a reading hovering on the line does not flicker the pulse. */
+  var cklSnap = null;
+  var cklWhenLatch = Object.create(null);
+  function cklHlWhenMet(st, ck, head) {
+    var e = st.accs[head], k = ck.procedure_id + '#' + ck.step_index + '/' + head;
+    if (cklWhenLatch[k]) return true;
+    var IL = RD.InstructorLayer;
+    if (!cklSnap || !IL || !IL.prototype._grade) return true;   // cannot tell: never hide a press
+    var met = false;
+    try { met = !!IL.prototype._grade.call({ _predMet: IL.prototype._predMet }, cklSnap, e.hl_when).met; }
+    catch (x) { return true; }
+    if (met) cklWhenLatch[k] = true;
+    return met;
+  }
+  function cklHlWhenKey(pr, ck) {
+    var st = pr && !ck.complete ? pr.steps[ck.step_index] : null;
+    var head = st ? cklActiveAccsHead(st, ck) : -1;
+    if (head < 0 || !st.accs[head].hl_when) return '';
+    return cklHlWhenMet(st, ck, head) ? 'w1' : 'w0';
   }
   function stepHlLabels(st, ck) {
     var sub = cklSubstepHl(st, ck);
@@ -5818,9 +5869,39 @@
    * pulse should be without changing the checklist render key: a held button being let go, and
    * the 1/M window being opened or closed (the Plot point fallback in applyCklStepGlow). */
   var cklLastGlow = null;
+  /* NO WALKTHROUGH, NO RE-APPLY (#809 pass-13 review): `resetCkl` nulls `cklLastGlow`, and the
+   * `cklState.key` test covers a release already queued when the run ended. */
+  function cklRefreshStepGlow() {
+    if (cklLastGlow && cklState.key) applyCklStepGlow(cklLastGlow.labels, cklLastGlow.key);
+  }
   function cklReapplyStepGlow() {
     cklHeld = Object.create(null);
-    setTimeout(function () { if (cklLastGlow) applyCklStepGlow(cklLastGlow.labels, cklLastGlow.key); }, 0);
+    setTimeout(cklRefreshStepGlow, 0);
+  }
+  /* THE 1/M WINDOW CAN OPEN OR SHUT WITHOUT A POINTER (#809 pass-13 review item 6): the panel's own
+   * `close`, its unsupported-plant hide, a keyboard press. Its `hidden` attribute is the one fact
+   * every path writes, so the opener fallback below is re-evaluated off that, not off a click. */
+  var cklOomObs = null;
+  function cklWatchOomWin() {
+    if (cklOomObs || typeof MutationObserver === 'undefined') return;
+    var win = document.getElementById('oomWin');
+    if (!win) return;
+    cklOomObs = new MutationObserver(function () { setTimeout(cklRefreshStepGlow, 0); });
+    cklOomObs.observe(win, { attributes: true, attributeFilter: ['hidden'] });
+  }
+  /* EVERY LIT CONTROL LIGHTS ITS CARD — THE OPENER TOO (#809 item 3 rule; pass-13 review item 6).
+   * `Plot point` is a shell target, so `applyCklWatchGlow` finds no card for it; while its opener
+   * (1/M PLOT, on ROD CONTROL) carries the pulse, the opener's card is lit here and tagged
+   * `data-ckl-op`, so the step-glow clear can take back exactly what it added. */
+  var cklOpenerLabs = [];
+  function cklLightOpenerPanels() {
+    var board = RD.PwrBoard && RD.PwrBoard.haloElement ? RD.PwrBoard : null;
+    if (!board || ui.plant !== 'pwr' || !RD.PwrBoardInspect || !RD.PwrBoardInspect.glowRole) return;
+    cklOpenerLabs.forEach(function (lab) {
+      var r = RD.PwrBoardInspect.glowRole(lab);
+      var el = r && r.panel ? board.haloElement(r.panel) : null;
+      if (el && !cklHasGlow(el)) { el.classList.add('ckl-panel-glow'); el.setAttribute('data-ckl-op', lab); }
+    });
   }
   /* ⚠ A SHELL TARGET THAT IS NOT ON SCREEN PULSES ITS OPENER (#809 layman pass 13 S-2).
    * `Plot point` lives in the 1/M window, which step 4's note tells the player to close between
@@ -5846,17 +5927,22 @@
       document.addEventListener('pointerup', cklReapplyStepGlow, true);
       document.addEventListener('pointercancel', cklReapplyStepGlow, true);
       document.addEventListener('click', cklReapplyStepGlow, true);   // a keyboard or synthetic click opens/shuts the 1/M window too
+      /* A HOLD THE PAGE NEVER SEES RELEASED (#809 pass-13 review item 5): focus leaving the window
+       * mid-hold (alt-tab, a dialog) drops the pointerup, and the held button stayed steady. */
+      window.addEventListener('blur', cklReapplyStepGlow);
       cklPressArmed = true;
     }
+    cklWatchOomWin();
     cklLastGlow = { labels: labels, key: key };
     clearCklStepGlow();
+    cklOpenerLabs = [];
     if (!labels || !labels.length) return;
     var openers = [];
     labels.forEach(function (lab) {
       var el = hlTarget(lab);
       if (!el) return;
       var op = cklVisibleOrOpener(lab, el);
-      if (op) { openers.push(op); return; }
+      if (op) { openers.push(op); cklOpenerLabs.push(lab); return; }
       el.classList.add('ckl-step-glow');
       el.setAttribute('data-ckl-hl', lab);
       if (cklPressed[lab] || cklHeld[lab]) el.classList.add('ckl-step-done');
@@ -5864,11 +5950,15 @@
     /* last, so an opener the step also names (startup 4's `1/M Plot Tool`, pressed and then the
      * window shut again) pulses rather than sitting steady on a window that is closed */
     openers.forEach(function (op) { op.classList.add('ckl-step-glow'); op.classList.remove('ckl-step-done'); });
+    cklLightOpenerPanels();
   }
   function clearCklStepGlow() {
     document.querySelectorAll('.ckl-step-glow').forEach(function (el) {
       el.classList.remove('ckl-step-glow'); el.classList.remove('ckl-step-done');
       el.removeAttribute('data-ckl-hl');
+    });
+    document.querySelectorAll('[data-ckl-op]').forEach(function (el) {
+      el.classList.remove('ckl-panel-glow'); el.removeAttribute('data-ckl-op');
     });
   }
   /* THE WATCH GLOW (#685) — same apply/clear lifecycle as the step glow above and applied in
@@ -5914,10 +6004,11 @@
       var el = board.haloElement(r.panel);
       if (el && !cklHasGlow(el)) el.classList.add('ckl-panel-glow');
     });
+    cklLightOpenerPanels();
   }
   function clearCklWatchGlow() {
     CKL_WATCH_CLASSES.forEach(function (c) {
-      document.querySelectorAll('.' + c).forEach(function (el) { el.classList.remove(c); el.removeAttribute('data-ckl-w'); });
+      document.querySelectorAll('.' + c).forEach(function (el) { el.classList.remove(c); el.removeAttribute('data-ckl-w'); el.removeAttribute('data-ckl-op'); });
     });
   }
   /* THE SPEED BAR GLOWS WHEN THE STEP RECOMMENDS A SPEED (#735, owner playtest #724 item 2:
@@ -5970,6 +6061,9 @@
     var rung0 = cklRungFor(st, ck);
     if (!rung0) return;
     if (ck && (ck.acc_met || ck.awaiting_ack)) return;
+    /* the ruled 5× while the bank moves (startup 8, OWNER 2026-09-28) marks the 5× rung, not the
+     * 10× one a player would otherwise be invited to press mid-pull */
+    if (st && +st.moving_speed > 0 && rung0.speed > +st.moving_speed && cklRodsMoving(s)) rung0 = cklSnapRung(+st.moving_speed);
     if (warpNote && warpNote.reason === 'hold') return;   // the clock is held; the press would refuse
     var bar = document.getElementById('speed');
     if (!bar) return;

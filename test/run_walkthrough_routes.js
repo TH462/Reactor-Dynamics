@@ -108,9 +108,9 @@ var ROUTES = {
       /* #13 (#808) the feed transfer runs the DEFAULT policy: the step's own entry press (50 gpm in SG
        * FEED RATE), then each row's press as it goes live — AUTO once level reads 60 %, then aux feed STOP */
       '#13': { policy: 'feed_fill' },
-      '#14': { policy: 'pulses', k: 2, rate_le: 0.105, until_p: 5.05, peak: true, stated_max_min: 8 },   // "tap WITHDRAW twice, wait for it to peak and fall back to +0.10 or less, repeat until above 5 %"
+      '#14': { policy: 'pulses', k: 2, rate_le: 99, until_p: 5.05, peak: true, dwell: 60, stated_max_min: 4 },   // "tap WITHDRAW twice, then wait one plant-minute ... repeat until above 5 %" (layman pass 14 S-1: the +0.10 cue never fired for a player who waited out each pull; about 4 pulls, 3 to 4 plant-min)
       '#15': { policy: 'seq', cmds: [{ action: 'latch_turbine' }, { action: 'set_load_target', mwe: 10 }] },   // 15a, 15b; 15c's AUTO pressed when its row is live
-      '#16': { policy: 'block_when', p: 9.5, trip_id: 'ir_high', param: 'ir_high_blocked' },
+      '#16': { policy: 'block_when', p: 8.5, trip_id: 'ir_high', param: 'ir_high_blocked' },   // 16a at 8.5 % (pass-13 review item 3): the block must HOLD from there
     },
     /* THE MISTAKES RIDE A BASE THAT COMPLETES. The literal first-stop route strands at step 8
      * (measured 2026-09-24: bank 195 settles at ~6,375 counts a second against the 6,950 row, SUR
@@ -746,7 +746,7 @@ function runJob(legId, routeId, mutId, ctx) {
     var sr = pv('sr_counts_cps'); if (sr != null && isFinite(sr) && pv('sr_energized') > 0) r.sr_cps = sr;
     if (process.env.WR_TRACE) {   // measurement knob only (#809): true reactivity, INTER RANGE, SG level, feed
       r.rho_pcm = (s.true_state || {}).reactivity_pcm; r.ir_amps = pv('ir_amps'); r.sg_level_pct = pv('sg_level_pct');
-      r.feed_coupled = pv('feed_coupled'); r.afw_running = pv('afw_pump_running'); r.boron_ppm = pv('boron_ppm');
+      r.feed_coupled = pv('feed_coupled'); r.afw_running = pv('afw_pump_running'); r.boron_ppm = pv('boron_ppm'); r.ir_blk = pv('ir_high_blocked');
     }
     return r;
   }
@@ -901,7 +901,7 @@ function runJob(legId, routeId, mutId, ctx) {
     if (process.env.WR_TRACE && (',' + process.env.WR_TRACE + ',').indexOf(',' + (k + 1) + ',') >= 0 && t() - (S.trT == null ? -1e9 : S.trT) >= 15) {
       S.trT = t(); (out[k].trace = out[k].trace || []).push([+(el / 60).toFixed(2), S.lastReadings.bank, +pw.toFixed(3),
         S.lastReadings.sur_dpm != null ? +S.lastReadings.sur_dpm.toFixed(3) : null, S.lastReadings.sr_cps != null ? Math.round(S.lastReadings.sr_cps) : null,
-        S.lastReadings.rho_pcm != null ? +S.lastReadings.rho_pcm.toFixed(1) : null, S.lastReadings.ir_amps, S.lastReadings.sg_level_pct != null ? +S.lastReadings.sg_level_pct.toFixed(1) : null, +S.lastReadings.pressure_psia.toFixed(1)]);
+        S.lastReadings.rho_pcm != null ? +S.lastReadings.rho_pcm.toFixed(1) : null, S.lastReadings.ir_amps, S.lastReadings.sg_level_pct != null ? +S.lastReadings.sg_level_pct.toFixed(1) : null, +S.lastReadings.pressure_psia.toFixed(1), S.lastReadings.ir_blk]);
     }
     /* --- invariant: trip / bound ------------------------------------------------------- */
     var scr = !!((s.rps_state && s.rps_state.scrammed) || (s.true_state && s.true_state.scrammed));
