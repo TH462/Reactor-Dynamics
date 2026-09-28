@@ -817,6 +817,13 @@
       case 'true_state':      // deliberate author hook for truth the operator can't see
         v = snapshot.true_state ? snapshot.true_state[trigger.field] : undefined;
         return this._compare(v, trigger.direction, trigger.value);
+      /* A CONTROL'S OWN STATE — the lit AUTO/MANUAL light, a selector position (#811). Board-
+       * visible, so not an HR1 leak: the operator reads it off the button they pressed. Added for
+       * the opener's "put spray back in AUTO", which a player may have done BEFORE being asked —
+       * an operator_action trigger only sees commands after the beat fired, and strands them. */
+      case 'control_state':
+        v = snapshot.control_state ? snapshot.control_state[trigger.field] : undefined;
+        return this._compare(v, trigger.direction, trigger.value);
       case 'operator_action': // a matching command descended since the last beat fired
         for (i = 0; i < this._actionsSinceBeat.length; i++) {
           if (this._commandMatches(this._actionsSinceBeat[i], trigger)) return true;
@@ -2812,7 +2819,8 @@
     if (!state.mode) return;
 
     if (state.mode === 'scenario') {
-      var sc = RD.SCENARIOS ? RD.SCENARIOS[state.scenario_id] : null;
+      var sc = (RD.SCENARIOS && RD.SCENARIOS[state.scenario_id]) ||
+               (RD.OPENERS && RD.OPENERS[state.scenario_id]) || null;   // openers load as scenarios (#811)
       if (!sc) {
         if (typeof console !== 'undefined') console.warn('InstructorLayer.loadState: scenario "' + state.scenario_id + '" not in RD.SCENARIOS — degrading to free-play.');
         return;

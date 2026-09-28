@@ -1264,6 +1264,19 @@
         this._broadcast(snap);
         return snap;
       }
+      /* ---- OPENERS (#811): a short instructor chat offered on the idle Instructor tab. Runs on
+       * the Instructor's scenario machinery, but resets to the opener's IC WITH the free-play
+       * lineup (no `noDefaults`) — it teaches the plant the player gets, not a clean board. */
+      case 'start_opener': {
+        var op = RD.OPENERS ? RD.OPENERS[command.opener_id] : null;
+        if (!op) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown opener_id', received: command };
+        var reset3 = this.selectPlant(op.plant_id, op.initial_state, op.design_version || null);
+        if (reset3 && reset3.type === 'error') return reset3;
+        if (this.instructor.load) this.instructor.load(op);
+        var osnap = this._assembleWithInstructor();
+        this._broadcast(osnap);
+        return osnap;
+      }
       // ---- Path 2 walkthroughs: the Instructor runs a manual procedure from
       // RD.MANUAL_PROCEDURES (the single validated artifact — CONTEXT §12).
       // M5 resolves the profile key because only it knows the active plant, and

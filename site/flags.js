@@ -87,6 +87,15 @@
       desc: 'Follow-in-Instructor: a real procedure, step-gated off the instruments.',
       soon: 'Guided procedure walkthroughs are in final review. The procedures themselves are readable now in the operator\'s manual.',
     },
+    /* The idle Instructor tab's guided opener for a starting condition (#811, prototype
+     * 2026-09-28). 'preview' until the owner has played it: the tester site shows it, the public
+     * site shows nothing (the offer simply does not render — no soon panel is drawn for it). */
+    openers: {
+      label: 'Guided openers',
+      stage: 'preview',
+      desc: 'A five-minute instructor chat on the Instructor tab: a few moves and what they do to the plant.',
+      soon: 'A short guided opener for each starting condition is in review.',
+    },
     checklists: {
       label: 'Live walkthroughs',
       stage: 'public',

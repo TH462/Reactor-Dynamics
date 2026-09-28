@@ -3566,12 +3566,44 @@
       'that check themselves off the instruments as you operate.">' +
       'Try the walkthroughs</button></div>';
   }
+  /* THE OPENER OFFER (#811). A short instructor chat for the starting condition the player is
+   * sitting at, offered above the walkthroughs bar. One per starting condition: the opener whose
+   * plant_id + initial_state match the running plant (RD.OPENERS, scenarios/opener_*.js). One
+   * click starts it, one click hides it for good (per opener, this browser) — ignoring it changes
+   * nothing about free play. Behind the 'openers' area flag (site/flags.js). */
+  var openerHidden = {};
+  function openerDismissed(id) {
+    if (openerHidden[id]) return true;
+    try { return localStorage.getItem('rd_opener_hide_' + id) === '1'; } catch (e) { return false; }
+  }
+  function openerFor() {
+    if (!flagOn('openers') || !service) return null;
+    var all = RD.OPENERS || {};
+    for (var k in all) {
+      var o = all[k];
+      if (o.plant_id === service.activePlantId && o.initial_state === service.activeInitialState && !openerDismissed(o.id)) return o;
+    }
+    return null;
+  }
+  function openerOfferHtml(o) {
+    if (!o) return '';
+    return '<div class="instr-launch instr-opener"><button type="button" class="btn instr-launch-bar" ' +
+      'data-opener-start="' + mesc(o.id) + '" data-scanner-hint="' + mesc(o.offer || '') + '">' +
+      mesc(o.title) + ' — 5 min, guided</button>' +
+      '<div class="instr-opener-sub">' + mesc(o.offer || '') +
+      ' <button type="button" class="btn linkish" data-opener-dismiss="' + mesc(o.id) + '">Not now</button></div></div>';
+  }
+  function idleKey() {
+    var o = openerFor();
+    return (o ? o.id : '-') + '|' + flagOn('checklists');
+  }
   function showIdleInstructor() {
     setInstrRole('Instructor');
     var cur = $('instrCurrent');
     if (!cur) return;
     cur.classList.add('instr-standby');
-    cur.innerHTML = (idleLauncherHtml() + IDLE_INSTR_HTML);
+    cur.setAttribute('data-idle-key', idleKey());
+    cur.innerHTML = (openerOfferHtml(openerFor()) + idleLauncherHtml() + IDLE_INSTR_HTML);
   }
   /* WRAPPED, NOT APPENDED TO. renderInstructor dispatches to renderFollow / renderChat /
    * renderChecklist / renderLevelComplete and RETURNS from each — five early returns — so
@@ -3687,7 +3719,7 @@
       // one-line ellipsized — cue the header and let the player expand.
       instrAttention();
     } else if (!msg && !msgHold.queue.length && dwellMet) {
-      if (msgHold.shown !== null || !cur.querySelector('.instr-idle')) {
+      if (msgHold.shown !== null || !cur.querySelector('.instr-idle') || cur.getAttribute('data-idle-key') !== idleKey()) {
         msgHold.shown = null;
         showIdleInstructor();
       }
@@ -3709,8 +3741,19 @@
   }
   var CHAT_SPEAKERS = {
     sup: 'Shift Supervisor', supx: 'Shift Supervisor', aux: 'Aux Operator',
-    chief: 'Chief', sys: 'ANNUNCIATOR', player: 'You',
+    chief: 'Chief', sys: 'ANNUNCIATOR', player: 'You', instr: 'Instructor',
   };
+  // A chat transcript's content: a scenario, or an opener (#811) — both run as instructor scenarios.
+  function chatDef(sid) {
+    return (sid && ((RD.SCENARIOS && RD.SCENARIOS[sid]) || (RD.OPENERS && RD.OPENERS[sid]))) || null;
+  }
+  // `chat_clock: 'elapsed'` (openers): stamp lines with time since the chat began, not the
+  // TMI-2 night-shift wall clock.
+  function chatElapsed(t) {
+    if (chatState.t0 == null) chatState.t0 = t;
+    var sec = Math.max(0, Math.round(t - chatState.t0));
+    return Math.floor(sec / 60) + ':' + (sec % 60 < 10 ? '0' : '') + (sec % 60);
+  }
   // In-fiction wall clock: the shift picks up at 03:53 — the real TMI-2 turbine
   // trip landed at 04:00:37, seven minutes into anyone's coffee. The clock runs
   // on the authored STORY timeline (beat `story_min` anchors) so the historical
@@ -3752,8 +3795,10 @@
     if (e.skip && prevStory != null && (story - prevStory) > 90) {
       h += '<div class="chat-gap">⏱ ' + mesc(chatGapText(story - prevStory)) + '</div>';
     }
+    var def = chatDef(chatState.sid);
+    var stamp = (def && def.chat_clock === 'elapsed') ? chatElapsed(e.t) : chatClock(story);
     h += '<div class="chat-line chat-' + mesc(e.speaker) + '">' +
-      '<span class="chat-meta">' + chatClock(story) + ' · ' + mesc(CHAT_SPEAKERS[e.speaker] || e.speaker) + '</span>' +
+      '<span class="chat-meta">' + stamp + ' · ' + mesc(CHAT_SPEAKERS[e.speaker] || e.speaker) + '</span>' +
       '<span class="chat-txt">' + mesc(txt) + '</span></div>';
     return h;
   }
@@ -3765,7 +3810,7 @@
   }
   function chatPendingBeat(s) {
     var sid = s.instructor.scenario_id, bid = s.instructor.current_beat_id;
-    var sc = sid && RD.SCENARIOS ? RD.SCENARIOS[sid] : null;
+    var sc = chatDef(sid);
     if (!sc || bid == null) return null;
     var beats = sc.beats || [];
     for (var i = 0; i < beats.length; i++) if (beats[i].id === bid) return beats[i];
@@ -3787,14 +3832,17 @@
       // a genuinely new conversation paces from its first line.
       chatState.instantThrough = freshConversation ? 0 : Math.max(0, chat.log.length - 1);
       cur.classList.remove('instr-standby');
-      cur.innerHTML = '<div class="chat-log" id="chatLog"></div><div class="chat-btns" id="chatBtns"></div>';
+      var isOpener = !!(sid && RD.OPENERS && RD.OPENERS[sid]);
+      cur.innerHTML = '<div class="chat-log" id="chatLog"></div><div class="chat-btns" id="chatBtns"></div>' +
+        (isOpener ? '<div class="chat-end"><button type="button" class="btn ghost" data-opener-end="1" ' +
+          'data-scanner-hint="End the guided opener and keep the plant as it is, clock at 1×.">End</button></div>' : '');
       if (card) card.classList.add('chat-mode');
       // The persona header stays visible in chat mode now (#237) — it is the
       // collapse affordance and the mid-scenario orientation line. It shows the
       // SCENE (scenario title), never a speaker: the transcript's per-line
       // headers carry who is talking, and a fixed speaker up top would lie
       // whenever anyone else speaks (instructor-vs-supervisor register rule).
-      var sc0 = sid && RD.SCENARIOS ? RD.SCENARIOS[sid] : null;
+      var sc0 = chatDef(sid);
       setInstrRole((sc0 && sc0.title) ? sc0.title : 'Scenario');
     }
     var logEl = $('chatLog');
@@ -6118,6 +6166,7 @@
       lastLcKey = null;
       if (ui.follow) { followRetry(); return; }
       if (ui.scenario) { startScenario(ui.scenario); return; }
+      if (ui.opener) { startOpener(ui.opener); return; }
       return;
     }
     // continue — if this was a campaign mission, chain straight into the next
@@ -6125,7 +6174,7 @@
     lastLcKey = null;
     var finished = ui.scenario || (ui.follow && ui.follow.id);
     if (ui.follow) { ui.follow = null; cmd({ action: 'stop_follow' }); }
-    else { ui.scenario = null; cmd({ action: 'stop_scenario' }); }
+    else { ui.scenario = null; ui.opener = null; cmd({ action: 'stop_scenario' }); }
     var c = campaign();
     if (c && finished && campaignMissions(c).some(function (m) { return m.id === finished; })) {
       var nxt = campaignFrontier();
@@ -6758,6 +6807,38 @@
     resumeSim();                 // the scenario runs it: clears the 'content' hold above
   }
 
+  /* ---- Openers (#811): the idle Instructor tab's guided chat for this starting condition.
+   * Same lifecycle as startScenario, but through `start_opener`, which resets to the opener's IC
+   * WITH the free-play lineup. Telemetry reuses the mission_* rows (diagReset 'scenario' files
+   * mission_start; the level_complete files mission_complete; End files mission_abandon with the
+   * beat reached) — the id (`opener_*`) keeps them apart from campaign missions. */
+  function startOpener(id) {
+    var op = RD.OPENERS && RD.OPENERS[id];
+    if (!op) return;
+    ui.follow = null; ui.scenario = null; ui.opener = id;
+    pauseSim('content');
+    service.handleCommand({ action: 'start_opener', opener_id: id });
+    afterPlantChange();
+    diagReset('scenario', { scenario_id: id });
+    resetInstrFlow();
+    resetChat();
+    setFocus('instructor', true);
+    service.handleCommand({ action: 'play' });
+    resumeSim();
+  }
+  function endOpener() {
+    var s = latest, sid = s && s.instructor && s.instructor.scenario_id;
+    var op = sid && RD.OPENERS && RD.OPENERS[sid];
+    if (op && !(s.instructor.level_complete)) {
+      var ids = op.beats.map(function (b) { return b.id; });
+      TEL.missionAbandon(sid, Math.max(0, ids.indexOf(s.instructor.current_beat_id)));
+    }
+    ui.opener = null;
+    cmd({ action: 'stop_scenario' });
+    cmd({ action: 'set_speed', value: 1 });   // the opener owned the clock; hand it back at 1×
+    if (latest) renderInstructor(latest);
+  }
+
   // ---- "Follow in Instructor" (Path 2): the Instructor (M6) runs the procedure —
   // auto-advance, instrument-first grading, strict gating. The UI just renders
   // the snapshot's instructor.follow block; step text comes from the same
@@ -7069,7 +7150,7 @@
     var i = (s && s.instructor) || {};
     if (i.checklist && i.checklist.procedure_id) return 'ckl:' + i.checklist.procedure_id;
     if (i.follow && i.follow.procedure_id) return 'flw:' + i.follow.procedure_id;
-    if (i.chat && (i.chat.sid || i.chat.id)) return 'cht:' + (i.chat.sid || i.chat.id);
+    if (i.chat) return 'cht:' + (i.scenario_id || '');   /* the chat block carries no id of its own (#811) */
     if (ui.scenario) return 'scn:' + (ui.scenario.id || ui.scenario);
     return 'idle';
   }
@@ -7100,6 +7181,11 @@
      * guidance, scenario commentary, and walkthrough steps — each a discrete message that
      * used to be overwritten by the next one. */
     if (cklState.key) { instrLog.key = null; instrLog.html = ''; return; }
+    /* A CHAT TRANSCRIPT IS ALSO ALREADY PERSISTENT (#811). Its first 160 characters change every
+     * time a line shorter than that is followed by the next one, so folding here froze a copy of
+     * the whole transcript into the log per line — measured in headless Edge on the opener, whose
+     * lines are ~20 words: the conversation appeared twice, "End" and "reveal all" included. */
+    if (s && s.instructor && s.instructor.chat) { instrLog.key = null; instrLog.html = ''; return; }
     var first = (cur.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160);
     if (!first) return;
     if (first === instrLog.key) { instrLog.html = cur.innerHTML; return; }  // same message, live
@@ -8596,6 +8682,14 @@
         if (ck.complete) this.walkthroughEnd('complete');
       },
 
+      // An opener closed with End before its level_complete (#811) — the beat index is how far
+      // they got. Same row a pagehide files for a mission, with a real beat instead of 0.
+      missionAbandon: function (id, beat) {
+        if (!mission || mission.id !== id) return;
+        ev('mission_abandon', { id: id, seconds: since(mission.at), beat: beat });
+        mission = null;
+      },
+
       // The walkthrough's own Rewind button, not the checkpoint picker: a general rewind
       // is a decision about the plant. `wt.step` is the step being abandoned, which is
       // the one that reads as "they got this wrong".
@@ -9656,6 +9750,18 @@
         markSeen('checklists');
         return;
       }
+      var os = e.target.closest('[data-opener-start]');
+      if (os) { e.preventDefault(); startOpener(os.getAttribute('data-opener-start')); return; }
+      var od = e.target.closest('[data-opener-dismiss]');
+      if (od) {
+        e.preventDefault();
+        var oid = od.getAttribute('data-opener-dismiss');
+        openerHidden[oid] = true;
+        try { localStorage.setItem('rd_opener_hide_' + oid, '1'); } catch (err) { /* hidden for this page only */ }
+        showIdleInstructor();
+        return;
+      }
+      if (e.target.closest('[data-opener-end]')) { e.preventDefault(); endOpener(); return; }
       if (e.target.closest('[data-open-help]')) { e.preventDefault(); $('helpOverlay').hidden = false; return; }
       if (e.target.closest('[data-open-tour]')) { e.preventDefault(); openTour(0); return; }
     });

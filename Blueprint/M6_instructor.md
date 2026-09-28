@@ -162,6 +162,7 @@ for events the operator cannot see.
 { type: "delay",  value: 15.0 }                                           // seconds since the previous beat fired
 { type: "instrument", instrument: "sg_level", direction: "below", value: 30.0 }   // reads an INSTRUMENT (HR1)
 { type: "true_state", field: "core_inventory_pct", direction: "below", value: 70.0 }   // author-keyed true_state field (CONTEXT §6.3); truth the operator can't see
+{ type: "control_state", field: "spray_auto", direction: "is_true" }        // a control's own state — the lit AUTO/MANUAL light (board-visible; #811)
 { type: "operator_action", command: "set_hpi", params: { active: true } }         // the operator issues a particular command
 { type: "inaction", window: 60.0 }                                        // fires if no relevant action within the window
 { type: "alarm", alarm_id: "subcooling_lost", state: "active_unacknowledged" }     // an alarm reaches a state
