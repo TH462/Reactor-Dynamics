@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.8.0-rc10] — 2026-09-28
+
 ### Changed
 - **Reactor diagram: casing-colored flow-channel blocks under every rod** (#809 item 5, owner playtest). One small block per rod — 5 fuel, 4 control — running from the bottom of the rods to the bottom of the core's animated water column, simulating the water channels at the core's lower support structure.
 - **SG FEED manual gpm box now shows measured FEED FLOW while in AUTO**, not the three-element channel's raw demand, which visibly jittered (#809 item 13). MANUAL/OFF is unchanged: the box still reads back the operator's own demand (#516 item 1).
@@ -39,8 +41,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 - **Walkthrough highlights, #809 quality pass.** A step whose check-offs are all met no longer re-pulses the controls it asked for (36 pwr2 steps did, e.g. lower-power 1 pulsed Boron ON beside a note saying ON resets the target); the watch ring stays. Heatup 6a CLOSE and 13a DUMP SETPOINT pulse while their row asks for the press; startup 13a rings FEED FLOW, not the SG FEED card. The pressed-steady state resets per substep (cooldown 4b-4d). SG FEED gpm box: grey AUTO colour on PWR2 in AUTO; scanner and Manual 03 §9.2 describe the AUTO readback.
 - **Startup walkthrough, layman pass 13 (#809).** A held button (rod WITHDRAW/INSERT) is steady only while held and pulses again on release while its check-off is unmet (5a and 10b went steady after the first hold). With the 1/M window shut, 1/M PLOT pulses in place of the hidden Plot point; 5b-8b say "press 1/M PLOT, then Plot point". Step 16 split: 16a waits for REACTOR POWER 9.5 %, so TRIP BLOCKS no longer pulses from 7.5-7.7 %, where BLOCK refuses. Step 18 rings REACTOR POWER and OUTPUT (was SG LEVEL and the turbine card); step 10 no longer rings PERIOD. 5a lands "70 to 80" (tap recovery measured 72-74); step 2 background reworded; 13b explains HOLDING; step 8's speed line says it sets itself.
 - **Startup walkthrough, layman pass 14 + review (#809).** Step 8 plays 5× while the rods move, then 10× (owner ruling 2026-09-28; a 10× hold released half a second late at 205 landed at 209 and tripped on SR HIGH FLUX). Step 14: "then wait one plant-minute" replaces a +0.10 cue that never fired (about 4 pulls, 3 to 4 plant-minutes). 16a waits for 8.5 % (a block from 8.1 % holds; the 2.0 s P-10 confirmation). 5b-8b: the 1/M PLOT / Plot point pulse waits for STARTUP RATE +0.03 (new display-only `accs[].hl_when`). Nothing pulses once every check-off is met, on any step (10 and 14 kept WITHDRAW pulsing). The 1/M PLOT opener lights its ROD CONTROL card and re-evaluates when the window opens or shuts by any means; a hold ended by the window losing focus releases; after End walkthrough a click no longer re-lights the last pulse.
-
-## [Alpha 1.8.0-rc9] — 2026-09-27
 
 ### Changed
 - **Startup walkthrough step 13 and the aux feed card tell the true story** (#808 review). The gpm branch moved into the step: type 100 from 1.5 % (measured: 50 gpm stalls from 2 %); a stall way out; stated times 9–10 and 20–26 plant-minutes, SG level 33–38 %. Aux feed STOP scanner/manual: STOP leaves the auto-start armed (STANDBY), no longer "disarms". Cooldown prereq names both feed lineups.
