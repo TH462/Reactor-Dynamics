@@ -3758,6 +3758,9 @@ async function testWatchGlowRendered(page) {
       var head = el0 ? +el0.getAttribute('data-ckl-hl-head') : -1;
       var sub = head >= 0 && st.accs && st.accs[head];
       if (sub && (sub.hl || sub.hl_watch)) { press = (sub.hl || []).slice(); watch = (sub.hl_watch || []).slice(); }
+      /* -2: every row met on a step that authors substep lists — nothing pulses, the step's watch
+       * list stays (#809 quality pass; `cklSubstepHl`). */
+      if (head === -2) { press = []; watch = (st.hl_watch || []).slice(); }
       /* The watch count reads `data-ckl-w`, the AUTHORED watch labels: since #809 a watch label wears
        * one of three classes by what its element is (solid indication / dashed checked control / dim
        * card), and the cards derived from a lit control carry the dim class with no attribute. */

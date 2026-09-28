@@ -5186,7 +5186,7 @@
       var cs = CS(s);
       switch (item.id) {
         case 'imro8rmka2y': return cs.load_mode === 'follow';                         // generator load auto-tracks in FOLLOW
-        case 'imro8xhy2me': var c = chan(s, 'feed_sg'); return !!(c && c.engaged);     // SG feed on the feed_sg auto channel
+        case 'imro8xhy2me': return feedAutoOn(s);                                      // SG feed in AUTO (kernel channel or PWR2's feed_coupled, #809)
         case 'imro929i738': return !!cs.spray_auto;                                    // pressurizer spray AUTO
         case 'imro96mj15p': return !!cs.heater_auto;                                   // pressurizer heater AUTO
         case 'imrpq48hn3t': return !!cs.cvcs_auto;                                     // charging AUTO make-up
@@ -5200,7 +5200,10 @@
     // all for the first ~10 minutes), and after a LOOP the latched demand outlives the
     // isolation — 355 gpm on a plant with no main feed for 28 minutes. The corner word
     // carries NO FLOW for the engaged case; this marks the NUMBER, which is the thing
-    // designed to look like a flow, in every case including MANUAL.
+    // designed to look like a flow, in every case including MANUAL. Since #809 item 13 the box
+    // reads the MEASURED feed flow in AUTO, so there the amber sits on a near-zero reading and
+    // says "the controller is asking for feed the plant is not delivering" — kept on purpose:
+    // `board_check` func:blackout asserts it (#358), and nothing has ruled it away.
     numberWarn: function (item, s) {
       return item.id === 'imro8xhy2me' && feedNoFlow(s) ? BD_WARN : null;
     },

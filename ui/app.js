@@ -5462,11 +5462,15 @@
      * index, so advancing a step, rewinding, or starting another leg all drop it and the next
      * step's controls pulse again from scratch. */
     var actPress = actSt ? stepHlLabels(actSt, ck) : null;
-    applyCklStepGlow(actPress, actSt ? (pr.id + '#' + ck.step_index) : null);
+    /* …AND BY THE SUBSTEP WHOSE LISTS ARE LIT (#809 quality pass): cooldown 4b/4c/4d each ask for
+     * a new DUMP SETPOINT press, and a step-wide key left the box steady after the first. */
+    var subHl = actSt ? cklSubstepHl(actSt, ck) : null;
+    applyCklStepGlow(actPress, actSt ? (pr.id + '#' + ck.step_index + (subHl ? '/' + subHl.head : '')) : null);
     applyCklWatchGlow(actSt ? stepWatchLabels(actSt, ck) : null, actPress);   /* #685; per substep + roles (#809) */
-    /* Which substep's lists are lit (-1 = the step's own), for `verify_e2e_ui` to recompute them. */
+    /* Which substep's lists are lit (-1 = the step's own, -2 = every row met: pulse nothing), for
+     * `verify_e2e_ui` to recompute them. */
     var actEl = actSt ? cur.querySelector('.ckl-step[data-ckl-step]') : null;
-    if (actEl) { var subHl = cklSubstepHl(actSt, ck); actEl.setAttribute('data-ckl-hl-head', subHl ? subHl.head : -1); }
+    if (actEl) actEl.setAttribute('data-ckl-hl-head', subHl ? subHl.head : -1);
     applyCklSpeedGlow(s, ck, actSt);                            /* #735 — #724 item 2; #796 */
     // Step hover → glow the controls/indications the step names (its `hl` list) on
     // the plant display, reusing the Instructor highlight vocabulary (revealControl).
@@ -5661,10 +5665,19 @@
    * substep that authors neither, or no active substep (every row met), falls back to the step's
    * own lists. `ck` absent (the hover preview) = the step's lists, which the gate keeps a superset.
    * Replaces `accs[].hl_active` (#807 review item 4), which gated one pulse the same way. */
+  /* ⚠ EVERY ROW MET ON A STEP THAT AUTHORS SUBSTEP LISTS = PULSE NOTHING (#809 quality pass,
+   * 2026-09-27). The old fallback to the step's own `hl` re-pulsed every control the step had
+   * ever asked for once its rows were done — measured on the built pwr2 pool, 36 steps did it,
+   * among them `pwr_lower_power` 1, which then pulsed Boron ON beside a note saying pressing ON
+   * resets the target. The step's WATCH list stays up (steady); `head: -2` tells `verify_e2e_ui`
+   * which of the three cases it is looking at. */
   function cklSubstepHl(st, ck) {
     if (!ck || !st || !st.accs) return null;
     var head = cklActiveAccsHead(st, ck);
     var e = head >= 0 ? st.accs[head] : null;
+    if (!e && st.accs.some(function (x) { return x && (x.hl || x.hl_watch); })) {
+      return { head: -2, hl: [], hl_watch: st.hl_watch || [] };
+    }
     if (!e || !(e.hl || e.hl_watch)) return null;
     return { head: head, hl: e.hl || [], hl_watch: e.hl_watch || [] };
   }
@@ -5750,8 +5763,8 @@
    * while others ride `click`, and capture means a handler that stops propagation cannot hide the
    * press from this. It reads state and adds a class — it issues no command, grades nothing and
    * never consumes the event (HR5). */
-  var cklPressStep = null;                      // "<procedure id>#<step index>" the set below belongs to
-  var cklPressed = Object.create(null);         // label -> the player has pressed it on THIS step
+  var cklPressStep = null;                      // "<procedure id>#<step index>[/<substep head>]" the set below belongs to
+  var cklPressed = Object.create(null);         // label -> the player has pressed it on THIS step (or substep)
   var cklPressArmed = false;
   /* ⚠ THE PRESS IS MATCHED BY GEOMETRY, NOT BY THE DOM, AND TWO DOM VERSIONS WERE MEASURED FAILING
    * BEFORE THIS ONE. The obvious `e.target.closest('.ckl-step-glow')` cannot work: on the board the

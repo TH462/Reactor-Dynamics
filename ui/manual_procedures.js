@@ -61,8 +61,8 @@
  *           the ruling is about and wrong for the CONTINGENCY press — "Check SG FEED reads AUTO.
  *           If it does not, press AUTO" — which wants the ring and is graded on the plant.
  *           Nothing outside the step can tell those apart (the `text` is not parseable), so the
- *           step says so, the way `expect_alarms` does. Three steps in the shipped pool carry it
- *           and all three are conditional presses; `run_manual_controls` reddens on a pwr2 step
+ *           step says so, the way `expect_alarms` does. Every step in the shipped pool carrying it
+ *           is a conditional press (grep `press_expected` for the current list); `run_manual_controls` reddens on a pwr2 step
  *           that pulses a label without one. DO NOT use it to keep a ring on a pure
  *           verification — that is the defect the ruling exists to remove.
  *   expect_alarms OPTIONAL array of strings — THE ALARMS THIS STEP'S OWN EVOLUTION CAUSES,
@@ -1644,9 +1644,9 @@
            * `['Turbine Load', 'Main Breaker']` and BOTH labels resolve to `imro8k5pzem`, the card
            * — two labels, one ring, and the TRIP lamp the step names first was not marked at all.
            * The card and OUTPUT go to `hl_watch` (steady dashed) because this is a VERIFY step
-           * and they are what is read; TRIP stays in `hl` because it is the thing the step is
-           * about and the one control the player touches if the verification fails. All three
-           * resolve to different elements, so no watch ring is skipped. */
+           * and they are what is read; TRIP joined them in `hl_watch` on the 2026-09-15 ruling
+           * above (no press is asked). All three resolve to different elements, so no watch ring
+           * is skipped. */
           hl_watch: ['Turbine — Trip', 'Turbine Load', 'Generator Output'] },
         /* CONFIRM, THEN ACT *(OWNER, #724 item 3: "Walkthrough mode 5>3 step 5, the SG FEED AUTO
          * button is already [in AUTO]")*. Same shape as #619 item 16, which reworded the sibling
@@ -1734,8 +1734,13 @@
            * lamp read the operator's SELECTION — CLOSE is `!steam_dump_auto && steam_dump_pct <= 50`
            * (pwr_board_wiring `imrppqxggbj`) — while 6b reads the VALVE. They part on a plant whose
            * dump is in AUTO below its setpoint: valve 0 %, CLOSE dark, status PRESS or TAVG. */
+          /* 6a PULSES CLOSE (#809 quality pass): the row is only ever ACTIVE when AUTO is lit, i.e.
+           * exactly when its "press CLOSE" is the ask, so CLOSE is a contingency press, not a
+           * reading — same shape as `pwr_raise_power` 1a. Met on entry (the usual case) the lists
+           * fall through to 6b's. `press_expected` says so to the renderer and the gate. */
+          press_expected: true,
           accs: [{ p: 'steam_dump_auto', op: '<', v: 1,
-                   hl_watch: ['Steam Dump — Close', 'Steam Dump Status'],
+                   hl: ['Steam Dump — Close'], hl_watch: ['Steam Dump Status'],
                    ask: 'Check the STEAM DUMP card reads MANUAL with CLOSE lit. If AUTO is lit, press CLOSE.',
                    label: 'STEAM DUMP in MANUAL' },
                  { p: 'steam_dump_valve_pct', op: '<', v: 1,
@@ -2205,7 +2210,7 @@
            * injection tripped the reactor on low steam pressure during step 14. Same band as
            * `pwr_startup` 3b: 7.0327 +- 0.0034 MPa, every value the whole-psi box draws as 1020. */
           accs: [{ p: 'steam_dump_setpoint', op: '~', v: 7.0327, tol: 0.0034,
-                   hl_watch: ['Dump Setpoint', 'SG Pressure'],
+                   hl: ['Dump Setpoint'], hl_watch: ['SG Pressure'],   // active only when the box needs setting (#809 quality pass)
                    ask: 'Check DUMP SETPOINT reads 1020 psi. If it does not, set it to 1020 psi.',
                    label: 'DUMP SETPOINT reads 1020 psi' },
                  { p: 'steam_dump_auto', op: '>', v: 0,
@@ -2242,7 +2247,8 @@
            * (run_walkthrough_routes machinery, typical and pressure_sp_high, seeds 42/7): the climb
            * runs ~25 psi per plant-minute and crosses 2200 psi 21-22 plant-min after the box is
            * set, on the steep part of the curve; it slows only above ~2220 psi and enters step 15 at
-           * 2227-2293 psi. So 2200 is not on the asymptote and cannot dither. 600x is the rung the
+           * 2232.4 psi (typical) / 2228.8 psi (pressure_sp_high), re-measured 2026-09-27 (#809
+           * quality pass, WR_TRACE) — the 2293 psi was the typo route before 14a caught the typo. So 2200 is not on the asymptote and cannot dither. 600x is the rung the
            * 30 s rule gave `hold: 5400` (carried over). */
           accs_ordered: true,
           accs: [{ p: 'pressure_setpoint', op: '~', v: 15.40976, tol: 0.00344,
@@ -2307,9 +2313,10 @@
             { p: 'tavg_c', op: '~', v: 285.83, tol: 1.66,
               ask: 'Check AVG COOLANT TEMPERATURE reads 544 to 549 °F.',
               label: 'AVG COOLANT TEMPERATURE 544 to 549 °F' },
-            /* 15b's inline recovery: the route gate's `pressure_sp_high` (SET PZR PRESSURE typed
-             * as 2306 psi at step 14) arrives here above 2270 psi and, with no instruction, sat
-             * unticked — a silent strand. Resetting the box to 2235 psi lets the spray bring it in. */
+            /* 15b's inline recovery. Since #809 14a holds the box at 2235 psi, so both measured
+             * routes arrive inside the band and 15b is met on entry (2232.4 psi typical, 2228.8 psi
+             * pressure_sp_high; re-measured 2026-09-27). The recovery is for a player who retypes
+             * the box AFTER 14a ticks — then setting it back to 2235 psi is the real way out. */
             { p: 'pressure_mpa', op: '~', v: 15.41, tol: 0.244,
               ask: 'Check PRIMARY PRESSURE reads 2200 to 2270 psi. If it does not, set SET PZR PRESSURE to 2235 psi.',
               label: 'PRIMARY PRESSURE 2200 to 2270 psi' },
@@ -3867,7 +3874,7 @@
                    ask: 'Type 50 in the gpm box beside RESTORE on the SG FEED card, or 100 if REACTOR POWER reads 1.5 % or more. Wait for STEAM GENERATOR LEVEL to reach 60 %.',
                    note: 'Typing starts the main feed pumps in MAN at that flow; MAN alone starts them at full speed. At 50 gpm level reaches 60 % in about 10 plant-minutes while REACTOR POWER drifts up to about 2½ % by itself. If level stops rising for 3 plant-minutes, type 100.',
                    wait_speed: 10,
-                   hl: ['SG Feed Rate'], hl_watch: ['SG Level', 'Feed Pumps', 'Reactor Power'],
+                   hl: ['SG Feed Rate'], hl_watch: ['SG Level', 'Feed Flow', 'Reactor Power'],   // FEED FLOW, not the card (#809 quality pass)
                    label: 'STEAM GENERATOR LEVEL 60 % or more, main feed in MAN' },
                  { cmd: { action: 'set_feed_coupled', active: true }, p: 'feed_coupled', op: '>', v: 0,
                    ask: 'Press AUTO on the SG FEED card and check AUTO is lit.',
@@ -3882,7 +3889,7 @@
                    label: 'AUX FEED WATER reads STANDBY' }],
           press_expected: true,
           hl: ['SG Feed Rate', 'SG Feed AUTO', 'AFW — Stop'],
-          hl_watch: ['SG Level', 'Feed Pumps', 'AFW', 'Reactor Power'] },
+          hl_watch: ['SG Level', 'Feed Pumps', 'Feed Flow', 'AFW', 'Reactor Power'] },
         { text: 'Raise power past 5 %, into Mode 1, At Power.',
           aim: 'Mode 1 begins at 5 %, and the steps after this one need power higher still.',
           why: 'Mode 1, At Power, begins at 5 % power. The warming water now holds power back, so each rod step buys a new steady level rather than a runaway, about half a percent of power per step.',

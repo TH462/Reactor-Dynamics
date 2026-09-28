@@ -74,7 +74,7 @@ The shutdown bank is a set of control rods that is never used to steer the react
 
 It comes out first during a startup and stays out. Power and temperature are steered with the control bank and boron.
 
-[HIGHLIGHTED: Rod Speed — Fast, Shutdown Bank — Withdraw (pulsing); Shutdown Bank, Shutdown Rod Position (steady)]
+[HIGHLIGHTED: Rod Speed — Fast, Shutdown Bank — Withdraw (pulsing); Shutdown Rod Position (steady)]
 
 
 

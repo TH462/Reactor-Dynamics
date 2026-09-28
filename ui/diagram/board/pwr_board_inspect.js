@@ -824,12 +824,13 @@
       'what clears the trip half of the low-Tavg signal. Restoring full feed into a generator that ' +
       'is already recovering will overfill it and isolate you again at 90 % level.', CI, '9.2'),
     imro8xhy2me: e('Steam Generator (SG) Feed Rate setpoint',
-      'Commanded feed pump speed, shown as 0–1200 gpm (0–273 m³/h). Typing here takes feed to MANUAL.',
+      'MANUAL: commanded feed pump speed. AUTO: measured feed flow. 0–1200 gpm (0–273 m³/h). Typing takes feed to MANUAL.',
       'The scale is pump speed expressed as flow: 1200 gpm (273 m³/h) is 120 % speed. Arrows step by 20 gpm (4.5 m³/h). ' +
       'Compare your setting against the STEAM FLOW indication above — matching them is what stops ' +
-      'level moving. This number is a DEMAND, not a measurement: when it goes amber, the plant is ' +
+      'level moving. In MANUAL this number is a DEMAND, not a measurement: when it goes amber, the plant is ' +
       'delivering none of it (dead feed train — the FEED FLOW readout below has the truth), and the ' +
-      'SG FEED corner reads NO FLOW.', CI, '9.2'),
+      'SG FEED corner reads NO FLOW. In AUTO the controller sets the demand and the box shows the ' +
+      'measured FEED FLOW instead; a dead feed train reads near 0 gpm there, still in amber.', CI, '9.2'),
     imrsgkz4lq0: e('Feed Flow',
       'MEASURED feedwater flow — what is actually reaching the generator.',
       'Not pump demand. Through a feed pump trip the demand stays where you left it while this falls ' +

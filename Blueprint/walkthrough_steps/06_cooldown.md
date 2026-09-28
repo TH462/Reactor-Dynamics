@@ -344,7 +344,7 @@ Background
 
 The cooldown walked DUMP SETPOINT down to 120 psi. Left there with the dump in AUTO, the next heatup's first AUTO press opens the dump wide against a setpoint far below its steam pressure, and the plant trips on low steam pressure. Closing the dump and putting the setpoint back to 1020 psi hands the next heatup the lineup it expects; inserting the shutdown bank leaves both banks in, the way the heatup starts. The scram from the shutdown is still latched, and while it is no rod can move: resetting it moves nothing, it gives the rod drive its power back so the heatup can withdraw the shutdown bank.
 
-[HIGHLIGHTED: Rod Speed — Fast, Shutdown Bank — Insert, Steam Dump — Close, Dump Setpoint, SCRAM (pulsing); Shutdown Bank, Shutdown Rod Position, Steam Dump, Steam Dump Status (steady)]
+[HIGHLIGHTED: Rod Speed — Fast, Shutdown Bank — Insert, Steam Dump — Close, Dump Setpoint, SCRAM (pulsing); Shutdown Rod Position, Steam Dump, Steam Dump Status (steady)]
 
 
 
@@ -783,8 +783,8 @@ walkthroughs."* AGENT-DRAFTED for owner review.
 11 had one spray row graded on the spray alone, and 'Pressurizer Spray — Off' pulsed from step entry, so
 a press at entry met it. Now `accs_ordered`: 11a HX SPLIT, **11b "Leave SPRAY running and watch
 SUBCOOLING MARGIN fall to 32 °F"** (graded 17.78 °C), **11c "When SUBCOOLING MARGIN reads below 30 °F,
-press OFF under SPRAY"** (the OFF button pulses only while 11c is active — new `accs[].hl_active`; steady
-ring before), 11d the wait. 11b's note: "If OFF is already lit under SPRAY, press MANUAL under SPRAY with
+press OFF under SPRAY"** (the OFF button pulses only while 11c is active — 11c's own `accs[].hl`, which replaced the
+short-lived `accs[].hl_active` in #809 item 14; steady ring before), 11d the wait. 11b's note: "If OFF is already lit under SPRAY, press MANUAL under SPRAY with
 its box at 50 % and keep watching."
 
 MEASURED (route runner, seeds 42 / 7):
