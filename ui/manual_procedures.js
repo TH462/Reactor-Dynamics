@@ -2752,7 +2752,7 @@
           control: '1/M Plot', target: 'point 1 plotted',
           accs: [{ cmd: 'plot_1m_point',
                    ask: 'Press 1/M PLOT on the ROD CONTROL card, then press Plot point.',
-                   note: 'Every count target on this walkthrough is the SOURCE RANGE reading, printed in shorthand: 7.0e2 is 700 counts a second, 1.4e3 is 1,400, 7.0e3 is 7,000.',
+                   note: 'Every count target on this walkthrough is the SOURCE RANGE reading, printed in shorthand: 7.0e2 is 700 counts a second, 1.4e3 is 1,400, 7.0e3 is 7,000. The 1/M PLOT window covers STEAM GENERATOR LEVEL: close it with the ✕ in its corner between points, and press 1/M PLOT to bring it back.',
                    wait_speed: 1, label: 'Baseline point plotted' }],
           overtaken: SR_OVERTAKEN,
           /* GLOW THE BUTTON, NOT THE BOX THAT OPENS IT (#735, owner playtest #724 items 4 and 5:

@@ -107,7 +107,7 @@ Auxiliary feed puts back the water that leaves as steam, which holds SG level be
 
 Suggested time warp: 1×.
 
-Note: Every count target on this walkthrough is the SOURCE RANGE reading, printed in shorthand: 7.0e2 is 700 counts a second, 1.4e3 is 1,400, 7.0e3 is 7,000.
+Note: Every count target on this walkthrough is the SOURCE RANGE reading, printed in shorthand: 7.0e2 is 700 counts a second, 1.4e3 is 1,400, 7.0e3 is 7,000. The 1/M PLOT window covers STEAM GENERATOR LEVEL: close it with the ✕ in its corner between points, and press 1/M PLOT to bring it back.
 
 
 
