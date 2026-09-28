@@ -45,6 +45,12 @@
   // release" alone accepted the release of an OUT hold and moved on to "Rods in means fewer
   // neutrons" over a bank that had gone out.
   var IN_SINCE_ASK = { type: 'rod_travel', group_id: 'control_rods', direction: 'in', steps: 3 };
+  // ...and no hold may still be in progress. A release EARLIER in the ask (a 3 s probe hold) stays in
+  // the action memory, so without this a second, longer hold was accepted mid-hold the moment power
+  // crossed 90 % (#811 layman pass, measured: the 5x watch at +115.4 s and the spray ask at +145.4 s,
+  // both with INSERT still held). Every ask's inaction exit is `quiet` for the same player: the help
+  // waits for the player to stop touching controls, never overtakes a hold.
+  var NO_HOLD = { type: 'no_hold' };
 
   /* BOARD SCOPE AND POINTERS (#811, OWNER RULING 2026-09-28: "we use dimming to isolate the part
    * of the board we are focusing on and only use the outline as a pointer to briefly show what the
@@ -105,7 +111,7 @@
         ],
         branches: [
           { trigger: inst('mwe_output', 'below', 96), goto: 'o2_watch' },
-          { trigger: { type: 'inaction', window: 90 }, goto: 'o1_help' },
+          { trigger: { type: 'inaction', window: 90, quiet: true }, goto: 'o1_help' },
         ] },
       { id: 'o1_help',
         trigger: delay(0),
@@ -167,9 +173,9 @@
         // the player was still holding the button.
         branches: [
           { trigger: { type: 'all', triggers: [inst('power_range', 'below', 90), IN_SINCE_ASK,
-              { type: 'any', triggers: [did('rod_nudge'), did('rod_stop')] }] }, goto: 'o5_rods_watch' },
+              { type: 'any', triggers: [did('rod_nudge'), did('rod_stop')] }, NO_HOLD] }, goto: 'o5_rods_watch' },
           { trigger: { type: 'rod_travel', group_id: 'control_rods', direction: 'out', steps: WRONG_WAY_STEPS }, goto: 'o4_wrong' },
-          { trigger: { type: 'inaction', window: 120 }, goto: 'o4_help' },
+          { trigger: { type: 'inaction', window: 120, quiet: true }, goto: 'o4_help' },
         ] },
       // WITHDRAWN, NOT INSERTED (#811 QA: power 93.7 -> 98.2 %, bank to 627/627 and 120 s of silence
       // before the help beat). One line, then the same ask continues from here — its own inaction
@@ -183,8 +189,8 @@
         ],
         branches: [
           { trigger: { type: 'all', triggers: [inst('power_range', 'below', 90), IN_SINCE_ASK,
-              { type: 'any', triggers: [did('rod_nudge'), did('rod_stop')] }] }, goto: 'o5_rods_watch' },
-          { trigger: { type: 'inaction', window: 120 }, goto: 'o4_help' },
+              { type: 'any', triggers: [did('rod_nudge'), did('rod_stop')] }, NO_HOLD] }, goto: 'o5_rods_watch' },
+          { trigger: { type: 'inaction', window: 120, quiet: true }, goto: 'o4_help' },
         ] },
       { id: 'o4_help',
         trigger: delay(0),
@@ -217,7 +223,7 @@
         ],
         branches: [
           { trigger: inst('pzr_spray_flow', 'above', 30), goto: 'o7_spray_watch' },
-          { trigger: { type: 'inaction', window: 90 }, goto: 'o6_help' },
+          { trigger: { type: 'inaction', window: 90, quiet: true }, goto: 'o6_help' },
         ] },
       { id: 'o6_help',
         trigger: delay(0),
@@ -238,7 +244,7 @@
         dialogue: [say('That\'s enough. Put the spray back in AUTO.', 'Return pressurizer spray to automatic.')],
         branches: [
           { trigger: { type: 'control_state', field: 'spray_auto', direction: 'is_true' }, goto: 'o9_heaters' },
-          { trigger: { type: 'inaction', window: 60 }, goto: 'o8_help' },
+          { trigger: { type: 'inaction', window: 60, quiet: true }, goto: 'o8_help' },
         ] },
       { id: 'o8_help',
         trigger: delay(0),
@@ -264,7 +270,7 @@
         dialogue: [say('Clock back to 1×. Last move: trip the reactor. Press SCRAM.', 'Clock 1×. Manually trip the reactor.')],
         branches: [
           { trigger: { type: 'scram' }, goto: 'o11_trip' },
-          { trigger: { type: 'inaction', window: 90 }, goto: 'o10_help' },
+          { trigger: { type: 'inaction', window: 90, quiet: true }, goto: 'o10_help' },
         ] },
       { id: 'o10_help',
         trigger: delay(0),

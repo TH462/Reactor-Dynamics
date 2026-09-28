@@ -386,6 +386,8 @@
     this._trend = null;               // { rev, series } — the chart traces a beat asked for (#811)
     this._scope = null;               // { rev, names } — the board scope (dimming) a beat asked for (#811)
     this._watchFired = [];            // scenario-level `watch` entries already taken (#811)
+    this._lastActionTime = null;      // sim time of the last forwarded operator command (quiet inaction, #811)
+    this._rodHold = null;             // group_id of an operator rod HOLD in progress (rod_start, no rod_stop yet)
     this._lastSimTime = 0;
     this._continueRequested = false;  // instructor_continue → `manual` trigger
     // Chat-mode state (scenarios with `chat: true` — dialogue log + interactions).
@@ -767,6 +769,18 @@
     this.currentBeatId = null;
   };
 
+  /* An operator rod HOLD in progress (#811): a rod_start forwarded with no rod_stop yet. Self-heals
+   * when the bank is no longer moving (driven to its end, blocked, a start with no release) so a
+   * lost release can never park a `quiet` inaction exit for ever. */
+  InstructorLayer.prototype._holdActive = function (snapshot) {
+    if (!this._rodHold) return false;
+    var rgs = snapshot && snapshot.control_state && snapshot.control_state.rod_groups;
+    for (var i = 0; rgs && i < rgs.length; i++) {
+      if (rgs[i].id === this._rodHold && rgs[i].moving === false) { this._rodHold = null; return false; }
+    }
+    return true;
+  };
+
   InstructorLayer.prototype._fireBranch = function (branch, simTime) {
     this.branchWatch = null;
     this.currentBeatId = branch.goto;
@@ -896,8 +910,19 @@
         return false;
       case 'inaction': {      // window elapsed with no sibling action having fired first
         var arm = this.lastBeatFireTime !== null ? this.lastBeatFireTime : this.scenarioStartTime;
+        /* QUIET (#811 layman pass, 2026-09-28): `quiet: true` means "the player has not touched a
+         * control for `window` seconds" — the clock restarts on every forwarded operator command
+         * and does not run at all while a rod HOLD is in progress. Measured before it existed: a
+         * player who began holding INSERT at 85-115 s into the rods ask got "I'll drive the rods
+         * in 40 steps for you" and the clock to 5x at exactly +120.0 s, under their finger. */
+        if (trigger.quiet) {
+          if (this._holdActive(snapshot)) return false;
+          if (this._lastActionTime !== null && (arm === null || this._lastActionTime > arm)) arm = this._lastActionTime;
+        }
         return arm !== null && (simTime - arm) >= trigger.window;
       }
+      case 'no_hold':         // no operator rod HOLD in progress (#811): grade a hold on its RELEASE
+        return !this._holdActive(snapshot);
       case 'alarm':
         if (!snapshot.alarms) return false;
         for (i = 0; i < snapshot.alarms.length; i++) {
@@ -2197,6 +2222,10 @@
       }
       var ret = this.below.handleCommand(command);
       this._actionsSinceBeat.push(command);   // operator_action / inaction triggers watch these
+      this._lastActionTime = this._lastSimTime;
+      if (command.action === 'rod_start') this._rodHold = command.group_id || 'control_rods';
+      else if (command.action === 'rod_stop_all' || command.action === 'scram' ||
+               (command.action === 'rod_stop' && (!this._rodHold || (command.group_id || 'control_rods') === this._rodHold))) this._rodHold = null;
       return ret;
     }
 
@@ -2774,6 +2803,8 @@
       trend: this._trend ? JSON.parse(JSON.stringify(this._trend)) : null,
       scope: this._scope ? JSON.parse(JSON.stringify(this._scope)) : null,
       watch_fired: this._watchFired.slice(),
+      last_action_time: this._lastActionTime,
+      rod_hold: this._rodHold,
       interact: JSON.parse(JSON.stringify(this._interact)),
       ui_policy: this.uiPolicy ? JSON.parse(JSON.stringify(this.uiPolicy)) : null,
       highlight: this.highlight ? JSON.parse(JSON.stringify(this.highlight)) : null,
@@ -2916,6 +2947,8 @@
       this._scope = state.scope || null;
       this._scopeRev = this._scope ? this._scope.rev : 0;
       this._watchFired = (state.watch_fired || []).slice();
+      this._lastActionTime = state.last_action_time != null ? state.last_action_time : null;   // absent on older saves
+      this._rodHold = state.rod_hold || null;
       this._interact = state.interact || {};
       this.uiPolicy = state.ui_policy || null;
       this.highlight = state.highlight || null;

@@ -439,6 +439,40 @@ Object.keys(ROUTES).forEach(function (name) {
   });
 });
 
+// ------------------------------------------------------------------ a hold is never overtaken (#811)
+/* LAYMAN PASS 2026-09-28: a player still HOLDING INSERT got "I'll drive the rods in 40 steps for
+ * you" and the clock to 5x under their finger. Two causes, both measured before the fix: the rods
+ * ask's inaction exit was plain elapsed time (help at exactly +120.0 s with a hold begun at +85,
+ * +100 or +115), and a release EARLIER in the ask (a 3 s probe hold) satisfied the "graded on
+ * release" acceptance mid-way through a second hold (5x at +115.4 s, spray ask at +145.4 s, INSERT
+ * still held). Asserted here: nothing fires and the clock never moves while a hold is in progress;
+ * the ask is met on the final release; the help still comes to a player who stops touching things. */
+function holdRoute(rods) {
+  return { o0_hello: [{ at: 15, cmd: READY }], o1_load: [{ at: 20, cmd: { action: 'set_load_target', mwe: 80 } }], o4_rods: rods };
+}
+function hold(a, b) {
+  return [{ at: a, cmd: { action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'fast' } },
+          { at: b, cmd: { action: 'rod_stop', group_id: 'control_rods' } }];
+}
+test('a rod hold is never overtaken by the help or a clock change', function (ck) {
+  [['hold +100..+140 (spans the 120 s window)', hold(100, 140), 100, 140],
+   ['probe hold +10..+13, then +110..+150', hold(10, 13).concat(hold(110, 150)), 110, 150]].forEach(function (c) {
+    var r = play(holdRoute(c[1]), 420);
+    var a0 = r.at.o4_rods, hs = a0 + c[2], he = a0 + c[3];
+    var during = r.fired.filter(function (id) { return r.at[id] > hs && r.at[id] < he; });
+    var accs = r.trace.filter(function (x) { return x.t > hs + 0.5 && x.t < he; }).map(function (x) { return x.s.metadata.time_acceleration; });
+    ck(c[0] + ': no beat fires mid-hold', during.join(',') || 'none', during.length === 0, 'none');
+    ck(c[0] + ': clock stays 1x through the hold', accs.length ? Math.max.apply(null, accs) + 'x' : 'no samples', accs.length && Math.max.apply(null, accs) === 1, '1x');
+    ck(c[0] + ': no help (the player did it)', String(!!r.at.o4_help), !r.at.o4_help, 'false');
+    var dt = r.at.o5_rods_watch != null ? r.at.o5_rods_watch - he : null;
+    ck(c[0] + ': ask met on the final release', dt == null ? 'never' : '+' + dt.toFixed(1) + ' s', dt != null && dt >= 0 && dt < 3, '0..3 s after release');
+  });
+  // QUIET: the window restarts on the last touch — a 3-step tap at +60 then nothing gets the help at +180, not +120.
+  var r2 = play(holdRoute([{ at: 60, cmd: { action: 'rod_nudge', group_id: 'control_rods', steps: -3, speed: 'fast' } }]), 420);
+  var h = r2.at.o4_help != null ? r2.at.o4_help - r2.at.o4_rods : null;
+  ck('tap at +60, then idle: help counts from the last touch', h == null ? 'never' : '+' + h.toFixed(1) + ' s', h != null && h >= 179 && h < 182, '+180 s');
+});
+
 // ------------------------------------------------------------------ board scope (#811)
 /* The scope rides the snapshot beat by beat, and only a beat moves it. OWNER RULING 2026-09-28:
  * "we should give the instructor exclusive control" — so the PLANNED trip (typical route) must
