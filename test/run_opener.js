@@ -66,7 +66,8 @@ function rec(s) {
             rps_state: { scrammed: !!(s.rps_state && s.rps_state.scrammed) },
             metadata: { time_acceleration: s.metadata.time_acceleration },
             instructor: s.instructor,
-            trend: s.instructor && s.instructor.trend ? JSON.parse(JSON.stringify(s.instructor.trend)) : null };
+            trend: s.instructor && s.instructor.trend ? JSON.parse(JSON.stringify(s.instructor.trend)) : null,
+            focus: s.instructor && s.instructor.focus ? JSON.parse(JSON.stringify(s.instructor.focus)) : null };
   INST.forEach(function (k) { o.instruments[k] = s.instruments[k]; });
   var rg = (s.control_state.rod_groups || []).filter(function (g) { return g.id === 'control_rods'; })[0];
   o.control_state.rods_moving = !!(rg && rg.moving);
@@ -211,9 +212,35 @@ test('opener copy — registers, units, length, speed stated, highlights, exits'
   var wwl = ww && ww.dialogue && ww.dialogue.length === 1 ? ww.dialogue[0] : null;
   ck('o4_wrong is ONE line of <= 20 words in both registers', wwl ? words(wwl.learning) + ' / ' + words(wwl.industry) + ' words' : 'missing',
      !!wwl && words(wwl.learning) <= 20 && words(wwl.industry) <= 20, 'one line, <= 20 / <= 20');
-  var last = OP.beats[OP.beats.length - 1];
+  // The flow's end is the level_complete beat; beats listed after it are reached by goto only
+  // (ox_trip_early, via the scenario watch), so each must branch rather than fall through.
+  var last = OP.beats.filter(function (b) { return b.level_complete; })[0] || OP.beats[OP.beats.length - 1];
   ck('ends with a level_complete and a SCRAM before it', last.id + ' / ' + !!last.level_complete,
-     !!last.level_complete && ids.indexOf('o10_scram') !== -1 && ids.indexOf('o10_scram') < ids.indexOf(last.id), 'level_complete after the trip');
+     !!last.level_complete && last.advance === 'end' && ids.indexOf('o10_scram') !== -1 && ids.indexOf('o10_scram') < ids.indexOf(last.id), 'level_complete after the trip');
+  var tail = OP.beats.slice(ids.indexOf(last.id) + 1).filter(function (b) { return !b.branches; }).map(function (b) { return b.id; });
+  ck('beats after the finish branch (none falls through)', tail.join(',') || 'none', !tail.length, 'every one has branches');
+
+  /* BOARD FOCUS (#811, owner 2026-09-28). Every name resolves on the board, and only a BEAT moves
+   * it: the scenario watch is the one place content reacts to the unexpected. */
+  var fl = RD.PwrBoardDriver && RD.PwrBoardDriver.focusLabels ? RD.PwrBoardDriver.focusLabels() : [];
+  var fBad = [], fN = 0;
+  OP.beats.forEach(function (b) {
+    if (!b.focus) return;
+    fN++;
+    (b.focus.outline || []).concat(b.focus.lit || []).forEach(function (n) { if (fl.indexOf(n) === -1) fBad.push(b.id + ':' + n); });
+  });
+  ck('board resolves every focus name', fBad.join(',') || (fN + ' focus beats, all resolve'), fN >= 4 && !fBad.length, 'every name in focusLabels()');
+  var wBad = [];
+  (OP.watch || []).forEach(function (w) {
+    if (ids.indexOf(w.goto) === -1) wBad.push(w.id + '→' + w.goto);
+    if (w.until && ids.indexOf(w.until) === -1) wBad.push(w.id + ' until ' + w.until);
+  });
+  ck('every watch lands on a beat and is disarmed by a real one', wBad.join(',') || (OP.watch || []).length + ' watch', (OP.watch || []).length > 0 && !wBad.length, 'defined');
+  var ox = OP.beats.filter(function (b) { return b.id === 'ox_trip_early'; })[0];
+  var oxl = ox && ox.dialogue && ox.dialogue.length === 1 ? ox.dialogue[0] : null;
+  ck('ox_trip_early lifts the focus in ONE line of <= 20 words (both registers)',
+     oxl ? words(oxl.learning) + ' / ' + words(oxl.industry) + ' words, focus ' + JSON.stringify(ox.focus) : 'missing',
+     !!oxl && ox.focus === null && words(oxl.learning) <= 20 && words(oxl.industry) <= 20, 'focus null, <= 20 / <= 20');
 });
 
 // ------------------------------------------------------------------ lineup + restore
@@ -383,6 +410,57 @@ Object.keys(ROUTES).forEach(function (name) {
     ck('player time (clock only, reading overlaps it)', mins.toFixed(1) + ' min, ' + (r.svc.simTime / 60).toFixed(1) + ' plant-min',
        name === 'typical' ? (mins > 3 && mins < 7) : mins < 12, name === 'typical' ? '3..7 min (target 5)' : '< 12 min');
   });
+});
+
+// ------------------------------------------------------------------ board focus (#811)
+/* The focus rides the snapshot beat by beat, and only a beat moves it. OWNER RULING 2026-09-28:
+ * "we should give the instructor exclusive control" — so the PLANNED trip (typical route) must
+ * not fire the early-trip watch, and an EARLY trip must: the player presses SCRAM during the load
+ * cut, the watch jumps to ox_trip_early, the focus lifts, and the opener still finishes. */
+test('board focus: set by beats, lifted by a beat, early trip handled', function (ck) {
+  var t = RESULTS.typical;
+  if (!t) { ck('typical route ran', 'no', false, 'yes'); return; }
+  var f1 = t.snaps.o1_load && t.snaps.o1_load.focus;
+  ck('o1_load: the turbine is outlined, the load panel lit', f1 ? f1.outline.join(',') + ' | ' + f1.lit.length + ' lit' : 'null',
+     !!f1 && f1.outline[0] === 'Turbine and Generator' && f1.lit.indexOf('Turbine Load') !== -1, 'Turbine and Generator');
+  var f4 = t.snaps.o4_rods && t.snaps.o4_rods.focus;
+  ck('o4_rods: the reactor vessel is outlined', f4 ? f4.outline.join(',') : 'null', !!f4 && f4.outline.join(',') === 'Reactor Vessel', 'Reactor Vessel');
+  var f5 = t.snaps.o5_rods_watch && t.snaps.o5_rods_watch.focus;
+  ck('sticky: o5 (no focus field) keeps o4\'s', f5 ? f5.outline.join(',') + ' rev ' + f5.rev : 'null', !!f5 && f4 && f5.rev === f4.rev, 'same rev');
+  ck('o10_scram lifts it (focus: null)', JSON.stringify(t.snaps.o10_scram && t.snaps.o10_scram.focus), t.snaps.o10_scram && t.snaps.o10_scram.focus === null, 'null');
+  ck('planned trip: the early-trip watch did NOT fire', t.fired.indexOf('ox_trip_early') === -1 ? 'not fired' : 'FIRED', t.fired.indexOf('ox_trip_early') === -1, 'not fired');
+
+  var early = play({ o0_hello: [{ at: 3, cmd: READY }], o1_load: [{ at: 6, cmd: { action: 'scram' } }] }, 900);
+  var want = ['o0_hello', 'o1_load', 'ox_trip_early', 'o11_trip', 'o12_settle', 'o13_end'];
+  ck('early SCRAM: beats', early.fired.join(' '), early.fired.join(' ') === want.join(' '), want.join(' '));
+  ck('early SCRAM: focus was up before the trip', early.snaps.o1_load && early.snaps.o1_load.focus ? early.snaps.o1_load.focus.outline.join(',') : 'null',
+     !!(early.snaps.o1_load && early.snaps.o1_load.focus), 'set');
+  var fx = early.snaps.ox_trip_early;
+  ck('early SCRAM: ox_trip_early lifts the focus', fx ? JSON.stringify(fx.focus) : 'never fired', !!fx && fx.focus === null, 'null');
+  ck('early SCRAM: still reaches the finish card', early.lc ? 'yes' : 'no', !!early.lc, 'yes');
+  var t11 = early.snaps.o11_trip;
+  ck('early SCRAM: o11\'s "about 2 % / decay about 5 %" still true',
+     t11 ? I(t11, 'power_range').toFixed(2) + ' % / ' + t11.true_state.decay_heat_pct.toFixed(2) + ' %' : 'never',
+     !!t11 && I(t11, 'power_range') > 1 && I(t11, 'power_range') < 3 && t11.true_state.decay_heat_pct >= 4 && t11.true_state.decay_heat_pct <= 6, '1..3 % / 4..6 %');
+  var tE = early.snaps.o13_end ? degF(I(early.snaps.o13_end, 'tavg')) : NaN;
+  ck('early SCRAM: o12\'s "Tavg toward about 552 °F" still true', tE.toFixed(1) + ' °F', tE > 548 && tE < 558, '548..558');
+
+  // save/restore carries the watch's memory: a restored opener past the watch does not re-fire it
+  /* SAVE/RESTORE after the watch fired: the restored opener must not take it AGAIN. The plant is
+   * still tripped after the restore, so a forgotten watch re-fires on the first pass and repeats
+   * the "tripped unexpectedly" line (the #142 class: progress, not scratch). */
+  var mid = play({ o0_hello: [{ at: 3, cmd: READY }], o1_load: [{ at: 6, cmd: { action: 'scram' } }] }, 30);
+  var back = new RD.SimulationService({ seed: 42 });
+  back.selectPlant('pwr2', 'hot_full_power');
+  back.loadState(mid.svc.saveState());
+  back.running = true;
+  // A re-taken watch would jump back to ox_trip_early — a beat already fired, which never fires
+  // again, so the flow would STALL there instead of reaching the finish card.
+  var lcBack = false;
+  for (var k = 0; k < 400 && !lcBack; k++) { var sb = back.tick(); lcBack = !!(sb.instructor && sb.instructor.level_complete); }
+  ck('save/restore: the early-trip watch is not taken again (the opener still finishes)',
+     'saved at ' + mid.fired.slice(-1)[0] + ', now ' + back.instructor.currentBeatId + ', finish card ' + lcBack,
+     mid.fired.indexOf('ox_trip_early') !== -1 && lcBack, 'reaches level_complete');
 });
 
 // ------------------------------------------------------------------ report

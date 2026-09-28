@@ -599,3 +599,54 @@
   animation-play-state: paused !important;
   transition: none !important;
 }
+
+/* ===================================================== instructor focus (#811)
+   The silhouette outline, the name tag and the dimming — built in pwr_board.js setFocus(), which
+   says how the silhouette is made. ONLY OPACITY ANIMATES: the outline's filter is rastered once
+   and the pulse is a compositor-only opacity animation on its own layer (the board has a frame
+   budget, #613). The board has one theme (dark), so there is no light variant to keep in step. */
+.pwr-board-stage .bd-focus-layer {
+  position: absolute; left: 0; top: 0; width: 0; height: 0;
+  overflow: visible; pointer-events: none; z-index: 6;
+}
+.bd-focus-ol { position: absolute; pointer-events: none; opacity: 0; will-change: opacity; }
+.bd-focus-sil { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.bd-focus-sil > * { pointer-events: none !important; }
+/* Enter: fade in past the pulse's ceiling (the brief brighten), then breathe. */
+.bd-focus-ol.on { opacity: 0.8; animation: bdFocusEnter 0.5s ease-out both, bdFocusPulse 2.6s ease-in-out 0.5s infinite; }
+.bd-focus-ol.bd-out { opacity: 0; animation: bdFocusExit 0.42s ease-in both; }
+@keyframes bdFocusEnter { 0% { opacity: 0; } 45% { opacity: 1; } 100% { opacity: 0.8; } }
+@keyframes bdFocusPulse { 0%, 100% { opacity: 0.8; } 50% { opacity: 0.45; } }
+@keyframes bdFocusExit  { 0% { opacity: 0.7; } 100% { opacity: 0; } }
+.bd-focus-tag {
+  position: absolute; white-space: nowrap; pointer-events: none;
+  font-family: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.25;
+  color: #e4f0ff; background: rgba(9, 18, 28, 0.94); border: 1px solid rgba(140, 196, 255, 0.9);
+  box-shadow: 0 0 8px rgba(122, 176, 255, 0.35);
+  opacity: 0; transition: opacity 0.45s ease-out 0.15s;
+}
+.bd-focus-tag.on { opacity: 1; }
+.bd-focus-tag.bd-out { opacity: 0; transition: opacity 0.4s ease-in; }
+.bd-focus-lines { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none;
+  opacity: 0; transition: opacity 0.45s ease-out 0.15s; }
+.bd-focus-lines.on { opacity: 1; }
+.bd-focus-lines line { stroke: rgba(140, 196, 255, 0.9); }
+.bd-focus-lines circle { fill: #8cc4ff; }
+/* DIMMING (style c). Not hidden, still clickable (pointer-events untouched), and nothing here has a
+   :hover branch — a dimmed tile does not brighten under the pointer (owner, 2026-09-28). Pipes
+   (the stage's first child, the under-SVG) dim with the tiles. Transitions only while dimming is
+   on or being lifted, so no tile's other opacity changes start animating. */
+.pwr-board-stage.bd-dimming > .bd-tile:not(.bd-lit),
+.pwr-board-stage.bd-dimming > svg:first-child { opacity: 0.38; filter: grayscale(0.75); }
+.pwr-board-stage.bd-dimming > .bd-tile, .pwr-board-stage.bd-dimming > svg:first-child,
+.pwr-board-stage.bd-undimming > .bd-tile, .pwr-board-stage.bd-undimming > svg:first-child {
+  transition: opacity 0.45s ease, filter 0.45s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bd-focus-ol.on { animation: none; opacity: 0.9; }
+  .bd-focus-ol.bd-out { animation: none; opacity: 0; }
+  .bd-focus-tag, .bd-focus-lines { transition: none; }
+  .pwr-board-stage.bd-dimming > .bd-tile, .pwr-board-stage.bd-dimming > svg:first-child,
+  .pwr-board-stage.bd-undimming > .bd-tile, .pwr-board-stage.bd-undimming > svg:first-child { transition: none; }
+}

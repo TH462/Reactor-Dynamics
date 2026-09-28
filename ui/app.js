@@ -3632,6 +3632,7 @@
     syncSpeedUI(s);
     syncPacingUI(s);
     renderHighlight(s);
+    renderFocus(s);
     applyInstrTrend(s);   // after the highlight: it adds its own glow, which that pass would clear
     instrGateOpen(s);     // a step that blocks progress opens the card, once per beat (#439)
     // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
@@ -6157,6 +6158,28 @@
     }
     if (!el && hl.instrument_id) el = $('gauge-' + hl.instrument_id);
     if (el) el.classList.add('instr-glow');
+  }
+  /* ---- Instructor FOCUS (#811) — a beat's `focus: { outline, lit }` drawn on the PWR board as a
+   * silhouette outline (+ name tag, + dimming of the rest, by style). PROTOTYPE: three styles for
+   * the owner to compare, picked by a dev URL param `?focus=a|b|c` —
+   *   a  outline only · b  outline + name tag on a leader line · c  outline + dim the rest (default).
+   * Live instructed content only: free play never focuses, and the finish card, End, Retry and any
+   * stop clear it (the snapshot's focus is null outside a running scenario). The beat's own
+   * highlighted control is always lit, so dimming never swallows the control the line asks for. */
+  var FOCUS_STYLE = (function () {
+    var m = /[?&]focus=([abc])(?:&|$)/.exec(location.search || '');
+    return m ? m[1] : 'c';
+  })();
+  function renderFocus(s) {
+    var B = (ui.plant === 'pwr' && RD.PwrBoard && RD.PwrBoard.isMounted && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
+    if (!B || !B.setFocus) return;
+    var ins = s && s.instructor;
+    var f = ins && ins.scenario_id && !ins.level_complete ? ins.focus : null;
+    if (!f) { B.setFocus(null); return; }
+    var lit = (f.lit || []).slice();
+    var hl = ins.highlight && ins.highlight.control_label;
+    if (hl && lit.indexOf(hl) === -1) lit.push(hl);
+    B.setFocus({ outline: f.outline || [], lit: lit, style: FOCUS_STYLE });
   }
   // Locate a control group on the RBMK/BWR plant display by its .cg-l label,
   // switching to the owning view tab when it is not on the active one.

@@ -415,6 +415,55 @@ var KNOBS = {
    * plus five cooling-tower plume ellipses rewriting `style` at 9 Hz. The components guard those
    * writes with `if (power !== last.power)` and at hot_full_power the power reading moves every
    * broadcast, so the guard never holds. Promotion cannot cache a blur whose input changes. */
+  /* THE INSTRUCTOR FOCUS (#811): style c — the reactor vessel outlined (pulsing), the rod card and
+   * two tiles lit, the rest of the board dimmed and desaturated. Free play clears the focus on every
+   * broadcast, so the knob pins it by stubbing setFocus after applying. `focusstatic` is the same
+   * with the pulse stopped (to separate the pulse's cost from the dimming's). */
+  focus: {
+    apply: function () {
+      var B = RD.PwrBoard;
+      B.setFocus({ outline: ['Reactor Vessel'], lit: ['Control Bank', 'Reactor Power', 'Tavg'], style: 'c' });
+      B.setFocus = function () {};
+      return { outlined: B.focusState().outline.length, lit: B.focusState().lit.length };
+    },
+    verify: function () {
+      var st = RD.PwrBoard.focusState(), ol = document.querySelector('.bd-focus-ol.on');
+      return { dimming: st.dimming, outline: st.outline.join(','), pulse: ol ? getComputedStyle(ol).animationName : 'none',
+               took: st.dimming && st.outline.length === 1 };
+    },
+  },
+  // Combine with `focus`: keep the dimming's opacity, drop its desaturation filter.
+  dimnogray: {
+    css: '.pwr-board-stage.bd-dimming > * { filter: none !important; }',
+    verify: function () {
+      var t = document.querySelector('.pwr-board-stage.bd-dimming > .bd-tile:not(.bd-lit)');
+      return { filter: t ? getComputedStyle(t).filter : 'no dimmed tile', took: !!t && getComputedStyle(t).filter === 'none' };
+    },
+  },
+  // Combine with `focus`: remove the outline overlay, keep the dimming (isolates the two costs).
+  nofocusol: {
+    css: '.bd-focus-layer { display: none !important; }',
+    verify: function () { var l = document.querySelector('.bd-focus-layer'); return { took: !!l && getComputedStyle(l).display === 'none' }; },
+  },
+  // Combine with `focus`: keep the outline, lift the dimming.
+  nodim: {
+    css: '.pwr-board-stage.bd-dimming > * { opacity: 1 !important; filter: none !important; }',
+    verify: function () { var t = document.querySelector('.pwr-board-stage.bd-dimming > .bd-tile:not(.bd-lit)'); return { took: !!t && getComputedStyle(t).opacity === '1' }; },
+  },
+  focusstatic: {
+    css: '.bd-focus-ol.on { animation: none !important; opacity: 0.8 !important; }',
+    apply: function () {
+      var B = RD.PwrBoard;
+      B.setFocus({ outline: ['Reactor Vessel'], lit: ['Control Bank', 'Reactor Power', 'Tavg'], style: 'c' });
+      B.setFocus = function () {};
+      return { outlined: B.focusState().outline.length };
+    },
+    verify: function () {
+      var st = RD.PwrBoard.focusState(), ol = document.querySelector('.bd-focus-ol.on');
+      return { dimming: st.dimming, pulse: ol ? getComputedStyle(ol).animationName : 'none',
+               took: st.dimming && !!ol && getComputedStyle(ol).animationName === 'none' };
+    },
+  },
   filterlayer: {
     apply: function () {
       var els = document.querySelectorAll('[filter]');

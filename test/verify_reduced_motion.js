@@ -350,6 +350,31 @@ function probeAll() {
     !armedReduce.err && !/bdScramPulse/.test(armedReduce.anim) && /\d/.test(armedReduce.shadow),
     JSON.stringify(armedReduce));
 
+  /* THE INSTRUCTOR FOCUS OUTLINE (#811). It is a silhouette drawn by an SVG filter, so it has no
+   * CSS outline/box-shadow for the tuple above to compare — its static form is the drawn band
+   * itself, held at a steady opacity. Paired legs, as everywhere in this file: it must PULSE with
+   * motion allowed, and be still (and the dimming must not fade) under reduced motion. The sim is
+   * paused so free play's per-broadcast clear cannot take the focus back off mid-probe. */
+  async function focusProbe(page) {
+    return page.evaluate(async function () {
+      RD.__dev.service().handleCommand({ action: 'pause' });
+      await new Promise(function (r) { setTimeout(r, 300); });
+      RD.PwrBoard.setFocus({ outline: ['Reactor Vessel'], lit: ['Control Bank'], style: 'c' });
+      await new Promise(function (r) { setTimeout(r, 900); });
+      var ol = document.querySelector('.bd-focus-ol.on');
+      var dim = document.querySelector('.pwr-board-stage.bd-dimming > .bd-tile:not(.bd-lit)');
+      var r = { anim: ol ? getComputedStyle(ol).animationName : 'MISSING', op: ol ? +getComputedStyle(ol).opacity : 0,
+                dimTrans: dim ? getComputedStyle(dim).transitionDuration : 'MISSING' };
+      RD.PwrBoard.setFocus(null);
+      return r;
+    });
+  }
+  var focMotion = await focusProbe(pMotion), focReduce = await focusProbe(pReduce);
+  ck('the instructor focus outline pulses when motion is allowed (else the next check proves nothing)',
+    /bdFocusPulse/.test(focMotion.anim) && /0\.45s/.test(focMotion.dimTrans), JSON.stringify(focMotion));
+  ck('  …and under reduced motion it is a steady outline and the dimming does not fade',
+    focReduce.anim === 'none' && focReduce.op > 0.8 && !/0\.45s/.test(focReduce.dimTrans), JSON.stringify(focReduce));
+
   await browser.close();
   srv.close();
 

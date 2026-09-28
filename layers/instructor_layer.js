@@ -384,6 +384,8 @@
     this._actionsSinceBeat = [];      // forwarded operator commands since last beat fire
     this._beatBaseline = {};          // rod_travel: each group's steps when the beat fired (#811)
     this._trend = null;               // { rev, series } — the chart traces a beat asked for (#811)
+    this._focus = null;               // { rev, outline, lit } — the board focus a beat asked for (#811)
+    this._watchFired = [];            // scenario-level `watch` entries already taken (#811)
     this._lastSimTime = 0;
     this._continueRequested = false;  // instructor_continue → `manual` trigger
     // Chat-mode state (scenarios with `chat: true` — dialogue log + interactions).
@@ -594,6 +596,25 @@
   InstructorLayer.prototype._stepScenario = function (snapshot, simTime) {
     if (this.scenarioStartTime === null) this.scenarioStartTime = simTime;
 
+    /* SCENARIO-LEVEL WATCHES (#811, OWNER RULING 2026-09-28: "part of the instruction in the
+     * background might include triggers for undoing like if the player does something incorrectly
+     * or something unexpected happens"). `scenario.watch: [{ id, trigger, goto, until }]` is armed
+     * from the first pass until the beat named `until` fires; the first to trigger jumps to its
+     * `goto` exactly as a branch does, once. This is how content reacts to the unexpected (an early
+     * trip) without every beat carrying the same branch. */
+    var ws = (this.scenario && this.scenario.watch) || [];
+    for (var wi = 0; wi < ws.length; wi++) {
+      var w = ws[wi];
+      if (this._watchFired.indexOf(w.id) !== -1) continue;
+      if (w.until && this.firedBeats.has(w.until)) continue;
+      if (this.firedBeats.has(w.goto)) continue;      // a fired beat never fires again: the jump would stall the flow
+      if (this._evalTrigger(w.trigger, snapshot, simTime)) {
+        this._watchFired.push(w.id);
+        this._fireBranch(w, simTime);
+        break;
+      }
+    }
+
     // Watching a decision beat's branches: first branch trigger to fire wins (§6).
     // A fired branch jumps to its goto beat, which is then evaluated in the SAME
     // pass below — the decision flows straight into its consequence beat.
@@ -695,6 +716,17 @@
      * beat's text must say what it put there — the chart changing unannounced is the defect. */
     if (beat.trend && beat.trend.length) {
       this._trend = { rev: (this._trend ? this._trend.rev : 0) + 1, series: beat.trend.slice() };
+    }
+    /* A BEAT CAN FOCUS THE BOARD (#811, owner 2026-09-28): `focus: { outline: [names], lit: [labels] }`
+     * outlines components by their silhouette and (style c) dims everything else. STICKY like
+     * `highlight`: it stands until a later beat says otherwise. `focus: null` or `{ clear: true }`
+     * lifts it. Nothing else lifts it — not an alarm, not a trip (OWNER RULING 2026-09-28: "we
+     * should give the instructor exclusive control"); a beat that should react to one says so,
+     * usually via a scenario-level `watch`. */
+    if (Object.prototype.hasOwnProperty.call(beat, 'focus')) {
+      var fz = beat.focus, rev = this._focusRev = (this._focusRev || 0) + 1;
+      this._focus = (!fz || fz.clear) ? null
+        : { rev: rev, outline: (fz.outline || []).slice(), lit: (fz.lit || []).slice() };
     }
     this.lastBeatFireTime = simTime;
     this._actionsSinceBeat = [];
@@ -2539,6 +2571,8 @@
       scenario_id: this.scenario ? this.scenario.id : null,
       current_beat_id: this.currentBeatId,
       trend: this._trend ? { rev: this._trend.rev, series: this._trend.series.slice() } : null,
+      focus: this.mode === 'scenario' && this._focus
+        ? { rev: this._focus.rev, outline: this._focus.outline.slice(), lit: this._focus.lit.slice() } : null,
       // Is a beat currently GATING progress? (#439, spec §4.) The UI tiers its
       // interrupt on this: a routine message cues the collapsed card's badge, a step
       // that blocks the player has to reach them even with another panel open, or the
@@ -2731,6 +2765,8 @@
       chat_rev: this._chatRev,
       beat_baseline: JSON.parse(JSON.stringify(this._beatBaseline || {})),
       trend: this._trend ? JSON.parse(JSON.stringify(this._trend)) : null,
+      focus: this._focus ? JSON.parse(JSON.stringify(this._focus)) : null,
+      watch_fired: this._watchFired.slice(),
       interact: JSON.parse(JSON.stringify(this._interact)),
       ui_policy: this.uiPolicy ? JSON.parse(JSON.stringify(this.uiPolicy)) : null,
       highlight: this.highlight ? JSON.parse(JSON.stringify(this.highlight)) : null,
@@ -2870,6 +2906,8 @@
       this._chatRev = state.chat_rev || 0;
       this._beatBaseline = state.beat_baseline || {};
       this._trend = state.trend || null;
+      this._focus = state.focus || null;
+      this._watchFired = (state.watch_fired || []).slice();
       this._interact = state.interact || {};
       this.uiPolicy = state.ui_policy || null;
       this.highlight = state.highlight || null;

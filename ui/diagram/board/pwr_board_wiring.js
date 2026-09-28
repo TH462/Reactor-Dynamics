@@ -3638,6 +3638,11 @@
   };
 
   // held in parity with the V1 synoptic's SYN_CONTROL_MAP, which was retired in #246.)
+  var FOCUS_COMPONENT_MAP = {
+    'Reactor Vessel': 'reactorVessel', 'Pressurizer': 'pressurizer', 'Steam Generator': 'steamGenerator',
+    'Turbine and Generator': 'turbineGenerator', 'Condenser': 'condenser', 'Cooling Tower': 'coolingTower',
+    'Reactor Coolant Pump': 'imrobpq4a70', 'PORV': 'porv', 'Steam Dump Valve': 'imrprmm4u5q',
+  };
   var CONTROL_LABEL_MAP = {
     'Control Bank': 'imrpk3wvydp', 'Rod Speed': 'imrpk3wvydp', 'Rod motion': 'imrpk3wvydp',
     'Nudge': 'imrpk3wvydp', 'Shutdown Bank': 'imrpny66npx',
@@ -5357,6 +5362,14 @@
     // instructor highlight vocabulary (consumed by pwr_board.revealControl / highlightLabels)
     controlLabelItem: function (label) { return CONTROL_LABEL_MAP[label] || null; },
     controlLabels: function () { return Object.keys(CONTROL_LABEL_MAP); },
+    /* THE FOCUS VOCABULARY (#811, owner 2026-09-28: an outline "that follows the detailed
+     * silhouette of the object … to point out what parts of the plant we are talking about").
+     * A beat's `focus.outline` names COMPONENTS — the big art the text talks about, by the name
+     * the inspect panel gives them — and `focus.lit` may name those or any highlight label above.
+     * Components first, so 'Steam Dump' stays the CARD (the highlight vocabulary's meaning) and
+     * the valve is 'Steam Dump Valve'. */
+    focusItem: function (name) { return FOCUS_COMPONENT_MAP[name] || CONTROL_LABEL_MAP[name] || null; },
+    focusLabels: function () { return Object.keys(FOCUS_COMPONENT_MAP).concat(Object.keys(CONTROL_LABEL_MAP)); },
     // Board items the operator can actually WORK — a press handler or a tap-or-hold drive.
     // Introspection for run_manual_controls, which fails if a manual calls a control
     // "read-only" while this list says otherwise (#304). Entries carrying only `active`,
