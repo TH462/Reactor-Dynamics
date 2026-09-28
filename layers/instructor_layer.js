@@ -1619,7 +1619,12 @@
                       * `true_state` does not carry it, so without this line `paramValue` returns
                       * undefined and `pwr_cooldown` step 10's acceptance could never grade. It is
                       * a FRACTION here (0.07) and per cent on the card. */
-                     rhr_hx_fraction: 1 };
+                     rhr_hx_fraction: 1,
+                     /* SET PZR PRESSURE, the typed box (#809 item 8, `pwr_heatup` 14a) — the
+                      * operator's setpoint, published as `control_state.pressure_setpoint` (MPa,
+                      * pwr2_shell.js) and read by the box itself (pwr_board_wiring `imrsg8b7b9o`).
+                      * Same shape as `steam_dump_setpoint` above. */
+                     pressure_setpoint: 1 };
   /* STEAM DUMP IN PRESSURE MODE — the card's status word PRESS, as a number the grader can read
    * *(OWNER RULING, 2026-09-24, selected "Grade the mode": "Give the grader a numeric 'dump in
    * pressure mode' value so PRESS is actually required. This is a small shared change and
@@ -1656,6 +1661,14 @@
      * ~30 plant-minutes, which a HOLD read off the command alone called finished. The board word
      * now reads MIXING until |control_state.boron_in_transit_ppm| < 1 ppm — the SAME threshold as
      * pwr_board_wiring `boronMixing`, change both. A plant that publishes no transit reads 0. */
+    /* A+B 7 % LIT ON THE LETDOWN CARD (#809 item 6, `pwr_heatup` 7a — OWNER: "just have the one
+     * step for the A+B button"). The tile's own test (pwr_board_wiring `imrmtimyxef`: not
+     * isolated, orifice A AND orifice B), so ONE row means both orifices are open. A row on
+     * `letdown_orifice_a` alone would tick on the A 3 % button, which opens A only. */
+    letdown_orifices_ab: function (cs) {
+      if (!cs || typeof cs.letdown_orifice_a !== 'boolean' || typeof cs.letdown_orifice_b !== 'boolean') return undefined;
+      return (cs.letdown_isolated !== true && cs.letdown_orifice_a && cs.letdown_orifice_b) ? 1 : 0;
+    },
     boron_status_hold: function (cs) {
       var r = cs ? cs.boron_adjust : undefined;
       if (typeof r !== 'number') return undefined;

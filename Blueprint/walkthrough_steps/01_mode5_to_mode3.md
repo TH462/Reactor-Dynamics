@@ -180,7 +180,7 @@ Suggested time warp: 1×.
 
 Suggested time warp: 600×.
 
-Note: At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open. Coming from the cooldown the plant starts near 240 psi, not 363, and the climb takes about an hour of plant time; from under 50 psi it takes an hour and a half or more. The Shutdown Cooling Not In Service alarm comes in on the way up, near 600 psi: expected on a heatup, not a fault. Pressurizer Level Above Program comes in near the top of the climb, about when the clock drops to 1×: expected, and it clears by itself partway through the heat-up.
+Note: At 665 psi the clock drops to 1× until the accumulator valve in the next step is open. Two alarms are expected, not faults: Shutdown Cooling Not In Service near 600 psi, and Pressurizer Level Above Program near 700 psi, which clears by itself during the heat-up.
 
 Background
 
@@ -272,7 +272,11 @@ From here the plant makes more heat than it needs, and the steam dump sends the 
 
 *With the steam side hot, PRIMARY PRESSURE can pass 1972 psi without firing the emergency injection.*
 
-()14a. Raise SET PZR PRESSURE to 2235 psi and wait for PRIMARY PRESSURE to read above 2175 psi.
+()14a. Set SET PZR PRESSURE to 2235 psi.
+
+Suggested time warp: 1×.
+
+()14b. Wait for PRIMARY PRESSURE to read above 2200 psi.
 
 Suggested time warp: 600×.
 
@@ -320,7 +324,7 @@ Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. ST
 
 Suggested time warp: 10×.
 
-Note: SOURCE RANGE wanders a little with nothing moving; steady means it is not climbing, and the check-off watches it for a minute and a half of plant time. STARTUP RATE on a shut-down core flickers between about −0.01 and +0.01. A rod out or BORON STATUS reading DILUTING means something is adding reactivity: stop and find out what moved.
+Note: SOURCE RANGE wanders a little with nothing moving; steady means it is not climbing, and the check-off watches it for half a minute of plant time. STARTUP RATE on a shut-down core flickers between about −0.01 and +0.01. A rod out or BORON STATUS reading DILUTING means something is adding reactivity: stop and find out what moved.
 
 Background
 
@@ -481,6 +485,14 @@ removed, or the old −300 pcm row restored, and the dilution case completes in 
 **What it no longer grades:** the shutdown MARGIN. A plant stopped subcritical but close to critical
 (rods out, boron diluted, then left alone) settles and ticks; the whole-run guard (true reactivity
 never above 0) still stands.
+
+
+### #809 record — 2026-09-27, `exp/809heat` scratch lane (items 6–9 of the rc9 playtest)
+
+- **7** (item 6): one check-off, "A+B 7 % lit", graded on the lamp's own test (`letdown_orifices_ab`, instructor layer: not isolated, A AND B open). The old 7a graded orifice A alone, which the A 3 % button also opens; the `cont` row for B is gone.
+- **9b** (item 7): note cut from 110 to 47 words — the start-pressure/climb-time sentence dropped; clock drop and the two expected alarms kept. Measured (typical, rewind_mid_heaters, pressure_sp_high, seed 42): Shutdown Cooling Not In Service at 599 psi, Pressurizer Level Above Program at 700 psi (the old text's "about when the clock drops" was 665), gone by step 12's entry.
+- **14** (item 8): two substeps, ordered. 14a grades SET PZR PRESSURE itself (`pressure_setpoint`, 2234.5–2235.5 psi, newly gradeable in CTL_PARAMS); 14b PRIMARY PRESSURE above 2200 psi (was 2175). Measured, typical and `pressure_sp_high` routes, seeds 42/7: ~25 psi per plant-minute through 2200 psi, crossed 21–22 plant-min after the box is set, slowing only above ~2220 psi; step 15 entered at 2227–2293 psi. The typo route now holds at 14a until the box is retyped (route gate: `gap_s` 120 s).
+- **16a** (item 9): SOURCE RANGE steady 90 s / 8 % → 30 s / 12 %. Tick 90.4 / 94 / 114 s → 30.2 / 31 / 36 s at 1× / 10× / 60×, zero un-ticks in 30 held plant-minutes (3 seeds × 3 speeds). Gives up fast-climb sensitivity (400-step FAST pull: unmet ~1.5 min vs ~4 min); neither window sees a dilution or a 200-step pull; 16b/16c/16d hold the step in all 23 injected runs.
 
 ### Carried over — the previous live file's agent record (verbatim, 2026-09-15 to 2026-09-21)
 
