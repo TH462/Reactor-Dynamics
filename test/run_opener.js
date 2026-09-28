@@ -471,6 +471,13 @@ test('a rod hold is never overtaken by the help or a clock change', function (ck
   var r2 = play(holdRoute([{ at: 60, cmd: { action: 'rod_nudge', group_id: 'control_rods', steps: -3, speed: 'fast' } }]), 420);
   var h = r2.at.o4_help != null ? r2.at.o4_help - r2.at.o4_rods : null;
   ck('tap at +60, then idle: help counts from the last touch', h == null ? 'never' : '+' + h.toFixed(1) + ' s', h != null && h >= 179 && h < 182, '+180 s');
+  // A LOST RELEASE (the UI never sends rod_stop): the hold heals when the bank stops at its travel
+  // limit, so the help still comes. Held OUT because an IN hold at full power trips the plant
+  // before the bank bottoms. Measured: help at +129.0 s (o4_wrong at +8.9 re-arms the window);
+  // with the `moving === false` heal removed the help never fires (QA 2026-09-28: was unguarded).
+  var r3 = play(holdRoute([{ at: 5, cmd: { action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'fast' } }]), 420);
+  var h3 = r3.at.o4_help != null ? r3.at.o4_help - r3.at.o4_rods : null;
+  ck('lost release (OUT hold, never released): the hold heals at the limit and the help comes', h3 == null ? 'never' : '+' + h3.toFixed(1) + ' s', h3 != null && h3 >= 120 && h3 < 140, '+120..140 s');
 });
 
 // ------------------------------------------------------------------ board scope (#811)
