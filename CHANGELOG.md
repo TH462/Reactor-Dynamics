@@ -30,6 +30,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed
+- **Reactor diagram: casing-colored flow-channel blocks under every rod** (#809 item 5, owner playtest). One small block per rod — 5 fuel, 4 control — running from the bottom of the rods to the bottom of the core's animated water column, simulating the water channels at the core's lower support structure.
+- **SG FEED manual gpm box now shows measured FEED FLOW while in AUTO**, not the three-element channel's raw demand, which visibly jittered (#809 item 13). MANUAL/OFF is unchanged: the box still reads back the operator's own demand (#516 item 1).
+
 ## [Alpha 1.8.0-rc9] — 2026-09-27
 
 ### Changed
