@@ -177,7 +177,8 @@ var ROUTES = {
   pwr_heatup: {
     /* 15b's own recovery (2026-09-25): "If it does not, set SET PZR PRESSURE to 2235 psi." Inert
      * on a route that arrives in the band — the step is met on entry and Continue is pressed at
-     * ACK_S, before the player's ENTRY_S read ends — and the way out for `pressure_sp_high`. */
+     * ACK_S, before the player's ENTRY_S read ends. It was the way out for `pressure_sp_high` until
+     * #809 gave 14a its own setpoint row, which catches that typo a step earlier. */
     steps: { '#15': { policy: 'seq', cmds: [{ action: 'set_pressure_setpoint', mpa: 15.41 }] },
              // 6a's own recovery, "If AUTO is lit, press CLOSE." -- inert the same way when 6a is met on entry
              '#6': { policy: 'seq', cmds: [{ action: 'set_steam_dump', mode: 'closed' }] },
@@ -188,8 +189,10 @@ var ROUTES = {
     round_entry_met: ['#5', '#7'],
     mistakes: [
       { id: 'double_rcp', kind: 'double press', at: 'cmd:set_rcp', set: { repeat: 2 } },
+      /* #809: 14a now grades the box itself, so the typo holds 14a open on the card; the player
+       * reads the box two plant-minutes later and retypes 2235, as 14a's ask says. */
       { id: 'pressure_sp_high', kind: 'overshoot', at: 'cmd:set_pressure_setpoint',
-        set: { policy: 'seq', cmds: [{ action: 'set_pressure_setpoint', mpa: 15.9 }] } },
+        set: { policy: 'seq', gap_s: 120, cmds: [{ action: 'set_pressure_setpoint', mpa: 15.9 }, { action: 'set_pressure_setpoint', mpa: 15.41 }] } },
       { id: 'rewind_mid_heaters', kind: 'rewind mid-step', at: 'cmd:set_heater', set: { rewind_after: 600 } },
       /* 6a's inline recovery (2026-09-25, phase 2): "If AUTO is lit, press CLOSE." The dump pressed
        * to AUTO early — step 13's press, made at step 5 — so step 6 opens with 6a unmet, which is
@@ -1004,7 +1007,10 @@ function runJob(legId, routeId, mutId, ctx) {
     if (P === 'seq') {                                   // an explicit sequence, one per tick
       var list = spec.cmds || (spec.order || []).map(function (i) { return (st2.accs[i] || {}).cmd; });
       S.memo.q = S.memo.q || 0;
-      if (S.memo.q < list.length) { press(list[S.memo.q++]); S.acts++; return; }
+      if (S.memo.q < list.length) {
+        if (spec.gap_s && S.memo.q > 0 && t() - S.memo.qt < spec.gap_s) return;   // gap_s: the player reads before the next press (#809)
+        press(list[S.memo.q++]); S.memo.qt = t(); S.acts++; return;
+      }
       pressRows(st2, c2);                                // recovery: keep following the step
       if (!spec.cmds) return;
       return;

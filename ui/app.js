@@ -4445,6 +4445,8 @@
     lo_press_blocked:        { bool: 'PZR PRESS LO-LO is blocked on the TRIP BLOCKS panel' },
     si_trip_blocked:         { bool: 'SI REACTOR TRIP is blocked on the TRIP BLOCKS panel' },
     steam_dump_setpoint:    { label: 'DUMP SETPOINT', dim: 'pressure' },
+    pressure_setpoint:      { label: 'SET PZR PRESSURE', dim: 'pressure' },   // #809: pwr_heatup 14a
+    letdown_orifices_ab:    { bool: 'A+B 7 % is lit on the LETDOWN card' },   // #809: pwr_heatup 7a, derived by the instructor layer
     accumulator_volume_pct: { label: 'ACCUMULATORS', u: '%' },
     steam_dump_valve_pct:   { label: 'STEAM DUMP opening', u: '%' },
     /* the dump SELECTION and the atmospheric dump valve (#629) — the heatup's Mode 3

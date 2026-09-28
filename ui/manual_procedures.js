@@ -1775,13 +1775,16 @@
           wait_speed: 1, speed_text: true,
           control: 'Letdown Orifices (CVCS)', target: 'A+B 7 % lit; LETDOWN reads above 0 gpm',
           cmd: { action: 'set_letdown_orifices', a: true, b: true }, hold: 10,
+          /* ONE CHECK-OFF (#809 item 6, OWNER: "just have the one step for the A+B button (ie, keep
+           * 7a and remove 7b). step 7b makes it seem like the user has to pres another button.").
+           * The row grades the A+B 7 % LAMP's own test (`letdown_orifices_ab`, instructor layer:
+           * not isolated, A open AND B open), so it still means both orifices — the A 3 % button
+           * opens A alone and does not tick it. Replaces a head row on A plus a `cont` row on B. */
           accs: [
-            { p: 'letdown_orifice_a', op: '>', v: 0,
+            { p: 'letdown_orifices_ab', op: '>', v: 0,
               ask: 'Press A+B 7 % on the LETDOWN card and check A+B 7 % is lit.',
-              label: 'A+B 7 % lit: orifice A open' },
-            { p: 'letdown_orifice_b', op: '>', v: 0,
-              cont: true,   /* #807: 7b ("check it is A+B 7 % that is lit, not A 3 % alone") restated 7a; B rides 7a's line */
-              label: 'Orifice B open' },
+              label: 'A+B 7 % lit',
+              hl: ['Letdown — A+B 7%'], hl_watch: ['Letdown Orifices (CVCS)', 'Letdown Flow'] },
           ],
           /* The `target` says "LETDOWN reads above 0 gpm" and there was no ring on that number
            * — the vocabulary had no key for it until #744. The orifice card is the press. */
@@ -1940,10 +1943,17 @@
              * (carried over); 9a is the press, 1x. */
             { p: 'heater_auto', op: '>', v: 0,
               ask: 'Press AUTO under HEATER on the PRESSURIZER (PZR) card and check AUTO is lit.',
-              wait_speed: 1, label: 'AUTO lit under HEATER' },
+              wait_speed: 1, label: 'AUTO lit under HEATER',
+              hl: ['Pressurizer Heater — Auto'], hl_watch: ['Pressurizer Heaters (PZR)'] },
             { p: 'pressure_mpa', op: '>', v: 4.585,
               ask: 'Wait while PRIMARY PRESSURE climbs to 665 psi.',
-              note: 'At 665 psi the clock drops to 1× by itself and stays there until the accumulator valve in the next step is open. Coming from the cooldown the plant starts near 240 psi, not 363, and the climb takes about an hour of plant time; from under 50 psi it takes an hour and a half or more. The Shutdown Cooling Not In Service alarm comes in on the way up, near 600 psi: expected on a heatup, not a fault. Pressurizer Level Above Program comes in near the top of the climb, about when the clock drops to 1×: expected, and it clears by itself partway through the heat-up.',
+              /* #809 item 7 (OWNER: "the description under this step is a bit too wordy"): the
+               * start-pressure and climb-time sentence is cut; the clock drop and the two expected
+               * alarms stay. MEASURED (typical / rewind_mid_heaters / pressure_sp_high, seed 42): Shutdown
+               * Cooling Not In Service at 599 psi, Pressurizer Level Above Program at 700 psi, cleared by
+               * step 12's entry. Each would otherwise read as a fault. */
+              note: 'At 665 psi the clock drops to 1× until the accumulator valve in the next step is open. Two alarms are expected, not faults: Shutdown Cooling Not In Service near 600 psi, and Pressurizer Level Above Program near 700 psi, which clears by itself during the heat-up.',
+              hl: [], hl_watch: ['Primary Pressure'],
               wait_speed: 600, label: 'PRIMARY PRESSURE at 665 psi, the accumulator window' },
           ],
           /* ⚠ THIS STEP'S OWN ALARM DOES NOT INTERRUPT FAST-FORWARD *(OWNER RULING, 2026-09-14:
@@ -2213,7 +2223,7 @@
           why: 'This is the second half of the pressure climb. Crossing 1972 psi re-arms the emergency injection, and that is safe now because the steam side is hot: STEAM PRESS sits near 1020 psi, far above the 328 psi that would trigger it. That is why this step waited for the heatup to finish.',
           aim: 'With the steam side hot, PRIMARY PRESSURE can pass 1972 psi without firing the emergency injection.',
           wait_speed: 600, speed_text: true,
-          control: 'Pressure SP', target: 'PRIMARY PRESSURE above 2175 psi',
+          control: 'Pressure SP', target: 'SET PZR PRESSURE 2235 psi; PRIMARY PRESSURE above 2200 psi',
           /* THE AUTHORED HINT CONTRADICTED THE GENERATED SPAN, AND THE OWNER CAUGHT IT (#755
            * item 1, 2026-09-14, against this step: "WHICH IS IT, 1.5 PLANT HOURS OR 20
            * PLANT-MINUTES?"). The ⏩ line printed both — "About 1.5 plant-hours at 1×" off
@@ -2221,13 +2231,28 @@
            * authored half is the one that goes: `hold` is the dwell the replay proves the step
            * needs, so an authored number beside it is the same fact written twice. */
           cmd: { action: 'set_pressure_setpoint', mpa: 15.41 }, hold: 5400, wait_hint: false,
-          /* ONE SUBSTEP, not press-then-wait: SET PZR PRESSURE is a TYPED box (pwr_board_wiring.js
-           * NUMBERS), not a walk, and `pressure_setpoint` is not a CTL_PARAMS channel, so the
-           * instructor cannot grade the dial without a runtime change. 600x is the rung the 30 s
-           * rule gave `hold: 5400` (carried over). */
-          accs: [{ p: 'pressure_mpa', op: '>', v: 15.0,
-                   ask: 'Raise SET PZR PRESSURE to 2235 psi and wait for PRIMARY PRESSURE to read above 2175 psi.',
-                   label: 'PRIMARY PRESSURE above 2175 psi' }],
+          /* TWO SUBSTEPS, SET THEN WAIT (#809 item 8, OWNER: "step 14 should be two steps. one
+           * gated on setting the pressure to 2235 and the other waiting for pressure to read above
+           * 2200. yes, change the pressure gate to 2200."). The runtime change this used to say it
+           * needed is made: `pressure_setpoint` is now a CTL_PARAMS channel (instructor layer).
+           * 14a: every value the whole-psi box draws as 2235 (2234.5-2235.5 psi, the same band shape
+           * as 13a's DUMP SETPOINT). `~` re-grades, so a typo (the route gate's `pressure_sp_high`,
+           * 2306 psi) holds 14a open on the card instead of surfacing at 15b.
+           * 14b: every value the whole-psi tile draws above 2200 (2200.5 psi and up). MEASURED
+           * (run_walkthrough_routes machinery, typical and pressure_sp_high, seeds 42/7): the climb
+           * runs ~25 psi per plant-minute and crosses 2200 psi 21-22 plant-min after the box is
+           * set, on the steep part of the curve; it slows only above ~2220 psi and enters step 15 at
+           * 2227-2293 psi. So 2200 is not on the asymptote and cannot dither. 600x is the rung the
+           * 30 s rule gave `hold: 5400` (carried over). */
+          accs_ordered: true,
+          accs: [{ p: 'pressure_setpoint', op: '~', v: 15.40976, tol: 0.00344,
+                   ask: 'Set SET PZR PRESSURE to 2235 psi.',
+                   label: 'SET PZR PRESSURE reads 2235 psi', wait_speed: 1,
+                   hl: ['Pressure SP'], hl_watch: [] },
+                 { p: 'pressure_mpa', op: '>', v: 15.1719,
+                   ask: 'Wait for PRIMARY PRESSURE to read above 2200 psi.',
+                   label: 'PRIMARY PRESSURE above 2200 psi', wait_speed: 600,
+                   hl: [], hl_watch: ['Primary Pressure'] }],
           /* 'Primary Pressure' is an INDICATION and belongs in the steady list (#744 template
            * pass) — the sibling first-stage step in this same leg already has it that way, and
            * the two now agree. Only SET PZR PRESSURE is pressed. */
@@ -2356,10 +2381,10 @@
            * SUPERSEDED on merge (2026-09-26, exp/807int + workbench 38b8049a): #807 item 5 re-graded the
            * row to a 90 s window at 8 % (below), measured by its own pass; `hold` follows the WINDOW, so
            * the 600 s-window arithmetic above no longer applies and #807's hold 120 stands. */
-          { hold: 120, wait_hint: false,   /* the replay must see the 90 s window full: 1.33x */
+          { hold: 60, wait_hint: false,   /* the replay must see the 30 s window full: 2x (#809; was 120 for 90 s) */
             aim: 'The startup that follows assumes a core a long way from critical, so that is confirmed before handing over.',
             wait_speed: 10, speed_text: true,
-            note: 'SOURCE RANGE wanders a little with nothing moving; steady means it is not climbing, and the check-off watches it for a minute and a half of plant time. STARTUP RATE on a shut-down core flickers between about −0.01 and +0.01. A rod out or BORON STATUS reading DILUTING means something is adding reactivity: stop and find out what moved.',
+            note: 'SOURCE RANGE wanders a little with nothing moving; steady means it is not climbing, and the check-off watches it for half a minute of plant time. STARTUP RATE on a shut-down core flickers between about −0.01 and +0.01. A rod out or BORON STATUS reading DILUTING means something is adding reactivity: stop and find out what moved.',
             /* #807 item 5 (OWNER: "make the read source range counts steady checkoff looser so it
              * checks off quickly instead of waiting 10 plant minutes"). 600 s / 1.2 % -> 90 s / 8 %.
              * MEASURED from this step's own arrival (states saved off the typical route, seeds 42/7/123):
@@ -2372,7 +2397,22 @@
              * one-step-per-6-s pull ticks at 1.0-1.7 min. So the two things that CAN add reactivity
              * to this plant are read directly instead, 16c and 16d, which is what the Background
              * already names ("With the control bank in and boron at the cold concentration"). */
-            accs: [{ p: 'sr_counts_cps', op: 'steady', v: 0.08, window: 90,
+            /* #809 item 9 (OWNER: "takes a while to read source range counts steady. lets widen what it
+             * determines is steady so it checks off sooner"). 90 s / 8 % -> 30 s / 12 %. The WINDOW is
+             * the minimum dwell (instructor_layer `gradeSteady`: the row cannot hold until the window
+             * is covered), so the window is the knob that sets the time; the tolerance is widened so
+             * the shorter window's noisier half-means cannot flash the row.
+             * MEASURED from this step's arrival on the typical route (seeds 42/7/123, 30 plant-min held,
+             * nothing moving): tick at 30.2 / 31 / 36 s at 1x / 10x / 60x (was 90.4 / 94 / 114 s), zero
+             * un-ticks at any speed. 30 s / 8 % un-ticked 0-3 times at 60x, so 12 % sits 1.5x above the
+             * last tolerance that flashed; 15 s windows un-ticked 3-44 times at 60x below 15 %.
+             * WHAT IT GIVES UP (measured, 10x, bank pulled 400 steps at FAST 40 s after entry): the old
+             * row went unmet for ~4 min (181-421 s) of the climb, this one for ~1.5 min (331-421 s, SOURCE
+             * RANGE 517 -> 883 cps). Neither sees an unattended dilution (-0.05 ppm/s: 168 -> 201 cps in
+             * 30 min) or a 200-step pull (168 -> 247 cps) at ANY window swept (15-90 s, 8-20 %). The step
+             * still cannot complete on any of them: 16b, 16c and 16d hold it (23 injected runs, none
+             * completed while rods were out or boron was moving). */
+            accs: [{ p: 'sr_counts_cps', op: 'steady', v: 0.12, window: 30,
                      ask: 'Check SOURCE RANGE counts read steady.',
                      label: 'SOURCE RANGE steady' },
                    { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025,   /* −0.025 to +0.025: every value the tile's toFixed(2) draws as −0.02 to +0.02 */
