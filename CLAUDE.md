@@ -612,7 +612,7 @@ Four things about it that are procedure, not history:
   CI run and a release before `verify_board_check.js` wrapped it.
 - **Per-runner times in a parallel run are CONTENTION times, not costs** (`run_pwr` reads 54 s
   where it takes 22 s alone). The `secs:` hints only nudge scheduling — never maintain them.
-- **CI is a 3-WAY MATRIX of `run_all --shard=i/3`; the fan-in job is named exactly
+- **CI is a 4-WAY MATRIX of `run_all --shard=i/4`** (3 -> 4, 2026-09-29: three shards hit the 30-min step budget); the fan-in job is named exactly
   `aggregate-gate`** because `main`'s ruleset requires that context and a matrix job's `(1)`
   suffix would leave it unreported for ever (`run_ci_shards.js` gates the shape, #637). **On CI the
   wall is TOTAL CPU ÷ LANES, not the longest runner** (4 cores → 3 lanes; 5189 s / 3 = 28.8 min vs
