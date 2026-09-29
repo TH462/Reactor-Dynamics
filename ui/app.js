@@ -456,6 +456,10 @@
     pwr2:      { plant: 'pwr', engine: 'pwr2', dv: null, init: 'hot_full_power',
                  initStates: [['hot_full_power', 'Hot Full Power (Mode 1)'],
                               ['50_percent', '50 % Power (Mode 1)'],
+                              /* OWNER, 2026-09-28: "Add the power ascensions starting point to the list of
+                               * starting points." — the startup's hand-off state the power-ascension
+                               * walkthrough starts from; same label as the retired plant's entry. */
+                              ['low_power', 'At Power — power ascension (Mode 1)'],
                               ['hot_zero_power', 'Hot Standby (Mode 3)'],
                               ['cold_shutdown', 'Cold Shutdown (Mode 5)']],
                  freePlayOnly: true,
