@@ -200,6 +200,8 @@ docs.
 >   from the primary tree plus an `inbox/` directory. Commit to **your own branch**.
 > - **Two SUBAGENTS at once? Give each a scratch worktree — `LANES.md` §9.** 1 s to make; sharing
 >   a tree serializes their gates and lets one `git checkout --` the other's work, silently.
+>   **Brief step 1: `git reset --hard <develop tip>`; remove the worktree when it merges** *(OWNER RULING, 2026-09-29: "Adopt 1,2,4 as recommended.")*
+>   — the tool cut them from a stale `2ec0b85a`, and leftovers redden gates scanning `.claude/`.
 
 > **Four questions decide whether a feature or change goes in — `Blueprint/DESIGN_CRITERIA.md`
 > is BINDING** *(OWNER DIRECTIVE, 2026-08-02: "I think there are a few important criteria on
@@ -381,12 +383,6 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   at 5.5 s and the reseat near 25 s, so armed at 0–20 s the accident follows, at 30–60 s the valve
   reseats at 1985 psia (13.69 MPa) and nothing happens. A step's `inject` must fire before the
   event its failure waits for — **measure the window.**
-- **A FRESH-READER REVIEW REPORTS WHAT THE RENDERER SHOWS, AND WHAT YOUR EXTRACT LEFT OUT**
-  (2026-09-06, #653). Two minimal-context reviewers both filed "30 of 67 steps have no
-  acceptance"; the panel draws the done-when on the ACTIVE step only and the extract had dropped
-  the `accs`/`saw` forms — on the built pool, **6**. The same reviews found what nothing else had:
-  "Tavg" 34 times and not on the board, three units for one gauge. **Verify every count on the
-  built object before it reaches an issue; read a layman's "I could not find it" as a board fact.**
 
 **Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
 **MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md")*,
@@ -619,7 +615,9 @@ Four things about it that are procedure, not history:
   29.1 observed), so a runner split moved nothing there; locally (10 lanes) the longest runner IS
   the wall. Unsharded baseline **29.1 / 38.4 / 40.2 min**. **Check it after you push** —
   `gh run list --workflow=gates.yml --limit 3`: it ran red for **32 consecutive runs** through one
-  release, and 1.7.2 merged behind a timeout with none of 34 finished runners red.
+  release, and 1.7.2 merged behind a timeout with none of 34 finished runners red. **Watch EVERY
+  push's run to the end; fix a red before new work** *(OWNER RULING, 2026-09-29: "Adopt 1,2,4 as recommended.")* (4 of 6 timed out unread,
+  2026-09-26 on). Poll `gh run view <id>` with retries — `gh run watch` dies on one blip.
 
 **Tracked reds carry their own `note` in `BASELINES` — read it there, and do NOT re-band one.**
 A red kept on purpose is reporting against a target; re-banding it whenever the plant moves
@@ -842,7 +840,7 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
   recommend")* → `run_walkthrough_routes.js` + parts (`--all` unsplit; typical-player and
   scripted-mistake routes: no silent strand, no tick on entry, no Continue flash); every number
   in step text measured on BOTH routes;
-  then a layman pass before done: it confirms, never discovers.
+  then the REVIEWER and its fixes, ONLY THEN one layman pass *(OWNER RULING, 2026-09-29: "Adopt 1,2,4 as recommended.")*: it confirms, never discovers.
 - **Snapshot/contract or save-format change** → old saves must still migrate (see the
   migration-note pattern in `CHANGELOG.md`); re-run `run_m7.js`. **A new/renamed/removed
   `true_state` field also needs its §6.3 line in `Blueprint/CONTEXT.md`** — `run_contract.js`
