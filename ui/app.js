@@ -5496,6 +5496,11 @@
      * `verify_e2e_ui` to recompute them. */
     var actEl = actSt ? cur.querySelector('.ckl-step[data-ckl-step]') : null;
     if (actEl) actEl.setAttribute('data-ckl-hl-head', subHl ? subHl.head : -1);
+    /* …and WHICH LEG this panel was drawn for. The step index alone is not an identity: two legs
+     * share every index, and a gate that proves "the glow pass for step N has run" off the index
+     * reads the PREVIOUS leg's panel until the next broadcast lands (verify_e2e_ui #685, 2026-09-28:
+     * startup 17 was counted against heatup 17's three rings). */
+    if (actEl) actEl.setAttribute('data-ckl-proc', pr.id);
     applyCklSpeedGlow(s, ck, actSt);                            /* #735 — #724 item 2; #796 */
     // Step hover → glow the controls/indications the step names (its `hl` list) on
     // the plant display, reusing the Instructor highlight vocabulary (revealControl).

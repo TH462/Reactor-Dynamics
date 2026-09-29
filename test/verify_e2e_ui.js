@@ -3152,6 +3152,7 @@ async function testHeldAndOpenerGlow(page) {
     var c = globalThis.RD.__dev.service().instructor.checklist;
     var el = document.querySelector('.ckl-step[data-ckl-step]');
     return !!c && c.proc && c.proc.id === 'zz_glow_probe' && !!el && +el.getAttribute('data-ckl-step') === c.idx &&
+           el.getAttribute('data-ckl-proc') === 'zz_glow_probe' &&   /* the PANEL's leg, not only the model's */
            !!document.querySelector('.ckl-step-glow');
   }, { timeout: 15000, polling: 100 });
   function read() {
@@ -3924,7 +3925,12 @@ async function testWatchGlowRendered(page) {
     await page.waitForFunction(function () {
       var c = globalThis.RD.__dev.service().instructor.checklist;
       var el = document.querySelector('.ckl-step[data-ckl-step]');
-      return !!el && +el.getAttribute('data-ckl-step') === c.idx;
+      /* THE LEG TOO, NOT ONLY THE INDEX (2026-09-28). Every leg has a step N, so an index match
+       * is satisfied by the PREVIOUS leg's panel until the first broadcast after `start_checklist`
+       * repaints it — which is how the negative below counted `pwr_heatup` 17's three rings
+       * (Reactor Power, Control Bank, Boron) against `pwr_startup` 17, on ~half the runs. */
+      return !!el && +el.getAttribute('data-ckl-step') === c.idx &&
+             el.getAttribute('data-ckl-proc') === c.proc.id;
     }, { timeout: 15000, polling: 100 });
     return await page.evaluate(function () {
       var c = globalThis.RD.__dev.service().instructor.checklist;
@@ -3959,6 +3965,8 @@ async function testWatchGlowRendered(page) {
        * card), and the cards derived from a lit control carry the dim class with no attribute. */
       return { idx: c.idx, watchLabels: watch, pressLabels: press, head: head,
                watch: document.querySelectorAll('[data-ckl-w]').length,
+               wLabs: Array.prototype.map.call(document.querySelectorAll('[data-ckl-w]'), function (e) {
+                 return e.getAttribute('data-ckl-w') + ' {' + (e.getAttribute('class') || '') + '}'; }),
                painted: document.querySelectorAll('.ckl-step-glow').length };
     });
   }
@@ -4067,7 +4075,7 @@ async function testWatchGlowRendered(page) {
   if (nr.watch !== 0) {
     throw new Error('#685: ' + nr.watch + ' watch ring(s) painted on ' + neg.pid + ' step ' +
       (nr.idx + 1) + ', which authors NO hl_watch (press labels: ' + nr.pressLabels.join(', ') +
-      ') — the two treatments are not distinct.');
+      ') — the two treatments are not distinct. Painted: ' + (nr.wLabs || []).join(' | '));
   }
   if (nr.painted === 0) {
     throw new Error('#685 fixture: ' + neg.pid + ' step ' + (nr.idx + 1) + ' painted no ' +
