@@ -3608,6 +3608,9 @@
   }
   function idleKey() {
     var o = openerFor();
+    // A confirm left standing over a plant that is now FRESH (a new load) or has no opener (another
+    // IC) is stale: its "Your current plant will be lost" is false. Drop it; the offer comes back.
+    if (openerConfirm && (!o || (service.isFreshPlant && service.isFreshPlant()))) openerConfirm = null;
     return (o ? o.id : '-') + '|' + (openerConfirm || '') + '|' + flagOn('checklists');
   }
   function showIdleInstructor() {

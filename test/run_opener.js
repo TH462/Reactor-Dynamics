@@ -439,6 +439,12 @@ Object.keys(ROUTES).forEach(function (name) {
     // -> 2023 psi, i.e. +2.8 from o9 but +6.5 from the low. Injection (heaters forced to 0 % at o9):
     // hands-off -0.3 psi from the low -> red; typical/mistake stay green under the injection, as the
     // o9-based form's typical did (+11.9) — the guard is the hands-off route.
+    // WHY (#811 QA, measured o9 -> o10, heater elements killed vs CVCS net flow zeroed): the other
+    // driver is CHARGING'S INSURGE compressing the bubble. Typical +14.8 psi = heaters on; +11.9
+    // heaters dead; +6.6 CVCS net zeroed; -0.1 both. Hands-off: charging is net OUT (-11 gpm), so
+    // the heaters are the whole rise (+6.5 vs +0.9 from the low). Mistake: +16.0 / +8.7 / +5.1 / 0.0.
+    // So this check is causal only on hands-off; `heaters near full` below (the kW gauge) is what
+    // reddens on every route when the heaters are off (0 kW under both injections).
     var pLo = Math.min.apply(null, window_(r, 'o9_heaters', 'o10_scram', function (s) { return psi(I(s, 'primary_pressure')); }));
     ck('o10: pressure RISING once back in AUTO (the text: heaters rebuild it, slowly)', '+' + (p10 - pLo).toFixed(1) + ' psi from the low (' + (p10 - p9).toFixed(1) + ' from o9) in ' + (dtm * 60).toFixed(0) + ' s', p10 - pLo > 3 && (p10 - p9) / dtm < 60, '> +3 psi from the low, < +60 psi/min');
     ck('o10: heaters near full', S.o10_scram.true_state.pzr_heater_kw.toFixed(0) + ' kW', S.o10_scram.true_state.pzr_heater_kw > 100, '> 100 kW');

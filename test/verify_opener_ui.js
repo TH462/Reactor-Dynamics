@@ -357,6 +357,13 @@ var OFFER = '#instrCurrent [data-opener-start]';
     return !document.querySelector('.bd-focus-ol') && !document.querySelector('.pwr-board-stage.bd-dimming') && !document.querySelector('.bd-lit'); }));
   ck("trend: End hands the player's own chart back", /Output MW/.test(legend0) && /Output MW/.test(legend2) && !/Steam Dump|Pressure/.test(legend2),
      legend2.replace(/\s+/g, ' ').slice(0, 60));
+  // ...and it does ask; and a confirm left up over a NEW load goes (its "will be lost" is then false).
+  // Measured before the idleKey fix (#811 QA): the confirm stayed up over the fresh plant.
+  await page.click(OFFER);
+  ck('after End: Start asks first', !!(await page.waitForSelector('#instrCurrent [data-opener-confirm]', { state: 'visible', timeout: 4000 }).catch(function () { return null; })));
+  await page.evaluate(function () { RD.__dev.service().handleCommand({ action: 'reset', plant_id: 'pwr2', initial_state: 'hot_full_power' }); });
+  await page.waitForTimeout(1500);
+  ck('a confirm left up over a new load goes, the offer comes back', !(await page.$('#instrCurrent [data-opener-confirm]')) && (await offerShown(3000)));
 
   // ---------------------------------------------------------------- the trip beat's chart
   await boot();
