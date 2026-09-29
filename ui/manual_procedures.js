@@ -5300,7 +5300,7 @@
                    ask: 'Wait for AVG COOLANT TEMPERATURE to read below 347 °F.',
                    note: 'Watch STEAM PRESS fall toward 120 psi and COOLDOWN RATE hold near -60, which is 60 °F per hour of cooling. Low Coolant Temperature comes in near 530 °F: expected on a cooldown, and it becomes an expected-status tile below 350 °F. Shutdown Cooling Not In Service comes in near the bottom as the plant enters Mode 4: expected, RHR goes in service at step 9. About three and a half hours from 1020 psi.',
                    label: 'AVG COOLANT TEMPERATURE below 347 °F' }],
-          hl: ['Steam Dump — Auto', 'Dump Setpoint'], hl_watch: ['Steam Dump Status', 'Tavg'] },
+          hl: ['Steam Dump — Auto', 'Dump Setpoint'], hl_watch: ['Steam Dump Status', 'Tavg', 'SG Pressure'] },
         { text: 'Take the pressure setpoint to the bottom of its range.',
           aim: 'The setpoint box stops at 1700 psi, and from here pressure comes down by hand.',
           why: 'The setpoint box is the at-power pressure control and it stops at 1700 psi. A real cooldown leaves it exactly there: below it the heaters have nothing to hold, and the operator lowers pressure with the spray instead.',
