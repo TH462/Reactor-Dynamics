@@ -36,7 +36,6 @@
   function delay(s) { return { type: 'delay', value: s }; }
   function did(command, params) { return { type: 'operator_action', command: command, params: params }; }
 
-  var PSI = 1 / 145.038;   // instruments carry MPa internally; thresholds are written in psi
   // Rods OUT this far past where they sat at the ask = the wrong way (see o4_wrong). Held at MED
   // the bank moves ~23 steps per 30 s at 1x (QA pass, headless Edge), so this is ~6 s of holding OUT.
   var WRONG_WAY_STEPS = 5;
@@ -73,6 +72,9 @@
     initial_state: 'hot_full_power',
     chat: true,
     chat_clock: 'elapsed',
+    // READING CADENCE (#811, OWNER 2026-09-28: "the cadence is a little fast"): every line owes
+    // 0.3 s a word + 2.5 s of WALL time before the next line or beat (InstructorLayer.readingSeconds).
+    pace: 'reading',
 
     /* THE UNEXPECTED TRIP (#811, OWNER RULING 2026-09-28). A trip before the SCRAM ask — the player
      * pressing SCRAM early, or a protection trip — jumps to ox_trip_early, which lifts the scope
@@ -146,8 +148,8 @@
         trigger: delay(0),
         highlight: { control_label: 'Steam Dump' },
         dialogue: [
-          sayAt('Steam Dump Opening', 'Warmer water swelled into the pressurizer and pushed pressure up. The steam dump opened; its % shows by the condenser valve.',
-              'Tavg and pressure up; steam dump % indicated at the condenser valve.'),
+          sayAt('Steam Dump Opening', 'Warmer water swelled into the pressurizer and pushed pressure up. The steam dump opened; its % is the number right of its valve.',
+              'Tavg and pressure up; steam dump open, position on the DUMP tag right of the dump valve.'),
           say('Warmer water also trimmed reactor power a few percent by itself. That is moderator temperature feedback.',
               'Negative moderator temperature coefficient has reduced power several percent.'),
         ],
@@ -205,12 +207,37 @@
           say('Clock to 5×. Rods in means fewer neutrons: power drops toward the load and Tavg comes back down.',
               'Clock 5×. Power reducing toward load; Tavg restoring toward program.'),
         ],
-        advance: 'wait_for_trigger' },
+        // The settled-power line is said only where it is TRUE (#811 layman pass 2, OWNER RULING
+        // 2026-09-28): power near 84 % with the steam dump still open. Measured: typical route
+        // 83.2-84.8 % with the dump 15-24 % open through this watch (Tavg 7 °F over Tref); the
+        // 90 MWe route never opens the dump (0.0 %), and hands-off is still at 93.5 % / 46 % as the
+        // instructor's rods finish moving. Otherwise straight on to the spray ask, on the timing
+        // the spray ask always had (dump under 30 % and 30 s, or 75 s).
+        branches: [
+          { trigger: { type: 'all', triggers: [delay(6), inst('power_range', 'above', 82), inst('power_range', 'below', 86),
+              inst('steam_dump_valve', 'above', 5)] }, goto: 'o5_settled' },
+          { trigger: { type: 'all', triggers: [inst('steam_dump_valve', 'below', 30), delay(30)] }, goto: 'o6_spray' },
+          { trigger: delay(75), goto: 'o6_spray' },
+        ] },
+      // Measured on the typical route (80 MWe, 40 steps in): 15 more steps close the dump; Tavg
+      // is still ~6 °F over Tref then, and ~2 °F at 30 more steps 100 s later (rod worth ~0.22 °F
+      // a step at power). The text names no count: "more rods in" is the whole claim.
+      { id: 'o5_settled',
+        trigger: delay(0),
+        highlight: { control_label: 'Tavg' },
+        dialogue: [
+          say('Power settles near 84 %: Tavg is still above its target, so the steam dump stays a little open. More rods in would close it.',
+              'Power steady near 84 %; Tavg above program, steam dump partly open. Further rod insertion would close the dumps.'),
+        ],
+        // The 6 s already spent in o5 comes off the spray ask's 30 s / 75 s, so the watch is as long.
+        branches: [
+          { trigger: { type: 'all', triggers: [inst('steam_dump_valve', 'below', 30), delay(24)] }, goto: 'o6_spray' },
+          { trigger: delay(69), goto: 'o6_spray' },
+        ] },
 
       // ---------------------------------------------------------------- 3. pressure
       { id: 'o6_spray',
-        trigger: { type: 'any', triggers: [
-          { type: 'all', triggers: [inst('steam_dump_valve', 'below', 30), delay(30)] }, delay(75)] },
+        trigger: delay(0),                            // timed by the o5 / o5_settled branches
         speed: 1,
         highlight: { control_label: 'Pressurizer Spray (PZR)' },
         scope: SPRAY_SCOPE,
@@ -237,11 +264,27 @@
           sayAt('Pressurizer', 'Spray showers cooler water into the pressurizer\'s steam bubble. Steam condenses and pressure falls. Watch Primary Pressure.',
               'Spray condensing pressurizer steam; RCS (Primary) pressure decreasing.'),
         ],
-        advance: 'wait_for_trigger' },
-      { id: 'o8_auto',
-        trigger: { type: 'any', triggers: [inst('primary_pressure', 'below', 2150 * PSI), delay(45)] },
+        // "That's enough" on the Pressurizer Pressure Low ALARM, which the line names (#811 layman
+        // pass 2): the old 2150 psi trigger sat a hundredth of a psi above the alarm's 2149.5 psi,
+        // so on the hands-off route the line came 0.6 s before the alarm and on the 90 MWe route
+        // 3.2 s. A spray closed early may never reach the alarm: then the plain ask, at 45 s.
+        branches: [
+          { trigger: { type: 'alarm', alarm_id: 'pzr_pressure_low' }, goto: 'o8_auto' },
+          { trigger: delay(45), goto: 'o8_late' },
+        ] },
+      { id: 'o8_late',
+        trigger: delay(0),
         highlight: { control_label: 'Pressurizer Spray (PZR)' },
         dialogue: [say('That\'s enough. Put the spray back in AUTO.', 'Return pressurizer spray to automatic.')],
+        branches: [
+          { trigger: { type: 'control_state', field: 'spray_auto', direction: 'is_true' }, goto: 'o9_heaters' },
+          { trigger: { type: 'inaction', window: 60, quiet: true }, goto: 'o8_help' },
+        ] },
+      { id: 'o8_auto',
+        trigger: delay(0),
+        highlight: { control_label: 'Pressurizer Spray (PZR)' },
+        dialogue: [say('That\'s enough. Put the spray back in AUTO. The Pressurizer Pressure Low alarm is the pressure drop you just made.',
+                       'Return pressurizer spray to automatic. PZR PRESS LO is the spray-induced pressure decrease.')],
         branches: [
           { trigger: { type: 'control_state', field: 'spray_auto', direction: 'is_true' }, goto: 'o9_heaters' },
           { trigger: { type: 'inaction', window: 60, quiet: true }, goto: 'o8_help' },
@@ -267,7 +310,8 @@
         speed: 1,
         highlight: { control_label: 'SCRAM' },
         scope: null,                                   // the whole board for the trip
-        dialogue: [say('Clock back to 1×. Last move: trip the reactor. Press SCRAM.', 'Clock 1×. Manually trip the reactor.')],
+        dialogue: [say('Clock back to 1×. Last move: trip the reactor. Press SCRAM, then press it again within 3 seconds to confirm.',
+                       'Clock 1×. Manually trip the reactor: SCRAM, then SCRAM again within 3 seconds to confirm.')],
         branches: [
           { trigger: { type: 'scram' }, goto: 'o11_trip' },
           { trigger: { type: 'inaction', window: 90, quiet: true }, goto: 'o10_help' },
@@ -296,10 +340,10 @@
         speed: 5,
         highlight: { control_label: 'Steam Dump' },
         dialogue: [
-          say('Clock to 5×. The turbine tripped, so the steam dump takes the decay heat. Tavg drops toward about 552 °F.',
+          sayAt('Steam Dump Opening', 'Clock to 5×. The turbine tripped, so the steam dump takes the decay heat. Tavg drops toward about 552 °F.',
               'Clock 5×. Turbine tripped; steam dumps removing decay heat; Tavg settling near 552 °F.'),
-          say('The alarms now in are expected after a trip. Cooldown Rate High is Tavg dropping to its no-load value.',
-              'Alarms now in are expected post-trip. RCS COOLDOWN RATE HI reflects Tavg falling to its no-load value.'),
+          say('These alarms are expected after a trip; no need to acknowledge them. Cooldown Rate averages over minutes, so it stays high after Tavg levels off.',
+              'Post-trip alarms expected; acknowledgement not required. RCS COOLDOWN RATE is damped over minutes and stays in after Tavg stabilizes.'),
         ],
         advance: 'wait_for_trigger' },
       { id: 'o13_end',

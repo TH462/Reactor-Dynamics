@@ -696,6 +696,19 @@
     el.appendChild(valEl);
     el.appendChild(document.createTextNode(' '));
     el.appendChild(unitEl);
+    /* A CAPTION UNDER THE READING (#811, OWNER RULING 2026-09-28 "All as recommended"). The two
+     * right-anchored % tags beside the condenser read the steam dump and the ADV and said
+     * neither; a layman could not tell which was which. A `readout` puts its label ABOVE and
+     * takes a box; this keeps the bare tag and hangs a small muted word under it, right-aligned
+     * with the number, so the tag's position and footprint on the schematic barely move. Set by
+     * DOC_PATCHES `props`, so a builder re-export cannot drop it. Explicit colour: the driver
+     * colours `el`, and the caption must not take the reading's alarm colour. */
+    if (it.caption) {
+      var capEl = h('div', { className: 'bd-val-caption' }, it.caption);
+      capEl.style.cssText = 'color:#6b8598;font-size:' + (it.captionSize || 10) + 'px;font-weight:600;' +
+        'letter-spacing:0.1em;line-height:1;text-align:right;margin-top:1px';
+      el.appendChild(capEl);
+    }
     valueEls[it.id] = { el: el, valEl: valEl, unitEl: unitEl, item: it };
     return el;
   }

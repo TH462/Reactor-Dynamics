@@ -61,6 +61,7 @@ function I(s, id) { return s.instruments[id]; }
 // tick() hands back a snapshot whose blocks are REUSED between broadcasts, so a stored reference
 // reads the final state for every beat (measured: every beat read 0.4 % power). Copy what is read.
 var INST = ['mwe_output', 'primary_pressure', 'tavg', 'steam_dump_valve', 'power_range', 'pzr_spray_flow'];
+var ALARMS = ['pzr_pressure_low', 'cooldown_rate_high'];
 function rec(s) {
   var o = { instruments: {}, true_state: {}, control_state: { spray_auto: s.control_state.spray_auto },
             rps_state: { scrammed: !!(s.rps_state && s.rps_state.scrammed) },
@@ -72,7 +73,9 @@ function rec(s) {
   var rg = (s.control_state.rod_groups || []).filter(function (g) { return g.id === 'control_rods'; })[0];
   o.control_state.rods_moving = !!(rg && rg.moving);
   o.control_state.bank_steps = rg ? rg.steps : null;   // the board's step counter (o4_wrong reads it)
-  ['rod_steps', 'pzr_heater_kw', 'core_heat_pct', 'decay_heat_pct', 'turbine_tripped'].forEach(function (k) { o.true_state[k] = s.true_state[k]; });
+  ['rod_steps', 'pzr_heater_kw', 'core_heat_pct', 'decay_heat_pct', 'turbine_tripped', 'tref_c'].forEach(function (k) { o.true_state[k] = s.true_state[k]; });
+  o.alarm = {};   // the lit state of the alarms a line names (#811 layman pass 2)
+  (s.alarms || []).forEach(function (a) { if (ALARMS.indexOf(a.id) !== -1) o.alarm[a.id] = a.state !== 'clear'; });
   return o;
 }
 function words(t) { return String(t).trim().split(/\s+/).length; }
@@ -103,7 +106,7 @@ function play(route, budgetS, noDropouts) {
     for (var i = pending.length - 1; i >= 0; i--) {
       if (svc.simTime >= pending[i].t) { svc.handleCommand(pending[i].cmd); pending.splice(i, 1); }
     }
-    if (guard % 5 === 0) trace.push({ t: svc.simTime, s: s });
+    if (guard % 5 === 0) trace.push({ t: svc.simTime, w: wall, s: s });
     if (s.instructor && s.instructor.level_complete) lc = s;
     if (svc.simTime > budgetS) break;
   }
@@ -148,9 +151,9 @@ var ROUTES = {
   },
 };
 var ROUTE_PATH = {
-  typical:   ['o0_hello', 'o1_load', 'o2_watch', 'o3_dump', 'o4_rods', 'o5_rods_watch', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o11_trip', 'o12_settle', 'o13_end'],
+  typical:   ['o0_hello', 'o1_load', 'o2_watch', 'o3_dump', 'o4_rods', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o11_trip', 'o12_settle', 'o13_end'],
   mistake:   ['o0_hello', 'o1_load', 'o2_watch', 'o3_small', 'o4_rods', 'o4_wrong', 'o5_rods_watch', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o10_help', 'o11_trip', 'o12_settle', 'o13_end'],
-  hands_off: ['o0_hello', 'o1_load', 'o1_help', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help', 'o5_rods_watch', 'o6_spray', 'o6_help', 'o7_spray_watch', 'o8_auto', 'o8_help', 'o9_heaters', 'o10_scram', 'o10_help', 'o11_trip', 'o12_settle', 'o13_end'],
+  hands_off: ['o0_hello', 'o1_load', 'o1_help', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o6_help', 'o7_spray_watch', 'o8_auto', 'o8_help', 'o9_heaters', 'o10_scram', 'o10_help', 'o11_trip', 'o12_settle', 'o13_end'],
 };
 
 // ------------------------------------------------------------------ static: the copy
@@ -285,7 +288,12 @@ test('the opener runs on the FREE-PLAY plant and survives save/restore', functio
   op.running = true;
   for (var i = 0; i < 30; i++) op.tick();
   op.handleCommand(READY);
+  // READING PACE (#811): Ready is pressed while o0's two lines are still owed their reading time;
+  // the click is KEPT and o1 fires when the hold ends (~17 s of wall). Tick until it has.
+  for (i = 0; i < 400 && !op.instructor.firedBeats.has('o1_load'); i++) op.tick();
   for (i = 0; i < 20; i++) op.tick();
+  ck('reading pace: a Ready pressed during the reading hold is kept (o1 fires after it)', String(op.instructor.firedBeats.has('o1_load')),
+     op.instructor.firedBeats.has('o1_load'), 'true');
   var saved = op.saveState();
   var back = new RD.SimulationService({ seed: 42 });
   // FRESH before the load, as the page's service is: a load into a never-loaded service reads
@@ -389,21 +397,50 @@ Object.keys(ROUTES).forEach(function (name) {
     ck('o6: rods actually moved in', S.o6_spray.true_state.rod_steps.toFixed(0) + ' steps', S.o6_spray.true_state.rod_steps < 600, '< 600');
     if (name === 'typical') ck('o6: a FAST hold of ~33 s put the rods in about 40 steps', (606 - S.o6_spray.true_state.rod_steps).toFixed(0) + ' steps',
        Math.abs(606 - S.o6_spray.true_state.rod_steps - 40) <= 8, '32..48 (text: about 40)');
-    ck('o6: Tavg came back down from the rod ask', degF(I(S.o4_rods, 'tavg')).toFixed(1) + ' -> ' + degF(I(S.o6_spray, 'tavg')).toFixed(1) + ' °F',
-       degF(I(S.o6_spray, 'tavg')) < degF(I(S.o4_rods, 'tavg')) - 1, 'down > 1 °F');
+    // From the PEAK over the rods ask, not its first sample (#811 reading pace): on the mistake route
+    // the rods go OUT first and Tavg climbs 586.0 -> 589.1 °F before coming back to 585.1; measured
+    // against the ask's own sample that read as only 0.9 °F down. Old pacing passes this form too
+    // (typical 583.4 -> 580.0, mistake 587.4 -> 585.1, hands-off 584.2 -> 582.4).
+    var tPk = max(window_(r, 'o4_rods', 'o6_spray', function (s) { return degF(I(s, 'tavg')); }));
+    ck('o6: Tavg came back down from its peak over the rod ask', tPk.toFixed(1) + ' -> ' + degF(I(S.o6_spray, 'tavg')).toFixed(1) + ' °F',
+       degF(I(S.o6_spray, 'tavg')) < tPk - 1, 'down > 1 °F');
+
+    // o5_settled (#811 layman pass 2): "Power settles near 84 %: Tavg is still above its target, so
+    // the steam dump stays a little open." Said only where all three are true; never said with the
+    // dump shut (the 90 MWe route never opens it).
+    if (S.o5_settled) {
+      var s5 = S.o5_settled, gap5 = degF(I(s5, 'tavg')) - degF(s5.true_state.tref_c);
+      ck('o5_settled: power near 84 %, dump open, Tavg above Tref', I(s5, 'power_range').toFixed(1) + ' %, dump ' + I(s5, 'steam_dump_valve').toFixed(1) +
+         ' %, Tavg - Tref ' + gap5.toFixed(1) + ' °F', I(s5, 'power_range') > 82 && I(s5, 'power_range') < 86 && I(s5, 'steam_dump_valve') > 5 && gap5 > 3,
+         '82..86 %, dump > 5 %, > +3 °F');
+    }
+    var dump5 = max(window_(r, 'o5_rods_watch', 'o6_spray', function (s) { return I(s, 'steam_dump_valve'); }));
+    if (dump5 < 1) ck('o5_settled not said with the dump shut', 'dump max ' + dump5.toFixed(1) + ' %, line ' + (S.o5_settled ? 'SAID' : 'not said'), !S.o5_settled, 'not said');
+    if (name === 'typical') ck('o5_settled: said on the typical route', String(!!S.o5_settled), !!S.o5_settled, 'true');
 
     // 3. pressure — spray drops it, heaters rebuild it
     ck('o7: spray flowing', I(S.o7_spray_watch, 'pzr_spray_flow').toFixed(0) + ' %', I(S.o7_spray_watch, 'pzr_spray_flow') > 30, '> 30 %');
     var pSpray0 = psi(I(S.o7_spray_watch, 'primary_pressure'));
     var pMin = Math.min.apply(null, window_(r, 'o7_spray_watch', 'o9_heaters', function (s) { return psi(I(s, 'primary_pressure')); }));
     ck('o8: pressure fell under spray', '-' + (pSpray0 - pMin).toFixed(0) + ' psi (' + pSpray0.toFixed(0) + ' → ' + pMin.toFixed(0) + ')', pSpray0 - pMin > 15, '> 15 psi');
+    // o8_auto names the Pressurizer Pressure Low alarm: it must be IN when the line is said.
+    var o8 = S.o8_auto ? 'o8_auto' : 'o8_late';
+    if (S.o8_auto) ck('o8_auto: "The Pressurizer Pressure Low alarm…" — it is in when said', String(S.o8_auto.alarm.pzr_pressure_low),
+       S.o8_auto.alarm.pzr_pressure_low === true, 'true');
+    ck('o8: the spray ask fired (' + o8 + ')', o8, !!S[o8], 'o8_auto or o8_late');
     ck('o9: spray back in AUTO (the lit button)', String(S.o9_heaters.control_state.spray_auto), S.o9_heaters.control_state.spray_auto === true, 'true');
     var p9 = psi(I(S.o9_heaters, 'primary_pressure')), p10 = psi(I(S.o10_scram, 'primary_pressure'));
     var dtm = (r.at.o10_scram - r.at.o9_heaters) / 60;
     // o9 says the heaters REBUILD pressure, slowly. A RISE, not "no longer falling": the old form
     // (p10 > p9 - 5) passed with the heaters neutered. Measured o9 -> o10 (40 s at 5x):
     // +7 typical, +10 mistake, +10 hands-off psi (#811 follow-up) — the bound sits under all three.
-    ck('o10: pressure RISING once back in AUTO (the text: heaters rebuild it, slowly)', (p10 - p9).toFixed(1) + ' psi in ' + (dtm * 60).toFixed(0) + ' s = ' + ((p10 - p9) / dtm).toFixed(0) + ' psi/min', p10 - p9 > 3 && (p10 - p9) / dtm < 60, '> +3 psi, < +60 psi/min');
+    // From the window's LOW, not o9's sample (#811 reading pace): the spray valve closes over a few
+    // seconds, so pressure keeps falling briefly after o9 — on the paced hands-off route 2020 -> 2018
+    // -> 2023 psi, i.e. +2.8 from o9 but +6.5 from the low. Injection (heaters forced to 0 % at o9):
+    // hands-off -0.3 psi from the low -> red; typical/mistake stay green under the injection, as the
+    // o9-based form's typical did (+11.9) — the guard is the hands-off route.
+    var pLo = Math.min.apply(null, window_(r, 'o9_heaters', 'o10_scram', function (s) { return psi(I(s, 'primary_pressure')); }));
+    ck('o10: pressure RISING once back in AUTO (the text: heaters rebuild it, slowly)', '+' + (p10 - pLo).toFixed(1) + ' psi from the low (' + (p10 - p9).toFixed(1) + ' from o9) in ' + (dtm * 60).toFixed(0) + ' s', p10 - pLo > 3 && (p10 - p9) / dtm < 60, '> +3 psi from the low, < +60 psi/min');
     ck('o10: heaters near full', S.o10_scram.true_state.pzr_heater_kw.toFixed(0) + ' kW', S.o10_scram.true_state.pzr_heater_kw > 100, '> 100 kW');
 
     // 4. trip
@@ -548,7 +585,7 @@ test('board scope: set by beats, lifted by a beat, early trip handled', function
   // A re-taken watch would jump back to ox_trip_early — a beat already fired, which never fires
   // again, so the flow would STALL there instead of reaching the finish card.
   var lcBack = false;
-  for (var k = 0; k < 400 && !lcBack; k++) { var sb = back.tick(); lcBack = !!(sb.instructor && sb.instructor.level_complete); }
+  for (var k = 0; k < 4000 && !lcBack; k++) { var sb = back.tick(); lcBack = !!(sb.instructor && sb.instructor.level_complete); }
   ck('save/restore: the early-trip watch is not taken again (the opener still finishes)',
      'saved at ' + mid.fired.slice(-1)[0] + ', now ' + back.instructor.currentBeatId + ', finish card ' + lcBack +
        ', watch memory ' + JSON.stringify(back.instructor._watchFired),
@@ -568,6 +605,74 @@ test('board scope: set by beats, lifted by a beat, early trip handled', function
   IL.step({ rps_state: { scrammed: true } }, 2);
   ck('a watch never fires after the flow has ended', 'fired ' + Array.from(IL.firedBeats).join(','),
      IL.firedBeats.has('a') && !IL.firedBeats.has('x'), "fired a only");
+});
+
+// ------------------------------------------------------------------ reading pace (#811)
+/* OWNER 2026-09-28: "the cadence is a little fast. It's hard to keep up with reading it and looking
+ * at the board." `pace: 'reading'`: each line owes 0.3 s a word + 2.5 s of WALL time, and no beat
+ * says its first line until the previous beat's lines have had theirs. Asserted on the wall clock
+ * the harness keeps (one broadcast period per tick), on all three routes. Measured, typical route:
+ * old pacing 204 s of wall, beats' lines landing 2.3-13.8 s before the reader could reach them;
+ * paced 266 s, a new beat never before its predecessor's reading time. Old pacing fails this
+ * check (o3_dump's lines 3.0 s after o2_watch's 20-word line, owed 8.5 s). */
+test('reading pace: no beat speaks before the last one has been read', function (ck) {
+  var RS = RD.InstructorLayer.readingSeconds;
+  ck('a 20-word line is owed 8-9 s', RS({ learning: new Array(21).join('word ') }).toFixed(1) + ' s', RS({ learning: new Array(21).join('word ') }) >= 8 && RS({ learning: new Array(21).join('word ') }) <= 9, '8..9 s');
+  ck('the opener opts in (pace: reading)', String(OP.pace), OP.pace === 'reading', 'reading');
+  Object.keys(RESULTS).forEach(function (name) {
+    var r = RESULTS[name];
+    if (!r) return;
+    function wallAt(t) { for (var i = 0; i < r.trace.length; i++) if (r.trace[i].t >= t - 1e-9) return r.trace[i].w; return r.wall; }
+    var log = r.svc.instructor.chatLog, groups = [];
+    log.forEach(function (e) { var g = groups[groups.length - 1]; if (g && g.t === e.t) g.lines.push(e); else groups.push({ t: e.t, lines: [e] }); });
+    var worst = null;
+    for (var i = 1; i < groups.length; i++) {
+      var owed = groups[i - 1].lines.reduce(function (a, e) { return a + RS(e); }, 0);
+      var got = wallAt(groups[i].t) - wallAt(groups[i - 1].t);
+      if (worst == null || got - owed < worst.m) worst = { m: got - owed, at: groups[i].lines[0].learning.slice(0, 32), got: got, owed: owed };
+    }
+    // 0.5 s: the trace is sampled every 5th broadcast (0.5 s of wall at 1x)
+    ck(name + ': every beat waits out the previous beat\'s reading time', worst ? 'tightest ' + worst.got.toFixed(1) + ' s of ' + worst.owed.toFixed(1) + ' owed, at "' + worst.at + '…"' : 'no lines',
+       !!worst && worst.m > -0.5, '>= owed');
+  });
+});
+
+// ------------------------------------------------------------------ after the trip (#811 pass 2)
+/* COOLDOWN RATE HIGH CLEARS ONCE. The meter (tavg_rate, tau 600 s) climbs back through -100 °F/hr
+ * ~7 minutes after every PWR2 trip with ±8 °F/hr of noise on it, and the bare-setpoint clear went
+ * out and back in: 1 re-light on the typical route, 3-4 hands-off, 3 on the 90 MWe route, 3 on an
+ * early SCRAM (measured 2026-09-28). The alarm's reset differential (clears_above, pwr_control.js)
+ * fixes it. Played on past the finish card, as a player who presses Continue and watches. */
+test('after the trip: Cooldown Rate High comes in, then clears ONCE', function (ck) {
+  ['typical', 'hands_off'].forEach(function (name) {
+    var r = RESULTS[name];
+    if (!r || !r.lc) { ck(name + ' route ran', 'no', false, 'yes'); return; }
+    var svc = r.svc, tTrip = r.at.o11_trip - 12, lit = null, on = 0, off = 0, firstOff = null;
+    while (svc.simTime < tTrip + 600) {
+      var s = svc.tick(), a = (s.alarms || []).filter(function (x) { return x.id === 'cooldown_rate_high'; })[0];
+      var now = !!a && a.state !== 'clear';
+      if (lit !== null && now !== lit) { if (now) on++; else { off++; if (firstOff == null) firstOff = svc.simTime - tTrip; } }
+      lit = now;
+    }
+    ck(name + ': lit at the finish card (the o12 line says it stays high)', String(r.lc.alarm.cooldown_rate_high), r.lc.alarm.cooldown_rate_high === true, 'true');
+    ck(name + ': clears once, no re-light', 'cleared ' + off + 'x, re-lit ' + on + 'x (first clear at trip +' + (firstOff == null ? '-' : firstOff.toFixed(0)) + ' s)',
+       off === 1 && on === 0, 'cleared 1x, re-lit 0x');
+  });
+});
+
+/* THE SCRAM LINE NAMES THE BOARD'S ARM WINDOW. "press it again within 3 seconds" is only true while
+ * the board's arm timer is 3000 ms (buildScram, pwr_board.js). Read from the source: the DOM is not
+ * loaded here. */
+test('o10: the SCRAM confirm window in the text is the board\'s', function (ck) {
+  var src = require('fs').readFileSync(path.join(__dirname, '..', 'ui/diagram/board/pwr_board.js'), 'utf8');
+  var m = /rec\.state === 'armed'\) \{ rec\.state = 'idle';[^\n]*\}, (\d+)\);/.exec(src);
+  var ms = m ? +m[1] : null;
+  var o10 = OP.beats.filter(function (b) { return b.id === 'o10_scram'; })[0];
+  var txt = o10 ? o10.dialogue.map(function (l) { return l.learning + ' | ' + l.industry; }).join(' ') : '';
+  var said = (txt.match(/within (\d+) seconds/g) || []).map(function (x) { return +x.replace(/\D/g, ''); });
+  ck('board arm timer read', ms == null ? 'not found' : ms + ' ms', ms != null, 'a number');
+  ck('both registers name the window, and it is the board\'s', said.join(', ') + ' s vs ' + ms + ' ms',
+     said.length === 2 && ms != null && said.every(function (x) { return x * 1000 === ms; }), 'both = ' + ms / 1000 + ' s');
 });
 
 // ------------------------------------------------------------------ report

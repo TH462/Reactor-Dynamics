@@ -3577,13 +3577,14 @@
     if (openerHidden[id]) return true;
     try { return sessionStorage.getItem('rd_opener_hide_' + id) === '1'; } catch (e) { return false; }
   }
+  /* THE OFFER STANDS WHENEVER THE TAB IS IDLE (#811, OWNER 2026-09-28: "keep the button for the
+   * full power opener on the instructor tab unless it's showing other content"). Replaces the
+   * fresh-plant-only gate. What that gate protected — a long free-play session wiped by one click —
+   * is now a one-line CONFIRM when the plant is not fresh (SimulationService.isFreshPlant); a fresh
+   * plant starts at once. `openerConfirm` is the id awaiting that confirm. */
+  var openerConfirm = null;
   function openerFor() {
     if (!flagOn('openers') || !service) return null;
-    /* ONLY ON A FRESH PLANT (#811 follow-up). One click resets the plant with no confirm, so the
-     * offer stands only while that costs nothing: a free-play load no plant command has touched,
-     * and no opener already run on it (SimulationService.isFreshPlant). QA found it standing
-     * hours into free play, after End, and after finishing. */
-    if (!(service.isFreshPlant && service.isFreshPlant())) return null;
     var all = RD.OPENERS || {};
     for (var k in all) {
       var o = all[k];
@@ -3593,6 +3594,12 @@
   }
   function openerOfferHtml(o) {
     if (!o) return '';
+    if (openerConfirm === o.id) {
+      return '<div class="instr-launch instr-opener instr-opener-confirm">' +
+        '<div class="instr-opener-sub">This restarts the plant at full power. Your current plant will be lost.</div>' +
+        '<button type="button" class="btn instr-launch-bar" data-opener-confirm="' + mesc(o.id) + '">Restart at full power</button> ' +
+        '<button type="button" class="btn linkish" data-opener-cancel="' + mesc(o.id) + '">Cancel</button></div>';
+    }
     return '<div class="instr-launch instr-opener"><button type="button" class="btn instr-launch-bar" ' +
       'data-opener-start="' + mesc(o.id) + '" data-scanner-hint="' + mesc(o.offer || '') + '">' +
       mesc(o.title) + ' — 5 min, guided</button>' +
@@ -3601,7 +3608,7 @@
   }
   function idleKey() {
     var o = openerFor();
-    return (o ? o.id : '-') + '|' + flagOn('checklists');
+    return (o ? o.id : '-') + '|' + (openerConfirm || '') + '|' + flagOn('checklists');
   }
   function showIdleInstructor() {
     setInstrRole('Instructor');
@@ -3814,6 +3821,10 @@
   // Reading cadence for the one-at-a-time reveal (~220 wpm), clamped so short
   // annunciator callouts don't flash past and long lines don't stall the flow.
   function chatDwellS(e) {
+    // A `pace: 'reading'` scenario (the openers, #811) reveals on the instructor's own reading
+    // clock — the flow waits the same time before its next beat, so line and board stay together.
+    var d = chatDef(chatState.sid);
+    if (d && d.pace === 'reading' && RD.InstructorLayer && RD.InstructorLayer.readingSeconds) return RD.InstructorLayer.readingSeconds(e);
     var w = String(e.learning || '').trim().split(/\s+/).length;
     return Math.min(7, Math.max(1.0, w / 3.7 + 0.4));
   }
@@ -3888,7 +3899,7 @@
       // of the pending lines instantly. Display-only: the engine log is untouched.
       if (chatState.btnKey !== '__revealing__') {
         chatState.btnKey = '__revealing__';
-        btns.innerHTML = '<button class="btn ghost chat-reveal-all" data-chatrevealall="1" ' +
+        btns.innerHTML = '<button class="btn ghost chat-reveal-all" data-chatrevealall="1" title="Show the instructor&#39;s pending messages now — skips nothing." ' +
           'data-scanner-hint="Reveal all — show the rest of this conversation at once instead of line-by-line.">⏩ reveal all</button>';
       }
       return;
@@ -9863,7 +9874,17 @@
         return;
       }
       var os = e.target.closest('[data-opener-start]');
-      if (os) { e.preventDefault(); startOpener(os.getAttribute('data-opener-start')); return; }
+      if (os) {
+        e.preventDefault();
+        var osid = os.getAttribute('data-opener-start');
+        // a fresh plant costs nothing to restart; anything else asks first (#811, owner 2026-09-28)
+        if (service.isFreshPlant && service.isFreshPlant()) startOpener(osid);
+        else { openerConfirm = osid; showIdleInstructor(); }
+        return;
+      }
+      var ocf = e.target.closest('[data-opener-confirm]');
+      if (ocf) { e.preventDefault(); openerConfirm = null; startOpener(ocf.getAttribute('data-opener-confirm')); return; }
+      if (e.target.closest('[data-opener-cancel]')) { e.preventDefault(); openerConfirm = null; showIdleInstructor(); return; }
       var od = e.target.closest('[data-opener-dismiss]');
       if (od) {
         e.preventDefault();

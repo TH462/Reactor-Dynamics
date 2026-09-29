@@ -1043,6 +1043,18 @@
     for (var i = 0; i < alarms.length; i++) {
       var alarm = alarms[i];
       var active = this._alarmRaw(alarm, ins);
+      // RESET DIFFERENTIAL (#811) — the `clears_below`/`clears_above` idiom the interlocks and
+      // runbacks already use, now on an alarm that declares one. A LIT alarm stays in until its
+      // reading is back past the clear line, not merely past the setpoint. Arrival is untouched
+      // (still the bare setpoint, on the evaluation it occurs); only the clear moves. Measured
+      // on the opener's trip, Cooldown Rate High: the slowly-rising, noisy rate meter re-crossed
+      // its setpoint at the clear and the tile went out and back in (the dropout hold above
+      // only bridges 2 s of quiet). An alarm without the field behaves exactly as before.
+      if (!active && this.alarmStates[alarm.id] && this.alarmStates[alarm.id] !== 'clear') {
+        var cv = ins[alarm.instrument];
+        if (alarm.direction === 'low' && alarm.clears_above != null) active = cv <= alarm.clears_above;
+        else if (alarm.direction === 'high' && alarm.clears_below != null) active = cv >= alarm.clears_below;
+      }
       // Optional LINEUP GATE (#273): an alarm may name a boolean indication that must
       // also hold. Same evaluator the trips and actuations use, so it reads INSTRUMENTS
       // (HR1) and the condition is plant DATA, not kernel knowledge (HR3). It can only

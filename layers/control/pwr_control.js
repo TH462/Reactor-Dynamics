@@ -561,7 +561,14 @@
     // on the board. Reads the DERIVED tavg_rate channel (indicated tavg,
     // differentiated + damped) — HR1-clean. NOT reclassified in Modes 4/5: the limit
     // binds exactly during a planned cooldown — exceeding it there IS the error.
-    { id: 'cooldown_rate_high', instrument: 'tavg_rate', direction: 'low',  setpoint: -55.6, priority: 'warning', panel: 'A', category: 'coolant', label_learning: 'Cooldown Rate High (>100 °F/hr)', label_industry: 'RCS COOLDOWN RATE HI' },
+    // RESET DIFFERENTIAL (#811, owner 2026-09-28 "All as recommended"): comes in at -100 °F/hr,
+    // clears only once the meter is back above -97 °F/hr (-53.9 °C/hr). The meter (tau 600 s) climbs
+    // back through the setpoint ~0.2 °F/hr per second with ±8 °F/hr of noise on it, so a bare
+    // setpoint clear re-lit the tile after every PWR2 trip. Measured on the opener's four trip
+    // routes (typical / hands-off / mistake / early SCRAM), re-lights after the first clear:
+    // 1 / 3-4 / 3 / 3 with no margin (hands-off varies with where the count starts); typical 0, hands-off 1 at 1-2 °F/hr; 0 / 0 / 0 / 0 at 3 °F/hr (chosen,
+    // the smallest that clears all four once). Cost: the clear lands 6-13 s later.
+    { id: 'cooldown_rate_high', instrument: 'tavg_rate', direction: 'low',  setpoint: -55.6, clears_above: -53.9, priority: 'warning', panel: 'A', category: 'coolant', label_learning: 'Cooldown Rate High (>100 °F/hr)', label_industry: 'RCS COOLDOWN RATE HI' },
     { id: 'heatup_rate_high',   instrument: 'tavg_rate', direction: 'high', setpoint: 55.6,  priority: 'warning', panel: 'A', category: 'coolant', label_learning: 'Heatup Rate High (>100 °F/hr)',   label_industry: 'RCS HEATUP RATE HI' },
     { id: 'pzr_pressure_high', instrument: 'primary_pressure', direction: 'high',    setpoint: 15.86, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Pressure High',       label_industry: 'PZR PRESS HI' },
     { id: 'pzr_pressure_low',  instrument: 'primary_pressure', direction: 'low',     setpoint: 14.82, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Pressure Low',        label_industry: 'PZR PRESS LO',

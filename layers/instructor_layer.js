@@ -386,6 +386,8 @@
     this._trend = null;               // { rev, series } — the chart traces a beat asked for (#811)
     this._scope = null;               // { rev, names } — the board scope (dimming) a beat asked for (#811)
     this._watchFired = [];            // scenario-level `watch` entries already taken (#811)
+    this._readHoldS = 0;              // WALL seconds of reading still owed to the last lines (`pace: 'reading'`, #811)
+    this._readLastSim = null;         // sim time the hold was last counted down at
     this._lastActionTime = null;      // sim time of the last forwarded operator command (quiet inaction, #811)
     this._rodHold = null;             // group_id of an operator rod HOLD in progress (rod_start, no rod_stop yet)
     this._lastSimTime = 0;
@@ -592,7 +594,8 @@
     if (this.mode === 'scenario') this._stepScenario(snapshot, simTime);
     else if (this.mode === 'follow') this._stepFollow(snapshot, simTime);
     if (this.checklist) this._stepChecklist(snapshot);
-    this._continueRequested = false;    // a Continue click satisfies at most one pass
+    if (!this._heldPass) this._continueRequested = false;    // a Continue click satisfies at most one pass
+    this._heldPass = false;                                   // ...that ran the flow (reading hold, #811)
   };
 
   InstructorLayer.prototype._stepScenario = function (snapshot, simTime) {
@@ -615,9 +618,27 @@
       if (this.firedBeats.has(w.goto)) continue;      // a fired beat never fires again: the jump would stall the flow
       if (this._evalTrigger(w.trigger, snapshot, simTime)) {
         this._watchFired.push(w.id);
+        this._readHoldS = 0;          // the unexpected is news: its beat is not held behind reading time
         this._fireBranch(w, simTime);
         break;
       }
+    }
+
+    /* READING TIME (#811, OWNER 2026-09-28: "the cadence is a little fast. It's hard to keep up
+     * with reading it and looking at the board."). A scenario with `pace: 'reading'` owes each
+     * line it says READING_S(line) of WALL time — the UI reveals the lines on the same clock
+     * (chatDwellS) — and no branch or beat fires until the last beat's lines have all had theirs.
+     * Wall, not sim: at 5x a sim-time delay runs away from the reader five times over. Wall is
+     * sim / time_acceleration, so it stops with the clock and it is the same in the browser and
+     * the Node harnesses. The scenario `watch` above is NOT held, and a watch that fires cancels the
+     * hold: an unexpected trip is news, and the UI still reveals the owed lines on its own clock. */
+    if (this.scenario && this.scenario.pace === 'reading') {
+      var acc = (snapshot && snapshot.metadata && snapshot.metadata.time_acceleration) || 1;
+      if (this._readLastSim != null && simTime > this._readLastSim && acc > 0)
+        this._readHoldS = Math.max(0, this._readHoldS - (simTime - this._readLastSim) / acc);
+      this._readLastSim = simTime;
+      // A Continue click during the hold is KEPT for the pass that runs the flow, not dropped.
+      if (this._readHoldS > 0) { this._heldPass = true; this._updateGates(snapshot, simTime); return; }
     }
 
     // Watching a decision beat's branches: first branch trigger to fire wins (§6).
@@ -676,6 +697,9 @@
     // transcript); commentary remains the single-slot fallback for non-chat
     // scenarios and for gate feedback.
     if (beat.dialogue && beat.dialogue.length) this._appendChat(beat.dialogue, simTime, beat.story_min != null ? beat.story_min : null, !!beat.time_skip);
+    if (beat.dialogue && this.scenario && this.scenario.pace === 'reading') {
+      for (var rl = 0; rl < beat.dialogue.length; rl++) if (beat.dialogue[rl]) this._readHoldS += InstructorLayer.readingSeconds(beat.dialogue[rl]);
+    }
 
     // Scenario actions descend as commands through M4, which places failures
     // correctly (HR7) and applies command interception.
@@ -752,6 +776,14 @@
 
     if (beat.branches) { this.branchWatch = beat; return; }
     this._advanceFrom(beat);
+  };
+
+  /* A line's reading time in WALL seconds (#811 pacing): 0.3 s a word plus 2.5 s to look at the
+   * board — a 20-word line gets 8.5 s. Learning register, like the UI's reveal. Shared with the UI
+   * (app.js chatDwellS) so the reveal and the flow keep the same clock. */
+  InstructorLayer.readingSeconds = function (line) {
+    var w = String((line && (line.learning || line.industry)) || '').trim().split(/\s+/).length;
+    return w * 0.3 + 2.5;
   };
 
   InstructorLayer.prototype._advanceFrom = function (beat) {
@@ -2803,6 +2835,7 @@
       trend: this._trend ? JSON.parse(JSON.stringify(this._trend)) : null,
       scope: this._scope ? JSON.parse(JSON.stringify(this._scope)) : null,
       watch_fired: this._watchFired.slice(),
+      read_hold_s: this._readHoldS,
       last_action_time: this._lastActionTime,
       rod_hold: this._rodHold,
       interact: JSON.parse(JSON.stringify(this._interact)),
@@ -2947,6 +2980,8 @@
       this._scope = state.scope || null;
       this._scopeRev = this._scope ? this._scope.rev : 0;
       this._watchFired = (state.watch_fired || []).slice();
+      this._readHoldS = state.read_hold_s || 0;   // absent on older saves: nothing owed
+      this._readLastSim = null;
       this._lastActionTime = state.last_action_time != null ? state.last_action_time : null;   // absent on older saves
       this._rodHold = state.rod_hold || null;
       this._interact = state.interact || {};

@@ -4436,6 +4436,14 @@
        * a run_*.js is invisible to run_all") arriving by a different road: the runner exists and
        * could not load. */
       imrsgch20pv: { props: { label: 'TAILPIPE', labelSize: 10 } },
+      /* THE TWO % TAGS BY THE CONDENSER GET CAPTIONS (#811 layman pass 2, OWNER RULING 2026-09-28:
+       * "All as recommended"). `imsgunuyvon` reads the condenser steam dump, `imsguptyg16` the
+       * atmospheric dump (ADV); the ADV's 0 % sat against the dump valve's left edge, so the valve
+       * was bracketed by two identical unlabelled numbers. `caption` (buildValue) hangs the word
+       * under the number. The ADV tag's authored name was a copy-paste "STEAM TURB FLOW
+       * indication" from the turbine-flow tag; renamed here, re-export-safe. */
+      imsgunuyvon: { props: { caption: 'DUMP' } },
+      imsguptyg16: { props: { caption: 'ADV', name: 'ATMOSPHERIC DUMP (ADV) position indication' } },
       /* THE HX FLOW CAPTION IS RENAMED *(OWNER RULING, 2026-09-10, option A, #700)*. The ruled
        * name is "COOLDOWN RATE / HX SPLIT" and it is rendered as its TWO HALVES, each attached
        * to the thing it names: this caption becomes "HX SPLIT" (the lever) and the new

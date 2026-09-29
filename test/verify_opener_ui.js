@@ -3,9 +3,11 @@
  * follow-up). run_opener.js plays the opener through the service; these are the three things
  * only the page can get wrong:
  *
- *   1. THE OFFER NEVER COSTS A SESSION. One click resets the plant with no confirm, so it stands
- *      only on a fresh load: gone after the first plant command, gone after End, back on a new
- *      load. QA found it hours into free play, after End and after finishing.
+ *   1. THE OFFER STANDS WHENEVER THE TAB IS IDLE, AND NEVER COSTS A SESSION (OWNER 2026-09-28:
+ *      "keep the button for the full power opener on the instructor tab unless it's showing other
+ *      content"). On a fresh load one click starts it; after a plant command or after End it asks
+ *      first ("This restarts the plant at full power. Your current plant will be lost."), and
+ *      Cancel leaves the plant exactly as it was.
  *   2. THE SCANNER forgets the offer once it is pressed (the hint described a button that is gone,
  *      and stayed until the next hover).
  *   3. TELEMETRY files one opener_beat row per beat reached — ids and an index, nothing else.
@@ -62,13 +64,34 @@ var OFFER = '#instrCurrent [data-opener-start]';
     s.handleCommand({ action: 'set_load_target', mwe: 95 });   // the player's first plant command
     s.handleCommand({ action: 'play' });                       // broadcasts, so the panel redraws
   });
-  ck('after the first plant command: the offer is gone', await offerGone(), 'one click would reset their plant');
   await page.waitForTimeout(1500);
-  ck('...and stays gone as the plant runs', !(await page.$(OFFER)), 'no re-render brings it back');
+  ck('after the first plant command: the offer stays', await offerShown(4000), 'the tab is idle');
+  var CONF = '#instrCurrent [data-opener-confirm]';
+  var t0c = await page.evaluate(function () { return RD.__dev.service().simTime; });
+  await page.click(OFFER);
+  var confTxt = await page.waitForSelector(CONF, { state: 'visible', timeout: 4000 }).then(function () {
+    return page.textContent('#instrCurrent .instr-opener-confirm'); }).catch(function () { return null; });
+  ck('not fresh: Start asks first, with the one-line warning', !!confTxt && /restarts the plant at full power\. Your current plant will be lost\./.test(confTxt),
+     confTxt ? confTxt.replace(/\s+/g, ' ').trim() : 'no confirm');
+  ck('...and has not started anything yet', await page.evaluate(function () { return RD.__dev.service().instructor.mode !== 'scenario'; }));
+  await page.click('#instrCurrent [data-opener-cancel]');
+  await page.waitForTimeout(1200);
+  var kept = await page.evaluate(function (t0) { var s = RD.__dev.service();
+    return { mode: s.instructor.mode, t: s.simTime, t0: t0, fresh: s.isFreshPlant(), load: s.controlState ? null : null }; }, t0c);
+  ck('Cancel: the plant is untouched (no opener, clock kept running, still not fresh)', kept.mode !== 'scenario' && kept.t >= kept.t0 && kept.fresh === false,
+     'mode ' + kept.mode + ', sim ' + kept.t0.toFixed(1) + ' -> ' + kept.t.toFixed(1) + ' s');
+  ck('Cancel: the offer is back, the confirm gone', (await offerShown(3000)) && !(await page.$(CONF)));
+  await page.click(OFFER);
+  await page.waitForSelector(CONF, { state: 'visible', timeout: 4000 }).catch(function () {});
+  await page.click(CONF);
+  var startedC = await page.waitForFunction(function () { return RD.__dev.service().instructor.firedBeats.has('o0_hello'); }, null, { timeout: 15000 })
+    .then(function () { return true; }).catch(function () { return false; });
+  ck('Restart at full power: the opener starts', startedC);
 
   await boot();
   ck('a new load: the offer is back', await offerShown(), 'fresh plant again');
 
+  var noConfFresh = await page.evaluate(function () { return RD.__dev.service().isFreshPlant(); });
   // ---------------------------------------------------------------- 2 + 3. start it
   await page.evaluate(function () {
     window.__ev = [];
@@ -84,6 +107,8 @@ var OFFER = '#instrCurrent [data-opener-start]';
   await page.waitForTimeout(600);
   var after = await page.textContent('#scanner');
   ck('after pressing it: the Scanner no longer describes the offer', after.indexOf(offerHint.slice(0, 30)) === -1, after.slice(0, 60));
+  ck('fresh plant: Start starts at once, no confirm', noConfFresh === true && !(await page.$('#instrCurrent [data-opener-confirm]')) &&
+     await page.evaluate(function () { return RD.__dev.service().instructor.mode === 'scenario'; }), 'fresh ' + noConfFresh);
 
   // o0_hello fires at 0.5 s and the pending beat moves to o1_load (index 1): two rows.
   await page.waitForFunction(function () {
@@ -123,7 +148,7 @@ var OFFER = '#instrCurrent [data-opener-start]';
 
   // o1_load's trend: Tavg, Pressure, Steam Dump, Power in place of the player's own traces.
   await page.evaluate(function () { RD.__dev.service().handleCommand({ action: 'instructor_continue' }); });   // Ready
-  await page.waitForFunction(function () { return RD.__dev.service().instructor.firedBeats.has('o1_load'); }, null, { timeout: 15000 }).catch(function () {});
+  await page.waitForFunction(function () { return RD.__dev.service().instructor.firedBeats.has('o1_load'); }, null, { timeout: 40000 }).catch(function () {});
   await page.waitForTimeout(800);
   var legend1 = (await page.textContent('#chartFloats')) || '';
   ck('trend: the o1_load beat put its traces on the chart', /Steam Dump/.test(legend1) && /Pressure/.test(legend1) && /Tavg/.test(legend1),
@@ -260,7 +285,7 @@ var OFFER = '#instrCurrent [data-opener-start]';
   async function jump(id, back) {
     await page.evaluate(function (a) {
       var s = RD.__dev.service(), I = s.instructor;
-      I.branchWatch = null; I.currentBeatId = a[0]; I.lastBeatFireTime = s.simTime - a[1];
+      I.branchWatch = null; I.currentBeatId = a[0]; I.lastBeatFireTime = s.simTime - a[1]; I._readHoldS = 0;
     }, [id, back]);
     return page.waitForFunction(function (i) { return RD.__dev.service().instructor.firedBeats.has(i); }, id, { timeout: 15000 })
       .then(function () { return true; }).catch(function () { return false; });
@@ -325,8 +350,7 @@ var OFFER = '#instrCurrent [data-opener-start]';
   await page.waitForSelector('[data-opener-end]', { timeout: 8000 }).catch(function () {});
   await page.click('[data-opener-end]');
   await page.waitForTimeout(1500);
-  ck('after End: the offer does not come back over the same plant', !(await page.$(OFFER)),
-     'an opener ran on this load');
+  ck('after End: the offer is back (the tab is idle)', await offerShown(4000), 'Start will ask first: an opener ran on this load');
   var legend2 = (await page.textContent('#chartFloats')) || '';
   await page.waitForTimeout(600);
   ck('scope: End clears it all (no pointer, no dimming)', await page.evaluate(function () {
@@ -394,7 +418,7 @@ var OFFER = '#instrCurrent [data-opener-start]';
   await page.click(OFFER);
   await page.waitForFunction(function () { return RD.__dev.service().instructor.firedBeats.has('o0_hello'); }, null, { timeout: 15000 }).catch(function () {});
   await page.evaluate(function () { RD.__dev.service().handleCommand({ action: 'instructor_continue' }); });
-  await page.waitForFunction(function () { return RD.__dev.service().instructor.firedBeats.has('o1_load'); }, null, { timeout: 15000 }).catch(function () {});
+  await page.waitForFunction(function () { return RD.__dev.service().instructor.firedBeats.has('o1_load'); }, null, { timeout: 40000 }).catch(function () {});
   await page.waitForTimeout(800);
   var dimBefore = await page.evaluate(function () { return !!document.querySelector('.pwr-board-stage.bd-dimming'); });
   var acc5 = await page.evaluate(function () {
