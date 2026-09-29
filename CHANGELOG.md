@@ -30,9 +30,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.8.0-rc11] — 2026-09-28
+## [Alpha 1.8.0] — 2026-09-29
 
 ### Changed
+- **Released as Alpha 1.8.0; the five other cycle walkthroughs and the hot-full-power opener go PUBLIC** (OWNER 2026-09-29: "Do a full release and unlock the walkthroughs (except the TMI2 one) and the hot full power preview."). `procedure:pwr_startup/raise_power/lower_power/shutdown/cooldown` and the `openers` area -> stage public; `procedure:pwr_tmi2_incident` stays preview. `verify_flags_ui` re-pointed (exact six-leg public list; the chain-handoff gate now forced with `?flags=-procedure:pwr_startup`); `run_flags` 347 -> 346 (a public area carries no coming-soon check).
 - **Free Play offers the power-ascension starting condition** (`low_power`, about 10 % power, the startup walkthrough's hand-off) as *At Power — power ascension (Mode 1)* (OWNER 2026-09-28: "Add the power ascensions starting point to the list of starting points."). Manual 09 Rev 22 item (u). Measured headless: loads at 9.6 % power range, no page errors.
 - **Main Menu walkthroughs are grouped (Startup, Shutdown, Incidents) and say where to start** (OWNER 2026-09-28: "the walkthrough menu should explain where to start to perform a startup" / "Maybe start grouping the walkthroughs. Ie startup, shutdown, TMI"). The "Pick a walkthrough" line is replaced in the menu and the Walkthroughs tab; the power-ascension row now names its starting condition.
 - **Landing page announces the walkthroughs** (site only; OWNER 2026-09-28): a NEW pill above the headline, "Guided walkthroughs now take you through a full plant startup and shutdown.", keyed to the public `walkthroughs` flag and hidden when it is off.

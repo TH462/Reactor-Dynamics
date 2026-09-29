@@ -88,11 +88,11 @@
       soon: 'Guided procedure walkthroughs are in final review. The procedures themselves are readable now in the operator\'s manual.',
     },
     /* The idle Instructor tab's guided opener for a starting condition (#811, prototype
-     * 2026-09-28). 'preview' until the owner has played it: the tester site shows it, the public
-     * site shows nothing (the offer simply does not render — no soon panel is drawn for it). */
+     * 2026-09-28). PUBLIC since Alpha 1.8.0 (OWNER, 2026-09-29: "Do a full release and unlock the
+     * walkthroughs (except the TMI2 one) and the hot full power preview."). */
     openers: {
       label: 'Guided openers',
-      stage: 'preview',
+      stage: 'public',
       desc: 'A five-minute instructor chat on the Instructor tab: a few moves and what they do to the plant.',
       soon: 'A short guided opener for each starting condition is in review.',
     },
@@ -171,14 +171,16 @@
      * is open on them — the replay harness and a live player disagree on the settle durations
      * by up to 4x, so the predicate's window was tuned against a fixture that may not be what a
      * player experiences. Gating pwr_startup takes that uncertainty out of the public build. */
+    /* The five other cycle legs PUBLIC since Alpha 1.8.0 (OWNER, 2026-09-29: "Do a full release and
+     * unlock the walkthroughs (except the TMI2 one) and the hot full power preview."); TMI-2 stays preview. */
     'procedure:pwr_heatup': 'public',
-    'procedure:pwr_startup': 'preview',
-    'procedure:pwr_raise_power': 'preview',
-    'procedure:pwr_lower_power': 'preview',
+    'procedure:pwr_startup': 'public',
+    'procedure:pwr_raise_power': 'public',
+    'procedure:pwr_lower_power': 'public',
     'procedure:pwr_pressure_control': 'preview',   // retired pool only — no pwr2 leg
     'procedure:pwr_sg_level': 'preview',           // retired pool only — no pwr2 leg
-    'procedure:pwr_shutdown': 'preview',
-    'procedure:pwr_cooldown': 'preview',
+    'procedure:pwr_shutdown': 'public',
+    'procedure:pwr_cooldown': 'public',
     'procedure:pwr_post_trip': 'preview',
     'procedure:pwr_loss_of_feedwater': 'preview',
     'procedure:pwr_rcp_trip': 'preview',

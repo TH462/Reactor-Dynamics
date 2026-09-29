@@ -1096,12 +1096,13 @@ function pinChannel(ch) {
    * and it now also pins that the withdrawn five are absent BY NAME. Validated against the OLD
    * behaviour too — with the five back at 'public' this form goes red naming them, so it is not
    * a check refitted to whatever the build happens to do. */
-  ck('public: ONLY the Mode 5 to Mode 3 heatup is offered; the other five legs and the incident walkthrough are NOT (#722, owner 2026-09-15)',
-    pubWalkIds.join(',') === 'pwr_heatup' &&
-    (await b.page.evaluate(function () {
-      return ['pwr_startup', 'pwr_raise_power', 'pwr_lower_power', 'pwr_shutdown', 'pwr_cooldown',
-              'pwr_tmi2_incident'].every(function (id) { return RD.Flags.on('procedure:' + id) === false; });
-    })) === true,
+  /* RE-POINTED AGAIN FOR ALPHA 1.8.0 *(OWNER, 2026-09-29: "Do a full release and unlock the
+   * walkthroughs (except the TMI2 one) and the hot full power preview.")*: the six cycle legs are
+   * public, the incident leg is not. Still an EXACT list and still names the incident leg's flag, so
+   * it goes red on the 2026-09-15 heatup-only build (list 'pwr_heatup') and on a TMI-2 leak alike. */
+  ck('public: exactly the six cycle legs are offered and the incident walkthrough is NOT (owner 2026-09-29)',
+    pubWalkIds.join(',') === 'pwr_heatup,pwr_startup,pwr_raise_power,pwr_lower_power,pwr_shutdown,pwr_cooldown' &&
+    (await b.page.evaluate(function () { return RD.Flags.on('procedure:pwr_tmi2_incident') === false; })) === true,
     pubWalkIds.join(','));
   await b.ctx.close();
 
@@ -1131,8 +1132,8 @@ function pinChannel(ch) {
    * NOT COVERED BY THE `?follow=` DEEP LINK a few lines of app.js away: that is a hand-typed URL
    * in the `?inject=` / `?ff=` family and `site/flags.js` says plainly that gating is not access
    * control. This is a button the app DREW for the player, which is a different claim. */
-  async function chainLeg(channel) {
-    var c = await build(channel, WT2.replace('?engine=pwr2', '?engine=pwr2&dev=1'));
+  async function chainLeg(channel, extra) {
+    var c = await build(channel, WT2.replace('?engine=pwr2', '?engine=pwr2&dev=1' + (extra || '')));
     var r = await c.page.evaluate(function () {
       var pool = (RD.MANUAL_PROCEDURES || {}).pwr2 || [];
       var heatup = pool.filter(function (x) { return x.id === 'pwr_heatup'; })[0] || null;
@@ -1150,8 +1151,11 @@ function pinChannel(ch) {
     await c.ctx.close();
     return r;
   }
-  var chainPub = await chainLeg('public');
-  ck('public: a finished pwr_heatup does NOT offer the gated next leg (the chain handoff is gated, owner 2026-09-15)',
+  /* Since Alpha 1.8.0 every cycle leg is public, so the shipped build no longer carries a gated
+   * `next` — the gate is exercised by FORCING the next leg off with the documented override, which
+   * is the state the 2026-09-15 defect lived in. Same function, same channel. */
+  var chainPub = await chainLeg('public', '&flags=-procedure:pwr_startup');
+  ck('public: a finished pwr_heatup does NOT offer a gated next leg (the chain handoff is gated, owner 2026-09-15)',
     chainPub.channel === 'public' && chainPub.next === 'pwr_startup' &&
     chainPub.nextOn === false && chainPub.offered === null,
     JSON.stringify(chainPub));
