@@ -561,7 +561,14 @@
     // on the board. Reads the DERIVED tavg_rate channel (indicated tavg,
     // differentiated + damped) — HR1-clean. NOT reclassified in Modes 4/5: the limit
     // binds exactly during a planned cooldown — exceeding it there IS the error.
-    { id: 'cooldown_rate_high', instrument: 'tavg_rate', direction: 'low',  setpoint: -55.6, priority: 'warning', panel: 'A', category: 'coolant', label_learning: 'Cooldown Rate High (>100 °F/hr)', label_industry: 'RCS COOLDOWN RATE HI' },
+    // RESET DIFFERENTIAL (#811, owner 2026-09-28 "All as recommended"): comes in at -100 °F/hr,
+    // clears only once the meter is back above -97 °F/hr (-53.9 °C/hr). The meter (tau 600 s) climbs
+    // back through the setpoint ~0.2 °F/hr per second with ±8 °F/hr of noise on it, so a bare
+    // setpoint clear re-lit the tile after every PWR2 trip. Measured on the opener's four trip
+    // routes (typical / hands-off / mistake / early SCRAM), re-lights after the first clear:
+    // 1 / 3-4 / 3 / 3 with no margin (hands-off varies with where the count starts); typical 0, hands-off 1 at 1-2 °F/hr; 0 / 0 / 0 / 0 at 3 °F/hr (chosen,
+    // the smallest that clears all four once). Cost: the clear lands 6-13 s later.
+    { id: 'cooldown_rate_high', instrument: 'tavg_rate', direction: 'low',  setpoint: -55.6, clears_above: -53.9, priority: 'warning', panel: 'A', category: 'coolant', label_learning: 'Cooldown Rate High (>100 °F/hr)', label_industry: 'RCS COOLDOWN RATE HI' },
     { id: 'heatup_rate_high',   instrument: 'tavg_rate', direction: 'high', setpoint: 55.6,  priority: 'warning', panel: 'A', category: 'coolant', label_learning: 'Heatup Rate High (>100 °F/hr)',   label_industry: 'RCS HEATUP RATE HI' },
     { id: 'pzr_pressure_high', instrument: 'primary_pressure', direction: 'high',    setpoint: 15.86, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Pressure High',       label_industry: 'PZR PRESS HI' },
     { id: 'pzr_pressure_low',  instrument: 'primary_pressure', direction: 'low',     setpoint: 14.82, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Pressure Low',        label_industry: 'PZR PRESS LO',
@@ -785,7 +792,7 @@
     // +5 the plant acts, +10 it tells you, 75 % absolute it tells you again, 97 % it trips. And
     // it is the mirror of `pzr_level_dev_low` above: one number, ten points, either way, which
     // is one thing for the player to learn rather than two (DESIGN_CRITERIA Q4).
-    { id: 'pzr_level_dev_high', instrument: 'pzr_level_dev',   direction: 'high',    setpoint: 10.0, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Above Program — letdown is not holding', label_industry: 'PZR LVL DEV HI' },
+    { id: 'pzr_level_dev_high', instrument: 'pzr_level_dev',   direction: 'high',    setpoint: 10.0, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Above Program', label_industry: 'PZR LVL DEV HI' },
     { id: 'charging_high',     instrument: 'charging_flow',    direction: 'high',    setpoint: 8.0e-5, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Charging Flow High — make-up is working hard',            label_industry: 'CHG FLOW HI' },   // #408 real currency: 36 gpm, nominal letdown 30 + a sev-0.2 seal leak — keeps the documented "from about severity 0.2 up" cue; was 0.036, unreachable once max charging became 1.333e-4
   ];
   var PWR_ALARMS_B = [

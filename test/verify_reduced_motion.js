@@ -350,6 +350,36 @@ function probeAll() {
     !armedReduce.err && !/bdScramPulse/.test(armedReduce.anim) && /\d/.test(armedReduce.shadow),
     JSON.stringify(armedReduce));
 
+  /* THE INSTRUCTOR POINTER + SCOPE (#811). The pointer is a silhouette drawn by an SVG filter, so
+   * it has no CSS outline/box-shadow for the tuple above to compare — its static form is the drawn
+   * band itself, held at a steady opacity. Paired legs, as everywhere in this file: it must PULSE
+   * with motion allowed, and be still under reduced motion (and the scope's dimming must not fade)
+   * — and in BOTH legs it must still EXPIRE: it is removed on a timer, not on animationend, which
+   * never fires when there is no animation. The sim is paused so free play's per-broadcast clear
+   * cannot take the scope back off mid-probe. */
+  async function focusProbe(page) {
+    return page.evaluate(async function () {
+      RD.__dev.service().handleCommand({ action: 'pause' });
+      await new Promise(function (r) { setTimeout(r, 300); });
+      RD.PwrBoard.setScope({ names: ['rods'], lit: [] });
+      RD.PwrBoard.pointAt(['Reactor Vessel']);
+      await new Promise(function (r) { setTimeout(r, 900); });
+      var ol = document.querySelector('.bd-focus-ol.on');
+      var dim = document.querySelector('.pwr-board-stage.bd-dimming > .bd-tile:not(.bd-lit)');
+      var r = { anim: ol ? getComputedStyle(ol).animationName : 'MISSING', op: ol ? +getComputedStyle(ol).opacity : 0,
+                dimTrans: dim ? getComputedStyle(dim).transitionDuration : 'MISSING' };
+      await new Promise(function (res) { setTimeout(res, 4000); });
+      r.leftAfter5s = document.querySelectorAll('.bd-focus-ol').length;
+      RD.PwrBoard.setScope(null);
+      return r;
+    });
+  }
+  var focMotion = await focusProbe(pMotion), focReduce = await focusProbe(pReduce);
+  ck('the instructor pointer pulses when motion is allowed, and expires (else the next check proves nothing)',
+    /bdPointer/.test(focMotion.anim) && /0\.45s/.test(focMotion.dimTrans) && focMotion.leftAfter5s === 0, JSON.stringify(focMotion));
+  ck('  …and under reduced motion it is a steady outline that STILL expires, and the dimming does not fade',
+    focReduce.anim === 'none' && focReduce.op > 0.8 && !/0\.45s/.test(focReduce.dimTrans) && focReduce.leftAfter5s === 0, JSON.stringify(focReduce));
+
   await browser.close();
   srv.close();
 

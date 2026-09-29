@@ -377,12 +377,14 @@ async function sec(key, title, cols, fn) {
   let rows = [];
   try { rows = (await fn()) || []; }
   catch (e) {
+    if (typeof title === 'function') title = title();
     failures.push(`${title}: ${e.message}`);
     if (!JSON_OUT) { console.log(`\n${C.b}${title}${C.x}`); console.log(`  ${C.r}query failed:${C.x} ${e.message}`); }
     OUT[key] = { error: e.message };
     return;
   }
   OUT[key] = rows;
+  if (typeof title === 'function') title = title(); // resolved AFTER fn: names the path that answered
   if (!JSON_OUT) { console.log(`\n${C.b}${title}${C.x}`); console.log(table(rows, cols)); }
 }
 
@@ -441,26 +443,57 @@ async function traffic() {
 
   await trafficEastern();
 
-  await sec('traffic_paths', 'Top pages', ['path', ...COLS],
-    async () => rumRows(await gql(rumGroup('requestPath', 'count_DESC', 15)), (d) => ({ path: d.requestPath })));
+  /* THE BREAKDOWNS READ THE STORE FIRST (2026-09-28). Asked live, Cloudflare rounds every
+   * breakdown to the nearest 10 once a group reaches past its 7-day exact tier — the
+   * default --days=7 run came back `cf~10` on all four, which read "Germany ~40 %" off a
+   * rounded 80 when the store's exact figure was 78 of 334, behind the US. `traffic_daily`
+   * carries every one of these dimensions, exact, for every closed Eastern day. Today is
+   * not in it (no row until the nightly cron), so these tables cover CLOSED days only and
+   * say so; the Cloudflare path remains, labelled `cf~N`, only when the store is
+   * unreachable — and then the TITLE says so, because that window is a rolling UTC one
+   * through now, not closed Eastern days. The first D1 failure is remembered, so a dead
+   * wrangler costs one 20 s timeout here, not four. Referrers exclude
+   * `referrer_kind = 'internal'` (the dashboard's 2026-09-02 fix: own-site navigation is
+   * not "where they came from"; it was 226 of 421 rows' pageloads over 30 days). */
+  const { from: bFrom, to: bTo } = closedDayWindow(DAYS, new Date());
+  let d1Dead = false;
+  const breakdown = (col, label, limit, cfDim, cfMap, where = '') => async () => {
+    if (!d1Dead) {
+      try {
+        const rows = await d1Query(
+          `SELECT ${col} AS k, SUM(pageloads) AS pageloads, SUM(visits) AS visits FROM traffic_daily` +
+          ` WHERE day >= '${bFrom}' AND day <= '${bTo}' AND bot = 0${where} GROUP BY ${col}` +
+          ` ORDER BY pageloads DESC LIMIT ${limit}`);
+        return rows.map((r) => ({ [label]: r.k === '' ? '(direct)' : r.k,
+          pageloads: num(r.pageloads), visits: num(r.visits), source: 'store' }));
+      } catch (e) { d1Dead = true; }
+    }
+    return rumRows(await gql(rumGroup(cfDim, 'count_DESC', limit)), cfMap);
+  };
+  const span = (name) => () => `${name} (` + (d1Dead
+    ? `Cloudflare, last ${DAYS} day(s) UTC through now — store unreachable`
+    : `closed days ${bFrom} → ${bTo} ET`) + ')';
 
-  await sec('traffic_referers', 'Where they came from', ['referer', ...COLS],
-    async () => rumRows(await gql(rumGroup('refererHost', 'count_DESC', 15)),
-      (d) => ({ referer: d.refererHost || '(direct)' })));
+  await sec('traffic_paths', span('Top pages'), ['path', ...COLS],
+    breakdown('path', 'path', 15, 'requestPath', (d) => ({ path: d.requestPath })));
 
-  await sec('traffic_countries', 'Countries', ['country', ...COLS],
-    async () => rumRows(await gql(rumGroup('countryName', 'count_DESC', 15)), (d) => ({ country: d.countryName })));
+  await sec('traffic_referers', span('Where they came from'), ['referer', ...COLS],
+    breakdown('referrer_host', 'referer', 15, 'refererHost', (d) => ({ referer: d.refererHost || '(direct)' }),
+      " AND referrer_kind != 'internal'"));
 
-  await sec('traffic_devices', 'Devices', ['device', ...COLS],
-    async () => rumRows(await gql(rumGroup('deviceType', 'count_DESC', 10)), (d) => ({ device: d.deviceType })));
+  await sec('traffic_countries', span('Countries'), ['country', ...COLS],
+    breakdown('country', 'country', 15, 'countryName', (d) => ({ country: d.countryName })));
+
+  await sec('traffic_devices', span('Devices'), ['device', ...COLS],
+    breakdown('device', 'device', 10, 'deviceType', (d) => ({ device: d.deviceType })));
 
   /* Report what came BACK, not what was asked for. This used to open "Window > 7 days:",
    * which is a claim about the window rather than about the answer — and the dashboard's
    * copy of that sentence spent three days telling the one person who could have caught
    * it that a 7-day window was the reason a 7-day window was rounding (#485). */
   if (rumCoarse > 1 && !JSON_OUT) {
-    console.log(`\n  ${C.y}Cloudflare answered from a coarser tier, so these counts are rounded to`);
-    console.log(`  the nearest ${rumCoarse}. Only the last 7 days are held at full resolution.${C.x}`);
+    console.log(`\n  ${C.y}Rows tagged cf~${rumCoarse} came from Cloudflare's coarser tier and are rounded to`);
+    console.log(`  the nearest ${rumCoarse}; \`store\` rows are exact. Cloudflare holds only 7 days at full resolution.${C.x}`);
   }
   OUT.traffic_granularity = rumCoarse;
 }
@@ -649,6 +682,15 @@ async function usage() {
                       AND blob1 IN ('mission_start','mission_complete','mission_abandon')
                     GROUP BY mission, event ORDER BY mission, event LIMIT 60`),
       (r) => ({ mission: r.mission, event: r.event, sessions: num(r.sessions) })));
+
+  // THE OPENER FUNNEL (#811): beats reached x sessions. blob8 is the `id` column and double4
+  // the beat (SQL is 1-indexed — see the Worker's column map). `beat` is the index of the beat
+  // pending or being watched, the same axis as mission_abandon.beat.
+  await sec('usage_openers', 'Openers  (beat reached — the funnel)', ['opener', 'beat', 'sessions'], async () =>
+    rows(await sql(`SELECT blob8 AS opener, double4 AS beat, count(DISTINCT blob4) AS sessions
+                    FROM ${DATASET} WHERE ${SINCE} AND blob1 = 'opener_beat'
+                    GROUP BY opener, beat ORDER BY opener, beat ASC LIMIT 100`),
+      (r) => ({ opener: r.opener, beat: num(r.beat), sessions: num(r.sessions) })));
 
   // A DISTRIBUTION, not a row per session — this is the section that would otherwise grow
   // without bound. quantileWeighted is the only quantile the endpoint accepts, and weighting

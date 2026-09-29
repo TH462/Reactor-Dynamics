@@ -3570,12 +3570,60 @@
       'that check themselves off the instruments as you operate.">' +
       'Try the walkthroughs</button></div>';
   }
+  /* THE OPENER OFFER (#811). A short instructor chat for the starting condition the player is
+   * sitting at, offered above the walkthroughs bar. One per starting condition: the opener whose
+   * plant_id + initial_state match the running plant (RD.OPENERS, scenarios/opener_*.js). One
+   * click starts it; "Not now" hides it for this browser SESSION (sessionStorage — OWNER RULING
+   * 2026-09-28: "Make it appear in every session instead of being hidden for good."). Ignoring it
+   * changes nothing about free play. Behind the 'openers' area flag (site/flags.js). */
+  var openerHidden = {};
+  function openerDismissed(id) {
+    if (openerHidden[id]) return true;
+    try { return sessionStorage.getItem('rd_opener_hide_' + id) === '1'; } catch (e) { return false; }
+  }
+  /* THE OFFER STANDS WHENEVER THE TAB IS IDLE (#811, OWNER 2026-09-28: "keep the button for the
+   * full power opener on the instructor tab unless it's showing other content"). Replaces the
+   * fresh-plant-only gate. What that gate protected — a long free-play session wiped by one click —
+   * is now a one-line CONFIRM when the plant is not fresh (SimulationService.isFreshPlant); a fresh
+   * plant starts at once. `openerConfirm` is the id awaiting that confirm. */
+  var openerConfirm = null;
+  function openerFor() {
+    if (!flagOn('openers') || !service) return null;
+    var all = RD.OPENERS || {};
+    for (var k in all) {
+      var o = all[k];
+      if (o.plant_id === service.activePlantId && o.initial_state === service.activeInitialState && !openerDismissed(o.id)) return o;
+    }
+    return null;
+  }
+  function openerOfferHtml(o) {
+    if (!o) return '';
+    if (openerConfirm === o.id) {
+      return '<div class="instr-launch instr-opener instr-opener-confirm">' +
+        '<div class="instr-opener-sub">This restarts the plant at full power. Your current plant will be lost.</div>' +
+        '<button type="button" class="btn instr-launch-bar" data-opener-confirm="' + mesc(o.id) + '">Restart at full power</button> ' +
+        '<button type="button" class="btn linkish" data-opener-cancel="' + mesc(o.id) + '">Cancel</button></div>';
+    }
+    return '<div class="instr-launch instr-opener"><button type="button" class="btn instr-launch-bar" ' +
+      'data-opener-start="' + mesc(o.id) + '" data-scanner-hint="' + mesc(o.offer || '') + '">' +
+      mesc(o.title) + ' — 5 min, guided</button>' +
+      '<div class="instr-opener-sub">' + mesc(o.offer || '') +
+      ' <button type="button" class="btn linkish" data-opener-dismiss="' + mesc(o.id) + '">Not now</button></div></div>';
+  }
+  function idleKey() {
+    var o = openerFor();
+    // A confirm left standing over a plant that is now FRESH (a new load) or has no opener (another
+    // IC) is stale: its "Your current plant will be lost" is false. Drop it; the offer comes back.
+    if (openerConfirm && (!o || (service.isFreshPlant && service.isFreshPlant()))) openerConfirm = null;
+    return (o ? o.id : '-') + '|' + (openerConfirm || '') + '|' + flagOn('checklists');
+  }
   function showIdleInstructor() {
     setInstrRole('Instructor');
     var cur = $('instrCurrent');
     if (!cur) return;
     cur.classList.add('instr-standby');
-    cur.innerHTML = (idleLauncherHtml() + IDLE_INSTR_HTML);
+    cur.setAttribute('data-idle-key', idleKey());
+    cur.innerHTML = (openerOfferHtml(openerFor()) + idleLauncherHtml() + IDLE_INSTR_HTML);
   }
   /* WRAPPED, NOT APPENDED TO. renderInstructor dispatches to renderFollow / renderChat /
    * renderChecklist / renderLevelComplete and RETURNS from each — five early returns — so
@@ -3598,6 +3646,8 @@
     syncSpeedUI(s);
     syncPacingUI(s);
     renderHighlight(s);
+    renderScope(s);
+    applyInstrTrend(s);   // after the highlight: it adds its own glow, which that pass would clear
     instrGateOpen(s);     // a step that blocks progress opens the card, once per beat (#439)
     // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
     // is just a synced mirror. This survives start_follow's internal plant reset,
@@ -3691,7 +3741,7 @@
       // one-line ellipsized — cue the header and let the player expand.
       instrAttention();
     } else if (!msg && !msgHold.queue.length && dwellMet) {
-      if (msgHold.shown !== null || !cur.querySelector('.instr-idle')) {
+      if (msgHold.shown !== null || !cur.querySelector('.instr-idle') || cur.getAttribute('data-idle-key') !== idleKey()) {
         msgHold.shown = null;
         showIdleInstructor();
       }
@@ -3713,8 +3763,19 @@
   }
   var CHAT_SPEAKERS = {
     sup: 'Shift Supervisor', supx: 'Shift Supervisor', aux: 'Aux Operator',
-    chief: 'Chief', sys: 'ANNUNCIATOR', player: 'You',
+    chief: 'Chief', sys: 'ANNUNCIATOR', player: 'You', instr: 'Instructor',
   };
+  // A chat transcript's content: a scenario, or an opener (#811) — both run as instructor scenarios.
+  function chatDef(sid) {
+    return (sid && ((RD.SCENARIOS && RD.SCENARIOS[sid]) || (RD.OPENERS && RD.OPENERS[sid]))) || null;
+  }
+  // `chat_clock: 'elapsed'` (openers): stamp lines with time since the chat began, not the
+  // TMI-2 night-shift wall clock.
+  function chatElapsed(t) {
+    if (chatState.t0 == null) chatState.t0 = t;
+    var sec = Math.max(0, Math.round(t - chatState.t0));
+    return Math.floor(sec / 60) + ':' + (sec % 60 < 10 ? '0' : '') + (sec % 60);
+  }
   // In-fiction wall clock: the shift picks up at 03:53 — the real TMI-2 turbine
   // trip landed at 04:00:37, seven minutes into anyone's coffee. The clock runs
   // on the authored STORY timeline (beat `story_min` anchors) so the historical
@@ -3756,20 +3817,27 @@
     if (e.skip && prevStory != null && (story - prevStory) > 90) {
       h += '<div class="chat-gap">⏱ ' + mesc(chatGapText(story - prevStory)) + '</div>';
     }
-    h += '<div class="chat-line chat-' + mesc(e.speaker) + '">' +
-      '<span class="chat-meta">' + chatClock(story) + ' · ' + mesc(CHAT_SPEAKERS[e.speaker] || e.speaker) + '</span>' +
+    var def = chatDef(chatState.sid);
+    var stamp = (def && def.chat_clock === 'elapsed') ? chatElapsed(e.t) : chatClock(story);
+    var pt = e.point && e.point.length ? ' data-point="' + mesc(e.point.join('|')) + '" data-scanner-hint="Click to show it on the board again."' : '';
+    h += '<div class="chat-line chat-' + mesc(e.speaker) + (pt ? ' chat-has-point' : '') + '"' + pt + '>' +
+      '<span class="chat-meta">' + stamp + ' · ' + mesc(CHAT_SPEAKERS[e.speaker] || e.speaker) + '</span>' +
       '<span class="chat-txt">' + mesc(txt) + '</span></div>';
     return h;
   }
   // Reading cadence for the one-at-a-time reveal (~220 wpm), clamped so short
   // annunciator callouts don't flash past and long lines don't stall the flow.
   function chatDwellS(e) {
+    // A `pace: 'reading'` scenario (the openers, #811) reveals on the instructor's own reading
+    // clock — the flow waits the same time before its next beat, so line and board stay together.
+    var d = chatDef(chatState.sid);
+    if (d && d.pace === 'reading' && RD.InstructorLayer && RD.InstructorLayer.readingSeconds) return RD.InstructorLayer.readingSeconds(e);
     var w = String(e.learning || '').trim().split(/\s+/).length;
     return Math.min(7, Math.max(1.0, w / 3.7 + 0.4));
   }
   function chatPendingBeat(s) {
     var sid = s.instructor.scenario_id, bid = s.instructor.current_beat_id;
-    var sc = sid && RD.SCENARIOS ? RD.SCENARIOS[sid] : null;
+    var sc = chatDef(sid);
     if (!sc || bid == null) return null;
     var beats = sc.beats || [];
     for (var i = 0; i < beats.length; i++) if (beats[i].id === bid) return beats[i];
@@ -3791,14 +3859,17 @@
       // a genuinely new conversation paces from its first line.
       chatState.instantThrough = freshConversation ? 0 : Math.max(0, chat.log.length - 1);
       cur.classList.remove('instr-standby');
-      cur.innerHTML = '<div class="chat-log" id="chatLog"></div><div class="chat-btns" id="chatBtns"></div>';
+      var isOpener = !!(sid && RD.OPENERS && RD.OPENERS[sid]);
+      cur.innerHTML = '<div class="chat-log" id="chatLog"></div><div class="chat-btns" id="chatBtns"></div>' +
+        (isOpener ? '<div class="chat-end"><button type="button" class="btn ghost" data-opener-end="1" ' +
+          'data-scanner-hint="End the guided opener and keep the plant as it is, clock at 1×.">End</button></div>' : '');
       if (card) card.classList.add('chat-mode');
       // The persona header stays visible in chat mode now (#237) — it is the
       // collapse affordance and the mid-scenario orientation line. It shows the
       // SCENE (scenario title), never a speaker: the transcript's per-line
       // headers carry who is talking, and a fixed speaker up top would lie
       // whenever anyone else speaks (instructor-vs-supervisor register rule).
-      var sc0 = sid && RD.SCENARIOS ? RD.SCENARIOS[sid] : null;
+      var sc0 = chatDef(sid);
       setInstrRole((sc0 && sc0.title) ? sc0.title : 'Scenario');
     }
     var logEl = $('chatLog');
@@ -3813,6 +3884,7 @@
       if (!instant && now < chatState.nextAt) break;
       logEl.insertAdjacentHTML('beforeend', chatLineHtml(e));
       chatState.shown++;
+      if (!instant && e.point) chatPoint(e.point);   // the line appears -> its pointer (#811); backlog does not flash
       chatState.nextAt = now + (instant ? 0.8 : chatDwellS(e));
       revealed = true;
     }
@@ -3834,7 +3906,7 @@
       // of the pending lines instantly. Display-only: the engine log is untouched.
       if (chatState.btnKey !== '__revealing__') {
         chatState.btnKey = '__revealing__';
-        btns.innerHTML = '<button class="btn ghost chat-reveal-all" data-chatrevealall="1" ' +
+        btns.innerHTML = '<button class="btn ghost chat-reveal-all" data-chatrevealall="1" title="Show the instructor&#39;s pending messages now — skips nothing." ' +
           'data-scanner-hint="Reveal all — show the rest of this conversation at once instead of line-by-line.">⏩ reveal all</button>';
       }
       return;
@@ -6243,6 +6315,50 @@
     selectTab('instructor');   // the walkthrough runs in the Instructor tab (#660 item 15)
   }
 
+  /* ---- INSTRUCTOR TRENDS (#811, owner 2026-09-28: "It could change the lines to show what it's
+   * teaching."). A beat's `trend: [series ids]` arrives as instructor.trend {rev, series}; each
+   * new rev replaces the chart's traces and glows the strip chart, and the beat's own text names what
+   * it put there. Whatever the chart is showing the moment the FIRST trend lands is saved and put
+   * back the moment the content actually stops — End, Continue, Retry, any other stop — so the
+   * chart is only ever borrowed. It stays borrowed while the finish card is up (level_complete
+   * still carries a scenario_id): the last beat's trace is the point of the card, so restoring
+   * early would blank it under a dark chart. Note the saved baseline is usually the PLANT'S
+   * DEFAULTS, not the player's own layout — start_opener's afterPlantChange() resets ui.series to
+   * prof().defaultSeries before the first beat's trend ever lands, so there is nothing of the
+   * player's left to capture by the time this code runs. */
+  var instrTrend = { saved: null, rev: null };
+  function instrTrendRedraw() {
+    chartRange = {};
+    syncIndCells();
+    syncChartSettings();
+    drawChart();
+  }
+  function restoreInstrTrend() {
+    if (!instrTrend.saved) { instrTrend.rev = null; return; }
+    ui.series = instrTrend.saved.series;
+    ui.seriesSide = instrTrend.saved.side;
+    instrTrend = { saved: null, rev: null };
+    var lg = document.querySelector('.strip-chart'); if (lg) lg.classList.remove('instr-glow');
+    instrTrendRedraw();
+  }
+  function applyInstrTrend(s) {
+    var ins = s && s.instructor, t = ins && ins.trend;
+    var live = !!(ins && ins.scenario_id);
+    if (!live) { if (instrTrend.saved) restoreInstrTrend(); return; }
+    // Finish card: keep the last beat's chart up rather than snapping back to defaults under it;
+    // restored once Continue/Retry/End actually stops the content (scenario_id then goes away).
+    if (ins.level_complete) return;
+    if (!t || t.rev === instrTrend.rev) return;
+    if (!instrTrend.saved) instrTrend.saved = { series: Object.assign({}, ui.series), side: Object.assign({}, ui.seriesSide) };
+    instrTrend.rev = t.rev;
+    var next = {};
+    (t.series || []).forEach(function (id) { if (seriesById(id)) next[id] = true; });
+    ui.series = next;
+    ui.seriesSide = {};
+    instrTrendRedraw();
+    var lg = document.querySelector('.strip-chart'); if (lg) lg.classList.add('instr-glow');   // cleared with the beat's highlight
+  }
+
   // ---- Instructor highlight (Gameplay §5) — glow the control the current beat /
   // follow step points at, auto-revealing the tab or view that hides it (F8 fix).
   var lastHighlightKey = null;
@@ -6262,6 +6378,32 @@
     }
     if (!el && hl.instrument_id) el = $('gauge-' + hl.instrument_id);
     if (el) el.classList.add('instr-glow');
+  }
+  /* ---- Instructor SCOPE + POINTER (#811, OWNER RULING 2026-09-28: "we use dimming to isolate the
+   * part of the board we are focusing on and only use the outline as a pointer to briefly show what
+   * the instructor is describing"). A beat's `scope` (snapshot `instructor.scope.names`) dims the
+   * PWR board outside those regions; the beat's own highlighted control is always lit, so dimming
+   * never swallows the control the line asks for. A chat line's `point` outlines components for one
+   * brief cue when the line appears (renderChat) and again when the player clicks the line.
+   * Live instructed content only: free play never scopes, and the finish card, End, Retry and any
+   * stop clear both (the snapshot's scope is null outside a running scenario). */
+  function scopeBoard() {
+    return (ui.plant === 'pwr' && RD.PwrBoard && RD.PwrBoard.isMounted && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
+  }
+  function renderScope(s) {
+    var B = scopeBoard();
+    if (!B || !B.setScope) return;
+    var ins = s && s.instructor;
+    var live = !!(ins && ins.scenario_id && !ins.level_complete);
+    if (!live) B.clearPointers();
+    var f = live ? ins.scope : null;
+    if (!f) { B.setScope(null); return; }
+    var hl = ins.highlight && ins.highlight.control_label;
+    B.setScope({ names: f.names || [], lit: hl ? [hl] : [] });
+  }
+  function chatPoint(names) {
+    var B = scopeBoard();
+    if (B && B.pointAt && names && names.length) B.pointAt(names);
   }
   // Locate a control group on the RBMK/BWR plant display by its .cg-l label,
   // switching to the owning view tab when it is not on the active one.
@@ -6322,6 +6464,7 @@
       lastLcKey = null;
       if (ui.follow) { followRetry(); return; }
       if (ui.scenario) { startScenario(ui.scenario); return; }
+      if (ui.opener) { startOpener(ui.opener); return; }
       return;
     }
     // continue — if this was a campaign mission, chain straight into the next
@@ -6329,7 +6472,7 @@
     lastLcKey = null;
     var finished = ui.scenario || (ui.follow && ui.follow.id);
     if (ui.follow) { ui.follow = null; cmd({ action: 'stop_follow' }); }
-    else { ui.scenario = null; cmd({ action: 'stop_scenario' }); }
+    else { ui.scenario = null; ui.opener = null; cmd({ action: 'stop_scenario' }); }
     var c = campaign();
     if (c && finished && campaignMissions(c).some(function (m) { return m.id === finished; })) {
       var nxt = campaignFrontier();
@@ -7002,6 +7145,43 @@
     resumeSim();                 // the scenario runs it: clears the 'content' hold above
   }
 
+  /* ---- Openers (#811): the idle Instructor tab's guided chat for this starting condition.
+   * Same lifecycle as startScenario, but through `start_opener`, which resets to the opener's IC
+   * WITH the free-play lineup. Telemetry reuses the mission_* rows (diagReset 'scenario' files
+   * mission_start; the level_complete files mission_complete; End files mission_abandon with the
+   * beat reached) — the id (`opener_*`) keeps them apart from campaign missions. */
+  function startOpener(id) {
+    var op = RD.OPENERS && RD.OPENERS[id];
+    if (!op) return;
+    ui.follow = null; ui.scenario = null; ui.opener = id;
+    inspectClear();              // the offer's Scanner hint described a button that is now gone
+    restoreInstrTrend();         // clear any trend still borrowed from a PRIOR opener/beat — the
+                                  // afterPlantChange() below is what actually restores the chart,
+                                  // and it restores the plant's DEFAULTS, not the player's own pick
+    pauseSim('content');
+    service.handleCommand({ action: 'start_opener', opener_id: id });
+    afterPlantChange();
+    diagReset('scenario', { scenario_id: id });
+    resetInstrFlow();
+    resetChat();
+    setFocus('instructor', true);
+    service.handleCommand({ action: 'play' });
+    resumeSim();
+  }
+  function endOpener() {
+    var s = latest, sid = s && s.instructor && s.instructor.scenario_id;
+    var op = sid && RD.OPENERS && RD.OPENERS[sid];
+    if (op && !(s.instructor.level_complete)) {
+      var ids = op.beats.map(function (b) { return b.id; });
+      TEL.missionAbandon(sid, Math.max(0, ids.indexOf(s.instructor.current_beat_id)));
+    }
+    ui.opener = null;
+    restoreInstrTrend();                      // the chart was borrowed; hand it back too
+    cmd({ action: 'stop_scenario' });
+    cmd({ action: 'set_speed', value: 1 });   // the opener owned the clock; hand it back at 1×
+    if (latest) renderInstructor(latest);
+  }
+
   // ---- "Follow in Instructor" (Path 2): the Instructor (M6) runs the procedure —
   // auto-advance, instrument-first grading, strict gating. The UI just renders
   // the snapshot's instructor.follow block; step text comes from the same
@@ -7313,7 +7493,7 @@
     var i = (s && s.instructor) || {};
     if (i.checklist && i.checklist.procedure_id) return 'ckl:' + i.checklist.procedure_id;
     if (i.follow && i.follow.procedure_id) return 'flw:' + i.follow.procedure_id;
-    if (i.chat && (i.chat.sid || i.chat.id)) return 'cht:' + (i.chat.sid || i.chat.id);
+    if (i.chat) return 'cht:' + (i.scenario_id || '');   /* the chat block carries no id of its own (#811) */
     if (ui.scenario) return 'scn:' + (ui.scenario.id || ui.scenario);
     return 'idle';
   }
@@ -7344,13 +7524,27 @@
      * guidance, scenario commentary, and walkthrough steps — each a discrete message that
      * used to be overwritten by the next one. */
     if (cklState.key) { instrLog.key = null; instrLog.html = ''; return; }
+    /* A CHAT TRANSCRIPT IS ALSO ALREADY PERSISTENT (#811). Its first 160 characters change every
+     * time a line shorter than that is followed by the next one, so folding here froze a copy of
+     * the whole transcript into the log per line — measured in headless Edge on the opener, whose
+     * lines are ~20 words: the conversation appeared twice, "End" and "reveal all" included. */
+    if (s && s.instructor && s.instructor.chat) { instrLog.key = null; instrLog.html = ''; return; }
     var first = (cur.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160);
     if (!first) return;
     if (first === instrLog.key) { instrLog.html = cur.innerHTML; return; }  // same message, live
-    if (instrLog.key) {
+    // Idle panel -> idle panel (the opener offer came or went, #811) is the same panel redrawn,
+    // not a new message: folding it drew the whole idle help twice.
+    var idleToIdle = cur.classList.contains('instr-standby') && instrLog.html.indexOf('instr-idle') !== -1;
+    if (instrLog.key && !idleToIdle) {
       var d = document.createElement('div');
       d.className = 'instr-msg';
       d.innerHTML = instrLog.html;
+      /* THE OPENER OFFER IS A LIVE CONTROL, NOT A MESSAGE (#811 QA pass). Measured in headless
+       * Edge: pressing "Not now" re-renders the idle panel, which folded the OLD panel — offer,
+       * Start and Not now buttons all still live — into the log, so the dismissed offer stayed
+       * on screen and still started the opener until the page was reloaded. */
+      var stale = d.querySelectorAll('.instr-opener');
+      for (var si = 0; si < stale.length; si++) stale[si].parentNode.removeChild(stale[si]);
       log.insertBefore(d, cur);
     }
     instrLog.key = first; instrLog.html = cur.innerHTML;
@@ -8781,6 +8975,22 @@
         }
 
         this.walkthrough(s.instructor && s.instructor.checklist);
+        this.openerBeat(s.instructor);
+      },
+
+      /* THE OPENERS, BEAT BY BEAT (#811 follow-up). mission_start / _complete / _abandon say
+       * whether they finished; this says WHERE THEY STOPPED. One row each time the opener's
+       * current beat changes, `beat` its index in the authored list — the same meaning
+       * mission_abandon.beat already carries (the beat pending or being watched), so the two
+       * read on one axis. Ids and an index only. A beat entered and left inside one broadcast
+       * (a delay(0) hop) is not seen; the funnel is the pending asks, which is the question. */
+      openerBeat: function (ins) {
+        var sid = ins && ins.scenario_id, op = sid && RD.OPENERS && RD.OPENERS[sid];
+        if (!op || !mission || mission.id !== sid || !ins.current_beat_id) return;
+        if (mission.openerBeat === ins.current_beat_id) return;
+        mission.openerBeat = ins.current_beat_id;
+        var idx = op.beats.map(function (b) { return b.id; }).indexOf(ins.current_beat_id);
+        if (idx >= 0) ev('opener_beat', { id: sid, beat: idx });
       },
 
       /* THE WALKTHROUGHS (#674). Driven off the snapshot, from inside tick, because
@@ -8838,6 +9048,14 @@
         if (idx !== wt.step) { wt.step = idx; wt.stepAt = Date.now(); }
 
         if (ck.complete) this.walkthroughEnd('complete');
+      },
+
+      // An opener closed with End before its level_complete (#811) — the beat index is how far
+      // they got. Same row a pagehide files for a mission, with a real beat instead of 0.
+      missionAbandon: function (id, beat) {
+        if (!mission || mission.id !== id) return;
+        ev('mission_abandon', { id: id, seconds: since(mission.at), beat: beat });
+        mission = null;
       },
 
       // The walkthrough's own Rewind button, not the checkpoint picker: a general rewind
@@ -9632,6 +9850,8 @@
     $('instructorCard').addEventListener('click', function (e) {
       var cb = e.target.closest('[data-chatbtn]');
       if (cb) { chatButtonAction(cb.getAttribute('data-chatbtn'), +cb.getAttribute('data-chatspeed') || 60); return; }
+      var pl = e.target.closest('.chat-line[data-point]');
+      if (pl) { chatPoint(pl.getAttribute('data-point').split('|')); return; }   // re-show the line's pointer (#811)
       var ra = e.target.closest('[data-chatrevealall]');
       if (ra) {
         chatState.instantThrough = Number.MAX_SAFE_INTEGER;   // everything pending reveals as backlog
@@ -9900,6 +10120,28 @@
         markSeen('checklists');
         return;
       }
+      var os = e.target.closest('[data-opener-start]');
+      if (os) {
+        e.preventDefault();
+        var osid = os.getAttribute('data-opener-start');
+        // a fresh plant costs nothing to restart; anything else asks first (#811, owner 2026-09-28)
+        if (service.isFreshPlant && service.isFreshPlant()) startOpener(osid);
+        else { openerConfirm = osid; showIdleInstructor(); }
+        return;
+      }
+      var ocf = e.target.closest('[data-opener-confirm]');
+      if (ocf) { e.preventDefault(); openerConfirm = null; startOpener(ocf.getAttribute('data-opener-confirm')); return; }
+      if (e.target.closest('[data-opener-cancel]')) { e.preventDefault(); openerConfirm = null; showIdleInstructor(); return; }
+      var od = e.target.closest('[data-opener-dismiss]');
+      if (od) {
+        e.preventDefault();
+        var oid = od.getAttribute('data-opener-dismiss');
+        openerHidden[oid] = true;
+        try { sessionStorage.setItem('rd_opener_hide_' + oid, '1'); } catch (err) { /* hidden for this page only */ }
+        showIdleInstructor();
+        return;
+      }
+      if (e.target.closest('[data-opener-end]')) { e.preventDefault(); endOpener(); return; }
       if (e.target.closest('[data-open-help]')) { e.preventDefault(); $('helpOverlay').hidden = false; return; }
       if (e.target.closest('[data-open-tour]')) { e.preventDefault(); openTour(0); return; }
     });
@@ -10215,14 +10457,24 @@
    * hover clears it") — preserved rather than reinvented. A stamp rather than a boolean so a
    * flash raised by an EARLIER click cannot suppress a later, unrelated one. */
   var inspectClickSeq = 0;              /* bumped once per body-level click dispatch */
+  var inspectClearedAt = -1;            /* the dispatch that blanked the line (inspectClear) */
+  /* BLANK THE LINE (#811 follow-up): a press that REMOVES the thing it describes — the opener
+   * offer — left its hint standing until the next hover. Same dispatch rule as the flash: the
+   * body-level listener that runs after this press must not write the gone button back. */
+  function inspectClear() {
+    inspectCur = null;
+    inspectClearedAt = inspectClickSeq;
+    inspectRender();
+  }
   function inspectAt(e, fromClick) {
     if (fromClick) {
       /* A flash stamped with the CURRENT count was raised after the previous body click and
        * therefore by THIS one — the button's own handler runs first, then this listener. It
        * is the answer to the press, so it stands; a flash from an earlier click does not. */
       var fresh = !!(inspectCur && inspectCur.flashAt === inspectClickSeq);
+      var cleared = inspectClearedAt === inspectClickSeq;
       inspectClickSeq++;
-      if (fresh) return;
+      if (fresh || cleared) return;
     }
     var res = inspectResolve(e);
     // Persistence (§11): pointing at nothing keeps the last description on screen
@@ -11100,6 +11352,10 @@
     ui.engineKey = pid === 'rbmk' ? (dv === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre') : pid;
     ui.series = Object.assign({}, prof().defaultSeries);
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
+    /* The defaults above just replaced any trend a beat put on the chart; forget which one was
+     * applied so the next render puts it back. Measured (#811 QA2): loading a save made on the
+     * same beat in the same page left the chart on the defaults under a line naming its traces. */
+    if (instrTrend) instrTrend.rev = null;
     rebuildPlantUI();
   }
 

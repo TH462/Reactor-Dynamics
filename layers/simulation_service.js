@@ -383,6 +383,12 @@
       var lineup = this.engine.getStartupLineup() || [];
       for (var li = 0; li < lineup.length; li++) this.handleCommand(lineup[li]);
     }
+    /* A FRESH PLANT (#811 follow-up): a free-play load nobody has touched yet. The opener offer
+     * resets the plant in one click, so it is only offered while that costs the player nothing —
+     * cleared by the first plant command (the default branch of handleCommand), by starting an
+     * opener, and by a restore or rewind; set only here, AFTER the lineup above, whose own
+     * commands would otherwise clear it. Instructed content (noDefaults) is never fresh. */
+    this.plantFresh = !(opts && opts.noDefaults);
 
     // Assemble + broadcast the initial snapshot so the UI renders the start state.
     var snap = this._assembleWithInstructor();
@@ -1222,6 +1228,9 @@
     return false;
   };
 
+  // Is this a free-play load no command has touched yet? (#811 follow-up — see selectPlant.)
+  SimulationService.prototype.isFreshPlant = function () { return !!this.plantFresh; };
+
   // ---------------------------------------------------------- command routing (§5)
   SimulationService.prototype.handleCommand = function (command) {
     if (!command || !command.action) return { type: 'error', code: 'COMMAND_ERROR', message: 'no action', received: command };
@@ -1270,6 +1279,20 @@
         var snap = this._assembleWithInstructor();
         this._broadcast(snap);
         return snap;
+      }
+      /* ---- OPENERS (#811): a short instructor chat offered on the idle Instructor tab. Runs on
+       * the Instructor's scenario machinery, but resets to the opener's IC WITH the free-play
+       * lineup (no `noDefaults`) — it teaches the plant the player gets, not a clean board. */
+      case 'start_opener': {
+        var op = RD.OPENERS ? RD.OPENERS[command.opener_id] : null;
+        if (!op) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown opener_id', received: command };
+        var reset3 = this.selectPlant(op.plant_id, op.initial_state, op.design_version || null);
+        if (reset3 && reset3.type === 'error') return reset3;
+        if (this.instructor.load) this.instructor.load(op);
+        this.plantFresh = false;          // an opener ran on this load: never offer it again here
+        var osnap = this._assembleWithInstructor();
+        this._broadcast(osnap);
+        return osnap;
       }
       // ---- Path 2 walkthroughs: the Instructor runs a manual procedure from
       // RD.MANUAL_PROCEDURES (the single validated artifact — CONTEXT §12).
@@ -1348,6 +1371,7 @@
          * checkpoint in, and a walkthrough restored from a file (ring 0, step_index 2). Both
          * returned this error with step_index and the ring untouched, so the guard belongs on
          * the BUTTON (instructor.checklist.rewind_ready), not here. */
+        this.plantFresh = false;
         var rsnap = this._rewind(command.steps || 1, command.scope || 'full', !!command.exact);
         if (!rsnap) return { type: 'error', code: 'COMMAND_ERROR', message: 'no checkpoint to rewind to', received: command };
         return rsnap;
@@ -1355,6 +1379,7 @@
       default:
         // Plant / operator commands descend the stack from the Instructor slot (HR5).
         if (!this.engine) return { type: 'error', code: 'COMMAND_ERROR', message: 'no active plant', received: command };
+        this.plantFresh = false;          // the player has touched this plant (see selectPlant)
         return this.instructor.handleCommand(command);
     }
   };
@@ -1440,6 +1465,7 @@
 
   SimulationService.prototype.loadState = function (state) {
     if (!state || !state.metadata) return { type: 'error', code: 'COMMAND_ERROR', message: 'bad save state', received: state };
+    this.plantFresh = false;           // a restored plant is somebody's session (#811 follow-up)
     if (!engineCtor(state.metadata.plant_id)) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown plant_id in save', received: state.metadata.plant_id };
     this.checkpoints = [];             // a user file-load invalidates the rewind ring
     this._rewindCursor = null;

@@ -2395,6 +2395,9 @@ select.num-input { width: auto; }
   max-height: 48vh; overflow-y: auto; padding-right: 4px; margin-bottom: 8px;
 }
 .chat-line { display: flex; flex-direction: column; gap: 2px; max-width: 94%; }
+/* A line that points at the board (#811): clicking it shows the outline again. */
+.chat-has-point .chat-txt { cursor: pointer; }
+.chat-has-point .chat-txt::after { content: ' \25CE'; color: #8cc4ff; opacity: 0.8; }
 .chat-meta { font-size: 10px; letter-spacing: .05em; color: var(--muted); text-transform: uppercase; }
 .chat-txt {
   font-size: 13px; line-height: 1.45; color: var(--text);
@@ -2768,6 +2771,11 @@ select.num-input { width: auto; }
   background: color-mix(in srgb, var(--accent, #7fd1c0) 18%, transparent);
   border-color: var(--accent, #7fd1c0);
 }
+/* The opener offer (#811): the bar plus one line saying what it is and a one-click "Not now". */
+.instr-opener-sub { font-size: 11.5px; color: var(--muted, #9aa); line-height: 1.35; margin: 2px 2px 0; }
+.instr-opener-sub .btn.linkish { display: inline; width: auto; margin: 0 0 0 4px; font-size: 11.5px; }
+.chat-end { display: flex; justify-content: flex-end; margin-top: 4px; }
+.chat-end .btn { font-size: 11.5px; padding: 3px 12px; }
 
 .start-overlay { z-index: 215; }
 .start-modal { height: auto; max-height: min(84vh, 620px); width: min(720px, 96vw); }

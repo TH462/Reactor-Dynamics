@@ -3649,6 +3649,72 @@
   };
 
   // held in parity with the V1 synoptic's SYN_CONTROL_MAP, which was retired in #246.)
+  var FOCUS_COMPONENT_MAP = {
+    'Reactor Vessel': 'reactorVessel', 'Pressurizer': 'pressurizer', 'Steam Generator': 'steamGenerator',
+    'Turbine and Generator': 'turbineGenerator', 'Condenser': 'condenser', 'Cooling Tower': 'coolingTower',
+    'Reactor Coolant Pump': 'imrobpq4a70', 'PORV': 'porv', 'Steam Dump Valve': 'imrprmm4u5q',
+  };
+  /* BOARD REGIONS (#811, OWNER RULING 2026-09-28: "we use dimming to isolate the part of the board
+   * we are focusing on"). A beat's `scope` names regions (or single focus names); everything not in
+   * them is dimmed. Membership is by board item id, read off the layout: a CARD (box) lights
+   * everything drawn inside it, so a panel is listed once — EXCEPT a readout whose tile overhangs
+   * its card (right-anchored values, EXTRA_ITEMS tags), which containment misses and must be
+   * listed by id (QA4: OUTPUT/GOVERNOR/TURBINE rpm stayed dim under `secondary`; verify_opener_ui
+   * fails on a tile no region lights). A pipe is lit when both its ends are.
+   * An item may sit in several regions (the steam generator is both sides of the plant). The
+   * breaker lives on the Turbine-Generator card, so there is no separate `electrical` region. */
+  var FOCUS_REGIONS = {
+    primary: [
+      'reactorVessel', 'steamGenerator', 'imrobpq4a70' /* RCP */, 'imrsjyqoq6t' /* RCP control */,
+      'imsgteavgid' /* RCP flow */, 'imrr4fnxhlc' /* T-hot */, 'imrr4g29a7c' /* T-cold */,
+      'ims2kt7fu64' /* surge-line tee (hot leg) */, 'ims2k3q7ehq', 'ims2k1rhzh3', 'ims3yt5oyp8', 'ims3x2n4o2p' /* cold-leg tees */,
+      'imrzl4b7g9m' /* Reactor Power */, 'ims2immk7ks' /* Tavg */, 'ims2immxl2s' /* Subcooling */, 'ims2immsvn6' /* Plant Pressure */,
+    ],
+    pressurizer: [
+      'pressurizer', 'porv', 'imrppb3kuav' /* PORV block */, 'imrsi2svtgn' /* PORV discharge */, 'ims2jf7fv7m', 'imrsgch20pv', 'imsgurhunn9',
+      'imsgt7mfbq1' /* spray flow / PZR temp / heater power readouts */, 'ims5gprvl7n', 'imsgt6qmdgx', 'ims5gq44zgr',
+      'ims2kt7fu64' /* surge line */, 'ims3yt5oyp8' /* spray take-off */,
+      'ims1518jad4' /* PRESSURIZER card: spray, heaters, pressure SP */,
+      'ims2immsvn6' /* Plant Pressure */, 'ims2immon9z' /* Pressurizer Level */,
+    ],
+    rods: [
+      'ims14ylw4az' /* REACTOR/ROD CONTROL card: SCRAM, banks, rod speed, trip blocks */,
+      'ims2hvqbvee', 'imrpk4pjcpd', 'ims15i4eyhf', 'ims2hnpzc1t' /* control rod position */,
+      'ims2hvv0wgo', 'imrpnzfsfcx', 'ims15i60dd8', 'ims2hnyt0jk' /* shutdown rod position */,
+    ],
+    nis: [
+      'ims175lciah' /* NIS card */, 'bdReactivityCard', 'ims89mc0hl3', 'ims89mkaj2r' /* period card */,
+      'imro6qsncb9', 'imro6rctcgm' /* startup rate, IR readouts */, 'bdDtMargin' /* core ΔT margin */,
+    ],
+    secondary: [
+      'steamGenerator', 'imsgu622dld', 'imsgu024ehh' /* steam tees */, 'imrpp99kx2y' /* MSIV */, 'imrr45syy4v' /* TCV */,
+      'turbineGenerator', 'imrprmm4u5q' /* steam dump valve */, 'condenser', 'coolingTower',
+      'imsgu6qi776', 'imsgujvh6iw' /* atmospheric dump */, 'imsgt98wjjc', 'imsgus30fl2', 'imsgt8z606k', 'imrr1hecwq7' /* steam temp */,
+      'imsgt8to27x', 'imrr1gttt2l', 'imsgupfprkp', 'ims31ngjkf8' /* steam flow */, 'imsgunuyvon', 'imsguptyg16', 'imrqzuhzre3',
+      'imro8k5pzem' /* TURBINE-GENERATOR card */, 'imrop5ouw7h' /* STEAM DUMP card */, 'imsgt1ebv1d' /* ATMOS DUMP card */,
+      'ims3v3lpw5v' /* CONDENSER COOLING card */,
+      'imrppeh5hkb', 'imrppej8ulo', 'imrppee04aj' /* output, governor, turbine rpm */, 'imrppq5r7kw' /* dump status */, 'bdAdvPct' /* ADV % */, 'imrr1gwi93j' /* SG pressure */, 'ims3wm0d0bu' /* steam flow */,
+      'ims2imn1nny' /* SG Level */,
+    ],
+    feed: [
+      'steamGenerator', 'condenser', 'imrqvzbd9hd' /* condensate pump */, 'imrqrnclhn' /* polisher */, 'imrqrouhrdr',
+      'imrobph7xrq' /* feed pump */, 'ims31q71cmu' /* feed junction */, 'imrpp2g2m8k' /* AFW valve */,
+      'ims2k81zwi8' /* AFW indications */, 'imrmstovyli', 'imrmsu1bl4r',
+      'imrqxsodu5j' /* SG FEED card */, 'imrmssto6d' /* AUX FEED WATER card */, 'ims3xw3vue6', 'ims89lnqmip', 'imrsgkz4lq0',
+      'ims2imn1nny' /* SG Level */,
+    ],
+    cvcs: [
+      'imrqp87ueqb' /* charging pump */, 'ims3x01kvp4', 'ims2k1rhzh3', 'ims2k3q7ehq' /* charging / letdown tees */,
+      'imrmsjta95r' /* CVCS flow readouts */, 'imsgti1p0rm', 'imsgti0gnpf', 'ims3wy5oym4',
+      'imrmslginf9' /* CHARGING card */, 'imrmslvu2c0' /* LETDOWN card */, 'imrmtlyf64y' /* BORON card */, 'ims2jva1ff5', 'bdLetdownStatus',
+      'ims2immon9z' /* Pressurizer Level */,
+    ],
+    eccs: [
+      'imrzpfd4qox' /* ECCS card */, 'ims3xf18pk8' /* RHR card */, 'bdRhrCooldownRate', 'ims3vqox0fc' /* ECCS indications */, 'ims3w1cb6jc', 'ims3w61jjbi', 'ims3w1lj7n6',
+      'imrobnzlha1' /* ECCS pump */, 'imrppx5n1ay' /* ACCUMULATORS */, 'imrppyp0wfo', 'imrppztrng1', 'imrpq0n2ujv', 'imrppzjvfpf',
+      'imrppxt2aqd' /* accumulator valve */, 'ims3x2n4o2p', 'ims3yt5oyp8', 'ims3x01kvp4',
+    ],
+  };
   var CONTROL_LABEL_MAP = {
     'Control Bank': 'imrpk3wvydp', 'Rod Speed': 'imrpk3wvydp', 'Rod motion': 'imrpk3wvydp',
     'Nudge': 'imrpk3wvydp', 'Shutdown Bank': 'imrpny66npx',
@@ -4407,6 +4473,14 @@
        * a run_*.js is invisible to run_all") arriving by a different road: the runner exists and
        * could not load. */
       imrsgch20pv: { props: { label: 'TAILPIPE', labelSize: 10 } },
+      /* THE TWO % TAGS BY THE CONDENSER GET CAPTIONS (#811 layman pass 2, OWNER RULING 2026-09-28:
+       * "All as recommended"). `imsgunuyvon` reads the condenser steam dump, `imsguptyg16` the
+       * atmospheric dump (ADV); the ADV's 0 % sat against the dump valve's left edge, so the valve
+       * was bracketed by two identical unlabelled numbers. `caption` (buildValue) hangs the word
+       * under the number. The ADV tag's authored name was a copy-paste "STEAM TURB FLOW
+       * indication" from the turbine-flow tag; renamed here, re-export-safe. */
+      imsgunuyvon: { props: { caption: 'DUMP' } },
+      imsguptyg16: { props: { caption: 'ADV', name: 'ATMOSPHERIC DUMP (ADV) position indication' } },
       /* THE HX FLOW CAPTION IS RENAMED *(OWNER RULING, 2026-09-10, option A, #700)*. The ruled
        * name is "COOLDOWN RATE / HX SPLIT" and it is rendered as its TWO HALVES, each attached
        * to the thing it names: this caption becomes "HX SPLIT" (the lever) and the new
@@ -5397,6 +5471,16 @@
     // instructor highlight vocabulary (consumed by pwr_board.revealControl / highlightLabels)
     controlLabelItem: function (label) { return CONTROL_LABEL_MAP[label] || null; },
     controlLabels: function () { return Object.keys(CONTROL_LABEL_MAP); },
+    /* THE FOCUS VOCABULARY (#811, owner 2026-09-28: an outline "that follows the detailed
+     * silhouette of the object … to point out what parts of the plant we are talking about").
+     * A chat line's `point` names COMPONENTS — the big art the text talks about, by the name the
+     * inspect panel gives them — or any highlight label above; a beat's `scope` names REGIONS
+     * (focusRegions) or any of these. Components first, so 'Steam Dump' stays the CARD (the
+     * highlight vocabulary's meaning) and the valve is 'Steam Dump Valve'. */
+    focusItem: function (name) { return FOCUS_COMPONENT_MAP[name] || CONTROL_LABEL_MAP[name] || null; },
+    focusLabels: function () { return Object.keys(FOCUS_COMPONENT_MAP).concat(Object.keys(CONTROL_LABEL_MAP)); },
+    focusRegion: function (name) { return FOCUS_REGIONS[name] ? FOCUS_REGIONS[name].slice() : null; },
+    focusRegions: function () { return Object.keys(FOCUS_REGIONS); },
     // Board items the operator can actually WORK — a press handler or a tap-or-hold drive.
     // Introspection for run_manual_controls, which fails if a manual calls a control
     // "read-only" while this list says otherwise (#304). Entries carrying only `active`,

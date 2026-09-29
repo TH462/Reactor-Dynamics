@@ -122,6 +122,9 @@
     mission_start:    { props: { id: 'enum' } },
     mission_complete: { props: { id: 'enum', seconds: 'num' } },
     mission_abandon:  { props: { id: 'enum', seconds: 'num', beat: 'num' } },
+    // An OPENER's progress (#811): one row per beat it reaches, `beat` the index in the
+    // authored list — where a player stops, which mission_* alone cannot say.
+    opener_beat:      { props: { id: 'enum', beat: 'num' } },
 
     /* --- the walkthroughs (#674) --------------------------------------------
      * WHERE PEOPLE GET STUCK, AND HOW FAR THEY GET BEFORE THEY STOP. The

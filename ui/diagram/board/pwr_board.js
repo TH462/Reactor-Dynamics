@@ -35,6 +35,7 @@
   var BD_NUM_AUTO_COLOR = '#6b7d8a';   // greyed number = auto-driven (not operator-editable); cyan = editable
 
   var host = null, wrap = null, stage = null, underSvg = null, pausedEl = null;
+  var pipeParts = [];   // [{ a, b, els }] — each drawn pipe/flange and the item ids it joins (#811 scope dimming)
   var doc = null, ctx = null;
   var comps = {};        // itemId -> { item, inst, bodyEl }
   var tiles = {};        // itemId -> root tile element
@@ -291,6 +292,7 @@
     var ox = (r.width - b.w * s) / 2 - b.x * s;
     var oy = (r.height - b.h * s) / 2 - b.y * s;
     stage.style.transform = 'translate(' + ox.toFixed(2) + 'px,' + oy.toFixed(2) + 'px) scale(' + s.toFixed(5) + ')';
+    focusRescale();
   }
 
   function stageScale() {
@@ -454,6 +456,7 @@
     rec.btn.style.background = fired ? '#3a0e0e' : (armed ? '#5a1408' : '#0a2417');
     rec.btn.style.border = '3px solid ' + (fired ? '#ff5a4d' : (armed ? '#ffb400' : '#3d7a58'));
     rec.btn.style.color = fired ? '#ff7a6a' : (armed ? '#ffd166' : '#5a9575');
+    rec.btn.classList.toggle('bd-alarm-hue', fired);   // SCRAMMED keeps its red under scope dimming (#811)
     /* THE ARMED PULSE HONOURS prefers-reduced-motion, AND IT HAS TO BE DONE HERE (#740).
      * This is an INLINE style, so it beats every stylesheet rule — the `@media
      * (prefers-reduced-motion: reduce)` blocks that stop the board's other animations cannot touch
@@ -695,6 +698,19 @@
     el.appendChild(valEl);
     el.appendChild(document.createTextNode(' '));
     el.appendChild(unitEl);
+    /* A CAPTION UNDER THE READING (#811, OWNER RULING 2026-09-28 "All as recommended"). The two
+     * right-anchored % tags beside the condenser read the steam dump and the ADV and said
+     * neither; a layman could not tell which was which. A `readout` puts its label ABOVE and
+     * takes a box; this keeps the bare tag and hangs a small muted word under it, right-aligned
+     * with the number, so the tag's position and footprint on the schematic barely move. Set by
+     * DOC_PATCHES `props`, so a builder re-export cannot drop it. Explicit colour: the driver
+     * colours `el`, and the caption must not take the reading's alarm colour. */
+    if (it.caption) {
+      var capEl = h('div', { className: 'bd-val-caption' }, it.caption);
+      capEl.style.cssText = 'color:#6b8598;font-size:' + (it.captionSize || 10) + 'px;font-weight:600;' +
+        'letter-spacing:0.1em;line-height:1;text-align:right;margin-top:1px';
+      el.appendChild(capEl);
+    }
     valueEls[it.id] = { el: el, valEl: valEl, unitEl: unitEl, item: it };
     return el;
   }
@@ -892,11 +908,15 @@
     RD.BoardH.clear(underSvg);
     pipeFlow = [];
     pipeTempEls = [];
+    pipeParts = [];
+    function endItem(e) { return typeof e === 'string' ? e.split('/')[0] : null; }
     var K = window.StdPipe.createKit(RD.BoardH.h);
     Object.keys(ports).forEach(function (key) {
       var p = ports[key];
       var fAng = (p.dir === 'up' || p.dir === 'down') ? 90 : 0;
-      underSvg.appendChild(K.flange({ x: p.x, y: p.y, angle: fAng, d: STD_SIZES[p.size] || 8 }));
+      var fl = K.flange({ x: p.x, y: p.y, angle: fAng, d: STD_SIZES[p.size] || 8 });
+      underSvg.appendChild(fl);
+      pipeParts.push({ a: endItem(key), b: null, els: [fl] });
     });
     (doc.pipes || []).forEach(function (p) {
       var a = endPt(p.from), b = endPt(p.to);
@@ -917,8 +937,10 @@
       // they need no phaseX/phaseY — StdPipe anchors their dash grid directly.
       var el = K.pipe({ points: pts, d: d, fluid: fluidArg, dir: flowDir, speed: p.speed });
       underSvg.appendChild(el);
-      if (a.junction) underSvg.appendChild(K.junction({ x: a.x, y: a.y, d: d, fluid: fluidArg }));
-      if (b.junction) underSvg.appendChild(K.junction({ x: b.x, y: b.y, d: d, fluid: fluidArg }));
+      var part = { a: endItem(p.from), b: endItem(p.to), els: [el] };
+      if (a.junction) { var ja = K.junction({ x: a.x, y: a.y, d: d, fluid: fluidArg }); underSvg.appendChild(ja); part.els.push(ja); }
+      if (b.junction) { var jb = K.junction({ x: b.x, y: b.y, d: d, fluid: fluidArg }); underSvg.appendChild(jb); part.els.push(jb); }
+      pipeParts.push(part);
       var flowEl = el.lastChild && el.lastChild.getAttribute && el.lastChild.getAttribute('stroke-dasharray') ? el.lastChild : null;
       pipeFlow.push({
         id: p.id || null,
@@ -936,6 +958,7 @@
     });
     updatePipeFlowStates(lastSnap);
     if (lastSnap) updatePipeTemps(lastSnap);
+    if (focus && focus.dim) focusApplyPipes();   // a rescan rebuilds the pipes under a standing scope
   }
 
   // Repaint live-temperature pipes: driver.pipeTemp(id, s) → °C → StdPipe color ramp.
@@ -1201,6 +1224,304 @@
     return el;
   }
 
+  // ----------------------------------------------------------- focus (#811) --
+  /* THE INSTRUCTOR'S FOCUS — two tools, one per job (OWNER RULING 2026-09-28: "I'm thinking we use
+   * dimming to isolate the part of the board we are focusing on and only use the outline as a
+   * pointer to briefly show what the instructor is describing."):
+   *
+   *   SCOPE   setScope({ names, lit }) — everything outside the named REGIONS (the driver's
+   *           focusRegion) and items is dimmed. It STANDS until the content changes it.
+   *   POINTER pointAt(names) — an outline on a component's own SILHOUETTE that fades in, pulses
+   *           about three times and fades out (~4 s), then is gone. A chat line carries it.
+   *
+   * Earlier owner words that still bind the look: "an outline that follows the detailed
+   * silhouette of the object … This has to look good and appear intentional", and "I don't want
+   * it to brighten when moused over".
+   *
+   * HOW THE SILHOUETTE IS MADE. The component's art is CLONED into an overlay that sits exactly on
+   * the tile, and the clone carries one SVG filter (#rdFocusSil): its alpha is thresholded to a
+   * hard silhouette, dilated twice, the smaller dilation subtracted from the larger (a band that
+   * stands a few px OFF the art and follows every notch of it), flooded in the instructor blue,
+   * and merged over a soft blur of itself. The clone is stripped of everything that moves or is not
+   * ink — running CSS animations (plumes, drops, flow particles, bubbles), SMIL, hidden and
+   * zero-opacity nodes, text — so the band does not jitter and does not outline a letter. The clone
+   * is never updated: it is rastered ONCE, and the only thing that animates afterwards is the
+   * overlay's OPACITY (compositor-only, will-change'd).
+   *
+   * Radii are written in SCREEN px and converted by the stage scale, so the band is the same
+   * width at every window size (re-tuned from layout()).
+   *
+   * EXCLUSIVE TO THE INSTRUCTOR (OWNER RULING 2026-09-28: "we should give the instructor exclusive
+   * control"). Nothing here reacts to the plant: an alarm does not break through the dimming and a
+   * trip does not lift it. Content lifts it with `scope: null` in a beat. */
+  var FOCUS_PX = { gap: 2.5, band: 2.2, blur: 3.5 };   // SCREEN px
+  // The pointer's life: the CSS animation (bdPointer) runs POINT_MS; the element is removed a
+  // little after by a TIMER — not on animationend — so it expires under reduced motion too, where
+  // there is no animation to end.
+  var POINT_MS = 4200, POINT_REMOVE_MS = 4350;
+  /* ALARM HUE UNDER DIMMING (OWNER RULING 2026-09-28, option (b): "keep dimming, but let a tile in
+   * alarm keep its hue (drop the grayscale for alarm/actuated states only; no brightening)"). The
+   * renderer marks what is in an alarm/actuated state with `bd-alarm-hue` — SCRAMMED, a gauge in
+   * its alarm/trip band (comp_indicator_panel), a reading or entry drawn in a caution/trip colour
+   * (these, the wiring's BD_WARN and trip red) — alongside the buttons' own bd-warn / bd-actuated /
+   * bd-msg; pwr_board.css drops the grayscale for such a tile and nothing else. */
+  var ALARM_HUES = { '#d8a657': 1, '#ffd166': 1, '#ff6a4d': 1, '#ff5a4d': 1, '#ff7a6a': 1 };
+  var focus = null;
+  function focusReset() {
+    focus = { key: null, layer: null, defs: null, ptrs: {}, names: [], lit: [], dim: false, scale: 0,
+              undimTimer: null };
+  }
+  focusReset();
+
+  function focusLayer() {
+    if (focus.layer && focus.layer.parentNode === stage) return focus.layer;
+    var NS = RD.BoardH.svgNS;
+    var layer = h('div', { className: 'bd-focus-layer' });
+    layer.setAttribute('aria-hidden', 'true');   // decoration: the chat line already says what it points at
+    var defs = document.createElementNS(NS, 'svg');
+    defs.setAttribute('width', '0'); defs.setAttribute('height', '0'); defs.setAttribute('aria-hidden', 'true');
+    defs.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+    defs.innerHTML =
+      '<filter id="rdFocusSil" filterUnits="userSpaceOnUse" x="-400" y="-400" width="1400" height="1400" color-interpolation-filters="sRGB">' +
+        '<feComponentTransfer in="SourceAlpha" result="a"><feFuncA type="discrete" tableValues="0 1 1 1 1 1 1 1 1 1"/></feComponentTransfer>' +
+        '<feMorphology in="a" operator="dilate" radius="3" result="inner"/>' +
+        '<feMorphology in="a" operator="dilate" radius="6" result="outer"/>' +
+        '<feComposite in="outer" in2="inner" operator="out" result="ring"/>' +
+        '<feFlood flood-color="#8cc4ff" result="ink"/>' +
+        '<feComposite in="ink" in2="ring" operator="in" result="line"/>' +
+        '<feGaussianBlur in="line" stdDeviation="4" result="glow"/>' +
+        '<feMerge><feMergeNode in="glow"/><feMergeNode in="glow"/><feMergeNode in="line"/></feMerge>' +
+      '</filter>';
+    layer.appendChild(defs);
+    stage.appendChild(layer);
+    focus.layer = layer; focus.defs = defs;
+    return layer;
+  }
+
+  /* One filter per outlined item, its region the item's ART box plus the band and glow — not a
+   * blanket region: morphology and blur cost scale with the region's area. */
+  function focusFilter(id) {
+    var fid = 'rdFocusSil_' + id;
+    if (focus.defs.querySelector('#' + fid)) return fid;
+    var t = tiles[id], o = haloBox[id] || { l: 0, t: 0, r: 0, b: 0 }, pad = 40;
+    var f = focus.defs.querySelector('#rdFocusSil').cloneNode(true);
+    f.setAttribute('id', fid);
+    f.setAttribute('x', (-o.l - pad).toFixed(0)); f.setAttribute('y', (-o.t - pad).toFixed(0));
+    f.setAttribute('width', (t.offsetWidth + o.l + o.r + 2 * pad).toFixed(0));
+    f.setAttribute('height', (t.offsetHeight + o.t + o.b + 2 * pad).toFixed(0));
+    focus.defs.appendChild(f);
+    focusTune();
+    return fid;
+  }
+
+  // Tune the filters' radii to the current stage scale (screen px in, canvas px out).
+  function focusTune() {
+    var ss = stageScale();
+    if (!ss || !focus.defs) return;
+    var k = 1 / ss.scale;
+    focus.scale = ss.scale;
+    [].forEach.call(focus.defs.querySelectorAll('filter'), function (f) {
+      var m = f.querySelectorAll('feMorphology');
+      m[0].setAttribute('radius', (FOCUS_PX.gap * k).toFixed(2));
+      m[1].setAttribute('radius', ((FOCUS_PX.gap + FOCUS_PX.band) * k).toFixed(2));
+      f.querySelector('feGaussianBlur').setAttribute('stdDeviation', (FOCUS_PX.blur * k).toFixed(2));
+    });
+  }
+
+  // The art box of a tile in CANVAS px: its layout box grown by the measured overhang (#684).
+  function focusArtBox(id) {
+    var t = tiles[id];
+    if (!t) return null;
+    var o = haloBox[id] || { l: 0, t: 0, r: 0, b: 0 };
+    return { l: t.offsetLeft - o.l, t: t.offsetTop - o.t,
+             r: t.offsetLeft + t.offsetWidth + o.r, b: t.offsetTop + t.offsetHeight + o.b };
+  }
+
+  function focusClone(id) {
+    var rec = comps[id];
+    var src = (rec && rec.bodyEl) || tiles[id];
+    if (!src) return null;
+    var clone = src.cloneNode(true);
+    var a = src.querySelectorAll('*'), b = clone.querySelectorAll('*'), drop = [];
+    for (var i = 0; i < a.length; i++) {
+      var el = a[i], tag = el.localName, cs = getComputedStyle(el);
+      if (tag === 'text' || tag === 'foreignObject' || tag === 'animate' || tag === 'animateTransform' ||
+          tag === 'animateMotion' || tag === 'set' || cs.display === 'none' || cs.visibility === 'hidden' ||
+          +cs.opacity === 0 || (cs.animationName && cs.animationName !== 'none')) { drop.push(b[i]); continue; }
+      if (b[i].hasAttribute('id')) b[i].removeAttribute('id');
+      /* NO data-* HOOKS. The board finds its live parts by attribute across the DOM — StdPipe's flow
+       * tick writes stroke-dashoffset to every `polyline[data-dash-cyc]` each frame, the port scan
+       * reads `[data-port]` — so a cloned hook is animated (and re-filtered: measured 14 s of raster
+       * per 25 s window on the vessel before this) or scanned as a second port. */
+      for (var ai = b[i].attributes.length - 1; ai >= 0; ai--) {
+        var an = b[i].attributes[ai].name;
+        if (an.indexOf('data-') === 0) b[i].removeAttribute(an);
+      }
+      /* SOLID PAINT. Only the clone's ALPHA reaches the filter, and a url(#gradient) paint would tie
+       * the clone to the LIVE component's defs, which the component rewrites every broadcast —
+       * measured with --ab=focus before this: one layer re-rastered for 14.1 s of a 25 s window. */
+      ['fill', 'stroke'].forEach(function (pp) {
+        var v = b[i].getAttribute(pp);
+        if (v && v.indexOf('url(') === 0) b[i].setAttribute(pp, '#fff');
+        if (b[i].style && b[i].style[pp] && b[i].style[pp].indexOf('url(') === 0) b[i].style[pp] = '#fff';
+      });
+      // Same for clip paths, masks and <use>: each is a live reference into the component's own
+      // defs, which the component rewrites (a level clip, a moving rect) — and a reference is enough
+      // to invalidate the clone's filter every time the original changes.
+      ['clip-path', 'mask'].forEach(function (pp) { if (b[i].hasAttribute(pp)) b[i].removeAttribute(pp); });
+      if (b[i].style) { b[i].style.clipPath = ''; b[i].style.mask = ''; }
+      if (tag === 'use') { drop.push(b[i]); continue; }
+      if (b[i].hasAttribute('filter')) b[i].removeAttribute('filter');
+      if (b[i].style && b[i].style.filter) b[i].style.filter = 'none';
+      if (b[i].namespaceURI === 'http://www.w3.org/1999/xhtml') { b[i].style.color = 'transparent'; b[i].style.textShadow = 'none'; }
+    }
+    for (var j = 0; j < drop.length; j++) if (drop[j].parentNode) drop[j].parentNode.removeChild(drop[j]);
+    if (clone.removeAttribute) clone.removeAttribute('id');
+    return clone;
+  }
+
+  function focusMakeOutline(id) {
+    var tile = tiles[id];
+    var clone = focusClone(id);
+    if (!tile || !clone) return null;
+    var ol = h('div', { className: 'bd-focus-ol', 'data-focus-item': id });
+    ol.style.left = tile.style.left; ol.style.top = tile.style.top;
+    ol.style.width = tile.offsetWidth + 'px'; ol.style.height = tile.offsetHeight + 'px';
+    if (tile.style.transform) { ol.style.transform = tile.style.transform; ol.style.transformOrigin = tile.style.transformOrigin; }
+    var sil = h('div', { className: 'bd-focus-sil' });
+    sil.style.filter = 'url(#' + focusFilter(id) + ')';
+    sil.appendChild(clone);
+    ol.appendChild(sil);
+    return ol;
+  }
+
+  // Everything a lit item's art box CONTAINS is lit with it (a card's buttons and readouts, the
+  // label engraved beside a vessel), so a lit panel never shows dim buttons on a bright card.
+  function focusExpand(ids) {
+    var lit = {}, boxes = [];
+    ids.forEach(function (id) {
+      if (!tiles[id]) return;
+      lit[id] = true;
+      var b = focusArtBox(id);
+      if (b) boxes.push(b);
+    });
+    Object.keys(tiles).forEach(function (id) {
+      if (lit[id]) return;
+      var t = tiles[id], it = itemById(id);
+      var m = it && it.kind === 'text' ? 14 : 4;
+      var x0 = t.offsetLeft, y0 = t.offsetTop, x1 = x0 + t.offsetWidth, y1 = y0 + t.offsetHeight;
+      for (var i = 0; i < boxes.length; i++) {
+        var b = boxes[i];
+        if (x0 >= b.l - m && y0 >= b.t - m && x1 <= b.r + m && y1 <= b.b + m) { lit[id] = true; break; }
+      }
+    });
+    return Object.keys(lit);
+  }
+
+  function focusDrop(el) {
+    if (!el) return;
+    el.classList.remove('on');
+    el.classList.add('bd-out');
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 480);
+  }
+
+  // Names → board item ids: a REGION (the driver's focusRegion) expands to its members; any other
+  // name is a single focus name (component or highlight label). Unknown names are skipped.
+  function focusResolve(names, regions) {
+    var d = driver(), out = [];
+    function add(id) { if (id && tiles[id] && out.indexOf(id) === -1) out.push(id); }
+    (names || []).forEach(function (n) {
+      var reg = regions && d && d.focusRegion ? d.focusRegion(n) : null;
+      if (reg) reg.forEach(add);
+      else add(d && d.focusItem ? d.focusItem(n) : null);
+    });
+    return out;
+  }
+
+  /* PIPES dim with their ends: a pipe is lit only when BOTH items it joins are lit (the hot leg
+   * with the primary, the steam line with the secondary), a flange with its item. Pipes are
+   * rebuilt on a port rescan, so buildPipes() calls this again. */
+  function focusApplyPipes() {
+    var litSet = {};
+    focus.lit.forEach(function (id) { litSet[id] = true; });
+    var on = focus.dim;
+    pipeParts.forEach(function (p) {
+      var lit = !on || (p.a != null && p.b != null ? (litSet[p.a] && litSet[p.b]) : litSet[p.a || p.b]);
+      p.els.forEach(function (el) { el.classList.toggle('bd-dim', !lit); });
+    });
+  }
+
+  /* SCOPE. spec: null (the whole board) | { names: [regions or focus names], lit: [extra names] }.
+   * Deduped by content, so the UI calls it every broadcast for free. */
+  function setScope(spec) {
+    if (!stage) return;
+    var key = spec ? JSON.stringify([spec.names || [], spec.lit || []]) : null;
+    if (key === focus.key) return;
+    focus.key = key;
+    if (!halosMeasured) measureHalos();     // BEFORE any dimming: the art-box measure reads ink
+    focus.lit.forEach(function (id) { if (tiles[id]) tiles[id].classList.remove('bd-lit'); });
+    focus.lit = [];
+    var dim = !!spec;
+    if (dim) {
+      focus.lit = focusExpand(focusResolve(spec.names, true).concat(focusResolve(spec.lit, true)));
+      focus.lit.forEach(function (id) { tiles[id].classList.add('bd-lit'); });
+    }
+    if (dim !== focus.dim) {
+      stage.classList.toggle('bd-dimming', dim);
+      if (!dim) {
+        stage.classList.add('bd-undimming');
+        clearTimeout(focus.undimTimer);
+        focus.undimTimer = setTimeout(function () { if (stage) stage.classList.remove('bd-undimming'); }, 520);
+      }
+      focus.dim = dim;
+    }
+    focusApplyPipes();
+    focus.names = spec ? (spec.names || []).slice() : [];
+  }
+
+  /* POINTER. Outline each named item for one short, self-expiring cue. Pointing again at an item
+   * already pointed at restarts its cue (the player clicked the line again). Pointing into the
+   * dimmed part of the board is allowed; the outline draws over the dimming at full strength. */
+  function pointAt(names) {
+    if (!stage) return [];
+    if (!halosMeasured) measureHalos();
+    focusLayer();
+    if (!focus.scale) focusTune();
+    var ids = focusResolve([].concat(names || []), false);
+    ids.forEach(function (id) {
+      var old = focus.ptrs[id];
+      if (old) { clearTimeout(old.timer); if (old.el.parentNode) old.el.parentNode.removeChild(old.el); }
+      var ol = focusMakeOutline(id);
+      if (!ol) { delete focus.ptrs[id]; return; }
+      focus.layer.appendChild(ol);
+      void ol.offsetWidth;                  // commit opacity 0 so the animation starts from it
+      ol.classList.add('on');
+      var rec = { el: ol, timer: null };
+      rec.timer = setTimeout(function () {
+        if (ol.parentNode) ol.parentNode.removeChild(ol);
+        if (focus.ptrs[id] === rec) delete focus.ptrs[id];
+      }, POINT_REMOVE_MS);
+      focus.ptrs[id] = rec;
+    });
+    return ids;
+  }
+  function clearPointers() {
+    Object.keys(focus.ptrs).forEach(function (id) {
+      var r = focus.ptrs[id];
+      clearTimeout(r.timer);
+      focusDrop(r.el);
+    });
+    focus.ptrs = {};
+  }
+
+  // Stage scale changed (window resize, splitter drag): keep the band in screen px.
+  function focusRescale() {
+    if (!focus.defs) return;
+    var ss = stageScale();
+    if (!ss || Math.abs(ss.scale - focus.scale) / ss.scale < 0.04) return;
+    focusTune();
+  }
+
   // ------------------------------------------------------------ mount/api --
   function mount(hostEl, context) {
     unmount();
@@ -1350,6 +1671,10 @@
     comps = {}; tiles = {}; valueEls = {}; buttonEls = {}; numberEls = {}; scramEls = {};
     ports = {}; nudge = {}; pipeFlow = []; pipeTempEls = []; lastSnap = null;
     haloBox = {}; haloEls = {}; halosMeasured = false;
+    if (focus.undimTimer) clearTimeout(focus.undimTimer);
+    Object.keys(focus.ptrs).forEach(function (id) { clearTimeout(focus.ptrs[id].timer); });
+    focusReset();
+    pipeParts = [];
   }
 
   /* Freeze/unfreeze the board. Split out of render() 2026-08-11 because the thing that
@@ -1402,6 +1727,9 @@
           if (out.unit != null && rec.unitEl.textContent !== out.unit) rec.unitEl.textContent = out.unit;
           if (out.color && rec.el.style.color !== out.color) rec.el.style.color = out.color;
         }
+        // A reading drawn in an ALARM colour keeps its hue under scope dimming (#811).
+        var hueOn = !!(out && typeof out === 'object' && out.color && ALARM_HUES[String(out.color).toLowerCase()]);
+        if (rec._hue !== hueOn) { rec.el.classList.toggle('bd-alarm-hue', hueOn); rec._hue = hueOn; }
       });
       // numbers reflect sim state unless being edited
       Object.keys(numberEls).forEach(function (id) {
@@ -1413,7 +1741,7 @@
         var auto = d.numberAuto ? d.numberAuto(rec.item, s) : false;
         var warn = d.numberWarn ? d.numberWarn(rec.item, s) : null;
         var col = warn || (auto ? BD_NUM_AUTO_COLOR : (rec.item.color || '#4fe3ff'));
-        if (rec._appliedCol !== col) { rec.input.style.color = col; rec._appliedCol = col; }
+        if (rec._appliedCol !== col) { rec.input.style.color = col; rec._appliedCol = col; rec.input.classList.toggle('bd-alarm-hue', !!warn); }
         // Disabled outranks everything: the running engine has no machinery behind this box
         // (#506 — the mirror of buttonDisabled below; same honest-absent rule).
         var ndis = d.numberDisabled ? !!d.numberDisabled(rec.item, s) : false;
@@ -1564,6 +1892,17 @@
     // Same category as ports()/lastSnapshot()/componentInstance(): a read accessor for the
     // test harness, not a control path.
     haloElement: function (id) { return haloFor(id); },
+    // The instructor's board focus (#811): SCOPE dims everything outside the named regions/items
+    // (`spec` null = the whole board; deduped by content, so calling it every broadcast is free);
+    // POINTER outlines components for one ~4 s cue and removes itself.
+    setScope: function (spec) { setScope(spec); },
+    pointAt: function (names) { return pointAt(names); },
+    clearPointers: function () { clearPointers(); },
+    // Read accessor for harnesses: what is scoped, lit, dimmed and pointed at right now.
+    scopeState: function () {
+      return { key: focus.key, names: focus.names.slice(), lit: focus.lit.slice(),
+               dimming: !!(stage && stage.classList.contains('bd-dimming')), pointers: Object.keys(focus.ptrs) };
+    },
     // Instructor-highlight hooks. The driver owns the control-label vocabulary;
     // the renderer resolves it to a board tile to glow.
     revealControl: function (label) {

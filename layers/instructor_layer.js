@@ -416,6 +416,14 @@
     this.highlight = null;
     this.levelComplete = null;
     this._actionsSinceBeat = [];      // forwarded operator commands since last beat fire
+    this._beatBaseline = {};          // rod_travel: each group's steps when the beat fired (#811)
+    this._trend = null;               // { rev, series } — the chart traces a beat asked for (#811)
+    this._scope = null;               // { rev, names } — the board scope (dimming) a beat asked for (#811)
+    this._watchFired = [];            // scenario-level `watch` entries already taken (#811)
+    this._readHoldS = 0;              // WALL seconds of reading still owed to the last lines (`pace: 'reading'`, #811)
+    this._readLastSim = null;         // sim time the hold was last counted down at
+    this._lastActionTime = null;      // sim time of the last forwarded operator command (quiet inaction, #811)
+    this._rodHold = null;             // group_id of an operator rod HOLD in progress (rod_start, no rod_stop yet)
     this._lastSimTime = 0;
     this._continueRequested = false;  // instructor_continue → `manual` trigger
     // Chat-mode state (scenarios with `chat: true` — dialogue log + interactions).
@@ -621,11 +629,52 @@
     if (this.mode === 'scenario') this._stepScenario(snapshot, simTime);
     else if (this.mode === 'follow') this._stepFollow(snapshot, simTime);
     if (this.checklist) this._stepChecklist(snapshot);
-    this._continueRequested = false;    // a Continue click satisfies at most one pass
+    if (!this._heldPass) this._continueRequested = false;    // a Continue click satisfies at most one pass
+    this._heldPass = false;                                   // ...that ran the flow (reading hold, #811)
   };
 
   InstructorLayer.prototype._stepScenario = function (snapshot, simTime) {
     if (this.scenarioStartTime === null) this.scenarioStartTime = simTime;
+
+    /* SCENARIO-LEVEL WATCHES (#811, OWNER RULING 2026-09-28: "part of the instruction in the
+     * background might include triggers for undoing like if the player does something incorrectly
+     * or something unexpected happens"). `scenario.watch: [{ id, trigger, goto, until }]` is armed
+     * from the first pass until the beat named `until` fires; the first to trigger jumps to its
+     * `goto` exactly as a branch does, once. This is how content reacts to the unexpected (an early
+     * trip) without every beat carrying the same branch. */
+    /* NEVER ONCE THE FLOW HAS ENDED (QA3 2026-09-28): a watch with no `until`, or one whose `until`
+     * the route skipped, would otherwise re-open a finished scenario under its finish card. */
+    var ws = (this.scenario && this.scenario.watch && !this.levelComplete && this.currentBeatId != null)
+      ? this.scenario.watch : [];
+    for (var wi = 0; wi < ws.length; wi++) {
+      var w = ws[wi];
+      if (this._watchFired.indexOf(w.id) !== -1) continue;
+      if (w.until && this.firedBeats.has(w.until)) continue;
+      if (this.firedBeats.has(w.goto)) continue;      // a fired beat never fires again: the jump would stall the flow
+      if (this._evalTrigger(w.trigger, snapshot, simTime)) {
+        this._watchFired.push(w.id);
+        this._readHoldS = 0;          // the unexpected is news: its beat is not held behind reading time
+        this._fireBranch(w, simTime);
+        break;
+      }
+    }
+
+    /* READING TIME (#811, OWNER 2026-09-28: "the cadence is a little fast. It's hard to keep up
+     * with reading it and looking at the board."). A scenario with `pace: 'reading'` owes each
+     * line it says READING_S(line) of WALL time — the UI reveals the lines on the same clock
+     * (chatDwellS) — and no branch or beat fires until the last beat's lines have all had theirs.
+     * Wall, not sim: at 5x a sim-time delay runs away from the reader five times over. Wall is
+     * sim / time_acceleration, so it stops with the clock and it is the same in the browser and
+     * the Node harnesses. The scenario `watch` above is NOT held, and a watch that fires cancels the
+     * hold: an unexpected trip is news, and the UI still reveals the owed lines on its own clock. */
+    if (this.scenario && this.scenario.pace === 'reading') {
+      var acc = (snapshot && snapshot.metadata && snapshot.metadata.time_acceleration) || 1;
+      if (this._readLastSim != null && simTime > this._readLastSim && acc > 0)
+        this._readHoldS = Math.max(0, this._readHoldS - (simTime - this._readLastSim) / acc);
+      this._readLastSim = simTime;
+      // A Continue click during the hold is KEPT for the pass that runs the flow, not dropped.
+      if (this._readHoldS > 0) { this._heldPass = true; this._updateGates(snapshot, simTime); return; }
+    }
 
     // Watching a decision beat's branches: first branch trigger to fire wins (§6).
     // A fired branch jumps to its goto beat, which is then evaluated in the SAME
@@ -683,6 +732,9 @@
     // transcript); commentary remains the single-slot fallback for non-chat
     // scenarios and for gate feedback.
     if (beat.dialogue && beat.dialogue.length) this._appendChat(beat.dialogue, simTime, beat.story_min != null ? beat.story_min : null, !!beat.time_skip);
+    if (beat.dialogue && this.scenario && this.scenario.pace === 'reading') {
+      for (var rl = 0; rl < beat.dialogue.length; rl++) if (beat.dialogue[rl]) this._readHoldS += InstructorLayer.readingSeconds(beat.dialogue[rl]);
+    }
 
     // Scenario actions descend as commands through M4, which places failures
     // correctly (HR7) and applies command interception.
@@ -722,8 +774,28 @@
     }
 
     this.firedBeats.add(beat.id);
+    /* A BEAT CAN SET THE TREND CHART (#811, owner 2026-09-28): `trend: [series ids]` puts those
+     * traces on the chart when the beat fires. `rev` counts the requests so the UI applies each
+     * once; the UI keeps the player's own selection and restores it when the content ends. The
+     * beat's text must say what it put there — the chart changing unannounced is the defect. */
+    if (beat.trend && beat.trend.length) {
+      this._trend = { rev: (this._trend ? this._trend.rev : 0) + 1, series: beat.trend.slice() };
+    }
+    /* A BEAT CAN SCOPE THE BOARD (#811, OWNER RULING 2026-09-28: "we use dimming to isolate the
+     * part of the board we are focusing on"): `scope: ['primary', 'rods', 'Tavg']` names board
+     * REGIONS (or single focus names) and the UI dims everything else. STICKY like `highlight`: it
+     * stands until a later beat carries `scope`; `scope: null` is the whole board. Nothing else
+     * changes it — not an alarm, not a trip (OWNER RULING 2026-09-28: "we should give the
+     * instructor exclusive control"); a beat that should react to one says so, usually via a
+     * scenario-level `watch`. The brief OUTLINE is a chat line's `point`, not a beat's. */
+    if (Object.prototype.hasOwnProperty.call(beat, 'scope')) {
+      var sc = beat.scope, rev = this._scopeRev = (this._scopeRev || 0) + 1;
+      this._scope = (sc == null || (Array.isArray(sc) && !sc.length)) ? null
+        : { rev: rev, names: [].concat(sc) };
+    }
     this.lastBeatFireTime = simTime;
     this._actionsSinceBeat = [];
+    this._beatBaseline = {};
 
     // A rewind beat asks M5 to roll the WORLD back while the Instructor keeps its
     // progress (the "watch that again" device). It does not also checkpoint —
@@ -741,6 +813,14 @@
     this._advanceFrom(beat);
   };
 
+  /* A line's reading time in WALL seconds (#811 pacing): 0.3 s a word plus 2.5 s to look at the
+   * board — a 20-word line gets 8.5 s. Learning register, like the UI's reveal. Shared with the UI
+   * (app.js chatDwellS) so the reveal and the flow keep the same clock. */
+  InstructorLayer.readingSeconds = function (line) {
+    var w = String((line && (line.learning || line.industry)) || '').trim().split(/\s+/).length;
+    return w * 0.3 + 2.5;
+  };
+
   InstructorLayer.prototype._advanceFrom = function (beat) {
     // `advance: "end"` terminates the scenario flow at this beat — needed by
     // branch endpoints, since beats are one flat ordered list and a finished
@@ -756,11 +836,24 @@
     this.currentBeatId = null;
   };
 
+  /* An operator rod HOLD in progress (#811): a rod_start forwarded with no rod_stop yet. Self-heals
+   * when the bank is no longer moving (driven to its end, blocked, a start with no release) so a
+   * lost release can never park a `quiet` inaction exit for ever. */
+  InstructorLayer.prototype._holdActive = function (snapshot) {
+    if (!this._rodHold) return false;
+    var rgs = snapshot && snapshot.control_state && snapshot.control_state.rod_groups;
+    for (var i = 0; rgs && i < rgs.length; i++) {
+      if (rgs[i].id === this._rodHold && rgs[i].moving === false) { this._rodHold = null; return false; }
+    }
+    return true;
+  };
+
   InstructorLayer.prototype._fireBranch = function (branch, simTime) {
     this.branchWatch = null;
     this.currentBeatId = branch.goto;
     this.lastBeatFireTime = simTime;      // delay triggers on the target measure from the decision
     this._actionsSinceBeat = [];
+    this._beatBaseline = {};
   };
 
   // ------------------------------------------------------------ chat (TMI-2 M5)
@@ -780,14 +873,18 @@
     for (var i = 0; i < lines.length; i++) {
       var l = lines[i];
       if (!l) continue;
-      this.chatLog.push({
+      var entry = {
         speaker: l.speaker || 'sup',
         learning: l.learning || l.industry || '',
         industry: l.industry || l.learning || '',
         t: simTime != null ? simTime : this._lastSimTime,
         story: (i === 0 && storyMin != null) ? storyMin : null,
         skip: (i === 0 && timeSkip) ? true : null,
-      });
+      };
+      // A line may POINT at board components (#811): the UI outlines them briefly when the line
+      // appears, and again when the player clicks it. Presentation only; absent on most lines.
+      if (l.point) entry.point = [].concat(l.point);
+      this.chatLog.push(entry);
     }
     while (this.chatLog.length > CHAT_LOG_CAP) this.chatLog.shift();
     this._chatRev++;
@@ -852,6 +949,27 @@
       case 'true_state':      // deliberate author hook for truth the operator can't see
         v = snapshot.true_state ? snapshot.true_state[trigger.field] : undefined;
         return this._compare(v, trigger.direction, trigger.value);
+      /* A CONTROL'S OWN STATE — the lit AUTO/MANUAL light, a selector position (#811). Board-
+       * visible, so not an HR1 leak: the operator reads it off the button they pressed. Added for
+       * the opener's "put spray back in AUTO", which a player may have done BEFORE being asked —
+       * an operator_action trigger only sees commands after the beat fired, and strands them. */
+      case 'control_state':
+        v = snapshot.control_state ? snapshot.control_state[trigger.field] : undefined;
+        return this._compare(v, trigger.direction, trigger.value);
+      /* A ROD GROUP'S TRAVEL SINCE THE BEAT FIRED (#811 follow-up): `direction` 'out' | 'in',
+       * `steps` how far. RELATIVE, because "the player drove the rods the wrong way" is a fact
+       * about where the bank was AT THE ASK, and that position depends on the route taken to it.
+       * The baseline is the first reading after the beat fired (one broadcast late at most), and
+       * rides in saveState so a restore mid-ask does not re-zero it. Board-visible (the bank's
+       * step counter), so not an HR1 leak. */
+      case 'rod_travel': {
+        var rgs = snapshot.control_state && snapshot.control_state.rod_groups, grp = null;
+        for (i = 0; rgs && i < rgs.length; i++) if (rgs[i].id === trigger.group_id) grp = rgs[i];
+        if (!grp || typeof grp.steps !== 'number') return false;
+        if (this._beatBaseline[trigger.group_id] == null) this._beatBaseline[trigger.group_id] = grp.steps;
+        var moved = grp.steps - this._beatBaseline[trigger.group_id];
+        return (trigger.direction === 'in' ? -moved : moved) >= trigger.steps;
+      }
       case 'operator_action': // a matching command descended since the last beat fired
         for (i = 0; i < this._actionsSinceBeat.length; i++) {
           if (this._commandMatches(this._actionsSinceBeat[i], trigger)) return true;
@@ -859,8 +977,19 @@
         return false;
       case 'inaction': {      // window elapsed with no sibling action having fired first
         var arm = this.lastBeatFireTime !== null ? this.lastBeatFireTime : this.scenarioStartTime;
+        /* QUIET (#811 layman pass, 2026-09-28): `quiet: true` means "the player has not touched a
+         * control for `window` seconds" — the clock restarts on every forwarded operator command
+         * and does not run at all while a rod HOLD is in progress. Measured before it existed: a
+         * player who began holding INSERT at 85-115 s into the rods ask got "I'll drive the rods
+         * in 40 steps for you" and the clock to 5x at exactly +120.0 s, under their finger. */
+        if (trigger.quiet) {
+          if (this._holdActive(snapshot)) return false;
+          if (this._lastActionTime !== null && (arm === null || this._lastActionTime > arm)) arm = this._lastActionTime;
+        }
         return arm !== null && (simTime - arm) >= trigger.window;
       }
+      case 'no_hold':         // no operator rod HOLD in progress (#811): grade a hold on its RELEASE
+        return !this._holdActive(snapshot);
       case 'alarm':
         if (!snapshot.alarms) return false;
         for (i = 0; i < snapshot.alarms.length; i++) {
@@ -2173,6 +2302,10 @@
       }
       var ret = this.below.handleCommand(command);
       this._actionsSinceBeat.push(command);   // operator_action / inaction triggers watch these
+      this._lastActionTime = this._lastSimTime;
+      if (command.action === 'rod_start') this._rodHold = command.group_id || 'control_rods';
+      else if (command.action === 'rod_stop_all' || command.action === 'scram' ||
+               (command.action === 'rod_stop' && (!this._rodHold || (command.group_id || 'control_rods') === this._rodHold))) this._rodHold = null;
       return ret;
     }
 
@@ -2554,6 +2687,8 @@
       message_register: base.message_register,
       scenario_id: this.scenario ? this.scenario.id : null,
       current_beat_id: this.currentBeatId,
+      trend: this._trend ? { rev: this._trend.rev, series: this._trend.series.slice() } : null,
+      scope: this.mode === 'scenario' && this._scope ? { rev: this._scope.rev, names: this._scope.names.slice() } : null,
       // Is a beat currently GATING progress? (#439, spec §4.) The UI tiers its
       // interrupt on this: a routine message cues the collapsed card's badge, a step
       // that blocks the player has to reach them even with another panel open, or the
@@ -2744,6 +2879,13 @@
       pending_message: this.pendingMessage ? JSON.parse(JSON.stringify(this.pendingMessage)) : null,
       chat_log: this.chatLog.length ? JSON.parse(JSON.stringify(this.chatLog)) : null,
       chat_rev: this._chatRev,
+      beat_baseline: JSON.parse(JSON.stringify(this._beatBaseline || {})),
+      trend: this._trend ? JSON.parse(JSON.stringify(this._trend)) : null,
+      scope: this._scope ? JSON.parse(JSON.stringify(this._scope)) : null,
+      watch_fired: this._watchFired.slice(),
+      read_hold_s: this._readHoldS,
+      last_action_time: this._lastActionTime,
+      rod_hold: this._rodHold,
       interact: JSON.parse(JSON.stringify(this._interact)),
       ui_policy: this.uiPolicy ? JSON.parse(JSON.stringify(this.uiPolicy)) : null,
       highlight: this.highlight ? JSON.parse(JSON.stringify(this.highlight)) : null,
@@ -2860,7 +3002,8 @@
     if (!state.mode) return;
 
     if (state.mode === 'scenario') {
-      var sc = RD.SCENARIOS ? RD.SCENARIOS[state.scenario_id] : null;
+      var sc = (RD.SCENARIOS && RD.SCENARIOS[state.scenario_id]) ||
+               (RD.OPENERS && RD.OPENERS[state.scenario_id]) || null;   // openers load as scenarios (#811)
       if (!sc) {
         if (typeof console !== 'undefined') console.warn('InstructorLayer.loadState: scenario "' + state.scenario_id + '" not in RD.SCENARIOS — degrading to free-play.');
         return;
@@ -2880,6 +3023,15 @@
       this.pendingMessage = state.pending_message || null;
       this.chatLog = state.chat_log || [];
       this._chatRev = state.chat_rev || 0;
+      this._beatBaseline = state.beat_baseline || {};
+      this._trend = state.trend || null;
+      this._scope = state.scope || null;
+      this._scopeRev = this._scope ? this._scope.rev : 0;
+      this._watchFired = (state.watch_fired || []).slice();
+      this._readHoldS = state.read_hold_s || 0;   // absent on older saves: nothing owed
+      this._readLastSim = null;
+      this._lastActionTime = state.last_action_time != null ? state.last_action_time : null;   // absent on older saves
+      this._rodHold = state.rod_hold || null;
       this._interact = state.interact || {};
       this.uiPolicy = state.ui_policy || null;
       this.highlight = state.highlight || null;

@@ -421,8 +421,12 @@
       function colorAt(v) { return REGION_COLORS[regionAt(REG, v).key]; }
 
       // currentRegion, not regionAt — this is the live reading and it carries the hysteresis.
-      var curColor = REGION_COLORS[currentRegion(REG, cur).key];
+      var curKey = currentRegion(REG, cur).key, curColor = REGION_COLORS[curKey];
       sty(valEl, 'color', curColor);
+      // ALARM HUE (#811, OWNER RULING 2026-09-28): a reading in its alarm or trip band keeps its
+      // colour when the instructor's scope dims this tile (pwr_board.css, bd-alarm-hue).
+      var inAlarm = curKey === 'alarm' || curKey === 'trip';
+      if (root.classList.contains('bd-alarm-hue') !== inAlarm) root.classList.toggle('bd-alarm-hue', inAlarm);
       /* NEGATIVE ZERO IS A READING (#670 operator pass 2, S-11). `(-0.18).toFixed(0)` is the
        * string "-0", and SUBCOOLING MARGIN genuinely sits there for minutes as the plant
        * reaches saturation — an operator watching the one gauge that says whether the coolant
